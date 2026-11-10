@@ -1,10 +1,13 @@
 //! The RP2350A Minimal board: the circuit of Raspberry Pi's open reference design
 //! `RPI-RP2350A-MINIMAL_R4-S1` (MIT, Copyright (c) 2026 Raspberry Pi Ltd; see `README.md` and
-//! `LICENSE`), written in netsmith. The schematic only: the outline, the mounting holes and the
-//! places of the parts are the physical file's and are not written yet.
+//! `LICENSE`), written in netsmith. The circuit only: the outline, the mounting holes and the
+//! places of the connectors and buttons are in `main.physical.nsm`.
 //!
-//! `netsmith compare` says that its nets are Raspberry Pi's (`README.md`, "Same nets"; a test
-//! holds it). The pin-to-signal mapping of the two 2 x 18 headers is Raspberry Pi's too, and it
+//! Its nets are Raspberry Pi's, and the proof is the test
+//! `every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board` (`README.md`, "Same
+//! nets"), which compares the wiring alone: the bare `netsmith compare` of the two files answers
+//! `different`, because it pairs parts by footprint name and their footprints are named
+//! otherwise. The pin-to-signal mapping of the two 2 x 18 headers is Raspberry Pi's too, and it
 //! is FIXED: the board joins each header pin to a named pin of the MCU (`.mcu.gpio4`) and never
 //! to a request for "any GPIO" (`.x: .mcu.GPIO`, ADR 0101). Only a request is ever moved by the
 //! pin optimizer of `fab`, so the firmware's pin map cannot change. There is no
@@ -26,6 +29,10 @@ import std::sources::Rail
 board Rp2350Minimal {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
+        // Ground is the copper poured over the back of the board, as on Raspberry Pi's (a
+        // ground zone on `B.Cu`): every ground pad joins it through a via, and the router has
+        // no ground track to draw on the front.
+        .bottom.net &= "GND"
     }
 
     // ---- The connectors: J1 to J4 ----
@@ -33,9 +40,9 @@ board Rp2350Minimal {
     /// The micro-USB B receptacle: the only supply of the board, and its USB port.
     .usb: Amphenol10103594 { .mpn &= "10103594-0001LF" }
     /// J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.
-    .header_low: SamtecTsw11807LD
+    .header_low: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
     /// J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.
-    .header_high: SamtecTsw11807LD
+    .header_high: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
     /// J4: the debug port, a JST-SH with SWCLK, ground and SWD.
     .debug: JstSm03bSrssTb { .mpn &= "SM03B-SRSS-TB(LF)(SN)" }
 

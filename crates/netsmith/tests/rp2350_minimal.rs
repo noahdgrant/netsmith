@@ -282,6 +282,24 @@ fn the_table_holds_the_facts_of_raspberry_pis_board() {
         );
         assert_eq!(part["pads"].as_array().unwrap().len(), pads, "{reference}");
     }
+    // J1's two custom pads state the box of their polygons; no other pad has an extent.
+    let extents: Vec<(&str, &str)> = parts
+        .iter()
+        .flat_map(|p| {
+            p["pads"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|pad| pad.as_table().unwrap().contains_key("extent"))
+                .map(|pad| {
+                    (
+                        p["reference"].as_str().unwrap(),
+                        pad["number"].as_str().unwrap(),
+                    )
+                })
+        })
+        .collect();
+    assert_eq!(extents, [("J1", "7"), ("J1", "10")]);
     let must: Vec<_> = parts
         .iter()
         .filter(|p| p["must_match"].as_bool() == Some(true))
@@ -338,7 +356,7 @@ mod regulator_inductor_switch {
     use netsmith_kicad::{Mapping, SymbolLib, testlib};
     use netsmith_pcb::FootprintLibrary;
 
-    use super::{parsed, project, read, tables};
+    use super::{pad_differences, parsed, project, read, tables};
 
     /// A small board of our own, never built by the project: a regulator from a 5 V input to
     /// 3.3 V, an inductor between two headers, and a button between two headers. The nets are
@@ -635,7 +653,6 @@ board Fixture {
     #[test]
     fn raspberry_pis_buttons_have_a_net_on_each_pair_and_the_same_pads() {
         let table = parsed(&read("reference/placements.toml"));
-        let parts = tables(&table, "part");
         let built = built();
         let pads = pads_of(&built, "SW1");
         let footprint = footprint_of(&built, "SW1");
@@ -650,28 +667,29 @@ board Fixture {
             for pad in &pads["b"] {
                 assert_eq!(nets[pad], pair_b, "{reference} pad {pad}");
             }
-            // The footprint is the same as Raspberry Pi's, pad for pad.
-            let part = parts
-                .iter()
-                .find(|p| p["reference"].as_str() == Some(reference))
-                .unwrap();
-            for pad in part["pads"].as_array().unwrap() {
-                let pad = pad.as_table().unwrap();
-                let number = pad["number"].as_str().unwrap();
-                let mine = footprint.pads_numbered(number).next().unwrap();
-                let size: Vec<f64> = pad["size"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_float().unwrap())
-                    .collect();
-                // Their part is turned by -90 or 180 degrees, so the pad's own size is given
-                // in the turned frame and the sizes are compared as a set.
-                let mut theirs = size.clone();
-                let mut ours = vec![mine.width, mine.height];
-                theirs.sort_by(f64::total_cmp);
-                ours.sort_by(f64::total_cmp);
-                assert_eq!(theirs, ours, "{reference} pad {number}");
+            // The footprint is the same as Raspberry Pi's, pad for pad: number, centre, size
+            // in the footprint's own frame, shape, angle and drill (`pad_differences`).
+            let differences = pad_differences(&footprint, &table, reference);
+            assert!(differences.is_empty(), "{}", differences.join("\n"));
+        }
+        // And it can fail: a footprint with every pad turned by 90 degrees, or with the width
+        // and height of each swapped, is not Raspberry Pi's, though a sorted set of sizes is.
+        let mut turned = footprint.clone();
+        for pad in &mut turned.pads {
+            pad.angle += 90.0;
+        }
+        let mut swapped = footprint.clone();
+        for pad in &mut swapped.pads {
+            std::mem::swap(&mut pad.width, &mut pad.height);
+        }
+        for (what, wrong) in [("turned", turned), ("swapped", swapped)] {
+            for reference in ["SW1", "SW2"] {
+                let differences = pad_differences(&wrong, &table, reference);
+                assert_eq!(
+                    differences.len(),
+                    4,
+                    "{reference}, pads {what}: {differences:?}"
+                );
             }
         }
     }
@@ -1433,8 +1451,8 @@ board ConnectorsBare {
     }
     .usb: Amphenol10103594 { .mpn &= "10103594-0001LF" }
     .debug: JstSm03bSrssTb { .mpn &= "SM03B-SRSS-TB(LF)(SN)" }
-    .low: SamtecTsw11807LD
-    .high: SamtecTsw11807LD
+    .low: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
+    .high: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
 
     .usb_power.pos ~ .usb.vbus
     .usb_power.neg ~ .usb.gnd
@@ -1554,7 +1572,7 @@ fn the_connectors_build_with_no_kicad_and_their_footprints_are_the_projects_own(
 }
 
 #[test]
-fn the_header_is_soldered_by_hand_and_has_no_lcsc_number_the_others_have_theirs() {
+fn the_header_is_soldered_by_hand_and_has_its_lcsc_number_like_the_others() {
     let built = built_connectors();
     let sourced = |kind: &str| {
         built
@@ -1564,7 +1582,7 @@ fn the_header_is_soldered_by_hand_and_has_no_lcsc_number_the_others_have_theirs(
             .collect::<Vec<_>>()
     };
     for header in sourced("SamtecTsw11807LD") {
-        assert_eq!(header.lcsc, None);
+        assert_eq!(header.lcsc.as_deref(), Some("C6887963"));
         assert_eq!(header.assembly, netsmith_design::Assembly::Hand);
     }
     assert_eq!(
@@ -1807,8 +1825,25 @@ fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_
         );
         assert!(row.contains(",Extended,"), "{row}");
     }
-    // The header has no JLCPCB part: no catalog and no number.
-    assert!(!project().join("catalogs/samtec_tsw_118.csv").exists());
+    // The header's row: LCSC's page was read, JLCPCB's returned no library type, so none is
+    // recorded (an empty cell, not a guess).
+    let rows = read("catalogs/samtec_tsw_118.csv");
+    let row = rows.lines().nth(1).expect("a row");
+    assert_eq!(rows.lines().count(), 2, "one row");
+    assert!(
+        row.starts_with("C6887963,TSW-118-07-L-D,TSW-118-07-L-D,,"),
+        "{row}"
+    );
+    assert!(
+        row.contains("https://jlcpcb.com/partdetail/C6887963"),
+        "{row}"
+    );
+    assert!(row.contains("https://www.lcsc.com/product-detail/C6887963.html"));
+    assert!(row.contains("2026-11-10"), "{row}");
+    assert!(
+        !row.contains(",Extended,") && !row.contains(",Basic,"),
+        "{row}"
+    );
     let target = Target::resolve_from(&project(), None).unwrap();
     assert!(target.catalogs().is_ok());
 }
@@ -1870,6 +1905,26 @@ mod board {
     ];
 
     const HOLES: [&str; 4] = ["MH1", "MH2", "MH3", "MH4"];
+
+    /// The mounting holes of the physical file, in the order of `HOLES`.
+    const HOLE_PATHS: [&str; 4] = ["hole1", "hole2", "hole3", "hole4"];
+
+    /// The designators of the holes (`H1` to `H4`): the design's parts at `HOLE_PATHS`.
+    fn hole_designators(built: &netsmith::Built) -> Vec<String> {
+        HOLE_PATHS
+            .iter()
+            .map(|path| {
+                built
+                    .design
+                    .parts
+                    .iter()
+                    .find(|p| p.path == *path)
+                    .unwrap_or_else(|| panic!("the board has no hole `{path}`"))
+                    .refdes
+                    .clone()
+            })
+            .collect()
+    }
 
     fn built() -> netsmith::Built {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
@@ -1992,12 +2047,19 @@ mod board {
         let built = built();
         let by_designator = designators(&built);
         // Every part of the board is one of Raspberry Pi's, once, and every part of theirs
-        // but the four mounting holes is in the board.
+        // but the four mounting holes is in the board. The holes are the physical file's
+        // (`.hole1` to `.hole4`, designators `H1` to `H4`).
         assert_eq!(by_designator.len(), PARTS.len());
+        let own: Vec<&str> = built
+            .design
+            .parts
+            .iter()
+            .map(|p| p.path.as_str())
+            .filter(|path| !PARTS.iter().any(|(_, part)| part == path))
+            .collect();
         assert_eq!(
-            built.design.parts.len(),
-            PARTS.len(),
-            "a part that is not Raspberry Pi's"
+            own, HOLE_PATHS,
+            "a part that is not Raspberry Pi's, and not a hole of the physical file"
         );
         let reference = reference();
         let theirs: BTreeSet<&str> = reference
@@ -2023,18 +2085,12 @@ mod board {
         assert!(built.schematic.starts_with("(kicad_sch"));
     }
 
-    /// The proof of item S7: for every pad of every part of Raspberry Pi's board, the set of
-    /// the other pads on its net is the same as on the board's. It is made from the committed
-    /// `.kicad_pcb` as a file (`Netlist::from_kicad_pcb`, netsmith's own s-expression reader) and
-    /// the design's nets, with no `kicad-cli`: `netsmith compare` reads the same file the same
-    /// way, but a `.nsm` side and a `.kicad_pcb` side differ in the footprints' names (theirs are
-    /// `RPI_COMPILED:generic_capc1005x50`), so the test compares the wiring alone.
-    #[test]
-    fn every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board() {
-        let built = built();
-        let to_reference = designators(&built);
-        let ours = neighbours(&design_netlist(&built), &to_reference);
-        let theirs = neighbours(&reference(), &BTreeMap::new());
+    /// Every pad whose other pads on its net are not the same on both sides, one line each
+    /// (empty when the two boards have the same connectivity), for the pads of either side.
+    fn net_differences(
+        ours: &BTreeMap<Pad, BTreeSet<Pad>>,
+        theirs: &BTreeMap<Pad, BTreeSet<Pad>>,
+    ) -> Vec<String> {
         let mut differences = Vec::new();
         let pads: BTreeSet<&Pad> = ours.keys().chain(theirs.keys()).collect();
         let empty = BTreeSet::new();
@@ -2053,6 +2109,22 @@ mod board {
                 ));
             }
         }
+        differences
+    }
+
+    /// The proof of item S7: for every pad of every part of Raspberry Pi's board, the set of
+    /// the other pads on its net is the same as on the board's. It is made from the committed
+    /// `.kicad_pcb` as a file (`Netlist::from_kicad_pcb`, netsmith's own s-expression reader) and
+    /// the design's nets, with no `kicad-cli`: `netsmith compare` reads the same file the same
+    /// way, but a `.nsm` side and a `.kicad_pcb` side differ in the footprints' names (theirs are
+    /// `RPI_COMPILED:generic_capc1005x50`), so the test compares the wiring alone.
+    #[test]
+    fn every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board() {
+        let built = built();
+        let to_reference = designators(&built);
+        let ours = neighbours(&design_netlist(&built), &to_reference);
+        let theirs = neighbours(&reference(), &BTreeMap::new());
+        let differences = net_differences(&ours, &theirs);
         assert!(differences.is_empty(), "{}", differences.join("\n"));
         // It is a real comparison: both sides have pads on nets.
         assert!(
@@ -2070,7 +2142,10 @@ mod board {
     fn netsmith_compare_says_the_nets_are_the_same() {
         let built = built();
         let to_reference = designators(&built);
-        let a = wiring_only(&design_netlist(&built), &[], false);
+        // The mounting holes are no part of the circuit: they have no pin and no net.
+        let holes = hole_designators(&built);
+        let holes: Vec<&str> = holes.iter().map(String::as_str).collect();
+        let a = wiring_only(&design_netlist(&built), &holes, false);
         let b = wiring_only(&reference(), &HOLES, true);
         let pairs = to_reference
             .iter()
@@ -2087,21 +2162,65 @@ mod board {
         assert!(matches!(free, Outcome::Match(_)), "{}", report(&free));
     }
 
-    /// The comparison would see a wrong net: one pad moved to another net is a difference.
+    /// The comparison would see a wrong net: it is the comparison above that runs, on a board
+    /// whose J2 pad 4 is on another net, and its answer is the pad.
     #[test]
     fn the_comparison_sees_a_pad_on_the_wrong_net() {
         let built = built();
         let to_reference = designators(&built);
         let mut ours = neighbours(&design_netlist(&built), &to_reference);
         let theirs = neighbours(&reference(), &BTreeMap::new());
-        // J2 pad 4 carries GPIO0; say it carried GPIO1's pad on U1 instead.
+        assert_eq!(net_differences(&ours, &theirs), Vec::<String>::new());
+        // J2 pad 4 carries GPIO0 in Raspberry Pi's board; say it carried the net of pad 6.
         let key = ("J2".to_string(), "4".to_string());
         let wrong = ours
             .get(&("J2".to_string(), "6".to_string()))
             .unwrap()
             .clone();
-        ours.insert(key.clone(), wrong);
-        assert_ne!(ours.get(&key), theirs.get(&key));
+        assert_ne!(ours[&key], wrong, "the wrong net must be another one");
+        ours.insert(key, wrong);
+        let differences = net_differences(&ours, &theirs);
+        assert!(
+            differences.iter().any(|d| d.starts_with("J2.4: board has")),
+            "{differences:?}"
+        );
+        // A pad that is on a net on one side only is a difference as well.
+        let mut ours = neighbours(&design_netlist(&built), &to_reference);
+        ours.remove(&("J2".to_string(), "4".to_string()));
+        assert!(
+            net_differences(&ours, &theirs)
+                .iter()
+                .any(|d| d.starts_with("J2.4: ")),
+        );
+    }
+
+    /// `reference/designators.toml` (the parity checker's map from Raspberry Pi's references to
+    /// the references `fab` writes) says what this table says: designators come from the kind of
+    /// a part and the order of its declaration, so a part added to `src/main.nsm` ahead of
+    /// another renumbers it and this fails until the map is written again.
+    #[test]
+    fn the_parity_checkers_designator_map_is_the_designs_own() {
+        let built = built();
+        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let mut wrong = Vec::new();
+        for (reference, refdes) in designators(&built)
+            .into_iter()
+            .map(|(refdes, reference)| (reference, refdes))
+        {
+            if map.get(&reference) != Some(refdes.as_str()) {
+                wrong.push(format!(
+                    "{reference}: the map says {:?}, the design has {refdes}",
+                    map.get(&reference)
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+        // The 39 parts above and the four mounting holes, in the order of `.hole1` to `.hole4`.
+        assert_eq!(map.len(), PARTS.len() + HOLES.len());
+        for (hole, refdes) in HOLES.iter().zip(hole_designators(&built)) {
+            assert_eq!(map.get(hole), Some(refdes.as_str()), "{hole}");
+        }
     }
 
     /// The values of the resistors and capacitors are Raspberry Pi's (`4k7` and `4.7k` are one

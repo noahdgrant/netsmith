@@ -2,8 +2,7 @@
 //! KiCad text stand for what `fab` writes, and the checker must pass a copy of the reference's
 //! must-match items and fail, naming the item, each way that a board can differ. One test runs
 //! the checker on Raspberry Pi's own board against itself, which proves that it reads a real
-//! KiCad 10 file. One more, dormant until the port has a board, builds the example with `fab`
-//! and gates on the checker.
+//! KiCad 10 file. One more builds the example with `fab` and gates on the checker.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -42,6 +41,11 @@ struct Spec {
     swap_j1_nets: bool,
     /// Every net of the board spelled the way netsmith names its own (`net-gpio0`).
     own_names: bool,
+    /// The corner at the top right is cut by a line instead of an arc: the same box, one rounded
+    /// corner fewer.
+    chamfer: bool,
+    /// Replacements `(from, to)` in the board's text, each `from` found once.
+    edits: Vec<(String, String)>,
 }
 
 impl Default for Spec {
@@ -57,8 +61,37 @@ impl Default for Spec {
             swap_j2_numbers: false,
             swap_j1_nets: false,
             own_names: false,
+            chamfer: false,
+            edits: Vec::new(),
         }
     }
+}
+
+/// The default board with these replacements in its text.
+fn edited(edits: &[(&str, &str)]) -> Spec {
+    Spec {
+        edits: edits
+            .iter()
+            .map(|(from, to)| (from.to_string(), to.to_string()))
+            .collect(),
+        ..Spec::default()
+    }
+}
+
+/// J2's pads as the board text writes them (thru-hole, rect, 1.6 x 1.2, drill 1).
+const J2_PAD_1: &str = r#"(pad "1" thru_hole rect (at 0 0 0) (size 1.6 1.2)"#;
+const J2_PAD_3: &str = r#"(pad "3" thru_hole rect (at 2.54 0 0) (size 1.6 1.2) (drill 1)"#;
+const J2_PAD_4: &str =
+    r#"(pad "4" thru_hole rect (at 2.54 2.54 0) (size 1.6 1.2) (drill 1) (layers "*.Cu")"#;
+const J2_PAD_5A: &str = r#"(pad "5" thru_hole rect (at 5.08 0 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "GND"))"#;
+const J2_PAD_5B: &str = r#"(pad "5" thru_hole rect (at 5.08 2.54 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "GND"))"#;
+const J2_PAD_7: &str = r#"(pad "7" thru_hole rect (at 7.62 0 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "/ONLY"))"#;
+const J2_PAD_7_BARE: &str =
+    r#"(pad "7" thru_hole rect (at 7.62 0 0) (size 1.6 1.2) (drill 1) (layers "*.Cu"))"#;
+
+fn replaced(text: &str, from: &str, to: &str) -> String {
+    assert_eq!(text.matches(from).count(), 1, "{from:?} is not found once");
+    text.replacen(from, to, 1)
 }
 
 fn arc(cx: f64, cy: f64, r: f64, corner: usize) -> String {
@@ -81,7 +114,8 @@ fn arc(cx: f64, cy: f64, r: f64, corner: usize) -> String {
 }
 
 fn net(spec: &Spec, name: &str) -> String {
-    let shown = if spec.own_names && name != "GND" {
+    // A net that only one pad is on has nothing to vouch for a renamed one: it keeps its name.
+    let shown = if spec.own_names && name != "GND" && name != "/ONLY" {
         format!("net-{}", name.trim_start_matches('/').to_lowercase())
     } else {
         name.to_string()
@@ -136,7 +170,18 @@ fn pcb(spec: &Spec) -> String {
         ox + w - r,
         oy
     );
-    s.push_str(&arc(ox + w - r, oy + r, r, 3));
+    if spec.chamfer {
+        let _ = writeln!(
+            s,
+            "\t(gr_line (start {} {}) (end {} {}) (layer \"Edge.Cuts\"))",
+            ox + w - r,
+            oy,
+            ox + w,
+            oy + r
+        );
+    } else {
+        s.push_str(&arc(ox + w - r, oy + r, r, 3));
+    }
     let _ = writeln!(
         s,
         "\t(gr_line (start {} {}) (end {} {}) (layer \"Edge.Cuts\"))",
@@ -222,6 +267,11 @@ fn pcb(spec: &Spec) -> String {
             (b, 0.0, 2.54, "/GPIO2"),
             ("3", 2.54, 0.0, "/GPIO3"),
             ("4", 2.54, 2.54, "GND"),
+            // Two pads of one number (like J1's shell: a surface pad and a plated slot), and a
+            // net that only this part is on.
+            ("5", 5.08, 0.0, "GND"),
+            ("5", 5.08, 2.54, "GND"),
+            ("7", 7.62, 0.0, "/ONLY"),
         ],
     ));
     s.push_str(&footprint(
@@ -248,6 +298,9 @@ fn pcb(spec: &Spec) -> String {
         ],
     ));
     s.push_str(")\n");
+    for (from, to) in &spec.edits {
+        s = replaced(&s, from, to);
+    }
     s
 }
 
@@ -265,6 +318,13 @@ fn run_with(spec: &Spec, map: &DesignatorMap) -> ParityReport {
 
 fn run(spec: &Spec) -> ParityReport {
     run_with(spec, &identity())
+}
+
+/// The table is made from the `reference` board, the checked board is `board`.
+fn run_pair(reference: &Spec, board: &Spec) -> ParityReport {
+    let table = placements_toml(&pcb(reference), "synthetic.kicad_pcb").unwrap();
+    let map = DesignatorMap::identity(&Board::from_table(&table).unwrap());
+    check_text(&table, &pcb(board), &map, &Tolerances::default()).unwrap_or_else(|e| panic!("{e}"))
 }
 
 fn item<'a>(report: &'a ParityReport, id: &str) -> &'a Item {
@@ -607,6 +667,362 @@ fn the_overlay_is_svg_and_marks_the_failing_item() {
     );
 }
 
+// ---- review of the checker (#372): each way a board that is not interchangeable passed -------
+
+/// The pad's own item names what differs.
+fn differs_in(report: &ParityReport, id: &str, what: &str) {
+    fails(report, id);
+    let note = &item(report, id).note;
+    assert!(note.contains(what), "{id}: {note}\n{}", report.text());
+}
+
+#[test]
+fn every_pad_of_a_number_is_judged_not_the_first_one() {
+    // J1's shell pads 6, 7, 9 and 10 have two pads each. Here J2's pad 5 has two, and the
+    // second one is on another net: the first pad's net must not speak for both.
+    let report = run(&edited(&[(
+        J2_PAD_5B,
+        &J2_PAD_5B.replace("(net \"GND\")", "(net \"/GPIO2\")"),
+    )]));
+    fails(&report, "part J2 pad 5 (2 of 2) net");
+    assert_eq!(
+        item(&report, "part J2 pad 5 (1 of 2) net").verdict,
+        Verdict::Ok
+    );
+    // Both pads have an item of their own when all is well.
+    let report = run(&Spec::default());
+    for id in ["part J2 pad 5 (1 of 2) net", "part J2 pad 5 (2 of 2) net"] {
+        assert_eq!(item(&report, id).verdict, Verdict::Ok, "{id}");
+    }
+}
+
+#[test]
+fn pads_of_one_number_are_paired_by_their_place_in_the_footprint() {
+    // The board lists the two pads of number 5 the other way round, and the pad at (5.08, 0)
+    // is on /GPIO2 there: the pairing is by place, not by the order of the file.
+    let board = edited(&[(
+        &format!("{J2_PAD_5A}\n\t\t{J2_PAD_5B}"),
+        &format!(
+            "{J2_PAD_5B}\n\t\t{}",
+            J2_PAD_5A.replace("(net \"GND\")", "(net \"/GPIO2\")")
+        ),
+    )]);
+    let report = run(&board);
+    // The pad at (5.08, 0) is on /GPIO2 in the board and on GND in the reference.
+    fails(&report, "part J2 pad 5 (1 of 2) net");
+    assert_eq!(
+        item(&report, "part J2 pad 5 (2 of 2) net").verdict,
+        Verdict::Ok
+    );
+}
+
+#[test]
+fn the_same_copper_written_turned_is_not_a_size_difference() {
+    // 1.2 x 1.6 turned by 90 degrees is 1.6 x 1.2.
+    let turned = r#"(pad "1" thru_hole rect (at 0 0 90) (size 1.2 1.6)"#;
+    let report = run(&edited(&[(J2_PAD_1, turned)]));
+    assert!(report.passed(), "{}", report.text());
+    assert_eq!(item(&report, "part J2 pad 1").verdict, Verdict::Ok);
+}
+
+#[test]
+fn a_pad_turned_by_a_quarter_or_with_swapped_sides_fails() {
+    let turned = r#"(pad "1" thru_hole rect (at 0 0 90) (size 1.6 1.2)"#;
+    differs_in(
+        &run(&edited(&[(J2_PAD_1, turned)])),
+        "part J2 pad 1",
+        "size",
+    );
+    let swapped = r#"(pad "1" thru_hole rect (at 0 0 0) (size 1.2 1.6)"#;
+    differs_in(
+        &run(&edited(&[(J2_PAD_1, swapped)])),
+        "part J2 pad 1",
+        "size",
+    );
+    // A reference pad that is 1.2 x 1.6 turned by 90 and a board pad that is 1.2 x 1.6 not
+    // turned are two shapes of copper, though the figures of size are the same.
+    let reference = edited(&[(
+        J2_PAD_1,
+        r#"(pad "1" thru_hole rect (at 0 0 90) (size 1.2 1.6)"#,
+    )]);
+    let board = edited(&[(
+        J2_PAD_1,
+        r#"(pad "1" thru_hole rect (at 0 0 0) (size 1.2 1.6)"#,
+    )]);
+    differs_in(&run_pair(&reference, &board), "part J2 pad 1", "size");
+    // An angle that is no quarter turn is compared too.
+    let reference = edited(&[(
+        J2_PAD_1,
+        r#"(pad "1" thru_hole rect (at 0 0 30) (size 1.6 1.2)"#,
+    )]);
+    let board = edited(&[(
+        J2_PAD_1,
+        r#"(pad "1" thru_hole rect (at 0 0 40) (size 1.6 1.2)"#,
+    )]);
+    differs_in(&run_pair(&reference, &board), "part J2 pad 1", "angle");
+    assert!(run_pair(&reference, &reference).passed());
+}
+
+#[test]
+fn a_pad_of_another_shape_fails() {
+    for shape in ["oval", "roundrect", "circle", "custom"] {
+        let other = format!(r#"(pad "1" thru_hole {shape} (at 0 0 0) (size 1.6 1.2)"#);
+        differs_in(
+            &run(&edited(&[(J2_PAD_1, &other)])),
+            "part J2 pad 1",
+            "shape",
+        );
+    }
+}
+
+fn with_polygon(points: &str) -> Spec {
+    let custom = format!(
+        r#"{} (primitives (gr_poly (pts {points}) (width 0) (fill yes)))"#,
+        J2_PAD_4.replace(" rect ", " custom ")
+    );
+    edited(&[(J2_PAD_4, &custom)])
+}
+
+#[test]
+fn a_custom_pad_is_compared_by_the_extent_of_its_polygon() {
+    let small = "(xy -1 -1) (xy 1 -1) (xy 1 1)";
+    let big = "(xy -1 -1) (xy 1.4 -1) (xy 1 1)";
+    let same = run_pair(&with_polygon(small), &with_polygon(small));
+    assert!(same.passed(), "{}", same.text());
+    differs_in(
+        &run_pair(&with_polygon(small), &with_polygon(big)),
+        "part J2 pad 4",
+        "extent",
+    );
+    // Custom against a plain rectangle of the same anchor is a shape difference.
+    differs_in(
+        &run_pair(&with_polygon(small), &Spec::default()),
+        "part J2 pad 4",
+        "shape",
+    );
+}
+
+#[test]
+fn both_sides_of_a_slot_are_compared() {
+    let slot = |length: &str| {
+        let pad = format!(
+            r#"(pad "3" thru_hole oval (at 2.54 0 0) (size 1.6 1.2) (drill oval 0.65 {length})"#
+        );
+        edited(&[(J2_PAD_3, &pad)])
+    };
+    let same = run_pair(&slot("1.05"), &slot("1.05"));
+    assert!(same.passed(), "{}", same.text());
+    // The short side is the same, the length is half a millimetre more.
+    differs_in(
+        &run_pair(&slot("1.05"), &slot("1.55")),
+        "part J2 pad 3",
+        "drill",
+    );
+    // A slot against a round hole.
+    let round = r#"(pad "3" thru_hole oval (at 2.54 0 0) (size 1.6 1.2) (drill 0.65)"#;
+    differs_in(
+        &run_pair(&slot("1.05"), &edited(&[(J2_PAD_3, round)])),
+        "part J2 pad 3",
+        "drill",
+    );
+    // A slot written turned by a quarter, with its sides swapped, is the same slot.
+    let turned = r#"(pad "3" thru_hole oval (at 2.54 0 90) (size 1.2 1.6) (drill oval 1.05 0.65)"#;
+    let report = run_pair(&slot("1.05"), &edited(&[(J2_PAD_3, turned)]));
+    assert!(report.passed(), "{}", report.text());
+}
+
+#[test]
+fn an_outline_with_a_cut_corner_or_a_cut_out_fails_though_its_box_is_the_same() {
+    let report = run(&Spec {
+        chamfer: true,
+        ..Spec::default()
+    });
+    fails(&report, "outline elements");
+    // The box and the radius of the arcs that are left are the same.
+    assert_eq!(item(&report, "outline size").verdict, Verdict::Ok);
+    assert_eq!(item(&report, "outline corner radius").verdict, Verdict::Ok);
+    let note = &item(&report, "outline elements").note;
+    assert!(note.contains("lines") && note.contains("arcs"), "{note}");
+
+    // A rectangular cut-out inside the board.
+    let cut = r#"	(gr_rect (start 110 55) (end 115 60) (layer "Edge.Cuts"))
+	(footprint "Lib:J1""#;
+    let report = run(&edited(&[("\t(footprint \"Lib:J1\"", cut)]));
+    fails(&report, "outline elements");
+    assert_eq!(item(&report, "outline size").verdict, Verdict::Ok);
+
+    // And the board itself is fine.
+    assert_eq!(
+        item(&run(&Spec::default()), "outline elements").verdict,
+        Verdict::Ok
+    );
+}
+
+/// A peg (an `np_thru_hole` pad) on J2, between the centre of its first pads.
+const PEG: &str =
+    "(pad \"\" np_thru_hole circle (at 1 1 0) (size 1 1) (drill 1) (layers \"*.Cu\"))\n\t\t";
+
+fn with_peg() -> Vec<(String, String)> {
+    vec![(format!("\t\t{J2_PAD_1}"), format!("\t\t{PEG}{J2_PAD_1}"))]
+}
+
+#[test]
+fn a_connector_with_a_peg_is_still_judged_as_a_part() {
+    let reference = Spec {
+        edits: with_peg(),
+        ..Spec::default()
+    };
+    // Moved by 0.2 mm: the part's own position fails, the peg does not hide it.
+    let moved = Spec {
+        j2_shift: 0.2,
+        edits: with_peg(),
+        ..Spec::default()
+    };
+    let report = run_pair(&reference, &moved);
+    fails(&report, "part J2 position");
+    // A copy of it passes, and its pads (the peg too) are items.
+    let report = run_pair(&reference, &reference);
+    assert!(report.passed(), "{}", report.text());
+    assert_eq!(
+        item(&report, "part J2 pad (no number)").verdict,
+        Verdict::Ok
+    );
+    // The board's J2 without the peg fails as a pad that has no partner.
+    let report = run_pair(&reference, &Spec::default());
+    fails(&report, "part J2 pad (no number)");
+    // A mounting hole (a part of nothing but NPTH pads) is still not a part.
+    assert!(
+        report.items.iter().all(|i| i.id != "part MH1 position"),
+        "{}",
+        report.text()
+    );
+}
+
+#[test]
+fn one_plain_name_and_one_made_up_pass_only_where_other_pads_vouch_for_the_net() {
+    // J2 pad 7 is on /ONLY, a net that no other mapped pad is on. In the board it has no net,
+    // or a made-up name: nothing says it is the same net.
+    for board_pad in [
+        J2_PAD_7_BARE.to_string(),
+        J2_PAD_7.replace("/ONLY", "Net-(J2-Pad7)"),
+        J2_PAD_7.replace("/ONLY", "unconnected-(J2-Pad7)"),
+    ] {
+        let report = run(&edited(&[(J2_PAD_7, &board_pad)]));
+        fails(&report, "part J2 pad 7 net");
+        assert!(
+            item(&report, "part J2 pad 7 net").note.contains("vouch"),
+            "{}",
+            report.text()
+        );
+    }
+    // Both made up, and nothing else on either net: the same (a pad on no net).
+    let reference = edited(&[(J2_PAD_7, J2_PAD_7_BARE)]);
+    let board = edited(&[(
+        J2_PAD_7,
+        &J2_PAD_7.replace("/ONLY", "unconnected-(J2-Pad7)"),
+    )]);
+    let report = run_pair(&reference, &board);
+    assert!(report.passed(), "{}", report.text());
+
+    // With pads that vouch (the net of J2's pad 2 has U1's pad 3 on it) it passes, with a warning.
+    let board = edited(&[
+        (
+            r#"(pad "2" thru_hole rect (at 0 2.54 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "/GPIO2"))"#,
+            r#"(pad "2" thru_hole rect (at 0 2.54 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "Net-(U1-Pad3)"))"#,
+        ),
+        (
+            r#"(pad "3" smd rect (at 1 0 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "/GPIO2"))"#,
+            r#"(pad "3" smd rect (at 1 0 0) (size 1.6 1.2) (drill 1) (layers "*.Cu") (net "Net-(U1-Pad3)"))"#,
+        ),
+    ]);
+    let report = run(&board);
+    assert!(report.passed(), "{}", report.text());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("part J2 pad 2") && w.contains("made-up")),
+        "{:?}",
+        report.warnings
+    );
+}
+
+#[test]
+fn a_table_that_is_truncated_or_has_no_must_match_is_an_error() {
+    let text = table();
+    // A part with no `must_match` (or one misspelled) is an error, not `false`.
+    let at = text.find("\n[[part]]\n").unwrap();
+    let missing = format!(
+        "{}{}",
+        &text[..at],
+        text[at..].replacen("must_match = ", "must_matc = ", 1)
+    );
+    let err = Board::from_table(&missing).unwrap_err();
+    assert!(err.contains("must_match"), "{err}");
+    let err = check_text(
+        &missing,
+        &pcb(&Spec::default()),
+        &identity(),
+        &Tolerances::default(),
+    )
+    .unwrap_err();
+    assert!(err.contains("must_match"), "{err}");
+    // Not a bool.
+    let text_value = format!(
+        "{}{}",
+        &text[..at],
+        text[at..].replacen("must_match = true", "must_match = \"true\"", 1)
+    );
+    assert!(
+        Board::from_table(&text_value)
+            .unwrap_err()
+            .contains("must_match")
+    );
+
+    // The outline alone is no table.
+    let outline_only = &text[..at];
+    let outline_only = outline_only.split("\n[[hole]]\n").next().unwrap();
+    let err = Board::from_table(outline_only).unwrap_err();
+    assert!(err.contains("part"), "{err}");
+    let err = check_text(
+        outline_only,
+        &pcb(&Spec::default()),
+        &DesignatorMap::default(),
+        &Tolerances::default(),
+    )
+    .unwrap_err();
+    assert!(err.contains("part"), "{err}");
+
+    // No outline, or an outline that lost the count of its lines or arcs.
+    assert!(Board::from_table("").unwrap_err().contains("outline"));
+    let no_lines = text.replacen("lines = ", "linez = ", 1);
+    assert!(Board::from_table(&no_lines).unwrap_err().contains("lines"));
+    let no_arcs = text.replacen("arcs = ", "arcz = ", 1);
+    assert!(Board::from_table(&no_arcs).unwrap_err().contains("arcs"));
+}
+
+#[test]
+fn the_report_says_what_each_verdict_compared() {
+    let text = run(&Spec::default()).text();
+    for phrase in [
+        "compared  outline: the bounding box, the corner radius, the number of Edge.Cuts lines and arcs and each arc's radius",
+        "compared  hole: place and drill",
+        "compared  part: position, rotation, layer",
+        "compared  pad: number, centre, size and angle in the footprint's frame, shape, the extent of a custom pad's polygon, drill (both sides of a slot), type",
+        "compared  net: each pad's own net, by its name or, where a name is made up, by the pads on it",
+        "not compared",
+    ] {
+        assert!(text.contains(phrase), "{phrase}\n{text}");
+    }
+    // The summary line is the last one and has its old form.
+    assert!(
+        text.lines().last().unwrap().starts_with("must-match: "),
+        "{text}"
+    );
+    let svg = run(&Spec::default()).overlay_svg();
+    assert!(svg.contains("size, shape, drill and net"), "{svg}");
+}
+
 /// Raspberry Pi's own board file, against the table made from it, with every part mapped to
 /// itself: this reads a real KiCad 10 file with the checker.
 #[test]
@@ -672,38 +1088,52 @@ fn the_designator_map_says_what_it_cannot_read() {
     DesignatorMap::parse(&committed).unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// Dormant until the port's board exists: while `reference/designators.toml` has no entry, the
-/// test is skipped with a message; with entries (the board item of the showcase fills the map)
-/// it builds the example with `netsmith fab` and gates on the checker.
+/// The longest `fab` may route in the test, in seconds. The router needs 35 s to 100 s on an idle
+/// machine to finish this board (README, "The result"), and the tests of a slice share the CPU, so
+/// the test does not wait for it: the board file is written either way, marked INCOMPLETE when
+/// the router is stopped, and the checker reads the places of the parts, which the placer fixes
+/// before the router starts. Placement takes about 3 s.
+const ROUTE_SECONDS: &str = "20";
+
+/// Builds the example with `netsmith fab`, with no KiCad (the project needs none, ADR 0097) and
+/// the router stopped after [`ROUTE_SECONDS`], and gates on the checker: every must-match item
+/// must be `ok` on the board it writes, complete or INCOMPLETE. Any other failure of `fab` (no
+/// board written, a requirement not met, a design that does not build) fails the test.
 #[test]
 fn rp2350_minimal_pcb_matches_raspberry_pi() {
     let reference = project().join("reference");
     let map =
         DesignatorMap::parse(&fs::read_to_string(reference.join("designators.toml")).unwrap())
             .unwrap_or_else(|e| panic!("{e}"));
-    if map.is_empty() {
-        eprintln!(
-            "SKIPPED rp2350_minimal_pcb_matches_raspberry_pi: examples/rp2350_minimal/reference/\
-             designators.toml has no entries, so the port has no board to compare yet"
-        );
-        return;
-    }
+    assert_eq!(
+        map.len(),
+        43,
+        "reference/designators.toml pairs every part of Raspberry Pi's board (43)"
+    );
     let out = TempDir::unused("rp2350-parity-fab");
+    // `--locked` ends the run when the pick lock is not current and never writes it, so the test
+    // leaves the project's folder as it was; it also means `--pins locked`.
     let output = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "--pins", "locked", "--out"])
+        .args(["fab", "--locked", "--route-timeout", ROUTE_SECONDS, "--out"])
         .arg(&*out)
         .current_dir(project())
+        .env("NETSMITH_NO_KICAD", "1")
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
         .output()
         .unwrap();
-    assert!(
-        output.status.success(),
-        "netsmith fab failed:\n{}{}",
+    let text = format!(
+        "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let pcb =
-        find_pcb(&out).unwrap_or_else(|| panic!("fab wrote no .kicad_pcb in {}", out.display()));
+    // A run that routed everything succeeds; one that the timeout stopped writes the board and
+    // fails with `INCOMPLETE`, which this test allows: nothing else.
+    assert!(
+        output.status.success() || text.contains("INCOMPLETE:"),
+        "netsmith fab failed, and not for an unfinished route:\n{text}"
+    );
+    let pcb = find_pcb(&out)
+        .unwrap_or_else(|| panic!("fab wrote no .kicad_pcb in {}:\n{text}", out.display()));
     let table = fs::read_to_string(reference.join("placements.toml")).unwrap();
     let report = check_text(
         &table,
@@ -713,6 +1143,37 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
     )
     .unwrap_or_else(|e| panic!("{e}"));
     assert!(report.passed(), "{}", report.text());
+    let (ok, failed) = report.must_match_counts();
+    assert!(
+        ok > 200 && failed == 0,
+        "{ok} must-match items ok:\n{}",
+        report.text()
+    );
+
+    // The committed overlay is the picture of this run (the placer is deterministic: the same
+    // source, physical file, layout file and seed give the same board, and the router has no say
+    // in where the parts are).
+    let committed = fs::read_to_string(reference.join("parity-overlay.svg")).unwrap();
+    let fresh = report.overlay_svg();
+    let differing: Vec<String> = committed
+        .lines()
+        .zip(fresh.lines())
+        .enumerate()
+        .filter(|(_, (a, b))| a != b)
+        .take(12)
+        .map(|(n, (a, b))| format!("line {}:\n  committed {a}\n  fresh     {b}", n + 1))
+        .collect();
+    assert!(
+        committed == fresh,
+        "reference/parity-overlay.svg is not the overlay of the board `fab` writes ({} lines \
+         against {}); the first differing lines:\n{}\nfrom examples/rp2350_minimal run \
+         `netsmith fab --locked`, then\n  cargo run -p netsmith --example parity -- \
+         fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb --svg reference/parity-overlay.svg\n\n{}",
+        committed.lines().count(),
+        fresh.lines().count(),
+        differing.join("\n"),
+        report.text()
+    );
 }
 
 fn find_pcb(dir: &Path) -> Option<PathBuf> {

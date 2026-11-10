@@ -1,7 +1,8 @@
 //! The Samtec TSW-118-07-L-D, a 2 x 18 pin header, 2.54 mm pitch, through hole: the J2 and the
 //! J3 of the RP2350A Minimal board (the same part twice: which signal is on which pin is the
-//! board's). Samtec has no JLCPCB part for it, so it has no catalog and no LCSC number: a
-//! through-hole part is soldered by hand unless the board says otherwise (ADR 0024).
+//! board's). Its LCSC number is C6887963 (`catalogs/samtec_tsw_118.csv`, the number Raspberry Pi's
+//! board carries on J2 and J3); a through-hole part is soldered by hand unless the board says
+//! otherwise (ADR 0024), and this board does not.
 //!
 //! Pin N is pad N. The pads are the two rows of the footprint, pin 1 and the odd pins in one
 //! row and the even pins in the other, as Raspberry Pi's footprint numbers them.
@@ -49,5 +50,7 @@ part SamtecTsw11807LD provides Connector {
         .p36 passive "36" "36"
     }
 
+    .mpn: String
     .package: Package
+    catalog samtec_tsw_118 by .mpn { .mpn, .package }
 }

@@ -9,14 +9,15 @@
 # has a `netsmith.toml`, which is how `netsmith build` takes a folder) and is built from its own
 # folder, as a person runs it, and fabbed too when it has a physical file (`*.physical.nsm`):
 # without one the parts are placed on a board with no size and `fab` has nothing to say yet.
-# What cannot build is named in `skipped` below, each with its reason; the script fails for a
-# folder or a file that is neither built nor named there, and for a name there that is gone.
+# What cannot build is named in `skipped` below, and a project that is built and not fabbed in
+# `no_fab`, each with its reason; the script fails for a folder or a file that is neither built
+# nor named there, and for a name there that is gone.
 #
 # A project may name a KiCad part of its own in `kicad.toml`, which is the one case that needs
 # KiCad (ADR 0097), and then a run stops and says which part, which id and which line. No example
 # does: `schematic_bench` and `enclosure_sensor` draw their symbols from the pin tables and take
 # their footprints from the generators or from their own `libs/` (their `README.md` and
-# `kicad.toml` say how), so every example here must build and fab.
+# `kicad.toml` say how), so every example here must build, and fab where it is fabbed.
 #
 # KiCad is hidden four ways, so that no one of them has to be right alone:
 #   - NETSMITH_NO_KICAD=1 makes the search find nothing, `kicad-cli` and the Windows KiCad that
@@ -33,6 +34,12 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
+
+# The projects that are built here and not fabbed, as "name|reason", though they have a physical
+# file: a run of this script has about a minute for each.
+no_fab=(
+    "rp2350_minimal|the placer takes 3 s, but the router needs 35 s on an idle machine for the seed the project's layout file names (97 s for seed 0), more than the 60 s that one run of this script may take, and a run the router has to stop exits 1 with INCOMPLETE; the test rp2350_minimal_pcb_matches_raspberry_pi (crates/netsmith/tests/rp2350_parity.rs) runs fab on the project with NETSMITH_NO_KICAD=1 and a route timeout of 20 s, and gates on the parity checker, in the test slices"
+)
 
 # What of examples/ is not built, as "name|reason". A file is named by its file name, a folder
 # by its name and a slash. Keep this short: each entry is something that cannot build.
@@ -123,6 +130,18 @@ skip_reason() {
     return 1
 }
 
+# Why `$1` (a project of examples/) is built here and not fabbed, or nothing when it is fabbed.
+no_fab_reason() {
+    local entry
+    for entry in "${no_fab[@]}"; do
+        if [ "${entry%%|*}" = "$1" ]; then
+            printf '%s' "${entry#*|}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # What is in examples/ now, so that an allow-list entry for a thing that is gone is found out.
 present=" "
 shopt -s nullglob
@@ -155,23 +174,23 @@ for dir in "$repo"/examples/*/; do
         continue
     fi
     step "build examples/$name" "$work/examples/$name" build --out "$work/out/$name"
-    # A project with no physical file has no board outline: `fab` waits for it (for
-    # rp2350_minimal, the board's outline, mounting holes and the places of the connectors: a later
-    # item of epic #308; without them its 39 parts sit on a board with no size and the router
-    # stops at its 300 s timeout with connections left). It is run as soon as the file exists.
-    if [ -n "$(find "$dir" -name '*.physical.nsm' -not -path '*/libs/*' -not -path '*/reference/*' -print -quit)" ]; then
-        step "fab   examples/$name" "$work/examples/$name" fab --out "$work/fab/$name"
-    else
+    # A project with no physical file has no board outline: its parts sit on a board with no size
+    # and `fab` has nothing to say yet, so it is run when the file is there.
+    if [ -z "$(find "$dir" -name '*.physical.nsm' -not -path '*/libs/*' -not -path '*/reference/*' -print -quit)" ]; then
         echo "note  examples/$name: no physical file, so no fab run"
+    elif reason="$(no_fab_reason "$name")"; then
+        echo "note  examples/$name: no fab run here: $reason"
+    else
+        step "fab   examples/$name" "$work/examples/$name" fab --out "$work/fab/$name"
     fi
 done
 
-for entry in "${skipped[@]}"; do
+for entry in "${skipped[@]}" "${no_fab[@]}"; do
     name="${entry%%|*}"
     case "$present" in
         *" $name "*) ;;
         *)
-            echo "FAIL  \`skipped\` names $name, which is not in examples/ (remove it)"
+            echo "FAIL  \`skipped\` or \`no_fab\` names $name, which is not in examples/ (remove it)"
             failed=1
             ;;
     esac
