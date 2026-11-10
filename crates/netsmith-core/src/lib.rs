@@ -4,6 +4,7 @@
 //! It deliberately knows nothing about KiCad.
 
 pub mod job;
+pub mod timings;
 
 use std::collections::HashSet;
 

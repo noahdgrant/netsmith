@@ -16,8 +16,9 @@ use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith::init::init;
 use netsmith::project::{Project, Target};
 use netsmith::supply::Supply;
-use netsmith::{Libraries, build_with};
+use netsmith::{Libraries, outcome_with, render_problems};
 use netsmith_check::Loader;
+use netsmith_core::timings;
 use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_solve::Catalogs;
 
@@ -36,9 +37,14 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Command::Init { name }) => run_init(name.as_deref()),
-        Ok(Command::Build { file, out, strict }) => {
-            run_build(file.as_deref(), out.as_deref(), strict)
-        }
+        Ok(Command::Build {
+            file,
+            out,
+            strict,
+            locked,
+        }) => timings::stage("build.total", "", || {
+            run_build(file.as_deref(), out.as_deref(), strict, locked)
+        }),
         Ok(Command::Fab {
             file,
             out,
@@ -46,6 +52,7 @@ fn main() -> ExitCode {
             allow_drc_violations,
             cross_check,
             strict,
+            locked,
             constraints_warn,
             order,
         }) => match order {
@@ -58,15 +65,18 @@ fn main() -> ExitCode {
                 strict,
                 constraints_warn,
             ),
-            None => run_fab(
-                file.as_deref(),
-                out.as_deref(),
-                route_timeout,
-                allow_drc_violations,
-                cross_check,
-                strict,
-                constraints_warn,
-            ),
+            None => timings::stage("fab.total", "", || {
+                run_fab(
+                    file.as_deref(),
+                    out.as_deref(),
+                    route_timeout,
+                    allow_drc_violations,
+                    cross_check,
+                    strict,
+                    locked,
+                    constraints_warn,
+                )
+            }),
         },
         Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
@@ -263,7 +273,7 @@ fn target(file: Option<&str>, strict: bool) -> Result<(Target, Loader, Catalogs)
     };
     let target = Target::resolve(file).map_err(fail)?;
     let loader = target.loader().map_err(fail)?;
-    let mut catalogs = target.catalogs().map_err(fail)?;
+    let mut catalogs = timings::stage("catalogs", "", || target.catalogs()).map_err(fail)?;
     // `--strict` makes guideline findings errors for this run; the manifest's
     // `guidelines = "error"` already has (ADR 0036).
     if strict {
@@ -312,12 +322,12 @@ fn no_boards(target: &Target) -> bool {
     empty
 }
 
-fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool) -> ExitCode {
+fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool) -> ExitCode {
     let (target, loader, catalogs) = match target(file, strict) {
         Ok(t) => t,
         Err(code) => return code,
     };
-    let libraries = match libraries(&target) {
+    let libraries = match timings::stage("libraries", "", || libraries(&target)) {
         Ok(l) => l,
         Err(code) => return code,
     };
@@ -335,12 +345,34 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool) -> ExitCode {
             }
         };
 
-        match build_with(&source.name, &text, &loader, &catalogs, &libraries) {
+        // The pick lock beside the source holds the parts it names to their rows.
+        let (held, using) = match netsmith::pick_lock::open(&source.path, &catalogs, locked) {
+            Ok(opened) => opened,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::from(2);
+            }
+        };
+        let catalogs = held.as_ref().unwrap_or(&catalogs);
+        let built = outcome_with(&source.name, &text, &loader, catalogs, Some(&libraries))
+            .map_err(|problems| render_problems(&problems));
+        let settled = built.and_then(|outcome| {
+            netsmith::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock)
+                .map(|settled| (outcome.boards, settled))
+                .map_err(|e| format!("{e}\n"))
+        });
+        match settled {
             Err(problems) => {
                 eprint!("{problems}");
                 code = ExitCode::FAILURE;
             }
-            Ok(boards) => {
+            Ok((boards, settled)) => {
+                if let Some(file) = &settled.wrote {
+                    println!("wrote {}", file.display());
+                }
+                for note in &settled.notes {
+                    eprintln!("note: {note}");
+                }
                 // What the requirements prove cannot be placed is said now, with no placing
                 // (ADR 0045 section 14); the layout file's locks count.
                 let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
@@ -412,6 +444,7 @@ fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_fab(
     file: Option<&str>,
     out: Option<&Path>,
@@ -419,6 +452,7 @@ fn run_fab(
     allow_drc_violations: bool,
     cross_check: bool,
     strict: bool,
+    locked: bool,
     constraints_warn: Option<bool>,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target(file, strict) {
@@ -434,7 +468,7 @@ fn run_fab(
         return ExitCode::from(2);
     }
     let out = out.unwrap_or(&target.fab_out);
-    let libraries = match libraries(&target) {
+    let libraries = match timings::stage("libraries", "", || libraries(&target)) {
         Ok(l) => l,
         Err(code) => return code,
     };
@@ -462,6 +496,7 @@ fn run_fab(
         cross_check,
         only: None,
         strict_heights: strict_heights(&target, constraints_warn),
+        lock: None,
     };
     let mut code = ExitCode::SUCCESS;
     for source in &target.files {
@@ -472,8 +507,16 @@ fn run_fab(
                 return ExitCode::from(2);
             }
         };
+        let (held, using) = match netsmith::pick_lock::open(&source.path, &catalogs, locked) {
+            Ok(opened) => opened,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::from(2);
+            }
+        };
         let options = FabOptions {
             layout: Some(netsmith::layout::layout_path(&source.path)),
+            lock: Some(using),
             ..options.clone()
         };
         match fab_with_options(
@@ -481,7 +524,7 @@ fn run_fab(
             &text,
             &loader,
             out,
-            &catalogs,
+            held.as_ref().unwrap_or(&catalogs),
             &libraries,
             kicad.as_ref().map(|k| k as &dyn KicadCli),
             &options,
@@ -565,6 +608,7 @@ fn run_order(
         allow_drc_violations,
         cross_check,
         strict_heights: strict_heights(&target, constraints_warn),
+        lock: None,
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

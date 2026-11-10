@@ -147,6 +147,14 @@ _Avoid_: Text, annotation, legend
 `<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
 
+**Pick lock**:
+`<stem>.lock.toml` beside a source file: the catalog row each part of each board of the file was picked as, by the part's path, with the row's LCSC and manufacturer numbers as a check against a renamed row. `build` and `fab` write it when it does not exist and read it when it does: the solver offers a locked part only its locked row, judged by everything the design says, and does not fall back to another row if it fails (an error that names the row and the relation). A part with no entry, or an entry for a part that is gone, is told and is an error with `--locked`; an existing lock is never rewritten by a run. It holds no stock, no price and no solved value, and it is not the solver's result: it records one choice among rows (ADR 0100). A committed file, so a change to a catalog or to the solver that would move a pick shows as a change to it.
+_Avoid_: Lockfile (Cargo's word for a file of versions), solved-design file (a different, unbuilt file that would hold the `Design`), pin file and pinned (a _Pin_ is a part's lead; `Catalogs::with_pin` holds a part to one row to test an alternative, and drops the design's numbers for it)
+
+**Stage timings**:
+One line on stderr for each stage of a run (`timing: solve LedExample 12.3 ms`), printed when the environment variable `NETSMITH_TIMINGS` is set to anything but empty or `0`, and nothing otherwise (`netsmith_core::timings`). A stage inside another (`solve.dc` in `solve`) is counted in the one around it. The numbers are wall time of one run, taken on whatever the machine was doing.
+_Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benchmark
+
 **Derived placement**:
 The placer's way of choosing where parts go: from the circuit alone, with nothing written in the source. It keeps the parts of a module instance together, puts a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, turns parts by right angles, and keeps reference text clear of other parts, all by simulated annealing with a seeded random generator (ADR 0033).
 _Avoid_: Autoplace, autorouter placement
