@@ -306,6 +306,12 @@ impl Search {
         }
     }
 
+    /// Whether the search is switched off ([`NO_KICAD_VARIABLE`], or [`Search::with_no_kicad`]):
+    /// it then finds no `kicad-cli` either, whatever `KICAD_CLI` says.
+    pub fn is_off(&self) -> bool {
+        self.off
+    }
+
     /// Switches the search off, as [`NO_KICAD_VARIABLE`] does: it finds no program and no
     /// folder.
     pub fn with_no_kicad(mut self) -> Self {

@@ -940,7 +940,14 @@ impl FootprintLibrary {
                 netsmith_kicad::stdlib::FOOTPRINT_FOLDER
             )));
         }
-        self.locate(name).map(|(path, _)| path)
+        let (path, project) = self.locate(name)?;
+        match (project, &self.no_install) {
+            (false, Some(lookup)) => Err(FootprintError::NoInstall {
+                name: name.to_string(),
+                lookup: lookup.clone(),
+            }),
+            _ => Ok(path),
+        }
     }
 
     fn locate(&self, name: &str) -> Result<(PathBuf, bool), FootprintError> {
@@ -994,13 +1001,15 @@ impl FootprintLibrary {
         {
             return Ok(footprint);
         }
+        // With no install found there is no installed library: `root` is a guess, possibly `""`,
+        // and a path under it may be relative to the working directory. It is never looked at.
+        if let (false, Some(lookup)) = (project, &self.no_install) {
+            return Err(FootprintError::NoInstall {
+                name: name.to_string(),
+                lookup: lookup.clone(),
+            });
+        }
         if !path.is_file() {
-            if let (false, Some(lookup)) = (project, &self.no_install) {
-                return Err(FootprintError::NoInstall {
-                    name: name.to_string(),
-                    lookup: lookup.clone(),
-                });
-            }
             return Err(FootprintError::NotFound {
                 name: name.to_string(),
                 path,

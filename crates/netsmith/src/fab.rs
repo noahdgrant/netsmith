@@ -54,6 +54,20 @@ pub struct Fabricated {
 /// runs KiCad's design rules check to compare with netsmith's own (ADR 0034, ADR 0037).
 pub const NO_KICAD_NOTE: &str = "note: KiCad is not installed, so --cross-check (KiCad's plots and design rules check, compared with netsmith's own) is not available; netsmith's own design rules check still runs";
 
+/// Why there is no `kicad-cli` when KiCad is switched off (`NETSMITH_NO_KICAD`), for the message of
+/// a command that needs one: the search then finds none whatever `KICAD_CLI` says, so a message
+/// that says "set KICAD_CLI" would send a person to a setting that changes nothing. `None` when
+/// KiCad is not switched off.
+pub fn kicad_switched_off(search: &netsmith_kicad::install::Search) -> Option<String> {
+    search.is_off().then(|| {
+        format!(
+            "{} is set, which hides every KiCad program and install (kicad-cli too, whatever {} says): unset it to use KiCad",
+            netsmith_kicad::install::NO_KICAD_VARIABLE,
+            netsmith_kicad::install::CLI_VARIABLE
+        )
+    })
+}
+
 /// Build, place, route and package every board in one source file. A system's boards each
 /// get a package of their own, in `<out>/<System>/<board>/`. On failure the error is every
 /// problem found.
@@ -129,6 +143,43 @@ pub struct PinsUse {
     /// The clock the pin optimizer's time budget runs on: the system's, unless a test moves its
     /// own.
     pub clock: pin_swap::Clock,
+    /// What made the mode `locked`, for the messages: they name what the person gave and never
+    /// advise dropping a flag they did not pass. [`LockedBy::PinsFlag`] unless told.
+    pub locked_by: LockedBy,
+}
+
+/// What a person gave that makes [`PinsMode::Locked`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LockedBy {
+    /// `--pins locked`.
+    #[default]
+    PinsFlag,
+    /// `--locked`, which implies it.
+    LockedFlag,
+    /// `pins = "locked"` in `netsmith.toml`.
+    Manifest,
+}
+
+impl LockedBy {
+    /// What was given, as the messages say it.
+    fn given(self) -> &'static str {
+        match self {
+            LockedBy::PinsFlag => "--pins locked",
+            LockedBy::LockedFlag => "--locked",
+            LockedBy::Manifest => "`pins = \"locked\"` in netsmith.toml",
+        }
+    }
+
+    /// How to let the pins move: drop what was given, or the flag that wins over it.
+    fn way_out(self) -> &'static str {
+        match self {
+            LockedBy::PinsFlag => "run without --pins locked",
+            LockedBy::LockedFlag => "run without --locked",
+            LockedBy::Manifest => {
+                "run with --pins auto (or set `pins = \"auto\"` in netsmith.toml)"
+            }
+        }
+    }
 }
 
 impl PinsUse {
@@ -138,6 +189,7 @@ impl PinsUse {
             mode,
             file,
             clock: pin_swap::Clock::real(),
+            locked_by: LockedBy::default(),
         }
     }
 }
@@ -895,7 +947,8 @@ fn fab_board_pinned(
         let mut message = message.clone();
         match proposal {
             None => message.push_str(&format!(
-                "  pins: --pins locked, so no pin moves; no change of the unlocked pins of {board} lowers its crossings or its ratsnest\n"
+                "  pins: {given}, so no pin moves; no change of the unlocked pins of {board} lowers its crossings or its ratsnest\n",
+                given = pins.locked_by.given()
             )),
             Some(proposal) => {
                 let base = state.proposed.clone().unwrap_or_else(|| state.file.clone());
@@ -905,22 +958,26 @@ fn fab_board_pinned(
                     fs::write(
                         &target,
                         format!(
-                            "# Proposed by `netsmith fab --pins locked`: placed and not routed, so not yet known to route. Copy it over the pin file to take it.\n{}",
+                            "# Proposed by `netsmith fab` ({}): placed and not routed, so not yet known to route. Copy it over the pin file to take it.\n{}",
+                            pins.locked_by.given(),
                             file.to_text()
                         ),
                     )
                 });
                 message.push_str(&format!(
-                    "  pins: --pins locked, so no pin moves. Moving the unlocked pins of {board} would lower the ratsnest from {} to {} (placed and not routed):\n",
-                    proposal.before, proposal.after
+                    "  pins: {}, so no pin moves. Moving the unlocked pins of {board} would lower the ratsnest from {} to {} (placed and not routed):\n",
+                    pins.locked_by.given(),
+                    proposal.before,
+                    proposal.after
                 ));
                 for line in &proposal.moves {
                     message.push_str(&format!("    {line}\n"));
                 }
                 match wrote {
                     Ok(()) => message.push_str(&format!(
-                        "  the proposed pin map is in {}; copy it over the pin file and run again, or run without --pins locked\n",
-                        target.display()
+                        "  the proposed pin map is in {}; copy it over the pin file and run again, or {}\n",
+                        target.display(),
+                        pins.locked_by.way_out()
                     )),
                     Err(e) => message.push_str(&format!("  ({} could not be written: {e})\n", target.display())),
                 }
@@ -936,6 +993,8 @@ fn fab_board_pinned(
         .pin_file(pass.name)
         .map(|(file, _)| file.to_string())
         .unwrap_or_else(|| crate::pins::file_name(pass.name));
+    // How many connections the files on disk leave: the first pass's, then each later pass's.
+    let mut on_disk_left = Some(first_stuck.left);
     let mut best_stuck = first_stuck;
     let mut best_message = message.clone();
     let mut best_map = state.file.clone();
@@ -1023,31 +1082,35 @@ fn fab_board_pinned(
                 finish_pins(state, pins, &map, say);
                 return Ok(run);
             }
-            Err(m) => match stuck {
-                Some(s) if s.left <= best_stuck.left && s.crossings <= best_stuck.crossings => {
-                    say(format!(
-                        "{label}: pins: round {round}: {} connections left (was {}), {} crossings (was {}); keeping the new pins",
-                        s.left, best_stuck.left, s.crossings, best_stuck.crossings
-                    ));
-                    best_stuck = s;
-                    best_message = m;
-                    best_map = map;
-                    best_spaces = spaces_again;
-                    best_built = Some(next);
-                    best_is_last = true;
+            Err(m) => {
+                // This pass wrote the files on disk now: how many connections they leave.
+                on_disk_left = stuck.as_ref().map(|s| s.left);
+                match stuck {
+                    Some(s) if s.left <= best_stuck.left && s.crossings <= best_stuck.crossings => {
+                        say(format!(
+                            "{label}: pins: round {round}: {} connections left (was {}), {} crossings (was {}); keeping the new pins",
+                            s.left, best_stuck.left, s.crossings, best_stuck.crossings
+                        ));
+                        best_stuck = s;
+                        best_message = m;
+                        best_map = map;
+                        best_spaces = spaces_again;
+                        best_built = Some(next);
+                        best_is_last = true;
+                    }
+                    _ => {
+                        say(format!(
+                            "{label}: pins: round {round}: no better than before, keeping the earlier pins"
+                        ));
+                        best_is_last = false;
+                        break;
+                    }
                 }
-                _ => {
-                    say(format!(
-                        "{label}: pins: round {round}: no better than before, keeping the earlier pins"
-                    ));
-                    best_is_last = false;
-                    break;
-                }
-            },
+            }
         }
     }
     // The files on disk are the last pass's. When the map that stands is an earlier one, make
-    // the board again with it.
+    // the board again with it, unless that does worse than the files already there.
     let mut result = best_message;
     if !best_is_last {
         let current = best_built.as_ref().unwrap_or(built);
@@ -1057,7 +1120,9 @@ fn fab_board_pinned(
             route_timeout: remake_timeout(&budget, options.route_timeout),
             ..options.clone()
         };
-        if let Err(m) = fab_board(
+        let dir = current.dir(out);
+        let aside = set_aside(&dir);
+        let remade = fab_board(
             current,
             out,
             layout,
@@ -1068,8 +1133,40 @@ fn fab_board_pinned(
             say,
             &mut again,
             &notes,
-        ) {
-            result = m;
+        );
+        let remake_left = match (&remade, &again) {
+            (Ok(_), _) => Some(0),
+            (Err(_), Some(stuck)) => Some(stuck.left),
+            // No unrouted connection was counted: either the pass stopped before it routed, and
+            // wrote nothing, or it routed everything and failed after (the design rules check, say),
+            // and wrote the folder.
+            (Err(_), None) => dir.is_dir().then_some(0),
+        };
+        let keep = aside.is_some() && keep_earlier_files(remake_left, on_disk_left);
+        if keep && let Some(aside) = &aside {
+            let back = set_back(&dir, aside);
+            say(format!(
+                "{label}: pins: the board made again with the pins that stand left {} connection(s), the files before it {}: keeping the files before it",
+                remake_left.map_or_else(|| "no board".to_string(), |n| n.to_string()),
+                on_disk_left.map_or_else(|| "?".to_string(), |n| n.to_string()),
+            ));
+            result.push_str(&format!(
+                "  pins: the files in {} are those of the last round of pins, which is not the pin map written (making the board again with it left more connections); do not order from them\n",
+                dir.display()
+            ));
+            if let Err(e) = back {
+                result.push_str(&format!(
+                    "  ({} could not be restored: {e})\n",
+                    dir.display()
+                ));
+            }
+        } else {
+            if let Some(aside) = &aside {
+                let _ = fs::remove_dir_all(aside);
+            }
+            if let Err(m) = remade {
+                result = m;
+            }
         }
     }
     finish_pins(state, pins, &best_map, say);
@@ -1087,19 +1184,51 @@ pub(crate) const REMAKE_FLOOR: Duration = Duration::from_secs(10);
 
 /// The route timeout of the pass that makes the board again with the pin map that stands, after a
 /// round that was no better (the files on disk are that round's). It gets what is left of the
-/// budget, so that the run as a whole keeps to the route timeout. When nothing is left it still
-/// gets [`REMAKE_FLOOR`] (never more than the route timeout itself): the files must be the ones
-/// of the pin file that is written, and the board is marked incomplete either way, so a shorter
-/// route costs only some of the copper that was in the files of the first pass, and the run is
-/// longer than the route timeout by at most the floor.
+/// budget, so that the run as a whole keeps to the route timeout. When less than [`REMAKE_FLOOR`]
+/// is left (nothing, or a second: a router cut off after a second leaves most of the copper
+/// out) it gets the floor instead (never more than the route timeout itself): the files must be
+/// the ones of the pin file that is written, and the board is marked incomplete either way, so
+/// the run is longer than the route timeout by at most the floor. A remake that still routes worse
+/// than the files already written does not replace them ([`keep_earlier_files`]).
 pub(crate) fn remake_timeout(
     budget: &pin_swap::Budget,
     route_timeout: Option<Duration>,
 ) -> Option<Duration> {
     match (budget.left(), route_timeout) {
-        (Some(left), Some(total)) if left.is_zero() => Some(REMAKE_FLOOR.min(total)),
+        (Some(left), Some(total)) if left < REMAKE_FLOOR => Some(REMAKE_FLOOR.min(total)),
         (left, _) => left,
     }
+}
+
+/// Whether the files of the pass before the remake stay, because the remake did not do better
+/// than they do: `remake_left` is the connections the remake left (`None`: it made no board),
+/// `on_disk_left` those of the files on disk (`None`: not known, so the remake is not held
+/// against them). A remake that leaves more connections than the files on disk, or that made no
+/// board, never replaces them.
+fn keep_earlier_files(remake_left: Option<usize>, on_disk_left: Option<usize>) -> bool {
+    match (remake_left, on_disk_left) {
+        (Some(remake), Some(on_disk)) => remake > on_disk,
+        (Some(_), None) => false,
+        (None, _) => true,
+    }
+}
+
+/// Move the folder `dir` of a board's files aside, so that a pass can write it afresh and the
+/// old files come back if that pass does worse ([`set_back`]). `None` when there is no folder, or
+/// it could not be moved (then the pass writes over it, as every pass does).
+fn set_aside(dir: &Path) -> Option<PathBuf> {
+    let name = dir.file_name()?.to_string_lossy().into_owned();
+    let aside = dir.with_file_name(format!(".{name}.before-remake"));
+    let _ = fs::remove_dir_all(&aside);
+    dir.is_dir()
+        .then(|| fs::rename(dir, &aside).ok().map(|()| aside))
+        .flatten()
+}
+
+/// Put the folder moved aside by [`set_aside`] back where it was, in place of what a pass wrote.
+fn set_back(dir: &Path, aside: &Path) -> std::io::Result<()> {
+    let _ = fs::remove_dir_all(dir);
+    fs::rename(aside, dir)
 }
 
 /// The proposed pin map of `--pins locked`, in the output folder.
@@ -1512,8 +1641,72 @@ mod tests {
             remake_timeout(&at(Some(secs(3)), 9), Some(secs(3))),
             Some(secs(3))
         );
+        // Nearly spent: a second of 300 s left is no time to route in, and the router cut off
+        // after it leaves the board worse than the pass before. The floor applies below it too.
+        assert_eq!(
+            remake_timeout(&at(Some(secs(300)), 299), Some(secs(300))),
+            Some(REMAKE_FLOOR)
+        );
+        assert_eq!(
+            remake_timeout(&at(Some(secs(300)), 291), Some(secs(300))),
+            Some(REMAKE_FLOOR),
+            "9 s left is below the floor"
+        );
+        assert_eq!(
+            remake_timeout(&at(Some(secs(300)), 290), Some(secs(300))),
+            Some(secs(10)),
+            "exactly the floor is what is left"
+        );
+        assert_eq!(
+            remake_timeout(&at(Some(secs(300)), 280), Some(secs(300))),
+            Some(secs(20))
+        );
+        assert_eq!(
+            remake_timeout(&at(Some(secs(3)), 2), Some(secs(3))),
+            Some(secs(3)),
+            "never more than the timeout itself"
+        );
         // No limit stays none.
         assert_eq!(remake_timeout(&at(None, 500), None), None);
+    }
+
+    #[test]
+    fn a_remake_that_leaves_more_connections_does_not_replace_the_files_before_it() {
+        // Fewer or as many connections left: the remake is as good, and the pin file's map
+        // matches the files.
+        assert!(!keep_earlier_files(Some(2), Some(3)));
+        assert!(!keep_earlier_files(Some(3), Some(3)));
+        assert!(!keep_earlier_files(Some(0), Some(3)));
+        // More: the files before it stay.
+        assert!(keep_earlier_files(Some(4), Some(3)));
+        // No board made: nothing to put in their place.
+        assert!(keep_earlier_files(None, Some(3)));
+        assert!(keep_earlier_files(None, None));
+        // The files before are not known: the remake is not held against them.
+        assert!(!keep_earlier_files(Some(9), None));
+    }
+
+    #[test]
+    fn the_files_set_aside_come_back_whole() {
+        let root = netsmith_kicad::testlib::TempDir::new("fab-set-aside");
+        let dir = root.join("Board");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("Board.kicad_pcb"), "earlier").unwrap();
+        fs::write(dir.join("kept-only-here.txt"), "earlier").unwrap();
+        let aside = set_aside(&dir).expect("a folder is moved aside");
+        assert!(!dir.exists());
+        // A pass writes the folder afresh, and less of it.
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("Board.kicad_pcb"), "worse").unwrap();
+        set_back(&dir, &aside).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("Board.kicad_pcb")).unwrap(),
+            "earlier"
+        );
+        assert!(dir.join("kept-only-here.txt").is_file());
+        assert!(!aside.exists());
+        // No folder, nothing to set aside.
+        assert!(set_aside(&root.join("Nothing")).is_none());
     }
     #[test]
     fn the_note_without_kicad_says_netsmiths_own_check_still_runs() {

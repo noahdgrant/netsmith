@@ -410,3 +410,84 @@ fn a_projects_own_libraries_beside_its_kicad_toml_are_not_installed_ones_with_no
     }
     assert!(dir.join("out").is_dir() || dir.join("fab").is_dir());
 }
+
+#[test]
+fn an_installed_id_with_no_kicad_is_never_read_from_the_working_directory() {
+    let dir = TempDir::new("own-part-cwd");
+    // `kicad.toml` names `Foo:Bar` for a library it does not list, so the id is KiCad's. With no
+    // KiCad there is no installed library: a `Foo.pretty` and a `Foo.kicad_sym` that happen to be
+    // in the working directory are not one, and a different folder must not give another board.
+    let row = sensor_row("gen:SOT23(pins=3)").replace(
+        "footprint = \"gen:SOT23(pins=3)\"",
+        "symbol = \"Foo:Bar\"\nfootprint = \"Foo:Bar\"",
+    );
+    assert!(row.contains("Foo:Bar"), "{row}");
+    project(&dir, &row);
+    fs::create_dir_all(dir.join("Foo.pretty")).unwrap();
+    fs::write(
+        dir.join("Foo.pretty/Bar.kicad_mod"),
+        block("text", "(footprint \"Sensor\"").replace("\"Sensor\"", "\"Bar\""),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("Foo.kicad_sym"),
+        OWN_SYMBOLS.replace("Sensor", "Bar"),
+    )
+    .unwrap();
+
+    for command in ["build", "fab"] {
+        let err = run_in(&dir, command)
+            .err()
+            .unwrap_or_else(|| panic!("`netsmith {command}` read the working directory's Foo"));
+        assert!(err.contains("`Foo:Bar`"), "{err}");
+        assert!(err.contains("NETSMITH_NO_KICAD"), "{err}");
+        assert!(!err.contains("not found: looked for"), "{err}");
+    }
+    assert!(!dir.join("out").exists() && !dir.join("fab").exists());
+}
+
+/// Run `netsmith <args>` in `dir` with KiCad switched off and a `KICAD_CLI` that is no file, and
+/// return the status and stderr.
+fn switched_off(dir: &Path, args: &[&str]) -> (bool, String) {
+    let run = std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(args)
+        .current_dir(dir)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("NETSMITH_KICAD_SYMBOLS")
+        .env_remove("NETSMITH_KICAD_FOOTPRINTS")
+        .env("KICAD_CLI", "/nonexistent/kicad-cli")
+        .output()
+        .unwrap();
+    (
+        run.status.success(),
+        String::from_utf8_lossy(&run.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn cross_check_with_kicad_switched_off_says_what_hides_kicad_cli() {
+    let dir = TempDir::new("own-part-cross-check");
+    project(&dir, &sensor_row("gen:SOT23(pins=3)"));
+    let (ok, err) = switched_off(&dir, &["fab", "--cross-check"]);
+    assert!(!ok, "{err}");
+    assert!(err.contains("--cross-check"), "{err}");
+    assert!(err.contains("kicad-cli"), "{err}");
+    assert!(err.contains("NETSMITH_NO_KICAD is set"), "{err}");
+    // `KICAD_CLI` changes nothing then: it is not the advice.
+    assert!(!err.contains("set KICAD_CLI"), "{err}");
+}
+
+#[test]
+fn compare_of_a_schematic_with_kicad_switched_off_says_what_hides_kicad_cli() {
+    let dir = TempDir::new("own-part-compare");
+    fs::write(dir.join("a.kicad_sch"), "").unwrap();
+    fs::write(dir.join("b.kicad_sch"), "").unwrap();
+    let (ok, err) = switched_off(&dir, &["compare", "a.kicad_sch", "b.kicad_sch"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains("reading a schematic needs KiCad's command-line tool"),
+        "{err}"
+    );
+    assert!(err.contains("NETSMITH_NO_KICAD is set"), "{err}");
+    assert!(!err.contains("set KICAD_CLI"), "{err}");
+}

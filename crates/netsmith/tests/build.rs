@@ -1009,3 +1009,82 @@ fn two_stages_that_wrap_a_regulator_each_add_up_on_the_input_rail() {
         b.notes
     );
 }
+
+/// The machine of a KiCad install (the sample libraries) that has the ids a test asks for only
+/// where it says: found through the two variables.
+fn sample_install() -> (TempDir, netsmith_kicad::install::Search) {
+    use netsmith_kicad::install::{FOOTPRINTS_VARIABLE, SYMBOLS_VARIABLE, Search};
+    let nowhere = TempDir::new("installed-sample");
+    let machine = Search::under(nowhere.path())
+        .with_var(SYMBOLS_VARIABLE, netsmith_kicad::testlib::sample_symbols())
+        .with_var(
+            FOOTPRINTS_VARIABLE,
+            netsmith_kicad::testlib::sample_footprints(),
+        );
+    (nowhere, machine)
+}
+
+#[test]
+fn an_installed_kicad_that_lacks_the_symbol_is_not_told_to_install_kicad() {
+    let (_nowhere, machine) = sample_install();
+    // A library the install does not have, and a symbol of a library it does have that it
+    // does not hold (a typo, or a name KiCad 9 lacks).
+    for id in ["Connector_Audio:AudioJack2", "Device:R_Typo"] {
+        let project = coax_project(id, "gen:PinHeader(rows=1, pins=2, pitch=2.54mm)");
+        let libraries = Libraries::for_project_by(Some(project.path()), &machine).unwrap();
+        let e = build_with(
+            "t.nsm",
+            COAX_BOARD,
+            &Loader::std(),
+            &Catalogs::jlcpcb(),
+            &libraries,
+        )
+        .err()
+        .unwrap_or_else(|| panic!("the build should fail: {id} is not in the install"));
+        assert!(e.contains(&format!("needs KiCad's symbol `{id}`")), "{e}");
+        let installed = netsmith_kicad::testlib::sample_symbols();
+        assert!(
+            e.contains(&format!(
+                "KiCad is installed at {} but has no `{id}`: check the spelling",
+                installed.display()
+            )),
+            "{e}"
+        );
+        assert!(e.contains("a project library"), "{e}");
+        assert!(e.contains("omit `symbol`"), "{e}");
+        assert!(!e.contains("install KiCad 9"), "{e}");
+        assert!(!e.contains("no installed KiCad library has it"), "{e}");
+    }
+}
+
+#[test]
+fn an_installed_kicad_that_lacks_the_footprint_is_not_told_to_install_kicad() {
+    let (_nowhere, machine) = sample_install();
+    let id = "Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal";
+    let project = coax_project("Connector:Conn_Coaxial", id);
+    let libraries = Libraries::for_project_by(Some(project.path()), &machine).unwrap();
+    let e = build_with(
+        "t.nsm",
+        COAX_BOARD,
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .err()
+    .expect("the build should fail: the footprint is not in the install");
+    let installed = netsmith_kicad::testlib::sample_footprints();
+    assert!(
+        e.contains(&format!("needs KiCad's footprint `{id}`")),
+        "{e}"
+    );
+    assert!(
+        e.contains(&format!(
+            "KiCad is installed at {} but has no `{id}`: check the spelling",
+            installed.display()
+        )),
+        "{e}"
+    );
+    assert!(e.contains("`gen:` footprint"), "{e}");
+    assert!(!e.contains("install KiCad 9"), "{e}");
+    assert!(!e.contains("no installed KiCad library has it"), "{e}");
+}

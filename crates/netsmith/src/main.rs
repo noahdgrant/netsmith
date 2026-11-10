@@ -576,21 +576,29 @@ fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
 
 /// What a board that does not route may do with its pins: `--locked` forbids any change, so it is
 /// `locked` whatever else is said; else `--pins` for this run, else `pins` in the manifest, else
-/// `auto` (ADR 0101). `--locked` keeps the working tree as it is, the pin file included.
-fn pins_mode(target: &Target, flag: Option<bool>, locked: bool) -> netsmith::fab::PinsMode {
-    use netsmith::fab::PinsMode;
+/// `auto` (ADR 0101). `--locked` keeps the working tree as it is, the pin file included. The
+/// second value is what made it `locked`, for the messages.
+fn pins_mode(
+    target: &Target,
+    flag: Option<bool>,
+    locked: bool,
+) -> (netsmith::fab::PinsMode, netsmith::fab::LockedBy) {
+    use netsmith::fab::{LockedBy, PinsMode};
     if locked {
-        return PinsMode::Locked;
+        return (PinsMode::Locked, LockedBy::LockedFlag);
     }
     match flag {
-        Some(true) => PinsMode::Locked,
-        Some(false) => PinsMode::Auto,
-        None => target
+        Some(true) => (PinsMode::Locked, LockedBy::PinsFlag),
+        Some(false) => (PinsMode::Auto, LockedBy::PinsFlag),
+        None => match target
             .project
             .as_ref()
             .and_then(|p| p.manifest.pins.as_deref())
             .and_then(PinsMode::parse)
-            .unwrap_or(PinsMode::Auto),
+        {
+            Some(PinsMode::Locked) => (PinsMode::Locked, LockedBy::Manifest),
+            Some(PinsMode::Auto) | None => (PinsMode::Auto, LockedBy::PinsFlag),
+        },
     }
 }
 
@@ -628,9 +636,14 @@ fn run_fab(
     let kicad = KicadCliExe::locate();
     if kicad.is_none() {
         if cross_check {
-            eprintln!(
-                "error: --cross-check compares with KiCad's own files: set KICAD_CLI to its command-line tool"
-            );
+            match netsmith::fab::kicad_switched_off(&netsmith_kicad::install::Search::machine()) {
+                Some(off) => eprintln!(
+                    "error: --cross-check compares with KiCad's own files and needs kicad-cli, and {off}"
+                ),
+                None => eprintln!(
+                    "error: --cross-check compares with KiCad's own files: set KICAD_CLI to its command-line tool"
+                ),
+            }
             return ExitCode::from(2);
         }
         eprintln!("{}", netsmith::fab::NO_KICAD_NOTE);
@@ -650,7 +663,7 @@ fn run_fab(
         lock: None,
         pins: None,
     };
-    let pins_mode = pins_mode(&target, pins_locked, locked);
+    let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
@@ -670,10 +683,10 @@ fn run_fab(
         let options = FabOptions {
             layout: Some(netsmith::layout::layout_path(&source.path)),
             lock: Some(using),
-            pins: Some(netsmith::fab::PinsUse::new(
-                pins_mode,
-                netsmith::pins::pins_path(&source.path),
-            )),
+            pins: Some(netsmith::fab::PinsUse {
+                locked_by,
+                ..netsmith::fab::PinsUse::new(pins_mode, netsmith::pins::pins_path(&source.path))
+            }),
             ..options.clone()
         };
         match fab_with_options(
