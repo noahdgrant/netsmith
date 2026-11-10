@@ -8,7 +8,8 @@
 //! the outline's bounding box and corner radius, which are computed from the `Edge.Cuts`
 //! lines and arcs, and the position of a hole, which is its pad's place on the board.
 //!
-//! Nothing is guessed: a shape or a field this reader cannot read is an error that names it.
+//! Nothing is guessed: a shape or a field this reader cannot read is an error that names it, and
+//! a table that lacks a part, a `must_match` or a count of the outline's elements is no table.
 
 use std::fmt::Write as _;
 
@@ -135,7 +136,9 @@ const HEADER: &str = "\
 #   and y are in the footprint's own frame (before its rotation); `angle` is the pad's own
 #   angle as the file writes it (it includes the footprint's rotation) and is left out when the
 #   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
-#   `drill_slot` the [width, height] of an oval one; `net` is the net's name and is left out
+#   `drill_slot` the [width, height] of an oval one; `extent` (a custom pad only) is the box
+#   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
+#   own frame and with each stroke's half width added; `net` is the net's name and is left out
 #   for a pad no net names.
 # must_match = true marks what a copy of the board must reproduce (the outline, the holes,
 #   J1 to J4, SW1, SW2); false is reported, not required.
@@ -213,30 +216,40 @@ impl Board {
             .get("outline")
             .and_then(toml::Value::as_table)
             .ok_or("the table has no [outline]")?;
-        let arcs = outline
-            .get("arcs")
-            .and_then(toml::Value::as_integer)
-            .unwrap_or(0)
-            .max(0) as usize;
+        let count = |key: &str| -> Result<usize, String> {
+            outline
+                .get(key)
+                .and_then(toml::Value::as_integer)
+                .and_then(|n| usize::try_from(n).ok())
+                .ok_or_else(|| format!("the table's [outline] has no whole number {key}"))
+        };
+        let arcs = count("arcs")?;
+        let lines = count("lines")?;
         let radii = if let Some(r) = outline.get("corner_radius") {
             vec![value(r, "outline corner_radius")?; arcs]
         } else if let Some(list) = outline.get("arc_radii").and_then(toml::Value::as_array) {
             list.iter()
                 .map(|r| value(r, "outline arc_radii"))
                 .collect::<Result<_, _>>()?
-        } else {
+        } else if arcs == 0 {
             Vec::new()
+        } else {
+            return Err(
+                "the table's [outline] has arcs but no corner_radius or arc_radii".to_string(),
+            );
         };
+        if radii.len() != arcs {
+            return Err(format!(
+                "the table's [outline] has {arcs} arcs and {} radii",
+                radii.len()
+            ));
+        }
         let outline = Outline {
             min_x: field(outline, "min_x", "outline")?,
             min_y: field(outline, "min_y", "outline")?,
             max_x: field(outline, "max_x", "outline")?,
             max_y: field(outline, "max_y", "outline")?,
-            lines: outline
-                .get("lines")
-                .and_then(toml::Value::as_integer)
-                .unwrap_or(0)
-                .max(0) as usize,
+            lines,
             radii,
         };
         let mut holes = Vec::new();
@@ -281,6 +294,22 @@ impl Board {
                     size: pair("size")?,
                     drill: pad.get("drill").map(|v| value(v, "drill")).transpose()?,
                     drill_slot: pair("drill_slot")?,
+                    extent: match pad.get("extent") {
+                        None => None,
+                        Some(v) => match v.as_array().map(Vec::as_slice) {
+                            Some([a, b, c, d]) => Some([
+                                value(a, "extent")?,
+                                value(b, "extent")?,
+                                value(c, "extent")?,
+                                value(d, "extent")?,
+                            ]),
+                            _ => {
+                                return Err(format!(
+                                    "{at} pad {number}: extent is not [min_x, min_y, max_x, max_y]"
+                                ));
+                            }
+                        },
+                    },
                     net: pad
                         .get("net")
                         .and_then(toml::Value::as_str)
@@ -297,10 +326,15 @@ impl Board {
                 must_match: p
                     .get("must_match")
                     .and_then(toml::Value::as_bool)
-                    .unwrap_or(false),
+                    .ok_or_else(|| {
+                        format!("{at} has no must_match (true or false): a table lacks it")
+                    })?,
                 reference,
                 pads,
             });
+        }
+        if parts.is_empty() {
+            return Err("the table has no [[part]]: it is cut short".to_string());
         }
         Ok(Board {
             outline,
@@ -540,6 +574,9 @@ pub struct Pad {
     pub size: Option<(f64, f64)>,
     pub drill: Option<f64>,
     pub drill_slot: Option<(f64, f64)>,
+    /// A custom pad's box `[min_x, min_y, max_x, max_y]` over its primitives, in the pad's own
+    /// frame (before its angle), rounded to 0.1 micrometre.
+    pub extent: Option<[f64; 4]>,
     pub net: Option<String>,
 }
 
@@ -564,6 +601,16 @@ impl Pad {
         }
         if let Some((w, h)) = self.drill_slot {
             let _ = write!(s, ", drill_slot = [{}, {}]", num(w), num(h));
+        }
+        if let Some(e) = self.extent {
+            let _ = write!(
+                s,
+                ", extent = [{}, {}, {}, {}]",
+                num(e[0]),
+                num(e[1]),
+                num(e[2]),
+                num(e[3])
+            );
         }
         if let Some(net) = &self.net {
             let _ = write!(s, ", net = {}", quote(net));
@@ -646,6 +693,11 @@ fn pad(pad: &Sexp) -> Result<Pad, String> {
         .and_then(|n| n.args().last())
         .and_then(Sexp::text)
         .map(str::to_string);
+    let extent = if shape == "custom" {
+        primitives_extent(pad).map_err(|e| format!("pad {number}: {e}"))?
+    } else {
+        None
+    };
     Ok(Pad {
         number,
         kind,
@@ -656,8 +708,83 @@ fn pad(pad: &Sexp) -> Result<Pad, String> {
         size,
         drill,
         drill_slot,
+        extent,
         net,
     })
+}
+
+/// The box `[min_x, min_y, max_x, max_y]` over a custom pad's `(primitives ...)`, each stroke's
+/// half width added. A curve is not read (its box is not its points'), and nothing is guessed.
+fn primitives_extent(pad: &Sexp) -> Result<Option<[f64; 4]>, String> {
+    let Some(block) = pad.find("primitives") else {
+        return Ok(None);
+    };
+    let mut e = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    let mut take = |x: f64, y: f64, grow: f64| {
+        e[0] = e[0].min(x - grow);
+        e[1] = e[1].min(y - grow);
+        e[2] = e[2].max(x + grow);
+        e[3] = e[3].max(y + grow);
+    };
+    for item in block.args() {
+        let Some(head) = item.head() else { continue };
+        let grow = numbers_of(item, "width").first().copied().unwrap_or(0.0) / 2.0;
+        match head {
+            "gr_line" | "gr_rect" => {
+                for key in ["start", "end"] {
+                    let (x, y) = point(item, key)?;
+                    take(x, y, grow);
+                }
+            }
+            "gr_circle" => {
+                let (cx, cy) = point(item, "center")?;
+                let (ex, ey) = point(item, "end")?;
+                let r = (ex - cx).hypot(ey - cy);
+                take(cx - r, cy - r, grow);
+                take(cx + r, cy + r, grow);
+            }
+            "gr_arc" => {
+                let (start, mid, end) = (
+                    point(item, "start")?,
+                    point(item, "mid")?,
+                    point(item, "end")?,
+                );
+                let arc = Arc::through(start, mid, end)?;
+                take(start.0, start.1, grow);
+                take(end.0, end.1, grow);
+                for (x, y) in arc.extremes() {
+                    take(x, y, grow);
+                }
+            }
+            "gr_poly" => {
+                let pts = item
+                    .find("pts")
+                    .ok_or("a gr_poly has no (pts ...)".to_string())?;
+                for xy in pts.find_all("xy") {
+                    let [x, y] = numbers(xy)[..] else {
+                        return Err("a gr_poly point is not (xy x y)".to_string());
+                    };
+                    take(x, y, grow);
+                }
+            }
+            other => {
+                return Err(format!(
+                    "the primitive {other} of a custom pad is not read (lines, rectangles, \
+                     circles, arcs and polygons are)"
+                ));
+            }
+        }
+    }
+    if !e[0].is_finite() {
+        return Ok(None);
+    }
+    let round = |v: f64| (v * 1e4).round() / 1e4;
+    Ok(Some(e.map(round)))
 }
 
 fn first_text(node: &Sexp) -> Option<&str> {
@@ -678,7 +805,7 @@ fn numbers_of(node: &Sexp, key: &str) -> Vec<f64> {
 fn point(node: &Sexp, key: &str) -> Result<(f64, f64), String> {
     match numbers_of(node, key)[..] {
         [x, y] => Ok((x, y)),
-        _ => Err(format!("an Edge.Cuts item has no ({key} x y)")),
+        _ => Err(format!("a drawn item has no ({key} x y)")),
     }
 }
 

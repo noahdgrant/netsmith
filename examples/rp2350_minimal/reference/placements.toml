@@ -15,7 +15,9 @@
 #   and y are in the footprint's own frame (before its rotation); `angle` is the pad's own
 #   angle as the file writes it (it includes the footprint's rotation) and is left out when the
 #   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
-#   `drill_slot` the [width, height] of an oval one; `net` is the net's name and is left out
+#   `drill_slot` the [width, height] of an oval one; `extent` (a custom pad only) is the box
+#   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
+#   own frame and with each stroke's half width added; `net` is the net's name and is left out
 #   for a pad no net names.
 # must_match = true marks what a copy of the board must reproduce (the outline, the holes,
 #   J1 to J4, SW1, SW2); false is reported, not required.
@@ -333,12 +335,12 @@ pads = [
     { number = "5", type = "smd", shape = "rect", x = 1.3, y = -2.825, angle = 180, size = [0.4, 1.75], net = "GND" },
     { number = "6", type = "smd", shape = "rect", x = -2.9, y = -3.03, angle = 180, size = [2, 1.45], net = "GND" },
     { number = "6", type = "thru_hole", shape = "oval", x = -2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], net = "GND" },
-    { number = "7", type = "smd", shape = "custom", x = -2.725, y = -1.4, angle = 180, size = [1.3, 1.3], net = "GND" },
+    { number = "7", type = "smd", shape = "custom", x = -2.725, y = -1.4, angle = 180, size = [1.3, 1.3], extent = [-1.175, -0.65, 0.65, 2.5], net = "GND" },
     { number = "7", type = "thru_hole", shape = "oval", x = -2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], net = "GND" },
     { number = "8", type = "smd", shape = "rect", x = -0.95, y = 0.05, angle = 180, size = [1.425, 2.1], net = "GND" },
     { number = "9", type = "thru_hole", shape = "oval", x = 2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], net = "GND" },
     { number = "9", type = "smd", shape = "rect", x = 2.9, y = -3.03, angle = 180, size = [2, 1.45], net = "GND" },
-    { number = "10", type = "smd", shape = "custom", x = 2.725, y = -1.4, angle = 180, size = [1.3, 1.3], net = "GND" },
+    { number = "10", type = "smd", shape = "custom", x = 2.725, y = -1.4, angle = 180, size = [1.3, 1.3], extent = [-0.65, -0.65, 1.175, 2.5], net = "GND" },
     { number = "10", type = "thru_hole", shape = "oval", x = 2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], net = "GND" },
     { number = "11", type = "smd", shape = "rect", x = 0.95, y = 0.05, angle = 180, size = [1.425, 2.1], net = "GND" },
 ]

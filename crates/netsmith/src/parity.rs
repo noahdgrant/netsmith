@@ -4,8 +4,16 @@
 //!
 //! What must match (`must_match = true` in the table): the outline and the mounting holes, and
 //! the connectors, buttons and header pins: each one's place, rotation, layer, and every pad's
-//! number, centre, size, drill and net. Everything else (the MCU, flash, crystal, regulator,
-//! decoupling, the routing) is measured and reported with the verdict `info`, never `fail`.
+//! number, centre, size, shape, angle, drill and net. Everything else (the MCU, flash, crystal,
+//! regulator, decoupling, the routing) is measured and reported with the verdict `info`, never
+//! `fail`. What each verdict compared is printed at the head of the report ([`WHAT_IS_COMPARED`]).
+//!
+//! **Pads** are judged one by one: the pads of one number (a connector's shell has a surface pad
+//! and a plated slot of the same number) are paired by the nearest centre in the footprint's own
+//! frame, and each pair is compared in that frame: a pad turned by 90 degrees has its width and
+//! height swapped, so the same copper written two ways is the same, and a turned pad is not an
+//! equal one. A part of nothing but non-plated pads is a mounting hole (judged as a hole); any
+//! other part with such a pad (a peg) is still a part, and the peg is a pad of it.
 //!
 //! **The origin.** `fab` writes a board with an origin of its own, so no figure is compared as
 //! the file states it. Each board is read from the **upper-left corner of its outline's bounding
@@ -19,12 +27,13 @@
 //! Raspberry Pi's reference to the reference of the part in the board `fab` wrote. A part of the
 //! table with no entry is `unmapped`: a failure when the table says it must match.
 //!
-//! **Nets** are compared by name (a leading `/` and the case are ignored) where both names are
-//! plain, and through the connectivity otherwise: the pads of the mapped parts that share the
-//! net of a pad must be the same in both boards. A pad whose names differ passes only when the
+//! **Nets** are compared pad by pad, by name (a leading `/` and the case are ignored) where both
+//! names are plain, and through the connectivity otherwise: the pads of the mapped parts that
+//! share the net of a pad must be the same in both boards. A pad whose names differ, or of which
+//! one name is made up (`Net-(...)`, `unconnected-...` or none), passes only when the
 //! connectivity vouches for it (another mapped pad is on its net, in both boards), and says so
-//! in a warning. Map U1 and the other parts, even those that need not match, so that the
-//! connectivity has pads to see.
+//! in a warning; with no other mapped pad on the net nothing vouches and it fails. Map U1 and
+//! the other parts, even those that need not match, so that the connectivity has pads to see.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -70,6 +79,22 @@ impl Default for Tolerances {
 
 /// Slack for the rounding of figures a file writes with a few decimals.
 const EPS: f64 = 1e-6;
+
+/// What a verdict covers, printed at the head of the report (one line each).
+pub const WHAT_IS_COMPARED: [&str; 5] = [
+    "outline: the bounding box, the corner radius, the number of Edge.Cuts lines and arcs and \
+     each arc's radius",
+    "hole: place and drill",
+    "part: position, rotation, layer",
+    "pad: number, centre, size and angle in the footprint's frame, shape, the extent of a \
+     custom pad's polygon, drill (both sides of a slot), type",
+    "net: each pad's own net, by its name or, where a name is made up, by the pads on it",
+];
+
+/// What no verdict covers: the table does not hold it.
+pub const NOT_COMPARED: &str = "not compared: a rounded rectangle's corner ratio, a custom pad's \
+     anchor shape and the shape of its polygon inside the extent, a pad's layers, mask and paste, \
+     the silkscreen, the courtyard, text and the routing";
 
 /// Raspberry Pi's references mapped to those of the board `fab` wrote.
 #[derive(Debug, Clone, Default)]
@@ -248,6 +273,10 @@ impl ParityReport {
             num(ax),
             num(ay)
         );
+        for line in WHAT_IS_COMPARED {
+            let _ = writeln!(out, "compared  {line}");
+        }
+        let _ = writeln!(out, "{NOT_COMPARED}");
         let width = self.items.iter().map(|i| i.id.len()).max().unwrap_or(0);
         for item in &self.items {
             let _ = write!(
@@ -426,6 +455,35 @@ fn outline_items(r: &Board, a: &Board, tol: &Tolerances, items: &mut Vec<Item>) 
         ),
     }
 
+    // The elements: a corner cut by a line instead of an arc, or a cut-out inside the board,
+    // leaves the box and the radius as they were and changes the count of lines or arcs.
+    let sorted = |o: &Outline| {
+        let mut radii = o.radii.clone();
+        radii.sort_by(f64::total_cmp);
+        radii
+    };
+    let (rr, ar) = (sorted(&r.outline), sorted(&a.outline));
+    let radii_equal = rr.len() == ar.len()
+        && rr
+            .iter()
+            .zip(&ar)
+            .all(|(p, q)| (p - q).abs() <= tol.outline + EPS);
+    let list = |radii: &[f64]| radii.iter().map(|r| num(*r)).collect::<Vec<_>>().join(" ");
+    let item =
+        Item::new("outline elements".into(), "elements", "outline", true).within(tol.outline);
+    items.push(
+        item.noting(format!(
+            "{} lines, {} arcs (radii {}) against {} lines, {} arcs (radii {})",
+            a.outline.lines,
+            ar.len(),
+            list(&ar),
+            r.outline.lines,
+            rr.len(),
+            list(&rr)
+        ))
+        .judge(a.outline.lines == r.outline.lines && radii_equal),
+    );
+
     let (rx, ry) = corner(r);
     let (ax, ay) = corner(a);
     let mut item =
@@ -509,7 +567,18 @@ fn part_items(
     warnings: &mut Vec<String>,
 ) {
     let (rc, ac) = (corner(r), corner(a));
-    let hole_refs: BTreeSet<&str> = r.holes.iter().map(|h| h.reference.as_str()).collect();
+    // A mounting hole is a part of nothing but non-plated pads that the hole check judges. A
+    // connector with a peg is a part, and its peg is one of its pads.
+    let hole_refs: BTreeSet<&str> = r
+        .parts
+        .iter()
+        .filter(|p| {
+            !p.pads.is_empty()
+                && p.pads.iter().all(|pad| pad.kind == "np_thru_hole")
+                && r.holes.iter().any(|h| h.reference == p.reference)
+        })
+        .map(|p| p.reference.as_str())
+        .collect();
     let by_ref: BTreeMap<&str, &Part> = a.parts.iter().map(|p| (p.reference.as_str(), p)).collect();
     // The reference of Raspberry Pi's part for each part of the board that is mapped to.
     let mut pairs: Vec<(&Part, &Part)> = Vec::new();
@@ -593,10 +662,18 @@ fn pad_label(number: &str, k: usize, n: usize) -> String {
     }
 }
 
-/// The pads of two parts paired by number and, among equal numbers, by the nearest centre.
-fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
-    let must = r.must_match;
-    let id = format!("part {}", r.reference);
+/// The pads of two parts, paired.
+struct Paired<'a> {
+    /// `(label, index of the reference's pad in its part, reference's pad, board's pad)`.
+    pairs: Vec<(String, usize, &'a Pad, &'a Pad)>,
+    /// `(label, true when it is the board that has the pad, the reference having none)`.
+    lone: Vec<(String, bool)>,
+}
+
+/// The pads of two parts paired by number and, among equal numbers, by the nearest centre in
+/// the footprint's own frame (so the pads of one number are told apart by where they are, not by
+/// the order a file lists them in).
+fn pair_pads<'a>(r: &'a Part, a: &'a Part) -> Paired<'a> {
     let mut numbers: Vec<&str> = r
         .pads
         .iter()
@@ -605,13 +682,20 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
         .collect();
     numbers.sort_by_key(|n| (natural_key(n), n.to_string()));
     numbers.dedup();
-    let mut measured: Vec<(String, &Pad, &Pad)> = Vec::new();
-    let mut lone: Vec<Item> = Vec::new();
+    let mut paired = Paired {
+        pairs: Vec::new(),
+        lone: Vec::new(),
+    };
     for number in numbers {
-        let rp: Vec<&Pad> = r.pads.iter().filter(|p| p.number == number).collect();
+        let rp: Vec<(usize, &Pad)> = r
+            .pads
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.number == number)
+            .collect();
         let mut ap: Vec<&Pad> = a.pads.iter().filter(|p| p.number == number).collect();
         let n = rp.len().max(ap.len());
-        for (k, pad) in rp.iter().enumerate() {
+        for (k, (index, pad)) in rp.iter().enumerate() {
             let label = pad_label(number, k, n);
             let nearest = ap
                 .iter()
@@ -621,67 +705,159 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
             match nearest {
                 Some((i, _)) => {
                     let q = ap.remove(i);
-                    measured.push((label, pad, q));
+                    paired.pairs.push((label, *index, pad, q));
                 }
-                None => lone.push(
-                    Item::new(format!("{id} pad {label}"), "pad", &r.reference, must)
-                        .noting("the board's part has no such pad")
-                        .judge(false),
-                ),
+                None => paired.lone.push((label, false)),
             }
         }
         for (k, _) in ap.iter().enumerate() {
-            let label = pad_label(number, rp.len() + k, n);
-            lone.push(
-                Item::new(format!("{id} pad {label}"), "pad", &r.reference, must)
-                    .noting("the board's part has a pad that the reference does not have")
-                    .judge(false),
-            );
+            paired.lone.push((pad_label(number, rp.len() + k, n), true));
         }
     }
+    paired
+}
 
-    let judge_pair = |pad: &Pad, q: &Pad| -> PadMeasure {
-        let (dx, dy) = (q.x - pad.x, q.y - pad.y);
-        let dsize = match (pad.size, q.size) {
-            (Some((w, h)), Some((qw, qh))) => Some((qw - w, qh - h)),
-            _ => None,
+/// A pad as it is in its footprint's own frame. A pad's own angle includes the footprint's
+/// rotation, so the angle in the footprint is the difference. A pad turned by a quarter has its
+/// width and height (and a slot's sides) swapped; one turned by a half is as it was, unless it is
+/// a custom pad, whose polygon is drawn and keeps its angle.
+struct PadFrame {
+    size: Option<(f64, f64)>,
+    slot: Option<(f64, f64)>,
+    extent: Option<[f64; 4]>,
+    /// In degrees: 0 to 360 for a custom pad, 0 to 90 for a rectangle or an oval, 0 for a circle.
+    angle: f64,
+}
+
+fn pad_frame(part: &Part, pad: &Pad, tol: &Tolerances) -> PadFrame {
+    let turn = (pad.angle.unwrap_or(0.0) - part.rotation).rem_euclid(360.0);
+    if pad.shape == "custom" {
+        let turn = if turn > 360.0 - tol.rotation {
+            0.0
+        } else {
+            turn
         };
-        let drill_of = |p: &Pad| p.drill.or_else(|| p.drill_slot.map(|(w, h)| w.min(h)));
-        let ddrill = match (drill_of(pad), drill_of(q)) {
-            (Some(d), Some(e)) => Some(e - d),
-            _ => None,
+        return PadFrame {
+            size: pad.size,
+            slot: pad.drill_slot,
+            extent: pad.extent,
+            angle: turn,
         };
-        let mut why = Vec::new();
-        if dist(dx, dy) > tol.pad_position + EPS {
-            why.push("centre".to_string());
-        }
-        if dsize.is_some_and(|(w, h)| w.abs() > tol.pad_size + EPS || h.abs() > tol.pad_size + EPS)
-            || pad.size.is_some() != q.size.is_some()
-        {
-            why.push("size".to_string());
-        }
-        if ddrill.is_some_and(|d| d.abs() > tol.pad_size + EPS)
-            || pad.drill.is_some() != q.drill.is_some()
-            || pad.drill_slot.is_some() != q.drill_slot.is_some()
-        {
-            why.push("drill".to_string());
-        }
-        if pad.kind != q.kind {
-            why.push(format!("type ({} against {})", q.kind, pad.kind));
-        }
-        let good = why.is_empty();
-        PadMeasure {
-            dx,
-            dy,
-            dsize,
-            ddrill,
-            good,
-            why: why.join(", "),
-        }
+    }
+    let mut t = turn.rem_euclid(180.0);
+    let mut swap = false;
+    if t >= 180.0 - tol.rotation {
+        t = 0.0;
+    } else if t >= 90.0 - tol.rotation {
+        t -= 90.0;
+        swap = true;
+    }
+    if t.abs() <= tol.rotation || pad.shape == "circle" {
+        t = 0.0;
+    }
+    let turned = |(w, h): (f64, f64)| if swap { (h, w) } else { (w, h) };
+    PadFrame {
+        size: pad.size.map(turned),
+        slot: pad.drill_slot.map(turned),
+        extent: None,
+        angle: t,
+    }
+}
+
+/// What two paired pads of the parts `rp` and `ap` differ by.
+fn judge_pair(rp: &Part, pad: &Pad, ap: &Part, q: &Pad, tol: &Tolerances) -> PadMeasure {
+    let (dx, dy) = (q.x - pad.x, q.y - pad.y);
+    let (fr, fa) = (pad_frame(rp, pad, tol), pad_frame(ap, q, tol));
+    let dsize = match (fr.size, fa.size) {
+        (Some((w, h)), Some((qw, qh))) => Some((qw - w, qh - h)),
+        _ => None,
     };
+    // A round hole is its diameter twice; a slot is its two sides.
+    let hole = |p: &Pad, f: &PadFrame| p.drill.map(|d| (d, d)).or(f.slot);
+    let ddrill = match (hole(pad, &fr), hole(q, &fa)) {
+        (Some((w, h)), Some((qw, qh))) => {
+            let (dw, dh) = (qw - w, qh - h);
+            Some(if dw.abs() >= dh.abs() { dw } else { dh })
+        }
+        _ => None,
+    };
+    let drill_wrong = match (hole(pad, &fr), hole(q, &fa)) {
+        (Some((w, h)), Some((qw, qh))) => {
+            (qw - w).abs() > tol.pad_size + EPS || (qh - h).abs() > tol.pad_size + EPS
+        }
+        (None, None) => false,
+        _ => true,
+    } || pad.drill.is_some() != q.drill.is_some()
+        || pad.drill_slot.is_some() != q.drill_slot.is_some();
+    let mut why = Vec::new();
+    if dist(dx, dy) > tol.pad_position + EPS {
+        why.push("centre".to_string());
+    }
+    if dsize.is_some_and(|(w, h)| w.abs() > tol.pad_size + EPS || h.abs() > tol.pad_size + EPS)
+        || fr.size.is_some() != fa.size.is_some()
+    {
+        why.push("size".to_string());
+    }
+    if pad.shape != q.shape {
+        why.push(format!("shape ({} against {})", q.shape, pad.shape));
+    }
+    if angle_diff(fa.angle, fr.angle).abs() > tol.rotation {
+        why.push(format!(
+            "angle ({} against {})",
+            num(fa.angle),
+            num(fr.angle)
+        ));
+    }
+    let extent_wrong = match (fr.extent, fa.extent) {
+        (Some(e), Some(f)) => e
+            .iter()
+            .zip(&f)
+            .any(|(p, q)| (p - q).abs() > tol.pad_size + EPS),
+        (None, None) => false,
+        _ => true,
+    };
+    if extent_wrong {
+        why.push("extent of its polygon".to_string());
+    }
+    if drill_wrong {
+        why.push("drill".to_string());
+    }
+    if pad.kind != q.kind {
+        why.push(format!("type ({} against {})", q.kind, pad.kind));
+    }
+    let good = why.is_empty();
+    PadMeasure {
+        dx,
+        dy,
+        dsize,
+        ddrill,
+        good,
+        why: why.join(", "),
+    }
+}
+
+/// The pads of two parts: one item for each pair, or one for the whole part when it need not
+/// match.
+fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
+    let must = r.must_match;
+    let id = format!("part {}", r.reference);
+    let paired = pair_pads(r, a);
+    let lone: Vec<Item> = paired
+        .lone
+        .iter()
+        .map(|(label, board_has_it)| {
+            Item::new(format!("{id} pad {label}"), "pad", &r.reference, must)
+                .noting(if *board_has_it {
+                    "the board's part has a pad that the reference does not have"
+                } else {
+                    "the board's part has no such pad"
+                })
+                .judge(false)
+        })
+        .collect();
 
     if must {
-        for (label, pad, q) in &measured {
+        for (label, _, pad, q) in &paired.pairs {
             let PadMeasure {
                 dx,
                 dy,
@@ -689,7 +865,7 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
                 ddrill,
                 good,
                 why,
-            } = judge_pair(pad, q);
+            } = judge_pair(r, pad, a, q, tol);
             let mut item = Item::new(format!("{id} pad {label}"), "pad", &r.reference, true)
                 .at(dx, dy)
                 .within(tol.pad_position);
@@ -705,8 +881,8 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
         // One line for all the pads of a part that need not match: the worst one.
         let mut bad = Vec::new();
         let mut worst: Option<(f64, f64, &str)> = None;
-        for (label, pad, q) in &measured {
-            let PadMeasure { dx, dy, good, .. } = judge_pair(pad, q);
+        for (label, _, pad, q) in &paired.pairs {
+            let PadMeasure { dx, dy, good, .. } = judge_pair(r, pad, a, q, tol);
             if !good {
                 bad.push(label.as_str());
             }
@@ -719,11 +895,14 @@ fn pad_items(r: &Part, a: &Part, tol: &Tolerances, items: &mut Vec<Item>) {
             Item::new(format!("{id} pads"), "pad", &r.reference, false).within(tol.pad_position);
         if let Some((dx, dy, label)) = worst {
             item = item.at(dx, dy);
-            item.note = format!("{} pads, the largest offset on pad {label}", measured.len());
+            item.note = format!(
+                "{} pads, the largest offset on pad {label}",
+                paired.pairs.len()
+            );
         }
         if !bad.is_empty() || missing > 0 {
             item.note = format!(
-                "{} pads differ in centre, size or drill{}; {}",
+                "{} pads differ in centre, size, shape, angle, drill or type{}; {}",
                 bad.len(),
                 if missing > 0 {
                     format!(" and {missing} have no partner")
@@ -746,88 +925,108 @@ fn plain(name: &str) -> Option<String> {
     Some(n.strip_prefix('/').unwrap_or(n).to_lowercase())
 }
 
-type Key = (String, String);
+/// A pad of the reference: `(Raspberry Pi's reference of the part, the index of the pad in the
+/// part's pads)`. The board's pad that is paired with it has the same key.
+type Key = (String, usize);
 
-/// The pads of each net, as `(reference of Raspberry Pi's part, pad number)`.
-fn nets_of<'a>(
-    parts: impl Iterator<Item = (&'a str, &'a Part)>,
-) -> (BTreeMap<String, BTreeSet<Key>>, BTreeMap<Key, Vec<String>>) {
-    let mut by_net: BTreeMap<String, BTreeSet<Key>> = BTreeMap::new();
-    let mut by_pad: BTreeMap<Key, Vec<String>> = BTreeMap::new();
-    for (reference, part) in parts {
-        for pad in part.pads.iter().filter(|p| p.kind != "np_thru_hole") {
-            let key = (reference.to_string(), pad.number.clone());
-            let entry = by_pad.entry(key.clone()).or_default();
-            if let Some(net) = &pad.net {
-                by_net.entry(net.clone()).or_default().insert(key);
-                entry.push(net.clone());
-            }
+/// The pads of each net, and each pad's net, by key.
+#[derive(Default)]
+struct Nets {
+    by_net: BTreeMap<String, BTreeSet<Key>>,
+    by_pad: BTreeMap<Key, String>,
+}
+
+impl Nets {
+    fn add(&mut self, key: Key, pad: &Pad) {
+        // A non-plated pad is on no net.
+        if pad.kind == "np_thru_hole" {
+            return;
+        }
+        if let Some(net) = &pad.net {
+            self.by_net
+                .entry(net.clone())
+                .or_default()
+                .insert(key.clone());
+            self.by_pad.insert(key, net.clone());
         }
     }
-    (by_net, by_pad)
+
+    fn name(&self, key: &Key) -> Option<&str> {
+        self.by_pad.get(key).map(String::as_str)
+    }
+
+    /// The pads that share a net with `key`, other than `key` itself.
+    fn class(&self, key: &Key) -> BTreeSet<Key> {
+        let mut set = self
+            .by_pad
+            .get(key)
+            .map(|net| self.by_net[net].clone())
+            .unwrap_or_default();
+        set.remove(key);
+        set
+    }
 }
 
 fn net_items(pairs: &[(&Part, &Part)], items: &mut Vec<Item>, warnings: &mut Vec<String>) {
-    let (ref_by_net, ref_by_pad) = nets_of(pairs.iter().map(|(r, _)| (r.reference.as_str(), *r)));
-    let (act_by_net, act_by_pad) = nets_of(pairs.iter().map(|(r, a)| (r.reference.as_str(), *a)));
-    // The pads that share a net with `key`, other than `key` itself.
-    let class = |by_net: &BTreeMap<String, BTreeSet<Key>>,
-                 by_pad: &BTreeMap<Key, Vec<String>>,
-                 key: &Key|
-     -> BTreeSet<Key> {
-        let mut set = BTreeSet::new();
-        for net in by_pad.get(key).into_iter().flatten() {
-            set.extend(by_net[net].iter().cloned());
+    let paired: Vec<Paired> = pairs.iter().map(|(r, a)| pair_pads(r, a)).collect();
+    let (mut theirs, mut ours) = (Nets::default(), Nets::default());
+    for ((r, _), p) in pairs.iter().zip(&paired) {
+        // Every pad of the reference counts, also one with no partner: the board lacks it.
+        for (index, pad) in r.pads.iter().enumerate() {
+            theirs.add((r.reference.clone(), index), pad);
         }
-        set.remove(key);
-        set
-    };
+        for (_, index, _, q) in &p.pairs {
+            ours.add((r.reference.clone(), *index), q);
+        }
+    }
     let show = |set: &BTreeSet<Key>| -> String {
         if set.is_empty() {
             "no other mapped pad".to_string()
         } else {
             set.iter()
-                .map(|(r, n)| format!("{r}.{n}"))
+                .map(|(r, n)| {
+                    let number = pairs
+                        .iter()
+                        .find(|(p, _)| p.reference == *r)
+                        .map_or("?", |(p, _)| p.pads[*n].number.as_str());
+                    format!("{r}.{number}")
+                })
                 .collect::<Vec<_>>()
                 .join(" ")
         }
     };
-    let net_name = |by_pad: &BTreeMap<Key, Vec<String>>, key: &Key| -> Option<String> {
-        by_pad.get(key).and_then(|v| v.first()).cloned()
-    };
 
-    for (part, _) in pairs.iter().filter(|(p, _)| p.must_match) {
-        let mut seen = BTreeSet::new();
-        for pad in part.pads.iter().filter(|p| p.kind != "np_thru_hole") {
-            let key: Key = (part.reference.clone(), pad.number.clone());
-            if !seen.insert(key.clone()) || !act_by_pad.contains_key(&key) {
+    for ((part, _), p) in pairs.iter().zip(&paired).filter(|((r, _), _)| r.must_match) {
+        for (label, index, pad, q) in &p.pairs {
+            // A peg has no net on either side: nothing to compare.
+            if pad.kind == "np_thru_hole"
+                && q.kind == "np_thru_hole"
+                && pad.net.is_none()
+                && q.net.is_none()
+            {
                 continue;
             }
-            let (rn, an) = (net_name(&ref_by_pad, &key), net_name(&act_by_pad, &key));
-            let (rc, ac) = (
-                class(&ref_by_net, &ref_by_pad, &key),
-                class(&act_by_net, &act_by_pad, &key),
-            );
-            let id = format!("part {} pad {} net", part.reference, pad.number);
+            let key: Key = (part.reference.clone(), *index);
+            let (rn, an) = (theirs.name(&key), ours.name(&key));
+            let (rc, ac) = (theirs.class(&key), ours.class(&key));
+            let id = format!("part {} pad {label} net", part.reference);
             let item = Item::new(id, "net", &part.reference, true);
-            let named = |n: &Option<String>| n.clone().unwrap_or_else(|| "(none)".to_string());
+            let named = |n: Option<&str>| n.unwrap_or("(none)").to_string();
             let same_class = rc == ac;
-            let (good, note) = match (rn.as_deref().and_then(plain), an.as_deref().and_then(plain))
-            {
-                (Some(r), Some(a)) if r == a => (true, named(&rn)),
+            let (good, note) = match (rn.and_then(plain), an.and_then(plain)) {
+                (Some(r), Some(a)) if r == a => (true, named(rn)),
                 (Some(_), Some(_)) if same_class && !rc.is_empty() => {
                     warnings.push(format!(
-                        "part {} pad {}: the net is {} on the board and {} in the reference; \
+                        "part {} pad {label}: the net is {} on the board and {} in the reference; \
                          the same pads are on it ({}), so it passes",
                         part.reference,
-                        pad.number,
-                        named(&an),
-                        named(&rn),
+                        named(an),
+                        named(rn),
                         show(&rc)
                     ));
                     (
                         true,
-                        format!("{} against {}, same pads", named(&an), named(&rn)),
+                        format!("{} against {}, same pads", named(an), named(rn)),
                     )
                 }
                 (Some(_), Some(_)) if same_class => (
@@ -835,29 +1034,38 @@ fn net_items(pairs: &[(&Part, &Part)], items: &mut Vec<Item>, warnings: &mut Vec
                     format!(
                         "{} against {}, and no other mapped pad is on the net to vouch for it \
                          (map the part that the net goes to)",
-                        named(&an),
-                        named(&rn)
+                        named(an),
+                        named(rn)
                     ),
                 ),
                 (Some(_), Some(_)) => (
                     false,
                     format!(
                         "{} against {}: the board has {}, the reference {}",
-                        named(&an),
-                        named(&rn),
+                        named(an),
+                        named(rn),
                         show(&ac),
                         show(&rc)
+                    ),
+                ),
+                (r, a) if same_class && r.is_some() != a.is_some() && rc.is_empty() => (
+                    false,
+                    format!(
+                        "{} against {}: one is a made-up name, and no other mapped pad is on the \
+                         net to vouch for it (nothing vouches for it: map the part that the net \
+                         goes to)",
+                        named(an),
+                        named(rn)
                     ),
                 ),
                 (r, a) if same_class => {
                     if r.is_some() != a.is_some() {
                         warnings.push(format!(
-                            "part {} pad {}: the net is {} on the board and {} in the reference; \
-                             one is a made-up name, so the pads on it decide",
+                            "part {} pad {label}: the net is {} on the board and {} in the \
+                             reference; one is a made-up name, so the pads on it decide",
                             part.reference,
-                            pad.number,
-                            named(&an),
-                            named(&rn)
+                            named(an),
+                            named(rn)
                         ));
                     }
                     (true, format!("same pads ({})", show(&rc)))
@@ -866,8 +1074,8 @@ fn net_items(pairs: &[(&Part, &Part)], items: &mut Vec<Item>, warnings: &mut Vec
                     false,
                     format!(
                         "{} against {}: the board has {}, the reference {}",
-                        named(&an),
-                        named(&rn),
+                        named(an),
+                        named(rn),
                         show(&ac),
                         show(&rc)
                     ),
@@ -897,7 +1105,7 @@ fn overlay(rep: &ParityReport) -> String {
     let width = (r.outline.max_x - r.outline.min_x).max(a.outline.max_x - a.outline.min_x);
     let height = (r.outline.max_y - r.outline.min_y).max(a.outline.max_y - a.outline.min_y);
     let margin = 6.0;
-    let legend = 8.0;
+    let legend = 10.0;
     let (vw, vh) = (width + 2.0 * margin, height + 2.0 * margin + legend);
     let scale = 10.0;
     let mut s = String::new();
@@ -1020,11 +1228,14 @@ fn overlay(rep: &ParityReport) -> String {
         "<g class=\"legend\" stroke=\"none\"><text x=\"0\" y=\"{}\" fill=\"{BLUE}\">blue: Raspberry Pi's board</text>\
          <text x=\"16\" y=\"{}\" fill=\"{ORANGE}\">orange: netsmith's board</text>\
          <text x=\"34\" y=\"{}\" fill=\"{RED}\">red: a must-match item that fails</text>\
-         <text x=\"0\" y=\"{}\" fill=\"#4a5568\">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text></g>",
+         <text x=\"0\" y=\"{}\" fill=\"#4a5568\">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text>\
+         <text x=\"0\" y=\"{}\" fill=\"#4a5568\">a part is judged on position, rotation and layer, each pad on number, centre, \
+         size, shape, drill and net, the outline on its box, radius and elements</text></g>",
         num(ly),
         num(ly),
         num(ly),
-        num(ly + 2.0)
+        num(ly + 2.0),
+        num(ly + 4.0)
     );
     let _ = writeln!(s, "</svg>");
     s
