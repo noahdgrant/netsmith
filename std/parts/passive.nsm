@@ -17,6 +17,29 @@
 /// not offered, and a design that does not mention it picks rows as before. The standard
 /// catalog has no value for it yet, so a design that limits it needs a project catalog row
 /// with a recorded source.
+///
+/// The power rating (ADR 0025). `.max_power` is a column of the `resistor` catalog, read for all
+/// 219 rows from the `Power(Watts)` attribute of the JLCPCB record and cross-checked with the LCSC
+/// record, equal for every row. It is not derated for a hot board. The check uses the product
+/// `.drop * .current` because `.drop` already is `.current * .resistance` (Ohm's law, a relation
+/// of the part), so it carries the tolerance of the resistance and the window of the current, and
+/// the product is the largest power they admit; a current that flows the other way has a negative
+/// drop and gives the same power. The worst case is the current the circuit really carries:
+/// `.led.current &= 5mA..15mA` is a window the LED must stay in, and the equation `.led.current
+/// == (.input.voltage - .led.forward_voltage) / .r1.resistance` says what the current is for the
+/// resistor under test and narrows the window to that value, so the resistor is checked at about
+/// 7 mA to 10.6 mA and 36 mW, not at 15 mA and 88 mW (the narrowing rule is in the guide's
+/// "Narrowing and relations", and in `propagate` in `crates/netsmith-solve/src/solve.rs`).
+///
+/// An unrated resistor. A catalog row with an empty `max_power` is never offered. That is the rule
+/// the loader already had for any empty cell (the row has no value there and fits no design), and
+/// it is the safe one for a rating: a part that cannot be shown to be within its rating is not
+/// picked. "Unchecked with a note" was rejected, because a design that states the current would
+/// get an unchecked part without knowing. The solver's "nothing for it" message counts the rows
+/// left out for an empty cell. No row of the standard catalog is blank.
+///
+/// Left open, for the owner: is "never offered" the rule the owner wants for an unrated part, or
+/// "offered and not evaluated"?
 generic Resistor {
     .designator &= "R"
 
@@ -212,7 +235,9 @@ generic FerriteBead {
 /// tolerance together, as a range: a 16 MHz crystal good to 20 ppm is
 /// `.frequency &= 16MHz +/- 20ppm`. `.load_capacitance` is the capacitance the datasheet
 /// calibrates the frequency for, as seen across the two terminals. The two load capacitors
-/// are the design's.
+/// are the design's, and they are not tied to `.load_capacitance`: the stray capacitance of the
+/// layout is not a datasheet number. Only two-pad footprints are mapped in `std/kicad.toml`, so
+/// the four-pad crystals that are most common (3.2 x 2.5 mm) are not (ADR 0023).
 generic Crystal {
     .designator &= "Y"
 

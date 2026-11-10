@@ -7,7 +7,9 @@ import std::sources::Rail
 ///
 /// The four levels are voltages relative to the rail's `neg`, as a part's datasheet gives
 /// them, and a part states those that it has. A connection between two lines does not
-/// equate them: each belongs to its own pin (ADR 0046).
+/// equate them: each belongs to its own pin (ADR 0046). Equating them would make every driver and
+/// receiver contradict each other. The connection does join their reference rails, so a driver
+/// and a receiver on different supplies are joined line to line.
 ///
 /// - `vih`: the lowest voltage an input reads as high.
 /// - `vil`: the highest voltage an input reads as low.
@@ -28,6 +30,44 @@ import std::sources::Rail
 /// and bounds a resistor's current; a line that states none swings from the ground to the top
 /// of its reference rail's voltage, as before (ADR 0081); with no `voh` or `vol` stated its unloaded
 /// levels are the swing's top and bottom (amendment 1). It is no load.
+///
+/// Why a line states its swing (ADR 0081, issue 220). A module whose outputs swing to an internal
+/// supply that has no pad (a cellular module's STATUS and UART TX pins swing to an internal 1.8 V
+/// rail) could not state its levels: a `Logic` needs a `reference` rail, and a rail in a part
+/// needs pads, so the part could not state the rail without inventing pins. Left as plain pins,
+/// the receiver's absolute-maximum check said `not evaluated`, and a 1.8 V line into a pin that
+/// survives 1.0 V passed in silence. The swing is a member of an interface in `std`, so there is
+/// no new syntax, and it states nothing until a part says it. The ground still comes from the
+/// reference rail: a part with no pad for its internal supply joins `.reference` to a supply it
+/// does have (`.status.reference ~ .vbat`), or to its ground rail, for the ground only; the swing
+/// says what the line swings to. What reads it: the absolute-maximum check (`net_range` in
+/// `crates/netsmith-solve/src/levels.rs`), where a driver that states a swing contributes exactly
+/// that range to the worst-case voltage of its net, and the Ohm's-law bound on a resistor's
+/// current (`logic_swing` in `ohm.rs`). It is not a level, and does not make a pair of lines
+/// "stated" for the levels check, so a pair is still looked at only when one of them states one
+/// of the four. A derived level is compared as a range of one value, so levels read as fractions
+/// of a rail (ADR 0082) are not derived from a swing. The open-drain rule of ADR 0075 is
+/// unchanged: a line that states a low and no high takes its high from its pull-up, and only when
+/// there is none does the swing's top stand in.
+///
+/// What was not taken:
+///
+/// - A rail with no pad inside a part. It is a new kind of declaration (a rail that is not
+///   placed), with consequences in lowering, the pin tables and the net rules, and it states a
+///   voltage when only an excursion of one line is wanted.
+/// - A part that states an absolute maximum on a driven net. A net belongs to the board, not to a
+///   part, and the check would need a second place that sets a net's range.
+/// - A swing relative to a rail's `pos`. A part with no pad has no `pos`, and a range relative to
+///   the ground is what the datasheet's table gives.
+/// - `optional` on the member (ADR 0074). No relation reads the member, so nothing is skipped; the
+///   solver reads whether it has a value.
+/// - A derived `voh` of `swing.lo` for the worst case: the swing's range holds the lowest and the
+///   highest of its ends, and a part that knows the high it reaches states `voh`. And a derived
+///   level that counts as stated, which would make a swing alone start the check of every pair on
+///   the net.
+///
+/// The question ADR 0081 first left open, whether `voh` should default to the swing's high, was
+/// answered by its amendment 1 (the owner approved the derivation, 2026-11-08).
 ///
 /// Three members are `optional` (ADR 0074) and a part states those its datasheet gives, for the
 /// DC analysis (ADR 0076, amendment 8): `.ii`, the most current the pin takes or gives when it

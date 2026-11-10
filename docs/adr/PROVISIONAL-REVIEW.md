@@ -13,6 +13,15 @@ text this digest names (sections, amendments, "Choices for the owner") moved. Th
 and, for each of 0085 to 0096, the commit its stub names. Each entry below says where its content is now. Source files that cite "ADR 0076,
 amendment N" cite that text.
 
+**Update 2026-11-09 (ADR cleanup, batch 1).** ADRs 0023, 0025, 0046, 0063, 0070, 0073, 0075, 0077, 0079, 0080, 0081 and 0082 were
+folded into a three-line stub, and each stub names the commit its full text is in (`git show ce12e04:docs/adr/<file>`). The choices that this
+digest names for them are now in the doc comment or header comment of the code they are about, as "Left open, for the owner": 0063 in
+`LevelTranslator` (`std/parts/logic.nsm`) and `PMosfet`; 0070 in `PullUp` and 0079 in `PullDown` (`std/bus.nsm`); 0073 in `Tvs` and 0080 in
+`Zener` (`std/parts/diode.nsm`); 0081 in `Logic` (`std/logic.nsm`); 0075 and 0082 in the header of `crates/netsmith-solve/src/levels.rs`; 0077 in
+`rail_aliases` (`crates/netsmith-check/src/connect.rs`); 0025 in `Resistor`, `FeedbackDivider`, `Buck` and `BuckStage`; 0046 in `designator_of`
+(`crates/netsmith-design/src/lib.rs`) and the header of `levels.rs`. The line numbers this digest gives into `std/parts/diode.nsm`,
+`std/parts/logic.nsm` and `std/parts/regulator.nsm` moved with the longer comments.
+
 **Reversal cost** is my reading from the dependents I counted, not a statement of the ADRs: **cheap** (a solver or message rule, nothing written in
 `.nsm` files depends on it), **migration** (source in `std/`, the guide or users' files must change), **hard** (users' designs change meaning, or the
 answer is a legal or interface commitment).
