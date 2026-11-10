@@ -76,7 +76,7 @@ use netsmith_check::{Domain, FieldId, FieldKind, RExpr, Relation};
 use netsmith_lang::ast::CmpOp;
 
 use super::Solver;
-use crate::eval::fields_in;
+use crate::eval::{fields_in, relation_reads_end};
 
 /// Why a relation the solver added exists: the statements that link the part's field to the
 /// member (`x &= g`, from the part outward along a chain), and the bound the design wrote.
@@ -134,6 +134,10 @@ impl Solver<'_> {
                 CmpOp::Le => [(&b.lhs, &b.rhs, CmpOp::Le), (&b.rhs, &b.lhs, CmpOp::Ge)],
                 _ => continue,
             };
+            // A bound read from the end of a range may be stale once the range narrows (ADR 0098).
+            if relation_reads_end(b) {
+                continue;
+            }
             for (field, other, op) in sides {
                 let RExpr::Field(g) = field else { continue };
                 // A member that has a value is judged on that value, as before: the bound is

@@ -88,6 +88,14 @@ pub fn reads_end(e: &RExpr) -> bool {
     }
 }
 
+/// Whether the relation `r` reads the end of a field's range on either side. Such a relation
+/// is verified on the final values and nothing more: it is never used to refuse a block of
+/// candidates (the hull's end is no enclosure of a row's own point) and never to take a bound for
+/// another field (a range only narrows, so the end it read may be stale, ADR 0098).
+pub fn relation_reads_end(r: &netsmith_check::Relation) -> bool {
+    reads_end(&r.lhs) || reads_end(&r.rhs)
+}
+
 /// `splits` counts the cuts made on the way here.
 fn tight(
     model: &Model,

@@ -23,7 +23,12 @@
 //! The range of every value a candidate of the block gives lies inside the range the hull gives
 //! (interval arithmetic: a value worked out from a part of a range lies in what the range gives),
 //! so what no value of the hull can meet is met by no candidate, and a trial of each would refuse
-//! it. The candidates of such a block are skipped. The ones that remain are tried in their
+//! it. A relation that reads the end of a range (`min(.f)` or `max(.f)`, ADR 0098) is the one
+//! kind for which this does not hold: the end is a point of the hull (its edge), not a range
+//! that holds each row's own point, and a row's point can be easier to meet (`.limit <= min(.vz)`
+//! fails for a block of 3 V and 10 V rows against 5 V, and the 10 V row meets it).
+//! `verify_possible` leaves such a relation alone (`Unknown`), so it never refuses a block; it
+//! is judged in the trial of each candidate. The candidates of such a block are skipped. The ones that remain are tried in their
 //! order, so the first that satisfies everything is the one it was.
 //!
 //! What the search records from a refusal (which earlier picks it depends on, the closest
