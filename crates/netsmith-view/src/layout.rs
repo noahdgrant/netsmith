@@ -737,10 +737,10 @@ pub(crate) fn is_ground_name(name: &str) -> bool {
         || matches!(upper.as_str(), "VSS" | "0V" | "GROUND")
 }
 
-/// Connectors are the way in and out of a board, so they start the left-to-right walk.
-pub(crate) fn is_connector(refdes: &str) -> bool {
-    let mut chars = refdes.chars();
-    matches!(chars.next(), Some('J' | 'P')) && chars.next().is_some_and(|c| c.is_ascii_digit())
+/// Connectors are the way in and out of a board, so they start the left-to-right walk. The
+/// part's kind says whether it is one (`Part::is_connector`), never its designator.
+pub(crate) fn is_connector(part: &netsmith_core::Part) -> bool {
+    part.is_connector()
 }
 
 /// Parts stacked in one column, top to bottom.
@@ -1298,11 +1298,7 @@ fn draw(
             .map(|p| *p == Some(PowerKind::Ground))
             .collect()
     };
-    let connector: Vec<bool> = design
-        .parts
-        .iter()
-        .map(|p| is_connector(&p.refdes))
-        .collect();
+    let connector: Vec<bool> = design.parts.iter().map(is_connector).collect();
     let level = levels(&part_nets, &connector, &ground);
     let mut ctx = Ctx {
         design,

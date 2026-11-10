@@ -145,7 +145,7 @@ fn rows_put_the_wrong_distance_apart_by_hand_stop_fab_with_every_number() {
     let e = made.expect_err("the rows are 16 mm apart");
     assert!(
         e.contains("error [constraint] constraint radio.row_b.place.x - radio.row_a.place.x (widget.physical.nsm:")
-            && e.contains("the centre of the body of J4 (`radio.row_b`, F.Fab) minus the centre of the body of J3 (`radio.row_a`, F.Fab) is 16 mm along x, and it allows 17.45 to 17.55 mm (1.45 mm over)"),
+            && e.contains("the centre of the body of J2 (`radio.row_b`, F.Fab) minus the centre of the body of J1 (`radio.row_a`, F.Fab) is 16 mm along x, and it allows 17.45 to 17.55 mm (1.45 mm over)"),
         "{e}"
     );
     assert!(
@@ -164,9 +164,9 @@ fn a_relation_that_cannot_be_met_between_two_locked_parts_is_reported_before_pla
     let e = made.expect_err("both rows are locked 16 mm apart");
     assert!(
         e.contains("the requirements on where parts go cannot all be met")
-            && e.contains("J3 (`radio.row_a`) is fixed (the layout file locks it at (10, 20))")
-            && e.contains("J4 (`radio.row_b`) is fixed (the layout file locks it at (26, 20))")
-            && e.contains("the centre of the body of J4 (`radio.row_b`) minus the centre of the body of J3 (`radio.row_a`) is 16 mm along x, and it allows 17.45 to 17.55 mm (1.45 mm over)"),
+            && e.contains("J1 (`radio.row_a`) is fixed (the layout file locks it at (10, 20))")
+            && e.contains("J2 (`radio.row_b`) is fixed (the layout file locks it at (26, 20))")
+            && e.contains("the centre of the body of J2 (`radio.row_b`) minus the centre of the body of J1 (`radio.row_a`) is 16 mm along x, and it allows 17.45 to 17.55 mm (1.45 mm over)"),
         "{e}"
     );
 }
@@ -355,8 +355,8 @@ fn a_part_whose_own_window_cannot_reach_the_relation_is_reported_with_the_number
     .expect_err("row B cannot be at 27.5 mm");
     assert!(
         e.contains("cannot be met")
-            && e.contains("J3 (`radio.row_a`) is fixed")
-            && e.contains("J4 (`radio.row_b`) cannot be where it holds")
+            && e.contains("J1 (`radio.row_a`) is fixed")
+            && e.contains("J2 (`radio.row_b`) cannot be where it holds")
             && e.contains("the centre of its body must be 27.45 to 27.55 mm along x, and its requirements allow at most 20 mm"),
         "{e}"
     );

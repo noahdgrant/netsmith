@@ -33,6 +33,27 @@ pub struct Part {
     pub pins: Vec<PartPin>,
 }
 
+/// Whether a kind of part is a connector: a pin header, a socket, or one of the standard
+/// connectors (`std::parts::connector`). It is the part's kind that says so, never its
+/// reference designator, which is a label that counts parts and may change (issue #166). A
+/// test in `netsmith-design` keeps this list equal to the standard kinds that state the
+/// letters `J`.
+pub fn is_connector_kind(kind: &str) -> bool {
+    kind.starts_with("Header")
+        || kind.starts_with("Socket")
+        || kind.starts_with("Connector")
+        || kind.starts_with("UsbC")
+        || matches!(kind, "Coax" | "Obd2M" | "ProgrammingPads6")
+}
+
+impl Part {
+    /// Whether the part is a connector, the way in and out of a board: its kind, or a
+    /// generic it provides, is a connector kind ([`is_connector_kind`]).
+    pub fn is_connector(&self) -> bool {
+        is_connector_kind(&self.kind) || self.provides.iter().any(|g| is_connector_kind(g))
+    }
+}
+
 /// What a pin is electrically. It is the datasheet's word for the pin, not a CAD tool's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinKind {
