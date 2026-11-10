@@ -8,6 +8,11 @@
 //! of Raspberry Pi's U1 carry net names, and where a net is named like a datasheet pin the pad
 //! numbers must agree. Nothing here needs KiCad: the footprint comes from netsmith's generators
 //! and the symbol is drawn from the pin table.
+//!
+//! The connectors (J1 micro-USB, J2 and J3 the 2 x 18 headers, J4 JST-SH) are the project's own
+//! parts with footprints in its own library (`libs/netsmith_rp2350.pretty`): their pads are
+//! compared with those of Raspberry Pi's board, pad by pad, and the board builds with no KiCad
+//! installed.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -17,9 +22,10 @@ use netsmith::project::Target;
 use netsmith::reference_table::placements_toml;
 use netsmith::{Libraries, build_with, outcome_with};
 use netsmith_core::PinKind;
+use netsmith_kicad::install::Search;
 use netsmith_kicad::testlib;
 use netsmith_kicad::{Mapping, SymbolLib};
-use netsmith_pcb::FootprintLibrary;
+use netsmith_pcb::{Footprint, FootprintLibrary, PadKind, PadShape};
 
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/rp2350_minimal")
@@ -318,6 +324,374 @@ fn the_placeholder_board_checks_and_solves() {
     assert_eq!(names, ["Rp2350Minimal"]);
 }
 
+/// U2 (the onsemi NCP1117ST33T3G, the standard `LinearRegulator` with a row of the project's own
+/// `catalogs/ldo.csv`), L1 (the Abracon AOTA-B201610S3R3-101-T, the standard `Inductor` with a row
+/// of `catalogs/inductor.csv` and a footprint of the project's library) and SW1 and SW2 (the
+/// Wurth 434133025816, the project's `TactileSwitch`, its catalog and its footprint). Nothing
+/// here needs KiCad: the regulator's footprint is netsmith's generator, the other two are files
+/// of `libs/rp2350_minimal.pretty`, and the symbols are drawn by netsmith.
+mod regulator_inductor_switch {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use netsmith::project::Target;
+    use netsmith::{Libraries, build_with};
+    use netsmith_kicad::{Mapping, SymbolLib, testlib};
+    use netsmith_pcb::FootprintLibrary;
+
+    use super::{parsed, project, read, tables};
+
+    /// A small board of our own, never built by the project: a regulator from a 5 V input to
+    /// 3.3 V, an inductor between two headers, and a button between two headers. The nets are
+    /// those of the parts' use on Raspberry Pi's board in spirit only.
+    const FIXTURE: &str = r#"
+import src::tactile_switch::TactileSwitch
+import std::parts::connector::Header1x2
+import std::parts::passive::Inductor
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board Fixture {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..100mA
+    }
+    .u2: LinearRegulator {
+        .package &= "SOT-223"
+        .vout.voltage &= 3.2V..3.4V
+        .quiescent_current &= 0mA..10mA
+    }
+    .input ~ .u2.vin
+    .u2.vout ~ .output
+
+    .power: Header1x2
+    .input.pos ~ .power.p1
+    .input.neg ~ .power.p2
+
+    .l1: Inductor {
+        .package &= "0806"
+        .inductance &= 3.3uH +/- 20%
+    }
+    .lx: Header1x2
+    .out: Header1x2
+    .lx.p1 ~ .l1.a
+    .l1.b ~ .lx.p2
+    .output.pos ~ .out.p1
+    .output.neg ~ .out.p2
+
+    .sw1: TactileSwitch { .mpn &= "434133025816" }
+    .btn: Header1x2
+    .sw1.a ~ .btn.p1
+    .sw1.b ~ .btn.p2
+}
+"#;
+
+    fn libraries() -> Libraries {
+        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
+        Libraries::with_mapping(
+            mapping,
+            SymbolLib::at(testlib::sample_symbols()),
+            FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+        )
+    }
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        build_with(
+            "fixture.nsm",
+            FIXTURE,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    /// The pads of a part's pins as the design has them: pin name to its pads.
+    fn pads_of(built: &netsmith::Built, refdes: &str) -> BTreeMap<String, Vec<String>> {
+        let part = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.refdes == refdes)
+            .unwrap_or_else(|| panic!("no part {refdes}"));
+        part.pins
+            .iter()
+            .map(|p| (p.name.clone(), p.pads.clone()))
+            .collect()
+    }
+
+    /// The footprint a part is exported with, loaded as the build loads it.
+    fn footprint_of(built: &netsmith::Built, refdes: &str) -> netsmith_pcb::Footprint {
+        let part = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.refdes == refdes)
+            .unwrap();
+        let libraries = libraries();
+        let mapped = libraries
+            .mapping
+            .map(&part.kind, part.package.as_deref())
+            .unwrap_or_else(|e| panic!("{e}"));
+        libraries
+            .footprints
+            .load(&mapped.footprint)
+            .unwrap_or_else(|e| panic!("{}: {e}", mapped.footprint))
+    }
+
+    fn unique_pads(footprint: &netsmith_pcb::Footprint) -> BTreeSet<String> {
+        footprint
+            .pad_numbers()
+            .into_iter()
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The pads of Raspberry Pi's part with their nets: pad number to net.
+    fn reference_nets(reference: &str) -> BTreeMap<String, String> {
+        let table = parsed(&read("reference/placements.toml"));
+        let parts = tables(&table, "part");
+        let part = parts
+            .iter()
+            .find(|p| p["reference"].as_str() == Some(reference))
+            .unwrap_or_else(|| panic!("the reference has no {reference}"));
+        part["pads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_table().unwrap())
+            .filter_map(|p| {
+                Some((
+                    p["number"].as_str()?.to_string(),
+                    p.get("net")?.as_str()?.to_string(),
+                ))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_part_parses_and_its_catalog_row_is_the_one_the_board_gets() {
+        // The catalogs load with the project's three files beside the standard ones.
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        assert!(target.catalogs().is_ok());
+        // The fixture's regulator is its only IC, so it is U1 here (Raspberry Pi's is U2).
+        let built = built();
+        let sourced = |refdes: &str| {
+            built
+                .sourcing
+                .iter()
+                .find(|s| s.refdes == refdes)
+                .unwrap_or_else(|| panic!("no {refdes} in the sourcing"))
+        };
+        for (refdes, lcsc, mpn) in [
+            ("U1", "C26537", "NCP1117ST33T3G"),
+            ("L1", "C42411119", "AOTA-B201610S3R3-101-T"),
+            ("SW1", "C5504987", "434133025816"),
+        ] {
+            let row = sourced(refdes);
+            assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{refdes}");
+            assert_eq!(row.mpn.as_deref(), Some(mpn), "{refdes}");
+        }
+    }
+
+    #[test]
+    fn the_rows_record_their_source_and_leave_price_and_stock_empty() {
+        for (file, lcsc) in [
+            ("catalogs/ldo.csv", "C26537"),
+            ("catalogs/inductor.csv", "C42411119"),
+            ("catalogs/tactile_switch.csv", "C5504987"),
+        ] {
+            let text = read(file);
+            let header = text.lines().next().unwrap();
+            let columns: Vec<&str> = header.split(',').collect();
+            // The cells before `source` hold no comma, so they split on the commas.
+            let cells: Vec<&str> = text.lines().nth(1).unwrap().split(',').collect();
+            let cell = |name: &str| cells[columns.iter().position(|c| *c == name).unwrap()];
+            assert_eq!(cell("lcsc"), lcsc, "{file}");
+            assert_eq!(cell("price"), "", "{file}: price is not read");
+            assert_eq!(cell("stock"), "", "{file}: stock is not read");
+            assert_eq!(cell("library"), "Extended", "{file}");
+            let source = text.lines().nth(1).unwrap();
+            assert!(
+                source.contains(&format!("https://jlcpcb.com/partdetail/{lcsc} ")),
+                "{file}: the JLCPCB page"
+            );
+            assert!(
+                source.contains("read 2026-11-10"),
+                "{file}: the day the page was read"
+            );
+            assert_eq!(text.lines().count(), 2, "{file}: one row");
+        }
+    }
+
+    #[test]
+    fn the_regulators_pads_are_the_ncp1117s_pins_and_its_tab_is_the_output() {
+        let built = built();
+        // Datasheet (NCP1117/D Rev. 31, page 1): 1 Adjust/Ground, 2 Output, 3 Input, the
+        // heatsink tab is pin 2. The standard table says the same.
+        let pads = pads_of(&built, "U1");
+        assert_eq!(pads["vin.pos"], ["3"]);
+        assert_eq!(pads["vin.neg"], ["1"]);
+        assert_eq!(pads["vout.pos"], ["2"]);
+        let footprint = footprint_of(&built, "U1");
+        assert_eq!(
+            footprint.name, "SOT-223-3_TabPin2",
+            "the generator's SOT-223 whose tab is numbered like pin 2"
+        );
+        let all: BTreeSet<String> = pads.values().flatten().cloned().collect();
+        assert_eq!(unique_pads(&footprint), all);
+        assert_eq!(footprint.pads_numbered("2").count(), 2, "pin 2 and the tab");
+    }
+
+    #[test]
+    fn raspberry_pis_u2_has_its_input_output_and_ground_where_the_part_has_them() {
+        let built = built();
+        let pads = pads_of(&built, "U1");
+        let reference = reference_nets("U2");
+        // Input from USB's VBUS, output the 3.3 V rail, ground.
+        assert_eq!(reference[&pads["vin.pos"][0]], "VBUS");
+        assert_eq!(reference[&pads["vout.pos"][0]], "+3V3");
+        assert_eq!(reference[&pads["vin.neg"][0]], "GND");
+        // Raspberry Pi's footprint numbers the tab 4 and puts it on the output net; the
+        // generator's footprint numbers the tab 2, so the pad number differs and the net is
+        // the same (the datasheet says the tab is pin 2, the output).
+        assert_eq!(reference["4"], "+3V3");
+        assert_eq!(reference.len(), 4);
+    }
+
+    #[test]
+    fn the_inductors_pads_are_its_two_pins_and_the_land_pattern_is_abracons() {
+        let built = built();
+        let pads = pads_of(&built, "L1");
+        assert_eq!(pads["a"], ["1"]);
+        assert_eq!(pads["b"], ["2"]);
+        let footprint = footprint_of(&built, "L1");
+        assert_eq!(
+            unique_pads(&footprint),
+            BTreeSet::from(["1".to_string(), "2".to_string()])
+        );
+        // Abracon, revision A of 9/13/2024, page 4: two pads 1.00 x 1.60 mm with 1.00 mm
+        // between them, so centres 2.00 mm apart.
+        let at = |n: &str| footprint.pads_numbered(n).next().unwrap().clone();
+        let (one, two) = (at("1"), at("2"));
+        for pad in [&one, &two] {
+            assert_eq!((pad.width, pad.height), (1.0, 1.6));
+            assert_eq!(pad.at.y, 0.0);
+        }
+        assert!((two.at.x - one.at.x - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn raspberry_pis_l1_has_the_output_rail_on_pad_1_and_the_switch_node_on_pad_2() {
+        let reference = reference_nets("L1");
+        assert_eq!(reference["1"], "+1V1");
+        assert_eq!(reference["2"], "/VREG_LX");
+        assert_eq!(reference.len(), 2);
+        // The part's pins are `a` on pad 1 and `b` on pad 2, so a board that follows the
+        // reference joins `.a` to the core rail and `.b` to the regulator's VREG_LX pin.
+        let pads = pads_of(&built(), "L1");
+        assert_eq!(pads["a"], ["1"]);
+        assert_eq!(pads["b"], ["2"]);
+    }
+
+    #[test]
+    fn the_switchs_pairs_are_the_datasheets_and_its_land_pattern_is_wurths() {
+        let built = built();
+        // Wurth 434133025816, revision 001.001 (2021-01-25), page 1, schematic: 1 and 2 are
+        // joined, 3 and 4 are joined, and the button joins the two pairs.
+        let pads = pads_of(&built, "SW1");
+        assert_eq!(pads["a"], ["1", "2"]);
+        assert_eq!(pads["b"], ["3", "4"]);
+        let footprint = footprint_of(&built, "SW1");
+        let all: BTreeSet<String> = pads.values().flatten().cloned().collect();
+        assert_eq!(unique_pads(&footprint), all);
+        // Page 1, recommended land pattern: 5.2 mm over the pads and 3.1 mm between them
+        // across, 2.8 mm over the pads and 1.5 mm between them along: pads 1.05 x 0.65 mm
+        // with centres at +/-2.075 and +/-1.075 mm; 1 and 2 on the upper row, 1 and 3 on the left.
+        for (number, x, y) in [
+            ("1", -2.075, -1.075),
+            ("2", 2.075, -1.075),
+            ("3", -2.075, 1.075),
+            ("4", 2.075, 1.075),
+        ] {
+            let pad = footprint.pads_numbered(number).next().unwrap();
+            assert_eq!((pad.width, pad.height), (1.05, 0.65), "pad {number}");
+            assert!(
+                (pad.at.x - x).abs() < 1e-9 && (pad.at.y - y).abs() < 1e-9,
+                "pad {number} is at {:?}",
+                pad.at
+            );
+        }
+    }
+
+    #[test]
+    fn raspberry_pis_buttons_have_a_net_on_each_pair_and_the_same_pads() {
+        let table = parsed(&read("reference/placements.toml"));
+        let parts = tables(&table, "part");
+        let built = built();
+        let pads = pads_of(&built, "SW1");
+        let footprint = footprint_of(&built, "SW1");
+        for (reference, pair_a, pair_b) in [
+            ("SW1", "GND", "/~{USB_BOOT}"),
+            ("SW2", "Net-(R4-Pad1)", "/RUN"),
+        ] {
+            let nets = reference_nets(reference);
+            for pad in &pads["a"] {
+                assert_eq!(nets[pad], pair_a, "{reference} pad {pad}");
+            }
+            for pad in &pads["b"] {
+                assert_eq!(nets[pad], pair_b, "{reference} pad {pad}");
+            }
+            // The footprint is the same as Raspberry Pi's, pad for pad.
+            let part = parts
+                .iter()
+                .find(|p| p["reference"].as_str() == Some(reference))
+                .unwrap();
+            for pad in part["pads"].as_array().unwrap() {
+                let pad = pad.as_table().unwrap();
+                let number = pad["number"].as_str().unwrap();
+                let mine = footprint.pads_numbered(number).next().unwrap();
+                let size: Vec<f64> = pad["size"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_float().unwrap())
+                    .collect();
+                // Their part is turned by -90 or 180 degrees, so the pad's own size is given
+                // in the turned frame and the sizes are compared as a set.
+                let mut theirs = size.clone();
+                let mut ours = vec![mine.width, mine.height];
+                theirs.sort_by(f64::total_cmp);
+                ours.sort_by(f64::total_cmp);
+                assert_eq!(theirs, ours, "{reference} pad {number}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_fixture_builds_a_schematic_with_all_three_parts_and_no_kicad_library() {
+        let built = built();
+        for refdes in ["U1", "L1", "SW1"] {
+            assert!(
+                built.design.parts.iter().any(|p| p.refdes == refdes),
+                "no {refdes}"
+            );
+        }
+        assert!(
+            built.schematic.contains("(number \"4\""),
+            "the switch's pad 4"
+        );
+    }
+}
+
 /// A small board of our own, never built by the project: the RP2350A with its supplies, to
 /// prove that the part, its catalog row and its `kicad.toml` row build together. The rails are
 /// the supplies of the datasheet's pins; nothing says they are Raspberry Pi's.
@@ -588,6 +962,7 @@ fn the_footprint_has_the_pitch_the_pad_count_and_the_exposed_pad_of_the_datashee
     let ep = pad("61");
     assert_eq!((ep.width, ep.height), (3.4, 3.4));
 }
+
 #[test]
 fn the_catalog_row_names_the_part_and_its_source() {
     let rows = read("catalogs/rp2350a.csv");
@@ -1037,4 +1412,403 @@ board FlashAndCrystal {
         let target = Target::resolve_from(&project(), None).unwrap();
         assert!(target.catalogs().is_ok());
     }
+}
+
+// The connectors: J1, J2, J3 and J4 of Raspberry Pi's board.
+
+/// A small board of our own, never built by the project: one of each connector part, so that
+/// the parts, the catalogs and the `kicad.toml` rows build together. The power contacts of the
+/// receptacle are on a rail, which makes the board's checks and the pinout validation run.
+const CONNECTORS: &str = r#"
+import src::amphenol_10103594::Amphenol10103594
+import src::jst_sm03b_srss_tb::JstSm03bSrssTb
+import src::samtec_tsw_118::SamtecTsw11807LD
+import std::sources::Rail
+
+board ConnectorsBare {
+    .usb_power: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+    .usb: Amphenol10103594 { .mpn &= "10103594-0001LF" }
+    .debug: JstSm03bSrssTb { .mpn &= "SM03B-SRSS-TB(LF)(SN)" }
+    .low: SamtecTsw11807LD
+    .high: SamtecTsw11807LD
+
+    .usb_power.pos ~ .usb.vbus
+    .usb_power.neg ~ .usb.gnd
+    .usb_power.neg ~ .debug.p2
+}
+"#;
+
+/// A machine with no KiCad install, and the project's own `kicad.toml` and libraries.
+fn libraries_without_kicad() -> Libraries {
+    let nowhere = testlib::TempDir::new("rp2350-no-kicad");
+    Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn built_connectors() -> netsmith::Built {
+    let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+    build_with(
+        "connectors.nsm",
+        CONNECTORS,
+        &target.loader().unwrap(),
+        &target.catalogs().unwrap(),
+        &libraries_without_kicad(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+    .remove(0)
+}
+
+/// The part of `kind` in the board, with its reference designator.
+fn part_of<'a>(built: &'a netsmith::Built, kind: &str) -> Vec<&'a netsmith_core::Part> {
+    built
+        .design
+        .parts
+        .iter()
+        .filter(|p| p.kind == kind)
+        .collect()
+}
+
+#[test]
+fn each_connector_part_provides_connector_and_has_the_pins_of_its_pads() {
+    let built = built_connectors();
+    for (kind, count, pads) in [
+        ("Amphenol10103594", 1, (1..=11).collect::<Vec<u32>>()),
+        ("JstSm03bSrssTb", 1, (1..=5).collect()),
+        ("SamtecTsw11807LD", 2, (1..=36).collect()),
+    ] {
+        let parts = part_of(&built, kind);
+        assert_eq!(parts.len(), count, "{kind}");
+        for part in parts {
+            assert!(part.is_connector(), "{kind} provides Connector");
+            assert!(part.refdes.starts_with('J'), "{}: {}", kind, part.refdes);
+            let mut numbers: Vec<u32> = part
+                .pins
+                .iter()
+                .flat_map(|p| p.pads.iter().map(|n| n.parse().unwrap()))
+                .collect();
+            numbers.sort_unstable();
+            assert_eq!(numbers, pads, "{kind}: each pad of the part is on one pin");
+        }
+    }
+    // Pins, as the maker's parts have them: the micro-USB's five contacts and the shell (one
+    // pin of six pads, the shell being one piece of metal), the header's 36, the JST's three
+    // contacts and the two tabs as one pin.
+    let pins = |kind: &str| part_of(&built, kind)[0].pins.len();
+    assert_eq!(pins("Amphenol10103594"), 6);
+    assert_eq!(pins("SamtecTsw11807LD"), 36);
+    assert_eq!(pins("JstSm03bSrssTb"), 4);
+    let shield = part_of(&built, "Amphenol10103594")[0]
+        .pins
+        .iter()
+        .find(|p| p.datasheet == "SHIELD")
+        .unwrap();
+    assert_eq!(shield.pads.len(), 6);
+    let mount = part_of(&built, "JstSm03bSrssTb")[0]
+        .pins
+        .iter()
+        .find(|p| p.datasheet == "MOUNT")
+        .unwrap();
+    assert_eq!(mount.pads, ["4", "5"]);
+}
+
+#[test]
+fn the_connectors_build_with_no_kicad_and_their_footprints_are_the_projects_own() {
+    // The build ran `validate_pinout` on each part (a pad of the pin table that the footprint
+    // lacks, or a footprint pad that no pin names, stops it) and wrote the schematic.
+    let built = built_connectors();
+    assert!(!built.schematic.is_empty());
+    let mapping = Mapping::for_project(Some(&project())).unwrap();
+    for (kind, package, footprint) in [
+        (
+            "Amphenol10103594",
+            "SMD",
+            "netsmith_rp2350:USB_Micro-B_Amphenol_10103594-0001LF",
+        ),
+        (
+            "JstSm03bSrssTb",
+            "SMD,P=1mm,Surface Mount,Right Angle",
+            "netsmith_rp2350:JST_SM03B-SRSS-TB_1x03-2MP_P1.00mm_Horizontal",
+        ),
+        (
+            "SamtecTsw11807LD",
+            "TSW-118-07-L-D",
+            "netsmith_rp2350:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D",
+        ),
+    ] {
+        let mapped = mapping.map(kind, Some(package)).unwrap();
+        assert_eq!(mapped.footprint, footprint, "{kind}");
+        assert_eq!(mapped.lib_id, None, "{kind}: drawn from the pin table");
+        let file = footprint.trim_start_matches("netsmith_rp2350:");
+        assert!(
+            project()
+                .join("libs/netsmith_rp2350.pretty")
+                .join(format!("{file}.kicad_mod"))
+                .is_file(),
+            "{file}"
+        );
+    }
+}
+
+#[test]
+fn the_header_is_soldered_by_hand_and_has_no_lcsc_number_the_others_have_theirs() {
+    let built = built_connectors();
+    let sourced = |kind: &str| {
+        built
+            .sourcing
+            .iter()
+            .filter(|s| s.kind == kind)
+            .collect::<Vec<_>>()
+    };
+    for header in sourced("SamtecTsw11807LD") {
+        assert_eq!(header.lcsc, None);
+        assert_eq!(header.assembly, netsmith_design::Assembly::Hand);
+    }
+    assert_eq!(
+        sourced("Amphenol10103594")[0].lcsc.as_deref(),
+        Some("C428495")
+    );
+    assert_eq!(
+        sourced("JstSm03bSrssTb")[0].lcsc.as_deref(),
+        Some("C160403")
+    );
+}
+
+/// The shape word of the reference table for a pad.
+fn shape_word(pad: &netsmith_pcb::Pad) -> &'static str {
+    if pad.extent.is_some() {
+        return "custom";
+    }
+    match pad.shape {
+        PadShape::Rect => "rect",
+        PadShape::RoundRect => "roundrect",
+        PadShape::Oval => "oval",
+        PadShape::Circle => "circle",
+    }
+}
+
+fn load_footprint(libraries: &Libraries, kind: &str, package: &str) -> Footprint {
+    let mapped = libraries.mapping.map(kind, Some(package)).unwrap();
+    libraries
+        .footprints
+        .load(&mapped.footprint)
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Every difference between the pads of `footprint` and those of the reference's `reference`
+/// footprint: number, centre in the footprint's own frame (0.01 mm), size (0.05 mm), drill
+/// (0.01 mm), shape and kind. Empty when they are the same.
+fn pad_differences(footprint: &Footprint, table: &toml::Table, reference: &str) -> Vec<String> {
+    let part = *tables(table, "part")
+        .iter()
+        .find(|p| p["reference"].as_str() == Some(reference))
+        .unwrap_or_else(|| panic!("no part {reference}"));
+    let rotation = number(part, "rotation");
+    let wanted = part["pads"].as_array().unwrap();
+    let mut differences = Vec::new();
+    if footprint.pads.len() != wanted.len() {
+        differences.push(format!(
+            "{reference}: {} pads, Raspberry Pi's has {}",
+            footprint.pads.len(),
+            wanted.len()
+        ));
+    }
+    let mut used = vec![false; footprint.pads.len()];
+    for pad in wanted {
+        let pad = pad.as_table().unwrap();
+        let (n, x, y) = (
+            pad["number"].as_str().unwrap(),
+            number(pad, "x"),
+            number(pad, "y"),
+        );
+        let found = footprint.pads.iter().enumerate().find(|(i, own)| {
+            !used[*i]
+                && own.number == n
+                && (own.at.x - x).abs() <= 0.01
+                && (own.at.y - y).abs() <= 0.01
+        });
+        let Some((i, own)) = found else {
+            differences.push(format!(
+                "{reference} pad {n}: none at ({x}, {y}) within 0.01 mm; pads of that number are at {:?}",
+                footprint
+                    .pads
+                    .iter()
+                    .filter(|p| p.number == n)
+                    .map(|p| (p.at.x, p.at.y))
+                    .collect::<Vec<_>>()
+            ));
+            continue;
+        };
+        used[i] = true;
+        let at = format!("{reference} pad {n} at ({x}, {y})");
+        let size = pad["size"].as_array().unwrap();
+        let as_f = |v: &toml::Value| v.as_float().or_else(|| v.as_integer().map(|i| i as f64));
+        let (w, h) = (as_f(&size[0]).unwrap(), as_f(&size[1]).unwrap());
+        if (own.width - w).abs() > 0.05 || (own.height - h).abs() > 0.05 {
+            differences.push(format!(
+                "{at}: size {} x {}, Raspberry Pi's {w} x {h}",
+                own.width, own.height
+            ));
+        }
+        let want_shape = pad["shape"].as_str().unwrap();
+        if shape_word(own) != want_shape {
+            differences.push(format!(
+                "{at}: shape {}, Raspberry Pi's {want_shape}",
+                shape_word(own)
+            ));
+        }
+        let want_kind = match pad["type"].as_str().unwrap() {
+            "smd" => PadKind::Smd,
+            "thru_hole" => PadKind::ThruHole,
+            "np_thru_hole" => PadKind::NpThruHole,
+            other => panic!("{at}: type {other}"),
+        };
+        if own.kind != want_kind {
+            differences.push(format!(
+                "{at}: kind {:?}, Raspberry Pi's {want_kind:?}",
+                own.kind
+            ));
+        }
+        // The file's pad angle includes the footprint's rotation. A turn of 180 degrees leaves
+        // a rectangle, a circle or an oval as it was (Raspberry Pi's J4 has its pads turned so,
+        // in a footprint that is not), but not a custom pad.
+        let turn = pad.get("angle").map_or(0.0, |_| number(pad, "angle")) - rotation - own.angle;
+        let period = if want_shape == "custom" { 360.0 } else { 180.0 };
+        let off = turn
+            .rem_euclid(period)
+            .min(period - turn.rem_euclid(period));
+        if off > 1e-6 {
+            differences.push(format!(
+                "{at}: angle {} differs from the reference's",
+                own.angle
+            ));
+        }
+        let want_drill = if let Some(slot) = pad.get("drill_slot") {
+            let slot = slot.as_array().unwrap();
+            Some((as_f(&slot[0]).unwrap(), as_f(&slot[1]).unwrap()))
+        } else if pad.contains_key("drill") {
+            Some((number(pad, "drill"), number(pad, "drill")))
+        } else {
+            None
+        };
+        match (own.drill, want_drill) {
+            (None, None) => {}
+            (Some(d), Some((a, b)))
+                if (d.width - a).abs() <= 0.01 && (d.height - b).abs() <= 0.01 => {}
+            (d, w) => differences.push(format!(
+                "{at}: drill {:?}, Raspberry Pi's {w:?}",
+                d.map(|d| (d.width, d.height))
+            )),
+        }
+    }
+    differences
+}
+
+#[test]
+fn the_pads_of_each_connector_footprint_are_those_of_raspberry_pis_j1_to_j4() {
+    let libraries = libraries_without_kicad();
+    let table = parsed(&read("reference/placements.toml"));
+    let mut differences = Vec::new();
+    for (reference, kind, package, pads) in [
+        ("J1", "Amphenol10103594", "SMD", 15),
+        ("J2", "SamtecTsw11807LD", "TSW-118-07-L-D", 36),
+        ("J3", "SamtecTsw11807LD", "TSW-118-07-L-D", 36),
+        (
+            "J4",
+            "JstSm03bSrssTb",
+            "SMD,P=1mm,Surface Mount,Right Angle",
+            5,
+        ),
+    ] {
+        let footprint = load_footprint(&libraries, kind, package);
+        assert_eq!(
+            footprint.pads.len(),
+            pads,
+            "{reference}: pads of the footprint"
+        );
+        differences.extend(pad_differences(&footprint, &table, reference));
+    }
+    assert!(
+        differences.is_empty(),
+        "the footprints differ from Raspberry Pi's pads:\n{}",
+        differences.join("\n")
+    );
+}
+
+#[test]
+fn the_comparison_of_pads_says_what_differs() {
+    // Not vacuous: a header of netsmith's generator has other pads (1.778 mm, and the pins run
+    // down a column), and the comparison names them.
+    let table = parsed(&read("reference/placements.toml"));
+    let id = netsmith_kicad::footprint_spec::FootprintSpec::parse(
+        "gen:PinHeader(rows=2, pins=18, pitch=2.54mm)",
+    )
+    .unwrap()
+    .id();
+    let generated = FootprintLibrary::at(testlib::sample_footprints())
+        .with_generators()
+        .load(&id)
+        .unwrap();
+    let differences = pad_differences(&generated, &table, "J2");
+    assert!(!differences.is_empty());
+    assert!(
+        differences.iter().any(|d| d.contains("J2 pad 1: none at")),
+        "{differences:?}"
+    );
+    // And the pad's size and drill are compared too: the project's header with the generator's
+    // pad and a larger hole.
+    let mut wrong = load_footprint(
+        &libraries_without_kicad(),
+        "SamtecTsw11807LD",
+        "TSW-118-07-L-D",
+    );
+    wrong.pads[0].width = 1.778;
+    wrong.pads[1].drill = Some(netsmith_pcb::Drill {
+        width: 1.02,
+        height: 1.02,
+    });
+    let differences = pad_differences(&wrong, &table, "J2");
+    assert_eq!(differences.len(), 2, "{differences:?}");
+    assert!(differences[0].contains("J2 pad 1 at") && differences[0].contains("size 1.778"));
+    assert!(differences[1].contains("J2 pad 2 at") && differences[1].contains("drill"));
+}
+
+#[test]
+fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_sources() {
+    for (file, number, mpn, page) in [
+        (
+            "catalogs/micro_usb.csv",
+            "C428495",
+            "10103594-0001LF",
+            "https://jlcpcb.com/partdetail/C428495",
+        ),
+        (
+            "catalogs/jst_srss.csv",
+            "C160403",
+            "\"SM03B-SRSS-TB(LF)(SN)\"",
+            "https://jlcpcb.com/partdetail/C160403",
+        ),
+    ] {
+        let rows = read(file);
+        let row = rows.lines().nth(1).expect("a row");
+        assert_eq!(rows.lines().count(), 2, "{file}: one row");
+        assert!(row.starts_with(&format!("{number},")), "{row}");
+        assert!(
+            row.contains(mpn) || row.contains(mpn.trim_matches('"')),
+            "{row}"
+        );
+        assert!(row.contains(page), "{row}");
+        assert!(
+            row.contains("2026-11-10"),
+            "the day the page was read: {row}"
+        );
+        assert!(row.contains(",Extended,"), "{row}");
+    }
+    // The header has no JLCPCB part: no catalog and no number.
+    assert!(!project().join("catalogs/samtec_tsw_118.csv").exists());
+    let target = Target::resolve_from(&project(), None).unwrap();
+    assert!(target.catalogs().is_ok());
 }

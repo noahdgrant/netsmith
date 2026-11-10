@@ -34,9 +34,18 @@ are netsmith's** (MIT, like the rest of the repository).
 ## What is here
 
 - `netsmith.toml`, `src/main.nsm`: the project and its (placeholder) board.
+- `src/tactile_switch.nsm`, `catalogs/ldo.csv`, `catalogs/inductor.csv`,
+  `catalogs/tactile_switch.csv`, `kicad.toml`, `libs/rp2350_minimal.pretty/`: the regulator U2,
+  the inductor L1 and the buttons SW1 and SW2 (see Parts).
+
 - `src/rp2350a.nsm`, `catalogs/rp2350a.csv`, `kicad.toml`: the MCU, U1 (see Parts).
 - `src/flash.nsm`, `src/crystal.nsm`, `catalogs/w25q128jv.csv`, `catalogs/abm8_272_t3.csv`,
   `kicad.toml`: the QSPI flash, U3, and the crystal, X1 (see Parts).
+
+- `src/amphenol_10103594.nsm`, `src/jst_sm03b_srss_tb.nsm`, `src/samtec_tsw_118.nsm`,
+  `catalogs/micro_usb.csv`, `catalogs/jst_srss.csv`, `libs/netsmith_rp2350.pretty/`: the
+  connectors J1 to J4 (see Parts). The footprints are files of the project's own library and
+  need no KiCad.
 - `LICENSE`: Raspberry Pi's licence text.
 - `reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb`: their board file, unchanged (1.6 MB).
 - `reference/placements.toml`: the facts the checker needs, read from that file: the outline,
@@ -110,6 +119,107 @@ are netsmith's** (MIT, like the rest of the repository).
   part is a boundary of the design, and the checks that need a number are listed as not
   evaluated.
 
+### The connectors, J1 to J4
+
+Their pads must equal Raspberry Pi's, so the footprints are written pad for pad against the
+board's table (`reference/placements.toml`); a test compares number, centre (0.01 mm), size
+(0.05 mm), drill (0.01 mm), shape and kind for each of the four, and a fixture board builds with
+the parts and no KiCad install. The parts only say what a connector is; which signal is on
+which pin, and where each stands, is the board's. Origin and axes are those of Raspberry Pi's
+footprints (x right, y down, the part seen from the component side), the same as the drawings'
+datum where they have one. Numbers are mm. **No dimension was guessed**; what is not on a drawing
+is listed as assumed, and where the board differs from a drawing the footprint follows the board
+and says so.
+
+- **J1, `Amphenol10103594`** (`src/amphenol_10103594.nsm`): Amphenol FCI 10103594-0001LF, micro-USB
+  B receptacle, LCSC C428495, JLCPCB Extended (the page was read on 2026-11-10;
+  `catalogs/micro_usb.csv`; price and stock not recorded). Pins: VBUS 1, D- 2, D+ 3, ID 4, GND 5
+  and the shield, one pin of the six pads 6 to 11. `provides Connector`.
+  Footprint `USB_Micro-B_Amphenol_10103594-0001LF`, 15 pads (11 numbers: the five contacts, and
+  six shell numbers of which 6, 7, 9 and 10 each have a surface pad and a plated slot).
+  - Source: Amphenol FCI drawing 10103594 ("MICRO-USB B-TYPE RECEP."), revision A, ECN
+    T10-0002, dated 1/7/10, printed 2010-06-02 (the PDF that LCSC links for C428495,
+    `datasheet.lcsc.com/datasheet/pdf/ca5a42dbf95ebfb4fb84a094027e7ce9.pdf`, one sheet, SHA-256
+    `e119d95457dc`), the view "RECOMMENDED PCB Pattern" (tolerance +/-0.05). The drawing carries
+    "Tous droits strictement reserves ... All rights strictly reserved. Reproduction or issue to
+    third parties in any form whatever is not permitted without written authority from the
+    proprietor" in its margin. Nothing was copied: only the dimensions were taken, and the
+    owner accepted that reading for Amphenol's SMA drawing on 2026-11-10; it has **not** been said
+    of this one, so it needs the owner's word.
+  - **Read** (labels, 500 to 900 dpi): signal pads 0.40 wide, 0.65 pitch (0.65, 0.40), 1.75 long,
+    their top 3.70 above the datum line (3.70, 1.75); the datum line passes through the centres of
+    the two lower slots (3.03 below the upper slots' centres); upper shell pads 2.00 wide
+    (2.00), 0.73 above and 0.73 below the slot centre (0.73 and 2.30), with a slot 0.65 x 1.05 at
+    +/-2.425 (4.85, 0.65, 1.05); the T-shaped land from y = -2.05 to -1.35 for its bar (2.05,
+    1.35), 7.80 over the bars' outer edges (7.80), 6.75 over the stems' (6.75), 4.15 between the
+    stems' inner edges (4.15), stems ending 0.60 short of the PCB end 1.70 below the datum (0.60,
+    1.70) with R0.40 corners; lower slots 0.70 x 1.20 with 6.15 between their outer edges (6.15,
+    4.75, 0.70, 1.20); the middle pads 0.50 apart and 3.35 over all (0.50, 3.35), from 1.00
+    above the datum to 1.50 below it (1.00, 1.50).
+  - **Derived by arithmetic:** the shell pads' centre x (+/-2.9, from 7.80 and 2.00) and height
+    1.46 (0.73 twice; Raspberry Pi's is 1.45); the slot centres (+/-2.725, from 6.15 and 0.70;
+    +/-2.425 from 4.85); the T-land's stem (x from -3.375 to -2.075, bottom at 1.70 - 0.60 =
+    1.10), as the polygon of pads 7 and 10 (the same outline as Raspberry Pi's custom pads); the
+    contacts' centre y, -2.825.
+  - **Differs from the drawing, the footprint follows Raspberry Pi's board:** the two middle
+    pads (8 and 11) are 2.10 long and centred at y = 0.05 in Raspberry Pi's board (from -1.00 to
+    1.10); the drawing has them 2.50 long, to 1.50. Their centres are x = +/-0.95 there against
+    +/-0.9625 from the drawing's 0.50 gap and 3.35 span (0.0125 apart; the width, 1.425, is the
+    same). The drawing is revision A of 2010; whether Amphenol drew another revision, or
+    Raspberry Pi shortened the pads, is not known.
+  - **Assumed:** pad numbers 6 to 11 for the shell (the drawing numbers none: Raspberry Pi's);
+    that the contact order VBUS, D-, D+, ID, GND is the USB micro-B's (Raspberry Pi's board
+    puts those nets on pads 1 to 5; the USB-IF specification was not read); the plated ovals
+    around the slots, 1.05 x 1.45 and 1.1 x 1.8 (Raspberry Pi's; the drawing hatches the lands
+    and draws the slots only, a ring of 0.20 and 0.20 / 0.30 around them); copper on all layers
+    and mask on the back only for them, as Raspberry Pi's; paste on the contacts only;
+    the courtyard, the pads and 0.25 all round; the PCB end on `Dwgs.User`; no 3D model; the
+    pick-and-place rotation is unverified.
+- **J4, `JstSm03bSrssTb`** (`src/jst_sm03b_srss_tb.nsm`): JST SM03B-SRSS-TB(LF)(SN), 3 contacts,
+  1.0 mm pitch, side entry, two mounting tabs, LCSC C160403, JLCPCB Extended (read 2026-11-10;
+  `catalogs/jst_srss.csv`). Pins 1, 2, 3 and `MOUNT` (pads 4 and 5). `provides Connector`.
+  Footprint `JST_SM03B-SRSS-TB_1x03-2MP_P1.00mm_Horizontal`, 5 pads.
+  - Source: JST, "SR/SZ CONNECTOR, 1.0mm pitch" (the PDF that LCSC links for C160403,
+    `datasheet.lcsc.com/datasheet/pdf/e03a82bcc66e3c3589917313e54d45e2.pdf`, 3 pages, SHA-256
+    `8f01930d3601`; no revision or date is printed): page 1, "PC board layout ... <SMT type>,
+    Side entry type" ("Dimensions above should serve as a guideline", tolerances non-cumulative);
+    page 3, "Shrouded header (SMT type)" for the part number and the 3-circuit dimensions
+    (A 2.0, B 5.0). No notice of copyright or confidentiality was seen.
+  - **Read:** contact pads 0.6 wide at 1.0 pitch (0.6, 1.0); the tabs 1.2 wide and 1.8 long
+    (1.2, 1.8) with their inner edges 0.7 beyond the outermost contacts' centres (0.7); 4.0 from
+    the contacts' lower edge to the tabs' lower edge, 5.55 from the contacts' upper edge to it
+    (4.0, 5.55); the tabs' lower edge 0.2 below the header outline's rear edge (0.2).
+  - **Derived:** the contacts' length 1.55 (5.55 - 4.0); the tabs at x = +/-(1.0 + 0.7 + 0.6) =
+    +/-2.3; with the origin at the rear edge of the header outline, the tabs' centres at y = -0.7
+    (0.2 - 0.9) and the contacts' at -4.575 (0.2 - 5.55 + 0.775). They are Raspberry Pi's numbers
+    to the last digit.
+  - **Assumed:** the origin and the numbering (contacts 1 to 3 from the left, the tabs 4 and 5;
+    the drawing numbers neither; Raspberry Pi's board does so); paste on all pads; courtyard,
+    the pads and 0.25; no body, silkscreen or model; the rotation unverified.
+- **J2 and J3, `SamtecTsw11807LD`** (`src/samtec_tsw_118.nsm`): Samtec TSW-118-07-L-D, 2 x 18 pin
+  header, 2.54 mm pitch, through hole; one part for both, 36 pins, `provides Connector`. It has
+  **no JLCPCB match**, so it has no catalog row and no LCSC number: a through-hole part is
+  **soldered by hand** (ADR 0024: a through-hole part is `Hand` unless a board says otherwise, and a
+  test holds it); `AssemblyMode::Consigned` is the way to have JLCPCB place a header that is
+  shipped to them. Footprint `PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D`.
+  - **Not the generator's footprint:** `gen:PinHeader(rows=2, pins=18, pitch=2.54mm)` has pads of
+    0.7 x the pitch, 1.778 mm, and its pins run down columns from the top left; Raspberry Pi's
+    pads are 1.6 mm (the generator's are 0.178 mm larger, over the limit of 0.05 mm) and its pins
+    run along the long axis, 1 in the row below, 2 above. A test shows the difference.
+  - Source: Samtec, "Recommended P.C. Board Layout for (X)TSW Single, Double & Triple (Thru-hole
+    & Right Angle)", revision A (`suddendocs.samtec.com/prints/tsw-xxx-xx-x-x-xx-xxx-footprint.pdf`,
+    one sheet, SHA-256 `264658121ff2`); the product page
+    <https://www.samtec.com/products/tsw-118-07-l-d> read on 2026-11-10 for the 36 pins and the
+    pitch. The series print (47 pages) states a notice of confidentiality, and none of its numbers is used.
+  - **Read:** holes 0.040 in (1.02 mm) diameter, 0.100 in (2.54 mm) apart, rows 0.100 in (2.54 mm)
+    apart. The sheet states **no pad size**.
+  - **Differs from the drawing, the footprint follows Raspberry Pi's board:** the drill is 1.00 mm
+    (0.02 mm under Samtec's 1.02).
+  - **Assumed:** the pads, 1.6 mm round, Raspberry Pi's (a ring of 0.30 mm; the drawing has none);
+    pin 1 square; the numbering (pin 1 and the odd pins in the row at y = +1.27, the even pins at
+    -1.27, pin 1 at the left end, as Raspberry Pi's); the origin at the middle of the 36 holes; a
+    body outline of 2 x 18 pitches on `F.Fab`, the courtyard the pads and 0.25; no model.
+
 ## Run it
 
 From this folder:
@@ -122,3 +232,86 @@ netsmith fab      # the package for the board house, in fab/
 `netsmith compare` can read their board file as one side:
 `netsmith compare reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb out/Rp2350Minimal/Rp2350Minimal.kicad_sch`
 says nothing useful until the port is finished.
+
+## Parts
+
+Every number below was read on 2026-11-10 from the document named; a cell the document does not
+give is empty in the catalog row, and the row's `notes` say which. The three catalog rows are
+the project's own (`catalogs/`), each with the JLCPCB parts library page and the day it was read
+in its `source`; `price` and `stock` are empty (read them from the supplier before ordering).
+All three parts are Extended in JLCPCB's library.
+
+### U2: onsemi NCP1117ST33T3G (LCSC C26537)
+
+The standard `LinearRegulator` in the package SOT-223, with a row of `catalogs/ldo.csv`. A board
+asks for the row with `.package &= "SOT-223"` (the standard row is a SOT-23 part).
+
+- Document: onsemi NCP1117/D, "August, 2021 - Rev. 31"
+  (<https://www.onsemi.com/pdf/datasheet/ncp1117-d.pdf>).
+- `vout.voltage` 3.235 V to 3.365 V: ELECTRICAL CHARACTERISTICS (page 3), 3.3 V, Vin 4.75 V to
+  10 V, Iout 0 to 800 mA over the temperature range. `dropout` 1.2 V: the same table, 800 mA
+  maximum. `max_current` 0.8 A: the highest current at which the datasheet states both; its
+  other figures (in excess of 1.0 A, page 1; current limit 1.0 A to 2.2 A, page 3) are not a
+  rating. `temp_min`, `temp_max` 0 to 125 degC: operating ambient of the NCP1117 (page 2).
+- **Derived, not read:** `max_power` 0.78 W is (150 - 25) / 160: the datasheet says "Internally
+  Limited" and gives PD = (TJ(max) - TA) / RthJA, with TJ 150 degC and RthJA 160 degC/W for the
+  SOT-223 on a minimum pad (page 2), at a 25 degC ambient. A hotter board has less (0.16 W at
+  125 degC).
+- Not in the row: the quiescent current (6.0 mA typical, 10 mA maximum, 3.3 V version, page 4)
+  has no catalog column; a board states `.quiescent_current &= 0mA..10mA`. The package height
+  is left empty (the drawing is a picture).
+- Pinout (page 1): 1 Adjust/Ground, 2 Output, 3 Input, tab joined to pin 2. It is the std
+  table's (3 input, 1 ground, 2 output), so the std mapping to the generator's
+  `Package_TO_SOT_SMD:SOT-223-3_TabPin2` is used and `kicad.toml` has no row (a project may not
+  map a pair the standard mapping maps).
+- **Differs from Raspberry Pi's board:** their footprint numbers the tab pad 4 (net `+3V3`, the
+  output); the generator's numbers it 2, as the datasheet's pin 2. Same net, other number.
+
+### L1: Abracon AOTA-B201610S3R3-101-T (LCSC C42411119)
+
+The standard `Inductor` in the package `0806` (JLCPCB's name for 2016 metric, 2.0 x 1.6 x 1.0 mm;
+no generator answers it and `std/kicad.toml` stops at 0805), a row of `catalogs/inductor.csv`.
+
+- Document: Abracon AOTA-B201610S3R3-101-T, "REVISION A : 9/13/2024", 6 pages
+  (<https://abracon.com/datasheets/AOTA-B201610S3R3-101-T.pdf>).
+- Page 1, Electrical Specifications: 3.3 uH at 1 MHz; `saturation_current` 2.4 A (the Max
+  column; the table prints 2.8 A under Typ, and the smaller is taken); `dc_resistance` 0.14 ohm
+  (Max; typical 115 mohm); `rms_current` 2.1 A (Max; the current for about a 40 K rise). Page 4:
+  height 1.00 mm maximum.
+- **Assumed:** the tolerance. The table prints the code `M` and no percentage; the row says
+  +/- 20%, which is what the code means. `temp_min` and `temp_max` are empty: the -40 to +125 degC
+  of page 1 includes the part's own temperature rise.
+- Footprint `libs/rp2350_minimal.pretty/L_Abracon_AOTA-B201610S3R3-101-T.kicad_mod`, from page 4,
+  "Recommended Land Pattern" (dimensions read from the picture at 400 dpi): **read** two pads of
+  1.00 mm (across) by 1.60 mm, 1.00 mm between them. **Derived:** pad centres at +/-1.00 mm.
+  **Assumed:** the numbering (pad 1 on the left, the convention of Raspberry Pi's board; the
+  datasheet numbers no pad, and marks only the polarity dot of the winding), square-cornered
+  rectangles, paste and mask openings the size of the pads, a courtyard of the pads and 0.25 mm,
+  the 2.0 x 1.6 mm body on `F.Fab`, no silkscreen, no 3D model.
+- **Differs from Raspberry Pi's board:** their pads are 0.70 x 1.70 mm at +/-0.70 mm, pad 1 on
+  `+1V1` and pad 2 on `/VREG_LX`. The pad numbers and nets agree with the part
+  (`.a` on pad 1, `.b` on pad 2); the land pattern is Abracon's, not theirs.
+
+### SW1, SW2: Wurth Elektronik 434133025816 (LCSC C5504987)
+
+The project's own `TactileSwitch` (`src/tactile_switch.nsm`): the standard `Switch` has two pins
+on one pad each, and a four-pad footprint is not a footprint of it. A row of
+`catalogs/tactile_switch.csv`, keyed by `.mpn` (a board names it: `.mpn &= "434133025816"`).
+
+- Document: Wurth Elektronik 434133025816, "WS-TASV J-Bend SMT Tact Switch", REVISION 001.001
+  of 2021-01-25, 7 pages (<https://www.we-online.com/components/products/datasheet/434133025816.pdf>;
+  the site refuses a plain download, and the file was read as WebFetch fetched it).
+- Page 1, schematic: terminals 1 and 2 are joined, 3 and 4 are joined, the button joins the two
+  pairs. Each pair is one pin of the part with two pads (`.a` on pads 1 and 2, `.b` on 3 and 4).
+  Page 2: rated 50 mA and 16 V DC; operating temperature -40 to +85 degC (not said to be
+  ambient). Page 1: height 2.5 +0.2/-0.1 mm, so `height` is 2.7 mm.
+- Footprint `libs/rp2350_minimal.pretty/SW_Wurth_434133025816.kicad_mod`, from page 1,
+  "Recommended Land Pattern": **read** 5.2 mm over the pads and 3.1 mm between them across, 2.8 mm
+  and 1.5 mm along, four pads. **Derived:** each pad is (5.2 - 3.1) / 2 = 1.05 mm by
+  (2.8 - 1.5) / 2 = 0.65 mm, centred at +/-2.075 mm and +/-1.075 mm. **Assumed:** square corners,
+  paste and mask the size of the pads, a courtyard of the pads and 0.25 mm, the 4.2 x 3.2 mm body
+  (page 1) on `F.Fab`, no silkscreen, no 3D model.
+- The datasheet is not consistent about the numbers: the land pattern has 1 and 2 on the upper
+  row and 3 and 4 on the lower, the outline drawing the other way up. The pairs are the same in
+  both, and the footprint follows the land pattern. It is the same as Raspberry Pi's, pad for
+  pad (same numbers, places and sizes).

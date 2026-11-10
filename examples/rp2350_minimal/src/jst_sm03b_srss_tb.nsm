@@ -1,0 +1,27 @@
+//! The JST SM03B-SRSS-TB(LF)(SN), a shrouded header with three contacts at 1.0 mm pitch, side
+//! entry, surface mount, with two mounting tabs: the J4 of the RP2350A Minimal board (the debug
+//! port).
+//!
+//! The maker's catalog page (JST, SR/SZ connector, page 3, "Shrouded header (SMT type)") lists
+//! the part for 3 circuits; its page 1 draws the PC board layout of the side-entry SMT type.
+//! Neither numbers the contacts or the tabs, so the numbers are assumed: contacts 1, 2 and 3 from
+//! left to right as the layout is viewed from the component side, and the tabs 4 (left) and 5
+//! (right), which is how Raspberry Pi's footprint numbers its five pads. The tabs are solder
+//! tabs, not contacts: both are one pin, `.mount`.
+
+import std::parts::connector::Connector
+
+/// A 3-contact, 1.0 mm pitch, side-entry SMT shrouded header with two mounting tabs.
+part JstSm03bSrssTb provides Connector {
+    pins {
+        //  pin        kind     name      pads
+        .p1       passive "1"       "1"
+        .p2       passive "2"       "2"
+        .p3       passive "3"       "3"
+        .mount    passive "MOUNT"   "4" "5"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog jst_srss by .mpn { .mpn, .package }
+}
