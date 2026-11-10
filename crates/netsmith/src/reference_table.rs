@@ -15,14 +15,140 @@ use std::fmt::Write as _;
 
 use netsmith_kicad::sexp::Sexp;
 
-/// The parts a person decided must match the reference exactly (a checker fails on them).
+/// The parts a person decided must match the reference exactly (a checker fails on them): the
+/// RP2350A Minimal's list, and the default of [`MustMatch`].
 pub const MUST_MATCH: [&str; 10] = [
     "J1", "J2", "J3", "J4", "SW1", "SW2", "MH1", "MH2", "MH3", "MH4",
 ];
 
+/// Which footprints of a reference board must match: the decision of a person, written per board
+/// in its example folder (`reference/must_match.toml`) and read by the program with
+/// `--must-match`. The default is the RP2350A Minimal's list ([`MUST_MATCH`]).
+///
+/// ```toml
+/// # the receptacles, the buttons and the headers' footprint
+/// references = ["J1", "J2", "SW1", "SW2", "U2"]
+/// # and/or every footprint whose reference is the letters, then a number: "J" is J1 and J12
+/// # but not JP1
+/// prefixes = ["J", "SW"]
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MustMatch {
+    references: Vec<String>,
+    prefixes: Vec<String>,
+    /// The built-in list, which the table's header names as "J1 to J4, SW1, SW2".
+    builtin: bool,
+}
+
+impl Default for MustMatch {
+    fn default() -> MustMatch {
+        MustMatch {
+            references: MUST_MATCH.iter().map(|r| (*r).to_string()).collect(),
+            prefixes: Vec::new(),
+            builtin: true,
+        }
+    }
+}
+
+impl MustMatch {
+    /// The list a `must_match.toml` states: `references` and/or `prefixes`, nothing else.
+    pub fn from_toml(text: &str) -> Result<MustMatch, String> {
+        let table: toml::Table = text.parse().map_err(|e| format!("not TOML: {e}"))?;
+        for key in table.keys() {
+            if key != "references" && key != "prefixes" {
+                return Err(format!(
+                    "`{key}` is not a key of a must-match list (it has `references` and `prefixes`)"
+                ));
+            }
+        }
+        let list = |key: &str| -> Result<Vec<String>, String> {
+            let Some(value) = table.get(key) else {
+                return Ok(Vec::new());
+            };
+            value
+                .as_array()
+                .and_then(|a| {
+                    a.iter()
+                        .map(|v| v.as_str().map(str::to_string))
+                        .collect::<Option<Vec<_>>>()
+                })
+                .ok_or_else(|| format!("`{key}` is not a list of texts"))
+        };
+        let (references, prefixes) = (list("references")?, list("prefixes")?);
+        if references.is_empty() && prefixes.is_empty() {
+            return Err(
+                "the list names nothing: it needs `references` (J1, SW1, ...) or `prefixes` (J, SW, ...)"
+                    .to_string(),
+            );
+        }
+        for prefix in &prefixes {
+            if prefix.is_empty() || !prefix.chars().all(|c| c.is_ascii_alphabetic()) {
+                return Err(format!(
+                    "the prefix {prefix:?} is not letters only (`J` is J1, J2, ...; write `J1` under `references`)"
+                ));
+            }
+        }
+        Ok(MustMatch {
+            references,
+            prefixes,
+            builtin: false,
+        })
+    }
+
+    /// Whether the footprint of this reference must match.
+    pub fn contains(&self, reference: &str) -> bool {
+        if self.references.iter().any(|r| r == reference) {
+            return true;
+        }
+        let (letters, _, _) = natural_key(reference);
+        letters.len() < reference.len() && self.prefixes.contains(&letters)
+    }
+
+    /// The list is a mistake when it names a footprint the board lacks: a part that matches
+    /// nothing would be a check that never ran.
+    /// (The built-in list is the RP2350A Minimal's: it is not held to another board.)
+    fn check_against(&self, parts: &[Part], source: &str) -> Result<(), String> {
+        if self.builtin {
+            return Ok(());
+        }
+        for r in &self.references {
+            if !parts.iter().any(|p| &p.reference == r) {
+                return Err(format!(
+                    "{source}: the must-match list names {r}, and the board has no such footprint"
+                ));
+            }
+        }
+        for prefix in &self.prefixes {
+            if !parts.iter().any(|p| prefix_of(p, prefix)) {
+                return Err(format!(
+                    "{source}: the must-match prefix {prefix} matches no footprint of the board"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The list as the table's header says it.
+    fn describe(&self) -> String {
+        let mut items: Vec<String> = self.references.clone();
+        items.extend(self.prefixes.iter().map(|p| format!("every {p}<number>")));
+        items.join(", ")
+    }
+}
+
+fn prefix_of(part: &Part, prefix: &str) -> bool {
+    let (letters, _, _) = natural_key(&part.reference);
+    letters.len() < part.reference.len() && letters == prefix
+}
+
 /// The table of `pcb` (the text of a `.kicad_pcb`); `source` is the file's name, written in the
-/// header.
+/// header. The must-match list is the RP2350A Minimal's: [`placements_toml_with`] takes another.
 pub fn placements_toml(pcb: &str, source: &str) -> Result<String, String> {
+    placements_toml_with(pcb, source, &MustMatch::default())
+}
+
+/// The table of `pcb` with the must-match list of the board it is read from.
+pub fn placements_toml_with(pcb: &str, source: &str, must: &MustMatch) -> Result<String, String> {
     let root = Sexp::parse(pcb).map_err(|e| format!("{source}: {e}"))?;
     if root.head() != Some("kicad_pcb") {
         return Err(format!("{source}: not a kicad_pcb file"));
@@ -32,9 +158,10 @@ pub fn placements_toml(pcb: &str, source: &str) -> Result<String, String> {
         holes,
         parts,
     } = board_of(&root, source)?;
+    must.check_against(&parts, source)?;
 
     let mut out = String::new();
-    out.push_str(HEADER);
+    out.push_str(&header(must));
     let _ = writeln!(out, "\n[source]");
     let _ = writeln!(out, "file = {}", quote(source));
     for (key, value) in [
@@ -100,11 +227,7 @@ pub fn placements_toml(pcb: &str, source: &str) -> Result<String, String> {
         let _ = writeln!(out, "x = {}", num(part.x));
         let _ = writeln!(out, "y = {}", num(part.y));
         let _ = writeln!(out, "rotation = {}", num(part.rotation));
-        let _ = writeln!(
-            out,
-            "must_match = {}",
-            MUST_MATCH.contains(&part.reference.as_str())
-        );
+        let _ = writeln!(out, "must_match = {}", must.contains(&part.reference));
         if part.pads.is_empty() {
             let _ = writeln!(out, "pads = []");
             continue;
@@ -140,9 +263,33 @@ const HEADER: &str = "\
 #   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
 #   own frame and with each stroke's half width added; `net` is the net's name and is left out
 #   for a pad no net names.
-# must_match = true marks what a copy of the board must reproduce (the outline, the holes,
-#   J1 to J4, SW1, SW2); false is reported, not required.
 ";
+
+/// The table's header: the same text for every board, but the last sentence, which names what
+/// must match.
+fn header(must: &MustMatch) -> String {
+    if must.builtin {
+        let mut text = HEADER.to_string();
+        text.push_str(
+            "# must_match = true marks what a copy of the board must reproduce (the outline, the holes,\n\
+             #   J1 to J4, SW1, SW2); false is reported, not required.\n",
+        );
+        text
+    } else {
+        let mut text = HEADER.replace("-- <file", "-- --must-match <list.toml> <file");
+        text.push_str(
+            "# The outline also holds the Edge.Cuts shapes that a footprint draws, placed on the board.\n",
+        );
+        text.push_str(
+            "# must_match = true marks what a copy of the board must reproduce (the outline, the holes\n\
+             #   and the footprints of the list given with --must-match; false is reported, not\n\
+             #   required): ",
+        );
+        text.push_str(&must.describe());
+        text.push('\n');
+        text
+    }
+}
 
 /// What the table holds, as numbers: read from a `.kicad_pcb` by [`read_board`], or from a table
 /// (`placements.toml`) by [`Board::from_table`]. The parity checker compares two of them.
@@ -397,8 +544,113 @@ impl Outline {
     }
 }
 
+/// A footprint's place on the board, for the shapes it draws: `(at x y [angle])`.
+#[derive(Clone, Copy)]
+struct Frame<'a> {
+    reference: &'a str,
+    x: f64,
+    y: f64,
+    rotation: f64,
+}
+
+impl Frame<'_> {
+    fn board_point(&self, x: f64, y: f64) -> (f64, f64) {
+        place(self.x, self.y, self.rotation, x, y)
+    }
+}
+
+/// What the `Edge.Cuts` shapes add up to, point by point.
+struct Edge {
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+    lines: usize,
+    radii: Vec<f64>,
+}
+
+impl Edge {
+    fn take(&mut self, (x, y): (f64, f64)) {
+        self.min_x = self.min_x.min(x);
+        self.min_y = self.min_y.min(y);
+        self.max_x = self.max_x.max(x);
+        self.max_y = self.max_y.max(y);
+    }
+
+    /// One shape on `Edge.Cuts`: a board's `gr_*` or a footprint's `fp_*` (`owner`). A footprint's
+    /// shape is in the footprint's own frame: its points are placed on the board first.
+    fn add(&mut self, item: &Sexp, head: &str, owner: Option<Frame>) -> Result<(), String> {
+        let at = |p: (f64, f64)| owner.map_or(p, |f| f.board_point(p.0, p.1));
+        let kind = &head[3..];
+        match kind {
+            "line" => {
+                self.lines += 1;
+                for key in ["start", "end"] {
+                    self.take(at(point(item, key)?));
+                }
+            }
+            "rect" => {
+                self.lines += 4;
+                let (a, b) = (point(item, "start")?, point(item, "end")?);
+                for corner in [a, (b.0, a.1), b, (a.0, b.1)] {
+                    self.take(at(corner));
+                }
+            }
+            "poly" => {
+                let pts = item
+                    .find("pts")
+                    .ok_or_else(|| format!("a {head} has no (pts ...)"))?;
+                let mut count = 0;
+                for node in pts.args() {
+                    let ([x, y], Some("xy")) = (
+                        numbers(node)[..].try_into().unwrap_or([f64::NAN; 2]),
+                        node.head(),
+                    ) else {
+                        return Err(format!(
+                            "a {head} has a {} in its (pts ...): only (xy x y) points are read",
+                            node.head().unwrap_or("?")
+                        ));
+                    };
+                    count += 1;
+                    self.take(at((x, y)));
+                }
+                if count < 3 {
+                    return Err(format!("a {head} has {count} points: it is no outline"));
+                }
+                // A polygon is closed: as many edges as points.
+                self.lines += count;
+            }
+            "arc" => {
+                let (start, mid, end) = (
+                    at(point(item, "start")?),
+                    at(point(item, "mid")?),
+                    at(point(item, "end")?),
+                );
+                let arc = Arc::through(start, mid, end)?;
+                self.radii.push(arc.radius);
+                self.take(start);
+                self.take(end);
+                for p in arc.extremes() {
+                    self.take(p);
+                }
+            }
+            _ => {
+                let whose = owner.map_or(String::new(), |f| format!(" of {}", f.reference));
+                return Err(format!(
+                    "an Edge.Cuts {head}{whose} is not read (lines, rectangles, polygons and \
+                     arcs are)"
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The outline: every shape on `Edge.Cuts` that the board draws (`gr_*`) or a footprint draws
+/// (`fp_*`, placed on the board by the footprint's position and rotation: a development-board
+/// footprint can carry the outline of the board it stands for).
 fn outline(root: &Sexp) -> Result<Outline, String> {
-    let mut o = Outline {
+    let mut edge = Edge {
         min_x: f64::INFINITY,
         min_y: f64::INFINITY,
         max_x: f64::NEG_INFINITY,
@@ -406,72 +658,66 @@ fn outline(root: &Sexp) -> Result<Outline, String> {
         lines: 0,
         radii: Vec::new(),
     };
-    let mut take = |x: f64, y: f64| {
-        o.min_x = o.min_x.min(x);
-        o.min_y = o.min_y.min(y);
-        o.max_x = o.max_x.max(x);
-        o.max_y = o.max_y.max(y);
-    };
-    let mut lines = 0;
-    let mut radii = Vec::new();
+    let on_edge = |item: &Sexp| item.find("layer").and_then(first_text) == Some("Edge.Cuts");
     for item in root.args() {
-        let Some(head) = item.head() else { continue };
-        if !head.starts_with("gr_") {
-            continue;
-        }
-        let on_edge = item.find("layer").and_then(first_text) == Some("Edge.Cuts");
-        if !on_edge {
-            continue;
-        }
-        match head {
-            "gr_line" => {
-                lines += 1;
-                for key in ["start", "end"] {
-                    let (x, y) = point(item, key)?;
-                    take(x, y);
+        match item.head() {
+            Some(head) if head.starts_with("gr_") && on_edge(item) => {
+                edge.add(item, head, None)?;
+            }
+            Some("footprint") => {
+                let frame = frame_of(item)?;
+                for shape in item.args() {
+                    match shape.head() {
+                        Some(head) if head.starts_with("fp_") && on_edge(shape) => {
+                            let owner = Frame {
+                                reference: &frame.0,
+                                x: frame.1,
+                                y: frame.2,
+                                rotation: frame.3,
+                            };
+                            edge.add(shape, head, Some(owner))?;
+                        }
+                        _ => {}
+                    }
                 }
             }
-            "gr_rect" => {
-                lines += 4;
-                for key in ["start", "end"] {
-                    let (x, y) = point(item, key)?;
-                    take(x, y);
-                }
-            }
-            "gr_arc" => {
-                let (start, mid, end) = (
-                    point(item, "start")?,
-                    point(item, "mid")?,
-                    point(item, "end")?,
-                );
-                let arc = Arc::through(start, mid, end)?;
-                radii.push(arc.radius);
-                take(start.0, start.1);
-                take(end.0, end.1);
-                for (x, y) in arc.extremes() {
-                    take(x, y);
-                }
-            }
-            other => {
-                return Err(format!(
-                    "an Edge.Cuts {other} is not read (lines, rectangles and arcs are)"
-                ));
-            }
+            _ => {}
         }
     }
-    if !o.min_x.is_finite() {
+    if !edge.min_x.is_finite() {
         return Err("the board has no Edge.Cuts lines or arcs".to_string());
     }
     // An arc is stored by its three points, written to five decimals: its radius and the extent
     // of its curve are worked out from them, so they are rounded to four (0.1 micrometre).
     let round = |v: f64| (v * 1e4).round() / 1e4;
-    o.min_x = round(o.min_x);
-    o.min_y = round(o.min_y);
-    o.max_x = round(o.max_x);
-    o.max_y = round(o.max_y);
-    o.lines = lines;
-    o.radii = radii.into_iter().map(round).collect();
-    Ok(o)
+    Ok(Outline {
+        min_x: round(edge.min_x),
+        min_y: round(edge.min_y),
+        max_x: round(edge.max_x),
+        max_y: round(edge.max_y),
+        lines: edge.lines,
+        radii: edge.radii.into_iter().map(round).collect(),
+    })
+}
+
+/// A footprint's reference, position and rotation.
+fn frame_of(footprint: &Sexp) -> Result<(String, f64, f64, f64), String> {
+    let name = footprint.args().first().and_then(Sexp::text).unwrap_or("");
+    let reference = footprint
+        .find_all("property")
+        .find(|p| p.args().first().and_then(Sexp::text) == Some("Reference"))
+        .and_then(|p| p.args().get(1))
+        .and_then(Sexp::text)
+        .ok_or_else(|| format!("the footprint {name} has no Reference property"))?
+        .to_string();
+    let at = footprint
+        .find("at")
+        .ok_or_else(|| format!("{reference}: no (at ...)"))?;
+    match numbers(at)[..] {
+        [x, y] => Ok((reference, x, y, 0.0)),
+        [x, y, r] => Ok((reference, x, y, r)),
+        _ => Err(format!("{reference}: (at ...) is not x y [angle]")),
+    }
 }
 
 /// An arc through three points: its centre and radius, the angle it starts at, and how far and
@@ -542,11 +788,18 @@ pub struct Part {
 impl Part {
     /// A point of the footprint's own frame, on the board (KiCad's rotation, y down).
     pub fn board_point(&self, x: f64, y: f64) -> (f64, f64) {
-        let (s, c) = self.rotation.to_radians().sin_cos();
-        // Whole turns are exact: a part turned 90 or 180 degrees keeps its figures round.
-        let (s, c) = (snap(s), snap(c));
-        (self.x + x * c + y * s, self.y + y * c - x * s)
+        place(self.x, self.y, self.rotation, x, y)
     }
+}
+
+/// The board point of a point `(x, y)` of a footprint at `(at_x, at_y)` turned by `rotation`.
+/// A footprint on the back keeps its pads and shapes as the file writes them: KiCad stores them
+/// already mirrored, so the same turn applies.
+fn place(at_x: f64, at_y: f64, rotation: f64, x: f64, y: f64) -> (f64, f64) {
+    let (s, c) = rotation.to_radians().sin_cos();
+    // Whole turns are exact: a part turned 90 or 180 degrees keeps its figures round.
+    let (s, c) = (snap(s), snap(c));
+    (at_x + x * c + y * s, at_y + y * c - x * s)
 }
 
 fn snap(v: f64) -> f64 {
@@ -622,22 +875,7 @@ impl Pad {
 
 fn part(footprint: &Sexp) -> Result<Part, String> {
     let name = footprint.args().first().and_then(Sexp::text).unwrap_or("");
-    let reference = footprint
-        .find_all("property")
-        .find(|p| p.args().first().and_then(Sexp::text) == Some("Reference"))
-        .and_then(|p| p.args().get(1))
-        .and_then(Sexp::text)
-        .ok_or_else(|| format!("the footprint {name} has no Reference property"))?
-        .to_string();
-    let at = footprint
-        .find("at")
-        .ok_or_else(|| format!("{reference}: no (at ...)"))?;
-    let nums = numbers(at);
-    let (x, y, rotation) = match nums[..] {
-        [x, y] => (x, y, 0.0),
-        [x, y, r] => (x, y, r),
-        _ => return Err(format!("{reference}: (at ...) is not x y [angle]")),
-    };
+    let (reference, x, y, rotation) = frame_of(footprint)?;
     let layer = footprint
         .find("layer")
         .and_then(first_text)
@@ -692,6 +930,7 @@ fn pad(pad: &Sexp) -> Result<Pad, String> {
         .find("net")
         .and_then(|n| n.args().last())
         .and_then(Sexp::text)
+        .filter(|n| !n.is_empty())
         .map(str::to_string);
     let extent = if shape == "custom" {
         primitives_extent(pad).map_err(|e| format!("pad {number}: {e}"))?

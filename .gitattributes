@@ -6,3 +6,7 @@ crates/netsmith-editor/web-dist/** -text
 # endings): git must not change them on any system.
 examples/rp2350_minimal/LICENSE -text
 examples/rp2350_minimal/reference/*.kicad_pcb -text
+# Easyduino: the licence and the board file are kept byte for byte, too.
+examples/easyduino_esp32s3/LICENSE -text
+examples/easyduino_esp32s3/reference/Easyduino_* -text
+examples/easyduino_esp32s3/reference/References.kicad_sch -text
