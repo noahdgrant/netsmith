@@ -13,6 +13,7 @@ use crate::geometry::Pt;
 pub const SILK_WIDTH: f64 = 0.12;
 pub const FAB_WIDTH: f64 = 0.1;
 pub const COURTYARD_WIDTH: f64 = 0.05;
+pub const COMMENT_WIDTH: f64 = 0.15;
 
 /// A number as KiCad writes it: at most six decimals, no trailing zeros, no "-0".
 pub fn num(v: f64) -> String {
@@ -26,12 +27,14 @@ pub fn num(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
-/// The silkscreen, fabrication and courtyard layers, by their KiCad names.
+/// The silkscreen, fabrication, courtyard and comment layers, by their KiCad names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Draw {
     Silk,
     Fab,
     Courtyard,
+    /// `Cmts.User`: a note for the person, such as the room a screw head takes.
+    Comments,
 }
 
 impl Draw {
@@ -40,6 +43,7 @@ impl Draw {
             Draw::Silk => "F.SilkS",
             Draw::Fab => "F.Fab",
             Draw::Courtyard => "F.CrtYd",
+            Draw::Comments => "Cmts.User",
         }
     }
 
@@ -48,6 +52,7 @@ impl Draw {
             Draw::Silk => SILK_WIDTH,
             Draw::Fab => FAB_WIDTH,
             Draw::Courtyard => COURTYARD_WIDTH,
+            Draw::Comments => COMMENT_WIDTH,
         }
     }
 }
@@ -77,6 +82,9 @@ pub enum Kind {
     CopperPaste,
     /// Plated through hole, with this drill diameter.
     Through(f64),
+    /// A hole with no copper, with this drill diameter: copper and mask are kept off it on
+    /// every layer.
+    NonPlated(f64),
 }
 
 /// A pad, as the generators describe it.
@@ -87,6 +95,13 @@ pub struct PadSpec {
     pub shape: Shape,
     pub at: Pt,
     pub size: (f64, f64),
+    /// The pad's own `solder_mask_margin`, where it differs from the board's.
+    pub mask_margin: Option<f64>,
+    /// The pad's own `clearance` from copper of other nets.
+    pub clearance: Option<f64>,
+    /// Whether the plating is kept on every inner layer (`remove_unused_layers no`), which a
+    /// plated hole that a screw bonds to wants. Only a through pad has it.
+    pub keep_all_layers: bool,
 }
 
 impl PadSpec {
@@ -97,7 +112,28 @@ impl PadSpec {
             shape,
             at,
             size,
+            mask_margin: None,
+            clearance: None,
+            keep_all_layers: false,
         }
+    }
+
+    /// The mask opening is this much larger than the pad on every side.
+    pub fn with_mask_margin(mut self, margin: f64) -> Self {
+        self.mask_margin = Some(margin);
+        self
+    }
+
+    /// Copper of other nets keeps this far from the pad.
+    pub fn with_clearance(mut self, clearance: f64) -> Self {
+        self.clearance = Some(clearance);
+        self
+    }
+
+    /// Keep the plating on the inner layers that nothing connects to.
+    pub fn keeping_all_layers(mut self) -> Self {
+        self.keep_all_layers = true;
+        self
     }
 
     /// A rounded surface-mount pad with paste.
@@ -113,6 +149,10 @@ pub struct Drawing {
     description: String,
     tags: String,
     mount: Mount,
+    /// What the file's `(attr ...)` says when it is not just the mounting.
+    attr: Option<String>,
+    /// Whether the file names a 3D model, as the library of its name would have.
+    model: bool,
     body: String,
 }
 
@@ -124,8 +164,22 @@ impl Drawing {
             description: String::new(),
             tags: String::new(),
             mount,
+            attr: None,
+            model: true,
             body: String::new(),
         }
+    }
+
+    /// The whole `(attr ...)` of the file, instead of the mounting alone: a part that is on
+    /// no bill of materials and no placement file says `exclude_from_pos_files
+    /// exclude_from_bom`.
+    pub fn attr(&mut self, attr: &str) {
+        self.attr = Some(attr.to_string());
+    }
+
+    /// Name no 3D model: a hole, a fiducial and a test point have no body to show.
+    pub fn without_model(&mut self) {
+        self.model = false;
     }
 
     pub fn describe(&mut self, description: &str, tags: &str) {
@@ -141,6 +195,17 @@ impl Drawing {
             num(a.y),
             num(b.x),
             num(b.y),
+            num(on.width()),
+            on.layer()
+        );
+    }
+
+    /// The outline of a circle round the origin.
+    pub fn circle(&mut self, on: Draw, radius: f64) {
+        let _ = writeln!(
+            self.body,
+            "(fp_circle (center 0 0) (end {} 0) (stroke (width {}) (type solid)) (fill no) (layer \"{}\"))",
+            num(radius),
             num(on.width()),
             on.layer()
         );
@@ -187,11 +252,23 @@ impl Drawing {
         );
     }
 
-    /// The reference designator printed on the fabrication layer.
+    /// A circular courtyard round the origin.
+    pub fn courtyard_circle(&mut self, radius: f64) {
+        self.circle(Draw::Courtyard, radius);
+    }
+
+    /// The reference designator printed on the fabrication layer, on the origin.
     pub fn fab_reference(&mut self, height: f64) {
+        self.fab_reference_at(Pt::new(0.0, 0.0), height);
+    }
+
+    /// The reference designator printed on the fabrication layer at `at`.
+    pub fn fab_reference_at(&mut self, at: Pt, height: f64) {
         let _ = writeln!(
             self.body,
-            "(fp_text user \"${{REFERENCE}}\" (at 0 0 0) (layer \"F.Fab\") (effects (font (size {h} {h}) (thickness {t}))))",
+            "(fp_text user \"${{REFERENCE}}\" (at {} {} 0) (layer \"F.Fab\") (effects (font (size {h} {h}) (thickness {t}))))",
+            num(at.x),
+            num(at.y),
             h = num(height),
             t = num(height * 0.15)
         );
@@ -204,6 +281,7 @@ impl Drawing {
             Kind::SmdNoPaste => ("smd", "\"F.Cu\" \"F.Mask\""),
             Kind::CopperPaste => ("smd", "\"F.Cu\" \"F.Paste\""),
             Kind::Through(_) => ("thru_hole", "\"*.Cu\" \"*.Mask\""),
+            Kind::NonPlated(_) => ("np_thru_hole", "\"*.Cu\" \"*.Mask\""),
         };
         let shape = match pad.shape {
             Shape::RoundRect => "roundrect",
@@ -220,10 +298,19 @@ impl Drawing {
             num(pad.size.0),
             num(pad.size.1)
         );
-        if let Kind::Through(drill) = pad.kind {
+        if let Kind::Through(drill) | Kind::NonPlated(drill) = pad.kind {
             let _ = write!(self.body, " (drill {})", num(drill));
         }
         let _ = write!(self.body, " (layers {layers})");
+        if pad.keep_all_layers {
+            self.body.push_str(" (remove_unused_layers no)");
+        }
+        if let Some(margin) = pad.mask_margin {
+            let _ = write!(self.body, " (solder_mask_margin {})", num(margin));
+        }
+        if let Some(clearance) = pad.clearance {
+            let _ = write!(self.body, " (clearance {})", num(clearance));
+        }
         if pad.shape == Shape::RoundRect {
             let short = pad.size.0.min(pad.size.1);
             let _ = write!(
@@ -265,10 +352,10 @@ impl Drawing {
 
     /// The text of the file. The reference is put `above` the origin and the value `below`.
     pub fn text(&self, reference_y: f64, value_y: f64) -> String {
-        let attr = match self.mount {
+        let attr = self.attr.as_deref().unwrap_or(match self.mount {
             Mount::Smd => "smd",
             Mount::ThroughHole => "through_hole",
-        };
+        });
         let font = "(effects (font (size 1 1) (thickness 0.15)))";
         let hidden = "(effects (font (size 1.27 1.27) (thickness 0.15)))";
         let mut out = format!(
@@ -286,12 +373,16 @@ impl Drawing {
             vy = num(value_y),
         );
         out.push_str(&self.body);
-        let _ = writeln!(
-            out,
-            "(model \"${{KICAD9_3DMODEL_DIR}}/{lib}.3dshapes/{name}.wrl\" (offset (xyz 0 0 0)) (scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))",
-            lib = self.library,
-            name = self.name
-        );
+        if self.model {
+            let _ = writeln!(
+                out,
+                "(model \"${{KICAD9_3DMODEL_DIR}}/{lib}.3dshapes/{name}.wrl\" (offset (xyz 0 0 0)) (scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))",
+                lib = self.library,
+                name = self.name
+            );
+        } else {
+            out.push_str(")\n");
+        }
         out
     }
 

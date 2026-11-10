@@ -16,6 +16,7 @@ mod draw;
 mod gullwing;
 mod header;
 pub mod ipc;
+mod mechanical;
 mod outline;
 mod qfn;
 mod qfn_rows;
@@ -40,6 +41,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| header::generate(library, name))
         .or_else(|| crystal::generate(library, name))
         .or_else(|| bga::generate(library, name))
+        .or_else(|| mechanical::generate(library, name))
 }
 
 /// Every `Library:Name` that [`generate`] answers, in a fixed order.
@@ -56,6 +58,7 @@ pub fn names() -> &'static [String] {
         all.extend(header::names());
         all.extend(crystal::names());
         all.extend(bga::names());
+        all.extend(mechanical::names());
         all.sort();
         all.dedup();
         all

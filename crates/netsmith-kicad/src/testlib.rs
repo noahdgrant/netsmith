@@ -2,7 +2,8 @@
 //!
 //! They hold the five kinds the standard mapping (`std/kicad.toml`) names, with the
 //! geometry the stock KiCad libraries give those footprints, so that a test of the whole
-//! pipeline needs no KiCad. They are written to a folder in the system's temporary
+//! pipeline needs no KiCad, and the symbols of a hole, a test point and a fiducial (the
+//! footprints of those three are generated, `netsmith_pcb::generate`). They are written to a folder in the system's temporary
 //! directory the first time a process asks. A test that wants the stock libraries uses
 //! [`SymbolLib::installed`](crate::SymbolLib::installed) and skips itself without KiCad.
 
@@ -269,11 +270,13 @@ fn connector() -> String {
     ])
 }
 
-/// Our own `Connector` library: the sockets that mate with `Conn_01x02` and `Conn_01x04`.
+/// Our own `Connector` library: the sockets that mate with `Conn_01x02` and `Conn_01x04`, and
+/// the `TestPoint`.
 fn socket() -> String {
     library(&[
         connector_symbol("Conn_01x02_Socket", 2),
         connector_symbol("Conn_01x04_Socket", 4),
+        test_point(),
     ])
 }
 
@@ -299,6 +302,45 @@ fn power() -> String {
         "(polyline (pts (xy 0 0) (xy 0 1.27)) (stroke (width 0) (type default)) (fill (type none)))",
         &[pin("power_out", "", (0.0, 0.0, 90.0), 0.0, "pwr", "1")],
     )])
+}
+
+/// Our own `Mechanical` library, with the three symbols the standard mapping names (a hole,
+/// a plated hole and a fiducial), and the `TestPoint` that goes into `Connector`.
+fn mechanical() -> String {
+    let one_pin = |kind: &str| [pin(kind, "", (0.0, -2.54, 90.0), 1.27, "1", "1")];
+    library(&[
+        symbol(
+            "MountingHole",
+            [(0.0, 3.81, 0.0), (0.0, -3.81, 0.0)],
+            "MountingHole",
+            "(circle (center 0 0) (radius 1.27) (stroke (width 0.254) (type default)) (fill (type none)))",
+            &[],
+        ),
+        symbol(
+            "MountingHole_Pad",
+            [(0.0, 3.81, 0.0), (0.0, -3.81, 0.0)],
+            "MountingHole_Pad",
+            "(circle (center 0 0) (radius 1.27) (stroke (width 0.254) (type default)) (fill (type none)))",
+            &one_pin("passive"),
+        ),
+        symbol(
+            "Fiducial",
+            [(0.0, 3.81, 0.0), (0.0, -3.81, 0.0)],
+            "Fiducial",
+            "(circle (center 0 0) (radius 1.27) (stroke (width 0.254) (type default)) (fill (type none)))",
+            &[],
+        ),
+    ])
+}
+
+fn test_point() -> String {
+    symbol(
+        "TestPoint",
+        [(0.0, 3.81, 0.0), (0.0, -3.81, 0.0)],
+        "TestPoint",
+        "(circle (center 0 1.27) (radius 0.762) (stroke (width 0) (type default)) (fill (type none)))",
+        &[pin("passive", "", (0.0, 0.0, 90.0), 1.27, "1", "1")],
+    )
 }
 
 /// A library for the symbol tests: `Reg`, `Reg33` that extends it, the three-unit `Dual`,
@@ -639,6 +681,7 @@ fn write_sample(dir: &Path) -> std::io::Result<()> {
         ("Connector", socket()),
         ("Regulator_Linear", regulator()),
         ("power", power()),
+        ("Mechanical", mechanical()),
     ] {
         std::fs::write(symbols.join(format!("{name}.kicad_sym")), text)?;
     }
@@ -656,12 +699,15 @@ pub fn sample_root() -> PathBuf {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     device().hash(&mut hasher);
+    socket().hash(&mut hasher);
+    mechanical().hash(&mut hasher);
     for (_, _, text) in footprints() {
         text.hash(&mut hasher);
     }
     let target =
         std::env::temp_dir().join(format!("netsmith-sample-libraries-{:x}", hasher.finish()));
-    if !target.join("footprints").is_dir() || !target.join("symbols/power.kicad_sym").is_file() {
+    if !target.join("footprints").is_dir() || !target.join("symbols/Mechanical.kicad_sym").is_file()
+    {
         // Written beside the target and moved in, so a process that reads the folder while
         // another writes it never sees half of it.
         let staging = TempDir::new("sample-staging");

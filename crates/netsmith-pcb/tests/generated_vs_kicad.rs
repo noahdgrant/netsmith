@@ -257,3 +257,136 @@ fn every_generated_footprint_agrees_with_kicads_own_to_ten_microns() {
     );
     assert!(problems.is_empty(), "{problems:#?}");
 }
+
+/// The footprints that are one circle round the origin (ADR 0097, step 3): the mounting
+/// holes, the test points and the fiducial.
+const CIRCULAR: &[&str] = &[
+    "MountingHole:MountingHole_3.2mm_M3",
+    "MountingHole:MountingHole_3.2mm_M3_Pad",
+    "MountingHole:MountingHole_2.2mm_M2",
+    "MountingHole:MountingHole_2.2mm_M2_Pad",
+    "TestPoint:TestPoint_Pad_D1.0mm",
+    "TestPoint:TestPoint_Pad_D1.5mm",
+    "TestPoint:TestPoint_Pad_D2.0mm",
+    "Fiducial:Fiducial_1mm_Mask2mm",
+];
+
+/// The radii of the circles a footprint draws on `layer`, sorted.
+fn radii(fp: &Footprint, layer: &str) -> Vec<f64> {
+    use netsmith_pcb::footprint::{Layer, Shape};
+    let layer = match layer {
+        "silk" => Layer::Silk,
+        "fab" => Layer::Fab,
+        _ => Layer::Courtyard,
+    };
+    let mut all: Vec<f64> = fp
+        .graphics
+        .iter()
+        .filter(|g| g.layer == layer)
+        .filter_map(|g| match g.shape {
+            Shape::Circle { radius, .. } => Some(radius),
+            _ => None,
+        })
+        .collect();
+    all.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    all
+}
+
+/// What a pad's comparison does not see: the mask margin, the clearance and whether the
+/// plating stays on the inner layers, as the file says them (`None`: it says nothing).
+fn pad_extras(fp: &Footprint) -> Vec<(String, Option<String>, Option<String>, bool)> {
+    let value = |pad: &netsmith_kicad::sexp::Sexp, key: &str| {
+        pad.find(key)
+            .and_then(|n| n.args().first())
+            .and_then(|a| a.text())
+            .map(str::to_string)
+    };
+    fp.source
+        .find_all("pad")
+        .map(|pad| {
+            (
+                pad.args()
+                    .first()
+                    .and_then(|a| a.text())
+                    .unwrap_or_default()
+                    .to_string(),
+                value(pad, "solder_mask_margin"),
+                value(pad, "clearance"),
+                value(pad, "remove_unused_layers").as_deref() == Some("no"),
+            )
+        })
+        .collect()
+}
+
+/// The words of the `(attr ...)`, sorted.
+fn attr_words(fp: &Footprint) -> Vec<String> {
+    let mut words: Vec<String> = fp
+        .source
+        .find("attr")
+        .map(|a| {
+            a.args()
+                .iter()
+                .filter_map(|w| w.text().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    words.sort();
+    words
+}
+
+#[test]
+fn the_holes_test_points_and_fiducial_are_generated_and_agree_with_kicads_in_every_circle() {
+    for id in CIRCULAR {
+        assert!(names().contains(&id.to_string()), "{id} is not generated");
+    }
+    let installed = FootprintLibrary::installed();
+    if !installed.root().is_dir() {
+        eprintln!(
+            "skipped: no KiCad footprint libraries at {}",
+            installed.root().display()
+        );
+        return;
+    }
+    let kicad = FootprintLibrary::at(installed.root());
+    let mut problems = Vec::new();
+    for id in CIRCULAR {
+        let ours = generate(id).unwrap();
+        let theirs = kicad
+            .load(id)
+            .unwrap_or_else(|e| panic!("KiCad has no {id}: {e}"));
+        let report = compare(id, &ours, &theirs);
+        if !report.agrees() {
+            problems.push(format!(
+                "{id}: pads differ by {:.3} mm, courtyard by {:.3} mm{}",
+                report.pad_deviation,
+                report.courtyard_deviation,
+                report
+                    .structural
+                    .map(|s| format!(" ({s})"))
+                    .unwrap_or_default()
+            ));
+        }
+        for layer in ["court", "silk", "fab"] {
+            let (a, b) = (radii(&ours, layer), radii(&theirs, layer));
+            let same = a.len() == b.len() && a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 1e-6);
+            if !same {
+                problems.push(format!("{id}: circles on {layer} are {a:?}, KiCad's {b:?}"));
+            }
+        }
+        if pad_extras(&ours) != pad_extras(&theirs) {
+            problems.push(format!(
+                "{id}: pad extras {:?}, KiCad's {:?}",
+                pad_extras(&ours),
+                pad_extras(&theirs)
+            ));
+        }
+        if attr_words(&ours) != attr_words(&theirs) {
+            problems.push(format!(
+                "{id}: attr {:?}, KiCad's {:?}",
+                attr_words(&ours),
+                attr_words(&theirs)
+            ));
+        }
+    }
+    assert!(problems.is_empty(), "{problems:#?}");
+}

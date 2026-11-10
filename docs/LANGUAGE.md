@@ -7741,7 +7741,7 @@ board TooMuchMargin {
 ```
 
 ```text
-error: TooMuchMargin: L1: footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /tmp/netsmith-sample-libraries-acd28885cc625c91/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
+error: TooMuchMargin: L1: footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /tmp/netsmith-sample-libraries-442f93da51a2cbe0/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
 ```
 
 The two inductor limits are optional, as are the other numbers an IC may leave open: an IC that states `.min_inductor_saturation` (a datasheet that asks for more than the current limit, say) or `.max_inductor_dcr` has them checked against the picked inductor's `saturation_current` and `dc_resistance`, and an inductor that does not meet them is refused with the numbers. Both are `optional` members of `Buck` (ADR 0074): one that the IC leaves unstated has no such check, and the build says nothing about it, where it lists a check on any other value that nothing states as not evaluated. A limit is stated for the stage when the IC states it on its side of `.stage.buck ~ .u.buck`. A heating (RMS) rating of the inductor is not checked by the stage: `Inductor` has the optional column `rms_current`, which the standard rows leave empty (see Dielectric and package size), so a check that needed it would refuse every standard inductor.

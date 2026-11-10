@@ -381,6 +381,104 @@ fn making_a_package_twice_gives_identical_files() {
     }
 }
 
+/// Every hole, test point and the fiducial of the standard mapping, made with no KiCad
+/// footprint library to read: the footprints are generated, and the board file carries their
+/// geometry (ADR 0097, step 3).
+#[test]
+fn holes_test_points_and_a_fiducial_are_fabricated_with_no_kicad_footprint_library() {
+    use netsmith_kicad::install::Search;
+    use netsmith_kicad::sexp::Sexp;
+    use netsmith_kicad::testlib;
+    use netsmith_pcb::{Footprint, FootprintLibrary};
+
+    let nowhere = TempDir::new("no-footprint-library");
+    let machine = Search::under(nowhere.path());
+    let footprints = FootprintLibrary::installed_by(&machine);
+    assert!(
+        footprints.load("Resistor_SMD:R_0402_1005Metric").is_ok(),
+        "the generators answer without an install"
+    );
+    assert!(
+        footprints
+            .load("Connector_USB:USB_C_Receptacle_GCT_USB4085")
+            .is_err(),
+        "no footprint library of KiCad's is in reach"
+    );
+    let libraries = Libraries::with_mapping(
+        netsmith_kicad::Mapping::standard(),
+        netsmith_kicad::SymbolLib::at(testlib::sample_symbols()),
+        footprints,
+    );
+    let source = LED
+        .replace(
+            "import std::parts::connector::Header1x2\n",
+            "import std::parts::connector::Header1x2\n\
+             import std::parts::mechanical::{Fiducial, MountingHole, PlatedHole, TestPoint}\n",
+        )
+        .replace(
+            "board LedExample",
+            "module Mech {\n    .m3: MountingHole\n    .m2: MountingHole { .package &= \"M2\" }\n\
+             \x20   .fid: Fiducial\n}\n\nboard LedExample",
+        )
+        .replace(
+            "    .supply.pos ~> .r1",
+            "    .mech: Mech\n\
+             \x20   .p3: PlatedHole\n    .p2: PlatedHole { .package &= \"M2\" }\n\
+             \x20   .tp10: TestPoint { .package &= \"D1.0mm\" }\n\
+             \x20   .tp15: TestPoint\n\
+             \x20   .tp20: TestPoint { .package &= \"D2.0mm\" }\n\
+             \x20   .p3.p1 ~ .supply.neg\n    .p2.p1 ~ .supply.neg\n\
+             \x20   .tp10.p1 ~ .supply.pos\n    .tp15.p1 ~ .supply.pos\n    .tp20.p1 ~ .supply.neg\n\
+             \x20   .supply.pos ~> .r1",
+        );
+    let dir = out("mechanical-no-footprints");
+    fab(
+        "led.nsm",
+        &source,
+        &dir,
+        &Catalogs::jlcpcb(),
+        &libraries,
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+
+    // The board file holds each footprint with the pads, the holes and the courtyard that the
+    // generator gives it.
+    let pcb = Sexp::parse(&read(&dir, "LedExample", "LedExample.kicad_pcb")).unwrap();
+    let ids = [
+        "MountingHole:MountingHole_3.2mm_M3",
+        "MountingHole:MountingHole_2.2mm_M2",
+        "MountingHole:MountingHole_3.2mm_M3_Pad",
+        "MountingHole:MountingHole_2.2mm_M2_Pad",
+        "Fiducial:Fiducial_1mm_Mask2mm",
+        "TestPoint:TestPoint_Pad_D1.0mm",
+        "TestPoint:TestPoint_Pad_D1.5mm",
+        "TestPoint:TestPoint_Pad_D2.0mm",
+    ];
+    for id in ids {
+        let node = pcb
+            .find_all("footprint")
+            .find(|f| f.args().first().and_then(|a| a.text()) == Some(id))
+            .unwrap_or_else(|| panic!("the board has no {id}"));
+        let written = Footprint::parse(id, &node.to_kicad_string()).unwrap();
+        let made = netsmith_pcb::generate::generate(id).unwrap();
+        assert_eq!(written.pads.len(), made.pads.len(), "{id}");
+        for (w, m) in written.pads.iter().zip(&made.pads) {
+            assert_eq!(
+                (w.kind, w.shape, w.at, w.angle, &w.layers),
+                (m.kind, m.shape, m.at, 0.0, &m.layers),
+                "{id}"
+            );
+            assert_eq!(
+                (w.width, w.height, w.drill),
+                (m.width, m.height, m.drill),
+                "{id}"
+            );
+        }
+        assert_eq!(written.courtyard, made.courtyard, "{id}");
+    }
+}
+
 #[test]
 fn a_part_with_no_part_number_is_refused_and_nothing_is_written() {
     let Some(cli) = kicad() else { return };
