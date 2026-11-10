@@ -103,7 +103,7 @@ pub(crate) struct Checker<'a> {
     pub sources: Sources,
     pub(crate) modules: Vec<ModuleData>,
     cache: HashMap<String, usize>,
-    diags: Vec<Diagnostic>,
+    pub(crate) diags: Vec<Diagnostic>,
     /// The diagnostics of `diags` that are parse errors.
     syntax: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,

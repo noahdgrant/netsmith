@@ -1,0 +1,25 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[PinMapBoard.parts."load"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+# A part the board no longer has: the lock is not current, and the editor lists what
+# `netsmith lock --check` would say.
+[PinMapBoard.parts."pullup"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"
+
+[PinMapBoard.parts."pull"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"

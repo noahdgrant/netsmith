@@ -53,7 +53,7 @@ use std::{
     sync::Arc,
 };
 
-use netsmith_check::{InstKind, Loader, check};
+use netsmith_check::{InstKind, Loader, PinsOutcome, check};
 use netsmith_core::job;
 use netsmith_editor::{
     AnalysisEvent, ApiError, Observer, Work,
@@ -112,6 +112,11 @@ pub struct Snapshot {
     pub systems: Vec<(Arc<SystemData>, bool)>,
     pub panels: Vec<(Arc<PanelData>, bool)>,
     pub problems: Vec<Problem>,
+    /// What the check decided about the pin requests of each top-level file, by the file's name
+    /// (ADR 0101): the pins the requests got, and the requests that got none with the message
+    /// of the check. A file that does not build has what its check said last if that says a
+    /// request has no pin, and else what it had before.
+    pub pins: HashMap<String, Arc<PinsOutcome>>,
 }
 
 impl Snapshot {
@@ -362,6 +367,7 @@ impl Snapshot {
                 .map(|(p, _)| (Arc::clone(p), true))
                 .collect();
             snapshot.problems = previous.problems.clone();
+            snapshot.pins = previous.pins.clone();
         }
         snapshot.problems.insert(
             0,
@@ -487,7 +493,7 @@ impl Workspace {
                 Some(text) => Ok(text.clone()),
                 None => fs::read_to_string(&file.path),
             };
-            let outcome = match text {
+            let outcome = match &text {
                 Err(e) => Err(vec![crate::Problem {
                     message: format!("{}: {e}", file.name),
                     at: None,
@@ -499,7 +505,7 @@ impl Workspace {
                 Ok(text) => job::reporting(Rc::clone(&sink), || {
                     outcome_observed(
                         &file.name,
-                        &text,
+                        text,
                         &loader,
                         &catalogs,
                         None,
@@ -562,6 +568,9 @@ impl Workspace {
                             .map(|b| b.design.name.clone())
                             .collect::<Vec<_>>(),
                     ));
+                    snapshot
+                        .pins
+                        .insert(file.name.clone(), Arc::new(outcome.pins.clone()));
                     let drawn = outcome.boards.len() as u32;
                     for (n, built) in outcome.boards.into_iter().enumerate() {
                         let label = built.label();
@@ -700,6 +709,24 @@ impl Workspace {
                     snapshot
                         .problems
                         .extend(problems.iter().map(|p| problem(Severity::Error, p)));
+                    // A request that got no pin is why the file does not build: the pin map of
+                    // the part says so, with the check's message. A file that fails for another
+                    // reason keeps the map it had.
+                    let failed_pins = text.as_ref().ok().and_then(|text| {
+                        let checked = check(&file.name, text, &loader);
+                        (!checked.pins.unserved.is_empty()).then(|| Arc::new(checked.pins))
+                    });
+                    match (failed_pins, previous) {
+                        (Some(pins), _) => {
+                            snapshot.pins.insert(file.name.clone(), pins);
+                        }
+                        (None, Some(previous)) => {
+                            if let Some(pins) = previous.pins.get(&file.name) {
+                                snapshot.pins.insert(file.name.clone(), Arc::clone(pins));
+                            }
+                        }
+                        (None, None) => {}
+                    }
                     if let Some(previous) = previous {
                         snapshot.boards.extend(
                             previous
@@ -798,8 +825,39 @@ impl Workspace {
     }
 
     pub(super) fn board_detail(&self, name: &str) -> Result<BoardDetail, ApiError> {
-        let state = self.fresh();
-        let data = state.snapshot.board(name)?;
+        let (mut detail, file, version, cached) = {
+            let state = self.fresh();
+            let data = state.snapshot.board(name)?;
+            let detail = Self::detail_of(data, state.snapshot.pins.get(&data.file));
+            (
+                detail,
+                data.file.clone(),
+                state.version,
+                state.locks.get(&data.file).cloned(),
+            )
+        };
+        // The pick lock is solved for on the first ask after a reading, outside the state's
+        // lock: it is a solve of the whole file, and the others wait for the lock.
+        let lock = match cached {
+            Some(lock) => lock,
+            None => {
+                let target = self.target();
+                let made = contained(|| super::sidecars::lock_info(&target, &file)).map_err(
+                    |message| ApiError::internal(format!("the pick lock of {file}: {message}")),
+                )?;
+                let made = made.map(Arc::new);
+                let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                if state.version == version {
+                    state.locks.insert(file, made.clone());
+                }
+                made
+            }
+        };
+        detail.lock = lock.map(|lock| (*lock).clone());
+        Ok(detail)
+    }
+
+    fn detail_of(data: &BoardData, pins: Option<&Arc<PinsOutcome>>) -> BoardDetail {
         let built = &data.built;
         let trace = &built.trace;
         let parts = built
@@ -822,12 +880,18 @@ impl Workspace {
                     }
                     cur = model.instance(parent).parent;
                 }
+                let path = model.path_of(inst);
+                let pin_requests = pins
+                    .map(|pins| {
+                        super::sidecars::pin_requests(pins, &built.design.name, &path, part)
+                    })
+                    .filter(|list| !list.is_empty());
                 PartInfo {
                     refdes: part.refdes.clone(),
                     kind: part.kind.clone(),
                     value: part.value.clone(),
                     package: part.package.clone(),
-                    path: model.path_of(inst),
+                    path,
                     lcsc: source.lcsc.clone(),
                     assembled: source.assembled(),
                     decl: model
@@ -836,6 +900,7 @@ impl Workspace {
                         .map(|_| api_location(at(inst))),
                     scopes,
                     solved: super::solved::of(model, inst, source),
+                    pin_requests,
                 }
             })
             .collect();
@@ -872,13 +937,14 @@ impl Workspace {
                     .collect(),
             })
             .collect();
-        Ok(BoardDetail {
+        BoardDetail {
             name: built.label(),
             file: data.file.clone(),
             parts,
             nets,
             notes: built.notes.clone(),
-        })
+            lock: None,
+        }
     }
 }
 

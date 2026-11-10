@@ -1,0 +1,12 @@
+version = 1
+
+[PinMapBoard.pins.status]
+pin = "p01"
+function = "GPIO"
+lock = true
+source = "hand"
+
+[PinMapBoard.pins.vbat]
+pin = "p02"
+function = "ANALOG"
+source = "auto"

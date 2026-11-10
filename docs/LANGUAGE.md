@@ -2975,6 +2975,8 @@ The rules about a pin run on the result as they do on a pin the source names: a 
 
 A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`).
 
+The editor shows the pin map of the selected part in the schematic's inspector (_Pin map_ section), read only: each request with the pin it got, the pad of that pin, the function, a mark when the entry is locked, and where the pin came from (`file, hand`, `file, auto`, or `picked now` when the pin file has no entry for it yet). A request that got no pin is listed with the message the check gives, which is also in the problems list. The editor assigns in memory as it does on every analysis, reads `<stem>.pins.toml` and never writes it.
+
 #### When a board does not route
 
 The first pin map is arbitrary with respect to routing, because pins are picked before anything is placed. When `fab` places a board and the router leaves connections, it may swap the pins of the requests and try again (ADR 0101). `--pins auto` is the default; `--pins locked` (or `pins = "locked"` under `[project]` in `netsmith.toml`, and the flag wins) moves nothing.
@@ -7457,7 +7459,7 @@ Each case of the list above ends in a line of that diff:
 
 `fab --order <name>` does with each source file that builds a board of the order what `fab` does with that file, so the order gets the rows `fab` of the file alone gets: it holds the boards of the file to its lock, writes the lock when the file does not exist, and never rewrites one that does (a difference is a note). Only the files that build a board of the order are read, and a lock covers all the boards of its file, whichever of them the order takes. `fab --order <name> --locked` compares the lock of each of those files with the picks before it removes or writes anything, and refuses, naming each file, one that does not exist or that the picks differ from. An order is a release, and a release never moves a choice by itself: it moves no pin (the pin file) and no row of an existing lock.
 
-The editor does not read or write a lock: it solves from the source, as before, and so does the order it makes.
+The editor does not hold the parts to the lock: it solves from the source, as before. It shows the lock of the selected board's source file and writes nothing: the schematic's inspector has a _Pick lock_ section that says whether the file exists and whether it is current, and lists the diff that `lock --check` would print (a source that does not build has none). It is read again when the lock file changes on disk, which the editor watches.
 
 ## Imports
 

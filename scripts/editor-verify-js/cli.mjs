@@ -2,7 +2,7 @@
 // scripts/editor-verify: the lifecycle for checking the netsmith editor in a real browser.
 //
 //   doctor [--no-browser]   what is installed, and whether a browser can be launched
-//   launch [--fixture <name>|schematic_bench|big|tree|shared_module] [--file <path.nsm>] [--git]
+//   launch [--fixture <name>|schematic_bench|big|tree|shared_module|pin_map] [--file <path.nsm>] [--git]
 //                           start `netsmith editor` on a free port over a scratch project; --git makes the
 //                           (two_boards) project a git repository with a branch that changes it (fixtures/gitrepo.mjs)
 //   drive <recipe>|all      run a recipe in headless Chromium, with screenshots
@@ -54,6 +54,8 @@ const FIXTURES = {
   height_limits: 'scripts/editor-verify-js/fixtures/height_limits.nsm',
   // A board whose rail is drawn too thin for its current: two guideline warnings, and it builds. For the warning markers.
   warn_bench: 'scripts/editor-verify-js/fixtures/warn_bench.nsm',
+  // An invented microcontroller with three pin requests, a pin file and a stale pick lock beside it: the pin map and the lock panel.
+  pin_map: 'scripts/editor-verify-js/fixtures/pin_map.nsm',
   // A project with no board: the views say where to write the first one.
   empty: 'scripts/editor-verify-js/fixtures/empty.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).
@@ -202,6 +204,11 @@ async function launch() {
     // footprint libraries), so the PCB view has footprints for the fixture's invented parts.
     const mapping = fixture.replace(/\.nsm$/, '.kicad.toml');
     if (mapping !== fixture && fs.existsSync(mapping)) fs.copyFileSync(mapping, path.join(project, 'kicad.toml'));
+    // The pin file (ADR 0101) and the pick lock (ADR 0100) beside the fixture, if it has them: `x.pins.toml` is `main.pins.toml`.
+    for (const side of ['pins', 'lock']) {
+      const file = fixture.replace(/\.nsm$/, `.${side}.toml`);
+      if (file !== fixture && fs.existsSync(file)) fs.copyFileSync(file, path.join(project, `src/main.${side}.toml`));
+    }
     const libs = fixture.replace(/\.nsm$/, '.libs');
     if (libs !== fixture && fs.existsSync(libs)) fs.cpSync(libs, path.join(project, 'libs'), { recursive: true });
     // A module, so the tree and the imports have something to show.

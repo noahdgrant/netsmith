@@ -506,6 +506,49 @@ pub struct PartInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub solved: Option<Solved>,
+    /// The pin requests that ask this part for a pin (`.status: .u.GPIO`, ADR 0101), in the byte
+    /// order of their paths, each with the pin it got or the message of the check when it got
+    /// none. Absent for a part no request asks. What the editor shows of the pin file: it
+    /// computes the assignment in memory and never writes the file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pin_requests: Option<Vec<PinRequestInfo>>,
+}
+
+/// One pin request of a part: what it asked for and what it got.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PinRequestInfo {
+    /// The request's path in the board, the key of its entry in the pin file (`status`).
+    pub request: String,
+    /// The function it asks the part for, which the pin offers and the file records (`GPIO`).
+    pub function: String,
+    /// The pin it got, by its path in the part (`p02`); absent when it got none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pin: Option<String>,
+    /// The pad of that pin in the package, as the board's design has it (`2`); several pads
+    /// are joined with a comma. Absent when the pin has no pad in the design.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pad: Option<String>,
+    /// Whether the entry is locked (`lock = true`): the optimizer never moves it.
+    pub locked: bool,
+    /// The entry's `source` in the pin file: `hand` or `auto`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub entry: Option<String>,
+    /// Where the pin came from: `file` (the pin file beside the source holds this entry and it
+    /// still holds) or `run` (picked now, from the source's request, with no entry in the file
+    /// yet: `build` would write it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub from: Option<String>,
+    /// Why the request has no pin: the message the check gave, in its own words. Absent when
+    /// the request has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub message: Option<String>,
 }
 
 /// What the solver derived for a part, as numbers and as text (ADR 0009, ADR 0013): the
@@ -615,6 +658,36 @@ pub struct BoardDetail {
     pub parts: Vec<PartInfo>,
     pub nets: Vec<NetInfo>,
     pub notes: Vec<String>,
+    /// The pick lock beside the board's source file (ADR 0100): whether it exists and is
+    /// current, read-only. Absent when there is nothing to compare, because the source does not
+    /// build (the problems list says why).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub lock: Option<PickLockInfo>,
+}
+
+/// What `netsmith lock --check` says of the pick lock of one source file, which holds every
+/// board of the file. The editor shows it and writes nothing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct PickLockInfo {
+    /// The lock file, named as the files of the project are (`src/main.lock.toml`).
+    pub file: String,
+    /// Whether the file exists. A source with no part to lock needs none.
+    pub exists: bool,
+    /// Whether the lock is as `netsmith lock --update` would write it.
+    pub current: bool,
+    /// What `lock --check` prints when it is not: one line for each part whose row changed, was
+    /// added or was dropped. Empty when the file does not exist: `--check` prints no lines then.
+    pub diff: Vec<String>,
+    /// What the solver said when it held the parts to the rows of the file as it is: the rows
+    /// that no longer pass or are no longer in a catalog, in its own words. Empty when every
+    /// locked row still holds.
+    pub reported: String,
+    /// Why the lock could not be checked: the file is not a lock this netsmith reads (its own
+    /// words, with the place in it). Then the other fields say nothing of the rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
 }
 
 /// A quantity's range as the language writes it, for example `3.135V..3.465V`: the unit follows
@@ -1444,6 +1517,7 @@ pub fn typescript() -> String {
         Analysis,
         Pending,
         PartInfo,
+        PinRequestInfo,
         Solved,
         Tolerance,
         Rating,
@@ -1451,6 +1525,7 @@ pub fn typescript() -> String {
         PinInfo,
         NetInfo,
         BoardDetail,
+        PickLockInfo,
         Range,
         Draw,
         Budget,
