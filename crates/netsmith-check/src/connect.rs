@@ -513,7 +513,7 @@ impl Checker<'_> {
     }
 
     /// The net name a pin asked for, if any.
-    fn requested_name(&self, pin: InstId) -> Option<String> {
+    pub(crate) fn requested_name(&self, pin: InstId) -> Option<String> {
         let Member::Field(f) = self.model.member(pin, "net")? else {
             return None;
         };

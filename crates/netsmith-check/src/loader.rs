@@ -13,6 +13,8 @@ pub struct Loader {
     /// (`./src/main.nsm` and `/home/me/proj/src/main.nsm` to `src::main`), for a name that
     /// the file names of the modules do not match as they are.
     root_keys: HashMap<String, String>,
+    /// A source file's name to the pin file beside it: its display name and text (ADR 0100).
+    pins: HashMap<String, (String, String)>,
 }
 
 impl Loader {
@@ -116,6 +118,21 @@ impl Loader {
         );
     }
 
+    /// Pair the pin file `file_name` (text `text`) with the source file called `source_name`:
+    /// the pins that its requests were given (ADR 0100).
+    pub fn attach_pins(&mut self, source_name: &str, file_name: &str, text: &str) {
+        self.pins.insert(
+            source_name.to_string(),
+            (file_name.to_string(), text.to_string()),
+        );
+    }
+
+    /// [`Loader::attach_pins`] on a loader that is being built.
+    pub fn with_pins(mut self, source_name: &str, file_name: &str, text: &str) -> Self {
+        self.attach_pins(source_name, file_name, text);
+        self
+    }
+
     /// [`Loader::attach_physical`] on a loader that is being built.
     pub fn with_physical(mut self, source_name: &str, file_name: &str, text: &str) -> Self {
         self.attach_physical(source_name, file_name, text);
@@ -143,6 +160,11 @@ impl Loader {
             .iter()
             .find(|(_, (name, _))| normalise_name(name) == wanted)
             .map(|(key, _)| key.clone())
+    }
+
+    /// The pin file paired with a source file: its name and text.
+    pub(crate) fn pins_of(&self, source_name: &str) -> Option<&(String, String)> {
+        self.pins.get(source_name)
     }
 
     /// The physical file paired with a source file: its name and text.

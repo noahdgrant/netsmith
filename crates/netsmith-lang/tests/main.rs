@@ -13,6 +13,7 @@ mod parse;
 mod peripheral_bus;
 mod peripherals;
 mod physical;
+mod pin_requests;
 mod pins;
 mod std;
 mod unused;

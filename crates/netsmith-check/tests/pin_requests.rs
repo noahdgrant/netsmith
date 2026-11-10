@@ -1,0 +1,520 @@
+//! Pin requests (ADR 0100): `.status: .u.GPIO` asks a part for any pin that offers GPIO, and the
+//! tool picks it, keeps it in the pin file, and runs the usual checks on the result.
+//!
+//! `Zmcu4` is invented for these tests; it is not a real part and is not in the standard library.
+
+use netsmith_check::*;
+
+const ZMCU4: &str = r#"
+part Zmcu4 {
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral UARTE1 on GPIO { UARTE1_TX:output UARTE1_RX:input }
+    shared UARTS limit 1 { UARTE0 UARTE1 }
+    pins {
+        .p00 bidirectional "P0.00" "3" fn GPIO
+        .p01 bidirectional "P0.01" "4" fn GPIO
+        .p02 bidirectional "P0.02" "5" fn GPIO ANALOG AIN0
+        .p03 bidirectional "P0.03" "6" fn GPIO ANALOG AIN1
+    }
+}
+
+/// Something with a pin for each of the part's, to put a net on.
+part Probe {
+    pins {
+        .a00 passive "A00" "1"
+        .a01 passive "A01" "2"
+        .a02 passive "A02" "3"
+        .a03 passive "A03" "4"
+    }
+}
+"#;
+
+fn source(statements: &str) -> String {
+    format!("{ZMCU4}\nboard B {{\n    .u: Zmcu4\n    .probe: Probe\n{statements}\n}}\n")
+}
+
+fn run(statements: &str, file: Option<&str>) -> Checked {
+    let loader = match file {
+        Some(text) => Loader::std().with_pins("main.nsm", "main.pins.toml", text),
+        None => Loader::std(),
+    };
+    check("main.nsm", &source(statements), &loader)
+}
+
+fn messages(c: &Checked) -> Vec<String> {
+    c.diagnostics.iter().map(|d| d.message.clone()).collect()
+}
+
+/// The pins the requests got, as `request -> pin path in the part`.
+fn pins(c: &Checked) -> Vec<(String, String)> {
+    let model = &c.board("B").expect("board B").model;
+    model
+        .pin_assignments
+        .iter()
+        .map(|a| (a.key.clone(), model.path_below(a.pin, a.part)))
+        .collect()
+}
+
+fn entry(pin: &str, function: &str, lock: bool) -> String {
+    format!(
+        "pin = \"{pin}\"\nfunction = \"{function}\"\n{}source = \"hand\"\n",
+        if lock { "lock = true\n" } else { "" }
+    )
+}
+
+fn file(entries: &[(&str, String)]) -> String {
+    let mut out = String::from("version = 1\n");
+    for (key, body) in entries {
+        out.push_str(&format!("\n[B.pins.{key}]\n{body}"));
+    }
+    out
+}
+
+fn pair(a: &str, b: &str) -> (String, String) {
+    (a.to_string(), b.to_string())
+}
+
+#[test]
+fn a_request_gets_the_first_pin_that_offers_the_capability() {
+    let c = run("    .status: .u.GPIO\n    .status ~ .probe.a00\n", None);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("status", "p00")]);
+    // The pin is on the net of the request, with the function chosen.
+    let model = &c.board("B").unwrap().model;
+    let net = model
+        .nets()
+        .iter()
+        .find(|n| n.terminals.iter().any(|&t| model.path_of(t) == "probe.a00"))
+        .expect("a net");
+    assert!(net.terminals.iter().any(|&t| model.path_of(t) == "u.p00"));
+    let pin = model.pin_assignments[0].pin;
+    assert_eq!(model.function_of(pin).as_deref(), Some("GPIO"));
+}
+
+#[test]
+fn requests_are_served_in_the_order_of_their_paths_and_a_named_pin_stays() {
+    // `a` comes before `b`: the order of the lines never matters. `p00` is the source's.
+    let c = run(
+        "    .b: .u.GPIO\n    .a: .u.GPIO\n    .u.p00 ~ .probe.a00\n    .u.p00.function &= \"GPIO\"\n    .a ~ .probe.a01\n    .b ~ .probe.a02\n",
+        None,
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("a", "p01"), pair("b", "p02")]);
+}
+
+#[test]
+fn the_tie_is_broken_by_the_pins_path_in_byte_order() {
+    let part = r#"
+part Zbyte {
+    pins {
+        .p0_2 bidirectional "P0.2" "1" fn GPIO
+        .p0_10 bidirectional "P0.10" "2" fn GPIO
+    }
+}
+board B {
+    .u: Zbyte
+    .status: .u.GPIO
+}
+"#;
+    let c = check("main.nsm", part, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    // In byte order `p0_10` comes before `p0_2`, whatever the order of the rows.
+    assert_eq!(
+        model.path_below(model.pin_assignments[0].pin, model.pin_assignments[0].part),
+        "p0_10"
+    );
+}
+
+#[test]
+fn the_function_is_a_peripherals_line_on_any_pin_of_its_class() {
+    let c = run("    .tx: .u.UARTE1_TX\n    .tx ~ .probe.a00\n", None);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("tx", "p00")]);
+    let model = &c.board("B").unwrap().model;
+    assert_eq!(
+        model.function_of(model.pin_assignments[0].pin).as_deref(),
+        Some("UARTE1_TX")
+    );
+}
+
+#[test]
+fn a_class_may_be_chosen_on_two_pins_and_another_function_may_not() {
+    let c = run(
+        "    .a: .u.GPIO\n    .b: .u.GPIO\n    .a ~ .probe.a00\n    .b ~ .probe.a01\n",
+        None,
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    // A hand-written choice of GPIO on two pins is the same thing, not an error.
+    let c = run(
+        "    .u.p00.function &= \"GPIO\"\n    .u.p01.function &= \"GPIO\"\n",
+        None,
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    // A function that is no class still belongs to one pin.
+    let c = run(
+        "    .u.p02.function &= \"ANALOG\"\n    .u.p03.function &= \"ANALOG\"\n",
+        None,
+    );
+    assert_eq!(
+        messages(&c),
+        ["function `ANALOG` is chosen on both `u.p02` and `u.p03`"]
+    );
+}
+
+#[test]
+fn a_locked_pin_is_kept_and_the_file_does_not_change() {
+    let text = file(&[("status", entry("p03", "GPIO", true))]);
+    let c = run(
+        "    .status: .u.GPIO\n    .status ~ .probe.a00\n",
+        Some(&text),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("status", "p03")]);
+    assert!(!c.pins.changed(), "{:?}", c.pins.changes);
+    assert!(c.pins.findings.is_empty());
+}
+
+#[test]
+fn an_entry_that_holds_is_kept_when_an_earlier_pin_is_free() {
+    // `p00` is free and sorts first, but the entry holds, so the pin does not move.
+    let text = file(&[("status", entry("p02", "GPIO", false))]);
+    let c = run(
+        "    .status: .u.GPIO\n    .status ~ .probe.a00\n",
+        Some(&text),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("status", "p02")]);
+    assert!(!c.pins.changed());
+}
+
+#[test]
+fn a_new_request_goes_round_the_pins_the_entries_hold() {
+    let text = file(&[("a", entry("p00", "GPIO", true))]);
+    let c = run(
+        "    .a: .u.GPIO\n    .b: .u.GPIO\n    .a ~ .probe.a00\n    .b ~ .probe.a01\n",
+        Some(&text),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("a", "p00"), pair("b", "p01")]);
+    assert_eq!(c.pins.changes, ["B.b: new, pin `p01` (GPIO)"]);
+    assert_eq!(
+        c.pins.file.board("B").unwrap()["b"].source,
+        EntrySource::Auto
+    );
+}
+
+#[test]
+fn the_file_is_the_same_text_on_every_run() {
+    let statements = "    .b: .u.GPIO\n    .a: .u.ANALOG\n    .tx: .u.UARTE0_TX\n";
+    let first = run(statements, None);
+    assert!(first.is_ok(), "{}", first.render());
+    let text = first.pins.file.to_text();
+    assert_eq!(PinFile::parse(&text).unwrap(), first.pins.file);
+    // Run again with the file the first run wrote: nothing changes, the text is the same.
+    let second = run(statements, Some(&text));
+    assert!(second.is_ok(), "{}", second.render());
+    assert!(!second.pins.changed(), "{:?}", second.pins.changes);
+    assert_eq!(second.pins.file.to_text(), text);
+    assert_eq!(pins(&first), pins(&second));
+    // And another run with no file at all picks the same pins.
+    assert_eq!(pins(&run(statements, None)), pins(&first));
+    assert!(
+        text.starts_with(
+            "version = 1\n\n[B.pins.a]\npin = \"p02\"\nfunction = \"ANALOG\"\nsource = \"auto\"\n"
+        ),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_pin_stays_when_the_design_gains_a_request_that_sorts_first() {
+    let first = run("    .m: .u.GPIO\n", None);
+    assert_eq!(pins(&first), [pair("m", "p00")]);
+    let text = first.pins.file.to_text();
+    let second = run("    .a: .u.GPIO\n    .m: .u.GPIO\n", Some(&text));
+    assert!(second.is_ok(), "{}", second.render());
+    assert_eq!(pins(&second), [pair("a", "p01"), pair("m", "p00")]);
+}
+
+#[test]
+fn a_locked_entry_that_no_longer_holds_is_an_error_at_its_line() {
+    // The source now connects `p02` itself.
+    let text = file(&[("status", entry("p02", "GPIO", true))]);
+    let c = run(
+        "    .status: .u.GPIO\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        Some(&text),
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    assert!(m[0].starts_with("`status` is locked to `u.p02` in the pin file, but `u.p02` is held by the source (connected to `probe.a02`, function GPIO chosen at main.nsm:"), "{}", m[0]);
+    assert!(
+        m[0].ends_with("); change the source, or unlock the entry so that a pin is picked again"),
+        "{}",
+        m[0]
+    );
+    let d = &c.diagnostics[0];
+    assert_eq!(
+        c.sources.place(d.source, d.span).as_deref(),
+        Some("main.pins.toml:3")
+    );
+}
+
+#[test]
+fn an_unlocked_entry_that_no_longer_holds_is_a_finding_and_the_pin_is_picked_again() {
+    let text = file(&[("status", entry("p02", "GPIO", false))]);
+    let c = run(
+        "    .status: .u.GPIO\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        Some(&text),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("status", "p00")]);
+    assert_eq!(c.pins.findings.len(), 1);
+    assert!(c.pins.findings[0].starts_with("main.pins.toml:3: `status` was `u.p02`, but `u.p02` is held by the source (connected to `probe.a02`, function GPIO chosen at main.nsm:"), "{:?}", c.pins.findings);
+    assert_eq!(c.pins.changes, ["B.status: pin `p02` becomes `p00`"]);
+}
+
+#[test]
+fn an_entry_for_another_function_does_not_hold() {
+    let text = file(&[("status", entry("p02", "GPIO", false))]);
+    let c = run("    .status: .u.ANALOG\n", Some(&text));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("status", "p02")]);
+    assert_eq!(
+        c.pins.findings,
+        [
+            "main.pins.toml:3: `status` was `u.p02`, but the entry is for GPIO and the request asks for ANALOG; a pin is picked again"
+        ]
+    );
+}
+
+#[test]
+fn a_stale_entry_is_a_finding_when_unlocked_and_an_error_when_locked() {
+    let unlocked = file(&[
+        ("gone", entry("p03", "GPIO", false)),
+        ("status", entry("p00", "GPIO", false)),
+    ]);
+    let c = run("    .status: .u.GPIO\n", Some(&unlocked));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        c.pins.findings,
+        [
+            "main.pins.toml:3: the entry `gone` (pin `p03`) is stale: `B` has no request `gone`; the file drops it"
+        ]
+    );
+    assert_eq!(c.pins.changes, ["B.gone: removed, it was pin `p03`"]);
+    assert!(!c.pins.file.board("B").unwrap().contains_key("gone"));
+
+    let locked = file(&[("gone", entry("p03", "GPIO", true))]);
+    let c = run("    .status: .u.GPIO\n", Some(&locked));
+    assert_eq!(
+        messages(&c),
+        [
+            "`gone` is locked to pin `p03` in the table of `B`, but `B` has no request `gone`; delete the entry to let the file drop it"
+        ]
+    );
+}
+
+#[test]
+fn a_table_for_a_board_the_source_lacks_is_stale_too() {
+    let text =
+        "version = 1\n\n[Other.pins.x]\npin = \"p00\"\nfunction = \"GPIO\"\nsource = \"auto\"\n";
+    let c = run("    .status: .u.GPIO\n", Some(text));
+    assert_eq!(
+        c.pins.findings,
+        [
+            "main.pins.toml:3: the entry `x` (pin `p00`) is stale: the source has no board or system `Other`; the file drops it"
+        ]
+    );
+}
+
+#[test]
+fn no_pin_offers_the_capability() {
+    let c = run("    .vbat: .u.PWM\n", None);
+    assert_eq!(
+        messages(&c),
+        [
+            "`vbat` asks for PWM on `u` (`Zmcu4`), and no pin of `Zmcu4` offers it; the functions its rows and peripherals offer are GPIO, ANALOG, AIN0, AIN1, UARTE0_TX, UARTE0_RX, UARTE1_TX and UARTE1_RX"
+        ]
+    );
+}
+
+#[test]
+fn a_request_names_a_part_that_is_there() {
+    let c = run("    .vbat: .v.GPIO\n", None);
+    assert_eq!(
+        messages(&c),
+        [
+            "`vbat` asks `v` for GPIO, but `v` is not a part declared here; the parts here are `u` and `probe`"
+        ]
+    );
+    let c = run("    .vbat: .u.p00.GPIO\n", None);
+    assert_eq!(messages(&c).len(), 1, "{}", c.render());
+}
+
+#[test]
+fn every_pin_that_offers_it_is_taken() {
+    // Both ANALOG pins are the source's and an entry's.
+    let text = file(&[("x", entry("p03", "ANALOG", true))]);
+    let c = run(
+        "    .vbat: .u.ANALOG\n    .x: .u.ANALOG\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        Some(&text),
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    assert!(m[0].starts_with("`vbat` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by the source (connected to `probe.a02`, function GPIO chosen at main.nsm:"), "{}", m[0]);
+    assert!(
+        m[0].ends_with("), `u.p03` by `x` (locked, main.pins.toml:3)"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn the_message_names_the_move_that_would_free_a_pin() {
+    let text = file(&[("x", entry("p03", "ANALOG", false))]);
+    let c = run(
+        "    .vbat: .u.ANALOG\n    .x: .u.ANALOG\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        Some(&text),
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    // `x` is `ANALOG`, which only `p02` and `p03` offer, so it has nowhere to go: no move.
+    assert!(!m[0].contains("moving"), "{}", m[0]);
+
+    // A GPIO entry on a pin that the new request needs can move to a free pin.
+    let text = file(&[("x", entry("p02", "GPIO", false))]);
+    let c = run(
+        "    .vbat: .u.ANALOG\n    .x: .u.GPIO\n    .u.p03 ~ .probe.a03\n    .u.p03.function &= \"GPIO\"\n",
+        Some(&text),
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    assert!(
+        m[0].ends_with("moving `x` to `u.p00` would free `u.p02`; run with the entry removed from the pin file, or move it there, and run again"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn shared_hardware_limits_the_choice() {
+    // UARTE0 is in use through a function the source chose, so UARTE1 cannot be asked for.
+    let c = run(
+        "    .u.p00 ~ .probe.a00\n    .u.p00.function &= \"UARTE0_TX\"\n    .tx: .u.UARTE1_TX\n",
+        None,
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    assert!(
+        m[0].starts_with("`tx` asks for UARTE1_TX on `u`, and no free pin can serve it: `UARTS` allows 1 of UARTE0 and UARTE1 at a time: UARTE0 is used on `u.p00`"),
+        "{}",
+        m[0]
+    );
+}
+
+#[test]
+fn two_requests_for_one_unit_of_a_pair_go_to_the_same_unit_only_if_the_limit_allows() {
+    // Two lines of one peripheral are one use: both fit.
+    let c = run("    .tx: .u.UARTE0_TX\n    .rx: .u.UARTE0_RX\n", None);
+    assert!(c.is_ok(), "{}", c.render());
+    // Two peripherals are two uses: the second is refused.
+    let c = run("    .tx: .u.UARTE0_TX\n    .tx2: .u.UARTE1_TX\n", None);
+    assert_eq!(messages(&c).len(), 1, "{}", c.render());
+    assert!(messages(&c)[0].starts_with("`tx2` asks for UARTE1_TX on `u`"));
+}
+
+#[test]
+fn more_requests_than_pins_say_who_got_them() {
+    let c = run(
+        "    .a: .u.ANALOG\n    .b: .u.ANALOG\n    .c: .u.ANALOG\n",
+        None,
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 2, "{}", c.render());
+    assert!(m.contains(&"`c` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by `a` (new), `u.p03` by `b` (new)".to_string()), "{m:?}");
+    // ANALOG is no class, so the two pins that were found collide with the one-function rule.
+    assert!(m.contains(&"function `ANALOG` is chosen on both `u.p02` and `u.p03`; the requests `a` and `b` ask for a function that is no class, which one pin has".to_string()), "{m:?}");
+}
+
+#[test]
+fn a_direction_that_disagrees_with_the_net_is_refused() {
+    // Two transmitters on one net: the usual rule for two outputs, on the result.
+    let c = run(
+        "    .a: .u.UARTE0_TX\n    .b: .u.UARTE0_TX\n    .a ~ .probe.a00\n    .b ~ .probe.a00\n",
+        None,
+    );
+    assert!(
+        messages(&c).iter().any(|m| m.contains("has two outputs")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_pin_of_a_part_with_a_package_needs_the_package() {
+    let part = r#"
+part Zpkg {
+    pins "A" { .p00 bidirectional "P0" "1" fn GPIO }
+    pins "B" { .p00 bidirectional "P0" "A1" fn GPIO }
+    .package: Package
+}
+board B {
+    .u: Zpkg
+    .status: .u.GPIO
+}
+"#;
+    let c = check("main.nsm", part, &Loader::std());
+    assert_eq!(
+        messages(&c),
+        [
+            "`status` asks `u` for GPIO, but the pins of `Zpkg` depend on its package, which the board does not state; state it (`.u.package &= ...`), one of `A` and `B`"
+        ]
+    );
+}
+
+#[test]
+fn a_request_is_not_made_in_a_part() {
+    let part = "part P {\n    .x: .y.GPIO\n}\n";
+    let c = check("main.nsm", part, &Loader::std());
+    assert_eq!(messages(&c).len(), 1, "{}", c.render());
+    assert!(messages(&c)[0].starts_with("a pin request goes in a board or a module"));
+}
+
+#[test]
+fn a_request_in_a_module_is_keyed_by_its_path() {
+    let src = format!(
+        "{ZMCU4}\nmodule Hub {{\n    .u: Zmcu4\n    .scl: .u.GPIO\n}}\nboard B {{\n    .hub: Hub\n}}\n"
+    );
+    let c = check("main.nsm", &src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        c.pins.file.board("B").unwrap().keys().collect::<Vec<_>>(),
+        ["hub.scl"]
+    );
+    assert!(c.pins.file.to_text().contains("[B.pins.\"hub.scl\"]"));
+    // The module read on its own writes no table.
+    assert!(c.pins.file.board("Hub").is_none());
+}
+
+#[test]
+fn the_pin_file_says_what_is_wrong_with_it() {
+    let bad = "version = 2\n\n[B.pins.x]\npin = \"p00\"\nfunction = \"GPIO\"\ncolour = \"red\"\n";
+    let errors = PinFile::parse(bad).unwrap_err();
+    let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(
+        messages,
+        [
+            "`version` is a whole number, and this reads only version 1",
+            "unknown key `colour` in `B.pins.x`; the keys are `pin`, `function`, `lock` and `source`",
+        ]
+    );
+    // Through the checker: at the file's line.
+    let c = run("    .status: .u.GPIO\n", Some(bad));
+    assert_eq!(c.diagnostics.len(), 2, "{}", c.render());
+    let d = &c.diagnostics[0];
+    assert_eq!(
+        c.sources.place(d.source, d.span).as_deref(),
+        Some("main.pins.toml:1")
+    );
+}

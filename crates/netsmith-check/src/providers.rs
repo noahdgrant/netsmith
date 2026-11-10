@@ -148,6 +148,7 @@ impl Checker<'_> {
         for name in &def.provides {
             let tp = netsmith_lang::ast::TypePath {
                 segments: vec![name.clone()],
+                of_member: false,
             };
             match self.resolve_type(&tp) {
                 Ty::Def(m, i) => {
