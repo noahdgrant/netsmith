@@ -307,6 +307,11 @@ fn expr_paths<'a>(e: &'a Expr, out: &mut Vec<&'a Path>) {
             expr_paths(center, out);
             expr_paths(tol, out);
         }
+        Expr::Call { args, .. } => {
+            for arg in args {
+                expr_paths(arg, out);
+            }
+        }
         Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }

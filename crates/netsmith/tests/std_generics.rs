@@ -75,7 +75,7 @@ board Clamp {
         .pos.net &= \"VIN\"
         .neg.net &= \"GND\"
     }
-    .z: Zener { .zener_voltage &= 4.7V..5.5V }
+    .z: Zener { .zener_voltage &= 11V..13V }
     .z.bias <= .z.zener_voltage
     .d: Diode { .max_reverse_voltage &= 10V }
     .input.pos ~> .z ~> .input.neg

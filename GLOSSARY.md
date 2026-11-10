@@ -306,6 +306,10 @@ _Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not 
 A `LevelTranslator` (`std::parts::logic`, ADR 0063, ADR 0066): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input is a `Logic` line whose `.vih` is `.vt_plus_max` (above it the input is a high for sure) and whose `.vil` is `.vt_minus_min` (below it a low for sure), so the solver judges the driver without a statement of the design; its output is a `Logic` line that states no level. Its supply draw is the row's own: `0A .. .max_supply_current`. A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator
 
+**Range end**:
+`min(.f)` and `max(.f)` (ADR 0098, proposed): the least and the greatest value of the range of the field `.f`, each as one number of the field's own kind, written in a `<=` or `>=` statement (`min(.bias) <= max(.zener_voltage)`). The comparison is then made on two numbers, so it says "can hold for some value", which a plain `<=` ("for every value") cannot. A range end is read and never solved for: it narrows nothing, and a relation that holds one waits, listed as not evaluated, while the field has no value. Not the smaller of two values, as `min(a, b)` is in other languages: it takes one field.
+_Avoid_: Bound function, lo and hi (the names the owner may choose instead), a range with values at its ends (that is `lo..hi` with values for `lo` and `hi`, a different thing)
+
 **Range with values at its ends**:
 A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
 _Avoid_: Computed range, dynamic range

@@ -31,6 +31,7 @@ mod dc_switches;
 mod defaults;
 mod derived_bounds;
 mod empty_cells;
+mod end_functions;
 mod enums;
 mod generic;
 mod generic_parts;
