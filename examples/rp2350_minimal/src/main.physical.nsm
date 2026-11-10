@@ -1,0 +1,85 @@
+//! The physical file of the RP2350A Minimal board: what must be where for it to be interchangeable
+//! with Raspberry Pi's board `RPI-RP2350A-MINIMAL_R4-S1` (MIT, Copyright (c) 2026 Raspberry Pi
+//! Ltd; see `README.md` and `LICENSE`): the outline, the four mounting holes, the connectors
+//! J1 to J4 and the buttons SW1 and SW2.
+//!
+//! Every number is read from their board file (`reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb`,
+//! tabulated in `reference/placements.toml`) and is written here from the board's own corner,
+//! the upper-left corner of the outline (x 74, y 70 in their file), with y growing downward.
+//! A requirement is measured from the BODY of a part (the outline its footprint draws on
+//! `F.Fab`, else its courtyard) and not from the footprint's origin, which is what the parity
+//! checker compares; where the two differ, the comment says so and gives the origin's place
+//! in their file.
+//!
+//! The parts that need not match (the MCU, the flash, the crystal, the regulator, the
+//! inductor, the resistors and the capacitors) have no line here: the placer puts them.
+
+import std::parts::mechanical::MountingHole
+import std::pcb::Outline
+
+physical for Rp2350Minimal {
+    case {
+        // The outline: 52 x 51 mm (x 74 to 126, y 70 to 121 in their file) with 3 mm
+        // corner arcs.
+        .outline: Outline {
+            .width &= 52mm
+            .height &= 51mm
+            .corner_radius &= 3mm
+        }
+
+        // Four non-plated 2.75 mm holes (a row of the project's `kicad.toml`).
+        .hole1: MountingHole { .package &= "M2.5" }
+        .hole2: MountingHole { .package &= "M2.5" }
+        .hole3: MountingHole { .package &= "M2.5" }
+        .hole4: MountingHole { .package &= "M2.5" }
+    }
+
+    // Their MH1 to MH4: (86.03, 74), (113.97, 74), (113.97, 117.18), (86.03, 117.18).
+    .hole1.place.x &= 12.03mm
+    .hole1.place.y &= 4mm
+    .hole2.place.x &= 39.97mm
+    .hole2.place.y &= 4mm
+    .hole3.place.x &= 39.97mm
+    .hole3.place.y &= 47.18mm
+    .hole4.place.x &= 12.03mm
+    .hole4.place.y &= 47.18mm
+
+    // J1, the micro-USB receptacle: their J1 is at (100, 71.7) turned 180 degrees; the
+    // body is the courtyard, which is not centred on the origin: x -4.15 to 4.15 and y -4.01 to
+    // 1.35 of the footprint, so its centre is (0, -1.33) of the footprint and, turned half a
+    // turn, 1.33 mm below the origin: (26, 1.7 + 1.33).
+    .usb.place.x &= 26mm
+    .usb.place.y &= 3.03mm
+    .usb.place.rotation &= 180
+    .usb.place.side &= "top"
+
+    // J2 and J3, the 2 x 18 headers: their J2 is at (77.14, 95.59) and J3 at (122.86, 95.59),
+    // both turned -90 degrees (270). The body (`F.Fab`) is centred on the origin.
+    .header_low.place.x &= 3.14mm
+    .header_low.place.y &= 25.59mm
+    .header_low.place.rotation &= 270
+    .header_low.place.side &= "top"
+    .header_high.place.x &= 48.86mm
+    .header_high.place.y &= 25.59mm
+    .header_high.place.rotation &= 270
+    .header_high.place.side &= "top"
+
+    // J4, the JST-SH debug port: their J4 is at (107.6, 115.375), not turned. The body is the
+    // courtyard, x -2.8 to 2.8 and y -5.85 to 0.45 of the footprint: its centre is 2.7 mm above
+    // the origin.
+    .debug.place.x &= 33.6mm
+    .debug.place.y &= 42.675mm
+    .debug.place.rotation &= 0
+    .debug.place.side &= "top"
+
+    // SW1 (BOOTSEL) at (91.2, 75.2) turned -90 degrees, SW2 (RESET) at (111.8, 107.475)
+    // turned 180. The body (`F.Fab`) is centred on the origin.
+    .bootsel.place.x &= 17.2mm
+    .bootsel.place.y &= 5.2mm
+    .bootsel.place.rotation &= 270
+    .bootsel.place.side &= "top"
+    .reset.place.x &= 37.8mm
+    .reset.place.y &= 37.475mm
+    .reset.place.rotation &= 180
+    .reset.place.side &= "top"
+}

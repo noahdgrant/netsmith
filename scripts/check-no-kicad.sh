@@ -112,10 +112,12 @@ done
 for project in rp2350_minimal; do
     step "build examples/$project" "$work/examples/$project" build --out "$work/out/$project"
 done
-# `fab` on rp2350_minimal waits for the board's physical file (outline, mounting holes, the
-# places of the connectors; a later item of epic #308): without them the 39 parts are placed
-# on a board with no size, and the router stops at its 300 s timeout with connections left.
-# Add `fab examples/rp2350_minimal` back here when that item merges.
+# `fab` on rp2350_minimal is not run here: the placer takes 3 s, but the router needs 35 s on an
+# idle machine for the seed the project's layout file names (97 s for seed 0), more than the
+# 60 s that one run of this script may take, and a run the router has to stop exits 1 with
+# INCOMPLETE. The test `rp2350_minimal_pcb_matches_raspberry_pi` (crates/netsmith/tests/
+# rp2350_parity.rs) runs `fab` on the project with NETSMITH_NO_KICAD=1 and a route timeout of
+# 20 s, and gates on the parity checker, in the `test` slices.
 
 # stops <label> <folder> <KiCad id> <netsmith arguments...>: a run that names a KiCad part of the
 # project's own must stop, and its message must name the part, the id and the line of kicad.toml

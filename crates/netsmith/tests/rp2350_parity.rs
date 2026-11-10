@@ -2,8 +2,7 @@
 //! KiCad text stand for what `fab` writes, and the checker must pass a copy of the reference's
 //! must-match items and fail, naming the item, each way that a board can differ. One test runs
 //! the checker on Raspberry Pi's own board against itself, which proves that it reads a real
-//! KiCad 10 file. One more, dormant until the port has a board, builds the example with `fab`
-//! and gates on the checker.
+//! KiCad 10 file. One more builds the example with `fab` and gates on the checker.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -672,38 +671,52 @@ fn the_designator_map_says_what_it_cannot_read() {
     DesignatorMap::parse(&committed).unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// Dormant until the port's board exists: while `reference/designators.toml` has no entry, the
-/// test is skipped with a message; with entries (the board item of the showcase fills the map)
-/// it builds the example with `netsmith fab` and gates on the checker.
+/// The longest `fab` may route in the test, in seconds. The router needs 35 s to 100 s on an idle
+/// machine to finish this board (README, "The result"), and the tests of a slice share the CPU, so
+/// the test does not wait for it: the board file is written either way, marked INCOMPLETE when
+/// the router is stopped, and the checker reads the places of the parts, which the placer fixes
+/// before the router starts. Placement takes about 3 s.
+const ROUTE_SECONDS: &str = "20";
+
+/// Builds the example with `netsmith fab`, with no KiCad (the project needs none, ADR 0097) and
+/// the router stopped after [`ROUTE_SECONDS`], and gates on the checker: every must-match item
+/// must be `ok` on the board it writes, complete or INCOMPLETE. Any other failure of `fab` (no
+/// board written, a requirement not met, a design that does not build) fails the test.
 #[test]
 fn rp2350_minimal_pcb_matches_raspberry_pi() {
     let reference = project().join("reference");
     let map =
         DesignatorMap::parse(&fs::read_to_string(reference.join("designators.toml")).unwrap())
             .unwrap_or_else(|e| panic!("{e}"));
-    if map.is_empty() {
-        eprintln!(
-            "SKIPPED rp2350_minimal_pcb_matches_raspberry_pi: examples/rp2350_minimal/reference/\
-             designators.toml has no entries, so the port has no board to compare yet"
-        );
-        return;
-    }
+    assert_eq!(
+        map.len(),
+        43,
+        "reference/designators.toml pairs every part of Raspberry Pi's board (43)"
+    );
     let out = TempDir::unused("rp2350-parity-fab");
+    // `--locked` ends the run when the pick lock is not current and never writes it, so the test
+    // leaves the project's folder as it was; it also means `--pins locked`.
     let output = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "--pins", "locked", "--out"])
+        .args(["fab", "--locked", "--route-timeout", ROUTE_SECONDS, "--out"])
         .arg(&*out)
         .current_dir(project())
+        .env("NETSMITH_NO_KICAD", "1")
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
         .output()
         .unwrap();
-    assert!(
-        output.status.success(),
-        "netsmith fab failed:\n{}{}",
+    let text = format!(
+        "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let pcb =
-        find_pcb(&out).unwrap_or_else(|| panic!("fab wrote no .kicad_pcb in {}", out.display()));
+    // A run that routed everything succeeds; one that the timeout stopped writes the board and
+    // fails with `INCOMPLETE`, which this test allows: nothing else.
+    assert!(
+        output.status.success() || text.contains("INCOMPLETE:"),
+        "netsmith fab failed, and not for an unfinished route:\n{text}"
+    );
+    let pcb = find_pcb(&out)
+        .unwrap_or_else(|| panic!("fab wrote no .kicad_pcb in {}:\n{text}", out.display()));
     let table = fs::read_to_string(reference.join("placements.toml")).unwrap();
     let report = check_text(
         &table,
@@ -713,6 +726,24 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
     )
     .unwrap_or_else(|e| panic!("{e}"));
     assert!(report.passed(), "{}", report.text());
+    let (ok, failed) = report.must_match_counts();
+    assert!(
+        ok > 200 && failed == 0,
+        "{ok} must-match items ok:\n{}",
+        report.text()
+    );
+
+    // The committed overlay is the picture of this run (the placer is deterministic: the same
+    // source, physical file, layout file and seed give the same board, and the router has no say
+    // in where the parts are).
+    let committed = fs::read_to_string(reference.join("parity-overlay.svg")).unwrap();
+    assert!(
+        committed == report.overlay_svg(),
+        "reference/parity-overlay.svg is not the overlay of the board `fab` writes; from \
+         examples/rp2350_minimal run `netsmith fab --locked`, then\n  cargo run -p netsmith \
+         --example parity -- fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb --svg \
+         reference/parity-overlay.svg"
+    );
 }
 
 fn find_pcb(dir: &Path) -> Option<PathBuf> {

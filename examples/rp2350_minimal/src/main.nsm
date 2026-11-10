@@ -1,7 +1,7 @@
 //! The RP2350A Minimal board: the circuit of Raspberry Pi's open reference design
 //! `RPI-RP2350A-MINIMAL_R4-S1` (MIT, Copyright (c) 2026 Raspberry Pi Ltd; see `README.md` and
-//! `LICENSE`), written in netsmith. The schematic only: the outline, the mounting holes and the
-//! places of the parts are the physical file's and are not written yet.
+//! `LICENSE`), written in netsmith. The circuit only: the outline, the mounting holes and the
+//! places of the connectors and buttons are in `main.physical.nsm`.
 //!
 //! `netsmith compare` says that its nets are Raspberry Pi's (`README.md`, "Same nets"; a test
 //! holds it). The pin-to-signal mapping of the two 2 x 18 headers is Raspberry Pi's too, and it
@@ -26,6 +26,10 @@ import std::sources::Rail
 board Rp2350Minimal {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
+        // Ground is the copper poured over the back of the board, as on Raspberry Pi's (a
+        // ground zone on `B.Cu`): every ground pad joins it through a via, and the router has
+        // no ground track to draw on the front.
+        .bottom.net &= "GND"
     }
 
     // ---- The connectors: J1 to J4 ----
