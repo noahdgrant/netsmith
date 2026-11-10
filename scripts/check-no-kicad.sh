@@ -3,9 +3,14 @@
 # that is meant to build, with KiCad's symbol and footprint libraries and `kicad-cli` hidden, and
 # fails if a run exits with an error or says that KiCad is missing.
 #
-# The examples are the ones the tests use (crates/netsmith/tests/erc.rs, schematic_invariants.rs):
-# the boards of examples/ and the three projects. `carrier_and_cards.nsm` is left out: its parts
-# are invented and have no KiCad symbol, so it is checked and solved only, never built.
+# The examples are listed from the examples/ folder, never by hand, so a new one is covered by
+# adding it: every `*.nsm` of examples/ that is a board (not a `*.physical.nsm`, the physical file
+# of a board) is built and fabbed from examples/, and every folder of examples/ is a project (it
+# has a `netsmith.toml`, which is how `netsmith build` takes a folder) and is built from its own
+# folder, as a person runs it, and fabbed too when it has a physical file (`*.physical.nsm`):
+# without one the parts are placed on a board with no size and `fab` has nothing to say yet.
+# What cannot build is named in `skipped` below, each with its reason; the script fails for a
+# folder or a file that is neither built nor named there, and for a name there that is gone.
 #
 # A project may name a KiCad part of its own in `kicad.toml`, which is the one case that needs
 # KiCad (ADR 0097), and then a run stops and says which part, which id and which line. No example
@@ -28,6 +33,12 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
+
+# What of examples/ is not built, as "name|reason". A file is named by its file name, a folder
+# by its name and a slash. Keep this short: each entry is something that cannot build.
+skipped=(
+    "carrier_and_cards.nsm|its parts are invented and have no KiCad symbol: it is checked and solved only (crates/netsmith-check/tests/mate.rs, crates/netsmith-solve/tests/mate.rs), never built"
+)
 
 if [ "$#" -ge 1 ]; then
     bin="$(realpath "$1")"
@@ -100,23 +111,74 @@ step() {
     echo "ok    $label"
 }
 
+# Why `$1` (a name in examples/) is not built, or nothing when it is.
+skip_reason() {
+    local entry
+    for entry in "${skipped[@]}"; do
+        if [ "${entry%%|*}" = "$1" ]; then
+            printf '%s' "${entry#*|}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# What is in examples/ now, so that an allow-list entry for a thing that is gone is found out.
+present=" "
+shopt -s nullglob
+
 # The boards that are one file.
-for name in led led_panel linear_regulator status_indicator four_layer two_boards outline_and_pours; do
-    step "build examples/$name.nsm" "$work/examples" build "$name.nsm" --out "$work/out/$name"
-    step "fab   examples/$name.nsm" "$work/examples" fab "$name.nsm" --out "$work/fab/$name"
+for file in "$repo"/examples/*.nsm; do
+    base="$(basename "$file")"
+    present="$present$base "
+    case "$base" in *.physical.nsm) continue ;; esac
+    if reason="$(skip_reason "$base")"; then
+        echo "skip  examples/$base: $reason"
+        continue
+    fi
+    name="${base%.nsm}"
+    step "build examples/$base" "$work/examples" build "$base" --out "$work/out/$name"
+    step "fab   examples/$base" "$work/examples" fab "$base" --out "$work/fab/$name"
 done
 
 # The projects: run from their folder, as a person does.
-for project in rp2350_minimal schematic_bench enclosure_sensor; do
-    step "build examples/$project" "$work/examples/$project" build --out "$work/out/$project"
+for dir in "$repo"/examples/*/; do
+    name="$(basename "$dir")"
+    present="$present$name/ "
+    if reason="$(skip_reason "$name/")"; then
+        echo "skip  examples/$name/: $reason"
+        continue
+    fi
+    if [ ! -f "$dir/netsmith.toml" ]; then
+        echo "FAIL  examples/$name/: has no netsmith.toml, so this script does not build it: give it one, or name it in \`skipped\` with the reason it cannot build"
+        failed=1
+        continue
+    fi
+    step "build examples/$name" "$work/examples/$name" build --out "$work/out/$name"
+    # A project with no physical file has no board outline: `fab` waits for it (for
+    # rp2350_minimal, the board's outline, mounting holes and the places of the connectors: a later
+    # item of epic #308; without them its 39 parts sit on a board with no size and the router
+    # stops at its 300 s timeout with connections left). It is run as soon as the file exists.
+    if [ -n "$(find "$dir" -name '*.physical.nsm' -not -path '*/libs/*' -not -path '*/reference/*' -print -quit)" ]; then
+        step "fab   examples/$name" "$work/examples/$name" fab --out "$work/fab/$name"
+    else
+        echo "note  examples/$name: no physical file, so no fab run"
+    fi
 done
-# `fab` on rp2350_minimal waits for the board's physical file (outline, mounting holes, the
-# places of the connectors; a later item of epic #308): without them the 39 parts are placed
-# on a board with no size, and the router stops at its 300 s timeout with connections left.
-# Add `fab examples/rp2350_minimal` back here when that item merges.
+
+for entry in "${skipped[@]}"; do
+    name="${entry%%|*}"
+    case "$present" in
+        *" $name "*) ;;
+        *)
+            echo "FAIL  \`skipped\` names $name, which is not in examples/ (remove it)"
+            failed=1
+            ;;
+    esac
+done
 
 if [ "$failed" -ne 0 ]; then
     echo "check-no-kicad: FAILED"
     exit 1
 fi
-echo "check-no-kicad: $runs runs with no KiCad: every example built and fabbed"
+echo "check-no-kicad: $runs runs with no KiCad: every example built, and fabbed where it has a physical file"
