@@ -194,6 +194,45 @@ generic Schottky {
 /// `-.forward_voltage` because a Zener has no such field, and a datasheet's `VF`, where it
 /// exists, would allow a clamp across an AC line. The part's `.bridge_voltage` is the voltage
 /// at the cathode relative to the anode, the way it clamps, which is its `.bias`.
+///
+/// Why these members (ADR 0080, issue #199). A real 12 V automotive board held a supply pin under
+/// its absolute maximum with a series resistor and a Zener across it. The voltage range of a
+/// Zener is published at a test current and at 25 C, and the board needed it at the hot and the
+/// cold end of its temperature range. It stated the test current, the temperature shift and the
+/// leakage by hand, with the datasheet page in a comment, and nothing tied them to the row the
+/// solver picked: another row would pass in silence with the wrong numbers. `.zener_voltage`
+/// already is the datasheet's minimum to maximum of VZ at `.test_current`, so there is no second
+/// pair of members for the minimum and the maximum. Each of the seven rows read when this was
+/// written states all four columns from its datasheet table, with the table and page in `notes`,
+/// or states none (a catalog test requires all four together). Rows beyond them need a person to
+/// read their library type on JLCPCB (ADR 0039).
+///
+/// What was not taken:
+///
+/// - The coefficient as a `Number` fraction per kelvin, like a resistor's. The datasheet
+///   publishes millivolts per kelvin, and a fraction needs a division by a voltage that is itself
+///   a range, a figure the datasheet does not give. A `Voltage` per kelvin keeps its number and
+///   its unit. No kind holds volts per kelvin, and a new quantity kind is a language choice.
+/// - `.temperature_coefficient` marked `optional` as a member (ADR 0074). A value a catalog row
+///   gives is never a statement, so the relation would be skipped for every design that does not
+///   state the coefficient by hand, and the row's figure would be ignored: the opposite of the
+///   issue. The member marker guards what a design states (the shift); the column marker (ADR
+///   0078) lets a row be empty.
+/// - `.temperature_shift` as a plain `Number`: `Temperature` exists (kelvin, a difference), and
+///   the relation divides by `1K` to reach a plain count.
+/// - Absolute temperatures, with 25 C in the library: there is no absolute-temperature literal,
+///   and a shift from the datasheet's 25 C is what the datasheet states.
+/// - A separate hot and cold member: one range carries both corners, and a design asks for
+///   either end with `<=` or `>=`.
+///
+/// Limits. The coefficient is a typical figure, not a bound on a part, so the corners are
+/// typical-based and the margin is the design's. The test current of the coefficient is `IZTC`,
+/// which equals IZT in every row filled; a datasheet where they differ needs another member. The
+/// voltage is the 25 C range at the test current; the dynamic impedance at another current is not
+/// modelled.
+///
+/// Left open, for the owner: the unit of the coefficient, the name and kind of the shift, which
+/// marker guards what, and the relation's form are the owner's to confirm or replace.
 generic Zener {
     .designator &= "D"
 
@@ -271,6 +310,44 @@ generic Zener {
 /// members, a steady `.reverse_voltage` and a transient `.reverse_peak`, would be a second
 /// member on every rail, and are not built. `TvsBidirectional` is not given the field: it
 /// clamps a reverse transient as a forward one, so what to check is the owner's to say.
+///
+/// Why `.breakdown_voltage` is an optional column (ADR 0073). A design could not say that a TVS
+/// diode must stay non-conducting with a margin above the highest its line reaches, because the
+/// part had the stand-off and the clamping voltage and no breakdown voltage. A real 12 V
+/// automotive board's input protection needed `.clamp.breakdown_voltage >= .vin.peak * 1.1` and
+/// carried the column in a project part whose column was required. A file of the `tvs` catalog
+/// may leave the column out of its first line, and a row may leave its cell empty, so a
+/// project's file written before the column stays valid. A design that does not mention the
+/// field is offered every row and has no new check. A design that states it is offered only the
+/// rows that record one, as for `.dielectric` and `.rms_current`: a row with an empty cell fits no
+/// such design (ADR 0047, ADR 0058). The standard `tvs.csv` states a VBR for the one row whose
+/// datasheet table was read (`data/jlcpcb/README.md`), because a value enters a catalog only with
+/// its source, so a design that states `.breakdown_voltage` is offered that row and no other
+/// standard one, and gets the usual "the `tvs` catalog has nothing for" otherwise, until a
+/// project's catalog gives rows with the column. The record does not say at which test current
+/// the minimum VBR is given; that goes in a row's `notes`.
+///
+/// What was not taken:
+///
+/// - A required column, as the project part had it. Every standard row would need a number with
+///   no recorded source, or a design that never mentions VBR would be refused every row. The
+///   optional column is what ADR 0055 did for the same reason.
+/// - A relation in `Tvs`, such as `.standoff_voltage <= .breakdown_voltage`. It is always true of
+///   a real part, but the solver counts a field as asked for as soon as a relation mentions it
+///   (`asked`, `crates/netsmith-solve/src/solve.rs`), so it would make every standard row unfit
+///   for every TVS diode. ADR 0055 refused the same relation for the inductor's heating current.
+/// - A separate generic or part for the diode with a breakdown column: two spellings of one
+///   thing, a design that needs the margin would have to know to pick it, and a project would
+///   copy the whole part, as a real project did.
+/// - Numbers from memory or from the JLCPCB strings in `notes`: they are not read from a
+///   datasheet table with a stated condition (VBR is given at a test current, minimum and
+///   maximum), and nothing is entered without it.
+///
+/// Cost. The check is the design's own: the library does not say which margin is enough, and a
+/// design with a TVS diode and no `.breakdown_voltage` line has no margin check.
+///
+/// Left open, for the owner: the written record, the rejected alternatives and the placement of
+/// the optional-column rule are for the owner to confirm.
 generic Tvs {
     .designator &= "D"
 

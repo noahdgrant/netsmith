@@ -90,6 +90,19 @@ generic NMosfet {
 /// provider, with the catalog `p_mosfet`, and a project's part may provide it.
 /// `.on_resistance_vgs` is the magnitude of the gate-source voltage that `.on_resistance` is
 /// guaranteed at, checked as for `NMosfet` (ADR 0092).
+///
+/// Why a generic, and why its catalog has no rows (ADR 0063). A generic is a standard definition
+/// with a catalog that is its own first provider (ADR 0068, section 12), as `NMosfet` is; its pins,
+/// kinds, members and relations did not change when it became one. It gained
+/// `catalog p_mosfet { ... }` with the columns of `n_mosfet`. `Diode`, `Switch` and the connectors
+/// are still parts, because they have no catalog. A part of a project may say `provides PMosfet`.
+/// The standard file `data/jlcpcb/catalog/p_mosfet.csv` is the header and no row: a catalog row
+/// needs a recorded source (`data/jlcpcb/README.md`), and no P-channel MOSFET has been read from a
+/// JLCPCB and LCSC record with its datasheet. The reason for a header-only file is given at
+/// `LevelTranslator` (`std/parts/logic.nsm`). A design that used the standard `PMosfet` as a part
+/// and stated every rating by hand now has requirements that a row or a provider must meet; no
+/// example and no test of the repository did. `crates/netsmith-check/tests/std_generics.rs` lists
+/// the generics and the parts that stay parts. A first real row, with its source, is open.
 generic PMosfet {
     .designator &= "Q"
 

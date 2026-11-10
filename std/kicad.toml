@@ -108,6 +108,12 @@ footprint = "LED_SMD:LED_0805_2012Metric"
 # The standard library's other kinds (ADR 0023), mapped to KiCad 9's stock symbols and
 # footprints. Every row is checked against the installed libraries by a test
 # (crates/netsmith/tests/kicad_rows.rs): its pads, the symbol's pin names and electrical types.
+# Packages are named after the footprint (`SOD-123`, `0603`, `2.54mm`, `GCT_USB4105_16P`, `M3`).
+# Mapped with a caveat (ADR 0023): `Tvs` is drawn with `Device:D_Zener`, because KiCad has no
+# one-way TVS symbol (`Device:D_TVS` is the two-way one with pins A1 and A2); `Crystal` has two
+# pins, so only two-pad footprints are mapped, and the four-pad crystals that are most common
+# (3.2 x 2.5 mm) are not; `Coax` maps an SMA connector whose footprint has four ground pads, all
+# on pad 2; `Switch` is mapped to two SMD tactile footprints only.
 
 [[part]]
 kind = "Diode"

@@ -69,7 +69,16 @@ generic LinearRegulator {
 ///
 /// The feedback pin draws nothing (its bias current is ignored), so the same current runs
 /// through both resistors, `(vout - vref) / rtop` and `vref / rbottom`, and each resistor's
-/// power rating is checked against it.
+/// power rating is checked against it. An output below the reference cannot be made, because the
+/// divider can only raise it: it is refused with the numbers.
+///
+/// Why pins and voltages, not a `Rail` (ADR 0025). A first version had an `output: Rail`. Inside a
+/// stage that makes the output, the divider's rail and the stage's port are two terms on one net
+/// with no supplier among them, and the balance of currents (ADR 0007, ADR 0014) attributes the
+/// whole load to the divider and then refuses the divider's own current. A divider that is pins
+/// and voltages adds no term to any net, so it can sit under any rail. The board says
+/// `.out.voltage == .divider.vout`, or a stage does it for the board. The cost is a limit: the
+/// divider's few microamps to a milliamp are not added to the load.
 module FeedbackDivider {
     /// Joined to the positive pin of the output the divider measures.
     .top: Pin
@@ -116,6 +125,31 @@ module FeedbackDivider {
 /// `.buck.fsw == 24GHz * 1ohm / .rt` with `.rt: Resistance` a field of the IC that the board
 /// states against its `RT` resistor. A number the IC leaves open makes the relations that use
 /// it not evaluated, which is no error.
+///
+/// Why the work is split between this and `BuckStage` (ADR 0025). The language has no
+/// inheritance, no generic module over a part and no relations in an interface that reach the part
+/// that holds it. So the IC is a `part` with a `.buck: Buck` member, written by whoever adds the
+/// IC (its pin table, its datasheet numbers as narrowings, and the one relation from its output to
+/// its input current), and the stage is a module of everything else, joined to the IC by
+/// `.stage.buck ~ .u.buck`. The recommended inductance of the IC is its `min_inductance`, one
+/// number. The worked example is an invented IC, `Zbk2`, in the guide ("Switching regulators") and
+/// in `crates/netsmith/tests/std_models.rs`; nothing about a real part is in the guide.
+///
+/// Why the switching node is a rail. The checker's balance of currents needs a supplier inside the
+/// module's scope for a net that has a port, and a rail inside a part must have a pad (a part
+/// cannot be placed with a padless pin). The buck's output node is after the inductor and a buck
+/// IC usually has no pin on it, so the supplier is the IC's `sw` pin as a rail (`.sw: Rail`, the DC
+/// voltage the output's, the current the negative of the load), and the inductor is a `~>` chain
+/// from it to the output. In a chain the inductor's `.current` is the draw, the average (ADR
+/// 0014), so the stage states the peak itself. The input current,
+/// `iout * vout / (vin * efficiency)` over the whole efficiency range, is the IC's relation and
+/// reaches the supply through the IC's `vin` rail; the stage's own `vin` and `vout` ports draw no
+/// DC current (`vin.current &= 0A`).
+///
+/// Not modelled when ADR 0025 was written: loop stability, dropout and minimum on-time (the output
+/// must be at most the input; the minimum on-time and off-time are modelled since ADR 0093),
+/// light-load modes, the divider's and the IC's quiescent current in the load (see `BuckStage`),
+/// and the second capacitor an IC may ask for. Each was open in issue #63.
 interface Buck {
     /// The switching node as a supply: its `pos` is the IC's switch pin and its `voltage` the
     /// output voltage it averages to, and the load current comes out of it (the `current` is
@@ -252,6 +286,14 @@ interface Buck {
 ///
 /// The IC's recommended inductance is its `min_inductance`; the converter's stability and
 /// its loop are not modelled.
+///
+/// One capacitor on each side is picked for the effective capacitance the IC asks for at the
+/// voltage across it (ADR 0013). The catalog's Basic capacitors lose most of their capacitance at
+/// a few volts, so an IC that asks for 10 uF or more at 12 V finds no capacitor; the guide's
+/// invented IC is 4.5 V to 6 V. A frequency that a resistor sets is one more relation the IC
+/// writes (`.buck.fsw == 24GHz * 1ohm / .rt_value`, tested). The naming (`Buck`, `BuckStage`,
+/// `FeedbackDivider`, the catalog names) and the board's four joins for a buck are choices the
+/// owner may want different (ADR 0025).
 module BuckStage {
     /// Joined to the IC's `buck`.
     .buck: Buck

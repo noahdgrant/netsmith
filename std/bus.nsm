@@ -10,6 +10,18 @@
 //! 0016): the role judges the table and the nets, and invents no datasheet fact. Names are those
 //! of the device that has the bus. Every bus but `Usb2` has `.levels`, the logic levels of its pins
 //! (`std::logic::Levels`): a part states them for the interface, as it states those of a `Logic`.
+//!
+//! The lines of a bus are plain `Pin`s (ADR 0023; `lines` of ADR 0064 now says which way each
+//! role drives them). `Logic` is not a bus member: it gives every signal a reference rail whose
+//! pins `~` then joins, so two chips on separate supplies of the same voltage would have their
+//! supply nets merged by a signal join. The levels of a bus are the `Levels` member, which `~`
+//! does not join (ADR 0064). The faults of ADR 0016 covered the roles when the parts had pin
+//! tables with `output` and `input` pins, as ADR 0023 verified and tested: a UART joined with
+//! `~` is two outputs on a net (the board crosses `tx` and `rx` a pin at a time); an `input`
+//! with nothing on its net is refused; two SPI masters, or two slaves with `miso`, on one bus
+//! are two outputs on a net; an SPI master and slave, and a USB host and device, join with `~`
+//! as named. Not covered, as ADR 0023 wrote it: a bus joined to a passive connector is not
+//! checked at all, because a connector has no direction.
 
 import std::logic::Levels
 import std::parts::passive::Resistor
@@ -181,6 +193,12 @@ enum UsbRole {
 /// draws. A receptacle (a connector that the bus goes through, `std::parts::connector::UsbC2`)
 /// is not an end of the bus and states `UsbRole::Passthrough`, so the rules judge the ends
 /// behind it; a part that is a host or a device by what is plugged in (OTG) states none.
+///
+/// `vbus` is a `Rail` and not a pin, which is a deviation from "vbus, gnd" as two pins (ADR 0023).
+/// A rail carries the voltage and the current, so the connector's `vbus.current` follows from the
+/// loads on the net (ADR 0007), and a board bounds it with one line, `.usb.vbus.current >=
+/// -500mA`. The device side must declare the rail, with its sensing pin an optional `input` and
+/// its `neg` joined to its ground.
 interface Usb2 {
     .role: UsbRole
     .dp: Pin
@@ -227,6 +245,69 @@ interface Usb2 {
 /// - `supply_top`, the voltage the draw is worked out at. It is `supply.voltage`, the steady
 ///   range, which is what a budget and a power rating read. A board that wants the draw at
 ///   the transient its rail can reach states it (`.pull.supply_top &= .rail.peak`).
+///
+/// Why it exists (ADR 0070). A resistor from a rail's positive pin to one signal line, the
+/// pull-up of a reset or an enable or an open-drain output, is a chain that starts on the rail's
+/// net. A plain `Resistor` leaves its current unknown, so the net has two unknowns, the
+/// resistor's through-current and the rail's current, the balance of the net cannot be solved
+/// (ADR 0026), and every check that reads it waits: the regulator's output current and power, the
+/// resistor's own power. The build lists them as not evaluated. ADR 0044 and `I2cPullups` solved
+/// this for the two lines of an I2C bus; a pull-up on any other line had no module.
+///
+/// Where it lives. Next to `I2cPullups`, which has the same circuit twice. This file already
+/// imports `Resistor` and `Rail`, and a pull-up is a circuit around a line.
+/// `std/parts/passive.nsm` holds parts and imports nothing: a module there would make it import the
+/// rails and would put a circuit with a rail among two-terminal parts. The module regulators,
+/// `BuckStage` and `FeedbackDivider`, sit beside the parts they are built from. The cost is that a
+/// reader looking for a pull-up looks in `bus`, which this comment and the guide answer.
+///
+/// Why `I2cPullups` is left alone. It was to be written with two `PullUp`s only if every existing
+/// test, example and guide block stayed the same, with the same picks, trials and messages. It
+/// does not. Tried with the two as `.sda_pullup` and `.scl_pullup`, `examples/enclosure_sensor`
+/// built byte for byte as before, but five tests failed: the resistor is now at
+/// `pullups.sda_pullup.resistor`, so tests that read `pullups.sda_pullup.current` and
+/// `.resistance` fail, the list of picked parts by path changes, and a current budget stated on
+/// `pullups.supply.current` stays at the stated `0A..2mA` where the sum of the two draws (1.4 to
+/// 1.6 mA) was expected: through two inner modules the budget is not narrowed to what the circuit
+/// draws, a difference in behaviour and not only in paths. A member's path is what a board and a
+/// test name. The first try also had `.resistance == .sda_pullup.resistance`, the direction
+/// `I2cPullups` states it in; with the two `PullUp`s the resistor inside stays unset, because the
+/// solver evaluates a relation with a field alone on its left from the right side only, and the
+/// wrapper's value is on the left (the pick was 330 ohm and the build was refused). So
+/// `I2cPullups` keeps its own text. The two circuits repeat, and one change to the draw model needs
+/// two edits: that is the cost.
+///
+/// What was not taken:
+///
+/// - The draw as a `?=` default on the supply: a default is the module's offer, and a draw is a
+///   fact about the circuit.
+/// - A pull-up as a `generic` that the solver picks a provider for: there is one circuit, and
+///   nothing to pick between.
+/// - Reading `supply.peak` in the equation. A relation that reads an unset value waits and is
+///   listed as not evaluated, so every pull-up on a rail with no stated peak would print a note
+///   that it did not print before, and its resistor's current would be unknown (the fault this
+///   module fixes). A default of the rail's peak has the same effect. There is no way in the
+///   language to read a value only when it is stated, and adding one is the owner's decision.
+/// - Widening the lower end always, to `-(peak / resistance)`: it makes every budget on a pull-up's
+///   rail fail or lose its meaning for a board with no such driver.
+/// - Only writing both assumptions in the doc: a board that has the driver then has nothing to
+///   state.
+///
+/// `.line_low` is the share of the time the line is held low. The time a line is driven above the
+/// supply is not a share the module models: `.overdrive` is the worst case the line reaches, and
+/// the draw's range is the span from it to the draw with the line low, so the two cannot be told
+/// apart in time (the interval is wider than a mix of the two would give, never narrower).
+///
+/// Left open, for the owner (the module and the marker `required` on its resistance were decided
+/// in principle on 2026-11-06; the rest was an agent's, told to pick an option and go on):
+///
+/// - The names `.line`, `.line_low` and `.resistor`.
+/// - That the draw is the worst case, 0 to `supply.voltage / resistance`, unless the board
+///   narrows `.line_low`.
+/// - That the module is in `std/bus.nsm` and not in `std/parts/passive.nsm`.
+/// - That `I2cPullups` is not re-expressed, for the reason of the paths.
+/// - The two assumptions of the draw, `.overdrive` and `.supply_top`, which the owner asked to be
+///   modelled on 2026-11-06 and whose names and defaults an agent chose.
 module PullUp {
     .supply: Rail
     .line: Pin
@@ -262,6 +343,11 @@ module PullUp {
 /// way: `overdrive` (0 V: no driver holds a line above `supply`; a negative draw of up to
 /// `overdrive / resistance` otherwise) and `supply_top` (`supply.voltage`; the transient the
 /// board states, for the draw at it). Both apply to both lines.
+///
+/// It is the model of `PullUp` twice, and is not written with two `PullUp`s, for the reason of the
+/// paths given there. There is no `PullUp` module in ADR 0023, which said a single pull-up needs
+/// nothing because a `Resistor` is already in `~>` chains and a module cannot be in a chain; ADR
+/// 0070 added one, for the draw.
 module I2cPullups {
     .bus: I2c
     .supply: Rail
@@ -315,6 +401,48 @@ module I2cPullups {
 ///   the rail it is judged against. A line that a 5 V driver holds above a 3.3 V reference is
 ///   stated by a board that has such a driver (`.pulldown.line_top &= 0V..5.25V`), and the
 ///   current then reaches `line_top / resistance`.
+///
+/// Why it exists (ADR 0079). A resistor from a logic line to ground, the pull-down of a boot-mode
+/// pin, an enable or a gate, is a chain that starts on a signal pin. A plain `Resistor` leaves its
+/// through-current unknown: the net of the line is not balanced (a balance exists only for a net a
+/// rail draws from or returns to, ADR 0007, ADR 0026), so nothing sets it. The drop and the power
+/// of the resistor then wait, and the report has a note for each. The Ohm bound (the amendment of
+/// ADR 0026) proves the power of a resistor whose two ends have known voltage ranges and sets no
+/// current, so every other check that reads the current still waits, and the track width of the
+/// net stays a lower bound. It mirrors `PullUp` (ADR 0070).
+///
+/// The module draws nothing from a rail, because the current comes from the line's driver, whose
+/// supply is not the module's. `.reference` is therefore a reference and not a load, as the
+/// `.reference` of `Levels` is, and states `.reference.current &= 0A` so that joining it to the
+/// board's rail leaves no unknown on that net (ADR 0066, ADR 0077).
+///
+/// What was not taken:
+///
+/// - Naming the rail `.supply` and stating a draw on it, as `PullUp` does. A pull-down returns into
+///   the rail's `neg` what the driver sent and takes nothing from `pos`; a stated draw would be a
+///   lie that makes the net's current wrong.
+/// - A pair, `.line_low` and `.line_high`. One share is enough: the resistor carries current only
+///   while the line is high.
+/// - A negative current for a line driven below ground (the `overdrive` of `PullUp`). No driver in
+///   the cases at hand does it, and a board can state `.line_top` with a negative end for the
+///   current the other way. Add it when a board needs it.
+/// - A bare range `0..line_top / resistance` without the share. The share is what `PullUp` offers a
+///   board that knows its line is low only part of the time, and a board that knows its line is
+///   high only part of the time has the same need.
+///
+/// What it does not do: it does not give the driver's output current, nor the net's balance, so a
+/// check that needs the driver's current waits as before. It states no input current for the pins
+/// on the line. An optional `.input_current` on `Logic` was asked for (issue 192); it cannot join a
+/// balance that does not exist, a leakage as a current source was refused in ADR 0076 section 8,
+/// and owner decision 2 of ADR 0076 asks for the datasheet's own form of `Ii`, shown to the owner
+/// first. (`Logic` has since an optional `.ii`, ADR 0076 amendment 8, which ADR 0079 does not
+/// mention.)
+///
+/// Left open, for the owner (a std module in today's language, no new syntax): the names
+/// `reference`, `line_high` and `line_top`, and the choice that the module draws nothing from a
+/// rail, were made by an agent; the pin's input current was not built and is left to the owner.
+/// That the share is of the line being high, and that `.line_top` is the board's to widen for a
+/// stronger driver, are the other things to look at.
 module PullDown {
     .reference: Rail
     .reference.current &= 0A

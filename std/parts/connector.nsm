@@ -11,6 +11,17 @@
 //! on the maker), so a part states it only through a `header` catalog row, whose `source` is the
 //! datasheet; a part without a row is unrated, and the check of the current through a mate
 //! lists it as not evaluated. Only the single-row parts have rows (`data/jlcpcb/README.md`).
+//!
+//! There is one definition for each size of header (ADR 0023): the language has no parameter for a
+//! count, and a part's pin rows are written out. The sizes are single-row 2, 4, 8 and 10, the same
+//! sockets, and 2x3, 2x5 and 2x10; other sizes are added when a design needs one. Pins are `pN` on
+//! pad N whatever the rows are, and the footprint decides which pin is in which row. A socket is
+//! its own kind because it is a different symbol and bill-of-materials line from a header. The
+//! pitch is the package (`.package &= "2.54mm"`); the names a package can take are the mapping's.
+//! The USB Type-C pad numbers were first written from knowledge of the specification, and the
+//! mapping (ADR 0021) checked them against KiCad's receptacle symbols and footprints, which
+//! corrected two things: a power-only receptacle has six contacts (see `UsbCPower`), and the
+//! sixteen-contact USB 2.0 receptacle has the sideband pads A8 and B8 (see `UsbC2`).
 
 import std::bus::{Usb2, UsbRole}
 import std::sources::Rail

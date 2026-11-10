@@ -1112,6 +1112,61 @@ impl Checker<'_> {
     /// statements join, in which each rail is joined to one other only: a module rail joined to
     /// two parts' rails is what they draw together, and a part's rail joined to two of the
     /// module's is the supply of both (ADR 0077).
+    ///
+    /// This is the one exception to ADR 0007, which says `~` between rails equates every field
+    /// except `current`, because a rail can feed several loads. A module that wraps a part (an
+    /// input monitor with its bypass capacitor, a flash with its decoupling) joins its own rail to
+    /// the part's with `~`. Without the exception the part's statement of what it draws
+    /// (`.vs.current &= 0A..1.1mA`, ADR 0066) did not reach the module's rail unless the module
+    /// said so in an equation, the same line in every wrapper (`.vdd.current ==
+    /// .sensor.vs.current`). The module's balance (its rail, flipped, and the part's rail) is two
+    /// terms and works out the module's rail, but only while the net inside the module has no
+    /// other unknown current. A part whose logic line names its supply as the line's reference
+    /// puts a second rail on the net with no statement of what it draws, and the balance had two
+    /// unknowns: a sheet that adds up the draws of its modules had its check not evaluated, and
+    /// the supply had no current (issue 189).
+    ///
+    /// The alias is made in the balance of the net, in the module's scope, and not as an equation
+    /// between the two `current` fields, so a budget stated at the module's rail is judged as ADR
+    /// 0038 says: `.monitor.vdd.current &= 0A..500uA` against a part that claims 0 to 1.1 mA is
+    /// refused, with the numbers, as for a part that is not in a module. The rail of a logic line
+    /// or of a bus's levels (a `reference`, ADR 0066) is not a term of it, and a current that is
+    /// exactly zero is none either. It does not apply when the module's rail is joined to the
+    /// rails of two parts or a part's rail to two of the module's; when a chain starts on the net
+    /// (a pull-up from `.vdd.pos`); when another part has a rail on the net joined to the sensor's
+    /// rail and not to the module's, or another rail of the module that is not a reference; when
+    /// the part is not directly inside the module, or the inner member is a module's port and not
+    /// a part's rail; or when the module is a board, whose rails stand for the outside.
+    ///
+    /// What was not taken:
+    ///
+    /// - An equation between the two `current` fields, pushed by `~`. The solver merges two
+    ///   connected values to the range they share, so a budget stated at the module's rail would
+    ///   narrow the part's claim to fit and the refusal of ADR 0066 and ADR 0038 would be lost for
+    ///   every wrapped part: a supply allowed 0.5 mA of a part that may draw 1.1 mA would build
+    ///   without a word.
+    /// - The language saying that a module's interface rail is an alias of the part's,
+    ///   everywhere. The module could no longer put another load on its own rail (a pull-up, a
+    ///   second part, a pass-through rail), and it changes what the interface of a module means
+    ///   for every module, which is broader than the fault.
+    /// - Leaving it and writing the equation in each wrapper: the same line in every wrapper for
+    ///   a fact the `~` already states, and a wrapper that forgets it gives a sheet that cannot
+    ///   be solved, with a message that names the sheet's fields and not the module's missing
+    ///   line.
+    /// - Equating in every module's balance, whatever else is on the net: a wrapper with a
+    ///   pull-up on its rail would be told that its rail draws what the part draws and nothing
+    ///   more, and fail a balance that is right.
+    ///
+    /// Left open, for the owner: a module that wraps another module (`.vdd ~ .inner.vdd`) is not
+    /// covered. The inner rail is a port, whose current the inner module's own balance sets from
+    /// its part, and a module's balance of two terms already equates the two when nothing else is
+    /// unknown; a reference rail on that net still stops it. The decision named a part inside;
+    /// extending it to an inner module's port is the owner's. A wrapper's bus interface
+    /// (`.spi.levels.reference ~ .vcc`, issue 188) is a member of the module and joined to the
+    /// module's rail, not to a part's, so the rule does not see it: the reference of a part's own
+    /// levels is left out of the balance, the module's own is not, and the module states
+    /// `.current &= 0A` for it. The same applies to the `neg` pins: the return nets are checked
+    /// and never solved from (ADR 0014).
     fn rail_aliases(&self) -> Vec<(InstId, InstId)> {
         let pairs = &self.model.rail_aliases;
         let mut counts: HashMap<InstId, usize> = HashMap::new();

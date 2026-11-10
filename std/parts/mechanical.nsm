@@ -4,6 +4,11 @@
 //! None of these has a value to pick, so none has a catalog. A hole, a fiducial and a test
 //! point are fitted by nobody, so each states `.assembly &= AssemblyMode::None` and is on no BOM and no
 //! placement file (ADR 0024).
+//!
+//! These follow the recommendation of ADR 0020 (ADR 0023): `MountingHole` is non-plated with no
+//! pins, `PlatedHole` has one pin that a screw bonds to a net or leaves open, `Fiducial` has no
+//! pins, and `TestPoint` has one `required` pin. A part with no pins is on no net and is fitted by
+//! nobody. ADR 0020 is still proposed.
 
 /// A mounting hole with no copper: a drill for a screw that touches no net. It has no pins,
 /// so it is on no net.

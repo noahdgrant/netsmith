@@ -84,6 +84,41 @@ fn natural_segment_order(a: &str, b: &str) -> std::cmp::Ordering {
 /// kind or the design states, else `U`. Letters that are not one or more capital letters
 /// (`A` to `Z`) are reported, because the number follows them and a designator with a digit,
 /// a space or nothing in the letters is not one.
+///
+/// Why the letters are a field of the part (ADR 0046). Every `part` has a built-in text field
+/// `.designator` and nothing is declared for it, exactly as for `.assembly` (ADR 0024, ADR 0028,
+/// ADR 0042): declaring it again is the error "`designator` is already declared in this block". A
+/// standard kind states its own letters (`.designator &= "R"` in `Resistor`), because they are
+/// always true of it. A part you define states its own the same way, or states none and is `U`,
+/// as every kind that was not in the old `prefix` table was. A board may narrow the letters of a
+/// part of its own that states none (`.codec.designator &= "IC"`). The letters are those the old
+/// table had, which are the usage of IEEE 315 and ASME Y14.44: `R`, `C`, `L`, `D`, `Q`, `Y`, `F`,
+/// `J`, `TP`, `H`, `FID`, `U`, and `FB`, `SW` and `LBL` as KiCad writes them. The same usage gives
+/// `K` for a relay, `BZ` for a buzzer, `BT` for a battery and `T` for a transformer; the library
+/// has no such kind, so a project that defines one writes the letters on it. A switch stays `SW`,
+/// as it was and as KiCad writes it, where the standards' class letter is `S`: that is
+/// continuity, and it changes with one line in `std/parts/passive.nsm`. A test reads `std/` and
+/// fails for any `part` that does not state `.designator &=` with capital letters, so a new
+/// standard kind gets its letters on purpose.
+///
+/// A text field narrows to one value, so the letters a standard kind states cannot be changed by
+/// a part's user or a board: "contradiction on `r.designator`: it is already "R", which does not
+/// overlap "Z"". It is the limit ADR 0024 records for `.assembly` and is accepted for the same
+/// reason: a resistor is `R`. A default that a board may replace, for the letters of a standard
+/// kind and for `.assembly`, is a separate language choice (one for both) and is left open, for the
+/// owner.
+///
+/// The layout file is keyed by the path of a part (ADR 0032), so a saved placement does not move
+/// when letters change. It was checked two ways: a test
+/// (`a_layout_entry_still_places_its_part_when_the_designator_letters_change` in
+/// `crates/netsmith-pcb/tests/kicad_drc.rs`) places a part by its path, renames every designator of
+/// the design, and finds the part at the same place and turn; and a build of
+/// `examples/outline_and_pours.nsm` with a layout file that locks `stage.regulator` and
+/// `stage.output_cap`, once from before ADR 0044 and once after, had every part, the two locked
+/// ones included, at the same place and turn. A fab package that was already ordered keeps the
+/// designators it was made with, in its BOM, placement file and board file; re-running `netsmith
+/// fab` makes a new package with the new designators, and the board house must be told if it is
+/// the same order.
 fn designator_of(model: &Model, part: InstId, errors: &mut Vec<String>) -> String {
     let Some(word) = text_of(model, part, "designator") else {
         return DEFAULT_LETTERS.to_string();
