@@ -23,8 +23,10 @@ are netsmith's** (MIT, like the rest of the repository).
 
 ## Goal
 
-1. **The same nets.** `netsmith compare` says the schematic of the port and Raspberry Pi's
-   design are the same circuit.
+1. **The same nets.** The schematic of the port and Raspberry Pi's design are the same
+   circuit: the test `every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board` proves
+   it by comparing the wiring alone (see "Same nets"). The bare `netsmith compare` of the two
+   files answers `different`, because it pairs parts by footprint name (see "Run it").
 2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable
    with theirs in these ways, and a checker with tolerances will fail when one is off:
    - the board outline and the four mounting holes;
@@ -50,7 +52,8 @@ are netsmith's** (MIT, like the rest of the repository).
   `kicad.toml`: the QSPI flash, U3, and the crystal, X1 (see Parts).
 
 - `src/amphenol_10103594.nsm`, `src/jst_sm03b_srss_tb.nsm`, `src/samtec_tsw_118.nsm`,
-  `catalogs/micro_usb.csv`, `catalogs/jst_srss.csv`, `libs/netsmith_rp2350.pretty/`: the
+  `catalogs/micro_usb.csv`, `catalogs/jst_srss.csv`, `catalogs/samtec_tsw_118.csv`,
+  `libs/netsmith_rp2350.pretty/`: the
   connectors J1 to J4 (see Parts). The footprints are files of the project's own library and
   need no KiCad.
 - `LICENSE`: Raspberry Pi's licence text.
@@ -213,11 +216,20 @@ and says so.
     the drawing numbers neither; Raspberry Pi's board does so); paste on all pads; courtyard,
     the pads and 0.25; no body, silkscreen or model; the rotation unverified.
 - **J2 and J3, `SamtecTsw11807LD`** (`src/samtec_tsw_118.nsm`): Samtec TSW-118-07-L-D, 2 x 18 pin
-  header, 2.54 mm pitch, through hole; one part for both, 36 pins, `provides Connector`. It has
-  **no JLCPCB match**, so it has no catalog row and no LCSC number: a through-hole part is
-  **soldered by hand** (ADR 0024: a through-hole part is `Hand` unless a board says otherwise, and a
-  test holds it); `AssemblyMode::Consigned` is the way to have JLCPCB place a header that is
-  shipped to them. Footprint `PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D`.
+  header, 2.54 mm pitch, through hole; one part for both, 36 pins, `provides Connector`.
+  Footprint `PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D`.
+  - **Catalog row** (`catalogs/samtec_tsw_118.csv`): LCSC **C6887963**, the `lcsc_pn` that
+    Raspberry Pi's board carries on J2 and J3 (`reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb`).
+    Read on 2026-11-10 from LCSC's product page (`lcsc.com/product-detail/C6887963.html`): title
+    TSW-118-07-L-D, manufacturer Samtec, 36 pins, 2 x 18, 2 rows, pitch and row spacing 2.54 mm,
+    "Through Hole,P=2.54mm", so it **is the Samtec part**, not an equivalent. **Not read:** the
+    JLCPCB parts page `jlcpcb.com/partdetail/C6887963` answered with its application shell only
+    (no MPN, package or library type), so the row's `library` cell is empty (read it from
+    JLCPCB's page before ordering). Price and stock are not recorded.
+  - **Assembly today:** the manifest says nothing, so the part is **soldered by hand** (ADR 0024:
+    a through-hole part is `Hand` unless a board says otherwise, and a test holds it, with the
+    LCSC number); the row does not change that. `AssemblyMode::Consigned` is the way to have
+    JLCPCB place a header that is shipped to them.
   - **Not the generator's footprint:** `gen:PinHeader(rows=2, pins=18, pitch=2.54mm)` has pads of
     0.7 x the pitch, 1.778 mm, and its pins run down columns from the top left; Raspberry Pi's
     pads are 1.6 mm (the generator's are 0.178 mm larger, over the limit of 0.05 mm) and its pins
