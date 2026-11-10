@@ -1889,6 +1889,26 @@ mod board {
 
     const HOLES: [&str; 4] = ["MH1", "MH2", "MH3", "MH4"];
 
+    /// The mounting holes of the physical file, in the order of `HOLES`.
+    const HOLE_PATHS: [&str; 4] = ["hole1", "hole2", "hole3", "hole4"];
+
+    /// The designators of the holes (`H1` to `H4`): the design's parts at `HOLE_PATHS`.
+    fn hole_designators(built: &netsmith::Built) -> Vec<String> {
+        HOLE_PATHS
+            .iter()
+            .map(|path| {
+                built
+                    .design
+                    .parts
+                    .iter()
+                    .find(|p| p.path == *path)
+                    .unwrap_or_else(|| panic!("the board has no hole `{path}`"))
+                    .refdes
+                    .clone()
+            })
+            .collect()
+    }
+
     fn built() -> netsmith::Built {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
         let source = &target.files[0];
@@ -2010,12 +2030,19 @@ mod board {
         let built = built();
         let by_designator = designators(&built);
         // Every part of the board is one of Raspberry Pi's, once, and every part of theirs
-        // but the four mounting holes is in the board.
+        // but the four mounting holes is in the board. The holes are the physical file's
+        // (`.hole1` to `.hole4`, designators `H1` to `H4`).
         assert_eq!(by_designator.len(), PARTS.len());
+        let own: Vec<&str> = built
+            .design
+            .parts
+            .iter()
+            .map(|p| p.path.as_str())
+            .filter(|path| !PARTS.iter().any(|(_, part)| part == path))
+            .collect();
         assert_eq!(
-            built.design.parts.len(),
-            PARTS.len(),
-            "a part that is not Raspberry Pi's"
+            own, HOLE_PATHS,
+            "a part that is not Raspberry Pi's, and not a hole of the physical file"
         );
         let reference = reference();
         let theirs: BTreeSet<&str> = reference
@@ -2098,7 +2125,10 @@ mod board {
     fn netsmith_compare_says_the_nets_are_the_same() {
         let built = built();
         let to_reference = designators(&built);
-        let a = wiring_only(&design_netlist(&built), &[], false);
+        // The mounting holes are no part of the circuit: they have no pin and no net.
+        let holes = hole_designators(&built);
+        let holes: Vec<&str> = holes.iter().map(String::as_str).collect();
+        let a = wiring_only(&design_netlist(&built), &holes, false);
         let b = wiring_only(&reference(), &HOLES, true);
         let pairs = to_reference
             .iter()
@@ -2145,6 +2175,35 @@ mod board {
                 .iter()
                 .any(|d| d.starts_with("J2.4: ")),
         );
+    }
+
+    /// `reference/designators.toml` (the parity checker's map from Raspberry Pi's references to
+    /// the references `fab` writes) says what this table says: designators come from the kind of
+    /// a part and the order of its declaration, so a part added to `src/main.nsm` ahead of
+    /// another renumbers it and this fails until the map is written again.
+    #[test]
+    fn the_parity_checkers_designator_map_is_the_designs_own() {
+        let built = built();
+        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let mut wrong = Vec::new();
+        for (reference, refdes) in designators(&built)
+            .into_iter()
+            .map(|(refdes, reference)| (reference, refdes))
+        {
+            if map.get(&reference) != Some(refdes.as_str()) {
+                wrong.push(format!(
+                    "{reference}: the map says {:?}, the design has {refdes}",
+                    map.get(&reference)
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+        // The 39 parts above and the four mounting holes, in the order of `.hole1` to `.hole4`.
+        assert_eq!(map.len(), PARTS.len() + HOLES.len());
+        for (hole, refdes) in HOLES.iter().zip(hole_designators(&built)) {
+            assert_eq!(map.get(hole), Some(refdes.as_str()), "{hole}");
+        }
     }
 
     /// The values of the resistors and capacitors are Raspberry Pi's (`4k7` and `4.7k` are one

@@ -3,7 +3,64 @@
 #   J1 = "J1"
 # A part of reference/placements.toml with no line here is `unmapped` to the parity checker: a
 # failure for the parts the table marks must_match (J1 to J4, SW1, SW2), a note for the others.
-# Map every part whose pads carry a net, U1 included, so that the checker can see through the
-# connectivity which pads share a net. The board item of the port (the RP2350A Minimal
-# showcase) fills this in; while it has no entry, the test `rp2350_minimal_pcb_matches_raspberry_pi`
-# is skipped.
+#
+# All 43 parts are paired, by value, pad count and nets, so that the checker can see through the
+# connectivity which pads share a net. netsmith's references come from the kind of the part and
+# the order of its declaration in `src/main.nsm` (a part's letter, then the count of that
+# letter; `fab` writes them to the board and the BOM), so most of Raspberry Pi's differ. Where
+# several parts are alike (the eight 100 nF capacitors on +3V3, the three on +1V1, the two 10 uF
+# on +3V3) the pairing is arbitrary: they are on the same nets. Raspberry Pi's mounting holes
+# MH1 to MH4 are netsmith's H1 to H4, in the order of `.hole1` to `.hole4` of the physical file.
+
+# The connectors and the buttons (must match).
+J1 = "J1"       # micro-USB, `.usb`
+J2 = "J2"       # 2 x 18 header, `.header_low`
+J3 = "J3"       # 2 x 18 header, `.header_high`
+J4 = "J4"       # JST-SH debug port, `.debug`
+SW1 = "SW1"     # BOOTSEL, `.bootsel`
+SW2 = "SW2"     # RESET, `.reset`
+
+# The chips, the crystal and the inductor.
+U1 = "U1"       # RP2350A, `.mcu`
+U2 = "U2"       # NCP1117, `.regulator`
+U3 = "U3"       # W25Q128JV flash, `.flash`
+X1 = "X1"       # 12 MHz crystal, `.oscillator.crystal`
+L1 = "L1"       # 3.3 uH, `.core_inductor`
+
+# The mounting holes.
+MH1 = "H1"
+MH2 = "H2"
+MH3 = "H3"
+MH4 = "H4"
+
+# Resistors.
+R1 = "R7"       # 10 kohm pull-up of the flash's select, `.ss_pullup`
+R2 = "R2"       # 1 kohm of the crystal's drive, `.oscillator`
+R3 = "R1"       # 33 ohm of the core regulator's analog supply, `.avdd_filter`
+R4 = "R9"       # 1 kohm of RESET, `.reset_series`
+R6 = "R8"       # 1 kohm of BOOTSEL, `.bootsel_series`
+R7 = "R3"       # 27 ohm in USB D+, `.usb_dp_series`
+R8 = "R4"       # 27 ohm in USB D-, `.usb_dm_series`
+R9 = "R6"       # 0 ohm link of the flash's select to GPIO0, `.gpio0_link`
+R10 = "R5"      # 0 ohm link of the flash's select to QSPI_SS, `.ss_link`
+
+# Capacitors.
+C1 = "C2"       # 10 uF on VBUS, `.vbus_bulk`
+C2 = "C7"       # 100 nF on +3V3
+C3 = "C18"      # 15 pF on the crystal's XIN
+C4 = "C19"      # 15 pF on the crystal's other pad
+C5 = "C3"       # 10 uF on +3V3
+C6 = "C5"       # 4.7 uF on +3V3
+C7 = "C6"       # 4.7 uF on +1V1
+C8 = "C15"      # 100 nF on +1V1
+C9 = "C1"       # 4.7 uF on the core regulator's analog supply, `.avdd_filter_cap`
+C10 = "C16"     # 100 nF on +1V1
+C11 = "C17"     # 100 nF on +1V1
+C12 = "C8"      # 100 nF on +3V3
+C13 = "C9"      # 100 nF on +3V3
+C14 = "C10"     # 100 nF on +3V3
+C15 = "C11"     # 100 nF on +3V3
+C16 = "C12"     # 100 nF on +3V3
+C17 = "C13"     # 100 nF on +3V3
+C18 = "C14"     # 100 nF on +3V3
+C19 = "C4"      # 10 uF on +3V3

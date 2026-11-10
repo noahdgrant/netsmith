@@ -2,8 +2,10 @@
 
 A port of Raspberry Pi's open **RP2350A Minimal** reference board to netsmith, as a showcase.
 **The schematic is done** (`src/main.nsm`, the board `Rp2350Minimal`): the same circuit as
-theirs, proved net by net by a test. **The physical file** (outline, mounting holes, the places
-of the connectors and buttons) **and `fab` are not written yet.**
+theirs, proved net by net by a test. **The physical file is done** (`src/main.physical.nsm`: the
+outline, the four mounting holes, the places of the connectors and buttons), and `netsmith fab`
+writes a PCB that the parity checker finds equal to Raspberry Pi's in every way that must match
+(see Parity and The result). It routes completely, in about 35 s.
 
 ## Source
 
@@ -60,7 +62,14 @@ are netsmith's** (MIT, like the rest of the repository).
   `cargo run -p netsmith --example reference_table -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb > reference/placements.toml`
   (run from this folder); a test checks that the file is what the program prints.
 - `reference/designators.toml`: which part of the board `netsmith fab` writes is which part of
-  Raspberry Pi's (see Parity). It is empty until the board is written.
+  Raspberry Pi's (see Parity): all 43 are paired. A test holds it against the design's own
+  designators.
+- `src/main.physical.nsm`: the board's physical file: the outline, the mounting holes and the
+  places of J1 to J4, SW1 and SW2, each number read from their board (see The physical file).
+- `src/main.pcb.toml`: the layout file, with only a placer seed (see The physical file).
+- `libs/rp2350_minimal.pretty/MountingHole_2.75mm_M2.5.kicad_mod` and its row in `kicad.toml`:
+  the 2.75 mm non-plated hole (the standard rows have only M2 and M3).
+- `reference/parity-overlay.svg`: the picture of the parity check (see Parity).
 
 ## Parts
 
@@ -235,10 +244,17 @@ writes (in `fab/<Board>/`) with Raspberry Pi's board, as `reference/placements.t
 It prints one line per item and `must-match: N ok, M failed`, writes the overlay (both boards at
 one scale: Raspberry Pi's in blue, netsmith's in orange, a failing must-match item in red with
 its offset) and exits 1 when a must-match item fails. The test
-`rp2350_minimal_pcb_matches_raspberry_pi` runs it in CI; it is skipped, with a message, while
-`reference/designators.toml` has no entry, and gates once the board is written. The checking is
-`netsmith::parity`; `crates/netsmith/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's
-own board against itself.
+`rp2350_minimal_pcb_matches_raspberry_pi` runs `fab` and the checker in CI and fails when a
+must-match item is not `ok`. The checking is `netsmith::parity`;
+`crates/netsmith/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's own board against
+itself.
+
+**The test does not wait for the router.** It runs `netsmith fab --locked --route-timeout 20`
+with no KiCad (`NETSMITH_NO_KICAD=1`), and takes the board file that `fab` writes complete or
+marked INCOMPLETE (a run that the timeout stopped exits 1 and says `INCOMPLETE:`; any other
+failure fails the test). The placer fixes every part before the router starts, so the checker
+sees the same board whether the router finished or not, and the test takes about 25 s. It also
+holds that `reference/parity-overlay.svg` is the overlay of that board.
 
 **What is checked.** The report prints what each verdict compared, at its head. Must match (a
 failure):
@@ -293,8 +309,23 @@ From this folder:
 
 ```sh
 netsmith build    # the schematic, in out/ (no KiCad needed)
-netsmith fab      # the package for the board house: not yet, the board has no physical file
+netsmith fab --locked   # the package for the board house, in fab/Rp2350Minimal/; about 35 s
 ```
+
+`--locked` stops the run if the parts it picks differ from `src/main.lock.toml` and never
+writes the pick lock; it also means `--pins locked`, which is all there is to say about pins
+here, because the board has no pin requests (see The board). With KiCad hidden (`NETSMITH_NO_KICAD=1`)
+the run is the same. Then the parity check, from the repository's root, and the overlay it
+writes:
+
+```sh
+cargo run -p netsmith --example parity -- \
+    examples/rp2350_minimal/fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
+    --svg examples/rp2350_minimal/reference/parity-overlay.svg
+```
+
+`reference/parity-overlay.svg` is the picture of the last such run, and the test above checks
+that it is current (`fab` is deterministic, so the file only changes when the board does).
 
 `netsmith compare` takes their board file as one side and the source as the other:
 
@@ -309,6 +340,81 @@ footprint, and their footprints are named `RPI_COMPILED:generic_capc1005x50`,
 `Capacitor_SMD:C_0402_1005Metric`. Their names are not ours to copy (the
 footprints of this port are netsmith's own), so the proof of the nets is a test that compares
 the wiring alone (next section).
+
+## The physical file
+
+`src/main.physical.nsm` is `physical for Rp2350Minimal`: every figure is read from their board
+file (`reference/placements.toml`), in millimetres from the upper-left corner of the outline,
+y down, and the comment above each line says which of theirs it is.
+
+- **The outline**: a 52 x 51 mm `Outline` with a 3 mm corner radius.
+- **The mounting holes**: four `MountingHole { .package &= "M2.5" }` at their places. The
+  standard rows have only M2 (2.2 mm) and M3 (3.2 mm), and theirs are non-plated 2.75 mm, so
+  `kicad.toml` has a row for the package `M2.5` and the footprint is a file of the project's own
+  library (`libs/rp2350_minimal.pretty/MountingHole_2.75mm_M2.5.kicad_mod`).
+- **J1 to J4, SW1 and SW2**: `.place.x`, `.y`, `.rotation` and `.side` of `.usb`, `.header_low`,
+  `.header_high`, `.debug`, `.bootsel` and `.reset`. A requirement is measured from the **body**
+  of a part (the `F.Fab` outline, else the courtyard), and the checker compares the footprint's
+  **origin**, so where the body is not centred on the origin the line states the body's centre:
+  J1's courtyard is not centred (its centre is 1.33 mm from the origin) and J4's is 2.7 mm from
+  it. A requirement with a single value for every field fixes the part, so these six are put
+  exactly where theirs are, and the checker's offsets are 0.000.
+- **Everything else** has no line: the MCU, flash, crystal, regulator, inductor, resistors and
+  capacitors are the placer's.
+
+Two more files were needed to make the board route, and neither states a requirement:
+
+- **A ground pour** on the back, `.bottom.net &= "GND"` in the board's `.process` in
+  `src/main.nsm`. Their board has a ground zone on `B.Cu` too. The pour carries ground: the
+  router has no ground to draw on the front, and routes the 179 connections left. With no pour
+  the router left 2 of 179 connections unrouted after 223 s (four tries).
+- **A placer seed**, `seed = 3` in `src/main.pcb.toml` (the layout file, which keeps a solution
+  and never a requirement; it locks no part). Seeds 0, 2 and 3 route completely (97 s, 43 s and
+  35 s of routing); seeds 1 and 4 leave two connections unrouted after 120 s. The seed does not
+  move the six parts above, only the others.
+
+## The result
+
+The last run (`fab --locked`, seed 3) on the machine that wrote this (a debug build, in which
+`netsmith-pcb` is optimised; one run at a time):
+
+| Step | Result |
+|---|---|
+| Placement | 43 parts on 52 x 51 mm in 2.6 s |
+| Routing | all 179 connections routed, on try 1 of 4, in 34 s (35 s in two earlier runs) |
+| Design rules check | passed (0 violations; 6 silkscreen warnings: the texts of J1, J3, H1 and H2 touch the board edge, and two silk lines are 0.09 mm apart) |
+| Requirements | 32 of 32 satisfied |
+| `fab` in all | 37 s |
+| Left to look at | 2 vias stand in pads (C16.1, U1.61): order them as epoxy filled and capped, or `fab-notes.txt` says what else |
+
+What stops a run that does not finish: the router's own limit of 300 s (`--route-timeout`), or
+its four tries; it then writes the board marked INCOMPLETE and the run fails (`INCOMPLETE:`, with
+the unrouted connections in `routing-failure.txt`). The board is not ready to order then.
+
+The parity checker on that board (`must-match: 220 ok, 0 failed`; the 220 lines are in the pull
+request that added this):
+
+| Must match | Result |
+|---|---|
+| Outline, 52 x 51 mm and radius 3 mm | ok (0.000 off) |
+| Mounting holes MH1 to MH4, place and drill 2.75 mm | ok (0.000 off) |
+| J1, micro-USB: place, rotation 180, layer, 15 pads | ok |
+| J2, 2 x 18 header: place, rotation 270, layer, 36 pads | ok |
+| J3, 2 x 18 header: place, rotation 270, layer, 36 pads | ok |
+| J4, JST-SH: place, rotation 0, layer, 5 pads | ok |
+| SW1, SW2: place, rotation 270 and 180, layer, 4 pads each | ok |
+| The pin-to-signal map of J2 and J3 | ok: each header pad is on the pad of U1 that theirs is (the nets are named differently, so the connectivity vouches: 43 warnings say so) |
+
+**What is not matched** (reported, never a failure): the other parts' places and rotations
+(U1 is 9.3 mm right and 4.95 mm up from theirs, U2 23.3 mm left and 3.6 mm down, U3 11.1 mm
+right and 0.6 mm up, X1 0.75 mm right and 6.1 mm up, L1 9.9 mm right and 10.85 mm up and turned;
+the resistors and capacitors are all elsewhere), the pads of those parts where netsmith's
+footprint is not theirs (U1: 61 pads differ in centre, size or drill, and 18 of theirs have no
+partner), and the routing: the copper is netsmith's own, and nothing is claimed about it. 82 items are `info`.
+`reference/parity-overlay.svg` draws both boards at one scale (theirs blue, netsmith's orange,
+a failing must-match item red): the outline, the holes, the four edge connectors and the two
+buttons coincide, and the chip, the flash, the regulator and the rest are where the placer
+put them. Open it in a browser.
 
 ## The board
 
