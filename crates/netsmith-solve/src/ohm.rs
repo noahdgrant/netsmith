@@ -15,14 +15,60 @@
 //! - a rail on it (its stated voltage, and `0 V` for the ground the range is measured from).
 //!   A net with a rail's pin is that rail's, whatever else is on it;
 //! - a `Logic` line that drives it: its ground to its reference rail's top;
+//! - a pin that drives it and is not a `Logic` line: no more than the supplies of its own part
+//!   (`part_swing`);
 //! - the nets on the far ends of the resistors on it (a series resistor, a pull-up, a divider):
 //!   the voltage of a node in a network of resistors is between those of its neighbours;
 //! - the ground, when a part's input or supply pin is on it (its current returns there).
 //!
-//! A net with anything else on it that could set its voltage has no range: a pin that drives it
-//! and is not a `Logic` line, a passive pin of a part that conducts or whose model does not say
-//! it passes nothing, a pin with no kind, a rail with no voltage, a rail whose ground is not the
-//! ground the range is measured from. Then there is no bound.
+//! A net with anything else on it that could set its voltage has no range: a passive pin of a
+//! part that conducts or whose model does not say it passes nothing, a pin with no kind, a pin
+//! that drives it on a part with no rail of its own (or whose rail has no voltage), a rail with
+//! no voltage, a rail whose ground is not the ground the range is measured from. Then there is
+//! no bound.
+//!
+//! # Why (ADR 0026, the amendment on the Ohm bound; PROVISIONAL)
+//!
+//! Found on a real 12 V automotive board: about twenty of its 47 notes were the drop and power
+//! relations of ten passive parts on signal nets (pull-downs, a divider, series resistors into an
+//! ADC and a PDM input), each waiting on a current that the balance rule leaves unset (a net with
+//! two or more unknown currents). Their current is not known, but it is limited.
+//!
+//! **The rule.** After the parts are picked and every relation is judged, each relation still
+//! waiting that reads fields of one resistor (a part with a `bridge` and a `resistance` above
+//! zero) whose `current` has no value is read once more with that current in `+-I` and the drop
+//! across it, if it too has no value, in `+-(Va - Vb)` (for `.drop == .current * .resistance`,
+//! in the current through the greatest resistance, which is the same range widened by the
+//! tolerance: `Bound::drop_through`). A relation that passes is no longer waiting: its note, and
+//! its part in an open circle, go. **Pass-only:** a relation that fails, or still cannot be
+//! judged, stays as it was and nothing is said of it. The bound is never a verdict, and it adds
+//! no finding, error or value to the model. The reason is the limit of the balance rule: a bound
+//! does not know that a pin draws nothing, so a 100 ohm series resistor into an input is bounded
+//! at 35 mA and 120 mW between two ends that each swing 3.3 V, over its 62.5 mW rating, while the
+//! real current is the input's, a microampere. As a verdict the bound would refuse that good
+//! design; used to prove, it is sound.
+//!
+//! **What a range is** is above. It is read with more care than the levels check reads it
+//! (ADR 0046), since a range too narrow would clear a note that should stand. A pin that drives
+//! the net and is not a `Logic` line is held to the supplies of its own part: the one
+//! assumption beyond the levels check, that an output pin swings no more than its own part's
+//! rails, which the part must state with a voltage and a ground that is the same net. A net with
+//! a connector pin (a part that states `.mating`) has no range. Grounds that mated connectors
+//! join (ADR 0040) are not followed: only the same net is the same ground.
+//!
+//! **What it does not do.** It sets no current, so the net's other unknowns stay unsolved; a
+//! check that needs the real value (a draw budget, a regulator's load) stays open; a part other
+//! than a resistor (a diode, a MOSFET, a regulator) is not bounded; a bound whose ends span a
+//! whole supply (a fuse across 16 V, 323 A) proves nothing and changes nothing.
+//!
+//! **What it costs.** One pass over the nets of each resistor with an unset current, when
+//! relations wait, and a `current_bounds` list on the `Solution` that the track planner reads
+//! (ADR 0036, amendment 4). No syntax, no change of what any program means: a design that built
+//! still builds, with fewer notes. It is the first step of the owner's draft for a full DC
+//! analysis (ADR 0076, "the cheap bound") and that bound and nothing more.
+//!
+//! **Left open.** "The assumptions that no part on a net injects a voltage outside its hull, and
+//! that a pin's own part's rails limit its swing, are the owner's to review."
 
 use std::collections::HashMap;
 

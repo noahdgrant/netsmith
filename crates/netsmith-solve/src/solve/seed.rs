@@ -17,6 +17,99 @@
 //! range is what its relations on the field bound (`>=` and `<=` with values), and the rest
 //! of it, below and above the claim, is shown empty by the same propagation. Otherwise
 //! nothing changes, and the circle stays unevaluated, as before.
+//!
+//! # What was found (ADR 0053)
+//!
+//! The first board of a real design stated `3V..65V`, the regulator's whole input range, by
+//! hand, and the solver settled at 4.4 A where the true worst case was 1.3 A. The loose answer is
+//! not the interval arithmetic widening and not an order of evaluation. It is a rule of
+//! `propagate`: an equation narrows a field that already has a range only when the value it
+//! gives lies wholly inside it. That rule is right and stays: a range written with `&=` is a claim
+//! that a check holds against, and narrowing it to the overlap would make a check pass for a range
+//! nobody guaranteed. In a circle it has this effect. A load of 0.5 W behind 36 ohm on a supply of
+//! 9 V to 16 V, with the load's voltage started at `3V..30V` (invented values, the last test of
+//! `tests/seed.rs`): the first pass works the current out at the bottom of the range, up to
+//! 166.7 mA; the drop at that current is 6 V, so the equation gives 2.94 V to 15.41 V, which
+//! reaches below 3 V, so it does not narrow `3V..30V`. That is a fixed point of the propagator,
+//! not of the circuit. With a smaller drop the first pass lies inside the range and the answer
+//! is tight, so which answer a board gets depends on the start and not on the circuit.
+//!
+//! A start from the other end, the supply's `9V..16V`, does not have this effect: for 10 ohm the
+//! equation maps it into 8.44 V to 15.7 V and it settles at 8.398 V to 15.69 V. But it is a claim
+//! and not a derived value, and the circle has more than one solution. A constant-power load
+//! behind a resistor has a second working point near 0 V for any resistance: `v * v - s * v + r *
+//! p = 0` has two roots, 8.4 V and 0.6 V for 10 ohm, 9 V and 0.5 W. Interval arithmetic cannot
+//! tell the points apart, and no range the board states decides between them either.
+//!
+//! # The steps
+//!
+//! When a circle is found and nothing in it has a value, the solver tries to start it, once before
+//! the parts are picked and again after, for a circle that a pick closed.
+//!
+//! 1. The field to start (the cut) is a field of the circle whose own equation (`==`) sets it. Its
+//!    start is the hull of the ranges of the values of the same kind that the equation reads,
+//!    directly or through other fields without a value, that already have one: the supply's voltage
+//!    for a voltage. If there is none, nothing is done.
+//! 2. The part's range is what the relations (`>=`, `<=`) on the field, or the fields joined to it
+//!    by `~`, bound, as values the model has: the lowest lower bound and the highest upper bound.
+//!    If either end is missing, nothing is done.
+//! 3. The start must be inside the part's range. It is grown until the equation maps it into itself
+//!    (an end that moves is moved twice as far, so the sequence does not creep), then narrowed to
+//!    what the equation gives from it until it stops moving, with a room of one part in 10^9 so
+//!    that rounding in the last digit cannot fail the equation's own check. If it leaves the part's
+//!    range, or does not settle in 64 steps, nothing is done.
+//! 4. The rest of the part's range, below the claim and above it, is shown to hold no value that
+//!    the equation allows: the field is held to the region, `propagate` runs, and the region is
+//!    narrowed to what the equation gives, again and again. If propagation finds the model
+//!    inconsistent, or the region becomes empty, it is shown; if it stops getting narrower, or
+//!    does not settle, it is not, and nothing is done. This step decides soundness.
+//! 5. Otherwise the field has the claim as its range, as if the board had stated it. The
+//!    equation's check then holds the claim to what it gives, so a claim that is not a fixed point
+//!    cannot pass.
+//!
+//! The solver says so in a note (`Solution::seeded`; `netsmith build` prints `note: ...`; the
+//! wording is `started_note` in `crates/netsmith/src/lib.rs`). A range the board states on any
+//! field of the circle is used as before and nothing is started. The claim: every value of the
+//! field that satisfies the circuit's equations, with the part inside its stated range, is in the
+//! range found. Nothing is claimed below the part's range: a regulator that states a `.vin.voltage`
+//! of at least 3V and at most 65V works between 3 V and 65 V and is off below, and a state with the
+//! input at 0.2 V is the converter off, which the input-current equation (written for a converter
+//! that is on) does not describe. A design that must also hold in states the part's range leaves
+//! out (a supply that sags below the regulator's minimum) writes a relation of its own.
+//!
+//! # Rejected
+//!
+//! Narrowing a stated range onto the overlap with the equation (the first idea): tight, but not
+//! sound for a claim (`7V..16V` stated where the circuit gives `5.9V..16V` would pass). Starting
+//! from the whole part's range and iterating down: it stops where `propagate` stops, the loose
+//! answer. Accepting the first range the equation maps into itself with no check of the rest: it
+//! passes checks on a range the circle does not guarantee when a second working point is inside
+//! the part's range. Excluding the region without the part's range: impossible for a
+//! constant-power load. Refusing to start a circle and keeping the hand seed: it leaves the
+//! checks of a regulator board unevaluated until a person verifies a tight range by hand. Starting
+//! a range the board stated: it is a claim and not a start.
+//!
+//! # Cost, limits
+//!
+//! A circle costs a few dozen copies of the model and propagation passes when started, and a
+//! handful when refused (usually on the first step); a board with no circle pays one scan of its
+//! relations. The model is copied for each step, which is slow for a very large board, and the
+//! circle is looked at twice. The cut is the first field of the circle, in field order, that has
+//! an equation and passes the steps; every claim accepted has been shown to hold, so the answers
+//! are all sound, and the first is used so that the same board always gives the same note. The
+//! start is a guess about where to look and the checks make it sound, so a circle with no value
+//! of its own kind to start from (a current circle with no stated current) is not started even
+//! when the equations could be; the guide's example with no range on the load is such a board. A
+//! part that states its limits the other way (`.vin.voltage - .vout.voltage >= 1V`) has no range
+//! for this purpose.
+//!
+//! # Left open
+//!
+//! "What counts as a state of a part (the part's own `>=` and `<=` on a field say where its
+//! equations apply, and a state outside is not a state of the circuit for the checks) is the
+//! owner's to accept or change; the alternative is to refuse more circles." Also for the owner to
+//! look at: that a value starts only from a stated range of the same kind, and that
+//! `Solution::seeded` and the note are the whole interface (no new syntax, no new member).
 
 use std::collections::HashSet;
 

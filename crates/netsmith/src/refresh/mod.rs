@@ -12,6 +12,125 @@
 //! (ADR 0039, the 2026-11-02 decisions). JLCPCB's own parts library is not asked.
 //!
 //! The solver never calls this: its input stays the CSV files, and it works offline.
+//!
+//! # What it does (ADR 0039, a current-state record since the owner's review of 2026-11-04)
+//!
+//! `netsmith catalog refresh` is the only command that touches the network. `build`, `fab`,
+//! `compare`, the solver, the editor's live checks and the tests do not. The editor's "Check parts
+//! against LCSC" button runs the same code over the project's own catalog files
+//! (`POST /api/catalog/refresh`, which needs the `X-Netsmith` header, reports each looked-up part
+//! over the WebSocket as `progress` of task `catalog`, and answers with a `CatalogRefresh`).
+//!
+//! For each row with an `lcsc` number it asks LCSC's product record
+//! (`GET .../ftps/wm/product/detail?productCode=C25104`) and compares the manufacturer's number
+//! (`productModel`) with the row's `mpn`, and the package (`encapStandard`) with the row's
+//! `package`. The suppliers spell packages their own way (`SOT-23-3L` for `SOT-23`), so the row's
+//! package may be the supplier's or one of its words, with a trailing `-<digit>L` removed. The
+//! manufacturer's number is the real check; the package only catches a number reissued for another
+//! package.
+//!
+//! - **VERIFIED** when both agree, **CONFLICT** when either differs (with both values), **MISSING**
+//!   when LCSC no longer lists the part, **SKIPPED** with `--offline` when no answer was kept. The
+//!   exit code is 1 for a CONFLICT or MISSING and 2 when the run had to stop.
+//! - **It writes one cell, `checked`**: the day (UTC) the row last verified, or with `--offline`
+//!   the day the kept answer was got, only if the file has the column (the standard files
+//!   do, empty). Nothing reads it; it exists so a diff and `git log` show which rows were last
+//!   verified. It never writes `price`, `stock`, `price_breaks`, `library`, `date` or any other
+//!   cell. A test asserts that every cell but `checked` is byte-identical after a refresh of
+//!   every row of every standard file, against a fake LCSC that lists a different stock and price
+//!   for each. The file is edited in place, by byte span, the rows are never reordered (the order
+//!   is the selection policy, ADR 0022), and files are written after every row has been looked
+//!   up, each by a rename of a finished temporary file, so a run that stops writes nothing.
+//! - **CONFLICT and MISSING rows are reported and never changed or deleted**: removing a row is a
+//!   person's decision, and `considered.csv` is where it goes.
+//! - **JLCPCB is not asked.** No request goes to a JLCPCB host or an `/api` path; the fetcher
+//!   refuses such an endpoint, even if `NETSMITH_LCSC_URL` names one, before it sends anything.
+//!   A test shows the fake server was asked only `GET /lcsc?productCode=C...`.
+//! - **A note, not a finding:** when LCSC lists stock 0 where the row has some or none, or the row
+//!   has 0 and LCSC lists some, the report says to check JLCPCB's parts page by hand. The exit
+//!   code is unaffected. LCSC's prices are not read.
+//! - **Selection:** `--dry-run` prints the diff and writes nothing; `--only <catalog>` and
+//!   `--lcsc <C123>` choose catalogs and rows. With no path the files are the project's catalogs
+//!   and, in the netsmith repository, `data/jlcpcb/catalog/`. The standard catalogs are also
+//!   inside the binary, which cannot be written, so they are checked in the repository and reach
+//!   users with a release.
+//! - **Polite, and honest when it cannot be.** One request at a time, 500 ms apart (`--delay`);
+//!   a User-Agent that says what it is (`netsmith-catalog-refresh/<version> ... one request at a
+//!   time`); a cache of the answers (`$NETSMITH_CACHE_DIR`, else `$XDG_CACHE_HOME/netsmith`, else
+//!   `~/.cache/netsmith`, in `catalog-refresh/`) used for 24 hours (`--cache-ttl`, `--no-cache`);
+//!   `--offline` asks nothing and uses kept answers of any age; three retries with a doubling wait
+//!   (2 s, 4 s, ...; a `Retry-After` is honoured up to a minute) after a dropped connection, a 429
+//!   or a 5xx; a stop, naming the endpoint, on a 403 or another refusal, a web page where JSON
+//!   should be, or JSON of another shape, and then nothing is written. An LCSC number is sent only
+//!   if it is `C` and digits. `NETSMITH_LCSC_URL` points the command at another address (a mirror,
+//!   a proxy of your own, the tests' fake server).
+//! - **`netsmith catalog age [--days N]`** (default 90, `STALE_DAYS`) lists the rows whose price
+//!   and stock (`date`) are older or missing. A refresh never changes `date`, so it never makes a
+//!   row less stale. ADR 0047 ages a provider's quotes, and the standard catalogs ship none.
+//! - **The editor** shows the date of each bill line's price and stock under the price, with the
+//!   age in a tooltip, and marks a line older than 90 days in amber with a dot in front of its
+//!   designators; a chip above the table counts them. `Bom` carries `staleAfterDays` and the
+//!   project's own catalog files, and each `BomLine` its `date`, `ageDays` and `stale`, computed
+//!   on the server (typed in `api.rs`). The file watcher builds again after a refresh; the bill
+//!   does not change, because only `checked` was written. "Preview only" is `--dry-run`;
+//!   "offline" is `--offline`. A project that lists no catalogs is told so.
+//!
+//! # Why a check and not a data update
+//!
+//! The first version (2026-11-02, chosen by the agent from the user's task) read two records for
+//! each row, JLCPCB's parts library and LCSC's product record, and wrote `price`, `stock`,
+//! `library`, `date` and `price_breaks`. The same day the maintainer read the `robots.txt` of both
+//! sites: JLCPCB's disallows automated clients on the path its parts library is served from, and
+//! LCSC's has no rule for the path of its product endpoint. The user decided, for v0.1.0, to drop
+//! JLCPCB's endpoint, keep LCSC's only, tell users that JLCPCB data is not fetched, and take the
+//! official APIs after v0.1.0 (JLCAPI at api.jlcpcb.com; the LCSC API, free with an account and a
+//! review; both need the user's own account). For a few hours the refresh wrote LCSC's price, stock
+//! and `price_breaks` and reported `library` as not fetched (a choice among writing nothing, writing
+//! LCSC's numbers and saying so, and adding columns). Later the same day the user decided that the
+//! board is assembled from JLCPCB's own parts library and that LCSC's numbers differ: for C25104
+//! LCSC lists 1,085,700 in stock where JLCPCB lists 2,059,008, and LCSC's first price break is at 5
+//! to 100 pieces where the rows hold the one-piece price. The solver, the bill of materials and the
+//! stock-0 rule read those cells as the board house's numbers, so writing LCSC's put the wrong
+//! supplier's numbers where the right one's are expected. So a refresh became the check above. It
+//! is not `date` that records the verification, because `date` means the day the `price` and
+//! `stock` were read (the bill marks a line stale from it, and `catalog age` lists rows by it), and
+//! moving it would make a stale JLCPCB price look fresh: one meaning for each column (ADR 0001), so
+//! `checked` is a column of its own. Recording nothing was rejected: a person wants to know which
+//! rows have been through the check. The plan for C25102 and C47339, which JLCPCB flags Preferred,
+//! to change from `Extended` to `Preferred` on the first refresh was withdrawn: the `library` is
+//! not fetched, so they stay `Extended` until a person or an official API says otherwise. The
+//! editor's button went from "Refresh prices" through "Refresh prices from LCSC (not JLCPCB)" to
+//! "Check parts against LCSC"; the route and the command kept their names.
+//!
+//! The rule of the first version that a row whose `stock` cell is `0` is not offered by the solver
+//! (it amended ADR 0022, item 6) and the `price_breaks` column written by the refresh are gone:
+//! ADR 0047 made price, stock and date a provider's quotes, and the solver does not read stock.
+//! `price_breaks` is a hand-entered column that nothing reads.
+//!
+//! # Cost, and what is not settled
+//!
+//! A new dependency, `ureq` (with rustls), in the `netsmith` crate only; the solver, the language
+//! and the checker have none. The tests never reach the network: a server on `127.0.0.1` answers
+//! from `tests/fixtures/catalog-refresh/`, the responses of twelve parts captured once from the
+//! live endpoints on 2026-11-02 (public data), reduced to the fields netsmith reads because the
+//! full answers carry signed, expiring download links and images; the JLCPCB captures were deleted
+//! afterwards. Another test builds answers from the rows of every standard file and checks that a
+//! refresh changes nothing but `checked`.
+//!
+//! **LCSC's terms of use are unread.** The endpoint is unofficial (the one the lcsc.com pages
+//! call), the repository has never agreed anything with LCSC, and the sites' general terms could
+//! not be read (the pages are rendered by script). The measures above (opt-in, sequential, a
+//! pause, a cache, an honest User-Agent) are courtesy and not permission. A person must read LCSC's
+//! terms before the command is advertised beyond this repository, and the command and the editor's
+//! button should be withdrawn or changed if they forbid it. Until the official APIs are used, the
+//! JLCPCB price, stock and library are read by hand.
+//!
+//! **Not decided.** Whether to refresh the standard catalogs on a schedule, or on a release, and
+//! who commits them. Showing a live price in the editor without writing a file, for a part of the
+//! standard catalogs. A second supplier (Mouser, Digi-Key, which have official APIs and keys) or
+//! the official JLCPCB and LCSC APIs: the code has one place that reads a record, which is where
+//! another would go. That this is the only command that touches the network is a fact of the code;
+//! as a rule it is not in `docs/DESIGN-RULES.md`, and the owner may want it there.
 
 mod csvfile;
 mod date;

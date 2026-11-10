@@ -8,6 +8,69 @@
 //! A group that also waits on a value nothing states is found too (`circles`), with the values
 //! it waits on, because a range on the group alone would not start it and the finding must say
 //! what would.
+//!
+//! # The finding (ADR 0057)
+//!
+//! A circle that nothing starts used to be a note, and a board passed with its checks unmade. It
+//! is now also a guideline finding (rule `open circle`, `Solution::open_circles`): a warning
+//! that names the fields, the checks that read the circle or a value worked out from it, and a
+//! field to start from (the first one that an equation sets from a stated value of the same
+//! kind, as the start of ADR 0053 is). It is an error under `--strict` or `guidelines =
+//! "error"`, and is given only when a bound (`>=` or `<=`) is among the relations not
+//! evaluated: a circle through a part with no rating gets the note alone. Warning and not error
+//! by default because the design may be right and the checks are what is missing, and an error
+//! would refuse boards that build today with a note. Rejected: an error always (it cannot be
+//! waived, so a board would state a range only to silence it), and a finding for every relation
+//! that was not evaluated (every board with data missing has such notes, ADR 0046, and a
+//! finding that fires for all of them would be ignored). A circle that also reads a value
+//! nothing states is reported with that value named, because a range on the circle alone would
+//! not start it.
+//!
+//! # A circle through the currents of a net (issue #18)
+//!
+//! A divider of two resistors on a rail behind a resistor from the supply has no circle of
+//! equations, and its checks still wait. The divider's current needs its input voltage, the
+//! voltage needs the drop across the series part, the drop needs that part's current, and the
+//! net after the series part carries that current, the divider's and the board rail's, which
+//! stands for the outside world and is not stated. A part's current is never set from a net of
+//! more than two terms (ADR 0026), so it has no source and the draw limit waits for good, and
+//! the divider is picked without it. `balance_circles` finds the groups of unset fields that
+//! would be a circle if the solver set a part's current from a complete balance of more than two
+//! terms, and keeps those where such a balance is part of the cycle (`Circle::through`). It is
+//! the search of `circles` with those balances added as producers, so it needs an equation in
+//! the cycle too: a net of unknown currents with no equation that feeds back (a fuse before a
+//! load whose current nothing states) is not found. Only a complete balance is counted. The
+//! checks are named once, with the design's own first and the library's ratings after.
+//!
+//! One root fix goes with it: a term of a balance that is exactly zero (a stated `&= 0A`, or a
+//! value worked out to it) adds nothing, so it is not counted when the solver decides whether a
+//! net has more than two terms (`Model::draw_is_zero`, `solve_balance_but`). A net whose board
+//! rail states `.after.current &= 0A` then has two live terms, which are equal, and the solver
+//! says so; a range such as `0A..1mA` is still a term. An unstated rail's current is not taken
+//! to be zero: a board's rail stands for the outside, and `0A` is the author's claim.
+//!
+//! Rejected: setting a part's current from a balance of more than two terms (the case ADR 0026
+//! refused), a finding for every deferred check that reads a current nothing states (a fuse in
+//! front of a load not yet stated would warn, and so would every resistor rating on a board in
+//! progress), and counting these balances in `find`, so that the circle note and the start of
+//! ADR 0053 cover them (the note would change for designs that build, and step 4 of the start is
+//! proved for equations only). The finding alone changes nothing the solver computes.
+//!
+//! Limits. A range stated on the part's current or on a voltage is a claim that nothing here
+//! checks against the net: with a start on the voltage, `after.voltage == supply.voltage -
+//! series.drop` stays not evaluated, and with a start on the part's current the net's other
+//! currents are not compared with it, because one of them has no value; the message says so. A
+//! group that a circle of equations already holds is reported there, and a larger group that
+//! merges it through a balance is reported for the checks the first did not name. The cost is a
+//! second search of the equations and balances, made only when a relation was left unevaluated.
+//!
+//! # Left open for the owner (ADR 0057)
+//!
+//! ADR 0057 was written overnight by an agent, each decision its own, and the owner has not
+//! confirmed it. Two items it named: "whether `warn` by default is right" for the open circle
+//! finding (`open_circle_findings` in `crates/netsmith/src/lib.rs`), and "the wording of the
+//! finding for a net, and whether the root fix for a zero term should exist at all"
+//! (`Model::draw_is_zero`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

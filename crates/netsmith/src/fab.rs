@@ -958,6 +958,41 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// manufacturer's number as the comment and no part number unless its row has one. A part it
 /// should place but that has no part number is kept without one, so the packaging step can
 /// refuse it by name.
+///
+/// Why a consigned part looks like this (ADR 0084, provisional). `Fab` is "the board house
+/// buys it" and `Consigned` is "the board house places it, and the owner supplies it"; they
+/// share everything but the supplier. Both are in `cpl.csv` and in this bill. `Fab` needs an
+/// `lcsc` (`fab` refuses without); `Consigned` does not, and its comment is the manufacturer's
+/// number, the LCSC cell empty unless the catalog row has a number. The `fab-notes.txt` of a
+/// consigned part has a `consigned:` line with each part's manufacturer's number and quantity.
+/// The stock note (#202) and the refusal of an unresolved generic (#208) never apply to it: no
+/// row stands for a part the owner supplies, so a consigned generic stays generic and no LCSC
+/// number is invented for it. A consigned part and a part from stock are never one line, even
+/// with equal value, footprint and number, because JLCPCB does not mix the two in one line.
+///
+/// What the board house reads, read on 2026-11-08 as pages by an agent (netsmith itself asks no
+/// supplier, ADR 0039): JLCPCB's article "How to consign parts to JLCPCB" (the owner registers
+/// the components on JLCPCB's site, ships them, and "the component seller must place PCBA orders
+/// to use the registered components" within the free storage period) says nothing of the BOM or
+/// the CPL. "Common BOM and CPL matching issues and explanations" and "Component matching
+/// guidelines for PCBA orders": consigned components, like pre-ordered and globally sourced
+/// ones, are chosen by the customer in the order page's component matching interface; JLCPCB
+/// goes on only when all of them are in its warehouse; a row it cannot match is "No Part
+/// Selected" and is matched by hand by the manufacturer's number or a C-code. JLCPCB's BOM guide
+/// lists designator, footprint, comment and LCSC part number and no column or word that marks a
+/// row as consigned (a different assembler, PCBasic, asks for the row to be marked; that is no
+/// JLCPCB rule). So the format has no marker, and the choice was between an empty LCSC cell and
+/// a made-up column or word. An unknown column is at best ignored and at worst fails the
+/// upload; a word in the LCSC cell fails the check of `C` plus digits. The row therefore keeps
+/// designator, footprint and comment, and the marking is in `fab-notes.txt` and in `order.txt`
+/// of an order, not in `bom.csv`. Not tested: JLCPCB's order page. Nobody has uploaded a
+/// `bom.csv` with an empty cell for a registered consigned part from netsmith; the notes tell
+/// the person ordering to look at the matching interface (the `prepare-fab-order` step). If
+/// JLCPCB documents a marker, the mark changes in this one function.
+///
+/// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
+/// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
+/// a new field changes the generated types and the committed bundle).
 pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
     for s in sourcing.iter().filter(|s| s.assembled()) {

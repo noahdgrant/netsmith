@@ -33,6 +33,29 @@
 //! only a saving of work, never a change of the pick). The second only matters when a group has
 //! no solution, and then `Solver::search_group` searches it again without narrowing, so that the
 //! message, the counts and the work are what they always were.
+//!
+//! What does not change (ADR 0057, issue #184): the picks, every message and every build. For a
+//! group that is solved, `Solution::trials` counts the candidates actually tried, so it is lower
+//! (a skipped candidate is not a trial, and no message counts it); one count that a test pinned
+//! moved (`two_boards` in `crates/netsmith/tests/std_generics.rs`, 72 trials, now 67, with the same picks). The work of
+//! the questions is counted in `Solution::work` and so against `SearchBudget::work`. A part with a
+//! count (a bank), a part with a generic candidate (a column left open for the design), and a
+//! part of 16 candidates or fewer are not narrowed. How it is checked: `tests/narrowing.rs`
+//! solves invented boards with and without it (a divider pair, a frequency window, a first pick
+//! that leaves the second nothing, a design with no solution, a relation that is not monotone) and
+//! compares the picks, the messages and what is unresolved; `Catalogs::with_narrowing_audit`
+//! also tries every candidate that was skipped and stops if one is accepted, and the whole
+//! solver suite and the guide passed with it on. The motive: the divider of a buck stage cost
+//! more than a second in a release build, since the second resistor still had every row to try
+//! after the first was chosen, nearly all refused for the output outside its window or the power
+//! over the rating, and a trial costs a full propagation.
+//!
+//! Not done. The hull test judges what is cheap to judge: a bound that holds for only some values
+//! of the hull is left to the trials. A block is taken as refused on the soundness of the
+//! propagation's enclosures (a value is always inside the range that is worked out for it), which
+//! the audit tests but cannot prove for every design. Nothing depends on a relation being
+//! monotone: for one that is not (a parabola in the value) the hull range reaches the bound
+//! wherever a row of the block could, and the block is not refused.
 
 use std::collections::{HashSet, VecDeque};
 
