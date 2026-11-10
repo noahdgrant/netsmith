@@ -6,6 +6,31 @@
 //! the package waits for the solver if the board has not chosen the package (a catalog row
 //! does): [`pin_faults_solved`] reports those, and the pad rules, which need the pads of the
 //! package that was chosen.
+//!
+//! # The faults of decision 4, with their messages
+//!
+//! | Fault | Rule | Message |
+//! |---|---|---|
+//! | Required pin unconnected | `power` and `input` pins must have another part's pin on their net unless the row says `optional`; `output`, `bidirectional` and `passive` pins may float unless it says `required` | `` `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net `` |
+//! | Tied pin not tied | `tie .a ~ .b` in a part means the board must put the two on one net | `` `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but nothing is connected to `u.sense` ``, or, when it is on another net, `` ... but `u.sense` is on net `VIN` with ... `` |
+//! | No-connect pin connected | a `no_connect` pin must have nothing else on its net | `` `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with ... `` |
+//! | Two outputs on one net | two `output` pins on one net; pins the part joins inside are one; an `output` and a `bidirectional` pin are allowed | ``net `X` has two outputs: `a.tx`, `b.tx` `` |
+//! | Function not chosen | a connected pin with more than one function needs `.function &=` from the board | `` `u.pa9` has several functions (GPIO, UART1_TX, SPI1_MOSI) and is connected: choose one with `.u.pa9.function &= "GPIO"` `` |
+//! | Function not offered | `.function &=` names a function the pin does not list | `` `u.pa9` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_MOSI `` |
+//! | Function used twice | one function on two pins of one part | `` function `UART1_TX` is chosen on both `u.pa9` and `u.pb6` `` |
+//! | Pad given to two pins | two pins on one pad that the part does not join (decision 5, after the solve) | `` pad 3 is given to `sense` and `en` `` |
+//!
+//! "Another part's pin" means a terminal whose owning part is not this one, so a net made only
+//! of pins joined inside the part counts as unconnected. A net counts as company for a `power`
+//! or `input` pin if it has a pin that is not the part's own, including a rail the board
+//! declares: a rail that nothing on the board drives is supplied from outside (ADR 0007). A
+//! module's port the board leaves open is not seen. Messages point at the board's declaration
+//! of the part (`.u: Ldo9`) and name the pinout line. An intentionally unused `optional` pin
+//! needs no statement; leaving a `required` pin open is refused (if the datasheet allows it,
+//! the pin is not `required`). `optional` and `required` are refused where they change nothing
+//! (`optional` on an output, `required` on an input). Two power sources on one net are not
+//! checked: whether a power pin gives or takes is the sign of the rail's current, which is
+//! known only after the solve (a known limit).
 
 use std::collections::{BTreeMap, HashSet};
 

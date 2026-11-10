@@ -43,6 +43,15 @@ choices for the owner in the headers of `route.rs` and `anneal.rs`; 0037's list 
 inventory and licence reading in `docs/research/kicad-library-licensing.md`. 0021's installed-library paths and their verification (issue #6) are in the header of
 `crates/netsmith-kicad/src/install.rs`. The line numbers this digest gave into `place.rs`, `std/pcb.nsm`, `libraries.rs` and `guidelines.rs` follow the longer comments.
 
+**Update 2026-11-10 (ADR cleanup, batch 5).** ADRs 0016, 0052, 0054, 0064, 0066, 0068, 0071, 0074 and 0083 were cut to one page and kept (none was folded: each states
+syntax or a rule of the language); each says the commit its full text is in (`git show 8023ee9:docs/adr/<file>`). 0016, 0064, 0068 and 0071 are `accepted` on the
+status lines that said the owner accepted them; 0052, 0054, 0066, 0074 and 0083 are `proposed`. The choices that this digest names for them are now where the code is: 0064's
+pass-through, guideline and `Levels` choices in the header of `crates/netsmith-check/src/lines.rs` and its other rules in `busnets.rs`; 0074's rules, rejected
+alternatives and limits in the header of `crates/netsmith-check/src/optional.rs`; 0083's series rule in the header of `unused.rs`; 0066's draw and output in the doc of
+`LevelTranslator`; 0052's search in the header of `crates/netsmith-solve/src/solve.rs`; 0068's search in the header of `crates/netsmith/src/providers.rs` and its
+conformance rules in `crates/netsmith-check/src/providers.rs`; 0071's messages in the header of `shared.rs`; 0016's fault table in the header of `faults.rs`. The line numbers
+this digest gives into `solve.rs` moved with the longer header.
+
 **Reversal cost** is my reading from the dependents I counted, not a statement of the ADRs: **cheap** (a solver or message rule, nothing written in
 `.nsm` files depends on it), **migration** (source in `std/`, the guide or users' files must change), **hard** (users' designs change meaning, or the
 answer is a legal or interface commitment).
@@ -322,7 +331,7 @@ for which states coexist; 4: narrow where unstated, check where stated; 5: a sta
 boundary; 6: severities as recommended; 7: capacitors open). The amendments below stay provisional.
 
 **Built.** `crates/netsmith-solve/src/dc/` (`extract.rs`, `net.rs`, `mod.rs`, `tests.rs`) and `crates/netsmith-solve/src/solve/dcpass.rs` (`dc_pass`
-line 122, `dc_start` line 290; called from `solve.rs:2563` and `:2602`); the checker's records in `crates/netsmith-check/src/dc.rs` and `model.rs`
+line 122, `dc_start` line 290; called from `solve.rs:2588` and `:2627`); the checker's records in `crates/netsmith-check/src/dc.rs` and `model.rs`
 (`DcKind`, `Instance::dc`, `dc_elements`, `level_tests`). The prototype `crates/netsmith-dc` was removed on 2026-11-09 (it is in git history at
 `b504854` and before). The glossary has _Operating point_, _Island_ and _Corner_; the guide has a "DC
 analysis" section.
@@ -554,7 +563,8 @@ drivers (`dc/extract.rs:1148`). No example uses it.
 1. **The spelling `unused .processor.usb`** (a keyword statement, as `tie` and `bridge`). The owner's example was `.processor.usb: unused`, rejected
    because a declaration reads `.name: Type`. The owner "may still choose the other spelling". Migration.
 2. **What counts as a use:** a pin on a net with a non-passive pin of another part, a `~` to another interface, a chosen function. A test pad or a
-   header is not a use; nor is a ground. Alternative: any connection is a use (useless for a module's pads brought out to test pads). Cheap.
+   header is not a use; nor is a ground. Alternative: any connection is a use (useless for a module's pads brought out to test pads). Cheap. Pull request
+   #323 added the series `Resistor`, `Fuse` and `FerriteBead` (the owner's decision of 2026-11-09) and left three questions, which the ADR now lists.
 3. **Left open:** whether a part may state a function unused by default; whether a module or part may forward `unused` to an interface inside it.
    Migration if added.
 4. **The DC analysis:** the ADR says it was not changed and still reads the rails of an unused interface. Logic-pin drivers do check it now; I did not

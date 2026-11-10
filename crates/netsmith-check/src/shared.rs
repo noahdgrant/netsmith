@@ -9,6 +9,81 @@
 //! Two halves: the definition is read and its mistakes reported when the part's body is done
 //! ([`Checker::finish_rules`], so that the order of statements never matters), and the
 //! board's use of the part is judged by [`overuse`].
+//!
+//! # `peripheral NAME [on CLASS] [as Interface [Role]] { FUNCTION[:kind] [as line] ... }`
+//!
+//! - A peripheral is in use when one of its functions is the chosen function of a pin of the
+//!   part (`Model::function_of`: the pin's own stated
+//!   function, or the one a forwarding equation `.mcu.p04.function == .scl.function` gives it,
+//!   to a depth of six). A function chosen on an unconnected pin is a use: the statement is
+//!   deliberate.
+//! - With `on CLASS` every pin whose row, in any table, lists the function `CLASS` offers the
+//!   peripheral's functions as well. The pin table does not change, and a pin in a package that
+//!   lacks it has no row. What a pin offers is computed when asked (`offers`, `class_peripherals`
+//!   and `offered_count` in `pinout.rs`), because a `peripheral` may follow the table. `CLASS`
+//!   must be a function some row lists. Without `on`, a function is offered only on the pins
+//!   whose rows list it, and each must be listed by at least one row.
+//! - A function belongs to one peripheral; a function a peripheral names takes its kind from it
+//!   and a row that writes a kind for it is refused. A peripheral name and a function name are in
+//!   one namespace. Refused too: a peripheral or a shared resource declared twice, a function
+//!   listed twice in a peripheral, a limit that is not fewer than the members (`limit 1` is the
+//!   default spelled out), a member twice in one shared resource, and a member that is a
+//!   function of a peripheral that is also a member of the same resource.
+//!
+//! # `shared NAME [limit N] { MEMBER ... }`
+//!
+//! A member is a peripheral name, a function name or a pin (`.p10`). At most N members (the
+//! default is one) are in use at once. The rule is judged for each instance of the part, in the board pass of
+//! `pin_faults`, before the solve: the choices are statements of the text, so no catalog row or
+//! package is needed. A part inside a module is judged with its full path. A member may be in
+//! several shared resources (`UARTE0` in `SERIAL0` and in `UARTS`). Order of statements does
+//! not matter.
+//!
+//! # The messages
+//!
+//! Each is one line, names the part by its path and type, the resource or the rule, every use
+//! with the function and its line, and ends with what the author can do. The span is the
+//! statement of the use that goes over the limit, the second in path order.
+//!
+//! 1. Two members of one shared resource: ``` `u` (`Zmcu`) uses SPIM1 and UARTE1, which share
+//!    `SERIAL1` and run one at a time: SPIM1 on `u.p02` as SPIM1_SCK (main.nsm:24) ... ```, with
+//!    a last clause that lists the other shared resources that have a member in use (or says
+//!    `SERIAL2 has nothing in use`), so that the author sees "there is no free unit". The clause
+//!    lists only the resources whose members are of the same kind and that have the same limit.
+//!    Members are listed in the path order of their first use.
+//! 2. More members in use than a limit allows: ``` `u` (`Zmcu`) uses 3 of the peripherals of
+//!    `UARTS`, which allows 2 at a time: ... ```.
+//! 3. Two pins that cannot both be used: ``` `u.p10` and `u.p11` of `Zmcu` are both in use, but
+//!    they share `REFERENCE`, which allows 1 at a time ```. A pin connected with no function
+//!    chosen reads `u.q0 connected to probe.a12` and points at the part's declaration, because a
+//!    board's `~` has no statement the checker keeps. (The first text of the ADR chose the same
+//!    function on both pins, which the rule of ADR 0016 already refuses; the guide and the tests
+//!    choose different ones.)
+//! 4. A function on a pin that does not offer it: ``` `u.p02` cannot be `HSSPI_SCK`; that
+//!    function is offered only on `u.p08`; `u.p02` offers APP_GPIO, NET_GPIO and the lines of the
+//!    peripherals on those pins: ... ```. A name no pin offers is a slip and gets `did you mean`.
+//!    The list of names is cut after six with `...`, and the nearest name picks the first of
+//!    equally near ones.
+//! 5. A function choice a module does not pass on (the old silent no-op): ``` `hub.scl.function`
+//!    is stated, but `hub.scl` is a pin of module `Hub` and nothing passes it to a pin of a part,
+//!    so it has no effect; inside `Hub`, write `.mcu.p04.function == .scl.function` ```. The
+//!    hint names the part pin on the same net inside the module when exactly one has functions.
+//!
+//! Three more are for the part's author, at the line that is wrong: a member of a `shared` that
+//! is not a peripheral, function or pin of the part (with the nearest name and the peripherals);
+//! `peripheral X on GPIO` when no row lists `GPIO` (with the functions rows do list); and a row
+//! that writes a kind for a function a peripheral gives a kind. A pin that is connected and lists
+//! only a class has several functions and needs a choice. A part with no `peripheral` keeps every
+//! message it had, word for word.
+//!
+//! # A provider and a generic
+//!
+//! A provider may state its own `peripheral` and `shared`; they are the part's, judged on the
+//! instance the solver picks like the rest of its checks (a trial that fails the shared rule is
+//! passed over with the message as its reason, ADR 0068). A generic refuses them: its pins,
+//! names, pads and functions are the provider's own, a use of the generic reaches only its
+//! members, and the providers' `Item` rewriting would copy them into every provider. What a
+//! generic can say about capability is a number the provider states (`.serial_units >= 3`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

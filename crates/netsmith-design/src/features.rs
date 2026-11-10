@@ -653,6 +653,14 @@ fn members(path: &str, banks: &BTreeMap<String, usize>) -> Vec<String> {
 /// become one for each capacitor, and a relation between two places becomes one for each pair
 /// of capacitors of its two ends. The sites that say where each is stated are copied with it.
 /// A note says what was done, once for each statement.
+///
+/// The choice is every capacitor, not the first (a choice of an agent, for the owner to
+/// change). A distance from "the output capacitor" to the inductor is a statement about the
+/// bank as a whole, and a bank with only its first capacitor near the inductor would meet the
+/// sentence in the file and not its purpose. The cost is that a bank of eight with a tight
+/// window may be unplaceable where the first alone was (not tried: the placer reports an unmet
+/// requirement for each part it concerns). Rejected: a note that the later capacitors are not
+/// covered, which would leave the defect in place with a warning.
 pub(crate) fn expand_banks(
     features: &mut Features,
     place_sites: &mut Sites,

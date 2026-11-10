@@ -23,6 +23,42 @@
 //! `generic` of an entry is the standard generic whose own `catalog` statement it describes: a
 //! test elaborates each of the four from the standard library and compares the columns, so an
 //! entry cannot drift from the definition it belongs to.
+//!
+//! # Where Rust still names a standard generic (ADR 0068, stage 3)
+//!
+//! `grep -nE '"(resistor|capacitor|inductor|led)"|"Capacitor"' crates/netsmith-solve/src
+//! crates/netsmith-check/src` cannot be empty: Rust that serves a generic names it once. What
+//! stage 3 did was make this one table instead of seven lists (`generic.rs` had a `match` on
+//! the four catalog names for the columns, the value column, the part word and the kinds of a
+//! row; `table.rs` had `OPTIONAL` and `VALUE_COLUMNS`). The optional columns are derived, not
+//! kept: they are the ones the synthesized provider leaves empty, and they must be the same, so
+//! the list was one fact written twice. What stays, each with its reason:
+//!
+//! - `generic.rs`: `Spec`, `Need`, `Sense`, the package and tolerance tables of each series
+//!   (`PACKAGES`, `CAPACITOR_TOLERANCES`, ...), `Series::for_reactive`, `with_needs`, `misses`
+//!   and `nearest` are the synthesized provider itself, which stays Rust (the language cannot say
+//!   how a value is generated). The entry is found by the catalog's name, not the generic's: a
+//!   catalog is one name shared by every part that lists it, so the columns a file may leave
+//!   out and the series belong to the catalog (ADR 0052 rejected the catalog's name for a
+//!   bank, because a bank is a property of the part; these three are properties of the
+//!   catalog).
+//! - `netsmith-check/src/model.rs`, `BANKS`: the one list of generics that are banks
+//!   (`["Capacitor"]`), keyed by `Instance.standard`. Deriving it without syntax is possible
+//!   (a standard generic that declares a numeric `.count` is a bank) and is not taken, because
+//!   it is a choice about the language; the owner may want it, or the marker ADR 0052
+//!   rejected.
+//! - `netsmith-view/src/layout.rs` `is_series_kind` (`Inductor`, `FerriteBead`, `Fuse`) and
+//!   `netsmith-pcb/src/quality.rs` `is_capacitor_kind` read the kind and `Part.provides`: a
+//!   project's own part called `Inductor` has been drawn in series by its kind since before
+//!   generics, and the unit tests build a `Part` by hand with a kind and no `provides`. They
+//!   are about different things (what a layout hangs in series, what the placer calls a
+//!   decoupling capacitor).
+//! - `netsmith-lower/src/lib.rs` `default_value`: `"Led"` shows `LED` as the value of an LED the
+//!   solver did not pick. It is a display default the language cannot declare, and reading
+//!   `provides` would change that line of a bill of materials for a provider.
+//! - `hand_soldered`, `is_connector`, `is_mechanical` and `Label` name parts, not generics (the
+//!   connector and mechanical parts are parts); `Mating`, `Logic`, `Place`, `Outline`,
+//!   `Cutout`, `Keepout` and `I2c` are interfaces of the standard library read by name.
 
 use netsmith_check::FieldKind;
 use netsmith_quantity::Dimension;

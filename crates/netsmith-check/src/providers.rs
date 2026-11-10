@@ -1,6 +1,88 @@
 //! Generics and their providers (ADR 0068): which parts and modules can stand where a
 //! generic is used, in what order a pick tries them, and the checks that a provider has
 //! what the generic states.
+//!
+//! # The body of a generic
+//!
+//! The grammar of a part's body, restricted: members `.name: Type` of any type a part may have
+//! (`Pin`, quantities, text, an enum, an interface such as `.vin: Rail`) and no part or module
+//! members; a `pins` table whose rows are `.pin kind` with an optional `required` or `optional`
+//! and no name and no pads (stored as a row with empty `pads`: every row of a part has at least
+//! one pad, so the two cannot be mistaken); narrowings, relations (`==`, `>=`, `<=`), defaults
+//! (`?=`), `bridge` and `.designator &= "J"`; and an optional `.mpn: String`, which a provider's
+//! catalog lists as a column (not implicit, because a generic of modules has none). A relation
+//! or narrowing in a generic is a check that every provider meets and every user may rely on; the
+//! solver evaluates it on whichever provider is tried. All providers of one generic are parts or
+//! all are modules, and a generic is placed as the kind its providers have; the mixed case is an
+//! error at the later provider's own name. The kind of a pin row is a requirement on every
+//! provider (it decides what the checker asks of the board); a module's pins have no kind, so a
+//! generic with a `pins` table is provided by parts only, which the checker says. A generic
+//! that has a pin table with pads or a `catalog` is its own first provider, and a generic with
+//! neither (`CoaxReceptacle`) is useless until a provider is in scope. It holds no parts, has no
+//! connections except between its own members, and is not inheritance: a use reaches only its
+//! members.
+//!
+//! # What a provider must have (the five rules, read whenever a provider is made)
+//!
+//! 1. Every member and statement of each generic it provides, with the same name and type,
+//!    never declared again (``` `max_frequency` is declared by `CoaxReceptacle`, which this part
+//!    provides; narrow it with `.max_frequency &= ...` ```). A member that carries a block in a
+//!    part today (`.buck: Buck { .vref &= ... }`) becomes statements. The generic's statements
+//!    are read before the provider's, each in its own file.
+//! 2. Each pin of the generic has a row in the provider's table of every package, with the same
+//!    kind, or is an alias of a pin that has one (`.signal ~ .rf`); an alias carries the kind of
+//!    the row it is joined to, and the message names that row. A `required` or `optional` of the
+//!    generic's pin reaches the provider's row (it may leave the word out; the opposite is
+//!    refused); an alias does not carry the word.
+//! 3. A value with another name is tied by an equation (`.max_frequency == .fmax`): no mapping
+//!    block, because the two forms exist.
+//! 4. The generic's narrowings and relations are added to the provider; a provider that
+//!    contradicts one (`.impedance &= 75ohm` against 50 ohm) fails where it is written.
+//! 5. A part that provides a part, or a module that provides an interface, is an error.
+//!
+//! A provider of a standard generic reads the generic's pins as kinds only (`.a passive`) and
+//! writes the one catalog of its own; it does not declare `.package: Package`, because the
+//! generic does, and it cannot state other designator letters. A provider of the standard
+//! `Capacitor` is a bank. Two providers of one generic need different names, because a part is
+//! known by its name in the bill of materials, in `kicad.toml` and in the notes (qualifying the
+//! kind with the module path was rejected: it changes every kind name for a case the author
+//! controls). A provider is judged where it is written even when no board picks it. A provider
+//! that contains a use of its own generic, directly or through the parts and modules inside it,
+//! would contain itself without end and is refused at the use, with the cycle named
+//! (`Checker::making` keeps the stack); the same for a definition that holds itself.
+//!
+//! # A use
+//!
+//! `.name: Generic { ... }` takes the same statements as any member's block, over the generic's
+//! members only. A path through a use to a member the generic does not declare is an error (the
+//! module rule of ADR 0004), which is what makes the board independent of the pick; the
+//! built-in members (`assembly`, `designator`, `height`, `pin_protrusion`, `place`) are exempt.
+//! A module that wants its user to choose a provider declares a value and ties it to its use
+//! (`.connector_mpn: String`, `.connector.mpn == .connector_mpn`), as ADR 0042 does.
+//!
+//! # The candidates
+//!
+//! Every provider in a file the board's file imports, directly or through other files, and in
+//! the board's own file: the set the loader loaded, which is the import graph
+//! (`Checker::add_module` caches each file once). An import used only to bring providers in scope
+//! is a plain import; the guide says to comment it. The order is the generic itself, then the
+//! providers in files of the standard library, then the project's, within each by module path
+//! and then name. The root file is one module whatever its spelling (`Loader::root_key`; before
+//! that `src/main.nsm` and `./src/main.nsm` sorted differently). A provider's id is
+//! `module::Name`, the module being the file's name without `.nsm` and with `::` for `/`, which
+//! is what an `Assignment` names. The pick depends on the sources, the catalog files and the
+//! manifest only: not on KiCad libraries or the mapping, a supply provider, stock or the time,
+//! so a provider with no symbol in `kicad.toml` is not skipped (the build fails at export,
+//! naming it).
+//!
+//! # When nothing works
+//!
+//! No provider in scope: ``` `reg` is a `BuckConverter`, and no part or module in the files this
+//! file imports provides it; import the file of a provider, or name one as the type of `reg` ```.
+//! Every provider fails: ``` no BuckConverter provider satisfies reg: the closest of the 2 in
+//! scope, Zbk9Buck, fails because ... ```, the closest being the trial with the fewest
+//! diagnostics, ties in candidate order, the others listed after it. With one provider in scope
+//! the message is the part's own.
 
 use std::collections::HashSet;
 use std::rc::Rc;

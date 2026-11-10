@@ -1,21 +1,12 @@
 # ADRs that broke the rules in README.md before it was written (see scripts/adr-check).
 # Cut or fold one, then take its name off. Do not add a name.
-0016-ic-parts.md
 0019-the-editor.md
 0030-layout-knowledge-and-the-pcb-editor.md
 0045-custom-constraints-from-the-enclosure.md
 0047-supplier-data-comes-from-a-provider-and-passives-are-generic.md
 0048-physical-intent-has-a-home-of-its-own.md
-0052-a-bank-of-capacitors-is-one-part-with-a-count.md
-0054-an-enum-is-a-type-with-a-fixed-list-of-variants.md
 0059-the-editor-compares-the-project-with-a-git-ref.md
 0060-doc-comments-and-relations-are-drawn-as-notes.md
 0061-the-schematic-layout-file.md
 0062-long-work-can-be-cancelled-and-says-how-far-it-has-got.md
-0064-bus-roles-and-levels.md
-0066-a-range-takes-its-ends-from-values-and-the-level-translator-states-its-levels-and-draw.md
 0067-a-bus-can-be-shared-nested-directed-and-followed-across-sheets.md
-0068-an-interface-picks-a-part-that-provides-it.md
-0071-shared-peripherals-and-pin-rules.md
-0074-a-member-marked-optional-is-skipped-by-the-checks-that-read-it-when-nothing-states-it.md
-0083-a-board-states-that-a-function-is-unused.md

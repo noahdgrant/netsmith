@@ -10,7 +10,38 @@
 //!
 //! A *bus* is the set of interfaces of one definition that share a net. A net that one of the
 //! rules reported is skipped by the rules of ADR 0044 ("two outputs", "only inputs"), so one
-//! fault is said once.
+//! fault is said once. That includes the nets of a pin whose row contradicts its role and every
+//! net of a bus that is over its limit.
+//!
+//! The other rules of ADR 0064 are judged here too:
+//!
+//! 5. Required lines. A role's `required` or `optional` is the requirement of a pin whose row
+//!    states none (a slave's `miso`, message 9). It is judged only for a part whose interface
+//!    has any line connected: an interface a part declares and the board never uses is left
+//!    alone.
+//! 6. Shared drivers. A net with two or more drivers (pins whose kind is `output` or
+//!    `tri_state`; `bidirectional` is as before, never counted) is an error if any of them is a
+//!    plain `output`. A net whose drivers are all `tri_state` is accepted: that at most one is
+//!    selected at a time is a fact of the protocol, which firmware and the chip select carry.
+//!    `tri_state` is a driver for the net rules and for the levels (`is_driver` in
+//!    `crates/netsmith-solve/src/levels.rs`), an `output` for the pin that must be connected
+//!    (optional), and not `bidirectional`: it does not receive. A generic may state
+//!    `.spi.miso tri_state` as a contract row, and a provider whose row says `output` is passed
+//!    over with the message as its reason (ADR 0068).
+//! 7. Roles that are not stated. A part whose interface states no role is not judged by 1 and
+//!    does not count in 3; rules 2, 4 and 6 are judged for its pins all the same. When some end
+//!    of a bus states a role and another does not, the solver's notes say `not evaluated: the
+//!    role of `x.spi` is not stated, so the limit and the table of `x` are not judged`. A bus on
+//!    which no end states a role gets no note.
+//!
+//! A bus pin is a terminal that is a member of an interface that has `lines`, or a pin on which
+//! the board chose a function of a peripheral that is a bus end. In a module, a port is only a
+//! way through: the part inside is the end, and a role a module wants to state for its callers
+//! is `.bus.role == .imu.spi.role`, the equation ADR 0071 uses for a function. Between the
+//! boards of a system the rules do not run (they judge the pins inside one board; a bus
+//! between two boards is carried by the contacts of the mated connectors, as in
+//! `examples/carrier_and_cards.nsm`). A generic states what every provider has, so a board that
+//! uses `.mem: SerialFlash` is judged before the solver picks a part.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
