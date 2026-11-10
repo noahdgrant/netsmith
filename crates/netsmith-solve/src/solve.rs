@@ -22,7 +22,7 @@
 //! earlier parts it depends on, and the search goes back to the nearest of them rather than
 //! choosing the parts in between again (conflict-directed backjumping).
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 mod dcpass;
 mod findings;
@@ -46,6 +46,7 @@ use netsmith_quantity::{Dimension, Quantity};
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
 use crate::eval::{EvalError, Val, eval, fields_in, reads_end};
 use crate::generic::{Need, Sense};
+use crate::lock::LockedRow;
 
 /// The result of solving one board.
 #[derive(Debug)]
@@ -505,7 +506,7 @@ fn union(parent: &mut [usize], a: usize, b: usize) {
 }
 
 pub fn solve(board: &Board, catalogs: &Catalogs) -> Solution {
-    solve_model(&board.model, catalogs)
+    solve_model(&board.model, catalogs, &board.name)
 }
 
 /// Solve every board of a system together. Propagation already carries values across a
@@ -515,13 +516,22 @@ pub fn solve(board: &Board, catalogs: &Catalogs) -> Solution {
 /// The solution's model is the system's; read one board through
 /// [`Model::scoped_to`].
 pub fn solve_system(system: &System, catalogs: &Catalogs) -> Solution {
-    solve_model(&system.model, catalogs)
+    solve_model(&system.model, catalogs, &system.name)
 }
 
-fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
+fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     let mut s = Solver {
         model: model.clone(),
         catalogs,
+        locked: catalogs
+            .pick_lock()
+            .map(|lock| {
+                lock.rows(unit)
+                    .iter()
+                    .map(|r| (r.path.clone(), r.clone()))
+                    .collect()
+            })
+            .unwrap_or_default(),
         diagnostics: Vec::new(),
         seen: HashSet::new(),
         picks: Vec::new(),
@@ -571,7 +581,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     // otherwise. A member that has a value by now is judged on it.
     s.find_transfers();
     s.add_transfers();
-    s.pick_parts();
+    netsmith_core::timings::stage("solve.pick", "", || s.pick_parts());
     s.drop_transfers();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
@@ -584,7 +594,8 @@ fn solve_model(model: &Model, catalogs: &Catalogs) -> Solution {
     s.check_windows();
     // The picked parts' network is solved, and what it gives is written where nothing states
     // a value (ADR 0076); the relations that waited are then judged with numbers.
-    let (dc, dc_notes, net_reads, net_currents) = s.dc_pass();
+    let (dc, dc_notes, net_reads, net_currents) =
+        netsmith_core::timings::stage("solve.dc", "", || s.dc_pass());
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
     }
@@ -787,6 +798,9 @@ impl Budget {
 struct Solver<'a> {
     model: Model,
     catalogs: &'a Catalogs,
+    /// The rows a pick lock holds the parts of this board or system to, by path (see
+    /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.
+    locked: BTreeMap<String, LockedRow>,
     diagnostics: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,
     picks: Vec<Pick>,
@@ -2178,6 +2192,88 @@ impl Solver<'_> {
         }
     }
 
+    /// A part that the pick lock names is offered only its locked row, which every statement of
+    /// the design and every relation then judge. Returns `false` when there is no such row, which
+    /// it has reported: the part is left unresolved, and no other row is tried in its place.
+    fn hold_to_lock(&mut self, part: InstId, path: &str, cat: &mut Catalog) -> bool {
+        // A part held to a row by `with_pin` (a check of an alternative) is that one's.
+        if self.catalogs.pinned(path).is_some() {
+            return true;
+        }
+        let Some(locked) = self.locked.get(path).cloned() else {
+            return true;
+        };
+        let file = self.lock_file();
+        let same_number = |c: &Candidate| {
+            locked
+                .lcsc
+                .as_ref()
+                .is_none_or(|l| c.lcsc.as_ref() == Some(l))
+                && locked
+                    .mpn
+                    .as_ref()
+                    .is_none_or(|m| c.mpn.as_ref() == Some(m))
+        };
+        let named: Vec<Candidate> = cat
+            .candidates
+            .iter()
+            .filter(|c| c.name == locked.row)
+            .cloned()
+            .collect();
+        let reason = if locked.catalog != cat.name {
+            Some(format!(
+                "the part now picks from the `{}` catalog, and the lock has it in `{}`",
+                cat.name, locked.catalog
+            ))
+        } else if named.is_empty() {
+            Some(format!(
+                "the `{}` catalog has no row `{}` now",
+                cat.name, locked.row
+            ))
+        } else if let Some(changed) = named.iter().find(|c| !same_number(c)) {
+            Some(format!(
+                "the row `{}` of the `{}` catalog now has the LCSC number {} and the manufacturer part number {}, and the lock has {} and {}",
+                locked.row,
+                cat.name,
+                changed.lcsc.as_deref().unwrap_or("none"),
+                changed.mpn.as_deref().unwrap_or("none"),
+                locked.lcsc.as_deref().unwrap_or("none"),
+                locked.mpn.as_deref().unwrap_or("none"),
+            ))
+        } else {
+            None
+        };
+        match reason {
+            None => {
+                cat.candidates.retain(|c| c.name == locked.row);
+                true
+            }
+            Some(reason) => {
+                let (source, span) = self.model.instance(part).at();
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "`{path}` is locked to the row `{}` of the `{}` catalog by {file}, and {reason}: no other row was tried for it; change the design or the catalog, or delete {file} to pick again",
+                        locked.row, locked.catalog
+                    ),
+                );
+                self.unresolved.push(Unresolved {
+                    part,
+                    reason: "the row its lock holds it to is not in the catalog".into(),
+                });
+                false
+            }
+        }
+    }
+
+    /// What a message calls the file of the pick lock.
+    fn lock_file(&self) -> String {
+        self.catalogs
+            .pick_lock()
+            .map_or_else(String::new, |l| l.file.clone())
+    }
+
     fn pick_parts(&mut self) {
         let mut parts: Vec<(String, InstId)> = self
             .model
@@ -2272,6 +2368,9 @@ impl Solver<'_> {
                     if let Some(row) = self.catalogs.pinned(&path) {
                         cat.candidates
                             .retain(|c| c.generic.is_none() && c.name == row);
+                    }
+                    if !self.hold_to_lock(part, &path, &mut cat) {
+                        continue;
                     }
                     let used = columns.iter().map(|(f, _)| self.mentioned(*f)).collect();
                     let count = self.model.bank_count(part);
@@ -3309,6 +3408,26 @@ impl Solver<'_> {
                     job.catalog.name, job.path
                 ),
             );
+        }
+        // A part that the lock holds to one row was offered no other: the failure above may be the
+        // lock's, and the message says how to look at it.
+        for &j in group {
+            let job = &jobs[j];
+            if self.catalogs.pinned(&job.path).is_some() {
+                continue;
+            }
+            if let Some(locked) = self.locked.get(&job.path).cloned() {
+                let (source, span) = self.model.instance(job.part).at();
+                let file = self.lock_file();
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "`{}` is locked to the row `{}` of the `{}` catalog by {file}, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or delete {file} to pick again",
+                        job.path, locked.row, locked.catalog
+                    ),
+                );
+            }
         }
         for &j in group {
             if let Some(count) = jobs[j].count {

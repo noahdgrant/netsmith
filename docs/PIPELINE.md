@@ -1,9 +1,11 @@
 # The pipeline: from source to a board
 
-What netsmith does with a design, in order. Nothing is kept between runs: `build`, `fab` and the
-editor each start from the source text and run the stages again. The files a person writes
-beside a board (layout files, the physical file) are inputs. The files netsmith writes are
-outputs, and no stage reads one back.
+What netsmith does with a design, in order. Nothing is kept between runs but one file: `build`,
+`fab` and the editor each start from the source text and run the stages again. The files a
+person writes beside a board (layout files, the physical file) are inputs. The files netsmith
+writes are outputs, and no stage reads one back, except the pick lock (`<stem>.lock.toml`,
+ADR 0100, proposed): `build` and `fab` write it when it is absent, and the solve stage then holds
+each part to the row it names. `NETSMITH_TIMINGS=1` prints the seconds of each stage.
 
 Written against `main` at `b504854`. Where a name in the code differs from the name a person
 would expect, the diagram says so. The code is the authority: `crates/netsmith/src/lib.rs`

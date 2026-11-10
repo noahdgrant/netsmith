@@ -14,6 +14,7 @@ pub mod libraries;
 pub mod no_supplier;
 pub mod order;
 pub mod physical;
+pub mod pick_lock;
 pub mod project;
 pub mod providers;
 pub mod refresh;
@@ -27,7 +28,7 @@ use std::path::{Path, PathBuf};
 use netsmith_check::{
     Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources, check,
 };
-use netsmith_core::{Cause, Design, PanelSpec};
+use netsmith_core::{Cause, Design, PanelSpec, timings};
 use netsmith_design::guidelines::Guideline;
 use netsmith_design::{
     Assembly, Designed, Sourced, design_board, design_panel, design_system_board,
@@ -35,7 +36,7 @@ use netsmith_design::{
 use netsmith_kicad::{Mapping, Pinout, emit_schematic, project_file};
 use netsmith_lang::{ParseError, Span};
 use netsmith_pcb::{Subject, validate_pinout};
-use netsmith_solve::{Catalogs, Solution, solve, solve_system};
+use netsmith_solve::{Catalogs, PickLock, Solution, solve, solve_system};
 
 pub use libraries::Libraries;
 pub use netsmith_editor::api::PowerIssue;
@@ -117,6 +118,9 @@ pub struct Outcome {
     pub systems: Vec<SolvedSystem>,
     /// The panels (ADR 0040). Each repeats a stand-alone board of `boards`.
     pub panels: Vec<PanelSpec>,
+    /// The row each part of each board and system was picked as: the pick lock these picks make
+    /// (`pick_lock`). Its `file` is empty; the command that writes it names the file.
+    pub lock: PickLock,
 }
 
 /// Where a mistake is: 1-based lines and columns (in characters) of its first and last
@@ -374,7 +378,7 @@ pub fn outcome_observed(
     libraries: Option<&Libraries>,
     observe: &dyn Fn(Step<'_>),
 ) -> Result<Outcome, Vec<Problem>> {
-    let checked = check(name, text, loader);
+    let checked = timings::stage("check", name, || check(name, text, loader));
     if !checked.is_ok() {
         return Err(problems_of(&checked));
     }
@@ -389,6 +393,7 @@ pub fn outcome_observed(
 
     let mut built = Vec::new();
     let mut solved = Vec::new();
+    let mut lock = PickLock::new("");
     let total = checked.standalone_boards().count() + checked.systems.len();
     for (done, board) in checked.standalone_boards().enumerate() {
         let step = |stage| Step {
@@ -398,23 +403,25 @@ pub fn outcome_observed(
             total,
         };
         observe(step(Stage::Solve));
-        let first = solve(board, catalogs);
+        let first = timings::stage("solve", &board.name, || solve(board, catalogs));
         // A failure with a use that has several providers is tried with the others, and so is
         // a bound on such a use that could not be judged (ADR 0068).
         let mut picked = None;
         if !first.diagnostics.is_empty() || !providers::unjudged(&first).is_empty() {
-            match providers::search(
-                providers::Source {
-                    name,
-                    text,
-                    loader,
-                    catalogs,
-                },
-                &board.name,
-                providers::Root::Board,
-                &checked,
-                &first,
-            ) {
+            match timings::stage("providers", &board.name, || {
+                providers::search(
+                    providers::Source {
+                        name,
+                        text,
+                        loader,
+                        catalogs,
+                    },
+                    &board.name,
+                    providers::Root::Board,
+                    &checked,
+                    &first,
+                )
+            }) {
                 providers::Outcome::Unchanged if !first.diagnostics.is_empty() => {
                     return Err(diagnostic_problems(
                         &first.diagnostics,
@@ -438,8 +445,9 @@ pub fn outcome_observed(
         let sources = picked
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
+        lock.set(&board.name, pick_lock::rows_of(solution));
         observe(step(Stage::Design));
-        let mut designed = design_board(board, solution)
+        let mut designed = timings::stage("design", &board.name, || design_board(board, solution))
             .map_err(|errors| design_problems(Some(&board.name), &board.name, &errors))?;
         designed
             .guidelines
@@ -456,7 +464,9 @@ pub fn outcome_observed(
         if catalogs.strict_guidelines() {
             refuse_guidelines(&board.name, &designed.guidelines, &solution.model, sources)?;
         }
-        let power_issues = editor::power::board_tree(&solution.model, sources).issues;
+        let power_issues = timings::stage("power", &board.name, || {
+            editor::power::board_tree(&solution.model, sources).issues
+        });
         refuse_power(&board.name, &power_issues, |_| true)?;
         let provided = providers::notes_for(&solution.model, None, &passed);
         let mut notes = provider_lines(&provided);
@@ -466,15 +476,17 @@ pub fn outcome_observed(
                 .into_iter()
                 .map(|n| (n, Cause::Pick)),
         );
-        let mut one = export(
-            None,
-            &board.name,
-            designed,
-            notes,
-            &solution.model,
-            sources,
-            libraries,
-        )?;
+        let mut one = timings::stage("export", &board.name, || {
+            export(
+                None,
+                &board.name,
+                designed,
+                notes,
+                &solution.model,
+                sources,
+                libraries,
+            )
+        })?;
         one.providers = provided;
         one.power = power_issues;
         one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
@@ -502,21 +514,23 @@ pub fn outcome_observed(
             )]);
         }
         observe(step(Stage::Solve));
-        let first = solve_system(system, catalogs);
+        let first = timings::stage("solve", &system.name, || solve_system(system, catalogs));
         let mut picked = None;
         if !first.diagnostics.is_empty() || !providers::unjudged(&first).is_empty() {
-            match providers::search(
-                providers::Source {
-                    name,
-                    text,
-                    loader,
-                    catalogs,
-                },
-                &system.name,
-                providers::Root::System,
-                &checked,
-                &first,
-            ) {
+            match timings::stage("providers", &system.name, || {
+                providers::search(
+                    providers::Source {
+                        name,
+                        text,
+                        loader,
+                        catalogs,
+                    },
+                    &system.name,
+                    providers::Root::System,
+                    &checked,
+                    &first,
+                )
+            }) {
                 providers::Outcome::Unchanged if !first.diagnostics.is_empty() => {
                     // A message written inside the definition of a member's board is about that
                     // board; any other is about the system.
@@ -550,23 +564,28 @@ pub fn outcome_observed(
         let sources = picked
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
+        lock.set(&system.name, pick_lock::rows_of(solution));
         observe(step(Stage::Design));
         // The issues of the whole system: a rail that a port of another board supplies has a
         // source here, which the board alone does not show.
-        let power_issues = editor::power::system_tree(
-            &solution.model,
-            sources,
-            &system
-                .boards
-                .iter()
-                .map(|m| (m.inst, Some(m.name.clone())))
-                .collect::<Vec<_>>(),
-        )
-        .issues;
+        let power_issues = timings::stage("power", &system.name, || {
+            editor::power::system_tree(
+                &solution.model,
+                sources,
+                &system
+                    .boards
+                    .iter()
+                    .map(|m| (m.inst, Some(m.name.clone())))
+                    .collect::<Vec<_>>(),
+            )
+            .issues
+        });
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
-            let mut designed = design_system_board(system, member, solution)
-                .map_err(|errors| design_problems(Some(&label), &label, &errors))?;
+            let mut designed = timings::stage("design", &label, || {
+                design_system_board(system, member, solution)
+            })
+            .map_err(|errors| design_problems(Some(&label), &label, &errors))?;
             designed
                 .guidelines
                 .extend(open_circle_findings(solution, sources, Some(member.inst)));
@@ -599,15 +618,17 @@ pub fn outcome_observed(
                     .into_iter()
                     .map(|n| (n, Cause::Pick)),
             );
-            let mut one = export(
-                Some(&system.name),
-                &member.name,
-                designed,
-                notes,
-                &scoped,
-                sources,
-                libraries,
-            )?;
+            let mut one = timings::stage("export", &label, || {
+                export(
+                    Some(&system.name),
+                    &member.name,
+                    designed,
+                    notes,
+                    &scoped,
+                    sources,
+                    libraries,
+                )
+            })?;
             one.providers = provided;
             one.power = power_issues.iter().filter(|i| mine(i)).cloned().collect();
             one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
@@ -665,6 +686,7 @@ pub fn outcome_observed(
         boards: built,
         systems: solved,
         panels,
+        lock,
     })
 }
 

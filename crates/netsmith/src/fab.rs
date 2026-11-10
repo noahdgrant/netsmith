@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use netsmith_check::Loader;
-use netsmith_core::PanelSpec;
+use netsmith_core::{PanelSpec, timings};
 use netsmith_design::{Assembly, Sourced};
 use netsmith_fab::panel::{CellFacts, CellInput, Spec};
 use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
@@ -28,6 +28,7 @@ use netsmith_solve::Catalogs;
 
 use crate::order::{BoardFacts, PanelFacts};
 use crate::resolve::resolve_generics;
+
 use crate::{Built, Libraries, outcome_with, render_problems};
 
 /// One board, made.
@@ -107,6 +108,11 @@ pub struct FabOptions {
     /// no height is then an error and not a warning (ADR 0045, "Height limits", PROVISIONAL).
     /// `--allow-drc-violations` does not waive it.
     pub strict_heights: bool,
+    /// The pick lock of the source (`pick_lock`): written when it does not exist, compared with
+    /// the picks when it does, and with `locked` an error if they differ, before anything is
+    /// placed. The solver holds parts to it through the catalogs, which the caller gives. `None`
+    /// leaves the lock out of the run.
+    pub lock: Option<crate::pick_lock::Use>,
 }
 
 impl Default for FabOptions {
@@ -119,6 +125,7 @@ impl Default for FabOptions {
             cross_check: false,
             only: None,
             strict_heights: false,
+            lock: None,
         }
     }
 }
@@ -165,6 +172,16 @@ pub fn fab_with_options(
     let mut made = Vec::new();
     let outcome = outcome_with(name, text, loader, catalogs, Some(libraries))
         .map_err(|problems| render_problems(&problems))?;
+    if let Some(using) = &options.lock {
+        let settled = crate::pick_lock::settle(using, catalogs.pick_lock(), &outcome.lock)
+            .map_err(|e| format!("{e}\n"))?;
+        if let Some(file) = settled.wrote {
+            say(format!("wrote {}", file.display()));
+        }
+        for note in settled.notes {
+            say(format!("note: {note}"));
+        }
+    }
     let (built_boards, panels) = (outcome.boards, outcome.panels);
     let board_names: Vec<String> = built_boards.iter().map(|b| b.design.name.clone()).collect();
     // The layout file beside the source, if there is one: it says which face each part is on
@@ -369,7 +386,10 @@ fn fab_board(
 
         // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
         // stands for cannot be ordered, and is refused by name with the nearest rows.
-        let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
+        let label = built.label();
+        let (sourcing, unresolved) = timings::stage("fab.resolve", &label, || {
+            resolve_generics(&built.sourcing, catalogs)
+        });
         let unresolved: Vec<String> = unresolved
             .iter()
             .filter(|u| {
@@ -397,12 +417,14 @@ fn fab_board(
 
         // What the requirements prove cannot be placed is said now, before the placer starts
         // (it can take a minute on a tight board).
-        let precheck = precheck_board(
-            built,
-            layout.as_ref().map(|l| &l.0),
-            libraries,
-            catalogs.constraints_warn(),
-        );
+        let precheck = timings::stage("fab.precheck", &label, || {
+            precheck_board(
+                built,
+                layout.as_ref().map(|l| &l.0),
+                libraries,
+                catalogs.constraints_warn(),
+            )
+        });
         for warning in &precheck.warnings {
             say(format!("{}: warning: {warning}", built.label()));
         }
@@ -416,12 +438,14 @@ fn fab_board(
         ));
         let mut placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
         placement.lines_warn = catalogs.constraints_warn();
-        let mut board = Board::from_design_placed(
-            &built.design,
-            &libraries.mapping,
-            &libraries.footprints,
-            &placement,
-        )
+        let mut board = timings::stage("fab.place", &label, || {
+            Board::from_design_placed(
+                &built.design,
+                &libraries.mapping,
+                &libraries.footprints,
+                &placement,
+            )
+        })
         .map_err(|e| match e {
             netsmith_pcb::BoardError::DoesNotFit(e) => fail(placement_failure(&e, out)),
             e => fail(e.to_string()),
@@ -493,14 +517,16 @@ fn fab_board(
             board.outline.width(),
             board.outline.height()
         ));
-        let routing = route_with(
-            &mut board,
-            RouteOptions {
-                time_limit: options.route_timeout,
-                progress: options.progress,
-                ..RouteOptions::default()
-            },
-        );
+        let routing = timings::stage("fab.route", &label, || {
+            route_with(
+                &mut board,
+                RouteOptions {
+                    time_limit: options.route_timeout,
+                    progress: options.progress,
+                    ..RouteOptions::default()
+                },
+            )
+        });
         let unrouted = routing.left;
         // A board with connections left is still written, so that the owner can open the part
         // that is routed in the PCB view, but it is marked INCOMPLETE and the run ends in an
@@ -619,10 +645,17 @@ fn fab_board(
                 package(&pcb_path, &entries, &package_options),
             )));
         }
-        let pkg =
-            package(&pcb_path, &entries, &package_options).map_err(|e| fail(e.to_string()))?;
+        // Reads the written board back, runs the design rules check, plots the Gerbers and
+        // drill files and makes the BOM and the placement file.
+        let pkg = timings::stage("fab.package", &label, || {
+            package(&pcb_path, &entries, &package_options)
+        })
+        .map_err(|e| fail(e.to_string()))?;
         let mut files = vec![pcb_path.clone()];
-        files.extend(pkg.write(&dir).map_err(|e| fail(e.to_string()))?);
+        files.extend(
+            timings::stage("fab.write", &label, || pkg.write(&dir))
+                .map_err(|e| fail(e.to_string()))?,
+        );
         let mut notes = pkg.notes.clone();
         if options.cross_check {
             let kicad = kicad.ok_or_else(|| {
