@@ -1018,7 +1018,7 @@ impl<'a> Engine<'a> {
                     height: parts[i].height,
                     hand_fitted: parts[i].hand_fitted,
                     court_faces: parts[i].footprint.courtyard_faces,
-                    role: if crate::place::is_connector(kind) {
+                    role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector
                     } else if crate::fit::is_mechanical(kind) {
                         Role::Mechanical

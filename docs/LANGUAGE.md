@@ -1939,7 +1939,7 @@ error: `j` is inside `Block` and is not part of its interface; set it through a 
 
 Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
-Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `Obd2M` and `ProgrammingPads6` `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
+Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every connector (a part that provides `Connector`, see _A connector of your own_: every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `Obd2M` and `ProgrammingPads6`) `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
 ```nsm
 part Buzzer {
@@ -4162,7 +4162,7 @@ Rules.
 
 - A part or module may provide several generics: `part AcmeMicroCoax provides CoaxReceptacle, RfConnector`. Only a `generic` is provided; `board`, `system`, `panel`, `interface` and `enum` cannot say `provides`.
 - Each pin of the generic has a row of the same kind in every `pins` table of the part, or is an alias of a pin that has a row of that kind: the row the alias is joined to is what the checker reads for the net, so it is the one compared (`.signal ~ .rf` with `.rf output` is refused where the generic says `.signal passive`, at the row of `.rf`).
-- The providers of one generic are all parts or all modules: a generic is placed as the kind its providers have. A generic that has a `pins` table is provided by parts.
+- The providers of one generic are all parts or all modules: a generic is placed as the kind its providers have. A generic that has a `pins` table is provided by parts. A generic that is provided by parts but asks them for no pin writes an empty table, `pins { }` (the standard `Connector`, see _A connector of your own_).
 - A provider is checked where it is written, as any part is, so an unused provider's mistakes show.
 - No two providers of one generic have the same name, in whatever files they are: a part is known by its name in the bill of materials, in the `[[part]]` entries of `kicad.toml` and in the notes, so two would share a kind and a mapping. The later one (by the order below) is refused at its own name, with both module paths.
 - A provider does not contain a use of the generic it provides, directly or through the parts and modules inside it: a pick that could take the provider being made would make it again inside itself. A provider that wraps `BuckConverter` in `.inner: BuckConverter` is refused at that line with the cycle named (`AFilteredBuck > AFilteredBuck`), whatever its name sorts as; wrap a part, or a module that does not provide the generic. Nor does any definition contain itself, directly or through another.
@@ -9312,6 +9312,40 @@ physical for Mechanical {
 }
 ```
 
+### A connector of your own
+
+A connector is a part that provides the generic `Connector` of `std::parts::connector` (ADR 0068). The schematic's layout puts a connector at the start of a signal's walk and the placer puts it on the board's edge, and both ask the part for the generic: not its name, which no list holds, and not its designator, which is a label. Every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `Obd2M` and `ProgrammingPads6` provides it, so a project's own connector does what they do by saying the same word. `Connector` states only what is true of every connector: its letters are `"J"` (so the provider does not state them again, and cannot state others). It has no pads, no package and no catalog, so a provider has its own pin table and its own `.package: Package`, and a part named `HeaderBuffer` that does not provide it is an ordinary part, an IC with the letters `U`.
+
+```nsm evaluate
+import std::parts::connector::{Connector, Header1x2}
+
+/// A 2-pin wire-to-board connector of the project. Invented.
+part MolexPicoBlade provides Connector {
+    pins {
+        .vcc passive "VCC" "1"
+        .gnd passive "GND" "2"
+    }
+    .package: Package
+}
+
+/// An IC whose name starts like a header's. It is no connector: it provides nothing.
+part HeaderBuffer {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+board Mix {
+    /// `J1`, and laid out like `Header1x2`.
+    .battery: MolexPicoBlade
+    /// `J2`.
+    .debug: Header1x2
+    /// `U1`.
+    .buffer: HeaderBuffer
+}
+```
+
 ### DC analysis
 
 After the parts are picked, the solver builds the network of the parts that state what they are at DC and solves it (ADR 0076, provisional). Where the equations of the design cannot say what a part carries (a net with two currents that nothing states, ADR 0026), the network can: the pass writes `.current` and `.drop` of a part, and the checks that waited for them (`.drop == .current * .resistance`, `.drop * .current <= .max_power`, a fuse's `.current <= .rated_current`) are judged with the numbers. A pass that finds a rating exceeded is an error, like any relation, and says which states of the circuit give it.
@@ -12127,6 +12161,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias`, `.max_voltage` `.count`, the number of identical capacitors in parallel (a bank; unset is one, a range is chosen by the solver) and `.dielectric` (a `Dielectric`, from the row, optional). Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
 | `std::parts::passive::Led` | A light-emitting diode with `.color`, `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
 | `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, a pin table for SOT-23 and one for SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`; `.quiescent_current` is the current it keeps for itself (default none), added to the input current. Catalog `ldo`. |
+| `std::parts::connector::Connector` | What a connector is: a generic with the letters `"J"` and no pins, no pads and no catalog, that every standard connector provides and a project's own connector provides to be one (ADR 0068). |
 | `std::parts::connector::Header1x2` | A single-row header with two pins `p1` and `p2`. Soldered by hand. |
 | `std::parts::connector::Header1x4` | A single-row header with 4 pins `p1` to `p4`, pin N on pad N. |
 | `std::parts::connector::Header1x8` | A single-row header with 8 pins `p1` to `p8`, pin N on pad N. |

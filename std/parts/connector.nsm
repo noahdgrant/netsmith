@@ -1,5 +1,8 @@
 //! Connectors.
 //!
+//! Every connector provides the generic `Connector` (ADR 0068), which says it is one: the schematic
+//! and the placer find connectors by it, and a project's own connector provides it too.
+//!
 //! Every pin header and socket states `.mating`, what a connector says about how it meets
 //! another: its kind, gender, pitch, rows and positions. A `system` joins two boards by mating
 //! their connectors (`.carrier.slot.mating ~ .card.j1.mating`, ADR 0040): contact N of one is
@@ -48,10 +51,21 @@ interface Mating {
     .keyed: String
 }
 
-/// A single-row header with two pins. It is where a board's wires attach.
-part Header1x2 {
+/// What a connector is: a part that is the way in and out of a board, so its reference
+/// designator starts with `J`. It states only what is true of every connector. Every standard
+/// connector below provides it, and so does a connector of a project (`part MolexPicoBlade
+/// provides Connector { ... }`, ADR 0068). The schematic and the placer ask a part for this
+/// generic to know that it is a connector, never its name or its designator. It has no pads and
+/// no catalog, so it is no part until a provider stands for it.
+generic Connector {
     .designator &= "J"
 
+    pins {
+    }
+}
+
+/// A single-row header with two pins. It is where a board's wires attach.
+part Header1x2 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -70,9 +84,7 @@ part Header1x2 {
 }
 
 /// A single-row header with 4 pins, `p1` to `p4`, pin N on pad N.
-part Header1x4 {
-    .designator &= "J"
-
+part Header1x4 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -93,9 +105,7 @@ part Header1x4 {
 }
 
 /// A single-row header with 8 pins, `p1` to `p8`, pin N on pad N.
-part Header1x8 {
-    .designator &= "J"
-
+part Header1x8 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -120,9 +130,7 @@ part Header1x8 {
 }
 
 /// A single-row header with 10 pins, `p1` to `p10`, pin N on pad N.
-part Header1x10 {
-    .designator &= "J"
-
+part Header1x10 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -150,9 +158,7 @@ part Header1x10 {
 
 /// A single-row socket with 2 positions, `p1` to `p2`, position N on pad N. It is the
 /// mate of `Header1x2`, a different part on the bill of materials.
-part Socket1x2 {
-    .designator &= "J"
-
+part Socket1x2 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -172,9 +178,7 @@ part Socket1x2 {
 
 /// A single-row socket with 4 positions, `p1` to `p4`, position N on pad N. It is the
 /// mate of `Header1x4`, a different part on the bill of materials.
-part Socket1x4 {
-    .designator &= "J"
-
+part Socket1x4 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -196,9 +200,7 @@ part Socket1x4 {
 
 /// A single-row socket with 8 positions, `p1` to `p8`, position N on pad N. It is the
 /// mate of `Header1x8`, a different part on the bill of materials.
-part Socket1x8 {
-    .designator &= "J"
-
+part Socket1x8 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -224,9 +226,7 @@ part Socket1x8 {
 
 /// A single-row socket with 10 positions, `p1` to `p10`, position N on pad N. It is the
 /// mate of `Header1x10`, a different part on the bill of materials.
-part Socket1x10 {
-    .designator &= "J"
-
+part Socket1x10 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -254,9 +254,7 @@ part Socket1x10 {
 
 /// A two-row header with 6 pins, `p1` to `p6`, pin N on pad N. Which pins are in which
 /// row is the footprint's: the part states only the pads.
-part Header2x3 {
-    .designator &= "J"
-
+part Header2x3 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -280,9 +278,7 @@ part Header2x3 {
 
 /// A two-row header with 10 pins, `p1` to `p10`, pin N on pad N. Which pins are in which
 /// row is the footprint's: the part states only the pads.
-part Header2x5 {
-    .designator &= "J"
-
+part Header2x5 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -309,9 +305,7 @@ part Header2x5 {
 
 /// A two-row header with 20 pins, `p1` to `p20`, pin N on pad N. Which pins are in which
 /// row is the footprint's: the part states only the pads.
-part Header2x10 {
-    .designator &= "J"
-
+part Header2x10 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"
@@ -350,9 +344,7 @@ part Header2x10 {
 /// characteristic impedance and `.max_frequency` the highest frequency it is specified for;
 /// a design states them where it needs them. The shield is a single pin, however many pads
 /// the footprint gives it.
-part Coax {
-    .designator &= "J"
-
+part Coax provides Connector {
     pins {
         .signal passive "SIGNAL" "1"
         .shield passive "SHIELD" "2"
@@ -373,9 +365,7 @@ part Coax {
 /// power-only symbol and its six-contact footprints have exactly these pads (ADR 0021). A device that takes 5 V from a source puts a resistor on each CC pin to ground, the
 /// specification's pull-down (`Resistor` in a chain: `.cc1 ~> .rd ~> .vbus.neg`). The DC analysis
 /// takes `.vbus` as a source: its net is held over the range the design states for `.voltage`.
-part UsbCPower {
-    .designator &= "J"
-
+part UsbCPower provides Connector {
     .vbus: Rail
     dc source .vbus
 
@@ -399,9 +389,7 @@ part UsbCPower {
 /// the receptacle is never asked for a role. The high-speed pairs are not brought
 /// out; the sideband pins `.sbu1` (A8) and `.sbu2` (B8) are, because the footprint has the
 /// pads, and are left open. The shell is a pin (`.shell`).
-part UsbC2 {
-    .designator &= "J"
-
+part UsbC2 provides Connector {
     .usb: Usb2
     .usb.role &= UsbRole::Passthrough
 
@@ -425,9 +413,7 @@ part UsbC2 {
 /// (pin 16) and `neg` on chassis ground (pin 4). Signal ground (pin 5) is optional. The pins
 /// J1962 leaves to the manufacturer are named by their number. The DC analysis takes `.vbatt`
 /// as a source: its net is held over the range the design states for `.voltage`.
-part Obd2M {
-    .designator &= "J"
-
+part Obd2M provides Connector {
     .vbatt: Rail
     dc source .vbatt
 
@@ -458,9 +444,7 @@ part Obd2M {
 /// Six pads in a footprint that a spring-pin cable presses on, to program a board with no
 /// connector fitted. It is the generic form of a Tag-Connect cable's footprint: the pads are
 /// `p1` to `p6`, and the board decides what each carries. See `Swd` for a debug port.
-part ProgrammingPads6 {
-    .designator &= "J"
-
+part ProgrammingPads6 provides Connector {
     pins {
         .p1 passive "P1" "1"
         .p2 passive "P2" "2"

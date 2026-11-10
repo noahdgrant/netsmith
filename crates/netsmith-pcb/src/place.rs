@@ -587,9 +587,12 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
     Ok(())
 }
 
-/// Connectors are found by the name of the kind of part.
-pub(crate) fn is_connector(kind: &str) -> bool {
-    kind.starts_with("Header") || kind.starts_with("Socket") || kind.starts_with("Connector")
+/// A connector is a part that provides the standard generic `Connector` (ADR 0068), whatever
+/// its name.
+pub(crate) fn is_connector(part: &Placed) -> bool {
+    part.provides
+        .iter()
+        .any(|g| g == netsmith_core::CONNECTOR_GENERIC)
 }
 
 /// A box of courtyards laid out relative to its own top left corner.
@@ -768,7 +771,7 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
     let mut back = Vec::new();
     let mut connectors = 0;
     for &i in order {
-        if is_connector(&parts[i].kind) {
+        if is_connector(&parts[i]) {
             if connectors % 2 == 0 {
                 left.push(i);
             } else {
@@ -1159,10 +1162,7 @@ pub(crate) fn arrange_best(
         (c.width() + GAP_X) * (c.height() + GAP_Y)
     };
     let free = |i: usize, p: &Placed| {
-        !fixed[i]
-            && !options.sides.contains_key(&p.refdes)
-            && !is_connector(&p.kind)
-            && !is_through(p)
+        !fixed[i] && !options.sides.contains_key(&p.refdes) && !is_connector(p) && !is_through(p)
     };
     let mut movable: Vec<usize> = (0..parts.len()).filter(|&i| free(i, &parts[i])).collect();
     // Where nothing can be shared, the first try is the only one there is, and it is tried
@@ -1531,7 +1531,7 @@ fn large_parts(
         .filter(|&i| {
             !fixed[i]
                 && !options.overhang.contains_key(&parts[i].refdes)
-                && !is_connector(&parts[i].kind)
+                && !is_connector(&parts[i])
                 && area(&parts[i]) >= LARGE_SHARE * face
         })
         .collect();
@@ -2110,7 +2110,12 @@ mod tests {
 
     fn part(refdes: &str, kind: &str, package: Option<&str>) -> Part {
         Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if kind.starts_with("Header") || kind.starts_with("Socket") {
+                vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
+            } else {
+                Vec::new()
+            },
             refdes: refdes.into(),
             kind: kind.into(),
             value: "1".into(),
@@ -2161,6 +2166,24 @@ mod tests {
         let wall = board.rules.edge_wall();
         assert!((wall - 1e-9..wall + 3.0).contains(&gap), "{gap} mm");
         assert_eq!(board.check_placement(), vec![]);
+    }
+
+    /// A connector is a part that provides the standard generic `Connector` (ADR 0068): a part
+    /// of a project that does is one whatever its name, and a name that starts like a header's
+    /// does not make one.
+    #[test]
+    fn a_connector_is_found_by_the_generic_it_provides_not_by_its_name() {
+        let mut board = board_of(vec![
+            part("J1", "Header1x2", None),
+            part("R1", "Resistor", Some("0402")),
+        ]);
+        assert!(is_connector(&board.parts[0]));
+        board.parts[0].kind = "MolexPicoBlade".into();
+        assert!(is_connector(&board.parts[0]));
+        board.parts[0].provides.clear();
+        assert!(!is_connector(&board.parts[0]));
+        board.parts[0].kind = "HeaderBuffer".into();
+        assert!(!is_connector(&board.parts[0]));
     }
 
     #[test]

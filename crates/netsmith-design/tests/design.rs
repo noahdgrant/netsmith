@@ -1267,6 +1267,61 @@ board B {
     assert_eq!([of("fuse"), of("tvs"), of("diode")], ["F1", "D1", "D2"]);
 }
 
+/// A connector is a part that provides the standard generic `Connector` (ADR 0068, issue #166):
+/// a header of the library does, so does a part of the project that says so, with the letters
+/// `J` from the generic, and a part whose name only starts like a header's does not. A project's
+/// own generic with the same name is not the standard one.
+#[test]
+fn a_connector_is_a_part_that_provides_the_standard_generic() {
+    let src = "\
+import std::parts::connector::{Connector, Header1x2}
+part MolexPicoBlade provides Connector {
+    pins {
+        .p1 passive \"1\" \"1\"
+        .p2 passive \"2\" \"2\"
+    }
+}
+part HeaderBuffer {
+    pins {
+        .a passive \"A\" \"1\"
+        .b passive \"B\" \"2\"
+    }
+}
+board B {
+    .pico: MolexPicoBlade
+    .std_header: Header1x2
+    .buffer: HeaderBuffer
+}
+";
+    let d = designed(src).unwrap();
+    let part = |path: &str| d.parts.iter().find(|p| p.path == path).unwrap();
+    assert!(part("pico").is_connector());
+    assert!(part("std_header").is_connector());
+    assert!(!part("buffer").is_connector());
+    // `J` comes from the generic, and the number counts in declaration order.
+    assert_eq!(part("pico").refdes, "J1");
+    assert_eq!(part("std_header").refdes, "J2");
+    assert_eq!(part("buffer").refdes, "U1");
+
+    // A generic of the project that is called `Connector` is not the standard one.
+    let src = "\
+generic Connector {
+    pins {
+    }
+}
+part Own provides Connector {
+    pins {
+        .p1 passive \"1\" \"1\"
+    }
+}
+board B {
+    .own: Own
+}
+";
+    let d = designed(src).unwrap();
+    assert!(!d.parts[0].is_connector());
+}
+
 /// A module's parts are numbered where the module is declared, and a module inside a module
 /// the same way: the order is the source's, depth first, and the same on every run.
 #[test]

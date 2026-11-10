@@ -8,7 +8,8 @@
 //! (`Pin`, quantities, text, an enum, an interface such as `.vin: Rail`) and no part or module
 //! members; a `pins` table whose rows are `.pin kind` with an optional `required` or `optional`
 //! and no name and no pads (stored as a row with empty `pads`: every row of a part has at least
-//! one pad, so the two cannot be mistaken); narrowings, relations (`==`, `>=`, `<=`), defaults
+//! one pad, so the two cannot be mistaken), or an empty table `pins { }`, which says "a part,
+//! whose pins are its own" and asks for no pin (`Connector`); narrowings, relations (`==`, `>=`, `<=`), defaults
 //! (`?=`), `bridge` and `.designator &= "J"`; and an optional `.mpn: String`, which a provider's
 //! catalog lists as a column (not implicit, because a generic of modules has none). A relation
 //! or narrowing in a generic is a check that every provider meets and every user may rely on; the

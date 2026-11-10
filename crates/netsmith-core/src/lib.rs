@@ -14,11 +14,11 @@ pub struct Part {
     /// The library definition it was made from: `Resistor`, `Led`. An exporter decides
     /// what each kind looks like in its own tool.
     pub kind: String,
-    /// The generics the part's definition provides (`part X provides Resistor`, ADR 0068),
-    /// by name. A tool that treats a kind of part in its own way (an inductor lies along the
+    /// The standard generics the part's definition provides (`part X provides Resistor`, ADR
+    /// 0068), by name. A tool that treats a kind of part in its own way (an inductor lies along the
     /// wire it is in, a capacitor decouples) reads it as well as `kind`, so that a provider
-    /// with a name of its own is treated as the kind it provides. Empty for a standard part
-    /// and for a part that provides nothing.
+    /// with a name of its own is treated as the kind it provides. A generic of a project is
+    /// not listed. Empty for a part that provides no standard generic.
     pub provides: Vec<String>,
     /// What a schematic shows as the part's value: `300`.
     pub value: String,
@@ -34,24 +34,16 @@ pub struct Part {
     pub pins: Vec<PartPin>,
 }
 
-/// Whether a kind of part is a connector: a pin header, a socket, or one of the standard
-/// connectors (`std::parts::connector`). It is the part's kind that says so, never its
-/// reference designator, which is a label that counts parts and may change (issue #166). A
-/// test in `netsmith-design` keeps this list equal to the standard kinds that state the
-/// letters `J`.
-pub fn is_connector_kind(kind: &str) -> bool {
-    kind.starts_with("Header")
-        || kind.starts_with("Socket")
-        || kind.starts_with("Connector")
-        || kind.starts_with("UsbC")
-        || matches!(kind, "Coax" | "Obd2M" | "ProgrammingPads6")
-}
+/// The standard generic that says a part is a connector (`std::parts::connector::Connector`,
+/// ADR 0068): the way in and out of a board.
+pub const CONNECTOR_GENERIC: &str = "Connector";
 
 impl Part {
-    /// Whether the part is a connector, the way in and out of a board: its kind, or a
-    /// generic it provides, is a connector kind ([`is_connector_kind`]).
+    /// Whether the part is a connector: it provides the standard generic `Connector` (or is
+    /// it). It is the generic that says so, never the part's name or its reference designator,
+    /// which is a label that counts parts and may change (issue #166).
     pub fn is_connector(&self) -> bool {
-        is_connector_kind(&self.kind) || self.provides.iter().any(|g| is_connector_kind(g))
+        self.provides.iter().any(|g| g == CONNECTOR_GENERIC)
     }
 }
 
@@ -681,6 +673,19 @@ mod tests {
             path: String::new(),
             pins: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_connector_is_a_part_that_provides_the_connector_generic() {
+        let mut p = part("J1");
+        p.kind = "MolexPicoBlade".into();
+        assert!(!p.is_connector());
+        p.provides = vec!["Connector".into()];
+        assert!(p.is_connector());
+        // A name that starts like a connector's, or letters `J`, do not make one.
+        let mut p = part("J2");
+        p.kind = "HeaderBuffer".into();
+        assert!(!p.is_connector());
     }
 
     #[test]
