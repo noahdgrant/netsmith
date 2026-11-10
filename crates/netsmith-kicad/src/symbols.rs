@@ -290,6 +290,26 @@ impl Symbol {
         &self.definition
     }
 
+    /// Whether the symbol says a part drawn with it is on a bill of materials: its
+    /// `(in_bom ...)`, `yes` when it says nothing.
+    pub fn in_bom(&self) -> bool {
+        self.says_yes("in_bom")
+    }
+
+    /// Whether the symbol says a part drawn with it is on the board: its `(on_board ...)`,
+    /// `yes` when it says nothing.
+    pub fn on_board(&self) -> bool {
+        self.says_yes("on_board")
+    }
+
+    fn says_yes(&self, flag: &str) -> bool {
+        self.definition
+            .find(flag)
+            .and_then(|f| f.args().first())
+            .and_then(Sexp::text)
+            != Some("no")
+    }
+
     /// How many units the symbol has: 1 for an ordinary symbol.
     pub fn units(&self) -> u32 {
         self.units

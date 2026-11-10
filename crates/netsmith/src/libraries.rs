@@ -76,11 +76,21 @@ impl Libraries {
     /// one ([`netsmith_kicad::needs_power_flag`]).
     pub fn generated_symbols(&self, design: &Design) -> Vec<Arc<Symbol>> {
         let mut symbols: Vec<Arc<Symbol>> = Vec::new();
-        for part in design.parts.iter().filter(|p| p.kind != "Label") {
-            let Ok(mapped) = self.mapping.map(&part.kind, part.package.as_deref()) else {
+        // The same symbols the schematic embeds ([`netsmith_kicad::resolve`]), so that its ids and
+        // the library file's agree.
+        for (part, drawn) in design
+            .parts
+            .iter()
+            .zip(netsmith_kicad::resolve::part_symbols(
+                design,
+                &self.mapping,
+                &self.symbols,
+            ))
+        {
+            if part.kind == "Label" {
                 continue;
-            };
-            if let Ok(symbol) = self.symbols.symbol_of(part, &mapped)
+            }
+            if let Ok((_, symbol)) = drawn
                 && stdlib::is_library_id(symbol.lib_id())
                 && !symbols.iter().any(|s| s.lib_id() == symbol.lib_id())
             {

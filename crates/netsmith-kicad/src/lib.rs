@@ -5,6 +5,7 @@ pub mod install;
 pub mod mapping;
 pub mod passives;
 pub mod pinout;
+pub mod resolve;
 pub mod schematic;
 pub mod sexp;
 pub mod stdlib;

@@ -24,6 +24,7 @@ use netsmith_core::{Design, DesignError};
 use uuid::Uuid;
 
 use crate::mapping::{MapError, Mapped, Mapping, POWER_FLAG_SYMBOL};
+use crate::resolve::part_symbols;
 use crate::sexp::Sexp;
 use crate::symbols::{PinGeometry, PinType, Symbol, SymbolError, SymbolLib, SymbolPin};
 
@@ -185,13 +186,9 @@ fn plan_cell(symbol: &Symbol, connections: &[Connection]) -> Cell {
 /// needs one needs its `netsmith.kicad_sym` to hold it ([`crate::stdlib::symbol_library`]).
 /// A part that has no symbol is left to `emit_schematic` to report, and says nothing here.
 pub fn needs_power_flag(design: &Design, mapping: &Mapping, lib: &SymbolLib) -> bool {
-    let symbols: Vec<Option<Arc<Symbol>>> = design
-        .parts
-        .iter()
-        .map(|part| {
-            let mapped = mapping.map(&part.kind, part.package.as_deref()).ok()?;
-            lib.symbol_of(part, &mapped).ok()
-        })
+    let symbols: Vec<Option<Arc<Symbol>>> = part_symbols(design, mapping, lib)
+        .into_iter()
+        .map(|drawn| drawn.ok().map(|(_, symbol)| symbol))
         .collect();
     design.nets.iter().any(|net| {
         let kinds: Vec<Option<PinType>> = net
@@ -220,17 +217,8 @@ pub fn emit_schematic(
     let mut no_connects: Vec<Sexp> = Vec::new();
 
     let mut mapped: Vec<(Mapped, Arc<Symbol>)> = Vec::new();
-    for part in &design.parts {
-        let m = mapping
-            .map(&part.kind, part.package.as_deref())
-            .map_err(|error| EmitError::Map {
-                refdes: part.refdes.clone(),
-                error,
-            })?;
-        let symbol = lib.symbol_of(part, &m).map_err(|error| EmitError::Symbol {
-            refdes: part.refdes.clone(),
-            error,
-        })?;
+    for drawn in part_symbols(design, mapping, lib) {
+        let (m, symbol) = drawn?;
         if !lib_symbols.iter().any(|s| s == symbol.definition()) {
             lib_symbols.push(symbol.definition().clone());
         }
@@ -568,8 +556,16 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64), roo
         at(x, y, 0.0),
         Sexp::node("unit", vec![Sexp::atom(placement.unit.to_string())]),
         Sexp::node("exclude_from_sim", vec![Sexp::atom("no")]),
-        Sexp::node("in_bom", vec![Sexp::yes_no(placement.real)]),
-        Sexp::node("on_board", vec![Sexp::yes_no(placement.real)]),
+        // A part is on the bill of materials and the board when it is a part and its symbol
+        // says so, as KiCad's own placement copies the library symbol's flags.
+        Sexp::node(
+            "in_bom",
+            vec![Sexp::yes_no(placement.real && placement.symbol.in_bom())],
+        ),
+        Sexp::node(
+            "on_board",
+            vec![Sexp::yes_no(placement.real && placement.symbol.on_board())],
+        ),
         Sexp::node("dnp", vec![Sexp::atom("no")]),
         Sexp::node("fields_autoplaced", vec![Sexp::atom("yes")]),
         Sexp::node("uuid", vec![Sexp::string(key(&unit_suffix("symbol")))]),
@@ -1084,6 +1080,313 @@ mod tests {
         assert_eq!(flagged, ["GND", "VIN"]);
         // The same bytes every time.
         assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+    }
+
+    /// The electrical type the embedded symbol of the placed part `refdes` gives its pin `pad`.
+    fn type_written(root: &Sexp, refdes: &str, pad: &str) -> String {
+        let placed = root
+            .find_all("symbol")
+            .find(|s| {
+                s.find("lib_id").is_some()
+                    && s.find_all("property").any(|p| {
+                        p.args()[0].text() == Some("Reference")
+                            && p.args()[1].text() == Some(refdes)
+                    })
+            })
+            .unwrap_or_else(|| panic!("{refdes} is not placed"));
+        let lib_id = placed.find("lib_id").unwrap().args()[0].text().unwrap();
+        let embedded = root
+            .find("lib_symbols")
+            .unwrap()
+            .find_all("symbol")
+            .find(|s| s.args()[0].text() == Some(lib_id))
+            .unwrap_or_else(|| panic!("{lib_id} is not embedded"));
+        embedded
+            .find_all("symbol")
+            .flat_map(|unit| unit.find_all("pin"))
+            .find(|p| p.find("number").unwrap().args()[0].text() == Some(pad))
+            .unwrap_or_else(|| panic!("{lib_id} has no pin {pad}"))
+            .args()[0]
+            .text()
+            .unwrap()
+            .to_string()
+    }
+
+    /// The names of the symbols of `lib_symbols`, in order.
+    fn embedded_names(root: &Sexp) -> Vec<String> {
+        root.find("lib_symbols")
+            .unwrap()
+            .find_all("symbol")
+            .filter_map(|s| s.args()[0].text().map(str::to_string))
+            .collect()
+    }
+
+    /// The `drawn_regulator_design()` with a second `IcLdo` in the same package, `U2`, on the
+    /// same supply and ground and its own output net, whose output pin is named `rename`.
+    fn two_drawn_regulators(rename: &str, u2_output_net: &str) -> Design {
+        let mut d = drawn_regulator_design();
+        let mut second = d.parts[2].clone();
+        second.refdes = "U2".into();
+        for pin in &mut second.pins {
+            if pin.name == "vout.pos" {
+                pin.datasheet = rename.into();
+            }
+        }
+        d.parts.push(second);
+        let pin = |pin: &str| PinRef {
+            refdes: "U2".into(),
+            pin: pin.into(),
+        };
+        for net in &mut d.nets {
+            match net.name.as_str() {
+                "VIN" => net.pins.push(pin("3")),
+                "GND" => net.pins.push(pin("1")),
+                _ => {}
+            }
+        }
+        match d.nets.iter_mut().find(|n| n.name == u2_output_net) {
+            Some(net) => net.pins.push(pin("2")),
+            None => d.nets.push(Net {
+                name: u2_output_net.into(),
+                pins: vec![pin("2")],
+            }),
+        }
+        d
+    }
+
+    #[test]
+    fn two_parts_of_one_kind_and_package_with_different_pin_tables_are_two_symbols_with_two_ids() {
+        let d = two_drawn_regulators("VOUT", "5V");
+        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let root = Sexp::parse(&text).unwrap();
+        let names = embedded_names(&root);
+        let mut unique = names.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(
+            names.len(),
+            unique.len(),
+            "a name is embedded twice: {names:?}"
+        );
+        // Each placed part names a symbol that is embedded, and the two are not the same one.
+        let id_of = |refdes: &str| -> String {
+            root.find_all("symbol")
+                .find(|s| {
+                    s.find_all("property").any(|p| {
+                        p.args()[0].text() == Some("Reference")
+                            && p.args()[1].text() == Some(refdes)
+                    })
+                })
+                .and_then(|s| {
+                    s.find("lib_id")
+                        .map(|l| l.args()[0].text().unwrap().to_string())
+                })
+                .unwrap()
+        };
+        let (a, b) = (id_of("U1"), id_of("U2"));
+        assert_ne!(a, b);
+        assert!(names.contains(&a) && names.contains(&b), "{names:?}");
+        // The ids do not depend on the order the parts are in.
+        let mut swapped = d.clone();
+        swapped.parts.swap(2, 3);
+        let other = Sexp::parse(&emit_schematic(&swapped, &mapping(), &sample()).unwrap()).unwrap();
+        let mut left = embedded_names(&root);
+        let mut right = embedded_names(&other);
+        left.sort();
+        right.sort();
+        assert_eq!(left, right);
+        // The same two parts with one table keep the name they always had.
+        let same =
+            emit_schematic(&two_drawn_regulators("OUT", "5V"), &mapping(), &sample()).unwrap();
+        assert_eq!(
+            embedded_names(&Sexp::parse(&same).unwrap())
+                .iter()
+                .filter(|n| n.starts_with("netsmith:"))
+                .collect::<Vec<_>>(),
+            ["netsmith:IcLdo_SOT-23"]
+        );
+        // Every id that is generated has the same bytes every time.
+        assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+    }
+
+    #[test]
+    fn two_pins_that_give_power_to_one_net_are_one_power_output_and_a_power_input() {
+        let mut d = two_drawn_regulators("OUT", "3V3");
+        for part in &mut d.parts[2..] {
+            for pin in &mut part.pins {
+                match pin.name.as_str() {
+                    "vin.pos" => pin.power_flow = Some(netsmith_core::PowerFlow::Takes),
+                    "vout.pos" => pin.power_flow = Some(netsmith_core::PowerFlow::Gives),
+                    _ => {}
+                }
+            }
+        }
+        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let root = Sexp::parse(&text).unwrap();
+        // KiCad's pin matrix reports two outputs on one net: the first (by designator) stays
+        // the output and the other is typed as an input, which an output may drive.
+        assert_eq!(type_written(&root, "U1", "2"), "power_out");
+        assert_eq!(type_written(&root, "U2", "2"), "power_in");
+        // Only pins that were not outputs changed: the supply pins are inputs on both.
+        assert_eq!(type_written(&root, "U2", "3"), "power_in");
+        // The net has its output, so it gets no flag.
+        let mut flagged: Vec<String> = flags(&root).into_iter().map(|f| f.1).collect();
+        flagged.sort();
+        assert_eq!(flagged, ["GND", "VIN"]);
+        // The order of the parts does not choose the output.
+        let mut swapped = d.clone();
+        swapped.parts.swap(2, 3);
+        let other = Sexp::parse(&emit_schematic(&swapped, &mapping(), &sample()).unwrap()).unwrap();
+        assert_eq!(type_written(&other, "U1", "2"), "power_out");
+        assert_eq!(type_written(&other, "U2", "2"), "power_in");
+        // The design is not changed by the choice.
+        assert!(d.parts[3].pins.iter().any(PartPin::gives_power));
+    }
+
+    #[test]
+    fn two_pins_of_one_part_that_give_power_to_one_net_are_one_power_output() {
+        // `.vdd2 ~ .vdd.pos` inside a part: two pins of one part on one net.
+        let mut d = drawn_regulator_design();
+        for pin in &mut d.parts[2].pins {
+            match pin.name.as_str() {
+                "vin.pos" => pin.power_flow = Some(netsmith_core::PowerFlow::Takes),
+                "vout.pos" => pin.power_flow = Some(netsmith_core::PowerFlow::Gives),
+                _ => {}
+            }
+        }
+        d.parts[2].pins.push(PartPin {
+            name: "vout2".into(),
+            datasheet: "OUT2".into(),
+            kind: PinKind::Power,
+            pads: vec!["4".into()],
+            function: None,
+            power_flow: Some(netsmith_core::PowerFlow::Gives),
+        });
+        d.nets
+            .iter_mut()
+            .find(|n| n.name == "3V3")
+            .unwrap()
+            .pins
+            .push(PinRef {
+                refdes: "U1".into(),
+                pin: "4".into(),
+            });
+        let root = Sexp::parse(&emit_schematic(&d, &mapping(), &sample()).unwrap()).unwrap();
+        assert_eq!(type_written(&root, "U1", "2"), "power_out");
+        assert_eq!(type_written(&root, "U1", "4"), "power_in");
+    }
+
+    #[test]
+    fn a_giving_pin_that_meets_a_library_symbol_s_output_is_the_one_that_gives_way() {
+        // `Ldo` is KiCad's AP1117 with a power output on pad 2 that netsmith cannot retype: a
+        // generated pin that gives power to the same net becomes an input.
+        let mut d = drawn_regulator_design();
+        for pin in &mut d.parts[2].pins {
+            if pin.name == "vout.pos" {
+                pin.power_flow = Some(netsmith_core::PowerFlow::Gives);
+            }
+        }
+        // U0 sorts before U1, so a rule that only looked at the order would keep U0's pin.
+        d.parts.push(Part {
+            provides: Vec::new(),
+            refdes: "U0".into(),
+            kind: "Ldo".into(),
+            value: "XC6206".into(),
+            package: Some("SOT-23".into()),
+            path: String::new(),
+            pins: Vec::new(),
+        });
+        d.nets
+            .iter_mut()
+            .find(|n| n.name == "3V3")
+            .unwrap()
+            .pins
+            .push(PinRef {
+                refdes: "U0".into(),
+                pin: "2".into(),
+            });
+        let root = Sexp::parse(&emit_schematic(&d, &mapping(), &sample()).unwrap()).unwrap();
+        assert_eq!(type_written(&root, "U0", "2"), "power_out");
+        assert_eq!(type_written(&root, "U1", "2"), "power_in");
+    }
+
+    #[test]
+    fn a_placed_part_is_on_the_bill_of_materials_as_its_symbol_says_and_a_flag_is_on_neither() {
+        let part = |refdes: &str, kind: &str, package: Option<&str>| Part {
+            provides: Vec::new(),
+            refdes: refdes.into(),
+            kind: kind.into(),
+            value: String::new(),
+            package: package.map(str::to_string),
+            path: String::new(),
+            pins: Vec::new(),
+        };
+        let d = Design {
+            name: "mechanical".into(),
+            process: None,
+            features: Default::default(),
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts: vec![
+                part("FID1", "Fiducial", Some("1mm")),
+                part("H1", "MountingHole", Some("M3")),
+                part("H2", "PlatedHole", Some("M3")),
+                part("TP1", "TestPoint", Some("D1.0mm")),
+                part("R1", "Resistor", Some("0402")),
+                part("U1", "Ldo", Some("SOT-23")),
+            ],
+            nets: vec![Net {
+                name: "N".into(),
+                pins: vec![
+                    PinRef {
+                        refdes: "U1".into(),
+                        pin: "3".into(),
+                    },
+                    PinRef {
+                        refdes: "TP1".into(),
+                        pin: "1".into(),
+                    },
+                    PinRef {
+                        refdes: "R1".into(),
+                        pin: "1".into(),
+                    },
+                    PinRef {
+                        refdes: "H2".into(),
+                        pin: "1".into(),
+                    },
+                ],
+            }],
+        };
+        let lib = SymbolLib::at(testlib::sample_symbols()).with_generators();
+        let root = Sexp::parse(&emit_schematic(&d, &mapping(), &lib).unwrap()).unwrap();
+        let flags_of = |refdes: &str| -> (String, String) {
+            let placed = root
+                .find_all("symbol")
+                .find(|s| {
+                    s.find("lib_id").is_some()
+                        && s.find_all("property").any(|p| {
+                            p.args()[0].text() == Some("Reference")
+                                && p.args()[1].text() == Some(refdes)
+                        })
+                })
+                .unwrap_or_else(|| panic!("{refdes} is not placed"));
+            let word = |name: &str| placed.find(name).unwrap().args()[0].text().unwrap().into();
+            (word("in_bom"), word("on_board"))
+        };
+        let yes = || ("yes".to_string(), "yes".to_string());
+        // KiCad's symbols for the hole and the fiducial are `in_bom no`, and netsmith's own bill
+        // of materials leaves them out too (their standard definitions are not assembled).
+        for refdes in ["FID1", "H1", "H2"] {
+            assert_eq!(
+                flags_of(refdes),
+                ("no".to_string(), "yes".to_string()),
+                "{refdes}"
+            );
+        }
+        assert_eq!(flags_of("TP1"), yes());
+        assert_eq!(flags_of("R1"), yes());
+        // The flag the exporter places on the net nothing drives is no part at all.
+        assert_eq!(flags_of("#FLG01"), ("no".to_string(), "no".to_string()));
     }
 
     #[test]

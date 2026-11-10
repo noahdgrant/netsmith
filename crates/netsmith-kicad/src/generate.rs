@@ -20,6 +20,7 @@
 //! machine.
 
 use netsmith_core::{Part, PartPin, PinKind};
+use uuid::Uuid;
 
 use crate::sexp::Sexp;
 use crate::stdlib;
@@ -147,19 +148,36 @@ fn reference_prefix(refdes: &str) -> String {
 /// The symbol `netsmith:<name>` of `part`, drawn from its pin table, with `footprint` (the
 /// mapping's id) in its `Footprint` field. `None` for a part with no pin table.
 pub fn symbol(part: &Part, footprint: &str) -> Option<Symbol> {
+    make(part, footprint, false)
+}
+
+/// The symbol of `part` as [`symbol`] draws it, under a name that ends in a short hash of the
+/// drawing (`netsmith:Lt8641_UDC20_18_1a2b3c4d`), for a design in which the plain name is taken
+/// by another drawing ([`crate::resolve`]): the name then says which of the drawings it is, and
+/// is the same on every machine and in every order of the parts.
+pub fn symbol_hashed(part: &Part, footprint: &str) -> Option<Symbol> {
+    make(part, footprint, true)
+}
+
+fn make(part: &Part, footprint: &str, hashed: bool) -> Option<Symbol> {
     if part.pins.is_empty() {
         return None;
     }
-    let name = symbol_name_for(&part.kind, part.package.as_deref(), &part.pins);
-    let definition = draw(
-        &name,
-        &reference_prefix(&part.refdes),
-        footprint,
-        &[part.pins.iter().collect()],
-    );
+    let plain = symbol_name_for(&part.kind, part.package.as_deref(), &part.pins);
+    let reference = reference_prefix(&part.refdes);
+    let drawn = |name: &str| draw(name, &reference, footprint, &[part.pins.iter().collect()]);
+    let name = if hashed {
+        // Everything the symbol is made of (the table, the reference letters, the footprint) is
+        // in the drawing under the plain name.
+        let text = drawn(&plain).to_kicad_string();
+        let hash = Uuid::new_v5(&Uuid::NAMESPACE_OID, text.as_bytes()).simple();
+        format!("{plain}_{}", &hash.to_string()[..8])
+    } else {
+        plain
+    };
     let lib_id = format!("{}:{name}", stdlib::NAME);
     Some(
-        Symbol::from_definition(&lib_id, &name, definition)
+        Symbol::from_definition(&lib_id, &name, drawn(&name))
             .expect("a symbol drawn here is one that can be read"),
     )
 }

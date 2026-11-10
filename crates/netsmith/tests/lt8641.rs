@@ -627,6 +627,64 @@ fn kicads_erc_accepts_the_symbol_drawn_from_the_pin_table() {
     assert_eq!(found, Vec::<String>::new());
 }
 
+/// Two pins that give power to one net (two converters of one board ganged on the switch net)
+/// are two `power_out` pins, and KiCad's pin matrix reports an output driving an output. One stays
+/// the output and the other is typed an input, and KiCad's rules check is clean. It skips where
+/// there is no `kicad-cli`.
+#[test]
+fn kicads_erc_accepts_two_pins_that_give_power_to_one_net() {
+    let dir = TempDir::new("lt8641-erc-ganged");
+    let libraries = libraries(&dir);
+    let b = built(&libraries);
+    let mut design = b.design.clone();
+    let ic = design.parts.iter().find(|p| p.kind == "Lt8641").unwrap();
+    let (refdes, mut twin) = (ic.refdes.clone(), ic.clone());
+    twin.refdes = "U99".into();
+    design.parts.push(twin);
+    // The twin's pad 8 (the switch pin that gives power) joins the net of the first one's.
+    let net = design
+        .nets
+        .iter_mut()
+        .find(|n| n.pins.iter().any(|p| p.refdes == refdes && p.pin == "8"))
+        .expect("the switch pin is on a net");
+    net.pins.push(netsmith_core::PinRef {
+        refdes: "U99".into(),
+        pin: "8".into(),
+    });
+    let schematic =
+        netsmith_kicad::emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    // Without KiCad: the pin types written are one output and one input on that net.
+    let root = netsmith_kicad::sexp::Sexp::parse(&schematic).unwrap();
+    let outputs = root
+        .find("lib_symbols")
+        .unwrap()
+        .find_all("symbol")
+        .filter(|s| {
+            s.args()[0]
+                .text()
+                .is_some_and(|n| n.starts_with("netsmith:Lt8641"))
+        })
+        .map(|s| {
+            s.find_all("symbol")
+                .flat_map(|u| u.find_all("pin"))
+                .filter(|p| {
+                    p.args()[0].text() == Some("power_out")
+                        && p.find("number").unwrap().args()[0].text() == Some("8")
+                })
+                .count()
+        })
+        .sum::<usize>();
+    assert_eq!(outputs, 1, "{schematic}");
+    let Some(found) = crate::erc::erc(&design.name, &schematic) else {
+        return;
+    };
+    let found: Vec<String> = crate::erc::with_the_machines_libraries(found)
+        .into_iter()
+        .filter(|v| !v.starts_with("lib_symbol_mismatch"))
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
 #[test]
 fn a_board_without_a_part_of_the_library_gets_no_library_files() {
     let src = "import std::parts::passive::Resistor\n\
