@@ -147,6 +147,14 @@ _Avoid_: Text, annotation, legend
 `<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
 
+**Pick lock**:
+`<stem>.lock.toml` beside a source file: the catalog row each part of each board of the file was picked as, by the part's path, with the row's LCSC and manufacturer numbers as a check against a renamed row. `build` and `fab` write it when it does not exist and read it when it does: the solver offers a locked part only its locked row, judged by everything the design says, and does not fall back to another row if it fails (an error that names the row and the relation). A part with no entry, or an entry for a part that is gone, is told and is an error with `--locked`; an existing lock is never rewritten by a run. It holds no stock, no price and no solved value, and it is not the solver's result: it records one choice among rows (ADR 0100). A committed file, so a change to a catalog or to the solver that would move a pick shows as a change to it.
+_Avoid_: Lockfile (Cargo's word for a file of versions), solved-design file (a different, unbuilt file that would hold the `Design`), pin file and pinned (a _Pin_ is a part's lead; `Catalogs::with_pin` holds a part to one row to test an alternative, and drops the design's numbers for it)
+
+**Stage timings**:
+One line on stderr for each stage of a run (`timing: solve LedExample 12.3 ms`), printed when the environment variable `NETSMITH_TIMINGS` is set to anything but empty or `0`, and nothing otherwise (`netsmith_core::timings`). A stage inside another (`solve.dc` in `solve`) is counted in the one around it. The numbers are wall time of one run, taken on whatever the machine was doing.
+_Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benchmark
+
 **Derived placement**:
 The placer's way of choosing where parts go: from the circuit alone, with nothing written in the source. It keeps the parts of a module instance together, puts a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, turns parts by right angles, and keeps reference text clear of other parts, all by simulated annealing with a seeded random generator (ADR 0033).
 _Avoid_: Autoplace, autorouter placement
@@ -275,7 +283,7 @@ _Avoid_: Interface (the type), network
 
 **Pinout**:
 The pin table of a part in one package: for each pin its kind, the name the datasheet prints, its pads, and its functions. Written as a `pins "PACKAGE" { ... }` block in the part, or an unnamed `pins { ... }` for a part whose pads do not depend on the package. A pin that a package lacks does not exist in that package. It names no CAD tool (ADR 0002, ADR 0016).
-_Avoid_: Pin map, pin assignment
+_Avoid_: Pin table, pin map (the pin map is the pins that requests got, _Pin map_)
 
 **Alias**:
 A pin with no row in the pin table that the part joins to a pin that has one (`.vin.neg ~ .vout.neg`). It is that pin, so it needs no pad of its own and adds no pin to a net in the schematic.
@@ -285,7 +293,7 @@ A pin with no row in the pin table that the part joins to a pin that has one (`.
 _Avoid_: Short, jumper
 
 **Function**:
-One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= "UART1_TX"`; there is no default, and one function can be chosen on only one pin of a part. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
+One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= "UART1_TX"`; there is no default, and one function can be chosen on only one pin of a part, except a **class** (next paragraph), which any number of pins can be. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
 A function may be listed by a peripheral instead of a row, and a **class** is a function that rows list (`fn APP_GPIO NET_GPIO`) and peripherals are `on`: the function a board chooses for a pin that a core owns names the core (ADR 0071).
 A module's own pin (`.scl: Pin`) passes a choice on to a pin of a part inside with an equation, `.mcu.p04.function == .scl.function`; `.function &=` on a module's pin that no such equation reads is an error, because it has no effect (ADR 0071, stage 0).
 _Avoid_: Alternate function, mux, mode
@@ -293,6 +301,18 @@ _Avoid_: Alternate function, mux, mode
 **Peripheral**:
 `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }` in a part: the functions of one part that belong together (a UART's `TX` and `RX`), each with an optional kind as in a pin row. It is **in use** when the board chooses one of its functions on a pin; two of its lines are still one use. With `on CLASS`, every pin whose row lists the function `CLASS` offers its functions (so a part where any pin can carry any line keeps one row for each pin); with no `on`, only the rows that list a function by name offer it, a dedicated pin. A function belongs to one peripheral, and a peripheral and a function have different names (ADR 0071). A peripheral may be an end of a bus, `peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master { SPIM0_SCK:output as sclk ... }`: it has the role, and a pin on which the board chose one of its functions is a line of the bus (ADR 0064).
 _Avoid_: Group, block, role (the **Role** of a peripheral that is a bus end is the one it names after `as`), mode, mux, unit (a unit is the hardware a `shared` resource names, not a peripheral)
+
+**Pin request**:
+`.status: .u.GPIO` in a board or a module: a pin of its own whose type is a capability of a part, a function that a row of the part lists or a peripheral offers (`.tx: .u.UARTE1_TX`). It asks for any pin of `u` that offers the capability, and the tool picks it before the nets are made and keeps the answer in the _Pin file_. The request's path is its key. It is joined and checked as the pin it got, and a pin that the source names is never given to one (ADR 0101).
+_Avoid_: Pin assignment (the word for choosing providers is _Assignment_), pin constraint, pin hint, wildcard pin
+
+**Pin file**:
+`<stem>.pins.toml` beside the top-level source: for each request of each board the pin it got (`pin`, `function`, `lock`, `source`). `build` and `fab` write it when a run picks a pin, `--locked` stops a run that would change it, and a run never changes an entry that still holds. It holds a solution and the requirements are in the source, as in the _Layout file_ (ADR 0032, ADR 0101).
+_Avoid_: Pin map file, pinout file (a _Pinout_ is a part's table), pin lock file
+
+**Pin map**:
+The pins that the requests of a board got, as the _Pin file_ lists them. The firmware export will list these with the pins the source names (issue #111).
+_Avoid_: Pinout (a part's table), pin assignment, pin table
 
 **Shared resource**:
 `shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 .p10 }` in a part: the hardware that at most `limit` of its members use at a time (one without `limit`; a limit is at least 1 and fewer than the members). A member is a peripheral, a function (in use when chosen on a pin) or a pin (in use when its function is chosen or the board connects it). Using more members than allowed is an error that names the part, the resource, every use and its line; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0071).

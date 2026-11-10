@@ -2095,7 +2095,7 @@ Rules.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
 - `optional` is for a `power` or `input` pin that may float; `required` is for an `output`, `bidirectional` or `passive` pin that may not. Neither is accepted where it changes nothing.
-- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part. A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
+- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class ("A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
 - Two `power` pins that are both supplies on one net are not checked yet.
@@ -2822,6 +2822,158 @@ error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on eve
 4 |         .p00 bidirectional "P0.00" "1" fn APP_GPIO UARTE0_TX
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+### A pin by capability
+
+A board that does not care which pin of a microcontroller carries a signal asks for a capability and lets the tool pick the pin (ADR 0101). A request is a declaration whose type is a function of a part: `.status: .u.GPIO` declares the pin `status` of the board, and asks `u` for any pin that offers `GPIO`. What a request can ask for is what the part already says: a function that a row lists, or a function of a peripheral that is offered on the pin (`.tx: .u.UARTE1_TX`). The part declares nothing more. A request is a pin of the board, so `~` works on it as on any pin, and it is joined and checked as the pin it got.
+
+The part and the board are invented. The pins `p02` and `p03` list `ANALOG`, so a request for `ANALOG` has two pins to choose from.
+
+```nsm module=src::zmcu4
+/// Zmcu4, an invented microcontroller: four pins, two of them analog, and two UARTs of which
+/// one at a time is in use.
+part Zmcu4 {
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+    peripheral UARTE1 on GPIO { UARTE1_TX:output UARTE1_RX:input }
+    shared UARTS limit 1 { UARTE0 UARTE1 }
+
+    pins {
+        .p00 bidirectional "P0.00" "3" fn GPIO
+        .p01 bidirectional "P0.01" "4" fn GPIO
+        .p02 bidirectional "P0.02" "5" fn GPIO ANALOG
+        .p03 bidirectional "P0.03" "6" fn GPIO ANALOG
+    }
+}
+```
+
+```nsm
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board Sensors {
+    .u: Zmcu4
+    .load: Resistor
+    .divider: Resistor
+    .console: Resistor
+
+    .status: .u.GPIO
+    .sense: .u.ANALOG
+    .tx: .u.UARTE1_TX
+
+    .status ~ .load.a
+    .sense ~ .divider.a
+    .tx ~ .console.a
+}
+```
+
+The tool gives each request a pin before the nets are made, so the schematic, the checks and the board see the pins as if the source had named them. It serves the requests in the order of their names and gives each the first pin that offers its capability in the order of the pins' names (byte order, so `p0_10` comes before `p0_2`; the order of the rows in the part never matters). Here `sense` gets `p02`, `status` gets `p00` and `tx` gets `p01`, with `UARTE1_TX` chosen on it. A pin that the source names (connected, or with a function chosen) is never given to a request.
+
+`build` and `fab` write the answer in the pin file beside the source, `main.pins.toml` for `main.nsm`, when a run picks a pin:
+
+```toml
+version = 1
+
+[Sensors.pins.sense]
+pin = "p02"
+function = "ANALOG"
+source = "auto"
+
+[Sensors.pins.status]
+pin = "p00"
+function = "GPIO"
+source = "auto"
+
+[Sensors.pins.tx]
+pin = "p01"
+function = "UARTE1_TX"
+source = "auto"
+```
+
+The file has one table for each board and one entry for each request, keyed by the request's path (`hub.scl` for a request in a module `hub`, written `[Sensors.pins."hub.scl"]`). `pin` is the pin's path in the part, not its pad. The file is the same text every time for the same entries, so a run that changes nothing leaves its bytes alone, and the pin map does not move unless the design does:
+
+- A run never changes an entry that still holds: the request exists and asks the same function, the pin offers it, nothing else holds the pin, and the part's `shared` limits still allow it. A request with no entry is served round the pins the entries hold, so a new request never moves another request's pin.
+- `lock = true` on an entry says that the pin is a promise to firmware. A locked entry that no longer holds is an error at its line in the file. An unlocked one is a note, and its request is picked again.
+- An entry whose request is gone is stale: a note when unlocked, and the file drops it; an error when locked, until it is deleted.
+- `netsmith build --locked` and `netsmith fab --locked` write nothing and stop, listing what would change, as `cargo --locked` does. Run with `--locked` in continuous integration.
+
+A request that cannot be served says which of its needs fails. A capability that nothing offers:
+
+```nsm fails
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board NoPwm {
+    .u: Zmcu4
+    .load: Resistor
+    .dim: .u.PWM
+    .dim ~ .load.a
+}
+```
+
+```text
+error: `dim` asks for PWM on `u` (`Zmcu4`), and no pin of `Zmcu4` offers it; the functions its rows and peripherals offer are GPIO, ANALOG, UARTE0_TX, UARTE0_RX, UARTE1_TX and UARTE1_RX
+  --> main.nsm:7:14
+  |
+7 |     .dim: .u.PWM
+  |              ^^^
+```
+
+Every pin that offers it taken, here by the source and by the request served before it (`vbat` comes before `vin`):
+
+```nsm fails
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board TooManyAnalog {
+    .u: Zmcu4
+    .a: Resistor
+    .b: Resistor
+    .c: Resistor
+    .vin: .u.ANALOG
+    .vbat: .u.ANALOG
+    .u.p02 ~ .a.a
+    .u.p02.function &= "GPIO"
+    .vin ~ .b.a
+    .vbat ~ .c.a
+}
+```
+
+```text
+error: `vin` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by the source (connected to `a.a`, function GPIO chosen at main.nsm:12), `u.p03` by `vbat` (new)
+  --> main.nsm:9:5
+  |
+9 |     .vin: .u.ANALOG
+  |     ^^^^^^^^^^^^^^^
+```
+
+A request for a function of a peripheral that a `shared` resource already gives to another unit:
+
+```nsm fails
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board TwoUarts {
+    .u: Zmcu4
+    .a: Resistor
+    .b: Resistor
+    .console: .u.UARTE0_TX
+    .modem: .u.UARTE1_TX
+    .console ~ .a.a
+    .modem ~ .b.a
+}
+```
+
+```text
+error: `modem` asks for UARTE1_TX on `u`, and no free pin can serve it: `UARTS` allows 1 of UARTE0 and UARTE1 at a time: UARTE0 is used on `u.p00` (`console`) as UARTE0_TX; UARTE1 is used on `u.p01` (this request) as UARTE1_TX
+  --> main.nsm:9:5
+  |
+9 |     .modem: .u.UARTE1_TX
+  |     ^^^^^^^^^^^^^^^^^^^^
+```
+
+The rules about a pin run on the result as they do on a pin the source names: a function that disagrees with its net is the usual "two outputs" error, once, at the request. A class (`GPIO` above, a function that rows list and a peripheral is `on`) can be chosen on any number of pins of a part; a function that is no class (`ANALOG`) still belongs to one pin.
+
+A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`), and moving pins by itself when a board does not route.
 
 ### A peripheral that is an end of a bus
 
@@ -7245,6 +7397,32 @@ at = [18.0, 2.0]
 
 Parts are keyed by their path in the design, which a renumbered reference designator does not change. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the physical file and has an entry as well is an error: a thing has one place. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm`, its physical file `examples/outline_and_pours.physical.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
 
+### The pick lock
+
+Which catalog row a part was picked as is the solver's choice: the first row, in catalog order, that fits and passes every relation. A change to a catalog, to the order of its rows or to the solver can move a pick without a change to the source. `<stem>.lock.toml` beside the source file (`board.nsm` has `board.lock.toml`) keeps the choice: `build` and `fab` write it when it does not exist, and commit it as you commit `Cargo.lock`.
+
+```toml
+version = 1
+
+[LedExample.parts."r1"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+```
+
+There is one table for each board (or system) of the file, keyed by its name, and one for each part, keyed by its path (`r1`, `stage.output_cap`; a bank of capacitors is one entry, its path without the `#2`). `catalog` and `row` say which row. `lcsc` and `mpn` are there to find a row that was renamed or changed in place, and may be left out. The file holds no stock, no price and no solved value; a generic part is locked at the row the solver gave it (`generic 22uF 10% 0603 ...`), and `fab` still resolves it to an orderable row against the stock of the day (ADR 0047).
+
+With a lock, the solver offers each part the lock names only its locked row, and judges that row by everything the design states and every relation, as it judges any pick. What happens next is told for each part:
+
+- **The row still passes.** It is the pick. Nothing is printed.
+- **The row no longer passes, or is no longer in the catalog.** The run stops with the relation that fails and its numbers, and a second message says that the row is the lock's and that no other row was tried (`` `r1` is locked to the row `2.2kΩ 1% 0402 C25879` of the `resistor` catalog by led.lock.toml, and no other row was tried for it ``). Change the design or the catalog so the row fits, or delete the lock to pick again. A row whose `lcsc` or `mpn` is no longer the lock's is the same case.
+- **A part has no entry, or an entry belongs to a part the board no longer has.** The run goes on and prints a note that names the part. The lock is not rewritten: an existing lock is never changed by a run.
+
+`--locked` (on `build` and `fab`, as Cargo's) turns the last case, and a missing file, into an error, before anything is written. A CI job that builds with `--locked` fails a pull request that changes the picks without changing the lock.
+
+`fab --order` does not read or write a lock yet. The editor does not either: it solves from the source, as before.
+
 ## Imports
 
 `import` brings definitions into a file. Paths start at `std` for the standard library or `src` for the files of your project.
@@ -7475,9 +7653,9 @@ netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board
 
 ```sh
 netsmith init [--name <name>]          # a project in the current directory
-netsmith build [file.nsm] [--out dir] [--strict] # check, solve, write a KiCad schematic
+netsmith build [file.nsm] [--out dir] [--strict] [--locked] # check, solve, write a KiCad schematic
 netsmith editor [file.nsm] [--port n]  # edit and view in a browser (default port 8787)
-netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--constraints warn|error] # files for a board house (boards and panels), after a design rules check
+netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] # files for a board house (boards and panels), after a design rules check
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
 netsmith compare <a> <b> [options]     # are two designs the same circuit?
 netsmith kicad-libs import <sym-lib-table> [fp-lib-table]  # the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021)
@@ -7489,6 +7667,8 @@ netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--
 `editor` serves the editor on `127.0.0.1` and prints the address to open: a project tree, the source with the compiler's and solver's messages beside the lines they are about, and views of the selected board (schematic, power tree, system, bill of materials, PCB) with buttons for `build` and `fab` (ADR 0019). A board of more than 16 parts is drawn in a box for each module instance. A rail is drawn with the ground and supply symbols at its pins. Errors and warnings are listed first, and the notes (relations not evaluated, balances left incomplete) in a closed section. It checks the text as you type without writing it, saves with `Ctrl+S`, reads a file again when it changes on disk, and with no file acts on the project like `build`.
 
 `--strict` (on `build` and `fab`) makes a finding against a guideline an error for this run, like `guidelines = "error"` in `netsmith.toml`; without it a finding is a warning.
+
+`--locked` (on `build` and `fab`) makes a difference between the picks and the pick lock beside the source an error, or a lock that does not exist (see _The pick lock_). `NETSMITH_TIMINGS=1` in the environment of any command prints one line for each stage of the run to stderr (`timing: solve LedExample 12.3 ms`), and nothing is printed without it.
 
 The power model's findings come from `netsmith`, not from the editor's page: `build`, the editor's analysis (its `power` stage, the Problems dock's `Power` group) and the power tree it draws all carry the same ones. A rail that can draw more than the supply that states what it can give (`max_current`) is an error that stops the build, where the solver had no relation to check it against; `--strict` is not needed. The notes do not stop it, with or without `--strict`: a rail nothing supplies (`V5 has no source: nothing supplies it`), a rail with loads whose current the solver has not settled, and a converter whose efficiency it has not settled. The Problems dock lists the notes of a board grouped by their cause, with a count for each (the server says it for every note: `not_stated`, `part_model`, `unjudged`, `circular`, `supply`, `pick`, `track`, `other`), so a long list of notes reads as the few things to do about them: a rail nothing supplies and a load not settled are `supply`, a level or an input current a part's definition leaves out is `part_model`, a value nothing states is `not_stated`.
 
@@ -7545,14 +7725,14 @@ board Conducts {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:231:5
+    --> std/parts/diode.nsm:270:5
     |
-231 |     min(.bias) <= max(.zener_voltage)
+270 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:231:5
+    --> std/parts/diode.nsm:270:5
     |
-231 |     min(.bias) <= max(.zener_voltage)
+270 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7671,9 +7851,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:307:5
+    --> std/parts/diode.nsm:384:5
     |
-307 |     .bias <= .standoff_voltage
+384 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7783,9 +7963,9 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:230:5
+    --> std/parts/diode.nsm:269:5
     |
-230 |     .bias >= 0V
+269 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
    --> std/parts/diode.nsm:92:5
@@ -7793,9 +7973,9 @@ error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is 
 92 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:230:5
+    --> std/parts/diode.nsm:269:5
     |
-230 |     .bias >= 0V
+269 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -7822,9 +8002,9 @@ board Hot {
 
 ```text
 error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Ω 1% 0805 C317221, fails because (r.drop * r.current) must always be at most r.max_power, but 99kW..101kW is not always below 250mW
-   --> std/parts/passive.nsm:41:5
+   --> std/parts/passive.nsm:64:5
    |
-41 |     .drop * .current <= .max_power
+64 |     .drop * .current <= .max_power
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7902,9 +8082,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-   --> std/parts/regulator.nsm:90:5
+   --> std/parts/regulator.nsm:99:5
    |
-90 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+99 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8069,14 +8249,14 @@ board Overload {
 
 ```text
 error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:136:5
+    --> std/parts/regulator.nsm:170:5
     |
-136 |     -.sw.current <= .max_output_current
+170 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:384:5
+    --> std/parts/regulator.nsm:426:5
     |
-384 |     -.vout.current <= .buck.max_output_current
+426 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8145,9 +8325,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:394:5
+    --> std/parts/regulator.nsm:436:5
     |
-394 |     .on_time >= .buck.min_on_time
+436 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8222,9 +8402,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `stage.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`stage.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:401:5
+    --> std/parts/regulator.nsm:443:5
     |
-401 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+443 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8372,9 +8552,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:287:5
+    --> std/parts/passive.nsm:312:5
     |
-287 |     .current <= .rated_current
+312 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8399,9 +8579,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:171:5
+    --> std/parts/passive.nsm:194:5
     |
-171 |     .current <= .saturation_current
+194 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8469,9 +8649,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:288:5
+    --> std/parts/passive.nsm:313:5
     |
-288 |     .supply_peak <= .rated_voltage
+313 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8682,9 +8862,9 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 1 that fit, ZP-30 30V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 30V
-    --> std/parts/transistor.nsm:118:5
+    --> std/parts/transistor.nsm:131:5
     |
-118 |     .drain_source_voltage <= .max_drain_source_voltage
+131 |     .drain_source_voltage <= .max_drain_source_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9826,6 +10006,7 @@ The rule is narrow, and anything it does not recognise is compared as independen
 - A level that is stated by more than one statement (also narrowed by a number, or mentioned by another relation) is not only a fraction.
 - Two rails on different nets (two supplies, even of the same nominal voltage) are two voltages, so their ranges are independent.
 - A rail whose voltage can be zero or negative is not used (the reduction divides by it).
+- A division (`.vdd.voltage / 2`) is not read as a fraction, because the factor would be a rounded `1 / k`: write `0.5 * .vdd.voltage`. A factor that is itself a range (`0.65..0.7`) is not read as one either.
 
 #### A line that states its own swing
 
@@ -11643,7 +11824,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:244), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:325), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -11710,7 +11891,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:369), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:497), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 ## The standard library

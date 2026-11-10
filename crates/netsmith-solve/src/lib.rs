@@ -10,6 +10,7 @@ mod expand;
 mod generic;
 mod jlcpcb;
 mod levels;
+mod lock;
 mod ohm;
 mod place;
 mod solve;
@@ -26,6 +27,7 @@ pub use generic::{
     nearest, resolve,
 };
 pub use levels::NotEvaluated;
+pub use lock::{LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use solve::{
     CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Pick, Seeded, Solution,

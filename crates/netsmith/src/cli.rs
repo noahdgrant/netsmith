@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--constraints warn|error]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -91,6 +91,9 @@ pub enum Command {
         out: Option<PathBuf>,
         /// `--strict`: a guideline finding stops the build for this run (ADR 0036).
         strict: bool,
+        /// `--locked`: neither the pick lock nor the pin file (ADR 0101) may change; a run that
+        /// would change either stops before it writes anything.
+        locked: bool,
     },
     Fab {
         file: Option<String>,
@@ -102,6 +105,9 @@ pub enum Command {
         cross_check: bool,
         /// `--strict`: a guideline finding stops the run (ADR 0036).
         strict: bool,
+        /// `--locked`: neither the pick lock nor the pin file (ADR 0101) may change; a run that
+        /// would change either stops before it writes anything.
+        locked: bool,
         /// `--constraints warn` or `error` for this run, over the manifest's `constraints`
         /// (ADR 0045): `Some(true)` lists a requirement on where a part goes that the board
         /// does not meet instead of stopping the run, `Some(false)` stops even if the
@@ -210,7 +216,8 @@ where
     let mut name: Option<String> = None;
     let mut out: Option<PathBuf> = None;
     let mut route_timeout: Option<u64> = None;
-    let (mut allow_drc_violations, mut cross_check, mut strict) = (false, false, false);
+    let (mut allow_drc_violations, mut cross_check, mut strict, mut locked) =
+        (false, false, false, false);
     let mut constraints_warn: Option<bool> = None;
     let mut order: Option<OrderRequest> = None;
     let mut port = DEFAULT_PORT;
@@ -239,6 +246,7 @@ where
             ("fab", "--allow-drc-violations") => allow_drc_violations = true,
             ("fab", "--cross-check") => cross_check = true,
             ("build" | "fab", "--strict") => strict = true,
+            ("build" | "fab", "--locked") => locked = true,
             ("fab", "--constraints") => match args.next().as_deref() {
                 Some("warn") => constraints_warn = Some(true),
                 Some("error") => constraints_warn = Some(false),
@@ -299,7 +307,12 @@ where
     }
     Ok(match command.as_str() {
         "init" => Command::Init { name },
-        "build" => Command::Build { file, out, strict },
+        "build" => Command::Build {
+            file,
+            out,
+            strict,
+            locked,
+        },
         "fab" => Command::Fab {
             file,
             out,
@@ -307,6 +320,7 @@ where
             allow_drc_violations,
             cross_check,
             strict,
+            locked,
             constraints_warn,
             order,
         },
@@ -486,6 +500,7 @@ mod tests {
             "--version",
             "--out",
             "--strict",
+            "--locked",
             "--order",
             "--route-timeout",
             "--allow-drc-violations",
@@ -662,6 +677,7 @@ mod tests {
                 allow_drc_violations: false,
                 cross_check: false,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: None,
             })
@@ -680,6 +696,7 @@ mod tests {
                 allow_drc_violations: true,
                 cross_check: true,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: None,
             })
@@ -698,6 +715,7 @@ mod tests {
                 allow_drc_violations: false,
                 cross_check: false,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: None,
             })
@@ -721,6 +739,7 @@ mod tests {
                 allow_drc_violations: false,
                 cross_check: false,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: Some(order),
             })
@@ -739,6 +758,7 @@ mod tests {
                 allow_drc_violations: false,
                 cross_check: false,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: Some(OrderRequest::List),
             })
@@ -761,6 +781,7 @@ mod tests {
                 allow_drc_violations: true,
                 cross_check: false,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: Some(OrderRequest::Make("d".into())),
             })
@@ -778,6 +799,7 @@ mod tests {
                 file: None,
                 out: None,
                 strict: true,
+                locked: false,
             })
         );
         let Ok(Command::Fab { strict, .. }) = parse(&["fab", "a.nsm", "--strict"]) else {
@@ -785,6 +807,25 @@ mod tests {
         };
         assert!(strict);
         assert!(parse(&["editor", "--strict"]).is_err());
+    }
+
+    #[test]
+    fn build_and_fab_take_locked_and_nothing_else_does() {
+        let Ok(Command::Build { locked, strict, .. }) = parse(&["build", "--locked"]) else {
+            panic!("build takes --locked");
+        };
+        assert!(locked && !strict);
+        let Ok(Command::Fab { locked, .. }) = parse(&["fab", "a.nsm", "--locked", "--strict"])
+        else {
+            panic!("fab takes --locked");
+        };
+        assert!(locked);
+        let Ok(Command::Fab { locked, .. }) = parse(&["fab"]) else {
+            panic!("fab");
+        };
+        assert!(!locked, "a run may change the lock by default");
+        assert!(parse(&["editor", "--locked"]).is_err());
+        assert!(parse(&["compare", "a", "b", "--locked"]).is_err());
     }
 
     #[test]
@@ -829,6 +870,7 @@ mod tests {
                 file: Some("a.nsm".into()),
                 out: None,
                 strict: false,
+                locked: false,
             })
         );
     }
@@ -839,6 +881,7 @@ mod tests {
             file: Some("a.nsm".into()),
             out: Some("x".into()),
             strict: false,
+            locked: false,
         });
         assert_eq!(parse(&["build", "a.nsm", "--out", "x"]), expected);
         assert_eq!(parse(&["build", "--out", "x", "a.nsm"]), expected);
@@ -902,6 +945,7 @@ mod tests {
                 file: None,
                 out: None,
                 strict: false,
+                locked: false,
             })
         );
         assert_eq!(
@@ -913,6 +957,7 @@ mod tests {
                 allow_drc_violations: false,
                 cross_check: false,
                 strict: false,
+                locked: false,
                 constraints_warn: None,
                 order: None,
             })

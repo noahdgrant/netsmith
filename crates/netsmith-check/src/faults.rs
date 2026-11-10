@@ -490,16 +490,38 @@ impl<'a> Run<'a> {
             }
         }
         for (function, mut pins) in chosen {
-            if pins.len() < 2 {
+            // A class names what a pin can be, not one use of it: `GPIO` on two pins is two
+            // pins that are plain GPIOs (ADR 0101).
+            let class = model
+                .instance(part)
+                .rules
+                .peripherals
+                .iter()
+                .any(|p| p.class.as_deref() == Some(function.as_str()));
+            if pins.len() < 2 || class {
                 continue;
             }
             pins.sort_by_key(|&p| model.path_of(p));
             let names: Vec<String> = pins.iter().map(|&p| model.path_of(p)).collect();
             let at = self.function_site(pins[1], part);
+            // Pins that requests got say so: a request cannot know that its function is taken.
+            let asked: Vec<String> = pins
+                .iter()
+                .filter_map(|&p| model.pin_assignments.iter().find(|a| a.pin == p))
+                .map(|a| format!("`{}`", a.key))
+                .collect();
+            let by = if asked.len() == pins.len() {
+                format!(
+                    "; the requests {} ask for a function that is no class, which one pin has",
+                    asked.join(" and ")
+                )
+            } else {
+                String::new()
+            };
             self.report(
                 at,
                 format!(
-                    "function `{function}` is chosen on both {}",
+                    "function `{function}` is chosen on both {}{by}",
                     names
                         .iter()
                         .map(|n| format!("`{n}`"))

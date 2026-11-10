@@ -18,7 +18,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator('.ft-section', { hasText: /standard library/i }).click();
   await page.locator('.ft-file', { hasText: 'passive.nsm' }).click();
   await page.waitForSelector('.tab.active:has-text("passive.nsm")');
-  await page.waitForFunction(() => document.querySelector('.cm-content')?.innerText.includes('generic Resistor'));
+  await page.waitForFunction(() => document.querySelector('.cm-content')?.innerText.includes('Two-terminal parts'));
   expect(true, 'the library source in the editor');
   await page.locator('.cm-content').click();
   await page.keyboard.type('x');

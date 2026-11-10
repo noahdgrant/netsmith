@@ -45,7 +45,9 @@ mod order;
 mod overhang;
 mod panel;
 mod passives;
+mod pick_lock;
 mod pinout;
+mod pins;
 mod power_issues;
 mod precheck;
 mod project;
@@ -70,6 +72,7 @@ mod std_models;
 mod std_zener;
 mod stock_note;
 mod supply;
+mod timings;
 mod unused;
 mod values;
 

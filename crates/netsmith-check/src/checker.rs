@@ -163,6 +163,20 @@ pub(crate) struct Checker<'a> {
     /// The loaded files as they were when the last model was made, shared by the models made
     /// while no file was added.
     snapshot: Option<std::sync::Arc<Sources>>,
+    /// The pin file beside the top-level source, read (ADR 0101).
+    pub(crate) pin_input: Option<PinInput>,
+    /// What each board's or system's elaboration decided about pins.
+    pub(crate) pin_roots: Vec<crate::assign::RootPins>,
+    /// What the pin file says that is stale but does not stop the run: an entry that no longer
+    /// holds and is picked again, an entry of a request that is gone.
+    pub(crate) pin_findings: Vec<String>,
+}
+
+/// The pin file of the top-level source (ADR 0101): where it is among the loaded files, and
+/// what it says.
+pub(crate) struct PinInput {
+    pub source: SourceId,
+    pub file: crate::pinfile::PinFile,
 }
 
 /// The names that are in scope in every file without an `import` (ADR 0054): the enums that
@@ -227,6 +241,9 @@ impl<'a> Checker<'a> {
             use_site: None,
             range_ends: false,
             snapshot: None,
+            pin_input: None,
+            pin_roots: Vec::new(),
+            pin_findings: Vec::new(),
         }
     }
 
@@ -328,7 +345,29 @@ impl<'a> Checker<'a> {
         let key = named.clone().unwrap_or_else(|| rootless_key(name));
         // Only a module the loader holds can be imported, so only that is cached.
         let cached = named.filter(|k| self.loader.get(k).is_some());
-        self.add_module_as(name, text, cached, key)
+        let id = self.add_module_as(name, text, cached, key);
+        self.load_pin_file(name);
+        id
+    }
+
+    /// Read the pin file paired with the top-level file `name`, if the loader has one. A file
+    /// that does not read is reported, and the run goes on as if there were none.
+    fn load_pin_file(&mut self, name: &str) {
+        let loader = self.loader;
+        let Some((file_name, text)) = loader.pins_of(name) else {
+            return;
+        };
+        let source = self.sources.add(file_name, text);
+        let file = match crate::pinfile::PinFile::parse(text) {
+            Ok(file) => file,
+            Err(errors) => {
+                for e in errors {
+                    self.report(source, e.span, e.message);
+                }
+                crate::pinfile::PinFile::default()
+            }
+        };
+        self.pin_input = Some(PinInput { source, file });
     }
 
     fn load_module(&mut self, path: &[String]) -> Option<usize> {
@@ -705,6 +744,11 @@ impl<'a> Checker<'a> {
             .expect("the root is made inside nothing, so nothing repeats");
         self.model.root = root;
         self.resolve_defaults();
+        match def.kind {
+            DefKind::Board | DefKind::System => self.assign_pins(&name, true),
+            DefKind::Module => self.assign_pins(&name, false),
+            _ => {}
+        }
         self.finalize_nets();
         self.apply_unused();
         self.skip_unstated_optional();
@@ -1088,7 +1132,13 @@ impl<'a> Checker<'a> {
                 continue;
             }
 
-            let ty = self.resolve_type(&d.ty);
+            // A request for a pin by capability (`.status: .u.GPIO`) declares a pin of the board;
+            // which pin of the part it gets is decided when the elaboration is done.
+            let ty = if d.ty.of_member {
+                Ty::Builtin(Builtin::Pin)
+            } else {
+                self.resolve_type(&d.ty)
+            };
             if self.in_kind(DefKind::Generic)
                 && let Ty::Def(m, i) = &ty
                 && self.modules[*m].defs[*i].kind != DefKind::Interface
@@ -1145,6 +1195,9 @@ impl<'a> Checker<'a> {
                 Ty::Builtin(Builtin::Pin) => {
                     let pin = self.add_pin(cur, &name, d.span, d.docs.clone());
                     self.model.add_member(cur, &name, Member::Inst(pin));
+                    if d.ty.of_member {
+                        self.record_request(cur, pin, d);
+                    }
                 }
                 Ty::Def(m, i) if self.misplaced(&self.modules[m].defs[i].clone(), d) => {
                     self.model.add_member(cur, &name, Member::Poison)

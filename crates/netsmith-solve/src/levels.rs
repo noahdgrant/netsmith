@@ -13,6 +13,81 @@
 //! has no value, a ground that is not the same net for both pins, a net whose voltage
 //! nothing sets. A pair of pins of which neither states any level is not looked at at all,
 //! as before levels existed.
+//!
+//! The absolute maximum of a pin is held against the net's worst-case voltage relative to the
+//! pin's ground, which is the hull of the ground itself, each rail whose `pos` is on the net, each
+//! `Logic` line that drives it (between its reference rail's pins) and each rail or ground a
+//! resistor joins it to (ADR 0046). A level is the datasheet's guaranteed number, so `voh` and
+//! `vih` are minimums and `vol` and `vil` maximums, and they are ranges when the rail is. The
+//! checks that cannot be made are the ones listed above, and also a pin that is not the `.line` of
+//! a `Logic` (it has no ground), a net that a driver which is not a `Logic` line drives, and a rail
+//! on another ground. The voltage of a net is not followed through anything but resistors, so a
+//! net that a plain output drives is not evaluated, and a level check does not know the load (the
+//! part states the load of its numbers in its comment).
+//!
+//! An open-drain line takes its high from its pull-up (ADR 0075, no language change). Two parts on
+//! an `I2c` bus state `.vil`, `.vih` and `.vol` and no `.voh`, as their datasheets do, because an
+//! open-drain pin does not set its high; with no `voh` every ordered pair on each line was a note,
+//! and the check that mattered, that the pull-up's rail is a high for every reader, was never made:
+//! a bus pulled up to 1.8 V with a 3.3 V reader passed in silence. In `pair`, a driver that states
+//! `vol` and no `voh`, on a net that has a pull-up, has as its high the voltage range of the
+//! pull-up's rail, and each receiver's `vih` is compared with it as with a `voh`. A pull-up is a
+//! resistor (a part with a `bridge` and a `resistance`) from the net to a net that holds the
+//! positive pin of a rail (`I2cPullups`, `PullUp` and a plain `Resistor` are all recognised, by the
+//! structure that `net_range` reads); several pull-ups give the hull of their rails. A driver that
+//! states `voh` is judged by it whatever is on the net; a driver that states no `vol` says nothing
+//! and its high and low are notes; a net with a resistor to its own ground as well is a divider and
+//! keeps the note; a rail on another ground or with no voltage is a note that names it; a chain of
+//! resistors is not followed (ADR 0044's I2C rule follows a chain), so a pull-up behind a series
+//! resistor or a switch keeps the note (as ADR 0075 wrote it; the DC analysis's solved circuit of
+//! the line is read first since, `high_from_analysis`). Not taken: stating a `voh` on the bus from `I2cPullups` or
+//! `PullUp` (a module cannot set a member of a part inside another module, `docs/DESIGN-RULES.md`;
+//! `~` between two bus interfaces joins no levels, ADR 0064; and it fixes the high to the module's
+//! own rail when a board may have a second pull-up); a pin kind or marker for open-drain (KiCad's
+//! `open_collector`, ADR 0064 question 10); ignoring a stated `voh` when a pull-up is on the net (a
+//! reset line with a resistor is a normal circuit). The cost of the inference: "states `vol` and no
+//! `voh`" is how an open-drain pin looks in a datasheet, but also how a push-pull part with an
+//! incomplete model looks, and such a part on a net with a pull-up has its high taken from the
+//! pull-up and not reported as missing, where the note was the only sign that the model is
+//! incomplete. The rule needs `vol`, a pull-up, and a rail with a voltage.
+//!
+//! Left open, for the owner: whether to keep the inference, or to add a way for a part to say that
+//! a pin is open-drain (a pin kind, or a marker on the interface's `lines`), after which the rule
+//! would apply to a declared pin and a part that states `vol` alone would be a note again. If the
+//! pin kind is chosen, this rule's test for a driver changes and nothing else.
+//!
+//! Left open by ADR 0046, for the owner: more parts with datasheet levels; levels across a level
+//! shifter or a series resistor, and for open-drain lines (the voltage of a net is followed only
+//! through resistors).
+//!
+//! Levels stated as fractions of one rail are compared at one supply voltage (ADR 0082). The
+//! levels are compared as two intervals, and an interval counts a value once for each time it is
+//! written (ADR 0026, ADR 0076): `0.7 * .vdd.voltage` on a 3.3 V +/- 5 % rail is 2.194 V..2.426 V
+//! wherever it appears. A microphone that states `.out.voh &= 0.7 * .vdd.voltage` and a processor
+//! that states `.in.vih &= 0.7 * .vdd.voltage`, on one rail, were refused, though at any actual
+//! supply voltage the two are the same number. So a level that is, as written, a number times the
+//! voltage of a rail (`k * V`, `V * k`, or `V`) is compared with another level of that form as a
+//! fraction of one supply voltage, when both are stated by one `&=` statement of that form and by
+//! nothing else, the `V` of each is the `voltage` of a rail whose `neg` is the level's ground and
+//! whose lowest voltage is above zero, and the `pos` pins of the two rails are on one net. Then
+//! `k_driver * V >= k_receiver * V` for every `V` is `k_driver >= k_receiver`, and a high is a
+//! fault when `k_driver < k_receiver`, a low when `k_driver > k_receiver`; the message names the
+//! factors and the rail voltages. Anything else (a sum, a clamp, a different net, a level a number
+//! also narrows, a rail that may be zero) is compared as two independent ranges. The form is
+//! recovered from the model's `Relation`s (`Run::fractions`), because the field's domain does not
+//! remember it; two rails have one voltage when their `pos` pins are on one net and the ground is
+//! the same, read from the nets and not from the voltage fields. Not taken: comparing at the
+//! corners of the rail's range (exact for affine forms, but it needs a slope and an offset for each
+//! level, a decision for forms that are not affine, and the corner of a rail with a range on each
+//! side); leaving the check and having the board add margin (a series resistor), which moves a
+//! fault of the model into the circuit; matching the text of the two statements (the structure is
+//! enough). Limits: division (`.vdd.voltage / 2`) is not read as a fraction, because the factor
+//! would be a rounded `1 / k` (write `0.5 * .vdd.voltage`); a factor that is a range is not read as
+//! one; two rails that a board gives the same range on two nets are two voltages.
+//!
+//! Left open, for the owner: whether to extend the rule to affine forms (a fraction of the supply
+//! with an offset, `.vdd.voltage - 0.4V`), which a corner comparison decides exactly; and whether
+//! the pull-up path above wants the same treatment for a receiver at a fraction of that rail.
 
 use std::cell::OnceCell;
 use std::collections::{BTreeSet, HashMap};

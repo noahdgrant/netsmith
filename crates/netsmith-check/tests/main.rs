@@ -26,6 +26,7 @@ mod mate;
 mod nets;
 mod optional;
 mod physical;
+mod pin_requests;
 mod pins;
 mod place;
 mod rail_alias;

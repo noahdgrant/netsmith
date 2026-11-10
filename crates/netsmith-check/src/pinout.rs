@@ -178,6 +178,25 @@ impl Model {
     /// The kind of a pin for the rules of a net, given the function the board chose for it:
     /// the function's own kind if it has one, else the pin's (ADR 0046). A function that a
     /// peripheral of the part lists takes its kind from the peripheral (ADR 0071).
+    ///
+    /// Why a function has its own kind (ADR 0046). A pin has one kind in a `pins` table, and a pin
+    /// that several peripherals share can be a different direction as each of them: a GPIO is
+    /// bidirectional, a UART transmitter an output, a receiver an input. ADR 0044 could not check
+    /// "a function chosen that conflicts with the pin" because the table had one kind and a list
+    /// of names, and guessing from names such as `TX` and `RX` would be a convention and not data.
+    /// A function may carry its own kind after a colon with no spaces (`fn GPIO:bidirectional
+    /// UART1_TX:output`); the pin's kind stays the default for the pin and for every function
+    /// written without a colon. The industry usage is KiCad's alternate pin definitions
+    /// (`(alternate "UART1_TX" output line)`), each with its own electrical type; ADR 0016 left
+    /// them unchecked against a pin's functions and still does, because the vendor's names rarely
+    /// match a part's. The net rules (`outputs` and `floating_inputs` in `faults.rs`) judge a pin
+    /// by this kind, so the check is the existing pair of net rules and not a new one. The symbol,
+    /// the KiCad electrical type check (ADR 0016, decision 8), the rule that an input must be
+    /// connected and the other pin rules still use the pin's own kind. A function kind that
+    /// repeats the pin's own is allowed, because a datasheet table lists every function's type. A
+    /// function's kind in one package is not compared with its kind in another; a pin's own kind
+    /// still must be the same in every package. No part in `std/` names functions, so none states
+    /// a function kind.
     pub fn kind_with(&self, part: InstId, row: &PinRow, chosen: Option<&str>) -> PinKind {
         self.function_kind(part, row, chosen).unwrap_or(row.kind)
     }
@@ -263,6 +282,27 @@ impl Model {
 
     /// The function the board chose for a pin: the pin's own, or else the one that a
     /// forwarding equation takes from a pin of a module (ADR 0071, stage 0).
+    ///
+    /// Stage 0 of ADR 0071 (ADR 0063): a function stated on a pin that no part reads is an error.
+    /// `function_of` follows an `==` whose left side is the pin's `function` and whose right side
+    /// is another pin's `function`, to a depth of six (a module in a module). The checks of the
+    /// part then apply to the forwarded function: it must be on the pin, a function with a kind of
+    /// its own counts on the net, and a function chosen on two pins is refused. `pin_faults`
+    /// reports a stated function on a pin with no row in any table of its part and that no
+    /// equation passes on to a pin that has one; for a pin of a module the message names the
+    /// equation to write, and its hint names the part's pin when exactly one pin with functions
+    /// is on the same net inside the module. The message of a function the pin does not offer
+    /// points at the board's statement through the forwarding, and the message of a connected
+    /// pin that is not chosen names the module's pin that the board writes.
+    ///
+    /// Two choices of the agent that wrote it, for the owner to read. When nothing passes the choice
+    /// on, the part's own pin still says it has several functions to choose from: that message is
+    /// right (nothing chose one) and was there before, so both errors are printed and the new one
+    /// says where the choice went. And an equation with the exported pin on the left
+    /// (`.scl.function == .mcu.p04.function`) is not a forwarding: the solver works a value from
+    /// the right side to the left, and the two would not agree about which pin is chosen. It is the
+    /// same error, with the same hint. The `peripheral`, `shared`, `on` and `limit` of later
+    /// stages of ADR 0071 are not what this function is about.
     pub fn function_of(&self, pin: InstId) -> Option<String> {
         self.function_chain(pin)
             .into_iter()
