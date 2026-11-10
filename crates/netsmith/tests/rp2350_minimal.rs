@@ -307,3 +307,371 @@ fn the_placeholder_board_checks_and_solves() {
         .collect();
     assert_eq!(names, ["Rp2350Minimal"]);
 }
+
+/// U2 (the onsemi NCP1117ST33T3G, the standard `LinearRegulator` with a row of the project's own
+/// `catalogs/ldo.csv`), L1 (the Abracon AOTA-B201610S3R3-101-T, the standard `Inductor` with a row
+/// of `catalogs/inductor.csv` and a footprint of the project's library) and SW1 and SW2 (the
+/// Wurth 434133025816, the project's `TactileSwitch`, its catalog and its footprint). Nothing
+/// here needs KiCad: the regulator's footprint is netsmith's generator, the other two are files
+/// of `libs/rp2350_minimal.pretty`, and the symbols are drawn by netsmith.
+mod regulator_inductor_switch {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use netsmith::project::Target;
+    use netsmith::{Libraries, build_with};
+    use netsmith_kicad::{Mapping, SymbolLib, testlib};
+    use netsmith_pcb::FootprintLibrary;
+
+    use super::{parsed, project, read, tables};
+
+    /// A small board of our own, never built by the project: a regulator from a 5 V input to
+    /// 3.3 V, an inductor between two headers, and a button between two headers. The nets are
+    /// those of the parts' use on Raspberry Pi's board in spirit only.
+    const FIXTURE: &str = r#"
+import src::tactile_switch::TactileSwitch
+import std::parts::connector::Header1x2
+import std::parts::passive::Inductor
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board Fixture {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..100mA
+    }
+    .u2: LinearRegulator {
+        .package &= "SOT-223"
+        .vout.voltage &= 3.2V..3.4V
+        .quiescent_current &= 0mA..10mA
+    }
+    .input ~ .u2.vin
+    .u2.vout ~ .output
+
+    .power: Header1x2
+    .input.pos ~ .power.p1
+    .input.neg ~ .power.p2
+
+    .l1: Inductor {
+        .package &= "0806"
+        .inductance &= 3.3uH +/- 20%
+    }
+    .lx: Header1x2
+    .out: Header1x2
+    .lx.p1 ~ .l1.a
+    .l1.b ~ .lx.p2
+    .output.pos ~ .out.p1
+    .output.neg ~ .out.p2
+
+    .sw1: TactileSwitch { .mpn &= "434133025816" }
+    .btn: Header1x2
+    .sw1.a ~ .btn.p1
+    .sw1.b ~ .btn.p2
+}
+"#;
+
+    fn libraries() -> Libraries {
+        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
+        Libraries::with_mapping(
+            mapping,
+            SymbolLib::at(testlib::sample_symbols()),
+            FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+        )
+    }
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        build_with(
+            "fixture.nsm",
+            FIXTURE,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    /// The pads of a part's pins as the design has them: pin name to its pads.
+    fn pads_of(built: &netsmith::Built, refdes: &str) -> BTreeMap<String, Vec<String>> {
+        let part = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.refdes == refdes)
+            .unwrap_or_else(|| panic!("no part {refdes}"));
+        part.pins
+            .iter()
+            .map(|p| (p.name.clone(), p.pads.clone()))
+            .collect()
+    }
+
+    /// The footprint a part is exported with, loaded as the build loads it.
+    fn footprint_of(built: &netsmith::Built, refdes: &str) -> netsmith_pcb::Footprint {
+        let part = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.refdes == refdes)
+            .unwrap();
+        let libraries = libraries();
+        let mapped = libraries
+            .mapping
+            .map(&part.kind, part.package.as_deref())
+            .unwrap_or_else(|e| panic!("{e}"));
+        libraries
+            .footprints
+            .load(&mapped.footprint)
+            .unwrap_or_else(|e| panic!("{}: {e}", mapped.footprint))
+    }
+
+    fn unique_pads(footprint: &netsmith_pcb::Footprint) -> BTreeSet<String> {
+        footprint
+            .pad_numbers()
+            .into_iter()
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The pads of Raspberry Pi's part with their nets: pad number to net.
+    fn reference_nets(reference: &str) -> BTreeMap<String, String> {
+        let table = parsed(&read("reference/placements.toml"));
+        let parts = tables(&table, "part");
+        let part = parts
+            .iter()
+            .find(|p| p["reference"].as_str() == Some(reference))
+            .unwrap_or_else(|| panic!("the reference has no {reference}"));
+        part["pads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_table().unwrap())
+            .filter_map(|p| {
+                Some((
+                    p["number"].as_str()?.to_string(),
+                    p.get("net")?.as_str()?.to_string(),
+                ))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_part_parses_and_its_catalog_row_is_the_one_the_board_gets() {
+        // The catalogs load with the project's three files beside the standard ones.
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        assert!(target.catalogs().is_ok());
+        // The fixture's regulator is its only IC, so it is U1 here (Raspberry Pi's is U2).
+        let built = built();
+        let sourced = |refdes: &str| {
+            built
+                .sourcing
+                .iter()
+                .find(|s| s.refdes == refdes)
+                .unwrap_or_else(|| panic!("no {refdes} in the sourcing"))
+        };
+        for (refdes, lcsc, mpn) in [
+            ("U1", "C26537", "NCP1117ST33T3G"),
+            ("L1", "C42411119", "AOTA-B201610S3R3-101-T"),
+            ("SW1", "C5504987", "434133025816"),
+        ] {
+            let row = sourced(refdes);
+            assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{refdes}");
+            assert_eq!(row.mpn.as_deref(), Some(mpn), "{refdes}");
+        }
+    }
+
+    #[test]
+    fn the_rows_record_their_source_and_leave_price_and_stock_empty() {
+        for (file, lcsc) in [
+            ("catalogs/ldo.csv", "C26537"),
+            ("catalogs/inductor.csv", "C42411119"),
+            ("catalogs/tactile_switch.csv", "C5504987"),
+        ] {
+            let text = read(file);
+            let header = text.lines().next().unwrap();
+            let columns: Vec<&str> = header.split(',').collect();
+            // The cells before `source` hold no comma, so they split on the commas.
+            let cells: Vec<&str> = text.lines().nth(1).unwrap().split(',').collect();
+            let cell = |name: &str| cells[columns.iter().position(|c| *c == name).unwrap()];
+            assert_eq!(cell("lcsc"), lcsc, "{file}");
+            assert_eq!(cell("price"), "", "{file}: price is not read");
+            assert_eq!(cell("stock"), "", "{file}: stock is not read");
+            assert_eq!(cell("library"), "Extended", "{file}");
+            let source = text.lines().nth(1).unwrap();
+            assert!(
+                source.contains(&format!("https://jlcpcb.com/partdetail/{lcsc} ")),
+                "{file}: the JLCPCB page"
+            );
+            assert!(
+                source.contains("read 2026-11-10"),
+                "{file}: the day the page was read"
+            );
+            assert_eq!(text.lines().count(), 2, "{file}: one row");
+        }
+    }
+
+    #[test]
+    fn the_regulators_pads_are_the_ncp1117s_pins_and_its_tab_is_the_output() {
+        let built = built();
+        // Datasheet (NCP1117/D Rev. 31, page 1): 1 Adjust/Ground, 2 Output, 3 Input, the
+        // heatsink tab is pin 2. The standard table says the same.
+        let pads = pads_of(&built, "U1");
+        assert_eq!(pads["vin.pos"], ["3"]);
+        assert_eq!(pads["vin.neg"], ["1"]);
+        assert_eq!(pads["vout.pos"], ["2"]);
+        let footprint = footprint_of(&built, "U1");
+        assert_eq!(
+            footprint.name, "SOT-223-3_TabPin2",
+            "the generator's SOT-223 whose tab is numbered like pin 2"
+        );
+        let all: BTreeSet<String> = pads.values().flatten().cloned().collect();
+        assert_eq!(unique_pads(&footprint), all);
+        assert_eq!(footprint.pads_numbered("2").count(), 2, "pin 2 and the tab");
+    }
+
+    #[test]
+    fn raspberry_pis_u2_has_its_input_output_and_ground_where_the_part_has_them() {
+        let built = built();
+        let pads = pads_of(&built, "U1");
+        let reference = reference_nets("U2");
+        // Input from USB's VBUS, output the 3.3 V rail, ground.
+        assert_eq!(reference[&pads["vin.pos"][0]], "VBUS");
+        assert_eq!(reference[&pads["vout.pos"][0]], "+3V3");
+        assert_eq!(reference[&pads["vin.neg"][0]], "GND");
+        // Raspberry Pi's footprint numbers the tab 4 and puts it on the output net; the
+        // generator's footprint numbers the tab 2, so the pad number differs and the net is
+        // the same (the datasheet says the tab is pin 2, the output).
+        assert_eq!(reference["4"], "+3V3");
+        assert_eq!(reference.len(), 4);
+    }
+
+    #[test]
+    fn the_inductors_pads_are_its_two_pins_and_the_land_pattern_is_abracons() {
+        let built = built();
+        let pads = pads_of(&built, "L1");
+        assert_eq!(pads["a"], ["1"]);
+        assert_eq!(pads["b"], ["2"]);
+        let footprint = footprint_of(&built, "L1");
+        assert_eq!(
+            unique_pads(&footprint),
+            BTreeSet::from(["1".to_string(), "2".to_string()])
+        );
+        // Abracon, revision A of 9/13/2024, page 4: two pads 1.00 x 1.60 mm with 1.00 mm
+        // between them, so centres 2.00 mm apart.
+        let at = |n: &str| footprint.pads_numbered(n).next().unwrap().clone();
+        let (one, two) = (at("1"), at("2"));
+        for pad in [&one, &two] {
+            assert_eq!((pad.width, pad.height), (1.0, 1.6));
+            assert_eq!(pad.at.y, 0.0);
+        }
+        assert!((two.at.x - one.at.x - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn raspberry_pis_l1_has_the_output_rail_on_pad_1_and_the_switch_node_on_pad_2() {
+        let reference = reference_nets("L1");
+        assert_eq!(reference["1"], "+1V1");
+        assert_eq!(reference["2"], "/VREG_LX");
+        assert_eq!(reference.len(), 2);
+        // The part's pins are `a` on pad 1 and `b` on pad 2, so a board that follows the
+        // reference joins `.a` to the core rail and `.b` to the regulator's VREG_LX pin.
+        let pads = pads_of(&built(), "L1");
+        assert_eq!(pads["a"], ["1"]);
+        assert_eq!(pads["b"], ["2"]);
+    }
+
+    #[test]
+    fn the_switchs_pairs_are_the_datasheets_and_its_land_pattern_is_wurths() {
+        let built = built();
+        // Wurth 434133025816, revision 001.001 (2021-01-25), page 1, schematic: 1 and 2 are
+        // joined, 3 and 4 are joined, and the button joins the two pairs.
+        let pads = pads_of(&built, "SW1");
+        assert_eq!(pads["a"], ["1", "2"]);
+        assert_eq!(pads["b"], ["3", "4"]);
+        let footprint = footprint_of(&built, "SW1");
+        let all: BTreeSet<String> = pads.values().flatten().cloned().collect();
+        assert_eq!(unique_pads(&footprint), all);
+        // Page 1, recommended land pattern: 5.2 mm over the pads and 3.1 mm between them
+        // across, 2.8 mm over the pads and 1.5 mm between them along: pads 1.05 x 0.65 mm
+        // with centres at +/-2.075 and +/-1.075 mm; 1 and 2 on the upper row, 1 and 3 on the left.
+        for (number, x, y) in [
+            ("1", -2.075, -1.075),
+            ("2", 2.075, -1.075),
+            ("3", -2.075, 1.075),
+            ("4", 2.075, 1.075),
+        ] {
+            let pad = footprint.pads_numbered(number).next().unwrap();
+            assert_eq!((pad.width, pad.height), (1.05, 0.65), "pad {number}");
+            assert!(
+                (pad.at.x - x).abs() < 1e-9 && (pad.at.y - y).abs() < 1e-9,
+                "pad {number} is at {:?}",
+                pad.at
+            );
+        }
+    }
+
+    #[test]
+    fn raspberry_pis_buttons_have_a_net_on_each_pair_and_the_same_pads() {
+        let table = parsed(&read("reference/placements.toml"));
+        let parts = tables(&table, "part");
+        let built = built();
+        let pads = pads_of(&built, "SW1");
+        let footprint = footprint_of(&built, "SW1");
+        for (reference, pair_a, pair_b) in [
+            ("SW1", "GND", "/~{USB_BOOT}"),
+            ("SW2", "Net-(R4-Pad1)", "/RUN"),
+        ] {
+            let nets = reference_nets(reference);
+            for pad in &pads["a"] {
+                assert_eq!(nets[pad], pair_a, "{reference} pad {pad}");
+            }
+            for pad in &pads["b"] {
+                assert_eq!(nets[pad], pair_b, "{reference} pad {pad}");
+            }
+            // The footprint is the same as Raspberry Pi's, pad for pad.
+            let part = parts
+                .iter()
+                .find(|p| p["reference"].as_str() == Some(reference))
+                .unwrap();
+            for pad in part["pads"].as_array().unwrap() {
+                let pad = pad.as_table().unwrap();
+                let number = pad["number"].as_str().unwrap();
+                let mine = footprint.pads_numbered(number).next().unwrap();
+                let size: Vec<f64> = pad["size"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_float().unwrap())
+                    .collect();
+                // Their part is turned by -90 or 180 degrees, so the pad's own size is given
+                // in the turned frame and the sizes are compared as a set.
+                let mut theirs = size.clone();
+                let mut ours = vec![mine.width, mine.height];
+                theirs.sort_by(f64::total_cmp);
+                ours.sort_by(f64::total_cmp);
+                assert_eq!(theirs, ours, "{reference} pad {number}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_fixture_builds_a_schematic_with_all_three_parts_and_no_kicad_library() {
+        let built = built();
+        for refdes in ["U1", "L1", "SW1"] {
+            assert!(
+                built.design.parts.iter().any(|p| p.refdes == refdes),
+                "no {refdes}"
+            );
+        }
+        assert!(
+            built.schematic.contains("(number \"4\""),
+            "the switch's pad 4"
+        );
+    }
+}
