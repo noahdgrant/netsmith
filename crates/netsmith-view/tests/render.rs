@@ -74,7 +74,8 @@ fn symbols_are_drawn_from_the_library() {
     // The regulator's body is a filled rectangle with named pins; the capacitor is two
     // plates; the header has two small rectangles inside its body.
     assert!(doc.contains("class=\"pin-name\""));
-    assert!(doc.contains(">VI<") && doc.contains(">VO<") && doc.contains(">GND<"));
+    // The regulator is drawn from its pin table, with the datasheet's names.
+    assert!(doc.contains(">IN<") && doc.contains(">OUT<") && doc.contains(">GND<"));
     assert!(doc.contains("f-background"));
     let led = svg(&common::led());
     assert!(
