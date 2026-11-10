@@ -3,6 +3,86 @@
 //! It is optional. `build`, `fab`, the orders and the editor give it to the checker with the
 //! source, which puts each unit `physical for Board` with that board, as the layout file
 //! (`layout.rs`) is found by stem.
+//!
+//! **What the decision is** (ADR 0048, owner decisions of 2026-11-04). Physical intent is what
+//! the product, the case and the layout designer require of a board: the outline, openings,
+//! mounting holes, where a connector, antenna or sensor must be, a fixed spacing between two
+//! parts, the face of a module, a region with a height limit, keepouts a board draws. It is
+//! requirements and never solutions; the solution (poses, tracks, vias, fills) stays in the
+//! layout file. It is written in a file of its own, not a `pcb { }` block and not a view of the
+//! circuit source: the people who review a case revision and a circuit change differ, a file is
+//! the unit review and ownership already work on, and the circuit source stays strictly the
+//! circuit, so a person, an agent or the editor's source pane never meets a case number. What
+//! the circuit's checks consume stays in the circuit source (the process, the stackup, the
+//! plane nets, who assembles a part, the designator letters, currents, impedance and pairs):
+//! the test is "would a circuit check consume it?". Local pours, openings, keepouts a board
+//! draws, faces and relations between parts go here. The editor writes requirements here and
+//! solutions to the layout file; `netsmith dxf import --write` edits this file at the spans of
+//! its syntax tree (`edit`), keeping its comments.
+//!
+//! **The syntax the owner chose.** The header is `physical for Board { ... }` (one unit for each
+//! board, many in one file); the file is `<stem>.physical.nsm`. A board's file names a part
+//! inside a module by a plain path, and the checker allows a path to cross a module boundary
+//! only to state physical intent (this qualifies ADR 0004 for this file only, and replaces for
+//! placement the handle through a module's interface of ADR 0042); no marked reach (`->`).
+//! Relations between two parts are equations (`.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`).
+//! `.place.side` on a module is a hard requirement on every part of it, and a module with an
+//! exception states its parts' faces one by one. The case is a nested `case { ... }` section
+//! that a shared `enclosure` definition (issue #46) could take unchanged, and the outline,
+//! cutouts, mounting holes, fiducials and labels of a board are declared in it. A part's
+//! `.height` is stated on the part definition and a board may narrow it. The `row` statement and
+//! the natural order of numbered paths are in `netsmith-check/src/row.rs`.
+//!
+//! **What is built.** A board's `Outline`, `Cutout`, `MountingHole`, `Fiducial`, `Label`, a
+//! `Keepout` it draws and any `.place` in its circuit source are errors that name the unit and
+//! the file (the old form left with no grace period, ADR 0001). A statement here may set or
+//! compare only a part's `.place`, a part's `.height` and the fields of what the unit declares
+//! itself; a connection, a `tie`, a `pins` table or any other field is an error that says a
+//! physical file states where a part is and not what it is. The editor lists the file, checks it
+//! and draws it.
+//!
+//! **Provisional readings** (the simplest reading of what the owner decided, for the owner to
+//! confirm or change, word for word from ADR 0048):
+//! - "The outline, cutouts, mounting holes, fiducials and labels are refused outside `case { }`,
+//!   and a `Keepout` may be anywhere in the unit (decision 7 names the outline, openings, holes,
+//!   fiducials and labels for the case, and "case regions")."
+//! - "The rule against the old form applies to a **board's** circuit source. A module's or a
+//!   part's own source may still state a `.place` or a keepout it carries (decision 2 puts the
+//!   module layer later, and a keepout a part carries stays in the part)."
+//! - "A part's `.height` may be narrowed in a board's circuit source as before, and in its
+//!   physical file; decision 9 says the physical file "may narrow" it, so the two places are two
+//!   spellings (ADR 0001) until the owner says which one stays." The same holds for
+//!   `.pin_protrusion` (decision 12).
+//! - "A statement in a physical file may mention only physical fields on either side of a
+//!   relation. A relation that compares a `.place` field with a circuit value (`.r1.place.x >=
+//!   .r1.resistance`) is refused."
+//! - "A `physical for` unit that names a module, a part or a `system` is refused, with the
+//!   reason; so is a unit in a file that is not a physical file, and a definition in a physical
+//!   file."
+//! - "A file with several units: one unit for each board, and a repeated unit is an error."
+//!
+//! **Costs the owner accepted.** A module's physical file (the module layer, later) must travel
+//! with the module, or a board that uses it loses the geometry silently. A rename of a part
+//! inside a module leaves every physical file that reaches it by path with a missing path (the
+//! checker names the path and the line, and an anchor would limit the damage to one alias). A
+//! board's file must be paired with its board (by stem, as the layout file is). There are three
+//! files for a board and a new kind of example in the guide (`nsm-physical`). The checker reads
+//! across files, and needs a read-only reach into modules, a new rule for a language that has
+//! kept modules closed since ADR 0004.
+//!
+//! **Not decided, the owner's** (language design, `AGENTS.md`;
+//! `docs/research/physical-file-syntax-options.md` gives the options): how a module's physical
+//! file attaches to its module (T1, T2 or T3 of the note), what a board's file may override of
+//! it, and whether the module layer may state an overhang; anchors (`anchor .dock = .row_a`,
+//! A1), which come with the module layer; a `Region` carried by a part with a height limit
+//! (G2), a new type whose members are not decided; a physical file for a `system` or a `panel`
+//! (ADR 0040: a panel's mounting holes, mated-connector alignment across boards, a panel's
+//! rails); the shared `enclosure` definition (issue #46, held until the mechanical side can
+//! export data); the exact list of what leaves the circuit source beyond `.place`, `Outline`,
+//! `Cutout` and a board-drawn `Keepout`; whether the spelling inside the physical file stays
+//! `.place`; and that the editor writes the keepouts it draws, and the moves of a keepout the
+//! physical file sizes, to the layout file as before (writing them here is decision 7 and is not
+//! built; issue #52).
 
 use std::collections::HashMap;
 use std::fs;

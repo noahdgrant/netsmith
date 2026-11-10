@@ -19,6 +19,69 @@
 //! keeps the module in: no part of it has its left or top edge below a lower bound of the
 //! module's, or its right or bottom edge above an upper bound. The rest of a module's
 //! requirements is measured by the check after placement ([`netsmith_fab::drc`]).
+//!
+//! **Why a requirement is on the body, in the design's source** (ADR 0045 sections 3 and 8; the
+//! owner decided on 2026-11-02). A requirement is true of this product's case and not of the
+//! USB connector, so it is not part knowledge (ADR 0030 tier 2: "does it hold in every design"
+//! fails); and it is not a decision, since a decision is where a person put the part. The
+//! solved position is a decision or a derived result and stays in the layout file, whose `at`
+//! stays the footprint's origin (one frame for the placement and the CPL file); the check
+//! converts and shows both. The case states the receptacle's shell and not the origin the
+//! library author picked, so a requirement on the body survives a change of package. Since
+//! ADR 0048 the home is the board's physical file. Every field is a quantity, so a tolerance
+//! (`+/-`, `..`), an expression and another member (`.outline.height / 2`) work as everywhere,
+//! and statement order does not matter. `+/-` needs a constant on both sides, so a window
+//! round an expression is two relations, `>=` and `<=`. The placer's grid is 0.05 mm; a window
+//! narrower than that is one value, its middle (issue #56).
+//!
+//! Rejected: **the layout file only** (`[Widget.constraints.usb]`): no language change, but no
+//! relation, no expression and no link to the outline without a second expression language,
+//! the requirement and its solution in one file so that a drag could silently rewrite the
+//! requirement, and a requirement not reviewed beside the circuit. **A `constrain` statement**:
+//! a verb and a mini-language beside the quantity algebra the language has, with order, ranges,
+//! tolerances and expressions to specify again. Two places for one fact is ADR 0001's refusal.
+//!
+//! **Relations between two parts** (ADR 0045 section 12; provisional, to be reviewed by the
+//! maintainer). A relation (`==`, `>=`, `<=`) is one between two parts when, with every part
+//! that mentions no `.place` evaluated to a constant, the places left are exactly two: a
+//! position along one axis of two different parts, with coefficients 1 and -1. Anything else
+//! (a sum of two places, a turn, a module's own `.place`, two fields of one part, a product)
+//! stays a relation of the model, listed as `not evaluated`. A relation is no bound on either
+//! part. It lowers to `Design::features::offsets`, an `Offset { a, b, lo, hi, source }` in
+//! millimetres in the layout file's frame; a window no value can hold is an error of `build`,
+//! and two relations that disagree are left to the placer and the check. The solver evaluates
+//! none of them. In the annealer a relation is a hard rule with the weight of the walls (200 for
+//! each mm), measured on the bodies in the turn and on the face they have; when a move leaves
+//! one unmet the part at the other end is moved to the nearest place where it holds, by a rule
+//! and not a draw. A window narrower than two grid steps is met exactly, so the part that
+//! follows may be off the grid by a few hundredths of a millimetre; the layout file stores
+//! places to 0.01 mm, so a saved layout may differ from the exact place by 0.005 mm and the
+//! check's half micrometre is not guaranteed for so narrow a window after the editor saves.
+//! `plan` measures relations between parts that stay, and a relation that cannot be met is an
+//! error before placing. The check is `netsmith_fab::drc::constraints::Relation`, the rule
+//! `constraint`: an error, or a warning with `constraints = "warn"`, never waived by
+//! `--allow-drc-violations`. A `row` statement of the physical file lowers to these relations
+//! (`netsmith-check/src/row.rs`). Not done: a module's box or a turn as an end of a relation, a
+//! relation among three places, the line between the two parts in the PCB view, and a drag
+//! that keeps a relation.
+//!
+//! **Risks the decision accepted.** The body box is only as good as the footprint's `F.Fab`
+//! (a connector whose shell is not drawn there is measured by its courtyard, which is larger;
+//! the finding says which, and a constraint on the centre is less sensitive than one on an
+//! edge). A wrong frame (DXF y up, inches, an offset origin) puts every number wrong by the same
+//! amount, so the import prints its transform. Hard windows may make a board that does not
+//! route, or cost board area near a dense module; the placer reports the least violation.
+//! Relations are not solved, so a mistaken one shows at placement and not at `build`.
+//!
+//! **Not built** (issue #56): the editor's window overlays, ghosts and drag limit and its "pin
+//! here" (C4, C5), `netsmith layout check --json` (C6), mating across boards (C7, ADR 0040),
+//! `MountingHole.head_diameter`, a box check for a module's `.place.x` and `.y`, and a polygon
+//! outline (C8, issue #57).
+//!
+//! **Left over from the build of the requirements** (ADR 0045 section 8, "Questions left to
+//! the user", word for word): "the spelling of the fields as `String` for `side`; and whether
+//! `x`/`y` on a module (its box centre) should be accepted (it is, and measured on the box
+//! round all its parts)."
 
 use std::collections::BTreeMap;
 

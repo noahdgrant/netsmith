@@ -18,6 +18,32 @@
 //! between (the message lists them with their entity counts); loops with a gap (the gaps are
 //! listed), a branch, or a crossing; and an outline that is not exactly one outer loop with
 //! cutouts inside it.
+//!
+//! **Decisions and details** (ADR 0045 section 9). A DXF is the interchange because every CAD
+//! tool exports a section as one and the format is plain text; SVG is not planned (px has no
+//! unit, and curves and transforms need a larger reader) and STEP is not read (a CAD kernel):
+//! the agent turns a STEP model or a drawing into a DXF at the board plane, and a number it
+//! cannot find stays out of the source. Entities join into loops when their ends are within
+//! 0.001 mm; the outline is the one loop that is not inside another, two such loops are an
+//! error naming both, and a loop that crosses or touches itself or another, or lies inside a
+//! cutout, is an error with its position. A closed loop that crosses the outline, smaller than
+//! it and crossing nothing else, is an *opening*: it is left out and reported in a warning with
+//! its layer, size and top left corner in the board's frame (what an opening should become, a
+//! notch, a `Keepout` or the place of a part, is issue #90). A `SPLINE` with only fit points or
+//! a periodic one is an error. `$INSUNITS` 1, 4, 5 and 6 are inch, millimetre, centimetre and
+//! metre; `--units` overrules the file with a warning if they differ. Layers are chosen by name,
+//! ignoring case, and a name the file's `LAYER` table declares is accepted with nothing drawn on
+//! it. `INSERT` with mirroring, `MINSERT` arrays and a downward extrusion (a mirror) are read; a
+//! duplicate edge is counted once, with a warning. The user decided on 2026-11-02 that the reader
+//! keeps reading splines and ellipses as chords (within 0.005 mm) and does not refuse them. A hole
+//! whose diameter is not within 0.05 mm of `M2` or `M3` is refused, naming the nearest package
+//! and the difference, since `MountingHole` has only `.package`, `std/kicad.toml` names KiCad's
+//! own footprints, and no catalog data is added without a source (the options, a `.diameter`
+//! member, more stock sizes with a source or a generated hole footprint, are issue #89).
+//! Tests: `crates/netsmith-dxf/tests/read.rs` (hand-written files for each of the cases) and
+//! `crates/netsmith/tests/dxf.rs` (a rounded case with a slot and four holes through `fab`).
+//! Not done: polygon outlines (C8, issue #57), datums other than mounting holes (a `PlatedHole`,
+//! fiducials, the screw-head clearance), and `--json` output.
 
 mod chain;
 mod entities;

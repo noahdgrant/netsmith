@@ -15,6 +15,65 @@
 //! overlap with the courtyards of other parts, keepouts and cutouts. Copper is not waived:
 //! every pad is still inside the outline and the process's copper to edge space away from it.
 //! A direction the person did not state is still an error, and the finding says how far.
+//!
+//! **The rule in full** (ADR 0045 section 10; every choice below is the owner's, decided on
+//! 2026-11-03 and 2026-11-04).
+//!
+//! - *The fit.* A part that stays (a lock, or a requirement that leaves one place) counts in the
+//!   placer's fit test as its courtyard clipped to the outline, with the process's margin
+//!   (once a fixed 2.0 mm, now derived, ADR 0033) kept on the sides that are on the board and
+//!   none on a side it hangs over ([`needs`]). A part that is placed (a window) keeps its pads,
+//!   not its courtyard, inside: the annealer adds a hard cost for a pad corner nearer the
+//!   outline than `copper_to_edge`.
+//! - *The check* (`Board::check_placement`). No `OutsideOutline` for the courtyard past a
+//!   stated edge; overlap is measured on the courtyard clipped to the outline; a pad outside
+//!   the outline or nearer than `copper_to_edge` is still `PadNearEdge`; a courtyard past an
+//!   edge nobody stated is still `OutsideOutline`, and the finding names the part, each edge,
+//!   how far, and the line that would allow it (`.plug.place.right >= outline.width`).
+//!   `Board::hangs()` lists what is past a stated edge, and `fab` prints each as a warning and
+//!   writes it to `fab-notes.txt`.
+//! - *The body's centre.* The placer refuses a requirement that leaves the body's centre
+//!   wholly outside a fixed outline, except along an axis, in a direction, where the part's own
+//!   edge requirement states the overhang (`stated_edges`). A window on `.x` or `.y` keeps the
+//!   refusal. Provisional, to be reviewed by the maintainer.
+//! - *Not checked.* The body (`F.Fab`) need not stay inside, and the part of the courtyard
+//!   outside the outline, the silkscreen and the text are not measured (`silk_edge_clearance`
+//!   stays a warning, as in KiCad). How far a part hangs is whatever its window says.
+//! - *Two stages in the placer, not a veto.* The rows are the annealer's start state and do
+//!   not decide that the parts do not fit. With a size to fit, the annealer runs on the faces
+//!   the parts are on, then the free parts are shared between the faces, largest first, and it
+//!   runs again; the parts do not fit only if the last run ends with courtyards over each other
+//!   or parts outside. Two parts that hang over the same edge may overlap beyond it, as the
+//!   check allows (`Engine::room` clips the courtyard of a part that states an overhang).
+//!
+//! **Owner decisions** (all nine questions of issue #11): only the edge fields state an
+//! overhang, not `.x` or `.y`; a locked part must state every edge it is past (a lock fixes
+//! where the part is and allows nothing by itself); `fab` warns on a stated overhang; silkscreen
+//! over the edge stays a warning; no limit on how far a part may hang; the derived wall is
+//! accepted, as ADR 0033 records it; the hole-part two-face rule is accepted, as ADR 0031
+//! records it; a module cannot state an overhang for its parts ("a module's author does not
+//! know the case"; a module that needs one offers a value, as ADR 0042 describes, and the
+//! board states the requirement); the annealer agrees with the check.
+//!
+//! **Open, word for word from ADR 0045 section 10** (the text says both "Nothing is left open in
+//! this section" and, in "Where the code differs", "Still open: (c), (d) and (h)"; they
+//! disagree, and issue #11 still has every box unchecked). (a) "Whether a window on `.x` or `.y`
+//! should state an overhang (now it does not: only the edge fields do). **Decided 2026-11-03:
+//! only the edge fields.**" (b) "Whether a locked part should state every edge it is past (now
+//! it does not need to). **Decided 2026-11-03: it must.**" (c) "The courtyard wall, which was a
+//! fixed 2.0 mm and is now derived from the process (ADR 0033): a stated overhang keeps it on
+//! the other sides. **Decided 2026-11-04: accepted, as in ADR 0033.**" (d) "The hole-part
+//! two-face rule changed (ADR 0031): a footprint that draws its courtyard on one face's layer
+//! only is judged on the other face by its pads; the courtyard rules are otherwise unchanged.
+//! **Decided 2026-11-04: accepted, as in ADR 0031.**" (e) "Whether `fab` should list a stated
+//! overhang as a warning, not a note. **Decided 2026-11-03: a warning.**" (f) "The limit on how
+//! far a part may hang. **Decided 2026-11-03: no limit.**" (g) "Silkscreen over the edge stays
+//! a warning. **Decided 2026-11-03: it stays a warning.**" (h) "A module's `.place` does not
+//! state an overhang for its parts. **Decided 2026-11-04: it stays refused.**" (i) "Two parts
+//! that hang over the same edge may overlap beyond it in the check, but the annealer still keeps
+//! their whole courtyards apart (stricter than the check). **Decided 2026-11-04: the annealer
+//! is changed to agree with the check.**" ADR 0048 adds: whether a module's physical file may
+//! state an overhang stays the owner's.
 
 use crate::geometry::{Pt, Rect};
 

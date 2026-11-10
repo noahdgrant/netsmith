@@ -59,6 +59,16 @@ alternatives and limits in the header of `crates/netsmith-check/src/optional.rs`
 conformance rules in `crates/netsmith-check/src/providers.rs`; 0071's messages in the header of `shared.rs`; 0016's fault table in the header of `faults.rs`. The line numbers
 this digest gives into `solve.rs` moved with the longer header.
 
+**Update 2026-11-10 (ADR cleanup, batch 6, the last).** ADRs 0030, 0045, 0047 and 0048 were cut to one page and kept (none was folded: each states a decision that is hard to
+reverse); each says the commit its full text is in (`git show 3e54ce1:docs/adr/<file>`). 0030, 0045 and 0048 are `accepted` on the status lines that said the owner decided
+(for 0048 only decisions 1 to 7 and 10 and the syntax choices; its open part is in the ADR); 0047 is `proposed`, with the owner's answers listed in it. The choices that this
+digest names are now where the code is: 0045's overhang rule and the owner's nine answers in the header of `crates/netsmith-pcb/src/overhang.rs`, its height rules and
+"Open for the maintainer" list in the header of `crates/netsmith/src/heights.rs`, its pin-protrusion readings in `protrusion.rs`, its relation rule in `constraints.rs`, its
+proofs before and after placing in `explain.rs`; 0047's `[supply]` rules, cache and open questions in the header of `crates/netsmith/src/supply/mod.rs`, its generic-part
+assumptions and the catalog gaps in `crates/netsmith-solve/src/generic.rs`, and its re-check of alternatives in `resolve.rs`; 0048's provisional readings in the header of
+`crates/netsmith/src/physical.rs` and the `row` statement's in `crates/netsmith-check/src/row.rs`. The cleanup plan is deleted: with this batch no ADR is
+left on the oversize list, and `docs/adr/.oversize` and the lines of `scripts/adr-check` that read it are gone.
+
 **Reversal cost** is my reading from the dependents I counted, not a statement of the ADRs: **cheap** (a solver or message rule, nothing written in
 `.nsm` files depends on it), **migration** (source in `std/`, the guide or users' files must change), **hard** (users' designs change meaning, or the
 answer is a legal or interface commitment).
@@ -190,7 +200,7 @@ installed, so I could not re-run it and did not re-count the ADR's "468 names" a
 ## ADR 0045
 Constraints from the enclosure. Provisional parts only (the owner decided section 10 on 2026-11-03 and 2026-11-04).
 
-**Built.** In `crates/netsmith-pcb/src`: `overhang.rs`, `constraints.rs`, `explain.rs` (`before_placing`, line 173), `protrusion.rs`, `anneal.rs`
+**Built.** In `crates/netsmith-pcb/src`: `overhang.rs`, `constraints.rs`, `explain.rs` (`before_placing`, line 217), `protrusion.rs`, `anneal.rs`
 (`HEIGHT_ZONE_MARGIN` = `KEEPOUT_GAP` = 0.25 mm), `place.rs` (`turn_to_fit`, line 1266). `Keepout.max_height` is `std/pcb.nsm:92`; `pin_protrusion` is
 added in `crates/netsmith-check/src/checker.rs:810`; `constraints_strict` is `crates/netsmith/src/fab.rs:71`; `precheck_findings` is in
 `crates/netsmith/src/editor/findings.rs`.

@@ -13,6 +13,66 @@
 //! demands) and the generic part remembers it as a [`Need`], so the row that [`resolve`]
 //! finds has to meet it. A generic capacitor has no bias curve, so it resolves only to a row
 //! that has a recorded one (owner decision, 2026-11-03).
+//!
+//! **What the decision says** (ADR 0047). The solver may pick any value of the project's series,
+//! so it is never stuck on a value no known supplier row stocks; the series is the manifest's
+//! `series` key (E24 by default), a policy of the project like `assembly`, and not a statement
+//! of the language (owner, 2026-11-04). The power rating of a package is the usual one (0402
+//! 62.5 mW, 0603 100 mW, 0805 125 mW): a package's rating and not a supplier's data. The generic
+//! parts come after the catalog rows, so one is reached only when no row serves the design as
+//! stated; a generic capacitor, inductor or LED therefore mostly ends *unresolved*, listed by
+//! name with the nearest rows and the result of the checks with each. That is what the owner
+//! asked for ("unresolved reported by name"), and it is the useful part.
+//!
+//! **Resolution order.** For a generic part, a row of the same catalog with the same package, a
+//! nominal equal to the generic value, a tolerance no wider and a power rating no lower (the
+//! row must be at least as good as what the solver checked). Among those, the preferred-parts
+//! order: JLCPCB Basic, then Preferred, then Extended, and inside a class the file's order, so
+//! a project's own rows are tried last. A row a provider says has stock 0 is passed over and
+//! noted; unknown stock does not exclude. The row's `lcsc`, `mpn` and `library` go to the part;
+//! its value label is unchanged. A part no row fits is unresolved, `fab` refuses by name, and
+//! the message gives up to three nearest rows (in the same package first, then others) and ends
+//! with "Change the value in the design and build again": the build then checks every relation
+//! again with it.
+//!
+//! **What is provisional** (the agent's choices of 2026-11-04, issue #31; the owner's decision
+//! of 2026-11-03 is applied as given). A capacitor is a value of the series (1 pF to 100 uF), a
+//! tolerance (20%, 10% or 5%, widest tried first, so the weakest claim is the easiest to resolve)
+//! and a 0402, 0603 or 0805 package; an inductor is 1 nH to 1 mH, 30%, 20% or 10%, in 0402,
+//! 0603, 0805 or 1210; an LED is a package with colour and forward voltage open. The saturation
+//! current and the DC resistance are open. A capacitor's `effective_capacitance` is a derated
+//! value with an empty curve, so the solver does not use it where the design states or relates
+//! `.effective_capacitance`, and says "generic parts have no recorded bias curve"; resolution
+//! accepts a capacitor row only if its cell has a curve (`Miss::NoCurve`).
+//!
+//! **Assumptions to confirm**, word for word from ADR 0047 (PROVISIONAL):
+//! 1. "The series of a capacitor or an inductor is the project's `series`, but E96 gives E24: E96
+//!    is a resistor series. The alternative is a fixed E12, or a series key for each kind."
+//! 2. "The packages, tolerances and value ranges above. They are the packages `std/kicad.toml`
+//!    maps, the tolerance classes M, K and J (IEC 60062) for a capacitor, and the ranges the
+//!    catalogs sit in. They are names and classes, not a supplier's data. A capacitor's voltage
+//!    and an inductor's ratings are not on a ladder, because a ladder of ratings would be data
+//!    nobody recorded."
+//! 3. "`Stated` for an LED: the generic LED is used only if the design states the forward
+//!    voltage. The alternative, `Nothing` for it, would let the forward voltage be unknown and
+//!    every check that depends on it (the resistor that sets the LED's current) would go
+//!    unevaluated."
+//! 4. "Leaving a rating unknown when nothing bounds it (`Nothing`) instead of refusing the
+//!    generic part. An unbounded rating is reported as not evaluated, as any unknown value is.
+//!    The need is read when the part is picked: a relation whose other side has no value yet at
+//!    that moment (a current that later parts settle) does not give a need, and the rating is
+//!    then left unknown."
+//! 5. "The cap of 30 solves, and that a swapped-in alternative is judged with the part's stated
+//!    numbers left out but its text statements (package, colour) kept."
+//!
+//! **Gaps in the catalogs** (reported, nothing added; a column is added only with a recorded
+//! source, `data/jlcpcb/README.md`, which is the owner's call): an LED has no maximum forward
+//! current column, so `Led` states no limit on `.current`, and a forward voltage is the
+//! datasheet's range at a test current (5 or 20 mA) that is not a column; an inductor has no
+//! temperature-rise (rms) current column, only the saturation current; a capacitor has no
+//! dielectric or temperature-coefficient column, so a generic capacitor cannot state C0G or
+//! X7R, and a bias curve is a typical value at 25 C (ADR 0013). A generic part that needs any of
+//! these cannot be held to it.
 
 use netsmith_check::FieldKind;
 use netsmith_quantity::{Dimension, Quantity};

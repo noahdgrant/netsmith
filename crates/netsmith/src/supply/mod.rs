@@ -9,6 +9,79 @@
 //! The one provider built reads a local file ([`file`]); it is how the tests work. No
 //! provider here talks to a supplier: their terms of use are unread (ADR 0039, ADR 0047).
 //! The solver, the checker and the language know nothing of this module.
+//!
+//! **The decision** (ADR 0047, provisional). A catalog row keeps what a part is (`lcsc`, `mpn`,
+//! `library`, `package`, the electrical values, `source`, `checked`); price, stock and date are
+//! a supplier's word about a day and go stale within days. A file that still has the columns is
+//! read as the last resort of the chain, the `catalog` answer (the bill of materials and
+//! `catalog age` fall back to the row's cells and say "catalog file, entered by hand"; it is not
+//! a type here), and the shipped files leave them blank. The solver never reads them: the
+//! stock-0 rule of ADR 0039 item 9 is withdrawn, and a row is offered whatever its `stock` says.
+//! A sold-out part therefore no longer changes which part the solver picks; it changes what
+//! resolution picks (`resolve.rs`), and says so.
+//!
+//! - *The answer says which stock it is.* JLCPCB assembly stock and LCSC retail stock differ for
+//!   the same number (ADR 0039 recorded 1,085,700 against 2,059,008). A bill for a JLCPCB order
+//!   shows `JlcpcbAssembly`; if a provider has only `LcscRetail` that is shown, labelled, and is
+//!   never presented as assembly stock. The manifest's `channel` says which a project means.
+//! - *A price is a ladder.* A line is priced at the highest break at or below the quantity it
+//!   needs; below the first break the first break's price is shown, marked "from N pieces". No
+//!   currency is converted. The quantity is for one board (ADR 0035's order quantity is not
+//!   spread across boards).
+//! - *Cache* (`$NETSMITH_CACHE_DIR`, else `$XDG_CACHE_HOME/netsmith`, else `~/.cache/netsmith`,
+//!   in `supply/<provider>.csv`, the format in [`cache`]). An entry younger than `cache_hours`
+//!   (24) is used without asking; an older one makes a request and a good answer replaces it; if
+//!   the request fails or the run is offline the older entry is used and shown with its age
+//!   ("read 12 days ago"), never silently refreshed and never dropped for being old; an entry
+//!   older than 90 days is marked stale wherever it is shown; a part the provider does not list,
+//!   and a failed request, are not cached. An unreadable row is ignored with a note. The file
+//!   provider is not cached.
+//! - *Unknown* is the state of a part with no quote: with no provider, with `--offline`, with
+//!   the network down, and for a part the provider does not list ("not listed by <provider>").
+//!   It is shown wherever a price or stock would be and is never 0; a total counts the priced
+//!   lines and says how many have no price; nothing guesses a price from a neighbouring row. A
+//!   made-up part (no `lcsc`) has nothing to look up. A line with a quote says "<provider>,
+//!   <channel>, read <date>, <age>".
+//! - *Configuration.* The `[supply]` table of `netsmith.toml` has `provider` (only `"file"` is
+//!   built), `file` (relative to the project), `channel` (`jlcpcb-assembly` or `lcsc-retail`) and
+//!   `cache_hours`. The manifest's parser refuses an unknown key, so a secret cannot be committed
+//!   by mistake; a credential is given by the name of an environment variable and never by its
+//!   value (owner, 2026-11-03), and the value is never stored in the manifest, a project file or
+//!   the cache. The series of generic parts is the `series` key of `[project]` (owner,
+//!   2026-11-04: not a statement of the language).
+//! - *Terms of use.* Nothing here contacts a supplier. No provider that does is built until the
+//!   maintainer has read the supplier's terms and the official API's licence: JLCPCB's
+//!   `robots.txt` disallows `/api`, and ADR 0039 recorded that its terms could not be read. A
+//!   real provider is a [`SupplyProvider`] that uses the supplier's official API with the user's
+//!   own key and changes nothing else.
+//!
+//! Decided by the owner (2026-11-03 and 2026-11-04): the `[supply]` table; the `series` key; a
+//! quantity below the first break shown at the first break's price with "from N pieces"; the
+//! 24 hour cache and the 90 day stale mark.
+//!
+//! **Not built, and open for the maintainer** (ADR 0047, word for word where quoted):
+//! - "Generic parts appended after the identity rows or instead of them? Appended keeps every
+//!   design as it is; instead is the clean model and changes which part existing designs get."
+//!   (Issue #33 records "appended, on by default" as decided on 2026-11-03; the ADR text does not.)
+//! - "Is "JLCPCB Basic, then Preferred, then Extended, then file order" the preferred-parts list,
+//!   or is it a file of its own (`preferred.csv`, a project's list that wins)?"
+//! - "Which real providers, and in which order: the LCSC API, JLCAPI, an aggregator (the Nexar
+//!   API, which Altium's bill of materials and KiCost use) or a community snapshot (the KiCad
+//!   JLCPCB plugin downloads one daily). Each needs the maintainer to read its terms and to
+//!   decide whose key a user brings."
+//! - "Should the editor offer a swap with the checks run for each alternative, and should `fab`
+//!   refuse an unresolved part (this ADR says it does) or build without it?" (The checks are
+//!   built; the swap is not.)
+//! - "The shipped `price`, `stock` and `date` columns: keep as the `catalog` provider's input
+//!   (this ADR), or remove the columns from the format."
+//! - The user-level credentials file (`$XDG_CONFIG_HOME/netsmith/supply.toml`) of item 5 was
+//!   not part of the question the owner answered, and the spelling of the manifest field that
+//!   names the variable (for example `key_env = "NETSMITH_LCSC_KEY"`) is not decided: neither
+//!   is built.
+//! - A `--offline` flag for the bill of materials and `fab` (`Supply::with_offline` exists and
+//!   is tested), a named preferred-parts file, the quantity of an order across boards, and the
+//!   editor's swap. Quantity breaks across several boards, currency conversion, taxes,
+//!   shipping and JLCPCB's feeder fee for each Extended part are "not decided here".
 
 pub mod cache;
 pub mod file;

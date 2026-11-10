@@ -5,6 +5,69 @@
 //! with its source), else the part has no height and a limit reports it unchecked. The design stage
 //! lists only the first; this module adds the second, once the generic parts have their rows,
 //! and keeps what it added so that a report can say where each number came from.
+//!
+//! **The rule of a height limit** (ADR 0045 section 11; the guide's "Height limits" has the
+//! examples).
+//!
+//! - *A height.* `.height` is a built-in `Length` member of every part, stated by a part kind,
+//!   a user part or the board (`.sensor.height &= 8.5mm`): one value, never a range, never
+//!   negative; zero is a statement ("flat"), not a default. A part with no `.height` has no
+//!   height, not zero and not a guess: where a limit applies to it, it is reported by name as
+//!   unchecked. The footprint's 3D model is not read, and a KiCad footprint has no height of
+//!   its own. The spelling `.height` is the owner's (2026-11-03); it made the label's own
+//!   `.height` become `.text_height` (a breaking rename of `std::parts::mechanical::Label`).
+//! - *A limit.* `Keepout` has `.max_height`, one value above zero. A keepout that states it and
+//!   none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else (owner,
+//!   2026-11-04); one that states neither is still the error "forbids nothing". A height-only
+//!   keepout is not exported to KiCad as a rule area (owner, 2026-11-04). `netsmith dxf import`
+//!   reads no limit from a drawing, since a DXF has no height on a 2D loop.
+//! - *Both faces.* `.layers` names the faces a limit applies to: `top`, `bottom`, or `all` (the
+//!   default). A limit on inner layers only limits no face and is an error. A part is counted
+//!   on the face it is placed on, by its `.height`; the part of a through-hole part below the
+//!   board is not limited.
+//! - *The report.* `Board::check_placement` gives a `TooTall` problem for each part of known
+//!   height whose body (`F.Fab`, else the courtyard) overlaps a limit on its face and is over
+//!   it by more than half a micrometre; it stops `fab`. `Board::heights_unchecked` lists the
+//!   parts with no height under a limit: a warning in `fab`, `fab-notes.txt` and the editor
+//!   (`height_unchecked`), an error when constraints are strict (`fab --constraints error` or
+//!   `constraints = "error"` written in the manifest; `--constraints warn` wins; the owner's
+//!   reading, 2026-11-03). A label has no body and is left out.
+//! - *The placer.* The annealer keeps a part of known height out of a zone it is over, on its
+//!   face, with the hard cost of a keepout for parts, measured on the body grown by
+//!   `HEIGHT_ZONE_MARGIN` (0.25 mm, the placer's keepout gap; owner, 2026-11-04: the body plus a
+//!   margin and not the courtyard, because a connector whose courtyard goes 4.4 mm past its body
+//!   could not stand beside a limit its body clears). A footprint with no fabrication outline
+//!   keeps its courtyard, with no margin. A part of unknown height is not kept out. The fit's
+//!   face-sharing step knows heights (`place::face_forbidden`): a part that states a height and
+//!   no face stays off a face where the limits leave no room for its body.
+//! - *A keepout a part carries* is in the part's frame and moves with it. The check and the
+//!   placer measure it against every other part (`PlaceOptions::carried`); a carried zone that
+//!   forbids parts keeps out parts on both faces, and the face-sharing step does not read it.
+//! - *The editor.* A limit is drawn amber with `max 3 mm`; the hover says how tall a part stands
+//!   and what each limit allows; a finding about a keepout lights it; a drag of a part of stated
+//!   height stops before a step that would put its body over a limit it is too tall for
+//!   (`pcb/limits.ts`). The arrow-key nudge, turn and flip are not held.
+//!
+//! **Open, word for word from ADR 0045 section 11** ("Open for the maintainer"):
+//! - "Whether the catalog `height` column (section 2) should come first. (Built by ADR 0094,
+//!   provisional.)"
+//! - "That a height-only keepout forbids nothing else, rather than needing `.parts &= "allow"`
+//!   written out." (The owner confirmed it on 2026-11-04.)
+//! - "That `.layers` names the faces a limit applies to." (Confirmed 2026-11-04.)
+//! - "Whether an unknown height should be an error even with the key unset (the key defaults to
+//!   `error`, so by that default it would be). Now it is an error only when `error` is asked
+//!   for explicitly, by the flag or the manifest, and a warning otherwise."
+//! - "Whether the margin (now 0.25 mm) should come from the process instead of the placer's
+//!   constant."
+//! - "Whether the editor's drag limit (above) should also hold the arrow-key nudge, rotate and
+//!   flip; whether a part with no stated height should be held (here it is not, as in the placer
+//!   and the check); and whether a drag should refuse a limit at all or only name it, as it does
+//!   for a keepout for parts today (it refuses nothing there)."
+//! - "Reading a limit from the DXF (a layer that carries a height, or a 3D entity), which needs
+//!   a rule that is not a guess."
+//! - "A limit or a keepout that a part carries now keeps the other parts out in the placer (the
+//!   section above); whether the fit's face-sharing step should read it too, and whether a
+//!   carried zone that forbids parts should read `.layers` for the faces, are the owner's."
 
 use netsmith_core::{Design, PartHeight};
 use netsmith_design::Sourced;

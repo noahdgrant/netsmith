@@ -2,6 +2,41 @@
 //! parts on one line, each neighbour at a pitch. It is lowered here to the relations the
 //! equation form states, one pitch and one alignment for each pair of neighbours, each with
 //! the span of the row statement, so the solver, the placer and the check meet nothing new.
+//!
+//! **Decisions** (ADR 0048 "Syntax decisions" 10 and 11, owner, 2026-11-04, issue #81). A
+//! numbered run of parts on a pitch is one statement, spelled as a range of names: `row .pads.tp1
+//! .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm`. The first and the last name the run: the same
+//! path prefix, a number at the end of the last segment, every number between them present as a
+//! part. It puts the parts on one common line (the other axis equal) and each neighbour at the
+//! pitch along `x` or `y`, within the window; a pitch without one is exact within the placer's
+//! tolerance. It is physical file only. A number at the end of a path segment sorts numerically
+//! wherever parts are numbered (`tp10` after `tp9`, so `.pads.tp2` has designator `TP2`); before,
+//! designators followed the paths as text and the labels disagreed with the physical file.
+//!
+//! **Provisional readings**, all word for word from ADR 0048 (the owner to confirm or change):
+//! - "The words `along` and `pitch` are read as words only inside a `row` statement, and `row`
+//!   begins one only when a path with a leading dot follows, so `row`, `along` and `pitch` stay
+//!   usable as names."
+//! - "Each part is tied to its neighbour (the pitch of tp(n+1) from tp(n), and the line of tp(n+1)
+//!   the line of tp(n)), not to the first part, so a finding names the two neighbours; with a
+//!   window the error may add up along a row of N parts (N-1 windows), as it does for the
+//!   equations."
+//! - "A negative pitch runs the row toward smaller coordinates."
+//! - "A number written with leading zeros keeps the width of the first (`tp01 .. tp12`); a last
+//!   number zero-padded when the first is not is refused. A run of one part is refused."
+//! - "A part of a row must be a part (not a module, a pin or a value) and have a `.place` (every
+//!   part has one, so the check cannot fail today)."
+//! - "The checker reports the first part at fault, the two ends first, then the numbers between
+//!   them in order, and one message for a pitch that is not a length."
+//! - "The statement's text is the finding's source line for each of its relations; the
+//!   relation's own name (`pads.tp7.place.x - pads.tp6.place.x`) is what a finding quotes."
+//! - "Only a number at the end of a path segment counts as a number (`tp2a` is text), segments
+//!   are compared in turn and a segment without a number sorts before one with it; two spellings
+//!   of one number (`tp02`, `tp2`) are ordered by the number of digits so that the order is
+//!   total."
+//!
+//! Not built: a start offset (`from`), a row of a module's parts addressed by the module (the
+//! editor's "pin here" does not write a row), and a row whose parts are not one numbered run.
 
 use netsmith_lang::ast::{Axis, BinOp, CmpOp, Constraint, Expr, Ident, Path, Row};
 

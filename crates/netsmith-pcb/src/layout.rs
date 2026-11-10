@@ -35,6 +35,16 @@
 //! its place; one that gives a `size` is a keepout of its own, drawn in the editor, whose
 //! name the source must not use (ADR 0029).
 //!
+//! **What the file holds, and what it does not** (ADR 0030). The file is tier 3 of three: the
+//! decisions of this design (where a person put a part, a lock, a keepout the editor drew).
+//! What the circuit implies is derived by the placer (tier 1), and a datasheet's fact about a
+//! part belongs in the part with its source (tier 2, the `layout` block, not built). A
+//! requirement the case states goes to the physical file (ADR 0048), not here. Waivers,
+//! overrides of a constraint, per-module seeds and a routes cache (`<stem>.routes.toml`, one
+//! record per net with its segments, vias and a hash of its pad positions) were sketched in
+//! ADR 0030 and are not read: an unknown key is an error. `place_subset` (in `place.rs`) is what regenerating one module
+//! would use.
+//!
 //! [`apply_layout`] is the one place a layout reaches a board. A part with no entry stays
 //! where the placer put it. An entry for a part, keepout or cutout that the board does not
 //! have is an error that names it.

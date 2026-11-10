@@ -51,4 +51,4 @@ The checker refuses `optional` on a pin, on a member whose type is an interface,
 ## Left open
 
 - Whether other members of `Buck` and of std should be marked (`min_inductance` and the rest an IC may leave open). It is the owner's, member by member.
-- Whether the three rules of "stated" are right (the owner's question in `docs/research/adr-cleanup-plan.md`).
+- Whether the three rules of "stated" are right (the owner's question): a bound against numbers states the member; the library's own relation does not; the statement travels across `~`.

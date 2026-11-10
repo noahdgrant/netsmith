@@ -21,6 +21,50 @@
 //! window that has no place inside the outline. Each is first tried on the lines alone, and
 //! then with the outline and its margin, which bound a window the lines leave open (a
 //! `>=` has no upper end of its own); the second form says so.
+//!
+//! **Not proved, so not claimed**: chains of three or more constraints, relations on different
+//! fields of the same parts, a height limit against a part that states no face, and parts on
+//! opposite faces. A part with a stated face, pinned or bounded so that its courtyard lies over a
+//! pad of a through-hole part that states a protrusion wherever its window puts it, is one more
+//! proved kind when the rule refuses it wherever it is put (`protrusion.rs`). `fab` writes the
+//! block to `placement-failure.txt` and stops before routing when the placer, with no layout
+//! file, ended with a requirement not met (`--constraints warn` and a layout file leave that to
+//! the check after routing). A hole to hole or hole to copper fault names the pad of each hole.
+//!
+//! **Before the placer starts** (ADR 0045 section 14, issue #99; provisional, to be reviewed by
+//! the maintainer). [`before_placing`] runs on the parts as loaded, after `constraints::plan`
+//! and before any placing, in `Board::from_design_placed` (so `fab` and the editor's placement)
+//! and in `netsmith build`. It takes milliseconds (5 ms for 100 parts with windows in a debug
+//! build; a test asserts under 100 ms), is deterministic and starts no placer: the placer takes
+//! 40 to 70 seconds on a tight board. Only a proved conflict is an error.
+//!
+//! - It gives the proofs above on the windows the lines leave and not on where the placer ended,
+//!   with the same words (`no placement meets every requirement of the physical file:` then
+//!   `these lines cannot both hold: <file:line `text`>; ...`). The outline used is the most the
+//!   design allows (the top of a range), so what is proved holds for every size; with an open
+//!   side the proofs against the outline are skipped.
+//! - *A courtyard past an edge nobody stated*: for a part the requirements pin, or a window that
+//!   leaves no place with the courtyard inside, the courtyard is proved past an edge for every
+//!   place and turn the lines leave. The message is the check's, with the lines that place the
+//!   part. Only the edge fields of the body state an overhang (`overhang.rs`), so where the body
+//!   stays inside in those places no line would work and the message says that no statement
+//!   allows only the courtyard past an edge, and refers to the options note on issue #99. No
+//!   statement was added.
+//! - *A part bigger than the outline in every turn*: `oversize` of the placer, run before
+//!   placing.
+//! - *Locks are not proved against*: the editor lets a person drag a part to change its lock,
+//!   so a board that a lock leaves with findings is placed and shown with them. A lock that
+//!   breaks a requirement is refused before placing by `constraints::plan`.
+//! - With `--constraints warn` (or `constraints = "warn"`) the conflicting lines are warnings
+//!   and the placer runs as before; the two faults about a part are errors, since they are not
+//!   requirements. A suspicion that is not proved is left to the check after placing.
+//! - The editor shows the same as `constraint` findings at the sheet's origin, since there is no
+//!   place (`precheck_findings` in `crates/netsmith/src/editor/findings.rs`).
+//!
+//! A part that states a face against its module's face is refused by the checker when the board
+//! is built (`enclosure_sensor.rs`), also before any placing. The report of where the placer
+//! ended stays for what the pre-check cannot prove, and for `--constraints warn`. The choice of
+//! what to prove, and what to leave to the check after placing, is the maintainer's to review.
 
 use std::collections::BTreeSet;
 

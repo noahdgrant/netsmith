@@ -5,6 +5,18 @@
 //! one becomes the row of a catalog that stands for it: Basic first, a row a provider says
 //! has no stock passed over. A part no row stands for is **unresolved**, with the nearest
 //! rows, and `fab` refuses it by name.
+//!
+//! **Checking the alternatives** (ADR 0047, issue #31, provisional). When the build finds an
+//! unresolved generic part it plans a solve of the board with the part held to each of its
+//! nearest alternatives (`Catalogs::with_pin`). The solves are made when a caller first asks to
+//! show the result (the unresolved message of the bill of materials or `fab`), not by the build
+//! itself, so a build that shows neither solves the board once. The numbers the design stated
+//! for that part's catalog columns are what the alternative replaces, so they are dropped before
+//! the board is solved; the package and colour statements and every relation stay. The message
+//! then says, for each alternative, "passes every check" or "fails: <the relation and the
+//! numbers>". The solves are capped at [`MAX_RECHECKS`] for a board; a part past the cap is
+//! listed without the check. The editor's swap action, which would be a view of the same
+//! values, is not built.
 
 use netsmith_check::InstId;
 use netsmith_core::Part;

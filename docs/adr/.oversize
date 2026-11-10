@@ -1,6 +1,0 @@
-# ADRs that broke the rules in README.md before it was written (see scripts/adr-check).
-# Cut or fold one, then take its name off. Do not add a name.
-0030-layout-knowledge-and-the-pcb-editor.md
-0045-custom-constraints-from-the-enclosure.md
-0047-supplier-data-comes-from-a-provider-and-passives-are-generic.md
-0048-physical-intent-has-a-home-of-its-own.md
