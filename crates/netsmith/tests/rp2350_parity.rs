@@ -1154,12 +1154,25 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
     // source, physical file, layout file and seed give the same board, and the router has no say
     // in where the parts are).
     let committed = fs::read_to_string(reference.join("parity-overlay.svg")).unwrap();
+    let fresh = report.overlay_svg();
+    let differing: Vec<String> = committed
+        .lines()
+        .zip(fresh.lines())
+        .enumerate()
+        .filter(|(_, (a, b))| a != b)
+        .take(12)
+        .map(|(n, (a, b))| format!("line {}:\n  committed {a}\n  fresh     {b}", n + 1))
+        .collect();
     assert!(
-        committed == report.overlay_svg(),
-        "reference/parity-overlay.svg is not the overlay of the board `fab` writes; from \
-         examples/rp2350_minimal run `netsmith fab --locked`, then\n  cargo run -p netsmith \
-         --example parity -- fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb --svg \
-         reference/parity-overlay.svg"
+        committed == fresh,
+        "reference/parity-overlay.svg is not the overlay of the board `fab` writes ({} lines \
+         against {}); the first differing lines:\n{}\nfrom examples/rp2350_minimal run \
+         `netsmith fab --locked`, then\n  cargo run -p netsmith --example parity -- \
+         fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb --svg reference/parity-overlay.svg\n\n{}",
+        committed.lines().count(),
+        fresh.lines().count(),
+        differing.join("\n"),
+        report.text()
     );
 }
 
