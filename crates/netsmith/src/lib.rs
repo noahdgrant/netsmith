@@ -13,6 +13,7 @@ pub mod layout;
 pub mod libraries;
 pub mod no_supplier;
 pub mod order;
+pub mod parity;
 pub mod physical;
 pub mod pick_lock;
 pub mod pin_swap;

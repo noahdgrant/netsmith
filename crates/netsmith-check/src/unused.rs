@@ -9,7 +9,9 @@
 //!   is an error that names both lines. A series `Resistor`, `Fuse` or `FerriteBead` that leads
 //!   from the interface to such a net is a use too ([`series_use`], pull request #323, the
 //!   owner's decision of 2026-11-09); an inductor, capacitor, diode or switch in series is not
-//!   followed, and neither is a series part to ground: ADR 0083 lists both as left open;
+//!   followed. A series part whose far end is a rail of the board, the supply `pos` or the
+//!   return `neg`, is a pull and no use (the owner's decision of 2026-11-10); ADR 0083 lists
+//!   the inductor, capacitor, diode and switch as left open;
 //! - the relations that read only values of the interface (`usb.vbus.voltage >= 4.35V`) are
 //!   taken out of the model, so the solver neither checks them nor lists them as not
 //!   evaluated;
@@ -170,7 +172,7 @@ impl Checker<'_> {
                 .iter()
                 .filter_map(|&i| model.rail_of(i).map(|(_, _, neg)| neg))
                 .collect();
-            let grounds = grounds(model);
+            let rails = rail_pins(model);
             let mut pins: Vec<InstId> = inside
                 .iter()
                 .copied()
@@ -207,7 +209,7 @@ impl Checker<'_> {
                 // No pin of another part on the net: a series passive from it may lead to one.
                 let (via, other, net) = match other {
                     Some(other) => (Vec::new(), other, net.name.clone()),
-                    None => match series_use(model, pin, holder, &grounds) {
+                    None => match series_use(model, pin, holder, &rails) {
                         Some(found) => found,
                         None => continue,
                     },
@@ -305,26 +307,40 @@ impl Checker<'_> {
     }
 }
 
-/// The `neg` pins of every rail: a net that holds one is a return, and every return is one net.
-fn grounds(model: &crate::model::Model) -> HashSet<InstId> {
-    model
-        .instances()
-        .filter_map(|(id, _)| model.rail_of(id).map(|(_, _, neg)| neg))
-        .collect()
+/// The pins that make a net a rail for a series part: the `neg` pin of every rail (a net that
+/// holds one is a return, and every return is one net), and the `pos` pin of every rail the
+/// board itself declares (the supply). A part or a module that leads from the interface to such
+/// a net only pulls the pin to a rail.
+fn rail_pins(model: &crate::model::Model) -> HashSet<InstId> {
+    let mut pins = HashSet::new();
+    for (id, _) in model.instances() {
+        let Some((_, pos, neg)) = model.rail_of(id) else {
+            continue;
+        };
+        pins.insert(neg);
+        let on_board = model
+            .owner_of(id)
+            .is_some_and(|o| model.instance(o).kind == InstKind::Board);
+        if on_board {
+            pins.insert(pos);
+        }
+    }
+    pins
 }
 
 /// A use that goes through series passives (a fuse, a resistor, a ferrite bead): from `pin`,
 /// of an interface stated unused, along nets and across the two ends of such parts, to a net
 /// that has a non-passive pin of another part. Returns the parts crossed (in order), the pin
 /// reached and the name of its net. A part inside the module that holds the interface is the
-/// module's own wiring, and a net that is a return is not a use, as for a pin of the interface
-/// itself; a series part that leads only to passive pins (test pads) or to another interface
-/// stated unused finds none.
+/// module's own wiring, and a net that is a rail of the board, the supply `pos` or the return
+/// `neg` (a pull-up or a pull-down, owner's decision of 2026-11-10), is not a use, as a return
+/// is not for a pin of the interface itself; a series part that leads only to passive pins
+/// (test pads), to a rail or to another interface stated unused finds none.
 fn series_use(
     model: &crate::model::Model,
     pin: InstId,
     holder: Option<InstId>,
-    grounds: &HashSet<InstId>,
+    rails: &HashSet<InstId>,
 ) -> Option<(Vec<InstId>, InstId, String)> {
     let outside = |t: InstId| {
         model.is_terminal(t)
@@ -336,7 +352,7 @@ fn series_use(
     while let Some((from, via)) = queue.pop_front() {
         if !via.is_empty() {
             match model.net_of(from) {
-                Some(net) if !net.pins.iter().any(|p| grounds.contains(p)) => {}
+                Some(net) if !net.pins.iter().any(|p| rails.contains(p)) => {}
                 _ => continue,
             }
         }

@@ -458,6 +458,72 @@ fn a_series_part_back_to_ground_is_no_use() {
 }
 
 #[test]
+fn a_pull_up_to_the_supply_is_no_use() {
+    // The owner's decision of 2026-11-10: a pull to either rail of the board proves nothing,
+    // although the supply's net has pins that are not passive (the processor's `vdd`).
+    let c =
+        series("    .r: Resistor\n    .proc.usb.dp ~> .r ~> .supply.pos\n    unused .proc.usb\n");
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_fuse_and_a_bead_to_the_supply_are_no_use() {
+    let c = series(
+        "    .f: Fuse\n    .fb: FerriteBead\n    .r: Resistor\n    .proc.usb.vbus.pos ~> .f ~> .supply.pos\n    .proc.usb.dp ~> .fb ~> .r ~> .supply.pos\n    unused .proc.usb\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_pull_up_whose_pin_also_reaches_a_load_through_another_path_is_a_use() {
+    let c = series(
+        "    .r: Resistor\n    .r2: Resistor\n    .load: Zload\n    .proc.usb.dp ~> .r ~> .supply.pos\n    .proc.usb.dp ~> .r2 ~> .load.in\n    unused .proc.usb\n",
+    );
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("through `r2` (a `Resistor`) to `load.in`")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_pull_up_whose_pin_is_also_joined_to_a_load_is_a_use() {
+    let c = series(
+        "    .r: Resistor\n    .load: Zload\n    .proc.usb.dp ~> .r ~> .supply.pos\n    .proc.usb.dp ~ .load.in\n    unused .proc.usb\n",
+    );
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("`proc.usb.dp` is connected here to `load.in`")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_series_part_to_a_load_on_the_supply_net_through_a_fuse_is_still_a_use() {
+    // A fuse from the interface to a net that has a load but no rail pin is a use, whatever
+    // else is pulled to the supply.
+    let c = series(
+        "    .f: Fuse\n    .r: Resistor\n    .load: Zload\n    .proc.usb.vbus.pos ~> .f ~> .load.in\n    .proc.usb.dp ~> .r ~> .supply.pos\n    unused .proc.usb\n",
+    );
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("through `f` (a `Fuse`) to `load.in`")),
+        "{}",
+        c.render()
+    );
+    assert!(
+        messages(&c).iter().all(|m| !m.contains("through `r`")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
 fn a_series_part_between_two_unused_interfaces_is_no_use() {
     let c = run(&format!(
         "{LOAD}{PARTS}\nboard B {{\n    .supply: Rail {{\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"3V3\"\n        .neg.net &= \"GND\"\n    }}\n    .proc: Zproc\n    .jack: Zjack\n    .supply ~ .proc.vdd\n    .jack.usb.vbus.neg ~ .supply.neg\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .jack.usb.dp\n    unused .proc.usb\n    unused .jack.usb\n}}\n"

@@ -26,20 +26,11 @@ pub fn placements_toml(pcb: &str, source: &str) -> Result<String, String> {
     if root.head() != Some("kicad_pcb") {
         return Err(format!("{source}: not a kicad_pcb file"));
     }
-    let outline = outline(&root)?;
-    let mut parts = root
-        .find_all("footprint")
-        .map(part)
-        .collect::<Result<Vec<_>, _>>()?;
-    parts.sort_by_key(|p| natural_key(&p.reference));
-    for pair in parts.windows(2) {
-        if pair[0].reference == pair[1].reference {
-            return Err(format!(
-                "{source}: two footprints are called {}",
-                pair[0].reference
-            ));
-        }
-    }
+    let Board {
+        outline,
+        holes,
+        parts,
+    } = board_of(&root, source)?;
 
     let mut out = String::new();
     out.push_str(HEADER);
@@ -91,17 +82,13 @@ pub fn placements_toml(pcb: &str, source: &str) -> Result<String, String> {
         }
     }
 
-    for part in &parts {
-        for pad in part.pads.iter().filter(|p| p.kind == "np_thru_hole") {
-            let Some(drill) = pad.drill else { continue };
-            let (x, y) = part.board_point(pad.x, pad.y);
-            let _ = writeln!(out, "\n[[hole]]");
-            let _ = writeln!(out, "must_match = true");
-            let _ = writeln!(out, "reference = {}", quote(&part.reference));
-            let _ = writeln!(out, "x = {}", num(x));
-            let _ = writeln!(out, "y = {}", num(y));
-            let _ = writeln!(out, "drill = {}", num(drill));
-        }
+    for hole in &holes {
+        let _ = writeln!(out, "\n[[hole]]");
+        let _ = writeln!(out, "must_match = true");
+        let _ = writeln!(out, "reference = {}", quote(&hole.reference));
+        let _ = writeln!(out, "x = {}", num(hole.x));
+        let _ = writeln!(out, "y = {}", num(hole.y));
+        let _ = writeln!(out, "drill = {}", num(hole.drill));
     }
 
     for part in &parts {
@@ -154,17 +141,220 @@ const HEADER: &str = "\
 #   J1 to J4, SW1, SW2); false is reported, not required.
 ";
 
-struct Outline {
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-    lines: usize,
-    radii: Vec<f64>,
+/// What the table holds, as numbers: read from a `.kicad_pcb` by [`read_board`], or from a table
+/// (`placements.toml`) by [`Board::from_table`]. The parity checker compares two of them.
+#[derive(Debug, Clone)]
+pub struct Board {
+    pub outline: Outline,
+    /// The non-plated holes (`np_thru_hole` pads with a round drill), by place on the board.
+    pub holes: Vec<Hole>,
+    /// Every footprint, sorted by reference (letters, then the number).
+    pub parts: Vec<Part>,
+}
+
+/// A mounting hole: the reference of its footprint, its place on the board and its drill.
+#[derive(Debug, Clone)]
+pub struct Hole {
+    pub reference: String,
+    pub x: f64,
+    pub y: f64,
+    pub drill: f64,
+}
+
+/// The board as a `.kicad_pcb` states it.
+pub fn read_board(pcb: &str, source: &str) -> Result<Board, String> {
+    let root = Sexp::parse(pcb).map_err(|e| format!("{source}: {e}"))?;
+    if root.head() != Some("kicad_pcb") {
+        return Err(format!("{source}: not a kicad_pcb file"));
+    }
+    board_of(&root, source)
+}
+
+fn board_of(root: &Sexp, source: &str) -> Result<Board, String> {
+    let outline = outline(root)?;
+    let mut parts = root
+        .find_all("footprint")
+        .map(part)
+        .collect::<Result<Vec<_>, _>>()?;
+    parts.sort_by_key(|p| natural_key(&p.reference));
+    for pair in parts.windows(2) {
+        if pair[0].reference == pair[1].reference {
+            return Err(format!(
+                "{source}: two footprints are called {}",
+                pair[0].reference
+            ));
+        }
+    }
+    let mut holes = Vec::new();
+    for part in &parts {
+        for pad in part.pads.iter().filter(|p| p.kind == "np_thru_hole") {
+            let Some(drill) = pad.drill else { continue };
+            let (x, y) = part.board_point(pad.x, pad.y);
+            holes.push(Hole {
+                reference: part.reference.clone(),
+                x,
+                y,
+                drill,
+            });
+        }
+    }
+    Ok(Board {
+        outline,
+        holes,
+        parts,
+    })
+}
+
+impl Board {
+    /// The board of a table as `placements_toml` prints it.
+    pub fn from_table(text: &str) -> Result<Board, String> {
+        let table: toml::Table = text.parse().map_err(|e| format!("the table: {e}"))?;
+        let outline = table
+            .get("outline")
+            .and_then(toml::Value::as_table)
+            .ok_or("the table has no [outline]")?;
+        let arcs = outline
+            .get("arcs")
+            .and_then(toml::Value::as_integer)
+            .unwrap_or(0)
+            .max(0) as usize;
+        let radii = if let Some(r) = outline.get("corner_radius") {
+            vec![value(r, "outline corner_radius")?; arcs]
+        } else if let Some(list) = outline.get("arc_radii").and_then(toml::Value::as_array) {
+            list.iter()
+                .map(|r| value(r, "outline arc_radii"))
+                .collect::<Result<_, _>>()?
+        } else {
+            Vec::new()
+        };
+        let outline = Outline {
+            min_x: field(outline, "min_x", "outline")?,
+            min_y: field(outline, "min_y", "outline")?,
+            max_x: field(outline, "max_x", "outline")?,
+            max_y: field(outline, "max_y", "outline")?,
+            lines: outline
+                .get("lines")
+                .and_then(toml::Value::as_integer)
+                .unwrap_or(0)
+                .max(0) as usize,
+            radii,
+        };
+        let mut holes = Vec::new();
+        for h in array_of(&table, "hole") {
+            holes.push(Hole {
+                reference: text_field(h, "reference", "a [[hole]]")?,
+                x: field(h, "x", "a [[hole]]")?,
+                y: field(h, "y", "a [[hole]]")?,
+                drill: field(h, "drill", "a [[hole]]")?,
+            });
+        }
+        let mut parts = Vec::new();
+        for p in array_of(&table, "part") {
+            let reference = text_field(p, "reference", "a [[part]]")?;
+            let at = format!("part {reference}");
+            let mut pads = Vec::new();
+            for pad in p
+                .get("pads")
+                .and_then(toml::Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let pad = pad
+                    .as_table()
+                    .ok_or_else(|| format!("{at}: a pad is not a table"))?;
+                let number = text_field(pad, "number", &at)?;
+                let pair = |key: &str| -> Result<Option<(f64, f64)>, String> {
+                    let Some(v) = pad.get(key) else {
+                        return Ok(None);
+                    };
+                    match v.as_array().map(Vec::as_slice) {
+                        Some([w, h]) => Ok(Some((value(w, key)?, value(h, key)?))),
+                        _ => Err(format!("{at} pad {number}: {key} is not [w, h]")),
+                    }
+                };
+                pads.push(Pad {
+                    kind: text_field(pad, "type", &at)?,
+                    shape: text_field(pad, "shape", &at)?,
+                    x: field(pad, "x", &at)?,
+                    y: field(pad, "y", &at)?,
+                    angle: pad.get("angle").map(|v| value(v, "angle")).transpose()?,
+                    size: pair("size")?,
+                    drill: pad.get("drill").map(|v| value(v, "drill")).transpose()?,
+                    drill_slot: pair("drill_slot")?,
+                    net: pad
+                        .get("net")
+                        .and_then(toml::Value::as_str)
+                        .map(str::to_string),
+                    number,
+                });
+            }
+            parts.push(Part {
+                footprint: text_field(p, "footprint", &at)?,
+                layer: text_field(p, "layer", &at)?,
+                x: field(p, "x", &at)?,
+                y: field(p, "y", &at)?,
+                rotation: field(p, "rotation", &at)?,
+                must_match: p
+                    .get("must_match")
+                    .and_then(toml::Value::as_bool)
+                    .unwrap_or(false),
+                reference,
+                pads,
+            });
+        }
+        Ok(Board {
+            outline,
+            holes,
+            parts,
+        })
+    }
+}
+
+fn array_of<'a>(table: &'a toml::Table, key: &str) -> impl Iterator<Item = &'a toml::Table> {
+    table
+        .get(key)
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_table)
+}
+
+fn value(v: &toml::Value, what: &str) -> Result<f64, String> {
+    match v {
+        toml::Value::Float(f) => Ok(*f),
+        toml::Value::Integer(i) => Ok(*i as f64),
+        _ => Err(format!("{what} is not a number")),
+    }
+}
+
+fn field(t: &toml::Table, key: &str, whose: &str) -> Result<f64, String> {
+    value(
+        t.get(key).ok_or_else(|| format!("{whose} has no {key}"))?,
+        &format!("{whose}: {key}"),
+    )
+}
+
+fn text_field(t: &toml::Table, key: &str, whose: &str) -> Result<String, String> {
+    t.get(key)
+        .and_then(toml::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("{whose} has no text {key}"))
+}
+
+#[derive(Debug, Clone)]
+pub struct Outline {
+    pub min_x: f64,
+    pub min_y: f64,
+    pub max_x: f64,
+    pub max_y: f64,
+    pub lines: usize,
+    /// The radius of each arc, rounded to 0.1 micrometre.
+    pub radii: Vec<f64>,
 }
 
 impl Outline {
-    fn corner_radius(&self) -> Option<f64> {
+    /// The one radius of every arc, when they agree.
+    pub fn corner_radius(&self) -> Option<f64> {
         let first = *self.radii.first()?;
         self.radii
             .iter()
@@ -302,19 +492,22 @@ impl Arc {
     }
 }
 
-struct Part {
-    reference: String,
-    footprint: String,
-    layer: String,
-    x: f64,
-    y: f64,
-    rotation: f64,
-    pads: Vec<Pad>,
+#[derive(Debug, Clone)]
+pub struct Part {
+    pub reference: String,
+    pub footprint: String,
+    pub layer: String,
+    pub x: f64,
+    pub y: f64,
+    pub rotation: f64,
+    /// Set by a table; a board read from a `.kicad_pcb` has `false` (see [`MUST_MATCH`]).
+    pub must_match: bool,
+    pub pads: Vec<Pad>,
 }
 
 impl Part {
     /// A point of the footprint's own frame, on the board (KiCad's rotation, y down).
-    fn board_point(&self, x: f64, y: f64) -> (f64, f64) {
+    pub fn board_point(&self, x: f64, y: f64) -> (f64, f64) {
         let (s, c) = self.rotation.to_radians().sin_cos();
         // Whole turns are exact: a part turned 90 or 180 degrees keeps its figures round.
         let (s, c) = (snap(s), snap(c));
@@ -334,17 +527,20 @@ fn snap(v: f64) -> f64 {
     }
 }
 
-struct Pad {
-    number: String,
-    kind: String,
-    shape: String,
-    x: f64,
-    y: f64,
-    angle: Option<f64>,
-    size: Option<(f64, f64)>,
-    drill: Option<f64>,
-    drill_slot: Option<(f64, f64)>,
-    net: Option<String>,
+#[derive(Debug, Clone)]
+pub struct Pad {
+    pub number: String,
+    /// `smd`, `thru_hole`, `np_thru_hole` or `connect`.
+    pub kind: String,
+    pub shape: String,
+    /// The centre in the footprint's own frame (before its rotation).
+    pub x: f64,
+    pub y: f64,
+    pub angle: Option<f64>,
+    pub size: Option<(f64, f64)>,
+    pub drill: Option<f64>,
+    pub drill_slot: Option<(f64, f64)>,
+    pub net: Option<String>,
 }
 
 impl Pad {
@@ -411,6 +607,7 @@ fn part(footprint: &Sexp) -> Result<Part, String> {
         x,
         y,
         rotation,
+        must_match: false,
         pads,
     })
 }
@@ -516,7 +713,7 @@ fn quote(text: &str) -> String {
 }
 
 /// `C10` after `C9`, and `J1` after `C99`: the letters, then the number.
-fn natural_key(reference: &str) -> (String, u64, String) {
+pub fn natural_key(reference: &str) -> (String, u64, String) {
     let split = reference
         .find(|c: char| c.is_ascii_digit())
         .unwrap_or(reference.len());
