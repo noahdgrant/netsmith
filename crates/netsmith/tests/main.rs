@@ -44,6 +44,7 @@ mod open_circle;
 mod order;
 mod overhang;
 mod panel;
+mod passives;
 mod pick_lock;
 mod pinout;
 mod pins;
