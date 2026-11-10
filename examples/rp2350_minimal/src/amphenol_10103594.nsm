@@ -1,0 +1,31 @@
+//! The micro-USB B receptacle of Amphenol FCI, 10103594-0001LF: the J1 of the RP2350A Minimal
+//! board. Surface mount, right angle, five contacts and a shell that is soldered in six places.
+//!
+//! The pad numbers follow two things. The maker's drawing (10103594, revision A, printed
+//! 2010-06-02, the file that LCSC links for C428495) numbers the five contacts only ("Terminal
+//! No.1" and "No.5" in the rear view, left to right); the shell has no number there. Numbers 6
+//! to 11 for the shell are Raspberry Pi's: the six shell pads of their footprint carry them, and
+//! the board's nets agree with the order VBUS, D-, D+, ID, GND on pads 1 to 5 (VBUS, USB_D-,
+//! USB_D+, an unconnected ID, GND). The pin names are the USB signals' own, not the maker's (the
+//! drawing names none).
+
+import std::parts::connector::Connector
+
+/// A micro-USB B receptacle, 5 contacts, SMT. `.vbus` and `.gnd` are the power contacts, `.id`
+/// is the ID contact (not connected on a device), `.shield` is the metal shell: six pads, all
+/// one pin.
+part Amphenol10103594 provides Connector {
+    pins {
+        //  pin        kind           name       pads
+        .vbus     power         "VBUS"     "1"
+        .dm       bidirectional "D-"       "2"
+        .dp       bidirectional "D+"       "3"
+        .id       passive       "ID"       "4"
+        .gnd      power         "GND"      "5"
+        .shield   passive       "SHIELD"   "6" "7" "8" "9" "10" "11"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog micro_usb by .mpn { .mpn, .package }
+}

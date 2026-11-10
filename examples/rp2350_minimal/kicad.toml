@@ -14,3 +14,32 @@ kind = "Rp2350A"
 package = "QFN-60-EP(7x7)"
 default = true
 footprint = "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
+
+# The connectors of the board. Their footprints are written into the project's own library
+# (libs/netsmith_rp2350.pretty), so that a build needs no KiCad install; README.md records what
+# each was read from. The parts are drawn from their pin tables (no `symbol`, ADR 0097).
+[[library]]
+name = "netsmith_rp2350"
+footprints = "libs/netsmith_rp2350.pretty"
+
+# J1: Amphenol FCI 10103594-0001LF, the recommended PCB pattern of the maker's drawing.
+[[part]]
+kind = "Amphenol10103594"
+package = "SMD"
+default = true
+footprint = "netsmith_rp2350:USB_Micro-B_Amphenol_10103594-0001LF"
+
+# J4: JST SM03B-SRSS-TB(LF)(SN), the PC board layout of the maker's catalog page.
+[[part]]
+kind = "JstSm03bSrssTb"
+package = "SMD,P=1mm,Surface Mount,Right Angle"
+default = true
+footprint = "netsmith_rp2350:JST_SM03B-SRSS-TB_1x03-2MP_P1.00mm_Horizontal"
+
+# J2 and J3: Samtec TSW-118-07-L-D, the maker's footprint drawing for the TSW series (the
+# generator's `gen:PinHeader` has 1.778 mm pads, Raspberry Pi's board 1.6 mm).
+[[part]]
+kind = "SamtecTsw11807LD"
+package = "TSW-118-07-L-D"
+default = true
+footprint = "netsmith_rp2350:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
