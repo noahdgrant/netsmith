@@ -1451,8 +1451,8 @@ board ConnectorsBare {
     }
     .usb: Amphenol10103594 { .mpn &= "10103594-0001LF" }
     .debug: JstSm03bSrssTb { .mpn &= "SM03B-SRSS-TB(LF)(SN)" }
-    .low: SamtecTsw11807LD
-    .high: SamtecTsw11807LD
+    .low: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
+    .high: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
 
     .usb_power.pos ~ .usb.vbus
     .usb_power.neg ~ .usb.gnd
@@ -1572,7 +1572,7 @@ fn the_connectors_build_with_no_kicad_and_their_footprints_are_the_projects_own(
 }
 
 #[test]
-fn the_header_is_soldered_by_hand_and_has_no_lcsc_number_the_others_have_theirs() {
+fn the_header_is_soldered_by_hand_and_has_its_lcsc_number_like_the_others() {
     let built = built_connectors();
     let sourced = |kind: &str| {
         built
@@ -1582,7 +1582,7 @@ fn the_header_is_soldered_by_hand_and_has_no_lcsc_number_the_others_have_theirs(
             .collect::<Vec<_>>()
     };
     for header in sourced("SamtecTsw11807LD") {
-        assert_eq!(header.lcsc, None);
+        assert_eq!(header.lcsc.as_deref(), Some("C6887963"));
         assert_eq!(header.assembly, netsmith_design::Assembly::Hand);
     }
     assert_eq!(
@@ -1825,8 +1825,25 @@ fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_
         );
         assert!(row.contains(",Extended,"), "{row}");
     }
-    // The header has no JLCPCB part: no catalog and no number.
-    assert!(!project().join("catalogs/samtec_tsw_118.csv").exists());
+    // The header's row: LCSC's page was read, JLCPCB's returned no library type, so none is
+    // recorded (an empty cell, not a guess).
+    let rows = read("catalogs/samtec_tsw_118.csv");
+    let row = rows.lines().nth(1).expect("a row");
+    assert_eq!(rows.lines().count(), 2, "one row");
+    assert!(
+        row.starts_with("C6887963,TSW-118-07-L-D,TSW-118-07-L-D,,"),
+        "{row}"
+    );
+    assert!(
+        row.contains("https://jlcpcb.com/partdetail/C6887963"),
+        "{row}"
+    );
+    assert!(row.contains("https://www.lcsc.com/product-detail/C6887963.html"));
+    assert!(row.contains("2026-11-10"), "{row}");
+    assert!(
+        !row.contains(",Extended,") && !row.contains(",Basic,"),
+        "{row}"
+    );
     let target = Target::resolve_from(&project(), None).unwrap();
     assert!(target.catalogs().is_ok());
 }
