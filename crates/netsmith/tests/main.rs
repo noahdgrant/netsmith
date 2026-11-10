@@ -37,6 +37,7 @@ mod guidelines;
 mod height;
 mod ic_symbols;
 mod kicad_rows;
+mod lock_refresh;
 mod lt8641;
 mod mosfet_drive;
 mod note_causes;

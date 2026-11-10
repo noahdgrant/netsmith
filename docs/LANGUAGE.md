@@ -7428,11 +7428,30 @@ With a lock, the solver offers each part the lock names only its locked row, and
 
 - **The row still passes.** It is the pick. Nothing is printed.
 - **The row no longer passes, or is no longer in the catalog.** The run stops with the relation that fails and its numbers, and a second message says that the row is the lock's and that no other row was tried (`` `r1` is locked to the row `2.2kΩ 1% 0402 C25879` of the `resistor` catalog by led.lock.toml, and no other row was tried for it ``). Change the design or the catalog so the row fits, or delete the lock to pick again. A row whose `lcsc` or `mpn` is no longer the lock's is the same case.
-- **A part has no entry, or an entry belongs to a part the board no longer has.** The run goes on and prints a note that names the part. The lock is not rewritten: an existing lock is never changed by a run.
+- **A part has no entry, or an entry belongs to a part the board no longer has.** The run goes on and prints a note that names the part. The lock is not rewritten: an existing lock is never changed by `build` or `fab`.
 
 `--locked` (on `build` and `fab`, as Cargo's) turns the last case, and a missing file, into an error, before anything is written. A CI job that builds with `--locked` fails a pull request that changes the picks without changing the lock.
 
-`fab --order` does not read or write a lock yet. The editor does not either: it solves from the source, as before.
+#### Refreshing the lock
+
+A lock that is old is refreshed on purpose, with `netsmith lock --update [file.nsm]` (every top-level file of the project when no file is named). It solves each board of the file again as if there were no lock, so every part is free to take the row the solver picks now, and writes the lock with those rows. It prints what changed, a line for each part in the order board, part path, with the row's LCSC and manufacturer part numbers, and nothing at all when the lock is already as it would write it (then the file is not touched):
+
+```sh
+$ netsmith lock --update
+updated src/main.lock.toml
+  Zz9Board: `u`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)
+```
+
+Each case of the list above ends in a line of that diff:
+
+- **A part the lock has no entry for** is added (`LedExample: `r2`: added as ...`), and the entries of the other parts are as they were unless their own pick moved. With no lock file, every part is added and the file is written.
+- **An entry for a part that is gone** is dropped (`LedExample: `r2`: dropped (it was ..., and is no longer a part of the board)`).
+- **A row that no longer passes, or that no catalog has**, is not replaced silently. `lock` first solves the board held to the rows of the file, as `build` does, and prints what the solver said about them, in its own words, to stderr after `note:` (the relation that fails and its numbers, or that the catalog has no such row); `--update` then replaces the row with the one the solver picks now, and the diff says which.
+- **A row that still passes but is no longer the first that fits** (a catalog gained an earlier row, or the solver changed) is replaced too: that is what a refresh is for, and the diff is how the change is reviewed.
+
+`netsmith lock --check [file.nsm]` does the same and writes nothing. It prints the same diff and exits 1 when the lock is not current or does not exist (with a message that says which), and exits 0 and prints nothing when it is current, so a CI job can run it beside `build --locked`. Both exit 2 when they cannot tell: the lock is not a lock this netsmith reads, or the design does not build even with no lock. Two runs on the same project print the same text and write the same bytes. The pin file is not read for its writing: `lock` writes only the lock, and a pin request that has no pin yet is assigned in memory, as the editor does.
+
+`fab --order` does not read or write a lock yet. The editor does not read or write a lock either: it solves from the source, as before.
 
 ## Imports
 
@@ -7665,6 +7684,7 @@ netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board
 ```sh
 netsmith init [--name <name>]          # a project in the current directory
 netsmith build [file.nsm] [--out dir] [--strict] [--locked] # check, solve, write a KiCad schematic
+netsmith lock --update|--check [file.nsm] # refresh the pick lock and print what changed, or fail if it is not current (see _The pick lock_)
 netsmith editor [file.nsm] [--port n]  # edit and view in a browser (default port 8787)
 netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] # files for a board house (boards and panels), after a design rules check
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
