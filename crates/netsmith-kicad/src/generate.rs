@@ -19,7 +19,7 @@
 //! The same table gives the same bytes: nothing here reads a clock, a map's order or the
 //! machine.
 
-use netsmith_core::{Part, PartPin, PinKind};
+use netsmith_core::{Part, PartPin, PinKind, PowerFlow};
 use uuid::Uuid;
 
 use crate::sexp::Sexp;
@@ -60,15 +60,26 @@ pub fn is_ground(pin: &PartPin) -> bool {
             .any(|g| name.starts_with(g))
 }
 
-/// Where a pin goes: the supply above and the ground below, inputs and passive pins on the
-/// left, outputs on the right. A power pin that gives power (an output of a regulator,
-/// [`PartPin::gives_power`]) is an output too, so it goes on the right, where the schematic
-/// layout reads an output; a power pin that takes power or whose direction is not known stays
-/// above. The editor's box for a part with no symbol uses this too.
-pub fn side_of(pin: &PartPin) -> Side {
+/// Whether one of `pins` is a power pin that gives power ([`PartPin::gives_power`]): the part is
+/// a converter or a regulator, and [`side_of`] puts its supply on the left.
+pub fn part_gives_power<'a>(pins: impl IntoIterator<Item = &'a PartPin>) -> bool {
+    pins.into_iter()
+        .any(|p| p.kind == PinKind::Power && p.gives_power())
+}
+
+/// Where a pin goes: the ground below, inputs and passive pins on the left, outputs on the
+/// right. A power pin that gives power (an output of a regulator, [`PartPin::gives_power`])
+/// is an output too, so it goes on the right, where the schematic layout reads an output. A
+/// power pin that takes power ([`PartPin::power_flow`] is `Takes`) of a part that also has a
+/// pin that gives power (`part_gives`, see [`part_gives_power`]) goes on the left, where the
+/// layout reads the input of a converter. The supply of any other part, and a power pin whose
+/// direction is not known, stays above. The editor's box for a part with no symbol uses this
+/// too.
+pub fn side_of(pin: &PartPin, part_gives: bool) -> Side {
     match pin.kind {
         PinKind::Power if is_ground(pin) => Side::Bottom,
         PinKind::Power if pin.gives_power() => Side::Right,
+        PinKind::Power if part_gives && pin.power_flow == Some(PowerFlow::Takes) => Side::Left,
         PinKind::Power => Side::Top,
         PinKind::Input | PinKind::Passive => Side::Left,
         PinKind::Output | PinKind::TriState => Side::Right,
@@ -262,7 +273,12 @@ fn pin_node(
 
 /// The box of one unit and its pins, as the two `(symbol "<name>_<unit>_1" ...)` parts KiCad
 /// wants: the rectangle and the pins.
-fn unit_node(name: &str, unit: usize, pins: &[&PartPin]) -> (Sexp, i32, bool, bool) {
+fn unit_node(
+    name: &str,
+    unit: usize,
+    pins: &[&PartPin],
+    part_gives: bool,
+) -> (Sexp, i32, bool, bool) {
     let mut top: Vec<Entry> = Vec::new();
     let mut bottom: Vec<Entry> = Vec::new();
     let mut left: Vec<Entry> = Vec::new();
@@ -271,7 +287,7 @@ fn unit_node(name: &str, unit: usize, pins: &[&PartPin]) -> (Sexp, i32, bool, bo
     let mut no_connect: Vec<Entry> = Vec::new();
     for &pin in pins {
         let entry = Entry { pin };
-        match side_of(pin) {
+        match side_of(pin, part_gives) {
             Side::Top => top.push(entry),
             Side::Bottom => bottom.push(entry),
             Side::Left => left.push(entry),
@@ -394,8 +410,9 @@ pub fn draw(name: &str, reference: &str, footprint: &str, units: &[Vec<&PartPin>
     ];
     let mut parts = Vec::new();
     let (mut height, mut above, mut below) = (0, false, false);
+    let part_gives = part_gives_power(units.iter().flatten().copied());
     for (i, pins) in units.iter().enumerate() {
-        let (part, half_height, top, bottom) = unit_node(name, i + 1, pins);
+        let (part, half_height, top, bottom) = unit_node(name, i + 1, pins, part_gives);
         if i == 0 {
             (height, above, below) = (half_height, top, bottom);
         }
@@ -416,7 +433,6 @@ pub fn draw(name: &str, reference: &str, footprint: &str, units: &[Vec<&PartPin>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_core::PowerFlow;
 
     fn pin(name: &str, datasheet: &str, kind: PinKind, pads: &[&str]) -> PartPin {
         PartPin {
@@ -524,7 +540,8 @@ mod tests {
     }
 
     #[test]
-    fn a_power_pin_that_gives_power_is_a_power_output_on_the_right_and_the_others_stay() {
+    fn a_power_pin_that_gives_power_is_a_power_output_on_the_right_and_one_that_takes_it_is_on_the_left()
+     {
         let part = solved_ldo();
         let symbol = symbol(&part, "a:b").unwrap();
         let rect = symbol.definition().find_all("symbol").next().unwrap();
@@ -543,12 +560,26 @@ mod tests {
             (second.kind.name(), (second.x, second.y)),
             ("passive", (out.x, out.y))
         );
-        // A power pin that takes power is a power input above the box; so is the ground below.
+        // A power pin that takes power, of a part that gives power too, is a power input on
+        // the left of the box, where the layout reads the input of a converter; the ground is
+        // below.
         let supply = symbol.pin("1").unwrap();
-        assert_eq!((supply.kind.name(), supply.angle), ("power_in", 270.0));
+        let left_edge = rect
+            .find("rectangle")
+            .unwrap()
+            .find("start")
+            .unwrap()
+            .args()[0]
+            .text()
+            .unwrap()
+            .parse::<f64>()
+            .unwrap();
+        assert_eq!((supply.kind.name(), supply.angle), ("power_in", 0.0));
+        assert!(supply.x < left_edge, "{supply:?}");
         let ground = symbol.pin("9").unwrap();
         assert_eq!((ground.kind.name(), ground.angle), ("power_in", 90.0));
-        // Nothing but the output changed against the table with no direction.
+        // Nothing but the output changed against the table with no direction (the side is not
+        // in the table).
         let plain = as_table(&super::symbol(&ldo(), "a:b").unwrap());
         let drawn = as_table(&symbol);
         let changed: Vec<_> = plain.iter().zip(&drawn).filter(|(a, b)| a != b).collect();
