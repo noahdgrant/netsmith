@@ -17,6 +17,65 @@
 //!
 //! This module holds the manifest part (types, reading, rendering), the choice of boards,
 //! the summary, and the run that `main` and the editor share.
+//!
+//! # What an order does, in detail (ADR 0035; the owner reviewed it on 2026-11-02)
+//!
+//! A project holds many boards (ADR 0010), and `netsmith fab` made a package for every one, with
+//! nothing saying which go into one order to the board house or how many of each. There is one
+//! way to choose boards: a named order. A plain `netsmith fab` still makes every board of the
+//! project, and `netsmith fab <file.nsm>` one file's boards.
+//!
+//! - **A key** is a board as its output folder names it, or a system's name for all its
+//!   members, each with that quantity. A name that is neither is an error naming the manifest line
+//!   and listing the boards that exist; naming one board twice (alone, and through its system) is
+//!   an error naming both lines. **The value** is a whole number of at least 1; 0 is an error that
+//!   says to leave the board out. There is no default quantity, so a reader of the order sees every
+//!   number. The name is letters, digits, `-` and `_` (it is a folder name) and is unique, because
+//!   TOML does not allow a table twice. An order with no boards is an error. `--order` with no name
+//!   lists the orders and takes no file. The tables are read by the `toml` crate through serde with
+//!   `deny_unknown_fields` on the file and on each order, so any other key refuses with the line and
+//!   column; mistakes the types cannot say are `netsmith.toml:LINE: order `name`: ...`.
+//! - **The spelling** was chosen from three. (1) `boards = [...]` and `quantity = { ... }` with a
+//!   default of 1: rejected, a board is named in two places, which allows a quantity for a board
+//!   that is not in the order and a duplicate in the list, and a default of 1 is a second way to
+//!   say "1". (2) An array of tables `[[order.devkit.board]] name = "..." quantity = 2`: rejected,
+//!   a block of three lines for each board, and the name still needs the uniqueness check. (3) A
+//!   table from board to quantity: each board is named once, TOML itself refuses a duplicate key
+//!   with its line, and a line reads "this board, this many". The cost is that an order has no room
+//!   for other per-board fields. None is wanted; if one is, that order's table becomes a table of
+//!   tables and this form is replaced, not extended (ADR 0001).
+//! - **The run** builds every top-level file once (the checker and solver, no KiCad) to learn the
+//!   project's boards, resolves the order against them, then runs the usual `fab` for the boards
+//!   named only (`FabOptions::only`). Each package goes under
+//!   `<fab>/orders/<name>/<board folder>/`. `orders/<name>/` was chosen over `fab/<name>/` so an
+//!   order's name can never be the folder of a board; a board or system called `orders` is refused
+//!   when an order runs. A folder of the same order from an earlier run is removed first, only if
+//!   it holds an `order.txt`, so nothing else is deleted and a board dropped from the order does
+//!   not linger. If any board fails, nothing of the summary is written and all the problems are
+//!   reported. Every board of an order is routed and checked again when the order runs, even if a
+//!   plain `fab` made it; a cache of finished packages is a later optimisation.
+//! - **`order.txt`**, for a person: the number of board designs and of boards; for each board its
+//!   copies, copper layers, size in mm, thickness (or "thickness open"), the finish (`finish not
+//!   stated`: the process definitions do not carry a surface finish, and netsmith will not say one it
+//!   does not know), the parts the board house assembles and on how many BOM lines, the
+//!   hand-solder parts; the combined bill of materials; "before you order", each board's
+//!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
+//!   once for each copy because the check is of the design (`Package::unverified`).
+//! - **`order-bom.csv`**: `Comment,Footprint,LCSC Part #,Quantity,Used on`, one row for each LCSC
+//!   number. The quantity is the copies of each board times the parts of that number on one board,
+//!   summed over the boards, with **no spares or overage**: how many spares to buy is a decision
+//!   about the assembler's minimums and the user's risk, not a fact of the design. `Used on` reads
+//!   `2 x 4 DevKit/carrier; 10 x 1 Unit` (copies x parts on one board) so a number can be checked
+//!   by hand. It is named apart from each board's `bom.csv`, which is the upload JLCPCB reads for
+//!   one board and has other columns.
+//! - **The editor's Build panel** has an Order section: a select of the manifest's orders, the
+//!   picked order's boards with quantities, and a "Make order" button that runs the same function
+//!   ([`fab_order`]). The server has `GET /api/orders`, `POST /api/order?name=` and `GET
+//!   /api/order/download?name=&file=` (`summary` or `bom`); orders are read when the editor
+//!   starts, like the rest of the manifest.
+//! - **A key may be a panel** (ADR 0040), and its quantity counts panels. The questions that
+//!   ADR 0035 left open for panels (how a panel references boards, the quantity inside a panel,
+//!   where it lives, what `fab` writes) were decided by ADR 0040.
 
 use std::collections::BTreeMap;
 use std::fs;

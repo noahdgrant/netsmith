@@ -504,7 +504,10 @@ impl Offset {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Features {
     /// The narrowest track of the nets that have a rail with a `min_track`, in mm, by net
-    /// name.
+    /// name. A net takes the largest bottom of the ranges of the rails with a pin on it, so a
+    /// ground that two rails return through takes the wider (ADR 0020; the reason for a field
+    /// of the rail is in `std/sources.nsm`). The nets no rail gives a width are sized from
+    /// their current (ADR 0036, see `netsmith_design::guidelines`) and put here too.
     pub net_widths: Vec<(String, f64)>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,

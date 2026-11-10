@@ -40,5 +40,20 @@ interface Rail {
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
     /// widest rail that returns to it (ADR 0020). Unset, the net is routed at the process's
     /// least.
+    ///
+    /// Why a field of the rail (the owner's decision, 2026-11-02): it adds no construct and
+    /// reuses `~`, narrowing and the module interface, since `~` between rails already equates
+    /// their fields, so a module's output rail carries the width out with no new rule. Both
+    /// ends of a rail get it because the return current is the same current. A width under
+    /// the process's least is the least. The router draws the net at the width and keeps clear
+    /// of other copper by it; a track leaves a pad at the net's width; the `.kicad_pro` has a
+    /// net class for each distinct width (`Track_0.8mm`) with a pattern for each net, with a
+    /// `priority`, which KiCad needs to read the class, and no clearance of its own.
+    /// Rejected: a class that lists nets (`NetClass { .nets &= "VIN,3V3" }`: it names a net a
+    /// second time in a string list, a typo is a silent miss, and a net in two classes needs a
+    /// tie-break) and a `net "VIN" { ... }` statement (a second statement shape for what a
+    /// rail's field already says for power nets, and another place that spells the net's
+    /// name). A signal that must be wide has no rail: widen every net with
+    /// `.process.min_track`. Clearance per class and a via size per class are not built.
     .min_track: Length
 }

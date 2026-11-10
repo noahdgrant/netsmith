@@ -85,7 +85,14 @@ interface TwoLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt`.
+    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
+    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
+    /// placed within BGA pads using filled and plated-over vias"). The page calls the range
+    /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
+    /// wider than the number. A soldermask-plugged via is not one: it needs no mask opening, so
+    /// it cannot stand in a pad (ADR 0031). Unverified: that JLCPCB's order form for the
+    /// two-layer process offers it, and its price.
     .via_in_pad: Length
     .via_in_pad &= 0mm..0.55mm
 
@@ -195,7 +202,14 @@ interface FourLayer {
     /// it; the board narrows it to `0mm` where it does not want the extra process step
     /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
     /// draws solder away from the joint, so a board that has one needs the fabricator to
-    /// fill and cap it, and `fab` says so in `fab-notes.txt`.
+    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
+    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
+    /// placed within BGA pads using filled and plated-over vias"). The page calls the range
+    /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
+    /// wider than the number. A soldermask-plugged via is not one: it needs no mask opening, so
+    /// it cannot stand in a pad (ADR 0031). Unverified: that JLCPCB's order form for the
+    /// two-layer process offers it, and its price.
     .via_in_pad: Length
     .via_in_pad &= 0mm..0.55mm
 

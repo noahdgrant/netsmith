@@ -6,6 +6,13 @@
 //! A footprint on the back of the board is stored by KiCad already mirrored and on the
 //! other face's layers, so a point of a footprint is `at + turn(local)` whichever face it
 //! is on. Angles of pads and of text are absolute (the footprint's turn is in them).
+//!
+//! It is the only reader of the board for plotting (ADR 0034), so a board ported from KiCad plots
+//! as well as one netsmith wrote. It reads every pad shape KiCad has, with the footprint's turn,
+//! drill, margins, zone connection and clearance, vias, tracks and arcs, zones with their rule
+//! areas, drawings and text, the origin and the mask settings. What it cannot make it refuses
+//! with the pad, via or zone named: a pad with a `padstack`, a blind or buried via, a zone filled
+//! in hatch mode, a custom pad primitive other than line, arc, circle, rectangle or polygon.
 
 use crate::geom::{Arc, Pt};
 use crate::sexp::{self, Sexp};

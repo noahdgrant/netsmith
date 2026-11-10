@@ -18,6 +18,91 @@
 //! mounting hole) is on both faces, so the other face keeps clear of it. Parts a layout file
 //! puts somewhere ([`PlaceOptions::fixed`]) stay there and the rest are placed round them.
 //! [`place_subset`] places some parts of a board that is placed already and leaves the rest.
+//!
+//! # Faces, the layout file and the limit of a size (ADR 0031, ADR 0033)
+//!
+//! **Parts on the back.** A part has a `Side`: `Front` or `Back`. A part on the back is its
+//! footprint mirrored in its own frame (x negated), then turned by its rotation, as KiCad flips
+//! a footprint; its surface-mount pads are on `B.Cu`, and in the `.kicad_pcb` the footprint is
+//! written already flipped, on the back layers, with mirrored text. The router starts and ends
+//! a line on the layers a pad has, so lines between faces use vias as lines between layers do.
+//! Two courtyards on opposite faces may overlap unless one part has a hole through the board.
+//! A part with a hole takes its courtyard on both faces only if its footprint draws the
+//! courtyard on both `F.CrtYd` and `B.CrtYd`, or on neither (then the box made from its pads).
+//! If the footprint draws it on one of them only, the face of the other layer is judged by the
+//! part's pad boxes (every pad, copper or not) each grown by the process's clearance: another
+//! part's courtyard on that face may cover the rest of its body, and a pad of the one under a
+//! pad box is still an error. The same sentence holds for the annealer's overlap cost
+//! (`Placed::room_on` and `Engine::rooms_on`), the placement check and the fit test
+//! (`could_fit` counts the pads' area on that face). The hole-to-hole and hole-to-copper rules
+//! are unchanged. A through-hole part whose board states how far its pins protrude may let a
+//! hand-fitted part stand over them (`protrusion.rs`, ADR 0045 section 15). The fabrication
+//! package handles a part on the bottom: its position row is `bottom`, and its rotation is not
+//! corrected because no board of the evidence had one, so `fab-notes.txt` lists it as
+//! unverified.
+//!
+//! **A size to fit** (ADR 0045 section 10, PROVISIONAL). The rows no longer decide whether the
+//! parts fit, since they never turn a part and count a part that hangs over the edge whole.
+//! If the rows are too big the annealer is run in the size anyway, first on the faces the
+//! parts are on, then, if that fails, with the parts nobody placed shared between the faces by
+//! area, largest first; only if the last run ends with courtyards over each other or parts
+//! outside does the error give the numbers. The back is laid out in the same rows as the
+//! front, in the same area. A part with a hole takes room on both and the other face keeps
+//! clear of it. Boxes in `keepouts` (holes that are not parts) are kept clear of by the rows.
+//! A part that is too big for the outline as it lies but fits turned 90 degrees starts turned
+//! (`turn_to_fit`), unless the layout file locks it or an overhang governs it. A part whose
+//! requirements state only a face, or only a window on a position, has all four turns; one
+//! whose requirements state a rotation keeps the turns they leave and, if none fits, the
+//! refusal names it. The refusal opens with `N part(s) do not fit the outline of W x H mm:` and
+//! lists every part outside the outline or inside its margin, by how far, and every pair of
+//! courtyards that overlap, by area; the rows' size is given only when the courtyards' area
+//! alone is more than both faces hold inside the margin. `fab` writes every part's final place
+//! and state to `placement-failure.txt` and names the file in the message (PROVISIONAL, not
+//! reviewed by the owner).
+//!
+//! **At the limit** (PROVISIONAL, not reviewed by the owner; found on a real, very tight board,
+//! measured here only on invented ones in `tests/tight_limits.rs`). (1) A part whose courtyard
+//! is a tenth of a face or more was left 1 to 15 mm outside by the annealer on a crowded
+//! board, which moves a big block as it moves a resistor and rarely finds a hole for it. When
+//! a run ends short (and the courtyards could fit), `retry` runs the annealer again from the
+//! rows with the largest parts (at most three, free, not connectors, not hanging over an
+//! edge) put in the first corner where they clash with nothing that stays (top left, top
+//! right, bottom left, bottom right, text toward the middle) and held there. (2) A refusal-bound
+//! run with at most 12 offenders is tried up to 4 more times, from the rows, the first with
+//! the given seed and the large parts in corners, the others with seeds from `derived_seed` (a
+//! fixed mixing of seed and try number: no clock, no new random choice); the run that missed
+//! by least is kept (`Ended::badness`: the number of parts and relations, then the sum of
+//! distances and areas), and the refusal says how many tries were made. A run that places on
+//! its first try is unchanged. (3) `Engine::legalise_by(1, 40)` runs after the half-millimetre
+//! pass: a part left over a neighbour or inside its margin moves by the least (steps of 0.05
+//! mm up to 2 mm) where it clears everything. (4) A hard cost under 1e-3 is not a violation
+//! (below the 1e-6 mm the placement check ignores), and a shortfall is shown with the digits it
+//! needs. Measured on invented boards (35 x 60 mm, parts of 4 to 6 x 3 to 4 mm, seeds 0 to
+//! 15): 160 small parts, 6 of 16 seeds placed before and 15 of 16 after; one 15 x 37 mm part
+//! on the bottom face among 115 small parts, 8 of 16 before and 16 of 16 after. Open: the
+//! retries cost up to five times the time of a refused placement, and the large-part corner is
+//! chosen without looking at the nets.
+//!
+//! **What a layout file does.** [`crate::place_options`] gives the placer the face of every
+//! part the file has an entry for, its seed, and `PlaceOptions::fixed` for the parts whose
+//! entry has `lock = true`. A locked part is where the file says (its text side too), the others
+//! are placed round it, and the outline holds all of them. A part that has an entry and is not
+//! locked is derived as if it had none and then put where the file says (`apply_layout`), so
+//! moving one part by hand does not move the rest and the findings say what it now overlaps.
+//! [`place_subset`] places the parts named inside `region` with everything else fixed (the pads
+//! of the fixed parts still pull on the nets), changes nothing and says by how much the region
+//! is short if the parts do not fit, and gives the same arrangement for the same seed. The
+//! caller chooses the parts (a module's, from `Placed::path`), the region and whether locked
+//! ones are left out.
+//!
+//! **Left open** (the rotation and mirroring of bottom parts in the position file are
+//! unmeasured, a footprint's 3D model is copied unchanged for a part on the back, connectors
+//! are not moved to the back, a mask opening drawn in a footprint keeps vias away but not
+//! tracks). The two-face rule was checked against KiCad 9's check (`tests/hole_faces.rs`, 16
+//! boards): KiCad flags nothing the rule passes, `courtyards_overlap` agrees layer by layer,
+//! and where the rule keeps a courtyard off a part's pads KiCad's `pth_inside_courtyard`
+//! (ignored by default) flags only the holes, so the rule is stricter by about 0.55 mm round the
+//! pads. Hierarchical placement and the `layout` block of the language are not built.
 
 use std::collections::{BTreeMap, VecDeque};
 

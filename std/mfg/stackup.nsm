@@ -40,6 +40,17 @@ interface Plane {
 /// tracks and for copper of other nets, and it is optional: an outer layer whose pour has
 /// no net has no pour. The board names the net (`.process.top.net &= "GND"`), because only
 /// a board names nets (ADR 0005). Where two layers carry the same net, vias stitch them.
+///
+/// Why a member of the process beside the planes (the owner's decision, 2026-11-02): the net
+/// of each inner layer is already stated there (ADR 0012), so the outer layers are said in the
+/// same place, as `.top` and `.bottom`. Rejected: a board member that names its layer
+/// (`.layer &= "top"`: two places would say what is on a layer, the layer would be a string
+/// checked only by hand, and two pours on one layer would have to be refused by hand) and a
+/// `Plane` that may be poured (one type with two meanings, a whole layer with nothing routed
+/// and a fill round the routing, so the router would have to ask which). An inner plane with
+/// no net is an error, because a four-layer board has to do something with it; an outer pour
+/// with no net is no pour. Thermal relief is KiCad's default, as for the planes; `.thermal_gap`
+/// and `.spoke_width` would follow the range convention if a design needs them.
 interface Pour {
     /// The net the layer is poured on.
     .net: String

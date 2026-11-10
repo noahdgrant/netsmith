@@ -5,6 +5,35 @@
 //! grows to the right and y downward, as on screen. A board states the size of its shapes;
 //! where a shape is, when the board does not say, comes from the layout file beside the
 //! source (ADR 0030).
+//!
+//! Why these are members of a board and not something else (ADR 0020, decided by the owner on
+//! 2026-11-02). The rules every option was judged against: one way to say a thing (ADR 0001),
+//! statement order never matters (a value is a narrowed range or an equation), a library
+//! states only what is always true (ADR 0002), a board reaches a module only through its
+//! interface (ADR 0004), and only a board names a net (ADR 0005).
+//!
+//! - **The outline is a board member, found by name like `.process`.** A board with none is
+//!   sized by the placer: one rule, "the outline is what the board says, or the least that
+//!   holds the parts". Rejected: geometry types in the library, `RoundRect`, `Rectangle`, a
+//!   polygon (each new shape is a type with fields of its own, and the rectangle is the first
+//!   one wanted, so the rest is speculation), and a field of the process (the size is a design
+//!   choice, not what the factory makes). A shape that is not a rounded rectangle needs an
+//!   import format and is not built.
+//! - **A cutout is a rectangle with an optional corner radius.** The router and the placement
+//!   check keep off it, and it is drawn on `Edge.Cuts` like the outline.
+//! - **A keepout is geometry, so it needs the board's coordinates** (ADR 0029). A footprint
+//!   that brings its own (an antenna module's) keeps it, and so does a part that states one.
+//! - **The corners.** With a fixed outline, mounting holes, plated holes and fiducials go in
+//!   the corners, in that order, clockwise from the top left, with their reference text inside
+//!   the board. A board with no outline lays them out with the other parts. A range on the
+//!   width or height rounds the size the placer finds up to 0.1 mm; an unlimited one keeps
+//!   the arrangement's own whole millimetres, so an `.outline` that limits nothing is the
+//!   board it was. When the parts need more than the top of a range the error names the need,
+//!   the allowance and the overflow in x and y, and the corner radius is checked against the
+//!   shorter side. The edge is written as `gr_line` and `gr_arc` on `Edge.Cuts` (`gr_rect`
+//!   when square), and the router keeps off it as a closed run of short pieces.
+//! - **Not built:** an outline that is not a rectangle, logos and images (an image needs a
+//!   bitmap-to-polygon importer, a file format and a licence record).
 
 /// The board edge: a rectangle with rounded corners, the member `.outline` of a board. A
 /// board with none is as big as the parts need. A range says how big the board may be:

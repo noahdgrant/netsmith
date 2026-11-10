@@ -12,6 +12,22 @@
 //! This is the same picture KiCad's fill makes, with these differences (also issue #61):
 //! copper that no pad, via or track of the net reaches (islands) is not
 //! removed, and slivers narrower than the zone's minimum thickness are not trimmed.
+//!
+//! The gap and spoke width come from the zone; the spokes' turn is the pad's own
+//! `thermal_bridge_angle`, else KiCad's default: 45 degrees from the pad's axes for a round pad
+//! or a custom pad with a round anchor, along the axes for every other shape (KiCad's board
+//! reader, `parsePAD`, the same in 9.0.0 and 9.0.5; a file older than KiCad 6, version
+//! 20211014 or earlier, gave a custom pad with a round anchor 90 degrees, and netsmith does not
+//! read the file's version and gives it 45). netsmith once drew every spoke along the axes, so
+//! its planes differed from the ones KiCad fills round every round pad (0.64% of the pixels of a
+//! small plane, 1.2% with more pads). Neither angle is better for the factory (JLCPCB's page
+//! lists no rule about spokes), and matching KiCad costs nothing, so the file is the same as the
+//! one the designer sees (`crates/netsmith-fab/tests/known_differences.rs`). A via of the
+//! pour's net is joined solid, as KiCad joins it. Fills the file already holds
+//! (`filled_polygon`) are used as they are, and two zones of different nets that overlap on one
+//! layer are refused. The pour's difference from KiCad's is islands and spokes: KiCad removes a
+//! spoke or a patch of copper that no pad of the net reaches, and netsmith leaves it. It is copper
+//! outside every clearance, so it cannot make a short, but it is dead copper.
 
 use crate::artwork::{Artwork, Connect, PadKind, Shape, TrackShape, Zone};
 use crate::edge::Outline as BoardEdge;

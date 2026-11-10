@@ -6,6 +6,41 @@
 //! binary and holds the standard library's parts; a project adds a `kicad.toml` at its
 //! root for its own parts and for its own symbol and footprint libraries (ADR 0016,
 //! ADR 0021).
+//!
+//! # The mapping and the project libraries (ADR 0021, accepted by the owner on 2026-11-04)
+//!
+//! `std/kicad.toml` is compiled into the binary and has a `[[part]]` row for each (kind,
+//! package): `symbol`, `footprint`, optionally `default = true` (the row used when the part has no
+//! package) and a `[part.pin_names]` table for pins whose symbol name differs from the datasheet's.
+//! The Rust `ENTRIES` table is gone, and so is the `through_hole` flag: whether a footprint is
+//! through hole is read from the footprint file's `attr`. A (kind, package) pair in both the
+//! standard file and a project's, or twice in one, is an error that names both files. A footprint
+//! pad of type `connect` (the Tag-Connect footprints) is read as a surface pad.
+//!
+//! **Project libraries are supported, and listed one way.** A real design keeps its ICs in a
+//! library of its own. The project's `kicad.toml` lists them: `[[library]] name = "acme"`,
+//! `symbols = "libs/acme.kicad_sym"`, `footprints = "libs/acme.pretty"`, paths relative to the
+//! file, `${NAME}` expanded from the environment and nothing else. The mapping then writes
+//! `symbol = "acme:Part"` and `footprint = "acme:Fp"`. KiCad's own `sym-lib-table` and
+//! `fp-lib-table` are not read as a second way to configure: `netsmith kicad-libs import
+//! <sym-lib-table> [<fp-lib-table>]` prints the `[[library]]` stanzas to paste, which makes porting
+//! a KiCad project easy and is a generator and not a configuration. When it writes a board,
+//! `build` (and `fab`, and the editor's build and fab) writes `sym-lib-table` and `fp-lib-table`
+//! beside the `.kicad_pro`, with `${KIPRJMOD}`-relative paths, so that KiCad finds the project's
+//! libraries when it opens the board.
+//!
+//! **The standard rows** use stock KiCad 9 names, read from the installed libraries and not
+//! guessed. Validation confirmed or corrected the pad numbers ADR 0023 had written from memory:
+//! the Type-C pads A1, A4, A5, A6, A7, A9, A12, B1, B4, B5, B6, B9, B12 and S1 are right for the
+//! sixteen-contact receptacle, which also has the sideband pads A8 and B8 (the open pins `sbu1` and
+//! `sbu2` of `UsbC2`); the six-contact power-only receptacle has no A1, A4, B1 or B4, so
+//! `UsbCPower` has VBUS on A9 and B9 and GND on A12 and B12.
+//!
+//! **`build` and `fab` need the libraries; `check`, `solve`, `compare` and the editor's reading do
+//! not.** `outcome_with` takes `Option<&Libraries>`; with `None` no KiCad file is read, and the
+//! board's `schematic`, `project` and `report` are empty. `build`, `fab` and the editor's build and
+//! fab read them and stop, once, with the path and the variable when one is missing. The editor
+//! draws a box where a symbol is missing. ADR 0097 (proposed) would change this.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

@@ -13,6 +13,94 @@
 //! states with its sources; no board house's number is written in this file. The one number
 //! that is not a rule of the board house is the mask opening of a fiducial, which is the
 //! project's own fiducial footprint (`Fiducial_1mm_Mask2mm`: an opening twice the copper).
+//!
+//! # Why a panel is a definition, what the board house needs, and what is built (ADR 0040)
+//!
+//! **Decision** (the user, 2026-11-02): a panel is a `panel` definition in `.nsm` (the board it
+//! repeats and the board house's rules), with the placement of each cell in the layout file; an
+//! order may name a panel and its quantity counts panels; the first step is a V-cut grid of
+//! identical boards. A system is electrical (no copper of its own), an order is a list of packages
+//! (ADR 0035), and a panel is one outline with geometry and rules, so it is neither a feature of
+//! `system` nor a table of the order. Rejected: `[order.x.panel]` in `netsmith.toml` (plain numbers
+//! without units, no ranges, no check against a process, and ADR 0035 said the order table is
+//! replaced and not extended if it needs more fields). In `.nsm` quantities have units, the board
+//! house's rules are a std interface like `TwoLayer` (sourced, ADR 0008), the checker can compare
+//! the panel with its members, and the manifest keeps only how many panels to order. A panel
+//! never changes a board, names no nets and adds no electrical content; its fiducials and tooling
+//! holes are bare, so they are on no net. The ADR's `.cell: Board { .copies }` and
+//! `.frame.columns` became `.columns`, `.rows` and `.rail` of the `.fab` member
+//! (`VCutPanel`), because the board house's limits are fields of that same member. A board in a
+//! panel is the stand-alone board of the same file; a board a system places, or one defined in
+//! another file, is refused.
+//!
+//! **What the board house needs.** JLCPCB's pages, read on 2026-11-02 and recorded in
+//! `data/jlcpcb/README.md` (the sources S1 `jlcpcb.com/help/article/pcb-panelization`, S2
+//! `jlcpcb.com/capabilities/pcb-capabilities`, S3 `jlcpcb.com/blog/mouse-bite-panelization-guide`),
+//! stated by `VCutPanel` in `std/mfg/jlcpcb.nsm`. V-cut: straight lines across the whole panel,
+//! boards at zero spacing, not for 0.4 mm boards, at most 25 lines per direction, lines at least 2
+//! mm apart (3 mm recommended), groove angle 25 degrees, copper at least 0.4 mm from a V-cut edge
+//! (1.0 mm is advice); panel size at least 70 x 70 mm and at most 475 x 475 mm (an assembled panel
+//! at most 250 x 250 mm); rails 5 to 8 mm; for assembly 5 mm edges, 2 mm tooling holes, 1 mm
+//! fiducials centred 3.85 mm from the panel edges; V-cut is not supported in economic assembly;
+//! more than 5 different designs are charged as separate designs, at most 10. The V-cut lines go
+//! on the same layer as the board outline (`Edge.Cuts`) and are marked "V-CUT". Where pages differ
+//! the stricter is stated; for routed panels the pages disagreed (spacing 1.6 or 2 mm against a
+//! blog minimum of 1.2 mm; mouse-bite hole pitch 0.2 to 0.3 mm against 0.35 to 0.4 mm), which is
+//! open until P2 is built. Not found in any of them: the V-cut file format JLCPCB reads for a
+//! customer Gerber panel, designator rules for panel assembly, and the tab count per board.
+//!
+//! **What `fab` writes** is `fab/<Panel>/`: one Gerber set, the drill files, `bom.csv`, `cpl.csv`,
+//! `fab-notes.txt`, `<Panel>.kicad_pcb`, `<Panel>.kicad_pro` and `panel.svg`, and the board's own
+//! package in `fab/<Panel>/cell/<Board>/`. A plain `fab` makes panels with the boards; `--order`
+//! makes the panels it names. The panel is made by writing it as a `.kicad_pcb` (each cell the
+//! board's items moved by the cell's offset, its nets renamed `cell3/GND` and its designators
+//! `R1_3`, the boards' outlines replaced by one, the cut lines and their marks on `Edge.Cuts`, the
+//! rails' tooling holes and fiducials as footprints) and running the same writers on that file, so
+//! the Gerbers are the boards' own, moved, and KiCad can plot the panel for the cross-check. The
+//! ADR's `C2:R1` designator is `R1_3`, a suffix, so that a panel designator does not read as a
+//! capacitor's. The marks are tooling holes in the four corners (centred in the rail) and three
+//! fiducials 3.85 mm from the left and right edges, on the front, and on the back if a part is
+//! assembled there. The perforations, rails, fiducials and tooling holes are generated, never
+//! drawn by the user. `bom.csv` multiplies each part by the cells and `cpl.csv` transforms the
+//! positions.
+//!
+//! **The checks** are in [`check`], each message with the numbers and the page: rail width, panel
+//! size (and the assembled size), lines per side, line spacing, thickness, the board's edge
+//! clearance (its own check ran at its `min_edge_clearance`, so a panel needs that to be 0.4 mm or
+//! more: `.process.min_edge_clearance &= 0.4mm..1m`), tooling holes and fiducials when anything is
+//! assembled, cells that overlap (by construction they cannot) and a rectangle with square
+//! corners. Then netsmith's own check runs on the panel board itself.
+//!
+//! **The cross-check** plots the panel board with KiCad and compares as for a board; it agrees on
+//! `examples/led_panel.nsm`. Two things are special: the text "V-CUT" on `Edge.Cuts` is left out
+//! of the comparison on both sides (the fonts differ), and KiCad's `invalid_outline` finding on
+//! each cut line is expected and not compared, because KiCad calls a V-cut line on `Edge.Cuts` a
+//! malformed outline. netsmith's own outline reading takes a straight line with both ends on the
+//! outline as a cut line.
+//!
+//! **Still unverified, and why it matters.** JLCPCB has not accepted a netsmith panel. Their pages
+//! do not say which designators a panel made by the customer may have in its BOM and CPL, how
+//! their viewer reads V-cut lines on `Edge.Cuts` (a forum user saw a V-cut on a user layer in the
+//! outline layer), or how many tabs a routed panel needs. `fab-notes.txt` says so in a line that
+//! starts "UNVERIFIED" and keeps the single board's `bom.csv` and `cpl.csv` beside the panel for
+//! the other path (order the single board and let JLCPCB make the panel, which adds its own rails
+//! and fiducials). One real quote with a P0 panel should come before P2.
+//!
+//! **Not built** (issues #16 and #62): different boards on one panel (rows of one height, a V-cut
+//! must run across), a board of a system as the cell, a cell in another file, rotation, per-cell
+//! placement in the layout file, routed tabs and mouse bites, the fab adding rails, subset panels
+//! (a panel has no optional cells, because a missing cell changes the outline and the design
+//! count and so is a different panel; to order one or two plug-ins the order names those boards
+//! loose, or a second panel), and moving cells in the editor.
+//!
+//! **Left open** (ADR 0040 question 7): panel assembly with JLCPCB. "The designator scheme,
+//! V-cut Gerber format and tab rules are unpublished in what was read. Recommend one real quote
+//! with a P0 panel before P2; until then the package states them as unverified." The two
+//! disagreements between JLCPCB's pages about routed panels (above) are open until P2.
+//! The decisions the user took on 2026-11-02, in the ADR's words: "a panel is a `panel`
+//! definition in `.nsm` (cells, spacing, tabs and rails, with per-cell placement in the layout
+//! file); an order may name a panel and its quantity counts panels; the first step is a V-score
+//! grid of identical boards."
 
 use std::collections::BTreeMap;
 

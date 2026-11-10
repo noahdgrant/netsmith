@@ -2,18 +2,7 @@
 # Cut or fold one, then take its name off. Do not add a name.
 0016-ic-parts.md
 0019-the-editor.md
-0020-board-features.md
-0021-kicad-libraries-installed-and-project.md
 0030-layout-knowledge-and-the-pcb-editor.md
-0031-fine-pitch-routing-and-the-second-face.md
-0033-derived-placement.md
-0034-netsmith-writes-its-own-fabrication-files.md
-0035-orders.md
-0036-track-width-against-current.md
-0037-netsmiths-own-design-rules-check.md
-0040-boards-joined-by-connectors-and-panels.md
-0041-self-contained-libraries.md
-0043-generated-footprints.md
 0045-custom-constraints-from-the-enclosure.md
 0047-supplier-data-comes-from-a-provider-and-passives-are-generic.md
 0048-physical-intent-has-a-home-of-its-own.md

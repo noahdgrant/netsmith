@@ -4,6 +4,39 @@
 //! A library file holds every symbol of the library, so [`SymbolLib`] parses a file once
 //! per run and extracts the symbols asked for. A symbol that `extends` another is
 //! flattened, since the schematic's `lib_symbols` holds whole symbols.
+//!
+//! # What the loader does (ADR 0021, accepted by the owner on 2026-11-04)
+//!
+//! A symbol that `extends` another is flattened: the parent's drawing, pins and settings, with
+//! the child's properties on top, and its units renamed for the child because KiCad wants a unit's
+//! name to start with its symbol's. Every KiCad electrical type is read, with the pin's name,
+//! number, position, direction, length, whether the symbol hides it, and the unit it is in. A
+//! hidden pin that repeats another pin's point (how stock symbols stack the pads of one supply) is
+//! an ordinary pin. Only the first body style lists pins. A symbol's `(alternate ...)` pin names
+//! are not compared with a pin's functions, and the version in a library file's header is not
+//! compared with the KiCad that `kicad-cli` is. A missing library says which file it looked for
+//! and the variable that moves it; a missing symbol names its library. A library named like an
+//! installed one is an error and not an override.
+//!
+//! **Multi-unit symbols are supported** (ADR 0016 had refused them and placed unit 1 only). The
+//! loader keeps the pin-to-unit assignment; the schematic writer places every unit of a part as
+//! its own instance with the same reference and the right `unit` field, in a column, each unit
+//! with its own pins and labels, and a pin drawn in the shared unit 0 is labelled in every unit.
+//! Units are spaced by their pins' extent (a unit's body is not measured, only its pins, with a
+//! fixed gap). A part's cell on the sheet is as large as its units and, for a symbol of more than
+//! four pins, the labels that run from them; a small part keeps the grid it had, so the existing
+//! exports did not move. KiCad's ERC passes on a dual op-amp-like symbol with two amplifier units
+//! and a supply unit, and on one with a pin in the shared unit (`crates/netsmith/tests/erc.rs`).
+//! The viewer reads from this loader too (`netsmith-view`'s `Glyph::for_part` takes the mapping
+//! and the [`SymbolLib`]; the units of a symbol are drawn one below the other; the box drawn where
+//! there is no symbol lists every pin of the package from the part's pin facts, supplies on top,
+//! grounds below, inputs left, outputs right, no-connects last, the chosen function beside the
+//! name; a missing library gives the box and the reason as its tooltip).
+//!
+//! The bundled copies of KiCad's libraries (`crates/netsmith-kicad/symbols/` and
+//! `crates/netsmith-pcb/fixtures/`) are gone. Tests write small libraries of their own
+//! (`netsmith_kicad::testlib`), and the tests that want the stock libraries skip without KiCad.
+//! The licensing reading is in `docs/research/kicad-library-licensing.md`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

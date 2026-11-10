@@ -7,6 +7,174 @@
 //! [`FootprintLibrary`](crate::FootprintLibrary) consults the generators before any file.
 //! Every generated footprint is checked against KiCad's own of the same name by a test
 //! (`tests/generated_vs_kicad.rs`) when KiCad's libraries are installed.
+//!
+//! # Why netsmith generates footprints, how, and from what (ADR 0043, ADR 0041)
+//!
+//! The user decided on 2026-11-02 (ADR 0041) that netsmith makes the footprints of the common
+//! packages itself, from original generators in the style of IPC-7351, checked against KiCad's own
+//! footprints to 0.01 mm, rather than depending on KiCad's library bytes. KiCad's `.kicad_mod`
+//! stays the file format and nothing of KiCad's library is bundled. A generator writes the text
+//! of a `.kicad_mod` and reads it back with the loader, so the placer, the fabrication writers and
+//! the `.kicad_pcb` export cannot tell a generated footprint from a read one. Each generator
+//! answers to the name KiCad gives the footprint (`Resistor_SMD:R_0402_1005Metric`,
+//! `Package_TO_SOT_SMD:SOT-23`), so the rows of `std/kicad.toml` and a project's `kicad.toml` name
+//! them as before. The parameters are tables in the generator's source (typed, tested, versioned
+//! with the binary), not a data file: nobody extends them at run time, and a project that needs
+//! another package writes a library file (ADR 0021, ADR 0097). [`names`] lists what is generated; a
+//! name outside the list is not generated (`Package_SO:SOIC-9_...` is `None`, not a guess).
+//!
+//! **The families:** chips (R, C, L, ferrite, LED, D, fuse, 0201 to 2512), SOD-123, SOD-323, SMA,
+//! SMB, SMC, SOT-23 (-3, -5, -6), SOT-223, SC-70 (SOT-323, -343, -353, -363, SC-70-8, each for
+//! reflow and for hand soldering), SOIC, TSSOP, MSOP, SSOP, QFN, DFN, WSON, HVSON and the other
+//! no-lead rows (`Package_DFN_QFN`, `Package_SON`, `Package_CSP`), LQFP, TQFP, VQFP, DPAK
+//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, BGA on a full regular grid, and pin headers
+//! and sockets (1 or 2 rows, 1 to 40 per row, pad 0.7 of the pitch, drill 1.0 mm or 0.8 mm at
+//! 2.0 mm, pin 1 square). The QFN family is a list of named packages, because the lead and
+//! exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has
+//! one footprint per datasheet); a package not in the list needs a library file. The same holds
+//! for the QFPs: KiCad's other QFPs are from one maker's drawing each, and only those that are the
+//! plain MS-026 pattern are generated.
+//!
+//! **The rule: IPC-7351B, nominal density.** Pads follow the land pattern formulas of IPC-7351B at
+//! the median ("nominal", Level B) density, with the fabrication tolerance F = 0.1 mm and the
+//! placement tolerance P = 0.05 mm ([`ipc`] has the formulas and the fillet goal tables):
+//!
+//! ```text
+//! Zmax = Lmin + 2 Jt + sqrt(CL^2 + F^2 + P^2)       outer edge to outer edge
+//! Gmin = Smax - 2 Jh - sqrt(CS^2 + F^2 + P^2)       inner edge to inner edge
+//! Xmax = Wmin + 2 Js + sqrt(CW^2 + F^2 + P^2)       pad width
+//! ```
+//!
+//! with `Snom = Lnom - 2 Tnom` and `CS = sqrt(CL^2 + 2 CT^2)` when the datasheet gives the lead
+//! length T, rounded to 0.02 mm (chips below 0603) or 0.05 mm. The courtyard is the pads and the
+//! body plus 0.25 mm, rounded to 0.01 mm. Pad corners have a radius of 0.25 mm at most a quarter of
+//! the shorter side, as KiCad's generated pads have. Chip passives use the body and terminal
+//! envelopes of IPC-SM-782; 0201 has paste-only openings. QFN and DFN keep the exposed pad 0.2 mm
+//! clear, with paste openings covering 65 %. Gull-wing QFPs use fine-pitch fillets from 0.625 mm
+//! and JEDEC MS-026 (2.0 mm over the leads beyond the body, leads 0.45 to 0.75 mm).
+//!
+//! **Sources and licences (read 2026-11-02 and 2026-11-04).**
+//!
+//! - IPC-7351B and IPC-SM-782 are paid documents and were not read. The formulas, the fillet
+//!   goals (tables 3-2, 3-3, 3-15, median column) and the rounding grids were taken from the
+//!   published configuration files and comments of `kicad-footprint-generator`, which tabulate
+//!   them; the body and terminal envelopes of chips are the IPC-SM-782 numbers as the same
+//!   repository's data files record them. These are numbers and formulas, which are facts, not
+//!   the repository's code.
+//! - `kicad-footprint-generator` (`gitlab.com/kicad/libraries/kicad-footprint-generator`): its
+//!   README says GPL-3.0-or-later, with some MIT and LGPL files. Its Python
+//!   (`ipc_pad_size_calculators.py`, the no-lead generator) was read to learn the formula for the
+//!   span of a lead, the exposed-pad clearance rule and the paste coverage; the Rust here was written
+//!   from that maths, shares no code or structure with it, and is MIT like the rest of netsmith.
+//!   **Whether reading GPL code to learn a published formula taints what is written is the owner's
+//!   to judge; the formulas are IPC's.** (Carried word for word from ADR 0043; the owner has not
+//!   decided it, and an agent does not.) Translating that Python into Rust would make the Rust a
+//!   derivative of GPL code (ADR 0041), so a generator works from IPC-7351 and the package
+//!   drawings.
+//! - Its `data/package/no_lead/*.yaml` (fetched 2026-11-04) hold the body, lead, exposed pad and
+//!   paste inputs of the QFN, DFN and SON rows, each entry citing the manufacturer's datasheet.
+//!   They are numbers from those datasheets, read as data and not copied into the repository as
+//!   files: the rows are in `qfn_rows.rs`, one line each.
+//! - JEDEC MS-026 gives the QFP rows. The lead widths per pitch (0.13 to 0.23 mm at 0.4 mm, 0.17 to
+//!   0.27 mm at 0.5 mm, 0.30 to 0.45 mm at 0.8 mm, and for the two 0.65 mm rows 0.17 to 0.27 mm or
+//!   0.22 to 0.33 mm) are the ranges that reproduce KiCad 9.0's pads; the datasheets of the packages
+//!   differ from one maker to the next within MS-026's ranges, and a width of a datasheet that
+//!   was not read is not claimed. JEDEC MS-012, MS-013, MO-150, MO-153, MO-187, MO-178 and TO-236
+//!   and manufacturers' drawings are the lead dimensions of the gull-wing and SOT rows.
+//! - Recorded pads (DPAK, SOT-89, SC-70, crystals, SOD, SMx, SOT-223): numbers read from KiCad
+//!   9.0's footprints of the same name, or from Infineon's PG-TO252 drawings, Microchip's 3L SOT-89
+//!   drawing (C04-029C), Ricoh's SOT-89-5 outline and the crystal makers' datasheets named in
+//!   `crystal.rs`. The drawings themselves were not read. The numbers are facts about those
+//!   footprints, not their expression.
+//! - KiCad's footprints (CC-BY-SA 4.0 with the design exception, see ADR 0097) are used as the
+//!   check and not copied: the test reads them from an installed KiCad, and none is in this
+//!   repository.
+//! - **Not decided, and the owner's (ADR 0041 question 2):** "Is the IPC-7351 route acceptable (IPC
+//!   documents are paid), or should the dimensions come from manufacturers' drawings, package by
+//!   package?" and "Whether the IPC-SM-782 tables can be read freely is the owner's to check (IPC
+//!   standards are paid documents)." And: "Whether pad geometry computed from the IPC formulas
+//!   can be freely reproduced is not something this ADR can settle."
+//!
+//! **The lookup order** (`FootprintLibrary::load`): the footprints netsmith ships as files in
+//! `std/libs/` (library name `netsmith`, ADR 0087), a project's own `.pretty` library of that
+//! name, the generator for the name, then the file in the installed KiCad folder. **The generator
+//! wins for the names it makes**, so a build gives the same pads on every machine whatever KiCad
+//! (or nothing) is installed, and the pads do not move with a KiCad patch release. A project library
+//! named like a generated library (`Fuse`, `Package_SO`, `Package_BGA`, `Package_CSP`) is refused
+//! with both named (`FootprintError::AmbiguousGenerated`), as one named like an installed library
+//! is. `FootprintLibrary::installed()` has the generators; `FootprintLibrary::at(root)` reads only
+//! its folder (the sample libraries of the tests, and the comparison with KiCad);
+//! `.with_generators()` adds them. `build` and `fab` of a design that uses only generated
+//! packages need no footprint library at all.
+//!
+//! **Validation.** `tests/generated_vs_kicad.rs` compares every generated footprint with the
+//! footprint of the same name in the installed KiCad 9.0 libraries (skipped without them): the pad
+//! count, numbers, kind, shape, layers, hole and the box of every pad (so a pad turned a quarter
+//! agrees) within 0.01 mm, and the courtyard within 0.01 mm. A difference needs an entry in the
+//! test's `DIFFERENCES` table with its bound and reason, and an entry that nothing needs fails the
+//! test. `cargo test -p netsmith-pcb --test main generated_vs_kicad:: -- --nocapture` prints the
+//! table of every family: how many agree, the largest pad deviation and the largest courtyard
+//! deviation (2026-11-09: 775 of 855 agree, and the 80 that differ are all 2.54 mm pin sockets, in
+//! the courtyard, by 0.05 mm at most; the largest pad deviation anywhere is 0.008 mm and the
+//! largest courtyard deviation of the others 0.010 mm, a rounding tie). A wrong pad is a wrong
+//! board, so the check matters more than the generator. Without KiCad installed the test cannot
+//! run (CI without it skips); the unit tests in this module pin the numbers of one footprint per
+//! family, and the design rules check and the fabrication files of the examples are the second
+//! check: all six examples pass `fab`'s check with generated footprints, and `fab --cross-check`
+//! of `linear_regulator.nsm` shows 0 findings that KiCad's check has and netsmith's lacks, or the
+//! reverse (the pad, mask and copper layers agree; the silkscreen differs, because the drawing is
+//! netsmith's own).
+//!
+//! **Where KiCad differs by design or was not matched.** The 2.54 mm pin sockets: KiCad draws the
+//! courtyard 0.04 to 0.05 mm inside body plus 0.5 mm, which its headers and 2.0 mm sockets do not;
+//! not imitated (recorded in `DIFFERENCES`). SSOP: only SSOP-16 and SSOP-20 (5.3 mm) are generated,
+//! since KiCad's other SSOPs are older hand-drawn footprints with square pads of other sizes and
+//! some SSOP-8 come from one vendor's drawing each. Inputs fitted to KiCad 9.0: SOT-23 has lead
+//! length 0.3 to 0.6 mm (the current generator data has 0.4 to 0.6, which would give an inner gap
+//! 0.05 mm longer) and MSOP-10 has 4.65 to 5.15 mm over the leads; the TSSOP 10.0 mm span of the
+//! 8.0 mm body, its 0.17 to 0.30 mm lead width at 0.65 mm pitch, the 6.1 mm body at 0.65 and
+//! 0.4 mm pitch and the 0.45 mm lower lead length are not read from a datasheet, and were fitted to
+//! reproduce KiCad 9.0.0's pads, as the QFP lead widths were (TI's SN74LVC16245A datasheet,
+//! SCES062Q, gives 6.20 to 6.60 mm over the leads of a 4.4 mm body with leads 0.13 to 0.23 mm wide
+//! at 0.4 mm pitch, page 21, drawing MPDS006C, and 7.90 to 8.30 mm over a 6.1 mm body with leads
+//! 0.17 to 0.27 mm wide at 0.5 mm pitch and 0.50 to 0.75 mm long, page 25, MTSS003D, which says it
+//! falls within JEDEC MO-153; those nominal values are the rule's inputs for those two). QFP
+//! courtyard: KiCad draws it as a polygon with the corners notched and the `Footprint` model keeps
+//! a rectangle, the polygon's bounding box, which is what the test compares, so the generated
+//! courtyard is the larger shape near each corner (conservative). Each added family was
+//! generated, compared with KiCad's footprint of the same name, and kept only if it agreed within
+//! 0.01 mm in every pad and the courtyard; the rest were dropped and not tuned.
+//!
+//! **Not generated:** the nine exposed-pad QFPs that differ from the rule by 0.013 to 0.075 mm, the
+//! nine no-lead entries of KiCad's data files that do not agree (older shapes with square-cornered
+//! exposed pads, a different paste count, `_ThermalVias` names), TSSOP-44 (square corners), the exposed-pad (`-1EP`,
+//! `HTSSOP`, `ThermalVias`) rows, `TO-263-2_TabPin1` and `TO-252-2_TabPin1`, MSOP-12/16,
+//! VSSOP-8/10, SOIC-10, SOIC-20W and SOIC-28W (other IPC fits one by one), X2SON (TI drawings one
+//! each), LGA, PQFP/MQFP, the BGAs with balls left out, with two pitches or two pad sizes and the
+//! four whose courtyard is another number, crystals named for a maker's part and through-hole
+//! crystals, and connectors other than pin headers, mounting holes and fiducials (the std rows that
+//! name those still read KiCad's library: `Button_Switch_SMD`, `MountingHole`, `Fiducial`).
+//! Open: whether a depopulated BGA grid can be a rule (a list of missing balls per row). The ten SC-70
+//! footprints of KiCad 9.0.0 are hand-drawn (pads 0.65 x 0.4 mm at 0.65 mm pitch, one drawn body
+//! and a courtyard that is not a margin round the pads), so they are recorded rows and not a rule;
+//! KiCad 9.0.7 regenerates them with IPC pads from JEDEC MO-203 and drops the hand soldering
+//! twins, so a name here agrees with 9.0.0, the version the tests read (issue #103), and not
+//! with 9.0.7: if the project moves to a later library the rows are to be replaced by a rule from
+//! MO-203. A BGA is circular pads on the pitch, lettered A to Y without I, O, Q, S, X, Z, then AA,
+//! a courtyard 1 mm outside the body, the pad diameter recorded per row (it is not a function of the
+//! pitch: 0.5 mm pitch alone has pads from 0.2 to 0.35 mm); of KiCad's 200 `Package_BGA`
+//! footprints, 83 have a full grid of one pitch and one pad size and 79 of those agree. A TSSOP
+//! row is one line of (name, pins, pitch, body width, body length).
+//!
+//! **Differences a build shows.** The generated footprints draw their silkscreen their own way
+//! (clear of copper by 0.26 mm, centre line to edge; a bracket for polarity on LEDs and diodes; a
+//! marker triangle for pin 1) and carry the `(model ...)` path of the KiCad 3D library under the
+//! same name, which `fab` never reads. A board built with generated footprints differs from one
+//! built with KiCad's in silkscreen and in text positions, and in pads by less than 0.01 mm.
+//!
+//! **Status.** ADR 0043 was marked "provisional" and is `proposed`: the families grow one
+//! validated package at a time, and a new row must agree with KiCad's footprint or state why not.
+//! The owner has not said it is accepted.
 
 mod bga;
 mod chip;

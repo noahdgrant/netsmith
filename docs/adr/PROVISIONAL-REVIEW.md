@@ -31,6 +31,18 @@ of `solve/findings.rs`, `solve/transfer.rs` and `solve.rs`; the amendment of 002
 seven choices) and the doc comment of `bom_entries` (`crates/netsmith/src/fab.rs`); 0078 in the ADR. The line numbers this digest gives into `table.rs`,
 `ohm.rs` and `solve.rs` moved with the longer headers.
 
+**Update 2026-11-10 (ADR cleanup, batch 3).** ADRs 0020, 0031, 0033 and 0036 were folded into a three-line stub, ADR 0021 (already superseded by ADR 0097) became
+a stub, and ADRs 0034, 0035, 0037, 0040, 0041 and 0043 were cut to one page; each says the commit its full text is in (`git show 0eaf326:docs/adr/<file>`). The
+choices that this digest names for them are now where the code is: 0034's closing condition (a package through JLCPCB's order preview) in the ADR and the header
+of `crates/netsmith-fab/src/lib.rs`, with its status now `accepted` (the ADR's own line "The owner accepted the design on 2026-11-04"; the owner may say
+`proposed`); 0036's amendments 3 and 4 and the choices of amendment 2 in the header of `crates/netsmith-design/src/guidelines.rs`; 0043 in the ADR (now
+`proposed`: the text does not say the owner accepted it) and the header of `crates/netsmith-pcb/src/generate/mod.rs`, including the question whether reading GPL code
+to learn a published formula taints what is written; 0033's follow-up (a public reference board) in the header of `crates/netsmith-pcb/src/anneal.rs`; 0031's
+choices for the owner in the headers of `route.rs` and `anneal.rs`; 0037's list of rules that are not KiCad's in the header of `crates/netsmith-fab/src/drc/mod.rs`;
+0040's open items in the ADR and the headers of `crates/netsmith-check/src/mate.rs` and `crates/netsmith-fab/src/panel.rs`; 0041's seven questions in the ADR, and its
+inventory and licence reading in `docs/research/kicad-library-licensing.md`. 0021's installed-library paths and their verification (issue #6) are in the header of
+`crates/netsmith-kicad/src/install.rs`. The line numbers this digest gave into `place.rs`, `std/pcb.nsm`, `libraries.rs` and `guidelines.rs` follow the longer comments.
+
 **Reversal cost** is my reading from the dependents I counted, not a statement of the ADRs: **cheap** (a solver or message rule, nothing written in
 `.nsm` files depends on it), **migration** (source in `std/`, the guide or users' files must change), **hard** (users' designs change meaning, or the
 answer is a legal or interface commitment).
@@ -119,9 +131,9 @@ writers; nothing waits on a choice.
 ## ADR 0036
 Track width against current, amendments 1 to 4 (all marked PROVISIONAL; 3 and 4 "await the owner's review").
 
-**Built.** `plan_tracks` in `crates/netsmith-lower/src/guidelines.rs` (line 266), with `K_EXTERNAL = 0.048`, `K_INTERNAL = 0.024`, the exponents 0.44
+**Built.** `plan_tracks` in `crates/netsmith-design/src/guidelines.rs`, with `K_EXTERNAL = 0.048`, `K_INTERNAL = 0.024`, the exponents 0.44
 and 0.725, `Features::net_widths`. Amendment 4 uses `netsmith_solve::CurrentBound` (the Ohm bound, `crates/netsmith-solve/src/ohm.rs`). Tests:
-`crates/netsmith-lower/tests/guidelines.rs`.
+`crates/netsmith-design/tests/guidelines.rs`.
 
 **Choices.**
 1. **Amendment 1: the IPC-2221 constants.** The standard is paywalled and was not read; formula and constants come from calculators and a crate.
@@ -163,7 +175,7 @@ installed, so I could not re-run it and did not re-count the ADR's "468 names" a
 Constraints from the enclosure. Provisional parts only (the owner decided section 10 on 2026-11-03 and 2026-11-04).
 
 **Built.** In `crates/netsmith-pcb/src`: `overhang.rs`, `constraints.rs`, `explain.rs` (`before_placing`, line 173), `protrusion.rs`, `anneal.rs`
-(`HEIGHT_ZONE_MARGIN` = `KEEPOUT_GAP` = 0.25 mm), `place.rs` (`turn_to_fit`, line 1140). `Keepout.max_height` is `std/pcb.nsm:63`; `pin_protrusion` is
+(`HEIGHT_ZONE_MARGIN` = `KEEPOUT_GAP` = 0.25 mm), `place.rs` (`turn_to_fit`, line 1266). `Keepout.max_height` is `std/pcb.nsm:92`; `pin_protrusion` is
 added in `crates/netsmith-check/src/checker.rs:810`; `constraints_strict` is `crates/netsmith/src/fab.rs:71`; `precheck_findings` is in
 `crates/netsmith/src/editor/findings.rs`.
 
@@ -617,5 +629,5 @@ for the LT8641; `Libraries::write_tables` copies the library into a project's ta
 4. **A footprint checked only against its datasheet** (KiCad has none to compare), with one person's check recommended before a board is ordered; the
    footprint's name is the package's, not the part's. Cheap.
 
-**Depends.** One row of `std/kicad.toml` (`netsmith:LT8641`, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`) and `Libraries::write_tables` (`crates/netsmith/src/libraries.rs:86`). It added three lines to ADR 0043.
+**Depends.** One row of `std/kicad.toml` (`netsmith:LT8641`, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`) and `Libraries::write_tables` (`crates/netsmith/src/libraries.rs:113`). It added three lines to ADR 0043.
 

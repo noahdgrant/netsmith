@@ -5,6 +5,15 @@
 //! board edge and the keepouts leave free. KiCad fills the pour round them. A via goes on
 //! the grid point, or the nearest free point within a third of the pitch of it, and a grid
 //! point with none is left without.
+//!
+//! The grid is at the pour's `.stitch_pitch`, read at the top of the range, every other row
+//! shifted by half a pitch. A via keeps from other nets' copper the space KiCad checks, and
+//! from the holes, the pads, the board edge, the cutouts and the keepouts that forbid vias.
+//! Where a pad sits on a pour of its own net the pad vias that the router drops beside a pad
+//! on a plane net are kept: a pad inside a ring of tracks may stand on an island that KiCad's
+//! fill removes, so the pad via is sound and not tidy. Dropping it where a pour reaches the
+//! pad is an optimisation to take only with KiCad's unconnected-item check as the gate (ADR
+//! 0020, decided by the owner on 2026-11-02).
 
 use crate::board::{Board, CopperLayer, Via};
 use crate::geometry::{Pt, Rect};

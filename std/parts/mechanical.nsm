@@ -8,7 +8,35 @@
 //! These follow the recommendation of ADR 0020 (ADR 0023): `MountingHole` is non-plated with no
 //! pins, `PlatedHole` has one pin that a screw bonds to a net or leaves open, `Fiducial` has no
 //! pins, and `TestPoint` has one `required` pin. A part with no pins is on no net and is fitted by
-//! nobody. ADR 0020 is still proposed.
+//! nobody.
+//!
+//! Why parts (ADR 0020, decided by the owner on 2026-11-02): one mechanism for every footprint
+//! on the board, with a reference designator, a footprint through the export mapping, a place
+//! from the placer or the layout file, and a line in the schematic if it has a pin. The
+//! language has no boolean, so a plated and a non-plated hole are two kinds and not a flag.
+//! The placer treats a hole and a fiducial by kind and puts them in the corners of a fixed
+//! outline. Rejected: features of the outline (`.outline.corner_holes &= 4`: short for the
+//! common case, but holes elsewhere need a second way, and a plated hole with a net or a test
+//! point cannot be an outline feature), and board members with coordinates in the source (a
+//! second place for a position beside the layout file). The checks name numbers: a drill
+//! below `process.min_drill`, a plated hole whose pad leaves less than `min_annular_ring`, a
+//! hole nearer the edge than `min_edge_clearance`.
+//!
+//! Silkscreen. The text no smaller than the process allows and none over a pad or the board
+//! edge are the placer's and the design rules check's job. A `Label` is a part with no pins,
+//! with its text as a string and its size a range (the least wins, never below the process's
+//! least text), with a footprint generated from the text, reference `LBL1` and no symbol.
+//! Rejected: a board-level `text "REV A" at ...` statement (it needs coordinates in the
+//! source) and derived text such as a net name beside each connector pad (derivable with no
+//! statement, but a board might want it off, so it would be a switch on the connector).
+//! Logos are not built.
+//!
+//! Assembly is the part's field: what is always true of a kind is stated by the library (a
+//! hole, a fiducial and a label are never fitted), what a fab cannot place is a column of the
+//! catalog row, and whether this instance is hand-soldered or not fitted is the design's
+//! (ADR 0024, ADR 0028). A part marked `none` stays in the electrical model, so the solver
+//! and the balance still count it, which is conservative for a supply. Assembly variants are
+//! not built.
 
 /// A mounting hole with no copper: a drill for a screw that touches no net. It has no pins,
 /// so it is on no net.

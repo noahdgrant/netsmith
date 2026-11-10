@@ -4,6 +4,23 @@
 //! name and electrical type; the footprint says which pads exist. They are written by
 //! three different people, and two pads swapped between them would build a board that
 //! does not work. Every disagreement is reported, naming both sides.
+//!
+//! What is checked (ADR 0021, accepted by the owner on 2026-11-04): every pad of the pinout is a
+//! numbered pad of the footprint and a pin of the symbol, and the other way round; the symbol pin
+//! on a pad has the datasheet name after the mapping's `pin_names` (case does not matter, a symbol
+//! pin named `~` is unnamed and accepted); the symbol pin's electrical type suits the kind. Every
+//! message names the part, the package and both sides. `build` and `fab` run it for every part with
+//! a pin table before the schematic is written, and stop with all the messages
+//! (`crates/netsmith/tests/pinout.rs`, with invented libraries). `crates/netsmith/tests/kicad_rows.rs`
+//! takes each row of `std/kicad.toml` and the pinout of its kind in that package from the standard
+//! library's own source, and checks it against the installed libraries (skipped without KiCad) and,
+//! for the kinds they hold, against the sample libraries.
+//!
+//! **A `passive` part pin suits any symbol type but a supply or a no-connect.** ADR 0016 allowed
+//! `passive` or `unspecified` only. KiCad types a USB-C configuration pin `bidirectional` and a
+//! mounting-hole pad `input`; a pin the part calls passive (neither takes nor gives) does not
+//! contradict a symbol that says more. A `power_in`, `power_out` or `no_connect` symbol pin still
+//! does. The other kinds follow ADR 0016.
 
 use netsmith_kicad::{Mapped, PartPin, PinKind, PinType, Pinout, Symbol};
 
