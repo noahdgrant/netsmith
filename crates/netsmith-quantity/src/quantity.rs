@@ -13,7 +13,7 @@
 
 use crate::dimension::Dimension;
 use crate::error::QuantityError;
-use crate::unit::parse_unit;
+use crate::unit::{CELSIUS_ZERO_K, parse_unit};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quantity {
@@ -61,6 +61,18 @@ impl Quantity {
             });
         };
         let unit = parse_unit(unit)?;
+        if unit.offset {
+            // An offset unit: the number on the Celsius scale, in kelvin. The sum is rounded
+            // to a nanokelvin so that `-40degC` is the double nearest 233.15 and not
+            // 233.14999999999998.
+            let kelvin: f64 = format!("{:.9}", value + CELSIUS_ZERO_K)
+                .parse()
+                .map_err(|_| QuantityError::NotFinite)?;
+            return Ok(Literal {
+                quantity: Self::point(unit.dim, kelvin)?,
+                relative: false,
+            });
+        }
         // `value` printed shortest-round-trip, then scaled by a power of ten in one
         // decimal parse, so `8mA` is exactly the double nearest 0.008.
         let scaled: f64 = format!("{value}e{}", unit.exp10)

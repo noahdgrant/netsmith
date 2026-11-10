@@ -223,7 +223,7 @@ Rules.
 - Statements end at a newline or at `;`.
 - A name that is not a plain identifier is written in single quotes: `.'1'`.
 
-Types you can declare: `Pin`; the quantities `Number`, `Voltage`, `Current`, `Resistance`, `Capacitance`, `Inductance`, `Frequency`, `Time`, `Length`, `Power`, `Charge`, `Temperature` (kelvin, `10K`; a rise is a difference, so it is kelvin too); the text types `String`, `Package`, `Color`; an `enum` that is in scope (Enums, below); and any definition you can name.
+Types you can declare: `Pin`; the quantities `Number`, `Voltage`, `Current`, `Resistance`, `Capacitance`, `Inductance`, `Frequency`, `Time`, `Length`, `Power`, `Charge`, `Temperature` (kelvin, `10K`, or Celsius, `25degC`: see Temperatures below; a rise is a difference, so it is kelvin too); the text types `String`, `Package`, `Color`; an `enum` that is in scope (Enums, below); and any definition you can name.
 
 Misuse: a typo, a bare name where the dot belongs, and a name declared twice.
 
@@ -290,9 +290,10 @@ Literals.
 | `3.3V +/- 5%` | A value and a relative tolerance: 3.135 V to 3.465 V. |
 | `100ohm +/- 5ohm` | A value and an absolute tolerance, in the value's unit. |
 | `20ppm` | A relative fraction, like `%`. |
+| `-40degC..125degC` | A temperature in degrees Celsius (ADR 0103): `0degC` is 273.15 K. A range of them is a range of temperatures. |
 | `"VCC"` | Text. |
 
-Units: `m`, `g`, `s`, `A`, `K`, `V`, `ohm` (or `Ω`), `W`, `F`, `H`, `Hz`, `S`, `C`. Prefixes: `f p n u (or µ) m k M G T`. Lowercase `m` is milli and uppercase `M` is mega, so `1mohm` is a milliohm and `1Mohm` is a megohm. Arithmetic uses `+ - * /` and parentheses. A sum or difference needs the same dimension. A product or quotient makes a new one.
+Units: `m`, `g`, `s`, `A`, `K`, `degC`, `V`, `ohm` (or `Ω`), `W`, `F`, `H`, `Hz`, `S`, `C` (the coulomb, a charge: a Celsius temperature is `degC`, never `C`). Prefixes: `f p n u (or µ) m k M G T`. Lowercase `m` is milli and uppercase `M` is mega, so `1mohm` is a milliohm and `1Mohm` is a megohm. Arithmetic uses `+ - * /` and parentheses. A sum or difference needs the same dimension. A product or quotient makes a new one.
 
 ```nsm solve
 import std::parts::passive::{Resistor, Capacitor}
@@ -310,6 +311,27 @@ board Units {
     .c1: Capacitor { .capacitance &= 100nF +/- 20% }
     .rail.pos ~> .r1 ~> .r2 ~> .r3 ~> .c1 ~> .rail.neg
 }
+```
+
+**Temperatures.** `K` is kelvin and `degC` is degrees Celsius (ADR 0103). `degC` is the one unit whose zero is not the zero of its dimension, so it is converted where the literal is read: `0degC` is 273.15 K, `25degC` is 298.15 K, and `-40degC..125degC` is the range 233.15 K to 398.15 K. A sign written directly on a literal belongs to the number (`-40degC` is minus forty degrees Celsius, 233.15 K, and not minus 313.15 K). Every value is kelvin underneath, so a temperature in either spelling is the same value, a message shows the kelvin and the Celsius figure together, and a field of a `Temperature` takes both. `degC` takes no prefix (`mdegC` is an error), and a difference of temperatures, such as a rise or a tolerance, is written in kelvin: `10degC + 5K` is a temperature, 15degC (288.15 K); `20degC - 10degC` is a difference, 10 K; `85degC +/- 5K` is 80degC to 90degC, and `85degC +/- 5degC` is refused. A quantity does not remember whether it is a temperature or a difference, so the sum of two Celsius literals (`10degC + 20degC`, which is 576.3 K) is not refused: it is a number nobody means, and the language does not say it is wrong.
+
+A tolerance in `degC` is the one misuse that the language refuses:
+
+```nsm fails
+import std::parts::passive::Led
+
+board Tolerance {
+    .led: Led {}
+    .led.temp_max &= 85degC +/- 5degC
+}
+```
+
+```text
+error: a tolerance is a difference of temperatures: write it in kelvin (`20degC +/- 5K`), not in degC
+  --> main.nsm:5:22
+  |
+5 |     .led.temp_max &= 85degC +/- 5degC
+  |                      ^^^^^^^^^^^^^^^^
 ```
 
 Rules.
@@ -3666,7 +3688,7 @@ catalog_dirs = ["catalogs"]
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
 - The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only a column that the part's `catalog` statement marks `optional` (ADR 0078, below) may be empty in a row that is offered. The standard parts mark the four that were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor`, `dielectric` of `capacitor` and `breakdown_voltage` of `tvs`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
-- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature in kelvin as the datasheet prints it, `358.15K` for 85 C; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature as the datasheet prints it, `85degC` or `358.15K`; a junction range stands for the part's range and the part is judged by it, which is the limit of the check; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
 
 `price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`; `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
 
@@ -5957,9 +5979,9 @@ error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has n
 
 A board can say what it is exposed to: the member `.environment` (ADR 0099, **provisional**: the owner has accepted the recommended answers of `docs/research/environment-and-grade.md`, and this stage is the temperature only). Every fitted part is then checked against it. The board has the member as it has its `.process`, an interface of the standard library, `std::env::Environment`, whose one field is the range of temperatures the board's surroundings reach.
 
-A temperature is in kelvin. `233.15K..398.15K` is -40 C to 125 C, and a message shows both. A Celsius literal such as `-40C` is not written yet: `C` is already the coulomb, and the spelling is the owner's to choose (see _Left open_ in ADR 0099).
+A temperature is written in degrees Celsius or kelvin, `-40degC..125degC` or `233.15K..398.15K` (the same range, ADR 0103; see Temperatures under Values), and a message shows both. `C` alone is the coulomb, so `-40C` is a charge and is refused where a temperature is wanted.
 
-A part states the range it works at in two built-in members of every part, `.temp_min` and `.temp_max` (the lowest and the highest temperature, each one number), or its catalog row does, in the optional fixed columns of the same names (see Catalog files). The check is two comparisons: the hot end of the environment is at or under the part's `.temp_max`, and the cold end at or over its `.temp_min`.
+A part states the range it works at in two built-in members of every part, `.temp_min` and `.temp_max` (the lowest and the highest temperature, each one temperature), or its catalog row does, in the optional fixed columns of the same names (see Catalog files). The check is two comparisons: the hot end of the environment is at or under the part's `.temp_max`, and the cold end at or over its `.temp_min`.
 
 ```nsm evaluate
 import std::env::Environment
@@ -5967,8 +5989,7 @@ import std::parts::passive::Crystal
 import std::sources::Rail
 
 board Clock {
-    // -40 C to 85 C.
-    .environment: Environment { .temperature &= 233.15K..358.15K }
+    .environment: Environment { .temperature &= -40degC..85degC }
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
@@ -5988,8 +6009,7 @@ import std::parts::passive::Crystal
 import std::sources::Rail
 
 board Hot {
-    // -40 C to 125 C.
-    .environment: Environment { .temperature &= 233.15K..398.15K }
+    .environment: Environment { .temperature &= -40degC..125degC }
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
@@ -6002,17 +6022,51 @@ board Hot {
 ```
 
 ```text
-error: the `crystal` catalog has nothing for `xtal`, which needs frequency within 15.9995MHz..16.0005MHz (4 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40 C to 125 C): a row's `temp_min` and `temp_max` are its datasheet's)
-   --> main.nsm:13:5
+error: the `crystal` catalog has nothing for `xtal`, which needs frequency within 15.9995MHz..16.0005MHz (4 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC): a row's `temp_min` and `temp_max` are its datasheet's)
+   --> main.nsm:12:5
    |
-13 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
+12 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
    |     ^^^^^^^^^^^^^^
 ```
+
+### Named environments
+
+A board need not write its range. `std::env` has named environments, each an interface with the field `.temperature` and the range offered with `?=`, so a board that declares one has the range and can narrow it:
+
+| Name | Range | Where it comes from |
+|---|---|---|
+| `Automotive` | -40degC..125degC | AEC-Q100 Grade 1, ambient operating temperature range |
+| `AutomotiveGrade0` | -40degC..150degC | AEC-Q100 Grade 0, the same table |
+| `AutomotiveGrade2` | -40degC..105degC | AEC-Q100 Grade 2, the same table |
+| `AutomotiveGrade3` | -40degC..85degC | AEC-Q100 Grade 3, the same table |
+| `Industrial` | -40degC..85degC | a convention of manufacturers, not a standard |
+| `Commercial` | 0degC..70degC | a convention of manufacturers, not a standard |
+
+The four `Automotive` ranges are the part operating temperature grades of AEC-Q100 (Automotive Electronics Council, AEC-Q100-REV-J, August 11, 2023, section 1.3.4, Table 1, page 3 of 44, "Ambient Operating Temperature Range"), and `Automotive` is Grade 1 because the owner chose it as the default grade: the document marks none as the usual one. They are the ranges and nothing more: they do not say a board or its parts were qualified to AEC-Q100, and AEC-Q101 and AEC-Q200 (discrete semiconductors and passives) were not read. `Industrial` and `Commercial` are conventions: no document defines them, and the one page that states them which was read, Renesas's "Temperature Ranges" (read 2026-11-10), lists them as -40 to +85 and 0 to +70 and does not say whether they are ambient or junction. The doc comment of each definition in `std/env.nsm` says the same. A project that needs another range writes its own definition (see The manifest's default).
+
+```nsm evaluate
+import std::env::Automotive
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Dash {
+    .environment: Automotive {}
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+A board narrows the offer with `&=`, as it does a process (`.environment.temperature &= -20degC..90degC` keeps the board inside its parts' ranges and no wider than the grade). A stated range replaces the offer and is not intersected with it (ADR 0051), so `&= -55degC..150degC` is a wider environment than `Automotive`.
 
 Rules.
 
 - **A row that states a range the environment is not inside is not offered.** The solver tries the next row, and says in its message how many it left out and why.
-- **A row that states none is offered, and named.** A pick whose catalog row has no `temp_min`, no `temp_max` or neither is kept, because an empty cell is unknown and not a refusal, and a guideline finding says so: a `warning:` line by default, an error with `--strict` or `guidelines = "error"` in `netsmith.toml` (the same class as the unconstrained pick, ADR 0065). A check that could not be made is never a pass. The finding names the part, the row, which temperature is missing and what to write; parts picked as one row are one finding. The standard rows that state a range are the ones read from a datasheet (the resistors, capacitors, ferrite beads, fuses, headers, Murata inductors and crystals; `data/jlcpcb/README.md` says which and from what); the others, such as the LEDs, the diodes and the MOSFETs, state none.
+- **A row that states none is offered, and named.** A pick whose catalog row has no `temp_min`, no `temp_max` or neither is kept, because an empty cell is unknown and not a refusal, and a guideline finding says so: a `warning:` line by default, an error with `--strict` or `guidelines = "error"` in `netsmith.toml` (the same class as the unconstrained pick, ADR 0065). A check that could not be made is never a pass. The finding names the part, the row, which temperature is missing and what to write; parts picked as one row are one finding. The standard rows that state a range are the ones read from a datasheet (the resistors, capacitors, ferrite beads, fuses, headers, Murata inductors, crystals, most diodes, the AO3400A and seven LEDs; `data/jlcpcb/README.md` says which and from what); the others, such as the LEDs that have no readable datasheet, the 1N5819WS and the 2N7002, state none. Some of the figures are junction ranges (below).
 
 ```nsm solve warns
 import std::env::Environment
@@ -6020,7 +6074,7 @@ import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Probe {
-    .environment: Environment { .temperature &= 233.15K..358.15K }
+    .environment: Environment { .temperature &= -40degC..85degC }
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
@@ -6034,10 +6088,10 @@ board Probe {
 ```
 
 ```text
-Probe: environment guideline: `led` (Led) was picked as KT-0603R RED LED 0603 C2286 and its catalog row states no `temp_min` and no `temp_max`, so it is not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, in kelvin) or state it on the part, as `.led.temp_max &= 358.15K` for a datasheet that says 85 C
+Probe: environment guideline: `led` (Led) was picked as KT-0603R RED LED 0603 C2286 and its catalog row states no `temp_min` and no `temp_max`, so it is not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40degC to 85degC)): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, such as `85degC`) or state it on the part, as `.led.temp_max &= 85degC` for a datasheet that says 85degC
 ```
 
-- **The design can state it instead.** A part that states `.temp_min` or `.temp_max` in a board, a module or its own definition speaks for itself, whatever its row says (as a stated `.height` does, ADR 0094), and a part with both ends stated is judged and not named. A range stated as a range (`.temp_max &= 350K..360K`) is read at its worse end: the lowest of the highest temperature, the highest of the lowest.
+- **The design can state it instead.** A part that states `.temp_min` or `.temp_max` in a board, a module or its own definition speaks for itself, whatever its row says (as a stated `.height` does, ADR 0094), and a part with both ends stated is judged and not named. A range stated as a range (`.temp_max &= 77degC..87degC`) is read at its worse end: the lowest of the highest temperature, the highest of the lowest.
 - **A stated range that does not cover the environment is an error** that names the part, the number and where it came from:
 
 ```nsm fails
@@ -6046,15 +6100,15 @@ import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Warm {
-    .environment: Environment { .temperature &= 233.15K..358.15K }
+    .environment: Environment { .temperature &= -40degC..85degC }
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
         .neg.net &= "GND"
     }
     .led: Led { .current &= 5mA..15mA }
-    .led.temp_min &= 233.15K
-    .led.temp_max &= 348.15K
+    .led.temp_min &= -40degC
+    .led.temp_max &= 75degC
     .r1: Resistor {}
     .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
@@ -6062,13 +6116,14 @@ board Warm {
 ```
 
 ```text
-error: Warm: `led` works up to 348.15 K (75 C) only (the design states `.led.temp_max`), under the board's environment, which reaches 358.15 K (85 C) (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): choose a part rated for it or narrow the environment
+error: Warm: `led` works up to 348.15 K (75degC) only (the design states `.led.temp_max`), under the board's environment, which reaches 358.15 K (85degC) (`environment.temperature` 233.15 K to 358.15 K (-40degC to 85degC)): choose a part rated for it or narrow the environment
 ```
 
 - **A board with no environment is not judged** and says nothing: no check, no finding. The same holds for a board of a project whose manifest names none.
 - **A board that has an environment that states no temperature** (`.environment: Environment { }`) is told so, and no part is judged.
 - **Parts that are not fitted** (`.assembly` is `AssemblyMode::None`: a mounting hole, a fiducial) and labels are not judged. A part soldered by hand or consigned is, because it sees the same air.
 - **Each board of a system has its own environment.** A system does not state one.
+- **A junction range is a part's range.** A part whose datasheet gives a junction temperature range (`TJ`, in the Schottky, TVS and Zener diodes and the AO3400A of the standard catalogs, each row's `notes` say so) and no ambient one is judged by that figure as it stands: a junction range that covers the environment is a pass. The check does not compute how far the part's own heating lifts its junction above the air, so this is the limit of it: a part whose junction range just covers the environment can still be too hot at its junction in that air, and the self-heating margin is a design's to check.
 - **What it proves.** The check says the part works at the air temperature of the board. It does not say which temperature a datasheet's range is (ambient, junction or operating: the row's `notes` say what the record prints), it adds no heat of the part's own, and a rating at 25 C (`.max_power` of a resistor, a fuse's hold current) is not derated by it. A part that works at 125 C does not carry its 25 C rating there. Radiation, outgassing, screening and lot traceability are not checked at all.
 
 ### The manifest's default
@@ -6086,15 +6141,23 @@ environment = "src/vehicle.nsm::Automotive"
 interface Automotive {
     .temperature: Temperature
     // An offer, so that a board can replace it.
-    .temperature ?= 233.15K..358.15K
+    .temperature ?= -40degC..85degC
 }
 ```
 
-A board that declares `.environment` of its own has that one alone (not the two together), and a board that only states `.environment.temperature &= ...` with no declaration has the manifest's definition as if it had written the declaration, and its statement replaces the offer. The manifest's default is a convenience and not a floor: nothing stops a board of the project from declaring a milder environment. The library has no `Automotive`, `Industrial` or `Commercial` definition, because a range that cannot be cited does not belong in it; a project writes its own, as above, and cites where the range comes from in its doc comment.
+A project that is content with a standard environment names it, and every board of it is then judged against AEC-Q100 Grade 1's range with no line in any board:
+
+```toml
+[project]
+name = "dash"
+environment = "std::env::Automotive"
+```
+
+A board that declares `.environment` of its own has that one alone (not the two together), and a board that only states `.environment.temperature &= ...` with no declaration has the manifest's definition as if it had written the declaration, and its statement replaces the offer. The manifest's default is a convenience and not a floor: nothing stops a board of the project from declaring a milder environment. A project can name one of the standard environments, or write its own as above and cite where the range comes from in its doc comment; a range that cannot be cited does not belong in `std`.
 
 ### Catalog columns
 
-A catalog file may have the fixed columns `temp_min` and `temp_max` (see Catalog files): each one temperature in kelvin as the datasheet prints it (`358.15K` for 85 C), with the document and which temperature it is in the row's `source` and `notes`. Only a row whose datasheet or record says so gets one; an empty cell stays empty. A cell that is not a temperature is refused when the file is read, with its file and line (a Celsius figure written bare is a number and not a temperature, and `85C` would be a charge):
+A catalog file may have the fixed columns `temp_min` and `temp_max` (see Catalog files): each one temperature as the datasheet prints it (`85degC`; the standard rows write kelvin, `358.15K`, the same value), with the document and which temperature it is in the row's `source` and `notes`. Only a row whose datasheet or record says so gets one; an empty cell stays empty. A cell that is not a temperature is refused when the file is read, with its file and line (a figure written bare is a number and not a temperature, and `85C` would be a charge):
 
 ```csv fails file=catalogs/resistor.csv
 mpn,resistance,max_power,package,temp_max,source
@@ -6102,7 +6165,7 @@ ACME-R316,316ohm +/- 1%,62.5mW,0402,85,https://example.invalid/acme-r316.pdf
 ```
 
 ```text
-catalogs/resistor.csv:2: `temp_max`: `85` is a plain number, but a part's highest temperature is a temperature in kelvin such as `358.15K` (85 C)
+catalogs/resistor.csv:2: `temp_max`: `85` is a plain number, but a part's highest temperature is a temperature such as `85degC` or `358.15K`
 ```
 
 ## The shape of a board
@@ -12121,7 +12184,13 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
-| `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach, in kelvin. Every fitted part is checked against it (ADR 0099). |
+| `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`). Every fitted part is checked against it (ADR 0099). |
+| `std::env::Automotive` | A named environment: AEC-Q100 Grade 1, -40degC..125degC (AEC-Q100-REV-J, Table 1, ambient operating temperature range), offered so a board narrows it. See Named environments. |
+| `std::env::AutomotiveGrade0` | AEC-Q100 Grade 0, -40degC..150degC, the same table. |
+| `std::env::AutomotiveGrade2` | AEC-Q100 Grade 2, -40degC..105degC, the same table. |
+| `std::env::AutomotiveGrade3` | AEC-Q100 Grade 3, -40degC..85degC, the same table. |
+| `std::env::Industrial` | A named environment, -40degC..85degC: a convention of manufacturers, not a standard (source in its doc comment). |
+| `std::env::Commercial` | A named environment, 0degC..70degC: a convention of manufacturers, not a standard (source in its doc comment). |
 
 ### Modules
 
