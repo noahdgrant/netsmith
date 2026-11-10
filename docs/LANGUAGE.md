@@ -11101,7 +11101,7 @@ In a `system`, a line that goes out through a connector is followed through the 
 
 ### The rise time of an I2C bus
 
-The rise time of an I2C line is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 5). The pull-up resistance and the capacitance of the line set how long the line takes to go from 30 % to 70 % of the supply, `tr = 0.8473 * Rp * Cb` (`0.8473` is `ln(7/3)`, and the NXP I2C-bus specification UM10204, Rev. 7.0, section 7.1, derives the same figure and measures the rise time between these two points). `I2cPullups` has `.rise_time` for it and `.bus_capacitance`, the capacitance of one line. A board bounds the rise time with the limit of the mode it runs, and the bound holds in the worst case: the highest resistance (the tolerance the board states) and the highest capacitance. The supply does not enter, since both points are fractions of it. The limits are in UM10204 Table 11: 1000 ns for Standard-mode, 300 ns for Fast-mode, 120 ns for Fast-mode Plus, and at most 400 pF on a line (550 pF in Fast-mode Plus; Table 10 gives each pin at most 10 pF). The module builds none of them in: the board states the one of its mode (`.pullups.rise_time <= 300ns`, `.pullups.bus_capacitance <= 400pF`), because which mode a bus runs is the board's, and a table of the modes in `std::bus` is the owner's to decide. The sink-current lower bound of the resistance is not checked (`I2c` states no sink current).
+The rise time of an I2C line is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 5). The pull-up resistance and the capacitance of the line set how long the line takes to go from 30 % to 70 % of the supply, `tr = 0.8473 * Rp * Cb` (`0.8473` is `ln(7/3)`, and the NXP I2C-bus specification UM10204, Rev. 7.0, section 7.1, derives the same figure and measures the rise time between these two points). `I2cPullups` has `.rise_time` for it and `.bus_capacitance`, the capacitance of one line. A board bounds the rise time with the limit of the mode it runs, and the bound holds in the worst case: the highest resistance (the tolerance the board states) and the highest capacitance. The supply does not enter, since both points are fractions of it. The limits are in UM10204 Table 11: 1000 ns for Standard-mode, 300 ns for Fast-mode, 120 ns for Fast-mode Plus, and at most 400 pF on a line (550 pF in Fast-mode Plus; Table 10 gives each pin at most 10 pF). The module builds none of them in: the board states the one of its mode (`.pullups.rise_time <= 300ns`, `.pullups.bus_capacitance <= 400pF`), because which mode a bus runs is the board's, and a table of the modes in `std::bus` is the owner's to decide. The lower bound of the resistance, from the sink current, is the next section.
 
 The capacitance has two sources, and the board adds them. A part states the capacitance of its own pin as `.i2c.capacitance` (`Ci` of the datasheet), an `optional` member of `I2c` (ADR 0074) that `~` does not equate between two parts, and the board adds the traces, the connector and the cable, which no part states. The board writes the sum, with the range of its estimate in parentheses, since a range binds looser than `+`. Both members are `optional`: a board that states no capacitance has no rise time and nothing is checked; a board that states a bound on the rise time and a sum that reads a part with no capacitance is told the check was not made, never that it passed. Two invented parts that state the capacitance of their pins, 5 pF and 8 pF, and one that states none:
 
@@ -11253,6 +11253,122 @@ board NoPinFigure {
 ```
 
 The check is wrong, and optimistic, where the capacitance is underestimated (traces, connectors and cable are the large part of a real bus, and a pin's figure is a maximum the datasheet gives under its own conditions), where two pull-up pairs are on one bus (they are in parallel, and the board states the parallel resistance), for a current-source pull-up or a bus buffer (neither is an `RC`), and for levels that are not 30 % and 70 % of the supply, as the specification takes them whatever a part states.
+
+### The least pull-up of an I2C bus
+
+The other bound on a pull-up is from below. A device only pulls a line low, so the weakest driver on the bus must be able to hold it there against the pull-up: its datasheet guarantees a low level `VOL` while it sinks `IOL`, and the resistor then carries `(Vdd - VOL) / IOL` at most, so `Rp >= (Vdd - VOL) / IOL` (UM10204 Rev. 7.0, section 7.1; Table 10 gives `VOL` 0.4 V at 3 mA, and 20 mA in Fast-mode Plus). `I2cPullups` has the relation, and `.sink_current` and `.low_level`, the weakest driver's `IOL` and the `VOL` at that current, which the board states. The relation holds in the worst case: the supply at its greatest (`supply.voltage`, so a rail of 3.3 V +/- 5 % counts as 3.465 V), the figures as stated (a range is taken at the end that asks for the most: the least `VOL` and `IOL`), and the resistance at its low end, the tolerance the board states.
+
+A part states its own figure, as it states its pin's capacitance: `.i2c.sink_current` is an `optional` member of `I2c` (ADR 0074), for the datasheet's `IOL` at the `.i2c.levels.vol` it states with it, and `~` does not equate it between two parts. The module does not reach the parts of its bus, so how the figures arrive is the board's, the same as for the capacitances: the board writes the figure of the part that sinks least, `.pullups.sink_current &= .sensor.i2c.sink_current` and `.pullups.low_level &= .sensor.i2c.levels.vol`. A part that states none leaves the figure without a value, and the check is listed as not evaluated, never as a pass. On a bus of several parts the board cannot take the least of them in one statement (`min(.f)` reads the end of a range inside a `<=` or `>=` and never gives a value, ADR 0098), so it states the figure and holds it to each part, `.pullups.sink_current <= .ctl.i2c.sink_current`, which names the part that is weaker than the figure. A guard on a part whose datasheet states no figure is not made, and nothing is listed for it. A board that states no `.sink_current` asks for no bound and gets nothing; one that states the current and no `.low_level` is listed as not evaluated.
+
+The module builds no figure in: UM10204's `VOL` and `IOL` are the specification's limits for a device, a part's datasheet may state better, and no std part or catalog has an I2C interface to fill. A part with a datasheet figure states it with the page cited.
+
+```nsm module=src::ziol
+import std::bus::{I2c, I2cRole}
+import std::sources::Rail
+
+/// A controller from an invented datasheet: it sinks 6 mA at 0.4 V.
+part Zlc {
+    .designator &= "U"
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Controller
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    .i2c.sink_current &= 6mA
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "VSS" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  bidirectional "SCL" "4"
+    }
+}
+
+/// A target that sinks 3 mA at 0.4 V, the specification's figure.
+part Zlt {
+    .designator &= "U"
+    .vdd: Rail
+    .i2c: I2c
+    .i2c.role &= I2cRole::Target
+    .i2c.levels.reference ~ .vdd
+    .i2c.levels.vih &= 0.7 * .vdd.voltage
+    .i2c.levels.vil &= 0.3 * .vdd.voltage
+    .i2c.levels.vol &= 0.4V
+    .i2c.sink_current &= 3mA
+    pins {
+        .vdd.pos  power         "VDD" "1"
+        .vdd.neg  power         "GND" "2"
+        .i2c.sda  bidirectional "SDA" "3"
+        .i2c.scl  input         "SCL" "4"
+    }
+}
+```
+
+On 3.3 V +/- 5 %, the target's 3 mA at 0.4 V asks for at least `(3.465 V - 0.4 V) / 3 mA = 1021.7 ohm` (worked out by hand in `crates/netsmith-solve/tests/bus_sink_current.rs`), and 4.7 kohm +/- 5 % holds. The board holds its figure to both parts:
+
+```nsm evaluate
+import src::ziol::{Zlc, Zlt}
+import std::bus::I2cPullups
+import std::sources::Rail
+
+board WeakestDriver {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .ctl: Zlc
+    .sensor: Zlt
+    .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
+    .supply ~ .ctl.vdd
+    .supply ~ .sensor.vdd
+    .supply ~ .pullups.supply
+    .ctl.i2c ~ .sensor.i2c
+    .ctl.i2c ~ .pullups.bus
+    .pullups.sink_current &= .sensor.i2c.sink_current
+    .pullups.low_level &= .sensor.i2c.levels.vol
+    .pullups.sink_current <= .ctl.i2c.sink_current
+}
+```
+
+At 800 ohm the same bus is refused with the numbers, the range of the resistance and the range of the least it may be (its top end is the worst case, the supply at 3.465 V):
+
+```nsm fails
+import src::ziol::{Zlc, Zlt}
+import std::bus::I2cPullups
+import std::sources::Rail
+
+board TooStrong {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .ctl: Zlc
+    .sensor: Zlt
+    .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
+    .supply ~ .ctl.vdd
+    .supply ~ .sensor.vdd
+    .supply ~ .pullups.supply
+    .ctl.i2c ~ .sensor.i2c
+    .ctl.i2c ~ .pullups.bus
+    .pullups.sink_current &= .sensor.i2c.sink_current
+    .pullups.low_level &= .sensor.i2c.levels.vol
+}
+```
+
+```text
+error: pullups.resistance must always be at least ((pullups.supply.voltage - pullups.low_level) / pullups.sink_current), but 760Ω..840Ω is not always above 911.6Ω..1.022kΩ
+    --> std/bus.nsm:443:5
+    |
+443 |     .resistance >= (.supply.voltage - .low_level) / .sink_current
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The two bounds make a window. On a heavy Fast-mode bus (400 pF and `.pullups.rise_time <= 300ns`) the rise time allows at most `300 ns / (0.8473 * 400 pF) = 885.2 ohm`, and a 3 mA driver asks for at least 1021.7 ohm: the window is empty, and whatever resistance the board states, one of the two bounds fails and its message says which (`pullups.rise_time must always be at most ...` or `pullups.resistance must always be at least ...`). With a 6 mA driver the window is 510.8 ohm to 885.2 ohm, and 700 ohm +/- 5 % is inside it. `crates/netsmith-solve/tests/bus_sink_current.rs` has both buses.
+
+The check is wrong, and optimistic, where the figures are not the weakest's (a part on the bus that sinks less than the figure the board states: the guard finds it only when that part states its figure), where `VOL` at the stated current is not the level the receivers need (`levels.vol` is judged against their `vil` by the levels check, which is a different one), where two pull-up pairs are on one bus (the board states the parallel value), and for a current-source pull-up or a bus buffer. It reads the line as held low by one driver at a time.
 
 ### Roles and lines of a bus
 
@@ -11857,7 +11973,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:325), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:336), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
@@ -11924,7 +12040,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:497), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:526), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 ## The standard library
@@ -11990,7 +12106,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::logic::Logic` | A digital line `.line`, the `.reference` rail that defines its levels, and the levels `.vih`, `.vil`, `.voh` and `.vol` a part may state (ADR 0046). |
 | `std::bus::Uart` | Pins `tx`, `rx`, `rts`, `cts`, named by the device, and `.baud`. `~` between two joins `tx` to `rx` and `rts` to `cts`; two ends make a bus (`lines limit 2`). |
 | `std::bus::Spi` | Pins `sclk`, `mosi`, `miso`, `cs`, a `.role` (`SpiRole`), a `.frequency` and a `.mode` (`SpiMode`). One master on a bus, a `single` select for each slave, a slave's `miso` is required. |
-| `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`), a `.frequency` and the optional `.capacitance` of the part's own pin (not equated between two parts). A pull-up on each line. |
+| `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`), a `.frequency` and the optional `.capacitance` of the part's own pin and `.sink_current`, the current its driver sinks at its `levels.vol` (neither is equated between two parts). A pull-up on each line. |
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
 | `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
@@ -12010,7 +12126,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::regulator::BuckStage` | Everything around a buck converter IC: inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin`, `vout` and `buck`, and the values `ripple`, `divider_current`, `voltage_margin`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`, each times `.voltage_margin` (1 unless the board states it, ADR 0085). |
 | `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
 | `std::bus::PullDown` | A pull-down resistor from one line to the `neg` of a rail: a `reference` (`Rail`, a reference and not a load: `reference.current` is 0 A), a `line` (`Pin`), a `.resistance` the board states, `.line_high`, the share of the time the line is high (0 to 1), and the offer `.line_top` (`reference.voltage`, the highest the line is held at). Its resistor carries 0 up to `line_top / resistance`, so its drop and power are evaluated; it draws nothing from a rail. |
-| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. `.rise_time` is `0.8473 * resistance * bus_capacitance`, a closed-form check the board bounds (`.pullups.rise_time <= 300ns`), with the optional `.bus_capacitance` the board states (the sum of the pins' and its traces'); with no capacitance the bound is listed as not evaluated. |
+| `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. `.rise_time` is `0.8473 * resistance * bus_capacitance`, a closed-form check the board bounds (`.pullups.rise_time <= 300ns`), with the optional `.bus_capacitance` the board states (the sum of the pins' and its traces'); with no capacitance the bound is listed as not evaluated. `.resistance >= (supply.voltage - low_level) / sink_current` is the lower bound from the weakest driver's sink current, with the optional `.sink_current` and `.low_level` the board states (the figures of the part that sinks least); the supply counts at its greatest. |
 
 ### Enums
 

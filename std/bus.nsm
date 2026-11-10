@@ -131,6 +131,16 @@ enum I2cRole {
 /// (`I2cPullups.bus_capacitance`) then has no sum. Like the levels it is the part's own, so `~`
 /// between two interfaces does not equate it. It states what one pin adds and not the bus's: the
 /// capacitance of the whole line is `I2cPullups.bus_capacitance`.
+///
+/// `sink_current` is the current this part's driver can sink while it holds a line at its `vol`
+/// (`.levels.vol`): the datasheet's `IOL`, at the `VOL` the datasheet gives with it (UM10204
+/// Rev. 7.0, Table 10: `VOL` 0.4 V at 3 mA, and `IOL` at least 3 mA, 20 mA in Fast-mode Plus; a
+/// part's own table has its own figures). The level is the one `Levels` already has, so a part
+/// states both: `.i2c.levels.vol &= 0.4V` and `.i2c.sink_current &= 3mA`. It is `optional`
+/// (ADR 0074): a part whose datasheet states none leaves it out, and the bound of the pull-up
+/// from the sink current (`I2cPullups.sink_current`) is then listed as not evaluated for a
+/// board that takes the figure from it. Like the capacitance it is the part's own, so `~` does
+/// not equate it between two interfaces.
 interface I2c {
     .role: I2cRole
     .sda: Pin
@@ -138,6 +148,7 @@ interface I2c {
     .levels: Levels
     .frequency: Frequency
     .capacitance: Capacitance optional
+    .sink_current: Current optional
 
     lines I2cRole::Controller {
         .sda bidirectional
@@ -369,9 +380,24 @@ module PullUp {
 /// the two points are 30 % and 70 % of the supply, as the specification measures, whatever the
 /// levels a part states. Optimistic when the capacitance is underestimated, which is usual:
 /// traces, connectors and cable are the large part, and a part's pin capacitance is a maximum
-/// that its datasheet gives under its own conditions. Not in it: the lower bound of the
-/// resistance from the sink current of the drivers (`(supply - VOL) / IOL`, UM10204 section 7.1),
-/// which needs a sink current that `I2c` does not state.
+/// that its datasheet gives under its own conditions.
+///
+/// The other bound is from below (`docs/research/closed-form-checks.md`, check 5): the weakest
+/// driver on the bus must be able to hold a line low against the pull-up, so `.resistance >=
+/// (supply.voltage - low_level) / sink_current` (UM10204 Rev. 7.0, section 7.1, with its Table 10:
+/// `VOL` 0.4 V at 3 mA, 20 mA in Fast-mode Plus). `sink_current` is the `IOL` of the part that
+/// sinks least, and `low_level` the `VOL` at that current: the board states them, as it states
+/// `bus_capacitance` (`.pullups.sink_current &= .sensor.i2c.sink_current`, `.pullups.low_level &=
+/// .sensor.i2c.levels.vol`), since the module does not reach the parts. On a bus of several parts
+/// the board states the figure and holds it to each, `.pullups.sink_current <= .ctl.i2c.sink_current`
+/// (`min(.f)` of ADR 0098 cannot give a value). The bound holds in the worst case: the supply at its
+/// greatest, the figures as stated (a range at the end that asks for the most) and the resistance at
+/// its low end. `sink_current` is `optional` (ADR 0074): a board that states none asks for no bound
+/// and is told nothing, and a board that states it with a figure that has no value (a part that
+/// states none) or with no `low_level` is told the check was not made, never a pass. No figure is
+/// built in. It assumes one driver pulls the line and the pull-up is the only load that sinks: a
+/// current-source pull-up, a bus buffer, two pairs in parallel (the board states the parallel
+/// value) and devices that leak into the line are not in it.
 ///
 /// The module states what it draws from `supply`, so the net it is on has every current it
 /// needs (ADR 0026): a pull-up carries nothing while its line is released or its driver is off,
@@ -412,6 +438,9 @@ module I2cPullups {
     .bus_capacitance: Capacitance optional
     .rise_time: Time
     .rise_time == 0.8473 * .resistance * .bus_capacitance
+    .sink_current: Current optional
+    .low_level: Voltage
+    .resistance >= (.supply.voltage - .low_level) / .sink_current
     .sda_pullup.current == (.sda_low * .supply_top - .overdrive) / .sda_pullup.resistance
     .scl_pullup.current == (.scl_low * .supply_top - .overdrive) / .scl_pullup.resistance
 }
