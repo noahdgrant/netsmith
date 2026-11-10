@@ -14,6 +14,7 @@ use netsmith::compare::{Request, Verdict, compare_files};
 use netsmith::editor::Workspace;
 use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith::init::init;
+use netsmith::order::OrderLocks;
 use netsmith::project::{Project, Target};
 use netsmith::supply::Supply;
 use netsmith::{Libraries, outcome_with, render_problems};
@@ -73,6 +74,7 @@ fn main() -> ExitCode {
                     allow_drc_violations,
                     cross_check,
                     strict,
+                    locked,
                     constraints_warn,
                 ),
                 None => timings::stage("fab.total", "", || {
@@ -699,6 +701,7 @@ fn run_fab(
 }
 
 /// `netsmith fab --order`: list the project's orders, or make one (ADR 0035).
+#[allow(clippy::too_many_arguments)]
 fn run_order(
     request: &OrderRequest,
     out: Option<&Path>,
@@ -706,6 +709,7 @@ fn run_order(
     allow_drc_violations: bool,
     cross_check: bool,
     strict: bool,
+    locked: bool,
     constraints_warn: Option<bool>,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target(None, strict) {
@@ -772,6 +776,12 @@ fn run_order(
         &libraries,
         kicad.as_ref().map(|k| k as &dyn KicadCli),
         &options,
+        // As `fab` on each file: the pick lock holds the parts, and is written when absent.
+        if locked {
+            OrderLocks::Locked
+        } else {
+            OrderLocks::Held
+        },
         out,
     ) {
         Err(problems) => {

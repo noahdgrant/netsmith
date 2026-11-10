@@ -73,6 +73,14 @@
 //!   ([`fab_order`]). The server has `GET /api/orders`, `POST /api/order?name=` and `GET
 //!   /api/order/download?name=&file=` (`summary` or `bom`); orders are read when the editor
 //!   starts, like the rest of the manifest.
+//! - **The pick lock** (ADR 0100) is read for each source file that builds a board of the
+//!   order, and only for those: the boards of that file are solved held to `<stem>.lock.toml`,
+//!   so an order gets the rows `fab` of the same file gets. What `fab` does with the file, an
+//!   order does: an absent lock is written (the picks of a file are the picks `fab` would
+//!   write, whatever boards the order takes from it), an existing lock is never rewritten, and
+//!   a difference is a note. With `--locked` ([`OrderLocks::Locked`]) an order refuses, before
+//!   it removes or writes anything, a lock that does not exist or that the picks of any of
+//!   those files differ from, and says all of them.
 //! - **A key may be a panel** (ADR 0040), and its quantity counts panels. The questions that
 //!   ADR 0035 left open for panels (how a panel references boards, the quantity inside a panel,
 //!   where it lives, what `fab` writes) were decided by ADR 0040.
@@ -89,6 +97,7 @@ use serde::{Deserialize, Serialize};
 use toml::Spanned;
 
 use crate::fab::{FabOptions, Fabricated, fab_with_options};
+use crate::pick_lock::{self, Use};
 use crate::project::{MANIFEST, Target, is_project_name};
 use crate::{Built, Libraries, outcome_with, render_problems};
 
@@ -675,8 +684,60 @@ pub fn project_boards(
     Ok(found)
 }
 
+/// What an order does with the pick lock beside each source file it makes boards from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderLocks {
+    /// Leaves the lock out: the boards are solved from the source alone (the editor's order).
+    Ignored,
+    /// As `fab` does without `--locked`: holds the parts to the lock when the file exists and
+    /// writes it when it does not.
+    Held,
+    /// As `fab --locked`: holds the parts to the lock, and refuses a file that does not exist
+    /// or that the picks differ from.
+    Locked,
+}
+
+/// The catalogs to solve `source` with and what to do with its lock, for each file with
+/// boards in the order (`None` for the others, and for every file when the locks are ignored).
+type Opened = Option<(Option<Catalogs>, Use)>;
+
+/// With `--locked`, every lock of `files` is compared with the picks before anything is made,
+/// and every one that would change is said. Nothing is written.
+fn refuse_changed_locks(
+    files: &[(usize, &Opened)],
+    target: &Target,
+    loader: &Loader,
+    catalogs: &Catalogs,
+) -> Result<(), String> {
+    let mut problems = String::new();
+    for (i, opened) in files {
+        let Some((held, using)) = opened else {
+            continue;
+        };
+        let source = &target.files[*i];
+        let text =
+            fs::read_to_string(&source.path).map_err(|e| format!("{}: {e}\n", source.name))?;
+        let catalogs = held.as_ref().unwrap_or(catalogs);
+        match outcome_with(&source.name, &text, loader, catalogs, None) {
+            Err(found) => problems.push_str(&render_problems(&found)),
+            Ok(outcome) => {
+                if let Err(e) = pick_lock::settle(using, catalogs.pick_lock(), &outcome.lock) {
+                    problems.push_str(&format!("{e}\n"));
+                }
+            }
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
+}
+
 /// Build the boards of `order` and write the package of each, `order.txt` and
 /// `order-bom.csv` under `<out>/orders/<name>/`. On failure the error is every problem.
+/// `locks` says what is done with the pick lock of each source file that builds a board of
+/// the order ([`OrderLocks`]).
 #[allow(clippy::too_many_arguments)]
 pub fn fab_order(
     order: &Order,
@@ -686,6 +747,7 @@ pub fn fab_order(
     libraries: &Libraries,
     kicad: Option<&dyn KicadCli>,
     options: &FabOptions,
+    locks: OrderLocks,
     out: &Path,
 ) -> Result<Made, String> {
     let found = project_boards(target, loader, catalogs)?;
@@ -700,15 +762,8 @@ pub fn fab_order(
     }
     let labels: Vec<String> = found.iter().map(|(l, _)| l.clone()).collect();
     let selected = resolve(order, &labels)?;
-    let dir = out.join(ORDERS_DIR).join(&order.name);
-    // An order folder netsmith made before is replaced whole, so that a board dropped from
-    // the order does not stay in it. Anything else at that path is left alone.
-    if dir.join(SUMMARY_FILE).is_file() {
-        fs::remove_dir_all(&dir).map_err(|e| format!("error: {}: {e}\n", dir.display()))?;
-    }
-
-    let mut made: Vec<(Selected, Fabricated)> = Vec::new();
-    let mut problems = String::new();
+    // The boards of the order that each source file builds, and the lock of each of those files.
+    let mut files: Vec<(usize, Vec<String>, Opened)> = Vec::new();
     for (i, source) in target.files.iter().enumerate() {
         let mine: Vec<String> = selected
             .iter()
@@ -718,11 +773,41 @@ pub fn fab_order(
         if mine.is_empty() {
             continue;
         }
+        let opened = match locks {
+            OrderLocks::Ignored => None,
+            OrderLocks::Held | OrderLocks::Locked => Some(pick_lock::open(
+                &source.path,
+                catalogs,
+                locks == OrderLocks::Locked,
+            )?),
+        };
+        files.push((i, mine, opened));
+    }
+    if locks == OrderLocks::Locked {
+        let opened: Vec<(usize, &Opened)> = files.iter().map(|(i, _, o)| (*i, o)).collect();
+        refuse_changed_locks(&opened, target, loader, catalogs)?;
+    }
+    let dir = out.join(ORDERS_DIR).join(&order.name);
+    // An order folder netsmith made before is replaced whole, so that a board dropped from
+    // the order does not stay in it. Anything else at that path is left alone.
+    if dir.join(SUMMARY_FILE).is_file() {
+        fs::remove_dir_all(&dir).map_err(|e| format!("error: {}: {e}\n", dir.display()))?;
+    }
+
+    let mut made: Vec<(Selected, Fabricated)> = Vec::new();
+    let mut problems = String::new();
+    for (i, mine, opened) in files {
+        let source = &target.files[i];
         let text =
             fs::read_to_string(&source.path).map_err(|e| format!("{}: {e}\n", source.name))?;
+        let (held, using) = match opened {
+            Some((held, using)) => (held, Some(using)),
+            None => (None, None),
+        };
         let file_options = FabOptions {
             only: Some(mine),
             layout: Some(crate::layout::layout_path(&source.path)),
+            lock: using,
             ..options.clone()
         };
         match fab_with_options(
@@ -730,7 +815,7 @@ pub fn fab_order(
             &text,
             loader,
             &dir,
-            catalogs,
+            held.as_ref().unwrap_or(catalogs),
             libraries,
             kicad,
             &file_options,

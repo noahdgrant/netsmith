@@ -43,6 +43,7 @@ mod mosfet_drive;
 mod note_causes;
 mod open_circle;
 mod order;
+mod order_lock;
 mod overhang;
 mod panel;
 mod passives;

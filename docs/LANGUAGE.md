@@ -7430,7 +7430,7 @@ With a lock, the solver offers each part the lock names only its locked row, and
 - **The row no longer passes, or is no longer in the catalog.** The run stops with the relation that fails and its numbers, and a second message says that the row is the lock's and that no other row was tried (`` `r1` is locked to the row `2.2kΩ 1% 0402 C25879` of the `resistor` catalog by led.lock.toml, and no other row was tried for it ``). Change the design or the catalog so the row fits, or delete the lock to pick again. A row whose `lcsc` or `mpn` is no longer the lock's is the same case.
 - **A part has no entry, or an entry belongs to a part the board no longer has.** The run goes on and prints a note that names the part. The lock is not rewritten: an existing lock is never changed by `build` or `fab`.
 
-`--locked` (on `build` and `fab`, as Cargo's) turns the last case, and a missing file, into an error, before anything is written. A CI job that builds with `--locked` fails a pull request that changes the picks without changing the lock.
+`--locked` (on `build` and `fab`, as Cargo's, and so on `fab --order`) turns the last case, and a missing file, into an error, before anything is written. A CI job that builds with `--locked` fails a pull request that changes the picks without changing the lock.
 
 #### Refreshing the lock
 
@@ -7451,7 +7451,9 @@ Each case of the list above ends in a line of that diff:
 
 `netsmith lock --check [file.nsm]` does the same and writes nothing. It prints the same diff and exits 1 when the lock is not current or does not exist (with a message that says which), and exits 0 and prints nothing when it is current, so a CI job can run it beside `build --locked`. Both exit 2 when they cannot tell: the lock is not a lock this netsmith reads, or the design does not build even with no lock. Two runs on the same project print the same text and write the same bytes. The pin file is not read for its writing: `lock` writes only the lock, and a pin request that has no pin yet is assigned in memory, as the editor does.
 
-`fab --order` does not read or write a lock yet. The editor does not read or write a lock either: it solves from the source, as before.
+`fab --order <name>` does with each source file that builds a board of the order what `fab` does with that file, so the order gets the rows `fab` of the file alone gets: it holds the boards of the file to its lock, writes the lock when the file does not exist, and never rewrites one that does (a difference is a note). Only the files that build a board of the order are read, and a lock covers all the boards of its file, whichever of them the order takes. `fab --order <name> --locked` compares the lock of each of those files with the picks before it removes or writes anything, and refuses, naming each file, one that does not exist or that the picks differ from. An order is a release, and a release never moves a choice by itself: it moves no pin (the pin file) and no row of an existing lock.
+
+The editor does not read or write a lock: it solves from the source, as before, and so does the order it makes.
 
 ## Imports
 
