@@ -15,6 +15,7 @@ pub mod no_supplier;
 pub mod order;
 pub mod physical;
 pub mod pick_lock;
+pub mod pin_swap;
 pub mod pins;
 pub mod project;
 pub mod providers;
@@ -122,6 +123,9 @@ pub struct Outcome {
     /// The row each part of each board and system was picked as: the pick lock these picks make
     /// (`pick_lock`). Its `file` is empty; the command that writes it names the file.
     pub lock: PickLock,
+    /// What the check decided about the pin file beside the source (ADR 0101): the pins the
+    /// requests got, and for each board what the pin optimizer may move (`pin_swap`).
+    pub pins: netsmith_check::PinsOutcome,
 }
 
 /// Where a mistake is: 1-based lines and columns (in characters) of its first and last
@@ -688,6 +692,7 @@ pub fn outcome_observed(
         systems: solved,
         panels,
         lock,
+        pins: checked.pins.clone(),
     })
 }
 

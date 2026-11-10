@@ -45,6 +45,7 @@ mod order;
 mod overhang;
 mod panel;
 mod pick_lock;
+mod pin_swaps;
 mod pinout;
 mod pins;
 mod power_issues;

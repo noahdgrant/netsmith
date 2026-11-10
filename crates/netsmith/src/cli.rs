@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -113,6 +113,11 @@ pub enum Command {
         /// does not meet instead of stopping the run, `Some(false)` stops even if the
         /// manifest says `warn`, `None` leaves it to the manifest.
         constraints_warn: Option<bool>,
+        /// `--pins auto` or `locked` for this run, over the manifest's `pins` (ADR 0101):
+        /// `Some(false)` lets a board that does not route have its unlocked pins swapped,
+        /// `Some(true)` leaves every pin and writes the proposal, `None` leaves it to the
+        /// manifest, whose default is `auto`.
+        pins_locked: Option<bool>,
         /// Make a named order of the project, or list them, instead of every board.
         order: Option<OrderRequest>,
     },
@@ -219,6 +224,7 @@ where
     let (mut allow_drc_violations, mut cross_check, mut strict, mut locked) =
         (false, false, false, false);
     let mut constraints_warn: Option<bool> = None;
+    let mut pins_locked: Option<bool> = None;
     let mut order: Option<OrderRequest> = None;
     let mut port = DEFAULT_PORT;
     while let Some(arg) = args.next() {
@@ -253,6 +259,16 @@ where
                 other => {
                     return Err(format!(
                         "--constraints takes `warn` (a requirement on where a part goes that is not met is listed instead of stopping `fab`) or `error` (it stops `fab`, whatever netsmith.toml says), not {}\n{USAGE}",
+                        other.map_or("nothing".to_string(), |w| format!("`{w}`"))
+                    ));
+                }
+            },
+            ("fab", "--pins") => match args.next().as_deref() {
+                Some("auto") => pins_locked = Some(false),
+                Some("locked") => pins_locked = Some(true),
+                other => {
+                    return Err(format!(
+                        "--pins takes `auto` (a board that does not route may have its unlocked pins swapped, and the pin file written) or `locked` (no pin moves; the swaps that would help are written to pins.proposed.toml), not {}\n{USAGE}",
                         other.map_or("nothing".to_string(), |w| format!("`{w}`"))
                     ));
                 }
@@ -322,6 +338,7 @@ where
             strict,
             locked,
             constraints_warn,
+            pins_locked,
             order,
         },
         _ => Command::Editor { file, port },
@@ -506,6 +523,7 @@ mod tests {
             "--allow-drc-violations",
             "--cross-check",
             "--constraints",
+            "--pins",
             "--port",
             "--board",
             "--by-refdes",
@@ -679,6 +697,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: None,
             })
         );
@@ -698,6 +717,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: None,
             })
         );
@@ -717,6 +737,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: None,
             })
         );
@@ -741,6 +762,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: Some(order),
             })
         };
@@ -760,6 +782,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: Some(OrderRequest::List),
             })
         );
@@ -783,6 +806,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: Some(OrderRequest::Make("d".into())),
             })
         );
@@ -826,6 +850,28 @@ mod tests {
         assert!(!locked, "a run may change the lock by default");
         assert!(parse(&["editor", "--locked"]).is_err());
         assert!(parse(&["compare", "a", "b", "--locked"]).is_err());
+    }
+
+    #[test]
+    fn fab_takes_pins_auto_or_locked_for_one_run() {
+        let pins = |args: &[&str]| match parse(args) {
+            Ok(Command::Fab { pins_locked, .. }) => pins_locked,
+            other => panic!("{args:?}: {other:?}"),
+        };
+        assert_eq!(pins(&["fab", "a.nsm", "--pins", "locked"]), Some(true));
+        assert_eq!(pins(&["fab", "a.nsm", "--pins", "auto"]), Some(false));
+        assert_eq!(
+            pins(&["fab", "a.nsm"]),
+            None,
+            "the manifest decides by default"
+        );
+        let e = parse(&["fab", "--pins", "swap"]).unwrap_err();
+        assert!(
+            e.contains("--pins takes `auto`") && e.contains("`swap`"),
+            "{e}"
+        );
+        assert!(parse(&["fab", "--pins"]).is_err());
+        assert!(parse(&["build", "--pins", "locked"]).is_err());
     }
 
     #[test]
@@ -959,6 +1005,7 @@ mod tests {
                 strict: false,
                 locked: false,
                 constraints_warn: None,
+                pins_locked: None,
                 order: None,
             })
         );

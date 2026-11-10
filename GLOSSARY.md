@@ -314,6 +314,10 @@ _Avoid_: Pin map file, pinout file (a _Pinout_ is a part's table), pin lock file
 The pins that the requests of a board got, as the _Pin file_ lists them. The firmware export will list these with the pins the source names (issue #111).
 _Avoid_: Pinout (a part's table), pin assignment, pin table
 
+**Pin optimizer**:
+What `fab` does when the router leaves connections of a board that has _Pin requests_ (`--pins auto`, the default): it swaps the pins of requests whose entries are not locked with the pins that offer the same capability, scored on the placed board by the ratsnest (crossings, then length), and goes round the pipeline again with the new _Pin map_, at most three rounds, writing the _Pin file_ only when it swapped. With `--pins locked` it moves nothing and writes `pins.proposed.toml` in the output folder (ADR 0101).
+_Avoid_: Pin autorouter, pin shuffler, pin swapper (a swap is one move of it), auto-assign (the first assignment is made by the check, before any layout)
+
 **Shared resource**:
 `shared UARTS limit 2 { UARTE0 UARTE1 UARTE2 .p10 }` in a part: the hardware that at most `limit` of its members use at a time (one without `limit`; a limit is at least 1 and fewer than the members). A member is a peripheral, a function (in use when chosen on a pin) or a pin (in use when its function is chosen or the board connects it). Using more members than allowed is an error that names the part, the resource, every use and its line; it is judged for each instance of the part, before the solve, from the functions the board chose (ADR 0071).
 _Avoid_: Conflict set, exclusive set, group, resource (alone)

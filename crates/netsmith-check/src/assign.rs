@@ -35,6 +35,8 @@ pub struct RootPins {
     pub entries: BTreeMap<String, PinEntry>,
     /// The path of every request of the definition, whether it got a pin or not.
     pub requests: BTreeSet<String>,
+    /// What the pin optimizer may move, for each part that has requests.
+    pub spaces: Vec<PartSpace>,
 }
 
 /// What a run decided about the pin file: the file as it should be now, and how it differs from
@@ -51,6 +53,66 @@ pub struct PinsOutcome {
     /// What the file says that is stale and does not stop the run, with its place: an entry that
     /// no longer holds and is picked again, an entry of a request that is gone.
     pub findings: Vec<String>,
+    /// For each board or system of the source that has requests, by definition name: what the
+    /// pin optimizer may move in each of its parts (see [`PartSpace`]).
+    pub spaces: BTreeMap<String, Vec<PartSpace>>,
+}
+
+/// What one part leaves open to the pin optimizer (ADR 0101): the requests that ask it for a
+/// pin, which pins each may have, and what a choice of pins must keep. It is plain data, so
+/// that a later stage that knows the layout can try choices without elaborating the board
+/// again, and it holds the same rules as the assignment: a pin that the source holds never
+/// moves, and a choice of pins keeps every `shared` limit of the part.
+#[derive(Debug, Clone)]
+pub struct PartSpace {
+    /// The part's path in the board (`u`), as `Part::path` of the design has it.
+    pub path: String,
+    /// The requests of the part, in the byte order of their keys.
+    pub requests: Vec<SpaceRequest>,
+    /// The pins the source holds (it connects them or chooses their function), by path in the
+    /// part: no request may have one.
+    pub taken: BTreeSet<String>,
+    shares: Vec<ShareData>,
+    connected: BTreeSet<InstId>,
+    /// The functions the source chose, by pin.
+    fixed: Vec<(InstId, String)>,
+    pins: BTreeMap<String, InstId>,
+}
+
+/// A request of a [`PartSpace`] and the pin it has now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpaceRequest {
+    /// The request's path, the key of its entry in the pin file.
+    pub key: String,
+    /// The function it asks for.
+    pub capability: String,
+    /// The pin it has, by path in the part (`p02`).
+    pub pin: String,
+    /// A locked entry never moves.
+    pub lock: bool,
+    /// Every pin of the part that offers the capability and that the source does not hold, in
+    /// the byte order of the paths.
+    pub offers: Vec<String>,
+}
+
+impl PartSpace {
+    /// Whether a choice of pins is allowed: each request of `picks` (a key and a pin path) has a
+    /// pin that offers what it asks for and the source does not hold, no pin is used twice, and
+    /// no `shared` resource of the part is used past its limit.
+    pub fn allows(&self, picks: &[(&str, &str)]) -> bool {
+        let mut chosen = self.fixed.clone();
+        let mut used: BTreeSet<&str> = BTreeSet::new();
+        for (key, pin) in picks {
+            let Some(r) = self.requests.iter().find(|r| r.key == *key) else {
+                return false;
+            };
+            if !r.offers.iter().any(|o| o == pin) || !used.insert(pin) {
+                return false;
+            }
+            chosen.push((self.pins[*pin], r.capability.clone()));
+        }
+        shares_conflict_in(&self.shares, &self.connected, &chosen).is_none()
+    }
 }
 
 impl PinsOutcome {
@@ -465,6 +527,8 @@ impl Checker<'_> {
                 }
             }
         }
+        let source_fixed = fixed.clone();
+        let source_taken: BTreeSet<InstId> = occupied.keys().copied().collect();
         // The entries that still hold are kept; the others are told and picked again.
         let pin_source = self.pin_input.as_ref().map(|p| p.source);
         let mut kept: Vec<(&Asked, PinAssignment)> = Vec::new();
@@ -564,6 +628,49 @@ impl Checker<'_> {
             });
         }
         applied.sort_by(|a, b| a.key.cmp(&b.key));
+        {
+            let model = &self.model;
+            let requests_of_part: Vec<SpaceRequest> = applied
+                .iter()
+                .map(|p| {
+                    let offers = ctx
+                        .rows
+                        .iter()
+                        .filter(|(pin, _)| !source_taken.contains(pin))
+                        .filter(|(pin, _)| {
+                            let row = rows_all.iter().find(|r| r.pin == *pin).expect("a row");
+                            model.offers(part, row, &p.function)
+                        })
+                        .map(|(_, path)| path.clone())
+                        .collect();
+                    SpaceRequest {
+                        key: p.key.clone(),
+                        capability: p.function.clone(),
+                        pin: model.path_below(p.pin, part),
+                        lock: p.lock,
+                        offers,
+                    }
+                })
+                .collect();
+            if !requests_of_part.is_empty() {
+                root.spaces.push(PartSpace {
+                    path: ctx.path.clone(),
+                    requests: requests_of_part,
+                    taken: source_taken
+                        .iter()
+                        .map(|p| model.path_below(*p, part))
+                        .collect(),
+                    shares: share_data(model, part),
+                    connected: ctx.connected.clone(),
+                    fixed: source_fixed,
+                    pins: ctx
+                        .rows
+                        .iter()
+                        .map(|(id, path)| (path.clone(), *id))
+                        .collect(),
+                });
+            }
+        }
         for p in applied {
             let r = requests
                 .iter()
@@ -600,9 +707,13 @@ impl Checker<'_> {
         let existing = self.pin_input.as_ref().map(|p| p.file.clone());
         let src = self.pin_input.as_ref().map(|p| p.source);
         let mut file = PinFile::default();
+        let mut spaces: BTreeMap<String, Vec<PartSpace>> = BTreeMap::new();
         for r in &roots {
             if !r.entries.is_empty() {
                 file.boards.insert(r.board.clone(), r.entries.clone());
+            }
+            if !r.spaces.is_empty() {
+                spaces.insert(r.board.clone(), r.spaces.clone());
             }
         }
         let mut findings = std::mem::take(&mut self.pin_findings);
@@ -643,6 +754,7 @@ impl Checker<'_> {
             existing,
             changes,
             findings,
+            spaces,
         }
     }
 
@@ -1083,28 +1195,78 @@ fn holders_of(
     out
 }
 
+/// A shared resource of a part, as the search reads it.
+#[derive(Debug, Clone)]
+struct ShareData {
+    name: String,
+    limit: usize,
+    members: Vec<MemberData>,
+}
+
+#[derive(Debug, Clone)]
+struct MemberData {
+    name: String,
+    /// The pin, for a member that is a pin.
+    pin: Option<InstId>,
+    /// The functions of the peripheral, for a member that is one.
+    peripheral: Option<Vec<String>>,
+}
+
+/// The shared resources of a part, by name, with their members.
+fn share_data(model: &Model, part: InstId) -> Vec<ShareData> {
+    let inst = model.instance(part);
+    let mut shares: Vec<&crate::model::SharedRes> = inst.rules.shares.iter().collect();
+    shares.sort_by(|a, b| a.name.cmp(&b.name));
+    shares.dedup_by(|a, b| a.name == b.name);
+    shares
+        .into_iter()
+        .map(|s| ShareData {
+            name: s.name.clone(),
+            limit: s.limit as usize,
+            members: s
+                .members
+                .iter()
+                .map(|m| MemberData {
+                    name: m.name.clone(),
+                    pin: m.pin,
+                    peripheral: inst
+                        .rules
+                        .peripherals
+                        .iter()
+                        .find(|p| p.name == m.name)
+                        .map(|p| p.functions.iter().map(|g| g.name.clone()).collect()),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
 /// The first shared resource of the part that the chosen functions would use over its limit.
 /// A function that a peripheral lists puts the peripheral in use, a function that a member
 /// names puts that member in use, and a member that is a pin is in use when a function is
 /// chosen on it or the source connects it.
 fn shares_conflict(model: &Model, ctx: &PartCtx, chosen: &[(InstId, String)]) -> Option<Conflict> {
-    let inst = model.instance(ctx.part);
-    let mut shares: Vec<&crate::model::SharedRes> = inst.rules.shares.iter().collect();
-    shares.sort_by(|a, b| a.name.cmp(&b.name));
-    shares.dedup_by(|a, b| a.name == b.name);
+    shares_conflict_in(&share_data(model, ctx.part), &ctx.connected, chosen)
+}
+
+fn shares_conflict_in(
+    shares: &[ShareData],
+    connected: &BTreeSet<InstId>,
+    chosen: &[(InstId, String)],
+) -> Option<Conflict> {
     for s in shares {
         let mut in_use: Vec<(String, Vec<(InstId, String)>)> = Vec::new();
         for m in &s.members {
             let uses: Vec<(InstId, String)> = if let Some(pin) = m.pin {
                 match chosen.iter().find(|(p, _)| *p == pin) {
                     Some((p, f)) => vec![(*p, f.clone())],
-                    None if ctx.connected.contains(&pin) => vec![(pin, "connected".to_string())],
+                    None if connected.contains(&pin) => vec![(pin, "connected".to_string())],
                     None => Vec::new(),
                 }
-            } else if let Some(p) = inst.rules.peripherals.iter().find(|p| p.name == m.name) {
+            } else if let Some(functions) = &m.peripheral {
                 chosen
                     .iter()
-                    .filter(|(_, f)| p.functions.iter().any(|g| g.name == *f))
+                    .filter(|(_, f)| functions.iter().any(|g| g == f))
                     .cloned()
                     .collect()
             } else {
@@ -1118,10 +1280,10 @@ fn shares_conflict(model: &Model, ctx: &PartCtx, chosen: &[(InstId, String)]) ->
                 in_use.push((m.name.clone(), uses));
             }
         }
-        if in_use.len() > s.limit as usize {
+        if in_use.len() > s.limit {
             return Some(Conflict {
                 share: s.name.clone(),
-                limit: s.limit as usize,
+                limit: s.limit,
                 members: s.members.iter().map(|m| m.name.clone()).collect(),
                 in_use,
             });

@@ -59,6 +59,7 @@ fn main() -> ExitCode {
             strict,
             locked,
             constraints_warn,
+            pins_locked,
             order,
         }) => {
             if let Some(code) = sync_pins(file.as_deref(), locked) {
@@ -84,6 +85,7 @@ fn main() -> ExitCode {
                         strict,
                         locked,
                         constraints_warn,
+                        pins_locked,
                     )
                 }),
             }
@@ -485,6 +487,22 @@ fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
     )
 }
 
+/// What a board that does not route may do with its pins: `--pins` for this run, else `pins` in
+/// the manifest, else `auto` (ADR 0101).
+fn pins_mode(target: &Target, flag: Option<bool>) -> netsmith::fab::PinsMode {
+    use netsmith::fab::PinsMode;
+    match flag {
+        Some(true) => PinsMode::Locked,
+        Some(false) => PinsMode::Auto,
+        None => target
+            .project
+            .as_ref()
+            .and_then(|p| p.manifest.pins.as_deref())
+            .and_then(PinsMode::parse)
+            .unwrap_or(PinsMode::Auto),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_fab(
     file: Option<&str>,
@@ -495,6 +513,7 @@ fn run_fab(
     strict: bool,
     locked: bool,
     constraints_warn: Option<bool>,
+    pins_locked: Option<bool>,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target(file, strict) {
         Ok(t) => t,
@@ -538,7 +557,9 @@ fn run_fab(
         only: None,
         strict_heights: strict_heights(&target, constraints_warn),
         lock: None,
+        pins: None,
     };
+    let pins_mode = pins_mode(&target, pins_locked);
     let mut code = ExitCode::SUCCESS;
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
@@ -558,6 +579,10 @@ fn run_fab(
         let options = FabOptions {
             layout: Some(netsmith::layout::layout_path(&source.path)),
             lock: Some(using),
+            pins: Some(netsmith::fab::PinsUse {
+                mode: pins_mode,
+                file: netsmith::pins::pins_path(&source.path),
+            }),
             ..options.clone()
         };
         match fab_with_options(
@@ -650,6 +675,8 @@ fn run_order(
         cross_check,
         strict_heights: strict_heights(&target, constraints_warn),
         lock: None,
+        // An order is a release: it never moves a pin by itself.
+        pins: None,
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

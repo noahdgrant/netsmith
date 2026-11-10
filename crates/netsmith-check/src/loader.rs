@@ -135,6 +135,13 @@ impl Loader {
         );
     }
 
+    /// The pin file attached to the source called `source_name`: its display name and text.
+    pub fn pin_file(&self, source_name: &str) -> Option<(&str, &str)> {
+        self.pins
+            .get(source_name)
+            .map(|(file, text)| (file.as_str(), text.as_str()))
+    }
+
     /// [`Loader::attach_pins`] on a loader that is being built.
     pub fn with_pins(mut self, source_name: &str, file_name: &str, text: &str) -> Self {
         self.attach_pins(source_name, file_name, text);
