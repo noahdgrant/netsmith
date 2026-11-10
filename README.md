@@ -13,7 +13,7 @@ and routed PCB with a Gerber package for JLCPCB, on two layers or on four with g
 supply planes inside. The editor (`netsmith editor`) shows the source and the board in a
 browser.
 
-Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks where KiCad is installed, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). All but two build and fab with no KiCad at all; `schematic_bench` and `enclosure_sensor` map a part to a symbol or footprint of KiCad's own in their `kicad.toml`, and need it installed (see Install). Many of the decisions behind the language are provisional and unreviewed (see Limitations).
+Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks where KiCad is installed, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). The rest build and fab with no KiCad at all (see Install). Many of the decisions behind the language are provisional and unreviewed (see Limitations).
 
 ## An example
 
@@ -72,9 +72,8 @@ glyphs, with the pins where KiCad's symbols have them. Every footprint of the st
 library is generated or written from the maker's drawing (`std/libs/`). The `.kicad_sch` and
 `.kicad_pcb` files it writes are KiCad's formats, and KiCad opens them. CI proves it: the
 `no-kicad` job builds and fabs the examples on a runner with no KiCad, with the libraries and
-`kicad-cli` hidden (`scripts/check-no-kicad.sh`), and fails if a run says KiCad is missing. The
-two examples that name a part of KiCad's own, `schematic_bench` and `enclosure_sensor`, are
-the exception it checks: they must stop, with the message below.
+`kicad-cli` hidden (`scripts/check-no-kicad.sh`), and fails if a run says KiCad is missing. No
+example names a part of KiCad's own, so every one of them builds and fabs.
 
 KiCad 9 is needed for these, and for nothing else:
 

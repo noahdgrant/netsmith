@@ -17,7 +17,7 @@
 //! | Two outputs on one net | two `output` pins on one net; pins the part joins inside are one; an `output` and a `bidirectional` pin are allowed | ``net `X` has two outputs: `a.tx`, `b.tx` `` |
 //! | Function not chosen | a connected pin with more than one function needs `.function &=` from the board | `` `u.pa9` has several functions (GPIO, UART1_TX, SPI1_MOSI) and is connected: choose one with `.u.pa9.function &= "GPIO"` `` |
 //! | Function not offered | `.function &=` names a function the pin does not list | `` `u.pa9` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_MOSI `` |
-//! | Function used twice | one function on two pins of one part | `` function `UART1_TX` is chosen on both `u.pa9` and `u.pb6` `` |
+//! | Function used twice | one function on two pins of one part (requests for a function that rows list on several pins each get their own pin) | `` function `UART1_TX` is chosen on both `u.pa9` and `u.pb6` `` |
 //! | Pad given to two pins | two pins on one pad that the part does not join (decision 5, after the solve) | `` pad 3 is given to `sense` and `en` `` |
 //!
 //! "Another part's pin" means a terminal whose owning part is not this one, so a net made only
@@ -523,7 +523,17 @@ impl<'a> Run<'a> {
                 .peripherals
                 .iter()
                 .any(|p| p.class.as_deref() == Some(function.as_str()));
-            if pins.len() < 2 || class {
+            if class {
+                continue;
+            }
+            // A function that rows list on several pins (`ANALOG`) may be asked for by several
+            // requests, and each gets a pin of its own: a request's pin is not counted. A line
+            // of a peripheral (`UARTE1_TX`) is on one pin at a time, so it stays counted. Two
+            // pins the source chose by hand are counted either way.
+            if model.peripheral_of(part, &function).is_none() {
+                pins.retain(|&p| !model.pin_assignments.iter().any(|a| a.pin == p));
+            }
+            if pins.len() < 2 {
                 continue;
             }
             pins.sort_by_key(|&p| model.path_of(p));
@@ -537,7 +547,7 @@ impl<'a> Run<'a> {
                 .collect();
             let by = if asked.len() == pins.len() {
                 format!(
-                    "; the requests {} ask for a function that is no class, which one pin has",
+                    "; the requests {} ask for a line of a peripheral, which one pin has",
                     asked.join(" and ")
                 )
             } else {

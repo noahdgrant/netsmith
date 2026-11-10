@@ -447,8 +447,12 @@ impl SymbolLib {
 
     fn library_path(&self, library: &str) -> Result<(PathBuf, bool), SymbolError> {
         let installed = self.root.join(format!("{library}.kicad_sym"));
+        // With no install found `root` is a guess (possibly `""`, which makes `installed` a
+        // path relative to the working directory): no library is installed then, so none is
+        // shadowed.
+        let is_installed = self.no_install.is_none() && installed.is_file();
         match self.project.iter().find(|(n, _)| n == library) {
-            Some((_, file)) if installed.is_file() => Err(SymbolError::Ambiguous {
+            Some((_, file)) if is_installed => Err(SymbolError::Ambiguous {
                 library: library.to_string(),
                 installed,
                 project: file.clone(),
@@ -1015,6 +1019,24 @@ mod tests {
         let text = lib.symbol("Device:R").unwrap_err().to_string();
         assert!(text.contains("both installed"), "{text}");
         assert!(text.contains("elsewhere.kicad_sym"), "{text}");
+    }
+
+    #[test]
+    fn a_project_library_is_not_shadowing_a_file_of_the_guessed_root_when_no_kicad_is_found() {
+        // With no install the root is a guess: here a folder that has a `Device.kicad_sym`, as
+        // the working directory does when the root is `""`. It is no installed library.
+        let (dir, _) = lib();
+        let file = dir.path().join("elsewhere.kicad_sym");
+        std::fs::write(&file, testlib::acme()).unwrap();
+        let mut lib = SymbolLib::at(dir.path()).with_library("Device", &file);
+        lib.no_install = Some(
+            install::Search::under(dir.path())
+                .with_no_kicad()
+                .find(install::Kind::Symbols)
+                .unwrap_err(),
+        );
+        let (path, project) = lib.library_path("Device").unwrap();
+        assert_eq!((path, project), (file, true));
     }
 
     #[test]

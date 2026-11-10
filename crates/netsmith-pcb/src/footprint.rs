@@ -904,6 +904,10 @@ impl FootprintLibrary {
     /// The `.pretty` folder of a library, and whether it is the project's own.
     fn folder_of(&self, library: &str) -> Result<(PathBuf, bool), FootprintError> {
         let installed = self.root.join(format!("{library}.pretty"));
+        // With no install found `root` is a guess (possibly `""`, which makes `installed` a
+        // path relative to the working directory): no library is installed then, so none is
+        // shadowed.
+        let is_installed = self.no_install.is_none() && installed.is_dir();
         match self.project.iter().find(|(n, _)| n == library) {
             Some((_, folder)) if library == netsmith_kicad::stdlib::NAME => {
                 Err(FootprintError::AmbiguousStd {
@@ -911,7 +915,7 @@ impl FootprintLibrary {
                     project: folder.clone(),
                 })
             }
-            Some((_, folder)) if installed.is_dir() => Err(FootprintError::Ambiguous {
+            Some((_, folder)) if is_installed => Err(FootprintError::Ambiguous {
                 library: library.to_string(),
                 installed,
                 project: folder.clone(),
@@ -1630,6 +1634,29 @@ mod tests {
         assert!(text.contains("usr/share/kicad/footprints"), "{text}");
         assert!(text.contains(install::SYMBOLS_VARIABLE), "{text}");
         assert!(text.contains(install::FOOTPRINTS_VARIABLE), "{text}");
+    }
+
+    #[test]
+    fn a_project_library_is_not_shadowing_a_folder_of_the_guessed_root_when_no_kicad_is_found() {
+        // With no install the root is a guess: here a folder that has a `own.pretty`, as the
+        // working directory does when the root is `""`. It is no installed library.
+        let dir = netsmith_kicad::testlib::TempDir::new("no-kicad-shadow-fp");
+        let pretty = dir.path().join("own.pretty");
+        std::fs::create_dir_all(&pretty).unwrap();
+        let mut library = FootprintLibrary::at(dir.path()).with_library("own", &pretty);
+        // An install that is found: the folder is installed, and the project's library clashes.
+        let text = library.path_of("own:X").unwrap_err().to_string();
+        assert!(text.contains("both installed"), "{text}");
+        // No install found: no clash, the project's own library answers.
+        let lookup = install::Search::under(dir.path())
+            .with_no_kicad()
+            .find(install::Kind::Footprints)
+            .unwrap_err();
+        library.no_install = Some(lookup);
+        assert_eq!(
+            library.path_of("own:X").unwrap(),
+            pretty.join("X.kicad_mod")
+        );
     }
 
     #[test]

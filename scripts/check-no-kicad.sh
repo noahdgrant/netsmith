@@ -7,13 +7,11 @@
 # the boards of examples/ and the three projects. `carrier_and_cards.nsm` is left out: its parts
 # are invented and have no KiCad symbol, so it is checked and solved only, never built.
 #
-# Two projects still name a KiCad part of their own in `kicad.toml`, which is the one case that
-# needs KiCad (ADR 0097): `schematic_bench` maps two parts to stock KiCad symbols (`LM358` and
-# `24LC16`, drawn in KiCad's shape on purpose, it is the bench of the schematic drawing) and
-# `enclosure_sensor` maps its chip antenna to KiCad's `Johanson_2450AT43F0100` footprint. With
-# KiCad hidden they must stop, and say which part, which id and which line of `kicad.toml`, and
-# the three ways out. The script checks that they do. If one of them is changed to need no KiCad,
-# this says so: move it to the loop that must build.
+# A project may name a KiCad part of its own in `kicad.toml`, which is the one case that needs
+# KiCad (ADR 0097), and then a run stops and says which part, which id and which line. No example
+# does: `schematic_bench` and `enclosure_sensor` draw their symbols from the pin tables and take
+# their footprints from the generators or from their own `libs/` (their `README.md` and
+# `kicad.toml` say how), so every example here must build and fab.
 #
 # KiCad is hidden four ways, so that no one of them has to be right alone:
 #   - NETSMITH_NO_KICAD=1 makes the search find nothing, `kicad-cli` and the Windows KiCad that
@@ -109,7 +107,7 @@ for name in led led_panel linear_regulator status_indicator four_layer two_board
 done
 
 # The projects: run from their folder, as a person does.
-for project in rp2350_minimal; do
+for project in rp2350_minimal schematic_bench enclosure_sensor; do
     step "build examples/$project" "$work/examples/$project" build --out "$work/out/$project"
 done
 # `fab` on rp2350_minimal is not run here: the placer takes 3 s, but the router needs 35 s on an
@@ -119,45 +117,8 @@ done
 # rp2350_parity.rs) runs `fab` on the project with NETSMITH_NO_KICAD=1 and a route timeout of
 # 20 s, and gates on the parity checker, in the `test` slices.
 
-# stops <label> <folder> <KiCad id> <netsmith arguments...>: a run that names a KiCad part of the
-# project's own must stop, and its message must name the part, the id and the line of kicad.toml
-# and say the three ways out (and not the editor's "KiCad not found").
-stops() {
-    local label="$1" dir="$2" id="$3"
-    shift 3
-    runs=$((runs + 1))
-    if hidden "$dir" "$@"; then
-        echo "FAIL  $label: built with no KiCad, but it names KiCad's \`$id\`: move it to the loop that must build"
-        failed=1
-        return
-    fi
-    for want in "needs KiCad's" "\`$id\`" "(kicad.toml line " "Three ways out"; do
-        if ! grep -qF -- "$want" "$work/log"; then
-            echo "FAIL  $label: the message lacks: $want"
-            sed 's/^/      /' "$work/log"
-            failed=1
-            return
-        fi
-    done
-    if grep -qi 'KiCad not found' "$work/log"; then
-        echo "FAIL  $label: says \"KiCad not found\""
-        failed=1
-        return
-    fi
-    echo "ok    $label: stops, as it must, at KiCad's \`$id\` of its own kicad.toml"
-}
-
-stops "build examples/schematic_bench" "$work/examples/schematic_bench" \
-    "Amplifier_Operational:LM358" build --out "$work/out/schematic_bench"
-stops "fab   examples/schematic_bench" "$work/examples/schematic_bench" \
-    "Amplifier_Operational:LM358" fab --out "$work/fab/schematic_bench"
-stops "build examples/enclosure_sensor" "$work/examples/enclosure_sensor" \
-    "RF_Antenna:Johanson_2450AT43F0100" build --out "$work/out/enclosure_sensor"
-stops "fab   examples/enclosure_sensor" "$work/examples/enclosure_sensor" \
-    "RF_Antenna:Johanson_2450AT43F0100" fab --out "$work/fab/enclosure_sensor"
-
 if [ "$failed" -ne 0 ]; then
     echo "check-no-kicad: FAILED"
     exit 1
 fi
-echo "check-no-kicad: $runs runs with no KiCad: every example without a KiCad part of its own built and fabbed, the two with one stopped at it"
+echo "check-no-kicad: $runs runs with no KiCad: every example built and fabbed"

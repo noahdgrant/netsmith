@@ -3016,7 +3016,26 @@ error: `modem` asks for UARTE1_TX on `u`, and no free pin can serve it: `UARTS` 
   |     ^^^^^^^^^^^^^^^^^^^^
 ```
 
-The rules about a pin run on the result as they do on a pin the source names: a function that disagrees with its net is the usual "two outputs" error, once, at the request. A class (`GPIO` above, a function that rows list and a peripheral is `on`) can be chosen on any number of pins of a part; a function that is no class (`ANALOG`) still belongs to one pin.
+The rules about a pin run on the result as they do on a pin the source names: a function that disagrees with its net is the usual "two outputs" error, once, at the request. A class (`GPIO` above, a function that rows list and a peripheral is `on`) can be chosen on any number of pins of a part.
+
+Several requests may ask for a function that rows list on more than one pin (`ANALOG` above), and each gets a pin of its own among the pins that offer it, in the same order as for any request:
+
+```nsm
+import src::zmcu4::Zmcu4
+import std::parts::passive::Resistor
+
+board TwoSensors {
+    .u: Zmcu4
+    .a: Resistor
+    .b: Resistor
+    .temperature: .u.ANALOG
+    .battery: .u.ANALOG
+    .temperature ~ .a.a
+    .battery ~ .b.a
+}
+```
+
+Here `battery` gets `p02` and `temperature` gets `p03`, and the pin file has an entry for each with `function = "ANALOG"`. The optimizer and `--pins locked` treat them as any two requests: each stays on a pin that offers `ANALOG`, and two never share a pin. When more requests ask for the function than pins offer it, the last one in the order of the names gets the "every pin that offers it is taken" error above. Two things stay refused: two requests for a function that only one pin offers (the second has no pin left, with the same error), and two pins that the source itself gives the same function by hand (`function ANALOG is chosen on both ...`). A line of a peripheral (`UARTE1_TX`) is also on one pin at a time, though every pin of its class could carry it, so two requests for it are refused with that same message.
 
 A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`).
 

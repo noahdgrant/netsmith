@@ -139,7 +139,7 @@ fn the_function_is_a_peripherals_line_on_any_pin_of_its_class() {
 }
 
 #[test]
-fn a_class_may_be_chosen_on_two_pins_and_another_function_may_not() {
+fn a_class_may_be_chosen_on_two_pins_and_another_function_by_hand_may_not() {
     let c = run(
         "    .a: .u.GPIO\n    .b: .u.GPIO\n    .a ~ .probe.a00\n    .b ~ .probe.a01\n",
         None,
@@ -151,7 +151,7 @@ fn a_class_may_be_chosen_on_two_pins_and_another_function_may_not() {
         None,
     );
     assert!(c.is_ok(), "{}", c.render());
-    // A function that is no class still belongs to one pin.
+    // Two pins the source gives a function by hand are still two uses, class or not.
     let c = run(
         "    .u.p02.function &= \"ANALOG\"\n    .u.p03.function &= \"ANALOG\"\n",
         None,
@@ -431,10 +431,81 @@ fn more_requests_than_pins_say_who_got_them() {
         None,
     );
     let m = messages(&c);
-    assert_eq!(m.len(), 2, "{}", c.render());
+    assert_eq!(m.len(), 1, "{}", c.render());
     assert!(m.contains(&"`c` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by `a` (new), `u.p03` by `b` (new)".to_string()), "{m:?}");
-    // ANALOG is no class, so the two pins that were found collide with the one-function rule.
-    assert!(m.contains(&"function `ANALOG` is chosen on both `u.p02` and `u.p03`; the requests `a` and `b` ask for a function that is no class, which one pin has".to_string()), "{m:?}");
+    // ANALOG is on two pins, so the two requests that were served share nothing: the check has
+    // one message, for the request that has no pin left.
+}
+
+#[test]
+fn requests_for_a_function_that_several_pins_offer_each_get_a_pin() {
+    let statements =
+        "    .a: .u.ANALOG\n    .b: .u.ANALOG\n    .a ~ .probe.a00\n    .b ~ .probe.a01\n";
+    let c = run(statements, None);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("a", "p02"), pair("b", "p03")]);
+    let model = &c.board("B").unwrap().model;
+    for a in &model.pin_assignments {
+        assert_eq!(model.function_of(a.pin).as_deref(), Some("ANALOG"));
+    }
+    // The pin file records the function that was asked for, one entry for each request.
+    let text = c.pins.file.to_text();
+    assert!(
+        text.contains("[B.pins.a]\npin = \"p02\"\nfunction = \"ANALOG\""),
+        "{text}"
+    );
+    assert!(
+        text.contains("[B.pins.b]\npin = \"p03\"\nfunction = \"ANALOG\""),
+        "{text}"
+    );
+    // The same source gives the same answer, and the file that holds is read back unchanged.
+    let again = run(statements, Some(&text));
+    assert!(again.is_ok(), "{}", again.render());
+    assert_eq!(pins(&again), pins(&c));
+    assert!(!again.pins.changed(), "{:?}", again.pins.changes);
+    assert_eq!(again.pins.file.to_text(), text);
+    // Locked entries (the locked path) keep each request on its own pin, even in the other order.
+    let locked = file(&[
+        ("a", entry("p03", "ANALOG", true)),
+        ("b", entry("p02", "ANALOG", true)),
+    ]);
+    let kept = run(statements, Some(&locked));
+    assert!(kept.is_ok(), "{}", kept.render());
+    assert_eq!(pins(&kept), [pair("a", "p03"), pair("b", "p02")]);
+    assert!(!kept.pins.changed());
+}
+
+#[test]
+fn two_requests_for_a_line_of_a_peripheral_are_still_refused() {
+    // A line of a peripheral is on one pin at a time, though every GPIO could carry it.
+    let c = run("    .a: .u.UARTE1_TX\n    .b: .u.UARTE1_TX\n", None);
+    assert_eq!(
+        messages(&c),
+        [
+            "function `UARTE1_TX` is chosen on both `u.p00` and `u.p01`; the requests `a` and `b` ask for a line of a peripheral, which one pin has"
+        ]
+    );
+}
+
+#[test]
+fn a_request_goes_round_a_pin_the_source_chose_for_the_same_function() {
+    // `p02` is the source's ANALOG; the request gets the other pin and the check has no fault.
+    let c = run(
+        "    .u.p02 ~ .probe.a00\n    .u.p02.function &= \"ANALOG\"\n    .a: .u.ANALOG\n    .a ~ .probe.a01\n",
+        None,
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("a", "p03")]);
+}
+
+#[test]
+fn two_requests_for_a_function_that_one_pin_offers_are_still_refused() {
+    // AIN0 is listed on `p02` only: the second request has no pin left.
+    let c = run("    .a: .u.AIN0\n    .b: .u.AIN0\n", None);
+    assert_eq!(
+        messages(&c),
+        ["`b` asks for AIN0 on `u`, and every pin that offers it is taken: `u.p02` by `a` (new)"]
+    );
 }
 
 #[test]
