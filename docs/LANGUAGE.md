@@ -6029,6 +6029,40 @@ error: the `crystal` catalog has nothing for `xtal`, which needs frequency withi
    |     ^^^^^^^^^^^^^^
 ```
 
+### Named environments
+
+A board need not write its range. `std::env` has named environments, each an interface with the field `.temperature` and the range offered with `?=`, so a board that declares one has the range and can narrow it:
+
+| Name | Range | Where it comes from |
+|---|---|---|
+| `Automotive` | -40degC..125degC | AEC-Q100 Grade 1, ambient operating temperature range |
+| `AutomotiveGrade0` | -40degC..150degC | AEC-Q100 Grade 0, the same table |
+| `AutomotiveGrade2` | -40degC..105degC | AEC-Q100 Grade 2, the same table |
+| `AutomotiveGrade3` | -40degC..85degC | AEC-Q100 Grade 3, the same table |
+| `Industrial` | -40degC..85degC | a convention of manufacturers, not a standard |
+| `Commercial` | 0degC..70degC | a convention of manufacturers, not a standard |
+
+The four `Automotive` ranges are the part operating temperature grades of AEC-Q100 (Automotive Electronics Council, AEC-Q100-REV-J, August 11, 2023, section 1.3.4, Table 1, page 3 of 44, "Ambient Operating Temperature Range"), and `Automotive` is Grade 1 because the owner chose it as the default grade: the document marks none as the usual one. They are the ranges and nothing more: they do not say a board or its parts were qualified to AEC-Q100, and AEC-Q101 and AEC-Q200 (discrete semiconductors and passives) were not read. `Industrial` and `Commercial` are conventions: no document defines them, and the one page that states them which was read, Renesas's "Temperature Ranges" (read 2026-11-10), lists them as -40 to +85 and 0 to +70 and does not say whether they are ambient or junction. The doc comment of each definition in `std/env.nsm` says the same. A project that needs another range writes its own definition (see The manifest's default).
+
+```nsm evaluate
+import std::env::Automotive
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Dash {
+    .environment: Automotive {}
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+A board narrows the offer with `&=`, as it does a process (`.environment.temperature &= -20degC..90degC` keeps the board inside its parts' ranges and no wider than the grade). A stated range replaces the offer and is not intersected with it (ADR 0051), so `&= -55degC..150degC` is a wider environment than `Automotive`.
+
 Rules.
 
 - **A row that states a range the environment is not inside is not offered.** The solver tries the next row, and says in its message how many it left out and why.
@@ -6110,7 +6144,15 @@ interface Automotive {
 }
 ```
 
-A board that declares `.environment` of its own has that one alone (not the two together), and a board that only states `.environment.temperature &= ...` with no declaration has the manifest's definition as if it had written the declaration, and its statement replaces the offer. The manifest's default is a convenience and not a floor: nothing stops a board of the project from declaring a milder environment. The library has no `Automotive`, `Industrial` or `Commercial` definition, because a range that cannot be cited does not belong in it; a project writes its own, as above, and cites where the range comes from in its doc comment.
+A project that is content with a standard environment names it, and every board of it is then judged against AEC-Q100 Grade 1's range with no line in any board:
+
+```toml
+[project]
+name = "dash"
+environment = "std::env::Automotive"
+```
+
+A board that declares `.environment` of its own has that one alone (not the two together), and a board that only states `.environment.temperature &= ...` with no declaration has the manifest's definition as if it had written the declaration, and its statement replaces the offer. The manifest's default is a convenience and not a floor: nothing stops a board of the project from declaring a milder environment. A project can name one of the standard environments, or write its own as above and cite where the range comes from in its doc comment; a range that cannot be cited does not belong in `std`.
 
 ### Catalog columns
 
@@ -12142,6 +12184,12 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
 | `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`). Every fitted part is checked against it (ADR 0099). |
+| `std::env::Automotive` | A named environment: AEC-Q100 Grade 1, -40degC..125degC (AEC-Q100-REV-J, Table 1, ambient operating temperature range), offered so a board narrows it. See Named environments. |
+| `std::env::AutomotiveGrade0` | AEC-Q100 Grade 0, -40degC..150degC, the same table. |
+| `std::env::AutomotiveGrade2` | AEC-Q100 Grade 2, -40degC..105degC, the same table. |
+| `std::env::AutomotiveGrade3` | AEC-Q100 Grade 3, -40degC..85degC, the same table. |
+| `std::env::Industrial` | A named environment, -40degC..85degC: a convention of manufacturers, not a standard (source in its doc comment). |
+| `std::env::Commercial` | A named environment, 0degC..70degC: a convention of manufacturers, not a standard (source in its doc comment). |
 
 ### Modules
 

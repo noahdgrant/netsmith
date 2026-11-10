@@ -426,6 +426,33 @@ fn a_board_that_only_states_the_temperature_has_the_manifests_environment_as_dec
 }
 
 #[test]
+fn a_standard_named_environment_is_the_default_and_the_crystals_judge_it() {
+    // `Industrial` is -40 to 85 degC: the standard crystal rows (-40 to 85 degC) cover it.
+    let main = board("");
+    let root = project("named-ok", "environment = \"std::env::Industrial\"", &main);
+    let b = built(&root, &main).unwrap();
+    assert!(b.sourcing.iter().any(|s| s.kind == "Crystal"));
+    // `Automotive` is AEC-Q100 Grade 1, -40 to 125 degC: none of them does.
+    let root = project("named-hot", "environment = \"std::env::Automotive\"", &main);
+    let e = built(&root, &main).map(|_| ()).unwrap_err();
+    assert!(
+        e.contains("the `crystal` catalog has nothing for `xtal`")
+            && e.contains("`.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"),
+        "{e}"
+    );
+    // A board that declares one and narrows its offer is judged against the narrowed range.
+    let main = board(&format!(
+        "    .environment: Automotive {{}}\n    .environment.temperature &= {COLD}..{WARM}\n"
+    ))
+    .replace(
+        "import std::env::Environment",
+        "import std::env::Automotive",
+    );
+    let root = project("named-narrowed", "", &main);
+    built(&root, &main).unwrap();
+}
+
+#[test]
 fn the_standard_environment_can_be_the_default_and_a_board_then_states_its_temperature() {
     let main = board("");
     let root = project("std", "environment = \"std::env::Environment\"", &main);
