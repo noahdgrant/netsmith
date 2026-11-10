@@ -37,6 +37,10 @@ not required. Which parts must match is `reference/must_match.toml` (see below).
 ## What is here
 
 - `netsmith.toml`, `src/main.nsm`: the project and its (placeholder) board, `Orbit`.
+- `src/main.lock.toml`: the pick lock of the placeholder board (the catalog row each part was
+  picked as), written by `netsmith lock --update`; CI checks it with
+  `scripts/check-example-locks.sh`. Later stages must run `netsmith lock --update` when the
+  board's parts change, and commit the lock.
 - `LICENSE`: their licence text.
 - `reference/ORBIT.kicad_pcb`, `reference/ORBIT.kicad_sch`: their board and schematic, unchanged
   (680 KB and 211 KB).
