@@ -20,10 +20,12 @@ pub(crate) struct ProviderRef {
 
 /// The members every part has whatever its definition says, which a use of a generic may
 /// name too.
-const BUILT_IN: [&str; 5] = [
+const BUILT_IN: [&str; 7] = [
     "assembly",
     "designator",
     "height",
+    "temp_min",
+    "temp_max",
     "pin_protrusion",
     "place",
 ];

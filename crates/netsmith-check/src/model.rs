@@ -1520,6 +1520,48 @@ impl Model {
         }
     }
 
+    /// The member `.environment` of the board a part is on, if the board has one: an
+    /// interface (ADR 0099). Each board of a system has its own.
+    pub fn environment_of(&self, part: InstId) -> Option<InstId> {
+        let board = self.board_of(part)?;
+        match self.member(board, "environment")? {
+            Member::Inst(env) if self.instance(env).kind == InstKind::Interface => Some(env),
+            _ => None,
+        }
+    }
+
+    /// The temperature field of the environment of the board a part is on, `.environment.
+    /// temperature`. A board with no `.environment`, or one whose environment has no
+    /// temperature of that kind, has none.
+    pub fn environment_temperature_of(&self, part: InstId) -> Option<FieldId> {
+        let env = self.environment_of(part)?;
+        match self.member(env, "temperature")? {
+            Member::Field(f)
+                if self.field(f).kind == FieldKind::Quantity(Dimension::TEMPERATURE) =>
+            {
+                Some(f)
+            }
+            _ => None,
+        }
+    }
+
+    /// The `temp_min` and `temp_max` fields of a part, the least and the greatest temperature
+    /// it works at (ADR 0099). Every part has both; anything else has none.
+    pub fn temperature_range_of(&self, part: InstId) -> Option<(FieldId, FieldId)> {
+        if self.instance(part).kind != InstKind::Part {
+            return None;
+        }
+        let field = |name: &str| match self.member(part, name)? {
+            Member::Field(f)
+                if self.field(f).kind == FieldKind::Quantity(Dimension::TEMPERATURE) =>
+            {
+                Some(f)
+            }
+            _ => None,
+        };
+        Some((field("temp_min")?, field("temp_max")?))
+    }
+
     /// The `bias` field of a part, the DC voltage across it, and the two terminals its
     /// `bridge` runs between. A part with both has its bias derived from the rail it sits
     /// across (see `Checker::derive_bias`).

@@ -7,6 +7,7 @@ mod checker;
 mod connect;
 mod dc;
 mod diag;
+pub mod environment;
 mod faults;
 mod lines;
 mod loader;

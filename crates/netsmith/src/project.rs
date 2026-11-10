@@ -66,6 +66,13 @@ pub struct Manifest {
     /// soldered by hand if it is through hole.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly: Option<String>,
+    /// The environment every board of the project has when it declares none (ADR 0099): the
+    /// definition of an interface such as `std::env::Environment`, as `module::Name`, where the
+    /// module is a standard one (`std::env`) or a file of the project (`src/vehicle.nsm`). A
+    /// board that declares its own `.environment` has that one alone. Without the key a board
+    /// that declares none has no environment, and nothing is judged against one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
     /// What a design that goes against a guideline gets (ADR 0036, ADR 0030): `"warn"`,
     /// the default, reports it and builds; `"error"` refuses to build. A run can ask for
     /// the second with `--strict`.
@@ -194,6 +201,7 @@ impl Manifest {
             catalog_dirs: default_catalog_dirs(),
             catalogs: Vec::new(),
             assembly: None,
+            environment: None,
             guidelines: None,
             constraints: None,
             series: None,
@@ -242,6 +250,9 @@ impl Manifest {
             return Err(format!(
                 "{MANIFEST}: assembly = {word:?} is not one of \"fab\", \"hand\", \"none\" or \"consigned\""
             ));
+        }
+        if let Some(spelled) = &self.environment {
+            environment_key(spelled)?;
         }
         if let Some(word) = &self.guidelines
             && !["warn", "error"].contains(&word.as_str())
@@ -644,8 +655,55 @@ impl Project {
             loader.insert(&m.key, &name, &text);
             crate::physical::attach(&mut loader, &name, &m.path, unsaved)?;
         }
+        if let Some(spelled) = &self.manifest.environment {
+            let (module, name) = environment_key(spelled)?;
+            if !loader.modules().iter().any(|(key, _, _)| *key == module) {
+                return Err(format!(
+                    "{MANIFEST}: environment = {spelled:?} names the module `{module}`, which is not a module of the standard library or a file of `src/`"
+                ));
+            }
+            loader = loader.with_default_environment(&module, &name);
+        }
         Ok(loader)
     }
+}
+
+/// The module key and the definition name that the manifest's `environment` spells
+/// (ADR 0099): `std::env::Environment` is the definition `Environment` of the standard module
+/// `std::env`, and `src/vehicle.nsm::Automotive` the definition `Automotive` of the project's
+/// file `src/vehicle.nsm`, the module `src::vehicle`.
+fn environment_key(spelled: &str) -> Result<(String, String), String> {
+    let bad = |why: &str| {
+        format!(
+            "{MANIFEST}: environment = {spelled:?} {why}: write the definition as `std::env::Environment` or `src/vehicle.nsm::Automotive`"
+        )
+    };
+    let Some((module, name)) = spelled.rsplit_once("::") else {
+        return Err(bad("is not a module and a definition"));
+    };
+    if !is_identifier(name) {
+        return Err(bad("does not end in the name of a definition"));
+    }
+    if let Some(std) = module.strip_prefix("std::") {
+        if !std.split("::").all(is_identifier) {
+            return Err(bad("is not a standard module"));
+        }
+        return Ok((module.to_string(), name.to_string()));
+    }
+    let Some(file) = module.strip_suffix(".nsm") else {
+        return Err(bad("names neither a standard module nor a `.nsm` file"));
+    };
+    check_relative("environment", module)?;
+    let steps: Vec<&str> = file.split('/').collect();
+    if steps.first() != Some(&SOURCE_DIR)
+        || steps.len() < 2
+        || !steps.iter().all(|s| is_identifier(s))
+    {
+        return Err(bad(
+            "names a file that is not a module of the project (a file of `src/`)",
+        ));
+    }
+    Ok((steps.join("::"), name.to_string()))
 }
 
 /// One importable file of a project.

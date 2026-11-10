@@ -27,6 +27,7 @@ mod editor_panic;
 mod editor_unicode;
 mod editor_verify;
 mod enclosure_sensor;
+mod environment;
 mod erc;
 mod fab;
 mod fab_no_part_number;

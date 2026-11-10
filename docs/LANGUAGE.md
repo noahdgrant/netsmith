@@ -3501,7 +3501,7 @@ catalog_dirs = ["catalogs"]
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
 - The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only a column that the part's `catalog` statement marks `optional` (ADR 0078, below) may be empty in a row that is offered. The standard parts mark the four that were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor`, `dielectric` of `capacitor` and `breakdown_voltage` of `tvs`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
-- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature in kelvin as the datasheet prints it, `358.15K` for 85 C; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
 
 `price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`; `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
 
@@ -5788,6 +5788,154 @@ board Planes {
 error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has no net of that name (its nets: `5V`, `GND`)
 ```
 
+## The environment of a board
+
+A board can say what it is exposed to: the member `.environment` (ADR 0099, **provisional**: the owner has accepted the recommended answers of `docs/research/environment-and-grade.md`, and this stage is the temperature only). Every fitted part is then checked against it. The board has the member as it has its `.process`, an interface of the standard library, `std::env::Environment`, whose one field is the range of temperatures the board's surroundings reach.
+
+A temperature is in kelvin. `233.15K..398.15K` is -40 C to 125 C, and a message shows both. A Celsius literal such as `-40C` is not written yet: `C` is already the coulomb, and the spelling is the owner's to choose (see _Left open_ in ADR 0099).
+
+A part states the range it works at in two built-in members of every part, `.temp_min` and `.temp_max` (the lowest and the highest temperature, each one number), or its catalog row does, in the optional fixed columns of the same names (see Catalog files). The check is two comparisons: the hot end of the environment is at or under the part's `.temp_max`, and the cold end at or over its `.temp_min`.
+
+```nsm evaluate
+import std::env::Environment
+import std::parts::passive::Crystal
+import std::sources::Rail
+
+board Clock {
+    // -40 C to 85 C.
+    .environment: Environment { .temperature &= 233.15K..358.15K }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
+    .xtal.a ~ .supply.pos
+    .xtal.b ~ .supply.neg
+}
+```
+
+The standard crystal rows state -40 C to 85 C (the range of the JLCPCB listing, which their frequency figures are given over), so every one of them is offered. The same board for 125 C has none that covers it:
+
+```nsm fails
+import std::env::Environment
+import std::parts::passive::Crystal
+import std::sources::Rail
+
+board Hot {
+    // -40 C to 125 C.
+    .environment: Environment { .temperature &= 233.15K..398.15K }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
+    .xtal.a ~ .supply.pos
+    .xtal.b ~ .supply.neg
+}
+```
+
+```text
+error: the `crystal` catalog has nothing for `xtal`, which needs frequency within 15.9995MHz..16.0005MHz (4 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40 C to 125 C): a row's `temp_min` and `temp_max` are its datasheet's)
+   --> main.nsm:13:5
+   |
+13 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
+   |     ^^^^^^^^^^^^^^
+```
+
+Rules.
+
+- **A row that states a range the environment is not inside is not offered.** The solver tries the next row, and says in its message how many it left out and why.
+- **A row that states none is offered, and named.** A pick whose catalog row has no `temp_min`, no `temp_max` or neither is kept, because an empty cell is unknown and not a refusal, and a guideline finding says so: a `warning:` line by default, an error with `--strict` or `guidelines = "error"` in `netsmith.toml` (the same class as the unconstrained pick, ADR 0065). A check that could not be made is never a pass. The finding names the part, the row, which temperature is missing and what to write; parts picked as one row are one finding. Most of the standard rows are in this case, because only the four crystals state a range (data in `data/jlcpcb/`).
+
+```nsm solve warns
+import std::env::Environment
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Probe {
+    .environment: Environment { .temperature &= 233.15K..358.15K }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 10kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+```text
+Probe: environment guideline: `r1` (Resistor) was picked as 10kΩ 1% 0603 C25804 and its catalog row states no `temp_min` and no `temp_max`, so it is not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, in kelvin) or state it on the part, as `.r1.temp_max &= 358.15K` for a datasheet that says 85 C
+```
+
+- **The design can state it instead.** A part that states `.temp_min` or `.temp_max` in a board, a module or its own definition speaks for itself, whatever its row says (as a stated `.height` does, ADR 0094), and a part with both ends stated is judged and not named. A range stated as a range (`.temp_max &= 350K..360K`) is read at its worse end: the lowest of the highest temperature, the highest of the lowest.
+- **A stated range that does not cover the environment is an error** that names the part, the number and where it came from:
+
+```nsm fails
+import std::env::Environment
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Warm {
+    .environment: Environment { .temperature &= 233.15K..358.15K }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 10kohm +/- 1% }
+    .r1.temp_min &= 233.15K
+    .r1.temp_max &= 348.15K
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+```text
+error: Warm: `r1` works up to 348.15 K (75 C) only (the design states `.r1.temp_max`), under the board's environment, which reaches 358.15 K (85 C) (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): choose a part rated for it or narrow the environment
+```
+
+- **A board with no environment is not judged** and says nothing: no check, no finding. The same holds for a board of a project whose manifest names none.
+- **A board that has an environment that states no temperature** (`.environment: Environment { }`) is told so, and no part is judged.
+- **Parts that are not fitted** (`.assembly` is `AssemblyMode::None`: a mounting hole, a fiducial) and labels are not judged. A part soldered by hand or consigned is, because it sees the same air.
+- **Each board of a system has its own environment.** A system does not state one.
+- **What it proves.** The check says the part works at the air temperature of the board. It does not say which temperature a datasheet's range is (ambient, junction or operating: the row's `notes` say what the record prints), it adds no heat of the part's own, and a rating at 25 C (`.max_power` of a resistor, a fuse's hold current) is not derated by it. A part that works at 125 C does not carry its 25 C rating there. Radiation, outgassing, screening and lot traceability are not checked at all.
+
+### The manifest's default
+
+`netsmith.toml` can name the environment every board of the project has when it declares none (the key `environment` under `[project]`): the definition of an interface with the field `.temperature`, written as `module::Name`, where the module is a standard one or a file of the project:
+
+```toml
+[project]
+name = "dash"
+environment = "src/vehicle.nsm::Automotive"
+```
+
+```nsm-fragment
+// src/vehicle.nsm
+interface Automotive {
+    .temperature: Temperature
+    // An offer, so that a board can replace it.
+    .temperature ?= 233.15K..358.15K
+}
+```
+
+A board that declares `.environment` of its own has that one alone (not the two together), and a board that only states `.environment.temperature &= ...` with no declaration has the manifest's definition as if it had written the declaration, and its statement replaces the offer. The manifest's default is a convenience and not a floor: nothing stops a board of the project from declaring a milder environment. The library has no `Automotive`, `Industrial` or `Commercial` definition, because a range that cannot be cited does not belong in it; a project writes its own, as above, and cites where the range comes from in its doc comment.
+
+### Catalog columns
+
+A catalog file may have the fixed columns `temp_min` and `temp_max` (see Catalog files): each one temperature in kelvin as the datasheet prints it (`358.15K` for 85 C), with the document and which temperature it is in the row's `source` and `notes`. Only a row whose datasheet or record says so gets one; an empty cell stays empty. A cell that is not a temperature is refused when the file is read, with its file and line (a Celsius figure written bare is a number and not a temperature, and `85C` would be a charge):
+
+```csv fails file=catalogs/resistor.csv
+mpn,resistance,max_power,package,temp_max,source
+ACME-R316,316ohm +/- 1%,62.5mW,0402,85,https://example.invalid/acme-r316.pdf
+```
+
+```text
+catalogs/resistor.csv:2: `temp_max`: `85` is a plain number, but a part's highest temperature is a temperature in kelvin such as `358.15K` (85 C)
+```
+
 ## The shape of a board
 
 Beyond its parts and nets, a board can say how wide its power tracks are, how big it is and what is cut out of it, where copper is poured, and where tracks, vias, copper or parts are not allowed (ADR 0020, ADR 0029). Each is a member of the board, or a field of one, in the standard library: `std::pcb` has `Outline`, `Cutout` and `Keepout`, `std::mfg::stackup` has `Pour`, and a `Rail` has `.min_track`. The track widths and the pours are what the circuit's checks consume, and they stay in the board. The outline, the cutouts, the keepouts a board draws, the mounting holes, the fiducials, the labels and every requirement on where a part goes are **physical intent**, and a board states them in its physical file (ADR 0048), described first. A board that says none of it is laid out as before.
@@ -7271,6 +7419,7 @@ Only `name` is required.
 | `catalog_dirs` | The folders whose `*.csv` files are the project's own catalogs, each named by its file name (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. Default `["catalogs"]`; `init` writes it out. See Catalog files. |
 | `catalogs` | Optional. Single catalog files to add that are not in a `catalog_dirs` folder, each named by its catalog. See Catalog files. |
 | `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`. See Who assembles a part. |
+| `environment` | Optional. The environment every board has when it declares none: `"std::env::Environment"` or a definition of the project's own, `"src/vehicle.nsm::Automotive"`. See The environment of a board. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current. |
 
 ### Orders
@@ -11637,6 +11786,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
+| `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach, in kelvin. Every fitted part is checked against it (ADR 0099). |
 
 ### Modules
 

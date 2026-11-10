@@ -13,6 +13,7 @@ mod dc;
 mod defaults;
 mod end_functions;
 mod enums;
+mod environment;
 mod errors;
 mod examples;
 mod functions;
