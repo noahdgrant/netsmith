@@ -240,10 +240,11 @@ netsmith fab      # the package for the board house: not yet, the board has no p
 netsmith compare reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb src/main.nsm --loose-values
 ```
 
-and answers `different` with 82 differences, all of one kind: **a component of theirs with no
-counterpart**, because `compare` pairs components by value and footprint, and their footprints
-are named `RPI_COMPILED:generic_capc1005x50`, `RPI_COMPILED:amphenol_10103594-0001lf` and so on
-where the board's are `Capacitor_SMD:C_0402_1005Metric`. Their names are not ours to copy (the
+and answers `different` with 82 differences, all of one kind: 43 components of theirs with no
+counterpart and 39 of the board's with none, because `compare` pairs components by value and
+footprint, and their footprints are named `RPI_COMPILED:generic_capc1005x50`,
+`RPI_COMPILED:amphenol_10103594-0001lf` and so on where the board's are
+`Capacitor_SMD:C_0402_1005Metric`. Their names are not ours to copy (the
 footprints of this port are netsmith's own), so the proof of the nets is a test that compares
 the wiring alone (next section).
 
