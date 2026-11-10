@@ -44,6 +44,7 @@ mod lt8641;
 mod mosfet_drive;
 mod note_causes;
 mod open_circle;
+mod orbit;
 mod order;
 mod order_lock;
 mod overhang;

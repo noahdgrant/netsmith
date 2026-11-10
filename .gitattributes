@@ -10,3 +10,8 @@ examples/rp2350_minimal/reference/*.kicad_pcb -text
 examples/easyduino_esp32s3/LICENSE -text
 examples/easyduino_esp32s3/reference/Easyduino_* -text
 examples/easyduino_esp32s3/reference/References.kicad_sch -text
+
+# ORBIT's licence, board file and schematic are kept byte for byte as its author ships them.
+examples/orbit/LICENSE -text
+examples/orbit/reference/*.kicad_pcb -text
+examples/orbit/reference/*.kicad_sch -text

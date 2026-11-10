@@ -75,6 +75,17 @@ impl Netlist {
         for fp in root.children("footprint") {
             let mut reference = None;
             let mut value = String::new();
+            // KiCad 8 and later: `(property "Reference" "R1" ...)`; KiCad 7 and earlier (format
+            // 20221018 and before): `(fp_text reference "R1" ...)`. A board with both has the
+            // property.
+            for p in fp.children("fp_text") {
+                let text = |i: usize| p.items().get(i).and_then(Sexp::text).unwrap_or("");
+                match text(1) {
+                    "reference" => reference = Some(text(2).to_string()),
+                    "value" => value = text(2).to_string(),
+                    _ => {}
+                }
+            }
             for p in fp.children("property") {
                 let text = |i: usize| p.items().get(i).and_then(Sexp::text).unwrap_or("");
                 match text(1) {
@@ -217,5 +228,29 @@ mod tests {
         assert_eq!(n.nets[0].pins.len(), 2, "R1.1 and R2.1");
         assert_eq!(n.net_of(1, "2"), None, "a pad with no net is unconnected");
         assert!(Netlist::from_kicad_pcb("(kicad_sch)").is_err());
+    }
+
+    #[test]
+    fn a_kicad_7_board_has_its_reference_and_value_in_fp_text() {
+        // Format 20221018 and before: `(fp_text reference "R1" ...)`, no `(property "Reference")`.
+        let pcb = r#"(kicad_pcb (version 20221018) (generator pcbnew)
+  (net 0 "") (net 1 "GND") (net 2 "N1")
+  (footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu")
+    (at 1 1)
+    (property "Sheetname" "")
+    (fp_text reference "R1" (at 0 0) (layer "F.SilkS") (effects (font (size 1 1))))
+    (fp_text value "1k5" (at 0 1) (layer "F.Fab") (effects (font (size 1 1))))
+    (fp_text user "${REFERENCE}" (at 0 0) (layer "F.Fab") (effects (font (size 1 1))))
+    (pad "1" smd roundrect (at 0 0) (net 2 "N1"))
+    (pad "2" smd roundrect (at 1 0) (net 1 "GND")))
+  (footprint "LOGO" (layer "F.Cu")
+    (attr board_only exclude_from_pos_files exclude_from_bom)
+    (fp_text reference "O" (at 0 0) (layer "F.SilkS") hide (effects (font (size 1 1)))))
+)"#;
+        let n = Netlist::from_kicad_pcb(pcb).unwrap();
+        assert_eq!(n.components.len(), 1, "the logo is board_only");
+        assert_eq!(n.components[0].refdes, "R1");
+        assert_eq!(n.components[0].value, "1k5");
+        assert_eq!(n.nets.len(), 2);
     }
 }
