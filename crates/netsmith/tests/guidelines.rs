@@ -317,7 +317,9 @@ fn a_board_that_states_no_width_is_not_warned_and_is_routed_at_the_width_the_cur
     let run = netsmith(&root, &["fab", "--allow-drc-violations", "--strict"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(run.status.success(), "{said}");
-    assert!(!said.contains("guideline"), "{said}");
+    // (The line that says the pick lock was written names the project's folder.)
+    let findings: Vec<&str> = said.lines().filter(|l| !l.starts_with("wrote ")).collect();
+    assert!(!findings.iter().any(|l| l.contains("guideline")), "{said}");
     let notes = fs::read_to_string(root.join("fab/Heater/fab-notes.txt")).unwrap();
     assert!(!notes.contains("IPC-2221"), "{notes}");
     // The board file draws 5V and GND at 0.79 mm (2 A needs 0.7814 mm in 1 oz at 10 K).
