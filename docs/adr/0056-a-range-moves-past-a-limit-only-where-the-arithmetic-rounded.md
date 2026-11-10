@@ -1,8 +1,10 @@
 ---
-status: proposed for owner review (written overnight on 2026-11-06 by an agent that was told to pick an option and go on; the rule of a range's ends is the agent's choice, and it changes a documented property of `Quantity`)
+status: proposed
 ---
 
 # A range moves past a limit only where the arithmetic rounded
+
+Status notes: Written overnight on 2026-11-06 by an agent that was told to pick an option and go on. The rule of a range's ends is the agent's choice, and it changes a documented property of `Quantity`.
 
 A board states `.after.voltage &= 7V..16V` on a rail that an equation sets as `.supply.voltage - .series.drop`, with the supply at `9V..16V` and the drop a product that starts at zero. The build said `must stay within 7V..16V, but (supply.voltage - series.drop) works out to 8.899V..16V`. The two ranges end at the same 16 V and the check still failed. It was found on the first full build of a real board and appeared again behind a fuse, a diode and a shunt.
 

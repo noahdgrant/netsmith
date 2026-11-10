@@ -1,8 +1,10 @@
 ---
-status: accepted (user confirmed 2026-11-02)
+status: accepted
 ---
 
 # Undriven inputs, I2C pull-ups and designator letters
+
+Status notes: Accepted as the user confirmed it, 2026-11-02.
 
 Porting a real board found rules that the checker lacked. They are generic, and each is an error or a guideline warning by ADR 0030's rule: an electrical contradiction is an error, a matter of style or advice is a warning under `guidelines` (`[project] guidelines = "warn" | "error"`, `--strict`). This ADR is written a rule at a time, in the order they were built. Three more rules were asked for and not built; they are under "Not built", and ADR 0046 built them after the user decided their syntax.
 

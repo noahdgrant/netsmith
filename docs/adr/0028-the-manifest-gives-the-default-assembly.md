@@ -1,8 +1,10 @@
 ---
-status: accepted (user decision 2026-11-02)
+status: accepted
 ---
 
 # The manifest gives the default assembly
+
+Status notes: Accepted on the user's decision, 2026-11-02.
 
 Amends ADR 0024 (assembly is a field of the part). ADR 0042: a module may offer the design's statement (row 5) for its parts as a value of its own.
 

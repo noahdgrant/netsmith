@@ -1,8 +1,10 @@
 ---
-status: accepted (owner review, 2026-11-06; as proposed: a drawing convention of the schematic view only; the rule that picks the boxes, and which box leads, are for the owner to review)
+status: proposed
 ---
 
 # A part whose symbol has several units is drawn as one box for each unit
+
+Status notes: The owner reviewed it on 2026-11-06 and accepted it as proposed: a drawing convention of the schematic view only. The rule that picks the boxes, and which box leads, are still for the owner to review.
 
 The editor's schematic drew every part as one box. The KiCad symbol of a processor module has two units: one with the supply pins and all the grounds, one with every signal pin. A hand-drawn schematic puts them on the sheet as two boxes, the grounds as one tall column of pins in a small box of their own with the decoupling capacitor and the supply beside it, and the signals in the box that has the crystal and the names. Drawn as one box (a table of about eighty pins in labelled groups) the grounds were a long row of pins along the bottom edge of the signal box, with a bus wire under it, and the supply pins were wired from its top edge.
 

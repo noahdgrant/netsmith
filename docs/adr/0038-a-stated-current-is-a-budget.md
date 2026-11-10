@@ -1,8 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted
 ---
 
 # A stated current is a budget
+
+Status notes: Accepted on the user's review, 2026-11-02.
 
 Amends ADR 0007, ADR 0026 and ADR 0027 (what a balance verifies), and the update of ADR 0025 (an equation narrows a field that has a range).
 

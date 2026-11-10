@@ -1,8 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted
 ---
 
 # Who assembles a part is the field `.assembly` of the part
+
+Status notes: Accepted on the user's review, 2026-11-02.
 
 Amended by ADR 0028: the manifest may give a project-wide default, between the built-in rule and the kind's own statement. Amended by ADR 0042: a module may offer the choice for its parts.
 
