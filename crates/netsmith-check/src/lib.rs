@@ -25,7 +25,10 @@ mod shared;
 mod unused;
 
 pub use assign::{PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};
-pub use busnets::{BusGroup, bidirectional_rows, bus_groups, joined_without_role, unstated_roles};
+pub use busnets::{
+    BusEnds, BusGroup, bidirectional_rows, bus_beside, bus_groups, joined_without_role,
+    unstated_roles,
+};
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};

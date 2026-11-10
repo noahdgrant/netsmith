@@ -1,7 +1,7 @@
 //! Connections, bridges, catalogs, and the nets they produce.
 
 use netsmith_lang::Span;
-use netsmith_lang::ast::{self, CmpOp, ConnectOp};
+use netsmith_lang::ast::{self, BinOp, CmpOp, ConnectOp};
 
 use crate::checker::{Checker, Res};
 use std::collections::{HashMap, HashSet};
@@ -650,6 +650,139 @@ impl Checker<'_> {
         self.derive_bias();
         self.derive_chain_values();
         self.equate_bus_values();
+        self.derive_bus_figures();
+    }
+
+    /// Give each `I2cPullups` the figures of the parts on its bus (ADR 0102).
+    ///
+    /// The bus is found by the nets: the `I2c` interfaces that share a net with the pull-up's
+    /// `.bus.sda` or `.bus.scl` (`bus_beside`). Two relations are made from them, both before the
+    /// optional members are skipped, so a part that states no figure drops its own relation and
+    /// nothing else (ADR 0074); the solver names that part (`netsmith-solve`, `busfigures.rs`).
+    ///
+    /// - `bus_capacitance == the .capacitance of each interface + .trace_capacitance`. The
+    ///   board's estimate of the traces is the addend that says the board wants the sum: a sum of
+    ///   the pins alone would pass a bound the traces break, so with none stated nothing is
+    ///   derived. A bus with no `I2c` interface, or one end that is a peripheral (it has no
+    ///   figure to read), gets none.
+    /// - for each interface, `resistance >= (supply.voltage - levels.vol) / sink_current` of
+    ///   that interface: its own `IOL` with its own `VOL`. The worst case is the greatest of
+    ///   these, which no single pair of the bus's figures stands for (the least current and the
+    ///   greatest level can be two parts), so each part has its own relation and `min` is not
+    ///   needed (ADR 0098 keeps it from giving a value).
+    ///
+    /// The pull-up's own `.bus_capacitance`, `.sink_current` and `.low_level` stay what a board
+    /// may state, and a board that states one is judged on its own figure: the derivation of
+    /// that figure is not made. Both would say one fault twice, and an equation against a
+    /// narrower range the board states reads as a figure that cannot be proved, not as a narrowing.
+    fn derive_bus_figures(&mut self) {
+        let pullups: Vec<InstId> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Module && i.type_name == "I2cPullups")
+            .map(|(id, _)| id)
+            .collect();
+        for pullup in pullups {
+            let Some(Member::Inst(bus)) = self.model.member(pullup, "bus") else {
+                continue;
+            };
+            let pins: Vec<InstId> = ["sda", "scl"]
+                .iter()
+                .filter_map(|n| match self.model.member(bus, n) {
+                    Some(Member::Inst(p)) => Some(p),
+                    _ => None,
+                })
+                .collect();
+            let ends = crate::busnets::bus_beside(&self.model, "I2c", &pins);
+            let field = |m: &Self, path: &str| m.model.field_in(pullup, path);
+            let at = self.model.instance(pullup).at();
+            if ends.peripherals.is_empty() && !ends.interfaces.is_empty() {
+                let figures: Vec<FieldId> = ends
+                    .interfaces
+                    .iter()
+                    .filter_map(|&i| self.model.field_in(i, "capacitance"))
+                    .collect();
+                if let (Some(total), Some(trace), true) = (
+                    field(self, "bus_capacitance"),
+                    field(self, "trace_capacitance"),
+                    figures.len() == ends.interfaces.len(),
+                ) && !self.board_states(total)
+                {
+                    let sum = figures
+                        .iter()
+                        .chain(std::iter::once(&trace))
+                        .map(|&f| RExpr::Field(f))
+                        .reduce(|sum, f| RExpr::Bin(BinOp::Add, Box::new(sum), Box::new(f)))
+                        .expect("a sum has the traces");
+                    self.derived(total, sum, at);
+                }
+            }
+            let (Some(resistance), Some(supply)) =
+                (field(self, "resistance"), field(self, "supply.voltage"))
+            else {
+                continue;
+            };
+            // A board that states the figure itself (`.sink_current` or `.low_level`) has the
+            // bound of its own, and it stands in place of the parts' (see above).
+            let by_hand = ["sink_current", "low_level"]
+                .iter()
+                .filter_map(|p| field(self, p))
+                .any(|f| self.board_states(f));
+            if by_hand {
+                continue;
+            }
+            for &iface in &ends.interfaces {
+                let (Some(vol), Some(sink)) = (
+                    self.model.field_in(iface, "levels.vol"),
+                    self.model.field_in(iface, "sink_current"),
+                ) else {
+                    continue;
+                };
+                let least = RExpr::Bin(
+                    BinOp::Div,
+                    Box::new(RExpr::Bin(
+                        BinOp::Sub,
+                        Box::new(RExpr::Field(supply)),
+                        Box::new(RExpr::Field(vol)),
+                    )),
+                    Box::new(RExpr::Field(sink)),
+                );
+                std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
+                    lhs: RExpr::Field(resistance),
+                    op: CmpOp::Ge,
+                    rhs: least,
+                    source: at.0,
+                    span: at.1,
+                    written: None,
+                    own: false,
+                });
+            }
+        }
+    }
+
+    /// Whether a statement of the design gives `field` a value or a bound: an `&=` or a `?=`,
+    /// or an equation or a bound against numbers alone (`optional::states`).
+    fn board_states(&self, field: FieldId) -> bool {
+        self.stated.contains(&field)
+            || !self.model.field(field).narrowed_at.is_empty()
+            || self
+                .model
+                .relations
+                .iter()
+                .any(|r| crate::optional::states(r.op, &r.lhs, &r.rhs) == Some(field))
+    }
+
+    /// The relation `field == value` that the checker derives, pointed at `at`.
+    fn derived(&mut self, field: FieldId, value: RExpr, at: (crate::diag::SourceId, Span)) {
+        std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
+            lhs: RExpr::Field(field),
+            op: CmpOp::EqEq,
+            rhs: value,
+            source: at.0,
+            span: at.1,
+            written: None,
+            own: false,
+        });
     }
 
     /// The values that the interfaces of one bus share (its clock, its mode) are equated when the

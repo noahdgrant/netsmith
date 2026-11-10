@@ -439,6 +439,73 @@ pub(crate) fn shared_values(model: &Model) -> Vec<(FieldId, FieldId)> {
     pairs
 }
 
+/// The ends of the bus a pull-up is on, found by the nets (`bus_beside`).
+#[derive(Debug, Default, Clone)]
+pub struct BusEnds {
+    /// The `I2c` interfaces that part of the board declares, in path order.
+    pub interfaces: Vec<InstId>,
+    /// The parts whose pins are an end of the bus by a chosen function of a peripheral and
+    /// state no interface, with the peripheral's name: they have no figures to be read.
+    pub peripherals: Vec<(InstId, String)>,
+}
+
+/// The ends of the bus of definition `def` (`I2c`) that `pins` are on: every end that is in the
+/// same group (the interfaces that share a net, as `bus_groups` has them) as an end that has a
+/// pin on the net of one of `pins`. A module's own interface (the `.bus` of `I2cPullups`) is no
+/// end, since none of its pins is a terminal of a part, so the group is found through the net
+/// its pins are on; the ends are those of parts, inside modules too. Empty when nothing on the
+/// nets is an end of that definition.
+pub fn bus_beside(model: &Model, def: &str, pins: &[InstId]) -> BusEnds {
+    let per_net = collect(model);
+    let on_net = |net: &Net| pins.iter().any(|p| net.pins.contains(p));
+    let mut found = BusEnds::default();
+    for ends in components(model, &per_net) {
+        let touches = per_net.iter().any(|(net, bus_pins)| {
+            on_net(net)
+                && bus_pins
+                    .iter()
+                    .any(|p| ends.contains(&p.end) && model.bus_def_name(p.def) == def)
+        });
+        if !touches {
+            continue;
+        }
+        for end in ends {
+            match end {
+                End::Iface(i) => found.interfaces.push(i),
+                End::Periph(part, index) => found.peripherals.push((
+                    part,
+                    model.instance(part).rules.peripherals[index].name.clone(),
+                )),
+            }
+        }
+    }
+    found.interfaces.sort_by_key(|&i| model.path_of(i));
+    found.interfaces.dedup();
+    found
+}
+
+impl Model {
+    /// The field at a dotted path below an instance (`levels.vol` below an interface), if the
+    /// path names one.
+    pub fn field_in(&self, inst: InstId, path: &str) -> Option<FieldId> {
+        let mut cur = inst;
+        let mut parts = path.split('.').peekable();
+        while let Some(name) = parts.next() {
+            match (self.member(cur, name)?, parts.peek()) {
+                (Member::Field(f), None) => return Some(f),
+                (Member::Inst(i), Some(_)) => cur = i,
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    /// The name of the interface definition a bus is of: `I2c`.
+    fn bus_def_name(&self, def: DefRef) -> &str {
+        self.bus_defs.get(&def).map_or("", |b| b.name.as_str())
+    }
+}
+
 /// A bus as the clock rules see it: the interfaces of one definition that share a net.
 pub struct BusGroup {
     /// The interface's name: `Spi`.
