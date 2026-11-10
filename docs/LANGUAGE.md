@@ -617,7 +617,7 @@ Rules.
 
 - The argument is a field, written as a member path (`min(.bias)`, `max(.z.zener_voltage)`). It is not an expression (`min(.a + .b)`), a value (`max(5V)`) or text, and `min` and `max` take one argument: `min(.a, .b)` is not the smaller of two values, it is an error. The only functions are `min` and `max`; any other name is an error.
 - They are read in a `<=` or `>=` statement, on either side and inside arithmetic (`min(.a.voltage) + 1V <= max(.b.voltage)`). A `==`, `&=` or `?=` is refused them: nothing is worked out from the end of a range, and no field takes a value from one.
-- They never narrow. The solver reads the end of the field's range as it is when the check is made and gives nothing back: the ranges of the fields in a relation with `min` or `max` are the ranges they had. A relation of a part also decides which catalog rows are offered, as every relation of a part does (a row that fails it is not picked); that is a check on each candidate, not a narrowing.
+- They never narrow. The solver reads the end of the field's range as it is when the check is made and gives nothing back: the ranges of the fields in a relation with `min` or `max` are the ranges they had. A relation of a part also decides which catalog rows are offered, as every relation of a part does (a row that fails it is not picked); that is a check on each candidate, not a narrowing. A relation that reads an end also gives no bound to another field (`.c.max_voltage >= max(.v)` does not make the capacitor's rating at least what `.v` reaches when the part is chosen: a range narrows after it was read, and the end moves) and is never used to turn away a group of rows without trying them (a row's own figure can meet it where the group's edge does not). It is verified on the values the fields have in the end.
 - A field with no value yet has no end to read. The relation waits and is listed as not evaluated, like any relation with an unknown value, and is no error.
 - An end is one number, so it carries no correlation with the field read whole elsewhere in the same statement: `max(.a.voltage) <= .a.voltage` is an error (6 V is not under 4 V), as `.a.voltage <= .a.voltage` is.
 - A failed relation says what was compared: `min(c.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them`.
@@ -2974,6 +2974,8 @@ error: `modem` asks for UARTE1_TX on `u`, and no free pin can serve it: `UARTS` 
 The rules about a pin run on the result as they do on a pin the source names: a function that disagrees with its net is the usual "two outputs" error, once, at the request. A class (`GPIO` above, a function that rows list and a peripheral is `on`) can be chosen on any number of pins of a part; a function that is no class (`ANALOG`) still belongs to one pin.
 
 A request asks a part declared in its own board or module, and a part with several packages needs its package stated (`.u.package &= "QFN-32"`), as the pins differ between packages. Not built yet: a request for the end of a bus (`.dbg: .u.Uart`).
+
+The editor shows the pin map of the selected part in the schematic's inspector (_Pin map_ section), read only: each request with the pin it got, the pad of that pin, the function, a mark when the entry is locked, and where the pin came from (`file, hand`, `file, auto`, or `picked now` when the pin file has no entry for it yet). A request that got no pin is listed with the message the check gives, which is also in the problems list. The editor assigns in memory as it does on every analysis, reads `<stem>.pins.toml` and never writes it.
 
 #### When a board does not route
 
@@ -7457,7 +7459,7 @@ Each case of the list above ends in a line of that diff:
 
 `fab --order <name>` does with each source file that builds a board of the order what `fab` does with that file, so the order gets the rows `fab` of the file alone gets: it holds the boards of the file to its lock, writes the lock when the file does not exist, and never rewrites one that does (a difference is a note). Only the files that build a board of the order are read, and a lock covers all the boards of its file, whichever of them the order takes. `fab --order <name> --locked` compares the lock of each of those files with the picks before it removes or writes anything, and refuses, naming each file, one that does not exist or that the picks differ from. An order is a release, and a release never moves a choice by itself: it moves no pin (the pin file) and no row of an existing lock.
 
-The editor does not read or write a lock: it solves from the source, as before, and so does the order it makes.
+The editor does not hold the parts to the lock: it solves from the source, as before. It shows the lock of the selected board's source file and writes nothing: the schematic's inspector has a _Pick lock_ section that says whether the file exists and whether it is current, and lists the diff that `lock --check` would print (a source that does not build has none). It is read again when the lock file changes on disk, which the editor watches.
 
 ## Imports
 

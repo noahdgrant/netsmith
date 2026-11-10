@@ -37,6 +37,23 @@ pub struct RootPins {
     pub requests: BTreeSet<String>,
     /// What the pin optimizer may move, for each part that has requests.
     pub spaces: Vec<PartSpace>,
+    /// The requests that got no pin, in the byte order of their paths, with what the check said.
+    pub unserved: Vec<Unserved>,
+}
+
+/// A request that got no pin, and why: the message the check reported at the request (or at
+/// the part or the function it names). Empty when the check said nothing of this request in
+/// particular (the part's own check says why its table does not resolve).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unserved {
+    /// The request's path, the key of its entry in the pin file.
+    pub key: String,
+    /// The part's path in the board, as the request names it (`u`, `hub.mcu`), whether or not
+    /// such a part exists.
+    pub part: String,
+    /// The function the request asks for.
+    pub capability: String,
+    pub message: String,
 }
 
 /// What a run decided about the pin file: the file as it should be now, and how it differs from
@@ -56,6 +73,10 @@ pub struct PinsOutcome {
     /// For each board or system of the source that has requests, by definition name: what the
     /// pin optimizer may move in each of its parts (see [`PartSpace`]).
     pub spaces: BTreeMap<String, Vec<PartSpace>>,
+    /// For each board or system of the source, by definition name: the requests that got no
+    /// pin, each with the message the check gave. A run with any of them fails, so this is
+    /// what a person sees beside the problems.
+    pub unserved: BTreeMap<String, Vec<Unserved>>,
 }
 
 /// What one part leaves open to the pin optimizer (ADR 0101): the requests that ask it for a
@@ -272,9 +293,44 @@ impl Checker<'_> {
             let mine: Vec<&Asked> = asked.iter().filter(|a| a.part == part).collect();
             self.serve_part(part, &mine, &requests, &old, &connected, &mut root);
         }
+        root.unserved = self.unserved_of(&requests, &root);
         if keep {
             self.pin_roots.push(root);
         }
+    }
+
+    /// The requests that have no entry in `root` after they were served, each with the message
+    /// the check reported at its declaration, at the part it names or at its function.
+    fn unserved_of(&self, requests: &[PinRequest], root: &RootPins) -> Vec<Unserved> {
+        let model = &self.model;
+        let block_path = |r: &PinRequest| model.path_of(r.block);
+        let mut out: Vec<Unserved> = requests
+            .iter()
+            .filter(|r| !root.entries.contains_key(&model.path_of(r.pin)))
+            .map(|r| {
+                let at = [r.span, r.target_span, r.capability_span];
+                let message = self
+                    .diags
+                    .iter()
+                    .find(|d| d.source == r.source && at.contains(&d.span))
+                    .map(|d| d.message.clone())
+                    .unwrap_or_default();
+                let block = block_path(r);
+                let target = r.target.join(".");
+                Unserved {
+                    key: model.path_of(r.pin),
+                    part: if block.is_empty() {
+                        target
+                    } else {
+                        format!("{block}.{target}")
+                    },
+                    capability: r.capability.clone(),
+                    message,
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| a.key.cmp(&b.key));
+        out
     }
 
     /// The part a request asks and the capability it asks for, if the request is sound:
@@ -713,7 +769,11 @@ impl Checker<'_> {
         let src = self.pin_input.as_ref().map(|p| p.source);
         let mut file = PinFile::default();
         let mut spaces: BTreeMap<String, Vec<PartSpace>> = BTreeMap::new();
+        let mut unserved: BTreeMap<String, Vec<Unserved>> = BTreeMap::new();
         for r in &roots {
+            if !r.unserved.is_empty() {
+                unserved.insert(r.board.clone(), r.unserved.clone());
+            }
             if !r.entries.is_empty() {
                 file.boards.insert(r.board.clone(), r.entries.clone());
             }
@@ -760,6 +820,7 @@ impl Checker<'_> {
             changes,
             findings,
             spaces,
+            unserved,
         }
     }
 

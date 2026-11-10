@@ -343,7 +343,52 @@ scopes: Array<Location>,
  * What the solver worked out for the part and the source did not state. Absent when
  * there is nothing to say (a part with no catalog row and no derived value).
  */
-solved?: Solved, };
+solved?: Solved, 
+/**
+ * The pin requests that ask this part for a pin (`.status: .u.GPIO`, ADR 0101), in the byte
+ * order of their paths, each with the pin it got or the message of the check when it got
+ * none. Absent for a part no request asks. What the editor shows of the pin file: it
+ * computes the assignment in memory and never writes the file.
+ */
+pinRequests?: Array<PinRequestInfo>, };
+
+export type PinRequestInfo = { 
+/**
+ * The request's path in the board, the key of its entry in the pin file (`status`).
+ */
+request: string, 
+/**
+ * The function it asks the part for, which the pin offers and the file records (`GPIO`).
+ */
+function: string, 
+/**
+ * The pin it got, by its path in the part (`p02`); absent when it got none.
+ */
+pin?: string, 
+/**
+ * The pad of that pin in the package, as the board's design has it (`2`); several pads
+ * are joined with a comma. Absent when the pin has no pad in the design.
+ */
+pad?: string, 
+/**
+ * Whether the entry is locked (`lock = true`): the optimizer never moves it.
+ */
+locked: boolean, 
+/**
+ * The entry's `source` in the pin file: `hand` or `auto`.
+ */
+entry?: string, 
+/**
+ * Where the pin came from: `file` (the pin file beside the source holds this entry and it
+ * still holds) or `run` (picked now, from the source's request, with no entry in the file
+ * yet: `build` would write it).
+ */
+from?: string, 
+/**
+ * Why the request has no pin: the message the check gave, in its own words. Absent when
+ * the request has one.
+ */
+message?: string, };
 
 export type Solved = { 
 /**
@@ -430,7 +475,43 @@ function?: string, };
 
 export type NetInfo = { name: string, named: boolean, pins: Array<PinInfo>, };
 
-export type BoardDetail = { name: string, file: string, parts: Array<PartInfo>, nets: Array<NetInfo>, notes: Array<string>, };
+export type BoardDetail = { name: string, file: string, parts: Array<PartInfo>, nets: Array<NetInfo>, notes: Array<string>, 
+/**
+ * The pick lock beside the board's source file (ADR 0100): whether it exists and is
+ * current, read-only. Absent when there is nothing to compare, because the source does not
+ * build (the problems list says why).
+ */
+lock?: PickLockInfo, };
+
+export type PickLockInfo = { 
+/**
+ * The lock file, named as the files of the project are (`src/main.lock.toml`).
+ */
+file: string, 
+/**
+ * Whether the file exists. A source with no part to lock needs none.
+ */
+exists: boolean, 
+/**
+ * Whether the lock is as `netsmith lock --update` would write it.
+ */
+current: boolean, 
+/**
+ * What `lock --check` prints when it is not: one line for each part whose row changed, was
+ * added or was dropped. Empty when the file does not exist: `--check` prints no lines then.
+ */
+diff: Array<string>, 
+/**
+ * What the solver said when it held the parts to the rows of the file as it is: the rows
+ * that no longer pass or are no longer in a catalog, in its own words. Empty when every
+ * locked row still holds.
+ */
+reported: string, 
+/**
+ * Why the lock could not be checked: the file is not a lock this netsmith reads (its own
+ * words, with the place in it). Then the other fields say nothing of the rows.
+ */
+error?: string, };
 
 export type Range = { lo: number, hi: number, text: string, };
 

@@ -983,6 +983,14 @@ impl Target {
                 .map(|f| crate::pins::pins_path(&f.path))
                 .filter(|p| p.is_file()),
         );
+        // The pick lock of a source (ADR 0100) is shown by the editor, which says whether it is
+        // current: a change to it, or its first write, changes what is shown.
+        paths.extend(
+            self.files
+                .iter()
+                .map(|f| crate::pick_lock::lock_path(&f.path))
+                .filter(|p| p.is_file()),
+        );
         if let Some(project) = &self.project {
             paths.push(project.root.join(MANIFEST));
             let mapping = project.root.join(netsmith_kicad::PROJECT_FILE);
