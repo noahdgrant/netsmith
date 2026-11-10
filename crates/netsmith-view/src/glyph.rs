@@ -4,6 +4,7 @@
 //! a part it cannot draw.
 
 use netsmith_core::{Design, Part};
+use netsmith_kicad::generate::{Side, side_of};
 use netsmith_kicad::sexp::Sexp;
 use netsmith_kicad::{Mapping, PartPin, PinKind, PinType, Pinout, Symbol, SymbolLib};
 
@@ -189,7 +190,7 @@ impl Glyph {
             Ok(m) => m,
             Err(e) => return Glyph::fallback(part, used, pinout, e.to_string()),
         };
-        let symbol = match lib.symbol(&mapped.lib_id) {
+        let symbol = match lib.symbol_of(part, &mapped) {
             Ok(s) => s,
             Err(e) => return Glyph::fallback(part, used, pinout, e.to_string()),
         };
@@ -291,7 +292,7 @@ impl Glyph {
             return None;
         }
         let mapped = mapping.map(&part.kind, part.package.as_deref()).ok()?;
-        let symbol = lib.symbol(&mapped.lib_id).ok()?;
+        let symbol = lib.symbol_of(part, &mapped).ok()?;
         if symbol.units() < 2 {
             return None;
         }
@@ -1087,15 +1088,6 @@ impl Entry {
     }
 }
 
-/// Whether a power pin is a ground, which goes below the box.
-fn is_ground(pin: &PartPin) -> bool {
-    let name = pin.datasheet.to_ascii_uppercase();
-    pin.name.ends_with(".neg")
-        || ["GND", "VSS", "GROUND", "AGND", "DGND", "PGND"]
-            .iter()
-            .any(|g| name.starts_with(g))
-}
-
 /// The pins of the fallback box, by the side of the box they are on.
 #[derive(Default)]
 struct Sides {
@@ -1114,13 +1106,14 @@ struct Sides {
 impl Sides {
     fn put(&mut self, pin: &PartPin) {
         let entry = Entry::of(pin);
-        match pin.kind {
-            PinKind::Power if is_ground(pin) => self.bottom.push(entry),
-            PinKind::Power => self.top.push(entry),
-            PinKind::Input | PinKind::Passive => self.left.push(entry),
-            PinKind::Output | PinKind::TriState => self.right.push(entry),
-            PinKind::Bidirectional => self.either.push(entry),
-            PinKind::NoConnect => self.no_connect.push(entry),
+        // The side is the rule of the symbol netsmith draws from a pin table (ADR 0097).
+        match side_of(pin) {
+            Side::Bottom => self.bottom.push(entry),
+            Side::Top => self.top.push(entry),
+            Side::Left => self.left.push(entry),
+            Side::Right => self.right.push(entry),
+            Side::Either => self.either.push(entry),
+            Side::NoConnect => self.no_connect.push(entry),
         }
     }
 
@@ -1528,6 +1521,38 @@ mod tests {
             assert_eq!(g.pins.len(), pad_count as usize);
             assert!(!g.shapes.is_empty());
         }
+    }
+
+    #[test]
+    fn an_ic_whose_row_names_no_symbol_is_drawn_from_its_pin_table() {
+        let (mapping, lib) = sample();
+        let pin = |name: &str, datasheet: &str, kind: PinKind, pad: &str| PartPin {
+            name: name.into(),
+            datasheet: datasheet.into(),
+            kind,
+            pads: vec![pad.into()],
+            function: None,
+        };
+        let mut ic = part("Lt8641", Some("UDC20(18)"));
+        ic.pins = vec![
+            pin("vin.pos", "VIN1", PinKind::Power, "3"),
+            pin("vin.neg", "GND", PinKind::Power, "1"),
+            pin("en", "EN/UV", PinKind::Input, "2"),
+        ];
+        let g = Glyph::for_part(&ic, &pads(3), Pinout::of(&ic).as_ref(), &mapping, &lib);
+        assert_eq!(g.symbol.as_deref(), Some("netsmith:Lt8641_UDC20_18"));
+        assert_eq!(g.pins.len(), 3);
+        assert!(matches!(g.shapes[0], Shape::Rect { .. }));
+        // A part of that row with no pin table is the editor's box, with the reason.
+        let bare = Glyph::for_part(
+            &part("Lt8641", Some("UDC20(18)")),
+            &pads(3),
+            None,
+            &mapping,
+            &lib,
+        );
+        assert!(bare.symbol.is_none());
+        assert!(bare.missing.unwrap().contains("no pin table"));
     }
 
     #[test]

@@ -2,9 +2,10 @@
 //! and the symbol and footprint libraries themselves (ADR 0016, ADR 0021).
 
 use std::path::Path;
+use std::sync::Arc;
 
 use netsmith_core::Design;
-use netsmith_kicad::{Mapping, SymbolLib, stdlib, testlib};
+use netsmith_kicad::{Mapping, Symbol, SymbolLib, stdlib, testlib};
 use netsmith_pcb::FootprintLibrary;
 
 /// What `build`, `fab` and `view` read from KiCad. `check` and `solve` need none of it.
@@ -67,14 +68,39 @@ impl Libraries {
         }
     }
 
+    /// The symbols drawn from the pin tables of `design`'s parts, for the rows of the mapping
+    /// that have no `symbol` (ADR 0097), one for each distinct id, in the order of the parts.
+    pub fn generated_symbols(&self, design: &Design) -> Vec<Arc<Symbol>> {
+        let mut symbols: Vec<Arc<Symbol>> = Vec::new();
+        for part in design.parts.iter().filter(|p| p.kind != "Label") {
+            let Ok(mapped) = self.mapping.map(&part.kind, part.package.as_deref()) else {
+                continue;
+            };
+            if mapped.lib_id.is_some() {
+                continue;
+            }
+            if let Ok(symbol) = self.symbols.symbol_of(part, &mapped)
+                && !symbols.iter().any(|s| s.lib_id() == symbol.lib_id())
+            {
+                symbols.push(symbol);
+            }
+        }
+        symbols
+    }
+
     /// Whether a part of `design` is drawn or carried by the standard library's own symbols or
-    /// footprints (`std/libs/`, ADR 0087).
+    /// footprints (`std/libs/`, ADR 0087), or is drawn by a symbol netsmith made (ADR 0097).
     pub fn uses_std_library(&self, design: &Design) -> bool {
         design.parts.iter().any(|part| {
             self.mapping
                 .map(&part.kind, part.package.as_deref())
                 .is_ok_and(|m| {
-                    stdlib::is_library_id(&m.lib_id) || stdlib::is_library_id(&m.footprint)
+                    // A row with no symbol is drawn from the pin table, in the library `netsmith`.
+                    let own_symbol = m
+                        .lib_id
+                        .as_deref()
+                        .map_or(!part.pins.is_empty(), stdlib::is_library_id);
+                    own_symbol || stdlib::is_library_id(&m.footprint)
                 })
         })
     }
@@ -86,7 +112,7 @@ impl Libraries {
     pub fn write_tables(&self, dir: &Path, design: &Design) -> std::io::Result<()> {
         let with_std = self.uses_std_library(design);
         if with_std {
-            for (path, text) in stdlib::files() {
+            for (path, text) in stdlib::files(&self.generated_symbols(design)) {
                 let file = dir.join(path);
                 if let Some(parent) = file.parent() {
                     std::fs::create_dir_all(parent)?;

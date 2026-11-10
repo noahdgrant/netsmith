@@ -46,6 +46,10 @@ pub enum SymbolError {
         name: String,
         reason: String,
     },
+    /// The mapping row has no `symbol`, so the part is drawn from its pin table, and it has none.
+    NoPinTable {
+        kind: String,
+    },
     /// The library exists but does not hold the symbol.
     NoSymbol {
         name: String,
@@ -94,6 +98,11 @@ impl std::fmt::Display for SymbolError {
             ),
             Self::Unreadable { path, reason } => write!(f, "{}: {reason}", path.display()),
             Self::Invalid { name, reason } => write!(f, "symbol `{name}`: {reason}"),
+            Self::NoPinTable { kind } => write!(
+                f,
+                "the mapping row of `{kind}` has no `symbol`, so the part is drawn from its pin \
+                 table (ADR 0097), and a `{kind}` has no pin table; name a `symbol` in the row"
+            ),
             Self::NoSymbol {
                 name,
                 library,
@@ -217,6 +226,27 @@ pub struct Symbol {
 }
 
 impl Symbol {
+    /// The symbol `lib_id` made from `definition`, a `(symbol "<name>" ...)` whose units are
+    /// named `<name>_<unit>_<style>`: how [`crate::generate`] makes the symbol of a pin table.
+    pub(crate) fn from_definition(
+        lib_id: &str,
+        name: &str,
+        definition: Sexp,
+    ) -> Result<Symbol, String> {
+        read_symbol(lib_id, name, definition)
+    }
+
+    /// The definition as a library file holds it: named `<name>`, with no library in front.
+    pub fn library_definition(&self) -> Sexp {
+        let bare = self
+            .lib_id
+            .split_once(':')
+            .map_or(self.lib_id.as_str(), |(_, n)| n);
+        let mut all = vec![Sexp::atom("symbol"), Sexp::string(bare)];
+        all.extend(self.definition.args().iter().skip(1).cloned());
+        Sexp::List(all)
+    }
+
     /// `Device:R`
     pub fn lib_id(&self) -> &str {
         &self.lib_id
@@ -408,6 +438,24 @@ impl SymbolLib {
         let lib = Arc::new(Library { path, symbols });
         loaded.insert(library.to_string(), lib.clone());
         Ok(lib)
+    }
+
+    /// The symbol that draws `part`, mapped as `mapped`: the library's, or, for a row with no
+    /// `symbol` (ADR 0097), a plain box drawn from the part's pin table, which needs no
+    /// library at all ([`crate::generate`]).
+    pub fn symbol_of(
+        &self,
+        part: &netsmith_core::Part,
+        mapped: &crate::mapping::Mapped,
+    ) -> Result<Arc<Symbol>, SymbolError> {
+        match &mapped.lib_id {
+            Some(lib_id) => self.symbol(lib_id),
+            None => crate::generate::symbol(part, &mapped.footprint)
+                .map(Arc::new)
+                .ok_or_else(|| SymbolError::NoPinTable {
+                    kind: part.kind.clone(),
+                }),
+        }
     }
 
     /// Read `Library:Name`. A library is parsed the first time any of its symbols is asked

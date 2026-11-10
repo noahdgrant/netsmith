@@ -1200,7 +1200,7 @@ fn export(
                 }
                 // A symbol that cannot be read is named by the schematic below.
                 if let (Some(pinout), Ok(symbol)) =
-                    (Pinout::of(part), libraries.symbols.symbol(&mapped.lib_id))
+                    (Pinout::of(part), libraries.symbols.symbol_of(part, &mapped))
                 {
                     let subject = Subject {
                         refdes: &s.refdes,

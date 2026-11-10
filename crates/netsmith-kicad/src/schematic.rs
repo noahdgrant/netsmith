@@ -193,7 +193,7 @@ pub fn emit_schematic(
                 refdes: part.refdes.clone(),
                 error,
             })?;
-        let symbol = lib.symbol(&m.lib_id).map_err(|error| EmitError::Symbol {
+        let symbol = lib.symbol_of(part, &m).map_err(|error| EmitError::Symbol {
             refdes: part.refdes.clone(),
             error,
         })?;
@@ -215,10 +215,10 @@ pub fn emit_schematic(
                 .iter()
                 .position(|p| p.refdes == pin.refdes)
                 .expect("validate() guarantees the part exists");
-            let (m, symbol) = &mapped[index];
+            let (_, symbol) = &mapped[index];
             let sym_pin = symbol.pin(&pin.pin).ok_or_else(|| EmitError::UnknownPin {
                 refdes: pin.refdes.clone(),
-                lib_id: m.lib_id.clone(),
+                lib_id: symbol.lib_id().to_string(),
                 pin: pin.pin.clone(),
             })?;
             match sym_pin.kind {
@@ -581,11 +581,22 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64), roo
 mod tests {
     use super::*;
     use crate::testlib::{self, TempDir};
-    use netsmith_core::{Net, Part, PinRef};
+    use netsmith_core::{Net, Part, PartPin, PinKind, PinRef};
 
     /// The sample libraries of `testlib`, which hold what the standard mapping names.
     fn sample() -> SymbolLib {
         SymbolLib::at(testlib::sample_symbols())
+    }
+
+    /// The standard mapping and two regulators: `Ldo`, drawn with the sample library's AP1117
+    /// symbol, which has a power output, and `IcLdo`, whose row names no symbol, so it is drawn
+    /// from its pin table, whose power pins are all inputs.
+    fn mapping() -> Mapping {
+        let row = "[[part]]\nkind = \"Ldo\"\npackage = \"SOT-23\"\nsymbol = \"Regulator_Linear:AP1117-15\"\nfootprint = \"Package_TO_SOT_SMD:SOT-23\"\n\n\
+                   [[part]]\nkind = \"IcLdo\"\npackage = \"SOT-23\"\nfootprint = \"Package_TO_SOT_SMD:SOT-23\"\n";
+        Mapping::standard()
+            .merged(Mapping::parse(row, "test", std::path::Path::new(".")).unwrap())
+            .unwrap()
     }
 
     /// A 300 ohm resistor feeding an LED, with nets named the way the design stage names them.
@@ -632,7 +643,7 @@ mod tests {
     }
 
     fn parsed(design: &Design) -> Sexp {
-        Sexp::parse(&emit_schematic(design, &Mapping::standard(), &sample()).unwrap()).unwrap()
+        Sexp::parse(&emit_schematic(design, &mapping(), &sample()).unwrap()).unwrap()
     }
 
     fn label_at(root: &Sexp, net: &str, nth: usize) -> Sexp {
@@ -657,7 +668,7 @@ mod tests {
 
     #[test]
     fn the_mapping_supplies_the_symbol_and_the_footprint() {
-        let text = emit_schematic(&led_design(), &Mapping::standard(), &sample()).unwrap();
+        let text = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
         assert!(text.contains("(lib_id \"Device:R\")"));
         assert!(text.contains("(lib_id \"Device:LED\")"));
         assert!(text.contains("\"Resistor_SMD:R_0402_1005Metric\""));
@@ -683,14 +694,14 @@ mod tests {
 
     #[test]
     fn output_is_byte_for_byte_stable() {
-        let a = emit_schematic(&led_design(), &Mapping::standard(), &sample()).unwrap();
-        let b = emit_schematic(&led_design(), &Mapping::standard(), &sample()).unwrap();
+        let a = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
+        let b = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
         assert_eq!(a, b);
     }
 
     #[test]
     fn printing_the_output_again_changes_nothing() {
-        let text = emit_schematic(&led_design(), &Mapping::standard(), &sample()).unwrap();
+        let text = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
         assert_eq!(Sexp::parse(&text).unwrap().to_kicad_string(), text);
     }
 
@@ -715,9 +726,9 @@ mod tests {
     #[test]
     fn uuids_depend_only_on_names() {
         let mut d = led_design();
-        let before = emit_schematic(&d, &Mapping::standard(), &sample()).unwrap();
+        let before = emit_schematic(&d, &mapping(), &sample()).unwrap();
         d.parts[0].value = "330".into();
-        let after = emit_schematic(&d, &Mapping::standard(), &sample()).unwrap();
+        let after = emit_schematic(&d, &mapping(), &sample()).unwrap();
         let uuids = |t: &str| -> Vec<String> {
             t.lines()
                 .filter(|l| l.trim_start().starts_with("(uuid"))
@@ -733,7 +744,7 @@ mod tests {
         let mut d = led_design();
         d.parts[0].kind = "Nope".into();
         assert!(matches!(
-            emit_schematic(&d, &Mapping::standard(), &sample()),
+            emit_schematic(&d, &mapping(), &sample()),
             Err(EmitError::Map {
                 error: MapError::UnknownPart(_),
                 ..
@@ -746,7 +757,7 @@ mod tests {
         let mut d = led_design();
         d.parts[0].package = None;
         assert!(matches!(
-            emit_schematic(&d, &Mapping::standard(), &sample()),
+            emit_schematic(&d, &mapping(), &sample()),
             Err(EmitError::Map {
                 error: MapError::NeedsPackage(_),
                 ..
@@ -759,7 +770,7 @@ mod tests {
         let mut d = led_design();
         d.nets[1].pins[1].pin = "9".into();
         assert!(matches!(
-            emit_schematic(&d, &Mapping::standard(), &sample()),
+            emit_schematic(&d, &mapping(), &sample()),
             Err(EmitError::UnknownPin { .. })
         ));
     }
@@ -789,7 +800,7 @@ mod tests {
             parts: vec![
                 part("J1", "Header1x2", "Conn_01x02", None),
                 part("C1", "Capacitor", "1u", Some("0402")),
-                part("U1", "LinearRegulator", "XC6206", Some("SOT-23")),
+                part("U1", "Ldo", "XC6206", Some("SOT-23")),
             ],
             nets: vec![
                 Net {
@@ -872,14 +883,14 @@ mod tests {
     fn nets_of_passive_pins_get_no_flag() {
         let root = parsed(&led_design());
         assert!(flags(&root).is_empty());
-        let text = emit_schematic(&led_design(), &Mapping::standard(), &sample()).unwrap();
+        let text = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
         assert!(!text.contains("PWR_FLAG"));
     }
 
     #[test]
     fn flags_sit_below_the_parts_and_the_symbol_is_embedded_once() {
         let d = regulator_design();
-        let text = emit_schematic(&d, &Mapping::standard(), &sample()).unwrap();
+        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
         let y_of = |s: &Sexp| -> f64 {
             s.find("at").unwrap().args()[1]
@@ -929,17 +940,90 @@ mod tests {
         assert_eq!(real.find("on_board").unwrap().args()[0].text(), Some("yes"));
     }
 
+    /// `regulator_design()` with the `IcLdo` that names no symbol, and the pin table its part
+    /// has in the package.
+    fn drawn_regulator_design() -> Design {
+        let mut d = regulator_design();
+        let pin = |name: &str, datasheet: &str, kind: PinKind, pad: &str| PartPin {
+            name: name.into(),
+            datasheet: datasheet.into(),
+            kind,
+            pads: vec![pad.into()],
+            function: None,
+        };
+        d.parts[2].kind = "IcLdo".into();
+        d.parts[2].pins = vec![
+            pin("vin.pos", "IN", PinKind::Power, "3"),
+            pin("vin.neg", "GND", PinKind::Power, "1"),
+            pin("vout.pos", "OUT", PinKind::Power, "2"),
+        ];
+        d
+    }
+
+    #[test]
+    fn an_ic_is_drawn_from_its_pin_table_and_its_symbol_is_embedded_once_in_the_library_netsmith() {
+        let d = drawn_regulator_design();
+        // The sample library has `Regulator_Linear`; the generated symbol must not read it.
+        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let root = Sexp::parse(&text).unwrap();
+        assert!(text.contains("(lib_id \"netsmith:IcLdo_SOT-23\")"));
+        assert!(!text.contains("Regulator_Linear"));
+        let embedded: Vec<&str> = root
+            .find("lib_symbols")
+            .unwrap()
+            .find_all("symbol")
+            .filter_map(|s| s.args()[0].text())
+            .collect();
+        assert_eq!(
+            embedded
+                .iter()
+                .filter(|n| **n == "netsmith:IcLdo_SOT-23")
+                .count(),
+            1,
+            "{embedded:?}"
+        );
+        // A label on each pin of the table, at the pin's point, named for its net.
+        for net in ["VIN", "GND", "3V3"] {
+            assert!(
+                root.find_all("label")
+                    .any(|l| l.args()[0].text() == Some(net)),
+                "{net}"
+            );
+        }
+        // Its power pins are inputs, so a net nothing drives is flagged, the output's too.
+        assert_eq!(flags(&root).len(), 3);
+        // The same bytes every time.
+        assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+    }
+
+    #[test]
+    fn a_part_with_no_symbol_in_its_row_and_no_pin_table_is_refused_by_name() {
+        let e = emit_schematic(&regulator_design_with("IcLdo"), &mapping(), &sample())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("U1") && e.contains("no `symbol`") && e.contains("no pin table"),
+            "{e}"
+        );
+    }
+
+    fn regulator_design_with(kind: &str) -> Design {
+        let mut d = regulator_design();
+        d.parts[2].kind = kind.into();
+        d
+    }
+
     #[test]
     fn flag_output_is_byte_for_byte_stable() {
-        let a = emit_schematic(&regulator_design(), &Mapping::standard(), &sample()).unwrap();
-        let b = emit_schematic(&regulator_design(), &Mapping::standard(), &sample()).unwrap();
+        let a = emit_schematic(&regulator_design(), &mapping(), &sample()).unwrap();
+        let b = emit_schematic(&regulator_design(), &mapping(), &sample()).unwrap();
         assert_eq!(a, b);
         assert_eq!(Sexp::parse(&a).unwrap().to_kicad_string(), a);
     }
 
     #[test]
     fn a_flags_uuids_come_from_its_name_and_its_net() {
-        let text = emit_schematic(&regulator_design(), &Mapping::standard(), &sample()).unwrap();
+        let text = emit_schematic(&regulator_design(), &mapping(), &sample()).unwrap();
         assert!(text.contains(&uuid_for("regulator/#FLG01/symbol")));
         assert!(text.contains(&uuid_for("regulator/#FLG01/pin/1")));
         assert!(text.contains(&uuid_for("label/GND/#FLG01/1")));
@@ -947,7 +1031,7 @@ mod tests {
         // Changing a part's value moves no UUID, flags included.
         let mut d = regulator_design();
         d.parts[1].value = "2u2".into();
-        let other = emit_schematic(&d, &Mapping::standard(), &sample()).unwrap();
+        let other = emit_schematic(&d, &mapping(), &sample()).unwrap();
         assert!(other.contains(&uuid_for("regulator/#FLG02/symbol")));
     }
 

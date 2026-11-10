@@ -256,7 +256,7 @@ mod tests {
 
     fn mapped() -> Mapped {
         Mapped {
-            lib_id: "proj:Ldo".into(),
+            lib_id: Some("proj:Ldo".into()),
             footprint: "proj:Dfn".into(),
             pin_names: BTreeMap::from([("SENSE".to_string(), "SNS".to_string())]),
         }
@@ -291,7 +291,7 @@ mod tests {
             package: Some("DFN-8-EP"),
         };
         let m = Mapped {
-            lib_id: "proj:LdoBare".into(),
+            lib_id: Some("proj:LdoBare".into()),
             ..mapped()
         };
         assert_eq!(

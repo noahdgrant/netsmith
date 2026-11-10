@@ -9,6 +9,11 @@
 //! list a library of the same name. A board that uses one gets the library written into its
 //! output folder and listed in the project's library tables, as a project's own libraries are.
 
+use std::sync::Arc;
+
+use crate::sexp::Sexp;
+use crate::symbols::Symbol;
+
 /// The library name of the files in `std/libs/`: `netsmith:Footprint`, `netsmith:Symbol`.
 pub const NAME: &str = "netsmith";
 
@@ -49,15 +54,33 @@ pub fn is_library_id(id: &str) -> bool {
         .is_some_and(|(library, _)| library == NAME)
 }
 
+/// The `.kicad_sym` of the library as a board's output folder holds it: the files' own
+/// symbols and the `generated` ones, the symbols drawn from the pin tables of the board's
+/// parts ([`crate::generate`], ADR 0097), in the order of their names. A symbol of the board
+/// is the same in the schematic and here, so KiCad finds it in the library its table lists.
+pub fn symbol_library(generated: &[Arc<Symbol>]) -> String {
+    let mut own =
+        Sexp::parse(SYMBOLS).expect("std/libs/netsmith.kicad_sym is valid (a test reads it)");
+    if let Sexp::List(items) = &mut own {
+        let mut drawn: Vec<&Arc<Symbol>> = generated.iter().collect();
+        drawn.sort_by(|a, b| a.lib_id().cmp(b.lib_id()));
+        drawn.dedup_by(|a, b| a.lib_id() == b.lib_id());
+        items.extend(drawn.into_iter().map(|s| s.library_definition()));
+    }
+    own.to_kicad_string()
+}
+
 /// The files of the library as a board's output folder holds them: the path under the
-/// folder and the text. The tables of [`crate::library_tables`] point at them.
-pub fn files() -> Vec<(String, &'static str)> {
-    let mut files = vec![(format!("{NAME}.kicad_sym"), SYMBOLS)];
-    files.extend(
-        FOOTPRINTS
-            .iter()
-            .map(|(name, text)| (format!("{FOOTPRINT_FOLDER}/{name}.kicad_mod"), *text)),
-    );
+/// folder and the text. The tables of [`crate::library_tables`] point at them. `generated`
+/// is as for [`symbol_library`].
+pub fn files(generated: &[Arc<Symbol>]) -> Vec<(String, String)> {
+    let mut files = vec![(format!("{NAME}.kicad_sym"), symbol_library(generated))];
+    files.extend(FOOTPRINTS.iter().map(|(name, text)| {
+        (
+            format!("{FOOTPRINT_FOLDER}/{name}.kicad_mod"),
+            (*text).to_string(),
+        )
+    }));
     files
 }
 
@@ -96,7 +119,7 @@ mod tests {
         assert_eq!(footprint("Nothing"), None);
         assert!(is_library_id(&format!("{NAME}:{name}")));
         assert!(!is_library_id("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"));
-        let files = files();
+        let files = files(&[]);
         assert_eq!(files[0].0, "netsmith.kicad_sym");
         assert!(files[1].0.starts_with("netsmith.pretty/"));
         assert_eq!(files.len(), 1 + footprint_names().count());
