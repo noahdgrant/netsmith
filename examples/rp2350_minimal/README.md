@@ -1,8 +1,9 @@
 # RP2350A Minimal
 
 A port of Raspberry Pi's open **RP2350A Minimal** reference board to netsmith, as a showcase.
-**The port is in progress.** `src/main.nsm` is a placeholder board (an LED on a supply) that
-stands in until the parts and the circuit are written; it is not Raspberry Pi's circuit.
+**The schematic is done** (`src/main.nsm`, the board `Rp2350Minimal`): the same circuit as
+theirs, proved net by net by a test. **The physical file** (outline, mounting holes, the places
+of the connectors and buttons) **and `fab` are not written yet.**
 
 ## Source
 
@@ -33,7 +34,11 @@ are netsmith's** (MIT, like the rest of the repository).
 
 ## What is here
 
-- `netsmith.toml`, `src/main.nsm`: the project and its (placeholder) board.
+- `netsmith.toml`, `src/main.nsm`, `src/oscillator.nsm`, `src/main.lock.toml`: the project, its
+  board and the crystal's module (see The board). The lock is the catalog row each part was
+  picked as; commit it, refresh it with `netsmith lock --update`.
+- `catalogs/capacitor.csv`, `catalogs/resistor.csv`: two rows the standard catalogs lack, the
+  10 uF 0805 capacitor and the 0 ohm link (see The catalog rows).
 - `src/tactile_switch.nsm`, `catalogs/ldo.csv`, `catalogs/inductor.csv`,
   `catalogs/tactile_switch.csv`, `kicad.toml`, `libs/rp2350_minimal.pretty/`: the regulator U2,
   the inductor L1 and the buttons SW1 and SW2 (see Parts).
@@ -225,13 +230,105 @@ and says so.
 From this folder:
 
 ```sh
-netsmith build    # the schematic, in out/
-netsmith fab      # the package for the board house, in fab/
+netsmith build    # the schematic, in out/ (no KiCad needed)
+netsmith fab      # the package for the board house: not yet, the board has no physical file
 ```
 
-`netsmith compare` can read their board file as one side:
-`netsmith compare reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb out/Rp2350Minimal/Rp2350Minimal.kicad_sch`
-says nothing useful until the port is finished.
+`netsmith compare` takes their board file as one side and the source as the other:
+
+```sh
+netsmith compare reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb src/main.nsm --loose-values
+```
+
+and answers `different` with 82 differences, all of one kind: **a component of theirs with no
+counterpart**, because `compare` pairs components by value and footprint, and their footprints
+are named `RPI_COMPILED:generic_capc1005x50`, `RPI_COMPILED:amphenol_10103594-0001lf` and so on
+where the board's are `Capacitor_SMD:C_0402_1005Metric`. Their names are not ours to copy (the
+footprints of this port are netsmith's own), so the proof of the nets is a test that compares
+the wiring alone (next section).
+
+## The board
+
+`src/main.nsm` is the circuit of Raspberry Pi's board in netsmith's words, not a netlist:
+
+- **Rails.** `.vbus` (the USB supply), `.v3v3` (the regulator's output) and `.v1v1` (the core
+  supply, made by the chip's own switching regulator with L1: there is no std part for a
+  regulator inside a chip, so it is a rail the board joins to the pins and the inductor), with
+  the nets named `VBUS`, `+3V3`, `+1V1` and `GND` as theirs are. The regulator is the standard
+  `LinearRegulator` asked for the SOT-223 row of `catalogs/ldo.csv`.
+- **Modules.** `Oscillator` (`src/oscillator.nsm`): the crystal, its two 15 pF load capacitors
+  and the 1 kohm damping resistor, joined to the chip by `.xin`, `.xout` and `.gnd`.
+- **Generics with their values.** Every resistor and capacitor is a `Resistor` or `Capacitor`
+  with Raspberry Pi's value and tolerance and the package of their footprint (`1005` metric is
+  `0402`, `2012` is `0805`; the tolerances are the 1 % of the resistors, 10 % of the 100 nF and
+  10 uF, 20 % of the 4.7 uF and 5 % of the 15 pF, from the Description property of each part).
+  R1 is a `PullUp`. The 1 kohm in front of each button is a plain `Resistor`.
+- **The headers' pin map is fixed.** `.header_low` (J2) and `.header_high` (J3) are joined
+  pin by pin to **named** pins of the chip (`.header_low.p12 ~ .mcu.gpio4`), exactly as their
+  pads are. The pin optimizer of `fab` (ADR 0101) moves only a pin that a *request* got
+  (`.x: .mcu.GPIO`), never a pin the source names, and this board has no request, so no
+  `main.pins.toml` and nothing to move. A test holds it: the optimizer's input is empty here, and
+  the same board with one header pad joined to a request is one it could move.
+- **The parts** are theirs: 39 of their 43 footprints; the other four are the mounting holes,
+  which belong to the physical file.
+
+### Same nets
+
+`cargo test -p netsmith --test main rp2350_minimal::board::` runs these (none needs KiCad):
+
+- `every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board`: reads the committed
+  `.kicad_pcb` as a file (`Netlist::from_kicad_pcb`, netsmith's own s-expression reader, the one
+  `compare` uses) and the design's nets, pairs the parts by the table in the test (the path of
+  each member and Raspberry Pi's designator), and fails when **any pad of any of the 39 parts has
+  a different set of other pads on its net**. Netsmith's net names differ and do not matter.
+- `netsmith_compare_says_the_nets_are_the_same`: the same two netlists with value and
+  footprint blanked go through `netsmith-netlist`'s `compare` (the engine of `netsmith compare`),
+  with the designators paired and again with no pairing at all: both say `match`.
+- `the_header_pins_carry_raspberry_pis_signals`: each of the 72 header pads is on the net of
+  its reference signal (`+3V3`, `GND`, or the chip pin `GPIOn`, `RUN`, `SWCLK`, `SWDIO`).
+- `the_resistors_and_capacitors_have_raspberry_pis_values_and_packages`.
+- `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC; skipped where
+  there is no `kicad-cli`).
+
+**The differences, all of them:**
+
+- **Four mounting holes (MH1 to MH4)** are not in the schematic: the physical file's.
+- **U2's tab pad.** Their footprint numbers the NCP1117's tab 4 (net `+3V3`, the output); the
+  datasheet's pin is 2 and the generator's footprint numbers it 2. Same pin, same net, another
+  number: the test reads their pad 4 as pad 2.
+- **R1's package.** The standard `PullUp` picks its resistor in 0603 and does not let a board
+  state the package (the board cannot reach inside the module); theirs is 0402.
+- **Which 100 nF is which.** Their eight on `+3V3` and three on `+1V1` are interchangeable, so
+  `C12` of theirs is any of the board's eight: the test's table pairs them in order.
+- **Decoupling capacitors belong to no pin** in the source, as in their board file (the netlist
+  does not say which pin each serves).
+- **Footprints and values' spelling** differ as said above (netsmith's footprints, `100nF` for
+  `100n`); `--loose-values` reads them as equal.
+- **Not stated, so not compared:** their `dielectric`, voltage rating and part numbers. The
+  solver picks the first catalog row that fits the value and package, e.g. C1525, 16 V X7R, for
+  the 100 nF. Two ICs' details (the RP2350A's ADC functions) see below.
+- **GPIO26 to GPIO29** are on their header pads as `GPIO26_ADC0` to `GPIO29_ADC3`; the part
+  offers each pin as GPIO or as an ADC input and a connected pin needs one chosen, so the board
+  says `ADC0` to `ADC3` (see For the owner in the pull request). The pads are the same either way.
+
+### What the checks say
+
+`netsmith build` prints no error and no warning. The notes it prints are about numbers nobody has:
+the RP2350A, the flash and the crystal state no supply current (their parts are boundaries: no
+levels, ratings or models), so the regulator's output current, the inductor's current, the series
+resistors' currents and the rails' tracks are `not evaluated`, and `+3V3`, `+1V1` and `VBUS` say
+`has no source` (the connector J1 states no `dc source`). Stating a current of the chip would
+be inventing a datasheet figure, so none is stated.
+
+### The catalog rows
+
+The standard catalogs have no 10 uF 0805 capacitor and no 0 ohm link. Both are rows of the
+project with their sources: `catalogs/capacitor.csv` (Murata GRM21BR61C106KE15L, LCSC C77075, the
+JLCPCB page and the LCSC page read on 2026-11-10; no bias curve and no temperature range, as no
+datasheet was read) and `catalogs/resistor.csv` (Yageo RC0402JR-070RL, C60485: the 0.05 ohm
+upper end of its range is their board's `+50mR`, not read from the Yageo datasheet, which was
+not fetched). Both are Extended. Their part numbers are those of Raspberry Pi's board
+(its `lcsc_pn` property) and the JLCPCB and LCSC pages returned the same part for each.
 
 ## Parts
 
