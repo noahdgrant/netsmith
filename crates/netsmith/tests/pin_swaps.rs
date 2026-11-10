@@ -567,6 +567,85 @@ fn searched(
     (found, scored)
 }
 
+/// The board of `circuit` with four requests for `ANALOG`, which the first four pins of the part
+/// list besides `GPIO`; connector pin `5 - k` is joined to request `aK`, so the first assignment
+/// (`a1` on `p00`) crosses its lines.
+fn analog_circuit() -> String {
+    let mut text = circuit(&[]);
+    for k in 0..4 {
+        text = text.replace(
+            &format!(".p0{k} bidirectional \"P0.0{k}\" \"{}\" fn GPIO", k + 1),
+            &format!(
+                ".p0{k} bidirectional \"P0.0{k}\" \"{}\" fn GPIO ANALOG",
+                k + 1
+            ),
+        );
+    }
+    for k in (1..=10).rev() {
+        text = text.replace(&format!("    .g{k:02}: .u.GPIO\n"), "");
+    }
+    let end = text.rfind('}').unwrap();
+    text.truncate(end);
+    for k in 1..=4 {
+        text.push_str(&format!(
+            "    .a{k}: .u.ANALOG\n    .a{k} ~ .j.p{}\n",
+            5 - k
+        ));
+    }
+    text.push_str("}\n");
+    text
+}
+
+#[test]
+fn the_search_gives_requests_for_a_shared_function_pins_of_their_own() {
+    let dir = TempDir::new("pin-swaps-libs-analog");
+    let libs = libraries(dir.path());
+    let outcome = netsmith::outcome_with(
+        "swaps.nsm",
+        &analog_circuit(),
+        &loader(Some("")),
+        &Catalogs::jlcpcb(),
+        Some(&libs),
+    )
+    .unwrap_or_else(|p| panic!("{p:?}"));
+    let built = &outcome.boards[0];
+    let space = &outcome.pins.spaces["Swaps"];
+    let held: Vec<(&str, &str)> = space
+        .iter()
+        .flat_map(|s| &s.requests)
+        .map(|r| (r.key.as_str(), r.pin.as_str()))
+        .collect();
+    // The check accepted the requests: four ANALOG pins for four requests, the first assignment.
+    assert_eq!(
+        held,
+        [("a1", "p00"), ("a2", "p01"), ("a3", "p02"), ("a4", "p03")]
+    );
+    let board = Board::from_design_placed(
+        &built.design,
+        &libs.mapping,
+        &libs.footprints,
+        &place_options(&built.design, None),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let run = || netsmith::pin_swap::improve(space, &built.design, &board, &Budget::unlimited());
+    let found = run().expect("a swap among the analog pins lowers the score");
+    assert!(found.after < found.before, "{found:?}");
+    // Every pick is an analog pin, and no two requests end on one pin.
+    let mut ends: Vec<&str> = held
+        .iter()
+        .map(|(k, p)| found.picks.get(*k).map_or(*p, |s| s.as_str()))
+        .collect();
+    assert!(
+        ends.iter()
+            .all(|p| ["p00", "p01", "p02", "p03"].contains(p)),
+        "{ends:?}"
+    );
+    ends.sort_unstable();
+    ends.dedup();
+    assert_eq!(ends.len(), 4, "{found:?}");
+    assert_eq!(run(), Some(found));
+}
+
 /// A clock that moves by `tick` each time it is read, so that a run's time is the number of times
 /// it asked, whatever the machine.
 fn ticking(tick: Duration) -> Clock {
