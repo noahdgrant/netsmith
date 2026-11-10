@@ -14,3 +14,28 @@ kind = "Rp2350A"
 package = "QFN-60-EP(7x7)"
 default = true
 footprint = "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
+
+# The flash and the crystal are drawn from their pin tables as well (no `symbol`).
+#
+# The flash, W25Q128JV in the SOIC 208-mil package, has no id in the footprint generators (the
+# SOIC-8 there is the 3.9 mm one), so the row asks for the generator `SO` with the datasheet's
+# dimensions (Winbond W25Q128JV Revision I, section 10.1, printed page 67): 1.27 mm pitch, body
+# 5.3 x 5.3 mm (E1 5.13 to 5.33 mm, D 5.18 to 5.38 mm), 7.70 to 8.10 mm over the leads (H),
+# lead width 0.35 to 0.48 mm (b) and lead length 0.50 to 0.80 mm (L). The datasheet draws no
+# land pattern; the pads are the generator's.
+[[part]]
+kind = "W25Q128Jv"
+package = "SOIC-8-208mil"
+default = true
+footprint = "gen:SO(pins=8, pitch=1.27mm, body=5.3x5.3mm, span=7.7-8.1mm, lead_width=0.35-0.48mm, lead_length=0.5-0.8mm)"
+
+# The crystal, ABM8-272-T3, is a 3.2 x 2.5 mm ceramic package with four pads (Abracon drawing
+# # 456603 Revision B, page 4): the footprint is the generator's 3225 crystal, whose pads 1 to 4
+# are numbered as the drawing numbers its pads (1 bottom left, 2 bottom right, 3 top right and
+# 4 top left, seen from above). The pads are 1.4 x 1.2 mm at +-1.1 mm and +-0.85 mm, as in
+# Raspberry Pi's board.
+[[part]]
+kind = "Abm8272T3"
+package = "SMD3225-4P"
+default = true
+footprint = "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm"
