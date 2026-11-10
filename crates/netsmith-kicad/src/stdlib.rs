@@ -28,12 +28,40 @@ pub const FOOTPRINT_FOLDER: &str = "netsmith.pretty";
 
 /// Every footprint: its name and the text of its `.kicad_mod`. A new file of
 /// `std/libs/netsmith.pretty/` is listed here (a test fails until it is).
-const FOOTPRINTS: &[(&str, &str)] = &[(
-    "UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA",
-    include_str!(
-        "../../../std/libs/netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod"
+const FOOTPRINTS: &[(&str, &str)] = &[
+    (
+        "SW_SPST_CK_RS-282G05A3-SM",
+        include_str!("../../../std/libs/netsmith.pretty/SW_SPST_CK_RS-282G05A3-SM.kicad_mod"),
     ),
-)];
+    (
+        "SW_SPST_Omron_B3U-1000P",
+        include_str!("../../../std/libs/netsmith.pretty/SW_SPST_Omron_B3U-1000P.kicad_mod"),
+    ),
+    (
+        "UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA",
+        include_str!(
+            "../../../std/libs/netsmith.pretty/UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA.kicad_mod"
+        ),
+    ),
+    (
+        "USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal",
+        include_str!(
+            "../../../std/libs/netsmith.pretty/USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal.kicad_mod"
+        ),
+    ),
+    (
+        "USB_C_Receptacle_GCT_USB4125_6P_TopMnt_Horizontal",
+        include_str!(
+            "../../../std/libs/netsmith.pretty/USB_C_Receptacle_GCT_USB4125_6P_TopMnt_Horizontal.kicad_mod"
+        ),
+    ),
+    (
+        "USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+        include_str!(
+            "../../../std/libs/netsmith.pretty/USB_C_Receptacle_HRO_TYPE-C-31-M-12.kicad_mod"
+        ),
+    ),
+];
 
 /// The names of the footprints, in a fixed order.
 pub fn footprint_names() -> impl Iterator<Item = &'static str> {
