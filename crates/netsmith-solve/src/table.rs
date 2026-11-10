@@ -23,7 +23,7 @@
 //! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred` |
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `height` | how tall the part's body stands above the face of the board it is on, a length of one value (`2.4mm`), read from the datasheet or the manufacturer's drawing, with the document, its revision and the page or table in the `source` cell (ADR 0094). The part's `.height` is this when nothing in the design states one; empty means the height is unknown. A part whose `catalog` lists `.height` as a column of its own reads it as that column instead |
-//! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature in kelvin as the datasheet prints it (`233.15K` is -40 C), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
+//! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature as the datasheet prints it (`-40degC`, or `233.15K`, which is the same temperature), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
 //! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
 //! | `source` | where the row was read. Required when the row has an `lcsc` or `mpn` |
@@ -106,7 +106,7 @@ use std::rc::Rc;
 use netsmith_check::FieldKind;
 use netsmith_lang::ast::{BinOp, Expr};
 use netsmith_lang::parse_expr;
-use netsmith_quantity::{Dimension, Quantity, parse_unit};
+use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
 
 use crate::catalog::{Candidate, Derating, Library, Value};
 use crate::standard::Standard;
@@ -575,9 +575,9 @@ impl Row {
         Ok(Some((q.lo() * 1e12).round() / 1e9))
     }
 
-    /// The `temp_min` or `temp_max` cell: a temperature the part works at, in kelvin, or `None`
+    /// The `temp_min` or `temp_max` cell: a temperature the part works at (`85degC` or `358.15K`, stored in kelvin), or `None`
     /// when the cell is empty (ADR 0099). It is one temperature, as the datasheet prints it
-    /// (`233.15K` for -40 C): a range would make the check depend on which end was meant. The
+    /// (`-40degC`): a range would make the check depend on which end was meant. The
     /// row's `notes` say which temperature the datasheet means (ambient, junction or operating).
     fn temperature(&self, column: &str) -> Result<Option<f64>, String> {
         let Some(cell) = self.cell(column) else {
@@ -587,7 +587,7 @@ impl Row {
         let q = quantity(cell).map_err(bad)?;
         if q.dim() != Dimension::TEMPERATURE {
             return Err(bad(format!(
-                "`{cell}` is {}, but a part's {} is a temperature in kelvin such as `358.15K` (85 C)",
+                "`{cell}` is {}, but a part's {} is a temperature such as `85degC` or `358.15K`",
                 describe(q.dim()),
                 if column == "temp_min" {
                     "lowest temperature"
@@ -609,7 +609,7 @@ impl Row {
         }
         if q.lo() < 0.0 {
             return Err(bad(format!(
-                "`{cell}` is below absolute zero (0K, -273.15 C)"
+                "`{cell}` is below absolute zero (0K, -273.15degC)"
             )));
         }
         Ok(Some((q.lo() * 1e9).round() / 1e9))
@@ -741,6 +741,16 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
             .map(|l| l.quantity)
             .map_err(|e| e.to_string()),
         Expr::Paren(inner, _) => constant(inner),
+        // A sign written on a literal in an offset unit is the literal's (`-40degC` is 233.15 K).
+        Expr::Neg(inner, _) if matches!(&**inner, Expr::Number(n, _) if n.unit.as_deref().is_some_and(is_offset_unit)) =>
+        {
+            let Expr::Number(n, _) = &**inner else {
+                unreachable!("the guard matched a number")
+            };
+            Quantity::literal(-n.value, n.unit.as_deref())
+                .map(|l| l.quantity)
+                .map_err(|e| e.to_string())
+        }
         Expr::Neg(inner, _) => Ok(constant(inner)?.neg()),
         Expr::Binary { op, lhs, rhs, .. } => {
             let (a, b) = (constant(lhs)?, constant(rhs)?);
@@ -756,6 +766,10 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
             Quantity::range(&constant(lo)?, &constant(hi)?).map_err(|e| e.to_string())
         }
         Expr::Tolerance { center, tol, .. } => {
+            if matches!(&**tol, Expr::Number(n, _) if n.unit.as_deref().is_some_and(is_offset_unit))
+            {
+                return Err("a tolerance is a difference of temperatures: write it in kelvin (`20degC +/- 5K`), not in degC".into());
+            }
             let relative = matches!(
                 &**tol,
                 Expr::Number(n, _)

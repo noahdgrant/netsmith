@@ -3,6 +3,7 @@
 //! Run one file's tests with `cargo test -p netsmith-quantity --test main <file>::`, or with
 //! `cargo nextest run -p netsmith-quantity <file>::`.
 
+mod celsius;
 mod exact_ends;
 mod led_math;
 

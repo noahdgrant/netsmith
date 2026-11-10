@@ -4,8 +4,8 @@
 //! every fitted part: the hot end of the environment must be at or under the part's highest
 //! temperature, and the cold end at or over its lowest. A part that states one end only is
 //! judged on that end; an end that nothing states is not judged, and the caller names it.
-//! Temperatures are kelvin everywhere and are shown with their Celsius value beside them,
-//! because a datasheet prints Celsius.
+//! Temperatures are kelvin everywhere and are shown with their Celsius value beside them, in
+//! the language's own spelling (`degC`, ADR 0102), because a datasheet prints Celsius.
 
 /// What the comparison found for each end of the environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,18 +54,18 @@ impl Fit {
     }
 }
 
-/// `358.15 K (85 C)`: a temperature as the messages show it.
+/// `358.15 K (85degC)`: a temperature as the messages show it.
 pub fn show(kelvin: f64) -> String {
-    format!("{} K ({} C)", trim(kelvin), trim(kelvin - 273.15))
+    format!("{} K ({}degC)", trim(kelvin), trim(kelvin - 273.15))
 }
 
-/// `233.15 K to 398.15 K (-40 C to 125 C)`, or one temperature when the ends are equal.
+/// `233.15 K to 398.15 K (-40degC to 125degC)`, or one temperature when the ends are equal.
 pub fn show_range(lo: f64, hi: f64) -> String {
     if lo == hi {
         show(lo)
     } else {
         format!(
-            "{} K to {} K ({} C to {} C)",
+            "{} K to {} K ({}degC to {}degC)",
             trim(lo),
             trim(hi),
             trim(lo - 273.15),
@@ -106,12 +106,12 @@ mod tests {
     }
 
     #[test]
-    fn messages_show_kelvin_with_celsius() {
-        assert_eq!(show(358.15), "358.15 K (85 C)");
+    fn messages_show_kelvin_with_degc() {
+        assert_eq!(show(358.15), "358.15 K (85degC)");
         assert_eq!(
             show_range(233.15, 398.15),
-            "233.15 K to 398.15 K (-40 C to 125 C)"
+            "233.15 K to 398.15 K (-40degC to 125degC)"
         );
-        assert_eq!(show(300.0), "300 K (26.85 C)");
+        assert_eq!(show(300.0), "300 K (26.85degC)");
     }
 }

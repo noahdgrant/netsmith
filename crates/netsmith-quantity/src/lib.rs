@@ -9,4 +9,4 @@ mod unit;
 pub use dimension::Dimension;
 pub use error::QuantityError;
 pub use quantity::{Literal, Quantity};
-pub use unit::{Unit, parse_unit};
+pub use unit::{CELSIUS_ZERO_K, Unit, is_offset_unit, parse_unit};

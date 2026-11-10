@@ -62,6 +62,42 @@ fn every_part_has_a_range_that_it_or_the_board_may_state() {
 }
 
 #[test]
+fn a_temperature_in_degc_is_kelvin_underneath_and_a_sign_on_it_is_the_numbers() {
+    let m = model(
+        "board B {\n    .environment: Environment { .temperature &= -40degC..125degC }\n    .r: Resistor\n    .r.temp_min &= -55degC\n    .r.temp_max &= 0degC + 150K\n}\n",
+        "B",
+    );
+    let field = m.environment_temperature_of(part(&m, "r")).unwrap();
+    assert_eq!(ends(&m, field), (233.15, 398.15));
+    let (min, max) = m.temperature_range_of(part(&m, "r")).unwrap();
+    assert_eq!(ends(&m, min), (218.15, 218.15));
+    // A temperature plus a rise is a temperature; a difference of two is kelvin.
+    assert_eq!(ends(&m, max), (423.15, 423.15));
+}
+
+#[test]
+fn a_tolerance_is_a_difference_so_it_is_in_kelvin() {
+    let ok = check(
+        "t.nsm",
+        &format!("{HEAD}board B {{\n    .r: Resistor\n    .r.temp_max &= 85degC +/- 5K\n}}\n"),
+        &Loader::std(),
+    );
+    assert!(ok.is_ok(), "{}", ok.render());
+    let c = check(
+        "t.nsm",
+        &format!("{HEAD}board B {{\n    .r: Resistor\n    .r.temp_max &= 85degC +/- 5degC\n}}\n"),
+        &Loader::std(),
+    );
+    assert!(!c.is_ok());
+    assert!(
+        c.render()
+            .contains("a tolerance is a difference of temperatures: write it in kelvin"),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
 fn a_range_is_a_temperature_and_nothing_else() {
     let c = check(
         "t.nsm",

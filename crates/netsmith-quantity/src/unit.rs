@@ -13,7 +13,14 @@ pub struct Unit {
     pub dim: Dimension,
     /// `%` and `ppm`: a fraction of the value they modify, not a unit of their own.
     pub relative: bool,
+    /// `degC`: an offset unit, whose zero is not the zero of its dimension. A literal in it is
+    /// the number plus 273.15, in kelvin (`0degC` is `273.15K`), and a sign written directly on
+    /// the literal belongs to the number, so `-40degC` is 233.15 K and not minus 313.15 K.
+    pub offset: bool,
 }
+
+/// The kelvin value of `0degC`.
+pub const CELSIUS_ZERO_K: f64 = 273.15;
 
 struct Base {
     symbol: &'static str,
@@ -47,9 +54,11 @@ const BASES: [Base; 12] = [
     base("Hz", 0, Dimension::FREQUENCY, true),
 ];
 
-const EXTRA: [Base; 2] = [
+const EXTRA: [Base; 3] = [
     base("S", 0, Dimension::CONDUCTANCE, true),
+    // The coulomb. A temperature in Celsius is `degC` (ADR 0102), so that `C` stays charge.
     base("C", 0, Dimension::CHARGE, true),
+    base("degC", 0, Dimension::TEMPERATURE, false),
 ];
 
 const PREFIXES: [(&str, i32); 11] = [
@@ -80,6 +89,7 @@ pub fn parse_unit(text: &str) -> Result<Unit, QuantityError> {
                 exp10: -2,
                 dim: Dimension::NONE,
                 relative: true,
+                offset: false,
             });
         }
         "ppm" => {
@@ -87,6 +97,7 @@ pub fn parse_unit(text: &str) -> Result<Unit, QuantityError> {
                 exp10: -6,
                 dim: Dimension::NONE,
                 relative: true,
+                offset: false,
             });
         }
         _ => {}
@@ -97,6 +108,7 @@ pub fn parse_unit(text: &str) -> Result<Unit, QuantityError> {
             exp10: b.exp10,
             dim: b.dim,
             relative: false,
+            offset: b.symbol == "degC",
         });
     }
     for (prefix, exp) in PREFIXES {
@@ -108,10 +120,16 @@ pub fn parse_unit(text: &str) -> Result<Unit, QuantityError> {
                 exp10: b.exp10 + exp,
                 dim: b.dim,
                 relative: false,
+                offset: false,
             });
         }
     }
     Err(QuantityError::UnknownUnit(text.to_string()))
+}
+
+/// Whether `text` is an offset unit (`degC`): a sign written on a literal in it is the literal's.
+pub fn is_offset_unit(text: &str) -> bool {
+    parse_unit(text).is_ok_and(|u| u.offset)
 }
 
 #[cfg(test)]
@@ -182,12 +200,24 @@ mod tests {
     }
 
     #[test]
+    fn degc_is_the_one_offset_unit_and_c_stays_the_coulomb() {
+        let c = parse_unit("degC").unwrap();
+        assert!(c.offset && c.dim == Dimension::TEMPERATURE && c.exp10 == 0);
+        assert!(!parse_unit("K").unwrap().offset);
+        assert_eq!(unit("C"), (0, Dimension::CHARGE));
+        assert_eq!(unit("nC"), (-9, Dimension::CHARGE));
+        assert!(!parse_unit("C").unwrap().offset);
+    }
+
+    #[test]
     fn rejects_what_it_does_not_know() {
         assert!(matches!(
             parse_unit("furlong"),
             Err(QuantityError::UnknownUnit(_))
         ));
         assert!(parse_unit("kK").is_err(), "kelvin takes no prefix here");
+        assert!(parse_unit("mdegC").is_err(), "degC takes no prefix");
+        assert!(parse_unit("degc").is_err(), "units are case sensitive");
         assert!(parse_unit("v").is_err(), "units are case sensitive");
         assert!(parse_unit("").is_err());
     }
