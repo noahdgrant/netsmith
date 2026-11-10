@@ -240,12 +240,29 @@ its offset) and exits 1 when a must-match item fails. The test
 `netsmith::parity`; `crates/netsmith/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's
 own board against itself.
 
-**What is checked.** Must match (a failure): the outline's width, height and corner radius; each
-mounting hole's place and drill; for the connectors, buttons and headers (J1 to J4, SW1, SW2) each
-part's place, rotation and layer, and each pad's number, centre in its footprint, size, drill,
-type and net. Reported, never a failure (`info`): the same figures of every other part (MCU,
-flash, crystal, regulator, inductor, decoupling), pads reported as one line per part; the routing
-is not looked at.
+**What is checked.** The report prints what each verdict compared, at its head. Must match (a
+failure):
+
+- the outline: the bounding box (width, height), the corner radius, the number of `Edge.Cuts`
+  lines and arcs and each arc's radius (a corner cut by a line, or a cut-out inside the board,
+  changes the count and fails though the box is the same);
+- each mounting hole's place and drill;
+- for the connectors, buttons and headers (J1 to J4, SW1, SW2), each part's position, rotation
+  and layer;
+- each pad, one by one: number, centre in its footprint, size and angle in the footprint's frame
+  (a pad turned by 90 degrees has its width and height swapped, so the same copper written two
+  ways is equal and a turned pad is not), shape, the box of a custom pad's polygon, drill (both
+  sides of a slot, round against slot), type, and net. The pads of one number (J1's shell has a
+  surface pad and a plated slot for each of 6, 7, 9 and 10) are paired by the nearest centre in
+  the footprint, and each pair is judged.
+
+A part of nothing but non-plated pads is a mounting hole; a connector with a peg is still a part
+and the peg is a pad of it. Reported, never a failure (`info`): the same figures of every other
+part (MCU, flash, crystal, regulator, inductor, decoupling), pads reported as one line per part.
+Not compared, because the table does not hold it: a rounded rectangle's corner ratio, a custom
+pad's anchor shape and its polygon's shape inside the box, a pad's layers, mask and paste, the
+silkscreen, the courtyard and the routing. A table with no part, a part with no `must_match` or an
+outline with no count of lines or arcs is an error, not a pass.
 
 **The origin.** `fab` gives a board an origin of its own, so both boards are read from the
 upper-left corner of the outline's bounding box (the smallest x and y of `Edge.Cuts`, KiCad's y
@@ -259,14 +276,16 @@ note. Map every part whose pads carry a net, U1 included: the nets are compared 
 both names are plain (a leading `/` and the case are ignored; `Net-(...)` and `unconnected-...`
 are not plain), and through the connectivity otherwise. A pad's net passes when the names are
 equal, or when they differ and the same mapped pads are on the net in both boards (a warning
-says so); two header pads on each other's nets fail. A name that differs with no other mapped
-pad on the net to vouch for it fails.
+says so); two header pads on each other's nets fail. A name that differs, or of which one is
+made up (`Net-(...)`, `unconnected-...` or none), with no other mapped pad on the net to vouch
+for it fails: nothing vouches for it.
 
 **Tolerances** (mm, degrees). The owner's: outline and mounting holes 0.05, positions of parts
 0.1, rotation exact (modulo 360), pad numbers equal, nets equal. Chosen where the owner was
 silent: the corner radius 0.05 and a hole's drill 0.05 (as the outline and the holes), a pad's
 centre in its footprint 0.1 (as the positions), a pad's width, height and drill 0.05, the rotation
-0.001 degree (the rounding of the file), the layer equal.
+0.001 degree (the rounding of the file; a pad's angle in its footprint uses it too), a custom
+pad's box 0.05 (as a pad's size), the layer equal.
 
 ## Run it
 
