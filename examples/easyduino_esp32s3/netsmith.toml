@@ -1,0 +1,6 @@
+[project]
+name = "easyduino_esp32s3"
+top_level = ["src/main.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9
