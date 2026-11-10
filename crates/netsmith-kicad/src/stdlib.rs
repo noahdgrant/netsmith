@@ -35,6 +35,20 @@ const FOOTPRINTS: &[(&str, &str)] = &[(
     ),
 )];
 
+/// The names of the symbols of the library's own file (`std/libs/netsmith.kicad_sym`), which a
+/// board's library holds whatever its parts are.
+pub fn file_symbol_names() -> &'static [String] {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        Sexp::parse(SYMBOLS)
+            .expect("std/libs/netsmith.kicad_sym is valid (a test reads it)")
+            .find_all("symbol")
+            .filter_map(|s| s.args().first().and_then(Sexp::text))
+            .map(|name| format!("{NAME}:{name}"))
+            .collect()
+    })
+}
+
 /// The names of the footprints, in a fixed order.
 pub fn footprint_names() -> impl Iterator<Item = &'static str> {
     FOOTPRINTS.iter().map(|(name, _)| *name)

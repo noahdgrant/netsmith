@@ -355,6 +355,24 @@ mod tests {
     }
 
     #[test]
+    fn every_footprint_says_what_kicads_own_says_of_the_bill_and_the_position_file() {
+        // KiCad 9's own: a hole and a test point are `exclude_from_pos_files exclude_from_bom`
+        // and no more (a test point is not `smd` too), and the fiducial is only `smd`, so that
+        // the pick-and-place machine finds it in a position file.
+        // `generated_vs_kicad.rs` compares the words with the installed library's.
+        for id in names() {
+            let text = make(&id).source.to_kicad_string();
+            let attr = if id.starts_with("Fiducial:") {
+                "(attr smd)"
+            } else {
+                "(attr exclude_from_pos_files exclude_from_bom)"
+            };
+            assert_eq!(text.matches("(attr ").count(), 1, "{id}");
+            assert!(text.contains(attr), "{id}: {text}");
+        }
+    }
+
+    #[test]
     fn a_test_point_is_one_bare_round_pad_with_mask_open_and_no_paste() {
         for (id, d) in [
             ("TestPoint:TestPoint_Pad_D1.0mm", 1.0),

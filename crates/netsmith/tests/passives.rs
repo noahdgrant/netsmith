@@ -511,6 +511,9 @@ fn generated_symbols_agree_with_the_installed_kicad_symbols() {
             );
         }
         assert_eq!(theirs.units(), mine.units(), "{id}");
+        // Whether a bill of materials lists it and whether it goes on the board.
+        assert_eq!(theirs.in_bom(), mine.in_bom(), "{id}: in_bom");
+        assert_eq!(theirs.on_board(), mine.on_board(), "{id}: on_board");
         assert_eq!(
             theirs
                 .pins()

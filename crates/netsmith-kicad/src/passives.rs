@@ -759,6 +759,9 @@ struct Spec {
     pin_part: &'static str,
     /// Whether KiCad calls it a power symbol, which a flag is.
     power: bool,
+    /// Whether a bill of materials lists a part drawn with it: not a hole or a fiducial, which
+    /// nobody buys or fits (KiCad's own symbols say the same).
+    in_bom: bool,
     /// The look.
     glyph: Vec<Shape>,
 }
@@ -782,6 +785,7 @@ const BASE: Spec = Spec {
     pins: Vec::new(),
     pin_part: "1_1",
     power: false,
+    in_bom: true,
     glyph: Vec::new(),
 };
 
@@ -1181,6 +1185,7 @@ fn mechanical_specs() -> Vec<Spec> {
             reference_at: (0.0, 5.08, 0.0),
             value_at: (0.0, 3.175, 0.0),
             glyph: mounting_hole(),
+            in_bom: false,
             ..BASE
         },
         Spec {
@@ -1203,6 +1208,7 @@ fn mechanical_specs() -> Vec<Spec> {
                 false,
             )],
             glyph: plated_hole(),
+            in_bom: false,
             ..BASE
         },
         Spec {
@@ -1216,6 +1222,7 @@ fn mechanical_specs() -> Vec<Spec> {
                 hidden: SHOWN,
             },
             glyph: fiducial(),
+            in_bom: false,
             ..BASE
         },
         Spec {
@@ -1241,6 +1248,8 @@ fn mechanical_specs() -> Vec<Spec> {
             pin_part: "0_0",
             power: true,
             glyph: power_flag(),
+            // As KiCad's own flag says; the flag the exporter places is `#FLG`, which no bill lists.
+            in_bom: true,
         },
     ]
 }
@@ -1351,7 +1360,7 @@ fn definition(spec: &Spec) -> Sexp {
     flag("pin_names", spec.names.hidden, spec.names.offset);
     items.extend([
         Sexp::node("exclude_from_sim", vec![Sexp::atom("no")]),
-        Sexp::node("in_bom", vec![Sexp::atom("yes")]),
+        Sexp::node("in_bom", vec![Sexp::yes_no(spec.in_bom)]),
         Sexp::node("on_board", vec![Sexp::atom("yes")]),
         property(
             "Reference",
@@ -1429,6 +1438,25 @@ mod tests {
         assert!(covers_library("Connector") && covers_library("power"));
         assert!(!covers_library("Regulator_Linear"));
         assert!(symbol("Regulator_Linear:AP1117-15").is_none());
+    }
+
+    #[test]
+    fn only_the_holes_and_the_fiducial_are_left_out_of_a_bill_of_materials() {
+        // KiCad's own symbols say the same (`crates/netsmith/tests/passives.rs` compares them):
+        // a test point and a power flag are `in_bom yes`, and the flag is no part because its
+        // placed instance is not (`#FLG` and `in_bom no` in the schematic).
+        let out: Vec<&str> = ids().filter(|id| !symbol(id).unwrap().in_bom()).collect();
+        assert_eq!(
+            out,
+            [
+                "Mechanical:MountingHole",
+                "Mechanical:MountingHole_Pad",
+                "Mechanical:Fiducial"
+            ]
+        );
+        for id in ids() {
+            assert!(symbol(id).unwrap().on_board(), "{id}");
+        }
     }
 
     #[test]

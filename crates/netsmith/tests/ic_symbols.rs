@@ -164,3 +164,57 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
     );
     assert!(flagged.contains("VIN"), "{flagged:?}");
 }
+
+#[test]
+fn two_parts_of_one_kind_with_different_pin_tables_are_two_symbols_in_the_schematic_and_the_library_file()
+ {
+    let dir = TempDir::new("ic-symbols-clash");
+    let libraries = libraries(&dir);
+    let built = built(&libraries);
+    let mut design = built.design.clone();
+    // A second IC of the same kind and package whose first pin another datasheet names
+    // differently: the plain name `netsmith:Lt8641_UDC20_18_out8` would be two drawings.
+    let mut twin = design
+        .parts
+        .iter()
+        .find(|p| p.kind == "Lt8641")
+        .unwrap()
+        .clone();
+    twin.refdes = "U99".into();
+    twin.pins[0].datasheet = "RENAMED".into();
+    design.parts.push(twin);
+
+    let schematic =
+        netsmith_kicad::emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    let root = Sexp::parse(&schematic).unwrap();
+    let mut embedded: Vec<String> = root
+        .find("lib_symbols")
+        .unwrap()
+        .find_all("symbol")
+        .filter_map(|s| s.args()[0].text())
+        .filter(|n| n.starts_with("netsmith:Lt8641"))
+        .map(str::to_string)
+        .collect();
+    embedded.sort();
+    assert_eq!(embedded.len(), 2, "{embedded:?}");
+    assert_ne!(embedded[0], embedded[1]);
+
+    // The library file of the board holds exactly those two, once each.
+    let generated = libraries.generated_symbols(&design);
+    let mut ids: Vec<String> = generated
+        .iter()
+        .map(|s| s.lib_id().to_string())
+        .filter(|id| id.starts_with("netsmith:Lt8641"))
+        .collect();
+    ids.sort();
+    assert_eq!(ids, embedded);
+    let file = netsmith_kicad::stdlib::files(&generated).remove(0).1;
+    for id in &embedded {
+        let bare = id.strip_prefix("netsmith:").unwrap();
+        assert_eq!(
+            file.matches(&format!("(symbol \"{bare}\"")).count(),
+            1,
+            "{bare} in {file}"
+        );
+    }
+}
