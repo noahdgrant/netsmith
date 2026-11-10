@@ -1,8 +1,10 @@
 # What KiCad calls the parts this example defines itself (ADR 0021). The microcontroller and
 # the regulator IC are invented and drawn by the library of this project (the microcontroller
 # has a footprint of its own in `libs/bench.pretty`, with a pad for every pin of both of its units,
-# which no stock footprint has); the amplifier has no `symbol`, so netsmith draws it from its pin
-# table (ADR 0097). Every footprint is one that a generator answers, so no KiCad install is read.
+# which no stock footprint has). The amplifier is a symbol of three units (two amplifiers and a
+# power unit, the split of a dual op amp), because the bench exists to draw symbols of several
+# units; it is the project's own symbol in `libs/bench.kicad_sym`, so no KiCad install is read.
+# Every other footprint is one that a generator answers.
 
 [[library]]
 name = "bench"
@@ -27,7 +29,16 @@ footprint = "bench:Buck1V8"
 kind = "DualOpAmp"
 package = "SOIC-8"
 default = true
+symbol = "bench:DualOpAmp"
 footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+# The symbol names its inputs "+" and "-" in both amplifiers, as an op amp is drawn, and leaves
+# the outputs unnamed ("~"); the part's pins are IN_A+ and so on.
+[part.pin_names]
+"IN_A+" = "+"
+"IN_A-" = "-"
+"IN_B+" = "+"
+"IN_B-" = "-"
 
 [[part]]
 kind = "Ldo8"
