@@ -1,8 +1,10 @@
 ---
-status: proposed for owner review (written overnight on 2026-11-05 by an agent that was told to pick an option and go on; the type of `.dielectric`, the variants and the filling of the column are the owner's to accept or change)
+status: proposed
 ---
 
 # A capacitor has a dielectric and an inductor a heating current, as optional columns
+
+Status notes: Written overnight on 2026-11-05 by an agent that was told to pick an option and go on. The type of `.dielectric`, the variants and the filling of the column are the owner's to accept or change.
 
 A design could not say that a bypass capacitor must be X7R, or that an inductor must carry a heating current, because the catalogs had no column for either. The two are alike in what was done and unlike in what could be filled, so one record holds both.
 

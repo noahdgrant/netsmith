@@ -43,6 +43,13 @@ choices for the owner in the headers of `route.rs` and `anneal.rs`; 0037's list 
 inventory and licence reading in `docs/research/kicad-library-licensing.md`. 0021's installed-library paths and their verification (issue #6) are in the header of
 `crates/netsmith-kicad/src/install.rs`. The line numbers this digest gave into `place.rs`, `std/pcb.nsm`, `libraries.rs` and `guidelines.rs` follow the longer comments.
 
+**Update 2026-11-10 (ADR cleanup, batch 4).** ADRs 0060 and 0067 were folded into a three-line stub, and ADRs 0019, 0059, 0061 and 0062 were cut to one page; each says
+the commit its full text is in (`git show 31d3394:docs/adr/<file>`). This digest does not cover them (see "Not covered"), but the review notes inside 0059 and 0061 and the
+choices of 0060, 0062 and 0067 are now where the code is: 0059's identity rules and the defaults taken for review in the header of `crates/netsmith/src/editor/diff.rs`
+(its status is now `accepted`, from the line "accepted (owner review, 2026-11-06; as proposed ...)"; the owner may say `proposed`); 0060 in the header of
+`crates/netsmith-view/src/layout/notes.rs`; 0061's file format and rules in the header of `crates/netsmith-view/src/hints.rs` (its status stays `proposed`); 0062's
+mechanism and numbers in the header of `crates/netsmith-core/src/job.rs` (status stays `proposed`); 0067 in the header of `crates/netsmith-view/src/layout/engine/bus.rs`.
+
 **Update 2026-11-10 (ADR cleanup, batch 5).** ADRs 0016, 0052, 0054, 0064, 0066, 0068, 0071, 0074 and 0083 were cut to one page and kept (none was folded: each states
 syntax or a rule of the language); each says the commit its full text is in (`git show 8023ee9:docs/adr/<file>`). 0016, 0064, 0068 and 0071 are `accepted` on the
 status lines that said the owner accepted them; 0052, 0054, 0066, 0074 and 0083 are `proposed`. The choices that this digest names for them are now where the code is: 0064's

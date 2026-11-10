@@ -4,7 +4,7 @@ What netsmith does with a design, in order. Nothing is kept between runs but two
 `fab` and the editor each start from the source text and run the stages again. The files a
 person writes beside a board (layout files, the physical file) are inputs. The files netsmith
 writes are outputs, and no stage reads one back, except the pick lock (`<stem>.lock.toml`,
-ADR 0100, proposed): `build` and `fab` write it when it is absent, and the solve stage then holds
+ADR 0100, proposed): `build` and `fab` write it when it is absent, `netsmith lock --update` rewrites it, and the solve stage then holds
 each part to the row it names; and the pin file (`<stem>.pins.toml`, ADR 0101, proposed, below).
 `NETSMITH_TIMINGS=1` prints the seconds of each stage.
 

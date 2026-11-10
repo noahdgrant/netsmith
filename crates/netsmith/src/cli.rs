@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -13,6 +13,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     (
         "fab",
         "make the fab package (Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt) or an order",
+    ),
+    (
+        "lock",
+        "refresh the pick lock (`--update`) or say whether it is current (`--check`)",
     ),
     ("editor", "the source and the board in a browser"),
     ("compare", "are two designs the same circuit?"),
@@ -65,6 +69,15 @@ pub struct RefreshRequest {
     /// How long a kept answer is used, in hours, if not the default.
     pub cache_ttl_hours: Option<u64>,
     pub no_cache: bool,
+}
+
+/// What `netsmith lock` does with the pick lock (ADR 0100).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockMode {
+    /// `--update`: write the rows the solver picks now.
+    Update,
+    /// `--check`: write nothing; fail when the lock is not current.
+    Check,
 }
 
 /// What `netsmith fab --order` asks for (ADR 0035).
@@ -120,6 +133,11 @@ pub enum Command {
         pins_locked: Option<bool>,
         /// Make a named order of the project, or list them, instead of every board.
         order: Option<OrderRequest>,
+    },
+    /// Refresh or check the pick lock of `file`, or of each top-level file of the project.
+    Lock {
+        file: Option<String>,
+        mode: LockMode,
     },
     /// The editor in a browser. `file` is `None` to act on the project's top-level files.
     Editor { file: Option<String>, port: u16 },
@@ -226,6 +244,7 @@ where
     let mut constraints_warn: Option<bool> = None;
     let mut pins_locked: Option<bool> = None;
     let mut order: Option<OrderRequest> = None;
+    let mut lock_mode: Option<LockMode> = None;
     let mut port = DEFAULT_PORT;
     while let Some(arg) = args.next() {
         match (command.as_str(), arg.as_str()) {
@@ -253,6 +272,19 @@ where
             ("fab", "--cross-check") => cross_check = true,
             ("build" | "fab", "--strict") => strict = true,
             ("build" | "fab", "--locked") => locked = true,
+            ("lock", "--update" | "--check") => {
+                let asked = if arg == "--update" {
+                    LockMode::Update
+                } else {
+                    LockMode::Check
+                };
+                if lock_mode.is_some_and(|earlier| earlier != asked) {
+                    return Err(format!(
+                        "`lock` takes `--update` or `--check`, not both\n{USAGE}"
+                    ));
+                }
+                lock_mode = Some(asked);
+            }
             ("fab", "--constraints") => match args.next().as_deref() {
                 Some("warn") => constraints_warn = Some(true),
                 Some("error") => constraints_warn = Some(false),
@@ -320,6 +352,14 @@ where
             ignore_unconnected,
             loose_values,
         });
+    }
+    if command == "lock" {
+        let mode = lock_mode.ok_or_else(|| {
+            format!(
+                "`lock` needs `--update` (write the rows the solver picks now) or `--check` (say whether the lock is current)\n{USAGE}"
+            )
+        })?;
+        return Ok(Command::Lock { file, mode });
     }
     Ok(match command.as_str() {
         "init" => Command::Init { name },

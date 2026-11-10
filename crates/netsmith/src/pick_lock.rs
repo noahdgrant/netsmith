@@ -6,18 +6,22 @@
 //! the solver then offers each locked part only its locked row, and judges that row by
 //! everything the design says (`netsmith_solve::Catalogs::with_pick_lock`). A lock that no
 //! longer matches the picks is told, and with `--locked` is an error; it is never rewritten
-//! behind a person's back.
+//! behind a person's back. `netsmith lock --update` rewrites it on purpose and `lock --check`
+//! says whether it is current ([`refresh`]).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use netsmith_check::Loader;
 use netsmith_solve::{Catalogs, LockedRow, PickLock, Solution};
+
+use crate::{outcome_with, render_problems};
 
 /// The version of the file's format.
 const VERSION: i64 = 1;
 
 /// The first lines of a written file.
-const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith build` and\n# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Delete the\n# file to pick again. Nothing in it is edited by hand.\n";
+const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith build` and\n# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith lock --update`. Nothing in it is edited by hand.\n";
 
 /// The lock of a source file: `led.nsm` has `led.lock.toml`.
 pub fn lock_path(source: &Path) -> PathBuf {
@@ -168,6 +172,140 @@ pub fn render(lock: &PickLock) -> String {
         }
     }
     out
+}
+
+/// A row as a line of a diff names it: its name, and the numbers it is a check against.
+fn describe(row: &LockedRow, with_catalog: bool) -> String {
+    let mut text = format!("`{}`", row.row);
+    if with_catalog {
+        text.push_str(&format!(" in the `{}` catalog", row.catalog));
+    }
+    let numbers: Vec<String> = [("lcsc", &row.lcsc), ("mpn", &row.mpn)]
+        .into_iter()
+        .filter_map(|(name, number)| number.as_ref().map(|n| format!("{name} {n}")))
+        .collect();
+    if !numbers.is_empty() {
+        text.push_str(&format!(" ({})", numbers.join(", ")));
+    }
+    text
+}
+
+/// What differs between two locks, one line for each part, in the order board, part path:
+/// `Board: `r1`: `A` (lcsc C1, mpn M1) -> `B` (lcsc C2, mpn M2)` for a part whose row, or whose
+/// numbers, changed, `added as ...` for a part the old lock has no entry for, and `dropped (was
+/// ...)` for an entry of a part that is no longer there. Empty when the locks hold the same.
+pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
+    let mut found: Vec<(String, String, String)> = Vec::new();
+    for (unit, rows) in new.units() {
+        let before = old.rows(unit);
+        for row in rows {
+            let line = match before.iter().find(|b| b.path == row.path) {
+                None => format!("{unit}: `{}`: added as {}", row.path, describe(row, true)),
+                Some(b) if b != row => {
+                    let with_catalog = b.catalog != row.catalog;
+                    format!(
+                        "{unit}: `{}`: {} -> {}",
+                        row.path,
+                        describe(b, with_catalog),
+                        describe(row, with_catalog)
+                    )
+                }
+                Some(_) => continue,
+            };
+            found.push((unit.to_string(), row.path.clone(), line));
+        }
+    }
+    for (unit, rows) in old.units() {
+        let after = new.rows(unit);
+        for row in rows {
+            if !after.iter().any(|a| a.path == row.path) {
+                found.push((
+                    unit.to_string(),
+                    row.path.clone(),
+                    format!(
+                        "{unit}: `{}`: dropped (it was {}, and is no longer a part of the board)",
+                        row.path,
+                        describe(row, true)
+                    ),
+                ));
+            }
+        }
+    }
+    found.sort();
+    found.into_iter().map(|(_, _, line)| line).collect()
+}
+
+/// What `lock --update` and `lock --check` found for the lock of one source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refresh {
+    /// The lock file: beside the source.
+    pub file: PathBuf,
+    /// Whether the file exists now.
+    pub existed: bool,
+    /// The rows the solver picks now, without the lock's holding: what `--update` writes.
+    pub now: PickLock,
+    /// The difference between the file and `now`, one line for each part ([`diff`]); all the
+    /// parts of the board as added when there is no file. Empty when the lock is current.
+    pub diff: Vec<String>,
+    /// What the solver said when it held the parts to the rows of the file as it is: the rows
+    /// that no longer pass or are no longer in a catalog, in its own words (the messages of a
+    /// `build`, with the relation and its numbers). Empty when every locked row still holds.
+    pub reported: String,
+}
+
+impl Refresh {
+    /// Whether the lock is as `--update` would write it. A source with no part to lock needs
+    /// no file.
+    pub fn is_current(&self) -> bool {
+        self.diff.is_empty()
+    }
+
+    /// Writes the file as it would be after the refresh. Nothing is written when the lock is
+    /// current, so a file that holds the right rows keeps its bytes.
+    pub fn write(&self) -> Result<(), String> {
+        if self.is_current() {
+            return Ok(());
+        }
+        std::fs::write(&self.file, render(&self.now))
+            .map_err(|e| format!("error: {}: {e}", self.file.display()))
+    }
+}
+
+/// Solves each board and system of the source called `name` (with text `text`, at `source`)
+/// twice: held to the rows of its lock file as it is, to say what no longer holds, and then
+/// with no lock, to find the rows the solver picks now. Writes nothing, and reads no KiCad
+/// library. `catalogs` must hold no pick lock. An error is the message to print: the file
+/// cannot be read or is not a lock, or the source does not build even with no lock.
+pub fn refresh(
+    source: &Path,
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    catalogs: &Catalogs,
+) -> Result<Refresh, String> {
+    let file = lock_path(source);
+    let old = read(&file)?;
+    let outcome = outcome_with(name, text, loader, catalogs, None)
+        .map_err(|problems| render_problems(&problems))?;
+    let now = outcome.lock;
+    let mut reported = String::new();
+    if let Some(old) = &old {
+        let held = catalogs.clone().with_pick_lock(old.clone());
+        if let Err(problems) = outcome_with(name, text, loader, &held, None) {
+            reported = render_problems(&problems);
+        }
+    }
+    let empty = PickLock::new("");
+    let diff = diff(old.as_ref().unwrap_or(&empty), &now);
+    let mut now = now;
+    now.file = file.display().to_string();
+    Ok(Refresh {
+        file,
+        existed: old.is_some(),
+        now,
+        diff,
+        reported,
+    })
 }
 
 /// How the picks of a run differ from the lock they were made under.
@@ -394,5 +532,43 @@ mod tests {
             ]
         );
         assert!(compare(&old, &old).is_empty());
+    }
+
+    #[test]
+    fn the_diff_names_each_part_with_its_numbers_in_board_and_path_order() {
+        let mut old_a = row("r1", "resistor", "A", Some("C1"));
+        old_a.mpn = Some("M1".into());
+        let mut new_a = row("r1", "resistor", "A2", Some("C2"));
+        new_a.mpn = Some("M2".into());
+        let old = lock(&[
+            ("Board", old_a),
+            ("Board", row("r2", "resistor", "B", None)),
+            ("Other", row("d1", "led", "L", Some("C9"))),
+            ("Board", row("same", "led", "S", Some("C5"))),
+        ]);
+        let new = lock(&[
+            ("Board", new_a),
+            ("Board", row("r3", "resistor", "C", None)),
+            ("Board", row("same", "led", "S", Some("C5"))),
+        ]);
+        assert_eq!(
+            diff(&old, &new),
+            vec![
+                "Board: `r1`: `A` (lcsc C1, mpn M1) -> `A2` (lcsc C2, mpn M2)",
+                "Board: `r2`: dropped (it was `B` in the `resistor` catalog, and is no longer a part of the board)",
+                "Board: `r3`: added as `C` in the `resistor` catalog",
+                "Other: `d1`: dropped (it was `L` in the `led` catalog (lcsc C9), and is no longer a part of the board)",
+            ]
+        );
+        assert!(diff(&old, &old).is_empty());
+        // The same row with other numbers is a change, and a row in another catalog says so.
+        let renumbered = lock(&[("Board", row("r2", "capacitor", "B", Some("C7")))]);
+        let was = lock(&[("Board", row("r2", "resistor", "B", Some("C6")))]);
+        assert_eq!(
+            diff(&was, &renumbered),
+            vec![
+                "Board: `r2`: `B` in the `resistor` catalog (lcsc C6) -> `B` in the `capacitor` catalog (lcsc C7)"
+            ]
+        );
     }
 }

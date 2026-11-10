@@ -1,8 +1,10 @@
 ---
-status: proposed for owner review (written overnight on 2026-11-06 by an agent that was told to pick an option and go on, after an independent review of the day's diff; each choice below is the agent's, with what it rejected)
+status: proposed
 ---
 
 # An empty cell is let through only in an optional column, and a capacitor is rated for its rail's voltage
+
+Status notes: Written overnight on 2026-11-06 by an agent that was told to pick an option and go on, after an independent review of the day's diff. Each choice below is the agent's, with what it rejected.
 
 An independent review of ADRs 0051 to 0057 found six defects. Three are about the bank and are in ADR 0052 ("After the review"). The other three are here.
 

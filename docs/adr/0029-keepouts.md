@@ -1,8 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted
 ---
 
 # Keepouts
+
+Status notes: Accepted on the user's review, 2026-11-02.
 
 ADR 0020 deferred keepouts until placement had a home. The user needs them (the board has areas where copper or parts must not go), so they are built with ADR 0020's other board features. This ADR records the design.
 

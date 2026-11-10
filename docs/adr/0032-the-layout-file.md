@@ -1,8 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted
 ---
 
 # The layout file
+
+Status notes: Accepted on the user's review, 2026-11-02.
 
 ADR 0020 decided that placement geometry lives in one place, a file beside the source keyed by instance path (7A), and that what the circuit implies is derived by the placer (7C). ADR 0030 sketched its contents. This ADR records the format that was built, and the function the placer calls.
 

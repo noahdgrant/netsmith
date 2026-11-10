@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use netsmith::cli::{Command, OrderRequest, RefreshRequest, parse_args};
+use netsmith::cli::{Command, LockMode, OrderRequest, RefreshRequest, parse_args};
 use netsmith::compare::{Request, Verdict, compare_files};
 use netsmith::editor::Workspace;
 use netsmith::fab::{FabOptions, fab_with_options};
@@ -90,6 +90,7 @@ fn main() -> ExitCode {
                 }),
             }
         }
+        Ok(Command::Lock { file, mode }) => run_lock(file.as_deref(), mode),
         Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
@@ -363,6 +364,90 @@ fn no_boards(target: &Target) -> bool {
         );
     }
     empty
+}
+
+/// `netsmith lock --update` and `--check`: the pick lock of each source file, solved again with
+/// no holding. The diff goes to stdout; what the lock held that no longer passes, the reason a
+/// check fails and every error go to stderr. Exit 0 when nothing is wrong (a lock was written,
+/// or is current), 1 when `--check` finds a lock that is not current, 2 when it cannot tell.
+fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
+    let (target, loader, catalogs) = match target(file, false) {
+        Ok(t) => t,
+        Err(code) => return code,
+    };
+    if no_boards(&target) {
+        return ExitCode::from(2);
+    }
+    let mut stale = false;
+    for source in &target.files {
+        let text = match fs::read_to_string(&source.path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{}: {e}", source.name);
+                return ExitCode::from(2);
+            }
+        };
+        let found = match netsmith::pick_lock::refresh(
+            &source.path,
+            &source.name,
+            &text,
+            &loader,
+            &catalogs,
+        ) {
+            Ok(found) => found,
+            Err(e) => {
+                eprintln!("{}", e.trim_end());
+                return ExitCode::from(2);
+            }
+        };
+        let name = found.file.display();
+        let lines: String = found.diff.iter().map(|l| format!("  {l}\n")).collect();
+        if !found.reported.is_empty() {
+            let outcome = match mode {
+                LockMode::Update => "replaced with the rows above",
+                LockMode::Check => {
+                    "`lock --update` replaces them with the rows the solver picks now"
+                }
+            };
+            eprintln!(
+                "note: the rows {name} holds that no longer pass, in the solver's words ({outcome}):\n{}",
+                found.reported.trim_end()
+            );
+        }
+        match mode {
+            LockMode::Update => {
+                if let Err(e) = found.write() {
+                    eprintln!("{e}");
+                    return ExitCode::from(2);
+                }
+                if !found.is_current() {
+                    let verb = if found.existed { "updated" } else { "wrote" };
+                    println!("{verb} {name}");
+                    print!("{lines}");
+                }
+            }
+            LockMode::Check if !found.existed && !found.is_current() => {
+                eprintln!(
+                    "error: {name} does not exist: run `netsmith lock --update` to write it, and commit it"
+                );
+                stale = true;
+            }
+            LockMode::Check if !found.is_current() => {
+                println!("{name} is not current");
+                print!("{lines}");
+                eprintln!(
+                    "error: {name} is not current: run `netsmith lock --update` to refresh it, and commit it"
+                );
+                stale = true;
+            }
+            LockMode::Check => {}
+        }
+    }
+    if stale {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
 }
 
 fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool) -> ExitCode {

@@ -6,6 +6,103 @@
 //! its path in the board (`stage.regulator`), a net its name, a module or a port its path.
 //! A net that was renamed is found again by its pins, which are named by the paths of their
 //! parts (ADR 0017's idea, with the paths to hand: no colouring of a graph is needed).
+//!
+//! **Identity.** What a tool numbered is not identity; what the design called is.
+//!
+//! - *A part is its path in the board* (`stage.regulator`, the path the layout file keys parts
+//!   by, ADR 0030). The designator is a field of the part, as the value is: it differs, and says
+//!   so as `designator`. When the only field that differs is the designator the part is
+//!   *renumbered* and is listed apart, because adding one capacitor renumbers every capacitor
+//!   after it and that is not a change to the circuit; a board with only renumbering is
+//!   `unchanged`.
+//! - *A part that is gone from one path and new at another is the same part if its kind, value,
+//!   package and the named nets of its pins are the same*: it moved (a module was renamed, or
+//!   the part now sits in another). Among several alike, the one with the same last name in the
+//!   path wins, then the one with the same designator; a pairing on nothing but the shape (every
+//!   pin on a net netsmith named) is made only when the leaf name or the designator is the same.
+//!   A moved part is a change whose fields include `path`, with `basePath` set. Two parts that
+//!   merely look alike on other nets are an added part and a removed one.
+//! - *A net is its name, and a renamed net is found by its pins.* Pins are named by the path of
+//!   their part (carried through a move), so a net's pin set is comparable across the two sides.
+//!   Nets of one name are the same net. Of the rest, those with the same pins are the same net
+//!   under another name; then those that keep at least half of the larger side's pins, the pair
+//!   that shares most first, each net once. A rename is reported (`renamed`) unless both names
+//!   are ones netsmith generated (`net-r1.1`, from the smallest pin the net joins: the name
+//!   follows the pins, so the generated name of a net whose parts moved changes with no change
+//!   in the circuit and is not listed). Pins that joined and left are listed with each side's
+//!   designator and the part's declaration on that side.
+//! - *A rail is the power tree's node for its net* (ADR 0007), matched by the net's name, or by
+//!   the name the net's rename gives. What is compared is its voltage range, its demand, its
+//!   capacity and its budget (`within`, `over`, `unlimited`, `unknown`); ranges are equal when
+//!   both ends agree to a part in a billion. `headroom_base` and `headroom_head` are
+//!   `capacity.hi - demand.hi` in amperes, where both are known, rounded to a nanoampere. A rail
+//!   that appears or goes is listed apart.
+//! - *A module and a port are their paths.* A module is an instance of kind module; a port is an
+//!   interface instance whose parent is the board or a module. An instance at the same path with
+//!   another definition is `changed`; a module that moved is a module removed and one added,
+//!   which the moved parts show.
+//! - *A board is its name* (`Demo/main` for a board of a system). A board only on one side is
+//!   added or removed, with all its parts, nets and rails in the lists as added or removed.
+//! - *A bill of materials line is its kind, value, footprint, LCSC number, manufacturer's number
+//!   and whether it is soldered by hand*, as `GET /api/bom` groups them; it changes when its
+//!   quantity or its unit price does. The designators of a line are carried and are not a
+//!   change. The bill is compared by what it groups parts by, not by the manufacturer's number:
+//!   a line whose number changed is a changed line, and the answer carries the new number only.
+//! - *A problem is its severity, stage, board, instance path and message.* New ones are on the
+//!   head only, resolved ones at the ref only, and the rest is a count; a message that names a
+//!   designator is a different problem when the designator changes, which is the cost of
+//!   comparing text.
+//!
+//! **Where each change is in the source.** A part has `at` (its declaration on the head side)
+//! and `base_at` (on the ref's); a net change has `at` at the first part that joined it, else
+//! the first that left, and each pin carries its part's `at`; a rail has `at` and `base_at` as a
+//! power node has. Nets are tied to parts and not to a line, so a net has no line of its own.
+//!
+//! **Systems and the PCB.** A system is a board's neighbour, not a board. It is its name; on both
+//! sides it lists its boards, the ports of its boards, its joins (the `a ~ b` texts), its mates
+//! (by the two connectors' paths, with each contact whose roles differ) and its ground groups.
+//! The nets a contact is on are not compared: what a board calls a net is the board's, and a
+//! rename is said by the nets. A system's rails are the nodes of the system's power tree, named
+//! `led:VIN`; only a rail that no board's own comparison already lists is listed under the
+//! system, so what is left is what only the joins explain (the capacity a mate gives a rail). A
+//! PCB is `pcb::place`'s result (the placer, with the layout file beside the source) reduced to
+//! a digest in millimetres from the outline's top left corner, rounded to the hundredth the
+//! layout file keeps. A PCB that places on both sides is compared and one that places on one
+//! side only is not and says so in `pcbError` (comparing half a board would list every part).
+//! A move of less than 0.006 mm is none. Parts that are only on one side are in the Parts tab
+//! and not repeated on the PCB; a part moved into another board is an added part and a removed
+//! one. A board whose only change is its PCB is `changed`.
+//!
+//! **The sentence** (`summary`) lists, in this order: boards added and removed, parts (a kind
+//! before a value), nets, modules and ports, systems, the PCB, rails, the bill's cost, and last
+//! the new and the resolved problems by severity (errors, warnings, then notes). It reads
+//! `3 parts added, 1 removed, 2 values changed, 1 rail's headroom shrank from 80 mA to 20 mA`,
+//! and `No circuit changes` when there are none. A part whose kind changed is counted for that
+//! and not again for the value that came with it (`1 part's kind changed from Header1x2 to
+//! Socket1x2`), because a new kind nearly always brings a new value and `2 values changed`
+//! would hide that the part is another one. While the files on disk do not build, the sentence
+//! starts with `N errors on disk:`, because a file that does not build has no boards on disk
+//! and its boards would read as removed.
+//!
+//! **Left open: defaults taken without the owner, for review (ADR 0059).** (1) A part the placer
+//! chose on both sides (`derived`) is never listed as moved, because the placer moves it for every
+//! part that is added, and that is not something the design said; a part stated on one side only
+//! is compared. (2) The outline is compared only when the design states it
+//! (`design.features.outline`) on either side, since the outline of a board that states none
+//! is as big as its parts need and grows with every part. (3) The kind wins over the value in
+//! the sentence, as above. (4) Notes are counted in the sentence, last: a note churns with every
+//! edit, which is why it is the last thing in the sentence and not red anywhere; the other
+//! choice is leaving notes to the tab. (5) Only a system rail that no board lists is listed under
+//! the system; the other choice, listing every system rail, repeats every rail change twice.
+//! (6) What is the same part, net and rail on both sides: the owner reviews these rules.
+//!
+//! **Rejected.** A text diff of the sources: it is `git diff` and the page can show it from the
+//! file endpoint, and it cannot say that a rail lost headroom (a renumbered designator rewrites
+//! nothing in the source and renames half the parts in the schematic; a changed `.current`
+//! rewrites one line and moves a resistor, an LED and a rail's headroom). Reusing
+//! `netsmith-netlist`'s comparison: it compares two graphs that share no names, by refining
+//! colours, which is what a port from KiCad needs; here the parts have paths on both sides and
+//! the net pairing is a few lines on top of them.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 

@@ -96,7 +96,9 @@ describes the project folder.
 The first `build` or `fab` also writes `src/main.lock.toml` beside each source file: the catalog
 row each part was picked as. Commit it, as you commit `Cargo.lock`. Later runs hold each part
 to its row, and `--locked` makes a run that would change the picks an error (`docs/LANGUAGE.md`,
-"The pick lock"). `NETSMITH_TIMINGS=1` prints how long each stage took.
+"The pick lock"). `netsmith lock --update` refreshes the lock after a catalog edit and prints
+what changed, and `netsmith lock --check` fails when it is not current, for CI.
+`NETSMITH_TIMINGS=1` prints how long each stage took.
 
 **Read `fab-notes.txt` before you order.** It lists what netsmith could not verify, for
 example the pick-and-place rotation of a package that no board of yours has been assembled

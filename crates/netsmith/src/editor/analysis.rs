@@ -1,5 +1,48 @@
 //! Building the project's files and keeping what came of it: the boards that built, the
 //! systems, and every problem.
+//!
+//! **What a cancelled job leaves (ADR 0062).** A cancelled analysis publishes nothing: `fresh`
+//! changes nothing of the state before the analysis has a result (the PCBs are cleared after,
+//! not before), and a cancelled analysis ends in one write, `cancelled`, the stamp of the files it
+//! was cancelled on. The snapshot, the version, the stamp, `ready` and the PCBs are as they were,
+//! to the byte (`a_cancelled_analysis_publishes_nothing`), so every view goes on showing the last
+//! good reading. While the files are as they were at the cancel the watcher does not start the
+//! analysis again (it would at once: the stamp differs from the reading's); a change to a file,
+//! or `POST /api/analysis/run`, does, and `Analysis.cancelled` says so until then, for a page that
+//! connects later. Publishing the analysis as it was when cancelled was rejected: a half-made
+//! snapshot has boards that are not drawn and problems that are not found, so the page would show
+//! a project that is neither the old nor the new. Marking the reading stale instead was rejected
+//! too: stale is the word for a file that does not build (the last good boards, with an error); a
+//! cancel is the person's choice and says so in its own words. A background thread that the
+//! cancel could abandon was rejected: a thread cannot be stopped from outside, and an abandoned
+//! one runs to its end for nothing, holding a core. The cancel routes never wait for the
+//! analysis and take no lock it holds, which is why earlier work refused to cancel: the token is
+//! outside the lock.
+//!
+//! A cancelled **first** analysis leaves the server ready: there is no reading to keep, and a
+//! server that stayed pending would answer `503` for ever. The reading is an empty one (no
+//! boards, no systems) with one note, at version 1, so `rebuilt` is sent and the page leaves its
+//! skeleton; the views say there is no board, and `Run again` or a change to a file analyses.
+//!
+//! A cancelled **compare** answers `499` and keeps nothing of the ref: not the reading (the
+//! cache gets a reading only from a whole analysis), not the scratch folder, and the live
+//! project's analysis is not touched. A compare whose client disconnects is cancelled the same
+//! way (the request's future is dropped when the connection closes, and a guard that the handler
+//! holds cancels the job if it is dropped before the answer); a compare that waits for its turn
+//! behind another ends when it gets it. A cancelled **build or fab** answers `499`: the
+//! checkpoints are all before a board's files are written, and none is in the writing, so a
+//! board has all its files or none (a fab keeps the packages of the boards it finished and
+//! nothing of the board it was on). A page that closes does not cancel a fab or a build, which
+//! have files to write and are cancelled only by the button; only a compare, which has nothing to
+//! write, follows its page, because cancelling a fab on a reload would lose a package that takes
+//! minutes. The job's own request answers `499` (`code: "cancelled"` for a request that accepts
+//! JSON) and the socket says `cancelled` with `{task, board, message}`.
+//!
+//! **Not cancellable:** KiCad's own design rules check and the check of parts against LCSC (a
+//! program and a network wait that a flag does not reach). The router's `Stop` button is another
+//! thing and stays one: it stops the router and keeps what it routed (`/api/pcb/cancel`, `204`),
+//! whereas a cancelled `fab` unwinds out of the router, because a package that was stopped
+//! halfway must not be written as if it were whole.
 
 use std::{
     cell::{Cell, RefCell},

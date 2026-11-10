@@ -1427,19 +1427,26 @@ impl Model {
     /// Whether `field` is a figure of one pin that a `Logic` or a `Levels` may state: its leakage
     /// `ii` and its output resistances `roh` and `rol` (ADR 0076, amendment 8). Like the levels,
     /// they belong to the part's own pin, so connecting two lines does not equate them. So is the
-    /// `capacitance` of an `I2c` interface: the capacitance of one part's pin, which the board adds
-    /// up with the others' (`std::bus::I2cPullups`).
+    /// `capacitance` of an `I2c` interface, the capacitance of one part's pin, which the board adds
+    /// up with the others' (`std::bus::I2cPullups`), and its `sink_current`, the current one part's
+    /// driver sinks at its `vol`, of which the board states the least.
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
             "ii" => FieldKind::Quantity(Dimension::CURRENT),
             "roh" | "rol" => FieldKind::Quantity(Dimension::RESISTANCE),
-            // The capacitance of one pin of an I2C bus interface (`std::bus::I2c`).
-            "capacitance"
+            // The capacitance of one pin of an I2C bus interface and the current its driver sinks
+            // at its low level (`std::bus::I2c`).
+            "capacitance" | "sink_current"
                 if self.instance(f.owner).kind == InstKind::Interface
                     && self.instance(f.owner).type_name == "I2c" =>
             {
-                return f.kind == FieldKind::Quantity(Dimension::CAPACITANCE);
+                return f.kind
+                    == FieldKind::Quantity(if f.name == "capacitance" {
+                        Dimension::CAPACITANCE
+                    } else {
+                        Dimension::CURRENT
+                    });
             }
             _ => return false,
         };

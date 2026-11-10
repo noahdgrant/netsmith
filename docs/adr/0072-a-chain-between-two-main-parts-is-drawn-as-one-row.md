@@ -1,8 +1,10 @@
 ---
-status: proposed (the owner asked for this drawing on 2026-11-07 after reading a board's input protection; the rules that find a link and pick its source are for the owner to review)
+status: proposed
 ---
 
 # A chain of series parts between two main parts is drawn as one row, the source on the left
+
+Status notes: The owner asked for this drawing on 2026-11-07 after reading a board's input protection. The rules that find a link and pick its source are for the owner to review.
 
 A board that takes power from a vehicle connector through a fuse and a reverse-polarity diode to a header, with a TVS diode on the protected node, was drawn as three pieces: the header on the far left with the clamp under it, the connector in the middle, and the fuse and the diode standing one above the other to its right. The pieces joined only through power symbols (`+VBATT`, `+VBATT_SAFE`). A person draws this as one line: the connector on the left, the fuse, the diode, the header on the right, the clamp hanging from the node. And a symbol on a wire that is joined to one part and nothing else (`+VBATT`) reads as a port to somewhere else on the sheet.
 
