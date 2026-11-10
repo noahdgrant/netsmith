@@ -6,3 +6,7 @@ crates/netsmith-editor/web-dist/** -text
 # endings): git must not change them on any system.
 examples/rp2350_minimal/LICENSE -text
 examples/rp2350_minimal/reference/*.kicad_pcb -text
+# ORBIT's licence, board file and schematic are kept byte for byte as its author ships them.
+examples/orbit/LICENSE -text
+examples/orbit/reference/*.kicad_pcb -text
+examples/orbit/reference/*.kicad_sch -text
