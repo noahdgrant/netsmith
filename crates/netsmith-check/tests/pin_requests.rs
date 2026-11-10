@@ -588,3 +588,51 @@ board B {
     assert!(part.allows(&[("x", "p02"), ("y", "p01")]));
     assert!(!part.allows(&[("x", "p00"), ("y", "p01")]));
 }
+
+#[test]
+fn a_locked_entry_wins_the_pin_over_an_unlocked_entry_with_an_earlier_key() {
+    // `a` sorts before `b` and holds `p02` without a lock; the user then locks `b` to `p02`.
+    // The lock wins: `b` keeps `p02` and `a` is told and picked again.
+    let text = file(&[
+        ("a", entry("p02", "GPIO", false)),
+        ("b", entry("p02", "GPIO", true)),
+    ]);
+    let c = run(
+        "    .a: .u.GPIO\n    .b: .u.GPIO\n    .a ~ .probe.a00\n    .b ~ .probe.a01\n",
+        Some(&text),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("a", "p00"), pair("b", "p02")]);
+    assert_eq!(c.pins.findings.len(), 1, "{:?}", c.pins.findings);
+    assert!(
+        c.pins.findings[0].contains("`a` was `u.p02`, but `u.p02` is held by `b` (locked"),
+        "{:?}",
+        c.pins.findings
+    );
+    assert_eq!(c.pins.changes, ["B.a: pin `p02` becomes `p00`"]);
+    // The locked entry is as the file has it.
+    let b = &c.pins.file.board("B").unwrap()["b"];
+    assert!(b.lock);
+    assert_eq!(b.pin, "p02");
+}
+
+#[test]
+fn two_locked_entries_on_one_pin_still_go_in_key_order() {
+    let text = file(&[
+        ("a", entry("p02", "GPIO", true)),
+        ("b", entry("p02", "GPIO", true)),
+    ]);
+    let c = run(
+        "    .a: .u.GPIO\n    .b: .u.GPIO\n    .a ~ .probe.a00\n    .b ~ .probe.a01\n",
+        Some(&text),
+    );
+    let m = messages(&c);
+    assert_eq!(m.len(), 1, "{}", c.render());
+    assert!(
+        m[0].starts_with(
+            "`b` is locked to `u.p02` in the pin file, but `u.p02` is held by `a` (locked"
+        ),
+        "{}",
+        m[0]
+    );
+}

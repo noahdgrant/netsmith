@@ -14,13 +14,16 @@
 //! It is deterministic. The candidates are tried in a fixed order (parts as the check lists
 //! them, requests in the byte order of their paths, pins in the byte order of their paths) and
 //! a candidate replaces the best only when its score is lower, so equal scores keep the first.
-//! Nothing here reads a clock but the optional deadline, which ends the search early.
+//! Nothing here reads a clock but the [`Budget`], which ends the search early: it is asked before
+//! every candidate is scored, because one score is quadratic in the lines of the ratsnest and a
+//! round of candidates can run far past a deadline that is only looked at between rounds.
 //!
 //! The loop around the pipeline (place and route again with the new map, keep it when it is no
 //! worse, at most [`MAX_ROUNDS`] times) is in `fab`.
 
 use std::collections::BTreeMap;
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use netsmith_check::{EntrySource, PartSpace, PinFile};
 use netsmith_core::Design;
@@ -34,6 +37,78 @@ pub const MAX_ROUNDS: usize = 3;
 /// A cap on the changes one search applies. Every change lowers the score, so a search ends by
 /// itself; this stops a pathological board from running long.
 const MAX_CHANGES: usize = 200;
+
+/// A source of time: how long since some start. The real one reads the system clock; a test gives
+/// one that it moves itself, so that what a run does at the end of its budget does not depend on
+/// how fast the machine is.
+#[derive(Clone)]
+pub struct Clock(Arc<dyn Fn() -> Duration + Send + Sync>);
+
+impl Clock {
+    /// The system clock.
+    pub fn real() -> Clock {
+        let base = Instant::now();
+        Clock(Arc::new(move || base.elapsed()))
+    }
+
+    /// A clock that answers with `now` each time it is asked.
+    pub fn from_fn(now: impl Fn() -> Duration + Send + Sync + 'static) -> Clock {
+        Clock(Arc::new(now))
+    }
+
+    fn now(&self) -> Duration {
+        (self.0)()
+    }
+}
+
+impl std::fmt::Debug for Clock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Clock")
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Clock::real()
+    }
+}
+
+/// The time the pin optimizer has: one amount, shared by the search and every round of routing
+/// after it, counted from when the budget was started (the first routing failure).
+#[derive(Debug, Clone)]
+pub struct Budget {
+    total: Option<Duration>,
+    started: Duration,
+    clock: Clock,
+}
+
+impl Budget {
+    /// A budget of `total` (`None`: no limit) that starts now on `clock`.
+    pub fn start(total: Option<Duration>, clock: &Clock) -> Budget {
+        Budget {
+            total,
+            started: clock.now(),
+            clock: clock.clone(),
+        }
+    }
+
+    /// No limit, on the system clock.
+    pub fn unlimited() -> Budget {
+        Budget::start(None, &Clock::real())
+    }
+
+    /// What is left: `None` when there is no limit, else the time to the end, zero once spent.
+    /// Each call reads the clock, so the answer is for this moment.
+    pub fn left(&self) -> Option<Duration> {
+        self.total
+            .map(|total| total.saturating_sub(self.clock.now().saturating_sub(self.started)))
+    }
+
+    /// Whether there was a limit and it is used up.
+    pub fn spent(&self) -> bool {
+        self.left().is_some_and(|left| left.is_zero())
+    }
+}
 
 /// How good the pin map of a placed board looks without routing: how many pairs of ratsnest
 /// lines of different nets cross, then the length of the ratsnest in micrometres. Lower is
@@ -111,12 +186,24 @@ struct Slot<'a> {
 /// Search for a pin map of `spaces` (the parts of one board that have requests, from the check)
 /// that scores lower than the one the board has, trying changes on a copy of `placed`, the
 /// board as it was placed and before any copper. `None` when no change lowers the score.
-/// `deadline` ends the search early with what it has.
+/// The `budget` ends the search early with what it has: it is asked before the search begins and
+/// before each candidate is scored.
 pub fn improve(
     spaces: &[PartSpace],
     design: &Design,
     placed: &Board,
-    deadline: Option<Instant>,
+    budget: &Budget,
+) -> Option<Proposal> {
+    improve_counting(spaces, design, placed, budget, &mut 0)
+}
+
+/// [`improve`], and how many candidates were scored, for the tests that say the budget holds.
+pub fn improve_counting(
+    spaces: &[PartSpace],
+    design: &Design,
+    placed: &Board,
+    budget: &Budget,
+    scored: &mut usize,
 ) -> Option<Proposal> {
     let mut slots: Vec<Slot> = Vec::new();
     for space in spaces {
@@ -177,11 +264,9 @@ pub fn improve(
     let mut moves: Vec<String> = Vec::new();
 
     for _ in 0..MAX_CHANGES {
-        if deadline.is_some_and(|d| Instant::now() >= d) {
-            break;
-        }
         let mut best: Option<(Score, Vec<(usize, String)>)> = None;
-        for r in 0..slots.len() {
+        let mut out_of_time = false;
+        'candidates: for r in 0..slots.len() {
             if !slots[r].movable {
                 continue;
             }
@@ -208,6 +293,13 @@ pub fn improve(
                 if !allowed(&slots, &current, &change) {
                     continue;
                 }
+                // The deadline is asked before every score, not once for the round: a score is
+                // quadratic in the ratsnest lines. What the round found so far is still kept.
+                if budget.spent() {
+                    out_of_time = true;
+                    break 'candidates;
+                }
+                *scored += 1;
                 let score = try_change(&mut scratch, &slots, &current, &change);
                 if score < best.as_ref().map_or(now, |b| b.0) {
                     best = Some((score, change));
@@ -221,6 +313,9 @@ pub fn improve(
             current[i] = pin;
         }
         now = score;
+        if out_of_time {
+            break;
+        }
     }
     if moves.is_empty() {
         return None;

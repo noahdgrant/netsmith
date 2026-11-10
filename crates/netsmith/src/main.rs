@@ -574,10 +574,14 @@ fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
     )
 }
 
-/// What a board that does not route may do with its pins: `--pins` for this run, else `pins` in
-/// the manifest, else `auto` (ADR 0101).
-fn pins_mode(target: &Target, flag: Option<bool>) -> netsmith::fab::PinsMode {
+/// What a board that does not route may do with its pins: `--locked` forbids any change, so it is
+/// `locked` whatever else is said; else `--pins` for this run, else `pins` in the manifest, else
+/// `auto` (ADR 0101). `--locked` keeps the working tree as it is, the pin file included.
+fn pins_mode(target: &Target, flag: Option<bool>, locked: bool) -> netsmith::fab::PinsMode {
     use netsmith::fab::PinsMode;
+    if locked {
+        return PinsMode::Locked;
+    }
     match flag {
         Some(true) => PinsMode::Locked,
         Some(false) => PinsMode::Auto,
@@ -646,7 +650,7 @@ fn run_fab(
         lock: None,
         pins: None,
     };
-    let pins_mode = pins_mode(&target, pins_locked);
+    let pins_mode = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
@@ -666,10 +670,10 @@ fn run_fab(
         let options = FabOptions {
             layout: Some(netsmith::layout::layout_path(&source.path)),
             lock: Some(using),
-            pins: Some(netsmith::fab::PinsUse {
-                mode: pins_mode,
-                file: netsmith::pins::pins_path(&source.path),
-            }),
+            pins: Some(netsmith::fab::PinsUse::new(
+                pins_mode,
+                netsmith::pins::pins_path(&source.path),
+            )),
             ..options.clone()
         };
         match fab_with_options(

@@ -9,7 +9,10 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use netsmith::fab::{FabOptions, Fabricated, PinsMode, PinsUse, fab_with_options};
+use netsmith::pin_swap::{Budget, Clock};
 
 use netsmith::Libraries;
 use netsmith_check::Loader;
@@ -317,10 +320,7 @@ fn fab(
         None,
         &FabOptions {
             route_timeout: Some(Duration::from_secs(120)),
-            pins: mode.map(|mode| PinsUse {
-                mode,
-                file: pin_file.clone(),
-            }),
+            pins: mode.map(|mode| PinsUse::new(mode, pin_file.clone())),
             ..FabOptions::default()
         },
     );
@@ -482,10 +482,7 @@ fn a_board_with_no_requests_is_made_exactly_as_before() {
             None,
             &FabOptions {
                 route_timeout: Some(Duration::from_secs(120)),
-                pins: mode.map(|mode| PinsUse {
-                    mode,
-                    file: pin_file.clone(),
-                }),
+                pins: mode.map(|mode| PinsUse::new(mode, pin_file.clone())),
                 ..FabOptions::default()
             },
         );
@@ -524,10 +521,7 @@ fn a_board_that_cannot_route_whatever_the_pins_stops_after_at_most_three_rounds(
         None,
         &FabOptions {
             route_timeout: Some(Duration::from_secs(120)),
-            pins: Some(PinsUse {
-                mode: PinsMode::Auto,
-                file: dir2.join("swaps.pins.toml"),
-            }),
+            pins: Some(PinsUse::new(PinsMode::Auto, dir2.join("swaps.pins.toml"))),
             ..FabOptions::default()
         },
     );
@@ -544,6 +538,15 @@ fn a_board_that_cannot_route_whatever_the_pins_stops_after_at_most_three_rounds(
 
 /// The proposal of the search on the board as placed, for the pin file `pins`.
 fn proposal(libs: &Libraries, pins: &str) -> Option<netsmith::pin_swap::Proposal> {
+    searched(libs, pins, &Budget::unlimited()).0
+}
+
+/// The search under `budget`: its proposal and how many candidates it scored.
+fn searched(
+    libs: &Libraries,
+    pins: &str,
+    budget: &Budget,
+) -> (Option<netsmith::pin_swap::Proposal>, usize) {
     let outcome = build(libs, &mirror(), pins);
     let built = &outcome.boards[0];
     let board = Board::from_design_placed(
@@ -553,7 +556,22 @@ fn proposal(libs: &Libraries, pins: &str) -> Option<netsmith::pin_swap::Proposal
         &place_options(&built.design, None),
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    netsmith::pin_swap::improve(&outcome.pins.spaces["Swaps"], &built.design, &board, None)
+    let mut scored = 0;
+    let found = netsmith::pin_swap::improve_counting(
+        &outcome.pins.spaces["Swaps"],
+        &built.design,
+        &board,
+        budget,
+        &mut scored,
+    );
+    (found, scored)
+}
+
+/// A clock that moves by `tick` each time it is read, so that a run's time is the number of times
+/// it asked, whatever the machine.
+fn ticking(tick: Duration) -> Clock {
+    let reads = AtomicU32::new(0);
+    Clock::from_fn(move || tick * reads.fetch_add(1, Ordering::SeqCst))
 }
 
 #[test]
@@ -606,4 +624,202 @@ fn the_search_leaves_a_locked_entry_and_what_it_cannot_improve_alone() {
         ));
     }
     assert_eq!(proposal(&libs, &all), None);
+}
+
+#[test]
+fn the_search_asks_the_budget_before_every_candidate_it_scores() {
+    let dir = TempDir::new("pin-swaps-libs-budget");
+    let libs = libraries(dir.path());
+    let (full, all) = searched(&libs, "", &Budget::unlimited());
+    let full = full.expect("a swap lowers the score");
+    // A round scores every move and swap of every request: far more than a handful.
+    assert!(all > 20, "{all}");
+    // The clock moves one second for each time it is read and the budget is 5 seconds: the start
+    // reads it once, then the search reads it before each candidate, so it scores four candidates
+    // and stops, though the round has many more. (With the deadline read once for the round the
+    // whole round would be scored.)
+    let budget = Budget::start(
+        Some(Duration::from_secs(5)),
+        &ticking(Duration::from_secs(1)),
+    );
+    let (cut, scored) = searched(&libs, "", &budget);
+    assert_eq!(scored, 4);
+    // What the four found is kept, and is no better than the full search found.
+    let cut = cut.expect("one of the first four candidates lowers the score");
+    assert!(cut.after < cut.before, "{cut:?}");
+    assert!(cut.after >= full.after, "{cut:?} {full:?}");
+    assert!(cut.moves.len() < full.moves.len(), "{cut:?}");
+    // A budget that is spent before the search scores nothing and proposes nothing.
+    let spent = Budget::start(Some(Duration::ZERO), &Clock::real());
+    assert_eq!(searched(&libs, "", &spent), (None, 0));
+}
+
+/// The progress lines of a `fab` run, in order.
+fn progress_of(lines: &std::sync::Mutex<Vec<String>>) -> Vec<String> {
+    lines.lock().unwrap().clone()
+}
+
+static PROGRESS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+#[test]
+fn the_search_time_is_taken_from_the_budget_before_a_round_routes() {
+    let dir = TempDir::new("pin-swaps-libs-order");
+    let libs = libraries(dir.path());
+    let out = TempDir::unused("pin-swaps-order");
+    let pin_file = out.join("swaps.pins.toml");
+    PROGRESS.lock().unwrap().clear();
+    // The budget is the route timeout, 120 s, and the clock moves 30 s each time it is read: the
+    // start, the check before the round and two candidates use it up. The search finds a swap in
+    // the candidates it had time for, and then there is no time left to route with it, so no
+    // second pass is made. (A budget read before the search would hand the router the time the
+    // search has already used, and a second pass would run.)
+    let result = fab_with_options(
+        "swaps.nsm",
+        &circuit(&mirror()),
+        &loader(None),
+        &out.join("fab"),
+        &Catalogs::jlcpcb(),
+        &libs,
+        None,
+        &FabOptions {
+            route_timeout: Some(Duration::from_secs(120)),
+            progress: Some(|line| PROGRESS.lock().unwrap().push(line.to_string())),
+            pins: Some(PinsUse {
+                clock: ticking(Duration::from_secs(30)),
+                ..PinsUse::new(PinsMode::Auto, pin_file.clone())
+            }),
+            ..FabOptions::default()
+        },
+    );
+    let e = result.expect_err("the first pass does not route and no round was made");
+    assert!(e.contains("1 connections could not be routed"), "{e}");
+    let lines = progress_of(&PROGRESS);
+    let passes = lines
+        .iter()
+        .filter(|l| l.contains(": placed on a "))
+        .count();
+    assert_eq!(passes, 1, "no second pass: {lines:#?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("the time budget of the route timeout is spent, no further round")),
+        "{lines:#?}"
+    );
+    // Nothing was tried, so nothing is claimed and the pin file is as the run began.
+    assert!(!e.contains("pins: tried"), "{e}");
+    assert!(!pin_file.exists());
+}
+
+/// A project of the swaps board in `root`: the source, its physical file, its libraries, and a pin
+/// file that holds the requests on `p00` to `p09` in order, none locked (what a first assignment
+/// gives, and what the optimizer would change on a board that does not route).
+fn project(root: &Path) {
+    fs::create_dir_all(root.join("src")).unwrap();
+    libraries(root);
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"swaps\"\n").unwrap();
+    fs::write(root.join("src/main.nsm"), circuit(&mirror())).unwrap();
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        physical(WIDTH, HEIGHT, MCU_Y),
+    )
+    .unwrap();
+    let mut pins = String::from("version = 1\n");
+    for k in 1..=10 {
+        pins.push_str(&format!(
+            "\n[Swaps.pins.g{k:02}]\npin = \"p{:02}\"\nfunction = \"GPIO\"\nsource = \"auto\"\n",
+            k - 1
+        ));
+    }
+    fs::write(root.join("src/main.pins.toml"), pins).unwrap();
+}
+
+fn netsmith(root: &Path, args: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(args)
+        .current_dir(root)
+        .env("KICAD_CLI", "/nonexistent/kicad-cli")
+        .env(
+            "NETSMITH_KICAD_SYMBOLS",
+            netsmith_kicad::testlib::sample_symbols(),
+        )
+        .env(
+            "NETSMITH_KICAD_FOOTPRINTS",
+            netsmith_kicad::testlib::sample_footprints(),
+        )
+        .output()
+        .unwrap()
+}
+
+/// What is in `dir` and below, by path and bytes, for "nothing was written".
+fn tree(dir: &Path, base: &Path, into: &mut Vec<(String, Vec<u8>)>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            tree(&path, base, into);
+        } else {
+            let name = path.strip_prefix(base).unwrap().display().to_string();
+            into.push((name, fs::read(&path).unwrap()));
+        }
+    }
+}
+
+#[test]
+fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
+    let root = TempDir::new("pin-swaps-cli-locked");
+    project(root.path());
+    let pin_file = root.join("src/main.pins.toml");
+    let before = fs::read(&pin_file).unwrap();
+    // The first run makes the pick lock that `--locked` wants; `--pins locked` changes no pin.
+    let first = netsmith(
+        root.path(),
+        &["fab", "--allow-drc-violations", "--pins", "locked"],
+    );
+    assert!(!first.status.success());
+    assert_eq!(fs::read(&pin_file).unwrap(), before);
+    let mut files = Vec::new();
+    tree(&root.join("src"), root.path(), &mut files);
+
+    // `--locked` alone: the board does not route, the optimizer finds a swap, and the run says
+    // so and ends in an error, as `--pins locked` does. It writes no pin file and no pick lock.
+    let run = netsmith(root.path(), &["fab", "--allow-drc-violations", "--locked"]);
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(!run.status.success(), "{err}");
+    assert!(err.contains("1 connections could not be routed"), "{err}");
+    assert!(err.contains("--pins locked, so no pin moves"), "{err}");
+    assert!(err.contains("pins.proposed.toml"), "{err}");
+    assert!(!err.contains("pins: round"), "no round was made: {err}");
+    assert_eq!(
+        fs::read(&pin_file).unwrap(),
+        before,
+        "--locked must not change the pin file: {err}"
+    );
+    let mut after = Vec::new();
+    tree(&root.join("src"), root.path(), &mut after);
+    assert_eq!(after, files, "--locked changed a source file");
+    assert!(root.join("fab/pins.proposed.toml").exists());
+
+    // With `--pins auto` too, `--locked` wins: it is the flag that forbids a change.
+    let both = netsmith(
+        root.path(),
+        &[
+            "fab",
+            "--allow-drc-violations",
+            "--locked",
+            "--pins",
+            "auto",
+        ],
+    );
+    let err = String::from_utf8_lossy(&both.stderr);
+    assert!(!both.status.success(), "{err}");
+    assert!(err.contains("--pins locked, so no pin moves"), "{err}");
+    assert_eq!(fs::read(&pin_file).unwrap(), before, "{err}");
+
+    // Without it the same board is made routable and the pin file changes: the contrast.
+    let free = netsmith(root.path(), &["fab", "--allow-drc-violations"]);
+    assert!(
+        free.status.success(),
+        "{}",
+        String::from_utf8_lossy(&free.stderr)
+    );
+    assert_ne!(fs::read(&pin_file).unwrap(), before);
 }

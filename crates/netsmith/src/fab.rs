@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use netsmith_check::{Loader, PartSpace, PinFile};
 use netsmith_core::{PanelSpec, timings};
@@ -126,6 +126,20 @@ pub struct PinsUse {
     pub mode: PinsMode,
     /// The pin file beside the source (`<stem>.pins.toml`), which `auto` rewrites.
     pub file: PathBuf,
+    /// The clock the pin optimizer's time budget runs on: the system's, unless a test moves its
+    /// own.
+    pub clock: pin_swap::Clock,
+}
+
+impl PinsUse {
+    /// The mode and the file, on the system clock.
+    pub fn new(mode: PinsMode, file: PathBuf) -> PinsUse {
+        PinsUse {
+            mode,
+            file,
+            clock: pin_swap::Clock::real(),
+        }
+    }
 }
 
 /// `--pins`: what a routing failure may do to the pin map.
@@ -872,12 +886,12 @@ fn fab_board_pinned(
         Some(s) if built.system.is_none() => s.clone(),
         _ => return first,
     };
-    let started = Instant::now();
-    let deadline = options.route_timeout.map(|t| started + t);
+    // One budget for the search and every route after it, counted from the first failure.
+    let budget = pin_swap::Budget::start(options.route_timeout, &pins.clock);
     let design = &built.design;
 
     if pins.mode == PinsMode::Locked {
-        let proposal = pin_swap::improve(&spaces, design, &first_stuck.placed, deadline);
+        let proposal = pin_swap::improve(&spaces, design, &first_stuck.placed, &budget);
         let mut message = message.clone();
         match proposal {
             None => message.push_str(&format!(
@@ -930,28 +944,31 @@ fn fab_board_pinned(
     let mut best_is_last = true;
     let mut rounds = 0;
     for round in 1..=pin_swap::MAX_ROUNDS {
-        let remaining = match deadline {
-            Some(d) => match d.checked_duration_since(Instant::now()) {
-                Some(left) if !left.is_zero() => Some(left),
-                _ => {
-                    say(format!(
-                        "{label}: pins: the time budget of the route timeout is spent, no further round"
-                    ));
-                    break;
-                }
-            },
-            None => None,
+        let time_is_spent = || {
+            say(format!(
+                "{label}: pins: the time budget of the route timeout is spent, no further round"
+            ));
         };
+        if budget.spent() {
+            time_is_spent();
+            break;
+        }
         let current = best_built.as_ref().unwrap_or(built);
         let Some(proposal) =
-            pin_swap::improve(&best_spaces, &current.design, &best_stuck.placed, deadline)
+            pin_swap::improve(&best_spaces, &current.design, &best_stuck.placed, &budget)
         else {
             say(format!(
                 "{label}: pins: round {round}: no change of the unlocked pins lowers the crossings or the ratsnest, stopping"
             ));
             break;
         };
-        rounds = round;
+        // The search used time of the budget: what is left is read now, after it, and the route
+        // below gets that and no more. A round that has no time to route is not made, and the
+        // files on disk stay the last pass's, which are the best so far.
+        if budget.spent() {
+            time_is_spent();
+            break;
+        }
         say(format!(
             "{label}: pins: round {round}: {} moves; {} to {}; placing and routing again",
             proposal.moves.len(),
@@ -975,10 +992,19 @@ fn fab_board_pinned(
             break;
         };
         let notes = pin_notes(&state.original, &map);
+        // The elaboration took time too: the route gets what is left now.
+        let route_timeout = match budget.left() {
+            Some(left) if left.is_zero() => {
+                time_is_spent();
+                break;
+            }
+            left => left,
+        };
         let attempt_options = FabOptions {
-            route_timeout: remaining.or(options.route_timeout),
+            route_timeout,
             ..options.clone()
         };
+        rounds = round;
         let mut stuck = None;
         match fab_board(
             &next,
@@ -1027,8 +1053,21 @@ fn fab_board_pinned(
         let current = best_built.as_ref().unwrap_or(built);
         let notes = pin_notes(&state.original, &best_map);
         let mut again = None;
+        let remake_options = FabOptions {
+            route_timeout: remake_timeout(&budget, options.route_timeout),
+            ..options.clone()
+        };
         if let Err(m) = fab_board(
-            current, out, layout, libraries, kicad, options, catalogs, say, &mut again, &notes,
+            current,
+            out,
+            layout,
+            libraries,
+            kicad,
+            &remake_options,
+            catalogs,
+            say,
+            &mut again,
+            &notes,
         ) {
             result = m;
         }
@@ -1041,6 +1080,26 @@ fn fab_board_pinned(
         ));
     }
     Err(result)
+}
+
+/// The shortest route the board is made again with when the budget is spent ([`remake_timeout`]).
+pub(crate) const REMAKE_FLOOR: Duration = Duration::from_secs(10);
+
+/// The route timeout of the pass that makes the board again with the pin map that stands, after a
+/// round that was no better (the files on disk are that round's). It gets what is left of the
+/// budget, so that the run as a whole keeps to the route timeout. When nothing is left it still
+/// gets [`REMAKE_FLOOR`] (never more than the route timeout itself): the files must be the ones
+/// of the pin file that is written, and the board is marked incomplete either way, so a shorter
+/// route costs only some of the copper that was in the files of the first pass, and the run is
+/// longer than the route timeout by at most the floor.
+pub(crate) fn remake_timeout(
+    budget: &pin_swap::Budget,
+    route_timeout: Option<Duration>,
+) -> Option<Duration> {
+    match (budget.left(), route_timeout) {
+        (Some(left), Some(total)) if left.is_zero() => Some(REMAKE_FLOOR.min(total)),
+        (left, _) => left,
+    }
 }
 
 /// The proposed pin map of `--pins locked`, in the output folder.
@@ -1422,6 +1481,40 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_remake_gets_what_is_left_of_the_budget_or_a_stated_floor() {
+        use crate::pin_swap::{Budget, Clock};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let secs = Duration::from_secs;
+        // A clock that has moved `elapsed` seconds since the budget started.
+        let at = |total: Option<Duration>, elapsed: u64| {
+            let now = std::sync::Arc::new(AtomicU64::new(0));
+            let clock = {
+                let now = now.clone();
+                Clock::from_fn(move || Duration::from_secs(now.load(Ordering::SeqCst)))
+            };
+            let budget = Budget::start(total, &clock);
+            now.store(elapsed, Ordering::SeqCst);
+            budget
+        };
+        // Time left: the remake gets that, not the whole timeout again.
+        assert_eq!(
+            remake_timeout(&at(Some(secs(120)), 100), Some(secs(120))),
+            Some(secs(20))
+        );
+        // Spent: the floor, but never more than the timeout itself.
+        assert_eq!(
+            remake_timeout(&at(Some(secs(120)), 130), Some(secs(120))),
+            Some(REMAKE_FLOOR)
+        );
+        assert_eq!(
+            remake_timeout(&at(Some(secs(3)), 9), Some(secs(3))),
+            Some(secs(3))
+        );
+        // No limit stays none.
+        assert_eq!(remake_timeout(&at(None, 500), None), None);
+    }
     #[test]
     fn the_note_without_kicad_says_netsmiths_own_check_still_runs() {
         let note = super::NO_KICAD_NOTE;
