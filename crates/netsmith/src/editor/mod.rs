@@ -20,6 +20,7 @@ mod pcb;
 pub(crate) mod power;
 mod progress;
 mod release;
+mod sidecars;
 mod solved;
 mod sourcing;
 mod system;
@@ -223,6 +224,9 @@ struct State {
     /// Boards placed, and routed if asked, keyed by the board's name; cleared when the
     /// files are read again.
     pcb: HashMap<String, pcb::Entry>,
+    /// What `lock --check` said of the pick lock of each source file, by the file's name,
+    /// made when a board of the file is asked for and dropped when the files are read again.
+    locks: HashMap<String, Option<Arc<netsmith_editor::api::PickLockInfo>>>,
     /// What `fab` wrote for each board, keyed by the board's name.
     fab: HashMap<String, Vec<PathBuf>>,
     /// Where each order was last written, by the order's name.
@@ -447,6 +451,7 @@ impl Workspace {
             }
         };
         state.pcb.clear();
+        state.locks.clear();
         state.cancelled = None;
         state.stamp = Some(stamp);
         state.code = code;

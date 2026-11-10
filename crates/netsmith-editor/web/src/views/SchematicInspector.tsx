@@ -14,6 +14,7 @@ import { netNavOrder, netSheets, netSummary, parseTitle } from '../schematic/nav
 import { plural } from '../util';
 import { Defs, InspectorAction, InspectorHead, InspectorSection, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
+import { PickLock, PinMap } from '../components/Sidecars';
 import type { SheetRow } from './SheetNav';
 import { removedOn } from '../compare/model';
 import { baseLocation, marks, openDiff, refText } from '../compare/store';
@@ -66,6 +67,7 @@ export function Inspector(p: InspectorProps) {
           <SheetPanel {...p} />
         )}
       </div>
+      {d?.lock && <PickLock lock={d.lock} />}
       <PartsList {...p} />
       <RemovedParts {...p} />
       {d && d.notes.length > 0 && (
@@ -137,6 +139,7 @@ function PartPanel({ part, sticky, current, rows, openSheet, goNet, drawing }: I
           </span>
         </button>
       )}
+      <PinMap part={part} />
       <InspectorSection title="Pins" count={pins.length}>
         <div class="pinlist" role="list" aria-label="Pins">
           {pins.map((p) => (

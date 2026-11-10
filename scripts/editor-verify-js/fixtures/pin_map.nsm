@@ -1,0 +1,37 @@
+//! An invented microcontroller and the pins that three requests ask it for (ADR 0101), with a pin
+//! file and a pick lock beside it (`pin_map.pins.toml`, `pin_map.lock.toml`): the editor shows the
+//! pin map of the part and the state of the lock, read only. The part has no KiCad symbol, so the
+//! schematic is the box the view draws from the pin table.
+
+import std::parts::passive::Resistor
+
+/// Zmcu4, an invented microcontroller whose pins all offer GPIO, two of them ANALOG as well.
+part Zmcu4 {
+    .designator &= "U"
+
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+
+    pins {
+        .p00 bidirectional "P0.00" "3" fn GPIO
+        .p01 bidirectional "P0.01" "4" fn GPIO
+        .p02 bidirectional "P0.02" "5" fn GPIO ANALOG
+        .p03 bidirectional "P0.03" "6" fn GPIO ANALOG
+    }
+}
+
+board PinMapBoard {
+    .u: Zmcu4
+    .load: Resistor { .resistance &= 10kohm +/- 1% }
+    .pull: Resistor { .resistance &= 4.7kohm +/- 1% }
+
+    // Held and locked by the pin file: a person put it on p01.
+    .status: .u.GPIO
+    // Held by the file, picked by an earlier run.
+    .vbat: .u.ANALOG
+    // No entry in the file yet: this reading picks its pin.
+    .spare: .u.GPIO
+
+    .status ~ .load.a
+    .vbat ~ .load.b
+    .spare ~ .pull.a
+}

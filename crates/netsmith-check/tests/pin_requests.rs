@@ -588,3 +588,69 @@ board B {
     assert!(part.allows(&[("x", "p02"), ("y", "p01")]));
     assert!(!part.allows(&[("x", "p00"), ("y", "p01")]));
 }
+
+#[test]
+fn a_request_that_gets_no_pin_is_listed_with_the_message_of_the_check() {
+    // `nope` asks for a function nothing offers; `ghost` names a part that is not there;
+    // `ok` gets its pin. The two that failed are listed, in the byte order of their paths, each
+    // with the words the check reported at it, and the part they asked for as written.
+    let c = run(
+        "    .ok: .u.GPIO\n    .nope: .u.GPIOO\n    .ghost: .mcu.GPIO\n    .ok ~ .probe.a00\n    .nope ~ .probe.a01\n    .ghost ~ .probe.a02\n",
+        None,
+    );
+    let unserved = &c.pins.unserved["B"];
+    let keys: Vec<(&str, &str, &str)> = unserved
+        .iter()
+        .map(|u| (u.key.as_str(), u.part.as_str(), u.capability.as_str()))
+        .collect();
+    assert_eq!(
+        keys,
+        [("ghost", "mcu", "GPIO"), ("nope", "u", "GPIOO")],
+        "{unserved:?}"
+    );
+    let said = messages(&c);
+    for u in unserved {
+        assert!(
+            !u.message.is_empty() && said.contains(&u.message),
+            "{} says `{}`, the check said {said:?}",
+            u.key,
+            u.message
+        );
+    }
+    assert!(
+        unserved[1]
+            .message
+            .contains("`nope` asks for GPIOO on `u` (`Zmcu4`), and no pin of `Zmcu4` offers it")
+    );
+    assert!(
+        unserved[0]
+            .message
+            .contains("`mcu` is not a part declared here")
+    );
+    // The request that got a pin is not listed, and a board whose requests all got one lists none.
+    assert!(unserved.iter().all(|u| u.key != "ok"));
+    let all_served = run("    .ok: .u.GPIO\n    .ok ~ .probe.a00\n", None);
+    assert!(all_served.is_ok(), "{:?}", messages(&all_served));
+    assert!(all_served.pins.unserved.is_empty());
+}
+
+#[test]
+fn a_request_in_a_module_names_its_part_by_the_path_from_the_board() {
+    let source = format!(
+        "{ZMCU4}\nmodule Hub {{\n    .u: Zmcu4\n    .scl: .u.GPIO\n    .sda: .u.GPIOO\n    .scl ~ .u.p00\n    .sda ~ .u.p01\n}}\nboard B {{\n    .hub: Hub\n}}\n"
+    );
+    let c = check("main.nsm", &source, &Loader::std());
+    let unserved = c
+        .pins
+        .unserved
+        .get("B")
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    assert!(
+        unserved
+            .iter()
+            .any(|u| u.key == "hub.sda" && u.part == "hub.u"),
+        "{unserved:?} {:?}",
+        messages(&c)
+    );
+}
