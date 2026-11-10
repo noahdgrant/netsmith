@@ -1,0 +1,97 @@
+//! The RP2350A microcontroller, Raspberry Pi, in the QFN-60 package (7 x 7 mm, 0.4 mm pitch,
+//! exposed pad): the U1 of the RP2350A Minimal board.
+//!
+//! The pin table was WRITTEN BY HAND from the RP2350 datasheet (Raspberry Pi document
+//! RP-008373-DS, which the PDF itself does not print: its colophon says Release 8, build date
+//! 2026-10-01, fetched on 2026-11-10 from
+//! <https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf>): Figure 2 "RP2350 Pinout
+//! for QFN-60 7x7 mm" (printed page 15) and Tables 1674 to 1679, "Pin list" (printed pages
+//! 1332 to 1335). The datasheet is licensed CC BY-ND, and the owner's rule is no copied
+//! tables: the numbers and names are facts, and the arrangement and the words here are ours.
+//! The kinds follow the "Type" and "Direction" of Table 1673 (a pin with no direction there,
+//! the crystal's XIN and XOUT, is `passive`).
+//!
+//! Two things in the datasheet disagree with its own figure. Table 1679 lists the IOVDD pads
+//! as "11, 20, 30, 38, 45, 54"; Figure 2 has IOVDD on pad 1 and QSPI_IOVDD on pad 54 (and
+//! Table 1679 itself says QSPI_IOVDD is pad 54), and Raspberry Pi's board has the supply on
+//! pad 1. The figure is followed: IOVDD is pads 1, 11, 20, 30, 38 and 45.
+//!
+//! The exposed pad is pad 61, as the footprint of the generator numbers it (and as Raspberry
+//! Pi's board does); the datasheet calls it GND ("ground connection via central exposed pad").
+//!
+//! What is deliberately left out: levels, ratings and models (the pins are a boundary: the
+//! checks that need a number are listed as not evaluated), the datasheet's other alternate
+//! functions (the GPIO function tables of section 1.2.3, printed page 17: UART, SPI, I2C, PWM, PIO, ...) and the
+//! functions of the QSPI pins. A GPIO has `fn GPIO`, and GPIO26 to GPIO29 also their ADC input
+//! (`ADC0` to `ADC3`, an input as the pin type of Table 1673 says); a board that connects one
+//! of those four chooses with `.u.gpio26.function &= "GPIO"`.
+
+/// The RP2350A: a dual Cortex-M33 or Hazard3 microcontroller with 30 GPIOs, four of them ADC
+/// inputs, an on-chip buck regulator for the core (`VREG_*`), a crystal oscillator, USB and
+/// SWD, in a QFN-60 7 x 7 mm package with 0.4 mm pitch. No flash inside: the QSPI pins are for
+/// an external one. Pin names are the datasheet's.
+part Rp2350A {
+    .designator &= "U"
+
+    pins "QFN-60-EP(7x7)" {
+        //  pin           kind           name           pads
+        .iovdd        power         "IOVDD"        "1" "11" "20" "30" "38" "45"
+        .dvdd         power         "DVDD"         "6" "23" "39"
+        .gpio0        bidirectional "GPIO0"        "2"  fn GPIO
+        .gpio1        bidirectional "GPIO1"        "3"  fn GPIO
+        .gpio2        bidirectional "GPIO2"        "4"  fn GPIO
+        .gpio3        bidirectional "GPIO3"        "5"  fn GPIO
+        .gpio4        bidirectional "GPIO4"        "7"  fn GPIO
+        .gpio5        bidirectional "GPIO5"        "8"  fn GPIO
+        .gpio6        bidirectional "GPIO6"        "9"  fn GPIO
+        .gpio7        bidirectional "GPIO7"        "10"  fn GPIO
+        .gpio8        bidirectional "GPIO8"        "12"  fn GPIO
+        .gpio9        bidirectional "GPIO9"        "13"  fn GPIO
+        .gpio10       bidirectional "GPIO10"       "14"  fn GPIO
+        .gpio11       bidirectional "GPIO11"       "15"  fn GPIO
+        .gpio12       bidirectional "GPIO12"       "16"  fn GPIO
+        .gpio13       bidirectional "GPIO13"       "17"  fn GPIO
+        .gpio14       bidirectional "GPIO14"       "18"  fn GPIO
+        .gpio15       bidirectional "GPIO15"       "19"  fn GPIO
+        .gpio16       bidirectional "GPIO16"       "27"  fn GPIO
+        .gpio17       bidirectional "GPIO17"       "28"  fn GPIO
+        .gpio18       bidirectional "GPIO18"       "29"  fn GPIO
+        .gpio19       bidirectional "GPIO19"       "31"  fn GPIO
+        .gpio20       bidirectional "GPIO20"       "32"  fn GPIO
+        .gpio21       bidirectional "GPIO21"       "33"  fn GPIO
+        .gpio22       bidirectional "GPIO22"       "34"  fn GPIO
+        .gpio23       bidirectional "GPIO23"       "35"  fn GPIO
+        .gpio24       bidirectional "GPIO24"       "36"  fn GPIO
+        .gpio25       bidirectional "GPIO25"       "37"  fn GPIO
+        .gpio26       bidirectional "GPIO26_ADC0"  "40"  fn GPIO ADC0:input
+        .gpio27       bidirectional "GPIO27_ADC1"  "41"  fn GPIO ADC1:input
+        .gpio28       bidirectional "GPIO28_ADC2"  "42"  fn GPIO ADC2:input
+        .gpio29       bidirectional "GPIO29_ADC3"  "43"  fn GPIO ADC3:input
+        .xin          passive       "XIN"          "21"
+        .xout         passive       "XOUT"         "22"
+        .swclk        input         "SWCLK"        "24"
+        .swdio        bidirectional "SWDIO"        "25"
+        .run          input         "RUN"          "26"
+        .adc_avdd     power         "ADC_AVDD"     "44"
+        .vreg_avdd    power         "VREG_AVDD"    "46"
+        .vreg_pgnd    power         "VREG_PGND"    "47"
+        .vreg_lx      passive       "VREG_LX"      "48"
+        .vreg_vin     power         "VREG_VIN"     "49"
+        .vreg_fb      input         "VREG_FB"      "50"
+        .usb_dm       bidirectional "USB_DM"       "51"
+        .usb_dp       bidirectional "USB_DP"       "52"
+        .usb_otp_vdd  power         "USB_OTP_VDD"  "53"
+        .qspi_iovdd   power         "QSPI_IOVDD"   "54"
+        .qspi_sd3     bidirectional "QSPI_SD3"     "55"
+        .qspi_sclk    bidirectional "QSPI_SCLK"    "56"
+        .qspi_sd0     bidirectional "QSPI_SD0"     "57"
+        .qspi_sd2     bidirectional "QSPI_SD2"     "58"
+        .qspi_sd1     bidirectional "QSPI_SD1"     "59"
+        .qspi_ss      bidirectional "QSPI_SS"      "60"
+        .gnd          power         "GND"          "61"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog rp2350a by .mpn { .mpn, .package }
+}
