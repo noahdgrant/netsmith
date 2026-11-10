@@ -377,13 +377,13 @@ kind = "Switch"
 package = "B3U-1000P"
 default = true
 symbol = "Switch:SW_SPST"
-footprint = "Button_Switch_SMD:SW_SPST_B3U-1000P"
+footprint = "netsmith:SW_SPST_Omron_B3U-1000P"
 
 [[part]]
 kind = "Switch"
 package = "CK_RS282G05A3"
 symbol = "Switch:SW_SPST"
-footprint = "Button_Switch_SMD:SW_SPST_CK_RS282G05A3"
+footprint = "netsmith:SW_SPST_CK_RS-282G05A3-SM"
 
 [[part]]
 kind = "NMosfet"
@@ -598,7 +598,7 @@ kind = "UsbCPower"
 package = "GCT_USB4125_6P"
 default = true
 symbol = "Connector:USB_C_Receptacle_PowerOnly_6P"
-footprint = "Connector_USB:USB_C_Receptacle_GCT_USB4125-xx-x_6P_TopMnt_Horizontal"
+footprint = "netsmith:USB_C_Receptacle_GCT_USB4125_6P_TopMnt_Horizontal"
 
 [part.pin_names]
 SHELL = "SHIELD"
@@ -608,7 +608,7 @@ kind = "UsbC2"
 package = "GCT_USB4105_16P"
 default = true
 symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
-footprint = "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal"
+footprint = "netsmith:USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal"
 
 [part.pin_names]
 SHELL = "SHIELD"
@@ -617,7 +617,7 @@ SHELL = "SHIELD"
 kind = "UsbC2"
 package = "HRO_TYPE-C-31-M-12"
 symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
-footprint = "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
+footprint = "netsmith:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 
 [part.pin_names]
 SHELL = "SHIELD"

@@ -173,6 +173,42 @@ fn bare() -> Libraries {
     )
 }
 
+/// The symbol of a row with no KiCad install, and the mapping to check it with: the library's
+/// if the row names netsmith's own or none, and else (a row that still names a KiCad symbol,
+/// while its footprint is netsmith's own) the box drawn from the part's pin table, which
+/// has the datasheet's pin names, so the mapping's renames of KiCad's pins are left out and
+/// the footprint's pads are what is checked against the pins. The row's KiCad symbol is
+/// checked against the pin table by `problems` where KiCad is installed.
+fn symbol_without_kicad(
+    libraries: &Libraries,
+    row: &netsmith_kicad::Row,
+    mapped: &netsmith_kicad::Mapped,
+) -> (
+    std::sync::Arc<netsmith_kicad::Symbol>,
+    netsmith_kicad::Mapped,
+) {
+    let part = part_of(&row.kind, &row.package);
+    let own = row
+        .symbol
+        .as_deref()
+        .is_none_or(netsmith_kicad::stdlib::is_library_id);
+    if own {
+        let symbol = libraries
+            .symbols
+            .symbol_of(&part, mapped)
+            .unwrap_or_else(|e| panic!("{}/{}: {e}", row.kind, row.package));
+        (symbol, mapped.clone())
+    } else {
+        let symbol = netsmith_kicad::generate::symbol(&part, &mapped.footprint)
+            .unwrap_or_else(|| panic!("{}/{} has no pin table", row.kind, row.package));
+        let plain = netsmith_kicad::Mapped {
+            pin_names: Default::default(),
+            ..mapped.clone()
+        };
+        (std::sync::Arc::new(symbol), plain)
+    }
+}
+
 #[test]
 fn every_footprint_netsmith_ships_parses_and_agrees_with_the_pin_table_of_its_part() {
     let libraries = bare();
@@ -184,10 +220,7 @@ fn every_footprint_netsmith_ships_parses_and_agrees_with_the_pin_table_of_its_pa
             .mapping
             .map(&row.kind, Some(&row.package))
             .unwrap();
-        let symbol = libraries
-            .symbols
-            .symbol_of(&part_of(&row.kind, &row.package), &mapped)
-            .unwrap_or_else(|e| panic!("{}/{}: {e}", row.kind, row.package));
+        let (symbol, mapped) = symbol_without_kicad(&libraries, row, &mapped);
         let footprint = libraries
             .footprints
             .load(&mapped.footprint)
@@ -233,15 +266,15 @@ fn a_footprint_whose_pad_disagrees_with_the_pin_table_is_refused_by_name() {
     // The datasheet's pad 22 is SW; a pinout that calls it something the footprint lacks, or a
     // footprint with a pad that the pinout does not name, is a message that names both.
     let libraries = bare();
-    let row = own_rows(&libraries)[0];
+    let row = own_rows(&libraries)
+        .into_iter()
+        .find(|r| r.footprint.contains("UDC-QFN-18"))
+        .unwrap();
     let mapped = libraries
         .mapping
         .map(&row.kind, Some(&row.package))
         .unwrap();
-    let symbol = libraries
-        .symbols
-        .symbol_of(&part_of(&row.kind, &row.package), &mapped)
-        .unwrap();
+    let (symbol, mapped) = symbol_without_kicad(&libraries, row, &mapped);
     let footprint = libraries.footprints.load(&mapped.footprint).unwrap();
     let mut pinout = pinout_of(&row.kind, &row.package);
     // The pin table with pad 22 taken away from SW.

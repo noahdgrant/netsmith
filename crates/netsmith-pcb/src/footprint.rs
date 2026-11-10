@@ -1073,6 +1073,226 @@ mod tests {
         );
     }
 
+    /// One pad as a maker's drawing gives it: number, kind, centre, size and the hole
+    /// (a slot's two sides, or one diameter twice).
+    type Expected = (
+        &'static str,
+        PadKind,
+        (f64, f64),
+        (f64, f64),
+        Option<(f64, f64)>,
+    );
+
+    /// A footprint of the standard library against the numbers read from the maker's drawing
+    /// (`std/libs/README.md` says where each is), with no KiCad and no folder.
+    fn assert_maker_footprint(
+        name: &str,
+        expected: &[Expected],
+        courtyard: (f64, f64, f64, f64),
+        body: (f64, f64, f64, f64),
+    ) {
+        let fp = FootprintLibrary::at("/nonexistent")
+            .load(&format!("netsmith:{name}"))
+            .unwrap();
+        assert_eq!(fp.mount, Mount::Smd, "{name}");
+        assert_eq!(fp.pads.len(), expected.len(), "{name}: pad count");
+        let mut left: Vec<&Pad> = fp.pads.iter().collect();
+        for (number, kind, (x, y), (w, h), drill) in expected {
+            let found = left.iter().position(|p| {
+                p.number == *number
+                    && near(p.at.x, *x)
+                    && near(p.at.y, *y)
+                    && near(p.width, *w)
+                    && near(p.height, *h)
+            });
+            let Some(i) = found else {
+                panic!("{name}: no pad {number} at ({x}, {y}) of {w} x {h} among {left:#?}");
+            };
+            let pad = left.remove(i);
+            assert_eq!(pad.kind, *kind, "{name}: pad {number}");
+            match (pad.drill, drill) {
+                (Some(d), Some((dw, dh))) => {
+                    assert!(
+                        near(d.width, *dw) && near(d.height, *dh),
+                        "{name}: {number}"
+                    );
+                }
+                (None, None) => {}
+                (got, want) => panic!("{name}: pad {number} drill {got:?}, wanted {want:?}"),
+            }
+            let layers: &[&str] = match kind {
+                PadKind::Smd => &["F.Cu", "F.Mask", "F.Paste"],
+                _ => &["*.Cu", "*.Mask"],
+            };
+            assert_eq!(pad.layers, layers, "{name}: pad {number}");
+        }
+        // The drawn courtyard, taken wider where a long slot's reach (half its length, all
+        // round the pad's centre) goes past it, as `Footprint::parse` does for every hole.
+        let (x0, y0, x1, y1) = courtyard;
+        assert_eq!(
+            fp.courtyard,
+            Rect::new(Pt::new(x0, y0), Pt::new(x1, y1)),
+            "{name}: courtyard"
+        );
+        let (x0, y0, x1, y1) = body;
+        let fab = fp.body;
+        assert!(!fp.body_is_courtyard, "{name}: the body is drawn on F.Fab");
+        assert!(
+            near(fab.min.x, x0)
+                && near(fab.min.y, y0)
+                && near(fab.max.x, x1)
+                && near(fab.max.y, y1),
+            "{name}: body {fab:?}"
+        );
+    }
+
+    use PadKind::{NpThruHole, Smd, ThruHole};
+
+    /// A shell hole's (y, pad width, pad length, drill length).
+    type ShellHole = (f64, f64, f64, f64);
+
+    #[test]
+    fn the_gct_usb4125_has_the_pads_of_its_recommended_pcb_layout() {
+        // Drawing USB4125 Rev A6, sheet 1. The origin is the middle of the four shell holes
+        // (3.80 apart on the long axis, 8.64 on the short one).
+        let mut pads: Vec<Expected> = vec![
+            ("B12", Smd, (-2.75, -1.98), (0.80, 1.20), None),
+            ("B9", Smd, (-1.52, -1.98), (0.76, 1.20), None),
+            ("A5", Smd, (-0.50, -1.98), (0.70, 1.20), None),
+            ("B5", Smd, (0.50, -1.98), (0.70, 1.20), None),
+            ("A9", Smd, (1.52, -1.98), (0.76, 1.20), None),
+            ("A12", Smd, (2.75, -1.98), (0.80, 1.20), None),
+        ];
+        for x in [-4.32, 4.32] {
+            for y in [-1.90, 1.90] {
+                pads.push(("S1", ThruHole, (x, y), (1.10, 1.70), Some((0.60, 1.20))));
+            }
+        }
+        assert_maker_footprint(
+            "USB_C_Receptacle_GCT_USB4125_6P_TopMnt_Horizontal",
+            &pads,
+            (-5.12, -3.0, 5.12, 4.75),
+            (-4.47, -2.58, 4.47, 4.5),
+        );
+    }
+
+    /// The 16 contacts of a USB 2.0 receptacle as the 12 pads of a layout: A1 and B12 (and the
+    /// other corner and inner pairs) share a pad, so each is two pads at one place. `shell` is
+    /// the x of the shell holes and `upper` and `lower` each one's (y, pad width, pad length,
+    /// drill length); the drill is 0.60 wide. `hole` is the positioning hole's (y, diameter).
+    fn usb16_pads(
+        row: (f64, f64, f64),
+        shell: (f64, ShellHole, ShellHole),
+        hole: (f64, f64),
+    ) -> Vec<Expected> {
+        let (row_y, pad_h, wide) = row;
+        let mut pads: Vec<Expected> = Vec::new();
+        for (n, x) in [
+            ("A1", -3.2),
+            ("B12", -3.2),
+            ("A4", -2.4),
+            ("B9", -2.4),
+            ("A9", 2.4),
+            ("B4", 2.4),
+            ("A12", 3.2),
+            ("B1", 3.2),
+        ] {
+            pads.push((n, Smd, (x, row_y), (wide, pad_h), None));
+        }
+        for (n, x) in [
+            ("B8", -1.75),
+            ("A5", -1.25),
+            ("B7", -0.75),
+            ("A6", -0.25),
+            ("A7", 0.25),
+            ("B6", 0.75),
+            ("A8", 1.25),
+            ("B5", 1.75),
+        ] {
+            pads.push((n, Smd, (x, row_y), (0.30, pad_h), None));
+        }
+        let (shell_x, upper, lower) = shell;
+        for x in [-shell_x, shell_x] {
+            for (y, w, l, drill) in [upper, lower] {
+                pads.push(("S1", ThruHole, (x, y), (w, l), Some((0.60, drill))));
+            }
+        }
+        for x in [-2.89, 2.89] {
+            pads.push((
+                "",
+                NpThruHole,
+                (x, hole.0),
+                (hole.1, hole.1),
+                Some((hole.1, hole.1)),
+            ));
+        }
+        pads
+    }
+
+    #[test]
+    fn the_gct_usb4105_has_the_pads_of_its_recommended_pcb_layout() {
+        // Drawing USB4105 Rev B4, sheet 1. The origin is the middle of the four shell holes
+        // (4.18 apart); the pad's lower edge is on the line of the upper holes.
+        let pads = usb16_pads(
+            (-2.665, 1.15, 0.60),
+            (4.32, (-2.09, 1.00, 2.10, 1.70), (2.09, 1.00, 1.80, 1.40)),
+            (-1.59, 0.65),
+        );
+        assert_maker_footprint(
+            "USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal",
+            &pads,
+            (-5.17, -3.49, 5.17, 4.94),
+            (-4.47, -3.24, 4.47, 4.69),
+        );
+    }
+
+    #[test]
+    fn the_hro_type_c_31_m_12_has_the_pads_of_its_recommended_pcb_layout() {
+        // The maker's drawing Rev A of 2020-12-08: the pad is 1.64 - 0.50 = 1.14 long; upper
+        // holes with a pad of 0.90 x 2.00 and a drill 0.60 x 1.70, lower ones 0.90 x 1.70 and
+        // 0.60 x 1.40.
+        let pads = usb16_pads(
+            (-2.66, 1.14, 0.60),
+            (4.325, (-2.09, 0.90, 2.00, 1.70), (2.09, 0.90, 1.70, 1.40)),
+            (-1.59, 0.60),
+        );
+        assert_maker_footprint(
+            "USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+            &pads,
+            (-5.175, -3.48, 5.175, 4.45),
+            (-4.47, -3.23, 4.47, 4.2),
+        );
+    }
+
+    #[test]
+    fn the_omron_b3u_1000p_has_the_pcb_pads_of_its_drawing() {
+        // Cat. No. A162-E1-07 p.2: 4.2 over the outer edges, 2.6 between the inner edges, 1.7
+        // long. The numbers are those of the drawing's terminal arrangement (2 left, 1 right).
+        assert_maker_footprint(
+            "SW_SPST_Omron_B3U-1000P",
+            &[
+                ("2", Smd, (-1.7, 0.0), (0.8, 1.7), None),
+                ("1", Smd, (1.7, 0.0), (0.8, 1.7), None),
+            ],
+            (-2.35, -1.5, 2.35, 1.5),
+            (-1.5, -1.25, 1.5, 1.25),
+        );
+    }
+
+    #[test]
+    fn the_ck_rs_282g05a3_has_the_two_lands_of_its_drawing() {
+        // Drawing RS-282G05A-SM RT, version A05: two lands of 1.5 x 1.5, 7.8 between centres.
+        assert_maker_footprint(
+            "SW_SPST_CK_RS-282G05A3-SM",
+            &[
+                ("1", Smd, (-3.9, 0.0), (1.5, 1.5), None),
+                ("2", Smd, (3.9, 0.0), (1.5, 1.5), None),
+            ],
+            (-4.9, -2.05, 4.9, 2.05),
+            (-3.0, -1.8, 3.0, 1.8),
+        );
+    }
+
     #[test]
     fn a_name_the_standard_library_does_not_have_says_what_it_has() {
         let e = FootprintLibrary::at("/nonexistent")
