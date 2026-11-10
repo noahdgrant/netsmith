@@ -1,0 +1,43 @@
+//! The ABM8-272-T3 crystal, Abracon, 12 MHz, a ceramic SMD package of 3.2 x 2.5 x 0.8 mm with
+//! four pads: the X1 of the RP2350A Minimal board. The standard `Crystal` has two terminals and
+//! only two-pad footprints are mapped for it, so the board has its own part.
+//!
+//! The pads and the values are from Abracon's "Source Control Drawing" ABM8-272-T3 (Abracon
+//! drawing # 456603, Revision B, date of issue September 16th, 2024, a PDF of three pages
+//! numbered 2, 4 and 6 of 9, fetched on 2026-11-10 from
+//! <https://abracon.com/datasheets/ABM8-272-T3.pdf>): "Key Electrical Specifications" (page 2)
+//! for the values, "Mechanical Dimensions" (page 4) for the pads. The top view there has the
+//! crystal on pads 1 and 3 (the plate drawn between them) and `GND` written on pads 2 and 4;
+//! pad 1 is at the bottom left of the top view, 2 bottom right, 3 top right and 4 top left.
+//! The names `XTAL_A`, `XTAL_B`, `GND_2` and `GND_4` are ours: the drawing numbers its pads.
+//! All four pins are `passive`: the two ground pads are the case of the crystal, which the
+//! board ties to ground, and no pad takes power.
+//!
+//! The values are the catalog row's (`catalogs/abm8_272_t3.csv`): the frequency is 12 MHz with
+//! the tolerance at 25 C (+/- 30 ppm) and the stability over -40 to +85 C (+/- 30 ppm) added,
+//! as the standard crystal catalog does it (aging, +/- 5 ppm in the first year, is not
+//! included), the load capacitance 10 pF, and the equivalent series resistance 50 ohm at most.
+
+/// A 12 MHz fundamental-mode crystal with four pads: the crystal on pads 1 and 3, ground on
+/// pads 2 and 4. `.frequency` and `.load_capacitance` are the standard `Crystal`'s fields,
+/// and `.esr_max` is the greatest equivalent series resistance (R1) of the datasheet. Its
+/// designator is `X`, as Raspberry Pi's board has it (the standard `Crystal`'s is `Y`).
+part Abm8272T3 {
+    .designator &= "X"
+
+    pins "SMD3225-4P" {
+        //  pin     kind     name      pads
+        .xtal_a  passive  "XTAL_A"  "1"
+        .gnd_2   passive  "GND_2"   "2"
+        .xtal_b  passive  "XTAL_B"  "3"
+        .gnd_4   passive  "GND_4"   "4"
+    }
+
+    .frequency: Frequency
+    .load_capacitance: Capacitance
+    .esr_max: Resistance
+
+    .mpn: String
+    .package: Package
+    catalog abm8_272_t3 by .mpn { .mpn, .package, .frequency, .load_capacitance, .esr_max }
+}

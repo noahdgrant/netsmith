@@ -975,6 +975,445 @@ fn the_catalog_row_names_the_part_and_its_source() {
     assert!(target.catalogs().is_ok());
 }
 
+/// U3 (the QSPI flash, `src/flash.nsm`) and X1 (the 12 MHz crystal, `src/crystal.nsm`) of
+/// Raspberry Pi's board: the parts are checked against the pads and the net names of the
+/// reference table, and a small board of our own builds with both and no KiCad library.
+mod flash_and_crystal {
+    use super::{parsed, project, read, tables};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use netsmith::project::Target;
+    use netsmith::{Libraries, build_with};
+    use netsmith_core::PinKind;
+    use netsmith_kicad::testlib;
+    use netsmith_kicad::{Mapping, SymbolLib};
+    use netsmith_pcb::FootprintLibrary;
+
+    /// A small board of our own, never built by the project: both parts with their supply and
+    /// the nets of their pins. The names are the datasheets', nothing says they are Raspberry
+    /// Pi's.
+    const SMALL: &str = r#"
+import src::flash::W25Q128Jv
+import src::crystal::Abm8272T3
+import std::parts::connector::{Header1x2, Header1x4}
+import std::sources::Rail
+
+board FlashAndCrystal {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: W25Q128Jv { .mpn &= "W25Q128JVSIQ" }
+    // What the board asks of the crystal is met by the row only if the row's values are read
+    // as the datasheet states them: 12 MHz (+/- 60 ppm with the stability), 10 pF, 50 ohm.
+    .x: Abm8272T3 {
+        .mpn &= "ABM8-272-T3"
+        .frequency &= 12MHz +/- 100ppm
+        .load_capacitance &= 10pF
+        .esr_max <= 60ohm
+    }
+    .spi_a: Header1x4
+    .spi_b: Header1x2
+    .xtal: Header1x2
+
+    .supply.pos ~ .u.vcc
+    .supply.neg ~ .u.gnd
+    .supply.neg ~ .x.gnd_2
+    .supply.neg ~ .x.gnd_4
+    .u.cs ~ .spi_a.p1
+    .u.do_io1 ~ .spi_a.p2
+    .u.wp_io2 ~ .spi_a.p3
+    .u.di_io0 ~ .spi_a.p4
+    .u.clk ~ .spi_b.p1
+    .u.hold_io3 ~ .spi_b.p2
+    .x.xtal_a ~ .xtal.p1
+    .x.xtal_b ~ .xtal.p2
+}
+"#;
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
+        let libraries = Libraries::with_mapping(
+            mapping,
+            SymbolLib::at(testlib::sample_symbols()),
+            FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+        );
+        build_with(
+            "small.nsm",
+            SMALL,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries,
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    /// A part's pins as the design has them: the datasheet's name, kind and pads, in order.
+    fn pins_of(built: &netsmith::Built, kind: &str) -> Vec<(String, PinKind, Vec<String>)> {
+        built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.kind == kind)
+            .unwrap_or_else(|| panic!("the board has no {kind}"))
+            .pins
+            .iter()
+            .map(|p| (p.datasheet.clone(), p.kind, p.pads.clone()))
+            .collect()
+    }
+
+    /// The footprint the project's `kicad.toml` gives a kind, loaded from the generators.
+    fn footprint_of(kind: &str, package: &str) -> netsmith_pcb::Footprint {
+        let mapping = Mapping::for_project(Some(&project())).unwrap();
+        let mapped = mapping
+            .map(kind, Some(package))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            mapped.lib_id, None,
+            "the symbol is drawn from the pin table"
+        );
+        FootprintLibrary::at(testlib::sample_footprints())
+            .with_generators()
+            .load(&mapped.footprint)
+            .unwrap_or_else(|e| panic!("{}: {e}", mapped.footprint))
+    }
+
+    fn pad_numbers(pins: &[(String, PinKind, Vec<String>)]) -> BTreeSet<String> {
+        pins.iter().flat_map(|p| p.2.iter().cloned()).collect()
+    }
+
+    /// The pads of a footprint of the reference table, as pad number to net name.
+    fn reference_nets(reference: &str) -> BTreeMap<String, String> {
+        let table = parsed(&read("reference/placements.toml"));
+        let parts = tables(&table, "part");
+        let part = parts
+            .iter()
+            .find(|p| p["reference"].as_str() == Some(reference))
+            .unwrap_or_else(|| panic!("the reference has no {reference}"));
+        part["pads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pad| {
+                let pad = pad.as_table().unwrap();
+                (
+                    pad["number"].as_str().unwrap().to_string(),
+                    pad.get("net")
+                        .map(|n| n.as_str().unwrap().to_string())
+                        .unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_flash_has_the_eight_pins_of_the_datasheet() {
+        let pins = pins_of(&built(), "W25Q128Jv");
+        let table: Vec<(&str, PinKind, &str)> = pins
+            .iter()
+            .map(|(name, kind, pads)| {
+                assert_eq!(pads.len(), 1, "{name}: one pad each");
+                (name.as_str(), *kind, pads[0].as_str())
+            })
+            .collect();
+        // Winbond W25Q128JV Revision I, section 3.3 (printed page 5): pad, name and I/O.
+        assert_eq!(
+            table,
+            [
+                ("CS#", PinKind::Input, "1"),
+                ("DO(IO1)", PinKind::Bidirectional, "2"),
+                ("WP#(IO2)", PinKind::Bidirectional, "3"),
+                ("GND", PinKind::Power, "4"),
+                ("DI(IO0)", PinKind::Bidirectional, "5"),
+                ("CLK", PinKind::Input, "6"),
+                ("HOLD#/RESET#(IO3)", PinKind::Bidirectional, "7"),
+                ("VCC", PinKind::Power, "8"),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_crystal_has_four_pins_the_crystal_on_pads_1_and_3_and_ground_on_2_and_4() {
+        let pins = pins_of(&built(), "Abm8272T3");
+        let table: Vec<(&str, &str)> = pins
+            .iter()
+            .map(|(name, kind, pads)| {
+                assert_eq!(*kind, PinKind::Passive, "{name}");
+                assert_eq!(pads.len(), 1, "{name}: one pad each");
+                (name.as_str(), pads[0].as_str())
+            })
+            .collect();
+        // Abracon drawing # 456603 Revision B, page 4: the top view has GND on pads 2 and 4.
+        assert_eq!(
+            table,
+            [
+                ("XTAL_A", "1"),
+                ("GND_2", "2"),
+                ("XTAL_B", "3"),
+                ("GND_4", "4")
+            ]
+        );
+    }
+
+    #[test]
+    fn the_footprints_have_the_pads_of_the_pins_and_no_others() {
+        let built = built();
+        for (kind, package) in [("W25Q128Jv", "SOIC-8-208mil"), ("Abm8272T3", "SMD3225-4P")] {
+            let pins = pins_of(&built, kind);
+            let footprint = footprint_of(kind, package);
+            let pads: BTreeSet<String> = footprint
+                .pad_numbers()
+                .into_iter()
+                .filter(|n| !n.is_empty())
+                .map(str::to_string)
+                .collect();
+            assert_eq!(pads, pad_numbers(&pins), "{kind}");
+            assert_eq!(
+                footprint.pads.len(),
+                pads.len(),
+                "{kind}: a pad number is given twice"
+            );
+        }
+        assert_eq!(footprint_of("W25Q128Jv", "SOIC-8-208mil").pads.len(), 8);
+        assert_eq!(footprint_of("Abm8272T3", "SMD3225-4P").pads.len(), 4);
+    }
+
+    /// The flash's land pattern is the generator's for the datasheet's package (Winbond W25Q128JV
+    /// Revision I, section 10.1, printed page 67: pitch 1.27 mm, 7.7 to 8.1 mm over the leads),
+    /// and its pads are Raspberry Pi's in place (at +-3.6 mm, 1.27 mm apart) and differ in size
+    /// (1.6 x 0.6 mm here, 1.7 x 0.65 mm there; the datasheet draws no land pattern).
+    #[test]
+    fn the_flash_footprint_has_the_pitch_and_the_span_of_the_datasheets_package() {
+        let footprint = footprint_of("W25Q128Jv", "SOIC-8-208mil");
+        let pad = |n: &str| footprint.pads.iter().find(|p| p.number == n).unwrap();
+        let pitch = |a: &str, b: &str| (pad(a).at.y - pad(b).at.y).abs();
+        for (a, b) in [("1", "2"), ("2", "3"), ("3", "4"), ("5", "6"), ("7", "8")] {
+            assert!((pitch(a, b) - 1.27).abs() < 1e-9, "pads {a} and {b}");
+        }
+        // Pad 1 is a top-left pad and pad 8 the top right of the datasheet's top view.
+        assert!(pad("1").at.x < 0.0 && pad("8").at.x > 0.0);
+        assert!((pad("1").at.y - pad("8").at.y).abs() < 1e-9);
+        assert!(pad("1").at.y < pad("4").at.y);
+        let outer = |n: &str| pad(n).at.x.abs() + pad(n).width / 2.0;
+        let over_the_leads = outer("1") + outer("8");
+        assert!(
+            over_the_leads > 7.9,
+            "the pads reach beyond the leads' tips (7.7 to 8.1 mm): {over_the_leads}"
+        );
+        // Raspberry Pi's pads are at the same centres and 1.7 x 0.65 mm where these are
+        // 1.6 x 0.6 mm.
+        let table = parsed(&read("reference/placements.toml"));
+        let parts = tables(&table, "part");
+        let u3 = parts
+            .iter()
+            .find(|p| p["reference"].as_str() == Some("U3"))
+            .unwrap();
+        for theirs in u3["pads"].as_array().unwrap() {
+            let theirs = theirs.as_table().unwrap();
+            let mine = pad(theirs["number"].as_str().unwrap());
+            assert_eq!(theirs["x"].as_float().unwrap(), mine.at.x);
+            assert_eq!(theirs["y"].as_float().unwrap(), mine.at.y);
+            let size = theirs["size"].as_array().unwrap();
+            assert_eq!(
+                (size[0].as_float().unwrap(), size[1].as_float().unwrap()),
+                (1.7, 0.65)
+            );
+            assert_eq!((mine.width, mine.height), (1.6, 0.6));
+        }
+    }
+
+    /// The crystal's pads hold the terminals of the datasheet's drawing: the terminals (page 4,
+    /// bottom view) are 0.9 mm wide with 1.2 mm between them across and 0.8 mm high with 0.7 mm
+    /// between them along, in a 3.2 x 2.5 mm body: they are 0.60 to 1.50 mm and 0.35 to 1.15 mm
+    /// from the middle. The generator's pads are Raspberry Pi's (1.4 x 1.2 mm at +-1.1, +-0.85).
+    #[test]
+    fn the_crystal_pads_cover_the_terminals_of_the_drawing_and_are_raspberry_pis() {
+        let footprint = footprint_of("Abm8272T3", "SMD3225-4P");
+        let reference = {
+            let table = parsed(&read("reference/placements.toml"));
+            let parts = tables(&table, "part");
+            let x1 = parts
+                .iter()
+                .find(|p| p["reference"].as_str() == Some("X1"))
+                .unwrap();
+            x1["pads"].as_array().unwrap().clone()
+        };
+        for pad in &footprint.pads {
+            let theirs = reference
+                .iter()
+                .map(|r| r.as_table().unwrap())
+                .find(|r| r["number"].as_str() == Some(pad.number.as_str()))
+                .unwrap_or_else(|| panic!("no pad {}", pad.number));
+            let get = |k: &str| theirs[k].as_float().unwrap();
+            let size = theirs["size"].as_array().unwrap();
+            assert!((get("x") - pad.at.x).abs() < 1e-9, "pad {} x", pad.number);
+            assert!((get("y") - pad.at.y).abs() < 1e-9, "pad {} y", pad.number);
+            assert_eq!(
+                (size[0].as_float().unwrap(), size[1].as_float().unwrap()),
+                (pad.width, pad.height),
+                "pad {} size",
+                pad.number
+            );
+            // The terminal of the drawing on this pad lies inside it.
+            let (cx, cy) = (pad.at.x.signum() * 1.05, pad.at.y.signum() * 0.75);
+            let (hw, hh) = (0.45, 0.4);
+            assert!(pad.at.x - pad.width / 2.0 <= cx - hw + 1e-9);
+            assert!(cx + hw <= pad.at.x + pad.width / 2.0 + 1e-9);
+            assert!(pad.at.y - pad.height / 2.0 <= cy - hh + 1e-9);
+            assert!(cy + hh <= pad.at.y + pad.height / 2.0 + 1e-9);
+        }
+        // Pad 1 is at the bottom left of the top view (y grows down), 3 at the top right.
+        let at = |n: &str| footprint.pads.iter().find(|p| p.number == n).unwrap().at;
+        assert!(at("1").x < 0.0 && at("1").y > 0.0);
+        assert!(at("2").x > 0.0 && at("2").y > 0.0);
+        assert!(at("3").x > 0.0 && at("3").y < 0.0);
+        assert!(at("4").x < 0.0 && at("4").y < 0.0);
+    }
+
+    #[test]
+    fn the_flash_agrees_with_the_nets_of_raspberry_pis_u3() {
+        let pins = pins_of(&built(), "W25Q128Jv");
+        let reference = reference_nets("U3");
+        let plain = |net: &str| net.trim_start_matches('/').to_string();
+        let mut seen = BTreeSet::new();
+        for (name, _, pads) in &pins {
+            let net = plain(&reference[&pads[0]]);
+            seen.insert(pads[0].clone());
+            // The datasheet's IOn pins carry the MCU's QSPI_SDn, and the others their own names.
+            let expected = match name.as_str() {
+                "CS#" => "FLASH_SS".to_string(), // not QSPI_SS: R10 joins them (README)
+                "CLK" => "QSPI_SCLK".to_string(),
+                "GND" => "GND".to_string(),
+                "VCC" => "+3V3".to_string(),
+                io => {
+                    let n = io.rsplit_once("(IO").unwrap().1.trim_end_matches(')');
+                    format!("QSPI_SD{n}")
+                }
+            };
+            assert_eq!(net, expected, "pad {} ({name})", pads[0]);
+        }
+        let all: BTreeSet<String> = reference.keys().cloned().collect();
+        assert_eq!(seen, all, "every pad of the reference is a pin here");
+        assert!(
+            reference.values().all(|n| !n.is_empty()),
+            "every pad has a net"
+        );
+    }
+
+    #[test]
+    fn the_crystal_agrees_with_the_nets_of_raspberry_pis_x1() {
+        let pins = pins_of(&built(), "Abm8272T3");
+        let reference = reference_nets("X1");
+        let ground = |pad: &str| reference[pad] == "GND";
+        for (name, _, pads) in &pins {
+            assert_eq!(
+                name.starts_with("GND"),
+                ground(&pads[0]),
+                "pad {} ({name}) and the net `{}`",
+                pads[0],
+                reference[&pads[0]]
+            );
+        }
+        // The two crystal pads are on two nets of their own, neither ground.
+        let crystal: BTreeSet<&String> = pins
+            .iter()
+            .filter(|p| p.0.starts_with("XTAL"))
+            .map(|p| &reference[&p.2[0]])
+            .collect();
+        assert_eq!(crystal.len(), 2);
+        assert!(crystal.iter().all(|n| !n.is_empty() && *n != "GND"));
+        assert_eq!(reference["1"], "/XIN");
+    }
+
+    #[test]
+    fn a_board_with_both_parts_builds_with_symbols_drawn_from_the_pin_tables() {
+        let built = built();
+        let drawn = |kind: &str, package: &str| {
+            format!(
+                "netsmith:{}",
+                netsmith_kicad::generate::symbol_name(kind, Some(package))
+            )
+        };
+        for (kind, package) in [("W25Q128Jv", "SOIC-8-208mil"), ("Abm8272T3", "SMD3225-4P")] {
+            let name = drawn(kind, package);
+            assert!(
+                built.schematic.contains(&format!("(lib_id \"{name}")),
+                "no instance of the symbol `{name}`"
+            );
+            for (datasheet, _, pads) in pins_of(&built, kind) {
+                assert!(
+                    built.schematic.contains(&format!("(name \"{datasheet}\"")),
+                    "no pin {datasheet}"
+                );
+                for pad in pads {
+                    assert!(
+                        built.schematic.contains(&format!("(number \"{pad}\"")),
+                        "no pad {pad}"
+                    );
+                }
+            }
+        }
+        let by_kind = |kind: &str| built.sourcing.iter().find(|s| s.kind == kind).unwrap();
+        let flash = by_kind("W25Q128Jv");
+        assert_eq!(flash.lcsc.as_deref(), Some("C97521"));
+        assert_eq!(flash.mpn.as_deref(), Some("W25Q128JVSIQ"));
+        assert_eq!(flash.package.as_deref(), Some("SOIC-8-208mil"));
+        assert_eq!(format!("{:?}", flash.library.unwrap()), "Basic");
+        let crystal = by_kind("Abm8272T3");
+        assert_eq!(crystal.lcsc.as_deref(), Some("C20625731"));
+        assert_eq!(crystal.mpn.as_deref(), Some("ABM8-272-T3"));
+        assert_eq!(format!("{:?}", crystal.library.unwrap()), "Extended");
+        // Raspberry Pi's board calls the crystal X1 (the standard crystal is Y).
+        let refdes = |kind: &str| {
+            built
+                .design
+                .parts
+                .iter()
+                .find(|p| p.kind == kind)
+                .unwrap()
+                .refdes
+                .clone()
+        };
+        assert_eq!(refdes("Abm8272T3"), "X1");
+    }
+
+    #[test]
+    fn the_catalog_rows_name_the_parts_and_where_they_were_read() {
+        for (file, lcsc, mpn, page) in [
+            (
+                "catalogs/w25q128jv.csv",
+                "C97521",
+                "W25Q128JVSIQ",
+                "https://jlcpcb.com/partdetail/C97521",
+            ),
+            (
+                "catalogs/abm8_272_t3.csv",
+                "C20625731",
+                "ABM8-272-T3",
+                "https://jlcpcb.com/partdetail/C20625731",
+            ),
+        ] {
+            let rows = read(file);
+            let row = rows.lines().nth(1).expect("a row");
+            assert_eq!(rows.lines().count(), 2, "{file}: one row");
+            assert!(row.starts_with(&format!("{lcsc},{mpn},")), "{row}");
+            assert!(row.contains(page), "{file}: the page it was read from");
+            assert!(
+                row.contains("2026-11-10"),
+                "{file}: the day the page was read"
+            );
+            // Price and stock are not recorded.
+            let header = rows.lines().next().unwrap();
+            assert!(!header.split(',').any(|c| c == "price" || c == "stock"));
+        }
+        let target = Target::resolve_from(&project(), None).unwrap();
+        assert!(target.catalogs().is_ok());
+    }
+}
+
 // The connectors: J1, J2, J3 and J4 of Raspberry Pi's board.
 
 /// A small board of our own, never built by the project: one of each connector part, so that
