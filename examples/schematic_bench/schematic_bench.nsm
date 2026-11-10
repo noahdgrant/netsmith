@@ -4,14 +4,14 @@
 //! converter with a feedback divider, a bootstrap capacitor, an inductor and capacitors
 //! (`buck`), and a module with two connectors and more than twenty parts (`modem`). Nothing in
 //! it is a design to build: the parts and the numbers are made up, and the microcontroller and
-//! the regulator IC are drawn by the project's own symbol library (`bench.kicad_sym`).
+//! the regulator IC are drawn by the project's own symbol library (`libs/bench.kicad_sym`).
 
 import std::parts::connector::Header1x4
 import std::parts::passive::{Capacitor, Crystal, Inductor, Led, Resistor}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
-/// A dual operational amplifier, in the symbol of KiCad's LM358: three units there, one box here.
+/// A dual operational amplifier, in a symbol of three units: two amplifiers and the supply.
 part DualOpAmp {
     .designator &= "U"
 
@@ -206,11 +206,11 @@ module AdcMonitor {
     .supply: Rail
     .out: Pin
 
-    .r_top: Resistor { .resistance &= 1.2Mohm +/- 1% }
+    .r_top: Resistor { .resistance &= 1.2Mohm +/- 1%; .assembly &= AssemblyMode::Hand }
     .r_bottom: Resistor { .resistance &= 330kohm +/- 1% }
     .r_filter: Resistor { .resistance &= 10kohm +/- 1% }
     .c_filter: Capacitor { .capacitance &= 100nF +/- 20% }
-    .amp: DualOpAmp { .package &= "SOIC-8" }
+    .amp: DualOpAmp { .package &= "SOIC-8"; .assembly &= AssemblyMode::Hand }
 
     .amp.supply ~ .supply
     .battery.pos ~> .r_top ~> .r_bottom ~> .battery.neg
@@ -244,7 +244,7 @@ module McuModule {
     .t8: Pin
     .t9: Pin
 
-    .mcu: Mcu97 { .package &= "QFP" }
+    .mcu: Mcu97 { .package &= "QFP"; .assembly &= AssemblyMode::Hand }
     .crystal: Crystal { .frequency &= 8MHz +/- 30ppm }
     .bulk: Capacitor { .capacitance &= 10uF +/- 20% }
     .bypass: Capacitor { .capacitance &= 100nF +/- 20% }
@@ -285,8 +285,8 @@ module BuckStage1V8 {
     .supply: Rail
     .pgood: Pin
 
-    .ic: Buck1V8 { .package &= "QFN" }
-    .l: Inductor { .inductance &= 4.7uH +/- 20% }
+    .ic: Buck1V8 { .package &= "QFN"; .assembly &= AssemblyMode::Hand }
+    .l: Inductor { .inductance &= 4.7uH +/- 20%; .assembly &= AssemblyMode::Hand }
     .c_in: Capacitor { .capacitance &= 10uF +/- 20% }
     .c_out: Capacitor { .capacitance &= 22uF +/- 20% }
     .c_boot: Capacitor { .capacitance &= 100nF +/- 20% }
@@ -370,7 +370,7 @@ module LdoModule {
     .vin: Rail
     .vout: Rail
 
-    .u: Ldo8 { .package &= "DFN" }
+    .u: Ldo8 { .package &= "DFN"; .assembly &= AssemblyMode::Hand }
     .c_in: Capacitor { .capacitance &= 1uF +/- 20% }
     .c_out: Capacitor { .capacitance &= 1uF +/- 20% }
 

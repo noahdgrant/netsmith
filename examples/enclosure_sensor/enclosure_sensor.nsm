@@ -5,9 +5,9 @@
 //! Everything the case and the layout designer require of the board is in
 //! `enclosure_sensor.physical.nsm` beside this file (ADR 0048): its comments walk through each
 //! statement. This file is only the circuit. The four parts it defines (`SensorPlug16`,
-//! `Memory`, `ChipAntenna`, `FlatCell`) are invented and use KiCad's stock symbols and
-//! footprints, and a footprint of the project's own, through the project's `kicad.toml`; the
-//! board is not a design to build.
+//! `Memory`, `ChipAntenna`, `FlatCell`) are invented, drawn by netsmith and given footprints by
+//! its generators or the project's `kicad.toml` and `libs/` (see `README.md`), so the board
+//! builds with no KiCad install; it is not a design to build.
 
 import std::bus::{I2c, I2cPullups, I2cRole}
 import std::parts::connector::{Coax, Socket1x10, UsbCPower}
