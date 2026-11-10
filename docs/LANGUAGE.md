@@ -591,6 +591,100 @@ Rules.
 - A narrowed value cannot be loosened later. A library therefore states only what is always true, and a board narrows the rest. A value a board may want to change is offered with `?=` instead (next section).
 - `=` is not an operator. `.x = 5V` and `.x = <expression>` are errors that name the two operators above.
 
+### The ends of a range
+
+`>=`, `<=` and `==` hold for every value in the ranges. Some rules are of the other kind, "can hold for some value", and the language says them with `min` and `max` (ADR 0098, proposed): `min(.f)` is the least value of the range of the field `.f`, and `max(.f)` the greatest, each as one number of the field's own kind. The comparison is then made on two numbers: `min(.a.voltage) <= max(.b.voltage)` holds when the lowest `a` can be is at most the highest `b` can be, which is so for a 4 V to 6 V rail and a 4.7 V to 5.5 V one, where `.a.voltage <= .b.voltage` is not.
+
+```nsm solve
+import std::sources::Rail
+
+board Ends {
+    .a: Rail {
+        .voltage &= 4V..6V
+        .pos.net &= "A"
+        .neg.net &= "GND"
+    }
+    .b: Rail {
+        .voltage &= 4.7V..5.5V
+        .pos.net &= "B"
+        .neg.net &= "GND"
+    }
+    min(.a.voltage) <= max(.b.voltage)
+}
+```
+
+Rules.
+
+- The argument is a field, written as a member path (`min(.bias)`, `max(.z.zener_voltage)`). It is not an expression (`min(.a + .b)`), a value (`max(5V)`) or text, and `min` and `max` take one argument: `min(.a, .b)` is not the smaller of two values, it is an error. The only functions are `min` and `max`; any other name is an error.
+- They are read in a `<=` or `>=` statement, on either side and inside arithmetic (`min(.a.voltage) + 1V <= max(.b.voltage)`). A `==`, `&=` or `?=` is refused them: nothing is worked out from the end of a range, and no field takes a value from one.
+- They never narrow. The solver reads the end of the field's range as it is when the check is made and gives nothing back: the ranges of the fields in a relation with `min` or `max` are the ranges they had. A relation of a part also decides which catalog rows are offered, as every relation of a part does (a row that fails it is not picked); that is a check on each candidate, not a narrowing.
+- A field with no value yet has no end to read. The relation waits and is listed as not evaluated, like any relation with an unknown value, and is no error.
+- An end is one number, so it carries no correlation with the field read whole elsewhere in the same statement: `max(.a.voltage) <= .a.voltage` is an error (6 V is not under 4 V), as `.a.voltage <= .a.voltage` is.
+- A failed relation says what was compared: `min(c.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them`.
+
+A rail that is surely above the other, and the mistakes in the call:
+
+```nsm fails
+import std::sources::Rail
+
+board Ends {
+    .a: Rail {
+        .voltage &= 12V
+        .pos.net &= "A"
+        .neg.net &= "GND"
+    }
+    .b: Rail {
+        .voltage &= 4.7V..5.5V
+        .pos.net &= "B"
+        .neg.net &= "GND"
+    }
+    min(.a.voltage) <= max(.b.voltage)
+}
+```
+
+```text
+error: min(a.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them
+   --> main.nsm:14:5
+   |
+14 |     min(.a.voltage) <= max(.b.voltage)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+
+board Ends {
+    .a: Rail { .voltage &= 4V..6V }
+    min(.a.voltage, .a.voltage) <= 5V
+    min(.a.voltage + 1V) <= 5V
+    .a.voltage == max(.a.voltage)
+    abs(.a.voltage) <= 5V
+}
+```
+
+```text
+error: `min` takes one field, such as `min(.bias)`, but this has 2 arguments: it reads the least value of one field's range, and is not the smaller of several values
+  --> main.nsm:5:5
+  |
+5 |     min(.a.voltage, .a.voltage) <= 5V
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: the argument of `min` is a field, such as `min(.bias)`, not `.a.voltage + 1V`: it reads one end of a field's range
+  --> main.nsm:6:9
+  |
+6 |     min(.a.voltage + 1V) <= 5V
+  |         ^^^^^^^^^^^^^^^
+error: `max(.a.voltage)` can only be used in a `<=` or `>=` statement: it reads one end of a range, and nothing is worked out from it
+  --> main.nsm:7:19
+  |
+7 |     .a.voltage == max(.a.voltage)
+  |                   ^^^^^^^^^^^^^^^
+error: `abs` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range
+  --> main.nsm:8:5
+  |
+8 |     abs(.a.voltage) <= 5V
+  |     ^^^
+```
+
 ### Defaults a board can replace
 
 A module or a part may give a field a value that a board can replace. It writes `.field ?= value`. `?=` is not a weaker `&=`: a narrowing only restricts, so a library that wants a value a board may change cannot say it with `&=`, and `&=` with a range the board then cannot leave would be a requirement. A default is an offer. The board accepts it by saying nothing, or replaces it by stating the field.
@@ -7258,11 +7352,41 @@ A capacitor is the same either way round, so its bias is the rail's voltage and 
 | Part | What is always true | What the design states |
 |---|---|---|
 | `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current`, `.bias >= -.forward_voltage`, `.supply_fault_current <= .max_forward_current`, `.supply_reverse_peak <= .max_reverse_voltage` | The ratings; the last two are from the chain (ADR 0091). |
-| `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
+| `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V`, `min(.bias) <= max(.zener_voltage)` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
 | `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit`, `.bias >= 0V`, `-.supply_reverse_peak >= 0V` | The ratings (the last from the chain, ADR 0091), and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 | `std::parts::diode::TvsBidirectional` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`. Catalog `tvs_bidirectional`. |
 
 A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that only one standard row fills, the Littelfuse SMDJ36A (`data/jlcpcb/README.md`), so a design that states it is offered that row and no other standard one, and gets any other from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
+
+A Zener directly across a rail is refused when it surely conducts (issue #293, ADR 0098, proposed): it states `min(.bias) <= max(.zener_voltage)`, so a rail whose least voltage is above the Zener's greatest breakdown voltage puts the part in breakdown all the time, with nothing to limit its current. The message names the part, the rail's least voltage and the greatest breakdown (`min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V`), and the way out is a Zener that breaks down at the rail's voltage or a resistor in series. The rule catches only the sure case: a rail range that straddles the breakdown (4 V to 6 V against 4.7 V to 5.5 V) may conduct, and passes. A Zener behind a series resistor has no rail across it, so its `.bias` has no value, and the rule waits and is listed as not evaluated. The rule also chooses among the catalog rows, as any relation of a part does: a design that states a breakdown the rail is above gets the error, but one that states none is given a row whose breakdown reaches the rail (a 12 V rail across a Zener with no `.zener_voltage` is given the BZT52C12), not an error.
+
+```nsm fails
+import std::parts::diode::Zener
+import std::sources::Rail
+
+board Conducts {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .z: Zener { .zener_voltage &= 3.1V..3.5V }
+    .input.pos ~> .z ~> .input.neg
+}
+```
+
+```text
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
+    --> std/parts/diode.nsm:231:5
+    |
+231 |     min(.bias) <= max(.zener_voltage)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
+    --> std/parts/diode.nsm:231:5
+    |
+231 |     min(.bias) <= max(.zener_voltage)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
 
 A Zener has the figures a design needs to bound a clamp over temperature (issue #199; the first four are optional catalog columns, ADR 0078, which the standard `zener` rows fill from the datasheet table that each row's notes name):
 
@@ -7379,9 +7503,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:297:5
+    --> std/parts/diode.nsm:307:5
     |
-297 |     .bias <= .standoff_voltage
+307 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7441,7 +7565,7 @@ board Clamp {
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
-    .z: Zener { .zener_voltage &= 4.7V..5.5V }
+    .z: Zener { .zener_voltage &= 11V..13V }
     .z.bias <= .z.zener_voltage
     .d: Diode { .max_reverse_voltage &= 10V }
     .input.pos ~> .z ~> .input.neg
@@ -7450,7 +7574,7 @@ board Clamp {
 ```
 
 ```text
-error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.8V..5.4V
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C12 12V 500mW Zener SOD-123 C43491, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11.4V..12.7V
    --> main.nsm:11:5
    |
 11 |     .z.bias <= .z.zener_voltage
@@ -7460,7 +7584,7 @@ error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is 
    |
 91 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.7V..5.5V
+error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
    --> main.nsm:11:5
    |
 11 |     .z.bias <= .z.zener_voltage
@@ -7491,9 +7615,9 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:221:5
+    --> std/parts/diode.nsm:230:5
     |
-221 |     .bias >= 0V
+230 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
    --> std/parts/diode.nsm:92:5
@@ -7501,9 +7625,9 @@ error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is 
 92 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:221:5
+    --> std/parts/diode.nsm:230:5
     |
-221 |     .bias >= 0V
+230 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -11198,7 +11322,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` and, for a diode across a rail, the right way round (`.bias >= -.forward_voltage`, from `.bridge_voltage`, ADR 0088); behind a fuse, `.supply_fault_current <= .max_forward_current`, and first in a chain from a rail that states a `.reverse_peak`, `.supply_reverse_peak <= .max_reverse_voltage` (ADR 0091). |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
-| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
+| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power` and `min(.bias) <= max(.zener_voltage)` (a Zener across a rail that surely conducts is an error), and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column that only the SMDJ36A row of the standard rows fills). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
 | `std::parts::diode::TvsBidirectional` | A bidirectional TVS diode, the same either way round: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage`. Pins `a1` and `a2`, bridge `a1 ~> a2`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. Catalog `tvs_bidirectional`. |
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance` with `.on_resistance_vgs` (an optional catalog column), the gate-source voltage it is guaranteed at. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, the gate drive above the threshold and at least `.on_resistance_vgs` (ADR 0092). Catalog `n_mosfet`. |

@@ -1,0 +1,19 @@
+---
+status: proposed
+---
+
+# `min` and `max` read the ends of a range
+
+Every `<=`, `>=` and `==` means "holds for every value in the ranges": `<=` passes when the greatest value of the left is at most the least value of the right. Some rules a part knows are of the other kind, "can hold for some value". A Zener across a rail conducts all the time when the rail's least voltage is above the Zener's greatest breakdown voltage, and that is an error; a rail that straddles the breakdown may conduct and is not refused. No `<=` says it, because it holds when `lo(bias) <= hi(zener_voltage)`.
+
+So there are two functions, `min(.f)` and `max(.f)`: the least and the greatest value of the range of the field `.f`, each as one value of the field's own kind. The rule is `min(.bias) <= max(.zener_voltage)` in `Zener`. The comparison stays what it was; it now compares two points. The argument is a field, written as a member path (`min(.bias)`, not `min(.a + .b)`). A call with another count of arguments, or with something that is not a field, is an error that says so, and so is any other function name.
+
+What they never do is narrow. `min(.f)` and `max(.f)` are read, never solved for. They are accepted only inside a `<=` or `>=` statement, so no `&=`, `?=` or `==` takes a value from them. The solver's passes that narrow a field from a relation (propagation, transfers, seeds, bounds on a rating) act on a bare field on one side, and `min(.f)` is not one, so `.f` is never narrowed from it; and the evaluator reads the end as a point from the domain as it is, and tightens nothing over `.f`'s range. Where `.f` has no value yet the relation waits and is listed as not evaluated, as any relation with an unknown. A relation of a part also tells which catalog rows to take, as every relation of a part does: a row whose figures fail it is not picked. That is a check of a candidate, not a narrowing of a domain.
+
+A field's end is already one number, so there is no correlation to handle: the evaluator reads the domain as it is when the check is made, and a formula with an end in it is not tightened over the field's range (as a `lo..hi` with a value at an end is not, ADR 0066).
+
+Rejected. A new comparison operator (`.bias <=? .zener_voltage`): it is a new kind of statement in the lexer, parser, printer, `CmpOp` and in every pass of the solver that matches on it, and it answers one question. A check keyed on the Zener's field names inside the solver: no syntax, but a rule that the std definition does not show, against "libraries state what is true" (`docs/DESIGN-RULES.md`).
+
+Cost. A call expression in the grammar, one expression node, and a rule in the checker that keeps it out of every statement that could solve from it. The rule is a check, so it is as strict as the ranges are: it refuses only the sure case, and a design whose rail range straddles the breakdown is accepted and may conduct. A board that states no `.zener_voltage` across a rail it is above is given a row whose breakdown reaches the rail, because the rule picks rows too, and is not refused.
+
+Left open, for the owner. Other uses (a TVS diode's stand-off against the floor of its line, `max(.bias) >= min(.standoff_voltage)`). Whether a user-written module or part may call them, or only the standard library: today any `<=` or `>=` may. Their names: `min(a, b)` in most languages takes two values and is the smaller, here it takes one field and is the least value of its range, and `lo` and `hi` would not suggest the other meaning. Whether a failing rule should print a text the part writes, not the comparison.
