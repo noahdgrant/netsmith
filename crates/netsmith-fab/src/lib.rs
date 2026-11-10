@@ -22,6 +22,41 @@
 //!
 //! The board is read from its file with a reader of our own, so nothing here depends on the
 //! other netsmith crates.
+//!
+//! # Why netsmith writes its own files (ADR 0034)
+//!
+//! A person with the `netsmith` binary alone must be able to make the files a board house takes
+//! (ADR 0021's direction, continued by ADR 0097). Until the owner's review of 2026-11-04
+//! `kicad-cli` plotted the Gerbers, drilled the Excellon files and wrote the position file; now
+//! this crate writes all three from the board file, and `kicad-cli` is only an optional
+//! witness (the cross-check). The writers are the way: there is no flag that gives back KiCad's
+//! files, and [`package`] takes no KiCad. The design rules check is netsmith's own (ADR 0037),
+//! so `fab` has no "not run (KiCad not installed)" path. The pour fill is part of this
+//! because a board with pours cannot be plotted without it.
+//!
+//! **Status of the design.** The owner accepted it on 2026-11-04 (the ADR's text: "The owner
+//! accepted the design on 2026-11-04"), and kept it provisional until one real package has gone
+//! through JLCPCB's order preview and JLCPCB's own design check (issue #12). Only the owner can do
+//! that, since it needs an order account. The person who does it looks at the planes (the pours
+//! are written in clear polarity inside a copper file, which KiCad does not do) and at the
+//! silkscreen (our font), and records the board, the date, what the preview showed and any file
+//! JLCPCB refused or changed. Until then nothing here claims that JLCPCB accepts these files, and
+//! every package JLCPCB accepted before was KiCad's. Result so far: none.
+//!
+//! **What is not checked, and the limits.** JLCPCB has not been given these files. They were
+//! accepted by KiCad's Gerber loader only in the sense that KiCad's plot of the same board
+//! agrees with them. No other Gerber viewer was available to script: the only independent readers
+//! are KiCad's plot (compared, not loaded) and the rasteriser of [`raster`], which reads
+//! KiCad's own files as well as ours (a test renders every file of three KiCad packages). Fill:
+//! copper islands and slivers narrower than the zone's minimum thickness are not removed, a
+//! spoke into another net's clearance is kept as a stub, `connect_pads` is read (thermal, solid,
+//! none, through-hole only) with the per-pad override, and hatched fills, zone priorities and
+//! per-zone island settings are not. A pad's `remove_unused_layers` is approximated: an inner
+//! layer keeps the pad if a track of its net ends on the pad or a zone of its net covers it (KiCad
+//! asks the connectivity engine). Text uses our font, so the silkscreen's letters differ from
+//! KiCad's, `bold` is ignored, and text boxes, curves (`fp_curve`) and images are not plotted
+//! and are named in the notes. Without a `.kicad_pro` beside the board the zone fill uses no
+//! edge clearance and the zone's own hole clearance (netsmith always writes one).
 
 pub mod artwork;
 pub mod board;

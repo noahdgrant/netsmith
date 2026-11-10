@@ -9,6 +9,158 @@
 //! The same module sizes the tracks: a net whose current the solver has worked out and
 //! that no rail gives a `.min_track` is drawn at the width IPC-2221 needs for that current
 //! (ADR 0036), and a net whose current is not known is sized for the part that is known and named in a note.
+//!
+//! # Decisions, and what was rejected (ADR 0036)
+//!
+//! The user's behaviour is in `docs/LANGUAGE.md` ("Track width against current"). The owner
+//! accepted the check on 2026-11-02; the amendments below it were provisional, and amendments 3
+//! and 4 (marked) await the owner's review.
+//!
+//! **Why a check at all.** A rail's `.min_track` sets the width of its nets, and the solver
+//! knows the worst-case current. Nothing compared them: a 2 A rail drawn at the process's 0.1
+//! mm built and went to the board house, and the track would have been a fuse. A rail that
+//! states no `.min_track` is drawn at the process's least, so the commonest mistake was the
+//! silent default.
+//!
+//! **Why a dedicated check and not a solver relation.** The relation between current and width is
+//! nonlinear in both, so it is a check after the currents are solved. A net with at least two
+//! terminals is checked; a net that is an inner plane or an outer pour is an area, not a track,
+//! and is not checked. A finding names the net, the current range and what carries it, the width
+//! and where it comes from (a rail's `.min_track`, or the process's least because no rail states
+//! one), the copper weight and thickness, the rise and whether it is the default, the current
+//! that width carries, and the width needed rounded up to 0.01 mm so that writing the number the
+//! message asks for passes.
+//!
+//! **The temperature rise.** `.process.max_temperature_rise` is a `Temperature` field (a built-in
+//! quantity type, kelvin) of `TwoLayer` and `FourLayer`, stated by neither. It is an upper bound
+//! like `via_in_pad`: the tool uses the top of the range (`&= 20K`). When the board states none
+//! the check uses [`DEFAULT_TEMPERATURE_RISE`], 10 K, a conservative and commonly used design
+//! figure that a fabricator does not publish, so the process does not carry it, the message says
+//! "(the default)", and `std/mfg/jlcpcb.nsm` says so where the field is declared.
+//!
+//! **Why IPC-2221 and not IPC-2152.** IPC-2221 is the formula in every track width calculator and
+//! is easy to state and to test by hand. It is a conservative guide: its curves were fitted to
+//! old measurements of tracks on thin boards and ignore the board's thickness, the planes near the
+//! track and the copper around it. IPC-2152 is more accurate (it accounts for those) and can allow
+//! a narrower track, but it is a family of charts and corrections, not one formula. Only
+//! IPC-2221 is implemented. A track that passes is not thereby safe at the stated rise, and one
+//! that fails may be fine; the finding is a prompt to decide, which is why it warns.
+//!
+//! **A guideline warns, with a mechanism.** ADR 0030 accepted that manufacturing-rule violations
+//! block `fab` and guideline violations warn. IPC-2221 is a design guide and not a limit of
+//! JLCPCB, so it is a guideline. `[project] guidelines = "warn" | "error"` (default `"warn"`) and
+//! `--strict` on `build` and `fab` for one run decide. A check produces a [`Guideline`] (rule,
+//! message, the instance it is about) and the pipeline decides: under `"warn"` a `warning:` line
+//! from `build`, a line in `fab-notes.txt` and a warning in the editor's problems panel at the
+//! rail or part; under `"error"` one error per finding at the same line. The policy travels in
+//! `Catalogs` (`with_strict_guidelines`), as the default assembly of ADR 0028 does. The editor
+//! takes the manifest key and has no flag.
+//!
+//! **Limits.** A net is checked at one width, the net's. The router may draw shorter runs narrower
+//! where there is no room (a neck-down between pads, a stub at a pad's width), and the pad's own
+//! copper carries the last millimetres. Vias are not checked. The router's masks reach as far as
+//! the width of the track needs: a track wider than a via once reached further than the masks
+//! looked, which put 0.6 and 0.9 mm rails too close to other copper (shorts included), and every
+//! line the router returns has also been measured as drawn against the other nets' copper, holes
+//! and the board edge (a track nearer than the rules allow is drawn at the process's least
+//! instead, and a line that still is too near is left unrouted). A pour's real width at a
+//! bottleneck is not measured. No ambient temperature and no duty cycle: the worst-case current is
+//! taken as continuous. Inner tracks are not drawn by the router, so the inner-layer constant is
+//! unused. The ranges of the IPC fit (small currents, rises, widths) are not checked: outside them
+//! the result is an extrapolation. A wide net can make a tight board harder to route, and no limit
+//! caps the width.
+//!
+//! **Amendment 1 (issue #4, PROVISIONAL): the router sizes every net.** The owner's direction on
+//! issue #4 was: there are standards for track width by current, the router should work the
+//! current out of the schematic, and a user who has to state a width has found a failure of the
+//! router. So no syntax was added. After the currents are solved, a net with at least two
+//! terminals gets the width IPC-2221 needs for its current, rounded up to 0.01 mm, whenever no
+//! rail on it states a `.min_track`, every carrier on it has a known current, and the width is
+//! more than the process's least. It goes into `Features::net_widths` as if a rail had stated it.
+//! An explicit `.min_track` stays an override: the net is drawn at that width and the check
+//! warns if IPC-2221 needs more, since the statement is the user's decision and is not raised
+//! silently. An unknown current was first left at the least with a note (the solver leaves the
+//! currents of a net with two or more unknown ones unsolved, issue #18); amendment 3 replaced it.
+//! The formula and its source are below.
+//!
+//! **Amendment 2 (issue #4, PROVISIONAL): the sum, by Kirchhoff's current law.** The first
+//! amendment took the largest single current on a net, which is wrong wherever two things share a
+//! net (a ground that two rails return through carries both). The carriers are a rail (a load takes
+//! its `current` out of the net its `pos` is on and puts it back into the net its `neg` is on; a
+//! supply, whose current is negative, is the reverse) and a part that passes a current (it leaves
+//! the net of the first end of its `bridge` and enters the net of the second, so the nets inside a
+//! `~>` chain take the chain's current). Taking the top of each range, a net's current is the sum
+//! of what is taken out of it, with every load on at the same time. The sum of what is put into it
+//! is the same by Kirchhoff's current law when the balance is complete; the larger of the two is
+//! used, so that a pin the model leaves out (ADR 0027), or a supply stated as a budget wider than
+//! its loads (ADR 0038), makes the result larger and not smaller. A ground shared by a 2 A rail and
+//! a 1 A rail is a 3 A net. The message names the sum and its largest terms (up to four, then "and
+//! N more") and is placed at the largest term. It is pessimistic in three ways, each a limit and
+//! none corrected: loads are not correlated (two that cannot draw together are both counted at
+//! their largest); no duty cycle or averaging; and a ground that the load of a regulator's output
+//! and the regulator's input both return through carries the sum of the two, though the load's
+//! return really goes to the regulator and only the input's goes on to the source (a linear
+//! regulator's ground is counted for about twice what flows to the source). The conservative figure
+//! was chosen over guessing the topology of the ground. **Each current once:** a module's port
+//! stands for what is inside the module (ADR 0007), so where something modelled inside it is on the
+//! net the module's port on that net is left out and the inside counts; a module with nothing
+//! modelled inside on the net keeps its port. Without this the `sw` rail of a buck converter, a
+//! module port and an IC rail on the same node, was counted twice. **Regulators:** the input
+//! current comes from the power balance and never from the output current. A `LinearRegulator`
+//! states `.vin.current == -.vout.current`, and a switching regulator's IC states `.vin.current ==
+//! -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)` (ADR 0025), so a 1 A,
+//! 1.8 V output from 4.75 V at 85 % efficiency draws 0.459 A at its input. The quiescent current is
+//! not added: the library's models have no figure for it (ADR 0025 ignores it) and one is not
+//! invented here. A switching regulator whose part states no efficiency leaves the input current
+//! unknown. A stated `.min_track` stays an override and is checked against the sum: 1 mm on a ground
+//! that carries 3 A is a finding (it carries 2.39 A at 10 K).
+//!
+//! Choices of amendment 2 made without the owner, to be reviewed: the larger of the two sums rather
+//! than the load side alone; a module's port left out only when something inside it is on the net;
+//! the pessimism at a regulator's ground left as it is; no quiescent current added.
+//!
+//! **Amendment 3 (PROVISIONAL, awaiting the owner's review): a net with a current that is not known
+//! is sized for the known part.** Found on a real 12 V automotive board: a net carried a modem load
+//! of 1.2 A that was stated and a divider resistor whose current the solver could not work out. The
+//! first and second amendments left such a net at the process's least track, 0.09 mm, and then
+//! warned that 0.09 mm carries 417 mA against the 1.2 A that was known: the tool drew a track it
+//! knew to be too narrow, and warned about it, because it would not size from a partial sum. The
+//! currents that are known are a lower bound on the net's current, because loads only add up (it
+//! holds for the larger of the two sums too, since each side only gains terms), so drawing the net
+//! at least as wide as the known sum needs is not a guess. The width is the least the net can have,
+//! not the width it needs, and the note says so (worded `a lower bound`). It is still a note and
+//! not a guideline: it does not change with `--strict`, because the person has nothing to correct
+//! in a finding the tool cannot make beyond stating the current. A rail that states a `.min_track`
+//! on the net has decided the width and gets no note. A net the tool sized, or left at the least
+//! that the known current does not exceed, is never too narrow for what is known, so it has no
+//! finding; a stated width below what the known current needs is a finding worded `carries at
+//! least N A` with the sentence `the current of ... is not known, so it may be more`. The cost: a
+//! board with a missing current draws wider nets than before, which can make a tight board harder
+//! to route. Rejected: leaving the net at the least and saying so (a known-too-narrow track and a
+//! warning that only stating a width could silence, which is the failure issue #4 set out to
+//! remove); sizing for a guess at the unknown current (a guess is as likely too narrow as too
+//! wide); and a finding that fails the build. The code is `plan_tracks`; the tests are in
+//! `tests/guidelines.rs`.
+//!
+//! **Amendment 4 (PROVISIONAL, awaiting the owner's review): a current that is not known but
+//! bounded.** ADR 0026's Ohm bound gives a resistor whose current nothing states an upper bound,
+//! `max |Va - Vb| / R`, when both ends have a known voltage range. It is not a current, and the
+//! track planner does not size for it: a bound across a supply (a fuse across 16 V is 323 A) would
+//! draw the net at a width nobody needs, and amendment 3 rejected sizing for a guess. What it can
+//! say is that the known part is no lower bound after all. On a net with a current that is not
+//! known and no rail's `.min_track`, the note of amendment 3 is left out when every current that is
+//! not known is a resistor's with an Ohm bound and the width the net is drawn at carries the known
+//! sum plus every bound together, in whichever direction a bound flows. The width itself is never
+//! changed by a bound. A net with any current that has no bound (a rail's, a transistor's, a
+//! resistor whose ends have no range) keeps its note and its wording, and so does a net whose bound
+//! needs more than the width. The finding against a stated `.min_track` is as before.
+//!
+//! **Left open** (the owner's): whether a net whose rail states a `.min_track` should also get the
+//! note when a current on it is not known (it does not today; the guideline names the missing
+//! carriers instead); whether the note should be a guideline that `--strict` can turn into an
+//! error; and the choices of amendment 2 above. The IPC constants below are PROVISIONAL until
+//! someone with the standard compares them. No example of `examples/` changed its widths or notes
+//! with any amendment: their currents are milliamps, at the process's least track.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model};
 use netsmith_core::{Features, OUNCE_OF_COPPER, Process};
@@ -20,7 +172,7 @@ pub const DEFAULT_TEMPERATURE_RISE: f64 = 10.0;
 /// One mil, in mm.
 const MIL: f64 = 0.0254;
 
-// The formula and its constants (ADR 0036, ADR 0036).
+// The formula and its constants (ADR 0036).
 //
 // IPC-2221B, "Generic Standard on Printed Board Design", section 6.2 "Conductor current
 // carrying capacity" (the same fit is in IPC-2221A and, as the chart IPC-2221's Figure 6-4,
@@ -222,7 +374,7 @@ impl<'a> Flow<'a> {
     }
 }
 
-/// What the track check works out for a board (ADR 0036, ADR 0036).
+/// What the track check works out for a board (ADR 0036).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TrackPlan {
     /// The width in mm that IPC-2221 needs, by net, for the current that is known on each net

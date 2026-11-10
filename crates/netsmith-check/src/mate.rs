@@ -6,6 +6,96 @@
 //! contact (its role), checks that the two sides can meet, derives the port joins the mate
 //! stands for, finds the grounds it joins and adds the requirement that a contact carries the
 //! current through it.
+//!
+//! # Why a mate derives the signals, and what was weighed (ADR 0040, user decisions of 2026-11-02)
+//!
+//! Each board of a kit is a stand-alone PCB with its own ground net (five boards, five `GND`
+//! nets: ADR 0005 keeps them apart). A carrier has sockets, plug-in boards have matching pin
+//! headers, and they touch only through them. The checker should know that the connectors really
+//! mate, that the grounds are really joined with enough current rating, and the system should name
+//! no pin and no net (ADR 0005, ADR 0010).
+//!
+//! **Decision.** When a system joins two connectors with `~` of their `.mating`, the signals the
+//! mate carries are derived, and an explicit port join for those same signals is refused (one
+//! correct way, ADR 0001), with the pins named: `already joined by the mate of ... at contacts
+//! ...; remove this one`. A port join stays the way to join ports that no connector carries (a
+//! soldered lead, a pad). The rule is "any pin of the two ports is carried by a mate", so a port
+//! with only its ground on a mate is refused too. Two ports of one board on the same contacts are
+//! ambiguous and refused with the message to give the board one port for that net. This was a
+//! breaking change of `examples/two_boards.nsm`, acceptable under ADR 0001.
+//!
+//! **Rejected** (the options weighed, all against the rules "one correct way, only a board names
+//! nets, encapsulation"): the mate stated as well as the port `~`, checked to agree (two
+//! statements for one fact, so a third rule would say which wins); pin by pin in the system
+//! (`.carrier.slot_a.p3 ~ .sensor.j1.p3`: the system would name pins, which is a net by another
+//! name, ten lines per connector); a `harness` or `connection` definition with an explicit pin map
+//! (the general answer for adapters, cables that swap order and wire to board; heavier than the kit
+//! needs, and the mate is its N-to-N special case, so it can come later without replacing the
+//! mate). **The reach rule:** a system reaches the `.mating` of a connector a board declares
+//! directly, never its pins and never any other part: the connector's declared interface, ADR
+//! 0004's rule applied to a part. Rejected: the board declares a port `.deck: Mating` and ties it
+//! to the connector, which changes no rule but costs two lines per connector and a second
+//! description of the connector that can disagree with the part.
+//!
+//! **What is built.** `std::parts::connector::Mating` (kind, gender, pitch, rows, positions,
+//! `pin_current`, `keyed`) is a `.mating` member of every header and socket. Pitch, gender and count
+//! are always true of a part, so the library states them (ADR 0002); the pin current depends on the
+//! maker, so it is a column of the `header` catalog (`data/jlcpcb/catalog/header.csv`: 1x2, 1x4,
+//! 1x8 and 1x10 headers and sockets, 3 A a contact from JXTCONN and Hanxia datasheets read on
+//! 2026-11-02, sources in `data/jlcpcb/README.md`). The two-row headers have no source for a rating,
+//! so they are unrated and the check of the current through them is listed as not evaluated. A
+//! catalog row's label is the KiCad symbol's name, so the value field of a schematic reads as
+//! before, and headers and sockets carry an LCSC number though they are hand-soldered. Contact N is
+//! pin `pN`; a header and its socket number alike. This is a library convention and not a field.
+//!
+//! **What is checked**, each reported at the `~` with the nets and pins of both sides: kind (only
+//! `pin_header` is modelled), gender (header with socket; two headers or two sockets do not mate),
+//! positions, rows, pitch. A 1x8 header in a 1x10 socket is refused (it mates physically, but which
+//! eight contacts is a statement the board must make). Per contact, ground against power or a
+//! signal is a short, two outputs are refused, an input no board drives is refused (an open or
+//! passive contact facing an input too), two power contacts have their voltages equated as `~` of
+//! rails does, and the currents are balanced as in ADR 0010 (the existing machinery,
+//! `Checker::connect_interfaces` and `balance_joins`). Direction is by pin kind only. A mate that
+//! carries power or a signal with no contact that is ground on both boards is an error. A
+//! connector is in one mate, and the two connectors of a mate are on different boards.
+//! Voltage disagreement reads like the existing propagation message, with both connectors named.
+//!
+//! **Grounds.** Each board keeps its ground net. [`Model::ground_groups`] lists the nets joined by
+//! contacts that are ground on both sides (union-find over board and net name), with how many
+//! contacts each mate gives, and the editor's System view shows them (`carrier.GND + sensor.GND`).
+//! Isolated grounds (a barrier that must not join grounds) cannot be said.
+//!
+//! **The current in the contacts.** For each rail pair a mate joins and each connector with a
+//! `pin_current`, two relations (the current and its negative): `contacts * pin_current >=
+//! current`, where `contacts` is the number of contacts that carry the rail's `pos`, and for the
+//! ground the sum of the currents of every rail that returns through those contacts against the
+//! ground contacts. The current is that of the port joined to fewer others, so a card's own draw
+//! is checked and not the whole of a carrier's supply that its other cards share. A connector with
+//! a catalog row is picked so that it satisfies them, and the solver's message names the
+//! relation (`no header candidate satisfies carrier.slot: ... (1 * carrier.slot.mating.pin_current)
+//! must always be at least carrier.cards.current, but 3A is not always above 0A..4A`). Contacts
+//! of a multi-pin connector are rated by manufacturers with all contacts loaded, so N contacts
+//! carry `N x pin_current`; a derating column is added only if a datasheet gives one.
+//!
+//! **Turned end for end.** The pairing of contact N with contact `positions + 1 - N` is checked
+//! the same way; when it also works, neither connector is keyed (`.mating.keyed`, unset is
+//! `"none"`) and some pair of nets would swap places, the board of the first connector gets a
+//! guideline finding (`mating`), a `warning:` line, an error with `--strict`. A pinout that reads
+//! the same turned round is not reported, because nothing would change. The checker cannot see
+//! where pin 1 sits on the PCB.
+//!
+//! **Not built** (issues #16 and #62): edge connectors and the plug-in's `card_thickness` check;
+//! flat cables and wire to board (they need a cable or harness definition); a partial mate and
+//! isolated grounds; stacking, side, `.mount` and `.mated_height` (they need the layout file and
+//! part heights); pin 1 on the PCB; a rating for the two-row headers; derating of several loaded
+//! contacts. Messages are one line each (the multi-line form would need a notes field on
+//! diagnostics).
+//!
+//! **Left open** (the owner's, ADR 0040 question 8): partial mates and isolated grounds are
+//! "refused in v1. Recommend a later `.contacts` subset on the mate and a `.isolated` mark on a
+//! rail, each with its own check, if a design needs them". Question 9: pin ratings are sourced by
+//! series from public datasheets, starting with the one series the kit uses, and the rating check
+//! is "not evaluated" for a connector with no row.
 
 use std::collections::{BTreeMap, HashMap};
 

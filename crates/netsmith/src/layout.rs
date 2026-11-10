@@ -4,6 +4,22 @@
 //! which face each part is on and what to keep clear of
 //! ([`netsmith_pcb::place_options`]), and then puts what it holds on the placed board with
 //! [`netsmith_pcb::apply_layout`].
+//!
+//! Why a file beside the source, with the geometry of a placement in it (ADR 0020 item 7,
+//! decided by the owner on 2026-11-02, and amended by ADR 0048: a requirement on where a part
+//! goes is in the physical file, and the solutions stay here). A generated `.kicad_pcb` is
+//! never read back (ADR 0006), so a hand layout survives regeneration only if netsmith owns
+//! where it is stored. The file is keyed by instance path (`stage.output_cap`), which does not
+//! change when reference designators are renumbered. A part with no entry is placed by the
+//! placer, a `locked` entry is fixed and the placer places the rest round it, and an entry for
+//! a path that is gone is an error naming it. The source stays free of geometry. What the
+//! circuit implies is derived by the placer (a capacitor between a rail's two pins on the net
+//! of a supply pin of a part is a decoupling capacitor, and parts of one module are grouped
+//! by instance path). Rejected: constraints in the source (`.c1 near .u.vdd`): a hint that
+//! travels with the module is an advantage, but `near` is an unordered relation over geometry
+//! that needs a distance and a checker, it cannot say a fixed position (so a file is needed
+//! anyway), and a module can name only its own parts. A `near` or `group` statement waits for
+//! a case the derived placement gets wrong, and is then a decision with a real example.
 
 use std::path::{Path, PathBuf};
 

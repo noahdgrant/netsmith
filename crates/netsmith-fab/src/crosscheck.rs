@@ -25,6 +25,66 @@
 //! - **The placement file** is compared row by row with KiCad's position file.
 //! - **The design rules check** is compared finding by finding with KiCad's (rule and place
 //!   of every item; [`crate::drc::kicad`]).
+//!
+//! # Why bitmaps, what they measured, and the differences of a KiCad release (ADR 0034)
+//!
+//! `netsmith fab --cross-check` plots the written board with KiCad as well, compares, then
+//! fails with the differences and writes a picture of each layer that differs
+//! (`cross-check-<file>.png`: grey where both draw, white only netsmith, dark grey only KiCad).
+//! It needs KiCad. Three methods were weighed: comparing the Gerber text, comparing lists of
+//! flashes and draws after normalising, comparing bitmaps. Text comparison breaks on harmless
+//! differences (macro or region, an arc kept or cut, order). A semantic list needs a second
+//! parser that understands every aperture and macro anyway, and the rasteriser is that parser,
+//! after which it does not matter how a shape was written. So: bitmaps, both sets over one view
+//! at 40 pixels per millimetre (0.025 mm), compared by the fraction of pixels that disagree and
+//! by the fraction with nothing of the other picture within 0.05 mm. The limits were measured on
+//! the five examples that existed then, a synthetic board with every pad shape and feature
+//! (`tests/data/features.kicad_pcb`), and synthetic boards of 10, 70 and a land grid
+//! (`netsmith-pcb`'s `tests/synthetic.rs`):
+//!
+//! | Layers | Worst seen | Limit |
+//! |---|---|---|
+//! | copper, mask, paste, outline | 0.45% of pixels, 0.00% beyond the tolerance | 1% and 0.1% |
+//! | copper with a pour | 0.30% of pixels, 0.23% beyond the tolerance | 1% and 0.5% |
+//! | silkscreen, compared to 0.6 mm because the font is ours | 0.00% beyond 0.6 mm | 5% |
+//!
+//! Drill files are compared hole by hole (position, size, slot ends, to a micrometre) and the
+//! placement file row by row; both agree exactly on every board tried, including a part on the
+//! back turned 90 degrees, a turned slot and a part at 45 degrees. A real mistake is far from the
+//! limits: the unit tests move a pad a third of a millimetre and it fails; while the writers were
+//! made, a missing default (a rounded rectangle with no ratio is 0.25), a via joined with spokes,
+//! a pad's own clearance, the hole clearance and the paste ratio were each found by the picture
+//! of the difference.
+//!
+//! **Known differences of a KiCad release.** The cross-check compares with whatever KiCad is
+//! installed, so a fault of one release shows up as a difference that is not netsmith's. Each is
+//! reproduced on an invented board (`tests/data/known_differences.kicad_pcb`,
+//! `tests/known_differences.rs`) and decided from KiCad's source and manual and the board
+//! house's capabilities. A new difference of a release that has no entry here still fails the
+//! check; an entry is added, with its evidence, when one is understood. Two so far:
+//!
+//! - *Thermal spokes of a round pad: netsmith was wrong, and now follows KiCad* (see
+//!   [`crate::fill`]).
+//! - *The mask margin a pad states for itself, on the back face: KiCad 9.0.0 is wrong, netsmith
+//!   is kept.* KiCad's manual (Pad properties, "Solder mask expansion") says the expansion is
+//!   the size difference between the pad and its aperture "on the F.Mask and B.Mask layers", and
+//!   JLCPCB's capabilities page says a mask opening can be 1:1 with its pad ("LDI equipment
+//!   upgraded in June 2025"), so the margin a design states is the opening it makes. KiCad 9.0.0
+//!   read `solder_mask_margin` of a pad into the front face's padstack setting only
+//!   (`PAD::SetLocalSolderMaskMargin` wrote `SolderMaskMargin()`, the front's; 9.0.1 writes
+//!   both), so its back mask used the footprint's margin or the board's instead. Only a
+//!   through-hole pad's own margin, and a pad of the back face, differed. Opening a pad by the
+//!   margin it states is not a risk for the factory by itself: JLCPCB's mask web (0.10 mm) and
+//!   the distance of an opening to a neighbouring track (0.09 mm) are the same rules on both
+//!   faces, and netsmith's own check measures the openings of both faces with the margins the
+//!   file states (`solder_mask_bridge`). If the order preview shows a back-face opening that does
+//!   not match the file, that is what to look at first. So netsmith's files stay as they are, and
+//!   when `kicad-cli version` is exactly 9.0.0 the back mask is compared with netsmith's own plot
+//!   of a copy of the board in which no pad's own margin counts on the back face, and the report
+//!   says so under `note:` with the pads (`J1.3 (0.15 mm)`), without failing. The copy is made
+//!   by netsmith's writer, so the layer still has to agree with KiCad's in every other respect at
+//!   the same limits (a unit test shows that the copy and the real mask differ by more than the
+//!   limits, so the allowance does not pass a wrong mask).
 
 use crate::cpl;
 use crate::kicad::{CliError, KicadCli, Output};

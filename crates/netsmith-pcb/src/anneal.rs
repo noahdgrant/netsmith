@@ -31,6 +31,167 @@
 //! units, the random numbers come from a generator written here, and nothing that a
 //! platform's maths library may round differently (`exp`, `powf`, `hypot`) is used, so the
 //! same input gives the same board on any machine.
+//!
+//! # What the annealer does, why, and what it measured
+//!
+//! This is ADR 0033 (accepted after the owner's review of 2026-11-04; the parts marked
+//! PROVISIONAL were not reviewed by the owner) and the placer part of ADR 0031. It replaced
+//! the row layout (connectors in two columns, the rest in rows of 30 mm, nothing turned, the
+//! order improved by up to 8 passes of pair swaps) as the placer. The rows are kept as the
+//! annealer's start and as the first test of whether the parts fit a size that was asked for
+//! ([`crate::place::PlaceOptions::fit`]); the pair swaps are gone. P3 of ADR 0030, the
+//! `layout` block of the language, is language and is not built.
+//!
+//! - **State.** For each part: its origin on a grid of 0.05 mm, its turn (0, 90, 180 or 270
+//!   degrees from the angle it began at) and which side of it the reference text is on. The
+//!   face is not part of the state (it comes from `PlaceOptions::sides`).
+//! - **Start.** The rows arrangement, parts in the order of their instance paths, inside the
+//!   outline the rows made (or the size asked for).
+//! - **Moves.** Shift one part (a step that shrinks as the temperature falls), turn it about
+//!   its courtyard's centre, move its reference text to another side, swap two parts, put a
+//!   part beside a part it shares a net with (on the side of that part's courtyard nearest the
+//!   connected pad, sometimes turned), and shift a whole module instance. The cost of a move
+//!   is the difference of the terms that involve the parts moved, so a move costs about the
+//!   same on a board of 70 parts as on one of 700.
+//! - **Schedule.** The first temperature is the median of the uphill changes a sample of 300
+//!   moves would make (at most 20 mm of wire), the last is 0.03, and it falls by 0.93 after
+//!   each stage. The number of moves is 3000 for each free part, at least 2000 and at most
+//!   300 000. It is a count, not a clock.
+//! - **Result.** The best state of the last part of the run that breaks no hard rule. If there
+//!   is none, the parts that overlap something are moved to the nearest free place round
+//!   them; if that fails too, the rows arrangement stands and `check_placement` says what is
+//!   wrong. Without a size the board is the arrangement's box plus the wall round the
+//!   courtyards (and 0.5 mm round the reference text), on whole millimetres, and the
+//!   arrangement is moved to the corner.
+//! - **Determinism.** The same circuit, options and seed give the same board on any machine.
+//!   The random numbers come from SplitMix64 written in this crate, `exp` is a series of
+//!   additions and multiplications, distances use `sqrt` and not `hypot`, nothing iterates a
+//!   hash map to decide anything. `PlaceOptions::seed` (the layout file's `seed`, 0 to
+//!   4294967295) changes the run.
+//!
+//! **The weights** (the `W_*` constants) in distances of mm: wire 1 (a net of many pads counts
+//! less per mm, down to 0.35, and a plane net 0.15 of that); a courtyard overlap is hard (200)
+//! and nearer than 1.0 mm soft (4; 1.8 mm on a board with a pour on an outer layer, which needs
+//! room round a pad for its spokes); the walls 200; cohesion 0.3 for the parts of a module
+//! instance and 0.05 for an intruder; crossings 1 (pairs of ratsnest lines, the shortest tree
+//! over each net's pads, for nets of at most 10 pads that are not planes); decoupling 6; edge
+//! 0.4; area 0.03; turn 0.3; silkscreen a ramp and 3. A part with a hole through the board keeps
+//! the process's clearance and hole to hole space instead of the soft gap. A part with many
+//! pads asks 0.03 mm more for each pad, to 2.5 mm, so that its tracks can leave, and a
+//! decoupling capacitor and the part it decouples are exempt from the extra. Parts on opposite
+//! faces share area unless one has a hole, and then only where it takes room on the other face:
+//! its courtyard, or its pad boxes (each grown by the process's clearance) if the footprint
+//! draws its courtyard on one face's layer only (ADR 0031: another part's courtyard on that
+//! face may cover the rest of its body, and a pad under a pad box is still an error).
+//!
+//! **The wall** (accepted by the owner, 2026-11-04). The placer kept a fixed 2.0 mm between
+//! every courtyard and the outline, which costs about 364 mm2 of each face on a 35 x 60 mm board,
+//! where a real layout had parts 0.55 mm from the edge, and nothing recorded why it was 2.0.
+//! What it can protect, and what was found: the pad to edge rule is `copper_to_edge` (0.2 mm
+//! for JLCPCB), which the router keeps itself, and a pad is inside its courtyard, so the wall
+//! matters only for a pad that sticks out of it, which the annealer keeps off the edge with a
+//! hard cost of its own. A routing channel round the edge is not needed, since tracks go inward:
+//! several boards routed completely and passed netsmith's check and KiCad's with the wall at 0.5
+//! and 0.9 mm. A V-cut asks for copper 0.4 mm from the edge (`VCutPanel.min_edge_clearance`),
+//! which a board states by narrowing its own `min_edge_clearance`, so the wall follows it.
+//! Reference text keeps its own 0.5 mm ([`TEXT_EDGE`]), and `advised_edge_clearance` (the
+//! fabricator's advice for a V-cut, 1 mm) stays a note. So the wall is `Rules::edge_wall`: the
+//! copper to edge space, the process's clearance and its least track, one track with its space
+//! beside a part (0.4 mm for JLCPCB's, 0.75 mm for the test process), never less than the
+//! copper to edge space. A placer given no rules keeps 2.0 mm (`Rules::DEFAULT_EDGE_WALL`). The
+//! cost: less room for a track beside a part that close to the edge, which the router handles,
+//! and a layout's silkscreen may come nearer the edge by chance (a warning, 0.07 mm silk to silk
+//! on one seed).
+//!
+//! **Silkscreen** is a cost that grows during the run, from 2 per mm to 40 and then to a ban
+//! for the last 30 % of the moves. A ban from the start makes the board 30 % longer in wire,
+//! because every part must have a free place for its text before it has a place: on the
+//! synthetic boards, four seeds, with no rule the big board's wire was 995 mm, with the text
+//! banned over other parts from the first move 1412 mm, with the weight ramped 1303 mm. The
+//! text sides (four, not one) recovered little of that, the ramp most. The text box is the
+//! library's text size (or the process's, if more) by about one text height for each letter,
+//! grown by [`TEXT_PAD`], and sits where the part's `ReferenceSide` says. The text is upright
+//! whatever the part's turn, so `Placed::reference_at` finds the place above (or beside) the
+//! part as it lies on the board and turns it back to the footprint's frame.
+//!
+//! **Crossings.** With no term for the lines that cross the wire was as short but the boards
+//! were hard to route (the big board's seed 0 took 54 s and left two lines in a release
+//! build); counting crossings halves them, and every board of every seed tried has routed
+//! completely since. A pull of the parts of a module to their centre, squared, made the wire
+//! longer than the box round them does.
+//!
+//! **Decoupling pairs** are derived ([`crate::quality::decoupling_pairs`]), not written: a
+//! two-pad capacitor (kind `Capacitor...`) whose pads are on two different nets, such that one
+//! same other part has a `power` pin on each. The parts that share most of the capacitor's
+//! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
+//! nearest power pin pad on each net. No number and no annotation is read.
+//!
+//! **Busy parts** (ADR 0031, PROVISIONAL, not reviewed by the owner). A part with 16 to 66 pads
+//! ([`BUSY_ESCAPE`] to [`BUSY_MOST`] of escape) asks, from its neighbour, the sum of the two
+//! escape spaces and not the larger (the same channel serves both rows), and each mm short of it
+//! costs [`W_GAP`] plus up to [`W_ESCAPE`] instead of [`W_GAP`] alone. Found on a 35 x 60 mm
+//! board with two QFN packages that 14 nets join: the annealer put them 0.5 mm apart where the
+//! gap it asks for was 1.47 and 0.99 mm, the 12 + 8 pads of two rows that face each other had to
+//! leave through a channel in which three tracks fit, and the link test said "closed" at the pad
+//! end in more than half of the failed attempts. It was the placement, not the order of the
+//! lines. Lines left over seeds 0 to 11 went from 96 (0 of 12 seeds done) to 28 (1 of 12), and
+//! the courtyards of the two packages are 3.5 mm apart (`two_busy_packages_*` keeps them at 2
+//! mm or more). Pairs where neither part is busy are costed as before. Tried and not kept: the
+//! larger of the two escape spaces at a heavier weight (17, 16, 13 lines at 40, 100, 300, 1000),
+//! the same rule for every pair with one busy part and no limit (it spaced every small part
+//! away from a module of 80 pads by up to 2.4 mm and left 64 lines on the tight board against
+//! 41), and no weight for a QFN against a resistor (54).
+//!
+//! Choices for the owner (not made; the conservative one is built): a limit of 66 pads, or none
+//! (without one the mixed board gets the same 28 lines and the tight one gets worse, 41 to 64;
+//! the alternatives are a limit stated in the process or a part's own datasheet, or a ring that
+//! is a keepout the router can see); a soft weight, or a rule (the escape space stays soft: a
+//! hard minimum would refuse boards that place today); 300 and 0.03 mm a pad (both tuned on two
+//! invented boards over 12 seeds, where seed to seed varies by two to three lines); and the room
+//! round a part with more than 66 pads, which is still the plain gap plus its escape space at the
+//! plain weight (an open item, "escape rings").
+//!
+//! **Measured** on the two synthetic boards of `tests/synthetic.rs` (the only boards in this
+//! repository, so anyone can re-measure; `cargo test --release -p netsmith-pcb --test main
+//! synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture` prints the numbers): the big board (70 parts, an
+//! 80-pad four-sided package, 106 nets, four layers) and the same with the structure of a
+//! design in modules (78 parts, instance paths of eight parts, 8 decoupling capacitors between
+//! 3V3 and GND, `power` pins on the package). Before is the row layout, after is this
+//! placer, seed 0, release build:
+//!
+//! | | big board | with modules and power pins |
+//! |---|---|---|
+//! | board | 42 x 53 to 42 x 42 mm | 43 x 56 to 42 x 48 mm |
+//! | wire length | 1805 to 1441 mm | 1770 to 1381 mm |
+//! | ratsnest crossings | 456 to 178 | 364 to 182 |
+//! | decoupling distance, mean / max | none paired | 31.8 / 42.9 mm to 5.0 / 10.3 mm |
+//! | connections left, KiCad's check | 0 and 0 errors | 0 and 0 errors |
+//! | route time | 3.4 s to 1.1 s | 2.3 s to 2.0 s |
+//! | placement time | 0.4 s to 1.7 s | 0.4 s to 3.1 s |
+//!
+//! Over more seeds seed 0 is not the best: six seeds of the big board average 1291 mm and 150
+//! crossings; four seeds of the one with modules 1442 mm, 181 crossings and 3.9 mm of
+//! decoupling. A board of a real design with a module was also measured, but its data is not in
+//! this repository, so no figure from it is kept.
+//!
+//! **Limits.** Routability is a proxy: the placer keeps a gap between parts, room round parts
+//! with many pads and few ratsnest lines crossing, but it does not estimate congestion, and a
+//! board packed harder than the router can untangle is not helped. The placer shares the faces
+//! only when a size to fit needs it, and never flips a part for wire length. Hierarchical
+//! placement (arrange each module, then place the blocks) is not built: cohesion is the cost
+//! above. The weights were tuned on four boards (one not in this repository) and a handful of
+//! seeds, and the variation between seeds on one board is large. A footprint's own silkscreen
+//! text and strokes that clip each other or the mask are the library's and stay. KiCad's
+//! `starved_thermal` (a pad in a pour with one spoke) appeared on some seeds of a real board
+//! whose data is not in this repository, and neither check finds it (ADR 0037). Two latent faults
+//! that the new placements showed were fixed (stitching vias in the gap between two pads, the
+//! reference text of a turned part). The decoupling pull is a distance with no number from a
+//! source.
+//!
+//! **Left open** (the owner's review of 2026-11-04 asked for the first): a public reference
+//! board of a real design, with a module, whose wire, crossings and check results are measured
+//! and kept, so the weights are tuned on something a reader can run. The `layout` block of the
+//! language (P3 of ADR 0030) is not built.
 
 use crate::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
 use crate::constraints::{PlanOffset, Want, axis_of, offset, quarter};

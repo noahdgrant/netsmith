@@ -1,5 +1,6 @@
 //! The KiCad libraries a build reads: the mapping from parts to symbol and footprint names,
-//! and the symbol and footprint libraries themselves (ADR 0016, ADR 0021).
+//! and the symbol and footprint libraries themselves (ADR 0016, ADR 0021; where the libraries come
+//! from is ADR 0097's question, proposed).
 
 use std::path::Path;
 use std::sync::Arc;

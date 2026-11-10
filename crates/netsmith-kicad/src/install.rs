@@ -16,6 +16,55 @@
 //! A folder counts only if it holds what the libraries are made of: a `*.kicad_sym` file for
 //! symbols, a `*.pretty` folder for footprints. A [`Search`] reads the machine; tests build
 //! one over a temporary tree and give it the variables, so they run anywhere.
+//!
+//! # The places in full, and what is verified (ADR 0021, accepted by the owner on 2026-11-04)
+//!
+//! ADR 0097 (proposed) would make this lookup an optional source and not a default; until it is
+//! accepted, `build` and `fab` still stop when a stock library they need is not found.
+//!
+//! For each of `symbols` and `footprints` the first of these counts. (1) The variable, used as
+//! given even when the folder is missing. (2) The folder beside `kicad-cli` (`$KICAD_CLI`, else
+//! `kicad-cli` or `kicad-cli.exe` on `PATH`, links followed): `<prefix>/share/kicad/<folder>` for
+//! `<prefix>/bin/kicad-cli` (Linux, Windows, snap, flatpak), and `Contents/SharedSupport/<folder>`
+//! for `Contents/MacOS/kicad-cli` (macOS). (3) The usual places, KiCad 9 before 8 where a place
+//! carries a version: `/usr/share/kicad`, `/usr/local/share/kicad`,
+//! `/snap/kicad/current/usr/share/kicad`, the flatpak
+//! `app/org.kicad.KiCad/current/active/files/share/kicad` under `~/.local/share/flatpak` and
+//! `/var/lib/flatpak`, `/Applications/KiCad/KiCad.app/Contents/SharedSupport`,
+//! `%ProgramFiles%\KiCad\<9.0|8.0>\share\kicad`, and
+//! `/mnt/c/Program Files/KiCad/<9.0|8.0>/share/kicad` (Windows seen from WSL). Finding nothing is
+//! not an error by itself: it is raised when a symbol or footprint of an installed library is
+//! asked for, and says what was looked for, every place tried and why it did not count, and the two
+//! variables to set. A design that uses only a project's own libraries, or footprints the
+//! generators make (ADR 0043), builds with no KiCad install.
+//!
+//! **Verification.** netsmith is tested with KiCad 9; 8 is a fallback that nobody has tried. The
+//! WSL place is the only one tried on a real install (Windows KiCad 9.0). The Linux, macOS,
+//! Windows, snap and flatpak places follow the layouts those packages are known to use and are
+//! tested only against invented install trees ([`Search::under`]); the machine this was written on
+//! had no Linux, snap or flatpak KiCad, and the snap and flatpak paths are the least certain. The
+//! owner accepted the ADR on 2026-11-04 with these lookups still unverified, and they stay so
+//! until someone runs them on a real Linux, macOS, snap or flatpak install (issue #6).
+//!
+//! **Finding the program** ([`Search::kicad_cli`], which `netsmith_fab::KicadCliExe::locate`
+//! calls, so `fab`, the editor and the tests all agree) takes the first of: `$KICAD_CLI` (used
+//! alone when set, and a path that is not a file means no KiCad); `kicad-cli` or `kicad-cli.exe`
+//! on `PATH`; and, only when the process runs under WSL (`WSL_DISTRO_NAME` is set or
+//! `/proc/version` mentions Microsoft), the Windows side's newest `kicad-cli.exe`: `/mnt/c/Program
+//! Files/KiCad/<version>/bin`, then `/mnt/c/Program Files (x86)/KiCad/<version>/bin`, the highest
+//! version number first (`10.0` before `9.0`). A `.exe` is run with Windows paths: `KicadCliExe`
+//! makes its scratch folders in the Windows temp folder, asked of `cmd.exe`, and converts every
+//! argument with `wslpath -w`; another `kicad-cli` gets plain temporary folders and plain paths.
+//! The tests that run KiCad (`erc.rs`, `kicad_drc.rs`) use the same lookup and the same two helpers
+//! (`scratch_base`, `arg`), so they run wherever `locate()` finds KiCad and skip only where it finds
+//! none. The order is tested over invented trees (`Search::under(..).with_wsl(true)`).
+//!
+//! **What KiCad is still needed for** (the user's direction, 2026-11-02: netsmith must not need
+//! KiCad installed, and KiCad stays a supported export and a cross-check, never a requirement):
+//! the symbol and footprint libraries, read from the installed KiCad; `kicad-cli` for the optional
+//! cross-checks and `netsmith compare` on a `.kicad_sch`; and ERC (issues #5 and #61). Until
+//! those are done the tests that need KiCad skip themselves when it is absent, and `build`,
+//! `check`, `solve` and `view` for a part with a bundled symbol must keep working without it.
 
 use std::collections::HashMap;
 use std::ffi::OsString;

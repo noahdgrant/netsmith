@@ -232,7 +232,7 @@ fn a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad() {
     );
 }
 
-/// Prints the numbers ADR 0033 quotes: `cargo test --release -p netsmith-pcb --test main
+/// Prints the numbers the header of `anneal.rs` quotes (ADR 0033): `cargo test --release -p netsmith-pcb --test main
 /// synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture`. With
 /// `NETSMITH_WRITE_BOARDS` set to a folder it writes the routed boards there, for
 /// `crates/netsmith-pcb/scripts/check-kicad.sh`.

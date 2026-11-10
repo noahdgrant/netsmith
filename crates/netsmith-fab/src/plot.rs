@@ -1,7 +1,24 @@
 //! The Gerber layers of a board, made from its [`Artwork`]: every copper layer (pads, vias,
 //! tracks, drawings, and the fill of its zones), the solder mask openings, the paste
 //! stencil, the silkscreen and the board outline, named and attributed as KiCad names
-//! them.
+//! them (ADR 0034).
+//!
+//! The files are RS-274X (Gerber X2), format 4.6 in millimetres, origin the drill/place origin,
+//! y up, apertures numbered by first use, the `RoundRect`, `RotRect` and `HorizOval` macros
+//! KiCad writes and `TF`, `TA.AperFunction` and `TO` attributes (pad, net, component). There is no
+//! creation date, so equal input gives equal bytes. A pad is a flash where the shape allows it
+//! (circle, rectangle, obround, rounded rectangle, and the turned ones through macros) and a
+//! region where it does not (trapezoid, chamfered corners, custom pads: the anchor and each
+//! primitive). `F.Mask` and `B.Mask` are negatives: the openings.
+//!
+//! Mask and paste use the pad's own margins first, then the board's (`pad_to_mask_clearance`,
+//! `pad_to_paste_clearance` and its ratio). KiCad's rules, found by the cross-check: the mask
+//! grows a shape by the margin all round (a rectangle gets round corners of that radius); the
+//! paste ratio is of each side of the pad, not of the shorter one (a 1.6 by 1.0 pad with a ratio
+//! of -0.1 loses 0.16 along and 0.1 across, each side) and a rounded rectangle keeps its corner
+//! ratio; a via is open in the mask only on a face where it is not tented (`(tenting ...)` of the
+//! board or of the via); a hole with no copper round it (a pad no larger than its drill) has no
+//! copper on any layer.
 
 use crate::artwork::{Artwork, Graphic, Pad, PadKind, PadShape, Shape, TrackShape};
 use crate::edge::{self, Outline as BoardEdge};

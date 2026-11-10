@@ -6,7 +6,9 @@
 //! six wide for capitals and digits, with lowercase letters six tall and descenders three
 //! below the line. They are scaled so that a capital is the text's height and a capital
 //! `D` is about 0.6 of it wide, which is what KiCad's font measures for the same text size
-//! (see the cross-check in `docs/adr/0034-netsmith-writes-its-own-fabrication-files.md`).
+//! (see the cross-check in `crosscheck.rs`). About 100 glyphs: capitals, digits, lowercase,
+//! punctuation, the micro and ohm signs. Text keeps its size, thickness, justification, turn,
+//! mirror (back layers) and italic.
 //!
 //! Each glyph is a list of strokes; a stroke is a path of points `x,y` (y up). A stroke of one
 //! point, written twice, is a dot. Characters the font does not have are drawn as an open

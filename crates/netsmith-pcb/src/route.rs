@@ -25,6 +25,144 @@
 //! at once instead of after a search of the whole board. The router makes a fixed number of
 //! tries and rip-up passes, and stops at the time limit in [`RouteOptions`], returning what is
 //! left.
+//!
+//! # Why the router is shaped so
+//!
+//! This is ADR 0031, accepted after the owner's review of 2026-11-04; the parts marked
+//! PROVISIONAL were not reviewed by the owner.
+//!
+//! A real board has a module whose pads are 0.6 mm squares on a 1.1 mm pitch, and parts on both
+//! faces. The first router left the pads inside the module unrouted: it kept half a cell and a
+//! margin beyond the rules from every obstacle, which closed the 0.5 mm between two pads, and a
+//! track with its two spaces needs 0.3 mm. A line is routed in these steps, each paid for only
+//! by the lines the step before left:
+//!
+//! 1. It is searched for with the old room (the rules, [`MARGIN`] of 0.05 mm and half a 0.1 mm
+//!    cell).
+//! 2. A line left is tried again with 0.02 mm beyond the rules ([`ROOM_TIGHT`]), which a track
+//!    between two open cells and a stub from a pad's centre to the nearest cell stay inside
+//!    of. A board that routes at the old room routes as it did.
+//! 3. A pad still walled in is reached by a **via in the pad**, if the process allows it
+//!    (`.via_in_pad`, the largest via the fabricator fills with epoxy and caps with plating).
+//!    The via is at the pad's centre, no wider than the pad's smaller side, and is checked at
+//!    that exact place against all other copper and holes. A path that starts or ends on a
+//!    pad's far layer pays 60 mm of track for it, so it is the last resort. A pad on a plane
+//!    net that cannot get out gets the via and no track.
+//! 4. Where the board draws a track wider than the process's least, the tight try also looks
+//!    for cells where a track of the least width fits, and a track through them is **necked
+//!    down** to the least width there and full width elsewhere.
+//! 5. Lines still left are **negotiated** for (PathFinder in a small form): each is routed
+//!    where it would go if no other net were in the way, the nets it comes near are ripped up,
+//!    the cells they fought over cost more from then on, and what was ripped up is routed
+//!    again. Six rounds, and the best state is kept. The earlier rip-up put the nets back if
+//!    the line did not fit; this one lets lines fail for a round so the others can move.
+//!
+//! There is no fan-out stage that puts a via beside each pad of a dense footprint before
+//! routing: the search already puts a via on any free cell next to a pad, and a pad with no
+//! free cell beside it is the case a via in the pad is for. A fan-out stage was tried on a
+//! branch (PR #85, not merged, PROVISIONAL; it was `RouteOptions::fan_out`, off by default):
+//! each pad of a fine-pitch part (at least 8 surface-mount pads, its
+//! box narrower than a via with the process's space on each side, another pad nearer than
+//! that) got a fixed track to the nearest cell where a via may stand, deepest pads first. On
+//! the invented tight board below it was worse, so it was not kept: 89 lines left over 11
+//! placed seeds against 41 with no stage, and 53 for the inner ring only.
+//! Each fixed escape is a choice the router no longer makes: the nearest cell for a via is not
+//! the end that suits the line. Not tried: an escape chosen with the line it serves, a
+//! reservation the negotiation may take back, and push and shove.
+//!
+//! What came after, each measured on invented boards (nothing here is a real design):
+//!
+//! - **The nets least in the way.** The search for the nets to rip up ([`Router::contested`])
+//!   crosses other nets' copper at a price ([`SOFT`], 100 a cell, a via 300) and not at none,
+//!   so only the nets on the path with the fewest crossings are ripped up. Before, the
+//!   negotiation ripped up every net its ideal path came near, 12 to 20 nets for a line
+//!   crossing the module's neighbourhood.
+//! - **Fixed copper counted once** (`Base`). The masks stamped every pad, edge and keepout for
+//!   each of 30 000 to 40 000 searches of a hard board; the fixed obstacles are counted once
+//!   for each room and track width and a net's own pads are taken away again for that net.
+//! - **Lines that end deep in a fine-pitch grid go first** ([`pad_depth`]: at least eight
+//!   surface-mount pads, a gap under a via and two spaces, counted in pitches from the outside
+//!   of the part's pads). Such a pad has few ways out and a short line of a part beside the
+//!   grid can take the gap it needs. A board with no such grid has the old first order.
+//! - **A last chain of rip-ups of single lines** ([`Router::rip_up_chain`]), after the
+//!   negotiation of each try, for each line still left. A net's other lines stay where they
+//!   are, and lines routed for a line above are locked below it (a lock, not a reservation:
+//!   this ends a cycle of two lines). Bounded by [`CHAIN_SEARCHES`] 600 for a line and
+//!   [`CHAIN_TOTAL`] 3000 for a try of the board, depth 4, whatever the time limit. Nothing in
+//!   it is random, ties go by line number, and the same board gives the same copper.
+//! - **`.kicad_pro` gives the Default net class a `priority`.** Without it KiCad 9 ignored the
+//!   Default class's clearance and checked every board against its own 0.2 mm (measured: a
+//!   0.1 mm project reported "clearance 0.2000 mm"). One added line in every `.kicad_pro`.
+//! - **`fab` with connections left** writes the board file, the project file, the Gerbers, the
+//!   bill of materials, the placement file and `fab-notes.txt` with an `ERROR: INCOMPLETE`
+//!   line at its head and one `ERROR: not routed` line for each connection, and
+//!   `routing-failure.txt` (each connection with its net, its two pads and their places, and
+//!   the parts most of them end on). The exit status is an error as before.
+//!
+//! The boards. `tight_board` (`tests/common/mod.rs`): 99 parts (80 0402 resistors and
+//! capacitors, 18 SOT-23 regulators, half of each on the back) round one module of 80 pads,
+//! 0.6 mm square on a 1.1 mm pitch in two rings round a hollow centre, four layers, 106 nets,
+//! squeezed by the placer into 27 x 25 mm; at 50 x 42 mm it routes completely in under a
+//! second. `mixed_board` (`tests/mixed.rs`): 101 parts on 35 x 60 mm, a QFN of 48 pads and one
+//! of 32 at 0.5 mm pitch with exposed pads, parts at most 4 mm high, both faces. Both are
+//! measured by `tight::measured` and `mixed::measured` (`--ignored --nocapture`, with
+//! `NETSMITH_AREA` and `NETSMITH_SEEDS`). Lines left, seeds 0 to 11, release build:
+//!
+//! | | tight, 27 x 25 mm | mixed, 35 x 60 mm |
+//! |---|---|---|
+//! | before ADR 0031 | 2 of 11 seeds done, 46 lines left | 0 of 12, 96 left |
+//! | the nets least in the way | 2 of 11, 41 left | |
+//! | the placer keeps the room two busy parts need (`anneal.rs`) | unchanged | 1 of 12, 28 left |
+//! | the chain of single-line rip-ups | 8 of 12, 8 left | 12 of 12, 0 left (24 seeds, 12 not used to choose anything) |
+//!
+//! On the invented board a change of one or two lines on one seed is no signal (another order
+//! of lines changes a seed by plus or minus two or three); 89 against 41 over eleven seeds is.
+//! Every board passes the design rules check on what it routed.
+//!
+//! **Tried and not kept.** Starting the next try with the lines the last left: no seed
+//! changed, the time doubled. A finer grid (0.05 mm cells, margin 0.02 mm): 3 seeds left 0, 2,
+//! 2 against 1, 5, 2 for the coarse grid at twice the time, and it changes every existing
+//! routed board. In the placer, a soft cost for a part on the other face under a fine-pitch
+//! grid: 65 lines left against 46. More negotiation rounds (50 against 6) help by chance, not
+//! by design, and the cost of a history cell (10 to 400) made no difference; forty rounds,
+//! another restart radius (2.5, 5 mm), ripping up only the lines whose copper the cheapest
+//! path comes near: no gain. Constants of the search (via 60 or 300 against 150, turn 8 or 60
+//! against 25, soft crossing 40 or 300 against 100): none is a signal. A soft cost in front of
+//! fine-pitch pads: 71 to 66 and 64 lines, since the cause is the room between the parts. A
+//! first form of the chain that ripped up everything within 0.35 mm of the path, layer-blind,
+//! left 3 lines; depth 5 and 1000 searches left 7 of a different form: the set-by-set order
+//! (crossed lines, then within 0.1 mm, then 0.25 mm, then each alone) is not a measured optimum
+//! but the form that did not depend on one threshold.
+//!
+//! **What is in the way** (read from cell maps, not proved). Every line left can be routed if
+//! all other nets' copper is removed, and one or two nets near its pad are enough to free it,
+//! but those nets then cannot be routed again (cycles of two or three nets). The gaps between
+//! pads take one track each and no via fits in a gap, so a pad escapes by a track in a gap or
+//! a via in the pad to the other face, where the space under the module is full. A pad of the
+//! outer ring next to the board edge can be sealed in a pocket by two other nets' vias, one on
+//! each side of the pad.
+//!
+//! **Choices for the owner** (not made; the conservative one is what is built, PROVISIONAL,
+//! not reviewed by the owner):
+//!
+//! - Rip up single lines, not nets. A net's other lines stay where they are. The alternative,
+//!   nets as before, keeps the connection of a net's pads together but ripped up 3 to 20 lines
+//!   at a time here.
+//! - Depth 4, 600 searches a line, 3000 a try. The numbers are tuned on the two invented boards
+//!   over 12 seeds, and 12 more seeds of the first that were not used for tuning came out the
+//!   same. A deeper chain finishes more of the tight board's last lines at more time; the
+//!   bound exists so that time stays bounded whatever the board, and a lower one gives back
+//!   some of the gain.
+//! - A line of this chain is a lock, not a reservation. A push and shove router would move
+//!   their copper a little and keep them routed: more code (a track moved must keep its
+//!   clearance to everything beside it), and not needed on the board that measured it.
+//!
+//! **Left open** (issue #3 stays open): the invented tight board in 27 x 25 mm still leaves 1
+//! to 3 lines on the module on 4 of 12 seeds. A router that can move a track (push and shove),
+//! or reserve a pad's way out before the others are routed without fixing where it goes, and
+//! the placer weighing the capacity of the strip between a module and the edge, are not done.
+//! A board of this density with a fine-pitch grid next to an edge is the case none of this
+//! reaches.
 
 use std::cell::{Cell, RefCell};
 use std::cmp::Reverse;
