@@ -433,6 +433,7 @@ fn locked_moves_no_pin_writes_the_proposal_and_fails_as_before() {
     let e = run.result.expect_err("no pin moves, so it does not route");
     assert!(e.contains("1 connections could not be routed"), "{e}");
     assert!(e.contains("--pins locked, so no pin moves"), "{e}");
+    assert!(e.contains("or run without --pins locked"), "{e}");
     assert!(!run.pin_file.exists(), "--pins locked writes no pin file");
     let proposed = run.dir.join("fab/pins.proposed.toml");
     let text = fs::read_to_string(&proposed).expect("the proposal is written");
@@ -864,7 +865,11 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success(), "{err}");
     assert!(err.contains("1 connections could not be routed"), "{err}");
-    assert!(err.contains("--pins locked, so no pin moves"), "{err}");
+    // The person gave `--locked`, so the message says `--locked` and never advises dropping a
+    // flag that was not passed.
+    assert!(err.contains("--locked, so no pin moves"), "{err}");
+    assert!(err.contains("or run without --locked"), "{err}");
+    assert!(!err.contains("--pins locked"), "{err}");
     assert!(err.contains("pins.proposed.toml"), "{err}");
     assert!(!err.contains("pins: round"), "no round was made: {err}");
     assert_eq!(
@@ -890,8 +895,39 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     );
     let err = String::from_utf8_lossy(&both.stderr);
     assert!(!both.status.success(), "{err}");
-    assert!(err.contains("--pins locked, so no pin moves"), "{err}");
+    assert!(err.contains("--locked, so no pin moves"), "{err}");
+    assert!(!err.contains("run without --pins locked"), "{err}");
     assert_eq!(fs::read(&pin_file).unwrap(), before, "{err}");
+
+    // `--pins locked` alone names itself.
+    let named = netsmith(
+        root.path(),
+        &["fab", "--allow-drc-violations", "--pins", "locked"],
+    );
+    let err = String::from_utf8_lossy(&named.stderr);
+    assert!(err.contains("--pins locked, so no pin moves"), "{err}");
+    assert!(err.contains("or run without --pins locked"), "{err}");
+
+    // `pins = "locked"` in the manifest is neither flag: the message says where it comes from,
+    // and the way out is the flag that wins over it.
+    let manifest = root.join("netsmith.toml");
+    let original = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        original.replace("[project]", "[project]\npins = \"locked\""),
+    )
+    .unwrap();
+    let set = netsmith(root.path(), &["fab", "--allow-drc-violations"]);
+    let err = String::from_utf8_lossy(&set.stderr);
+    assert!(!set.status.success(), "{err}");
+    assert!(
+        err.contains("`pins = \"locked\"` in netsmith.toml, so no pin moves"),
+        "{err}"
+    );
+    assert!(err.contains("or run with --pins auto"), "{err}");
+    assert!(!err.contains("--pins locked, so"), "{err}");
+    assert!(!err.contains("run without --locked"), "{err}");
+    fs::write(&manifest, original).unwrap();
 
     // Without it the same board is made routable and the pin file changes: the contrast.
     let free = netsmith(root.path(), &["fab", "--allow-drc-violations"]);

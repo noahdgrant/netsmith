@@ -105,7 +105,7 @@ tried them.
 ```sh
 mkdir blink && cd blink
 netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files
-netsmith build      # a KiCad schematic in out/
+netsmith build      # a KiCad schematic in out/, and for a board with pin requests its pin map for firmware (`.pins.h`, `.pins.json`)
 netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787
 netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt
 netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
@@ -120,6 +120,11 @@ row each part was picked as. Commit it, as you commit `Cargo.lock`. Later runs h
 to its row, and `--locked` makes a run that would change the picks an error (`docs/LANGUAGE.md`,
 "The pick lock"). `netsmith lock --update` refreshes the lock after a catalog edit and prints
 what changed, and `netsmith lock --check` fails when it is not current, for CI.
+
+The boards in `examples/` carry their locks, committed beside the sources, and CI runs
+`netsmith lock --check` over every one of them (`scripts/check-example-locks.sh`, the `locks` job). A
+change to a catalog, `std/` or the solver that would move a pick of an example fails the job until
+someone runs `netsmith lock --update` in the example and the diff of the lock is reviewed.
 `NETSMITH_TIMINGS=1` prints how long each stage took.
 
 **Read `fab-notes.txt` before you order.** It lists what netsmith could not verify, for

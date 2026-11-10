@@ -51,6 +51,7 @@ mod own_part;
 mod panel;
 mod passives;
 mod pick_lock;
+mod pin_export;
 mod pin_swaps;
 mod pinout;
 mod pins;

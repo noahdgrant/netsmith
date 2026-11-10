@@ -452,6 +452,45 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
     }
 }
 
+/// The pin map of a board for the firmware author (`None` when it has no pin request): a board
+/// of a system has none, because its requests are the system's.
+fn pin_maps_of(
+    built: &netsmith::Built,
+    pins: &netsmith_check::PinsOutcome,
+    source: &str,
+) -> Result<Option<netsmith::pin_export::PinMap>, String> {
+    if built.system.is_some() {
+        return Ok(None);
+    }
+    netsmith::pin_export::render(&built.design, &built.board, pins, source)
+}
+
+/// Write the board's pin map into `dir`, or remove the one an earlier run left there when the
+/// board has no request now.
+fn write_pin_map(
+    dir: &Path,
+    board: &str,
+    map: Option<&netsmith::pin_export::PinMap>,
+) -> std::io::Result<()> {
+    use netsmith::pin_export::{header_name, json_name};
+    let (header, json) = (dir.join(header_name(board)), dir.join(json_name(board)));
+    match map {
+        Some(map) => {
+            fs::write(header, &map.header)?;
+            fs::write(json, &map.json)
+        }
+        None => {
+            for file in [header, json] {
+                match fs::remove_file(file) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+                    _ => {}
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
 fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool) -> ExitCode {
     let (target, loader, catalogs) = match target(file, strict) {
         Ok(t) => t,
@@ -488,7 +527,7 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
             .map_err(|problems| render_problems(&problems));
         let settled = built.and_then(|outcome| {
             netsmith::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock)
-                .map(|settled| (outcome.boards, settled))
+                .map(|settled| (outcome.boards, outcome.pins, settled))
                 .map_err(|e| format!("{e}\n"))
         });
         match settled {
@@ -496,7 +535,7 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                 eprint!("{problems}");
                 code = ExitCode::FAILURE;
             }
-            Ok((boards, settled)) => {
+            Ok((boards, pins, settled)) => {
                 if let Some(file) = &settled.wrote {
                     println!("wrote {}", file.display());
                 }
@@ -530,7 +569,23 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                     code = ExitCode::FAILURE;
                     continue;
                 }
-                for b in boards {
+                // The pin map for firmware, by request name, of each board that has requests;
+                // two requests that are one signal in C stop the build before it writes.
+                let mut pin_maps = Vec::new();
+                for b in &boards {
+                    match pin_maps_of(b, &pins, &source.name) {
+                        Ok(map) => pin_maps.push(map),
+                        Err(message) => {
+                            eprintln!("{message}");
+                            unplaceable = true;
+                        }
+                    }
+                }
+                if unplaceable {
+                    code = ExitCode::FAILURE;
+                    continue;
+                }
+                for (b, pin_map) in boards.into_iter().zip(pin_maps) {
                     let dir = match b.write(out) {
                         Ok(dir) => dir,
                         Err(e) => {
@@ -538,6 +593,10 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                             return ExitCode::from(2);
                         }
                     };
+                    if let Err(e) = write_pin_map(&dir, &b.design.name, pin_map.as_ref()) {
+                        eprintln!("{}: {e}", dir.display());
+                        return ExitCode::from(2);
+                    }
                     // The project's own libraries and the standard library's own files that
                     // the board uses, so KiCad finds the symbols.
                     if let Err(e) = libraries.write_tables(&dir, &b.design) {
@@ -576,21 +635,29 @@ fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
 
 /// What a board that does not route may do with its pins: `--locked` forbids any change, so it is
 /// `locked` whatever else is said; else `--pins` for this run, else `pins` in the manifest, else
-/// `auto` (ADR 0101). `--locked` keeps the working tree as it is, the pin file included.
-fn pins_mode(target: &Target, flag: Option<bool>, locked: bool) -> netsmith::fab::PinsMode {
-    use netsmith::fab::PinsMode;
+/// `auto` (ADR 0101). `--locked` keeps the working tree as it is, the pin file included. The
+/// second value is what made it `locked`, for the messages.
+fn pins_mode(
+    target: &Target,
+    flag: Option<bool>,
+    locked: bool,
+) -> (netsmith::fab::PinsMode, netsmith::fab::LockedBy) {
+    use netsmith::fab::{LockedBy, PinsMode};
     if locked {
-        return PinsMode::Locked;
+        return (PinsMode::Locked, LockedBy::LockedFlag);
     }
     match flag {
-        Some(true) => PinsMode::Locked,
-        Some(false) => PinsMode::Auto,
-        None => target
+        Some(true) => (PinsMode::Locked, LockedBy::PinsFlag),
+        Some(false) => (PinsMode::Auto, LockedBy::PinsFlag),
+        None => match target
             .project
             .as_ref()
             .and_then(|p| p.manifest.pins.as_deref())
             .and_then(PinsMode::parse)
-            .unwrap_or(PinsMode::Auto),
+        {
+            Some(PinsMode::Locked) => (PinsMode::Locked, LockedBy::Manifest),
+            Some(PinsMode::Auto) | None => (PinsMode::Auto, LockedBy::PinsFlag),
+        },
     }
 }
 
@@ -628,9 +695,14 @@ fn run_fab(
     let kicad = KicadCliExe::locate();
     if kicad.is_none() {
         if cross_check {
-            eprintln!(
-                "error: --cross-check compares with KiCad's own files: set KICAD_CLI to its command-line tool"
-            );
+            match netsmith::fab::kicad_switched_off(&netsmith_kicad::install::Search::machine()) {
+                Some(off) => eprintln!(
+                    "error: --cross-check compares with KiCad's own files and needs kicad-cli, and {off}"
+                ),
+                None => eprintln!(
+                    "error: --cross-check compares with KiCad's own files: set KICAD_CLI to its command-line tool"
+                ),
+            }
             return ExitCode::from(2);
         }
         eprintln!("{}", netsmith::fab::NO_KICAD_NOTE);
@@ -650,7 +722,7 @@ fn run_fab(
         lock: None,
         pins: None,
     };
-    let pins_mode = pins_mode(&target, pins_locked, locked);
+    let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
@@ -670,10 +742,10 @@ fn run_fab(
         let options = FabOptions {
             layout: Some(netsmith::layout::layout_path(&source.path)),
             lock: Some(using),
-            pins: Some(netsmith::fab::PinsUse::new(
-                pins_mode,
-                netsmith::pins::pins_path(&source.path),
-            )),
+            pins: Some(netsmith::fab::PinsUse {
+                locked_by,
+                ..netsmith::fab::PinsUse::new(pins_mode, netsmith::pins::pins_path(&source.path))
+            }),
             ..options.clone()
         };
         match fab_with_options(

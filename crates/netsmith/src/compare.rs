@@ -99,9 +99,14 @@ pub fn load(
                 return Err(format!("{path}: no such file"));
             }
             let kicad = kicad.ok_or_else(|| {
-                format!(
-                    "{path}: reading a schematic needs KiCad's command-line tool: set KICAD_CLI to its path"
-                )
+                match crate::fab::kicad_switched_off(&netsmith_kicad::install::Search::machine()) {
+                    Some(off) => format!(
+                        "{path}: reading a schematic needs KiCad's command-line tool, and {off}"
+                    ),
+                    None => format!(
+                        "{path}: reading a schematic needs KiCad's command-line tool: set KICAD_CLI to its path"
+                    ),
+                }
             })?;
             Netlist::from_kicad_schematic(Path::new(path), kicad)
         }

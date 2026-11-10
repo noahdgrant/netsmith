@@ -2409,7 +2409,8 @@ fn kicads_check_is_run_on_demand_and_its_findings_have_places() {
         assert!(
             found
                 .kicad_note
-                .starts_with("KiCad not found: set KICAD_CLI or install KiCad"),
+                .starts_with("KiCad not found: set KICAD_CLI or install KiCad")
+                || found.kicad_note.starts_with("KiCad is switched off:"),
             "{}",
             found.kicad_note
         );

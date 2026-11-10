@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Which of CI's jobs a change needs. Reads the changed paths (one per line, from the repository's
-# root) on stdin and prints `rust=`, `kicad=`, `recipes=` and `no_kicad=` as `true` or `false`; the
+# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=` and `locks=` as `true` or `false`; the
 # `changes` job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has
 # no flag.
 #   rust     clippy and the tests: anything a build or a test reads.
@@ -21,6 +21,12 @@
 #            so it follows what is linked into the binary (the crates' source and manifests,
 #            std/, examples/, data/) and the script itself; not a test file, a crate's examples
 #            folder, the catalog refresh, or prose.
+#   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith lock --check` over every
+#            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
+#            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
+#            are linked into the binary (the solver is netsmith-solve, and the checker and the
+#            design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
+#            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -61,8 +67,8 @@ root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # mapping only, and `build_with` takes the libraries as an argument.)
 KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith::build\b|netsmith::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
-rust=false kicad=false recipes=false no_kicad=false
-all() { rust=true kicad=true recipes=true no_kicad=true; }
+rust=false kicad=false recipes=false no_kicad=false locks=false
+all() { rust=true kicad=true recipes=true no_kicad=true locks=true; }
 
 # Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
 asks_for_kicad() {
@@ -106,9 +112,9 @@ while IFS= read -r path; do
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith-netlist/* | crates/netsmith/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/*) rust=true ;;
-        crates/netsmith-editor/* | crates/netsmith-view/*) rust=true recipes=true no_kicad=true ;;
+        crates/netsmith-editor/* | crates/netsmith-view/*) rust=true recipes=true no_kicad=true locks=true ;;
         crates/*/tests/*) rust=true ;;
-        crates/*) rust=true no_kicad=true ;;
+        crates/*) rust=true no_kicad=true locks=true ;;
         Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;
         std/* | examples/*) all ;;
         data/*) all ;;
@@ -122,3 +128,4 @@ echo "rust=$rust"
 echo "kicad=$kicad"
 echo "recipes=$recipes"
 echo "no_kicad=$no_kicad"
+echo "locks=$locks"

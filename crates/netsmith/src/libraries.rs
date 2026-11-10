@@ -51,11 +51,31 @@ pub enum Wanted {
     Footprint,
 }
 
+/// What the lookup of a KiCad id found out, for [`needs_kicad`].
+#[derive(Debug, Clone, Copy)]
+pub enum Looked<'a> {
+    /// No install was found: `0` is the search's own account of where it looked (or that it is
+    /// switched off).
+    NoInstall(&'a str),
+    /// An install was found, at `at`, and has no such id (a typo, or a name KiCad 9 lacks):
+    /// `detail` is the error of the lookup, with the path it looked for.
+    Installed { at: &'a Path, detail: &'a str },
+}
+
+/// The search's account of where it looked, when the footprint error is that it found no install.
+fn lookup_text_of(error: &FootprintError) -> String {
+    match error {
+        FootprintError::NoInstall { lookup, .. } => lookup.to_string(),
+        _ => String::new(),
+    }
+}
+
 /// The message of a run that stops because a part names a KiCad id that netsmith cannot answer
 /// (it is asked only after the generators and `std/libs/` have not) and no installed library has
-/// it: the part, the id, the `kicad.toml` line, where it looked (only when `looked` says it did)
-/// and the three ways out. `kind` and `package` are the part's; `origin` is the row's
-/// `file line N` ([`Mapped::origin`]).
+/// it: the part, the id, the `kicad.toml` line, where it looked and the ways out. With no install
+/// the ways out include installing KiCad 9; with an install that lacks the id they do not, and the
+/// message says so. `kind` and `package` are the part's; `origin` is the row's `file line N`
+/// ([`Mapped::origin`]).
 pub fn needs_kicad(
     wanted: Wanted,
     refdes: &str,
@@ -63,7 +83,7 @@ pub fn needs_kicad(
     package: Option<&str>,
     id: &str,
     origin: &str,
-    looked: &str,
+    looked: Looked,
 ) -> String {
     let (noun, third) = match wanted {
         Wanted::Symbol => (
@@ -79,12 +99,20 @@ pub fn needs_kicad(
         Some(package) => format!("part `{kind}` in package `{package}`"),
         None => format!("part `{kind}`"),
     };
-    format!(
-        "{refdes}: {part} needs KiCad's {noun} `{id}` ({origin}), and no installed KiCad \
-         library has it.\n{looked}\n\
-         Three ways out: install KiCad 9, so that netsmith reads its libraries; supply the file \
-         through a `[[library]]` of kicad.toml; or {third}."
-    )
+    match looked {
+        Looked::NoInstall(looked) => format!(
+            "{refdes}: {part} needs KiCad's {noun} `{id}` ({origin}), and no installed KiCad \
+             library has it.\n{looked}\n\
+             Three ways out: install KiCad 9, so that netsmith reads its libraries; supply the file \
+             through a `[[library]]` of kicad.toml; or {third}."
+        ),
+        Looked::Installed { at, detail } => format!(
+            "{refdes}: {part} needs KiCad's {noun} `{id}` ({origin}).\n{detail}\n\
+             KiCad is installed at {} but has no `{id}`: check the spelling, or use a project \
+             library (a `[[library]]` of kicad.toml) or a netsmith generated {noun}: {third}.",
+            at.display()
+        ),
+    }
 }
 
 impl Libraries {
@@ -107,11 +135,15 @@ impl Libraries {
         mapped: &Mapped,
         error: &FootprintError,
     ) -> Option<String> {
+        let (detail, lookup_text) = (error.to_string(), lookup_text_of(error));
         let looked = match error {
-            FootprintError::NoInstall { lookup, .. } => lookup.to_string(),
+            FootprintError::NoInstall { .. } => Looked::NoInstall(&lookup_text),
             // An install was found and has no such file: the error says the path it looked for
             // and the variable that moves the search.
-            FootprintError::NotFound { project: false, .. } => error.to_string(),
+            FootprintError::NotFound { project: false, .. } => Looked::Installed {
+                at: self.footprints.root(),
+                detail: &detail,
+            },
             _ => return None,
         };
         self.is_kicads(&mapped.footprint).then(|| {
@@ -122,7 +154,7 @@ impl Libraries {
                 package,
                 &mapped.footprint,
                 &mapped.origin,
-                &looked,
+                looked,
             )
         })
     }
@@ -138,10 +170,19 @@ impl Libraries {
         error: &SymbolError,
     ) -> Option<String> {
         let id = mapped.lib_id.as_deref()?;
-        let looked = match error {
+        let detail = error.to_string();
+        let lookup_text = match error {
             SymbolError::NoInstall { lookup, .. } => lookup.to_string(),
+            _ => String::new(),
+        };
+        let looked = match error {
+            SymbolError::NoInstall { .. } => Looked::NoInstall(&lookup_text),
+            // An install was found and has no such library or symbol.
             SymbolError::NoLibrary { project: false, .. } | SymbolError::NoSymbol { .. } => {
-                error.to_string()
+                Looked::Installed {
+                    at: self.symbols.root(),
+                    detail: &detail,
+                }
             }
             _ => return None,
         };
@@ -153,7 +194,7 @@ impl Libraries {
                 package,
                 id,
                 &mapped.origin,
-                &looked,
+                looked,
             )
         })
     }

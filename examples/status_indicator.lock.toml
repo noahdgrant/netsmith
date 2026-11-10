@@ -1,0 +1,35 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[IndicatorExample.parts."enable_in"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[IndicatorExample.parts."power_in"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[IndicatorExample.parts."status_indicator.bypass"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[IndicatorExample.parts."status_indicator.current_limit"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[IndicatorExample.parts."status_indicator.led"]
+catalog = "led"
+row = "LTST-C190KGKT GREEN LED 0603 C125094"
+lcsc = "C125094"
+mpn = "LTST-C190KGKT"
