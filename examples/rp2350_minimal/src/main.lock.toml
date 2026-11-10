@@ -52,6 +52,18 @@ row = "RC0402JR-070RL 0ohm jumper 62.5mW 0402 C60485"
 lcsc = "C60485"
 mpn = "RC0402JR-070RL"
 
+[Rp2350Minimal.parts."header_high"]
+catalog = "samtec_tsw_118"
+row = "TSW-118-07-L-D"
+lcsc = "C6887963"
+mpn = "TSW-118-07-L-D"
+
+[Rp2350Minimal.parts."header_low"]
+catalog = "samtec_tsw_118"
+row = "TSW-118-07-L-D"
+lcsc = "C6887963"
+mpn = "TSW-118-07-L-D"
+
 [Rp2350Minimal.parts."mcu"]
 catalog = "rp2350a"
 row = "RP2350A"
