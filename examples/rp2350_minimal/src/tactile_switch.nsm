@@ -1,0 +1,33 @@
+//! The Wurth Elektronik WS-TASV tactile switch 434133025816 (SMD, J-bend terminals, 4.2 x 3.2 mm,
+//! 2.5 mm high): SW1 and SW2 of the RP2350A Minimal board.
+//!
+//! The standard `Switch` has two pins on one pad each, and a footprint with four pads is not a
+//! footprint of it, so the part is the project's own. The pins and their connections are the
+//! datasheet's (Wurth document 434133025816, revision 001.001 of 2021-01-25, page 1, the
+//! schematic): terminals 1 and 2 are joined inside the part, terminals 3 and 4 are joined, and
+//! pressing the button joins the two pairs. Each pair is one pin of the part here (`.a`, pads
+//! 1 and 2; `.b`, pads 3 and 4), so a board states the net of a pair once, as Raspberry Pi's board
+//! does (pads 1 and 2 on one net, 3 and 4 on the other). The ratings are the datasheet's
+//! electrical table (page 2): 50 mA and 16 V DC.
+
+/// A single-pole, normally open push button with two terminals on each side.
+part TactileSwitch {
+    .designator &= "SW"
+
+    pins "SMD-4P(4.2x3.2)" {
+        .a passive "A" "1" "2"
+        .b passive "B" "3" "4"
+    }
+
+    .rated_current: Current
+    .rated_voltage: Voltage
+    /// Through-current, a to b, while pressed.
+    .current: Current
+
+    .current <= .rated_current
+    bridge .a ~> .b
+
+    .mpn: String
+    .package: Package
+    catalog tactile_switch by .mpn { .mpn, .package, .rated_current, .rated_voltage }
+}

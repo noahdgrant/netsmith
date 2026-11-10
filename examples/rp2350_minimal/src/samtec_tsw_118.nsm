@@ -1,0 +1,53 @@
+//! The Samtec TSW-118-07-L-D, a 2 x 18 pin header, 2.54 mm pitch, through hole: the J2 and the
+//! J3 of the RP2350A Minimal board (the same part twice: which signal is on which pin is the
+//! board's). Samtec has no JLCPCB part for it, so it has no catalog and no LCSC number: a
+//! through-hole part is soldered by hand unless the board says otherwise (ADR 0024).
+//!
+//! Pin N is pad N. The pads are the two rows of the footprint, pin 1 and the odd pins in one
+//! row and the even pins in the other, as Raspberry Pi's footprint numbers them.
+
+import std::parts::connector::Connector
+
+/// A 2 x 18 pin header of 36 pins, `.p1` to `.p36`.
+part SamtecTsw11807LD provides Connector {
+    pins {
+        .p1  passive "1" "1"
+        .p2  passive "2" "2"
+        .p3  passive "3" "3"
+        .p4  passive "4" "4"
+        .p5  passive "5" "5"
+        .p6  passive "6" "6"
+        .p7  passive "7" "7"
+        .p8  passive "8" "8"
+        .p9  passive "9" "9"
+        .p10 passive "10" "10"
+        .p11 passive "11" "11"
+        .p12 passive "12" "12"
+        .p13 passive "13" "13"
+        .p14 passive "14" "14"
+        .p15 passive "15" "15"
+        .p16 passive "16" "16"
+        .p17 passive "17" "17"
+        .p18 passive "18" "18"
+        .p19 passive "19" "19"
+        .p20 passive "20" "20"
+        .p21 passive "21" "21"
+        .p22 passive "22" "22"
+        .p23 passive "23" "23"
+        .p24 passive "24" "24"
+        .p25 passive "25" "25"
+        .p26 passive "26" "26"
+        .p27 passive "27" "27"
+        .p28 passive "28" "28"
+        .p29 passive "29" "29"
+        .p30 passive "30" "30"
+        .p31 passive "31" "31"
+        .p32 passive "32" "32"
+        .p33 passive "33" "33"
+        .p34 passive "34" "34"
+        .p35 passive "35" "35"
+        .p36 passive "36" "36"
+    }
+
+    .package: Package
+}

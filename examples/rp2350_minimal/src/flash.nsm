@@ -1,0 +1,41 @@
+//! The W25Q128JV serial flash memory, Winbond, in the 8-pin SOIC 208-mil package (package code
+//! S, order code W25Q128JVSIQ): the U3 of the RP2350A Minimal board.
+//!
+//! The pin table was written by hand from Winbond's datasheet "W25Q128JV, 3V 128M-bit serial
+//! flash memory with dual/quad SPI" (Publication Release Date August 23, 2021, Revision I, 79
+//! pages, fetched on 2026-11-10 from
+//! <https://www.winbond.com/resource-files/W25Q128JV%20RevI%2008232021%20Plus.pdf>): section
+//! 3.1 and Figure 1a (printed page 5) for the pad numbers and 3.3 "Pin Description SOIC 208-mil,
+//! WSON 6x5-mm / 8x6-mm" (printed page 5) for the names, the I/O column and the notes. The
+//! datasheet writes an active-low name with a leading slash (`/CS`, `/WP`, `/HOLD`); here it is
+//! a trailing `#`.
+//!
+//! The kinds follow the I/O column: `/CS` and `CLK` are inputs, and the four data pins are
+//! bidirectional (the datasheet's "I/O": IO0 to IO3 in Quad SPI). Pad 7 is `/HOLD` or `/RESET`
+//! in Standard and Dual SPI and IO3 in Quad SPI (note 2: the hold function is only there for
+//! Standard and Dual SPI); the 8-pin package has no pin for a reset of its own.
+//!
+//! What is deliberately left out: the levels, ratings and timing (the part is a boundary of the
+//! design: the checks that need a number are listed as not evaluated) and the other packages.
+
+/// The W25Q128JV, a 128 Mbit (16 MB) NOR flash with a Standard, Dual and Quad SPI interface, in
+/// the 8-pin SOIC 208-mil package. The pad numbers are the datasheet's pin numbers.
+part W25Q128Jv {
+    .designator &= "U"
+
+    pins "SOIC-8-208mil" {
+        //  pin     kind           name                 pads
+        .cs       input          "CS#"                "1"
+        .do_io1   bidirectional  "DO(IO1)"            "2"
+        .wp_io2   bidirectional  "WP#(IO2)"           "3"
+        .gnd      power          "GND"                "4"
+        .di_io0   bidirectional  "DI(IO0)"            "5"
+        .clk      input          "CLK"                "6"
+        .hold_io3 bidirectional  "HOLD#/RESET#(IO3)"  "7"
+        .vcc      power          "VCC"                "8"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog w25q128jv by .mpn { .mpn, .package }
+}

@@ -1,5 +1,31 @@
 # What KiCad calls the parts this project defines itself (ADR 0021).
 #
+# The footprints are written from the makers' recommended land patterns, in the project's own
+# library `libs/rp2350_minimal.pretty` (no KiCad install is needed: the files are the project's);
+# `README.md` (Parts) records the document, revision and page of each and what was read, derived
+# or assumed. U2, the NCP1117ST33T3G, is the standard `LinearRegulator` in the package SOT-223,
+# which `std/kicad.toml` already maps to the generator's `SOT-223-3_TabPin2`: a project may not
+# map a pair that the standard mapping maps, so it has no row here.
+
+[[library]]
+name = "rp2350_minimal"
+footprints = "libs/rp2350_minimal.pretty"
+
+# L1: the 0806 (2016 metric) package of the Abracon inductor; the standard rows stop at 0805
+# and 1210, and no generator answers 2016. The symbol is drawn from the pin table, so no KiCad
+# symbol library is read.
+[[part]]
+kind = "Inductor"
+package = "0806"
+footprint = "rp2350_minimal:L_Abracon_AOTA-B201610S3R3-101-T"
+
+# SW1 and SW2: the Wurth tactile switch. The symbol is drawn from the pin table.
+[[part]]
+kind = "TactileSwitch"
+package = "SMD-4P(4.2x3.2)"
+default = true
+footprint = "rp2350_minimal:SW_Wurth_434133025816"
+
 # The RP2350A is drawn from its pin table (no `symbol`: ADR 0097). Its footprint is the
 # generator's QFN-60, 7 x 7 mm, 0.4 mm pitch, exposed pad 3.4 x 3.4 mm: the datasheet's package
 # drawing (RP2350 datasheet Release 8, printed page 1324, Figure 147) has the same body, pitch
@@ -14,3 +40,57 @@ kind = "Rp2350A"
 package = "QFN-60-EP(7x7)"
 default = true
 footprint = "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
+
+# The flash and the crystal are drawn from their pin tables as well (no `symbol`).
+#
+# The flash, W25Q128JV in the SOIC 208-mil package, has no id in the footprint generators (the
+# SOIC-8 there is the 3.9 mm one), so the row asks for the generator `SO` with the datasheet's
+# dimensions (Winbond W25Q128JV Revision I, section 10.1, printed page 67): 1.27 mm pitch, body
+# 5.3 x 5.3 mm (E1 5.13 to 5.33 mm, D 5.18 to 5.38 mm), 7.70 to 8.10 mm over the leads (H),
+# lead width 0.35 to 0.48 mm (b) and lead length 0.50 to 0.80 mm (L). The datasheet draws no
+# land pattern; the pads are the generator's.
+[[part]]
+kind = "W25Q128Jv"
+package = "SOIC-8-208mil"
+default = true
+footprint = "gen:SO(pins=8, pitch=1.27mm, body=5.3x5.3mm, span=7.7-8.1mm, lead_width=0.35-0.48mm, lead_length=0.5-0.8mm)"
+
+# The crystal, ABM8-272-T3, is a 3.2 x 2.5 mm ceramic package with four pads (Abracon drawing
+# # 456603 Revision B, page 4): the footprint is the generator's 3225 crystal, whose pads 1 to 4
+# are numbered as the drawing numbers its pads (1 bottom left, 2 bottom right, 3 top right and
+# 4 top left, seen from above). The pads are 1.4 x 1.2 mm at +-1.1 mm and +-0.85 mm, as in
+# Raspberry Pi's board.
+[[part]]
+kind = "Abm8272T3"
+package = "SMD3225-4P"
+default = true
+footprint = "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm"
+
+# The connectors of the board. Their footprints are written into the project's own library
+# (libs/netsmith_rp2350.pretty), so that a build needs no KiCad install; README.md records what
+# each was read from. The parts are drawn from their pin tables (no `symbol`, ADR 0097).
+[[library]]
+name = "netsmith_rp2350"
+footprints = "libs/netsmith_rp2350.pretty"
+
+# J1: Amphenol FCI 10103594-0001LF, the recommended PCB pattern of the maker's drawing.
+[[part]]
+kind = "Amphenol10103594"
+package = "SMD"
+default = true
+footprint = "netsmith_rp2350:USB_Micro-B_Amphenol_10103594-0001LF"
+
+# J4: JST SM03B-SRSS-TB(LF)(SN), the PC board layout of the maker's catalog page.
+[[part]]
+kind = "JstSm03bSrssTb"
+package = "SMD,P=1mm,Surface Mount,Right Angle"
+default = true
+footprint = "netsmith_rp2350:JST_SM03B-SRSS-TB_1x03-2MP_P1.00mm_Horizontal"
+
+# J2 and J3: Samtec TSW-118-07-L-D, the maker's footprint drawing for the TSW series (the
+# generator's `gen:PinHeader` has 1.778 mm pads, Raspberry Pi's board 1.6 mm).
+[[part]]
+kind = "SamtecTsw11807LD"
+package = "TSW-118-07-L-D"
+default = true
+footprint = "netsmith_rp2350:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D"
