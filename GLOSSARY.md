@@ -45,7 +45,7 @@ The design rules and stackup of the factory that makes a board, such as `std::mf
 _Avoid_: Fab house, rule set, technology
 
 **Environment**:
-What a board is exposed to, the member `.environment` of a board: an interface such as `std::env::Environment` whose `.temperature` is the range of temperatures its surroundings reach, `-40degC..125degC` (ADR 0099, provisional; the `degC` unit is ADR 0102). Every fitted part is checked against it. The manifest's `environment` names the definition a board gets when it declares none; a board with neither is not judged and says nothing. A library states no environment of its own: it is the board's, or the project's.
+What a board is exposed to, the member `.environment` of a board: an interface such as `std::env::Environment` whose `.temperature` is the range of temperatures its surroundings reach, `-40degC..125degC` (ADR 0099, provisional; the `degC` unit is ADR 0103). Every fitted part is checked against it. The manifest's `environment` names the definition a board gets when it declares none; a board with neither is not judged and says nothing. A library states no environment of its own: it is the board's, or the project's.
 _Avoid_: Conditions, operating conditions, grade (a grade is a qualification and a margin, which are not built), mission profile
 
 **Temperature range**:

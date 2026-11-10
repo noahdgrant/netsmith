@@ -16,6 +16,6 @@ Rejected, each from the research note. One range member per part: a range in thi
 
 Cost: a hidden relation of the checker, found in the guide and not in a part's source. Every part has two more members. A row's range is as the record prints it, and the record does not say if it is the ambient, the junction or the operating temperature, so the check is necessary and not sufficient; nothing derates a 25 C rating or adds the part's own heating. The manifest's default is a convenience and not a floor: a board of the project can declare a milder one.
 
-The spelling of a temperature is `degC` (`-40degC`), the owner's choice of 2026-11-10, recorded in ADR 0102; a temperature in kelvin is the same value, and a message shows both.
+The spelling of a temperature is `degC` (`-40degC`), the owner's choice of 2026-11-10, recorded in ADR 0103; a temperature in kelvin is the same value, and a message shows both.
 
 Left open, for the owner. Whether the manifest's `module::Name` should also accept a project module's own path (`src::vehicle::Automotive`, which `import` writes) and not only the file.

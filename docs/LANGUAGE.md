@@ -290,7 +290,7 @@ Literals.
 | `3.3V +/- 5%` | A value and a relative tolerance: 3.135 V to 3.465 V. |
 | `100ohm +/- 5ohm` | A value and an absolute tolerance, in the value's unit. |
 | `20ppm` | A relative fraction, like `%`. |
-| `-40degC..125degC` | A temperature in degrees Celsius (ADR 0102): `0degC` is 273.15 K. A range of them is a range of temperatures. |
+| `-40degC..125degC` | A temperature in degrees Celsius (ADR 0103): `0degC` is 273.15 K. A range of them is a range of temperatures. |
 | `"VCC"` | Text. |
 
 Units: `m`, `g`, `s`, `A`, `K`, `degC`, `V`, `ohm` (or `Ω`), `W`, `F`, `H`, `Hz`, `S`, `C` (the coulomb, a charge: a Celsius temperature is `degC`, never `C`). Prefixes: `f p n u (or µ) m k M G T`. Lowercase `m` is milli and uppercase `M` is mega, so `1mohm` is a milliohm and `1Mohm` is a megohm. Arithmetic uses `+ - * /` and parentheses. A sum or difference needs the same dimension. A product or quotient makes a new one.
@@ -313,7 +313,7 @@ board Units {
 }
 ```
 
-**Temperatures.** `K` is kelvin and `degC` is degrees Celsius (ADR 0102). `degC` is the one unit whose zero is not the zero of its dimension, so it is converted where the literal is read: `0degC` is 273.15 K, `25degC` is 298.15 K, and `-40degC..125degC` is the range 233.15 K to 398.15 K. A sign written directly on a literal belongs to the number (`-40degC` is minus forty degrees Celsius, 233.15 K, and not minus 313.15 K). Every value is kelvin underneath, so a temperature in either spelling is the same value, a message shows the kelvin and the Celsius figure together, and a field of a `Temperature` takes both. `degC` takes no prefix (`mdegC` is an error), and a difference of temperatures, such as a rise or a tolerance, is written in kelvin: `10degC + 5K` is a temperature, 15degC (288.15 K); `20degC - 10degC` is a difference, 10 K; `85degC +/- 5K` is 80degC to 90degC, and `85degC +/- 5degC` is refused. A quantity does not remember whether it is a temperature or a difference, so the sum of two Celsius literals (`10degC + 20degC`, which is 576.3 K) is not refused: it is a number nobody means, and the language does not say it is wrong.
+**Temperatures.** `K` is kelvin and `degC` is degrees Celsius (ADR 0103). `degC` is the one unit whose zero is not the zero of its dimension, so it is converted where the literal is read: `0degC` is 273.15 K, `25degC` is 298.15 K, and `-40degC..125degC` is the range 233.15 K to 398.15 K. A sign written directly on a literal belongs to the number (`-40degC` is minus forty degrees Celsius, 233.15 K, and not minus 313.15 K). Every value is kelvin underneath, so a temperature in either spelling is the same value, a message shows the kelvin and the Celsius figure together, and a field of a `Temperature` takes both. `degC` takes no prefix (`mdegC` is an error), and a difference of temperatures, such as a rise or a tolerance, is written in kelvin: `10degC + 5K` is a temperature, 15degC (288.15 K); `20degC - 10degC` is a difference, 10 K; `85degC +/- 5K` is 80degC to 90degC, and `85degC +/- 5degC` is refused. A quantity does not remember whether it is a temperature or a difference, so the sum of two Celsius literals (`10degC + 20degC`, which is 576.3 K) is not refused: it is a number nobody means, and the language does not say it is wrong.
 
 A tolerance in `degC` is the one misuse that the language refuses:
 
@@ -5979,7 +5979,7 @@ error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has n
 
 A board can say what it is exposed to: the member `.environment` (ADR 0099, **provisional**: the owner has accepted the recommended answers of `docs/research/environment-and-grade.md`, and this stage is the temperature only). Every fitted part is then checked against it. The board has the member as it has its `.process`, an interface of the standard library, `std::env::Environment`, whose one field is the range of temperatures the board's surroundings reach.
 
-A temperature is written in degrees Celsius or kelvin, `-40degC..125degC` or `233.15K..398.15K` (the same range, ADR 0102; see Temperatures under Values), and a message shows both. `C` alone is the coulomb, so `-40C` is a charge and is refused where a temperature is wanted.
+A temperature is written in degrees Celsius or kelvin, `-40degC..125degC` or `233.15K..398.15K` (the same range, ADR 0103; see Temperatures under Values), and a message shows both. `C` alone is the coulomb, so `-40C` is a charge and is refused where a temperature is wanted.
 
 A part states the range it works at in two built-in members of every part, `.temp_min` and `.temp_max` (the lowest and the highest temperature, each one temperature), or its catalog row does, in the optional fixed columns of the same names (see Catalog files). The check is two comparisons: the hot end of the environment is at or under the part's `.temp_max`, and the cold end at or over its `.temp_min`.
 

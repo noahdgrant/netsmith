@@ -5,7 +5,7 @@
 //! temperature, and the cold end at or over its lowest. A part that states one end only is
 //! judged on that end; an end that nothing states is not judged, and the caller names it.
 //! Temperatures are kelvin everywhere and are shown with their Celsius value beside them, in
-//! the language's own spelling (`degC`, ADR 0102), because a datasheet prints Celsius.
+//! the language's own spelling (`degC`, ADR 0103), because a datasheet prints Celsius.
 
 /// What the comparison found for each end of the environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

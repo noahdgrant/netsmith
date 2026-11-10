@@ -56,7 +56,7 @@ const BASES: [Base; 12] = [
 
 const EXTRA: [Base; 3] = [
     base("S", 0, Dimension::CONDUCTANCE, true),
-    // The coulomb. A temperature in Celsius is `degC` (ADR 0102), so that `C` stays charge.
+    // The coulomb. A temperature in Celsius is `degC` (ADR 0103), so that `C` stays charge.
     base("C", 0, Dimension::CHARGE, true),
     base("degC", 0, Dimension::TEMPERATURE, false),
 ];

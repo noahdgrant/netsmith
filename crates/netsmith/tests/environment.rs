@@ -10,7 +10,7 @@ use netsmith::{outcome_with, render_problems};
 use netsmith_check::Loader;
 use netsmith_solve::Catalogs;
 
-/// -40 C, 85 C and 125 C, as `degC` literals (ADR 0102). The tests that state a figure in kelvin
+/// -40 C, 85 C and 125 C, as `degC` literals (ADR 0103). The tests that state a figure in kelvin
 /// (the project's `VEHICLE` below, the cells of a catalog) show that the two spellings are one.
 const COLD: &str = "-40degC";
 const WARM: &str = "85degC";
