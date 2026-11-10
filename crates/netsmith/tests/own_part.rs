@@ -61,7 +61,8 @@ fn sensor_row(footprint_starts: &str) -> String {
 
 fn no_kicad() -> (TempDir, Search) {
     let empty = TempDir::new("own-part-no-kicad");
-    let search = Search::under(empty.path());
+    // The search is switched off, as `NETSMITH_NO_KICAD=1` does: it finds nothing at all.
+    let search = Search::under(empty.path()).with_no_kicad();
     (empty, search)
 }
 

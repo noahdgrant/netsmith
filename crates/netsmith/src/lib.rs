@@ -1215,11 +1215,22 @@ fn export(
                     continue;
                 };
                 let footprint = libraries.footprints.load(&mapped.footprint).map_err(|e| {
+                    // A KiCad footprint that netsmith does not make and no install has says
+                    // the part, the id, the row and the ways out; any other error says itself.
+                    let why = libraries
+                        .footprint_needs_kicad(
+                            &s.refdes,
+                            &s.kind,
+                            s.package.as_deref(),
+                            &mapped,
+                            &e,
+                        )
+                        .unwrap_or_else(|| format!("{}: {e}", s.refdes));
                     vec![
                         Problem::general(
                             Stage::Design,
-                            format!("{label}: {}: {e}", s.refdes),
-                            format!("error: {label}: {}: {e}\n", s.refdes),
+                            format!("{label}: {why}"),
+                            format!("error: {label}: {why}\n"),
                         )
                         .on_board(&label),
                     ]
@@ -1227,10 +1238,27 @@ fn export(
                 if footprint.mount == netsmith_pcb::Mount::ThroughHole && !s.assembly_stated {
                     s.assembly = Assembly::Hand;
                 }
-                // A symbol that cannot be read is named by the schematic below.
-                if let (Some(pinout), Ok(symbol)) =
-                    (Pinout::of(part), libraries.symbols.symbol_of(part, &mapped))
+                let symbol = libraries.symbols.symbol_of(part, &mapped);
+                if let Err(e) = &symbol
+                    && let Some(why) = libraries.symbol_needs_kicad(
+                        &s.refdes,
+                        &s.kind,
+                        s.package.as_deref(),
+                        &mapped,
+                        e,
+                    )
                 {
+                    return Err(vec![
+                        Problem::general(
+                            Stage::Design,
+                            format!("{label}: {why}"),
+                            format!("error: {label}: {why}\n"),
+                        )
+                        .on_board(&label),
+                    ]);
+                }
+                // Any other symbol that cannot be read is named by the schematic below.
+                if let (Some(pinout), Ok(symbol)) = (Pinout::of(part), symbol) {
                     let subject = Subject {
                         refdes: &s.refdes,
                         kind: &s.kind,

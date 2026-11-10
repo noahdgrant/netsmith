@@ -1,8 +1,9 @@
 //! Where KiCad's own symbol and footprint libraries are on this machine.
 //!
-//! `build` and `fab` read the stock libraries from a KiCad install (ADR 0021) until the
-//! libraries are self-contained (ADR 0041). [`locate`] finds the `symbols` and `footprints`
-//! folders, in this order:
+//! netsmith answers the symbols and footprints of its own mapping itself (ADR 0097), so `build`,
+//! `fab` and the editor need no KiCad install. An installed library is read for one thing: a
+//! KiCad id of a project's `kicad.toml` that netsmith does not make (ADR 0021). [`locate`] finds
+//! the `symbols` and `footprints` folders, in this order:
 //!
 //! 1. the environment variable, [`SYMBOLS_VARIABLE`] or [`FOOTPRINTS_VARIABLE`], used as it
 //!    is even if the folder is missing (the error then names it);
@@ -19,8 +20,10 @@
 //!
 //! # The places in full, and what is verified (ADR 0021, accepted by the owner on 2026-11-04)
 //!
-//! ADR 0097 (proposed) would make this lookup an optional source and not a default; until it is
-//! accepted, `build` and `fab` still stop when a stock library they need is not found.
+//! ADR 0097 (proposed) makes this lookup an optional source and not a default: `build` and `fab`
+//! stop only when a part names a KiCad id that netsmith cannot answer and no installed library has
+//! it. [`NO_KICAD_VARIABLE`] switches the whole search off, for the proof that a run needs none
+//! (`scripts/check-no-kicad.sh`).
 //!
 //! For each of `symbols` and `footprints` the first of these counts. (1) The variable, used as
 //! given even when the folder is missing. (2) The folder beside `kicad-cli` (`$KICAD_CLI`, else
@@ -61,10 +64,9 @@
 //!
 //! **What KiCad is still needed for** (the user's direction, 2026-11-02: netsmith must not need
 //! KiCad installed, and KiCad stays a supported export and a cross-check, never a requirement):
-//! the symbol and footprint libraries, read from the installed KiCad; `kicad-cli` for the optional
-//! cross-checks and `netsmith compare` on a `.kicad_sch`; and ERC (issues #5 and #61). Until
-//! those are done the tests that need KiCad skip themselves when it is absent, and `build`,
-//! `check`, `solve` and `view` for a part with a bundled symbol must keep working without it.
+//! the symbol and footprint libraries only for a KiCad id of a project's `kicad.toml` that netsmith
+//! does not make; `kicad-cli` for the optional cross-checks (ERC, DRC) and `netsmith compare` on a
+//! `.kicad_sch`. The tests that need KiCad skip themselves when it is absent.
 
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -78,6 +80,11 @@ pub const FOOTPRINTS_VARIABLE: &str = "NETSMITH_KICAD_FOOTPRINTS";
 
 /// The environment variable that names the `kicad-cli` program.
 pub const CLI_VARIABLE: &str = "KICAD_CLI";
+
+/// The environment variable that switches the whole search off (`1`, or any value but empty
+/// and `0`): netsmith then finds no KiCad, whatever is installed and whatever the other variables
+/// say. For tests and CI that prove a run needs no KiCad (`scripts/check-no-kicad.sh`).
+pub const NO_KICAD_VARIABLE: &str = "NETSMITH_NO_KICAD";
 
 /// The KiCad versions looked for in the install places that carry one, the preferred first.
 pub const VERSIONS: [&str; 2] = ["9.0", "8.0"];
@@ -182,6 +189,15 @@ impl NotFound {
 
 impl std::fmt::Display for NotFound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // A switched-off search looked nowhere, and says so instead of listing places.
+        if self.tried.is_empty() {
+            return write!(
+                f,
+                "no KiCad {} libraries: the search for an install is switched off by \
+                 {NO_KICAD_VARIABLE}",
+                self.kind.noun()
+            );
+        }
         write!(
             f,
             "no KiCad {} libraries found (a folder with {}); looked in:",
@@ -217,6 +233,8 @@ pub struct Search {
     program_files: Option<PathBuf>,
     /// Whether this process runs under WSL, where the Windows side's KiCad is a program too.
     wsl: bool,
+    /// Whether the search is switched off ([`NO_KICAD_VARIABLE`]): it finds nothing.
+    off: bool,
 }
 
 /// Where Windows KiCad's `<version>/bin/kicad-cli.exe` are, seen from WSL: the program
@@ -232,6 +250,11 @@ fn running_under_wsl() -> bool {
     std::env::var_os("WSL_DISTRO_NAME").is_some()
         || std::fs::read_to_string("/proc/version")
             .is_ok_and(|v| v.to_ascii_lowercase().contains("microsoft"))
+}
+
+/// Whether a value of [`NO_KICAD_VARIABLE`] switches the search off.
+fn switches_off(value: &OsString) -> bool {
+    !value.is_empty() && value != "0"
 }
 
 /// A KiCad version folder's name (`9.0`, `10.0`) as numbers to sort by, or `None` for a
@@ -265,6 +288,7 @@ impl Search {
                 .map(PathBuf::from)
                 .or_else(|| cfg!(windows).then(|| PathBuf::from(r"C:\Program Files"))),
             wsl: running_under_wsl(),
+            off: var(NO_KICAD_VARIABLE).is_some_and(|v| switches_off(&v)),
         }
     }
 
@@ -278,7 +302,15 @@ impl Search {
             home: None,
             program_files: None,
             wsl: false,
+            off: false,
         }
+    }
+
+    /// Switches the search off, as [`NO_KICAD_VARIABLE`] does: it finds no program and no
+    /// folder.
+    pub fn with_no_kicad(mut self) -> Self {
+        self.off = true;
+        self
     }
 
     /// Says that the process runs under WSL (a test does; the real machine is asked).
@@ -318,6 +350,9 @@ impl Search {
     /// `/mnt/c/Program Files/KiCad/<version>/bin`, then in `/mnt/c/Program Files (x86)/KiCad`
     /// (the highest version number first, `10.0` before `9.0`). `None` if it is not there.
     pub fn kicad_cli(&self) -> Option<PathBuf> {
+        if self.off {
+            return None;
+        }
         if let Some(path) = self.vars.get(CLI_VARIABLE) {
             return Some(PathBuf::from(path)).filter(|p| p.is_file());
         }
@@ -438,6 +473,9 @@ impl Search {
     /// The folder of the libraries of `kind`, or every place looked at.
     pub fn find(&self, kind: Kind) -> Result<Found, NotFound> {
         let mut tried = Vec::new();
+        if self.off {
+            return Err(NotFound { kind, tried });
+        }
 
         match self.vars.get(kind.variable()) {
             Some(dir) => {
@@ -880,5 +918,38 @@ mod tests {
             .find(Kind::Symbols)
             .unwrap();
         assert_eq!(found.source, Source::BesideCli(exe));
+    }
+
+    #[test]
+    fn a_search_switched_off_finds_no_program_and_no_folder_whatever_is_installed() {
+        let t = tree();
+        install(&t.path().join("usr/share/kicad"));
+        let exe = windows_kicad(t.path(), "mnt/c/Program Files/KiCad", "9.0");
+        let mine = t.path().join("opt/bin/kicad-cli");
+        program(&mine);
+        let on = Search::under(t.path())
+            .with_wsl(true)
+            .with_path(vec![t.path().join("opt/bin")])
+            .with_var(CLI_VARIABLE, &mine)
+            .with_var(SYMBOLS_VARIABLE, t.path().join("usr/share/kicad/symbols"));
+        assert!(on.kicad_cli().is_some() && on.find(Kind::Symbols).is_ok());
+        assert!(exe.is_file());
+        let off = on.with_no_kicad();
+        assert_eq!(off.kicad_cli(), None);
+        for kind in [Kind::Symbols, Kind::Footprints] {
+            let missing = off.find(kind).unwrap_err();
+            // It looked nowhere, and says so: no list of places, and the variable that did it.
+            assert!(missing.tried.is_empty(), "{missing}");
+            let text = missing.to_string();
+            assert!(text.contains(NO_KICAD_VARIABLE), "{text}");
+            assert!(!text.contains("looked in"), "{text}");
+        }
+    }
+
+    #[test]
+    fn only_a_value_that_means_yes_switches_the_search_off() {
+        let yes = |v: &str| switches_off(&OsString::from(v));
+        assert!(yes("1") && yes("true") && yes("yes"));
+        assert!(!yes("") && !yes("0"));
     }
 }

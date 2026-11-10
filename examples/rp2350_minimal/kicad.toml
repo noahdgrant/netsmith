@@ -25,3 +25,18 @@ kind = "TactileSwitch"
 package = "SMD-4P(4.2x3.2)"
 default = true
 footprint = "rp2350_minimal:SW_Wurth_434133025816"
+
+# The RP2350A is drawn from its pin table (no `symbol`: ADR 0097). Its footprint is the
+# generator's QFN-60, 7 x 7 mm, 0.4 mm pitch, exposed pad 3.4 x 3.4 mm: the datasheet's package
+# drawing (RP2350 datasheet Release 8, printed page 1324, Figure 147) has the same body, pitch
+# and exposed pad (D2 and E2 3.35 to 3.45 mm, nominal 3.40), and lead width 0.13 to 0.23 mm.
+# The lead pads differ a little: the generator's are 0.80 mm long and 0.20 mm wide, 7.7 mm over
+# the pads' outer edges; Raspberry Pi's board has them 0.70 x 0.23 mm at the same centres (3.45 mm
+# from the middle), and the datasheet's recommended footprint (page 1325, Figure 148) draws
+# 7.75 mm over the pads, 6.00 mm between their inner edges and 0.40 mm of pitch. Pitch, pad
+# count and exposed pad agree; the generator was not changed.
+[[part]]
+kind = "Rp2350A"
+package = "QFN-60-EP(7x7)"
+default = true
+footprint = "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
