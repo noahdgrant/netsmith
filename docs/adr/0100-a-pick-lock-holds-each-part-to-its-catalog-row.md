@@ -20,4 +20,4 @@ Owner decision of 2026-11-09 (the recommended answers of `docs/research/solved-d
 
 **Cost.** A file beside every source, whose first write is a surprise to a project that has none. A lock that goes stale on every catalog edit that touches a locked row. An entry for a generic part holds the value the solver chose, not the orderable row, which `fab` still resolves against the stock of the day (ADR 0047).
 
-**Left open.** The file's name and the keys (the research document calls them placeholders). Whether a run of `build` or `fab` that finds new parts should rewrite the lock: it leaves the file alone and says so, and the refresh is the explicit command. `fab --order` and the editor reading and writing a lock, and locking the row `fab` resolves a generic to.
+**Left open.** The file's name and the keys (the research document calls them placeholders). Whether a run of `build` or `fab` that finds new parts should rewrite the lock: it leaves the file alone and says so, and the refresh is the explicit command. The editor reading and writing a lock, and locking the row `fab` resolves a generic to.

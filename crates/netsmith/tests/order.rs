@@ -8,7 +8,7 @@ use std::process::Command;
 
 use netsmith::Libraries;
 use netsmith::fab::FabOptions;
-use netsmith::order::{BOM_FILE, ORDERS_DIR, SUMMARY_FILE, fab_order};
+use netsmith::order::{BOM_FILE, ORDERS_DIR, OrderLocks, SUMMARY_FILE, fab_order};
 use netsmith::project::Target;
 use netsmith_fab::{KicadCli, KicadCliExe};
 
@@ -46,6 +46,15 @@ fn make(
     order: &str,
     kicad: Option<&dyn KicadCli>,
 ) -> Result<netsmith::order::Made, String> {
+    make_with(root, order, kicad, OrderLocks::Ignored)
+}
+
+fn make_with(
+    root: &Path,
+    order: &str,
+    kicad: Option<&dyn KicadCli>,
+    locks: OrderLocks,
+) -> Result<netsmith::order::Made, String> {
     let target = Target::resolve_from(root, None)?;
     let loader = target.loader()?;
     let catalogs = target.catalogs()?;
@@ -67,6 +76,7 @@ fn make(
         &libraries,
         kicad,
         &FabOptions::default(),
+        locks,
         &target.fab_out,
     )
 }

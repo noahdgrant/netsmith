@@ -13,7 +13,7 @@ use super::{
     progress::{Reporting, forward},
 };
 use crate::fab::FabOptions;
-use crate::order::{BOM_FILE, SUMMARY_FILE, fab_order};
+use crate::order::{BOM_FILE, OrderLocks, SUMMARY_FILE, fab_order};
 
 /// The files of an order the page offers, by the name it asks for them with.
 const DOWNLOADS: [(&str, &str); 2] = [("summary", SUMMARY_FILE), ("bom", BOM_FILE)];
@@ -84,6 +84,8 @@ impl Workspace {
                 allow_drc_violations,
                 ..FabOptions::default()
             },
+            // The editor does not read or write the pick lock yet.
+            OrderLocks::Ignored,
             &target.fab_out,
         );
         Ok(match made {
