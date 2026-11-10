@@ -340,3 +340,73 @@ fn a_gen_footprint_with_fewer_pads_than_the_part_has_pins_names_the_row_and_its_
         "{e}"
     );
 }
+
+/// A symbol `Sensor` of three passive pins, VDD, OUT and GND, numbered 1 to 3, in a library file.
+const OWN_SYMBOLS: &str = r#"(kicad_symbol_lib (version 20241209) (generator "test") (generator_version "9.0")
+  (symbol "Sensor" (exclude_from_sim no) (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "Sensor" (at 0 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "~" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Description" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+    (symbol "Sensor_0_1"
+      (rectangle (start -3.81 3.81) (end 3.81 -3.81)
+        (stroke (width 0.254) (type default)) (fill (type background))))
+    (symbol "Sensor_1_1"
+      (pin passive line (at -6.35 2.54 0) (length 2.54)
+        (name "VDD" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+      (pin passive line (at 6.35 0 180) (length 2.54)
+        (name "OUT" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+      (pin passive line (at -6.35 -2.54 0) (length 2.54)
+        (name "GND" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27))))))))
+"#;
+
+/// Run `netsmith <command>` in the project folder `dir` as the working directory, on a machine
+/// with no KiCad (`NETSMITH_NO_KICAD=1`), and return its stderr or the failure.
+fn run_in(dir: &Path, command: &str) -> Result<String, String> {
+    let run = std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .arg(command)
+        .current_dir(dir)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("NETSMITH_KICAD_SYMBOLS")
+        .env_remove("NETSMITH_KICAD_FOOTPRINTS")
+        .env("KICAD_CLI", "/nonexistent/kicad-cli")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&run.stderr).into_owned();
+    if run.status.success() {
+        Ok(err)
+    } else {
+        Err(err)
+    }
+}
+
+#[test]
+fn a_projects_own_libraries_beside_its_kicad_toml_are_not_installed_ones_with_no_kicad() {
+    let dir = TempDir::new("own-part-beside");
+    // The libraries are beside `kicad.toml`, and `netsmith` runs in that folder: with no KiCad
+    // there is no installed library, so `./own.pretty` is the project's and nothing else's.
+    let kicad_toml = block("toml", "[[library]]").replace(
+        "footprints = \"libs/own.pretty\"",
+        "symbols = \"own.kicad_sym\"\nfootprints = \"own.pretty\"",
+    );
+    assert!(kicad_toml.contains("own.pretty"), "{kicad_toml}");
+    let kicad_toml = kicad_toml.replace(
+        "footprint = \"own:Sensor\"",
+        "symbol = \"own:Sensor\"\nfootprint = \"own:Sensor\"",
+    );
+    project(&dir, &kicad_toml);
+    fs::create_dir_all(dir.join("own.pretty")).unwrap();
+    fs::write(
+        dir.join("own.pretty/Sensor.kicad_mod"),
+        block("text", "(footprint \"Sensor\""),
+    )
+    .unwrap();
+    fs::write(dir.join("own.kicad_sym"), OWN_SYMBOLS).unwrap();
+
+    for command in ["build", "fab"] {
+        let err = run_in(&dir, command).unwrap_or_else(|e| panic!("`netsmith {command}`: {e}"));
+        assert!(!err.contains("both installed"), "{err}");
+    }
+    assert!(dir.join("out").is_dir() || dir.join("fab").is_dir());
+}
