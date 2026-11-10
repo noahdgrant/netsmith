@@ -44,6 +44,7 @@ mod open_circle;
 mod order;
 mod overhang;
 mod panel;
+mod passives;
 mod pinout;
 mod power_issues;
 mod precheck;

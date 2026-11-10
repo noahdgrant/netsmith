@@ -21,7 +21,7 @@ const MODULES: [&str; 7] = [
 ];
 
 /// The pinout of `kind` in `package`, from the pin tables of the source.
-fn pinout_of(kind: &str, package: &str) -> Pinout {
+pub(crate) fn pinout_of(kind: &str, package: &str) -> Pinout {
     for module in MODULES {
         // In a module: a board declares its mounting holes and fiducials in its physical file.
         let src = format!(
@@ -72,7 +72,7 @@ fn pinout_of(kind: &str, package: &str) -> Pinout {
 
 /// The part a row stands for, with the pin table of its kind in its package: what the symbol
 /// of a row with no `symbol` is drawn from.
-fn part_of(kind: &str, package: &str) -> netsmith_core::Part {
+pub(crate) fn part_of(kind: &str, package: &str) -> netsmith_core::Part {
     netsmith_core::Part {
         refdes: "U1".into(),
         kind: kind.into(),

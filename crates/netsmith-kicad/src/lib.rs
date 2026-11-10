@@ -3,6 +3,7 @@
 pub mod generate;
 pub mod install;
 pub mod mapping;
+pub mod passives;
 pub mod pinout;
 pub mod schematic;
 pub mod sexp;

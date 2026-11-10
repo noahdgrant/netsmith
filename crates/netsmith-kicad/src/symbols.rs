@@ -324,24 +324,33 @@ pub struct SymbolLib {
     no_install: Option<NotFound>,
     /// A project's libraries: name and `.kicad_sym` file.
     project: Vec<(String, PathBuf)>,
+    /// Whether the symbols netsmith draws ([`crate::passives`]) answer before any library.
+    generators: bool,
     libraries: Mutex<HashMap<String, Arc<Library>>>,
     symbols: Mutex<HashMap<String, Arc<Symbol>>>,
 }
 
 impl SymbolLib {
-    /// The libraries in `root`, a folder of `<Library>.kicad_sym` files.
+    /// The libraries in `root`, a folder of `<Library>.kicad_sym` files, and nothing else: the
+    /// symbols netsmith draws itself ([`crate::passives`]) are not consulted (see
+    /// [`SymbolLib::with_generators`]), which is what a test of the file reader, or of the
+    /// generators against a copy of KiCad's libraries, wants.
     pub fn at(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
             no_install: None,
             project: Vec::new(),
+            generators: false,
             libraries: Mutex::default(),
             symbols: Mutex::default(),
         }
     }
 
-    /// The installed KiCad libraries, found as [`install`] describes: `NETSMITH_KICAD_SYMBOLS`,
-    /// then beside `kicad-cli`, then the usual install places.
+    /// The symbols netsmith draws, then the installed KiCad libraries, found as [`install`]
+    /// describes: `NETSMITH_KICAD_SYMBOLS`, then beside `kicad-cli`, then the usual install
+    /// places. An id the generators make (`Device:R`; ADR 0097, step 2) is never read from a
+    /// file, so a build gives the same symbol on every machine whatever KiCad has installed;
+    /// every other id is read from a library.
     ///
     /// Finding none is not an error here: a design that uses only a project's own
     /// libraries needs no KiCad. [`SymbolLib::symbol`] fails, naming every place looked at,
@@ -361,6 +370,16 @@ impl SymbolLib {
                 lib
             }
         }
+        .with_generators()
+    }
+
+    /// Consult the generators of [`crate::passives`] before the libraries: the id of a
+    /// resistor, a capacitor, a diode, a FET and the other passive and discrete symbols of
+    /// the standard mapping is answered with the symbol netsmith draws, unless a project
+    /// library of the same name is listed (that library is read, as before).
+    pub fn with_generators(mut self) -> Self {
+        self.generators = true;
+        self
     }
 
     /// Add a project's library: `name` is what `Name:Symbol` ids use.
@@ -473,6 +492,17 @@ impl SymbolLib {
             Some((l, n)) if !l.is_empty() && !n.is_empty() && !n.contains(':') => (l, n),
             _ => return Err(SymbolError::BadName(lib_id.to_string())),
         };
+        if self.generators
+            && !self.project.iter().any(|(n, _)| n == library)
+            && let Some(symbol) = crate::passives::symbol(lib_id)
+        {
+            let symbol = Arc::new(symbol);
+            self.symbols
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(lib_id.to_string(), symbol.clone());
+            return Ok(symbol);
+        }
         let lib = self.library(library)?;
         if !lib.symbols.contains_key(name) {
             return Err(SymbolError::NoSymbol {
@@ -872,7 +902,7 @@ mod tests {
         let lib = lib.with_library("proj", &file);
         assert_eq!(lib.symbol("proj:Reg").unwrap().pin_numbers().len(), 3);
         // A stock library says what was looked for, every place, and the variables.
-        let text = lib.symbol("Device:R").unwrap_err().to_string();
+        let text = lib.symbol("Device:C_Polarized").unwrap_err().to_string();
         assert!(text.contains("symbol library `Device` not found"), "{text}");
         assert!(text.contains("no KiCad symbol libraries found"), "{text}");
         assert!(text.contains("usr/share/kicad/symbols"), "{text}");
@@ -890,7 +920,37 @@ mod tests {
         std::fs::write(symbols.join("Device.kicad_sym"), testlib::device()).unwrap();
         let lib = SymbolLib::installed_by(&install::Search::under(root.path()));
         assert_eq!(lib.root(), symbols);
-        assert!(lib.symbol("Device:R").is_ok());
+        // A symbol the generators do not make is read from the install.
+        assert!(lib.symbol("Device:LED").is_ok());
+    }
+
+    #[test]
+    fn a_generated_id_is_answered_with_no_install_and_before_an_installed_library() {
+        let empty = TempDir::new("no-kicad-generated");
+        let lib = SymbolLib::installed_by(&install::Search::under(empty.path()));
+        assert_eq!(lib.symbol("Device:R").unwrap().pin_numbers(), ["1", "2"]);
+        // Even where a library of the same id is installed, the generated one is answered, so
+        // two machines build the same board.
+        let root = TempDir::new("fake-linux-generated");
+        let symbols = root.path().join("usr/share/kicad/symbols");
+        std::fs::create_dir_all(&symbols).unwrap();
+        std::fs::write(symbols.join("Device.kicad_sym"), testlib::device()).unwrap();
+        let lib = SymbolLib::installed_by(&install::Search::under(root.path()));
+        let drawn = lib.symbol("Device:C").unwrap();
+        assert_eq!(drawn.lib_id(), "netsmith:C");
+        assert_eq!(drawn.pin("1").unwrap().length, 2.794);
+        // `at` is the folder alone.
+        let read = SymbolLib::at(&symbols).symbol("Device:C").unwrap();
+        assert_eq!(read.pin("1").unwrap().length, 1.27);
+        // A project's library named like a generated one is read, not shadowed.
+        let file = root.path().join("device.kicad_sym");
+        std::fs::write(&file, testlib::acme()).unwrap();
+        let lib = SymbolLib::at("/nonexistent/symbols")
+            .with_generators()
+            .with_library("Device", &file);
+        let text = lib.symbol("Device:R").unwrap_err().to_string();
+        assert!(text.contains("not found in the library `Device`"), "{text}");
+        assert!(lib.symbol("Device:Reg").is_ok());
     }
 
     #[test]

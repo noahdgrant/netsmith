@@ -68,18 +68,18 @@ impl Libraries {
         }
     }
 
-    /// The symbols drawn from the pin tables of `design`'s parts, for the rows of the mapping
-    /// that have no `symbol` (ADR 0097), one for each distinct id, in the order of the parts.
+    /// The symbols netsmith draws for `design`'s parts (ADR 0097): from the pin table, for a
+    /// row of the mapping that has no `symbol`, and, for an id it makes (`Device:R`), the
+    /// symbol of its own that answers it (`netsmith_kicad::passives`). One for each distinct
+    /// id, in the order of the parts.
     pub fn generated_symbols(&self, design: &Design) -> Vec<Arc<Symbol>> {
         let mut symbols: Vec<Arc<Symbol>> = Vec::new();
         for part in design.parts.iter().filter(|p| p.kind != "Label") {
             let Ok(mapped) = self.mapping.map(&part.kind, part.package.as_deref()) else {
                 continue;
             };
-            if mapped.lib_id.is_some() {
-                continue;
-            }
             if let Ok(symbol) = self.symbols.symbol_of(part, &mapped)
+                && stdlib::is_library_id(symbol.lib_id())
                 && !symbols.iter().any(|s| s.lib_id() == symbol.lib_id())
             {
                 symbols.push(symbol);
@@ -95,11 +95,12 @@ impl Libraries {
             self.mapping
                 .map(&part.kind, part.package.as_deref())
                 .is_ok_and(|m| {
-                    // A row with no symbol is drawn from the pin table, in the library `netsmith`.
-                    let own_symbol = m
-                        .lib_id
-                        .as_deref()
-                        .map_or(!part.pins.is_empty(), stdlib::is_library_id);
+                    // A symbol netsmith draws (from the pin table, or for an id it makes) is
+                    // in the library `netsmith`.
+                    let own_symbol = self
+                        .symbols
+                        .symbol_of(part, &m)
+                        .is_ok_and(|s| stdlib::is_library_id(s.lib_id()));
                     own_symbol || stdlib::is_library_id(&m.footprint)
                 })
         })
