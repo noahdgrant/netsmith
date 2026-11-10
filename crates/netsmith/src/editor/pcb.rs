@@ -1,4 +1,35 @@
-//! The PCB view: place a board, route it when asked, and draw it.
+//! The PCB view: place a board, route it when asked, and draw it (ADR 0030, section e).
+//!
+//! The page edits the layout file and the server only checks and writes it. A part is
+//! selected by click, box, Shift or Ctrl and the parts list, and shows its pads, nets and
+//! ratsnest; it is moved by dragging on a grid (a setting of the page), turned (`R`),
+//! flipped (`F`), locked (`L`, drawn as a padlock) and handed back to the placer (`Delete`),
+//! and every edit can be undone and redone (`Ctrl+Z`, `Ctrl+Shift+Z`). Keepouts are drawn
+//! with a rectangle tool, moved, resized and deleted; the outline and the cutouts are the
+//! source's and are only drawn. The keys and the tooltips are listed in
+//! `.agents/skills/netsmith-dev-verify-editor/features/pcb.md`.
+//!
+//! **The edit protocol.** The page keeps the history and the server keeps none. An edit is a
+//! `PcbEdit` of `PcbChange`s, each saying what an entry of the layout file was and what it
+//! becomes (`POST /api/pcb/edit`, typed in `api.rs`), so the inverse of an edit is the same
+//! edit turned round. The server answers 409 when the file, or an entry, is not as the page
+//! last saw it, and 400 when the board does not take the result: it is placed with the new
+//! layout first, and the file is written only then, atomically. `GET /api/pcb/scene` has the
+//! drawing (`svg::render_view`, with `data-ref`, `data-path`, `data-pad`, `data-net`,
+//! `data-keepout`, `data-cutout`, and `data-from` and `data-to` on the ratsnest lines) and
+//! the data that finds things in it. An edit throws the routed copper away (there is no
+//! routes cache), and a flip changes what the derived placer is told, so parts nobody placed
+//! by hand may move.
+//!
+//! **Findings** (`GET /api/pcb/findings`, `POST /api/pcb/drc`): netsmith's own placement
+//! problems, the connections left on a routed board, netsmith's design rules check of the
+//! routed copper (ADR 0037, source `drc`) and KiCad's check as a second opinion (its JSON
+//! report, run on demand and kept until the layout changes), each with a point and a box. A
+//! click zooms to it and marks it, and the list follows the edits.
+//!
+//! **Not built** (ADR 0030, issue #59): waivers (the page has no way to write one),
+//! regeneration of one module, partial routing, hand-drawn tracks, a copy of the findings for
+//! an agent, and `layout show` overlays.
 
 use std::{
     collections::HashMap,

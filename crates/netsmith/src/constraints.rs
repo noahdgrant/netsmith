@@ -1,5 +1,25 @@
 //! The design's requirements on where parts go (ADR 0045) as the design rules check wants
 //! them: which footprints each is about, what it measures and the range it allows.
+//!
+//! **What was built and decided for the requirements** (ADR 0045 sections 8 and 9; the owner
+//! decided on 2026-11-02). A violated requirement is an error that blocks `fab`, with its own
+//! key `constraints = "error" | "warn"` under `[project]` in `netsmith.toml` and `fab
+//! --constraints warn|error` for one run (both exist, the flag wins over the key, `build`
+//! measures nothing). It is not a guideline: `guidelines` and `--strict` do not govern it,
+//! because the user wrote it (ADR 0030 decision 3). There is no waiver: `--allow-drc-violations`
+//! never lets one through, `package` refuses with `Error::Constraints`, which says that only
+//! `constraints = "warn"` or `--constraints warn` relaxes it, and to relax a requirement a
+//! person edits the range, which is in the diff. The notes of a package say how many of the
+//! requirements are satisfied and, with `warn`, how many are not and that they are warnings. An
+//! unchecked height is always a warning unless constraints are strict (`heights.rs`).
+//!
+//! `build` checks only what needs no placement (an empty intersection of bounds, a rotation
+//! that is no multiple of 90, a side that is not `"top"` or `"bottom"`, a bound that uses
+//! `outline.width` or `outline.height` when the outline does not state that size as one value,
+//! a window outside a fixed outline); satisfaction is measured where a placement exists. The
+//! measurement is one rule on the board file (`netsmith_fab::drc::constraints`), so `fab`, the
+//! editor's findings and the cross-check share it. The tolerance is half a micrometre, as for
+//! the rest of the check.
 
 use netsmith_check::{SourceId, Sources};
 use netsmith_core::{Design, PlaceField};

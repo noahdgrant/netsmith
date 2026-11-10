@@ -20,6 +20,58 @@
 //! This is the only place that judges it. `Placed::rooms_overlap` (so `Board::check_placement`
 //! and the placer's pre-check), the annealer's `Engine::room_pairs`, `could_fit`, the
 //! conflict explanation and the design rules check's courtyard rule all ask it.
+//!
+//! **Owner decisions of 2026-11-04** (ADR 0045 section 15, issue #99). The member is
+//! `.pin_protrusion`, per instance, stated in the board's physical file as `.height` is (a part
+//! kind may bound it, `.pin_protrusion <= 3mm`, or leave it unknown); unknown is not zero and
+//! keeps the old rule, so no board changes unless it states a protrusion. The covering part is
+//! fitted by hand, after the pins are cut. The stack reading: the pins protrude `t`, the
+//! covering part rests on them, so `t` plus its height must fit the limit a height zone puts on
+//! that face where the part's body is. A covering part with no height over pins that protrude
+//! is an error, since a missing fact would loosen a hard rule (it is not the warning of an
+//! unknown height under a limit). The options were compared in
+//! `docs/research/placement-language-options.md` section 1.
+//!
+//! **Failure modes.** F1 too tall: `C5 (`cell`) lies over the pins of J2 (`radio.row_a`), whose
+//! pins protrude 0.40 mm (file:line), and that is not allowed: C5 stands 3.40 mm tall on pins
+//! that protrude 0.40 mm: 3.80 mm from the bottom face, and the keepout `back_room` allows 3.60
+//! mm there (0.20 mm too much); cut the pins to protrude 0.20 mm or less, or use a lower part`.
+//! F2 no height and F5 assembled by the board house are findings of the same kind (`OverPins`).
+//! F3, a part over pads with no stated protrusion, is the overlap of before with one more
+//! sentence that names the member to state, and says that cutting the pins is a hand step to
+//! state only if it is done; the hint is shown for any plated through-hole part whose pins come
+//! out under another part with no stated protrusion. F4, that the pins are not cut in reality, is
+//! not visible to software: `fab` prints a warning for every stated protrusion, and
+//! `fab-notes.txt` and `order.txt` carry a `trim:` line beside `hand-solder:` (`J1 (row): after
+//! soldering, cut the pins to protrude 0.20 mm from the bottom face, before U1 (cell) is fitted
+//! (widget.physical.nsm:41); measure one protruding pin`), for every part that states a
+//! protrusion, naming the parts that lie over it or saying that nothing does; the skill
+//! `netsmith-prepare-fab-order` lists it as a step to verify. F6, no height zone over the
+//! covering part, grants the excuse and `fab` warns that no limit was compared. F7, a
+//! protrusion above what the part kind allows, is the ordinary refused claim of the solver,
+//! which gives both numbers and points at the line of the bound.
+//!
+//! **Provisional readings** (the simplest reading of the decisions, for the owner to confirm or
+//! change, word for word from ADR 0045 section 15):
+//! - "A protrusion is one value (`&=`). A bounded range (a kind that says at most 3 mm, a board
+//!   that says nothing) is unknown."
+//! - "A covering part with holes of its own is judged by the old rule."
+//! - "The check measures the covering part's body against the zones; the placer measures the
+//!   body grown by the placer's margin (section 11), so a clear result for the placer passes
+//!   the check."
+//! - "`.assembly` `hand` or `none` counts as fitted by hand."
+//! - "The `trim:` line is written for every part that states a protrusion, naming the parts that
+//!   lie over it, or saying that nothing does. `order.txt` shows it among each board's notes
+//!   under "before you order", not in the board's summary line."
+//! - "The hint of F3 is shown for any plated through-hole part whose pins come out under another
+//!   part with no stated protrusion."
+//! - "The cross-check against KiCad's own courtyard check was not run: `crosscheck` uses default
+//!   extras, so KiCad and netsmith both report the overlap and agree."
+//! - "The PCB view's drawing of the protruding pins and the covering part is not built; the
+//!   editor lists the findings."
+//!
+//! ADR 0048 (decision 12) adds that `.pin_protrusion`, like `.height`, may also be narrowed in
+//! the board's circuit source, a second spelling (ADR 0001) until the owner says which stays.
 
 use crate::board::{Placed, Side};
 use crate::geometry::Rect;

@@ -13,6 +13,19 @@
 //! An outline or cutout that is not a rounded rectangle needs a polygon outline, which the
 //! board model does not have (ADR 0045 step C8, issue #57): it is refused with its
 //! size and edge count, and nothing is printed.
+//!
+//! **The frame.** The board's origin is the outline's top left corner, y down; the output prints
+//! the drawing point that is the origin and the formula, so a hole's coordinates in the case's
+//! frame and in the board's differ by a number the person can see. An outline is recognised as
+//! a rounded rectangle by measuring and not by counting edges: every edge lies on the boundary
+//! of the fitted rectangle to 2 micrometres and the edges add up to its perimeter. A circle on
+//! the outline layer becomes a round `Cutout`; on the holes layer it is a mounting hole.
+//! Entries are named `cutout1...` and `hole1...` in order of position (top to bottom, then left
+//! to right). Two things seen while testing and not caused by the import: holes close to the top
+//! and bottom edges put their reference designators near the edge, which KiCad's
+//! `silk_edge_clearance` warns about and netsmith's check does not; and the placer, given holes
+//! locked 6 mm in from the edges of a small board, left two headers overlapping them (it reports
+//! that, and it is the placer's matter, ADR 0033).
 
 use std::fmt::Write as _;
 use std::path::Path;
