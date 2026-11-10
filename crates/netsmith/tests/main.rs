@@ -46,6 +46,7 @@ mod open_circle;
 mod order;
 mod order_lock;
 mod overhang;
+mod own_part;
 mod panel;
 mod passives;
 mod pick_lock;

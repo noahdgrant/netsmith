@@ -105,6 +105,18 @@ pub fn validate_pinout(
         }
     }
     let footprint_name = &mapped.footprint;
+    // A generated footprint (`gen:`, ADR 0104) is written in a row of a `kicad.toml`: say which,
+    // and how many pads it makes, so that the fix (the part's pins or the parameters) is plain.
+    let from = netsmith_kicad::footprint_spec::FootprintSpec::from_id(&mapped.footprint)
+        .map(|spec| {
+            format!(
+                "; the footprint is `{}` of {}, and it makes {} pads",
+                spec.spelling(),
+                mapped.origin,
+                pads.len()
+            )
+        })
+        .unwrap_or_default();
     let lib_id = symbol.lib_id();
 
     let mut seen: Vec<&str> = Vec::new();
@@ -116,7 +128,7 @@ pub fn validate_pinout(
         let pin = pinout.pin_on(pad).expect("the pad is in the pinout");
         if !pads.contains(&pad) {
             say(format!(
-                "the pinout has pad {pad} ({}) but the footprint `{footprint_name}` has pads {} only",
+                "the pinout has pad {pad} ({}) but the footprint `{footprint_name}` has pads {} only{from}",
                 describe(pin),
                 list(&pads)
             ));
@@ -165,7 +177,7 @@ pub fn validate_pinout(
     for pad in &pads {
         if pinout.pin_on(pad).is_none() {
             say(format!(
-                "the footprint `{footprint_name}` has pad {pad}, which no pin of the part has; give it to a pin in the pinout"
+                "the footprint `{footprint_name}` has pad {pad}, which no pin of the part has; give it to a pin in the pinout{from}"
             ));
         }
     }
@@ -276,6 +288,7 @@ mod tests {
         Mapped {
             lib_id: Some("proj:Ldo".into()),
             footprint: "proj:Dfn".into(),
+            origin: "kicad.toml line 3".into(),
             pin_names: BTreeMap::from([("SENSE".to_string(), "SNS".to_string())]),
         }
     }

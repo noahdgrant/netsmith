@@ -3421,7 +3421,7 @@ error: `q` is a `NoPad` and its pins (`b`) have no pads, so it cannot be placed 
    |     ^^^^^^^^^
 ```
 
-The table is also checked against the KiCad symbol and footprint the part is exported with. `build` and `fab` stop when a pad of the table is not a pad of the footprint or a pin of the symbol, when a footprint pad or symbol pin belongs to no pin of the table, when the symbol names the pin otherwise than the table's datasheet name (after the `pin_names` of `kicad.toml`), or when the symbol's electrical type does not suit the pin's kind. Each message names the part and both sides, for example `pad 3 is the input pin `en` (`EN`) in the part, but pin 3 of the symbol `tiny:Chip` is named `ENABLE``. This is a fact about your libraries and not about the circuit, so `check` does not report it.
+The table is also checked against the KiCad symbol and footprint the part is exported with. `build` and `fab` stop when a pad of the table is not a pad of the footprint or a pin of the symbol, when a footprint pad or symbol pin belongs to no pin of the table, when the symbol names the pin otherwise than the table's datasheet name (after the `pin_names` of `kicad.toml`), or when the symbol's electrical type does not suit the pin's kind. Each message names the part and both sides, for example `pad 3 is the input pin `en` (`EN`) in the part, but pin 3 of the symbol `tiny:Chip` is named `ENABLE``. This is a fact about your libraries and not about the circuit, so `check` does not report it. A footprint that `kicad.toml` asks for with `gen:` (_A part of your own, with no KiCad installed_) is checked the same way, and the message adds the row, its line and the pad count.
 
 ### Mistakes in a table
 
@@ -7749,6 +7749,109 @@ unknown field `topl`, expected one of `name`, `top_level`, `out`, `fab`, `kicad`
 $ netsmith fab --order devkit        # "Unitt" is not a board of the project
 netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board, panel or system; the boards and panels are: DevKit/carrier, DevKit/power_card, Unit
 ```
+
+### A part of your own, with no KiCad installed
+
+A part you define needs a footprint, and `kicad.toml` says which (`Library:Name` of a KiCad library, or one of your own). netsmith needs no KiCad install to build and fab a board (ADR 0097), so a part of your own can have a footprint with none either, in two ways. The part and the board are the same in both:
+
+```nsm-fragment
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+part Sensor {
+    pins {
+        .vdd passive "VDD" "1"
+        .out passive "OUT" "2"
+        .gnd passive "GND" "3"
+    }
+}
+
+board Probe {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .s: Sensor {
+        .assembly &= AssemblyMode::Hand
+    }
+    .j: Header1x2
+    .s.vdd ~ .j.p1
+    .s.gnd ~ .j.p2
+}
+```
+
+The part names no symbol in either row below, so it is drawn from its pin table, as an IC of the standard library is.
+
+**Your own footprint file.** Draw the footprint in a `.kicad_mod` file, keep it in a `.pretty` folder of the project and list the folder as a `[[library]]`; the row names the footprint as `Library:Name`. This needs the file and nothing else:
+
+```text
+(footprint "Sensor" (layer "F.Cu")
+  (attr smd)
+  (pad "1" smd rect (at -1.5 -0.95) (size 1.2 0.7) (layers "F.Cu" "F.Mask" "F.Paste"))
+  (pad "2" smd rect (at -1.5 0.95) (size 1.2 0.7) (layers "F.Cu" "F.Mask" "F.Paste"))
+  (pad "3" smd rect (at 1.5 0) (size 1.2 0.7) (layers "F.Cu" "F.Mask" "F.Paste"))
+  (fp_rect (start -2.5 -1.6) (end 2.5 1.6) (stroke (width 0.05) (type solid)) (fill none) (layer "F.CrtYd"))
+)
+```
+
+```toml
+[[library]]
+name = "own"
+footprints = "libs/own.pretty"
+
+[[part]]
+kind = "Sensor"
+package = "SOT-23"
+default = true
+footprint = "own:Sensor"
+```
+
+The file is `libs/own.pretty/Sensor.kicad_mod`. `build` and `fab` write the library name into the `fp-lib-table` beside the board, so KiCad finds the footprint.
+
+**A footprint netsmith generates.** When one of netsmith's generators makes the package, the row asks for it by the generator's name and parameters, in place of `Library:Name` (ADR 0104). There is no file and no library:
+
+```toml
+[[part]]
+kind = "Sensor"
+package = "SOT-23"
+default = true
+footprint = "gen:SOT23(pins=3)"
+```
+
+The generators are `QFN`, `DFN`, `QFP`, `SO` (SOIC, SSOP, TSSOP and MSOP), `SOT23`, `PinHeader`, `PinSocket` and `BGA`. A parameter is a column of the generator's table of packages, so the pads of `gen:` are those of the table row with the same numbers: `gen:SOT23(pins=5)` has the pads of `Package_TO_SOT_SMD:SOT-23-5`. A length carries its unit (`pitch=0.5mm`), a size is one length or the least and the greatest (`lead_width=0.2-0.3mm`), a pair is `7x7mm` (across, then along) and a count pair `3x3`. The datasheet's dimensions have no default, so a QFN is:
+
+```toml
+[[part]]
+kind = "Driver"
+package = "QFN-48"
+default = true
+footprint = "gen:QFN(pins=48, pitch=0.5mm, body=7x7mm, ep=5.2x5.2mm, lead_width=0.2-0.3mm, lead_length=0.35-0.45mm)"
+```
+
+| Generator | Parameters (all required unless it says) |
+|---|---|
+| `QFN` | `pins` (a multiple of 4), `pitch`, `body` (`7x7mm`, or a size each: `6.9-7.1x6.9-7.1mm`), `ep` (the exposed pad), `lead_width`, `lead_length`, `paste` (optional: the paste openings over the exposed pad, `4x4`; by default no opening is wider than 1.5 mm), `heel` (optional: the heel fillet taken off, `0.05mm`) |
+| `DFN` | the same, with `pins` even: leads on two edges |
+| `QFP` | `pins` (a multiple of 4), `body` (one length: the body is square), `pitch`, `lead_width` (optional at 0.4, 0.5, 0.65 and 0.8 mm pitch, where MS-026 gives it), `ep` and `paste` (optional) |
+| `SO` | `pins` (even), `pitch`, `body` (across the columns, then along: `3.9x4.9mm`), `span` (tip to tip of the leads of the two columns), `lead_width`, `lead_length` |
+| `SOT23` | `pins` (3, 5 or 6); `span`, `lead_length`, `lead_width` and `body` are optional, and are the MO-178 outline's when left out |
+| `PinHeader`, `PinSocket` | `rows` (1 or 2), `pins` (in a row, 1 to 40), `pitch` (`2.54mm` or `2mm`) |
+| `BGA` | `layout` (balls across and down: `11x11`, a full grid), `pitch`, `body`, `pad` (the diameter of a ball's pad) |
+
+The footprint is named from the generator and the parameters in alphabetical order, `gen:SOT23_pins3`, so one set of numbers is one footprint however the row spells it. A generator refuses what is not a land pattern. The message names the part, its package, the file and the line:
+
+```toml
+[[part]]
+kind = "Sensor"
+package = "SOT-23"
+default = true
+footprint = "gen:QFN(pins=16, pitch=0.5mm)"
+```
+
+```text
+kicad.toml:5: part `Sensor` in package `SOT-23`: footprint `gen:QFN(pins=16, pitch=0.5mm)`: `body` is missing: the body across and along (`gen:QFN(..., body=...)`)
+```
+
+A part whose pin table has more or fewer pads than the footprint is refused when the board is built, by the check of the pin table against the footprint (see _Pads_): the message names the row of `kicad.toml` and its line, and how many pads the footprint makes. Use a `.kicad_mod` file for a package no generator makes (a connector, a crystal, a package of one maker's drawing); `kicad.toml` may mix both ways, and a part may still map to a footprint of KiCad's libraries, which needs KiCad installed as before unless netsmith makes it too.
 
 ## Commands
 

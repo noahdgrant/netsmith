@@ -46,7 +46,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use toml::Spanned;
 
+use crate::footprint_spec::{self, FootprintSpec};
 use crate::sexp::Sexp;
 
 /// The symbol that tells the electrical rules check a net is supplied from outside the
@@ -100,8 +102,11 @@ pub struct Mapped {
     /// `Device:R`; `None` for a row with no `symbol`, whose part is drawn from its pin table
     /// ([`crate::generate`], ADR 0097).
     pub lib_id: Option<String>,
-    /// `Resistor_SMD:R_0402_1005Metric`
+    /// `Resistor_SMD:R_0402_1005Metric`; for a row that asks for a generated footprint, its id
+    /// (`gen:QFN_body7x7mm_...`, [`crate::footprint_spec`]).
     pub footprint: String,
+    /// The file and line of the row's `footprint`, for messages: `kicad.toml line 12`.
+    pub origin: String,
     /// Where KiCad's symbol names a pin differently from the datasheet: the datasheet's
     /// name and the symbol's.
     pub pin_names: BTreeMap<String, String>,
@@ -127,10 +132,14 @@ pub struct Row {
     /// The KiCad symbol that draws the part; `None` when the row has none and the part is
     /// drawn from its pin table (ADR 0097).
     pub symbol: Option<String>,
+    /// A `Library:Name` id, or, for a row that wrote `gen:QFN(...)`, the id of that
+    /// generated footprint ([`FootprintSpec::id`]).
     pub footprint: String,
     pub pin_names: BTreeMap<String, String>,
     /// The file the row is from, for messages.
     pub source: String,
+    /// The line of the row's `footprint` in `source`, 1-based.
+    pub line: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -156,7 +165,7 @@ struct RawPart {
     #[serde(default)]
     default: bool,
     symbol: Option<String>,
-    footprint: String,
+    footprint: Spanned<String>,
     #[serde(default)]
     pin_names: BTreeMap<String, String>,
 }
@@ -212,18 +221,32 @@ impl Mapping {
             if p.kind.is_empty() || p.package.is_empty() {
                 return Err(invalid(format!("{at}: kind and package must not be empty")));
             }
-            for (field, value) in [
-                ("symbol", p.symbol.as_ref()),
-                ("footprint", Some(&p.footprint)),
-            ] {
-                if let Some(value) = value
-                    && !is_id(value)
-                {
-                    return Err(invalid(format!(
-                        "{at}: {field} {value:?} is not `Library:Name`"
-                    )));
-                }
+            let line = text[..p.footprint.span().start].matches('\n').count() + 1;
+            let footprint = p.footprint.into_inner();
+            if let Some(symbol) = &p.symbol
+                && !is_id(symbol)
+            {
+                return Err(invalid(format!(
+                    "{at}: symbol {symbol:?} is not `Library:Name`"
+                )));
             }
+            // A footprint is an id, or a generator and its parameters (`gen:QFN(...)`, ADR 0104),
+            // which the rest of netsmith knows by the id it spells.
+            let footprint = if footprint_spec::is_spelling(&footprint) {
+                FootprintSpec::parse(&footprint)
+                    .map_err(|why| {
+                        MapError::Invalid(format!(
+                            "{source}:{line}: {at}: footprint {footprint:?}: {why}"
+                        ))
+                    })?
+                    .id()
+            } else if is_id(&footprint) {
+                footprint
+            } else {
+                return Err(invalid(format!(
+                    "{at}: footprint {footprint:?} is not `Library:Name` or `gen:Generator(key=value, ...)`"
+                )));
+            };
             if p.symbol.is_none() && !p.pin_names.is_empty() {
                 return Err(invalid(format!(
                     "{at}: `pin_names` rename pins of a library symbol, and the row has no `symbol`: \
@@ -250,9 +273,10 @@ impl Mapping {
                 package: p.package,
                 default: p.default,
                 symbol: p.symbol,
-                footprint: p.footprint,
+                footprint,
                 pin_names: p.pin_names,
                 source: source.to_string(),
+                line,
             });
         }
         for l in file.library {
@@ -260,6 +284,12 @@ impl Mapping {
             if l.name.is_empty() || l.name.contains(':') {
                 return Err(invalid(format!(
                     "{at}: a library name must not be empty or contain `:`"
+                )));
+            }
+            if l.name == footprint_spec::LIBRARY {
+                return Err(invalid(format!(
+                    "{at}: `{}` is the library of generated footprints (`gen:QFN(...)`, ADR 0104); give the library another name",
+                    l.name
                 )));
             }
             if l.name == crate::stdlib::NAME {
@@ -382,6 +412,7 @@ impl Mapping {
         Ok(Mapped {
             lib_id: row.symbol.clone(),
             footprint: row.footprint.clone(),
+            origin: format!("{} line {}", row.source, row.line),
             pin_names: row.pin_names.clone(),
         })
     }
@@ -901,5 +932,96 @@ SENSE = "SNS"
             Mapping::parse(&out, "kicad.toml", Path::new("/p")).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(m.libraries().len(), 2);
         assert!(library_stanzas(Some("(lib"), None).is_err());
+    }
+
+    const GEN_ROW: &str = "# A part of my own.\n\n[[part]]\nkind = \"Chip\"\npackage = \"QFN-16\"\ndefault = true\nfootprint = \"gen:QFN(pins=16, pitch=0.5mm, body=4x4mm)\"\n";
+
+    #[test]
+    fn a_row_may_name_a_generator_and_its_parameters_and_the_mapping_holds_its_id() {
+        let m =
+            Mapping::parse(GEN_ROW, "kicad.toml", Path::new(".")).unwrap_or_else(|e| panic!("{e}"));
+        let mapped = m.map("Chip", None).unwrap();
+        assert_eq!(mapped.footprint, "gen:QFN_body4x4mm_pins16_pitch0.5mm");
+        assert_eq!(mapped.lib_id, None);
+        // The row says where it is, for the messages that name it.
+        assert_eq!(mapped.origin, "kicad.toml line 7");
+        assert_eq!(m.rows()[0].line, 7);
+        // The id is the spec's, however the row spelled it.
+        let again = Mapping::parse(
+            &GEN_ROW.replace(
+                "pins=16, pitch=0.5mm, body=4x4mm",
+                "body=4.0x4mm,pitch=0.50mm,pins=16",
+            ),
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap();
+        assert_eq!(again.map("Chip", None).unwrap().footprint, mapped.footprint);
+    }
+
+    #[test]
+    fn a_gen_footprint_that_cannot_be_read_names_the_row_and_the_line() {
+        let e = Mapping::parse(
+            &GEN_ROW.replace("pitch=0.5mm", "pitch"),
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.starts_with(
+                "kicad.toml:7: part `Chip` in package `QFN-16`: footprint \"gen:QFN(pins=16, pitch, body=4x4mm)\": `pitch` is not `key=value`"
+            ),
+            "{e}"
+        );
+        let e = Mapping::parse(
+            &GEN_ROW.replace("body=4x4mm)", "body=4x4mm"),
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("kicad.toml:7:") && e.contains("missing the `)`"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_footprint_that_is_neither_an_id_nor_a_gen_spelling_is_refused() {
+        let e = Mapping::parse(
+            &GEN_ROW.replace("gen:QFN(pins=16, pitch=0.5mm, body=4x4mm)", "QFN16"),
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains(
+                "footprint \"QFN16\" is not `Library:Name` or `gen:Generator(key=value, ...)`"
+            ),
+            "{e}"
+        );
+        // `gen:` always starts a spelling, so a generated id is not a way to write a row; and a
+        // project library may not be called `gen`.
+        let e = Mapping::parse(
+            &GEN_ROW.replace(
+                "gen:QFN(pins=16, pitch=0.5mm, body=4x4mm)",
+                "gen:QFN_pins16",
+            ),
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("generator name"), "{e}");
+        let e = Mapping::parse(
+            "[[library]]\nname = \"gen\"\nfootprints = \"x.pretty\"\n",
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("library of generated footprints"), "{e}");
     }
 }
