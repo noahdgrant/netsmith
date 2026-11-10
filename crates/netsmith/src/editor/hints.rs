@@ -6,6 +6,54 @@
 //! each source file, matches it with each board and passes the result to the drawing. A file
 //! that cannot be read is no reason for the drawing to fail: the drawing is then the one there
 //! is without a file, and a problem says why.
+//!
+//! **Where the file is read: in the analysis.** The drawing is made by the analysis (the `draw`
+//! step, once for each board), so that is where the file is read: once for each top-level source
+//! file, matched with each of its boards (`LayoutHints::resolve`, with `module_groups`), and
+//! passed to the drawing. A check of typed text reads the file too, so its problems list agrees
+//! with the saved one.
+//!
+//! **What is wrong with the file is in the Problems list, stage `layout`**, at the file and line
+//! (the table header's line, the range the whole line):
+//! - an entry that matches nothing, and one the drawing cannot honour: a **note**, with the
+//!   board's name in `board`. Notes show in the dock only once its toggle is on.
+//! - a table for a board the source file does not have: a note with no `board`.
+//! - a fault in the file's text, one problem for each, in the order of the file: a **warning**,
+//!   not an error. The file as a whole is ignored and the drawing is the one there is without a
+//!   file, byte for byte; the board builds, so nothing is an error and no view is dimmed as
+//!   stale. A file that cannot be read at all (not a missing one) is the same warning with no
+//!   line. A missing file is nothing.
+//!
+//! The layout findings are left out of a comparison with a git ref (ADR 0059): it is about the
+//! circuit, and a layout note is about how it is drawn.
+//!
+//! **The file is watched with the sources** (`Target::watched` lists the `.sch.toml` beside each
+//! top-level file that exists), so creating, editing and deleting it, in the editor or by another
+//! program, analyses the project again once, as a change to the source does. There is no
+//! separate bookkeeping for the editor's own writes, as the PCB layout file has: the file
+//! changes the drawing, which the analysis makes, so a write of our own is one analysis and not
+//! an echo. `crates/netsmith/tests/editor_hints.rs` counts the analyses that begin across a
+//! `PUT`, three more rounds of reads, a change by another program and a delete: exactly one each.
+//!
+//! **The `PUT`** takes the **text** of the file as a `text/plain` body (as `PUT /api/file` does,
+//! and unlike `POST /api/pcb/edit`, which takes changes) and an optional `X-Stamp`. It reads the
+//! text with `parse` and writes `to_toml` of what it says, atomically, so the page may send any
+//! text that reads (a person's comments and spelling are normalised) and the file on disk is
+//! always the canonical one. It answers with the same body as `GET`, of the analysis that has
+//! the new file. A text with no entry writes `version = 1` and not a deleted file: deleting is
+//! the page's, or a person's, to do, and an empty file draws what no file draws. Two `PUT`s are
+//! one after the other (the lock the PCB edit holds).
+//!
+//! **Cost, and what is left open.** A change to the file analyses the **whole project**, not only
+//! the drawing: check, solve, design stage and draw run again, because the drawing is made inside
+//! the analysis and a board's build (`Built`) is not kept apart from it. For a project whose
+//! analysis takes seconds that is the delay of every drag. The fix is to redraw the boards from
+//! the last build when only a `.sch.toml` changed (the drawing needs only the design, groups,
+//! rails and marks the build holds, plus the hints); it needs `Built` to be shared (it is not
+//! `Clone`) and a version bump with no analysis, as the PCB layout file has. Not built, for the
+//! owner to decide. A board a system places twice has one table (its definition's name), and
+//! each of the two members gets the findings: a problem shows once, as the dock does for any
+//! problem of two boards with the same message and place.
 
 use std::{
     collections::{BTreeMap, HashMap},

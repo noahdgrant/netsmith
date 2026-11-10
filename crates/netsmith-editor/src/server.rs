@@ -1,5 +1,72 @@
 //! The HTTP server: routes, the guard against other web pages, and the socket that tells
-//! the page when the files changed.
+//! the page when the files changed (ADR 0019).
+//!
+//! **Why it is shaped so.** One request answers one question, and the server keeps no editing
+//! state: the page holds the text of each open file and the backend holds the last build of
+//! what is on disk. A path in a request is a name in the project's tree (`src/main.nsm`,
+//! `std/sources.nsm`), and the backend accepts only those, so a request cannot read or write
+//! another file and `..` means nothing. A save is atomic (a temporary file beside it, then a
+//! rename) and answers `409` when the file changed on disk since the `X-Stamp` the page read it
+//! at, so a save never overwrites another program's edit. Nothing leaves the machine at run
+//! time: the page is embedded in the binary, with no CDN.
+//!
+//! **The routes, by what they answer.**
+//!
+//! | Request | Answer |
+//! |---|---|
+//! | `GET /` and its files | the page, from the binary |
+//! | `GET /api/project` | the tree: top-level files, modules, the manifest and the standard library (read-only), with the definitions in each |
+//! | `GET /api/analysis`, `POST /api/analysis/run`, `POST /api/analysis/cancel` | the reading of the files on disk; run it again after a cancel; stop the one that runs (ADR 0062) |
+//! | `GET`/`PUT /api/file?path=` | `{text, stamp, readonly}`; the `PUT` takes the text and `X-Stamp` |
+//! | `POST /api/fs/*` | create, rename and delete files and folders of the project |
+//! | `GET /api/board`, `schematic.svg`, `power`, `system`, `panel`, `bom` | the views of a board or a system, computed from the solved model and not from the text |
+//! | `GET /api/schematic-hints`, `PUT /api/schematic-hints` | the schematic layout file beside the board's source (ADR 0061): `422` with the line for text that does not read, `409` for a stale stamp |
+//! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
+//! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
+//! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
+//! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
+//! | `POST /api/definition` | where the name under the cursor is defined |
+//! | WebSocket `/api/events` | `rebuilt`, `analysing`, `progress`, `cancelled` to the page; `check` from the page and `checked` back |
+//!
+//! **The guard.** The server listens on `127.0.0.1` only. A request whose Host is not
+//! `127.0.0.1:<port>` or `localhost:<port>` is refused (a rebinding page), an `Origin` header, if
+//! any, must be the server's own, and a request that changes anything (`PUT`, `POST`) must carry
+//! `X-Netsmith: 1`, which a page on another origin cannot send without a preflight the server
+//! never answers.
+//!
+//! **Live diagnostics are a check of the text on the page.** A moment after typing stops the
+//! page sends `check` over the socket with the text of the file. The backend builds the project
+//! with that text in place of the file's (and of a module in place of its file), in memory, and
+//! answers with the problems; nothing is written. A save writes the file, the backend sees the
+//! new modification time, analyses again and the server pushes `rebuilt`. Changes are found by
+//! polling modification times every half second and not by file events: on WSL the files are
+//! often on the Windows side, where inotify events do not arrive. The watcher's baseline is the
+//! version read before the server accepts its first connection, and a socket subscribes to the
+//! pushes before its handshake is answered; with either taken later, a change made right after
+//! a page connects could go unannounced and the page would wait for a push that never came.
+//!
+//! **The server listens before the first analysis.** The binary opens the workspace without
+//! analysing and the watcher makes the first analysis behind the listening socket, as it makes
+//! each later one. Until it ends, the page and its files, `GET /api/project`, `GET /api/file`,
+//! `PUT /api/file`, `POST /api/definition`, `POST /api/pcb/cancel` and the socket are answered
+//! at once, because none of them needs the analysis. Every other route reads it. A request that
+//! sends `X-Netsmith-Pending: 1` is told at once `503`, `Retry-After: 1` and
+//! `{"pending":true,"elapsedMs":12345}`: `503` is the status a page that is not there already
+//! gets, and a client that ignores the body fails where a `202` would have read as success. A
+//! request without the header waits until the analysis is done and is then answered as before,
+//! so a page that does not know of pending works, only later. A `check` over the socket waits
+//! for the first analysis like any request, but the socket does not wait with it: each socket
+//! answers its checks on a task of its own, one after the other, and goes on carrying
+//! `progress`. `Backend::pending` is lock-free, because the analysis holds the state's lock for
+//! as long as it runs.
+//!
+//! **Long jobs do not hold the server.** Routing, `fab`, a build and a compare run on a thread
+//! of their own and keep no lock on the editor's state while they run: the state is locked only
+//! to read what the job starts from and to store what it made, and a board placed or routed for
+//! files that have changed meanwhile is dropped. The jobs report through the functions they
+//! already take, the backend forwards those lines to the socket as `progress` with the task and
+//! the board, and the page shows the last in its status bar with a clock. A buffer of 256
+//! messages for each socket keeps a slow page from losing `rebuilt` among a big project's lines.
 
 use std::{
     collections::HashMap,

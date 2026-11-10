@@ -1,5 +1,14 @@
 //! The power tree, read from the solved model (ADR 0007, ADR 0014): a node for each net
 //! that a rail draws from, the currents on it, and what the part that supplies it can give.
+//!
+//! A node is a net that a rail draws from through `pos`, with the voltage the rails there agree
+//! on; the draws on it, each with its range and the part it belongs to; their sum, the demand;
+//! and the capacity, the `max_current` of the part whose rail supplies the net, where it has one.
+//! An edge joins the input rail's net of a part (or a module) to its output rail's net, labelled
+//! with the part, and a join in a system joins two ports' nets. A node has an issue when the
+//! demand's top is above the capacity, and says the numbers. The tree is read from the solved
+//! model and not from text (ADR 0019); the page lays the cards out (a rail one column right of
+//! the rails that feed it, a column of many cards cut into lanes, loads heaviest first).
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, Sources};
 use netsmith_editor::{

@@ -7,6 +7,12 @@
 //! and a sheet with more than [`MAX_SHEET_PARTS`] parts is cut into numbered sheets along the
 //! order a breadth-first walk of its connections meets the parts, so no sheet is a long thin
 //! strip. The result is a pure function of the design and the groups.
+//!
+//! (ADR 0019.) A board of more than [`SHEET_THRESHOLD`] parts is drawn by module: a box for each
+//! instance of a module of the board, laid out on its own as a small board is, the boxes in rows
+//! about [`TARGET_ASPECT`] wider than tall; the parts in no module are a box named for the board.
+//! A net between boxes is a stub with its name at each pin, ground is drawn in each box. The
+//! editor's page has an outline of the boxes, zooms to one on a click, and fits the whole.
 
 use std::collections::{BTreeSet, HashMap};
 

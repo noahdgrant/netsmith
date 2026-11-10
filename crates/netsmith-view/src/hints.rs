@@ -34,6 +34,112 @@
 //! is never an error once the file is read; at worst it is a finding and is ignored. The
 //! drawing engine reads the [`ResolvedHints`] (`layout_sheets_hinted`, ADR 0061 stage 2) and
 //! raises a finding of its own for an entry it cannot honour ([`HintFinding::unusable`]).
+//!
+//! **Why a file of its own.** The schematic is a pure function of the design. That is right for
+//! a first drawing and wrong for a drawing someone has worked on: a person who moves a connector
+//! to the left edge, or turns a crystal, loses the move at the next edit, because the layout
+//! engine decides again. A move is not circuit and not a requirement: no check consumes it (the
+//! test of ADR 0048) and it says nothing about where the part goes on the board. It is the
+//! editor's own state about its own drawing, as the PCB's solution is (ADR 0032), so it has a
+//! home of its own. It follows ADR 0003 (the language stays text; a position is not circuit) and
+//! DESIGN-RULES (statement order never matters). The file is `.sch.toml` and not the
+//! `.layout.toml` that ADR 0019 first sketched: the glossary's _Layout file_ is the PCB's, and
+//! a file called `layout` that is not it would be read as it (atopile has the same pair,
+//! `.pcb.hl` and `.sch.hl`).
+//!
+//! **The file.** One file for all the boards of a source file, one table for each board, keyed by
+//! the board's definition name. A module has no file of its own: it is drawn as a sheet of a
+//! board, and its entries are in that board's table, so a module used by two boards is arranged
+//! twice, as it is drawn twice. `version = 1` is required in a file that has anything else; any
+//! other version is an error. A comment in a file the editor rewrites is not kept (the PCB
+//! file's known limit).
+//!
+//! **Keyed by instance path, grouped by sheet.** A part is keyed by its path in the design
+//! (`Part::path`, as ADR 0032), never by reference designator, which a renumber changes. The
+//! entries are grouped by the sheet the part is drawn on (a module instance of the board, named
+//! as `sheets::Group::name` names it, or the board's own sheet), and inside a sheet the
+//! part is keyed by its path from the sheet: `filter.l1` for `stage.filter.l1` on the sheet
+//! `stage`. So a module that is renamed keeps its entries and the edit is one table header. A
+//! sheet cut into numbered boxes does not say which box: the box is a fact of the drawing. A
+//! sheet is the same whether or not the board is drawn split, so an entry does not change
+//! meaning when the board grows past 16 parts. A note is keyed `<path>#doc` or `<path>#relation`
+//! (`#relation2`, `#relation3` for the next ones of that path, in the order the design lists
+//! them); the path of a note on a module itself is empty (`"#relation"`).
+//!
+//! **A value is an offset of the block, on the 1.27 mm grid.** `dx` and `dy` (millimetres, x to
+//! the right, y down) move the part's **block**, the part with the satellites that serve it, from
+//! where the automatic drawing puts it; the block moves as one, and the engine routes the wires
+//! after the move. A satellite also has an entry of its own to move it within its block. The
+//! value is a multiple of 1.27 mm (the editor snaps; a hand-written value off the grid is an
+//! error that names the nearest two), and the largest is 5080 mm, which is a typo and not a
+//! drawing. `rotate` (0, 90, 180 or 270 degrees counterclockwise, `-90` and `360` read as 270
+//! and 0) **replaces** the automatic turn; `mirror` **replaces** the automatic mirror (the
+//! symbol is flipped left to right first, then turned: the eight orientations the engine has).
+//! `pin = [x, y]` instead of `dx` and `dy` pins the block's origin to a place from the sheet's
+//! reference part, for a part someone wants fixed (the connector at the left edge) while
+//! everything else is arranged round it; `pin` with `dx` or `dy` is an error. The frame is the
+//! sheet's anchor-relative one (ADR 0030's stable layout): the reference part is at the origin,
+//! so an edit that makes the sheet grow upward or leftward moves no pinned part and no offset.
+//! No entry ever holds a coordinate in the absolute page frame, which moves whenever a
+//! sheet's neighbour changes size.
+//!
+//! **Staleness is a finding, not an error.** ADR 0032 makes an entry for a part the board lacks
+//! an error, because a PCB layout that disagrees with its board is wrong to fab. A schematic hint
+//! is a convenience: a refactor that renames a part must not turn the view into an error. An
+//! entry whose path is not in the design on that sheet, a sheet that is not a sheet of the
+//! board, a table for a board the source does not have, and an entry the drawing cannot honour
+//! are findings: named with the file's line and ignored. What the file says wrong (bad TOML, an
+//! unknown key, a value off the grid, `rotate` not a multiple of 90, `pin` with `dx`, a key that
+//! is not a path) is still an error with its line, and all errors of a file are returned at
+//! once, in file order. The difference: an error is what the file says; a finding is what no
+//! longer matches the design.
+//!
+//! **It changes nothing but the picture.** The drawing is a pure function of the design and the
+//! hints, and the hints are an input and never ambient state (a file read inside the engine
+//! would make a drawing depend on the disk). Empty hints give byte for byte the drawing there is
+//! without them. The file holds no wire, label, bus or net, and the engine routes the wires
+//! again after a move, so `netsmith_view::check`'s invariants hold for any hints: a hint can make
+//! a drawing ugly and cannot make it wrong. [`to_toml`] writes deterministically (`version`,
+//! boards in name order, in a board its own sheet and then the sheets in name order, in a sheet
+//! the parts and then the notes, by key in byte order, numbers spelled `2.54`, `-1.27`, `0`), so
+//! `parse(to_toml(h)) == h` and a hand edit that parses and is written back changes only
+//! formatting. An entry with no field is kept; a table with no entry is not written.
+//!
+//! **Rejected.**
+//! - Absolute page coordinates: the page's frame moves when any sheet changes size.
+//! - Keying by reference designator: `R5` is `R6` after an insert.
+//! - Keying by full path with no sheet table (`[Trellis.parts."stage.filter.l1"]`): simpler, but
+//!   the file reads as the drawing is read with the sheet grouping, and a module rename is one
+//!   edit and not one per part. It costs one more level, and a part cannot be moved to the wrong
+//!   sheet without a finding.
+//! - One file for the PCB and the schematic (ADR 0030, open question 5): a regeneration of one
+//!   would touch the other, they are edited by different views, and the schematic's frame has
+//!   nothing to do with the board's.
+//! - Inside the source (a `schematic { }` block: a position is not circuit), in the physical
+//!   file (ADR 0048: it holds requirements, and a move is no requirement), in `netsmith.toml`
+//!   (a project file, not a design's).
+//! - Stale entries as errors (a rename would break the view), and stale entries silently
+//!   dropped (a person who dragged a part and finds it back after a rename could not know why).
+//! - Free floating-point offsets: parts and wires sit on the 1.27 mm grid, a hand-written 1.3
+//!   would put a pin off it, and an exact integer step count makes the file compare and diff
+//!   exactly.
+//! - A `lock` flag as the PCB file has: the PCB's placer needs to know what to leave alone while
+//!   it places the rest; here the engine is a drawing, and `pin` says it by place.
+//! - Stored wire routes: wires are routed again after every move by design, a stored route would
+//!   go stale at every edit and could join what the netlist does not.
+//! - JSON or a custom syntax: TOML is what ADR 0032 uses, reads and diffs well, and the reader
+//!   is already a dependency of the workspace (`toml`, with its spans for line numbers).
+//!
+//! **Cost and left open.** Two sidecars per source file now (`.pcb.toml`, `.sch.toml`), three
+//! with the physical file (ADR 0048); each is optional. A rename of a part inside a module leaves
+//! entries with a finding; the editor could rewrite the file in the same edit that renames, which
+//! is not built. A sheet is a top-level module instance of the board: a part of a module nested
+//! in a module is keyed by its path from that instance, and if sheets ever become nested the key
+//! of a part changes with them. A part with several units (ADR 0050) is moved as the box of its
+//! primary unit and no unit has a key of its own (`u1#2` would be the shape, not designed here).
+//! The sheets' arrangement on the page (the grid of boxes of a big board) is not hinted: only
+//! what is inside a sheet. Not built, at any stage: wires, labels, buses or nets in the file; a
+//! per-unit key; a tool that renames entries with a part.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
