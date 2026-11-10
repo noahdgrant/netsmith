@@ -29,7 +29,7 @@ board Widget {{
         .pos.net &= \"VCC\"
         .neg.net &= \"GND\"
     }}
-    .r1: Resistor {{ .resistance &= 10kohm +/- 1% }}
+    .r1: Resistor {{ .resistance &= 71.5kohm +/- 1% }}
     .xtal: Crystal {{ .frequency &= 16MHz +/- 30ppm }}
     .supply.pos ~> .r1 ~> .supply.neg
     .xtal.a ~ .supply.pos
@@ -37,6 +37,22 @@ board Widget {{
 {extra}}}
 "
     )
+}
+
+/// The row these boards' resistor is picked as: a project's own, of a value no standard row
+/// has, and it states no range. The standard resistor rows now state theirs (the datasheets'),
+/// and every test here needs a part whose row states none, so that it is offered and named.
+const UNJUDGED_ROW: &str = "\
+mpn,resistance,max_power,package,library,source
+ACME-N,71.5kohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme.pdf no range
+";
+
+/// The standard catalogs and the project row of [`UNJUDGED_ROW`].
+fn jlcpcb() -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file("resistor", "catalogs/resistor.csv", UNJUDGED_ROW)
+        .unwrap();
+    c
 }
 
 /// A board that states the environment `low..high` (kelvin).
@@ -72,7 +88,7 @@ fn environment_findings(b: &netsmith::Built) -> Vec<String> {
 #[test]
 fn a_part_whose_range_covers_the_environment_is_picked_and_not_named() {
     // The standard crystal rows state -40 C to 85 C (233.15 K to 358.15 K).
-    let b = build(&with_environment(COLD, WARM), &Catalogs::jlcpcb()).unwrap();
+    let b = build(&with_environment(COLD, WARM), &jlcpcb()).unwrap();
     assert!(b.sourcing.iter().any(|s| s.kind == "Crystal"));
     let findings = environment_findings(&b);
     // The crystal is judged and met it; the resistor's row states nothing and is named.
@@ -82,7 +98,7 @@ fn a_part_whose_range_covers_the_environment_is_picked_and_not_named() {
 
 #[test]
 fn a_part_whose_range_does_not_cover_the_environment_is_refused_with_the_numbers() {
-    let e = refused(&with_environment(COLD, HOT), &Catalogs::jlcpcb());
+    let e = refused(&with_environment(COLD, HOT), &jlcpcb());
     assert!(
         e.contains(
             "the `crystal` catalog has nothing for `xtal`, which needs frequency within 15.9995MHz..16.0005MHz"
@@ -99,7 +115,7 @@ fn a_part_whose_range_does_not_cover_the_environment_is_refused_with_the_numbers
 
 #[test]
 fn a_row_that_states_no_range_is_offered_and_named_with_what_to_add() {
-    let b = build(&with_environment(COLD, WARM), &Catalogs::jlcpcb()).unwrap();
+    let b = build(&with_environment(COLD, WARM), &jlcpcb()).unwrap();
     let findings = environment_findings(&b);
     let message = &findings[0];
     assert!(
@@ -124,13 +140,13 @@ fn a_row_that_states_no_range_is_offered_and_named_with_what_to_add() {
     assert!(
         b.sourcing
             .iter()
-            .any(|s| s.kind == "Resistor" && s.lcsc.is_some())
+            .any(|s| s.kind == "Resistor" && s.mpn.as_deref() == Some("ACME-N"))
     );
 }
 
 #[test]
 fn a_guideline_finding_stops_the_build_when_the_project_asks_for_it() {
-    let strict = Catalogs::jlcpcb().with_strict_guidelines(true);
+    let strict = jlcpcb().with_strict_guidelines(true);
     let e = refused(&with_environment(COLD, WARM), &strict);
     assert!(e.contains("environment guideline"), "{e}");
 }
@@ -138,7 +154,7 @@ fn a_guideline_finding_stops_the_build_when_the_project_asks_for_it() {
 #[test]
 fn a_board_with_no_environment_is_not_judged_and_says_nothing() {
     // Nothing is checked, as before: the crystal is picked at no temperature at all.
-    let b = build(&board(""), &Catalogs::jlcpcb()).unwrap();
+    let b = build(&board(""), &jlcpcb()).unwrap();
     assert!(environment_findings(&b).is_empty());
     assert!(b.guidelines.iter().all(|g| g.rule != "environment"));
 }
@@ -149,7 +165,7 @@ fn a_range_the_part_states_speaks_for_it_whatever_its_row_says() {
     let extra = format!(
         "    .environment: Environment {{ .temperature &= {COLD}..{WARM} }}\n    .r1.temp_min &= {COLD}\n    .r1.temp_max &= 423.15K\n"
     );
-    let b = build(&board(&extra), &Catalogs::jlcpcb()).unwrap();
+    let b = build(&board(&extra), &jlcpcb()).unwrap();
     assert!(
         environment_findings(&b).is_empty(),
         "{:?}",
@@ -162,7 +178,7 @@ fn a_stated_range_that_does_not_cover_the_environment_is_an_error_naming_the_par
     let extra = format!(
         "    .environment: Environment {{ .temperature &= {COLD}..{WARM} }}\n    .r1.temp_max &= 348.15K\n"
     );
-    let e = refused(&board(&extra), &Catalogs::jlcpcb());
+    let e = refused(&board(&extra), &jlcpcb());
     assert!(
         e.contains("`r1` works up to 348.15 K (75 C) only (the design states `.r1.temp_max`), under the board's environment, which reaches 358.15 K (85 C) (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C))"),
         "{e}"
@@ -190,7 +206,7 @@ ACME-R2,31.6kohm +/- 1%,62.5mW,0402,,398.15K,Basic,https://example.invalid/acme.
 fn a_row_that_does_not_cover_the_environment_is_passed_over_for_the_next() {
     // -40 C to 85 C: ACME-R1 stops at 70 C and is left out; ACME-R2 reaches 125 C but states
     // no lowest temperature, so it is kept and the cold end is named.
-    let src = with_environment(COLD, WARM).replace("10kohm", "31.6kohm");
+    let src = with_environment(COLD, WARM).replace("71.5kohm", "31.6kohm");
     let b = build(&src, &project_rows()).unwrap();
     let r1 = b.sourcing.iter().find(|s| s.kind == "Resistor").unwrap();
     assert_eq!(r1.mpn.as_deref(), Some("ACME-R2"));
@@ -216,7 +232,7 @@ fn a_row_that_does_not_cover_the_environment_is_passed_over_for_the_next() {
 #[test]
 fn an_environment_that_states_no_temperature_is_named() {
     let src = board("    .environment: Environment { }\n");
-    let b = build(&src, &Catalogs::jlcpcb()).unwrap();
+    let b = build(&src, &jlcpcb()).unwrap();
     let findings = environment_findings(&b);
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert!(
@@ -286,6 +302,8 @@ fn project(name: &str, line: &str, main: &str) -> TempDir {
     .unwrap();
     fs::write(root.join("src/vehicle.nsm"), VEHICLE).unwrap();
     fs::write(root.join("src/main.nsm"), main).unwrap();
+    fs::create_dir_all(root.join("catalogs")).unwrap();
+    fs::write(root.join("catalogs/resistor.csv"), UNJUDGED_ROW).unwrap();
     root
 }
 
@@ -470,7 +488,7 @@ board Widget {
         .pos.net &= \"VCC\"
         .neg.net &= \"GND\"
     }
-    .r1: Resistor { .resistance &= 10kohm +/- 1% }
+    .r1: Resistor { .resistance &= 71.5kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
 ";
@@ -514,9 +532,9 @@ fn a_part_that_is_not_fitted_is_not_judged() {
     // `r2` is left off the board (`AssemblyMode::None`): it is not fitted, so there is no range
     // to name. `r1`, the same row, is the one finding.
     let src = board(&format!(
-        "    .environment: Environment {{ .temperature &= {COLD}..{WARM} }}\n    .r2: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .r2.assembly &= AssemblyMode::None\n    .supply.pos ~> .r2 ~> .supply.neg\n"
+        "    .environment: Environment {{ .temperature &= {COLD}..{WARM} }}\n    .r2: Resistor {{ .resistance &= 71.5kohm +/- 1% }}\n    .r2.assembly &= AssemblyMode::None\n    .supply.pos ~> .r2 ~> .supply.neg\n"
     ));
-    let b = build(&src, &Catalogs::jlcpcb()).unwrap();
+    let b = build(&src, &jlcpcb()).unwrap();
     let findings = environment_findings(&b);
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert!(

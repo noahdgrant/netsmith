@@ -6010,27 +6010,29 @@ error: the `crystal` catalog has nothing for `xtal`, which needs frequency withi
 Rules.
 
 - **A row that states a range the environment is not inside is not offered.** The solver tries the next row, and says in its message how many it left out and why.
-- **A row that states none is offered, and named.** A pick whose catalog row has no `temp_min`, no `temp_max` or neither is kept, because an empty cell is unknown and not a refusal, and a guideline finding says so: a `warning:` line by default, an error with `--strict` or `guidelines = "error"` in `netsmith.toml` (the same class as the unconstrained pick, ADR 0065). A check that could not be made is never a pass. The finding names the part, the row, which temperature is missing and what to write; parts picked as one row are one finding. Most of the standard rows are in this case, because only the four crystals state a range (data in `data/jlcpcb/`).
+- **A row that states none is offered, and named.** A pick whose catalog row has no `temp_min`, no `temp_max` or neither is kept, because an empty cell is unknown and not a refusal, and a guideline finding says so: a `warning:` line by default, an error with `--strict` or `guidelines = "error"` in `netsmith.toml` (the same class as the unconstrained pick, ADR 0065). A check that could not be made is never a pass. The finding names the part, the row, which temperature is missing and what to write; parts picked as one row are one finding. The standard rows that state a range are the ones read from a datasheet (the resistors, capacitors, ferrite beads, fuses, headers, Murata inductors and crystals; `data/jlcpcb/README.md` says which and from what); the others, such as the LEDs, the diodes and the MOSFETs, state none.
 
 ```nsm solve warns
 import std::env::Environment
-import std::parts::passive::Resistor
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Probe {
     .environment: Environment { .temperature &= 233.15K..358.15K }
     .supply: Rail {
-        .voltage &= 3.3V +/- 5%
+        .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
         .neg.net &= "GND"
     }
-    .r1: Resistor { .resistance &= 10kohm +/- 1% }
-    .supply.pos ~> .r1 ~> .supply.neg
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor {}
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
 
 ```text
-Probe: environment guideline: `r1` (Resistor) was picked as 10kΩ 1% 0603 C25804 and its catalog row states no `temp_min` and no `temp_max`, so it is not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, in kelvin) or state it on the part, as `.r1.temp_max &= 358.15K` for a datasheet that says 85 C
+Probe: environment guideline: `led` (Led) was picked as KT-0603R RED LED 0603 C2286 and its catalog row states no `temp_min` and no `temp_max`, so it is not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, in kelvin) or state it on the part, as `.led.temp_max &= 358.15K` for a datasheet that says 85 C
 ```
 
 - **The design can state it instead.** A part that states `.temp_min` or `.temp_max` in a board, a module or its own definition speaks for itself, whatever its row says (as a stated `.height` does, ADR 0094), and a part with both ends stated is judged and not named. A range stated as a range (`.temp_max &= 350K..360K`) is read at its worse end: the lowest of the highest temperature, the highest of the lowest.
@@ -6038,25 +6040,27 @@ Probe: environment guideline: `r1` (Resistor) was picked as 10kΩ 1% 0603 C25804
 
 ```nsm fails
 import std::env::Environment
-import std::parts::passive::Resistor
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Warm {
     .environment: Environment { .temperature &= 233.15K..358.15K }
     .supply: Rail {
-        .voltage &= 3.3V +/- 5%
+        .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
         .neg.net &= "GND"
     }
-    .r1: Resistor { .resistance &= 10kohm +/- 1% }
-    .r1.temp_min &= 233.15K
-    .r1.temp_max &= 348.15K
-    .supply.pos ~> .r1 ~> .supply.neg
+    .led: Led { .current &= 5mA..15mA }
+    .led.temp_min &= 233.15K
+    .led.temp_max &= 348.15K
+    .r1: Resistor {}
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
 
 ```text
-error: Warm: `r1` works up to 348.15 K (75 C) only (the design states `.r1.temp_max`), under the board's environment, which reaches 358.15 K (85 C) (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): choose a part rated for it or narrow the environment
+error: Warm: `led` works up to 348.15 K (75 C) only (the design states `.led.temp_max`), under the board's environment, which reaches 358.15 K (85 C) (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)): choose a part rated for it or narrow the environment
 ```
 
 - **A board with no environment is not judged** and says nothing: no check, no finding. The same holds for a board of a project whose manifest names none.
