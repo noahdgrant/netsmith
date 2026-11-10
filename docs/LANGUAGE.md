@@ -81,7 +81,7 @@ Read it from the top.
 
 The report shows what the solver chose: a 330 ohm resistor and a red LED, both from JLCPCB's Basic library. The relation decides it. With the supply at 4.75 V to 5.25 V, a forward voltage of 1.8 V to 2.4 V and a 1% 330 ohm resistor, the current stays between 5 mA and 15 mA (about 7.05 mA to 10.56 mA, in fact). The resistor is a 0402 part: its 62.5 mW rating holds for the current it really carries (see Resistor power).
 
-The rest of this guide explains each construct. Statement order never matters, so you may write the statements of a block in any order.
+The rest of this guide explains each construct. Statement order never matters to what a design means, so you may write the statements of a block in any order. The one thing it shows in is the number of a part's designator (see Designators).
 
 ## Definitions: board, part, interface, module, system, panel
 
@@ -1821,7 +1821,7 @@ error: `j` is inside `Block` and is not part of its interface; set it through a 
 
 ### Designators
 
-Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file; the number after them counts the parts that have the same letters, from 1, in the order of their paths (ADR 0046, user decision), where a number at the end of a path segment counts as a number: `.pads.tp2` is `TP2` and `.pads.tp10` comes after `.pads.tp9` (owner decision, 2026-11-04, ADR 0048). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
+Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
 Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `Obd2M` and `ProgrammingPads6` `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
@@ -1853,6 +1853,25 @@ board Letters {
 }
 ```
 
+Each part is numbered among the parts with its letters, in declaration order. Here the TVS is declared first, so it is `D1` and the diode `D2`; the fuse is `F1` and the header, a second kind with its own count, `J1`:
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::diode::{Diode, Tvs}
+import std::parts::passive::Fuse
+
+board Order {
+    /// `J1`, though `.zz_in` would sort after the others.
+    .zz_in: Header1x2
+    /// `D1`.
+    .clamp: Tvs
+    /// `D2`.
+    .rectifier: Diode
+    /// `F1`.
+    .fuse: Fuse
+}
+```
+
 Letters that are not one or more capital letters are refused when the board is built, naming the part, because the number is added after them:
 
 ```nsm fails
@@ -1874,7 +1893,7 @@ board Letters {
 error: Letters: `mcu` has `.designator` "U1", which is not one or more capital letters such as "R" or "IC"
 ```
 
-A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
+A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters or numbers moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
 
 ## Pins, packages and ties
 
@@ -3253,11 +3272,11 @@ board Bounded {
 
 ```text
 board Bounded
-  R1   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
   R2   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
-  net GND: R1.2
-  net VCC: R2.1
-  net net-lamp.bottom.a: R1.1, R2.2
+  R1   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
+  net GND: R2.2
+  net VCC: R1.1
+  net net-lamp.bottom.a: R1.2, R2.1
 ```
 
 When no row meets the bound, the message says which statements make it a bound on the part:
@@ -5409,8 +5428,8 @@ board Caps {
 
 ```text
 board Caps
-  C1   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
-  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C2   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
+  C1   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
   net 3V3: C1.1, C2.1
   net GND: C1.2, C2.2
 ```
@@ -11163,7 +11182,7 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
 
-Parts are numbered by their letters in the order of their paths (a number at the end of a segment sorts as a number: `tp2` before `tp10`), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
+Parts are numbered by their letters in the order the design declares them (a module's parts where the module is declared, depth first; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
 
 ### Parts
 

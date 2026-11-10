@@ -723,7 +723,7 @@ fn walk(design: &Design, parts: &[usize]) -> Vec<usize> {
                 .extend(touching.iter().filter(|&&b| b != a));
         }
     }
-    let is_connector = |p: usize| crate::layout::is_connector(&design.parts[p].refdes);
+    let is_connector = |p: usize| crate::layout::is_connector(&design.parts[p]);
     let mut roots: Vec<usize> = member.iter().copied().collect();
     roots.sort_by_key(|&p| (!is_connector(p), p));
     let mut seen = BTreeSet::new();

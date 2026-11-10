@@ -172,9 +172,9 @@ fn who_assembles_a_part_decides_the_bom_the_placement_file_and_the_notes() {
         "{cpl}"
     );
     let notes = read(&dir, "LedExample", "fab-notes.txt");
-    assert!(notes.contains("hand-solder: D1, J2\n"), "{notes}");
+    assert!(notes.contains("hand-solder: D1, J1\n"), "{notes}");
     assert!(
-        notes.contains("not fitted (no BOM line, no placement): FID1, H1, J1\n"),
+        notes.contains("not fitted (no BOM line, no placement): FID1, H1, J2\n"),
         "{notes}"
     );
     assert!(notes.contains("design rules check: passed"), "{notes}");

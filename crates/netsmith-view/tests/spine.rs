@@ -227,6 +227,46 @@ fn a_buck_is_drawn_as_one_row_from_the_input_to_the_inductor() {
     assert!(found.is_empty(), "{found:?}");
 }
 
+/// The walk starts at the connector because the part is one by its kind (a header), not
+/// because its designator starts with `J` (issue #166): it is drawn the same with another
+/// designator, and a part that is not a connector is not made one by a designator `J1`.
+#[test]
+fn the_connector_is_found_by_its_kind_not_by_its_designator() {
+    let rename = |design: &mut Design, from: &str, to: &str| {
+        for p in &mut design.parts {
+            if p.refdes == from {
+                p.refdes = to.into();
+            }
+        }
+        for n in &mut design.nets {
+            for pin in &mut n.pins {
+                if pin.refdes == from {
+                    pin.refdes = to.into();
+                }
+            }
+        }
+    };
+    let mut design = buck();
+    rename(&mut design, "J1", "X1");
+    let d = draw(design, &buck_rails());
+    assert_eq!(d.layout.spines.len(), 1, "{:?}", d.layout.spines);
+    let x = |r: &str| pin_at(&d, r, "1").x;
+    assert!(x("X1") < x("F1") && x("F1") < x("D1"), "X1 is not first");
+
+    // The inductor takes the designator `J1` and the header leaves it: the layout does not
+    // start from the inductor.
+    let mut design = buck();
+    rename(&mut design, "J1", "X1");
+    rename(&mut design, "L1", "J1");
+    let d = draw(design, &buck_rails());
+    let sw = pin_at(&d, "U1", "4");
+    assert!(
+        sw.x < pin_at(&d, "J1", "1").x,
+        "the inductor is not on the right"
+    );
+    assert!(pin_at(&d, "X1", "1").x < pin_at(&d, "F1", "1").x);
+}
+
 #[test]
 fn the_capacitors_hang_from_the_row_each_with_a_ground_symbol_below() {
     let d = draw(buck(), &buck_rails());

@@ -38,7 +38,7 @@ function replaceOnce(text, from, to) {
 export function earlierDesign(text) {
   let t = text;
   t = replaceOnce(t, '.r1: Resistor {}', '.r1: Resistor { .resistance &= 150ohm +/- 1% }');
-  t = replaceOnce(t, '    .power_in: Socket1x2\n', '    .power_in: Socket1x2\n    .debug: Header1x2\n');
+  t = replaceOnce(t, '    .power_in: Socket1x2\n', '    .debug: Header1x2\n    .power_in: Socket1x2\n');
   t = replaceOnce(t, '"3V3"', '"VOUT"');
   t = replaceOnce(t, '.current &= 0mA..50mA', '.current &= 0mA..30mA');
   t = replaceOnce(t, '    .input_cap:  Capacitor { .effective_capacitance >= 1uF }\n', '');
