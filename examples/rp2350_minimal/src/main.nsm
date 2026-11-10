@@ -1,35 +1,293 @@
-//! PLACEHOLDER: the port of Raspberry Pi's RP2350A Minimal board is in progress (see
-//! `README.md` and epic #308). This file is only a small valid board, an LED on a 5 V supply,
-//! so that the project builds and its checks run while the parts of the real board are added
-//! one at a time. It is not Raspberry Pi's circuit and has none of its nets.
+//! The RP2350A Minimal board: the circuit of Raspberry Pi's open reference design
+//! `RPI-RP2350A-MINIMAL_R4-S1` (MIT, Copyright (c) 2026 Raspberry Pi Ltd; see `README.md` and
+//! `LICENSE`), written in netsmith. The schematic only: the outline, the mounting holes and the
+//! places of the parts are the physical file's and are not written yet.
+//!
+//! `netsmith compare` says that its nets are Raspberry Pi's (`README.md`, "Same nets"; a test
+//! holds it). The pin-to-signal mapping of the two 2 x 18 headers is Raspberry Pi's too, and it
+//! is FIXED: the board joins each header pin to a named pin of the MCU (`.mcu.gpio4`) and never
+//! to a request for "any GPIO" (`.x: .mcu.GPIO`, ADR 0101). Only a request is ever moved by the
+//! pin optimizer of `fab`, so the firmware's pin map cannot change. There is no
+//! `main.pins.toml` because there is no request to keep an answer for.
 
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
+import src::amphenol_10103594::Amphenol10103594
+import src::flash::W25Q128Jv
+import src::jst_sm03b_srss_tb::JstSm03bSrssTb
+import src::oscillator::Oscillator
+import src::rp2350a::Rp2350A
+import src::samtec_tsw_118::SamtecTsw11807LD
+import src::tactile_switch::TactileSwitch
+import std::bus::PullUp
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::{Capacitor, Inductor, Resistor}
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
 
 board Rp2350Minimal {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
     }
 
-    .supply: Rail {
+    // ---- The connectors: J1 to J4 ----
+
+    /// The micro-USB B receptacle: the only supply of the board, and its USB port.
+    .usb: Amphenol10103594 { .mpn &= "10103594-0001LF" }
+    /// J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.
+    .header_low: SamtecTsw11807LD
+    /// J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.
+    .header_high: SamtecTsw11807LD
+    /// J4: the debug port, a JST-SH with SWCLK, ground and SWD.
+    .debug: JstSm03bSrssTb { .mpn &= "SM03B-SRSS-TB(LF)(SN)" }
+
+    // ---- The chips: U1 to U3 ----
+
+    /// The microcontroller. Every pin that a header or a part uses is named here, so none moves.
+    .mcu: Rp2350A { .mpn &= "RP2350A" }
+    /// The 3.3 V regulator, an NCP1117 in a SOT-223 (a row of the project's catalog).
+    .regulator: LinearRegulator {
+        .package &= "SOT-223"
+        // NCP1117/D, page 4: 6.0 mA typical and 10 mA maximum, the 3.3 V version.
+        .quiescent_current &= 0mA..10mA
+    }
+    /// The QSPI flash that holds the program: 16 MB.
+    .flash: W25Q128Jv { .mpn &= "W25Q128JVSIQ" }
+
+    // ---- The rails ----
+
+    /// USB's VBUS, the only input. 5 V +/- 5% is USB's 4.75 V to 5.25 V.
+    .vbus: Rail {
         .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+    /// The IO supply, from the regulator.
+    .v3v3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "+3V3"
+        .neg.net &= "GND"
+    }
+    /// The core supply, made by the MCU's own switching regulator with the inductor and a
+    /// capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.
+    .v1v1: Rail {
+        .pos.net &= "+1V1"
         .neg.net &= "GND"
     }
 
-    .led: Led {
-        .current &= 5mA..15mA
+    .usb.vbus ~ .vbus.pos
+    .usb.gnd ~ .vbus.neg
+    .usb.shield ~ .vbus.neg
+    .vbus ~ .regulator.vin
+    .regulator.vout ~ .v3v3
+    .v3v3.neg ~ .vbus.neg
+    .v1v1.neg ~ .vbus.neg
+
+    // ---- The MCU's supplies ----
+
+    .mcu.iovdd ~ .v3v3.pos
+    .mcu.qspi_iovdd ~ .v3v3.pos
+    .mcu.usb_otp_vdd ~ .v3v3.pos
+    .mcu.adc_avdd ~ .v3v3.pos
+    .mcu.vreg_vin ~ .v3v3.pos
+    .mcu.dvdd ~ .v1v1.pos
+    .mcu.vreg_fb ~ .v1v1.pos
+    .mcu.gnd ~ .vbus.neg
+    .mcu.vreg_pgnd ~ .vbus.neg
+
+    /// The inductor of the core regulator, from the chip's switch node to the core rail.
+    .core_inductor: Inductor {
+        .inductance &= 3.3uH +/- 20%
+        .package &= "0806"
     }
+    .mcu.vreg_lx ~ .core_inductor.b
+    .core_inductor.a ~ .v1v1.pos
 
-    .r1: Resistor {}
+    /// The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.
+    .avdd_filter: Resistor { .resistance &= 33ohm +/- 1%; .package &= "0402" }
+    .avdd_filter_cap: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
+    .v3v3.pos ~ .avdd_filter.a
+    .avdd_filter.b ~ .mcu.vreg_avdd
+    .mcu.vreg_avdd ~ .avdd_filter_cap.a
+    .avdd_filter_cap.b ~ .vbus.neg
 
-    .power_in: Header1x2
-    .supply.pos ~ .power_in.p1
-    .supply.neg ~ .power_in.p2
+    // ---- Decoupling: Raspberry Pi's capacitors, on the rails ----
+    // Their board has no statement of which pin each belongs to, so none is written.
 
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .vbus_bulk: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
+    .v3v3_bulk_a: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
+    .v3v3_bulk_b: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
+    .v3v3_bulk_c: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
+    .v1v1_bulk: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
+    .v3v3_100n_1: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_2: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_3: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_4: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_5: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_6: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_7: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n_8: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v1v1_100n_1: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v1v1_100n_2: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v1v1_100n_3: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .vbus.pos ~> .vbus_bulk ~> .vbus.neg
+    .v3v3.pos ~> .v3v3_bulk_a ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_bulk_b ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_bulk_c ~> .v3v3.neg
+    .v1v1.pos ~> .v1v1_bulk ~> .v1v1.neg
+    .v3v3.pos ~> .v3v3_100n_1 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_2 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_3 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_4 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_5 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_6 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_7 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_8 ~> .v3v3.neg
+    .v1v1.pos ~> .v1v1_100n_1 ~> .v1v1.neg
+    .v1v1.pos ~> .v1v1_100n_2 ~> .v1v1.neg
+    .v1v1.pos ~> .v1v1_100n_3 ~> .v1v1.neg
 
-    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+    // ---- Crystal ----
+
+    .oscillator: Oscillator
+    .oscillator.xin ~ .mcu.xin
+    .oscillator.xout ~ .mcu.xout
+    .oscillator.gnd ~ .vbus.neg
+
+    // ---- USB: 27 ohm in series with each data line ----
+
+    .usb_dp_series: Resistor { .resistance &= 27ohm +/- 1%; .package &= "0402" }
+    .usb_dm_series: Resistor { .resistance &= 27ohm +/- 1%; .package &= "0402" }
+    .usb.dp ~ .usb_dp_series.a
+    .usb_dp_series.b ~ .mcu.usb_dp
+    .usb.dm ~ .usb_dm_series.a
+    .usb_dm_series.b ~ .mcu.usb_dm
+
+    // ---- Flash ----
+
+    .flash.vcc ~ .v3v3.pos
+    .flash.gnd ~ .vbus.neg
+    .flash.clk ~ .mcu.qspi_sclk
+    .flash.di_io0 ~ .mcu.qspi_sd0
+    .flash.do_io1 ~ .mcu.qspi_sd1
+    .flash.wp_io2 ~ .mcu.qspi_sd2
+    .flash.hold_io3 ~ .mcu.qspi_sd3
+
+    // The flash's chip select reaches the MCU's QSPI_SS through a 0 ohm link, and GPIO0
+    // through another; both can be left off. A 10 kohm resistor holds it high.
+    .ss_link: Resistor { .resistance &= 0ohm..0.05ohm; .package &= "0402" }
+    .gpio0_link: Resistor { .resistance &= 0ohm..0.05ohm; .package &= "0402" }
+    .ss_pullup: PullUp { .resistance &= 10kohm +/- 1% }
+    .flash.cs ~ .ss_link.b
+    .ss_link.a ~ .mcu.qspi_ss
+    .flash.cs ~ .gpio0_link.b
+    .gpio0_link.a ~ .mcu.gpio0
+    .ss_pullup.supply ~ .v3v3
+    .ss_pullup.line ~ .flash.cs
+
+    // ---- The buttons ----
+
+    /// BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots
+    /// from USB.
+    .bootsel: TactileSwitch { .mpn &= "434133025816" }
+    .bootsel_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    .mcu.qspi_ss ~ .bootsel_series.a
+    .bootsel_series.b ~ .bootsel.b
+    .bootsel.a ~ .vbus.neg
+    /// RESET: pulls RUN to ground through 1 kohm.
+    .reset: TactileSwitch { .mpn &= "434133025816" }
+    .reset_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    .mcu.run ~ .reset.b
+    .reset.a ~ .reset_series.a
+    .reset_series.b ~ .vbus.neg
+
+    // ---- The debug port ----
+
+    .mcu.swclk ~ .debug.p1
+    .debug.p2 ~ .vbus.neg
+    .mcu.swdio ~ .debug.p3
+    .debug.mount ~ .vbus.neg
+
+    // ---- The headers: Raspberry Pi's pin map, joined pin by pin (fixed) ----
+    // GPIO26 to GPIO29 are GPIO or ADC inputs, and a connected pin has one function chosen.
+    // `GPIO` cannot be chosen on all four (a function sits on one pin of a part unless it is a
+    // class), so each takes its own ADC input, the name Raspberry Pi's nets and header carry
+    // (`GPIO26_ADC0`). Nothing else on the board reads which: the pad is on the pin either way.
+    // The pull request that added this board lists it under "For the owner".
+    .mcu.gpio26.function &= "ADC0"
+    .mcu.gpio27.function &= "ADC1"
+    .mcu.gpio28.function &= "ADC2"
+    .mcu.gpio29.function &= "ADC3"
+
+    .header_low.p2 ~ .v3v3.pos
+    .header_low.p4 ~ .mcu.gpio0
+    .header_low.p6 ~ .mcu.gpio1
+    .header_low.p8 ~ .mcu.gpio2
+    .header_low.p10 ~ .mcu.gpio3
+    .header_low.p12 ~ .mcu.gpio4
+    .header_low.p14 ~ .mcu.gpio5
+    .header_low.p16 ~ .mcu.gpio6
+    .header_low.p18 ~ .mcu.gpio7
+    .header_low.p20 ~ .mcu.gpio8
+    .header_low.p22 ~ .mcu.gpio9
+    .header_low.p24 ~ .mcu.gpio10
+    .header_low.p26 ~ .mcu.gpio11
+    .header_low.p28 ~ .mcu.gpio12
+    .header_low.p30 ~ .mcu.gpio13
+    .header_low.p32 ~ .mcu.gpio14
+    .header_low.p34 ~ .mcu.gpio15
+    .header_low.p1 ~ .vbus.neg
+    .header_low.p3 ~ .vbus.neg
+    .header_low.p5 ~ .vbus.neg
+    .header_low.p7 ~ .vbus.neg
+    .header_low.p9 ~ .vbus.neg
+    .header_low.p11 ~ .vbus.neg
+    .header_low.p13 ~ .vbus.neg
+    .header_low.p15 ~ .vbus.neg
+    .header_low.p17 ~ .vbus.neg
+    .header_low.p19 ~ .vbus.neg
+    .header_low.p21 ~ .vbus.neg
+    .header_low.p23 ~ .vbus.neg
+    .header_low.p25 ~ .vbus.neg
+    .header_low.p27 ~ .vbus.neg
+    .header_low.p29 ~ .vbus.neg
+    .header_low.p31 ~ .vbus.neg
+    .header_low.p33 ~ .vbus.neg
+    .header_low.p35 ~ .vbus.neg
+    .header_low.p36 ~ .vbus.neg
+
+    .header_high.p1 ~ .mcu.gpio29
+    .header_high.p3 ~ .mcu.gpio28
+    .header_high.p5 ~ .mcu.gpio27
+    .header_high.p7 ~ .mcu.gpio26
+    .header_high.p9 ~ .mcu.gpio25
+    .header_high.p11 ~ .mcu.gpio24
+    .header_high.p13 ~ .mcu.gpio23
+    .header_high.p15 ~ .mcu.gpio22
+    .header_high.p17 ~ .mcu.gpio21
+    .header_high.p19 ~ .mcu.gpio20
+    .header_high.p21 ~ .mcu.gpio19
+    .header_high.p23 ~ .mcu.gpio18
+    .header_high.p25 ~ .mcu.gpio17
+    .header_high.p27 ~ .mcu.gpio16
+    .header_high.p29 ~ .mcu.run
+    .header_high.p31 ~ .mcu.swdio
+    .header_high.p33 ~ .mcu.swclk
+    .header_high.p2 ~ .vbus.neg
+    .header_high.p4 ~ .vbus.neg
+    .header_high.p6 ~ .vbus.neg
+    .header_high.p8 ~ .vbus.neg
+    .header_high.p10 ~ .vbus.neg
+    .header_high.p12 ~ .vbus.neg
+    .header_high.p14 ~ .vbus.neg
+    .header_high.p16 ~ .vbus.neg
+    .header_high.p18 ~ .vbus.neg
+    .header_high.p20 ~ .vbus.neg
+    .header_high.p22 ~ .vbus.neg
+    .header_high.p24 ~ .vbus.neg
+    .header_high.p26 ~ .vbus.neg
+    .header_high.p28 ~ .vbus.neg
+    .header_high.p30 ~ .vbus.neg
+    .header_high.p32 ~ .vbus.neg
+    .header_high.p34 ~ .vbus.neg
+    .header_high.p35 ~ .vbus.neg
+    .header_high.p36 ~ .vbus.neg
 }

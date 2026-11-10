@@ -1,0 +1,34 @@
+//! The 12 MHz oscillator of the RP2350A Minimal board: the crystal X1 and the parts around it.
+//!
+//! Raspberry Pi's circuit, from the nets of their board file: the crystal's pad 1 is the
+//! chip's XIN, with a load capacitor to ground; its pad 3 has the other load capacitor to
+//! ground and a damping resistor to the chip's XOUT; pads 2 and 4 are ground.
+
+import src::crystal::Abm8272T3
+import std::parts::passive::{Capacitor, Resistor}
+
+/// A 12 MHz crystal with a load capacitor on each side and a damping resistor on the output.
+/// Join `.xin` and `.xout` to the chip's pins and `.gnd` to ground.
+module Oscillator {
+    .xin: Pin
+    .xout: Pin
+    .gnd: Pin
+
+    .crystal: Abm8272T3 { .mpn &= "ABM8-272-T3" }
+    /// On the input side, 15 pF C0G (Raspberry Pi's value).
+    .load_in: Capacitor { .capacitance &= 15pF +/- 5%; .package &= "0402" }
+    /// On the output side, behind the damping resistor.
+    .load_out: Capacitor { .capacitance &= 15pF +/- 5%; .package &= "0402" }
+    /// 1 kohm between the chip's XOUT and the crystal (Raspberry Pi's value).
+    .damping: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+
+    .xin ~ .crystal.xtal_a
+    .xin ~ .load_in.a
+    .load_in.b ~ .gnd
+    .crystal.xtal_b ~ .load_out.a
+    .load_out.b ~ .gnd
+    .crystal.xtal_b ~ .damping.b
+    .damping.a ~ .xout
+    .crystal.gnd_2 ~ .gnd
+    .crystal.gnd_4 ~ .gnd
+}

@@ -1,0 +1,227 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[Rp2350Minimal.parts."avdd_filter"]
+catalog = "resistor"
+row = "33Ω 1% 0402 C25105"
+lcsc = "C25105"
+mpn = "0402WGF330JTCE"
+
+[Rp2350Minimal.parts."avdd_filter_cap"]
+catalog = "capacitor"
+row = "4.7uF 20% 10V X5R 0402 C23733"
+lcsc = "C23733"
+mpn = "CL05A475MP5NRNC"
+
+[Rp2350Minimal.parts."bootsel"]
+catalog = "tactile_switch"
+row = "434133025816 WS-TASV tactile switch SMD-4P 4.2x3.2mm C5504987"
+lcsc = "C5504987"
+mpn = "434133025816"
+
+[Rp2350Minimal.parts."bootsel_series"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[Rp2350Minimal.parts."core_inductor"]
+catalog = "inductor"
+row = "AOTA-B201610S3R3-101-T 3.3uH 2.4A inductor 0806 C42411119"
+lcsc = "C42411119"
+mpn = "AOTA-B201610S3R3-101-T"
+
+[Rp2350Minimal.parts."debug"]
+catalog = "jst_srss"
+row = "SM03B-SRSS-TB(LF)(SN)"
+lcsc = "C160403"
+mpn = "SM03B-SRSS-TB(LF)(SN)"
+
+[Rp2350Minimal.parts."flash"]
+catalog = "w25q128jv"
+row = "W25Q128JVSIQ"
+lcsc = "C97521"
+mpn = "W25Q128JVSIQ"
+
+[Rp2350Minimal.parts."gpio0_link"]
+catalog = "resistor"
+row = "RC0402JR-070RL 0ohm jumper 62.5mW 0402 C60485"
+lcsc = "C60485"
+mpn = "RC0402JR-070RL"
+
+[Rp2350Minimal.parts."mcu"]
+catalog = "rp2350a"
+row = "RP2350A"
+lcsc = "C42411118"
+mpn = "RP2350A"
+
+[Rp2350Minimal.parts."oscillator.crystal"]
+catalog = "abm8_272_t3"
+row = "ABM8-272-T3"
+lcsc = "C20625731"
+mpn = "ABM8-272-T3"
+
+[Rp2350Minimal.parts."oscillator.damping"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[Rp2350Minimal.parts."oscillator.load_in"]
+catalog = "capacitor"
+row = "15pF 5% 50V C0G 0402 C1548"
+lcsc = "C1548"
+mpn = "0402CG150J500NT"
+
+[Rp2350Minimal.parts."oscillator.load_out"]
+catalog = "capacitor"
+row = "15pF 5% 50V C0G 0402 C1548"
+lcsc = "C1548"
+mpn = "0402CG150J500NT"
+
+[Rp2350Minimal.parts."regulator"]
+catalog = "ldo"
+row = "NCP1117ST33T3G 3.3V 1A LDO SOT-223 C26537"
+lcsc = "C26537"
+mpn = "NCP1117ST33T3G"
+
+[Rp2350Minimal.parts."reset"]
+catalog = "tactile_switch"
+row = "434133025816 WS-TASV tactile switch SMD-4P 4.2x3.2mm C5504987"
+lcsc = "C5504987"
+mpn = "434133025816"
+
+[Rp2350Minimal.parts."reset_series"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[Rp2350Minimal.parts."ss_link"]
+catalog = "resistor"
+row = "RC0402JR-070RL 0ohm jumper 62.5mW 0402 C60485"
+lcsc = "C60485"
+mpn = "RC0402JR-070RL"
+
+[Rp2350Minimal.parts."ss_pullup.resistor"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[Rp2350Minimal.parts."usb"]
+catalog = "micro_usb"
+row = "10103594-0001LF"
+lcsc = "C428495"
+mpn = "10103594-0001LF"
+
+[Rp2350Minimal.parts."usb_dm_series"]
+catalog = "resistor"
+row = "27Ω 1% 0402 C25100"
+lcsc = "C25100"
+mpn = "0402WGF270JTCE"
+
+[Rp2350Minimal.parts."usb_dp_series"]
+catalog = "resistor"
+row = "27Ω 1% 0402 C25100"
+lcsc = "C25100"
+mpn = "0402WGF270JTCE"
+
+[Rp2350Minimal.parts."v1v1_100n_1"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v1v1_100n_2"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v1v1_100n_3"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v1v1_bulk"]
+catalog = "capacitor"
+row = "4.7uF 20% 10V X5R 0402 C23733"
+lcsc = "C23733"
+mpn = "CL05A475MP5NRNC"
+
+[Rp2350Minimal.parts."v3v3_100n_1"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_2"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_3"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_4"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_5"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_6"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_7"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_100n_8"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[Rp2350Minimal.parts."v3v3_bulk_a"]
+catalog = "capacitor"
+row = "10uF 10% 16V X5R 0805 C77075"
+lcsc = "C77075"
+mpn = "GRM21BR61C106KE15L"
+
+[Rp2350Minimal.parts."v3v3_bulk_b"]
+catalog = "capacitor"
+row = "10uF 10% 16V X5R 0805 C77075"
+lcsc = "C77075"
+mpn = "GRM21BR61C106KE15L"
+
+[Rp2350Minimal.parts."v3v3_bulk_c"]
+catalog = "capacitor"
+row = "4.7uF 20% 10V X5R 0402 C23733"
+lcsc = "C23733"
+mpn = "CL05A475MP5NRNC"
+
+[Rp2350Minimal.parts."vbus_bulk"]
+catalog = "capacitor"
+row = "10uF 10% 16V X5R 0805 C77075"
+lcsc = "C77075"
+mpn = "GRM21BR61C106KE15L"

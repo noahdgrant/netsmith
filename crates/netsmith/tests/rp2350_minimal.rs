@@ -308,7 +308,7 @@ fn the_license_is_raspberry_pis_and_keeps_its_notice() {
 }
 
 #[test]
-fn the_placeholder_board_checks_and_solves() {
+fn the_board_checks_and_solves() {
     let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
     let (loader, catalogs) = (target.loader().unwrap(), target.catalogs().unwrap());
     assert_eq!(target.files.len(), 1);
@@ -1811,4 +1811,468 @@ fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_
     assert!(!project().join("catalogs/samtec_tsw_118.csv").exists());
     let target = Target::resolve_from(&project(), None).unwrap();
     assert!(target.catalogs().is_ok());
+}
+
+/// The board itself, `src/main.nsm`: the schematic of Raspberry Pi's RP2350A Minimal circuit
+/// (item S6a of epic #308). The proofs: the nets are Raspberry Pi's (read from the committed
+/// `.kicad_pcb` as a file, with no KiCad), the header pin map is fixed, and the board builds
+/// with no KiCad install.
+mod board {
+    use super::*;
+    use netsmith::compare::netlist_of_design;
+    use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, normalize_value, report};
+
+    /// Where each part of Raspberry Pi's board is in the netsmith board (the path of its
+    /// member), by Raspberry Pi's reference designator. The parts that Raspberry Pi has several
+    /// of on the same two nets (the eight 100 nF capacitors on +3V3, the three on +1V1) are
+    /// interchangeable: which of them is called C12 is arbitrary, and nothing below depends on it.
+    /// MH1 to MH4 are the mounting holes, which belong to the physical file.
+    const PARTS: &[(&str, &str)] = &[
+        ("U1", "mcu"),
+        ("U2", "regulator"),
+        ("U3", "flash"),
+        ("J1", "usb"),
+        ("J2", "header_low"),
+        ("J3", "header_high"),
+        ("J4", "debug"),
+        ("SW1", "bootsel"),
+        ("SW2", "reset"),
+        ("L1", "core_inductor"),
+        ("X1", "oscillator.crystal"),
+        ("C1", "vbus_bulk"),
+        ("C2", "v3v3_100n_1"),
+        ("C3", "oscillator.load_in"),
+        ("C4", "oscillator.load_out"),
+        ("C5", "v3v3_bulk_a"),
+        ("C6", "v3v3_bulk_c"),
+        ("C7", "v1v1_bulk"),
+        ("C8", "v1v1_100n_1"),
+        ("C9", "avdd_filter_cap"),
+        ("C10", "v1v1_100n_2"),
+        ("C11", "v1v1_100n_3"),
+        ("C12", "v3v3_100n_2"),
+        ("C13", "v3v3_100n_3"),
+        ("C14", "v3v3_100n_4"),
+        ("C15", "v3v3_100n_5"),
+        ("C16", "v3v3_100n_6"),
+        ("C17", "v3v3_100n_7"),
+        ("C18", "v3v3_100n_8"),
+        ("C19", "v3v3_bulk_b"),
+        ("R1", "ss_pullup.resistor"),
+        ("R2", "oscillator.damping"),
+        ("R3", "avdd_filter"),
+        ("R4", "reset_series"),
+        ("R6", "bootsel_series"),
+        ("R7", "usb_dp_series"),
+        ("R8", "usb_dm_series"),
+        ("R9", "gpio0_link"),
+        ("R10", "ss_link"),
+    ];
+
+    const HOLES: [&str; 4] = ["MH1", "MH2", "MH3", "MH4"];
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let source = &target.files[0];
+        let text = fs::read_to_string(&source.path).unwrap();
+        build_with(
+            &source.name,
+            &text,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries_without_kicad(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    fn reference() -> Netlist {
+        Netlist::from_kicad_pcb(&read(&format!("reference/{REFERENCE}")))
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// The design's reference designator for each of Raspberry Pi's, by path.
+    fn designators(built: &netsmith::Built) -> BTreeMap<String, String> {
+        PARTS
+            .iter()
+            .map(|(reference, path)| {
+                let part = built
+                    .design
+                    .parts
+                    .iter()
+                    .find(|p| p.path == *path)
+                    .unwrap_or_else(|| panic!("{reference}: the board has no part `{path}`"));
+                (part.refdes.clone(), (*reference).to_string())
+            })
+            .collect()
+    }
+
+    type Pad = (String, String);
+
+    /// For each pad that is on a net with another pad: the other pads of the net, in
+    /// Raspberry Pi's designators (`to_reference` maps a designator of this netlist; one it
+    /// does not name keeps its name).
+    fn neighbours(
+        netlist: &Netlist,
+        to_reference: &BTreeMap<String, String>,
+    ) -> BTreeMap<Pad, BTreeSet<Pad>> {
+        let mut out = BTreeMap::new();
+        for net in &netlist.nets {
+            let pads: BTreeSet<Pad> = net
+                .pins
+                .iter()
+                .map(|(c, pin)| {
+                    let refdes = &netlist.components[*c].refdes;
+                    let refdes = to_reference.get(refdes).unwrap_or(refdes).clone();
+                    // The one pad number that differs (README, "Differs from Raspberry Pi's
+                    // board"): their footprint numbers U2's tab 4, the datasheet and the
+                    // generator's footprint 2, the same pin on the same net.
+                    let pin = if refdes == "U2" && pin == "4" {
+                        "2"
+                    } else {
+                        pin
+                    };
+                    (refdes, pin.to_string())
+                })
+                .collect();
+            let pads: Vec<Pad> = pads.into_iter().collect();
+            if pads.len() < 2 {
+                continue;
+            }
+            for pad in &pads {
+                let others = pads.iter().filter(|p| *p != pad).cloned().collect();
+                out.insert(pad.clone(), others);
+            }
+        }
+        out
+    }
+
+    /// The same netlist with the value and footprint of every component blanked and the
+    /// components of `leave_out` gone: only the wiring is left to compare.
+    fn wiring_only(netlist: &Netlist, leave_out: &[&str], alias_u2_tab: bool) -> Netlist {
+        let kept = |refdes: &str| !leave_out.contains(&refdes);
+        let components = netlist
+            .components
+            .iter()
+            .filter(|c| kept(&c.refdes))
+            .map(|c| (c.refdes.clone(), String::new(), String::new()))
+            .collect();
+        let nets = netlist
+            .nets
+            .iter()
+            .map(|n| {
+                let pins = n
+                    .pins
+                    .iter()
+                    .map(|(c, pin)| {
+                        let refdes = netlist.components[*c].refdes.clone();
+                        // U2's tab: pad 4 of Raspberry Pi's footprint is pad 2 of the part.
+                        let pin = if alias_u2_tab && refdes == "U2" && pin == "4" {
+                            "2".to_string()
+                        } else {
+                            pin.clone()
+                        };
+                        (refdes, pin)
+                    })
+                    .filter(|(refdes, _)| kept(refdes))
+                    .collect();
+                (n.name.clone(), pins)
+            })
+            .collect();
+        Netlist::from_parts(components, nets).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn design_netlist(built: &netsmith::Built) -> Netlist {
+        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
+        netlist_of_design(&built.design, &mapping).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn the_board_builds_with_no_kicad_and_has_the_parts_of_raspberry_pis_board() {
+        let built = built();
+        let by_designator = designators(&built);
+        // Every part of the board is one of Raspberry Pi's, once, and every part of theirs
+        // but the four mounting holes is in the board.
+        assert_eq!(by_designator.len(), PARTS.len());
+        assert_eq!(
+            built.design.parts.len(),
+            PARTS.len(),
+            "a part that is not Raspberry Pi's"
+        );
+        let reference = reference();
+        let theirs: BTreeSet<&str> = reference
+            .components
+            .iter()
+            .map(|c| c.refdes.as_str())
+            .collect();
+        let ours: BTreeSet<&str> = PARTS.iter().map(|(r, _)| *r).collect();
+        assert_eq!(theirs.len(), 43);
+        assert_eq!(
+            theirs.difference(&ours).copied().collect::<Vec<_>>(),
+            HOLES,
+            "the reference's parts that the board does not have"
+        );
+        assert_eq!(ours.difference(&theirs).count(), 0);
+        for hole in HOLES {
+            let c = reference.find(hole).unwrap();
+            assert!(
+                reference.components[c].pins.is_empty(),
+                "{hole} is on a net"
+            );
+        }
+        assert!(built.schematic.starts_with("(kicad_sch"));
+    }
+
+    /// The proof of item S7: for every pad of every part of Raspberry Pi's board, the set of
+    /// the other pads on its net is the same as on the board's. It is made from the committed
+    /// `.kicad_pcb` as a file (`Netlist::from_kicad_pcb`, netsmith's own s-expression reader) and
+    /// the design's nets, with no `kicad-cli`: `netsmith compare` reads the same file the same
+    /// way, but a `.nsm` side and a `.kicad_pcb` side differ in the footprints' names (theirs are
+    /// `RPI_COMPILED:generic_capc1005x50`), so the test compares the wiring alone.
+    #[test]
+    fn every_pad_has_the_same_pads_on_its_net_as_in_raspberry_pis_board() {
+        let built = built();
+        let to_reference = designators(&built);
+        let ours = neighbours(&design_netlist(&built), &to_reference);
+        let theirs = neighbours(&reference(), &BTreeMap::new());
+        let mut differences = Vec::new();
+        let pads: BTreeSet<&Pad> = ours.keys().chain(theirs.keys()).collect();
+        let empty = BTreeSet::new();
+        for pad in pads {
+            let (a, b) = (
+                ours.get(pad).unwrap_or(&empty),
+                theirs.get(pad).unwrap_or(&empty),
+            );
+            if a != b {
+                differences.push(format!(
+                    "{}.{}: board has {:?}, Raspberry Pi has {:?}",
+                    pad.0,
+                    pad.1,
+                    a.difference(b).collect::<Vec<_>>(),
+                    b.difference(a).collect::<Vec<_>>()
+                ));
+            }
+        }
+        assert!(differences.is_empty(), "{}", differences.join("\n"));
+        // It is a real comparison: both sides have pads on nets.
+        assert!(
+            theirs.len() > 200 && ours.len() == theirs.len(),
+            "{} {}",
+            ours.len(),
+            theirs.len()
+        );
+    }
+
+    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith compare` runs), with the
+    /// designators paired by the table above and the value and footprint left out of the
+    /// comparison: the verdict is a match, and the report names no net.
+    #[test]
+    fn netsmith_compare_says_the_nets_are_the_same() {
+        let built = built();
+        let to_reference = designators(&built);
+        let a = wiring_only(&design_netlist(&built), &[], false);
+        let b = wiring_only(&reference(), &HOLES, true);
+        let pairs = to_reference
+            .iter()
+            .map(|(ours, theirs)| (ours.clone(), theirs.clone()))
+            .collect();
+        let options = Options {
+            identity: Identity::Map(pairs),
+            ..Options::default()
+        };
+        let outcome = compare(&a, &b, &options).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
+        // Without the table, the wiring alone still makes the two the same circuit.
+        let free = compare(&a, &b, &Options::default()).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(free, Outcome::Match(_)), "{}", report(&free));
+    }
+
+    /// The comparison would see a wrong net: one pad moved to another net is a difference.
+    #[test]
+    fn the_comparison_sees_a_pad_on_the_wrong_net() {
+        let built = built();
+        let to_reference = designators(&built);
+        let mut ours = neighbours(&design_netlist(&built), &to_reference);
+        let theirs = neighbours(&reference(), &BTreeMap::new());
+        // J2 pad 4 carries GPIO0; say it carried GPIO1's pad on U1 instead.
+        let key = ("J2".to_string(), "4".to_string());
+        let wrong = ours
+            .get(&("J2".to_string(), "6".to_string()))
+            .unwrap()
+            .clone();
+        ours.insert(key.clone(), wrong);
+        assert_ne!(ours.get(&key), theirs.get(&key));
+    }
+
+    /// The values of the resistors and capacitors are Raspberry Pi's (`4k7` and `4.7k` are one
+    /// value), and the package is the one their footprint says: `1005` (metric) is 0402 and
+    /// `2012` is 0805.
+    #[test]
+    fn the_resistors_and_capacitors_have_raspberry_pis_values_and_packages() {
+        let built = built();
+        let reference = reference();
+        let mut wrong = Vec::new();
+        for (name, path) in PARTS
+            .iter()
+            .filter(|(r, _)| r.starts_with('R') || r.starts_with('C'))
+        {
+            let part = built.design.parts.iter().find(|p| p.path == *path).unwrap();
+            let theirs = &reference.components[reference.find(name).unwrap()];
+            if normalize_value(&part.value, true) != normalize_value(&theirs.value, true) {
+                wrong.push(format!(
+                    "{name}: value {} against {}",
+                    part.value, theirs.value
+                ));
+            }
+            let package = if theirs.footprint.contains("1005") {
+                "0402"
+            } else if theirs.footprint.contains("2012") {
+                "0805"
+            } else {
+                panic!("{name}: footprint {}", theirs.footprint)
+            };
+            // R1 is the standard `PullUp`, which does not let a board state the package of its
+            // resistor: the solver picks a 0603 (README, "Differs from Raspberry Pi's board").
+            let package = if *name == "R1" { "0603" } else { package };
+            if part.package.as_deref() != Some(package) {
+                wrong.push(format!(
+                    "{name}: package {:?} against {package}",
+                    part.package
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// What each header pad carries on Raspberry Pi's board, read from its nets: a power net, a
+    /// ground, or the MCU pin that the net reaches (`GPIO4`, `RUN`, `SWCLK`).
+    fn reference_signals() -> BTreeMap<(String, String), String> {
+        let reference = reference();
+        let mut out = BTreeMap::new();
+        for header in ["J2", "J3"] {
+            let c = reference.find(header).unwrap();
+            for (pad, net) in &reference.components[c].pins {
+                let name = reference.nets[*net]
+                    .name
+                    .trim_start_matches('/')
+                    .to_string();
+                out.insert((header.to_string(), pad.clone()), name);
+            }
+        }
+        out
+    }
+
+    /// The header pin map is Raspberry Pi's, pad by pad, and it is made of named pins: the
+    /// MCU's pin that a header pad reaches is the one on the net of that pad in the design.
+    #[test]
+    fn the_header_pins_carry_raspberry_pis_signals() {
+        let built = built();
+        let design = &built.design;
+        let mcu = design.parts.iter().find(|p| p.path == "mcu").unwrap();
+        let mut wrong = Vec::new();
+        let expected = reference_signals();
+        assert_eq!(expected.len(), 72, "two headers of 36 pads, each on a net");
+        for ((header, pad), signal) in &expected {
+            let path = if header == "J2" {
+                "header_low"
+            } else {
+                "header_high"
+            };
+            let part = design.parts.iter().find(|p| p.path == path).unwrap();
+            let net = design
+                .nets
+                .iter()
+                .find(|n| {
+                    n.pins
+                        .iter()
+                        .any(|p| p.refdes == part.refdes && p.pin == *pad)
+                })
+                .unwrap_or_else(|| panic!("{header}.{pad} is on no net"));
+            let found = match signal.as_str() {
+                "GND" | "+3V3" => net.name.clone(),
+                _ => {
+                    let pin = net
+                        .pins
+                        .iter()
+                        .filter(|p| p.refdes == mcu.refdes)
+                        .filter_map(|p| mcu.pins.iter().find(|q| q.pads.contains(&p.pin)))
+                        .map(|q| q.datasheet.clone())
+                        .next()
+                        .unwrap_or_default();
+                    // The datasheet calls the swd data pin SWDIO and Raspberry Pi's net SWD.
+                    if pin == "SWDIO" { "SWD".into() } else { pin }
+                }
+            };
+            if found != *signal {
+                wrong.push(format!(
+                    "{header}.{pad}: {found}, Raspberry Pi's is {signal}"
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// The pin optimizer (ADR 0101) moves only a pin that a request got. The board has no
+    /// request, so the optimizer has nothing it may move: its input, the check's `spaces`, is
+    /// empty, the pin file has no entry, and `improve` has no slot to try. A board whose
+    /// header pad is joined to a request is the opposite, so the test would see a mapping that
+    /// the optimizer could move.
+    #[test]
+    fn the_optimizer_cannot_move_a_header_pad() {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let source = &target.files[0];
+        let text = fs::read_to_string(&source.path).unwrap();
+        let (loader, catalogs) = (target.loader().unwrap(), target.catalogs().unwrap());
+        let libraries = libraries_without_kicad();
+        let outcome =
+            netsmith::outcome_with(&source.name, &text, &loader, &catalogs, Some(&libraries))
+                .unwrap_or_else(|p| panic!("{}", p[0].rendered));
+        let requests = |outcome: &netsmith::Outcome| {
+            outcome.pins.spaces.get("Rp2350Minimal").map_or(0, |parts| {
+                parts.iter().map(|s| s.requests.len()).sum::<usize>()
+            })
+        };
+        assert_eq!(requests(&outcome), 0, "the board asks for a pin somewhere");
+        assert!(
+            outcome
+                .pins
+                .file
+                .boards
+                .get("Rp2350Minimal")
+                .is_none_or(|e| e.is_empty())
+        );
+        assert!(outcome.pins.unserved.values().all(|u| u.is_empty()));
+        assert!(
+            !project().join("src/main.pins.toml").exists(),
+            "a pin file would keep an answer for a request"
+        );
+        // The control: the same board with the header's GPIO4 pad joined to a request is one
+        // the optimizer may move.
+        let asked = text
+            .replace(
+                "    .header_low.p12 ~ .mcu.gpio4",
+                "    .pin_for_header: .mcu.GPIO\n    .header_low.p12 ~ .pin_for_header",
+            )
+            .replace(
+                ".mcu: Rp2350A { .mpn &= \"RP2350A\" }",
+                ".mcu: Rp2350A { .mpn &= \"RP2350A\"; .package &= \"QFN-60-EP(7x7)\" }",
+            );
+        assert_ne!(asked, text);
+        let moved =
+            netsmith::outcome_with(&source.name, &asked, &loader, &catalogs, Some(&libraries))
+                .unwrap_or_else(|p| panic!("{}", p[0].rendered));
+        assert_eq!(requests(&moved), 1);
+    }
+
+    #[test]
+    fn the_electrical_rules_check_of_kicad_passes_on_the_schematic() {
+        let built = built();
+        let Some(found) = crate::erc::erc(&built.design.name, &built.schematic) else {
+            return;
+        };
+        assert_eq!(
+            crate::erc::with_the_machines_libraries(found),
+            Vec::<String>::new()
+        );
+    }
 }
