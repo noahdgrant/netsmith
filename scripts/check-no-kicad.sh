@@ -185,15 +185,21 @@ for dir in "$repo"/examples/*/; do
     fi
 done
 
-for entry in "${skipped[@]}" "${no_fab[@]}"; do
-    name="${entry%%|*}"
+# A name of an allow-list that is not in examples/ any more (`no_fab` names projects: folders).
+stale() {
     case "$present" in
-        *" $name "*) ;;
+        *" $1 "*) ;;
         *)
-            echo "FAIL  \`skipped\` or \`no_fab\` names $name, which is not in examples/ (remove it)"
+            echo "FAIL  \`$2\` names $1, which is not in examples/ (remove it)"
             failed=1
             ;;
     esac
+}
+for entry in "${skipped[@]}"; do
+    stale "${entry%%|*}" skipped
+done
+for entry in "${no_fab[@]}"; do
+    stale "${entry%%|*}/" no_fab
 done
 
 if [ "$failed" -ne 0 ]; then
