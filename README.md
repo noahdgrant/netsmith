@@ -66,9 +66,11 @@ except one. netsmith draws the ICs from the part's pin table, as a plain box, an
 capacitors, inductors, LEDs, diodes, FETs, fuses, crystals, switches, ferrite beads, headers and
 sockets, USB-C and coaxial connectors, test points, mounting holes, fiducials and the power flag
 as conventional glyphs, with the pins where KiCad's symbols have them (ADR 0097, steps 1 and 2).
-The linear regulator (`LinearRegulator`) still uses KiCad's `Regulator_Linear:AP1117-15`, and so
-do the footprints that netsmith does not generate (step 3), so install KiCad 9 (8 also works) to build a
-board that has them. netsmith finds the `symbols` and
+The linear regulator (`LinearRegulator`) still uses KiCad's `Regulator_Linear:AP1117-15`, so
+install KiCad 9 (8 also works) to build a board that has one. No footprint of the standard
+library needs KiCad's: netsmith generates them or writes them from the maker's drawing
+(`std/libs/`; ADR 0097, step 3). A footprint that a project's own `kicad.toml` takes from KiCad's
+libraries still needs them. netsmith finds the `symbols` and
 `footprints` folders by itself; set `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`
 to name them. If it finds none, it stops and lists every place it looked (ADR 0021). What has
 been tried: Windows KiCad 9 under WSL on a real install, KiCad 9 on Linux in the CI `kicad`

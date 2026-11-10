@@ -479,6 +479,82 @@ fn holes_test_points_and_a_fiducial_are_fabricated_with_no_kicad_footprint_libra
     }
 }
 
+/// An SMA connector and the programming pads, made with no KiCad footprint library to read: the
+/// footprints are netsmith's own, written from the makers' drawings (ADR 0097, step 3), and the
+/// board file carries their pads.
+#[test]
+fn a_coax_and_programming_pads_are_fabricated_with_no_kicad_footprint_library() {
+    use netsmith_kicad::install::Search;
+    use netsmith_kicad::sexp::Sexp;
+    use netsmith_pcb::{Footprint, FootprintLibrary};
+
+    let nowhere = TempDir::new("no-footprint-library-connectors");
+    let machine = Search::under(nowhere.path());
+    let footprints = FootprintLibrary::installed_by(&machine);
+    assert!(
+        footprints
+            .load("Connector_Coaxial:SMA_Amphenol_132134_Vertical")
+            .is_err(),
+        "no footprint library of KiCad's is in reach"
+    );
+    let libraries = Libraries::with_mapping(
+        netsmith_kicad::Mapping::standard(),
+        netsmith_kicad::SymbolLib::at("/nonexistent").with_generators(),
+        footprints,
+    );
+    let source = LED
+        .replace(
+            "import std::parts::connector::Header1x2\n",
+            "import std::parts::connector::{Coax, Header1x2, ProgrammingPads6}\n",
+        )
+        .replace(
+            "    .supply.pos ~> .r1",
+            "    .rf: Coax\n    .pads: ProgrammingPads6\n\
+             \x20   .rf.signal ~ .supply.pos\n    .rf.shield ~ .supply.neg\n\
+             \x20   .pads.p1 ~ .supply.pos\n    .pads.p2 ~ .supply.neg\n\
+             \x20   .supply.pos ~> .r1",
+        );
+    let dir = out("connectors-no-footprints");
+    fab(
+        "led.nsm",
+        &source,
+        &dir,
+        &Catalogs::jlcpcb(),
+        &libraries,
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+
+    let pcb = Sexp::parse(&read(&dir, "LedExample", "LedExample.kicad_pcb")).unwrap();
+    let own = FootprintLibrary::at("/nonexistent");
+    for id in [
+        "netsmith:SMA_Amphenol_132134_Vertical",
+        "netsmith:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical",
+    ] {
+        let node = pcb
+            .find_all("footprint")
+            .find(|f| f.args().first().and_then(|a| a.text()) == Some(id))
+            .unwrap_or_else(|| panic!("the board has no {id}"));
+        let written = Footprint::parse(id, &node.to_kicad_string()).unwrap();
+        let made = own.load(id).unwrap();
+        assert_eq!(written.pads.len(), made.pads.len(), "{id}");
+        for (w, m) in written.pads.iter().zip(&made.pads) {
+            // The pad's angle is the footprint's own on the board, the placer's choice.
+            assert_eq!(
+                (w.number.as_str(), w.kind, w.shape, w.at, &w.layers),
+                (m.number.as_str(), m.kind, m.shape, m.at, &m.layers),
+                "{id}"
+            );
+            assert_eq!(
+                (w.width, w.height, w.drill),
+                (m.width, m.height, m.drill),
+                "{id}"
+            );
+        }
+        assert_eq!(written.courtyard, made.courtyard, "{id}");
+    }
+}
+
 #[test]
 fn a_part_with_no_part_number_is_refused_and_nothing_is_written() {
     let Some(cli) = kicad() else { return };

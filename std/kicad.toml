@@ -24,7 +24,9 @@
 #
 # A symbol or footprint of the library `netsmith` is not KiCad's: it is one of the files in
 # `std/libs/`, which the binary carries for the packages and parts that KiCad's libraries do not
-# have (ADR 0087).
+# have (ADR 0087). Every footprint of this file is generated (ADR 0043) or such a file: none is
+# read from KiCad's libraries (ADR 0097, step 3), so no row needs an installed KiCad footprint
+# library.
 
 [[part]]
 kind = "Resistor"
@@ -587,7 +589,7 @@ kind = "Coax"
 package = "SMA_Amphenol_132134"
 default = true
 symbol = "Connector:Conn_Coaxial"
-footprint = "Connector_Coaxial:SMA_Amphenol_132134_Vertical"
+footprint = "netsmith:SMA_Amphenol_132134_Vertical"
 
 [part.pin_names]
 SIGNAL = "In"
@@ -627,7 +629,7 @@ kind = "ProgrammingPads6"
 package = "TC2030-NL"
 default = true
 symbol = "Connector_Generic:Conn_02x03_Odd_Even"
-footprint = "Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"
+footprint = "netsmith:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"
 
 [part.pin_names]
 P1 = "Pin_1"
