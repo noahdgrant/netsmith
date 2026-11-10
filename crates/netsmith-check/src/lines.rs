@@ -5,6 +5,128 @@
 //! interface is made or when a peripheral names the interface (`as Spi SpiRole::Master`), and
 //! its mistakes are reported then, so that the order of statements never matters. The rules
 //! that use it, which read the nets of a board, are in `busnets.rs`.
+//!
+//! # A row of `lines`
+//!
+//! `.line kind` and optional words, in the form of a pin row with no name and no pads (the form
+//! a generic's contract rows have, ADR 0068). A bus with one role (`Uart`) writes `lines` with
+//! no role; a bus with several declares an enum of them and a `.role` member.
+//!
+//! - `optional` and `required`: as on a pin row, they decide whether the line must be
+//!   connected. A part's own row wins over the role's, and the role's over the kind's default
+//!   (an output is optional, an input required). So `miso output required` refuses a slave's
+//!   open data out.
+//! - `limit N` after the role: at most N interfaces of this role on one bus (`Master limit 1`,
+//!   `Probe`, `Host`, `Device`; for `Uart`, with no role, 2 ends).
+//! - `crosses .other`: the line is joined to `.other` of the other end, not to its own name. It
+//!   is written on one of the two lines and holds for both.
+//! - `single`: a net carries this line of at most one part of the role (a select line belongs
+//!   to one slave). It is judged among the ends that state a role, because the word is a
+//!   property of a role's row; the other rules need no role. A `Uart` has no roles, so its table
+//!   (`optional` on `rts` and `cts`, `limit 2`) applies to every part that has one.
+//!
+//! A part states its role with `&=`. A processor whose unit can be either leaves it out and the
+//! board states it (`.cpu.spi1.role &= SpiRole::Slave`), as a board chooses a function.
+//! `~` between two interfaces does not equate `role` (what the part is, not a value the bus
+//! shares), by the rule that keeps `current` and the four levels apart (`is_flow`, `is_level`);
+//! the new test is a field of an enum that a `lines` table keys on. The role is an enum value,
+//! not a constant of the checker (ADR 0054): it is typed, it has the nearest-name message for a
+//! typo, it is read by `==` in a module, and `std/bus.nsm` is where a reader finds the roles.
+//!
+//! # What was built, where it differs from the first text
+//!
+//! - The declaration is the definition's: `lines` is read once for an interface definition
+//!   (`Checker::read_bus_def`) into `Model::bus_defs`, when an instance is made or a peripheral
+//!   names the interface, and not into an `Instance`; that is what lets a peripheral that names
+//!   `Spi` read the rows with no `.spi` member. A `lines` that is wrong (a pin that is not the
+//!   interface's, a role that is not a variant of its `.role`, a role twice, a `crosses` that
+//!   names two lines) is reported once, where the interface is first used. `lines` is refused in
+//!   a generic, a part, a module and a board.
+//! - What agrees with a role (`busnets.rs`, rule 1): the same kind, `bidirectional`, `passive`,
+//!   `no_connect` (the first text did not name it: a part that leaves a bus pin open says so),
+//!   and `tri_state` for an `output` and the reverse; on a line that is `bidirectional` (I2C)
+//!   any signal kind. A `bidirectional` row on a line whose role gives a plain direction is
+//!   accepted with a warning of the `bus role` guideline of
+//!   `netsmith build` (`crates/netsmith/src/bus_roles.rs`), so an old table moves to honest kinds without
+//!   breaking its build. For a function that states no kind of its own, the pin's kind decides
+//!   and the advice names the function and the place to write the kind (the peripheral).
+//! - `~` leaves out two pins that no part describes: a device without flow control gives no row
+//!   to `rts` and `cts`, and `.a.uart ~ .b.uart` would join them and the pad rule would refuse
+//!   two pins with no pad. `connect_interfaces` skips a pair of pins when both parts have a pin
+//!   table and neither has a row for the pin.
+//! - A `Uart` module that forwards its port with `~` crosses, and the board's `~` crosses again;
+//!   the net rules find the two outputs where the module is. Either the module draws its port
+//!   as a part does (its `tx` is the line the module sends on) or the board joins pin by pin.
+//! - The messages are built in `crates/netsmith-check/tests/lines.rs`, `bus_peripherals.rs` and
+//!   the guide. Message 5 (a shared line whose drivers are not all `tri_state`) names the
+//!   datasheet of each plain `output`; message 2 names the pins past the limit; the two-outputs
+//!   message of ADR 0044 is unchanged where no part states a role and gets the clause `a line
+//!   that several parts share needs every driver to be `tri_state`` when a bus pin of a part
+//!   that states its role is on the net.
+//! - Stage 3 keeps the limit on `.frequency`, as the part examples write it, and reads the
+//!   bounds from the relations (`netsmith-solve/src/busclock.rs`) instead of moving them to a
+//!   `.max_frequency` that a join does not equate: one spelling, the one the owner reviewed.
+//!   The interfaces the nets show to be on one bus hold one clock, one baud and one mode
+//!   (`equate_bus_values` in `connect.rs`); a bus with limits and no clock is a note; a
+//!   minimum (`>=`) is said the same way.
+//! - Stage 4: the peripheral clause `peripheral NAME [on CLASS] [as Interface [Role]] {
+//!   FUNCTION[:kind] [as line] ... }` is judged when the part is read: the interface must have
+//!   `lines`, the role must be a variant with a table, each line one the role has, once, and a
+//!   function's own kind must agree with the line. A bus end is `End::Iface` or `End::Periph`
+//!   in `busnets.rs`; its limit and its `single` lines are counted like an interface's.
+//!
+//! # Pass-through, the guideline and `Levels` (agent's choices, for the owner's review)
+//!
+//! - **`UsbRole::Passthrough`.** A receptacle (`UsbC2`) is neither host nor device. A variant
+//!   of the role enum that the interface has no `lines` for is a pass-through
+//!   (`BusDef::passes_through`): it has nothing to be judged by, counts toward no `limit`, is
+//!   not listed among the other ends, satisfies the `bus role` guideline, states no role for the
+//!   note of rule 7 and the tri-state clause of message 5, and cannot disagree with the role of
+//!   the end behind it. The guideline and the note keep naming the end behind it that states
+//!   none. No new syntax, and the cost is that a bus whose author forgets the `lines` of a role
+//!   makes that role transparent, silently (accepted: `std/bus.nsm` is the one place the five
+//!   buses are declared). The name says what the end does for the bus and fits a plug as well
+//!   as a receptacle. Rejected: `Receptacle` or `Connector` (a kind of part, not a role),
+//!   `Through`, `Bridge` (an active part), `Transparent`; a keyword or `lines passthrough` (a
+//!   new word for what a variant without `lines` says); a role `none` (it is the case the
+//!   guideline asks about, so it could not tell a connector from a part that did not say);
+//!   exempting a part by a property of its table, or by a `J` designator (a test on a letter);
+//!   asking the receptacle for `Host` or `Device` (a false statement that counts toward the
+//!   limit of one host). A peripheral cannot be a pass-through. `Uart` stays without roles.
+//! - **The `bus role` guideline** (`busnets::joined_without_role` and
+//!   `crates/netsmith/src/bus_roles.rs`): a warning in `netsmith build`, an error with `--strict` or
+//!   `guidelines = "error"`, also in the editor's problems list and in `fab-notes.txt`. An
+//!   interface is joined when some net joins a pin of it to a pin of the same interface
+//!   definition on another end, however the board joined them: the condition the note of rule
+//!   7 uses, so the two speak of the same buses. Rejected: any interface with a line connected
+//!   (it would ask a part whose bus reaches a connector pin by pin, which no rule judges).
+//!   Only buses that have roles are asked. The message names what is not judged and lists the
+//!   variants of the bus's enum that have `lines`; it is raised for every role-less end of a
+//!   joined bus, also when another end states one, because the note is not a finding `--strict`
+//!   can stop on. It stays a guideline: a part joined to a bus that states no role is still
+//!   correct, only less judged.
+//! - **`Levels` states `.reference.current &= 0A`** (`std/logic.nsm`, provisional,
+//!   2026-11-07). A part joins a bus interface's reference rail to its own supply, and `~`
+//!   equates every field of two rails but `current`, so the reference stayed a rail of its own
+//!   on the supply's net with a current nobody states, the net had two unknown terms, and the
+//!   power view said the loads had a current the solver had not settled. A statement inside an
+//!   interface applies to every instance and sits on the field itself, so a join does not have
+//!   to carry it; a `?=` default would also settle it, but a reference that draws is a mistake
+//!   that should be refused. A part that states another value for it is refused as a
+//!   contradiction. `Logic` has the same shape and states nothing yet (ADR 0066, open question
+//!   3).
+//!
+//! # Not carried, with the reason
+//!
+//! I2C addresses (a set of addresses for a part with a strap, question 9); `open_drain` as a
+//! kind (it would turn the pull-up rule of `buses.rs` from a name test into data, and would
+//! need `tri_state` first); whether a driver really is high impedance (the checker takes the
+//! table at its word, as for `abs_max`); timing, setup and hold, drive strength, the number of
+//! devices a bus can load; arbitration, multi-master I2C, daisy chains, QSPI, JTAG, CAN and
+//! ethernet (each is another interface with its own `lines`); dual-role USB (a part that is a
+//! host or a device by what is plugged in leaves `.usb.role` out). The roles of a board's port
+//! in a system are not judged: `join_ports` equates values and joins no pins, and `mate.rs` has
+//! its own driver counts by row kind (question 7).
 
 use netsmith_lang::Span;
 use netsmith_lang::ast::{self, DefKind, Item, PinKind};

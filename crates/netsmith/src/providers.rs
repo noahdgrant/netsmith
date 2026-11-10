@@ -10,6 +10,47 @@
 //! uses in path order, the last use varying fastest, each use's providers in the order the
 //! checker lists them (`netsmith_check::Provider`). Nothing compares providers: the first
 //! assignment that works is the one.
+//!
+//! The search. `outcome_with` checks once with the default assignment (the first provider of
+//! every use), solves, and if the solution has no diagnostics that is the result, at the cost of
+//! one solve, as before. Only a failure with a use that has more than one provider starts the
+//! search. The trials are bounded by [`MAX_PROVIDER_TRIALS`] (64), and on reaching it the build
+//! prints the diagnostics of the first solve and then `gave up after trying 64 provider
+//! combinations`, naming the first six uses it did not reach and counting the rest (the
+//! diagnostics first, because a design with many uses and an unrelated mistake used to end with
+//! only the bound's message). Each use that has several providers is varied alone first, over its
+//! other providers; a use none of whose providers changes the diagnostics (rendered text) is left
+//! at its first provider for the depth-first search, and if that finds nothing and every
+//! combination fits in the bound the left-out uses are searched too. So an unrelated mistake
+//! costs the sum of the providers of the uses and not the product. A trial that passes while a
+//! use is varied alone is kept (`Search::passes`) and taken when the search in order reaches the
+//! same assignment, not solved again.
+//!
+//! A provider is the outer choice and the rows of its catalog the inner one, searched by ADR
+//! 0057's joint search inside the trial; a provider whose catalog cannot serve the design fails
+//! its trial with the catalog's own message. Rejected: a provider as a candidate row in
+//! `Solver::pick_parts` (a row only supplies values for fields that already exist).
+//!
+//! Cost. A trial is a whole solve: for an invented board of 58 parts, release build, `check` 2
+//! ms, `solve` 215 to 250 ms, so the bound is about 14 s on such a board (an example,
+//! `crates/netsmith/examples/trial_cost.rs`). Not changed: every use with a second provider is
+//! still varied alone, one solve each, up to the bound; varying only the uses a diagnostic
+//! names would give up designs whose cause the diagnostic does not name (a rail's voltage a
+//! provider sets). For a use whose first provider is the generic itself, an open value after the
+//! pick is the design's (a catalog row sets every value its catalog lists), so it is not
+//! "unjudged": otherwise thirty resistors with no stated current made a build take 36.9 s
+//! instead of 0.5 s.
+//!
+//! What cannot be judged does not hold. A trial of a use whose pick is not the generic itself
+//! is unjudged when a bound or equation that waits reads an unset value that lies inside the use
+//! (the datasheet number of the IC inside a module provider), or a logic level or absolute
+//! maximum could not be checked because a `Logic` or the part inside the use has no value for it
+//! (`NotEvaluated::involves`). A provider that can be judged is preferred, and when none can
+//! the first in order stands and the bound is named in the notes. What stays the design's is a
+//! value inside the use that is one and the same value as one outside it (`Model::equalities`),
+//! such as the `.peak` of the board's rail that the board leaves open: every provider leaves
+//! it as it is, so it starts no search. The silent case of `levels.rs` (a pair of pins of which
+//! neither states any level) is not counted.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 

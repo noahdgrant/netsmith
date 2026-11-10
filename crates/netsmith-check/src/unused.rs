@@ -6,7 +6,10 @@
 //!
 //! - the board may not also use the interface: a pin of it on a net with a pin that is not a
 //!   passive one (a test pad, a header) of another part, or a function stated on one of its pins,
-//!   is an error that names both lines;
+//!   is an error that names both lines. A series `Resistor`, `Fuse` or `FerriteBead` that leads
+//!   from the interface to such a net is a use too ([`series_use`], pull request #323, the
+//!   owner's decision of 2026-11-09); an inductor, capacitor, diode or switch in series is not
+//!   followed, and neither is a series part to ground: ADR 0083 lists both as left open;
 //! - the relations that read only values of the interface (`usb.vbus.voltage >= 4.35V`) are
 //!   taken out of the model, so the solver neither checks them nor lists them as not
 //!   evaluated;

@@ -20,6 +20,45 @@
 //! `.inductor.dc_resistance <= .buck.max_dcr` has the member alone on one side, and counting
 //! it would make every optional member stated by the relation that reads it. A value that a
 //! catalog row or a pick gives is never a statement either.
+//!
+//! The word has three meanings that do not meet: after a `pins` row the pin may float (ADR
+//! 0016), after a column of a `catalog` statement the column may be empty (ADR 0055, 0078), and
+//! after a member's type the checks that read it wait for a statement (this module).
+//!
+//! # Where the skip is made, and why there
+//!
+//! At the end of checking a root: the relations that read an unstated optional member are
+//! taken out of the model's list, so the solver, the lowering and the exporters need no rule:
+//! nothing is deferred, nothing is noted, no candidate is asked about them, and the findings of
+//! ADR 0065 do not mention them. A rule in the solver that skips any relation with an unstated
+//! interface member was rejected: it would silence `reg.vin.peak <= reg.vin_abs_max`, whose
+//! note ADR 0057 requires. The skip guards exactly the optional member and no other operand.
+//!
+//! # What a bound of numbers does
+//!
+//! `.max_dcr <= 0.5ohm` states the member, so the relation is kept; the bound gives it no
+//! value, so the relation is then listed as not evaluated, which says the check was not made
+//! (a skip would not). Counting only a statement that gives the member a value (`&=`, `?=`,
+//! `==`) was rejected: ADR 0069 and ADR 0065 count a bound as a statement everywhere else.
+//!
+//! # Across `~`, and where it is refused
+//!
+//! "Stated" travels both ways across a `~` join, read from the equalities the checker made,
+//! so it works through a wrapper module that forwards the interface. A statement in the
+//! declaring definition (`&=`, `?=`, `==` or a bound against numbers) is an error that names
+//! both places, as `?=` against `required` was in ADR 0069: it would state the member for
+//! every use. A definition that uses a member declared by another may state it; a check
+//! against another member (`.typical <= .max_dcr`) is not a statement. A default in the same
+//! declaration as `optional` is the same error: the second spelling for the same thing.
+//!
+//! # Limits
+//!
+//! The skip is on the whole relation, so `.a <= .limit + .b` is skipped when the limit is
+//! unstated; the library writes such a relation as two. A module checked alone is its own root:
+//! a relation over an optional member of its own interface is skipped there when it states
+//! nothing. The provider search (ADR 0068) is unaffected: a provider whose statements state the
+//! member is judged on the relation, and one that does not has no relation to judge. Whether
+//! other members of `Buck` and of std should be marked is the owner's, member by member.
 
 use std::collections::HashSet;
 use std::sync::Arc;

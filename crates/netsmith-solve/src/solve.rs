@@ -122,6 +122,31 @@
 //! smallest set again by trying subsets of the picks (a failure on fewer picks does not imply
 //! the failure on more), and naming every part that fed the failure (it hides the fault).
 //!
+//! **A bank of capacitors is searched by count, fewest first** (ADR 0052). A part whose `.count`
+//! is a range is tried with every catalog row at one capacitor, then at two, and so on
+//! (`counts_of`); the first count and row for which every relation that mentions the part holds
+//! win, so a part one capacitor can serve is picked as before and the fewest parts make the
+//! smallest bill of materials. Rejected: the row first and the count second (catalog order is the
+//! whole policy, ADR 0047, and a bank of one must be what the stage did before), and each row at
+//! every count before the next (it would pick five of a small row over two of a later, larger
+//! one). To keep the search short, a candidate that failed a relation no count can change (a
+//! rating below the rail's peak: the failing relation reads nothing worked out from the count)
+//! is not tried at the next count, so a rating no row meets costs one trial for each row. The
+//! most a count may be is `MAX_BANK` (64), whatever range a design states; the stage's own
+//! range is 1 to 8, a round number above what a datasheet asks of a 5 V rail with the catalog's
+//! parts, and one number in `std/parts/regulator.nsm`. When no count meets the requirement the
+//! message names the nearest as `2 x <row>`; a relation that mentions a field of a part the pick
+//! has refused (the `==` that ties a stated `.output_count` to the capacitor's `.count`) is not
+//! judged again on the value the part was left with, because the part's own message says what
+//! failed. The count is part of what a pick sets for the backjump (`Coupling.columns`): without
+//! it a failure that read an earlier bank's count (a board value that is the sum of two banks'
+//! counts) was recorded as depending on no earlier part, and the earlier bank's other counts
+//! were skipped, which refused a board that has a solution. Skipping less is the sound
+//! direction. A stated `.output_count` is a requirement: the pick tries counts up to the first
+//! that meets it and equals it, and says what it tried if none does. Not modelled: the ripple
+//! current a capacitor takes (the catalog has no ripple rating), so it is not divided between
+//! the capacitors of a bank.
+//!
 //! **A search that runs away is counted in work as well as trials** (issue #177).
 //! `SearchBudget::trials` (250000) was no limit for a big board, because a trial runs the
 //! propagation twice and a pass reads every equation, relation and balance: 250000 trials of

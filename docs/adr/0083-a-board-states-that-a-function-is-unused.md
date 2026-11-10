@@ -1,12 +1,14 @@
 ---
-status: provisional, awaiting the owner's review (the owner chose, on 2026-11-08, that a board states a function is unused; the word, its place, what counts as a use and the reading of test pads were written by an agent, each with the alternatives it rejected)
+status: proposed
 ---
 
 # A board states that a function is unused
 
+The owner chose, on 2026-11-08, that a board states a function is unused. An agent wrote the word, its place, what counts as a use and the reading of test pads, each with the alternatives it rejected. Tests 1 and 3. Cut from `git show 8023ee9:docs/adr/0083-a-board-states-that-a-function-is-unused.md`.
+
 ## The problem
 
-A part states limits for a function whether or not a design uses it: a microcontroller's datasheet limits VBUS on its USB port to 4.35 V to 5.5 V. The part cannot leave the limit out (libraries state only what is always true), and a board with no USB port cannot make the limit true, because nothing gives the pin a voltage. Issue 188 (second point) met it: the solver listed `not evaluated: processor.usb.vbus.voltage >= 4.35V` and the same for 5.5 V, and the power view said `processor.usb.vbus.pos has no source: nothing supplies it`, on a board that does not use USB. The same showed for a modem module's USB pads, which the board names and brings out to unpopulated test pads. A limit that applies only when a function is used had no way to be written.
+A part states limits for a function whether or not a design uses it: a microcontroller's datasheet limits VBUS on its USB port to 4.35 V to 5.5 V. The part cannot leave the limit out (libraries state only what is always true), and a board with no USB port cannot make the limit true, because nothing gives the pin a voltage. Issue 188 (second point) met it: the solver listed `not evaluated: processor.usb.vbus.voltage >= 4.35V` and the same for 5.5 V, and the power view said `processor.usb.vbus.pos has no source: nothing supplies it`, on a board that does not use USB. The same showed for a modem module's USB pads, which the board names and brings out to unpopulated test pads. A limit that applies only when a function is used could not be written.
 
 ## Decision
 
@@ -28,8 +30,11 @@ What it does, for the interface and everything inside it, after the checker has 
 An interface that the board states unused and also uses is an error. The two statements say opposite things, and the message shows both lines: the connection (the error points at it) and the `unused` line (`... is stated unused at main.nsm:15`). A use is one of:
 
 - a pin of the interface that shares a net with a pin of another part that is not `passive` (nets named alike count; a pin joined to another pin inside its own part does not, and a connection made inside the module that holds the interface is the module's own wiring);
+- the same through series passives: a net at the far end of a `Resistor`, a `Fuse` or a `FerriteBead` that leads from the interface, through however many of them, to a net that has such a pin (`docs/LANGUAGE.md`, "A function the board does not use"; `series_use` in `crates/netsmith-check/src/unused.rs`);
 - an interface joined to another with `~`, which equates their values (a rail of the board that supplies the port is one);
 - a function the board chooses on a pin of it (`.processor.usb.dm.function &= "USB_DM"`).
+
+The second item is new: pull request #323 (issue #293, item 5) added it on the owner's decision of 2026-11-09, so this list is the checker's reading. The questions it left are under "Left open".
 
 ## What `unused` means for test pads
 
@@ -48,3 +53,6 @@ A board names the nets of a module's USB pads and brings them out to unpopulated
 - Whether a part may state a function unused by default (a processor in a package without USB). That is a statement about the part and not the board, and a package with no USB pads already has no pins to connect.
 - The DC analysis (`crates/netsmith-solve/src/dc`) was not changed and still reads the rails of an unused interface. No finding of it shows for the test boards of this change; a board where one does is a case to add.
 - Whether a module or a part may forward an `unused` to an interface inside it. A board names only what a module's interface shows (ADR 0004), so it cannot reach an interface inside a module.
+- From pull request #323: "Does a series `Inductor`, `Capacitor`, `Diode`/`Schottky`, or `Switch` count? A diode ORing VBUS into a rail feeds the board as much as a fuse does. Today none is followed."
+- From pull request #323: "A series part from the interface to ground (a pull-down, a bleed resistor): I did not count it, as the ADR does not count a return. A bleed resistor on `vbus` to ground does load the rail; say if that should be a use."
+- From pull request #323: "A series part whose far end reaches another pin of the same part that holds the interface (a processor fed from its own VBUS through a bead) is not a use, the same as a direct join inside the part." The narrowest reading was taken for all three.

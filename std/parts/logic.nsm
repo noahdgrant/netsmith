@@ -110,6 +110,45 @@ part Sn74lvc1g04 {
 /// symbol for the kind on the two packages, which are drawn from the pin table. A package with another order (a 6-pin one with two grounds)
 /// is another table in a provider, and a translator of another family is a provider of its own.
 ///
+/// The reference rails (ADR 0066). A `Logic` line's `.reference` is joined to `.vcc` by `~`, which
+/// equates everything but the current, so the reference is a rail of its own on the same net with
+/// a current nobody states, and the balance of the supply net had two unknown terms for the two
+/// lines, so no budget on that net was ever checked. The generic states
+/// `.a.reference.current &= 0A` and `.y.reference.current &= 0A`: the lines name the supply for
+/// their levels and carry nothing, and all the draw is `.vcc.current`. This is true of any part
+/// that joins a `Logic` reference to its own rail (`Sn74lvc1g04` too); `Logic` was not changed,
+/// which would change every part and example that has one (open question 3 of ADR 0066).
+///
+/// The draw is the row's own (ADR 0066). `.vcc.current &= 0A .. .max_supply_current` replaced
+/// `.vcc.current <= .max_supply_current`: a bound checks a value that the design states, and the
+/// design had to state it for the rail to count it. A design that states `.u.vcc.current` meets
+/// three cases: a range partly above the maximum is narrowed to the row (`&= 0A..2uA` gives
+/// `0A..750nA`; it was refused before, but a design never states what a datasheet already bounds,
+/// `docs/DESIGN-RULES.md`), a range wholly above is a contradiction, and a narrower range stays
+/// (the design claims less, and ADR 0038 treats a stated current as the design's). Rejected:
+/// `?=` (a draw is a fact about the part and not an offer, as ADR 0070 says for `PullUp`, and a
+/// design could state a draw above the datasheet's maximum; its attraction is that no existing
+/// statement changes meaning, and it is one operator if the owner wants it), `==` (it holds only
+/// if the design's range lies inside the row's, so a design stating any range but the maximum
+/// fails) and keeping `<=` beside `&=` (it can never fail after the narrowing, so it is dead
+/// text). The cost: a design cannot widen the draw beyond the row's, so a switching design needs
+/// a row whose figure covers it (a project's own row). `LevelTranslator` is the only std
+/// definition that states a draw from a catalog column; the other relations of std that tie a
+/// number to a range (ratings of a value the circuit decides, stresses the design states) stay
+/// checks, because a `&=` there would cut a partly overlapping range to the overlap and pass the
+/// overload the relation exists to refuse. `Sn74lvc1g04` states no supply current: its datasheet
+/// gives only the static maximum, and a board states `.vcc.current` for its use.
+///
+/// Why the output states no level (ADR 0066). The datasheet gives `VOH` and `VOL` only at a stated
+/// load, so a pair exists. Columns were not added, for two reasons that are not about the data:
+/// the loader of a catalog file requires every column its generic lists, so a new column breaks
+/// every project row, provider catalog and guide example written to the header of ADR 0063; and
+/// the right columns (a drop from the supply, the load current it holds at, one pair or one per
+/// load) are a choice about the generic's interface that the owner has not made. The alternative,
+/// `.y.voh &= .vcc.voltage` and `.y.vol &= 0V`, is a claim about an unloaded output that no
+/// datasheet gives and a loaded one does not keep. Not decided (review finding 2 of ADR 0066):
+/// whether a part's supply current includes the load its outputs source.
+///
 /// Why it is a generic with no standard rows (ADR 0063). `PMosfet` and this are generics like
 /// `NMosfet` (ADR 0068, section 12: the standard definitions with a catalog are generics that are
 /// their own first provider). A catalog row needs a recorded source (`data/jlcpcb/README.md`): the
