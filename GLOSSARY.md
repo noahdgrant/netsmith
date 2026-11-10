@@ -529,6 +529,14 @@ _Avoid_: Disabled function, skipped port, ignored interface, `no_connect` interf
 A column of a part's `catalog` statement that ends with `optional`, `catalog tvs { ..., .breakdown_voltage optional }`, in a standard part or a project's own (ADR 0078, provisional). A file of the catalog may leave it out and a row may leave its cell empty; such a row is offered to a design that says nothing about the field and is not offered to one that states it. Any column that is not marked needs a value in every row. It is the same word as in an **Optional member** and in a `pins` row, but a separate thing: a member's marker skips a check, a column's marker lets a row be empty.
 _Avoid_: Nullable column, sparse column, optional field
 
+**Closed-form check**:
+A relation written in the std library that gives a number from a formula (no time stepping), such as the ripple of a buck stage's output voltage, and that the solver judges in the worst case of the ranges it reads, like any other relation (`docs/research/closed-form-checks.md`; the owner's option A, 2026-11-09). It states what it assumes and when it is wrong or optimistic in the doc comment of the member. Not a simulation: it models no startup, load step or waveform, which a circuit simulator on demand would (issue #306).
+_Avoid_: Simulation, transient analysis, estimate
+
+**Output ripple**:
+The peak-to-peak ripple of a buck stage's output voltage, `.output_ripple` of `BuckStage`: `dI / (8 * fsw * n * C) + dI * ESR / n` for the inductor's ripple current `dI`, the bank's count `n`, one capacitor's effective capacitance `C` and the board's `.output_esr` (an **Optional member**), a **Closed-form check**. A board bounds it (`.stage.output_ripple <= 20mV`); with no ESR stated it has no value and the bound is listed as not evaluated. Not the ripple current of the inductor (`.ripple`).
+_Avoid_: Voltage ripple, output noise, ripple voltage
+
 **Temperature shift**:
 How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that does not has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
 _Avoid_: Ambient, temperature range, delta T

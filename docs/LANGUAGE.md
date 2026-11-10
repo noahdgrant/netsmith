@@ -7801,9 +7801,9 @@ error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 
 136 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:332:5
+    --> std/parts/regulator.nsm:384:5
     |
-332 |     -.vout.current <= .buck.max_output_current
+384 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7872,13 +7872,120 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:341:5
+    --> std/parts/regulator.nsm:394:5
     |
-341 |     .on_time >= .buck.min_on_time
+394 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
+
+The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the stage has no time in it, only the charge balance of a capacitor over one period). `BuckStage` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * n * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `n` the output bank's count (`.output_count`), `C` one capacitor's effective capacitance and `ESR` the stage's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the stage, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
+
+```nsm evaluate
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board Quiet {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_esr &= 5mohm
+        .output_ripple <= 20mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+The check assumes the converter switches at its programmed frequency every period (the on-time and off-time checks above hold it), that the load draws a steady current so the capacitors take only the ripple, that the bank's capacitors share the ripple current equally, and that the ESR is the one stated. It is wrong, and optimistic, where the converter skips pulses or runs in burst mode at light load (the ripple is larger and the frequency lower, as an LT8641 does in Burst Mode), where the capacitors' inductance puts spikes on the output at the switch edges (there is none in the formula), for a constant-on-time or hysteretic converter, whose ripple the ESR sets by design, and for a load that steps or a loop that rings. Adding the two terms is the conservative sum: in a ceramic capacitor they are 90 degrees apart. A limit the worst case exceeds is refused through the capacitor search, because the capacitor's capacitance is in the ripple: the message names the closest candidate and the first limit it breaks. Here is a limit no part can meet, 0.5 mV with one capacitor of 100 mohm (an electrolytic's, say): the ESR's drop alone is 100 mohm times the ripple current, 67 mV at the worst. The closest candidate is named for the limit it misses by least, which here is the capacitance the IC asks for; when the ripple is the limit that is nearest, the message is `stage.output_ripple must always be at most 9mV, but 2.558mV..9.536mV is not always below 9mV` (a board of the tests of `crates/netsmith-solve/tests/buck_ripple.rs`, whose numbers are worked out by hand there).
+
+```nsm fails
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board TooQuiet {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_count &= 1
+        .output_esr &= 100mohm
+        .output_ripple <= 0.5mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: no `capacitor` candidate satisfies `stage.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`stage.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+    --> std/parts/regulator.nsm:401:5
+    |
+401 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A board that states a limit and no ESR is not judged: the relation that reads `.output_esr` is skipped (ADR 0074), so `.output_ripple` has no value and the limit is listed as not evaluated, never passed. The capacitor's term alone would pass a limit that the ESR's would break, so it is not used. A board that states neither has no ripple check and the build says nothing about it.
+
+```nsm evaluate
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board NoEsr {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_ripple <= 20mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
 
 A frequency set by a resistor is a relation the IC writes. Here `rt_value` is a field of the IC and the board states the resistor against it; the stage then uses the frequency that follows:
 

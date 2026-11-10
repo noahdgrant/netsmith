@@ -1,6 +1,6 @@
 # Closed-form checks: options for the owner
 
-Status: options, written 2026-11-09. Nothing here is implemented, and no ADR is written. The language and the std library's interface are the owner's choice, so this document gives options and asks (the questions are at the end).
+Status: options, written 2026-11-09. Nothing here is implemented except check 3 (buck output ripple, `BuckStage.output_ripple`, in the guide's "Switching regulators"), and no ADR is written. The language and the std library's interface are the owner's choice, so this document gives options and asks (the questions are at the end).
 
 ## What was decided
 
