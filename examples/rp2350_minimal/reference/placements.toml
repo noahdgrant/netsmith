@@ -1,0 +1,792 @@
+# Reference placements, read from a KiCad board file by
+#   cargo run -p netsmith --example reference_table -- <file.kicad_pcb>
+# Do not edit: run the program again. A test checks that this file is its output.
+#
+# Units are millimetres and degrees, as in the KiCad file. The origin is the file's own page
+# origin, x grows to the right and y grows DOWN, as in KiCad's board editor. A rotation is
+# KiCad's: positive turns counter-clockwise as seen on the screen, so with y down a point
+# (x, y) of the footprint lands at (x cos a + y sin a, y cos a - x sin a) from its position.
+#
+# [outline]: the bounding box of the Edge.Cuts lines and arcs (the arcs' extent included) and,
+#   when every arc has one radius, the corner radius; both are worked out from the drawn
+#   points and rounded to 0.1 micrometre. [[hole]]: a non-plated pad (np_thru_hole),
+#   its place on the board and its drill diameter. [[part]]: every footprint, sorted by
+#   reference: its name, layer, position and rotation (0 when the file has none). A pad's x
+#   and y are in the footprint's own frame (before its rotation); `angle` is the pad's own
+#   angle as the file writes it (it includes the footprint's rotation) and is left out when the
+#   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
+#   `drill_slot` the [width, height] of an oval one; `net` is the net's name and is left out
+#   for a pad no net names.
+# must_match = true marks what a copy of the board must reproduce (the outline, the holes,
+#   J1 to J4, SW1, SW2); false is reported, not required.
+
+[source]
+file = "RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb"
+version = "20260206"
+generator = "pcbnew"
+generator_version = "10.0"
+title = "RP2350A QFN-60 Minimal Design Example"
+date = "2026-07-03"
+rev = "R4"
+footprints = 43
+
+[outline]
+must_match = true
+min_x = 74
+min_y = 70
+max_x = 126
+max_y = 121
+width = 52
+height = 51
+lines = 4
+arcs = 4
+corner_radius = 3
+
+[[hole]]
+must_match = true
+reference = "MH1"
+x = 86.03
+y = 74
+drill = 2.75
+
+[[hole]]
+must_match = true
+reference = "MH2"
+x = 113.97
+y = 74
+drill = 2.75
+
+[[hole]]
+must_match = true
+reference = "MH3"
+x = 113.97
+y = 117.18
+drill = 2.75
+
+[[hole]]
+must_match = true
+reference = "MH4"
+x = 86.03
+y = 117.18
+drill = 2.75
+
+[[part]]
+reference = "C1"
+footprint = "RPI_COMPILED:generic_capc2012x125"
+layer = "F.Cu"
+x = 107.9375
+y = 76.5
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], net = "VBUS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], net = "GND" },
+]
+
+[[part]]
+reference = "C2"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 96.185
+y = 82.83
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C3"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 98.6
+y = 109
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "/XIN" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C4"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 101.58
+y = 109
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "Net-(C4-Pad1)" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C5"
+footprint = "RPI_COMPILED:generic_capc2012x125"
+layer = "F.Cu"
+x = 109.025
+y = 89
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], net = "GND" },
+]
+
+[[part]]
+reference = "C6"
+footprint = "RPI_COMPILED:generic_capc1005x50_wide"
+layer = "F.Cu"
+x = 102
+y = 95.39
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.515, y = 0, size = [0.47, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.515, y = 0, size = [0.47, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C7"
+footprint = "RPI_COMPILED:generic_capc1005x50_wide"
+layer = "F.Cu"
+x = 102
+y = 94.45
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.515, y = 0, size = [0.47, 0.55], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.515, y = 0, size = [0.47, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C8"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 93.52
+y = 99
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C9"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 104.2
+y = 94.95
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/VREG_AVDD" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C10"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 100.8
+y = 106.88
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C11"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 107.08
+y = 99.4
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C12"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 97.9
+y = 92.6
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 90, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 90, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C13"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 93.515
+y = 96.6
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C14"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 107.085
+y = 100.4
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C15"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 93.515
+y = 101.4
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C16"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 105.685
+y = 104
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C17"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 106.485
+y = 97
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C18"
+footprint = "RPI_COMPILED:generic_capc1005x50"
+layer = "F.Cu"
+x = 98.2
+y = 106.08
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "C19"
+footprint = "RPI_COMPILED:generic_capc2012x125"
+layer = "F.Cu"
+x = 85.115
+y = 78
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], net = "GND" },
+]
+
+[[part]]
+reference = "J1"
+footprint = "RPI_COMPILED:amphenol_10103594-0001lf"
+layer = "F.Cu"
+x = 100
+y = 71.7
+rotation = 180
+must_match = true
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -1.3, y = -2.825, angle = 180, size = [0.4, 1.75], net = "VBUS" },
+    { number = "2", type = "smd", shape = "rect", x = -0.65, y = -2.825, angle = 180, size = [0.4, 1.75], net = "/USB_D-" },
+    { number = "3", type = "smd", shape = "rect", x = 0, y = -2.825, angle = 180, size = [0.4, 1.75], net = "/USB_D+" },
+    { number = "4", type = "smd", shape = "rect", x = 0.65, y = -2.825, angle = 180, size = [0.4, 1.75], net = "unconnected-(J1-ID-Pad4)" },
+    { number = "5", type = "smd", shape = "rect", x = 1.3, y = -2.825, angle = 180, size = [0.4, 1.75], net = "GND" },
+    { number = "6", type = "smd", shape = "rect", x = -2.9, y = -3.03, angle = 180, size = [2, 1.45], net = "GND" },
+    { number = "6", type = "thru_hole", shape = "oval", x = -2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], net = "GND" },
+    { number = "7", type = "smd", shape = "custom", x = -2.725, y = -1.4, angle = 180, size = [1.3, 1.3], net = "GND" },
+    { number = "7", type = "thru_hole", shape = "oval", x = -2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], net = "GND" },
+    { number = "8", type = "smd", shape = "rect", x = -0.95, y = 0.05, angle = 180, size = [1.425, 2.1], net = "GND" },
+    { number = "9", type = "thru_hole", shape = "oval", x = 2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], net = "GND" },
+    { number = "9", type = "smd", shape = "rect", x = 2.9, y = -3.03, angle = 180, size = [2, 1.45], net = "GND" },
+    { number = "10", type = "smd", shape = "custom", x = 2.725, y = -1.4, angle = 180, size = [1.3, 1.3], net = "GND" },
+    { number = "10", type = "thru_hole", shape = "oval", x = 2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], net = "GND" },
+    { number = "11", type = "smd", shape = "rect", x = 0.95, y = 0.05, angle = 180, size = [1.425, 2.1], net = "GND" },
+]
+
+[[part]]
+reference = "J2"
+footprint = "RPI_COMPILED:samtec_tsw-118-07-l-d"
+layer = "F.Cu"
+x = 77.14
+y = 95.59
+rotation = -90
+must_match = true
+pads = [
+    { number = "1", type = "thru_hole", shape = "rect", x = -21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "2", type = "thru_hole", shape = "circle", x = -21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "+3V3" },
+    { number = "3", type = "thru_hole", shape = "circle", x = -19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "4", type = "thru_hole", shape = "circle", x = -19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO0" },
+    { number = "5", type = "thru_hole", shape = "circle", x = -16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "6", type = "thru_hole", shape = "circle", x = -16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO1" },
+    { number = "7", type = "thru_hole", shape = "circle", x = -13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "8", type = "thru_hole", shape = "circle", x = -13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO2" },
+    { number = "9", type = "thru_hole", shape = "circle", x = -11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "10", type = "thru_hole", shape = "circle", x = -11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO3" },
+    { number = "11", type = "thru_hole", shape = "circle", x = -8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "12", type = "thru_hole", shape = "circle", x = -8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO4" },
+    { number = "13", type = "thru_hole", shape = "circle", x = -6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "14", type = "thru_hole", shape = "circle", x = -6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO5" },
+    { number = "15", type = "thru_hole", shape = "circle", x = -3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "16", type = "thru_hole", shape = "circle", x = -3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO6" },
+    { number = "17", type = "thru_hole", shape = "circle", x = -1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "18", type = "thru_hole", shape = "circle", x = -1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO7" },
+    { number = "19", type = "thru_hole", shape = "circle", x = 1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "20", type = "thru_hole", shape = "circle", x = 1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO8" },
+    { number = "21", type = "thru_hole", shape = "circle", x = 3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "22", type = "thru_hole", shape = "circle", x = 3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO9" },
+    { number = "23", type = "thru_hole", shape = "circle", x = 6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "24", type = "thru_hole", shape = "circle", x = 6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO10" },
+    { number = "25", type = "thru_hole", shape = "circle", x = 8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "26", type = "thru_hole", shape = "circle", x = 8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO11" },
+    { number = "27", type = "thru_hole", shape = "circle", x = 11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "28", type = "thru_hole", shape = "circle", x = 11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO12" },
+    { number = "29", type = "thru_hole", shape = "circle", x = 13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "30", type = "thru_hole", shape = "circle", x = 13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO13" },
+    { number = "31", type = "thru_hole", shape = "circle", x = 16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "32", type = "thru_hole", shape = "circle", x = 16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO14" },
+    { number = "33", type = "thru_hole", shape = "circle", x = 19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "34", type = "thru_hole", shape = "circle", x = 19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO15" },
+    { number = "35", type = "thru_hole", shape = "circle", x = 21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "36", type = "thru_hole", shape = "circle", x = 21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+]
+
+[[part]]
+reference = "J3"
+footprint = "RPI_COMPILED:samtec_tsw-118-07-l-d"
+layer = "F.Cu"
+x = 122.86
+y = 95.59
+rotation = -90
+must_match = true
+pads = [
+    { number = "1", type = "thru_hole", shape = "rect", x = -21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO29_ADC3" },
+    { number = "2", type = "thru_hole", shape = "circle", x = -21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "3", type = "thru_hole", shape = "circle", x = -19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO28_ADC2" },
+    { number = "4", type = "thru_hole", shape = "circle", x = -19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "5", type = "thru_hole", shape = "circle", x = -16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO27_ADC1" },
+    { number = "6", type = "thru_hole", shape = "circle", x = -16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "7", type = "thru_hole", shape = "circle", x = -13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO26_ADC0" },
+    { number = "8", type = "thru_hole", shape = "circle", x = -13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "9", type = "thru_hole", shape = "circle", x = -11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO25" },
+    { number = "10", type = "thru_hole", shape = "circle", x = -11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "11", type = "thru_hole", shape = "circle", x = -8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO24" },
+    { number = "12", type = "thru_hole", shape = "circle", x = -8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "13", type = "thru_hole", shape = "circle", x = -6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO23" },
+    { number = "14", type = "thru_hole", shape = "circle", x = -6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "15", type = "thru_hole", shape = "circle", x = -3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO22" },
+    { number = "16", type = "thru_hole", shape = "circle", x = -3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "17", type = "thru_hole", shape = "circle", x = -1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO21" },
+    { number = "18", type = "thru_hole", shape = "circle", x = -1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "19", type = "thru_hole", shape = "circle", x = 1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO20" },
+    { number = "20", type = "thru_hole", shape = "circle", x = 1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "21", type = "thru_hole", shape = "circle", x = 3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO19" },
+    { number = "22", type = "thru_hole", shape = "circle", x = 3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "23", type = "thru_hole", shape = "circle", x = 6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO18" },
+    { number = "24", type = "thru_hole", shape = "circle", x = 6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "25", type = "thru_hole", shape = "circle", x = 8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO17" },
+    { number = "26", type = "thru_hole", shape = "circle", x = 8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "27", type = "thru_hole", shape = "circle", x = 11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO16" },
+    { number = "28", type = "thru_hole", shape = "circle", x = 11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "29", type = "thru_hole", shape = "circle", x = 13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/RUN" },
+    { number = "30", type = "thru_hole", shape = "circle", x = 13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "31", type = "thru_hole", shape = "circle", x = 16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/SWD" },
+    { number = "32", type = "thru_hole", shape = "circle", x = 16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "33", type = "thru_hole", shape = "circle", x = 19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/SWCLK" },
+    { number = "34", type = "thru_hole", shape = "circle", x = 19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "35", type = "thru_hole", shape = "circle", x = 21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "36", type = "thru_hole", shape = "circle", x = 21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+]
+
+[[part]]
+reference = "J4"
+footprint = "RPI_COMPILED:jst_sm03b-srss-tb-lf--sn-"
+layer = "F.Cu"
+x = 107.6
+y = 115.375
+rotation = 0
+must_match = true
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -1, y = -4.575, angle = 180, size = [0.6, 1.55], net = "/SWCLK" },
+    { number = "2", type = "smd", shape = "rect", x = 0, y = -4.575, angle = 180, size = [0.6, 1.55], net = "GND" },
+    { number = "3", type = "smd", shape = "rect", x = 1, y = -4.575, angle = 180, size = [0.6, 1.55], net = "/SWD" },
+    { number = "4", type = "smd", shape = "rect", x = -2.3, y = -0.7, angle = 180, size = [1.2, 1.8], net = "GND" },
+    { number = "5", type = "smd", shape = "rect", x = 2.3, y = -0.7, angle = 180, size = [1.2, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "L1"
+footprint = "RPI_COMPILED:abracon_aota-b201610s3r3-101-t"
+layer = "F.Cu"
+x = 102
+y = 92.8
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.7, y = 0, size = [0.7, 1.7], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.7, y = 0, size = [0.7, 1.7], net = "/VREG_LX" },
+]
+
+[[part]]
+reference = "MH1"
+footprint = "RPI_COMPILED:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm"
+layer = "F.Cu"
+x = 86.03
+y = 74
+rotation = 0
+must_match = true
+pads = [
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+]
+
+[[part]]
+reference = "MH2"
+footprint = "RPI_COMPILED:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm"
+layer = "F.Cu"
+x = 113.97
+y = 74
+rotation = 0
+must_match = true
+pads = [
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+]
+
+[[part]]
+reference = "MH3"
+footprint = "RPI_COMPILED:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm"
+layer = "F.Cu"
+x = 113.97
+y = 117.18
+rotation = 0
+must_match = true
+pads = [
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+]
+
+[[part]]
+reference = "MH4"
+footprint = "RPI_COMPILED:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm"
+layer = "F.Cu"
+x = 86.03
+y = 117.18
+rotation = 0
+must_match = true
+pads = [
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+]
+
+[[part]]
+reference = "R1"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 93
+y = 82.2
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/FLASH_SS" },
+]
+
+[[part]]
+reference = "R2"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 99.6
+y = 106.9
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/XOUT" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(C4-Pad1)" },
+]
+
+[[part]]
+reference = "R3"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 104.2
+y = 93.1
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/VREG_AVDD" },
+]
+
+[[part]]
+reference = "R4"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 115.4
+y = 109.1
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(R4-Pad1)" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+]
+
+[[part]]
+reference = "R6"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 88.9
+y = 81.3
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "/QSPI_SS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "/~{USB_BOOT}" },
+]
+
+[[part]]
+reference = "R7"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 98.9
+y = 92.6
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/USB_D+" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(U1-USB_DP)" },
+]
+
+[[part]]
+reference = "R8"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 99.9
+y = 92.6
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/USB_D-" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(U1-USB_DM)" },
+]
+
+[[part]]
+reference = "R9"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 91.3
+y = 82.2
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/GPIO0" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/FLASH_SS" },
+]
+
+[[part]]
+reference = "R10"
+footprint = "RPI_COMPILED:generic_resc1005x35"
+layer = "F.Cu"
+x = 88.9
+y = 82.7
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "/QSPI_SS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "/FLASH_SS" },
+]
+
+[[part]]
+reference = "SW1"
+footprint = "RPI_COMPILED:wurthelek_434133025816"
+layer = "F.Cu"
+x = 91.2
+y = 75.2
+rotation = -90
+must_match = true
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -2.075, y = -1.075, angle = 270, size = [1.05, 0.65], net = "GND" },
+    { number = "2", type = "smd", shape = "rect", x = 2.075, y = -1.075, angle = 270, size = [1.05, 0.65], net = "GND" },
+    { number = "3", type = "smd", shape = "rect", x = -2.075, y = 1.075, angle = 270, size = [1.05, 0.65], net = "/~{USB_BOOT}" },
+    { number = "4", type = "smd", shape = "rect", x = 2.075, y = 1.075, angle = 270, size = [1.05, 0.65], net = "/~{USB_BOOT}" },
+]
+
+[[part]]
+reference = "SW2"
+footprint = "RPI_COMPILED:wurthelek_434133025816"
+layer = "F.Cu"
+x = 111.8
+y = 107.475
+rotation = 180
+must_match = true
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -2.075, y = -1.075, angle = 180, size = [1.05, 0.65], net = "Net-(R4-Pad1)" },
+    { number = "2", type = "smd", shape = "rect", x = 2.075, y = -1.075, angle = 180, size = [1.05, 0.65], net = "Net-(R4-Pad1)" },
+    { number = "3", type = "smd", shape = "rect", x = -2.075, y = 1.075, angle = 180, size = [1.05, 0.65], net = "/RUN" },
+    { number = "4", type = "smd", shape = "rect", x = 2.075, y = 1.075, angle = 180, size = [1.05, 0.65], net = "/RUN" },
+]
+
+[[part]]
+reference = "U1"
+footprint = "RPI_COMPILED:rpi_rp2350a_vias"
+layer = "F.Cu"
+x = 100
+y = 100
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -3.45, y = -2.8, size = [0.7, 0.23], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = -3.45, y = -2.4, size = [0.7, 0.23], net = "/GPIO0" },
+    { number = "3", type = "smd", shape = "rect", x = -3.45, y = -2, size = [0.7, 0.23], net = "/GPIO1" },
+    { number = "4", type = "smd", shape = "rect", x = -3.45, y = -1.6, size = [0.7, 0.23], net = "/GPIO2" },
+    { number = "5", type = "smd", shape = "rect", x = -3.45, y = -1.2, size = [0.7, 0.23], net = "/GPIO3" },
+    { number = "6", type = "smd", shape = "rect", x = -3.45, y = -0.8, size = [0.7, 0.23], net = "+1V1" },
+    { number = "7", type = "smd", shape = "rect", x = -3.45, y = -0.4, size = [0.7, 0.23], net = "/GPIO4" },
+    { number = "8", type = "smd", shape = "rect", x = -3.45, y = 0, size = [0.7, 0.23], net = "/GPIO5" },
+    { number = "9", type = "smd", shape = "rect", x = -3.45, y = 0.4, size = [0.7, 0.23], net = "/GPIO6" },
+    { number = "10", type = "smd", shape = "rect", x = -3.45, y = 0.8, size = [0.7, 0.23], net = "/GPIO7" },
+    { number = "11", type = "smd", shape = "rect", x = -3.45, y = 1.2, size = [0.7, 0.23], net = "+3V3" },
+    { number = "12", type = "smd", shape = "rect", x = -3.45, y = 1.6, size = [0.7, 0.23], net = "/GPIO8" },
+    { number = "13", type = "smd", shape = "rect", x = -3.45, y = 2, size = [0.7, 0.23], net = "/GPIO9" },
+    { number = "14", type = "smd", shape = "rect", x = -3.45, y = 2.4, size = [0.7, 0.23], net = "/GPIO10" },
+    { number = "15", type = "smd", shape = "rect", x = -3.45, y = 2.8, size = [0.7, 0.23], net = "/GPIO11" },
+    { number = "16", type = "smd", shape = "rect", x = -2.8, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO12" },
+    { number = "17", type = "smd", shape = "rect", x = -2.4, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO13" },
+    { number = "18", type = "smd", shape = "rect", x = -2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO14" },
+    { number = "19", type = "smd", shape = "rect", x = -1.6, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO15" },
+    { number = "20", type = "smd", shape = "rect", x = -1.2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "+3V3" },
+    { number = "21", type = "smd", shape = "rect", x = -0.8, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/XIN" },
+    { number = "22", type = "smd", shape = "rect", x = -0.4, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/XOUT" },
+    { number = "23", type = "smd", shape = "rect", x = 0, y = 3.45, angle = 90, size = [0.7, 0.23], net = "+1V1" },
+    { number = "24", type = "smd", shape = "rect", x = 0.4, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/SWCLK" },
+    { number = "25", type = "smd", shape = "rect", x = 0.8, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/SWD" },
+    { number = "26", type = "smd", shape = "rect", x = 1.2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/RUN" },
+    { number = "27", type = "smd", shape = "rect", x = 1.6, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO16" },
+    { number = "28", type = "smd", shape = "rect", x = 2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO17" },
+    { number = "29", type = "smd", shape = "rect", x = 2.4, y = 3.45, angle = 270, size = [0.7, 0.23], net = "/GPIO18" },
+    { number = "30", type = "smd", shape = "rect", x = 2.8, y = 3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
+    { number = "31", type = "smd", shape = "rect", x = 3.45, y = 2.8, angle = 180, size = [0.7, 0.23], net = "/GPIO19" },
+    { number = "32", type = "smd", shape = "rect", x = 3.45, y = 2.4, angle = 180, size = [0.7, 0.23], net = "/GPIO20" },
+    { number = "33", type = "smd", shape = "rect", x = 3.45, y = 2, angle = 180, size = [0.7, 0.23], net = "/GPIO21" },
+    { number = "34", type = "smd", shape = "rect", x = 3.45, y = 1.6, angle = 180, size = [0.7, 0.23], net = "/GPIO22" },
+    { number = "35", type = "smd", shape = "rect", x = 3.45, y = 1.2, angle = 180, size = [0.7, 0.23], net = "/GPIO23" },
+    { number = "36", type = "smd", shape = "rect", x = 3.45, y = 0.8, angle = 180, size = [0.7, 0.23], net = "/GPIO24" },
+    { number = "37", type = "smd", shape = "rect", x = 3.45, y = 0.4, angle = 180, size = [0.7, 0.23], net = "/GPIO25" },
+    { number = "38", type = "smd", shape = "rect", x = 3.45, y = 0, angle = 180, size = [0.7, 0.23], net = "+3V3" },
+    { number = "39", type = "smd", shape = "rect", x = 3.45, y = -0.4, angle = 180, size = [0.7, 0.23], net = "+1V1" },
+    { number = "40", type = "smd", shape = "rect", x = 3.45, y = -0.8, angle = 180, size = [0.7, 0.23], net = "/GPIO26_ADC0" },
+    { number = "41", type = "smd", shape = "rect", x = 3.45, y = -1.2, angle = 180, size = [0.7, 0.23], net = "/GPIO27_ADC1" },
+    { number = "42", type = "smd", shape = "rect", x = 3.45, y = -1.6, angle = 180, size = [0.7, 0.23], net = "/GPIO28_ADC2" },
+    { number = "43", type = "smd", shape = "rect", x = 3.45, y = -2, angle = 180, size = [0.7, 0.23], net = "/GPIO29_ADC3" },
+    { number = "44", type = "smd", shape = "rect", x = 3.45, y = -2.4, angle = 180, size = [0.7, 0.23], net = "+3V3" },
+    { number = "45", type = "smd", shape = "rect", x = 3.45, y = -2.8, angle = 180, size = [0.7, 0.23], net = "+3V3" },
+    { number = "46", type = "smd", shape = "rect", x = 2.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/VREG_AVDD" },
+    { number = "47", type = "smd", shape = "rect", x = 2.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "GND" },
+    { number = "48", type = "smd", shape = "rect", x = 2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/VREG_LX" },
+    { number = "49", type = "smd", shape = "rect", x = 1.6, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
+    { number = "50", type = "smd", shape = "rect", x = 1.2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+1V1" },
+    { number = "51", type = "smd", shape = "rect", x = 0.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "Net-(U1-USB_DM)" },
+    { number = "52", type = "smd", shape = "rect", x = 0.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "Net-(U1-USB_DP)" },
+    { number = "53", type = "smd", shape = "rect", x = 0, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
+    { number = "54", type = "smd", shape = "rect", x = -0.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
+    { number = "55", type = "smd", shape = "rect", x = -0.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD3" },
+    { number = "56", type = "smd", shape = "rect", x = -1.2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SCLK" },
+    { number = "57", type = "smd", shape = "rect", x = -1.6, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD0" },
+    { number = "58", type = "smd", shape = "rect", x = -2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD2" },
+    { number = "59", type = "smd", shape = "rect", x = -2.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD1" },
+    { number = "60", type = "smd", shape = "rect", x = -2.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SS" },
+    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = -1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = 0, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = 1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = -1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = 0, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "smd", shape = "rect", x = 0, y = 0, size = [3.4, 3.4], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = 1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = -1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = 0, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = 1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+]
+
+[[part]]
+reference = "U2"
+footprint = "RPI_COMPILED:onsemi_ncp1117st33t3g"
+layer = "F.Cu"
+x = 108
+y = 82.85
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -2.3, y = 3.15, angle = 180, size = [1.5, 2], net = "GND" },
+    { number = "2", type = "smd", shape = "rect", x = 0, y = 3.15, angle = 180, size = [1.5, 2], net = "+3V3" },
+    { number = "3", type = "smd", shape = "rect", x = 2.3, y = 3.15, angle = 180, size = [1.5, 2], net = "VBUS" },
+    { number = "4", type = "smd", shape = "rect", x = 0, y = -3.15, angle = 180, size = [3.8, 2], net = "+3V3" },
+]
+
+[[part]]
+reference = "U3"
+footprint = "RPI_COMPILED:generic_soic127p790x195-8"
+layer = "F.Cu"
+x = 93.05
+y = 87.275
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -3.6, y = -1.905, size = [1.7, 0.65], net = "/FLASH_SS" },
+    { number = "2", type = "smd", shape = "rect", x = -3.6, y = -0.635, size = [1.7, 0.65], net = "/QSPI_SD1" },
+    { number = "3", type = "smd", shape = "rect", x = -3.6, y = 0.635, size = [1.7, 0.65], net = "/QSPI_SD2" },
+    { number = "4", type = "smd", shape = "rect", x = -3.6, y = 1.905, size = [1.7, 0.65], net = "GND" },
+    { number = "5", type = "smd", shape = "rect", x = 3.6, y = 1.905, size = [1.7, 0.65], net = "/QSPI_SD0" },
+    { number = "6", type = "smd", shape = "rect", x = 3.6, y = 0.635, size = [1.7, 0.65], net = "/QSPI_SCLK" },
+    { number = "7", type = "smd", shape = "rect", x = 3.6, y = -0.635, size = [1.7, 0.65], net = "/QSPI_SD3" },
+    { number = "8", type = "smd", shape = "rect", x = 3.6, y = -1.905, size = [1.7, 0.65], net = "+3V3" },
+]
+
+[[part]]
+reference = "X1"
+footprint = "RPI_COMPILED:generic_xtalcc320x250x80-4"
+layer = "F.Cu"
+x = 100
+y = 112.4
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -1.1, y = 0.85, size = [1.4, 1.2], net = "/XIN" },
+    { number = "2", type = "smd", shape = "rect", x = 1.1, y = 0.85, size = [1.4, 1.2], net = "GND" },
+    { number = "3", type = "smd", shape = "rect", x = 1.1, y = -0.85, size = [1.4, 1.2], net = "Net-(C4-Pad1)" },
+    { number = "4", type = "smd", shape = "rect", x = -1.1, y = -0.85, size = [1.4, 1.2], net = "GND" },
+]
