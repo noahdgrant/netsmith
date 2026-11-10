@@ -54,6 +54,8 @@ are netsmith's** (MIT, like the rest of the repository).
   Regenerate it with
   `cargo run -p netsmith --example reference_table -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb > reference/placements.toml`
   (run from this folder); a test checks that the file is what the program prints.
+- `reference/designators.toml`: which part of the board `netsmith fab` writes is which part of
+  Raspberry Pi's (see Parity). It is empty until the board is written.
 
 ## Parts
 
@@ -219,6 +221,47 @@ and says so.
     pin 1 square; the numbering (pin 1 and the odd pins in the row at y = +1.27, the even pins at
     -1.27, pin 1 at the left end, as Raspberry Pi's); the origin at the middle of the 36 holes; a
     body outline of 2 x 18 pitches on `F.Fab`, the courtyard the pads and 0.25; no model.
+
+## Parity
+
+`cargo run -p netsmith --example parity -- <board.kicad_pcb> [--table <placements.toml>]
+[--map <designators.toml>] [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith fab`
+writes (in `fab/<Board>/`) with Raspberry Pi's board, as `reference/placements.toml` states it.
+It prints one line per item and `must-match: N ok, M failed`, writes the overlay (both boards at
+one scale: Raspberry Pi's in blue, netsmith's in orange, a failing must-match item in red with
+its offset) and exits 1 when a must-match item fails. The test
+`rp2350_minimal_pcb_matches_raspberry_pi` runs it in CI; it is skipped, with a message, while
+`reference/designators.toml` has no entry, and gates once the board is written. The checking is
+`netsmith::parity`; `crates/netsmith/tests/rp2350_parity.rs` tests it, also on Raspberry Pi's
+own board against itself.
+
+**What is checked.** Must match (a failure): the outline's width, height and corner radius; each
+mounting hole's place and drill; for the connectors, buttons and headers (J1 to J4, SW1, SW2) each
+part's place, rotation and layer, and each pad's number, centre in its footprint, size, drill,
+type and net. Reported, never a failure (`info`): the same figures of every other part (MCU,
+flash, crystal, regulator, inductor, decoupling), pads reported as one line per part; the routing
+is not looked at.
+
+**The origin.** `fab` gives a board an origin of its own, so both boards are read from the
+upper-left corner of the outline's bounding box (the smallest x and y of `Edge.Cuts`, KiCad's y
+grows downward): it is a corner of the box in both files and needs no flip of an axis. A board
+moved as a whole passes; the two corners as the files state them are an `info` line.
+
+**The map.** Raspberry Pi's references and netsmith's differ, so `reference/designators.toml`
+has a line `J1 = "J1"` (Raspberry Pi's reference, then the reference in `fab`'s board file) for
+each part. A part of the table with no line is `unmapped`: a failure if it must match, else a
+note. Map every part whose pads carry a net, U1 included: the nets are compared by name where
+both names are plain (a leading `/` and the case are ignored; `Net-(...)` and `unconnected-...`
+are not plain), and through the connectivity otherwise. A pad's net passes when the names are
+equal, or when they differ and the same mapped pads are on the net in both boards (a warning
+says so); two header pads on each other's nets fail. A name that differs with no other mapped
+pad on the net to vouch for it fails.
+
+**Tolerances** (mm, degrees). The owner's: outline and mounting holes 0.05, positions of parts
+0.1, rotation exact (modulo 360), pad numbers equal, nets equal. Chosen where the owner was
+silent: the corner radius 0.05 and a hole's drill 0.05 (as the outline and the holes), a pad's
+centre in its footprint 0.1 (as the positions), a pad's width, height and drill 0.05, the rotation
+0.001 degree (the rounding of the file), the layer equal.
 
 ## Run it
 

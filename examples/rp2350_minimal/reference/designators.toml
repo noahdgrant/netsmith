@@ -1,0 +1,9 @@
+# Which part of the board `netsmith fab` writes is which part of Raspberry Pi's board: one line
+# per part, `<Raspberry Pi's reference> = "<the reference in fab's .kicad_pcb>"`, for example
+#   J1 = "J1"
+# A part of reference/placements.toml with no line here is `unmapped` to the parity checker: a
+# failure for the parts the table marks must_match (J1 to J4, SW1, SW2), a note for the others.
+# Map every part whose pads carry a net, U1 included, so that the checker can see through the
+# connectivity which pads share a net. The board item of the port (the RP2350A Minimal
+# showcase) fills this in; while it has no entry, the test `rp2350_minimal_pcb_matches_raspberry_pi`
+# is skipped.
