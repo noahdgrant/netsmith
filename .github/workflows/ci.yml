@@ -2,9 +2,10 @@
 # and the tests. The same three commands as AGENTS.md ("Build, test, lint").
 #
 # A pull request runs only the jobs its change needs. The `changes` job lists the paths the pull
-# request changes and scripts/ci-changes turns them into three flags, `rust`, `kicad` and
-# `recipes` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test` need
-# `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`: a change to prose only runs `fmt`. A
+# request changes and scripts/ci-changes turns them into four flags, `rust`, `kicad`, `recipes`
+# and `no_kicad` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
+# need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`: a
+# change to prose only runs `fmt`. A
 # push to main, a change to the workflows or to scripts/, and a path the script does not know run
 # everything. A change to a test file of a crate turns `kicad` on only if the file can ask for
 # KiCad (it names kicad-cli, the stock libraries, a Workspace, the binary...), and never turns
@@ -36,6 +37,11 @@
 #
 # A slice is a job of its own (`test (1)`, `kicad (2)`, `recipes (3)`), and a job that is a
 # matrix fails if one of its slices does, so `ci-ok` still names `test`, `kicad` and `recipes`.
+#
+# The `no-kicad` job is the reverse of `kicad`: a plain runner that installs no KiCad, builds the
+# `netsmith` binary and runs scripts/check-no-kicad.sh, which builds and fabs every example with
+# KiCad hidden and fails if a run needs it (ADR 0097, step 4). Together they say that netsmith
+# needs no KiCad and that what it draws agrees with KiCad's where KiCad is there.
 #
 # The Rust cache (Swatinem/rust-cache) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
@@ -74,6 +80,7 @@ jobs:
       rust: ${{ steps.flags.outputs.rust }}
       kicad: ${{ steps.flags.outputs.kicad }}
       recipes: ${{ steps.flags.outputs.recipes }}
+      no_kicad: ${{ steps.flags.outputs.no_kicad }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,7 +96,7 @@ jobs:
 
       - id: flags
         run: |
-          everything() { printf 'rust=true\nkicad=true\nrecipes=true\n'; }
+          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\n'; }
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
             echo "not a pull request: everything runs"
             everything >> "$GITHUB_OUTPUT"
@@ -293,6 +300,36 @@ jobs:
         if: matrix.slice == 1
         run: scripts/ci-test-slices ${{ strategy.job-total }} kicad
 
+  # netsmith with no KiCad (ADR 0097, step 4): the runner installs none, and scripts/check-no-kicad.sh
+  # hides what could still be found (the libraries, kicad-cli, the Windows KiCad of WSL) and builds
+  # and fabs every example. It runs the debug binary the `recipes` job builds, so it shares the cache.
+  no-kicad:
+    needs: changes
+    if: needs.changes.outputs.no_kicad == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The runner is a plain ubuntu-latest, and this job installs no KiCad. What it has is shown;
+      # the script hides it all the same, and fails if `fab` still finds a kicad-cli.
+      - name: Show that no KiCad is installed
+        run: |
+          command -v kicad-cli || echo "no kicad-cli on PATH"
+          ls -d /usr/share/kicad 2> /dev/null || echo "no /usr/share/kicad"
+
+      - run: cargo build -p netsmith
+
+      - name: Build and fab every example with KiCad hidden
+        run: scripts/check-no-kicad.sh target/debug/netsmith
+
   # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The page is
   # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
   # A slice runs its share of the recipes, session by session, and lists each one that failed;
@@ -411,7 +448,7 @@ jobs:
   # that does not run it.
   ci-ok:
     if: always() && github.head_ref != 'release-please--branches--main'
-    needs: [changes, fmt, clippy, test, kicad, recipes]
+    needs: [changes, fmt, clippy, test, kicad, no-kicad, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

@@ -7851,7 +7851,14 @@ footprint = "gen:QFN(pins=16, pitch=0.5mm)"
 kicad.toml:5: part `Sensor` in package `SOT-23`: footprint `gen:QFN(pins=16, pitch=0.5mm)`: `body` is missing: the body across and along (`gen:QFN(..., body=...)`)
 ```
 
-A part whose pin table has more or fewer pads than the footprint is refused when the board is built, by the check of the pin table against the footprint (see _Pads_): the message names the row of `kicad.toml` and its line, and how many pads the footprint makes. Use a `.kicad_mod` file for a package no generator makes (a connector, a crystal, a package of one maker's drawing); `kicad.toml` may mix both ways, and a part may still map to a footprint of KiCad's libraries, which needs KiCad installed as before unless netsmith makes it too.
+A part whose pin table has more or fewer pads than the footprint is refused when the board is built, by the check of the pin table against the footprint (see _Pads_): the message names the row of `kicad.toml` and its line, and how many pads the footprint makes. Use a `.kicad_mod` file for a package no generator makes (a connector, a crystal, a package of one maker's drawing); `kicad.toml` may mix both ways, and a part may still map to a footprint or a symbol of KiCad's libraries. That is the one thing that needs KiCad installed, and only for an id that netsmith does not make: a row that names no `symbol` is drawn from the pin table, a `gen:` footprint and every id of the standard library are netsmith's own, and a `[[library]]` of the project is read from the project. When a row names a KiCad id that none of these answers and no installed library has it, `build` and `fab` stop and say which part, which id, which line, where they looked (only if they looked) and the three ways out:
+
+```text
+error: B: rf: part `Coax` in package `Jack35` needs KiCad's footprint `Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal` (kicad.toml line 3), which netsmith does not make and no installed KiCad library has.
+footprint `Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal` not found: no KiCad footprint libraries found (a folder with *.pretty folders); looked in:
+  ...
+Three ways out: install KiCad 9, so that netsmith reads its libraries; supply the file through a `[[library]]` of kicad.toml; or give that row a `gen:` footprint, for a package a generator makes (`footprint = "gen:SOT23(pins=3)"`).
+```
 
 ## Commands
 
