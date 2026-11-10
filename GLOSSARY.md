@@ -207,7 +207,7 @@ One value of an enum, written `Enum::Variant` (`AssemblyMode::Hand`). Not a text
 _Avoid_: Case, member (a member is a `.name` of a definition), mode
 
 **Designator**:
-The reference of a part on the schematic, the bill of materials and the placement file: letters and a number, `R1`, `C2`, `BZ1`. The letters are the field `.designator` of every part, stated by its kind (`Resistor` is `"R"`, ADR 0046) or narrowed by a part or board that defines a part with none, and `"U"` when nothing says; the number counts the parts with the same letters, in the order of their paths, where a number at the end of a path segment sorts as a number (`.pads.tp2` is `TP2`, and `tp10` follows `tp9`; owner decision 2026-11-04). The layout file is keyed by path, so a designator that changes moves no placement.
+The reference of a part on the schematic, the bill of materials and the placement file: letters and a number, `R1`, `C2`, `BZ1`. The letters are the field `.designator` of every part, stated by its kind (`Resistor` is `"R"`, `Fuse` `"F"`, a diode and a TVS `"D"`, ADR 0046) or narrowed by a part or board that defines a part with none, and `"U"` when nothing says; the number counts the parts with the same letters, from 1, in _declaration order_: the order in which the design declares the parts, a module's parts where the module is declared and a module inside it the same way, depth first (owner decision 2026-11-09, issue #166; it replaces the order of paths of 2026-11-04). It does not depend on the layout engine, the drawing of the schematic or KiCad, so the netlist, the bill of materials and the board are the same with every layout; the number in a name (`.tp2`) counts for nothing. The layout file is keyed by path, so a designator that changes moves no placement. Whether a part is a connector is its kind's, never its designator's.
 _Avoid_: Reference letter, prefix
 
 **Part**:
@@ -313,6 +313,10 @@ _Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not 
 **Level translator**:
 A `LevelTranslator` (`std::parts::logic`, ADR 0063, ADR 0066): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input is a `Logic` line whose `.vih` is `.vt_plus_max` (above it the input is a high for sure) and whose `.vil` is `.vt_minus_min` (below it a low for sure), so the solver judges the driver without a statement of the design; its output is a `Logic` line that states no level. Its supply draw is the row's own: `0A .. .max_supply_current`. A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator
+
+**Range end**:
+`min(.f)` and `max(.f)` (ADR 0098, proposed): the least and the greatest value of the range of the field `.f`, each as one number of the field's own kind, written in a `<=` or `>=` statement (`min(.bias) <= max(.zener_voltage)`). The comparison is then made on two numbers, so it says "can hold for some value", which a plain `<=` ("for every value") cannot. A range end is read and never solved for: it narrows nothing, and a relation that holds one waits, listed as not evaluated, while the field has no value. Not the smaller of two values, as `min(a, b)` is in other languages: it takes one field.
+_Avoid_: Bound function, lo and hi (the names the owner may choose instead), a range with values at its ends (that is `lo..hi` with values for `lo` and `hi`, a different thing)
 
 **Range with values at its ends**:
 A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
@@ -536,6 +540,14 @@ _Avoid_: Disabled function, skipped port, ignored interface, `no_connect` interf
 **Optional column**:
 A column of a part's `catalog` statement that ends with `optional`, `catalog tvs { ..., .breakdown_voltage optional }`, in a standard part or a project's own (ADR 0078, provisional). A file of the catalog may leave it out and a row may leave its cell empty; such a row is offered to a design that says nothing about the field and is not offered to one that states it. Any column that is not marked needs a value in every row. It is the same word as in an **Optional member** and in a `pins` row, but a separate thing: a member's marker skips a check, a column's marker lets a row be empty.
 _Avoid_: Nullable column, sparse column, optional field
+
+**Closed-form check**:
+A relation written in the std library that gives a number from a formula (no time stepping), such as the ripple of a buck stage's output voltage, and that the solver judges in the worst case of the ranges it reads, like any other relation (`docs/research/closed-form-checks.md`; the owner's option A, 2026-11-09). It states what it assumes and when it is wrong or optimistic in the doc comment of the member. Not a simulation: it models no startup, load step or waveform, which a circuit simulator on demand would (issue #306).
+_Avoid_: Simulation, transient analysis, estimate
+
+**Output ripple**:
+The peak-to-peak ripple of a buck stage's output voltage, `.output_ripple` of `BuckStage`: `dI / (8 * fsw * n * C) + dI * ESR / n` for the inductor's ripple current `dI`, the bank's count `n`, one capacitor's effective capacitance `C` and the board's `.output_esr` (an **Optional member**), a **Closed-form check**. A board bounds it (`.stage.output_ripple <= 20mV`); with no ESR stated it has no value and the bound is listed as not evaluated. Not the ripple current of the inductor (`.ripple`).
+_Avoid_: Voltage ripple, output noise, ripple voltage
 
 **Temperature shift**:
 How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that does not has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).

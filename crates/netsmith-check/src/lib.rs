@@ -32,7 +32,7 @@ pub use model::{
     EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,
     InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral,
     PeripheralBus, PeripheralFunction, PinKind, PinRow, PinTable, Pinout, Provider, RExpr,
-    Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
+    RangeEnd, Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
 };
 
 use std::collections::BTreeMap;

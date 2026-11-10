@@ -189,6 +189,11 @@ interface Buck {
 ///   saturating: `isat >= iout + ripple / 2`. In a chain the inductor's `.current` is the
 ///   load, the average (ADR 0014), so the half ripple is added here and the part's own
 ///   `current <= saturation_current` is the weaker check of the average;
+/// - the ripple of the output voltage, `.output_ripple`, is the sum of the two terms of
+///   `dI / (8 * fsw * n * C) + dI * ESR / n`, where `dI` is the ripple current above, `n` the
+///   output bank's count, `C` one capacitor's effective capacitance and `ESR` the board's
+///   `.output_esr`: a limit the board states on it is checked in the worst case (see
+///   `.output_ripple` below, and what that check assumes);
 /// - the inductor is at least the IC's minimum, has at least the saturation current and at
 ///   most the DC resistance that the IC states (`.min_inductor_saturation`,
 ///   `.max_inductor_dcr`; both are `optional` members of `Buck` (ADR 0074), so each is
@@ -262,6 +267,53 @@ module BuckStage {
     .output_count: Number
     /// The peak-to-peak ripple current of the inductor.
     .ripple: Current
+    /// The peak-to-peak ripple of the output voltage, a closed-form estimate (not a
+    /// simulation): the charge the capacitor bank takes from the triangular ripple current
+    /// plus the drop of that current across the bank's ESR,
+    /// `.ripple / (8 * fsw * count * effective_capacitance) + .ripple * .output_esr / count`.
+    /// The first term is the charge balance of a capacitor that takes the ripple current of
+    /// the inductor and nothing of the load (Erickson and Maksimovic, *Fundamentals of Power
+    /// Electronics*, chapter 2; the equation number was not looked up; TI SLVA477B gives the
+    /// same two terms, read as a summary only). The two terms are 90 degrees apart in a
+    /// ceramic capacitor, so adding them is the conservative sum. A board bounds it
+    /// (`.stage.output_ripple <= 20mV`) and the bound holds in the worst case the ranges
+    /// give: the highest input, the lowest inductance (its tolerance), the lowest switching
+    /// frequency (its tolerance), the lowest effective capacitance (its tolerance and its DC
+    /// bias) and the highest ESR. Each is monotone in it, so the range is exact.
+    ///
+    /// What it assumes: the converter switches at its programmed frequency every period at
+    /// the ripple current of `.ripple` (the on-time and off-time checks hold the frequency,
+    /// ADR 0093); the load draws a steady current, so the capacitor takes only the ripple;
+    /// the capacitors of the bank share the ripple current equally; `.output_esr` is the
+    /// ESR at the switching frequency, at the DC bias and over the temperature range.
+    ///
+    /// Wrong, and optimistic, when: the converter skips pulses or runs in burst mode at
+    /// light load, where the ripple is larger and the frequency lower (a part with such a
+    /// mode, as the LT8641 has, is judged at its programmed frequency); the output has
+    /// spikes at the switch edges that the capacitors' ESL makes (there is no inductance of
+    /// the capacitor in the formula); a constant-on-time or hysteretic converter, whose
+    /// ripple the ESR sets by design; the bank's capacitors differ (the ESR of one divided by
+    /// the count, as the ripple current is shared equally); a load that steps, or the
+    /// regulator's loop (neither is in a closed form, issue #306). It is the ripple of the
+    /// capacitor bank, not of the board: the traces' resistance and the load's own ripple are
+    /// not in it.
+    ///
+    /// Not evaluated until the board states `.output_esr`, since the capacitor term alone
+    /// would be too small. A bound on this member with no ESR stated is listed as not
+    /// evaluated, never a pass.
+    .output_ripple: Voltage
+    /// The ESR of one capacitor of the output bank at the switching frequency, at the
+    /// highest the board accepts (a range gives the worst case: use the datasheet's maximum
+    /// and not its typical figure, at the DC bias and the temperature of the board).
+    /// Optional (ADR 0074): a board that states nothing here has no ripple of the output
+    /// voltage and nothing is checked against it. The standard capacitor catalog has no ESR
+    /// column yet (a column needs a number from the maker's datasheet or tool, with its
+    /// conditions as the recorded source), so this is the board's own figure, the last
+    /// resort of the design rules: a board states it from the datasheet of the capacitor
+    /// it means to fit, and the solver picks `.output_cap` without checking it against this
+    /// number. Whether the board states it here or the capacitor carries it is the owner's
+    /// to confirm.
+    .output_esr: Resistance optional
     /// How long the high-side switch is on in a period, `vout / (vin * fsw)` (the ideal duty
     /// cycle over the frequency), and how long it is off, `(vin - vout) / (vin * fsw)`: the
     /// stage's check of the IC's `min_on_time` and `min_off_time` (ADR 0093).
@@ -338,6 +390,7 @@ module BuckStage {
     .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
     .on_time == .vout.voltage / (.vin.voltage * .buck.fsw)
     .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .buck.fsw)
+    .output_ripple == .ripple / (8 * .buck.fsw * .output_count * .output_cap.effective_capacitance) + .ripple * .output_esr / .output_count
     .on_time >= .buck.min_on_time
     .off_time >= .buck.min_off_time
     .inductor.current + .ripple / 2 <= .inductor.saturation_current

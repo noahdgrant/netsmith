@@ -628,6 +628,27 @@ pub enum RExpr {
     /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
     /// the low end's lowest value and the high end's highest, once both are known.
     Range(Box<RExpr>, Box<RExpr>),
+    /// `min(.f)` or `max(.f)` (ADR 0098): the least or the greatest value of a field's range, as
+    /// one value. It is read, never solved for: the solver does not narrow `.f` through a
+    /// relation that holds it, and a statement that is not `<=` or `>=` is refused it.
+    End(RangeEnd, FieldId),
+}
+
+/// Which end of a field's range `min(.f)` or `max(.f)` reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeEnd {
+    Min,
+    Max,
+}
+
+impl RangeEnd {
+    /// The word that is written: `min` or `max`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Min => "min",
+            Self::Max => "max",
+        }
+    }
 }
 
 impl RExpr {
@@ -635,7 +656,7 @@ impl RExpr {
     pub fn fields(&self, out: &mut Vec<FieldId>) {
         match self {
             Self::Const(_) | Self::Text(_) => {}
-            Self::Field(f) => out.push(*f),
+            Self::Field(f) | Self::End(_, f) => out.push(*f),
             Self::Neg(inner) => inner.fields(out),
             Self::Bin(_, a, b) | Self::Range(a, b) => {
                 a.fields(out);
@@ -1194,6 +1215,7 @@ impl Model {
             RExpr::Const(q) => q.to_string(),
             RExpr::Text(t) => format!("\"{t}\""),
             RExpr::Field(f) => self.path_of_field(*f),
+            RExpr::End(end, f) => format!("{}({})", end.word(), self.path_of_field(*f)),
             RExpr::Neg(inner) => format!("-{}", self.show_expr(inner)),
             RExpr::Bin(op, a, b) => {
                 let sym = match op {

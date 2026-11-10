@@ -157,6 +157,9 @@ pub(crate) struct Checker<'a> {
     pub(crate) making: Vec<(usize, usize)>,
     /// Where the member being declared is written, for a message about what it makes.
     pub(crate) use_site: Option<(SourceId, Span)>,
+    /// Whether `min(.f)` and `max(.f)` may be read: set while the two sides of a `<=` or `>=`
+    /// statement are lowered, so that nothing is ever solved from the end of a range.
+    pub(crate) range_ends: bool,
     /// The loaded files as they were when the last model was made, shared by the models made
     /// while no file was added.
     snapshot: Option<std::sync::Arc<Sources>>,
@@ -222,6 +225,7 @@ impl<'a> Checker<'a> {
             contract_rows: Vec::new(),
             making: Vec::new(),
             use_site: None,
+            range_ends: false,
             snapshot: None,
         }
     }

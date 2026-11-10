@@ -11,6 +11,7 @@ mod classes;
 mod common;
 mod dc;
 mod defaults;
+mod end_functions;
 mod enums;
 mod environment;
 mod errors;

@@ -957,17 +957,37 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         found
     });
 
-    // Parts are numbered in path order, so the numbering does not depend on the order the
-    // source declares them in. A number at the end of a segment counts as a number
-    // (`tp2` before `tp10`, ADR 0048).
-    let mut ids: Vec<(String, InstId)> = model
+    // Parts are numbered in declaration order (owner decision 2026-11-09, issue #166): the
+    // order in which the design declares them, a module's parts where the module is declared.
+    // The checker makes an instance when it reads the declaration, and the parts of a module
+    // right after the module, so the order of the instances in the model is that order, depth
+    // first. It does not depend on the layout engine, on KiCad or on how a part is drawn.
+    // The parts of the design stay in path order (a number at the end of a segment counts as
+    // a number, `tp2` before `tp10`, ADR 0048), as before: the placer and the drawing read
+    // that order, so only the numbers change, and the boards do not.
+    let declared: Vec<InstId> = model
         .instances()
         .filter(|(_, i)| i.kind == InstKind::Part)
-        .map(|(id, _)| (model.path_of(id), id))
+        .map(|(id, _)| id)
         .collect();
+    let mut ids: Vec<(String, InstId)> =
+        declared.iter().map(|&id| (model.path_of(id), id)).collect();
     ids.sort_by(|a, b| natural_path_order(&a.0, &b.0));
 
+    // The letters and the first number of each part, and how many parts it is (a bank is one
+    // part in the design for each of its capacitors, numbered one after the other, ADR 0052).
     let mut counters: BTreeMap<String, usize> = BTreeMap::new();
+    let mut lettered: HashMap<InstId, (String, usize, usize)> = HashMap::new();
+    for &id in &declared {
+        netsmith_core::job::checkpoint();
+        let letters = designator_of(model, id, &mut errors);
+        let bank = bank_of(model, id, &mut errors);
+        let n = counters.entry(letters.clone()).or_insert(0);
+        let first = *n + 1;
+        *n += bank;
+        lettered.insert(id, (letters, first, bank));
+    }
+
     let mut refdes_of: HashMap<InstId, Vec<String>> = HashMap::new();
     let mut parts = Vec::new();
     let mut fitted: Vec<environment::Fitted<'_>> = Vec::new();
@@ -978,7 +998,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     for (_, id) in &ids {
         netsmith_core::job::checkpoint();
         let inst = model.instance(*id);
-        let letters = designator_of(model, *id, &mut errors);
+        let (letters, first, bank) = lettered[id].clone();
         let pick = solution.picks.iter().find(|p| p.part == *id);
         // A label's value is the text it prints.
         let value = match (inst.type_name.as_str(), text_of(model, *id, "text")) {
@@ -1002,17 +1022,13 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             assembly,
             pick,
         });
-        // A bank is one part in the design for each of its capacitors, numbered one after
-        // the other (ADR 0052). The first has the path of the instance and the others add
-        // `#2`, `#3`, so that each is a part a layout file keys by its own path.
-        let bank = bank_of(model, *id, &mut errors);
+        // The first part of a bank has the path of the instance and the others add `#2`,
+        // `#3`, so that each is a part a layout file keys by its own path.
         if bank > 1 {
             banks.insert(model.path_of(*id), bank);
         }
         for k in 1..=bank {
-            let n = counters.entry(letters.clone()).or_insert(0);
-            *n += 1;
-            let refdes = format!("{letters}{n}");
+            let refdes = format!("{letters}{}", first + k - 1);
             let path = match k {
                 1 => model.path_of(*id),
                 k => format!("{}#{k}", model.path_of(*id)),
@@ -1289,6 +1305,19 @@ mod tests {
             let letters = letters.as_deref().unwrap();
             assert!(
                 !letters.is_empty() && letters.chars().all(|c| c.is_ascii_uppercase()),
+                "{name} has letters {letters:?}"
+            );
+        }
+    }
+
+    /// The layout finds connectors by kind (`netsmith_core::is_connector_kind`), not by the
+    /// letters of a designator: the two lists agree for every standard kind.
+    #[test]
+    fn the_standard_kinds_that_are_connectors_are_those_that_state_the_letters_j() {
+        for (name, letters) in std_parts() {
+            assert_eq!(
+                netsmith_core::is_connector_kind(&name),
+                letters.as_deref() == Some("J"),
                 "{name} has letters {letters:?}"
             );
         }

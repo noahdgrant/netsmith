@@ -81,7 +81,7 @@ Read it from the top.
 
 The report shows what the solver chose: a 330 ohm resistor and a red LED, both from JLCPCB's Basic library. The relation decides it. With the supply at 4.75 V to 5.25 V, a forward voltage of 1.8 V to 2.4 V and a 1% 330 ohm resistor, the current stays between 5 mA and 15 mA (about 7.05 mA to 10.56 mA, in fact). The resistor is a 0402 part: its 62.5 mW rating holds for the current it really carries (see Resistor power).
 
-The rest of this guide explains each construct. Statement order never matters, so you may write the statements of a block in any order.
+The rest of this guide explains each construct. Statement order never matters to what a design means, so you may write the statements of a block in any order. The one thing it shows in is the number of a part's designator (see Designators).
 
 ## Definitions: board, part, interface, module, system, panel
 
@@ -590,6 +590,100 @@ Rules.
 - Narrowing is an intersection. Two narrowings that do not overlap are a contradiction, whatever their order.
 - A narrowed value cannot be loosened later. A library therefore states only what is always true, and a board narrows the rest. A value a board may want to change is offered with `?=` instead (next section).
 - `=` is not an operator. `.x = 5V` and `.x = <expression>` are errors that name the two operators above.
+
+### The ends of a range
+
+`>=`, `<=` and `==` hold for every value in the ranges. Some rules are of the other kind, "can hold for some value", and the language says them with `min` and `max` (ADR 0098, proposed): `min(.f)` is the least value of the range of the field `.f`, and `max(.f)` the greatest, each as one number of the field's own kind. The comparison is then made on two numbers: `min(.a.voltage) <= max(.b.voltage)` holds when the lowest `a` can be is at most the highest `b` can be, which is so for a 4 V to 6 V rail and a 4.7 V to 5.5 V one, where `.a.voltage <= .b.voltage` is not.
+
+```nsm solve
+import std::sources::Rail
+
+board Ends {
+    .a: Rail {
+        .voltage &= 4V..6V
+        .pos.net &= "A"
+        .neg.net &= "GND"
+    }
+    .b: Rail {
+        .voltage &= 4.7V..5.5V
+        .pos.net &= "B"
+        .neg.net &= "GND"
+    }
+    min(.a.voltage) <= max(.b.voltage)
+}
+```
+
+Rules.
+
+- The argument is a field, written as a member path (`min(.bias)`, `max(.z.zener_voltage)`). It is not an expression (`min(.a + .b)`), a value (`max(5V)`) or text, and `min` and `max` take one argument: `min(.a, .b)` is not the smaller of two values, it is an error. The only functions are `min` and `max`; any other name is an error.
+- They are read in a `<=` or `>=` statement, on either side and inside arithmetic (`min(.a.voltage) + 1V <= max(.b.voltage)`). A `==`, `&=` or `?=` is refused them: nothing is worked out from the end of a range, and no field takes a value from one.
+- They never narrow. The solver reads the end of the field's range as it is when the check is made and gives nothing back: the ranges of the fields in a relation with `min` or `max` are the ranges they had. A relation of a part also decides which catalog rows are offered, as every relation of a part does (a row that fails it is not picked); that is a check on each candidate, not a narrowing.
+- A field with no value yet has no end to read. The relation waits and is listed as not evaluated, like any relation with an unknown value, and is no error.
+- An end is one number, so it carries no correlation with the field read whole elsewhere in the same statement: `max(.a.voltage) <= .a.voltage` is an error (6 V is not under 4 V), as `.a.voltage <= .a.voltage` is.
+- A failed relation says what was compared: `min(c.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them`.
+
+A rail that is surely above the other, and the mistakes in the call:
+
+```nsm fails
+import std::sources::Rail
+
+board Ends {
+    .a: Rail {
+        .voltage &= 12V
+        .pos.net &= "A"
+        .neg.net &= "GND"
+    }
+    .b: Rail {
+        .voltage &= 4.7V..5.5V
+        .pos.net &= "B"
+        .neg.net &= "GND"
+    }
+    min(.a.voltage) <= max(.b.voltage)
+}
+```
+
+```text
+error: min(a.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them
+   --> main.nsm:14:5
+   |
+14 |     min(.a.voltage) <= max(.b.voltage)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::sources::Rail
+
+board Ends {
+    .a: Rail { .voltage &= 4V..6V }
+    min(.a.voltage, .a.voltage) <= 5V
+    min(.a.voltage + 1V) <= 5V
+    .a.voltage == max(.a.voltage)
+    abs(.a.voltage) <= 5V
+}
+```
+
+```text
+error: `min` takes one field, such as `min(.bias)`, but this has 2 arguments: it reads the least value of one field's range, and is not the smaller of several values
+  --> main.nsm:5:5
+  |
+5 |     min(.a.voltage, .a.voltage) <= 5V
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: the argument of `min` is a field, such as `min(.bias)`, not `.a.voltage + 1V`: it reads one end of a field's range
+  --> main.nsm:6:9
+  |
+6 |     min(.a.voltage + 1V) <= 5V
+  |         ^^^^^^^^^^^^^^^
+error: `max(.a.voltage)` can only be used in a `<=` or `>=` statement: it reads one end of a range, and nothing is worked out from it
+  --> main.nsm:7:19
+  |
+7 |     .a.voltage == max(.a.voltage)
+  |                   ^^^^^^^^^^^^^^^
+error: `abs` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range
+  --> main.nsm:8:5
+  |
+8 |     abs(.a.voltage) <= 5V
+  |     ^^^
+```
 
 ### Defaults a board can replace
 
@@ -1821,7 +1915,7 @@ error: `j` is inside `Block` and is not part of its interface; set it through a 
 
 ### Designators
 
-Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file; the number after them counts the parts that have the same letters, from 1, in the order of their paths (ADR 0046, user decision), where a number at the end of a path segment counts as a number: `.pads.tp2` is `TP2` and `.pads.tp10` comes after `.pads.tp9` (owner decision, 2026-11-04, ADR 0048). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
+Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
 Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `Obd2M` and `ProgrammingPads6` `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
@@ -1853,6 +1947,25 @@ board Letters {
 }
 ```
 
+Each part is numbered among the parts with its letters, in declaration order. Here the TVS is declared first, so it is `D1` and the diode `D2`; the fuse is `F1` and the header, a second kind with its own count, `J1`:
+
+```nsm
+import std::parts::connector::Header1x2
+import std::parts::diode::{Diode, Tvs}
+import std::parts::passive::Fuse
+
+board Order {
+    /// `J1`, though `.zz_in` would sort after the others.
+    .zz_in: Header1x2
+    /// `D1`.
+    .clamp: Tvs
+    /// `D2`.
+    .rectifier: Diode
+    /// `F1`.
+    .fuse: Fuse
+}
+```
+
 Letters that are not one or more capital letters are refused when the board is built, naming the part, because the number is added after them:
 
 ```nsm fails
@@ -1874,7 +1987,7 @@ board Letters {
 error: Letters: `mcu` has `.designator` "U1", which is not one or more capital letters such as "R" or "IC"
 ```
 
-A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
+A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters or numbers moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
 
 ## Pins, packages and ties
 
@@ -3253,11 +3366,11 @@ board Bounded {
 
 ```text
 board Bounded
-  R1   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
   R2   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
-  net GND: R1.2
-  net VCC: R2.1
-  net net-lamp.bottom.a: R1.1, R2.2
+  R1   Resistor        22k             Resistor_SMD:R_0402_1005Metric                             C25768 Basic
+  net GND: R2.2
+  net VCC: R1.1
+  net net-lamp.bottom.a: R1.2, R2.1
 ```
 
 When no row meets the bound, the message says which statements make it a bound on the part:
@@ -5409,8 +5522,8 @@ board Caps {
 
 ```text
 board Caps
-  C1   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
-  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C2   Capacitor       4.7u            Capacitor_SMD:C_0402_1005Metric                            C23733 Basic
+  C1   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
   net 3V3: C1.1, C2.1
   net GND: C1.2, C2.2
 ```
@@ -7407,11 +7520,41 @@ A capacitor is the same either way round, so its bias is the rail's voltage and 
 | Part | What is always true | What the design states |
 |---|---|---|
 | `std::parts::diode::Diode`, `std::parts::diode::Schottky` | `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current`, `.bias >= -.forward_voltage`, `.supply_fault_current <= .max_forward_current`, `.supply_reverse_peak <= .max_reverse_voltage` | The ratings; the last two are from the chain (ADR 0091). |
-| `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
+| `std::parts::diode::Zener` | `.bias * .current <= .max_power`, `.bias >= 0V`, `min(.bias) <= max(.zener_voltage)` | `.zener_voltage` with its tolerance. For a clamp, the line `.z.bias <= .z.zener_voltage`; over a temperature range, `.temperature_shift` (below). Catalog `zener`. |
 | `std::parts::diode::Tvs` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit`, `.bias >= 0V`, `-.supply_reverse_peak >= 0V` | The ratings (the last from the chain, ADR 0091), and `.protected_limit`: the absolute maximum of what is behind it. Catalog `tvs`. |
 | `std::parts::diode::TvsBidirectional` | `.bias <= .standoff_voltage`, `.clamping_voltage <= .protected_limit` | The ratings, and `.protected_limit`. Catalog `tvs_bidirectional`. |
 
 A `Tvs` also has an optional `.breakdown_voltage`, the minimum breakdown voltage VBR: between the stand-off voltage and it the diode leaks a little, below it the diode does not conduct (ADR 0073, provisional). A design that needs a margin between the highest the line reaches and the point where the diode starts to conduct states it, `.tvs.breakdown_voltage >= .input.peak * 1.1`. It is a catalog column that only one standard row fills, the Littelfuse SMDJ36A (`data/jlcpcb/README.md`), so a design that states it is offered that row and no other standard one, and gets any other from a project's `tvs` catalog file that records the column; a file written before the column may leave it out, and a design that does not state the field picks as before and has no new check.
+
+A Zener directly across a rail is refused when it surely conducts (issue #293, ADR 0098, proposed): it states `min(.bias) <= max(.zener_voltage)`, so a rail whose least voltage is above the Zener's greatest breakdown voltage puts the part in breakdown all the time, with nothing to limit its current. The message names the part, the rail's least voltage and the greatest breakdown (`min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V`), and the way out is a Zener that breaks down at the rail's voltage or a resistor in series. The rule catches only the sure case: a rail range that straddles the breakdown (4 V to 6 V against 4.7 V to 5.5 V) may conduct, and passes. A Zener behind a series resistor has no rail across it, so its `.bias` has no value, and the rule waits and is listed as not evaluated. The rule also chooses among the catalog rows, as any relation of a part does: a design that states a breakdown the rail is above gets the error, but one that states none is given a row whose breakdown reaches the rail (a 12 V rail across a Zener with no `.zener_voltage` is given the BZT52C12), not an error.
+
+```nsm fails
+import std::parts::diode::Zener
+import std::sources::Rail
+
+board Conducts {
+    .input: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .z: Zener { .zener_voltage &= 3.1V..3.5V }
+    .input.pos ~> .z ~> .input.neg
+}
+```
+
+```text
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
+    --> std/parts/diode.nsm:231:5
+    |
+231 |     min(.bias) <= max(.zener_voltage)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
+    --> std/parts/diode.nsm:231:5
+    |
+231 |     min(.bias) <= max(.zener_voltage)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
 
 A Zener has the figures a design needs to bound a clamp over temperature (issue #199; the first four are optional catalog columns, ADR 0078, which the standard `zener` rows fill from the datasheet table that each row's notes name):
 
@@ -7528,9 +7671,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:297:5
+    --> std/parts/diode.nsm:307:5
     |
-297 |     .bias <= .standoff_voltage
+307 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7590,7 +7733,7 @@ board Clamp {
         .pos.net &= "VIN"
         .neg.net &= "GND"
     }
-    .z: Zener { .zener_voltage &= 4.7V..5.5V }
+    .z: Zener { .zener_voltage &= 11V..13V }
     .z.bias <= .z.zener_voltage
     .d: Diode { .max_reverse_voltage &= 10V }
     .input.pos ~> .z ~> .input.neg
@@ -7599,7 +7742,7 @@ board Clamp {
 ```
 
 ```text
-error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.8V..5.4V
+error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C12 12V 500mW Zener SOD-123 C43491, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11.4V..12.7V
    --> main.nsm:11:5
    |
 11 |     .z.bias <= .z.zener_voltage
@@ -7609,7 +7752,7 @@ error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is 
    |
 91 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 4.7V..5.5V
+error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
    --> main.nsm:11:5
    |
 11 |     .z.bias <= .z.zener_voltage
@@ -7640,9 +7783,9 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:221:5
+    --> std/parts/diode.nsm:230:5
     |
-221 |     .bias >= 0V
+230 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
    --> std/parts/diode.nsm:92:5
@@ -7650,9 +7793,9 @@ error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is 
 92 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:221:5
+    --> std/parts/diode.nsm:230:5
     |
-221 |     .bias >= 0V
+230 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -7931,9 +8074,9 @@ error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 
 136 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:332:5
+    --> std/parts/regulator.nsm:384:5
     |
-332 |     -.vout.current <= .buck.max_output_current
+384 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8002,13 +8145,120 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:341:5
+    --> std/parts/regulator.nsm:394:5
     |
-341 |     .on_time >= .buck.min_on_time
+394 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
+
+The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the stage has no time in it, only the charge balance of a capacitor over one period). `BuckStage` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * n * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `n` the output bank's count (`.output_count`), `C` one capacitor's effective capacitance and `ESR` the stage's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the stage, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
+
+```nsm evaluate
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board Quiet {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_esr &= 5mohm
+        .output_ripple <= 20mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+The check assumes the converter switches at its programmed frequency every period (the on-time and off-time checks above hold it), that the load draws a steady current so the capacitors take only the ripple, that the bank's capacitors share the ripple current equally, and that the ESR is the one stated. It is wrong, and optimistic, where the converter skips pulses or runs in burst mode at light load (the ripple is larger and the frequency lower, as an LT8641 does in Burst Mode), where the capacitors' inductance puts spikes on the output at the switch edges (there is none in the formula), for a constant-on-time or hysteretic converter, whose ripple the ESR sets by design, and for a load that steps or a loop that rings. Adding the two terms is the conservative sum: in a ceramic capacitor they are 90 degrees apart. A limit the worst case exceeds is refused through the capacitor search, because the capacitor's capacitance is in the ripple: the message names the closest candidate and the first limit it breaks. Here is a limit no part can meet, 0.5 mV with one capacitor of 100 mohm (an electrolytic's, say): the ESR's drop alone is 100 mohm times the ripple current, 67 mV at the worst. The closest candidate is named for the limit it misses by least, which here is the capacitance the IC asks for; when the ripple is the limit that is nearest, the message is `stage.output_ripple must always be at most 9mV, but 2.558mV..9.536mV is not always below 9mV` (a board of the tests of `crates/netsmith-solve/tests/buck_ripple.rs`, whose numbers are worked out by hand there).
+
+```nsm fails
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board TooQuiet {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_count &= 1
+        .output_esr &= 100mohm
+        .output_ripple <= 0.5mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: no `capacitor` candidate satisfies `stage.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`stage.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+    --> std/parts/regulator.nsm:401:5
+    |
+401 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A board that states a limit and no ESR is not judged: the relation that reads `.output_esr` is skipped (ADR 0074), so `.output_ripple` has no value and the limit is listed as not evaluated, never passed. The capacitor's term alone would pass a limit that the ESR's would break, so it is not used. A board that states neither has no ripple check and the build says nothing about it.
+
+```nsm evaluate
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board NoEsr {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .output_ripple <= 20mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
 
 A frequency set by a resistor is a relation the IC writes. Here `rt_value` is a field of the IC and the board states the resistor against it; the stage then uses the frequency that follows:
 
@@ -11312,7 +11562,7 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
 
-Parts are numbered by their letters in the order of their paths (a number at the end of a segment sorts as a number: `tp2` before `tp10`), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
+Parts are numbered by their letters in the order the design declares them (a module's parts where the module is declared, depth first; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
 
 ### Parts
 
@@ -11347,7 +11597,7 @@ Parts are numbered by their letters in the order of their paths (a number at the
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` and, for a diode across a rail, the right way round (`.bias >= -.forward_voltage`, from `.bridge_voltage`, ADR 0088); behind a fuse, `.supply_fault_current <= .max_forward_current`, and first in a chain from a rail that states a `.reverse_peak`, `.supply_reverse_peak <= .max_reverse_voltage` (ADR 0091). |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |
-| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power`, and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
+| `std::parts::diode::Zener` | A Zener diode: `.zener_voltage` (with tolerance, at `.test_current`), `.max_power`, `.bias`, and the optional catalog columns `.test_current`, `.temperature_coefficient`, `.leakage_current` and `.leakage_test_voltage`. Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias * .current <= .max_power` and `min(.bias) <= max(.zener_voltage)` (a Zener across a rail that surely conducts is an error), and, when the design states `.temperature_shift`, defines `.voltage_over_temperature`. |
 | `std::parts::diode::Tvs` | A unidirectional TVS diode: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage` (a catalog column that only the SMDJ36A row of the standard rows fills). Pins `anode` and `cathode`, bridge `cathode ~> anode`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. |
 | `std::parts::diode::TvsBidirectional` | A bidirectional TVS diode, the same either way round: `.standoff_voltage`, `.clamping_voltage`, `.peak_pulse_current`, `.protected_limit`, `.bias` and the optional `.breakdown_voltage`. Pins `a1` and `a2`, bridge `a1 ~> a2`. Requires `.bias <= .standoff_voltage` and `.clamping_voltage <= .protected_limit`. Catalog `tvs_bidirectional`. |
 | `std::parts::transistor::NMosfet` | An N-channel MOSFET: pins `gate` (input), `source`, `drain`, bridge `drain ~> source`. Maxima for drain-source voltage, drain current and gate-source voltage; `.gate_threshold`; `.on_resistance` with `.on_resistance_vgs` (an optional catalog column), the gate-source voltage it is guaranteed at. Requires the stresses `.drain_source_voltage` and `.gate_source_voltage` and `.current` within them, the gate drive above the threshold and at least `.on_resistance_vgs` (ADR 0092). Catalog `n_mosfet`. |

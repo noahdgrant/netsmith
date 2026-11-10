@@ -15,7 +15,9 @@ use netsmith_quantity::{Dimension, Quantity, parse_unit};
 
 use crate::checker::{Checker, Res, Ty};
 use crate::diag::SourceId;
-use crate::model::{Domain, EnumId, FieldId, FieldKind, InstKind, Member, RExpr, Relation};
+use crate::model::{
+    Domain, EnumId, FieldId, FieldKind, InstKind, Member, RExpr, RangeEnd, Relation,
+};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum VTy {
@@ -195,6 +197,7 @@ impl Checker<'_> {
                 Res::Poison | Res::Bad => None,
             },
             Expr::Paren(inner, _) => self.lower(inner),
+            Expr::Call { name, args, span } => self.lower_call(name, args, *span),
             Expr::Neg(inner, span) => {
                 let t = self.lower(inner)?;
                 let VTy::Q(_) = t.ty else {
@@ -277,6 +280,76 @@ impl Checker<'_> {
                 }
             }
         }
+    }
+
+    /// `min(.f)` and `max(.f)` (ADR 0098): the least and the greatest value of the range of the
+    /// field `.f`, as one value of the field's own kind. They are the only functions.
+    fn lower_call(&mut self, name: &ast::Ident, args: &[Expr], span: Span) -> Option<Typed> {
+        let word = name.name.as_str();
+        let end = match word {
+            "min" => RangeEnd::Min,
+            "max" => RangeEnd::Max,
+            _ => {
+                self.error(
+                    name.span,
+                    format!(
+                        "`{word}` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range"
+                    ),
+                );
+                return None;
+            }
+        };
+        let [arg] = args else {
+            let count = match args.len() {
+                0 => "no argument".to_string(),
+                n => format!("{n} arguments"),
+            };
+            self.error(
+                span,
+                format!(
+                    "`{word}` takes one field, such as `{word}(.bias)`, but this has {count}: it reads the {} value of one field's range, and is not the {} of several values",
+                    if end == RangeEnd::Min { "least" } else { "greatest" },
+                    if end == RangeEnd::Min { "smaller" } else { "larger" },
+                ),
+            );
+            return None;
+        };
+        if !matches!(arg, Expr::Path(_)) {
+            self.error(
+                arg.span(),
+                format!(
+                    "the argument of `{word}` is a field, such as `{word}(.bias)`, not `{}`: it reads one end of a field's range",
+                    arg.to_source()
+                ),
+            );
+            return None;
+        }
+        if !self.range_ends {
+            self.error(
+                span,
+                format!(
+                    "`{}` can only be used in a `<=` or `>=` statement: it reads one end of a range, and nothing is worked out from it",
+                    Expr::Call { name: name.clone(), args: args.to_vec(), span }.to_source()
+                ),
+            );
+            return None;
+        }
+        let t = self.lower(arg)?;
+        let (RExpr::Field(f), VTy::Q(dim)) = (&t.e, t.ty) else {
+            let what = self.describe(t.ty);
+            self.error(
+                arg.span(),
+                format!(
+                    "`{word}` reads the end of a number's range, but `{}` is {what}",
+                    arg.to_source()
+                ),
+            );
+            return None;
+        };
+        Some(Typed {
+            e: RExpr::End(end, *f),
+            ty: VTy::Q(dim),
+        })
     }
 
     fn binary(&mut self, op: BinOp, l: Typed, r: Typed, span: Span) -> Option<Typed> {
@@ -586,8 +659,10 @@ impl Checker<'_> {
     }
 
     fn relation_statement(&mut self, c: &ast::Constraint) -> Option<FieldId> {
+        self.range_ends = matches!(c.op, CmpOp::Le | CmpOp::Ge);
         let l = self.lower(&c.lhs);
         let r = self.lower(&c.rhs);
+        self.range_ends = false;
         let (Some(l), Some(r)) = (l, r) else {
             return None;
         };

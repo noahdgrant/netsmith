@@ -1622,7 +1622,7 @@ fn a_part_whose_footprint_lacks_a_pad_is_a_422_that_names_the_part_the_pad_and_t
     );
     assert!(
         e.message
-            .starts_with("SchematicBench: net +3V3 joins pad 131 of U4, but footprint"),
+            .starts_with("SchematicBench: net +3V3 joins pad 131 of U2, but footprint"),
         "{}",
         e.message
     );
@@ -1636,7 +1636,7 @@ fn a_part_whose_footprint_lacks_a_pad_is_a_422_that_names_the_part_the_pad_and_t
             .map(|(_, v)| v.as_str())
     };
     assert_eq!(field("board"), Some("SchematicBench"));
-    assert_eq!(field("part"), Some("U4"));
+    assert_eq!(field("part"), Some("U2"));
     assert_eq!(field("pad"), Some("131"));
     assert_eq!(field("net"), Some("+3V3"));
     assert_eq!(
@@ -1666,7 +1666,7 @@ fn a_part_with_no_kicad_mapping_is_a_422_with_its_designator_too() {
     let detail = e.detail.expect("a structured form");
     assert_eq!(detail.code, "no_kicad_mapping");
     assert!(
-        detail.fields.iter().any(|(k, v)| k == "part" && v == "U1"),
+        detail.fields.iter().any(|(k, v)| k == "part" && v == "U3"),
         "{detail:?}"
     );
 }

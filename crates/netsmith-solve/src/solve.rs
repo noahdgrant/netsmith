@@ -44,7 +44,7 @@ use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
-use crate::eval::{EvalError, Val, eval, fields_in};
+use crate::eval::{EvalError, Val, eval, fields_in, reads_end};
 use crate::generic::{Need, Sense};
 
 /// The result of solving one board.
@@ -2120,15 +2120,24 @@ impl Solver<'_> {
                             .max(v.lo().abs())
                             .max(v.hi().abs())
                             .max(1e-30);
-                        fail(
+                        // An end of a range is one number (ADR 0098): the two numbers are
+                        // compared, and "always" would say more than the check does.
+                        let message = if reads_end(&r.lhs) || reads_end(&r.rhs) {
+                            format!(
+                                "{} must be {word} {}, but {l} is {} {v}: no value of the two ranges meets it, so change one of them",
+                                show(&r.lhs),
+                                show(&r.rhs),
+                                if r.op == CmpOp::Ge { "below" } else { "above" },
+                            )
+                        } else {
                             format!(
                                 "{} must always be {word} {}, but {l} is not always {} {v}",
                                 show(&r.lhs),
                                 show(&r.rhs),
                                 if r.op == CmpOp::Ge { "above" } else { "below" },
-                            ),
-                            gap / scale,
-                        )
+                            )
+                        };
+                        fail(message, gap / scale)
                     }
                 }
                 Err(EvalError::Unknown(_)) => Verdict::Unknown,

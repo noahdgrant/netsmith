@@ -5,6 +5,7 @@
 
 mod backjump;
 mod bank;
+mod buck_ripple;
 mod bus_clock;
 mod bus_levels;
 mod cancel;
@@ -30,6 +31,7 @@ mod dc_switches;
 mod defaults;
 mod derived_bounds;
 mod empty_cells;
+mod end_functions;
 mod enums;
 mod generic;
 mod generic_parts;

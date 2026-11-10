@@ -702,6 +702,10 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
             "`{}` is a variant of an enum; a value is a number with its unit",
             e.to_source()
         )),
+        Expr::Call { .. } => Err(format!(
+            "`{}` is a call; a value is a number with its unit",
+            e.to_source()
+        )),
         Expr::Path(p) => Err(format!(
             "`{}` is a name; a value is a number with its unit (`10kohm`, `3.3V +/- 5%`, `1.8V..5.5V`)",
             p.to_source()
