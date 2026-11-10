@@ -525,10 +525,15 @@ pub fn run_kicad(board: &Board, routed: bool, say: &Say) -> KicadResult {
         findings: Vec::new(),
     };
     let Some(cli) = KicadCliExe::locate() else {
-        return unavailable(
-            "KiCad not found: set KICAD_CLI or install KiCad (only netsmith's own checks ran)"
-                .to_string(),
-        );
+        let note = match crate::fab::kicad_switched_off(&netsmith_kicad::install::Search::machine())
+        {
+            Some(off) => format!("KiCad is switched off: {off} (only netsmith's own checks ran)"),
+            None => {
+                "KiCad not found: set KICAD_CLI or install KiCad (only netsmith's own checks ran)"
+                    .to_string()
+            }
+        };
+        return unavailable(note);
     };
     static RUNS: AtomicU32 = AtomicU32::new(0);
     let dir: PathBuf = std::env::temp_dir().join(format!(

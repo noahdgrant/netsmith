@@ -474,13 +474,15 @@ impl SymbolLib {
         } else {
             self.library_path(library)?
         };
+        // With no install found there is no installed library: `root` is a guess, possibly `""`,
+        // and a path under it may be relative to the working directory. It is never looked at.
+        if let (false, false, Some(lookup)) = (own, project, &self.no_install) {
+            return Err(SymbolError::NoInstall {
+                library: library.to_string(),
+                lookup: lookup.clone(),
+            });
+        }
         if !own && !path.is_file() {
-            if let (false, Some(lookup)) = (project, &self.no_install) {
-                return Err(SymbolError::NoInstall {
-                    library: library.to_string(),
-                    lookup: lookup.clone(),
-                });
-            }
             return Err(SymbolError::NoLibrary {
                 library: library.to_string(),
                 path,
