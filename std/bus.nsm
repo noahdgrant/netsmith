@@ -127,8 +127,8 @@ enum I2cRole {
 /// `capacitance` is the capacitance of this part's own pin, each of `sda` and `scl`: the datasheet's
 /// `Ci` (the I2C-bus specification, UM10204 Rev. 7.0, Table 10, allows at most 10 pF per pin; a
 /// multiplexer or switch may exceed it, its datasheet says). It is `optional` (ADR 0074): a part
-/// whose datasheet states none leaves it out, and a board that adds up the pins of its bus
-/// (`I2cPullups.bus_capacitance`) then has no sum. Like the levels it is the part's own, so `~`
+/// whose datasheet states none leaves it out, and the sum of the pins of its bus that the checker
+/// makes (`I2cPullups.bus_capacitance`, ADR 0102) is then not made, and names the part. Like the levels it is the part's own, so `~`
 /// between two interfaces does not equate it. It states what one pin adds and not the bus's: the
 /// capacitance of the whole line is `I2cPullups.bus_capacitance`.
 ///
@@ -138,8 +138,8 @@ enum I2cRole {
 /// part's own table has its own figures). The level is the one `Levels` already has, so a part
 /// states both: `.i2c.levels.vol &= 0.4V` and `.i2c.sink_current &= 3mA`. It is `optional`
 /// (ADR 0074): a part whose datasheet states none leaves it out, and the bound of the pull-up
-/// from the sink current (`I2cPullups.sink_current`) is then listed as not evaluated for a
-/// board that takes the figure from it. Like the capacitance it is the part's own, so `~` does
+/// that the checker makes for each part (`I2cPullups`, ADR 0102) is then not made for it, and the
+/// build names the part when another on the bus states one. Like the capacitance it is the part's own, so `~` does
 /// not equate it between two interfaces.
 interface I2c {
     .role: I2cRole
@@ -363,16 +363,18 @@ module PullUp {
 /// case, the highest resistance (its tolerance) and the highest capacitance; the supply does not
 /// enter, since both points are fractions of it.
 ///
-/// `bus_capacitance` is the capacitance of one line, `sda` or `scl`, as the board states it: the
-/// pins of the parts (`I2c.capacitance` of each, from the datasheets) and the traces, connector
-/// and cable, which no part states and the board estimates. The board writes the sum, so a part
-/// that states no pin capacitance leaves the sum unstated and a bound on the rise time is listed
-/// as not evaluated, never passed:
-/// `.pullups.bus_capacitance &= .ctl.i2c.capacitance + .sensor.i2c.capacitance + (20pF..40pF)`
-/// (a range binds looser than `+`, so the traces' range is in parentheses). Both
-/// `bus_capacitance` and the pins' are `optional` (ADR 0074): a board that states no capacitance
-/// has no rise time, and a board that bounds the rise time with no capacitance is told the check
-/// was not made.
+/// `bus_capacitance` is the capacitance of one line, `sda` or `scl`: the pins of the parts
+/// (`I2c.capacitance` of each, from the datasheets) and the traces, connector and cable, which no
+/// part states and the board estimates as `trace_capacitance`. The checker adds them (ADR 0102):
+/// the interfaces that share a net with `bus` are the parts on the bus, and `bus_capacitance` is
+/// the sum of their `.capacitance` and `.trace_capacitance`. The board states only its estimate,
+/// `.pullups.trace_capacitance &= 20pF..40pF`. A part that states no `.capacitance` leaves the sum
+/// unstated, and when a bound waits for it the build names the part. With no estimate of the
+/// traces nothing is derived, since the pins alone would pass a bound the traces break. A board
+/// that states `bus_capacitance` itself is judged on its figure and the sum is not made for it.
+/// `bus_capacitance`, `trace_capacitance` and the pins' are `optional` (ADR 0074): a board that
+/// states none has no rise time, and a board that bounds the rise time with no capacitance is told
+/// the check was not made.
 ///
 /// What it assumes: one pull-up resistor of `resistance` on the line charges it and nothing else
 /// (two pairs on a bus are in parallel, and the board states the parallel value; a current-source
@@ -385,19 +387,22 @@ module PullUp {
 /// The other bound is from below (`docs/research/closed-form-checks.md`, check 5): the weakest
 /// driver on the bus must be able to hold a line low against the pull-up, so `.resistance >=
 /// (supply.voltage - low_level) / sink_current` (UM10204 Rev. 7.0, section 7.1, with its Table 10:
-/// `VOL` 0.4 V at 3 mA, 20 mA in Fast-mode Plus). `sink_current` is the `IOL` of the part that
-/// sinks least, and `low_level` the `VOL` at that current: the board states them, as it states
-/// `bus_capacitance` (`.pullups.sink_current &= .sensor.i2c.sink_current`, `.pullups.low_level &=
-/// .sensor.i2c.levels.vol`), since the module does not reach the parts. On a bus of several parts
-/// the board states the figure and holds it to each, `.pullups.sink_current <= .ctl.i2c.sink_current`
-/// (`min(.f)` of ADR 0098 cannot give a value). The bound holds in the worst case: the supply at its
-/// greatest, the figures as stated (a range at the end that asks for the most) and the resistance at
-/// its low end. `sink_current` is `optional` (ADR 0074): a board that states none asks for no bound
-/// and is told nothing, and a board that states it with a figure that has no value (a part that
-/// states none) or with no `low_level` is told the check was not made, never a pass. No figure is
-/// built in. It assumes one driver pulls the line and the pull-up is the only load that sinks: a
-/// current-source pull-up, a bus buffer, two pairs in parallel (the board states the parallel
-/// value) and devices that leak into the line are not in it.
+/// `VOL` 0.4 V at 3 mA, 20 mA in Fast-mode Plus). The checker states it for each part on the bus
+/// (ADR 0102), with the part's own `.i2c.sink_current` and `.i2c.levels.vol`: one relation for each
+/// interface that shares a net with `bus`, so the board states nothing and the message names the
+/// part. Each part has its own pair because no single pair of the bus's figures is the worst case
+/// (the least current and the greatest level can be two parts; `min` cannot give a value, ADR 0098).
+/// The bound holds in the worst case: the supply at its greatest, each part's figures at the end
+/// that asks for the most and the resistance at its low end. A part that states no `.sink_current`
+/// has no relation, and when another part on the bus states one the build names it. A bus on which
+/// no part states one has no bound, as before. A board may state `.sink_current` and `.low_level`
+/// itself (`.pullups.sink_current &= .sensor.i2c.sink_current`, `.pullups.low_level &=
+/// .sensor.i2c.levels.vol`): it is then judged on its figures, as before, and the parts' relations
+/// are not made for it. `sink_current` is `optional` (ADR 0074): a board that states it with a
+/// figure that has no value, or with no `low_level`, is told the check was not made, never a pass.
+/// No figure is built in. It assumes one driver pulls the line and the pull-up is the only load
+/// that sinks: a current-source pull-up, a bus buffer, two pairs in parallel (the board states
+/// the parallel value) and devices that leak into the line are not in it.
 ///
 /// The module states what it draws from `supply`, so the net it is on has every current it
 /// needs (ADR 0026): a pull-up carries nothing while its line is released or its driver is off,
@@ -436,6 +441,7 @@ module I2cPullups {
     .supply_top: Voltage
     .supply_top ?= .supply.voltage
     .bus_capacitance: Capacitance optional
+    .trace_capacitance: Capacitance optional
     .rise_time: Time
     .rise_time == 0.8473 * .resistance * .bus_capacitance
     .sink_current: Current optional

@@ -2,6 +2,7 @@
 //! everything the design says still holds.
 
 mod busclock;
+mod busfigures;
 mod catalog;
 mod cycles;
 mod dc;

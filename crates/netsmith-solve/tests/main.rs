@@ -7,6 +7,7 @@ mod backjump;
 mod bank;
 mod buck_ripple;
 mod bus_clock;
+mod bus_figures;
 mod bus_levels;
 mod bus_rise_time;
 mod bus_sink_current;
