@@ -221,7 +221,7 @@ use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
-use crate::eval::{EvalError, Val, eval, fields_in, reads_end};
+use crate::eval::{EvalError, Val, eval, fields_in, reads_end, relation_reads_end};
 use crate::generic::{Need, Sense};
 use crate::lock::LockedRow;
 
@@ -2095,8 +2095,16 @@ impl Solver<'_> {
     /// Whether the bound `r`, a `>=` or a `<=`, can hold for some value of the ranges as they
     /// are: `Fail` only when it holds for none, which no later narrowing of the ranges
     /// changes. A range that is unknown, or a comparison of anything but quantities, is
-    /// `Unknown`: it is judged when it is known.
+    /// `Unknown`: it is judged when it is known. So is a relation that reads the end of a
+    /// range (`min(.f)`, `max(.f)`, ADR 0098): the end is one point of the range as it is, and
+    /// a later narrowing moves it (the least end only rises, the greatest only falls), and the
+    /// hull of a block of candidates puts its own edge there, which is no enclosure of a row's
+    /// point. Neither "holds for no value" claim is sound for it, so it is judged only on the
+    /// values a trial gives (`verify`).
     fn verify_possible(&self, r: &Relation) -> Verdict {
+        if relation_reads_end(r) {
+            return Verdict::Unknown;
+        }
         let (Ok(Val::Q(l)), Ok(Val::Q(v))) = (eval(&self.model, &r.lhs), eval(&self.model, &r.rhs))
         else {
             return Verdict::Unknown;
@@ -4667,8 +4675,10 @@ impl Solver<'_> {
                 let message = self.relation_message(index, r, message);
                 return reject(message, margin, (r.source, r.span), own, Some(index));
             }
-            // A bound that can hold, but not for every value of the range as it is.
-            if !whole && matches!(self.verify(r), Verdict::Fail { .. }) {
+            // A bound that can hold, but not for every value of the range as it is. A relation
+            // that reads an end of a range is not placed in the second tier for what the ranges
+            // are now: a later pick moves the end (`verify_possible`).
+            if !whole && !relation_reads_end(r) && matches!(self.verify(r), Verdict::Fail { .. }) {
                 whole_range = false;
             }
         }
@@ -4728,6 +4738,10 @@ impl Solver<'_> {
                 CmpOp::Le => (&r.rhs, &r.lhs),
                 _ => continue,
             };
+            // The end of a range read now may not be the end it has at the last (ADR 0098).
+            if relation_reads_end(r) {
+                continue;
+            }
             let (mine, other) = if above {
                 (larger, smaller)
             } else {

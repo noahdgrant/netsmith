@@ -118,7 +118,7 @@ use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
 use super::Solver;
-use crate::eval::{Val, eval, fields_in};
+use crate::eval::{Val, eval, fields_in, relation_reads_end};
 
 /// The most times a claim is grown, and a region narrowed, before the solver gives up.
 const STEPS: usize = 64;
@@ -219,6 +219,10 @@ impl Solver<'_> {
     fn operating_range(&self, class: &HashSet<FieldId>, dim: Dimension) -> Option<Quantity> {
         let (mut lo, mut hi): (Option<f64>, Option<f64>) = (None, None);
         for r in self.model.relations() {
+            // The end of a range read now may be stale once the range narrows (ADR 0098).
+            if relation_reads_end(r) {
+                continue;
+            }
             let (other, lower) = match (&r.op, &r.lhs, &r.rhs) {
                 (CmpOp::Ge, RExpr::Field(f), e) | (CmpOp::Le, e, RExpr::Field(f))
                     if class.contains(f) =>

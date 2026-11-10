@@ -49,6 +49,7 @@ use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::Value;
 use crate::dc::{self, Error, Modelled, Which};
+use crate::eval::relation_reads_end;
 use crate::generic::Need;
 use crate::levels::{NetReads, NotEvaluated};
 
@@ -683,6 +684,10 @@ impl Solver<'_> {
             };
             let mut lo: Option<f64> = None;
             for r in self.model.relations().iter() {
+                // The end of a range read now may be stale once the range narrows (ADR 0098).
+                if relation_reads_end(r) {
+                    continue;
+                }
                 let bound = match (&r.op, &r.lhs, &r.rhs) {
                     (CmpOp::Ge, RExpr::Field(g), bound) | (CmpOp::Le, bound, RExpr::Field(g))
                         if class.contains(g) =>
@@ -1034,6 +1039,10 @@ impl Solver<'_> {
         }
         let mut limit: Option<f64> = None;
         for r in self.model.relations().iter() {
+            // The end of a range read now may be stale once the range narrows (ADR 0098).
+            if relation_reads_end(r) {
+                continue;
+            }
             let bound = match (&r.op, &r.lhs, &r.rhs) {
                 (CmpOp::Le, RExpr::Field(g), bound) | (CmpOp::Ge, bound, RExpr::Field(g))
                     if class.contains(g) =>
