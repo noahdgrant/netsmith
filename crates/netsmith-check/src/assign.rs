@@ -589,7 +589,12 @@ impl Checker<'_> {
         let pin_source = self.pin_input.as_ref().map(|p| p.source);
         let mut kept: Vec<(&Asked, PinAssignment)> = Vec::new();
         let mut todo: Vec<&Asked> = Vec::new();
-        for a in mine {
+        // Locked entries are served first, in key order, then the others: a lock wins a pin over
+        // an unlocked entry whose key sorts earlier, which is then moved or dropped with a note.
+        // (The sort is stable, so each group stays in key order.)
+        let mut in_order: Vec<&Asked> = mine.to_vec();
+        in_order.sort_by_key(|a| !old.get(&a.key).is_some_and(|e| e.lock));
+        for a in in_order {
             let Some(entry) = old.get(&a.key) else {
                 todo.push(a);
                 continue;
