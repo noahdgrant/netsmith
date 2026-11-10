@@ -62,12 +62,12 @@ The imports and doc comments are left out here; the complete file is `examples/l
 - netsmith is not on crates.io yet.
 
 `build` and `fab` need no installed KiCad symbol library for the parts of the standard library
-that netsmith draws itself: the ICs (drawn from the part's pin table, as a plain box) and the
-resistors, capacitors, inductors, LEDs, diodes, FETs, fuses, crystals, switches and ferrite beads
-(drawn as conventional glyphs, with the pins where KiCad's symbols have them) (ADR 0097, steps 1
-and 2). The connectors, the USB-C, coaxial and test point symbols, the mounting holes, the
-fiducial, the linear regulator and the logic gates still use KiCad's symbols, and so do the
-footprints that netsmith does not generate (step 3), so install KiCad 9 (8 also works) to build a
+except one. netsmith draws the ICs from the part's pin table, as a plain box, and the resistors,
+capacitors, inductors, LEDs, diodes, FETs, fuses, crystals, switches, ferrite beads, headers and
+sockets, USB-C and coaxial connectors, test points, mounting holes, fiducials and the power flag
+as conventional glyphs, with the pins where KiCad's symbols have them (ADR 0097, steps 1 and 2).
+The linear regulator (`LinearRegulator`) still uses KiCad's `Regulator_Linear:AP1117-15`, and so
+do the footprints that netsmith does not generate (step 3), so install KiCad 9 (8 also works) to build a
 board that has them. netsmith finds the `symbols` and
 `footprints` folders by itself; set `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`
 to name them. If it finds none, it stops and lists every place it looked (ADR 0021). What has
@@ -141,8 +141,9 @@ netsmith analyzes a worst-case DC operating point of the picked parts: every vol
 netsmith is MIT licensed (`LICENSE`).
 
 netsmith keeps no copy of KiCad's symbols or footprints. The symbol of an IC is drawn by
-netsmith from the part's pin table (a plain box and pins, ADR 0097), and those of the passives and
-discrete parts from the electrical conventions (IEC 60617, IEEE 315), not from KiCad's files. It reads the other symbols, and the
+netsmith from the part's pin table (a plain box and pins, ADR 0097), and those of the passives,
+discrete parts, connectors and mechanical parts from the electrical and mechanical conventions
+(IEC 60617, IEEE 315), not from KiCad's files. It reads the other symbols, and the
 footprints that it does not make itself, from the ones installed with KiCad (CC-BY-SA 4.0 with
 a design exception) at run time, and the tests that need no KiCad write small libraries of
 their own (`netsmith_kicad::testlib`). For a package or a part that KiCad's libraries lack,

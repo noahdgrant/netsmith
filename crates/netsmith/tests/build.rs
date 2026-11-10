@@ -705,6 +705,40 @@ fn a_project_library_that_is_missing_names_the_file_kicad_toml_lists() {
 #[test]
 fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
     use netsmith_kicad::install::Search;
+    let nowhere = TempDir::new("no-install");
+    let machine = Search::under(nowhere.path());
+    let libraries = Libraries::with_mapping(
+        netsmith_kicad::Mapping::standard(),
+        netsmith_kicad::SymbolLib::installed_by(&machine),
+        netsmith_pcb::FootprintLibrary::installed_by(&machine),
+    );
+    // The one symbol of the standard mapping that netsmith does not draw itself is KiCad's
+    // AP1117, the linear regulator's (ADR 0097).
+    let example = format!(
+        "{}/../../examples/linear_regulator.nsm",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&example).unwrap();
+    let e = build_with(
+        "t.nsm",
+        &text,
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .err()
+    .expect("the build should fail: the regulator is a stock symbol");
+    assert!(e.contains("no KiCad "), "{e}");
+    assert!(e.contains("usr/share/kicad/"), "{e}");
+    assert!(e.contains("Applications/KiCad/KiCad.app"), "{e}");
+    assert!(e.contains("mnt/c/Program Files/KiCad/9.0"), "{e}");
+    assert!(e.contains("NETSMITH_KICAD_SYMBOLS"), "{e}");
+    assert!(e.contains("NETSMITH_KICAD_FOOTPRINTS"), "{e}");
+}
+
+#[test]
+fn a_board_of_generated_parts_builds_with_no_kicad_install() {
+    use netsmith_kicad::install::Search;
     let dir = TempDir::new("project-no-install");
     common::project_libraries(dir.path());
     let nowhere = TempDir::new("no-install");
@@ -714,23 +748,21 @@ fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
         netsmith_kicad::SymbolLib::installed_by(&machine),
         netsmith_pcb::FootprintLibrary::installed_by(&machine),
     );
-    let e = build_with(
+    // The headers are drawn and their footprints generated: the only library the board needs
+    // is the project's own, which is a file of the project.
+    let built = build_with(
         "t.nsm",
         common::DUAL_BOARD,
         &Loader::std(),
         &Catalogs::jlcpcb(),
         &libraries,
     )
-    .err()
-    .expect("the build should fail: the header is a stock part");
-    assert!(e.contains("no KiCad "), "{e}");
-    assert!(e.contains("usr/share/kicad/"), "{e}");
-    assert!(e.contains("Applications/KiCad/KiCad.app"), "{e}");
-    assert!(e.contains("mnt/c/Program Files/KiCad/9.0"), "{e}");
-    assert!(e.contains("NETSMITH_KICAD_SYMBOLS"), "{e}");
-    assert!(e.contains("NETSMITH_KICAD_FOOTPRINTS"), "{e}");
-    // The library of the project itself is never the one reported missing.
-    assert!(!e.contains("`acme`"), "{e}");
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        built[0]
+            .schematic
+            .contains("(lib_id \"netsmith:Conn_01x02\")")
+    );
 }
 
 #[test]

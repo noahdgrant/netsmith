@@ -71,7 +71,8 @@ impl Libraries {
     /// The symbols netsmith draws for `design`'s parts (ADR 0097): from the pin table, for a
     /// row of the mapping that has no `symbol`, and, for an id it makes (`Device:R`), the
     /// symbol of its own that answers it (`netsmith_kicad::passives`). One for each distinct
-    /// id, in the order of the parts.
+    /// id, in the order of the parts, and the power flag after them when the schematic places
+    /// one ([`netsmith_kicad::needs_power_flag`]).
     pub fn generated_symbols(&self, design: &Design) -> Vec<Arc<Symbol>> {
         let mut symbols: Vec<Arc<Symbol>> = Vec::new();
         for part in design.parts.iter().filter(|p| p.kind != "Label") {
@@ -85,25 +86,27 @@ impl Libraries {
                 symbols.push(symbol);
             }
         }
+        if netsmith_kicad::needs_power_flag(design, &self.mapping, &self.symbols)
+            && let Ok(flag) = self.symbols.symbol(netsmith_kicad::POWER_FLAG_SYMBOL)
+            && stdlib::is_library_id(flag.lib_id())
+        {
+            symbols.push(flag);
+        }
         symbols
     }
 
     /// Whether a part of `design` is drawn or carried by the standard library's own symbols or
-    /// footprints (`std/libs/`, ADR 0087), or is drawn by a symbol netsmith made (ADR 0097).
+    /// footprints (`std/libs/`, ADR 0087), or is drawn by a symbol netsmith made (ADR 0097), the
+    /// power flag among them.
     pub fn uses_std_library(&self, design: &Design) -> bool {
-        design.parts.iter().any(|part| {
-            self.mapping
-                .map(&part.kind, part.package.as_deref())
-                .is_ok_and(|m| {
-                    // A symbol netsmith draws (from the pin table, or for an id it makes) is
-                    // in the library `netsmith`.
-                    let own_symbol = self
-                        .symbols
-                        .symbol_of(part, &m)
-                        .is_ok_and(|s| stdlib::is_library_id(s.lib_id()));
-                    own_symbol || stdlib::is_library_id(&m.footprint)
-                })
-        })
+        // A symbol netsmith draws (from the pin table, or for an id it makes) is in the library
+        // `netsmith`.
+        !self.generated_symbols(design).is_empty()
+            || design.parts.iter().any(|part| {
+                self.mapping
+                    .map(&part.kind, part.package.as_deref())
+                    .is_ok_and(|m| stdlib::is_library_id(&m.footprint))
+            })
     }
 
     /// Write the library tables of KiCad beside a board's `.kicad_pro` in `dir`: the project's

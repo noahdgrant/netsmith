@@ -30,9 +30,10 @@ import std::sources::Rail
 /// The datasheet gives other thresholds for other supplies, so the part is restricted to 3 V to
 /// 3.6 V and refuses a supply outside it (ADR 0046). It is named for the part number and not for
 /// an inverter in general, because its numbers are that datasheet's. `std/kicad.toml` maps it to
-/// KiCad's `74xGxx:74LVC1G04` and SOT-23-5; KiCad's symbol leaves out the no-connect pad 1, so the
-/// pin validation (ADR 0016, decision 8) does not count a `no_connect` pad that the footprint has
-/// and the symbol lacks as a disagreement. It has no catalog row, because an LCSC number needs its
+/// SOT-23-5 and names no symbol, so the symbol is drawn from the pin table, with the no-connect
+/// pad 1 (KiCad's `74xGxx:74LVC1G04` leaves that pad out, and the pin validation (ADR 0016,
+/// decision 8) does not count a `no_connect` pad that the footprint has and the symbol lacks as a
+/// disagreement). It has no catalog row, because an LCSC number needs its
 /// own evidence (`data/jlcpcb/README.md`), so `fab` refuses a board with it until one is added. A
 /// level check does not know the load (the part states the load of its numbers, above), and a
 /// standard kind cannot be given other levels by a board, because it is one value (the limit of
@@ -105,8 +106,8 @@ part Sn74lvc1g04 {
 ///
 /// The pad of each pin is the same in the 5-pin packages of the single-gate logic families
 /// (pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC), and there is a table for each package that its catalog
-/// has. That is the order of KiCad's stock symbol `74xGxx:74LVC1G17`, which `std/kicad.toml` maps
-/// the kind to on the two packages. A package with another order (a 6-pin one with two grounds)
+/// has. That is the order of KiCad's stock symbol `74xGxx:74LVC1G17`; `std/kicad.toml` names no
+/// symbol for the kind on the two packages, which are drawn from the pin table. A package with another order (a 6-pin one with two grounds)
 /// is another table in a provider, and a translator of another family is a provider of its own.
 ///
 /// Why it is a generic with no standard rows (ADR 0063). `PMosfet` and this are generics like

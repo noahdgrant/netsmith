@@ -1,11 +1,20 @@
-//! The symbols of the passives and discrete parts of the standard mapping, drawn by netsmith
-//! (ADR 0097, step 2): a resistor, a capacitor, an inductor, a ferrite bead, a fuse, a crystal,
-//! an LED and four diodes, a switch and the N and P FETs. A mapping row that names one of
-//! these ids (`Device:R`, `Switch:SW_SPST`, `Transistor_FET:Q_NMOS_GSD`) is answered here, from
-//! the binary, on every machine and whatever KiCad has installed, as the footprints of
-//! `netsmith_pcb::generate` are (ADR 0043). No mapping file changes. The symbol that answers
-//! has the id `netsmith:<Name>` ([`answer_id`]) and goes into the board's own
-//! `netsmith.kicad_sym` like the symbol of an IC drawn from its pin table.
+//! The symbols of the standard mapping that netsmith draws itself (ADR 0097, step 2): the
+//! passives and discrete parts (a resistor, a capacitor, an inductor, a ferrite bead, a fuse, a
+//! crystal, an LED and four diodes, a switch and the N and P FETs), the connectors (the generic
+//! pin headers and sockets, the USB-C receptacles and the coaxial connector), the mechanical
+//! parts (a test point, a mounting hole, a plated hole and a fiducial) and the power flag.
+//! A mapping row that names one of these ids (`Device:R`, `Connector_Generic:Conn_01x02`,
+//! `Transistor_FET:Q_NMOS_GSD`) is answered here, from the binary, on every machine and whatever
+//! KiCad has installed, as the footprints of `netsmith_pcb::generate` are (ADR 0043). No
+//! mapping file changes. The symbol that answers has the id `netsmith:<Name>` ([`answer_id`])
+//! and goes into the board's own `netsmith.kicad_sym` like the symbol of an IC drawn from its
+//! pin table. The module keeps the name of the symbols it drew first.
+//!
+//! These parts are drawn as fixed glyphs, not as the box of an IC (`generate.rs`), because the
+//! layout of the schematic reads their pins where KiCad's symbols put them: a two-row header
+//! has its odd pins left and its even pins right, a USB-C receptacle has its power on the right
+//! and its ground below, a test point has one pin at its foot. The hand-built designs of the
+//! drawing tests also have no pin table, and a part with no pin table cannot be drawn as a box.
 //!
 //! # What is fixed and what is the look
 //!
@@ -15,20 +24,24 @@
 //!   type of each pin, where it is and which way it runs, its length, the position of the
 //!   `Reference` and `Value` fields, whether the pin numbers and names are shown, and the
 //!   extent of the body (the layout engine routes round it, and puts the texts beside it).
-//!   They are the written constants of [`SPECS`] and of the glyph functions' extents, equal
-//!   to those of the symbol with the same id in KiCad 9's stock libraries (the test
-//!   `passives_agree_with_the_installed_kicad_symbols` of
-//!   `crates/netsmith/tests/passives.rs` proves it where KiCad is installed). A pin that moved by a grid step
-//!   would move every wire the schematic view draws to it.
+//!   They are the written constants of the specs (`passive_specs`, `connector_specs`,
+//!   `mechanical_specs`) and of the glyph functions' extents, equal to those of the symbol with
+//!   the same id in KiCad 9's stock libraries (the test
+//!   `generated_symbols_agree_with_the_installed_kicad_symbols` of
+//!   `crates/netsmith/tests/passives.rs` proves it where KiCad is installed). A pin that moved
+//!   by a grid step would move every wire the schematic view draws to it.
 //! - **The look**: what is drawn inside that extent. It is the glyph function of one symbol
-//!   ([`resistor`], [`capacitor`], ...), which returns its [`Shape`]s, and the three line
-//!   weights ([`THIN`], [`BODY`], [`HEAVY`]) and fills at the top of the file. To change how a
-//!   resistor looks, change [`resistor`] and nothing else. The shapes are drawn from the
-//!   electrical conventions (IEC 60617, IEEE 315) and the grid, not from KiCad's symbol files,
-//!   which are licensed CC-BY-SA 4.0 (ADR 0097). A body is a rectangle with the background
-//!   fill and a line of [`BODY`] weight, as the box of an IC is (`generate.rs`).
+//!   ([`resistor`], [`capacitor`], [`usb_c`], ...), which returns its [`Shape`]s, and the three
+//!   line weights ([`THIN`], [`BODY`], [`HEAVY`]) and fills at the top of the file. To change
+//!   how a resistor looks, change [`resistor`] and nothing else. The shapes are drawn from the
+//!   electrical and mechanical conventions (IEC 60617, IEEE 315, the USB trident) and the grid,
+//!   not from KiCad's symbol files, which are licensed CC-BY-SA 4.0 (ADR 0097). A body is a
+//!   rectangle with the background fill and a line of [`BODY`] weight, as the box of an IC is
+//!   (`generate.rs`).
 //!
 //! The same id gives the same bytes: nothing here reads a clock, a map's order or the machine.
+
+use std::sync::OnceLock;
 
 use crate::sexp::Sexp;
 use crate::symbols::{PinType, Symbol};
@@ -456,6 +469,215 @@ fn pmos() -> Vec<Shape> {
     mosfet(false)
 }
 
+/// The pitch of a header's pins, 0.1 inch, mm.
+const PITCH: f64 = 2.54;
+
+/// The `y` of the first pin of a header with `rows` pins in a column: the middle of the column
+/// falls on the origin, a grid step above it for a column of an even length.
+fn header_top(rows: usize) -> f64 {
+    ((rows - 1) / 2) as f64 * PITCH
+}
+
+/// A pin header of `columns` columns (1 or 2) and `rows` pins in a column: a box, with a bar
+/// at each pin for its contact. A second column is on the right, 5.08 mm from the first, and
+/// its bars lie against its own edge. Extent x -1.27 to 1.27 (3.81 with two columns), y one grid
+/// step beyond the first and last pin.
+fn header(rows: usize, columns: usize) -> Vec<Shape> {
+    let top = header_top(rows);
+    let right = if columns == 2 { 3.81 } else { 1.27 };
+    let bottom = top - (rows - 1) as f64 * PITCH;
+    let mut out = vec![boxed((-1.27, top + 1.27), (right, bottom - 1.27))];
+    for row in 0..rows {
+        let y = top - row as f64 * PITCH;
+        out.push(line(&[(-1.27, y), (-0.254, y)], BODY));
+        if columns == 2 {
+            out.push(line(&[(right, y), (right - 1.016, y)], BODY));
+        }
+    }
+    out
+}
+
+/// A pin socket of `rows` contacts in one column: at each pin a lead and an open arc, the
+/// receptacle that a pin enters (IEC 60617, a socket is the "(" that a plug's pin goes into).
+/// Extent x -1.27 to 0, y half a contact beyond the first and last pin.
+fn socket(rows: usize) -> Vec<Shape> {
+    let top = header_top(rows);
+    let mut out = Vec::new();
+    for row in 0..rows {
+        let y = top - row as f64 * PITCH;
+        out.push(line(&[(-1.27, y), (-0.508, y)], THIN));
+        out.push(Shape::Arc {
+            start: (0.0, y - 0.508),
+            mid: (-0.508, y),
+            end: (0.0, y + 0.508),
+            width: THIN,
+        });
+    }
+    out
+}
+
+/// A USB Type-C receptacle in a box `half_height` high (a receptacle with more contacts has
+/// more pins down its side): the oval mouth of the receptacle with its tongue, on the left,
+/// and the USB trident on the right: a stem with an arrowhead, a base disc, and a fork that
+/// ends in a disc and one that ends in a square. Extent x ±10.16, y ±`half_height`.
+fn usb_c(half_height: f64) -> Vec<Shape> {
+    let mut out = vec![boxed((-10.16, half_height), (10.16, -half_height))];
+    // The mouth: two sides and two half circles of 1.27 mm radius.
+    out.push(line(&[(-8.255, 2.54), (-8.255, -2.54)], BODY));
+    out.push(line(&[(-5.715, 2.54), (-5.715, -2.54)], BODY));
+    out.push(Shape::Arc {
+        start: (-8.255, 2.54),
+        mid: (-6.985, 3.81),
+        end: (-5.715, 2.54),
+        width: BODY,
+    });
+    out.push(Shape::Arc {
+        start: (-5.715, -2.54),
+        mid: (-6.985, -3.81),
+        end: (-8.255, -2.54),
+        width: BODY,
+    });
+    out.push(Shape::Rect {
+        a: (-7.239, 1.905),
+        b: (-6.731, -1.905),
+        width: THIN,
+        fill: Fill::Solid,
+    });
+    // The trident: stem, base disc, arrowhead, and the two forks.
+    out.push(line(&[(1.27, -3.81), (1.27, 5.08)], BODY));
+    out.push(Shape::Circle {
+        center: (1.27, -3.81),
+        radius: 1.016,
+        width: THIN,
+        fill: Fill::Solid,
+    });
+    out.push(polygon(
+        &[(0.508, 5.08), (1.27, 6.604), (2.032, 5.08)],
+        THIN,
+        Fill::Solid,
+    ));
+    out.push(line(
+        &[(1.27, -1.27), (-0.254, 0.254), (-0.254, 1.27)],
+        BODY,
+    ));
+    out.push(Shape::Circle {
+        center: (-0.254, 1.778),
+        radius: 0.508,
+        width: THIN,
+        fill: Fill::Solid,
+    });
+    out.push(line(&[(1.27, 0.0), (2.794, 1.524), (2.794, 2.286)], BODY));
+    out.push(Shape::Rect {
+        a: (2.413, 2.286),
+        b: (3.175, 3.048),
+        width: THIN,
+        fill: Fill::Solid,
+    });
+    out
+}
+
+/// A coaxial connector: the centre conductor as a small ring, which the signal's lead (from the
+/// left) reaches, inside a shield drawn as two arcs that open to the left where the lead
+/// enters, and the shield's own lead down. Extent x -2.54 to 1.778, y -2.54 to 1.778.
+fn coaxial() -> Vec<Shape> {
+    let radius: f64 = 1.778;
+    // The gap of the shield on the left is as wide as the centre conductor's ring.
+    let gap: f64 = 0.508;
+    let edge = (radius * radius - gap * gap).sqrt();
+    vec![
+        line(&[(-2.54, 0.0), (-0.508, 0.0)], THIN),
+        Shape::Circle {
+            center: (0.0, 0.0),
+            radius: 0.508,
+            width: BODY,
+            fill: Fill::None,
+        },
+        Shape::Arc {
+            start: (-edge, gap),
+            mid: (0.0, radius),
+            end: (radius, 0.0),
+            width: BODY,
+        },
+        Shape::Arc {
+            start: (radius, 0.0),
+            mid: (0.0, -radius),
+            end: (-edge, -gap),
+            width: BODY,
+        },
+        line(&[(0.0, -2.54), (0.0, -radius)], THIN),
+    ]
+}
+
+/// A test point: a small open circle on the end of its pin. Extent x ±0.762, y 2.54 to 4.064.
+fn test_point() -> Vec<Shape> {
+    vec![Shape::Circle {
+        center: (0.0, 3.302),
+        radius: 0.762,
+        width: BODY,
+        fill: Fill::None,
+    }]
+}
+
+/// A mounting hole: a ring, the drill. Extent x and y ±1.27.
+fn mounting_hole() -> Vec<Shape> {
+    vec![Shape::Circle {
+        center: (0.0, 0.0),
+        radius: 1.27,
+        width: BODY,
+        fill: Fill::None,
+    }]
+}
+
+/// A plated mounting hole: a ring with the plating's ring inside it, above its pin. Extent x
+/// ±1.27, y 0 to 2.54.
+fn plated_hole() -> Vec<Shape> {
+    vec![
+        Shape::Circle {
+            center: (0.0, 1.27),
+            radius: 1.27,
+            width: BODY,
+            fill: Fill::None,
+        },
+        Shape::Circle {
+            center: (0.0, 1.27),
+            radius: 0.635,
+            width: THIN,
+            fill: Fill::None,
+        },
+    ]
+}
+
+/// A fiducial: a copper dot in a ring, the clearing round it. Extent x and y ±1.27.
+fn fiducial() -> Vec<Shape> {
+    vec![
+        Shape::Circle {
+            center: (0.0, 0.0),
+            radius: 1.27,
+            width: BODY,
+            fill: Fill::Background,
+        },
+        Shape::Circle {
+            center: (0.0, 0.0),
+            radius: 0.508,
+            width: THIN,
+            fill: Fill::Solid,
+        },
+    ]
+}
+
+/// A power flag: a stem from the pin and a diamond on it, the flag that says "power comes from
+/// here". Extent x ±1.016, y 0 to 2.54.
+fn power_flag() -> Vec<Shape> {
+    vec![
+        line(&[(0.0, 0.0), (0.0, 1.27)], THIN),
+        polygon(
+            &[(0.0, 1.27), (-1.016, 1.905), (0.0, 2.54), (1.016, 1.905)],
+            THIN,
+            Fill::None,
+        ),
+    ]
+}
+
 // ---------------------------------------------------------------------------------------
 // The geometry: what the rest of netsmith measures.
 
@@ -466,278 +688,582 @@ struct PinSpec {
     /// right, 90 is up).
     at: (f64, f64, f64),
     length: f64,
-    name: &'static str,
-    number: &'static str,
+    name: String,
+    number: String,
+    /// A further pad on the point of another pin, which KiCad's symbols hide.
+    stacked: bool,
 }
 
-const fn pin(
+fn pin(
     kind: PinType,
     at: (f64, f64, f64),
     length: f64,
-    name: &'static str,
-    number: &'static str,
+    name: &str,
+    number: &str,
+    stacked: bool,
 ) -> PinSpec {
     PinSpec {
         kind,
         at,
         length,
-        name,
-        number,
+        name: name.to_string(),
+        number: number.to_string(),
+        stacked,
     }
 }
 
 /// Two passive pins at the top and bottom of a vertical part (a line runs down from the top
 /// and up from the bottom).
-const fn vertical(length: f64, names: [&'static str; 2]) -> [PinSpec; 2] {
-    [
-        pin(PinType::Passive, (0.0, 3.81, 270.0), length, names[0], "1"),
-        pin(PinType::Passive, (0.0, -3.81, 90.0), length, names[1], "2"),
+fn vertical(length: f64, names: [&str; 2]) -> Vec<PinSpec> {
+    let passive = PinType::Passive;
+    vec![
+        pin(passive, (0.0, 3.81, 270.0), length, names[0], "1", false),
+        pin(passive, (0.0, -3.81, 90.0), length, names[1], "2", false),
     ]
 }
 
 /// Two passive pins at the left and right of a horizontal part.
-const fn horizontal(at: f64, length: f64, names: [&'static str; 2]) -> [PinSpec; 2] {
-    [
-        pin(PinType::Passive, (-at, 0.0, 0.0), length, names[0], "1"),
-        pin(PinType::Passive, (at, 0.0, 180.0), length, names[1], "2"),
+fn horizontal(at: f64, length: f64, names: [&str; 2]) -> Vec<PinSpec> {
+    let passive = PinType::Passive;
+    vec![
+        pin(passive, (-at, 0.0, 0.0), length, names[0], "1", false),
+        pin(passive, (at, 0.0, 180.0), length, names[1], "2", false),
     ]
 }
 
-/// How a symbol shows the names of its pins.
+/// How a symbol shows the names of its pins. No offset is a symbol that says nothing of it.
 #[derive(Clone, Copy)]
 struct Names {
-    offset: f64,
+    offset: Option<f64>,
     hidden: bool,
 }
 
 /// Everything about a symbol but its look.
 struct Spec {
     /// `Library:Name`, as the mapping names it.
-    id: &'static str,
+    id: String,
     /// The letters of the `Reference` field.
     reference: &'static str,
-    description: &'static str,
+    /// Whether the `Reference` field is not shown (a flag's is not).
+    reference_hidden: bool,
+    description: String,
     /// `(x, y, rotation)` of the `Reference` and `Value` fields, from the origin.
     reference_at: (f64, f64, f64),
     value_at: (f64, f64, f64),
     /// Whether the pin numbers are hidden.
     numbers_hidden: bool,
     names: Names,
-    pins: &'static [PinSpec],
+    pins: Vec<PinSpec>,
+    /// The part of the definition the pins are in: unit and style, `1_1`, or `0_0` for a pin
+    /// that every unit shares.
+    pin_part: &'static str,
+    /// Whether KiCad calls it a power symbol, which a flag is.
+    power: bool,
     /// The look.
-    glyph: fn() -> Vec<Shape>,
+    glyph: Vec<Shape>,
 }
 
 const SHOWN: bool = false;
 const HIDDEN: bool = true;
 
-/// Every symbol this module draws, in a fixed order. The numbers are those of KiCad 9's stock
-/// symbol of the same id, measured with `kicad-cli`'s libraries, and the test
-/// `passives_agree_with_the_installed_kicad_symbols` (`crates/netsmith/tests/passives.rs`)
-/// proves each against the installed library.
-const SPECS: &[Spec] = &[
-    Spec {
-        id: "Device:R",
-        reference: "R",
-        description: "Resistor",
-        reference_at: (2.032, 0.0, 90.0),
-        value_at: (0.0, 0.0, 90.0),
-        numbers_hidden: HIDDEN,
-        names: Names {
-            offset: 0.0,
-            hidden: SHOWN,
+/// What a spec is when it says nothing of a field: pin numbers shown, names offset 1.016 mm.
+const BASE: Spec = Spec {
+    id: String::new(),
+    reference: "",
+    reference_hidden: false,
+    description: String::new(),
+    reference_at: (0.0, 0.0, 0.0),
+    value_at: (0.0, 0.0, 0.0),
+    numbers_hidden: SHOWN,
+    names: Names {
+        offset: Some(1.016),
+        hidden: SHOWN,
+    },
+    pins: Vec::new(),
+    pin_part: "1_1",
+    power: false,
+    glyph: Vec::new(),
+};
+
+/// The passives and discrete parts. The numbers are those of KiCad 9's stock symbol of the same
+/// id, measured with `kicad-cli`'s libraries, and the test
+/// `generated_symbols_agree_with_the_installed_kicad_symbols`
+/// (`crates/netsmith/tests/passives.rs`) proves each against the installed library.
+fn passive_specs() -> Vec<Spec> {
+    vec![
+        Spec {
+            id: "Device:R".into(),
+            reference: "R",
+            description: "Resistor".into(),
+            reference_at: (2.032, 0.0, 90.0),
+            value_at: (0.0, 0.0, 90.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: SHOWN,
+            },
+            pins: vertical(1.27, ["~", "~"]),
+            glyph: resistor(),
+            ..BASE
         },
-        pins: &vertical(1.27, ["~", "~"]),
-        glyph: resistor,
-    },
-    Spec {
-        id: "Device:C",
-        reference: "C",
-        description: "Capacitor, not polarized",
-        reference_at: (0.635, 2.54, 0.0),
-        value_at: (0.635, -2.54, 0.0),
-        numbers_hidden: HIDDEN,
-        names: Names {
-            offset: 0.254,
-            hidden: SHOWN,
+        Spec {
+            id: "Device:C".into(),
+            reference: "C",
+            description: "Capacitor, not polarized".into(),
+            reference_at: (0.635, 2.54, 0.0),
+            value_at: (0.635, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.254),
+                hidden: SHOWN,
+            },
+            pins: vertical(2.794, ["~", "~"]),
+            glyph: capacitor(),
+            ..BASE
         },
-        pins: &vertical(2.794, ["~", "~"]),
-        glyph: capacitor,
-    },
-    Spec {
-        id: "Device:L",
-        reference: "L",
-        description: "Inductor",
-        reference_at: (-1.27, 0.0, 90.0),
-        value_at: (1.905, 0.0, 90.0),
-        numbers_hidden: HIDDEN,
-        names: Names {
-            offset: 1.016,
-            hidden: HIDDEN,
+        Spec {
+            id: "Device:L".into(),
+            reference: "L",
+            description: "Inductor".into(),
+            reference_at: (-1.27, 0.0, 90.0),
+            value_at: (1.905, 0.0, 90.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(1.016),
+                hidden: HIDDEN,
+            },
+            pins: vertical(1.27, ["1", "2"]),
+            glyph: inductor(),
+            ..BASE
         },
-        pins: &vertical(1.27, ["1", "2"]),
-        glyph: inductor,
-    },
-    Spec {
-        id: "Device:LED",
-        reference: "D",
-        description: "Light emitting diode",
-        reference_at: (0.0, 2.54, 0.0),
-        value_at: (0.0, -2.54, 0.0),
-        numbers_hidden: HIDDEN,
-        names: DIODE_NAMES,
-        pins: &horizontal(3.81, 2.54, ["K", "A"]),
-        glyph: led,
-    },
-    Spec {
-        id: "Device:D",
-        reference: "D",
-        description: "Diode",
-        reference_at: (0.0, 2.54, 0.0),
-        value_at: (0.0, -2.54, 0.0),
-        numbers_hidden: HIDDEN,
-        names: DIODE_NAMES,
-        pins: &horizontal(3.81, 2.54, ["K", "A"]),
-        glyph: diode,
-    },
-    Spec {
-        id: "Device:D_Schottky",
-        reference: "D",
-        description: "Schottky diode",
-        reference_at: (0.0, 2.54, 0.0),
-        value_at: (0.0, -2.54, 0.0),
-        numbers_hidden: HIDDEN,
-        names: DIODE_NAMES,
-        pins: &horizontal(3.81, 2.54, ["K", "A"]),
-        glyph: schottky,
-    },
-    Spec {
-        id: "Device:D_Zener",
-        reference: "D",
-        description: "Zener diode",
-        reference_at: (0.0, 2.54, 0.0),
-        value_at: (0.0, -2.54, 0.0),
-        numbers_hidden: HIDDEN,
-        names: DIODE_NAMES,
-        pins: &horizontal(3.81, 2.54, ["K", "A"]),
-        glyph: zener,
-    },
-    Spec {
-        id: "Device:D_TVS",
-        reference: "D",
-        description: "Bidirectional transient voltage suppression diode",
-        reference_at: (0.0, 2.54, 0.0),
-        value_at: (0.0, -2.54, 0.0),
-        numbers_hidden: HIDDEN,
-        names: DIODE_NAMES,
-        pins: &horizontal(3.81, 2.54, ["A1", "A2"]),
-        glyph: tvs,
-    },
-    Spec {
-        id: "Device:FerriteBead",
-        reference: "FB",
-        description: "Ferrite bead",
-        reference_at: (-3.81, 0.635, 90.0),
-        value_at: (3.81, 0.0, 90.0),
-        numbers_hidden: HIDDEN,
-        names: Names {
-            offset: 0.0,
-            hidden: SHOWN,
+        Spec {
+            id: "Device:LED".into(),
+            reference: "D",
+            description: "Light emitting diode".into(),
+            reference_at: (0.0, 2.54, 0.0),
+            value_at: (0.0, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: DIODE_NAMES,
+            pins: horizontal(3.81, 2.54, ["K", "A"]),
+            glyph: led(),
+            ..BASE
         },
-        pins: &vertical(2.54, ["~", "~"]),
-        glyph: ferrite_bead,
-    },
-    Spec {
-        id: "Device:Fuse",
-        reference: "F",
-        description: "Fuse",
-        reference_at: (2.032, 0.0, 90.0),
-        value_at: (-1.905, 0.0, 90.0),
-        numbers_hidden: HIDDEN,
-        names: Names {
-            offset: 0.0,
-            hidden: SHOWN,
+        Spec {
+            id: "Device:D".into(),
+            reference: "D",
+            description: "Diode".into(),
+            reference_at: (0.0, 2.54, 0.0),
+            value_at: (0.0, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: DIODE_NAMES,
+            pins: horizontal(3.81, 2.54, ["K", "A"]),
+            glyph: diode(),
+            ..BASE
         },
-        pins: &vertical(1.27, ["~", "~"]),
-        glyph: fuse,
-    },
-    Spec {
-        id: "Device:Crystal",
-        reference: "Y",
-        description: "Two pin crystal",
-        reference_at: (0.0, 3.81, 0.0),
-        value_at: (0.0, -3.81, 0.0),
-        numbers_hidden: HIDDEN,
-        names: DIODE_NAMES,
-        pins: &horizontal(3.81, 1.27, ["1", "2"]),
-        glyph: crystal,
-    },
-    Spec {
-        id: "Switch:SW_SPST",
-        reference: "SW",
-        description: "Single pole single throw switch",
-        reference_at: (0.0, 3.175, 0.0),
-        value_at: (0.0, -2.54, 0.0),
-        numbers_hidden: SHOWN,
-        names: Names {
-            offset: 0.0,
-            hidden: HIDDEN,
+        Spec {
+            id: "Device:D_Schottky".into(),
+            reference: "D",
+            description: "Schottky diode".into(),
+            reference_at: (0.0, 2.54, 0.0),
+            value_at: (0.0, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: DIODE_NAMES,
+            pins: horizontal(3.81, 2.54, ["K", "A"]),
+            glyph: schottky(),
+            ..BASE
         },
-        pins: &horizontal(5.08, 2.54, ["A", "B"]),
-        glyph: switch,
-    },
-    Spec {
-        id: "Transistor_FET:Q_NMOS_GSD",
-        reference: "Q",
-        description: "N-channel MOSFET, gate, source, drain",
-        reference_at: (5.08, 1.905, 0.0),
-        value_at: (5.08, 0.0, 0.0),
-        numbers_hidden: SHOWN,
-        names: Names {
-            offset: 0.0,
-            hidden: HIDDEN,
+        Spec {
+            id: "Device:D_Zener".into(),
+            reference: "D",
+            description: "Zener diode".into(),
+            reference_at: (0.0, 2.54, 0.0),
+            value_at: (0.0, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: DIODE_NAMES,
+            pins: horizontal(3.81, 2.54, ["K", "A"]),
+            glyph: zener(),
+            ..BASE
         },
-        pins: &FET_PINS,
-        glyph: nmos,
-    },
-    Spec {
-        id: "Transistor_FET:Q_PMOS_GSD",
-        reference: "Q",
-        description: "P-channel MOSFET, gate, source, drain",
-        reference_at: (5.08, 1.905, 0.0),
-        value_at: (5.08, 0.0, 0.0),
-        numbers_hidden: SHOWN,
-        names: Names {
-            offset: 0.0,
-            hidden: HIDDEN,
+        Spec {
+            id: "Device:D_TVS".into(),
+            reference: "D",
+            description: "Bidirectional transient voltage suppression diode".into(),
+            reference_at: (0.0, 2.54, 0.0),
+            value_at: (0.0, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: DIODE_NAMES,
+            pins: horizontal(3.81, 2.54, ["A1", "A2"]),
+            glyph: tvs(),
+            ..BASE
         },
-        pins: &FET_PINS,
-        glyph: pmos,
-    },
-];
+        Spec {
+            id: "Device:FerriteBead".into(),
+            reference: "FB",
+            description: "Ferrite bead".into(),
+            reference_at: (-3.81, 0.635, 90.0),
+            value_at: (3.81, 0.0, 90.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: SHOWN,
+            },
+            pins: vertical(2.54, ["~", "~"]),
+            glyph: ferrite_bead(),
+            ..BASE
+        },
+        Spec {
+            id: "Device:Fuse".into(),
+            reference: "F",
+            description: "Fuse".into(),
+            reference_at: (2.032, 0.0, 90.0),
+            value_at: (-1.905, 0.0, 90.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: SHOWN,
+            },
+            pins: vertical(1.27, ["~", "~"]),
+            glyph: fuse(),
+            ..BASE
+        },
+        Spec {
+            id: "Device:Crystal".into(),
+            reference: "Y",
+            description: "Two pin crystal".into(),
+            reference_at: (0.0, 3.81, 0.0),
+            value_at: (0.0, -3.81, 0.0),
+            numbers_hidden: HIDDEN,
+            names: DIODE_NAMES,
+            pins: horizontal(3.81, 1.27, ["1", "2"]),
+            glyph: crystal(),
+            ..BASE
+        },
+        Spec {
+            id: "Switch:SW_SPST".into(),
+            reference: "SW",
+            description: "Single pole single throw switch".into(),
+            reference_at: (0.0, 3.175, 0.0),
+            value_at: (0.0, -2.54, 0.0),
+            numbers_hidden: SHOWN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: HIDDEN,
+            },
+            pins: horizontal(5.08, 2.54, ["A", "B"]),
+            glyph: switch(),
+            ..BASE
+        },
+        Spec {
+            id: "Transistor_FET:Q_NMOS_GSD".into(),
+            reference: "Q",
+            description: "N-channel MOSFET, gate, source, drain".into(),
+            reference_at: (5.08, 1.905, 0.0),
+            value_at: (5.08, 0.0, 0.0),
+            numbers_hidden: SHOWN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: HIDDEN,
+            },
+            pins: fet_pins(),
+            glyph: nmos(),
+            ..BASE
+        },
+        Spec {
+            id: "Transistor_FET:Q_PMOS_GSD".into(),
+            reference: "Q",
+            description: "P-channel MOSFET, gate, source, drain".into(),
+            reference_at: (5.08, 1.905, 0.0),
+            value_at: (5.08, 0.0, 0.0),
+            numbers_hidden: SHOWN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: HIDDEN,
+            },
+            pins: fet_pins(),
+            glyph: pmos(),
+            ..BASE
+        },
+    ]
+}
 
 /// The names of a diode's, an LED's and a crystal's pins are not shown (they are `K` and `A`).
 const DIODE_NAMES: Names = Names {
-    offset: 1.016,
+    offset: Some(1.016),
     hidden: HIDDEN,
 };
 
 /// The pins of a FET drawn with the gate on the left, the drain above and the source below:
 /// pad 1 is the gate (an input), pad 3 the drain and pad 2 the source, which are passive.
-const FET_PINS: [PinSpec; 3] = [
-    pin(PinType::Input, (-5.08, 0.0, 0.0), 2.54, "G", "1"),
-    pin(PinType::Passive, (2.54, 5.08, 270.0), 2.54, "D", "3"),
-    pin(PinType::Passive, (2.54, -5.08, 90.0), 2.54, "S", "2"),
-];
+fn fet_pins() -> Vec<PinSpec> {
+    vec![
+        pin(PinType::Input, (-5.08, 0.0, 0.0), 2.54, "G", "1", false),
+        pin(PinType::Passive, (2.54, 5.08, 270.0), 2.54, "D", "3", false),
+        pin(PinType::Passive, (2.54, -5.08, 90.0), 2.54, "S", "2", false),
+    ]
+}
+
+/// The pins of a header of `columns` columns of `rows` pins, 2.54 mm apart, the first at the
+/// top of the left column. A pin is `Pin_<number>`, as KiCad's generic connectors name it. The
+/// left column has the odd numbers (running right, into the body) and the right column the
+/// even ones (running left).
+fn header_pins(rows: usize, columns: usize) -> Vec<PinSpec> {
+    let top = header_top(rows);
+    let mut pins = Vec::new();
+    for column in 0..columns {
+        for row in 0..rows {
+            let number = (row * columns + column + 1).to_string();
+            let y = top - row as f64 * PITCH;
+            let at = if column == 0 {
+                (-5.08, y, 0.0)
+            } else {
+                (7.62, y, 180.0)
+            };
+            pins.push(pin(
+                PinType::Passive,
+                at,
+                3.81,
+                &format!("Pin_{number}"),
+                &number,
+                false,
+            ));
+        }
+    }
+    pins
+}
+
+/// A header or a socket of `columns` columns of `rows` pins in `library`, with KiCad's name
+/// (`Conn_01x04`, `Conn_01x04_Socket`, `Conn_02x05_Odd_Even`).
+fn header_spec(library: &str, rows: usize, columns: usize, socket_form: bool) -> Spec {
+    let top = header_top(rows);
+    let bottom = top - (rows - 1) as f64 * PITCH - 1.27;
+    let suffix = match (columns, socket_form) {
+        (_, true) => "_Socket",
+        (2, false) => "_Odd_Even",
+        _ => "",
+    };
+    let middle = if columns == 2 { 1.27 } else { 0.0 };
+    Spec {
+        id: format!("{library}:Conn_{columns:02}x{rows:02}{suffix}"),
+        reference: "J",
+        description: format!(
+            "{}, {} of {rows}",
+            if socket_form {
+                "Pin socket"
+            } else {
+                "Pin header"
+            },
+            if columns == 1 {
+                "one row".to_string()
+            } else {
+                format!("{columns} rows")
+            },
+        ),
+        reference_at: (middle, top + PITCH, 0.0),
+        value_at: (middle, bottom - 1.27, 0.0),
+        names: Names {
+            offset: Some(1.016),
+            hidden: HIDDEN,
+        },
+        pins: header_pins(rows, columns),
+        glyph: if socket_form {
+            socket(rows)
+        } else {
+            header(rows, columns)
+        },
+        ..BASE
+    }
+}
+
+/// The connectors: the generic headers and sockets the standard mapping names, the two USB-C
+/// receptacles and the coaxial connector.
+fn connector_specs() -> Vec<Spec> {
+    let mut specs = Vec::new();
+    for rows in [2, 4, 8, 10] {
+        specs.push(header_spec("Connector_Generic", rows, 1, false));
+    }
+    for rows in [3, 5, 10] {
+        specs.push(header_spec("Connector_Generic", rows, 2, false));
+    }
+    for rows in [2, 4, 8, 10] {
+        specs.push(header_spec("Connector", rows, 1, true));
+    }
+    let bi = PinType::Bidirectional;
+    let passive = PinType::Passive;
+    specs.push(Spec {
+        id: "Connector:USB_C_Receptacle_PowerOnly_6P".into(),
+        reference: "J",
+        description: "USB Type-C receptacle, power only, 6 contacts".into(),
+        reference_at: (0.0, 16.51, 0.0),
+        value_at: (0.0, 13.97, 0.0),
+        pins: vec![
+            pin(passive, (-7.62, -17.78, 90.0), 5.08, "SHIELD", "S1", false),
+            pin(passive, (0.0, -17.78, 90.0), 5.08, "GND", "A12", false),
+            pin(passive, (0.0, -17.78, 90.0), 5.08, "GND", "B12", true),
+            pin(passive, (15.24, 7.62, 180.0), 5.08, "VBUS", "A9", false),
+            pin(passive, (15.24, 7.62, 180.0), 5.08, "VBUS", "B9", true),
+            pin(bi, (15.24, -5.08, 180.0), 5.08, "CC1", "A5", false),
+            pin(bi, (15.24, -7.62, 180.0), 5.08, "CC2", "B5", false),
+        ],
+        glyph: usb_c(12.7),
+        ..BASE
+    });
+    specs.push(Spec {
+        id: "Connector:USB_C_Receptacle_USB2.0_16P".into(),
+        reference: "J",
+        description: "USB Type-C receptacle, USB 2.0, 16 contacts".into(),
+        reference_at: (0.0, 22.225, 0.0),
+        value_at: (0.0, 19.685, 0.0),
+        pins: vec![
+            pin(passive, (-7.62, -22.86, 90.0), 5.08, "SHIELD", "S1", false),
+            pin(passive, (0.0, -22.86, 90.0), 5.08, "GND", "A1", false),
+            pin(passive, (0.0, -22.86, 90.0), 5.08, "GND", "A12", true),
+            pin(passive, (0.0, -22.86, 90.0), 5.08, "GND", "B1", true),
+            pin(passive, (0.0, -22.86, 90.0), 5.08, "GND", "B12", true),
+            pin(passive, (15.24, 15.24, 180.0), 5.08, "VBUS", "A4", false),
+            pin(passive, (15.24, 15.24, 180.0), 5.08, "VBUS", "A9", true),
+            pin(passive, (15.24, 15.24, 180.0), 5.08, "VBUS", "B4", true),
+            pin(passive, (15.24, 15.24, 180.0), 5.08, "VBUS", "B9", true),
+            pin(bi, (15.24, 10.16, 180.0), 5.08, "CC1", "A5", false),
+            pin(bi, (15.24, 7.62, 180.0), 5.08, "CC2", "B5", false),
+            pin(bi, (15.24, 2.54, 180.0), 5.08, "D-", "A7", false),
+            pin(bi, (15.24, 0.0, 180.0), 5.08, "D-", "B7", false),
+            pin(bi, (15.24, -2.54, 180.0), 5.08, "D+", "A6", false),
+            pin(bi, (15.24, -5.08, 180.0), 5.08, "D+", "B6", false),
+            pin(bi, (15.24, -12.7, 180.0), 5.08, "SBU1", "A8", false),
+            pin(bi, (15.24, -15.24, 180.0), 5.08, "SBU2", "B8", false),
+        ],
+        glyph: usb_c(17.78),
+        ..BASE
+    });
+    specs.push(Spec {
+        id: "Connector:Conn_Coaxial".into(),
+        reference: "J",
+        description: "Coaxial connector".into(),
+        reference_at: (0.254, 3.048, 0.0),
+        value_at: (2.921, 0.0, 90.0),
+        names: Names {
+            offset: Some(1.016),
+            hidden: HIDDEN,
+        },
+        pins: vec![
+            pin(passive, (-5.08, 0.0, 0.0), 2.54, "In", "1", false),
+            pin(passive, (0.0, -5.08, 90.0), 2.54, "Ext", "2", false),
+        ],
+        glyph: coaxial(),
+        ..BASE
+    });
+    specs
+}
+
+/// The mechanical parts and the power flag.
+fn mechanical_specs() -> Vec<Spec> {
+    let passive = PinType::Passive;
+    vec![
+        Spec {
+            id: "Connector:TestPoint".into(),
+            reference: "TP",
+            description: "Test point".into(),
+            reference_at: (0.0, 6.858, 0.0),
+            value_at: (0.0, 5.08, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.762),
+                hidden: HIDDEN,
+            },
+            pins: vec![pin(passive, (0.0, 0.0, 90.0), 2.54, "1", "1", false)],
+            glyph: test_point(),
+            ..BASE
+        },
+        Spec {
+            id: "Mechanical:MountingHole".into(),
+            reference: "H",
+            description: "Mounting hole".into(),
+            reference_at: (0.0, 5.08, 0.0),
+            value_at: (0.0, 3.175, 0.0),
+            glyph: mounting_hole(),
+            ..BASE
+        },
+        Spec {
+            id: "Mechanical:MountingHole_Pad".into(),
+            reference: "H",
+            description: "Mounting hole with a connection to its plating".into(),
+            reference_at: (0.0, 6.35, 0.0),
+            value_at: (0.0, 4.445, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(1.016),
+                hidden: HIDDEN,
+            },
+            pins: vec![pin(
+                PinType::Input,
+                (0.0, -2.54, 90.0),
+                2.54,
+                "1",
+                "1",
+                false,
+            )],
+            glyph: plated_hole(),
+            ..BASE
+        },
+        Spec {
+            id: "Mechanical:Fiducial".into(),
+            reference: "FID",
+            description: "Fiducial mark for the pick and place machine".into(),
+            reference_at: (0.0, 5.08, 0.0),
+            value_at: (0.0, 3.175, 0.0),
+            names: Names {
+                offset: None,
+                hidden: SHOWN,
+            },
+            glyph: fiducial(),
+            ..BASE
+        },
+        Spec {
+            id: crate::mapping::POWER_FLAG_SYMBOL.into(),
+            reference: "#FLG",
+            reference_hidden: true,
+            description: "Tells the electrical rules check where power comes from".into(),
+            reference_at: (0.0, 1.905, 0.0),
+            value_at: (0.0, 3.81, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: HIDDEN,
+            },
+            pins: vec![pin(
+                PinType::PowerOut,
+                (0.0, 0.0, 90.0),
+                0.0,
+                "~",
+                "1",
+                false,
+            )],
+            pin_part: "0_0",
+            power: true,
+            glyph: power_flag(),
+        },
+    ]
+}
+
+/// Every symbol this module draws, in a fixed order.
+fn specs() -> &'static [Spec] {
+    static SPECS: OnceLock<Vec<Spec>> = OnceLock::new();
+    SPECS.get_or_init(|| {
+        let mut all = passive_specs();
+        all.extend(connector_specs());
+        all.extend(mechanical_specs());
+        all
+    })
+}
 
 /// The ids of the symbols made here, in a fixed order.
 pub fn ids() -> impl Iterator<Item = &'static str> {
-    SPECS.iter().map(|s| s.id)
+    specs().iter().map(|s| s.id.as_str())
 }
 
 /// Whether some id of `library` is made here.
 pub fn covers_library(library: &str) -> bool {
-    SPECS
+    specs()
         .iter()
         .any(|s| s.id.split_once(':').is_some_and(|(l, _)| l == library))
 }
@@ -769,31 +1295,46 @@ fn property(name: &str, value: &str, at: (f64, f64, f64), hide: bool) -> Sexp {
 }
 
 fn pin_node(spec: &PinSpec) -> Sexp {
-    Sexp::node(
-        "pin",
-        vec![
-            Sexp::atom(spec.kind.name()),
-            Sexp::atom("line"),
-            Sexp::node(
-                "at",
-                vec![
-                    Sexp::num(spec.at.0),
-                    Sexp::num(spec.at.1),
-                    Sexp::num(spec.at.2),
-                ],
-            ),
-            Sexp::node("length", vec![Sexp::num(spec.length)]),
-            Sexp::node("name", vec![Sexp::string(spec.name), effects(false)]),
-            Sexp::node("number", vec![Sexp::string(spec.number), effects(false)]),
-        ],
-    )
+    let mut items = vec![
+        Sexp::atom(spec.kind.name()),
+        Sexp::atom("line"),
+        Sexp::node(
+            "at",
+            vec![
+                Sexp::num(spec.at.0),
+                Sexp::num(spec.at.1),
+                Sexp::num(spec.at.2),
+            ],
+        ),
+        Sexp::node("length", vec![Sexp::num(spec.length)]),
+    ];
+    if spec.stacked {
+        items.push(Sexp::node("hide", vec![Sexp::atom("yes")]));
+    }
+    items.push(Sexp::node(
+        "name",
+        vec![Sexp::string(&spec.name), effects(false)],
+    ));
+    items.push(Sexp::node(
+        "number",
+        vec![Sexp::string(&spec.number), effects(false)],
+    ));
+    Sexp::node("pin", items)
+}
+
+/// The name of the symbol without its library: `R` for `Device:R`.
+fn bare(id: &str) -> &str {
+    id.split_once(':').map_or(id, |(_, n)| n)
 }
 
 /// `(symbol "<name>" ...)` as a library file holds it, with the glyph in unit 0 (drawn with
-/// every unit) and the pins in unit 1.
+/// every unit) and the pins in unit 1, or in the part the spec says.
 fn definition(spec: &Spec) -> Sexp {
-    let name = spec.id.split_once(':').map_or(spec.id, |(_, n)| n);
+    let name = bare(&spec.id);
     let mut items = vec![Sexp::string(name)];
+    if spec.power {
+        items.push(Sexp::node("power", Vec::new()));
+    }
     let mut flag = |list: &str, hidden: bool, offset: Option<f64>| {
         let mut inner = Vec::new();
         if let Some(offset) = offset {
@@ -807,23 +1348,31 @@ fn definition(spec: &Spec) -> Sexp {
         }
     };
     flag("pin_numbers", spec.numbers_hidden, None);
-    flag("pin_names", spec.names.hidden, Some(spec.names.offset));
+    flag("pin_names", spec.names.hidden, spec.names.offset);
     items.extend([
         Sexp::node("exclude_from_sim", vec![Sexp::atom("no")]),
         Sexp::node("in_bom", vec![Sexp::atom("yes")]),
         Sexp::node("on_board", vec![Sexp::atom("yes")]),
-        property("Reference", spec.reference, spec.reference_at, false),
+        property(
+            "Reference",
+            spec.reference,
+            spec.reference_at,
+            spec.reference_hidden,
+        ),
         property("Value", name, spec.value_at, false),
         property("Footprint", "", (0.0, 0.0, 0.0), true),
         property("Datasheet", "~", (0.0, 0.0, 0.0), true),
-        property("Description", spec.description, (0.0, 0.0, 0.0), true),
+        property("Description", &spec.description, (0.0, 0.0, 0.0), true),
     ]);
     let mut drawing = vec![Sexp::string(format!("{name}_0_1"))];
-    drawing.extend((spec.glyph)().iter().map(Shape::node));
+    drawing.extend(spec.glyph.iter().map(Shape::node));
     items.push(Sexp::node("symbol", drawing));
-    let mut pins = vec![Sexp::string(format!("{name}_1_1"))];
-    pins.extend(spec.pins.iter().map(pin_node));
-    items.push(Sexp::node("symbol", pins));
+    // A part with no pin (a mounting hole, a fiducial) has no part for them.
+    if !spec.pins.is_empty() {
+        let mut pins = vec![Sexp::string(format!("{name}_{}", spec.pin_part))];
+        pins.extend(spec.pins.iter().map(pin_node));
+        items.push(Sexp::node("symbol", pins));
+    }
     Sexp::node("symbol", items)
 }
 
@@ -833,19 +1382,17 @@ fn definition(spec: &Spec) -> Sexp {
 /// from KiCad on any machine that has the stock library, and a library of the board's own
 /// (`netsmith.kicad_sym`, beside the schematic and in its library table) has none.
 pub fn answer_id(lib_id: &str) -> Option<String> {
-    let spec = SPECS.iter().find(|s| s.id == lib_id)?;
-    let name = spec.id.split_once(':').map_or(spec.id, |(_, n)| n);
-    Some(format!("{}:{name}", crate::stdlib::NAME))
+    let spec = specs().iter().find(|s| s.id == lib_id)?;
+    Some(format!("{}:{}", crate::stdlib::NAME, bare(&spec.id)))
 }
 
 /// The symbol that answers the KiCad id `lib_id` (`Device:R`): its own id is
 /// [`answer_id`].
 pub fn symbol(lib_id: &str) -> Option<Symbol> {
-    let spec = SPECS.iter().find(|s| s.id == lib_id)?;
+    let spec = specs().iter().find(|s| s.id == lib_id)?;
     let own = answer_id(lib_id)?;
-    let name = lib_id.split_once(':').map_or(lib_id, |(_, n)| n);
     Some(
-        Symbol::from_definition(&own, name, definition(spec))
+        Symbol::from_definition(&own, bare(lib_id), definition(spec))
             .expect("a symbol drawn here is one that can be read"),
     )
 }
@@ -870,10 +1417,18 @@ mod tests {
                 "{id} is not deterministic"
             );
         }
-        assert_eq!(seen.len(), 14);
+        // 14 passives and discrete parts, 7 headers, 4 sockets, 2 USB-C receptacles, the coaxial
+        // connector, 4 mechanical parts and the power flag.
+        assert_eq!(seen.len(), 33);
+        // Two ids never answer with one symbol.
+        let answers: std::collections::HashSet<String> =
+            ids().map(|id| answer_id(id).unwrap()).collect();
+        assert_eq!(answers.len(), seen.len());
         assert!(symbol("Device:Nothing").is_none());
         assert!(covers_library("Device") && covers_library("Switch"));
-        assert!(!covers_library("Connector"));
+        assert!(covers_library("Connector") && covers_library("power"));
+        assert!(!covers_library("Regulator_Linear"));
+        assert!(symbol("Regulator_Linear:AP1117-15").is_none());
     }
 
     #[test]
@@ -901,7 +1456,7 @@ mod tests {
     fn a_pin_line_ends_inside_the_part_not_beyond_its_centre() {
         // The line runs from the connection point toward the body: a part's two pins face
         // each other and their lines do not cross.
-        for id in ids().filter(|i| !i.starts_with("Transistor_FET")) {
+        for id in ids().filter(|i| i.starts_with("Device:") || i.starts_with("Switch:")) {
             let symbol = symbol(id).unwrap();
             let end = |n: &str| {
                 let p = symbol.pin(n).unwrap();

@@ -172,6 +172,33 @@ fn plan_cell(symbol: &Symbol, connections: &[Connection]) -> Cell {
     }
 }
 
+/// Whether [`emit_schematic`] places a power flag on a net of `design`: some net takes power in
+/// on a power input pin and nothing on the board drives it. The flag is the symbol
+/// [`POWER_FLAG_SYMBOL`], which netsmith draws itself ([`crate::passives`]), so a board that
+/// needs one needs its `netsmith.kicad_sym` to hold it ([`crate::stdlib::symbol_library`]).
+/// A part that has no symbol is left to `emit_schematic` to report, and says nothing here.
+pub fn needs_power_flag(design: &Design, mapping: &Mapping, lib: &SymbolLib) -> bool {
+    let symbols: Vec<Option<Arc<Symbol>>> = design
+        .parts
+        .iter()
+        .map(|part| {
+            let mapped = mapping.map(&part.kind, part.package.as_deref()).ok()?;
+            lib.symbol_of(part, &mapped).ok()
+        })
+        .collect();
+    design.nets.iter().any(|net| {
+        let kinds: Vec<Option<PinType>> = net
+            .pins
+            .iter()
+            .map(|pin| {
+                let index = design.parts.iter().position(|p| p.refdes == pin.refdes)?;
+                symbols[index].as_ref()?.pin_type(&pin.pin)
+            })
+            .collect();
+        kinds.contains(&Some(PinType::PowerIn)) && !kinds.contains(&Some(PinType::PowerOut))
+    })
+}
+
 pub fn emit_schematic(
     design: &Design,
     mapping: &Mapping,
