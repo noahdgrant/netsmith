@@ -135,6 +135,10 @@ impl Expr {
             }
             Self::Neg(inner, _) => format!("-{}", inner.to_source()),
             Self::Paren(inner, _) => format!("({})", inner.to_source()),
+            Self::Call { name, args, .. } => {
+                let args: Vec<String> = args.iter().map(Expr::to_source).collect();
+                format!("{}({})", name.to_source(), args.join(", "))
+            }
             Self::Range { lo, hi, .. } => {
                 // A path with a leading dot after `..` would read as `...`.
                 let hi = hi.to_source();

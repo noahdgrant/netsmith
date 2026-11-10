@@ -1482,6 +1482,29 @@ impl Parser {
                     span: self.span_from(start),
                 })
             }
+            // `name(args)`: a call. A name followed at once by `(` is not a path.
+            Tok::Ident(_) if matches!(self.peek_second(), Tok::LParen) => {
+                let start = t.span.start;
+                let name = self.ident("a function name")?;
+                self.bump();
+                self.depth += 1;
+                let mut args = Vec::new();
+                if !self.at(&Tok::RParen) {
+                    loop {
+                        args.push(self.expr()?);
+                        if !self.eat(&Tok::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&Tok::RParen, "`,` or `)`")?;
+                self.depth -= 1;
+                Ok(Expr::Call {
+                    name,
+                    args,
+                    span: self.span_from(start),
+                })
+            }
             Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_) => Ok(Expr::Path(self.path()?)),
             Tok::LParen => {
                 self.bump();

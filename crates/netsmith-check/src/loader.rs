@@ -15,6 +15,9 @@ pub struct Loader {
     root_keys: HashMap<String, String>,
     /// A source file's name to the pin file beside it: its display name and text (ADR 0100).
     pins: HashMap<String, (String, String)>,
+    /// The definition the project's manifest names as every board's `.environment` when the
+    /// board declares none (ADR 0099): the module's key and the definition's name.
+    default_environment: Option<(String, String)>,
 }
 
 impl Loader {
@@ -86,6 +89,11 @@ impl Loader {
             "std::mfg::jlcpcb",
             "std/mfg/jlcpcb.nsm",
             include_str!("../../../std/mfg/jlcpcb.nsm"),
+        );
+        loader.insert(
+            "std::env",
+            "std/env.nsm",
+            include_str!("../../../std/env.nsm"),
         );
         loader.insert(
             "std::sources",
@@ -165,6 +173,21 @@ impl Loader {
     /// The pin file paired with a source file: its name and text.
     pub(crate) fn pins_of(&self, source_name: &str) -> Option<&(String, String)> {
         self.pins.get(source_name)
+    }
+
+    /// Say that every board of the project that declares no `.environment` has one made from
+    /// the definition `name` of the module `module` (`std::env`, `src::vehicle`): the manifest's
+    /// `environment` (ADR 0099).
+    pub fn with_default_environment(mut self, module: &str, name: &str) -> Self {
+        self.default_environment = Some((module.to_string(), name.to_string()));
+        self
+    }
+
+    /// The module key and the name of the definition that is the default `.environment`.
+    pub(crate) fn default_environment(&self) -> Option<(&str, &str)> {
+        self.default_environment
+            .as_ref()
+            .map(|(module, name)| (module.as_str(), name.as_str()))
     }
 
     /// The physical file paired with a source file: its name and text.

@@ -610,8 +610,8 @@ impl SizeBlind {
         match e {
             RExpr::Const(_) => Some(0),
             RExpr::Text(_) => None,
-            // A range with a value at an end (ADR 0066) is not told apart: never homogeneous here.
-            RExpr::Range(..) => None,
+            // A range with a value at an end (ADR 0066), or the end of a field's range (ADR 0098), is not told apart: never homogeneous here.
+            RExpr::Range(..) | RExpr::End(..) => None,
             RExpr::Neg(inner) => self.degree(solver, inner, scaled, reach, open),
             RExpr::Bin(op, a, b) => {
                 let da = self.degree(solver, a, scaled, reach, open)?;

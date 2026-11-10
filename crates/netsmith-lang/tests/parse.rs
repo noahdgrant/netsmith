@@ -394,3 +394,49 @@ fn a_word_after_the_type_of_a_declaration_is_a_parse_error_and_required_is_a_pla
     let src = "module Lamp {\n    .required: Voltage\n    .required &= 1\n}\n";
     assert_eq!(parse(src).unwrap().to_source(), src);
 }
+
+#[test]
+fn a_call_has_a_name_and_arguments_and_prints_back() {
+    // ADR 0098: `min(.bias)` is a call with one argument, a path.
+    match expr("min(.bias)") {
+        Expr::Call { name, args, .. } => {
+            assert_eq!(name.name, "min");
+            assert_eq!(args.len(), 1);
+            assert!(matches!(&args[0], Expr::Path(p) if p.to_source() == ".bias"));
+        }
+        other => panic!("expected a call, got {other:?}"),
+    }
+    assert_eq!(canon("min(.bias)"), "min(.bias)");
+    assert_eq!(canon("max( .z.zener_voltage )"), "max(.z.zener_voltage)");
+    assert_eq!(canon("min(.a) + 1V"), "min(.a) + 1V");
+    // The parser reads any count of arguments and any name; the checker says which are
+    // functions.
+    assert_eq!(canon("min()"), "min()");
+    assert_eq!(canon("min(.a, .b)"), "min(.a, .b)");
+    assert_eq!(canon("abs(-.a)"), "abs(-.a)");
+}
+
+#[test]
+fn a_call_in_a_relation_prints_back_and_a_name_that_is_not_called_stays_a_path() {
+    let src = "part P {\n    min(.bias) <= max(.zener_voltage)\n}\n";
+    let file = parse(src).unwrap();
+    assert_eq!(
+        parse(&file.to_source()).unwrap().to_source(),
+        file.to_source()
+    );
+    assert!(
+        file.to_source()
+            .contains("min(.bias) <= max(.zener_voltage)")
+    );
+    // A member called `min` is still a path: only a name followed at once by `(` is a call.
+    assert!(matches!(expr(".min"), Expr::Path(_)));
+    assert!(matches!(expr("min"), Expr::Path(_)));
+}
+
+#[test]
+fn a_call_that_is_not_closed_is_a_parse_error() {
+    let (message, line, _) = err("board T {\n    .x &= min(.a\n}\n");
+    // The `}` that stands where the `)` should be is on the next line.
+    assert_eq!(line, 3);
+    assert!(message.contains("`,` or `)`"), "{message}");
+}

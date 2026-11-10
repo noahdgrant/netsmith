@@ -358,22 +358,35 @@ fn a_diode_across_a_rail_blocks_the_rail_and_a_current_stays_in_its_rating() {
 #[test]
 fn a_zener_clamp_needs_the_rail_under_the_breakdown_and_its_power_is_limited() {
     let imports = "import std::parts::diode::Zener";
-    // Used as a regulator the part states nothing about the rail across it.
+    // Used as a regulator the part states nothing about the rail across it: the rail is the
+    // Zener's own voltage, so the rail's least is within what the Zener can break down at.
     clean(&on_12v(
         imports,
-        "    .z: Zener { .zener_voltage &= 5.1V +/- 5% }\n    .supply.pos ~> .z ~> .supply.neg",
+        "    .z: Zener { .zener_voltage &= 12V +/- 5% }\n    .supply.pos ~> .z ~> .supply.neg",
     ));
     // The design's own line: the clamp must not conduct.
     one(
         &on_12v(
             imports,
-            "    .z: Zener { .zener_voltage &= 5.1V +/- 5% }\n    \
+            "    .z: Zener { .zener_voltage &= 11V..13V }\n    \
              .z.bias <= .z.zener_voltage\n    .supply.pos ~> .z ~> .supply.neg",
         ),
         &[
             "z.bias must always be at most z.zener_voltage",
             "11.4V..12.6V",
-            "4.845V..5.355V",
+            "11V..13V",
+        ],
+    );
+    // A Zener that surely conducts: the rail's least is above its greatest breakdown.
+    one(
+        &on_12v(
+            imports,
+            "    .z: Zener { .zener_voltage &= 5.1V +/- 5% }\n    .supply.pos ~> .z ~> .supply.neg",
+        ),
+        &[
+            "min(z.bias) must be at most max(z.zener_voltage)",
+            "11.4V",
+            "5.355V",
         ],
     );
     // Not across a rail, with the stress stated: inside its power.
@@ -421,7 +434,7 @@ fn a_diode_wired_the_wrong_way_round_across_a_rail_is_found_and_named() {
     }
     // `Zener` and `Tvs` conduct from cathode to anode when they clamp: cathode on `pos`.
     for (kind, fields) in [
-        ("Zener", ".zener_voltage &= 5.1V +/- 5%"),
+        ("Zener", ".zener_voltage &= 12V +/- 5%"),
         ("Tvs", ".standoff_voltage &= 15V\n .clamping_voltage &= 24V"),
     ] {
         clean(&across_12v(

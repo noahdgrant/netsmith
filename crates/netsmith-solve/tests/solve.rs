@@ -338,6 +338,8 @@ fn resistor(label: &str, ohms: f64) -> Candidate {
         library: None,
         assembly: None,
         height: None,
+        temp_min: None,
+        temp_max: None,
         generic: None,
     }
 }
@@ -918,6 +920,8 @@ fn capacitor(label: &str, farads: f64, rated: f64, curve: &[(f64, f64)]) -> Cand
         library: None,
         assembly: None,
         height: None,
+        temp_min: None,
+        temp_max: None,
         generic: None,
     }
 }

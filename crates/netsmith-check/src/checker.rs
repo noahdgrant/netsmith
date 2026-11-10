@@ -157,6 +157,9 @@ pub(crate) struct Checker<'a> {
     pub(crate) making: Vec<(usize, usize)>,
     /// Where the member being declared is written, for a message about what it makes.
     pub(crate) use_site: Option<(SourceId, Span)>,
+    /// Whether `min(.f)` and `max(.f)` may be read: set while the two sides of a `<=` or `>=`
+    /// statement are lowered, so that nothing is ever solved from the end of a range.
+    pub(crate) range_ends: bool,
     /// The loaded files as they were when the last model was made, shared by the models made
     /// while no file was added.
     snapshot: Option<std::sync::Arc<Sources>>,
@@ -236,6 +239,7 @@ impl<'a> Checker<'a> {
             contract_rows: Vec::new(),
             making: Vec::new(),
             use_site: None,
+            range_ends: false,
             snapshot: None,
             pin_input: None,
             pin_roots: Vec::new(),
@@ -845,6 +849,16 @@ impl<'a> Checker<'a> {
                 .model
                 .add_field(id, "height", FieldKind::Quantity(Dimension::LENGTH));
             self.model.add_member(id, "height", Member::Field(field));
+            // And two for the temperatures it works between (ADR 0099): the part or the board
+            // states them, a catalog row may state them, and the design stage compares them with
+            // the board's `.environment`. A part that states none has no range, which is not a
+            // range of zero kelvin.
+            for name in ["temp_min", "temp_max"] {
+                let field =
+                    self.model
+                        .add_field(id, name, FieldKind::Quantity(Dimension::TEMPERATURE));
+                self.model.add_member(id, name, Member::Field(field));
+            }
             // And one for how far its pins stand out of the board, on the face opposite the
             // part, once they are cut short (ADR 0045 section 15, PROVISIONAL): the board's
             // physical file states it for an instance, the kind may bound it. A part that
@@ -900,6 +914,9 @@ impl<'a> Checker<'a> {
                     .or_insert_with(|| g.name.name.clone());
             }
         }
+        if kind == InstKind::Board {
+            self.declare_default_environment(&def.items, def.span);
+        }
         self.declare(&def.items);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
@@ -924,6 +941,56 @@ impl<'a> Checker<'a> {
         self.scope = saved_scope;
         self.making.pop();
         id
+    }
+
+    /// Give a board the environment its project names (the manifest's `environment`, ADR 0099)
+    /// when the board declares none: the member `.environment: Name`, made as if the board had
+    /// written it, from the definition the manifest names. A board that declares an
+    /// `.environment` of its own has that one alone, not the two together.
+    fn declare_default_environment(&mut self, items: &[Item], span: Span) {
+        let loader = self.loader;
+        let Some((module, name)) = loader.default_environment() else {
+            return;
+        };
+        let declared = items.iter().any(|i| {
+            matches!(i, Item::Decl(d)
+                if d.name.leading_dot
+                    && d.name.segments.first().is_some_and(|s| s.name == "environment"))
+        });
+        if declared {
+            return;
+        }
+        let path: Vec<String> = module.split("::").map(str::to_string).collect();
+        let Some(m) = self.load_module(&path) else {
+            self.error(
+                span,
+                format!(
+                    "the manifest's `environment` names the module `{module}`, which is not loaded"
+                ),
+            );
+            return;
+        };
+        let found = match self.modules[m].scope.get(name).cloned() {
+            Some(Binding::Def(dm, di)) if self.modules[dm].defs[di].kind == DefKind::Interface => {
+                Some((dm, di))
+            }
+            _ => None,
+        };
+        let Some((dm, di)) = found else {
+            self.error(
+                span,
+                format!("the manifest's `environment` names `{name}`, which `{module}` does not define as an interface"),
+            );
+            return;
+        };
+        let Ok(file) = parse(&format!("board B {{ .environment: {name} }}")) else {
+            return;
+        };
+        let synthetic = file.definitions[0].items.clone();
+        let saved = self.enter_def((dm, di));
+        self.declare(&synthetic);
+        self.process(&synthetic);
+        self.leave_def(saved);
     }
 
     /// Make the reading of a definition's text happen in its own file; the pair undoes it.

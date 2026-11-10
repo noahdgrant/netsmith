@@ -1,6 +1,6 @@
 # Closed-form checks: options for the owner
 
-Status: options, written 2026-11-09. Nothing here is implemented except check 3 (buck output ripple, `BuckStage.output_ripple`, in the guide's "Switching regulators"), and no ADR is written. The language and the std library's interface are the owner's choice, so this document gives options and asks (the questions are at the end).
+Status: options, written 2026-11-09. Nothing here is implemented except check 3 (buck output ripple, `BuckStage.output_ripple`, in the guide's "Switching regulators") and check 5 (bus rise time, `I2cPullups.rise_time` and `.bus_capacitance`, `I2c.capacitance`, in the guide's "The rise time of an I2C bus"; UM10204 Rev. 7.0 was read: the rise-time limits are in its Table 11, and the bus limit is 400 pF, 550 pF in Fast-mode Plus), and no ADR is written. The language and the std library's interface are the owner's choice, so this document gives options and asks (the questions are at the end).
 
 ## What was decided
 

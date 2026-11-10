@@ -551,6 +551,14 @@ pub enum Expr {
         span: Span,
     },
     Paren(Box<Expr>, Span),
+    /// `name(arg, ...)`: a call of a function the checker knows (`min(.bias)`, `max(.bias)`,
+    /// ADR 0098). The parser reads any name; whether it is a function, and the count and kind
+    /// of its arguments, are the checker's to say.
+    Call {
+        name: Ident,
+        args: Vec<Expr>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -562,6 +570,7 @@ impl Expr {
             | Self::Paren(_, s)
             | Self::Binary { span: s, .. }
             | Self::Variant { span: s, .. }
+            | Self::Call { span: s, .. }
             | Self::Range { span: s, .. }
             | Self::Tolerance { span: s, .. } => *s,
             Self::Path(p) => p.span,

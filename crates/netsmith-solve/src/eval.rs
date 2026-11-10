@@ -1,7 +1,7 @@
 //! Evaluating a checked expression over the current domains, in the worst case.
 
 use crate::expand::tidy;
-use netsmith_check::{Domain, FieldId, Model, RExpr};
+use netsmith_check::{Domain, FieldId, Model, RExpr, RangeEnd};
 use netsmith_lang::ast::BinOp;
 use netsmith_quantity::{Quantity, QuantityError};
 
@@ -67,12 +67,23 @@ pub fn eval(model: &Model, e: &RExpr) -> Result<Val, EvalError> {
     tight(model, e, &Env::new(), &mut budget, 0)
 }
 
-/// Whether `e` has a range with a value at an end somewhere in it (ADR 0066).
+/// Whether `e` has a range with a value at an end somewhere in it (ADR 0066), or reads the end
+/// of a field's range (`min(.f)`, ADR 0098): neither is a smooth function of its fields.
 fn has_range(e: &RExpr) -> bool {
     match e {
-        RExpr::Range(..) => true,
+        RExpr::Range(..) | RExpr::End(..) => true,
         RExpr::Neg(x) => has_range(x),
         RExpr::Bin(_, a, b) => has_range(a) || has_range(b),
+        RExpr::Const(_) | RExpr::Text(_) | RExpr::Field(_) => false,
+    }
+}
+
+/// Whether `e` reads the end of a field's range (`min(.f)` or `max(.f)`, ADR 0098).
+pub fn reads_end(e: &RExpr) -> bool {
+    match e {
+        RExpr::End(..) => true,
+        RExpr::Neg(x) => reads_end(x),
+        RExpr::Bin(_, a, b) | RExpr::Range(a, b) => reads_end(a) || reads_end(b),
         RExpr::Const(_) | RExpr::Text(_) | RExpr::Field(_) => false,
     }
 }
@@ -215,9 +226,11 @@ fn derivative(e: &RExpr, var: FieldId) -> Option<RExpr> {
         RExpr::Const(_) | RExpr::Text(_) => None,
         // Not reached (`tight` leaves a range alone); a derivative that spans zero says that
         // its sign is unknown.
-        RExpr::Range(..) => Quantity::interval(netsmith_quantity::Dimension::NONE, -1.0, 1.0)
-            .ok()
-            .map(Const),
+        RExpr::Range(..) | RExpr::End(..) => {
+            Quantity::interval(netsmith_quantity::Dimension::NONE, -1.0, 1.0)
+                .ok()
+                .map(Const)
+        }
         Field(f) => (*f == var).then(one),
         Neg(x) => derivative(x, var).map(|d| Neg(Box::new(d))),
         Bin(op, a, b) => {
@@ -281,6 +294,20 @@ fn plain(model: &Model, e: &RExpr, env: &Env, budget: &mut usize) -> Result<Val,
                 Domain::Text(t) => Ok(Val::T(t.clone())),
             }
         }
+        // The end of a field's range is one value: a point at the least or the greatest value
+        // the field can have now. An unset field has none, so the check waits. A point has no
+        // spread, so it carries no correlation with other readings of the same field: the check
+        // that compares it is made on two numbers.
+        RExpr::End(end, f) => {
+            let range = value_of(model, *f, env)?;
+            let at = match end {
+                RangeEnd::Min => range.lo(),
+                RangeEnd::Max => range.hi(),
+            };
+            Quantity::point(range.dim(), at)
+                .map(Val::Q)
+                .map_err(EvalError::Quantity)
+        }
         RExpr::Neg(inner) => match plain(model, inner, env, budget)? {
             Val::Q(q) => Ok(Val::Q(q.neg())),
             Val::T(_) => Err(EvalError::Type),
@@ -320,7 +347,7 @@ fn plain(model: &Model, e: &RExpr, env: &Env, budget: &mut usize) -> Result<Val,
 /// Every field an expression mentions.
 pub fn fields_in(e: &RExpr, out: &mut Vec<FieldId>) {
     match e {
-        RExpr::Field(f) => out.push(*f),
+        RExpr::Field(f) | RExpr::End(_, f) => out.push(*f),
         RExpr::Neg(inner) => fields_in(inner, out),
         RExpr::Bin(_, a, b) | RExpr::Range(a, b) => {
             fields_in(a, out);

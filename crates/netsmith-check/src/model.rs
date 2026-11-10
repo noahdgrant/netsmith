@@ -628,6 +628,27 @@ pub enum RExpr {
     /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
     /// the low end's lowest value and the high end's highest, once both are known.
     Range(Box<RExpr>, Box<RExpr>),
+    /// `min(.f)` or `max(.f)` (ADR 0098): the least or the greatest value of a field's range, as
+    /// one value. It is read, never solved for: the solver does not narrow `.f` through a
+    /// relation that holds it, and a statement that is not `<=` or `>=` is refused it.
+    End(RangeEnd, FieldId),
+}
+
+/// Which end of a field's range `min(.f)` or `max(.f)` reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeEnd {
+    Min,
+    Max,
+}
+
+impl RangeEnd {
+    /// The word that is written: `min` or `max`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Min => "min",
+            Self::Max => "max",
+        }
+    }
 }
 
 impl RExpr {
@@ -635,7 +656,7 @@ impl RExpr {
     pub fn fields(&self, out: &mut Vec<FieldId>) {
         match self {
             Self::Const(_) | Self::Text(_) => {}
-            Self::Field(f) => out.push(*f),
+            Self::Field(f) | Self::End(_, f) => out.push(*f),
             Self::Neg(inner) => inner.fields(out),
             Self::Bin(_, a, b) | Self::Range(a, b) => {
                 a.fields(out);
@@ -1234,6 +1255,7 @@ impl Model {
             RExpr::Const(q) => q.to_string(),
             RExpr::Text(t) => format!("\"{t}\""),
             RExpr::Field(f) => self.path_of_field(*f),
+            RExpr::End(end, f) => format!("{}({})", end.word(), self.path_of_field(*f)),
             RExpr::Neg(inner) => format!("-{}", self.show_expr(inner)),
             RExpr::Bin(op, a, b) => {
                 let sym = match op {
@@ -1404,12 +1426,21 @@ impl Model {
 
     /// Whether `field` is a figure of one pin that a `Logic` or a `Levels` may state: its leakage
     /// `ii` and its output resistances `roh` and `rol` (ADR 0076, amendment 8). Like the levels,
-    /// they belong to the part's own pin, so connecting two lines does not equate them.
+    /// they belong to the part's own pin, so connecting two lines does not equate them. So is the
+    /// `capacitance` of an `I2c` interface: the capacitance of one part's pin, which the board adds
+    /// up with the others' (`std::bus::I2cPullups`).
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
             "ii" => FieldKind::Quantity(Dimension::CURRENT),
             "roh" | "rol" => FieldKind::Quantity(Dimension::RESISTANCE),
+            // The capacitance of one pin of an I2C bus interface (`std::bus::I2c`).
+            "capacitance"
+                if self.instance(f.owner).kind == InstKind::Interface
+                    && self.instance(f.owner).type_name == "I2c" =>
+            {
+                return f.kind == FieldKind::Quantity(Dimension::CAPACITANCE);
+            }
             _ => return false,
         };
         f.kind == kind
@@ -1527,6 +1558,48 @@ impl Model {
             }
             _ => None,
         }
+    }
+
+    /// The member `.environment` of the board a part is on, if the board has one: an
+    /// interface (ADR 0099). Each board of a system has its own.
+    pub fn environment_of(&self, part: InstId) -> Option<InstId> {
+        let board = self.board_of(part)?;
+        match self.member(board, "environment")? {
+            Member::Inst(env) if self.instance(env).kind == InstKind::Interface => Some(env),
+            _ => None,
+        }
+    }
+
+    /// The temperature field of the environment of the board a part is on, `.environment.
+    /// temperature`. A board with no `.environment`, or one whose environment has no
+    /// temperature of that kind, has none.
+    pub fn environment_temperature_of(&self, part: InstId) -> Option<FieldId> {
+        let env = self.environment_of(part)?;
+        match self.member(env, "temperature")? {
+            Member::Field(f)
+                if self.field(f).kind == FieldKind::Quantity(Dimension::TEMPERATURE) =>
+            {
+                Some(f)
+            }
+            _ => None,
+        }
+    }
+
+    /// The `temp_min` and `temp_max` fields of a part, the least and the greatest temperature
+    /// it works at (ADR 0099). Every part has both; anything else has none.
+    pub fn temperature_range_of(&self, part: InstId) -> Option<(FieldId, FieldId)> {
+        if self.instance(part).kind != InstKind::Part {
+            return None;
+        }
+        let field = |name: &str| match self.member(part, name)? {
+            Member::Field(f)
+                if self.field(f).kind == FieldKind::Quantity(Dimension::TEMPERATURE) =>
+            {
+                Some(f)
+            }
+            _ => None,
+        };
+        Some((field("temp_min")?, field("temp_max")?))
     }
 
     /// The `bias` field of a part, the DC voltage across it, and the two terminals its

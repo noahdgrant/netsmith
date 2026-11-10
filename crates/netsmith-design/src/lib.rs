@@ -10,6 +10,7 @@
 //! the solver picked, and whether the part is assembled by the manufacturer or soldered by
 //! hand. Those are sourcing data, not CAD data, so they are not part of the [`Design`].
 
+mod environment;
 mod features;
 pub use features::Sites;
 pub mod guidelines;
@@ -989,6 +990,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
 
     let mut refdes_of: HashMap<InstId, Vec<String>> = HashMap::new();
     let mut parts = Vec::new();
+    let mut fitted: Vec<environment::Fitted<'_>> = Vec::new();
     let mut sourcing = Vec::new();
     let mut origins = Vec::new();
     // The path of each part that is a bank of more than one, and how many (ADR 0052).
@@ -1014,6 +1016,12 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 None => (Assembly::Fab, false),
             },
         };
+        fitted.push(environment::Fitted {
+            part: *id,
+            kind: &inst.type_name,
+            assembly,
+            pick,
+        });
         // The first part of a bank has the path of the instance and the others add `#2`,
         // `#3`, so that each is a part a layout file keys by its own path.
         if bank > 1 {
@@ -1155,7 +1163,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     };
     features.net_widths.extend(plan.widths);
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
-    let guideline_findings = plan.findings;
+    let mut guideline_findings = plan.findings;
+    // Every fitted part against the board's environment, if it states one (ADR 0099).
+    guideline_findings.extend(environment::judge(model, &fitted, &mut errors));
 
     if errors.is_empty() {
         Ok(Designed {

@@ -160,6 +160,15 @@ generic Schottky {
 /// is the Zener's. What is always true is the power limit: the voltage across it times the
 /// current through it, cathode to anode, is at most `.max_power`.
 ///
+/// What is also always true is that a Zener directly across a rail does not surely conduct:
+/// `min(.bias) <= max(.zener_voltage)` (ADR 0098), the least voltage across it is at most the
+/// greatest breakdown voltage. A rail that stays above the breakdown in every case puts the
+/// part in breakdown all the time, with nothing to limit its current, and is an error. It is
+/// the sure case only: a rail range that straddles the breakdown may conduct, and passes. A
+/// Zener behind a series resistor has no rail across it, so `.bias` has no value and the
+/// rule waits. The rule also chooses among the catalog rows, as any relation of a part does:
+/// a design that states no `.zener_voltage` is given a row whose breakdown reaches the rail.
+///
 /// What a design needs to bound a clamp over temperature is in four more members, each an
 /// optional column of the catalog (ADR 0078): a row that does not state one is still offered
 /// to a design that does not mention it, and a design that names it is offered only the
@@ -219,6 +228,7 @@ generic Zener {
 
     .bias == .bridge_voltage
     .bias >= 0V
+    min(.bias) <= max(.zener_voltage)
     .bias * .current <= .max_power
     .voltage_over_temperature == .zener_voltage + .temperature_coefficient * (.temperature_shift / 1K)
     bridge .cathode ~> .anode

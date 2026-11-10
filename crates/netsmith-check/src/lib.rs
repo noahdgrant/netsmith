@@ -8,6 +8,7 @@ mod checker;
 mod connect;
 mod dc;
 mod diag;
+pub mod environment;
 mod faults;
 mod lines;
 mod loader;
@@ -34,8 +35,8 @@ pub use model::{
     EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,
     InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral,
     PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
-    Pinout, Provider, RExpr, Relation, Requirement, Role, SharedMember, SharedRes, Snapshot, Tie,
-    Unused, Written,
+    Pinout, Provider, RExpr, RangeEnd, Relation, Requirement, Role, SharedMember, SharedRes,
+    Snapshot, Tie, Unused, Written,
 };
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};
 
