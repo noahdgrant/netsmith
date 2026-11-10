@@ -1,8 +1,10 @@
 ---
-status: proposed for owner review (the spelling `?=` is the owner's choice of 2026-11-05; the meaning below was written by an agent and is for review)
+status: proposed
 ---
 
 # A default is an offer a board can replace
+
+Status notes: The spelling `?=` is the owner's choice of 2026-11-05; the meaning below was written by an agent and is for the owner to review.
 
 A module or a part sometimes knows a good value for a field and cannot know that every board agrees. A lamp module has a current that suits most boards. A sensor module has a supply voltage that its datasheet recommends. `&=` cannot say this. It only narrows, so a library that writes `.current &= 2mA..3mA` forces that range on every board, and a board that needs 6 mA to 9 mA gets a contradiction. The library rule (`docs/DESIGN-RULES.md`) is that a library states only what is always true, so the library today leaves the field open and every board repeats the same line.
 

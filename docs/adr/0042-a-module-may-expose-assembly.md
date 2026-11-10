@@ -1,8 +1,10 @@
 ---
-status: accepted (user decision 2026-11-02); the type of `.assembly_mode` is amended by ADR 0054 (proposed): it is an `AssemblyMode`, not a `String`
+status: accepted
 ---
 
 # A module may expose assembly
+
+Status notes: Accepted on the user's decision, 2026-11-02. ADR 0054 (proposed) amends the type of `.assembly_mode`: it is an `AssemblyMode`, not a `String`.
 
 Amends ADR 0004 (modules are configured only through their interface) and ADR 0028 (the manifest gives the default assembly), by example. ADR 0024 listed "a module offering the field for the parts inside it" as not done.
 

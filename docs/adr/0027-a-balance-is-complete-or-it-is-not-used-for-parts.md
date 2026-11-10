@@ -1,8 +1,10 @@
 ---
-status: accepted (user review 2026-11-02)
+status: accepted
 ---
 
 # A balance is complete or it is not used for parts
+
+Status notes: Accepted on the user's review, 2026-11-02.
 
 Amends ADR 0026 (and so ADR 0014 and ADR 0007). Amended by ADR 0038: only a complete balance narrows a stated current or checks a budget. Amended on 2026-11-02 (below): an `input` pin of a part with a rail draws nothing. The user was away; the choices below were taken for the user and are reviewed afterwards.
 

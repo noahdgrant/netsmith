@@ -1,8 +1,10 @@
 ---
-status: accepted (owner review, 2026-11-06; as proposed: the drawing is the owner's decision of 2026-11-05, option B; the data carried into `Design` and the thresholds below are for the owner to review)
+status: proposed
 ---
 
 # An interface is drawn as one bus in the schematic
+
+Status notes: The owner reviewed it on 2026-11-06 and accepted it as proposed: the drawing is the owner's decision of 2026-11-05, option B. The data carried into `Design` and the thresholds below are still for the owner to review.
 
 The editor's schematic drew each pin of an interface as a net of its own: a UART between a processor and a modem was four wires or, where the modem is on another sheet, four flags on the processor's sheet and four on the modem's. The language knows that the four are one `Uart`, and the schematic did not say so. It is now drawn as one **bus** (GLOSSARY): the pins stay one by one on the part's edge, each member's wire is a short entry that meets one thick line, and the line runs to the other part, or ends in one flag where the members go on to another sheet. The line is named once, by the interface instance (`uart0`), with the list of members under it (`{tx, rx, rts, cts}`) and a slash with their count.
 
