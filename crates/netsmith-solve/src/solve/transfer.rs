@@ -10,6 +10,65 @@
 //! It adds a refusal and never a value: no domain, range or pick changes, except that a candidate
 //! or a state that breaks a bound the design wrote is refused where it is picked (or, for a part
 //! that is not a pick, by the check after the picks).
+//!
+//! # The fault, and why this fix (ADR 0065, section 1)
+//!
+//! A probe showed that `.lamp.balance_resistance >= 20kohm` on a member of a module that writes
+//! `.top.resistance &= .balance_resistance` picked two 330 ohm resistors and printed only
+//! `not evaluated`. A bound is a relation and never a domain, and `propagate` evaluates only
+//! `==` and `&=` with a field alone on the left. The link carries a value one way, from the
+//! member into the part's field, and the member never has one. `try_candidate` judges the
+//! relations that name a field inside the part, or one a candidate changed, and the bound names
+//! only the member, which does not change. `Coupling::feeding` has no edge from the member to
+//! the part, since the edge runs the other way. After the picks the bound and the `&=` are not
+//! evaluated. ADR 0057's case worked because its equation is written the other way round
+//! (`.member == .part.field`). The two spellings mean the same to a reader and differ in the
+//! solver.
+//!
+//! If `x &= g` (or `x == g` with `g` the whole right side) and the design states `g >= e`, then
+//! `x >= e`; likewise `<=`. The rule repeats along a chain. The transferred bounds are judged
+//! where every relation is: at a candidate (a row that breaks the bound is refused where it is
+//! picked) and after the picks (a stated value that breaks it fails the build with the numbers).
+//! They are never listed as not evaluated, since they are not the design's lines. This is sound
+//! because it adds a refusal and never a value, and `x &= g` places `x` inside `g`; it cannot
+//! refuse a design that meets what it stated. A build that passed before can fail now, and it is
+//! exactly a build that broke a stated bound and said nothing. Tolerance counts:
+//! `20kohm +/- 1%` is not always at least 20 kohm.
+//!
+//! Where it differs from what the ADR first described. The transfer is worked out just before
+//! the picks, after the first propagation and the start of circles, and kept out of the model
+//! except while parts are picked and checked (`Model::push_relation`, `Model::truncate_relations`):
+//! worked out earlier, a member that got its value a step later had added a relation that joined
+//! two capacitors' group with the regulator. A bound on a member that has a value, a link `x ==
+//! g` whose left side has a value of its own, and a field that is a position (`.place`) are left
+//! alone; a chain goes on only through a field with no value. An `==` puts the right side inside
+//! what the left side allows, so a range on the left says nothing about the right. A candidate is
+//! judged by the added bound only when no part still to be chosen feeds the right side. When no
+//! row meets the bound each part with no row has its own message, since nothing joins them in one
+//! search; a part with a stated value that a row stands for is refused at the pick and again by
+//! the check after, which gives two messages, as a bound written on the part itself does. The
+//! message says `X must always be at least E, but V is not always above E: it is held to `g`
+//! (`.x &= .g`, F:N), and `.g >= E` (F:N) bounds it`, from the snapshot of the sources that every
+//! model keeps (`Model::place_of_statement`, `Model::statement_text`).
+//!
+//! Found while building it: `hopeless` skipped a row that the design could not tell from a row
+//! it had refused, comparing only the columns that another field reads, so a 2 uF row looked
+//! like its 0.5 uF twin and a part of a group of two was called hopeless though a row met
+//! `.a.effective_capacitance >= 1uF`. The refused row now carries the columns of the relation
+//! that refused it.
+//!
+//! # Rejected
+//!
+//! A value that flows back from the part to the member (`x &= g` sets an unset `g` from `x`):
+//! with `top.resistance &= .m` and `bottom.resistance &= .m` and `.m` unset, the first pick would
+//! set `.m` to a point value and force the second part to the same row, a requirement nobody
+//! wrote, decided by which part is picked first. A bound that narrows the field's domain: it
+//! changes every domain a bound reaches, the starts of ADR 0053 read bounds as the part's range,
+//! and a half-open range has no value in an expression. Only the check afterwards: the solver
+//! would take the 330 ohm row when a 20 kohm row existed. Transfer through `~` joins and
+//! through arithmetic (`x &= g * 2`): left open; a join is not written for values of parts, and
+//! arithmetic needs monotonic reasoning. The cost is about 120 lines of the solver and a way to
+//! add relations to the model and cut them off again.
 
 use std::collections::{HashMap, HashSet};
 

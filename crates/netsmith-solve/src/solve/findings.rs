@@ -5,6 +5,96 @@
 //! value*). Both only report: they change no value, range or pick. They are made on the solved
 //! model, because whether a pick is limited depends on what propagation settled and on whether
 //! a bound could be judged, and the test that is true is the one made after the solve.
+//!
+//! # Why a finding, and not `required` (ADR 0065)
+//!
+//! `required` (ADR 0069, removed) was meant to stop a board from leaving a value to the
+//! solver's first row. It was opt-in per member, so a plain `.r: Resistor` in a board was not
+//! covered; it was a test on text, so `>= 0ohm` passed it; and it fired on members that did not
+//! need to be stated. The solver knows, when it picks, whether anything limits the pick; when
+//! nothing does it says so. The owner decided on 2026-11-06 to put a finding in the place of
+//! `required` and to drop `required`; the rest of this is an agent's.
+//!
+//! # The unconstrained pick
+//!
+//! Reported for a part of a catalog with a value column that is walked (`value_columns` in
+//! `table.rs`: `resistance`; `capacitance` and `effective_capacitance`; `inductance`: the three
+//! E-series generics) and picked while nothing limited that value. Another catalog joins the list
+//! when its use shows the same failure. It is **limited** when one of these holds, and the check
+//! it names has been judged (passes or fails) once everything is picked and propagated:
+//!
+//! 1. a value column has a domain: a stated value, a range or a tolerance, a `?=` default that
+//!    applied, a narrowing carried in from a member that has one, a `~` join to a field that has
+//!    one. Any range counts, however wide: it is how a board says "any" on purpose
+//!    (`.r.resistance &= 10kohm..100kohm`), and the finding cannot tell wide from narrow;
+//! 2. a bound has a value column alone on one side, written by the design or made by the
+//!    transfer (`transfer.rs`);
+//! 3. a check that the pick decides: a relation that names a field worked out from a value
+//!    column and is a bound, or an equation or `&=` whose left side has a stated range before
+//!    the pick (`.led.current &= 5mA..15mA` with `.led.current == (V - Vf) / .r.resistance`);
+//! 4. a budget: a stated current on a net where a term other than the stated one is worked out
+//!    from the pick. A budget limits a pick only if the pick's value changes whether it holds
+//!    (the traversal that finds what a pick decides carries a value across a balance only
+//!    where `solve_balance_but` could set that term, so a pull-up's current no longer reaches
+//!    a load's stated current through two balances).
+//!
+//! What does not limit a pick: a bound on a rating or the package, a relation written inside
+//! the definition of any part (a diode's `current >= 0mA` as much as a resistor's own power
+//! check, the library's and not the design's), and the catalog being filtered. A ratio is not a
+//! size: `.out >= 1.5V` and `.out <= 1.8V` of a divider pass for 330 ohm and for 330 kohm. A
+//! check limits the size of a pick only if scaling the unlimited picks together changes it.
+//! `SizeBlind` scales the value fields of the unlimited picks by one factor and expands each
+//! check through the equations that define what it reads (exactly one `==`, no join, no
+//! balance), by degree of homogeneity (`+` and `-` need equal degrees, `*` adds, `/` subtracts,
+//! a field no pick feeds has degree 0). A check whose two sides have one degree is blind to the
+//! scaling; what it cannot expand it does not call blind, so the finding is missed and never
+//! made wrongly. It is a fixed point: a pick that a check limits leaves the set. A pick limited
+//! only by blind checks is reported and the message says so. So a board that uses
+//! `FeedbackDivider` and states the output but nothing that depends on the divider's size gets
+//! the warning, which says to state `.divider.current <= ...`; no example does, and the guide's
+//! `Adjustable` block states it. A bound that waits for a value nothing sets (the open circle of
+//! ADR 0057) judges nothing, and a pick that only such a bound reaches is reported unless an
+//! open circle finding already names that check: one finding for one cause.
+//!
+//! A pick is judged on the solved model, not right after its group: a bound that waits for a
+//! value another pick sets limits the pick it concerns. Parts held to one unstated member are
+//! one finding in declaration order, with the lines of their links, and `held_by` names the
+//! member the board can state. A warning by default and an error under `--strict` or
+//! `guidelines = "error"`: the design may be right (a pull-up of any value is sometimes
+//! right), a board in progress should build, and an error by default would refuse boards that
+//! build today. It costs one scan of the relations per part with a value column and one
+//! `verify` of a few relations after the group is solved. The gate when it was built: every
+//! `examples/*.nsm` and every solving block of the guide builds with no new line (the guide's
+//! test fails for a block that has one and is not marked `warns`); about 66 declarations in
+//! tests would have warned, and none needed a value line.
+//!
+//! # The unstated value
+//!
+//! An enum, a text or a voltage that a board states for a check (a processor's high level on a
+//! line) is not a pick. A relation that reads one that nothing states is not evaluated, and
+//! ADR 0057 rejected a finding for every such relation. The finding names only the **root**: a
+//! field that is declared in a module or board itself (not in a part, an interface or a column:
+//! a part's unset datasheet value is the library's gap, ADR 0046, and an interface's optional
+//! values are offered open on purpose, ADR 0058), has no value after the solve, is not set by
+//! an equation, join, balance or column (a member that a wrapper forwards to is not a root: the
+//! wrapper's member is, and the board can state that one), and is read by at least one check
+//! that waits: a bound, or an equation whose left side is not a value still to be worked out. A
+//! bound on a member that reached a part and was judged there is how the board states the
+//! member. A member that no relation reads is not reported, so a module that only passes one
+//! along costs nothing, and a text or enum that only offers a choice is not a relation that
+//! fails to evaluate. `UnstatedValue` holds the fields that the same checks wait for, so one
+//! finding names them together. A member that is both a root and feeds an unconstrained pick is
+//! named once, by the pick finding. A module that no board uses is not checked alone. What is
+//! lost against `required`: a module author can no longer force the board to state a value
+//! that no check reads; the remedy is the check, which is what the value was for.
+//!
+//! # Left open
+//!
+//! The transfer through `~` joins and through arithmetic, and `==` between two bare fields as a
+//! join ("a separate decision about `==`"). A bound on a column other than the three E-series
+//! generics' value columns. A parse error that points at the removed word `required` (not
+//! kept: a message for a removed word is another spelling to carry). A downstream project that
+//! used `required` has the word to delete, and its build stops at the parser until it does.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 

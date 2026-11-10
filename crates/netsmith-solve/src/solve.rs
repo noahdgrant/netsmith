@@ -21,6 +21,158 @@
 //! the next candidate is tried, up to a fixed number of trials. A failure remembers which
 //! earlier parts it depends on, and the search goes back to the nearest of them rather than
 //! choosing the parts in between again (conflict-directed backjumping).
+//!
+//! # Why the pick is judged as it is (ADR 0057, ADR 0065)
+//!
+//! Each rule below came from a real board for which the solver chose parts without something
+//! the design had said, or gave up without saying why. The guide ("Catalogs and how the solver
+//! picks parts") says what a user sees; this says why, and what was left out. The check after
+//! the picks is always the judge: a rule here only turns a candidate away earlier, never lets
+//! one through.
+//!
+//! **A bound on a value worked out from a part takes part in the pick.** `try_candidate` judged
+//! only the relations that name a field inside the part, so `.ratio >= 0.05`, with
+//! `.ratio == .bottom.resistance / (.top.resistance + .bottom.resistance)`, was judged once
+//! after every part was picked, and the pair that was picked failed it. Now a candidate is also
+//! judged by a relation that names a value its choice made known or narrower, if no part still
+//! to be chosen feeds a field the relation names. What feeds a relation (`Coupling::feeding`,
+//! made once per solve) is found from the fields it names, through the left side of every
+//! equation to what it reads, through every connection, through the other terms of a balance
+//! of currents, and from a derated column (a capacitor's `effective_capacitance`) to its
+//! `.bias`, to the columns of the parts. The last condition matters: while the other half of a
+//! divider is not chosen, `.ratio` is a range of what it may still be, and a bound that fails on
+//! it can hold for the part that is chosen. Rejected: judging at once, which refuses pairs that
+//! the second part would have saved (a design that built could fail), and moving the bound onto
+//! the resistors by rewriting the model, which changes the message and cannot follow an
+//! equation through two named values.
+//!
+//! **A bound that waits still turns a candidate away when no value can meet it**
+//! (`verify_possible`, ADR 0065 9.5): `lhs <= rhs` with the lowest value of `lhs` above the
+//! highest of `rhs`, and the mirror for `>=`. Later picks only narrow ranges, so a bound that
+//! holds for no value of a range holds for none of the narrower one. A range with no value yet
+//! is not judged. Found when a buck stage's quiescent-current bound was refused after the
+//! divider had been picked at its smallest sizes, because the stage's input voltage was fed by
+//! parts of groups that come later. **Two tiers** (9.6, the owner's decision): a candidate
+//! that `verify_possible` lets through and `verify` does not (the bound holds for some values
+//! of the range, not all) is kept for a second tier, tried only when the first has nothing that
+//! works. Both tiers go in catalog order, inside each count of a bank (`Accepted::whole`).
+//!
+//! **A value that two equations state is what the equations say, not an allowance** (9.1).
+//! `.osc.fsw` was the left side of the module's `.fsw == .fsw_nominal * .fsw_tolerance` and of
+//! the timer's `.osc.fsw == .fsw`, with a window stated on `.timer.fsw`. With a range on the
+//! member that sets the resistor, the first equation could be worked out before any pick and
+//! gave the field a wide range that no pick ever narrowed; the window was then never compared
+//! with the pick, and the result depended on whether one unrelated range line was there. A
+//! field with several equations, no statement that narrowed it, and a value a pick can change
+//! (`several_equations`, `Solver::fed`) follows an equation whose range lies inside it, and
+//! `verify` judges each of its equations against the others: an equation no pick changes (the
+//! window) is the allowance, and what the others work out must lie inside it. With no pick able
+//! to change any of them the old rule stands (a correction of 2026-11-06 made both halves test
+//! that). Rejected: narrowing to the intersection of the equations everywhere, which would
+//! report a range nobody wrote and pass partly overlapping ranges.
+//!
+//! **A generic inductor is held to what the stage asks of it.** Its saturation current is "the
+//! least that any relation demands", but the relations were read before the part's marked
+//! inductance had set the ripple, so `current + ripple / 2 <= saturation_current` could not be
+//! evaluated and the generic took only its own `current <= saturation_current`. Now the values
+//! that follow from a generic candidate's marked columns are worked out first (one
+//! propagation) and the demand is read after them. The part takes the demand exactly, so the
+//! stage's check holds with nothing to spare, and the demand goes with it to `resolve`, which
+//! refuses the row that does not meet it. A stage whose load is over every row gets a generic
+//! that no row stands for, and `fab` refuses it by name: a generic has no rating, so the demand
+//! is a requirement on the row, as for a capacitor's voltage. Not done: the inductor's group does
+//! not wait for its frequency resistor's group when the resistor's pick fails (`next_group`
+//! orders groups by the picks a column needs, not by every value a check reads), because that
+//! can change which solution is found first for designs that build.
+//!
+//! **A part nothing can serve is named at once, and parts that read only the same stated value
+//! are searched apart.** The joint search gave up after 250000 combinations without a reason when
+//! one part had no candidate whatever the others were: on an invented chain of ten dividers (20
+//! resistors tied by one total and a bound that no resistor of the last stage meets) it took
+//! 71.8 s and named all 20; it now ends in 0.4 s naming the one. Before a group of more than one
+//! part is searched, `hopeless` tries each part's candidates alone. A part is the cause when
+//! every candidate that fits is refused by a relation whose value only this part's choice
+//! decides (the parts that feed it are this part alone) and none passes. A bank is tried at
+//! every count its range holds (`counts_of`); a refusal that reads nothing worked out from the
+//! count is the same at every count, so it costs one trial. A part refused for what other parts
+//! decide, or by a conflict found while propagating, is not counted, and the search runs as it
+//! did. Rejected: trying each part alone with every other part open and calling any failure a
+//! cause, because a relation that fails on the wide range of a part not yet chosen can hold for
+//! the part that is. Groups are made from the values two parts share, but a value no pick can
+//! change (a field with a value, none of the fields joined to it worked out from anything,
+//! none a column: `constants`) joins nothing, so two parts that read the same stated rail are
+//! two groups and a failing group does not undo the picks of the other. Rejected: splitting
+//! by classes of joined values only, since one equation between two parts joins their classes
+//! and a power chain is held together by such equations. Not done: a bank that no count can
+//! serve because of a value another part decides (a filter that sets the rail's voltage) is
+//! still searched as before and can give up.
+//!
+//! **A failure names the picks it came from.** A failure used to depend on every part whose
+//! column was in the class of values it read, and one equation over many parts (a total, a net
+//! every part draws from) put them all in one class, so nothing was skipped and the message
+//! named them all. `Coupling::fed_by` follows the edges of `feeding` the other way, from the
+//! fields a rejection was worked out from to the columns they come from, and `Failure::core`
+//! keeps the part, the earlier picks it depends on, the parts below it, and the parts still to
+//! be chosen that feed what the relation read. A part that the search jumped over is not in it.
+//! The message names the core when it is fewer parts than the group; `gave up` is the safety
+//! net for a failure made of every part. The identity of a successful build is unchanged: the
+//! first solution in catalog order. Soundness stands on the same dependence as `feeding`; the
+//! gaps are a value worked out backwards (propagation does not do so) and a hidden read.
+//! Rejected: recording a nogood for each failure (a check added to every trial), finding the
+//! smallest set again by trying subsets of the picks (a failure on fewer picks does not imply
+//! the failure on more), and naming every part that fed the failure (it hides the fault).
+//!
+//! **A search that runs away is counted in work as well as trials** (issue #177).
+//! `SearchBudget::trials` (250000) was no limit for a big board, because a trial runs the
+//! propagation twice and a pass reads every equation, relation and balance: 250000 trials of
+//! eight parts took 1.8 s alone and 36 s with 1000 independent parts beside them (a trial of
+//! about 7 microseconds against 145). `Solver::work` adds what each pass reads, one for each
+//! relation a trial is judged against, one for each candidate a part's turn looks at, and one
+//! for each earlier failed choice a candidate is compared with. A search stops at
+//! `SearchBudget::work` (1000000000, about 20 s of a release build on that board), whichever
+//! limit it reaches first. Both are counts, so the answer is the same on every machine; a
+//! board of a dozen relations stays far from the work limit. The budget is an option of the
+//! catalogs (`Catalogs::with_search_budget`), so a test lowers it; there is no manifest key
+//! and no flag. Rejected: a time limit (the result would depend on the machine, and its test
+//! would be flaky), a lower trial limit (a small board may need many trials), a limit over
+//! every group together (many small groups do many trials in all, none a runaway). Left open:
+//! the number was chosen from the invented board's speed, not from a real board's trial cost;
+//! if a real search stops sooner than a person waits, it comes down. The hopeless scan and
+//! `search_again_together` have a budget each, so a group that gives up and is searched again
+//! with another gets a second budget. A failing group does not say which part to state a value
+//! for: the search does not know it.
+//!
+//! **The order of the groups must not decide the board** (9.3). Groups are picked in path
+//! order, and a bound that reads values of two groups waits for the parts that feed it, so the
+//! group that came first was picked without it, and its first fit could leave the second
+//! nothing: named `.ref` the reference divider sorted first and the board built, named `.zref`
+//! the tap divider did and the build failed with a message about the reference's parts. (The
+//! report that instance names alone changed a result could not be reproduced; this is the
+//! dependence on a name that was found.) `Mark` keeps the state before each group, and
+//! `search_again_together` goes back to before the first earlier group that shares a relation
+//! with a failed one and searches again with the failed group first. Parts that were found are
+//! never searched again, so a board that built keeps its picks. Limits: only the order "failed
+//! group first" is tried, not every order and not a joint search (a joint search of four
+//! resistors from the 700 rows of the real catalog had not ended after two minutes in a debug
+//! build); the clones of `Mark` cost 1.5 ms of a 1.1 s build on the largest example, and would
+//! be kept only for groups that share a relation if a board ever shows the cost. A failed retry
+//! puts back the diagnostics and the unresolved parts as well as the model and the picks (a
+//! correction of 2026-11-06).
+//!
+//! `cycles.rs` has the open circles (ADR 0057) and `findings.rs` the unconstrained pick (ADR
+//! 0065); `transfer.rs` has the bound that reaches a part (ADR 0065, stage 0); `narrow.rs` has
+//! the skipping of candidates by blocks (issue #184), checked by `Catalogs::with_narrowing_audit`.
+//!
+//! # Left open for the owner (ADR 0057)
+//!
+//! ADR 0057 was written overnight by an agent, each decision its own, "and the first one changes
+//! which part is picked for some designs". The owner has not confirmed it. Where to read it:
+//! `try_candidate` (the `changed` set and the condition that no part still to be chosen feeds the
+//! relation: "the one place where a design that built could stop building"), `constants` (what
+//! counts as a value no pick changes: a mistake there splits parts that are coupled), `hopeless`
+//! (the condition for a part being the cause), `narrow.rs` and `search_group` (what a block's
+//! refusal stands on, and the second search of a group that is not solved), and `SearchBudget`
+//! in `catalog.rs` (the 1000000000 limit and what counts as a unit).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -1330,6 +1482,21 @@ impl Solver<'_> {
     /// from a complete balance (ADR 0027) of two terms (ADR 0026). From a longer balance it is
     /// verified and never set: the residual of several wide ranges says little about one part,
     /// and its own relations (Ohm's law, the LED equation, a stated value) are what determine it.
+    ///
+    /// The fault that the rule answers (ADR 0026): a resistor heading a divider on a regulated
+    /// rail, whose current was the one unknown of a balance that held the regulator's supplied
+    /// current (0 to 2.1 A) and several loads (0 to 2 A), got the residual, -2.1 A to 2.1 A or
+    /// worse, and its power check failed with `-1.7e-199 fW..461 kW`. The terms of a balance are
+    /// independent ranges, so the difference of their sums is wider than any one of them and says
+    /// nothing about a part. A balance of two terms is an equality and nothing is widened: a fuse
+    /// in series with a load carries the load's current, and the inductor of `BuckStage`, in a
+    /// chain from the IC's switch pin to the output, carries the output's. Refusing these would
+    /// have meant stating `.fuse.current == .load.current` on every board, which ADR 0014
+    /// removed; a first version that refused every part broke four tests, all two-term cases.
+    /// The cost: a part at the head of a chain on a busy rail whose current nothing else states
+    /// is not checked against its rating, and the build says `not evaluated`; the design can
+    /// state the current. ADR 0027 (only a complete balance) and ADR 0038 (a stated current is a
+    /// budget) narrowed later what a balance sets and verifies.
     fn solve_balance(&self, b: &Balance) -> Option<(FieldId, Quantity)> {
         if let Some(found) = self.solve_balance_but(b, None) {
             return Some(found);

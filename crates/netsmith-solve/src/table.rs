@@ -32,6 +32,73 @@
 //! | `name` | what a message calls the row (default: the `mpn`, then the `lcsc`) |
 //! | `label` | the schematic's value field (default: the `mpn`, then the `lcsc`, then the `name`) |
 //! | `notes` | free text |
+//!
+//! # Why files, and why these rules (ADR 0022, accepted 2026-11-04)
+//!
+//! ADR 0016 left open whether a catalog could hold rows in `.nsm` or CSV so that adding an IC
+//! stops being a Rust edit. Every row was Rust in `jlcpcb.rs`, one function for each part kind
+//! with the engineering decisions in its comments, so adding a regulator meant editing the
+//! public repository and this crate, a private project could not have a part of its own, and a
+//! new kind of part needed a Rust function before it had one row. Now a catalog is one CSV file
+//! named by the catalog, and `jlcpcb.rs` only loads them. CSV was chosen because a spreadsheet
+//! and a diff both read it. A second way to say a row (in `.nsm`) would break ADR 0001, and is
+//! not offered.
+//!
+//! - **Values are the language's own syntax, and text is bare.** A quantity cell is what `.nsm`
+//!   accepts after `&=`, read by `netsmith_lang::parse_expr`, so a number and its tolerance are
+//!   the same interval a source would write (a test compares them). The file alone cannot say
+//!   what a cell means (`0402` is a number or a package), so it is read in two steps: `parse`
+//!   checks what needs no part, and a part that uses the catalog reads the cells as the kind of
+//!   its fields, which is where an unknown column or a cell in the wrong dimension is found. The
+//!   task as first handed over wrote text as `"SOT-23-5"`; in a CSV a quote needs doubling and
+//!   a forgotten quote would silently never match, so a cell that starts with a quote is refused
+//!   with the fix. A capacitor's curve is `derate capacitance by bias: 0:1 5:0.5` (ADR 0013):
+//!   the row's `capacitance` times the fraction left at the voltage across the part's `bias`;
+//!   nothing after the colon is a part with no published curve.
+//! - **`name` and `label` exist** because messages and schematics must stay as they were
+//!   (`10kΩ 1% 0402 C25744`, a value of `4.7k`), which a generic rule could not make. They are
+//!   the one column added to the task as handed over, and default to the `mpn`, then the `lcsc`.
+//!   A fixed column that is about the row, not the part, may also be listed as a column of a
+//!   part (`mpn` in a keyed catalog); the cell is then used for both.
+//! - **A source is required** for a row with an `lcsc` or `mpn`: the project rule that no part
+//!   number comes from memory, enforced by the loader and not by a test over one file. A row
+//!   with neither is a made-up part, as the sample catalogs are, and needs a `name`.
+//! - **The order of the rows is the selection policy.** `jlcpcb.rs` used to sort by Basic, then
+//!   price, then value; the standard files are now written in that order and a test checks the
+//!   part that can still be checked (Basic before Extended). A project that wants "cheapest
+//!   first" or "in stock first" writes its rows that way. Every row is offered: there is no
+//!   other filter on a row's status, so a part that is not wanted is removed from the file, and
+//!   the parts that were looked at and not offered (5-pin regulators, a 0 ohm link) are in
+//!   `data/jlcpcb/considered.csv` with the reason. ADR 0047 left open whether file order stays
+//!   the policy once a preferred-parts list exists.
+//! - **What ADR 0047 changed in ADR 0022.** The `price`, `stock` and `date` columns are a
+//!   provider's snapshot, shipped empty, and the old rule that a row with `stock` 0 is not
+//!   offered is gone: the solver does not read stock.
+//! - **A project's files.** `catalogs/<name>.csv` is read from `catalog_dirs` (default
+//!   `["catalogs"]`, `..` allowed, sub-folders not read, files in file-name order; issue 193,
+//!   owner decision 2026-11-07) and from the single files of `catalogs = [...]`, relative and
+//!   inside the project, each named after its catalog. A `.csv` in a folder whose stem is not a
+//!   catalog name is an error that names the file: a forgotten or misnamed catalog would
+//!   otherwise be a silent "no catalog" at the part that needs it. A file named like a standard
+//!   catalog adds its rows after the standard ones. A part is in a catalog once: the same `lcsc`
+//!   or `mpn` twice, in one file or across the standard file and a project's, is an error that
+//!   names both places ("one answer"). `build`, `fab`, `view` and `compare` read the files on
+//!   each run; the running editor reads the folders again with each build and the manifest
+//!   once. Every mistake names `file:line` and says what to change; one found when a board uses
+//!   the catalog is an error at the part that uses it.
+//! - **The API.** `Catalogs::jlcpcb()` and `Catalogs::sample()` return the embedded catalogs,
+//!   `Catalogs::add_file` adds a file, `Catalogs::resolve` gives a catalog typed for a part's
+//!   columns, and `Catalogs::insert` takes a catalog built in code, which tests use. The move
+//!   from Rust to files changed no standard candidate (checked by dumping every candidate before
+//!   and after). `Library` has a third value, `Preferred`, for Extended parts JLCPCB charges no
+//!   feeder fee for; no standard row uses it yet.
+//!
+//! **Not decided in ADR 0022.** A shared catalog of several projects (a company parts library:
+//! a directory of files that several manifests list). Filtering by stock or price at build time:
+//! a snapshot goes stale, so the number to trust is the one on the order page. The units of
+//! `price` (US dollars for the standard files) are not checked. A catalog name shared by two part
+//! kinds with different columns: the first file would need the union of the columns, the checker
+//! does not forbid it, and it has not come up.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;

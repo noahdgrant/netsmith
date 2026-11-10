@@ -22,6 +22,15 @@ digest names for them are now in the doc comment or header comment of the code t
 (`crates/netsmith-design/src/lib.rs`) and the header of `levels.rs`. The line numbers this digest gives into `std/parts/diode.nsm`,
 `std/parts/logic.nsm` and `std/parts/regulator.nsm` moved with the longer comments.
 
+**Update 2026-11-10 (ADR cleanup, batch 2).** ADRs 0039, 0053 and 0057 were folded into a three-line stub, ADR 0069 became a stub that names ADR 0065 as
+what replaced it, and ADRs 0022, 0026, 0065, 0078 and 0084 were cut to one page; each says the commit its full text is in (`git show 8a15457:docs/adr/<file>`).
+The choices that this digest names for them are now where the code is: 0039 in the header of `crates/netsmith/src/refresh/mod.rs` (LCSC's terms of
+use are unread, and whether "only this command touches the network" is a rule); 0053 in the header of `crates/netsmith-solve/src/solve/seed.rs` (what counts as
+a state of a part); 0057 in the headers of `crates/netsmith-solve/src/solve.rs` and `cycles.rs`; 0065 in the ADR (its eight open questions) and the headers
+of `solve/findings.rs`, `solve/transfer.rs` and `solve.rs`; the amendment of 0026 in the header of `crates/netsmith-solve/src/ohm.rs`; 0084 in the ADR (its
+seven choices) and the doc comment of `bom_entries` (`crates/netsmith/src/fab.rs`); 0078 in the ADR. The line numbers this digest gives into `table.rs`,
+`ohm.rs` and `solve.rs` moved with the longer headers.
+
 **Reversal cost** is my reading from the dependents I counted, not a statement of the ADRs: **cheap** (a solver or message rule, nothing written in
 `.nsm` files depends on it), **migration** (source in `std/`, the guide or users' files must change), **hard** (users' designs change meaning, or the
 answer is a legal or interface commitment).
@@ -301,7 +310,7 @@ for which states coexist; 4: narrow where unstated, check where stated; 5: a sta
 boundary; 6: severities as recommended; 7: capacitors open). The amendments below stay provisional.
 
 **Built.** `crates/netsmith-solve/src/dc/` (`extract.rs`, `net.rs`, `mod.rs`, `tests.rs`) and `crates/netsmith-solve/src/solve/dcpass.rs` (`dc_pass`
-line 122, `dc_start` line 290; called from `solve.rs:557` and `:2242`); the checker's records in `crates/netsmith-check/src/dc.rs` and `model.rs`
+line 122, `dc_start` line 290; called from `solve.rs:2563` and `:2602`); the checker's records in `crates/netsmith-check/src/dc.rs` and `model.rs`
 (`DcKind`, `Instance::dc`, `dc_elements`, `level_tests`). The prototype `crates/netsmith-dc` was removed on 2026-11-09 (it is in git history at
 `b504854` and before). The glossary has _Operating point_, _Island_ and _Corner_; the guide has a "DC
 analysis" section.
@@ -453,7 +462,7 @@ pass"; I did not list them.
 A catalog column is marked `optional` in the `catalog` statement.
 
 **Built.** The parser reads the word after a column; `Catalog.optional` in `crates/netsmith-check/src/model.rs` (line 307); `is_optional` in
-`crates/netsmith-solve/src/table.rs:83`. std marks four columns (`tvs.breakdown_voltage`, `resistor.temperature_coefficient`, `capacitor.dielectric`,
+`crates/netsmith-solve/src/table.rs:155`. std marks four columns (`tvs.breakdown_voltage`, `resistor.temperature_coefficient`, `capacitor.dielectric`,
 `inductor.rms_current`; `diode.nsm:200`, `passive.nsm:46,110,178`). Tests: `crates/netsmith-check/tests/catalog_optional.rs`.
 
 **Choices.**
@@ -496,7 +505,7 @@ Temperature optional`, `.voltage_over_temperature`); `data/jlcpcb/catalog/zener.
 A `Logic` line states its own swing; amendment 1 (2026-11-08, provisional): a swing gives the unloaded levels.
 
 **Built.** `.swing: Voltage` on `Logic` and `Levels` (`std/logic.nsm`); `net_range` and the derived levels in `crates/netsmith-solve/src/levels.rs`
-(lines 145 to 174, 625 to 657); `logic_swing` in `crates/netsmith-solve/src/ohm.rs:212`. Tests: `crates/netsmith-solve/tests/swing_levels.rs`. No std
+(lines 145 to 174, 625 to 657); `logic_swing` in `crates/netsmith-solve/src/ohm.rs:255`. Tests: `crates/netsmith-solve/tests/swing_levels.rs`. No std
 part states a swing yet (checked).
 
 **Choices.**
@@ -544,7 +553,7 @@ A part can be consigned: the owner ships it to the board house.
 
 **Built.** `AssemblyMode::Consigned` (`std/prelude.nsm:21`), `Assembly::Consigned` (`crates/netsmith-lower/src/lib.rs`), `Fit::Consigned` and
 `Plan::consigned` (`crates/netsmith-fab/src/board.rs`, `lib.rs:220`), the manifest and catalog-column word (`crates/netsmith/src/project.rs:64,240`,
-`crates/netsmith-solve/src/table.rs:413`); the stock note and the resolver skip it. Tests: `crates/netsmith/tests/consigned.rs`. Glossary and
+`crates/netsmith-solve/src/table.rs:492`); the stock note and the resolver skip it. Tests: `crates/netsmith/tests/consigned.rs`. Glossary and
 `docs/LANGUAGE.md:1667` have it.
 
 **Choices (7 in the ADR).**
