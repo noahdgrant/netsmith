@@ -518,3 +518,73 @@ fn the_pin_file_says_what_is_wrong_with_it() {
         Some("main.pins.toml:1")
     );
 }
+
+#[test]
+fn the_pin_space_says_which_pins_each_request_may_have_and_what_a_choice_must_keep() {
+    // `.tx` asks for UARTE0's line, `.rx` for UARTE1's: the part lets one of the two be in use.
+    let c = run(
+        "    .tx: .u.UARTE0_TX\n    .rx: .u.UARTE0_RX\n    .a: .u.GPIO\n    .a ~ .probe.a00\n    .tx ~ .probe.a01\n    .rx ~ .probe.a02\n    .u.p03.function &= \"AIN1\"\n",
+        None,
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    let space = &c.pins.spaces["B"];
+    assert_eq!(space.len(), 1);
+    let part = &space[0];
+    assert_eq!(part.path, "u");
+    assert_eq!(
+        part.requests
+            .iter()
+            .map(|r| r.key.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "rx", "tx"],
+        "in the byte order of the requests"
+    );
+    // The pin the source chose a function on is the source's: no request may have it.
+    assert!(part.taken.contains("p03"));
+    let a = part.requests.iter().find(|r| r.key == "a").unwrap();
+    assert_eq!(a.offers, ["p00", "p01", "p02"]);
+    // Any distinct pins that offer the functions are allowed ...
+    assert!(part.allows(&[("a", "p02"), ("tx", "p00"), ("rx", "p01")]));
+    // ... but not a pin twice, a pin the source holds, or a pin that does not offer it.
+    assert!(!part.allows(&[("a", "p00"), ("tx", "p00"), ("rx", "p01")]));
+    assert!(!part.allows(&[("a", "p03"), ("tx", "p00"), ("rx", "p01")]));
+    assert!(!part.allows(&[("a", "p00"), ("tx", "p01"), ("rx", "p09")]));
+}
+
+#[test]
+fn a_pin_space_keeps_the_shared_limits() {
+    // Two pins of the part that may not both be in use: a choice that uses both is not allowed.
+    let text = r#"
+part Zpair {
+    peripheral UARTE0 on GPIO { UARTE0_TX:output UARTE0_RX:input }
+    shared PAIR limit 1 { .p00 .p01 }
+    pins {
+        .p00 bidirectional "P0.00" "1" fn GPIO
+        .p01 bidirectional "P0.01" "2" fn GPIO
+        .p02 bidirectional "P0.02" "3" fn GPIO
+    }
+}
+
+part Probe {
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+
+board B {
+    .u: Zpair
+    .probe: Probe
+    .x: .u.GPIO
+    .y: .u.GPIO
+    .x ~ .probe.a
+    .y ~ .probe.b
+}
+"#;
+    let c = check("main.nsm", text, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let part = &c.pins.spaces["B"][0];
+    assert!(part.allows(&[("x", "p00"), ("y", "p02")]));
+    assert!(part.allows(&[("x", "p02"), ("y", "p01")]));
+    assert!(!part.allows(&[("x", "p00"), ("y", "p01")]));
+}

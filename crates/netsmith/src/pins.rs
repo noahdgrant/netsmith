@@ -40,7 +40,7 @@ pub fn attach(
 }
 
 /// How the pin file of the source called `name` is named in a message: `src/main.pins.toml`.
-fn file_name(name: &str) -> String {
+pub(crate) fn file_name(name: &str) -> String {
     Path::new(name)
         .with_extension("pins.toml")
         .display()

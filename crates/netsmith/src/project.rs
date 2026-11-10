@@ -84,6 +84,12 @@ pub struct Manifest {
     /// `--strict` do not govern it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraints: Option<String>,
+    /// What `fab` may do with the pins that pin requests got when a board does not route
+    /// (ADR 0101): `"auto"`, the default, swaps the unlocked ones and writes the pin file;
+    /// `"locked"` moves none and writes the proposal to `pins.proposed.toml`. A run can ask for
+    /// either with `--pins`. A team sets `"locked"` once firmware is built on the pin map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pins: Option<String>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
     /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047, provisional). `"none"` offers
     /// only the catalog's rows.
@@ -204,6 +210,7 @@ impl Manifest {
             environment: None,
             guidelines: None,
             constraints: None,
+            pins: None,
             series: None,
             orders: Vec::new(),
             supply: None,
@@ -266,6 +273,13 @@ impl Manifest {
         {
             return Err(format!(
                 "{MANIFEST}: constraints = {word:?} is not one of \"warn\" or \"error\""
+            ));
+        }
+        if let Some(word) = &self.pins
+            && !["auto", "locked"].contains(&word.as_str())
+        {
+            return Err(format!(
+                "{MANIFEST}: pins = {word:?} is not one of \"auto\" or \"locked\""
             ));
         }
         if let Some(word) = &self.series
@@ -1001,6 +1015,20 @@ mod tests {
     fn a_manifest_renders_and_reads_back() {
         let m = Manifest::new("blinky");
         assert_eq!(parse(&m.render()), Ok(m));
+    }
+
+    #[test]
+    fn pins_is_auto_or_locked() {
+        for word in ["auto", "locked"] {
+            let m = parse(&format!("[project]\nname = \"a\"\npins = \"{word}\"\n")).unwrap();
+            assert_eq!(m.pins.as_deref(), Some(word));
+            assert_eq!(parse(&m.render()), Ok(m));
+        }
+        let e = parse("[project]\nname = \"a\"\npins = \"free\"\n").unwrap_err();
+        assert!(
+            e.contains("pins = \"free\" is not one of \"auto\" or \"locked\""),
+            "{e}"
+        );
     }
 
     #[test]

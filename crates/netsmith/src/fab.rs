@@ -13,9 +13,9 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use netsmith_check::Loader;
+use netsmith_check::{Loader, PartSpace, PinFile};
 use netsmith_core::{PanelSpec, timings};
 use netsmith_design::{Assembly, Sourced};
 use netsmith_fab::panel::{CellFacts, CellInput, Spec};
@@ -27,6 +27,7 @@ use netsmith_pcb::{
 use netsmith_solve::Catalogs;
 
 use crate::order::{BoardFacts, PanelFacts};
+use crate::pin_swap::{self, Score};
 use crate::resolve::resolve_generics;
 
 use crate::{Built, Libraries, outcome_with, render_problems};
@@ -113,6 +114,39 @@ pub struct FabOptions {
     /// placed. The solver holds parts to it through the catalogs, which the caller gives. `None`
     /// leaves the lock out of the run.
     pub lock: Option<crate::pick_lock::Use>,
+    /// What `fab` does with the pins that pin requests got when a board does not route (ADR 0101,
+    /// `pin_swap`). `None` leaves the pins alone: a board that does not route is INCOMPLETE as
+    /// before. The command line gives `Some` unless an order is made.
+    pub pins: Option<PinsUse>,
+}
+
+/// Whether `fab` may move pins by itself, and where the pin file is.
+#[derive(Debug, Clone)]
+pub struct PinsUse {
+    pub mode: PinsMode,
+    /// The pin file beside the source (`<stem>.pins.toml`), which `auto` rewrites.
+    pub file: PathBuf,
+}
+
+/// `--pins`: what a routing failure may do to the pin map.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinsMode {
+    /// Swap interchangeable pins, place and route again, and write the pin file.
+    Auto,
+    /// Change nothing. Write the swaps that would help to `pins.proposed.toml` in the output
+    /// folder, and fail as before.
+    Locked,
+}
+
+impl PinsMode {
+    /// `"auto"` or `"locked"`, as `--pins` and the manifest spell it.
+    pub fn parse(word: &str) -> Option<PinsMode> {
+        match word {
+            "auto" => Some(PinsMode::Auto),
+            "locked" => Some(PinsMode::Locked),
+            _ => None,
+        }
+    }
 }
 
 impl Default for FabOptions {
@@ -126,6 +160,7 @@ impl Default for FabOptions {
             only: None,
             strict_heights: false,
             lock: None,
+            pins: None,
         }
     }
 }
@@ -182,6 +217,7 @@ pub fn fab_with_options(
             say(format!("note: {note}"));
         }
     }
+    let mut pin_state = PinState::new(&outcome.pins);
     let (built_boards, panels) = (outcome.boards, outcome.panels);
     let board_names: Vec<String> = built_boards.iter().map(|b| b.design.name.clone()).collect();
     // The layout file beside the source, if there is one: it says which face each part is on
@@ -198,8 +234,17 @@ pub fn fab_with_options(
         {
             continue;
         }
-        let run = fab_board(
-            built, out, &layout, libraries, kicad, options, catalogs, &say,
+        let run = fab_board_pinned(
+            &Pass { name, text, loader },
+            built,
+            &mut pin_state,
+            out,
+            &layout,
+            libraries,
+            kicad,
+            options,
+            catalogs,
+            &say,
         )?;
         made.push(run.fabricated);
     }
@@ -221,8 +266,10 @@ pub fn fab_with_options(
             "{}: making {}, its board, first",
             panel.name, panel.cell
         ));
-        let run = fab_board(
+        let run = fab_board_pinned(
+            &Pass { name, text, loader },
             built,
+            &mut pin_state,
             &dir.join("cell"),
             &layout,
             libraries,
@@ -379,6 +426,8 @@ fn fab_board(
     options: &FabOptions,
     catalogs: &Catalogs,
     say: &dyn Fn(String),
+    stuck: &mut Option<Stuck>,
+    pin_notes: &[String],
 ) -> Result<BoardRun, String> {
     {
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
@@ -517,6 +566,8 @@ fn fab_board(
             board.outline.width(),
             board.outline.height()
         ));
+        // The board as placed, for the pin optimizer if the router leaves connections.
+        let placed = options.pins.is_some().then(|| board.clone());
         let routing = timings::stage("fab.route", &label, || {
             route_with(
                 &mut board,
@@ -528,6 +579,13 @@ fn fab_board(
             )
         });
         let unrouted = routing.left;
+        if let (false, Some(placed)) = (unrouted.is_empty(), placed) {
+            *stuck = Some(Stuck {
+                left: unrouted.len(),
+                crossings: Score::of(&placed).crossings,
+                placed,
+            });
+        }
         // A board with connections left is still written, so that the owner can open the part
         // that is routed in the PCB view, but it is marked INCOMPLETE and the run ends in an
         // error (see `write_incomplete`).
@@ -589,6 +647,7 @@ fn fab_board(
         // Guidelines that the design goes against (ADR 0036) are for the person ordering, so
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();
+        extras.splice(0..0, pin_notes.iter().cloned());
         extras.extend(crate::no_supplier::note(&sourcing));
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
@@ -706,6 +765,315 @@ fn fab_board(
             entries,
             pcb: pcb_path,
         })
+    }
+}
+
+/// A board the router left connections of: the board as it was placed, for the pin optimizer,
+/// and what it left.
+struct Stuck {
+    placed: Board,
+    left: usize,
+    crossings: usize,
+}
+
+/// What `fab_board_pinned` needs to elaborate the source again with another pin map.
+struct Pass<'a> {
+    name: &'a str,
+    text: &'a str,
+    loader: &'a Loader,
+}
+
+/// The pin map of the source as the run stands: what the check gave each board's requests, what
+/// the optimizer has changed, and what the pin optimizer may move.
+struct PinState {
+    /// The pin file as the run began, and as it is now.
+    original: PinFile,
+    file: PinFile,
+    spaces: BTreeMap<String, Vec<PartSpace>>,
+    /// The proposal of `--pins locked`, with every board's moves.
+    proposed: Option<PinFile>,
+}
+
+impl PinState {
+    fn new(pins: &netsmith_check::PinsOutcome) -> Self {
+        Self {
+            original: pins.file.clone(),
+            file: pins.file.clone(),
+            spaces: pins.spaces.clone(),
+            proposed: None,
+        }
+    }
+}
+
+/// The requests whose pin differs between two maps, one line each: `Board.g01: p00 to p09`.
+fn pin_changes(old: &PinFile, new: &PinFile) -> Vec<String> {
+    let mut out = Vec::new();
+    for (board, entries) in &new.boards {
+        for (key, e) in entries {
+            if let Some(was) = old.board(board).and_then(|b| b.get(key))
+                && was.pin != e.pin
+            {
+                out.push(format!("{board}.{key}: {} to {}", was.pin, e.pin));
+            }
+        }
+    }
+    out
+}
+
+/// [`fab_board`], and when the router leaves connections and the board has pin requests, the
+/// pin optimizer (`pin_swap`) and a new pass of stages 1 to 5 with the pins it proposes
+/// (ADR 0101; owner decisions of 2026-11-09, Q11 to Q13 and Q16 of
+/// `docs/research/pin-assignment-options.md`).
+///
+/// With `--pins auto` each round searches the placed board for a better pin map, elaborates the
+/// source with it and places and routes again, at most `pin_swap::MAX_ROUNDS` times. A round's
+/// map is kept when it routes, or when it leaves no more connections and no more crossings than
+/// the map before it; otherwise the map before stands, and the board is made again with it so
+/// that the files are its own. The pin file is written with the map that stands. The rounds
+/// share one time budget, the route timeout, counted from the first failure.
+///
+/// With `--pins locked` nothing is changed: the search runs once on the placed board, its
+/// proposal is written to `pins.proposed.toml` in `out`, and the run fails as before.
+///
+/// A board with no requests, a board that routes, and a board of a system (its requests are in
+/// the system's table too) are made by [`fab_board`] alone.
+#[allow(clippy::too_many_arguments)]
+fn fab_board_pinned(
+    pass: &Pass,
+    built: &Built,
+    state: &mut PinState,
+    out: &Path,
+    layout: &LayoutFile,
+    libraries: &Libraries,
+    kicad: Option<&dyn KicadCli>,
+    options: &FabOptions,
+    catalogs: &Catalogs,
+    say: &dyn Fn(String),
+) -> Result<BoardRun, String> {
+    let mut first_stuck = None;
+    let first = fab_board(
+        built,
+        out,
+        layout,
+        libraries,
+        kicad,
+        options,
+        catalogs,
+        say,
+        &mut first_stuck,
+        &[],
+    );
+    let (Some(pins), Err(message), Some(first_stuck)) = (&options.pins, &first, first_stuck) else {
+        return first;
+    };
+    let board = built.board.clone();
+    let label = built.label();
+    let spaces = match state.spaces.get(&board) {
+        Some(s) if built.system.is_none() => s.clone(),
+        _ => return first,
+    };
+    let started = Instant::now();
+    let deadline = options.route_timeout.map(|t| started + t);
+    let design = &built.design;
+
+    if pins.mode == PinsMode::Locked {
+        let proposal = pin_swap::improve(&spaces, design, &first_stuck.placed, deadline);
+        let mut message = message.clone();
+        match proposal {
+            None => message.push_str(&format!(
+                "  pins: --pins locked, so no pin moves; no change of the unlocked pins of {board} lowers its crossings or its ratsnest\n"
+            )),
+            Some(proposal) => {
+                let base = state.proposed.clone().unwrap_or_else(|| state.file.clone());
+                let file = proposal.applied_to(&base, &board);
+                let target = out.join(PROPOSED_PINS);
+                let wrote = fs::create_dir_all(out).and_then(|()| {
+                    fs::write(
+                        &target,
+                        format!(
+                            "# Proposed by `netsmith fab --pins locked`: placed and not routed, so not yet known to route. Copy it over the pin file to take it.\n{}",
+                            file.to_text()
+                        ),
+                    )
+                });
+                message.push_str(&format!(
+                    "  pins: --pins locked, so no pin moves. Moving the unlocked pins of {board} would lower the ratsnest from {} to {} (placed and not routed):\n",
+                    proposal.before, proposal.after
+                ));
+                for line in &proposal.moves {
+                    message.push_str(&format!("    {line}\n"));
+                }
+                match wrote {
+                    Ok(()) => message.push_str(&format!(
+                        "  the proposed pin map is in {}; copy it over the pin file and run again, or run without --pins locked\n",
+                        target.display()
+                    )),
+                    Err(e) => message.push_str(&format!("  ({} could not be written: {e})\n", target.display())),
+                }
+                state.proposed = Some(file);
+            }
+        }
+        return Err(message);
+    }
+
+    // `--pins auto`: rounds of search, place and route.
+    let pin_file_name = pass
+        .loader
+        .pin_file(pass.name)
+        .map(|(file, _)| file.to_string())
+        .unwrap_or_else(|| crate::pins::file_name(pass.name));
+    let mut best_stuck = first_stuck;
+    let mut best_message = message.clone();
+    let mut best_map = state.file.clone();
+    let mut best_spaces = spaces;
+    let mut best_built: Option<Built> = None;
+    let mut best_is_last = true;
+    let mut rounds = 0;
+    for round in 1..=pin_swap::MAX_ROUNDS {
+        let remaining = match deadline {
+            Some(d) => match d.checked_duration_since(Instant::now()) {
+                Some(left) if !left.is_zero() => Some(left),
+                _ => {
+                    say(format!(
+                        "{label}: pins: the time budget of the route timeout is spent, no further round"
+                    ));
+                    break;
+                }
+            },
+            None => None,
+        };
+        let current = best_built.as_ref().unwrap_or(built);
+        let Some(proposal) =
+            pin_swap::improve(&best_spaces, &current.design, &best_stuck.placed, deadline)
+        else {
+            say(format!(
+                "{label}: pins: round {round}: no change of the unlocked pins lowers the crossings or the ratsnest, stopping"
+            ));
+            break;
+        };
+        rounds = round;
+        say(format!(
+            "{label}: pins: round {round}: {} moves; {} to {}; placing and routing again",
+            proposal.moves.len(),
+            proposal.before,
+            proposal.after
+        ));
+        let map = proposal.applied_to(&best_map, &board);
+        let mut loader = pass.loader.clone();
+        loader.attach_pins(pass.name, &pin_file_name, &map.to_text());
+        let Ok(again) =
+            crate::outcome_with(pass.name, pass.text, &loader, catalogs, Some(libraries))
+        else {
+            say(format!(
+                "{label}: pins: round {round}: the board does not build with the new pins, stopping"
+            ));
+            best_is_last = true;
+            break;
+        };
+        let spaces_again = again.pins.spaces.get(&board).cloned().unwrap_or_default();
+        let Some(next) = again.boards.into_iter().find(|b| b.label() == label) else {
+            break;
+        };
+        let notes = pin_notes(&state.original, &map);
+        let attempt_options = FabOptions {
+            route_timeout: remaining.or(options.route_timeout),
+            ..options.clone()
+        };
+        let mut stuck = None;
+        match fab_board(
+            &next,
+            out,
+            layout,
+            libraries,
+            kicad,
+            &attempt_options,
+            catalogs,
+            say,
+            &mut stuck,
+            &notes,
+        ) {
+            Ok(run) => {
+                say(format!("{label}: pins: round {round}: the board routes"));
+                finish_pins(state, pins, &map, say);
+                return Ok(run);
+            }
+            Err(m) => match stuck {
+                Some(s) if s.left <= best_stuck.left && s.crossings <= best_stuck.crossings => {
+                    say(format!(
+                        "{label}: pins: round {round}: {} connections left (was {}), {} crossings (was {}); keeping the new pins",
+                        s.left, best_stuck.left, s.crossings, best_stuck.crossings
+                    ));
+                    best_stuck = s;
+                    best_message = m;
+                    best_map = map;
+                    best_spaces = spaces_again;
+                    best_built = Some(next);
+                    best_is_last = true;
+                }
+                _ => {
+                    say(format!(
+                        "{label}: pins: round {round}: no better than before, keeping the earlier pins"
+                    ));
+                    best_is_last = false;
+                    break;
+                }
+            },
+        }
+    }
+    // The files on disk are the last pass's. When the map that stands is an earlier one, make
+    // the board again with it.
+    let mut result = best_message;
+    if !best_is_last {
+        let current = best_built.as_ref().unwrap_or(built);
+        let notes = pin_notes(&state.original, &best_map);
+        let mut again = None;
+        if let Err(m) = fab_board(
+            current, out, layout, libraries, kicad, options, catalogs, say, &mut again, &notes,
+        ) {
+            result = m;
+        }
+    }
+    finish_pins(state, pins, &best_map, say);
+    if rounds > 0 {
+        result.push_str(&format!(
+            "  pins: tried {rounds} round(s) of swapping the unlocked pins; the board still has {} connection(s) left\n",
+            best_stuck.left
+        ));
+    }
+    Err(result)
+}
+
+/// The proposed pin map of `--pins locked`, in the output folder.
+const PROPOSED_PINS: &str = "pins.proposed.toml";
+
+/// The line of `fab-notes.txt` that says the pin map is not the one the run began with: a changed
+/// pin is a change of the firmware.
+fn pin_notes(old: &PinFile, new: &PinFile) -> Vec<String> {
+    let changes = pin_changes(old, new);
+    if changes.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "pin map changed by this run, so the firmware's pin map changes: {}",
+        changes.join("; ")
+    )]
+}
+
+/// Make `map` the pin map the run ends with, and under `--pins auto` write the pin file when it
+/// differs from the one the run began with.
+fn finish_pins(state: &mut PinState, pins: &PinsUse, map: &PinFile, say: &dyn Fn(String)) {
+    state.file = map.clone();
+    if state.file == state.original {
+        return;
+    }
+    match fs::write(&pins.file, state.file.to_text()) {
+        Ok(()) => {
+            say(format!("wrote {}", pins.file.display()));
+            for line in pin_changes(&state.original, &state.file) {
+                say(format!("  {line}"));
+            }
+        }
+        Err(e) => say(format!("error: {}: {e}", pins.file.display())),
     }
 }
 

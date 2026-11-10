@@ -75,8 +75,27 @@ elaborated and before its nets are made, so that every later stage sees the pins
 named them. Each request keeps the pin the pin file `<stem>.pins.toml` gives it while that holds, and
 gets the first fitting pin in byte order otherwise. `build` and `fab` write the file when a run picks
 a pin, `--locked` makes a run that would change it stop, and the next run reads it back: the one file
-a stage reads that netsmith wrote. The editor assigns in memory and never writes it. Nothing yet
-moves a pin to help routing.
+a stage reads that netsmith wrote. The editor assigns in memory and never writes it.
+
+The pipeline has one back edge, from stage 5 to the pin file, taken only when the router leaves
+connections of a board that has pin requests (the pin optimizer, `crates/netsmith/src/pin_swap.rs`,
+the loop in `fab_board_pinned`). The edge goes through the file, not through memory: a round
+searches the placed board for a better pin map, then stages 1 to 5 run again from the source and
+that map, so no stage runs out of order. At most three rounds, which together may take as long as
+the route timeout. `--pins locked` takes no edge: it writes the proposed map to `pins.proposed.toml`
+in the output folder and the run fails as before. The schematic of `build` is drawn from the pin
+file, so it follows the map `fab` ended with.
+
+```mermaid
+flowchart TD
+    src[/"Source + pin file"/] --> s14["1 to 4: check, assign pins, solve, design, export"]
+    s14 --> place["5: place, route"]
+    place -- "complete" --> pack[("fab/ package")]
+    place -- "connections left" --> opt{"--pins auto?<br/>rounds left (3)?<br/>a swap lowers crossings<br/>or ratsnest?"}
+    opt -- "yes: the new map" --> pf[/"pin file (written when it ends)"/]
+    pf -- "back edge: stages 1 to 5 again" --> src
+    opt -- "no, or --pins locked" --> inc(["INCOMPLETE as before,<br/>proposal in out/pins.proposed.toml"])
+```
 
 `build` runs stages 1 to 4. The editor runs the same stages on each edit but skips the KiCad
 libraries, so it needs no KiCad. `fab` repeats stages 1 to 4 in the same process, then goes on
