@@ -12,6 +12,10 @@ _Avoid_: Design (for the board itself: _Design_ is the `netsmith_core::Design` t
 Several boards and the joins between their ports, written `system Demo { .main: MainBoard  .io: IoBoard  .main.output ~ .io.input }`. A system holds only boards and says which ports meet, or which connectors are mated; it names no nets. Each board is still made and ordered on its own.
 _Avoid_: Assembly, backplane, harness
 
+**Connector**:
+A part that is a way in and out of a board: one that provides the standard generic `Connector` (`part MolexPicoBlade provides Connector { ... }`, ADR 0068; every standard header, socket, `Coax`, `UsbC*`, `Obd2M` and `ProgrammingPads6` does). The generic states the letters `J`. The schematic layout and the placer find connectors by it, so a project's own connector is one and an IC named `HeaderBuffer` is not (owner decision 2026-11-10, issue #166).
+_Avoid_: a connector by its name or its designator letters (`J`, `P`), a connector flag or kind list
+
 **Mate**:
 Two connectors that a system joins with `~` between their `.mating`: contact N of one meets contact N of the other (`.carrier.slot.mating ~ .card.j1.mating`, ADR 0040). The checker reads what each board has behind each contact (ground, power, a signal, or open), refuses what cannot meet (a header with a header, two outputs, ground against power, a count or pitch that differs), and joins the ports the contacts carry, so the same fact is not said twice with a port join.
 _Avoid_: Connection, link, plug
@@ -215,7 +219,7 @@ One value of an enum, written `Enum::Variant` (`AssemblyMode::Hand`). Not a text
 _Avoid_: Case, member (a member is a `.name` of a definition), mode
 
 **Designator**:
-The reference of a part on the schematic, the bill of materials and the placement file: letters and a number, `R1`, `C2`, `BZ1`. The letters are the field `.designator` of every part, stated by its kind (`Resistor` is `"R"`, `Fuse` `"F"`, a diode and a TVS `"D"`, ADR 0046) or narrowed by a part or board that defines a part with none, and `"U"` when nothing says; the number counts the parts with the same letters, from 1, in _declaration order_: the order in which the design declares the parts, a module's parts where the module is declared and a module inside it the same way, depth first (owner decision 2026-11-09, issue #166; it replaces the order of paths of 2026-11-04). It does not depend on the layout engine, the drawing of the schematic or KiCad, so the netlist, the bill of materials and the board are the same with every layout; the number in a name (`.tp2`) counts for nothing. The layout file is keyed by path, so a designator that changes moves no placement. Whether a part is a connector is its kind's, never its designator's.
+The reference of a part on the schematic, the bill of materials and the placement file: letters and a number, `R1`, `C2`, `BZ1`. The letters are the field `.designator` of every part, stated by its kind (`Resistor` is `"R"`, `Fuse` `"F"`, a diode and a TVS `"D"`, ADR 0046) or narrowed by a part or board that defines a part with none, and `"U"` when nothing says; the number counts the parts with the same letters, from 1, in _declaration order_: the order in which the design declares the parts, a module's parts where the module is declared and a module inside it the same way, depth first (owner decision 2026-11-09, issue #166; it replaces the order of paths of 2026-11-04). It does not depend on the layout engine, the drawing of the schematic or KiCad, so the netlist, the bill of materials and the board are the same with every layout; the number in a name (`.tp2`) counts for nothing. The layout file is keyed by path, so a designator that changes moves no placement. Whether a part is a connector is whether it provides the generic `Connector`, never its name or its designator.
 _Avoid_: Reference letter, prefix
 
 **Part**:

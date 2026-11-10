@@ -69,6 +69,28 @@ fn uses(c: &Checked) -> &[GenericUse] {
     &c.board("Feed").unwrap().model.uses
 }
 
+/// A generic that says only "a part, with letters" has an empty `pins` table: a part provides it
+/// with its own table (std's `Connector`), and a module cannot.
+#[test]
+fn a_generic_with_an_empty_pins_table_is_provided_by_a_part_with_its_own_pins() {
+    let generic = "generic Marked {\n    .designator &= \"J\"\n    pins {\n    }\n}\n";
+    let part = "import src::marked::Marked\npart Mine provides Marked {\n    pins {\n        .a passive \"A\" \"1\"\n    }\n}\n";
+    let board = "import src::mine::Mine\nboard B {\n    .m: Mine\n}\n";
+    let c = run(board, &[("src::marked", generic), ("src::mine", part)]);
+    ok(&c);
+    let module = "import src::marked::Marked\nmodule Wrapper provides Marked {\n}\n";
+    let board =
+        "import src::marked::Marked\nimport src::wrap::Wrapper\nboard B {\n    .m: Marked\n}\n";
+    let c = run(board, &[("src::marked", generic), ("src::wrap", module)]);
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("`Wrapper` is a module, and `Marked` has a `pins` table")),
+        "{:?}",
+        messages(&c)
+    );
+}
+
 #[test]
 fn a_use_of_a_generic_is_made_from_the_provider_in_scope() {
     let c = run(BOARD, &[("src::rf", RF), ("src::acme", ACME)]);

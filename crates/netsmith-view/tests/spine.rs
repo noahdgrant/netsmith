@@ -267,6 +267,54 @@ fn the_connector_is_found_by_its_kind_not_by_its_designator() {
     assert!(pin_at(&d, "X1", "1").x < pin_at(&d, "F1", "1").x);
 }
 
+/// A part of a project that provides the standard generic `Connector` (ADR 0068) is laid out
+/// like a header whatever its name, and a part whose name only starts like a header's is not:
+/// the generic says it, never the name (issue #166).
+#[test]
+fn a_connector_is_a_part_that_provides_the_generic_not_one_with_a_name_like_a_header() {
+    let kind_of = |design: &mut Design, refdes: &str, kind: &str, provides: &[&str]| {
+        for p in &mut design.parts {
+            if p.refdes == refdes {
+                p.kind = kind.into();
+                p.provides = provides.iter().map(|g| g.to_string()).collect();
+            }
+        }
+    };
+    let places = |d: &Drawn| -> Vec<(f64, f64)> {
+        ["J1", "F1", "D1", "U1", "L1", "C1", "C4", "R1"]
+            .iter()
+            .map(|r| {
+                let p = pin_at(d, r, "1");
+                (p.x, p.y)
+            })
+            .collect()
+    };
+    // A project's own connector, with a name no list holds: the walk starts at it, as at a
+    // header.
+    let mut design = buck();
+    kind_of(&mut design, "J1", "MolexPicoBlade", &["Connector"]);
+    assert!(design.parts[0].is_connector());
+    let d = draw(design, &buck_rails());
+    assert_eq!(d.layout.spines.len(), 1, "{:?}", d.layout.spines);
+    let x = |r: &str| pin_at(&d, r, "1").x;
+    assert!(x("J1") < x("F1") && x("F1") < x("D1"), "J1 is not first");
+
+    // The same part with a name that starts like a header's and no generic is no connector: the
+    // layout counts the hops from ground through it, so the drawing is another.
+    let mut design = buck();
+    kind_of(&mut design, "J1", "HeaderBuffer", &["Connector"]);
+    let as_connector = draw(design, &buck_rails());
+    let mut design = buck();
+    kind_of(&mut design, "J1", "HeaderBuffer", &[]);
+    assert!(!design.parts[0].is_connector());
+    let d = draw(design, &buck_rails());
+    assert_ne!(
+        places(&d),
+        places(&as_connector),
+        "HeaderBuffer was drawn as a connector"
+    );
+}
+
 #[test]
 fn the_capacitors_hang_from_the_row_each_with_a_ground_symbol_below() {
     let d = draw(buck(), &buck_rails());

@@ -1084,7 +1084,14 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             parts.push(Part {
                 refdes: refdes.clone(),
                 kind: inst.type_name.clone(),
-                provides: inst.provides.clone(),
+                // Only the generics of the standard library: a tool reads them by name, and a
+                // project's own generic of the same name is not that one.
+                provides: inst
+                    .provides
+                    .iter()
+                    .filter(|g| inst.standard.contains(g))
+                    .cloned()
+                    .collect(),
                 value: value.clone(),
                 package: package.clone(),
                 path,
@@ -1242,8 +1249,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
 mod tests {
     /// The `part` and `generic` names of the standard library (a standard generic is a part
     /// that is its own first provider, ADR 0068) and the letters their body states (`None` for
-    /// none).
-    fn std_parts() -> Vec<(String, Option<String>)> {
+    /// none), and the generics each provides. A provider has the letters of its generic.
+    fn std_definitions() -> Vec<(String, Option<String>, Vec<String>)> {
         let std = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std");
         let mut parts = Vec::new();
         let mut dirs = vec![std];
@@ -1261,7 +1268,16 @@ mod tests {
                             .or_else(|| line.strip_prefix("generic "))
                         {
                             let name = rest.split([' ', '{']).next().unwrap();
-                            parts.push((name.to_string(), None));
+                            let provides: Vec<String> = rest
+                                .split_once(" provides ")
+                                .map(|(_, g)| {
+                                    g.trim_end_matches(" {")
+                                        .split(',')
+                                        .map(|n| n.trim().to_string())
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+                            parts.push((name.to_string(), None, provides));
                             current = Some(parts.len() - 1);
                         } else if line.starts_with('}') {
                             current = None;
@@ -1274,7 +1290,28 @@ mod tests {
                 }
             }
         }
+        let own: Vec<(String, Option<String>)> = parts
+            .iter()
+            .map(|(n, l, _)| (n.clone(), l.clone()))
+            .collect();
+        for (_, letters, provides) in &mut parts {
+            if letters.is_none() {
+                *letters = provides.iter().find_map(|g| {
+                    own.iter()
+                        .find(|(n, _)| n == g)
+                        .and_then(|(_, l)| l.clone())
+                });
+            }
+        }
         parts
+    }
+
+    /// The names and letters of the standard library's definitions.
+    fn std_parts() -> Vec<(String, Option<String>)> {
+        std_definitions()
+            .into_iter()
+            .map(|(name, letters, _)| (name, letters))
+            .collect()
     }
 
     #[test]
@@ -1345,15 +1382,18 @@ mod tests {
         }
     }
 
-    /// The layout finds connectors by kind (`netsmith_core::is_connector_kind`), not by the
-    /// letters of a designator: the two lists agree for every standard kind.
+    /// The layout and the placer find connectors by the generic `Connector`, not by a name or by
+    /// the letters of a designator: every standard kind that has the letters `J` provides it,
+    /// and no other does.
     #[test]
-    fn the_standard_kinds_that_are_connectors_are_those_that_state_the_letters_j() {
-        for (name, letters) in std_parts() {
+    fn every_standard_connector_kind_provides_the_connector_generic() {
+        for (name, letters, provides) in std_definitions() {
             assert_eq!(
-                netsmith_core::is_connector_kind(&name),
-                letters.as_deref() == Some("J"),
-                "{name} has letters {letters:?}"
+                provides
+                    .iter()
+                    .any(|g| g == netsmith_core::CONNECTOR_GENERIC),
+                letters.as_deref() == Some("J") && name != netsmith_core::CONNECTOR_GENERIC,
+                "{name} has letters {letters:?} and provides {provides:?}"
             );
         }
     }

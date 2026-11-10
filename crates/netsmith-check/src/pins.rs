@@ -139,7 +139,12 @@ impl Checker<'_> {
             self.error(table.span, "`pins` can only appear directly inside a part");
             return;
         }
-        if !table.rows.is_empty() && table.rows.iter().all(|r| r.is_contract()) {
+        // A generic's table whose rows are all contract rows, or that has none: a generic that
+        // says "a part, whose pins are its own" (`Connector`) has an empty table.
+        let in_generic = self
+            .cur_def
+            .is_some_and(|(m, i)| self.modules[m].defs[i].kind == ast::DefKind::Generic);
+        if table.rows.iter().all(|r| r.is_contract()) && (!table.rows.is_empty() || in_generic) {
             if let Some((_, span)) = &table.package {
                 self.error(
                     *span,

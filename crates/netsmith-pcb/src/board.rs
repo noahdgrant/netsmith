@@ -2211,7 +2211,12 @@ pub(crate) mod tests {
 
     fn part(refdes: &str, kind: &str, value: &str, package: Option<&str>) -> Part {
         Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if kind.starts_with("Header") || kind.starts_with("Socket") {
+                vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
+            } else {
+                Vec::new()
+            },
             refdes: refdes.into(),
             kind: kind.into(),
             value: value.into(),
