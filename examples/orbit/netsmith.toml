@@ -1,0 +1,6 @@
+[project]
+name = "orbit"
+top_level = ["src/main.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9

@@ -1,0 +1,20 @@
+# The reference designators of ORBIT's board file that a copy of the board must reproduce
+# (`must_match = true` in placements.toml); read by
+#   cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml <file>
+# The outline and every hole are always must-match. Everything not listed (the ICs, the
+# crystal, the inductor, the LEDs, the resistors, the capacitors, the logo) and the routing are
+# reported, not required.
+parts = [
+    "BAT1",  # the battery connector, JST PH 2 pin
+    "BOOT0", # the slide switch that picks the boot source
+    "H1",    # mounting holes (the outline's four corners; H3 is the M2 one)
+    "H2",
+    "H3",
+    "H4",
+    "J1",    # the west pin header, 1 x 8 (its pin-to-signal mapping is in the pads' nets)
+    "J2",    # the east pin header, 1 x 8
+    "PWR1",  # the slide switch that connects the battery
+    "SW1",   # the RESET button
+    "SW2",   # the USER button
+    "USB1",  # the mini USB connector
+]
