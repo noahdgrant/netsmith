@@ -62,6 +62,7 @@ fn pinout_of(kind: &str, package: &str) -> Pinout {
                     },
                     pads: r.pads.clone(),
                     function: None,
+                    power_flow: None,
                 })
                 .collect(),
         };

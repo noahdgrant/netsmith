@@ -7,9 +7,11 @@
 #
 # `symbol` may be left out of the row of an IC (a part that has a pin table): netsmith then
 # draws the symbol itself, a box with the pins on its sides, and the part needs no KiCad symbol
-# library (ADR 0097, step 1). A row that names a `symbol` is drawn with it; the regulator keeps
-# KiCad's AP1117 symbol for now, whose input and output stand on opposite sides, which a box
-# drawn from the pin table cannot tell (a `power` pin does not say whether it gives power).
+# library (ADR 0097, step 1). A row that names a `symbol` is drawn with it. A `power` pin that
+# the solved design says gives power (a regulator's output) is drawn as a power output on the
+# right of the box; a power pin that takes power, or whose direction is not known, stays above.
+# The regulator still names KiCad's AP1117 symbol, which has the input on the left: the
+# schematic layout reads a part's input from the left side, and a box has its supply pins above.
 # `pin_names` renames the pins of a named symbol, so a row with no `symbol` has none.
 #
 # A symbol or footprint of the library `netsmith` is not KiCad's: it is one of the files in

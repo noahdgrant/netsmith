@@ -203,6 +203,7 @@ fn table_pin(name: &str, pad: &str, kind: PinKind) -> PartPin {
         kind,
         pads: vec![pad.into()],
         function: None,
+        power_flow: None,
     }
 }
 

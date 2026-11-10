@@ -2550,6 +2550,7 @@ mod tests {
             kind: netsmith_core::PinKind::Power,
             pads: vec![pad.into()],
             function: None,
+            power_flow: None,
         }
     }
 

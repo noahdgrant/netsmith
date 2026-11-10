@@ -1,7 +1,7 @@
 //! The design stage: solved boards into the tool-independent design.
 
 use netsmith_check::{Loader, check};
-use netsmith_core::{Design, PartPin, PinKind};
+use netsmith_core::{Design, PartPin, PinKind, PowerFlow};
 use netsmith_design::{Assembly, Designed, design_board, design_system_board};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Candidate, Catalog, Catalogs, Library, Value, solve, solve_system};
@@ -874,6 +874,102 @@ fn the_design_carries_what_each_pin_is() {
     // A pad on no net still belongs to its pin: the exporter marks it.
     assert_eq!(pin("nc").kind, PinKind::NoConnect);
     assert_eq!(pin("nc").pads, ["5"]);
+}
+
+/// What each power pin of `part` (by its refdes) does with power, as `(name, flow)`.
+fn flows(d: &Design, refdes: &str) -> Vec<(String, Option<PowerFlow>)> {
+    d.parts
+        .iter()
+        .find(|p| p.refdes == refdes)
+        .unwrap_or_else(|| panic!("no part {refdes}"))
+        .pins
+        .iter()
+        .filter(|p| p.kind == PinKind::Power)
+        .map(|p| (p.name.clone(), p.power_flow))
+        .collect()
+}
+
+#[test]
+fn a_linear_regulators_output_gives_power_and_its_input_takes_it() {
+    // The load behind it draws 0 mA to 50 mA, so the output's current is -50 mA to 0 A (it
+    // gives) and the input's is that and the quiescent current, never below zero (it takes).
+    // The ground is no rail's `pos`: it has no direction.
+    let d = designed(REGULATOR).unwrap();
+    assert_eq!(
+        flows(&d, "U1"),
+        [
+            ("vin.pos".to_string(), Some(PowerFlow::Takes)),
+            ("vin.neg".to_string(), None),
+            ("vout.pos".to_string(), Some(PowerFlow::Gives)),
+        ]
+    );
+    assert!(
+        d.parts
+            .iter()
+            .flat_map(|p| &p.pins)
+            .filter(|p| p.kind != PinKind::Power)
+            .all(|p| p.power_flow.is_none()),
+        "only a power pin has a direction"
+    );
+    // The same design gives the same directions every time.
+    assert_eq!(flows(&designed(REGULATOR).unwrap(), "U1"), flows(&d, "U1"));
+}
+
+/// A part whose rail `vdd` states `current`, on a supply that states `supply`.
+fn rail_board(current: &str, supply: &str) -> String {
+    let src = format!("import std::sources::Rail\n{MULTI}");
+    src.replace(
+        "    .vdd.neg ~ .gnd\n",
+        &format!("    .vdd.neg ~ .gnd\n    .vdd.current &= {current}\n"),
+    )
+    .replace(
+        ".supply: Rail { .pos.net &= \"V\"\n",
+        &format!(".supply: Rail {{ .current &= {supply}\n .pos.net &= \"V\"\n"),
+    )
+}
+
+#[test]
+fn the_pin_of_a_rail_takes_power_when_its_current_is_drawn_and_gives_it_when_it_is_not() {
+    let flow_of = |current: &str, supply: &str| {
+        let d = designed(&rail_board(current, supply)).unwrap();
+        flows(&d, "U1")
+            .into_iter()
+            .find(|(name, _)| name == "vdd.pos")
+            .unwrap()
+            .1
+    };
+    // Drawn: from nothing up to 25 mA, or 1 mA to 25 mA.
+    assert_eq!(flow_of("0A..25mA", "-1A..0A"), Some(PowerFlow::Takes));
+    assert_eq!(flow_of("1mA..25mA", "-1A..0A"), Some(PowerFlow::Takes));
+    // Given: a source that is allowed to give 1 mA to 25 mA.
+    assert_eq!(flow_of("-25mA..0A", "0A..1A"), Some(PowerFlow::Gives));
+    assert_eq!(flow_of("-25mA..-1mA", "1mA..1A"), Some(PowerFlow::Gives));
+    // A range across zero, or zero alone, is not settled: the pin is not typed either way.
+    assert_eq!(flow_of("-5mA..5mA", "-1A..1A"), None);
+    assert_eq!(flow_of("0A", "0A"), None);
+}
+
+#[test]
+fn a_pin_joined_inside_the_part_to_a_rails_pos_has_the_direction_of_the_rail() {
+    let src = format!("import std::sources::Rail\n{MULTI}")
+        .replace(
+            "    .vdd.neg ~ .gnd\n",
+            "    .vdd.neg ~ .gnd\n    .vdd.current &= -25mA..0A\n    .vdd2 ~ .vdd.pos\n",
+        )
+        .replace(
+            "        .nc      no_connect    \"NC\"  \"5\"\n",
+            "        .nc      no_connect    \"NC\"  \"5\"\n        .vdd2    power         \"VDD2\" \"9\"\n",
+        )
+        .replace(
+            ".supply: Rail { .pos.net &= \"V\"\n",
+            ".supply: Rail { .current &= 0A..1A\n .pos.net &= \"V\"\n",
+        );
+    let d = designed(&src).unwrap();
+    let flows = flows(&d, "U1");
+    let of = |name: &str| flows.iter().find(|(n, _)| n == name).unwrap().1;
+    assert_eq!(of("vdd.pos"), Some(PowerFlow::Gives));
+    assert_eq!(of("vdd2"), Some(PowerFlow::Gives));
+    assert_eq!(of("vdd.neg"), None);
 }
 
 #[test]

@@ -480,7 +480,7 @@ netsmith's own `.kicad_mod` footprints and `.kicad_sym` symbols in `std/libs/`, 
 _Avoid_: Bundled library, built-in footprints (the generators of ADR 0043 are the generated footprints)
 
 **Generated symbol**:
-The symbol of an IC that netsmith draws from the part's pin table, a plain box with the pins on its sides, when the part's row of the mapping names no `symbol` (ADR 0097, step 1). It is in the library `netsmith`, named for the part and its package (`netsmith:Lt8641_UDC20_18`), and needs no KiCad install. Each pin has the datasheet's name, its pad and the electrical type of its kind.
+The symbol of an IC that netsmith draws from the part's pin table, a plain box with the pins on its sides, when the part's row of the mapping names no `symbol` (ADR 0097, step 1). It is in the library `netsmith`, named for the part and its package (`netsmith:Lt8641_UDC20_18`), and needs no KiCad install. Each pin has the datasheet's name, its pad and the electrical type of its kind. A `power` pin is a power input unless the solved design says it gives power (the sign of the current of its rail, read by the design stage): that pin is a power output, on the right of the box, and its pad is in the symbol's name (`netsmith:Lt8641_UDC20_18_out8`).
 _Avoid_: Fallback box (the editor's box for a part whose symbol cannot be read), auto symbol
 
 **Unit**:

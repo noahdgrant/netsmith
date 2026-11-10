@@ -531,6 +531,7 @@ fn synthetic_board_with(
             kind: netsmith_core::PinKind::Power,
             pads,
             function: None,
+            power_flow: None,
         };
         parts[0].pins = vec![power("vdd", supply), power("gnd", ground)];
     }

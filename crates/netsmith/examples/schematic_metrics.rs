@@ -34,7 +34,7 @@ use netsmith::project::Target;
 use netsmith::{Libraries, outcome_with};
 use netsmith_core::{
     Design, InterfaceInstance, InterfaceMember, Net, Note, NoteAt, NoteKind, Part, PartPin,
-    PinKind, PinRef,
+    PinKind, PinRef, PowerFlow,
 };
 use netsmith_view::check::check;
 use netsmith_view::hints;
@@ -78,6 +78,7 @@ fn to_json(i: &Inputs) -> Value {
             "pins": p.pins.iter().map(|q| json!({
                 "name": q.name, "datasheet": q.datasheet, "kind": q.kind.word(),
                 "pads": q.pads, "function": q.function,
+                "power_flow": q.power_flow.map(|f| f.word()),
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "nets": i.design.nets.iter().map(|n| json!({
@@ -126,6 +127,11 @@ fn from_json(v: &Value) -> Inputs {
                     kind: pin_kind(&s(&q["kind"])),
                     pads: strs(&q["pads"]),
                     function: q["function"].as_str().map(String::from),
+                    power_flow: match q["power_flow"].as_str() {
+                        Some("takes") => Some(PowerFlow::Takes),
+                        Some("gives") => Some(PowerFlow::Gives),
+                        _ => None,
+                    },
                 })
                 .collect(),
         })

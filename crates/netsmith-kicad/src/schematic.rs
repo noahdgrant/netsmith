@@ -950,6 +950,7 @@ mod tests {
             kind,
             pads: vec![pad.into()],
             function: None,
+            power_flow: None,
         };
         d.parts[2].kind = "IcLdo".into();
         d.parts[2].pins = vec![
@@ -990,8 +991,63 @@ mod tests {
                 "{net}"
             );
         }
-        // Its power pins are inputs, so a net nothing drives is flagged, the output's too.
-        assert_eq!(flags(&root).len(), 3);
+        // Its power pins are inputs while no direction is known, so a net nothing drives is
+        // flagged, the output's too.
+        let mut flagged: Vec<String> = flags(&root).into_iter().map(|f| f.1).collect();
+        flagged.sort();
+        assert_eq!(flagged, ["3V3", "GND", "VIN"]);
+        // The same bytes every time.
+        assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+    }
+
+    #[test]
+    fn the_output_of_an_ic_drawn_from_its_pin_table_is_a_power_output_and_its_net_gets_no_flag() {
+        let mut d = drawn_regulator_design();
+        for pin in &mut d.parts[2].pins {
+            match pin.name.as_str() {
+                "vin.pos" => pin.power_flow = Some(netsmith_core::PowerFlow::Takes),
+                "vout.pos" => pin.power_flow = Some(netsmith_core::PowerFlow::Gives),
+                _ => {}
+            }
+        }
+        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let root = Sexp::parse(&text).unwrap();
+        // One more symbol than for the same part with no direction: the output is another type.
+        assert!(
+            text.contains("(lib_id \"netsmith:IcLdo_SOT-23_out2\")"),
+            "{text}"
+        );
+        let embedded = root
+            .find("lib_symbols")
+            .unwrap()
+            .find_all("symbol")
+            .find(|s| s.args()[0].text() == Some("netsmith:IcLdo_SOT-23_out2"))
+            .expect("the symbol drawn for the solved part is embedded");
+        let pin_types: Vec<(String, String)> = embedded
+            .find_all("symbol")
+            .flat_map(|unit| unit.find_all("pin"))
+            .map(|p| {
+                (
+                    p.find("number").unwrap().args()[0].text().unwrap().into(),
+                    p.args()[0].text().unwrap().into(),
+                )
+            })
+            .collect();
+        let type_of = |pad: &str| {
+            pin_types
+                .iter()
+                .find(|(n, _)| n == pad)
+                .map(|(_, t)| t.as_str())
+        };
+        assert_eq!(
+            [type_of("1"), type_of("2"), type_of("3")],
+            [Some("power_in"), Some("power_out"), Some("power_in")]
+        );
+        // The regulator's output net has a source, so only the two nets that nothing on the
+        // board supplies are flagged.
+        let mut flagged: Vec<String> = flags(&root).into_iter().map(|f| f.1).collect();
+        flagged.sort();
+        assert_eq!(flagged, ["GND", "VIN"]);
         // The same bytes every time.
         assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
     }

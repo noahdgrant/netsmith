@@ -1069,6 +1069,7 @@ impl Entry {
                 None => pin.datasheet.clone(),
             },
             flow: match pin.kind {
+                PinKind::Power if pin.gives_power() => Flow::Out,
                 PinKind::Input | PinKind::Power => Flow::In,
                 PinKind::Output => Flow::Out,
                 PinKind::TriState => Flow::TriState,
@@ -1436,6 +1437,7 @@ pub fn used_pads(design: &Design) -> Vec<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    use netsmith_kicad::PowerFlow;
     use netsmith_kicad::testlib::{self, TempDir};
 
     use super::*;
@@ -1532,6 +1534,7 @@ mod tests {
             kind,
             pads: vec![pad.into()],
             function: None,
+            power_flow: None,
         };
         let mut ic = part("Lt8641", Some("UDC20(18)"));
         ic.pins = vec![
@@ -1553,6 +1556,44 @@ mod tests {
         );
         assert!(bare.symbol.is_none());
         assert!(bare.missing.unwrap().contains("no pin table"));
+    }
+
+    #[test]
+    fn a_power_pin_that_gives_power_is_on_the_right_in_the_symbol_and_in_the_editors_box() {
+        let (mapping, lib) = sample();
+        let pin = |name: &str, datasheet: &str, pad: &str, flow| PartPin {
+            name: name.into(),
+            datasheet: datasheet.into(),
+            kind: PinKind::Power,
+            pads: vec![pad.into()],
+            function: None,
+            power_flow: flow,
+        };
+        let pins = vec![
+            pin("vin.pos", "IN", "3", Some(PowerFlow::Takes)),
+            pin("vin.neg", "GND", "1", None),
+            pin("vout.pos", "OUT", "2", Some(PowerFlow::Gives)),
+        ];
+        // The symbol netsmith draws from the table, and the box for a part whose row names none
+        // and has no symbol of its own, put the supply above, the ground below and the
+        // output on the right, which is where the layout reads an output.
+        for kind in ["Lt8641", "Gadget"] {
+            let mut ic = part(kind, Some("UDC20(18)"));
+            ic.pins = pins.clone();
+            let g = Glyph::for_part(&ic, &pads(3), Pinout::of(&ic).as_ref(), &mapping, &lib);
+            let at = |pad: &str| g.pin(pad).unwrap().at;
+            assert!(at("3").1 > 0.0 && at("1").1 < 0.0, "{kind}");
+            assert!(at("2").0 > 0.0, "{kind}: the output is on the right");
+            assert_eq!(g.pin("2").unwrap().flow, Flow::Out, "{kind}");
+            assert_eq!(g.pin("3").unwrap().flow, Flow::In, "{kind}");
+        }
+        // With no direction known the same pin stays above, as an input.
+        let mut ic = part("Lt8641", Some("UDC20(18)"));
+        ic.pins = pins;
+        ic.pins[2].power_flow = None;
+        let g = Glyph::for_part(&ic, &pads(3), Pinout::of(&ic).as_ref(), &mapping, &lib);
+        assert!(g.pin("2").unwrap().at.1 > 0.0);
+        assert_eq!(g.pin("2").unwrap().flow, Flow::In);
     }
 
     #[test]
@@ -1735,6 +1776,7 @@ mod tests {
             kind,
             pads: pads.iter().map(|p| p.to_string()).collect(),
             function: None,
+            power_flow: None,
         }
     }
 
