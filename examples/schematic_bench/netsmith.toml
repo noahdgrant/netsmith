@@ -4,3 +4,7 @@ top_level = ["schematic_bench.nsm"]
 out = "out"
 fab = "fab"
 kicad = 9
+# The bench is a drawing test, and its parts are invented (no supplier part numbers, values that
+# no catalog row answers), so nothing is ordered: `fab` packages the board and leaves every part
+# to be hand-soldered.
+assembly = "hand"

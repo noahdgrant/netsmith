@@ -1,12 +1,13 @@
 # What KiCad calls the parts this example defines itself (ADR 0021). The microcontroller and
 # the regulator IC are invented and drawn by the library of this project (the microcontroller
-# has a footprint of its own in `bench.pretty`, with a pad for every pin of both of its units,
-# which no stock footprint has); the amplifier and the rest are KiCad's stock symbols.
+# has a footprint of its own in `libs/bench.pretty`, with a pad for every pin of both of its units,
+# which no stock footprint has); the amplifier has no `symbol`, so netsmith draws it from its pin
+# table (ADR 0097). Every footprint is one that a generator answers, so no KiCad install is read.
 
 [[library]]
 name = "bench"
-symbols = "bench.kicad_sym"
-footprints = "bench.pretty"
+symbols = "libs/bench.kicad_sym"
+footprints = "libs/bench.pretty"
 
 [[part]]
 kind = "Mcu97"
@@ -20,13 +21,12 @@ kind = "Buck1V8"
 package = "QFN"
 default = true
 symbol = "bench:Buck1V8"
-footprint = "Package_DFN_QFN:QFN-16-1EP_3x3mm_P0.5mm_EP1.7x1.7mm"
+footprint = "bench:Buck1V8"
 
 [[part]]
 kind = "DualOpAmp"
 package = "SOIC-8"
 default = true
-symbol = "Amplifier_Operational:LM358"
 footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 
 [[part]]
@@ -34,7 +34,7 @@ kind = "Ldo8"
 package = "DFN"
 default = true
 symbol = "bench:Ldo8"
-footprint = "Package_DFN_QFN:DFN-8-1EP_3x3mm_P0.65mm_EP1.55x2.4mm"
+footprint = "gen:DFN(pins=8, pitch=0.65mm, body=2.95-3.05x2.95-3.05mm, ep=1.55x2.4mm, lead_width=0.2-0.3mm, lead_length=0.3-0.5mm)"
 
 [[part]]
 kind = "Obd10"

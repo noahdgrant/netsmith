@@ -4,14 +4,14 @@
 //! converter with a feedback divider, a bootstrap capacitor, an inductor and capacitors
 //! (`buck`), and a module with two connectors and more than twenty parts (`modem`). Nothing in
 //! it is a design to build: the parts and the numbers are made up, and the microcontroller and
-//! the regulator IC are drawn by the project's own symbol library (`bench.kicad_sym`).
+//! the regulator IC are drawn by the project's own symbol library (`libs/bench.kicad_sym`).
 
 import std::parts::connector::Header1x4
 import std::parts::passive::{Capacitor, Crystal, Inductor, Led, Resistor}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
-/// A dual operational amplifier, in the symbol of KiCad's LM358: three units there, one box here.
+/// A dual operational amplifier, drawn from this pin table as one box (ADR 0097).
 part DualOpAmp {
     .designator &= "U"
 
