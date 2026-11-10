@@ -1,4 +1,4 @@
-//! Pin requests (ADR 0100): `.status: .u.GPIO` asks a part for any pin that offers GPIO, and the
+//! Pin requests (ADR 0101): `.status: .u.GPIO` asks a part for any pin that offers GPIO, and the
 //! tool picks it, keeps it in the pin file, and runs the usual checks on the result.
 //!
 //! `Zmcu4` is invented for these tests; it is not a real part and is not in the standard library.

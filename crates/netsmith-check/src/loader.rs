@@ -13,7 +13,7 @@ pub struct Loader {
     /// (`./src/main.nsm` and `/home/me/proj/src/main.nsm` to `src::main`), for a name that
     /// the file names of the modules do not match as they are.
     root_keys: HashMap<String, String>,
-    /// A source file's name to the pin file beside it: its display name and text (ADR 0100).
+    /// A source file's name to the pin file beside it: its display name and text (ADR 0101).
     pins: HashMap<String, (String, String)>,
     /// The definition the project's manifest names as every board's `.environment` when the
     /// board declares none (ADR 0099): the module's key and the definition's name.
@@ -127,7 +127,7 @@ impl Loader {
     }
 
     /// Pair the pin file `file_name` (text `text`) with the source file called `source_name`:
-    /// the pins that its requests were given (ADR 0100).
+    /// the pins that its requests were given (ADR 0101).
     pub fn attach_pins(&mut self, source_name: &str, file_name: &str, text: &str) {
         self.pins.insert(
             source_name.to_string(),

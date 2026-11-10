@@ -506,3 +506,53 @@ Each takes one word or one choice.
 15. Should the lock and the solved-design file become ADRs when decided? **yes, one ADR each /
     one ADR / no** (`docs/adr/README.md`: hard to reverse, surprises a newcomer, rejects an
     obvious alternative)
+
+## Addendum: measured on 2026-11-09
+
+Section 5's plan, run on `main` at `ebdb860` plus `NETSMITH_TIMINGS=1`
+(`crates/netsmith-core/src/timings.rs`: one line per stage on stderr, nothing without the
+variable). Optimised build (`cargo build --release -p netsmith`), one run at a time under
+`flock /tmp/netsmith-heavy.lock`, so no other build of this repository ran during a timed
+command. The machine is an 11th-gen Core i9-11900H (10 logical CPUs), WSL2, 15 GB, with a
+load average of 2.7 to 4 from other work outside the lock. Each cell is the median of 5 runs
+(`build` and `fab` were separate processes). KiCad 9 is installed on the Windows side, so
+its libraries were found in both commands and `export` ran.
+
+| Board | Parts | `build` s | `fab` s | libraries ms | check ms | solve ms (pick / DC) | design + power ms | export ms | place ms | route ms | package ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `led` | 3 | 0.47 | 0.60 | 292 | 1.5 | 2.8 (2.5 / 0.0) | 0.1 | 116 | 16 | 2.3 | 1.6 |
+| `linear_regulator` | 5 | 0.51 | 0.73 | 299 | 2.5 | 9.1 (8.7 / 0.0) | 0.2 | 160 | 56 | 3.7 | 2.1 |
+| `status_indicator` | 5 | 0.46 | 0.68 | 299 | 1.8 | 8.0 (7.6 / 0.0) | 0.2 | 116 | 54 | 1.8 | 2.1 |
+| `four_layer` | 5 | 0.52 | 0.69 | 282 | 2.6 | 8.5 (8.2 / 0.0) | 0.2 | 158 | 43 | 2.3 | 2.2 |
+| `outline_and_pours` | 12 | 0.59 | 0.84 | 333 | 2.8 | 9.2 (8.8 / 0.0) | 0.2 | 166 | 98 | 30 | 4.3 |
+| `led_panel` | 3 | 0.44 | 0.64 | 299 | 1.7 | 2.8 (2.5 / 0.0) | 0.1 | 116 | 17 | 1.5 | 1.5 |
+| `two_boards` | 8 | 0.61 | 0.82 | 289 | 3.0 | 12 (11 / 0.0) | 0.4 | 114 | 36 | 1.9 | 1.5 |
+| `enclosure_sensor` (a project, the largest board that builds and fabs) | 43 | 0.75 | 10.18 | 307 | 4.4 | 24 (23 / 0.1) | 0.5 | 277 | 8648 | 649 | 14 |
+| a generated board of 30 LEDs with a resistor each, not in the repository | 61 | 0.50 | 2.19 | 306 | 3.1 | 50 (48 / 0.3) | 0.7 | 114 | 1494 | 55 | 14 |
+
+`libraries` is reading KiCad's symbols and footprints (once per command). `export` is stage 4,
+which `fab` repeats although it uses only its checks. `package` is the design rules check, the
+Gerbers and the BOM, with the write. Peak memory: 106 to 190 MB for `build`, up to 232 MB for
+`fab`. With the variable off, a run is as fast as before the facility (baseline binary,
+medians of 5: `linear_regulator` 0.50 s and 0.70 s, `enclosure_sensor` 0.69 s and 10.14 s).
+
+What the numbers say, against section 5's questions:
+
+- **Share of `build` that is the solve:** 1 % to 10 %. The libraries (about 0.3 s) and the
+  export (0.1 to 0.28 s) are most of a `build`. The DC pass is 0.3 ms or less here.
+- **Largest cost of `fab`:** placing, once a board has a few dozen parts (8.6 s of 10.2 s on
+  `enclosure_sensor`; 1.5 s of 2.2 s on the generated board). Stages 1 to 4 repeated by `fab`
+  are 0.4 to 0.6 s, of which the solve is at most 50 ms. A solved-design file would save the
+  solve, the check and the design (under 60 ms on every board here) and not the libraries or
+  the export, which are the larger part.
+- **Is the output stable:** `build` and `fab` of `enclosure_sensor`, each run twice in separate
+  processes, wrote byte-identical folders (`diff -r`). The router did not time out.
+- **Not measured:** the repository has no board like the 60-part, two-buck 12 V automotive
+  board that ADR 0076 and `Cargo.toml` quote (1.25 s); the largest here has no regulator and
+  so a trivial DC pass, and the numbers above neither confirm nor contradict that figure. The
+  editor's time per edit, the effect of a catalog edit on the picks (section 5's last row;
+  the pick lock's tests show the mechanism by holding a part to a row the solver would not
+  pick), and the sampling profile of the solver were not run.
+
+Nothing here argues for per-island or per-module incremental solving (question 12): the solve
+is a few percent of a run on the boards the repository has.

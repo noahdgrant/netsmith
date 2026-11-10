@@ -1,4 +1,4 @@
-//! Pin requests and their assignment (ADR 0100).
+//! Pin requests and their assignment (ADR 0101).
 //!
 //! A board asks for a pin by capability, `.status: .u.GPIO`, and does not name the pin. This
 //! module gives each request a pin of the part, before the nets are made, so that every later

@@ -163,7 +163,7 @@ pub(crate) struct Checker<'a> {
     /// The loaded files as they were when the last model was made, shared by the models made
     /// while no file was added.
     snapshot: Option<std::sync::Arc<Sources>>,
-    /// The pin file beside the top-level source, read (ADR 0100).
+    /// The pin file beside the top-level source, read (ADR 0101).
     pub(crate) pin_input: Option<PinInput>,
     /// What each board's or system's elaboration decided about pins.
     pub(crate) pin_roots: Vec<crate::assign::RootPins>,
@@ -172,7 +172,7 @@ pub(crate) struct Checker<'a> {
     pub(crate) pin_findings: Vec<String>,
 }
 
-/// The pin file of the top-level source (ADR 0100): where it is among the loaded files, and
+/// The pin file of the top-level source (ADR 0101): where it is among the loaded files, and
 /// what it says.
 pub(crate) struct PinInput {
     pub source: SourceId,

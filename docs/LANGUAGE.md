@@ -2825,7 +2825,7 @@ error: `.p00` lists `UARTE0_TX`, which `peripheral UARTE0` already offers on eve
 
 ### A pin by capability
 
-A board that does not care which pin of a microcontroller carries a signal asks for a capability and lets the tool pick the pin (ADR 0100). A request is a declaration whose type is a function of a part: `.status: .u.GPIO` declares the pin `status` of the board, and asks `u` for any pin that offers `GPIO`. What a request can ask for is what the part already says: a function that a row lists, or a function of a peripheral that is offered on the pin (`.tx: .u.UARTE1_TX`). The part declares nothing more. A request is a pin of the board, so `~` works on it as on any pin, and it is joined and checked as the pin it got.
+A board that does not care which pin of a microcontroller carries a signal asks for a capability and lets the tool pick the pin (ADR 0101). A request is a declaration whose type is a function of a part: `.status: .u.GPIO` declares the pin `status` of the board, and asks `u` for any pin that offers `GPIO`. What a request can ask for is what the part already says: a function that a row lists, or a function of a peripheral that is offered on the pin (`.tx: .u.UARTE1_TX`). The part declares nothing more. A request is a pin of the board, so `~` works on it as on any pin, and it is joined and checked as the pin it got.
 
 The part and the board are invented. The pins `p02` and `p03` list `ANALOG`, so a request for `ANALOG` has two pins to choose from.
 
@@ -7397,6 +7397,32 @@ at = [18.0, 2.0]
 
 Parts are keyed by their path in the design, which a renumbered reference designator does not change. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the physical file and has an entry as well is an error: a thing has one place. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm`, its physical file `examples/outline_and_pours.physical.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
 
+### The pick lock
+
+Which catalog row a part was picked as is the solver's choice: the first row, in catalog order, that fits and passes every relation. A change to a catalog, to the order of its rows or to the solver can move a pick without a change to the source. `<stem>.lock.toml` beside the source file (`board.nsm` has `board.lock.toml`) keeps the choice: `build` and `fab` write it when it does not exist, and commit it as you commit `Cargo.lock`.
+
+```toml
+version = 1
+
+[LedExample.parts."r1"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+```
+
+There is one table for each board (or system) of the file, keyed by its name, and one for each part, keyed by its path (`r1`, `stage.output_cap`; a bank of capacitors is one entry, its path without the `#2`). `catalog` and `row` say which row. `lcsc` and `mpn` are there to find a row that was renamed or changed in place, and may be left out. The file holds no stock, no price and no solved value; a generic part is locked at the row the solver gave it (`generic 22uF 10% 0603 ...`), and `fab` still resolves it to an orderable row against the stock of the day (ADR 0047).
+
+With a lock, the solver offers each part the lock names only its locked row, and judges that row by everything the design states and every relation, as it judges any pick. What happens next is told for each part:
+
+- **The row still passes.** It is the pick. Nothing is printed.
+- **The row no longer passes, or is no longer in the catalog.** The run stops with the relation that fails and its numbers, and a second message says that the row is the lock's and that no other row was tried (`` `r1` is locked to the row `2.2kΩ 1% 0402 C25879` of the `resistor` catalog by led.lock.toml, and no other row was tried for it ``). Change the design or the catalog so the row fits, or delete the lock to pick again. A row whose `lcsc` or `mpn` is no longer the lock's is the same case.
+- **A part has no entry, or an entry belongs to a part the board no longer has.** The run goes on and prints a note that names the part. The lock is not rewritten: an existing lock is never changed by a run.
+
+`--locked` (on `build` and `fab`, as Cargo's) turns the last case, and a missing file, into an error, before anything is written. A CI job that builds with `--locked` fails a pull request that changes the picks without changing the lock.
+
+`fab --order` does not read or write a lock yet. The editor does not either: it solves from the source, as before.
+
 ## Imports
 
 `import` brings definitions into a file. Paths start at `std` for the standard library or `src` for the files of your project.
@@ -7627,9 +7653,9 @@ netsmith.toml:8: order `devkit` names `Unitt`, but the project has no such board
 
 ```sh
 netsmith init [--name <name>]          # a project in the current directory
-netsmith build [file.nsm] [--out dir] [--strict] # check, solve, write a KiCad schematic
+netsmith build [file.nsm] [--out dir] [--strict] [--locked] # check, solve, write a KiCad schematic
 netsmith editor [file.nsm] [--port n]  # edit and view in a browser (default port 8787)
-netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--constraints warn|error] # files for a board house (boards and panels), after a design rules check
+netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] # files for a board house (boards and panels), after a design rules check
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
 netsmith compare <a> <b> [options]     # are two designs the same circuit?
 netsmith kicad-libs import <sym-lib-table> [fp-lib-table]  # the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021)
@@ -7641,6 +7667,8 @@ netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--
 `editor` serves the editor on `127.0.0.1` and prints the address to open: a project tree, the source with the compiler's and solver's messages beside the lines they are about, and views of the selected board (schematic, power tree, system, bill of materials, PCB) with buttons for `build` and `fab` (ADR 0019). A board of more than 16 parts is drawn in a box for each module instance. A rail is drawn with the ground and supply symbols at its pins. Errors and warnings are listed first, and the notes (relations not evaluated, balances left incomplete) in a closed section. It checks the text as you type without writing it, saves with `Ctrl+S`, reads a file again when it changes on disk, and with no file acts on the project like `build`.
 
 `--strict` (on `build` and `fab`) makes a finding against a guideline an error for this run, like `guidelines = "error"` in `netsmith.toml`; without it a finding is a warning.
+
+`--locked` (on `build` and `fab`) makes a difference between the picks and the pick lock beside the source an error, or a lock that does not exist (see _The pick lock_). `NETSMITH_TIMINGS=1` in the environment of any command prints one line for each stage of the run to stderr (`timing: solve LedExample 12.3 ms`), and nothing is printed without it.
 
 The power model's findings come from `netsmith`, not from the editor's page: `build`, the editor's analysis (its `power` stage, the Problems dock's `Power` group) and the power tree it draws all carry the same ones. A rail that can draw more than the supply that states what it can give (`max_current`) is an error that stops the build, where the solver had no relation to check it against; `--strict` is not needed. The notes do not stop it, with or without `--strict`: a rail nothing supplies (`V5 has no source: nothing supplies it`), a rail with loads whose current the solver has not settled, and a converter whose efficiency it has not settled. The Problems dock lists the notes of a board grouped by their cause, with a count for each (the server says it for every note: `not_stated`, `part_model`, `unjudged`, `circular`, `supply`, `pick`, `track`, `other`), so a long list of notes reads as the few things to do about them: a rail nothing supplies and a load not settled are `supply`, a level or an input current a part's definition leaves out is `part_model`, a value nothing states is `not_stated`.
 

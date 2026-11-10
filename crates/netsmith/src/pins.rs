@@ -1,4 +1,4 @@
-//! The pin file beside a source file (ADR 0100): `<stem>.pins.toml`.
+//! The pin file beside a source file (ADR 0101): `<stem>.pins.toml`.
 //!
 //! It is optional. It holds the pins that the pin requests of the source (`.status: .u.GPIO`)
 //! were given. `build`, `fab` and the editor give it to the checker with the source

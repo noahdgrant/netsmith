@@ -905,7 +905,7 @@ pub struct Unused {
     pub span: Span,
 }
 
-/// A request for a pin by capability (`.status: .u.GPIO`, ADR 0100): the pin of the board it
+/// A request for a pin by capability (`.status: .u.GPIO`, ADR 0101): the pin of the board it
 /// declares, the part it asks and what it needs the pin to offer. Which pin it gets is decided
 /// after the elaboration, in `assign.rs`.
 #[derive(Debug, Clone)]

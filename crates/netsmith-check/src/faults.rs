@@ -491,7 +491,7 @@ impl<'a> Run<'a> {
         }
         for (function, mut pins) in chosen {
             // A class names what a pin can be, not one use of it: `GPIO` on two pins is two
-            // pins that are plain GPIOs (ADR 0100).
+            // pins that are plain GPIOs (ADR 0101).
             let class = model
                 .instance(part)
                 .rules

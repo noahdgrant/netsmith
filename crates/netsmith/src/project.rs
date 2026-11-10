@@ -962,7 +962,7 @@ impl Target {
                 .map(|f| netsmith_view::schematic_hints_path(&f.path))
                 .filter(|p| p.is_file()),
         );
-        // The pin file of a source (ADR 0100) gives its requests their pins.
+        // The pin file of a source (ADR 0101) gives its requests their pins.
         paths.extend(
             self.files
                 .iter()

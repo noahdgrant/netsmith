@@ -98,7 +98,7 @@ pub struct Checked {
     /// The diagnostics that are parse errors (they are also in `diagnostics`).
     pub syntax: Vec<Diagnostic>,
     pub sources: Sources,
-    /// What the run decided about the pin file beside the source (ADR 0100).
+    /// What the run decided about the pin file beside the source (ADR 0101).
     pub pins: PinsOutcome,
 }
 

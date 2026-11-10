@@ -1,4 +1,4 @@
-//! The pin file beside a source file: `<stem>.pins.toml` (ADR 0100).
+//! The pin file beside a source file: `<stem>.pins.toml` (ADR 0101).
 //!
 //! It holds the solution of the pin requests of the source (`.status: .u.GPIO`): for each
 //! request, the pin the tool picked, and whether a person locked it. It is plain TOML, optional,

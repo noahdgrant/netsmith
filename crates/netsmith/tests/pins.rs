@@ -1,4 +1,4 @@
-//! The pin file (ADR 0100), end to end: `build` and `fab` write it when a run picks a pin, a
+//! The pin file (ADR 0101), end to end: `build` and `fab` write it when a run picks a pin, a
 //! second run leaves its bytes alone, `--locked` refuses a change, and a locked pin survives a
 //! change of the design.
 
@@ -223,4 +223,31 @@ fn a_board_with_requests_goes_through_the_solver_and_the_design_with_the_pins_ch
         .find(|pin| pin.function.as_deref() == Some("GPIO"))
         .expect("a pin with the function GPIO");
     assert_eq!(pin.name, "p00");
+}
+
+#[test]
+fn the_binary_with_locked_stops_on_a_pin_file_that_would_change_before_it_writes_anything() {
+    let dir = TempDir::new("pins-binary");
+    let text = source("    .status: .u.GPIO\n    .status ~ .load.a\n");
+    fs::write(dir.path().join("main.nsm"), &text).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .current_dir(dir.path())
+        .args(["build", "main.nsm", "--locked"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains(
+            "the pin file `main.pins.toml` is out of date, and --locked does not change it"
+        ),
+        "{err}"
+    );
+    // Nothing was written: no pin file, no pick lock, no output folder.
+    let mut names: Vec<String> = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["main.nsm"]);
 }
