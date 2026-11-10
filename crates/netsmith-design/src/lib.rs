@@ -22,7 +22,7 @@ use netsmith_check::{
 };
 use netsmith_core::{
     Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, Note, NoteAt, NoteKind,
-    PanelRules, PanelSpec, Part, PartPin, PinRef, Process, Stackup,
+    PanelRules, PanelSpec, Part, PartPin, PinRef, PowerFlow, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -271,8 +271,53 @@ fn pins_of(model: &Model, part: InstId) -> Vec<PartPin> {
             },
             pads: row.pads.clone(),
             function: model.function_of(row.pin),
+            power_flow: if row.kind == PinKind::Power {
+                power_flow_of(model, row.pin)
+            } else {
+                None
+            },
         })
         .collect()
+}
+
+/// Whether a power pin takes or gives power: the sign of the `current` of the rail whose `pos`
+/// it is, read from the solved model. A pin that the part joins to a rail's `pos` inside
+/// (`.vin2 ~ .vin.pos`) has that rail's direction. The current of a rail is what its loads
+/// draw, so a negative one is a supply (a regulator's output, a source) and a positive one a
+/// load (its input). The sign of a rail is settled only when the whole range is on one side:
+/// from below 0 A to at most 0 A gives, from at least 0 A to above 0 A takes. A rail whose
+/// current has no value, is exactly 0 A (the reference of a limit that a pin states) or crosses
+/// 0 A settles nothing, and the pins joined to the pin settle it instead. A pin that no settled
+/// rail's `pos` is joined to (a ground, a plain pin), and one joined to rails that disagree,
+/// stays `None`.
+fn power_flow_of(model: &Model, pin: InstId) -> Option<PowerFlow> {
+    let mut flow: Option<PowerFlow> = None;
+    for candidate in std::iter::once(pin).chain(model.joined_inside(pin)) {
+        let Some(rail) = model.instance(candidate).parent else {
+            continue;
+        };
+        let Some((current, pos)) = model.draw_of(rail) else {
+            continue;
+        };
+        if pos != candidate {
+            continue;
+        }
+        let Domain::Quantity(q) = &model.field(current).domain else {
+            continue;
+        };
+        let here = if q.hi() <= 0.0 && q.lo() < 0.0 {
+            PowerFlow::Gives
+        } else if q.lo() >= 0.0 && q.hi() > 0.0 {
+            PowerFlow::Takes
+        } else {
+            continue;
+        };
+        match flow {
+            Some(other) if other != here => return None,
+            _ => flow = Some(here),
+        }
+    }
+    flow
 }
 
 /// The interface instances whose members are on the nets of the design, by path: for each

@@ -60,6 +60,29 @@ impl PinKind {
     }
 }
 
+/// Which way a power pin passes power, as the solved design says (ADR 0016: the sign of the
+/// current of the rail on the pin, which a pin table cannot state because it is the board's
+/// loads that decide it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerFlow {
+    /// The pin takes power from the net: the current of its rail is drawn, at least 0 A and
+    /// above 0 A at most.
+    Takes,
+    /// The pin gives power to the net: the current of its rail is negative, from below 0 A
+    /// to at most 0 A.
+    Gives,
+}
+
+impl PowerFlow {
+    /// The word for it in messages and in the files of tools.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Takes => "takes",
+            Self::Gives => "gives",
+        }
+    }
+}
+
 /// One pin of a part, as its pin table gives it. Which nets the pads are on is in
 /// [`Design::nets`]; a pad that is on no net is a pad of a pin the board leaves open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +97,21 @@ pub struct PartPin {
     pub pads: Vec<String>,
     /// The function the board chose for the pin, if it did.
     pub function: Option<String>,
+    /// Whether a `power` pin takes or gives power, when the solved design settles it: the sign
+    /// of the current of the rail whose `pos` the pin is (or is joined to inside the part). It
+    /// is `None` for a pin that is not a power pin, for a power pin that no rail's `pos` is
+    /// (a ground), and for a rail whose current is not known or may take either sign. An
+    /// exporter types an unknown power pin as one that takes power, which asks the net for a
+    /// source and never claims one that may not be there ([`PartPin::gives_power`]).
+    pub power_flow: Option<PowerFlow>,
+}
+
+impl PartPin {
+    /// Whether the pin is known to give power to its net. Only a `power` pin does; a pin
+    /// whose direction is not known does not.
+    pub fn gives_power(&self) -> bool {
+        self.kind == PinKind::Power && self.power_flow == Some(PowerFlow::Gives)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

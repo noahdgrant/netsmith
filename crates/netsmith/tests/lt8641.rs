@@ -541,7 +541,7 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
     // The schematic draws the IC with a symbol netsmith drew from the pin table, all its pins
     // named as the datasheet does.
     assert!(
-        b.schematic.contains("\"netsmith:Lt8641_UDC20_18\""),
+        b.schematic.contains("\"netsmith:Lt8641_UDC20_18_out8\""),
         "the schematic does not hold the symbol"
     );
     for pin in [
@@ -589,7 +589,10 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
     );
     // The symbol is in the library file beside the schematic, as the schematic holds it.
     let library = std::fs::read_to_string(dir.join("netsmith.kicad_sym")).unwrap();
-    assert!(library.contains("(symbol \"Lt8641_UDC20_18\""), "{library}");
+    assert!(
+        library.contains("(symbol \"Lt8641_UDC20_18_out8\""),
+        "{library}"
+    );
     assert!(library.contains("(name \"EN/UV\""), "{library}");
     let fp_table = std::fs::read_to_string(dir.join("fp-lib-table")).unwrap();
     assert!(

@@ -186,6 +186,7 @@ mod tests {
             kind,
             pads: pads.iter().map(|p| p.to_string()).collect(),
             function: None,
+            power_flow: None,
         }
     }
 

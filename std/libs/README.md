@@ -28,6 +28,6 @@ Source: Analog Devices, LT8641 Rev. C, the LCSC mirror the std part cites (`std/
 - No 3D model (none was read, and none is named: the footprint has no `(model ...)`), and no thermal vias: the datasheet's "Recommended PCB Layout" (Figure 1, p.13) is a layout and not a land pattern, and vias and copper pours are the board's.
 - Its pick-and-place rotation is unverified until a board with it has been assembled (`crates/netsmith-fab/src/rotation.rs` leaves it out, and `fab-notes.txt` flags it).
 
-**The symbol** is not a file here: the part's row in `std/kicad.toml` names no `symbol`, so netsmith draws it from the part's pin table, a rectangle with the table's pins (`netsmith:Lt8641_UDC20_18`, ADR 0097). `netsmith.kicad_sym` holds no symbol of its own; a board's output has the symbols drawn for it.
+**The symbol** is not a file here: the part's row in `std/kicad.toml` names no `symbol`, so netsmith draws it from the part's pin table, a rectangle with the table's pins (`netsmith:Lt8641_UDC20_18_out8`, ADR 0097: the name ends in the pad of each pin that gives power, here the switch node, which is a power output). `netsmith.kicad_sym` holds no symbol of its own; a board's output has the symbols drawn for it.
 
 **The name** follows KiCad's style (package, leads, exposed pads, body, pitch, variation) and names the package, not the part, so another UDC20(18) part can map to it.

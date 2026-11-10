@@ -12,7 +12,8 @@
 //!   has several (a library symbol's) is drawn as it always was.
 //! - A pin for every pad of the table: the pin's first pad is the visible pin, the others lie
 //!   on its point, hidden and `passive`, as KiCad's own symbols stack the pads of one pin.
-//! - The pin's name is the datasheet's, and its electrical type follows its kind ([`pin_type`]).
+//! - The pin's name is the datasheet's, and its electrical type follows its kind and, for a power
+//!   pin, whether the solved design says it gives power ([`pin_type`]).
 //! - Every pin and the box are on KiCad's 50 mil (1.27 mm) grid.
 //!
 //! The same table gives the same bytes: nothing here reads a clock, a map's order or the
@@ -59,10 +60,14 @@ pub fn is_ground(pin: &PartPin) -> bool {
 }
 
 /// Where a pin goes: the supply above and the ground below, inputs and passive pins on the
-/// left, outputs on the right. The editor's box for a part with no symbol uses this too.
+/// left, outputs on the right. A power pin that gives power (an output of a regulator,
+/// [`PartPin::gives_power`]) is an output too, so it goes on the right, where the schematic
+/// layout reads an output; a power pin that takes power or whose direction is not known stays
+/// above. The editor's box for a part with no symbol uses this too.
 pub fn side_of(pin: &PartPin) -> Side {
     match pin.kind {
         PinKind::Power if is_ground(pin) => Side::Bottom,
+        PinKind::Power if pin.gives_power() => Side::Right,
         PinKind::Power => Side::Top,
         PinKind::Input | PinKind::Passive => Side::Left,
         PinKind::Output | PinKind::TriState => Side::Right,
@@ -73,9 +78,12 @@ pub fn side_of(pin: &PartPin) -> Side {
 
 /// The electrical type of a pin of the pin table in KiCad's symbol. The table says `power`
 /// without saying whether the pin takes or gives power (that is the sign of a rail's current,
-/// which is known after the solve), so a power pin is a power input.
-pub fn pin_type(kind: PinKind) -> PinType {
-    match kind {
+/// which is known after the solve): a power pin that the solved design says gives power is a
+/// power output, and any other is a power input, so that a pin whose direction is not known
+/// asks its net for a source and never claims one that may not be there.
+pub fn pin_type(pin: &PartPin) -> PinType {
+    match pin.kind {
+        PinKind::Power if pin.gives_power() => PinType::PowerOut,
         PinKind::Power => PinType::PowerIn,
         PinKind::Input => PinType::Input,
         PinKind::Output => PinType::Output,
@@ -89,10 +97,27 @@ pub fn pin_type(kind: PinKind) -> PinType {
 /// The name of the symbol of a part of `kind` in `package`: `Lt8641_UDC20_18`. Only letters,
 /// digits and `_ - . +` stay, so that the name is one KiCad takes in a file name and an id.
 pub fn symbol_name(kind: &str, package: Option<&str>) -> String {
-    let raw = match package {
+    symbol_name_for(kind, package, &[])
+}
+
+/// The name of the symbol of `part`: [`symbol_name`], and, for a part with pins that give
+/// power, `_out` and the first pad of each (`LinearRegulator_SOT-223_out2`), so that two parts
+/// of one kind and package whose pins differ in direction (an output that one board loads and
+/// another leaves open) are two symbols with two names, as a library needs.
+fn symbol_name_for(kind: &str, package: Option<&str>, pins: &[PartPin]) -> String {
+    let mut raw = match package {
         Some(package) => format!("{kind}_{package}"),
         None => kind.to_string(),
     };
+    let mut giving: Vec<&str> = pins
+        .iter()
+        .filter(|p| p.kind == PinKind::Power && p.gives_power())
+        .filter_map(|p| p.pads.first().map(String::as_str))
+        .collect();
+    giving.sort_unstable();
+    if !giving.is_empty() {
+        raw = format!("{raw}_out{}", giving.join("-"));
+    }
     let mut name: String = raw
         .chars()
         .map(|c| {
@@ -125,7 +150,7 @@ pub fn symbol(part: &Part, footprint: &str) -> Option<Symbol> {
     if part.pins.is_empty() {
         return None;
     }
-    let name = symbol_name(&part.kind, part.package.as_deref());
+    let name = symbol_name_for(&part.kind, part.package.as_deref(), &part.pins);
     let definition = draw(
         &name,
         &reference_prefix(&part.refdes),
@@ -266,7 +291,7 @@ fn unit_node(name: &str, unit: usize, pins: &[&PartPin]) -> (Sexp, i32, bool, bo
         for (i, pad) in pin.pads.iter().enumerate() {
             nodes.push(pin_node(
                 if i == 0 {
-                    pin_type(pin.kind)
+                    pin_type(pin)
                 } else {
                     PinType::Passive
                 },
@@ -373,6 +398,7 @@ pub fn draw(name: &str, reference: &str, footprint: &str, units: &[Vec<&PartPin>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netsmith_core::PowerFlow;
 
     fn pin(name: &str, datasheet: &str, kind: PinKind, pads: &[&str]) -> PartPin {
         PartPin {
@@ -381,6 +407,7 @@ mod tests {
             kind,
             pads: pads.iter().map(|p| p.to_string()).collect(),
             function: None,
+            power_flow: None,
         }
     }
 
@@ -442,7 +469,7 @@ mod tests {
             for (i, pad) in p.pads.iter().enumerate() {
                 // The second pad of a pin lies on the first's point, hidden and passive.
                 let kind = if i == 0 {
-                    pin_type(p.kind).name()
+                    pin_type(p).name()
                 } else {
                     "passive"
                 };
@@ -461,8 +488,92 @@ mod tests {
             (PinKind::NoConnect, "no_connect"),
             (PinKind::TriState, "tri_state"),
         ] {
-            assert_eq!(pin_type(kind).name(), word);
+            assert_eq!(pin_type(&pin("p", "P", kind, &["1"])).name(), word);
         }
+    }
+
+    /// The pin table of [`ldo`], solved: its output gives power, its input takes it.
+    fn solved_ldo() -> Part {
+        let mut part = ldo();
+        for pin in &mut part.pins {
+            match pin.name.as_str() {
+                "vout.pos" => pin.power_flow = Some(PowerFlow::Gives),
+                "vin.pos" => pin.power_flow = Some(PowerFlow::Takes),
+                _ => {}
+            }
+        }
+        part
+    }
+
+    #[test]
+    fn a_power_pin_that_gives_power_is_a_power_output_on_the_right_and_the_others_stay() {
+        let part = solved_ldo();
+        let symbol = symbol(&part, "a:b").unwrap();
+        let rect = symbol.definition().find_all("symbol").next().unwrap();
+        let right_edge = rect.find("rectangle").unwrap().find("end").unwrap().args()[0]
+            .text()
+            .unwrap()
+            .parse::<f64>()
+            .unwrap();
+        // The output's first pad is a power output, on the right of the box, pointing left.
+        let out = symbol.pin("2").unwrap();
+        assert_eq!(out.kind.name(), "power_out");
+        assert!(out.x > right_edge && out.angle == 180.0, "{out:?}");
+        // Its second pad lies on the same point, hidden and passive, as for any pin.
+        let second = symbol.pin("7").unwrap();
+        assert_eq!(
+            (second.kind.name(), (second.x, second.y)),
+            ("passive", (out.x, out.y))
+        );
+        // A power pin that takes power is a power input above the box; so is the ground below.
+        let supply = symbol.pin("1").unwrap();
+        assert_eq!((supply.kind.name(), supply.angle), ("power_in", 270.0));
+        let ground = symbol.pin("9").unwrap();
+        assert_eq!((ground.kind.name(), ground.angle), ("power_in", 90.0));
+        // Nothing but the output changed against the table with no direction.
+        let plain = as_table(&super::symbol(&ldo(), "a:b").unwrap());
+        let drawn = as_table(&symbol);
+        let changed: Vec<_> = plain.iter().zip(&drawn).filter(|(a, b)| a != b).collect();
+        assert_eq!(changed.len(), 1, "{changed:?}");
+        assert_eq!(drawn.iter().filter(|p| p.2 == "power_out").count(), 1);
+    }
+
+    #[test]
+    fn a_power_pin_with_no_known_direction_is_a_power_input_above_the_box() {
+        for flow in [None, Some(PowerFlow::Takes)] {
+            let mut part = ldo();
+            part.pins[2].power_flow = flow;
+            let symbol = symbol(&part, "a:b").unwrap();
+            let out = symbol.pin("2").unwrap();
+            assert_eq!(
+                (out.kind.name(), out.angle),
+                ("power_in", 270.0),
+                "{flow:?}"
+            );
+            assert_eq!(symbol.lib_id(), "netsmith:Ldo8_DFN-8_EP", "{flow:?}");
+        }
+        // A direction on a pin that is not a power pin says nothing: a signal stays what its
+        // kind says.
+        let mut part = ldo();
+        part.pins[3].power_flow = Some(PowerFlow::Gives);
+        let symbol = symbol(&part, "a:b").unwrap();
+        assert_eq!(symbol.pin("4").unwrap().kind.name(), "output");
+        assert_eq!(symbol.lib_id(), "netsmith:Ldo8_DFN-8_EP");
+    }
+
+    #[test]
+    fn the_symbols_of_parts_that_differ_in_direction_have_names_that_differ() {
+        let giving = symbol(&solved_ldo(), "a:b").unwrap();
+        let plain = symbol(&ldo(), "a:b").unwrap();
+        assert_eq!(plain.lib_id(), "netsmith:Ldo8_DFN-8_EP");
+        assert_eq!(giving.lib_id(), "netsmith:Ldo8_DFN-8_EP_out2");
+        assert_ne!(giving.definition(), plain.definition());
+        // The same table, solved the same, is the same bytes.
+        let again = symbol(&solved_ldo(), "a:b").unwrap();
+        assert_eq!(
+            giving.definition().to_kicad_string(),
+            again.definition().to_kicad_string()
+        );
     }
 
     #[test]
