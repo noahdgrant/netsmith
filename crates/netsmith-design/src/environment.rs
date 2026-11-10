@@ -55,7 +55,7 @@ pub(crate) fn judge(
     let Some(field) = model.environment_temperature_of(board) else {
         // A member called `environment` that is not an environment: say which field is missing.
         errors.push(
-            "`environment` must be an environment such as `std::env::Environment`, with a `temperature` in kelvin (`.environment.temperature &= 233.15K..398.15K` is -40 C to 125 C)"
+            "`environment` must be an environment such as `std::env::Environment`, with a `temperature` (`.environment.temperature &= -40degC..125degC`)"
                 .to_string(),
         );
         return Vec::new();
@@ -67,7 +67,7 @@ pub(crate) fn judge(
             return vec![Guideline {
                 rule: "environment",
                 message: format!(
-                    "the board has an environment and `{path}` states no temperature, so no part is judged against it: state it, `.{path} &= 233.15K..398.15K` is -40 C to 125 C"
+                    "the board has an environment and `{path}` states no temperature, so no part is judged against it: state it, `.{path} &= -40degC..125degC`"
                 ),
                 at: Some(environment),
             }];
@@ -151,16 +151,16 @@ pub(crate) fn judge(
         // would only silence the finding.
         let example = match missing.last() {
             Some(&"temp_min") => {
-                format!("`.{first}.temp_min &= 233.15K` for a datasheet that says -40 C")
+                format!("`.{first}.temp_min &= -40degC` for a datasheet that says -40degC")
             }
-            _ => format!("`.{first}.temp_max &= 358.15K` for a datasheet that says 85 C"),
+            _ => format!("`.{first}.temp_max &= 85degC` for a datasheet that says 85degC"),
         };
         let ty = &types[&key];
         let (is_row, what) = &key;
         let message = if *is_row {
             let row = what.split_once(' ').map_or(what.as_str(), |(_, row)| row);
             format!(
-                "{} ({ty}) {} picked as {row} and its catalog row states {ends}, so {} not judged against the board's environment (`{path}` {range}): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, in kelvin) or state it on the part, as {example}",
+                "{} ({ty}) {} picked as {row} and its catalog row states {ends}, so {} not judged against the board's environment (`{path}` {range}): add the missing temperature of the datasheet to the row (`temp_min`, `temp_max`, such as `85degC`) or state it on the part, as {example}",
                 names.join(", "),
                 if group.len() > 1 { "were" } else { "was" },
                 if group.len() > 1 { "they are" } else { "it is" },

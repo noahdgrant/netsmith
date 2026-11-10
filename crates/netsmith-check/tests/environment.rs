@@ -62,6 +62,42 @@ fn every_part_has_a_range_that_it_or_the_board_may_state() {
 }
 
 #[test]
+fn a_temperature_in_degc_is_kelvin_underneath_and_a_sign_on_it_is_the_numbers() {
+    let m = model(
+        "board B {\n    .environment: Environment { .temperature &= -40degC..125degC }\n    .r: Resistor\n    .r.temp_min &= -55degC\n    .r.temp_max &= 0degC + 150K\n}\n",
+        "B",
+    );
+    let field = m.environment_temperature_of(part(&m, "r")).unwrap();
+    assert_eq!(ends(&m, field), (233.15, 398.15));
+    let (min, max) = m.temperature_range_of(part(&m, "r")).unwrap();
+    assert_eq!(ends(&m, min), (218.15, 218.15));
+    // A temperature plus a rise is a temperature; a difference of two is kelvin.
+    assert_eq!(ends(&m, max), (423.15, 423.15));
+}
+
+#[test]
+fn a_tolerance_is_a_difference_so_it_is_in_kelvin() {
+    let ok = check(
+        "t.nsm",
+        &format!("{HEAD}board B {{\n    .r: Resistor\n    .r.temp_max &= 85degC +/- 5K\n}}\n"),
+        &Loader::std(),
+    );
+    assert!(ok.is_ok(), "{}", ok.render());
+    let c = check(
+        "t.nsm",
+        &format!("{HEAD}board B {{\n    .r: Resistor\n    .r.temp_max &= 85degC +/- 5degC\n}}\n"),
+        &Loader::std(),
+    );
+    assert!(!c.is_ok());
+    assert!(
+        c.render()
+            .contains("a tolerance is a difference of temperatures: write it in kelvin"),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
 fn a_range_is_a_temperature_and_nothing_else() {
     let c = check(
         "t.nsm",
@@ -71,4 +107,44 @@ fn a_range_is_a_temperature_and_nothing_else() {
     assert!(!c.is_ok());
     let said = c.render();
     assert!(said.contains("temp_max"), "{said}");
+}
+
+#[test]
+fn each_named_environment_has_its_cited_range() {
+    // The ranges are the AEC-Q100 grades (Table 1) and the two conventions, each stated in the
+    // doc comment of its definition in `std/env.nsm`.
+    let ranges = [
+        ("Automotive", 233.15, 398.15),
+        ("AutomotiveGrade0", 233.15, 423.15),
+        ("AutomotiveGrade2", 233.15, 378.15),
+        ("AutomotiveGrade3", 233.15, 358.15),
+        ("Industrial", 233.15, 358.15),
+        ("Commercial", 273.15, 343.15),
+    ];
+    for (name, lo, hi) in ranges {
+        let c = check(
+            "t.nsm",
+            &format!(
+                "import std::env::{name}\nimport std::parts::passive::Resistor\nboard B {{\n    .environment: {name} {{}}\n    .r: Resistor\n}}\n"
+            ),
+            &Loader::std(),
+        );
+        assert!(c.is_ok(), "{name}: {}", c.render());
+        let m = c.board("B").unwrap().model.clone();
+        let field = m.environment_temperature_of(part(&m, "r")).unwrap();
+        assert_eq!(ends(&m, field), (lo, hi), "{name}");
+    }
+}
+
+#[test]
+fn a_board_narrows_a_named_environment_and_its_statement_replaces_the_offer() {
+    let c = check(
+        "t.nsm",
+        "import std::env::Automotive\nimport std::parts::passive::Resistor\nboard B {\n    .environment: Automotive {}\n    .environment.temperature &= -20degC..90degC\n    .r: Resistor\n}\n",
+        &Loader::std(),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    let m = c.board("B").unwrap().model.clone();
+    let field = m.environment_temperature_of(part(&m, "r")).unwrap();
+    assert_eq!(ends(&m, field), (253.15, 363.15));
 }

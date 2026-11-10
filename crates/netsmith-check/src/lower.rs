@@ -11,7 +11,7 @@
 
 use netsmith_lang::Span;
 use netsmith_lang::ast::{self, BinOp, CmpOp, Expr};
-use netsmith_quantity::{Dimension, Quantity, parse_unit};
+use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
 
 use crate::checker::{Checker, Res, Ty};
 use crate::diag::SourceId;
@@ -198,6 +198,24 @@ impl Checker<'_> {
             },
             Expr::Paren(inner, _) => self.lower(inner),
             Expr::Call { name, args, span } => self.lower_call(name, args, *span),
+            // A sign written on a literal in an offset unit is the literal's: `-40degC` is
+            // 233.15 K, not minus 313.15 K.
+            Expr::Neg(inner, span) if matches!(&**inner, Expr::Number(n, _) if n.unit.as_deref().is_some_and(is_offset_unit)) =>
+            {
+                let Expr::Number(n, _) = &**inner else {
+                    unreachable!("the guard matched a number")
+                };
+                match Quantity::literal(-n.value, n.unit.as_deref()) {
+                    Ok(lit) => Some(Typed {
+                        ty: VTy::Q(lit.quantity.dim()),
+                        e: RExpr::Const(lit.quantity),
+                    }),
+                    Err(err) => {
+                        self.error(*span, err.to_string());
+                        None
+                    }
+                }
+            }
             Expr::Neg(inner, span) => {
                 let t = self.lower(inner)?;
                 let VTy::Q(_) = t.ty else {
@@ -253,6 +271,14 @@ impl Checker<'_> {
                 let c = self.lower(center);
                 let t = self.lower(tol);
                 let (c, t) = (c?, t?);
+                if matches!(&**tol, Expr::Number(n, _) if n.unit.as_deref().is_some_and(is_offset_unit))
+                {
+                    self.error(
+                        *span,
+                        "a tolerance is a difference of temperatures: write it in kelvin (`20degC +/- 5K`), not in degC",
+                    );
+                    return None;
+                }
                 let relative = matches!(
                     &**tol,
                     Expr::Number(n, _)

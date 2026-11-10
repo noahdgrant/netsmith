@@ -10,10 +10,11 @@ use netsmith::{outcome_with, render_problems};
 use netsmith_check::Loader;
 use netsmith_solve::Catalogs;
 
-/// The kelvin of -40 C, 85 C and 125 C.
-const COLD: &str = "233.15K";
-const WARM: &str = "358.15K";
-const HOT: &str = "398.15K";
+/// -40 C, 85 C and 125 C, as `degC` literals (ADR 0103). The tests that state a figure in kelvin
+/// (the project's `VEHICLE` below, the cells of a catalog) show that the two spellings are one.
+const COLD: &str = "-40degC";
+const WARM: &str = "85degC";
+const HOT: &str = "125degC";
 
 /// A board with a supply, one resistor and a crystal, and `extra` inside it.
 fn board(extra: &str) -> String {
@@ -55,7 +56,7 @@ fn jlcpcb() -> Catalogs {
     c
 }
 
-/// A board that states the environment `low..high` (kelvin).
+/// A board that states the environment `low..high`.
 fn with_environment(low: &str, high: &str) -> String {
     board(&format!(
         "    .environment: Environment {{ .temperature &= {low}..{high} }}\n"
@@ -107,7 +108,7 @@ fn a_part_whose_range_does_not_cover_the_environment_is_refused_with_the_numbers
     );
     assert!(
         e.contains(
-            "4 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40 C to 125 C)"
+            "4 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"
         ),
         "{e}"
     );
@@ -127,12 +128,12 @@ fn a_row_that_states_no_range_is_offered_and_named_with_what_to_add() {
         "{message}"
     );
     assert!(
-        message.contains("not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C))"),
+        message.contains("not judged against the board's environment (`environment.temperature` 233.15 K to 358.15 K (-40degC to 85degC))"),
         "{message}"
     );
     assert!(
         message.contains(
-            "or state it on the part, as `.r1.temp_max &= 358.15K` for a datasheet that says 85 C"
+            "or state it on the part, as `.r1.temp_max &= 85degC` for a datasheet that says 85degC"
         ),
         "{message}"
     );
@@ -180,7 +181,7 @@ fn a_stated_range_that_does_not_cover_the_environment_is_an_error_naming_the_par
     );
     let e = refused(&board(&extra), &jlcpcb());
     assert!(
-        e.contains("`r1` works up to 348.15 K (75 C) only (the design states `.r1.temp_max`), under the board's environment, which reaches 358.15 K (85 C) (`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C))"),
+        e.contains("`r1` works up to 348.15 K (75degC) only (the design states `.r1.temp_max`), under the board's environment, which reaches 358.15 K (85degC) (`environment.temperature` 233.15 K to 358.15 K (-40degC to 85degC))"),
         "{e}"
     );
 }
@@ -223,7 +224,7 @@ fn a_row_that_does_not_cover_the_environment_is_passed_over_for_the_next() {
         findings[0]
     );
     assert!(
-        findings[0].contains("`.r1.temp_min &= 233.15K` for a datasheet that says -40 C"),
+        findings[0].contains("`.r1.temp_min &= -40degC` for a datasheet that says -40degC"),
         "{}",
         findings[0]
     );
@@ -243,7 +244,7 @@ fn an_environment_that_states_no_temperature_is_named() {
 }
 
 #[test]
-fn a_cell_that_is_not_a_temperature_in_kelvin_is_refused_with_its_line() {
+fn a_cell_that_is_not_a_temperature_is_refused_with_its_line() {
     let rows = |min: &str, max: &str| {
         let mut c = Catalogs::jlcpcb();
         c.add_file(
@@ -259,7 +260,7 @@ fn a_cell_that_is_not_a_temperature_in_kelvin_is_refused_with_its_line() {
     assert!(
         e.contains("catalogs/resistor.csv:2")
             && e.contains("`temp_max`")
-            && e.contains("a temperature in kelvin such as `358.15K` (85 C)"),
+            && e.contains("a temperature such as `85degC` or `358.15K`"),
         "{e}"
     );
     let e = rows("", "350K..360K").unwrap_err();
@@ -274,6 +275,88 @@ fn a_cell_that_is_not_a_temperature_in_kelvin_is_refused_with_its_line() {
     );
     let e = rows("-300K", "").unwrap_err();
     assert!(e.contains("below absolute zero"), "{e}");
+    let e = rows("-300degC", "").unwrap_err();
+    assert!(e.contains("below absolute zero"), "{e}");
+}
+
+#[test]
+fn a_cell_may_be_written_in_degc_or_in_kelvin_and_is_the_same_temperature() {
+    // `-40degC` and `233.15K` (and `85degC` and `358.15K`) are one temperature: a row in either
+    // spelling is judged the same, and the sign of `-40degC` is the number's.
+    let row = |min: &str, max: &str| {
+        let mut c = Catalogs::jlcpcb();
+        c.add_file(
+            "resistor",
+            "catalogs/resistor.csv",
+            &format!(
+                "mpn,resistance,max_power,package,temp_min,temp_max,library,source\nACME-D,71.5kohm +/- 1%,62.5mW,0402,{min},{max},Basic,https://example.invalid/acme.pdf\n"
+            ),
+        )
+        .unwrap();
+        c
+    };
+    for (min, max) in [("-40degC", "85degC"), ("233.15K", "358.15K")] {
+        let b = build(&with_environment(COLD, WARM), &row(min, max)).unwrap();
+        // The resistor is judged and met the environment: only nothing is named for it.
+        let findings = environment_findings(&b);
+        assert!(findings.is_empty(), "{min}..{max}: {findings:#?}");
+    }
+    // 80degC is under the board's 85degC: the row is left out, so the resistor has nothing.
+    let e = refused(&with_environment(COLD, WARM), &row("-40degC", "80degC"));
+    assert!(
+        e.contains("have nothing") || e.contains("has nothing"),
+        "{e}"
+    );
+}
+
+/// A Schottky diode across a 12 V rail, in an environment `low..high`. The standard SS34 row is
+/// the one rated 3 A: its datasheet gives a junction range, -55 to +125 degC (`TJ`).
+fn diode_board(low: &str, high: &str) -> String {
+    format!(
+        "\
+import std::env::Environment
+import std::parts::diode::Schottky
+import std::sources::Rail
+
+board Clamp {{
+    .environment: Environment {{ .temperature &= {low}..{high} }}
+    .supply: Rail {{
+        .voltage &= 12V +/- 5%
+        .pos.net &= \"VIN\"
+        .neg.net &= \"GND\"
+    }}
+    .d: Schottky {{
+        .max_reverse_voltage &= 40V
+        .max_forward_current &= 3A
+    }}
+    .supply.neg ~> .d ~> .supply.pos
+}}
+"
+    )
+}
+
+#[test]
+fn a_junction_range_is_the_parts_range_and_a_range_that_covers_the_environment_passes() {
+    // -55 to +125 degC covers -40 to 125 degC: the diode is judged by it and is not named, and
+    // the self-heating of the diode is not computed.
+    let b = build(&diode_board("-40degC", "125degC"), &jlcpcb()).unwrap();
+    assert!(
+        b.sourcing.iter().any(|s| s.mpn.as_deref() == Some("SS34")),
+        "{:?}",
+        b.sourcing
+    );
+    let findings = environment_findings(&b);
+    assert!(
+        findings.iter().all(|f| !f.contains("`d`")),
+        "the diode states its junction range and must not be named: {findings:#?}"
+    );
+    // The same figure refuses a hotter environment, as any stated range does.
+    let e = refused(&diode_board("-40degC", "130degC"), &jlcpcb());
+    assert!(
+        e.contains("the `schottky` catalog has nothing for `d`")
+            && e.contains("left out because the temperatures they state do not cover"),
+        "{e}"
+    );
 }
 
 // ---- the manifest's default (ADR 0099) -------------------------------------------------
@@ -332,7 +415,7 @@ fn the_manifest_gives_every_board_without_an_environment_the_one_it_names() {
     assert!(
         findings[0].contains("`r1` (Resistor)")
             && findings[0]
-                .contains("`environment.temperature` 233.15 K to 358.15 K (-40 C to 85 C)"),
+                .contains("`environment.temperature` 233.15 K to 358.15 K (-40degC to 85degC)"),
         "{}",
         findings[0]
     );
@@ -359,7 +442,7 @@ fn a_board_that_declares_its_own_environment_has_that_one_alone() {
     let e = built(&root, &main).map(|_| ()).unwrap_err();
     assert!(
         e.contains("the `crystal` catalog has nothing for `xtal`")
-            && e.contains("`.environment.temperature` 233.15 K to 398.15 K (-40 C to 125 C)"),
+            && e.contains("`.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"),
         "{e}"
     );
 }
@@ -375,7 +458,10 @@ fn a_board_that_only_states_the_temperature_has_the_manifests_environment_as_dec
         &main,
     );
     let e = built(&root, &main).map(|_| ()).unwrap_err();
-    assert!(e.contains("233.15 K to 398.15 K (-40 C to 125 C)"), "{e}");
+    assert!(
+        e.contains("233.15 K to 398.15 K (-40degC to 125degC)"),
+        "{e}"
+    );
     // The same board with a range inside the offer builds.
     let main = board(&format!("    .environment.temperature &= {COLD}..{WARM}\n"));
     built(
@@ -387,6 +473,33 @@ fn a_board_that_only_states_the_temperature_has_the_manifests_environment_as_dec
         &main,
     )
     .unwrap();
+}
+
+#[test]
+fn a_standard_named_environment_is_the_default_and_the_crystals_judge_it() {
+    // `Industrial` is -40 to 85 degC: the standard crystal rows (-40 to 85 degC) cover it.
+    let main = board("");
+    let root = project("named-ok", "environment = \"std::env::Industrial\"", &main);
+    let b = built(&root, &main).unwrap();
+    assert!(b.sourcing.iter().any(|s| s.kind == "Crystal"));
+    // `Automotive` is AEC-Q100 Grade 1, -40 to 125 degC: none of them does.
+    let root = project("named-hot", "environment = \"std::env::Automotive\"", &main);
+    let e = built(&root, &main).map(|_| ()).unwrap_err();
+    assert!(
+        e.contains("the `crystal` catalog has nothing for `xtal`")
+            && e.contains("`.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"),
+        "{e}"
+    );
+    // A board that declares one and narrows its offer is judged against the narrowed range.
+    let main = board(&format!(
+        "    .environment: Automotive {{}}\n    .environment.temperature &= {COLD}..{WARM}\n"
+    ))
+    .replace(
+        "import std::env::Environment",
+        "import std::env::Automotive",
+    );
+    let root = project("named-narrowed", "", &main);
+    built(&root, &main).unwrap();
 }
 
 #[test]
