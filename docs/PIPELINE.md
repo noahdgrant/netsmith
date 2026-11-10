@@ -45,7 +45,7 @@ flowchart TD
 
     design --> export
     subgraph S4["4. Export"]
-        export["Map parts to KiCad symbols and footprints,<br/>check pin table against them, write the schematic"]
+        export["Map parts to symbols and footprints (netsmith's own,<br/>KiCad's libraries only for a project's KiCad id),<br/>check pin table against them, write the schematic"]
     end
     export --> sch[("out/: .kicad_sch, .kicad_pro<br/>netsmith build ends here")]
     side --> export
@@ -97,8 +97,10 @@ flowchart TD
     opt -- "no, or --pins locked" --> inc(["INCOMPLETE as before,<br/>proposal in out/pins.proposed.toml"])
 ```
 
-`build` runs stages 1 to 4. The editor runs the same stages on each edit but skips the KiCad
-libraries, so it needs no KiCad. `fab` repeats stages 1 to 4 in the same process, then goes on
+`build` runs stages 1 to 4. The editor runs the same stages on each edit. None of `build`, `fab` and
+the editor needs a KiCad install: netsmith answers the ids of its own mapping itself, and reads an
+installed KiCad library only for a KiCad id of a project's `kicad.toml` that it does not make (ADR
+0097). `fab` repeats stages 1 to 4 in the same process, then goes on
 (ADR 0076 gives about 1.25 s for a 60-part board, optimised build; the router may take up to 300 s).
 
 ## Inside the solver

@@ -1,14 +1,20 @@
 //! The KiCad libraries a build reads: the mapping from parts to symbol and footprint names,
 //! and the symbol and footprint libraries themselves (ADR 0016, ADR 0021; where the libraries come
-//! from is ADR 0097's question, proposed).
+//! from is ADR 0097's).
+//!
+//! netsmith answers the ids of its own mapping itself (generated symbols and footprints, `std/libs/`,
+//! `gen:` footprints), so a run needs no KiCad install. An installed library is asked only for an id
+//! that netsmith cannot answer, a KiCad id of a project's `kicad.toml` that no `[[library]]` and no
+//! generator covers; only then does a missing install stop a run ([`needs_kicad`]).
 
 use std::path::Path;
 use std::sync::Arc;
 
 use netsmith_core::Design;
 use netsmith_kicad::install::Search;
-use netsmith_kicad::{Mapping, Symbol, SymbolLib, stdlib, testlib};
-use netsmith_pcb::FootprintLibrary;
+use netsmith_kicad::mapping::Mapped;
+use netsmith_kicad::{Mapping, Symbol, SymbolError, SymbolLib, stdlib, testlib};
+use netsmith_pcb::{FootprintError, FootprintLibrary};
 
 /// What `build`, `fab` and `view` read from KiCad. `check` and `solve` need none of it.
 pub struct Libraries {
@@ -38,7 +44,120 @@ pub fn check_generated_footprints(mapping: &Mapping) -> Result<(), String> {
     Ok(())
 }
 
+/// What `needs_kicad` says about the id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wanted {
+    Symbol,
+    Footprint,
+}
+
+/// The message of a run that stops because a part names a KiCad id that netsmith cannot answer
+/// (it is asked only after the generators and `std/libs/` have not) and no installed library has
+/// it: the part, the id, the `kicad.toml` line, where it looked (only when `looked` says it did)
+/// and the three ways out. `kind` and `package` are the part's; `origin` is the row's
+/// `file line N` ([`Mapped::origin`]).
+pub fn needs_kicad(
+    wanted: Wanted,
+    refdes: &str,
+    kind: &str,
+    package: Option<&str>,
+    id: &str,
+    origin: &str,
+    looked: &str,
+) -> String {
+    let (noun, third) = match wanted {
+        Wanted::Symbol => (
+            "symbol",
+            "omit `symbol` in that row, and netsmith draws the part from its pin table",
+        ),
+        Wanted::Footprint => (
+            "footprint",
+            "give that row a `gen:` footprint, for a package a generator makes (`footprint = \"gen:SOT23(pins=3)\"`)",
+        ),
+    };
+    let part = match package {
+        Some(package) => format!("part `{kind}` in package `{package}`"),
+        None => format!("part `{kind}`"),
+    };
+    format!(
+        "{refdes}: {part} needs KiCad's {noun} `{id}` ({origin}), and no installed KiCad \
+         library has it.\n{looked}\n\
+         Three ways out: install KiCad 9, so that netsmith reads its libraries; supply the file \
+         through a `[[library]]` of kicad.toml; or {third}."
+    )
+}
+
 impl Libraries {
+    /// Whether `id` (`Library:Name`) is KiCad's: its library is neither one the project lists in
+    /// `kicad.toml` nor netsmith's own (`std/libs/`), whose errors say what is wrong with them.
+    fn is_kicads(&self, id: &str) -> bool {
+        !stdlib::is_library_id(id)
+            && !id.split_once(':').is_some_and(|(library, _)| {
+                self.mapping.libraries().iter().any(|l| l.name == library)
+            })
+    }
+
+    /// The message for a footprint that could not be loaded, when the cause is that it is a
+    /// KiCad id no installed library has; `None` for any other error, which says its own cause.
+    pub fn footprint_needs_kicad(
+        &self,
+        refdes: &str,
+        kind: &str,
+        package: Option<&str>,
+        mapped: &Mapped,
+        error: &FootprintError,
+    ) -> Option<String> {
+        let looked = match error {
+            FootprintError::NoInstall { lookup, .. } => lookup.to_string(),
+            // An install was found and has no such file: the error says the path it looked for
+            // and the variable that moves the search.
+            FootprintError::NotFound { project: false, .. } => error.to_string(),
+            _ => return None,
+        };
+        self.is_kicads(&mapped.footprint).then(|| {
+            needs_kicad(
+                Wanted::Footprint,
+                refdes,
+                kind,
+                package,
+                &mapped.footprint,
+                &mapped.origin,
+                &looked,
+            )
+        })
+    }
+
+    /// The message for a symbol that could not be read, when the cause is that it is a KiCad id
+    /// no installed library has; `None` for any other error.
+    pub fn symbol_needs_kicad(
+        &self,
+        refdes: &str,
+        kind: &str,
+        package: Option<&str>,
+        mapped: &Mapped,
+        error: &SymbolError,
+    ) -> Option<String> {
+        let id = mapped.lib_id.as_deref()?;
+        let looked = match error {
+            SymbolError::NoInstall { lookup, .. } => lookup.to_string(),
+            SymbolError::NoLibrary { project: false, .. } | SymbolError::NoSymbol { .. } => {
+                error.to_string()
+            }
+            _ => return None,
+        };
+        self.is_kicads(id).then(|| {
+            needs_kicad(
+                Wanted::Symbol,
+                refdes,
+                kind,
+                package,
+                id,
+                &mapped.origin,
+                &looked,
+            )
+        })
+    }
+
     /// The installed KiCad libraries (found as `netsmith_kicad::install` describes, ADR 0021)
     /// with the standard mapping, and nothing of a project.
     pub fn standard() -> Libraries {

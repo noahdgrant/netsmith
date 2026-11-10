@@ -755,12 +755,131 @@ board B {
     )
     .err()
     .expect("the build should fail: the project's footprint is KiCad's");
+    // The message names the part, the id and the line of `kicad.toml`, and says the three ways
+    // out (install KiCad 9, a `[[library]]`, a `gen:` footprint or no `symbol`).
+    assert!(e.contains("part `Coax` in package `Jack35`"), "{e}");
+    assert!(
+        e.contains(&format!("needs KiCad's footprint `{id}`")),
+        "{e}"
+    );
+    assert!(e.contains("(kicad.toml line 5)"), "{e}");
+    assert!(e.contains("Three ways out: install KiCad 9"), "{e}");
+    assert!(e.contains("`[[library]]` of kicad.toml"), "{e}");
+    assert!(e.contains("`gen:` footprint"), "{e}");
+    // It looked, and lists where.
     assert!(e.contains("no KiCad "), "{e}");
+    assert!(e.contains("looked in:"), "{e}");
     assert!(e.contains("usr/share/kicad/"), "{e}");
     assert!(e.contains("Applications/KiCad/KiCad.app"), "{e}");
     assert!(e.contains("mnt/c/Program Files/KiCad/9.0"), "{e}");
     assert!(e.contains("NETSMITH_KICAD_SYMBOLS"), "{e}");
     assert!(e.contains("NETSMITH_KICAD_FOOTPRINTS"), "{e}");
+}
+
+/// `text` of a project's row that maps a coaxial jack to the KiCad id `symbol` and `footprint`.
+fn coax_project(symbol: &str, footprint: &str) -> TempDir {
+    let project = TempDir::new("no-install-coax");
+    std::fs::write(
+        project.path().join("kicad.toml"),
+        format!(
+            "[[part]]\nkind = \"Coax\"\npackage = \"Jack35\"\n\
+             symbol = \"{symbol}\"\nfootprint = \"{footprint}\"\n"
+        ),
+    )
+    .unwrap();
+    project
+}
+
+const COAX_BOARD: &str = "\
+import std::parts::connector::{Coax, Header1x2}
+
+board B {
+    .rf: Coax {
+        .package &= \"Jack35\"
+        .assembly &= AssemblyMode::Hand
+    }
+    .j1: Header1x2
+    .rf.signal ~ .j1.p1
+    .rf.shield ~ .j1.p2
+}
+";
+
+#[test]
+fn a_symbol_of_kicad_that_netsmith_does_not_make_names_the_part_the_id_and_the_row() {
+    use netsmith_kicad::install::Search;
+    let nowhere = TempDir::new("no-install-symbol");
+    let machine = Search::under(nowhere.path());
+    // The footprint is generated, so only the symbol is KiCad's.
+    let id = "Connector_Audio:AudioJack2";
+    assert!(!netsmith_kicad::stdlib::is_library_id(id));
+    let project = coax_project(id, "gen:PinHeader(rows=1, pins=2, pitch=2.54mm)");
+    let libraries = Libraries::for_project_by(Some(project.path()), &machine).unwrap();
+    let e = build_with(
+        "t.nsm",
+        COAX_BOARD,
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .err()
+    .expect("the build should fail: the project's symbol is KiCad's");
+    assert!(e.contains("part `Coax` in package `Jack35`"), "{e}");
+    assert!(e.contains(&format!("needs KiCad's symbol `{id}`")), "{e}");
+    assert!(e.contains("(kicad.toml line 5)"), "{e}");
+    assert!(e.contains("Three ways out: install KiCad 9"), "{e}");
+    assert!(e.contains("omit `symbol`"), "{e}");
+    assert!(e.contains("looked in:"), "{e}");
+}
+
+#[test]
+fn a_search_switched_off_says_so_and_lists_no_places() {
+    use netsmith_kicad::install::Search;
+    let nowhere = TempDir::new("no-install-off");
+    let machine = Search::under(nowhere.path()).with_no_kicad();
+    let id = "Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal";
+    let project = coax_project("Connector:Conn_Coaxial", id);
+    let libraries = Libraries::for_project_by(Some(project.path()), &machine).unwrap();
+    let e = build_with(
+        "t.nsm",
+        COAX_BOARD,
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .err()
+    .expect("the build should fail: the footprint is KiCad's");
+    assert!(e.contains("part `Coax` in package `Jack35`"), "{e}");
+    assert!(e.contains(id), "{e}");
+    assert!(e.contains("Three ways out"), "{e}");
+    // It looked nowhere, and does not list places it did not look at.
+    assert!(e.contains("NETSMITH_NO_KICAD"), "{e}");
+    assert!(!e.contains("looked in"), "{e}");
+    assert!(!e.contains("usr/share/kicad"), "{e}");
+}
+
+#[test]
+fn a_board_of_standard_parts_builds_with_the_search_for_kicad_finding_nothing() {
+    use netsmith_kicad::install::Search;
+    let nowhere = TempDir::new("std-no-kicad");
+    let machine = Search::under(nowhere.path()).with_no_kicad();
+    // No project: the standard mapping alone, and no KiCad library anywhere.
+    let libraries = Libraries::for_project_by(None, &machine).unwrap();
+    assert!(!libraries.symbols.root().is_dir());
+    assert!(!libraries.footprints.root().is_dir());
+    for (name, text) in [
+        ("led.nsm", LED),
+        ("linear_regulator.nsm", REGULATOR),
+        ("status_indicator.nsm", STATUS),
+        ("four_layer.nsm", FOUR_LAYER),
+        ("two_boards.nsm", TWO_BOARDS),
+    ] {
+        let built = build_with(name, text, &Loader::std(), &Catalogs::jlcpcb(), &libraries)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(
+            built.iter().all(|b| !b.schematic.is_empty()),
+            "{name} wrote no schematic"
+        );
+    }
 }
 
 #[test]

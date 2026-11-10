@@ -43,6 +43,8 @@ For a change to the editor or to a view it shows, also run the browser check in 
 
 `build` and `fab` find KiCad's `symbols` and `footprints` folders with `netsmith_kicad::install` (ADR 0021): `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`, then beside `kicad-cli`, then the usual install places. A test of the lookup builds a fake install tree with `install::Search::under(<temp dir>)`; do not rely on this machine's KiCad.
 
+No run needs KiCad (ADR 0097): `NETSMITH_NO_KICAD=1` makes the search find nothing, and `scripts/check-no-kicad.sh [path/to/netsmith]` builds and fabs every example with the libraries and `kicad-cli` hidden (the `no-kicad` CI job runs it). Run it after a change to the exporters, `std/kicad.toml` or the libraries. A `Libraries` of a test that must not see this machine's KiCad is `Libraries::for_project_by(root, &Search::under(<temp dir>).with_no_kicad())`.
+
 The Gerbers, drill files and placement file are netsmith's own (ADR 0034). After changing `crates/netsmith-fab` (`plot`, `fill`, `pads`, `drill`, `font`), run `cargo run -p netsmith-fab --example crosscheck -- <board.kicad_pcb> --out /tmp/xc` on a board with the feature you changed: it plots with KiCad too and writes a picture of each layer that differs (grey both, white only netsmith, dark grey only KiCad). `crates/netsmith-fab/tests/data/features.kicad_pcb` has every shape; extend it (and its generator's idea, a plain text file) when you add a feature.
 
 Check a generated schematic and board against real KiCad (needs `poppler-utils`):

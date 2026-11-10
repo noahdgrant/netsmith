@@ -9,8 +9,9 @@
 # with LICENSE, README.md and checksums) and attaches the archives and their .sha256 files to the
 # GitHub release of the tag (a draft one if there is none). No Node is installed: the editor's
 # page is the committed bundle.
-# `build` and `fab` need KiCad's libraries, so each runner installs KiCad for the smoke test; the
-# archives do not contain KiCad (a user needs KiCad's libraries too, see the README).
+# `build` and `fab` need no KiCad (ADR 0097); the runners still install it for the smoke test, which
+# the starter board does not need: the `no-kicad` job of ci.yml proves the examples build without it,
+# so the installs below can go once the smoke test has run without them on all three systems.
 name: release
 
 on:
