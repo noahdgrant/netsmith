@@ -1,0 +1,113 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[EnclosureSensor.parts."ldo.input_cap"]
+catalog = "capacitor"
+row = "10uF 20% 10V X5R 0402 C315248"
+lcsc = "C315248"
+mpn = "CL05A106MP5NUNC"
+
+[EnclosureSensor.parts."ldo.output_cap"]
+catalog = "capacitor"
+row = "22uF 20% 6.3V X5R 0603 C59461"
+lcsc = "C59461"
+mpn = "CL10A226MQ8NRNC"
+
+[EnclosureSensor.parts."ldo.regulator"]
+catalog = "ldo"
+row = "XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446"
+lcsc = "C5446"
+mpn = "XC6206P332MR-G"
+
+[EnclosureSensor.parts."lights.led_a"]
+catalog = "led"
+row = "XL-1608UGC-04 GREEN LED 0603 C965804"
+lcsc = "C965804"
+mpn = "XL-1608UGC-04"
+
+[EnclosureSensor.parts."lights.led_b"]
+catalog = "led"
+row = "XL-1608UGC-04 GREEN LED 0603 C965804"
+lcsc = "C965804"
+mpn = "XL-1608UGC-04"
+
+[EnclosureSensor.parts."lights.led_c"]
+catalog = "led"
+row = "XL-1608UGC-04 GREEN LED 0603 C965804"
+lcsc = "C965804"
+mpn = "XL-1608UGC-04"
+
+[EnclosureSensor.parts."lights.r_a"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+
+[EnclosureSensor.parts."lights.r_b"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+
+[EnclosureSensor.parts."lights.r_c"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+
+[EnclosureSensor.parts."mcu_bypass"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EnclosureSensor.parts."pullups.scl_pullup"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"
+
+[EnclosureSensor.parts."pullups.sda_pullup"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"
+
+[EnclosureSensor.parts."radio.bypass"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EnclosureSensor.parts."radio.row_a"]
+catalog = "header"
+row = "PM2.54-1X10P-H85 10-pin 2.54mm socket C42431852"
+lcsc = "C42431852"
+mpn = "PM2.54-1X10P-H85"
+
+[EnclosureSensor.parts."radio.row_b"]
+catalog = "header"
+row = "PM2.54-1X10P-H85 10-pin 2.54mm socket C42431852"
+lcsc = "C42431852"
+mpn = "PM2.54-1X10P-H85"
+
+[EnclosureSensor.parts."rd1"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0603 C23186"
+lcsc = "C23186"
+mpn = "0603WAF5101T5E"
+
+[EnclosureSensor.parts."rd2"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0603 C23186"
+lcsc = "C23186"
+mpn = "0603WAF5101T5E"
+
+[EnclosureSensor.parts."wp_pullup"]
+catalog = "resistor"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
