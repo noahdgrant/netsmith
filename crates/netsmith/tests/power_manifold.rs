@@ -658,10 +658,10 @@ mod board {
                     rest[..rest.find('"').unwrap()].to_string()
                 })
             };
-            if let (Some(reference), Some(lcsc)) = (property("Reference"), property("LCSC")) {
-                if !lcsc.is_empty() {
-                    out.insert(reference, lcsc);
-                }
+            if let (Some(reference), Some(lcsc)) = (property("Reference"), property("LCSC"))
+                && !lcsc.is_empty()
+            {
+                out.insert(reference, lcsc);
             }
         }
         out
@@ -688,10 +688,10 @@ mod board {
         let mut other = Vec::new();
         for s in &built.sourcing {
             let reference = &to_reference[&s.refdes];
-            if let Some(number) = theirs.get(reference) {
-                if s.lcsc.as_deref() != Some(number.as_str()) {
-                    other.push(reference.as_str());
-                }
+            if let Some(number) = theirs.get(reference)
+                && s.lcsc.as_deref() != Some(number.as_str())
+            {
+                other.push(reference.as_str());
             }
         }
         other.sort_by_key(|r| r[1..].parse::<u32>().unwrap_or(0));
