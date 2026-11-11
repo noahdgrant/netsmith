@@ -17,6 +17,7 @@ mod constraints;
 mod defaults;
 mod dxf;
 mod easyduino;
+mod easyduino_parity;
 mod editor;
 mod editor_cancel;
 mod editor_compare;

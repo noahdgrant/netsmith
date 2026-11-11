@@ -3,8 +3,9 @@
 A port of the open **Easyduino ESP32-S3** board to netsmith, the second showcase board of epic
 #308 (after the RP2350A Minimal). **The schematic is done**: `src/main.nsm` is the board
 `EasyduinoEsp32s3`, the same circuit as Easyduino's, with its nets proved equal by a test
-(below). **The physical file (outline, fixed places of the interface parts) and the parity
-gate are the next item**: `netsmith fab` is not run on this project yet.
+(below). **The physical file and the parity gate are done too**: `netsmith fab` writes a
+four-layer board with Easyduino's outline, receptacles, buttons and headers where theirs are
+(see "The PCB" below).
 
 ## Source
 
@@ -48,7 +49,7 @@ netsmith's** (MIT, like the rest of the repository).
    nets" below).
 2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable with
    theirs in these ways, and the parity checker with tolerances will fail when one is off:
-   - the board outline (25.86 x 63.90 mm; see NOTE-FOR-LATER: the file draws it in U2);
+   - the board outline (25.86 x 63.90 mm; the file draws it in U2, see NOTE-FOR-LATER);
    - the two USB-C receptacles (J1, J2), the buttons (SW1, SW2) and the headers (U2): the same
      positions, rotations and pads, with each header pin carrying the same signal.
 
@@ -87,11 +88,12 @@ From this folder:
 
 ```sh
 netsmith build    # the schematic, in out/
-netsmith fab      # the package for the board house, in fab/
+netsmith fab      # the package for the board house, in fab/ (about 5 s)
 ```
 
-`build` needs no KiCad install (`NETSMITH_NO_KICAD=1 netsmith build` is the same). `fab` has no
-outline to place the parts on yet (the physical file is the next item); do not run it.
+`build` and `fab` need no KiCad install (`NETSMITH_NO_KICAD=1 netsmith fab` is the same). `fab`
+with no pin request needs no `--locked`, but the gate runs it so (`netsmith fab --locked`: the
+pick lock must be current, and nothing is written beside the sources).
 
 `netsmith compare` reads their board file as one side, but the bare command is not the proof:
 `netsmith compare reference/Easyduino_ESP32S3.kicad_pcb src/main.nsm --loose-values` says that
@@ -102,6 +104,83 @@ because the designators come out in another order and several parts are intercha
 CC resistors of the two receptacles, the three 100 nF on EN and GPIO0), the bare run pairs
 some of them across and lists nets that are the same as different. The test below pairs the
 parts by a table and compares the wiring alone.
+
+## The PCB
+
+`src/main.physical.nsm` is the physical file: the outline and the place, rotation and face of
+the five parts that must match, each number read from `reference/placements.toml` with a
+comment of the line it comes from; `src/main.pcb.toml` is the layout file (the placer's seed,
+and one recorded part, below). `netsmith fab` writes the board as a four-layer JLCPCB board
+(`.top.net`, `.bottom.net` and `.inner1.net` ground, `.inner2.net` +3.3 V, from `main.nsm`).
+
+- **The outline** is a 25.86 x 63.8972 mm rectangle with square corners (`.outline: Outline`
+  in the `case` section), measured from the board's upper-left corner. Their file draws it in
+  four lines inside the footprint U2 (the headers); ours is drawn by the physical file and
+  the footprint of U2 draws no `Edge.Cuts` (a test holds that).
+- **J1, J2, SW1, SW2, U2** are placed by `.usb_uart.connector`, `.usb_native.connector`,
+  `.reset`, `.boot` and `.headers`: x, y, rotation and face. A requirement is measured from a
+  part's **body** (what its footprint draws on `F.Fab`, else the courtyard) and the checker
+  compares the footprint's origin, so for J1 and J2 (courtyard 1.25 mm above the origin) and U2
+  (courtyard centred on the pads, 11.43 and 26.67 mm from the origin) the comment gives the
+  conversion. J1, J2 and U2 are not turned, SW2 is turned 180 degrees, all are on the top
+  face.
+- **The holes** are the receptacles' two 0.65 mm pegs each, which the receptacle's footprint
+  draws; there is no line for them, and the checker finds each at the table's place because
+  the receptacle is.
+- **U2's courtyard is drawn on `B.CrtYd` only** (`libs/easyduino_must_match.pretty`). A
+  footprint has one courtyard box, and a through-hole part's box also takes in every hole,
+  so the 44 holes of two rows 22.86 mm apart would make the whole board U2's courtyard on the
+  top face and no other part could stand between the rows, where Easyduino's module,
+  buttons, bridge and passives are. A footprint that draws its courtyard on one face only
+  is judged on the other face by its pad boxes (ADR 0031), so drawn on the back it leaves
+  the top face free up to the header pads. The price: nothing can be on the back face, which
+  is what the original does (all 35 parts are on top). The box is the pads and 0.1 mm (the
+  process keeps courtyards 0.4 mm from the edge and the pads are 0.5 mm from it).
+- **The module is recorded and locked in the layout file** (`at = [12.96, 18.5]`, top face, not
+  turned): with the buttons where Easyduino's are, the placer does not find a place for the
+  module (every seed put it on the back face or over the header pads). Easyduino's own module
+  is 7 mm higher with its antenna 5.9 mm past the top edge of the board; this one is on the
+  board, so no overhang is stated. The module need not match, and the gate does not look at it.
+
+### Run the parity check
+
+```sh
+netsmith fab --locked          # from this folder; writes fab/EasyduinoEsp32s3/
+cargo run -p netsmith --example parity -- fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
+    --table reference/placements.toml --map reference/designators.toml \
+    --svg reference/parity-overlay.svg
+```
+
+The checker (`netsmith::parity`, from the RP2350A Minimal's) reads both files from the upper-left
+corner of the outline and exits 1 when a must-match item fails. `reference/designators.toml` pairs
+all 35 of Easyduino's parts with the ones `fab` writes (the headers are J3 on our board, the bridge
+U2, the regulator U3: references follow declaration order); a test holds it against the design's
+own designators, and prints the map when it is stale. The gate is `crates/netsmith/tests/easyduino_parity.rs`
+(`NETSMITH_NO_KICAD=1`, `fab --locked --route-timeout 20`, every must-match item `ok`, and the
+committed overlay equal to the one the board gives). `reference/parity-overlay.svg` is the
+checker's picture of the run: Easyduino's outline, holes, parts and pads in blue and the
+board's in orange (the checker's legend says "Raspberry Pi's board" for the blue: it is its
+fixed wording, the blue is Easyduino's here). It is regenerated by the last command above.
+
+**Result: `must-match: 202 ok, 0 failed`.** Per item: the outline 3 (size, corner radius, the
+four lines), the four holes (J1 and J2's pegs, place and drill, 0.00 mm off), J1 45 and J2 45
+(position, rotation, layer, each of 22 pads' geometry and net), SW1 7 and SW2 7 (position,
+rotation, layer, two pads' geometry and nets), U2 91 (position, rotation, layer and every one
+of the 44 pads' centre, size, shape, drill and net: each header pin carries its original's
+signal). Every difference is 0.000 mm. 30 warnings: a pad's net is named differently on the
+two boards (the generated names) and the pads on it are the same.
+
+**Not matched, reported only:** the module (8.65 mm lower than theirs, as it is on the board),
+the bridge, the regulator, the transistors, the LEDs, the diodes, the resistors and capacitors
+(positions and turns), the pads of D2, D3, Q1 and Q2 (our footprints are the makers' land
+patterns or the generators', not Easyduino's: 0.16 and 0.26 mm), and the routing. Two parts of
+ours differ from theirs by design (README, "Differences from the reference"): R6 and R11
+have their pads exchanged, and U3's chip is the CP2102N.
+
+**`fab`:** placement 3.5 s, routing 137 of 137 connections in 1.4 s (try 1), the design rules
+check passed (0 violations, 0 warnings), 20 of 20 requirements met, `fab.total` 4.8 s (a debug
+build in which `netsmith-pcb` is optimised, `NETSMITH_TIMINGS=1`). `scripts/check-no-kicad.sh`
+runs it.
 
 ## Same nets
 
@@ -219,7 +298,7 @@ it is four `fp_line`s on `Edge.Cuts` inside the footprint U2 (`Espressif:ESP32-S
 own graphics only and found no outline. It now places a footprint's `Edge.Cuts` shapes on the
 board. The rectangle spans x 127.105 to 152.965 and y 58.6514 to 122.5486 (25.86 x 63.8972
 mm), no rounded corners. The board has no `gr_*` item on `Edge.Cuts`. A copy made by netsmith
-will draw its outline itself in the physical file; U2 is not a part to place.
+draws its outline itself in the physical file (done: see "The PCB"); U2 is placed like J1, J2, SW1 and SW2.
 
 **U2 is the headers.** It has 44 `thru_hole` oval pads (1.2 x 2 mm, drill 0.8 mm, pitch 2.54
 mm), two rows 22.86 mm apart: pads 1 to 22 at x = 0, top to bottom, and pads 23 to 44 at x =
@@ -396,10 +475,10 @@ the part's pin table.
     pad (44 ovals, 1.2 x 2.0 mm turned 270 degrees as the file has them, drill 0.8 mm,
     thru-hole), the 2.54 pitch and the 22.86 row spacing, the origin at pad 1. Pads 20 to 22 are at
     the grid's place here and 3.7 um and 2.7 um off it in the file (the parity tolerance is 0.05).
-    Courtyard: the pads and 0.25. **The footprint does not draw the board's outline**: the
+    Courtyard: the pads and 0.1 mm, drawn on `B.CrtYd` only (see "The PCB": it leaves the board's top face free between the rows). **The footprint does not draw the board's outline**: the
     reference's U2 draws the four `Edge.Cuts` lines of the 25.86 x 63.90 mm board inside the
     footprint; here they are not copied, and a test checks that no footprint of the library has
-    `Edge.Cuts`. The physical-file stage draws the outline itself, with a rectangle from x 127.105 to
+    `Edge.Cuts`. The physical file draws the outline itself, with a rectangle from x 127.105 to
     152.965 and y 58.6514 to 122.5486 in the reference's frame (U2's origin is at 128.605,
     59.75136), and places U2, J1, J2, SW1 and SW2 where the table has them.
 - **D1 to D4, the standard `Led`** in the 0402 package (the footprint is the generator's, pad 1 the
