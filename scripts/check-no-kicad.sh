@@ -25,8 +25,9 @@
 #   - NETSMITH_KICAD_SYMBOLS and NETSMITH_KICAD_FOOTPRINTS name empty folders;
 #   - KICAD_CLI is unset;
 #   - the directories of PATH that hold a kicad-cli are removed from it.
-# `fab` prints a note when it finds no kicad-cli; the script requires that note, as the proof that
-# KiCad really was hidden from it.
+# `fab` prints a note when it finds no kicad-cli, "KiCad is switched off" when NETSMITH_NO_KICAD is
+# set (it is, here) and "KiCad is not installed" when it simply finds none; the script requires
+# one of the two, as the proof that KiCad really was hidden from it.
 #
 # Usage: scripts/check-no-kicad.sh [path/to/netsmith]
 # Without an argument it builds the debug binary with `cargo build -p netsmith` first. The examples
@@ -109,7 +110,7 @@ step() {
         failed=1
         return
     fi
-    if [ "$1" = fab ] && ! grep -q 'KiCad is not installed' "$work/log"; then
+    if [ "$1" = fab ] && ! grep -Eq 'KiCad is (switched off|not installed)' "$work/log"; then
         echo "FAIL  $label: fab did not report that it found no kicad-cli, so KiCad was not hidden"
         sed 's/^/      /' "$work/log"
         failed=1

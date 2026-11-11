@@ -573,7 +573,7 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                 // two requests that are one signal in C stop the build before it writes.
                 let mut pin_maps = Vec::new();
                 for b in &boards {
-                    match pin_maps_of(b, &pins, &source.name) {
+                    match pin_maps_of(b, &pins, &source.stable_name(target.project.as_ref())) {
                         Ok(map) => pin_maps.push(map),
                         Err(message) => {
                             eprintln!("{message}");
@@ -705,7 +705,10 @@ fn run_fab(
             }
             return ExitCode::from(2);
         }
-        eprintln!("{}", netsmith::fab::NO_KICAD_NOTE);
+        eprintln!(
+            "{}",
+            netsmith::fab::no_kicad_note(&netsmith_kicad::install::Search::machine())
+        );
     }
     let options = FabOptions {
         route_timeout: match route_timeout {
