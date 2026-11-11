@@ -567,15 +567,19 @@ fn part_items(
     warnings: &mut Vec<String>,
 ) {
     let (rc, ac) = (corner(r), corner(a));
-    // A mounting hole is a part of nothing but non-plated pads that the hole check judges. A
-    // connector with a peg is a part, and its peg is one of its pads.
+    // A mounting hole is a part of nothing but non-plated pads, or a plated hole of KiCad's
+    // `MountingHole_*_Pad*` family (its drilled pad, and perhaps a ring of vias that need not
+    // be copied), that the hole check judges by place and drill. A connector with a peg is a
+    // part, and its peg is one of its pads.
     let hole_refs: BTreeSet<&str> = r
         .parts
         .iter()
         .filter(|p| {
             !p.pads.is_empty()
-                && p.pads.iter().all(|pad| pad.kind == "np_thru_hole")
-                && r.holes.iter().any(|h| h.reference == p.reference)
+                && r.holes.iter().any(|h| {
+                    h.reference == p.reference
+                        && (h.plated || p.pads.iter().all(|pad| pad.kind == "np_thru_hole"))
+                })
         })
         .map(|p| p.reference.as_str())
         .collect();
@@ -1122,7 +1126,7 @@ fn overlay(rep: &ParityReport) -> String {
     );
     let _ = writeln!(
         s,
-        "<title>Parity overlay: Raspberry Pi's board (blue) and netsmith's (orange)</title>"
+        "<title>Parity overlay: the original board (blue) and netsmith's (orange)</title>"
     );
     let _ = writeln!(
         s,
@@ -1225,7 +1229,7 @@ fn overlay(rep: &ParityReport) -> String {
     let ly = height + margin - 1.0;
     let _ = writeln!(
         s,
-        "<g class=\"legend\" stroke=\"none\"><text x=\"0\" y=\"{}\" fill=\"{BLUE}\">blue: Raspberry Pi's board</text>\
+        "<g class=\"legend\" stroke=\"none\"><text x=\"0\" y=\"{}\" fill=\"{BLUE}\">blue: the original board</text>\
          <text x=\"16\" y=\"{}\" fill=\"{ORANGE}\">orange: netsmith's board</text>\
          <text x=\"34\" y=\"{}\" fill=\"{RED}\">red: a must-match item that fails</text>\
          <text x=\"0\" y=\"{}\" fill=\"#4a5568\">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text>\

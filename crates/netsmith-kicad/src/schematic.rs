@@ -1621,6 +1621,57 @@ mod tests {
         assert_eq!(root.find_all("no_connect").count(), 1);
     }
 
+    /// The points of the schematic's no-connect markers, as written.
+    fn marker_points(root: &Sexp) -> Vec<(String, String)> {
+        root.find_all("no_connect")
+            .map(|m| {
+                let at = m.find("at").unwrap().args();
+                (at[0].text().unwrap().into(), at[1].text().unwrap().into())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_no_connect_pin_of_several_pads_is_one_marker_on_a_stack_of_passive_pins() {
+        // KiCad's ERC calls a `no_connect` pad with another pad on its point connected, flag
+        // or no flag, so every pad of the stack is `passive` and the point gets one marker.
+        let mut d = drawn_regulator_design();
+        let extra = |name: &str, kind: PinKind, pads: &[&str]| PartPin {
+            name: name.into(),
+            datasheet: name.to_uppercase(),
+            kind,
+            pads: pads.iter().map(|p| p.to_string()).collect(),
+            function: None,
+            power_flow: None,
+        };
+        d.parts[2].pins.extend([
+            extra("nc", PinKind::NoConnect, &["4", "5", "6"]),
+            extra("spare", PinKind::NoConnect, &["7"]),
+            extra("unused", PinKind::Output, &["8", "9"]),
+        ]);
+        let root = parsed(&d);
+        for pad in ["4", "5", "6", "8", "9"] {
+            assert_eq!(
+                type_written(&root, "U1", pad),
+                if pad == "8" { "output" } else { "passive" },
+                "pad {pad}"
+            );
+        }
+        // A lone no-connect pad is typed so and has no marker; the stack of three has one, and
+        // so does the output nothing reaches (the three nets are labelled).
+        assert_eq!(type_written(&root, "U1", "7"), "no_connect");
+        let points = marker_points(&root);
+        assert_eq!(points.len(), 2, "{points:?}");
+        let mut unique = points.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique, {
+            let mut sorted = points.clone();
+            sorted.sort();
+            sorted
+        });
+    }
+
     #[test]
     fn a_pad_stacked_with_a_connected_one_needs_no_flag() {
         let (_dir, mapping, lib) = acme(&["Stacked"]);

@@ -46,6 +46,7 @@ mod mosfet_drive;
 mod note_causes;
 mod open_circle;
 mod orbit;
+mod orbit_parity;
 mod order;
 mod order_lock;
 mod overhang;

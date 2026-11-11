@@ -11,7 +11,8 @@
 //!   table does not say which unit a pin is in, so [`symbol`] draws one unit, and a part that
 //!   has several (a library symbol's) is drawn as it always was.
 //! - A pin for every pad of the table: the pin's first pad is the visible pin, the others lie
-//!   on its point, hidden and `passive`, as KiCad's own symbols stack the pads of one pin.
+//!   on its point, hidden and `passive`, as KiCad's own symbols stack the pads of one pin (the
+//!   first pad of a `no_connect` pin of several pads is `passive` too: `first_pad_type`).
 //! - The pin's name is the datasheet's, and its electrical type follows its kind and, for a power
 //!   pin, whether the solved design says it gives power ([`pin_type`]).
 //! - Every pin and the box are on KiCad's 50 mil (1.27 mm) grid.
@@ -103,6 +104,20 @@ pub fn pin_type(pin: &PartPin) -> PinType {
         PinKind::Passive => PinType::Passive,
         PinKind::NoConnect => PinType::NoConnect,
         PinKind::TriState => PinType::TriState,
+    }
+}
+
+/// The electrical type of the first pad of `pin`, the visible one: [`pin_type`], except for a
+/// `no_connect` pin of several pads, which is `passive` like the pads stacked on it. KiCad's ERC
+/// takes the pads of one point to be connected to each other, and says that a `no_connect` pad
+/// with another pad on its point "is connected" (`no_connect_connected`), flag or no flag; the
+/// stack is `passive` all through, and the schematic puts one `no_connect` marker on the point
+/// (as for any pin that no net reaches), which KiCad accepts.
+fn first_pad_type(pin: &PartPin) -> PinType {
+    if pin.kind == PinKind::NoConnect && pin.pads.len() > 1 {
+        PinType::Passive
+    } else {
+        pin_type(pin)
     }
 }
 
@@ -325,7 +340,7 @@ fn unit_node(
         for (i, pad) in pin.pads.iter().enumerate() {
             nodes.push(pin_node(
                 if i == 0 {
-                    pin_type(pin)
+                    first_pad_type(pin)
                 } else {
                     PinType::Passive
                 },
@@ -503,7 +518,7 @@ mod tests {
             for (i, pad) in p.pads.iter().enumerate() {
                 // The second pad of a pin lies on the first's point, hidden and passive.
                 let kind = if i == 0 {
-                    pin_type(p).name()
+                    first_pad_type(p).name()
                 } else {
                     "passive"
                 };
@@ -524,6 +539,37 @@ mod tests {
         ] {
             assert_eq!(pin_type(&pin("p", "P", kind, &["1"])).name(), word);
         }
+    }
+
+    #[test]
+    fn every_pad_of_a_no_connect_pin_of_several_pads_is_passive_and_a_lone_pad_is_no_connect() {
+        // KiCad's ERC says `no_connect_connected` of a `no_connect` pad with another pad on its
+        // point, so the stack is passive and the schematic's one marker covers it.
+        let part = part(
+            "Nc3",
+            Some("P"),
+            vec![
+                pin("many", "NC", PinKind::NoConnect, &["1", "2", "3"]),
+                pin("one", "NC", PinKind::NoConnect, &["4"]),
+                pin("gnd", "GND", PinKind::Power, &["5", "6"]),
+                pin("out", "OUT", PinKind::Output, &["7", "8"]),
+            ],
+        );
+        let symbol = symbol(&part, "a:b").unwrap();
+        assert_eq!(
+            as_table(&symbol),
+            [
+                ("1", "NC", "passive"),
+                ("2", "NC", "passive"),
+                ("3", "NC", "passive"),
+                ("4", "NC", "no_connect"),
+                ("5", "GND", "power_in"),
+                ("6", "GND", "passive"),
+                ("7", "OUT", "output"),
+                ("8", "OUT", "passive"),
+            ]
+            .map(|(p, n, k)| (p.to_string(), n.to_string(), k))
+        );
     }
 
     /// The pin table of [`ldo`], solved: its output gives power, its input takes it.
