@@ -9,8 +9,9 @@
 
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
 use super::params::Params;
+use crate::body3d::Package;
 use crate::footprint::{Footprint, Mount};
-use crate::geometry::Pt;
+use crate::geometry::{Pt, Rect};
 
 /// The most pins in a row that are generated.
 const MOST_PER_ROW: usize = 40;
@@ -30,12 +31,16 @@ impl Part {
     }
 }
 
-/// A pitch and its pad and hole.
+/// A pitch and its pad, hole and square pin.
 struct Pitch {
     text: &'static str,
     mm: f64,
     pad: f64,
     drill: f64,
+    /// The side of the square pin, which the hole fits with room to spare (the header and
+    /// socket makers' drawings: 0.64 mm at 2.54 mm, 0.5 mm at 2.0 mm). Only the 3D view
+    /// reads it.
+    pin: f64,
 }
 
 const PITCHES: [Pitch; 2] = [
@@ -44,12 +49,14 @@ const PITCHES: [Pitch; 2] = [
         mm: 2.54,
         pad: 1.7,
         drill: 1.0,
+        pin: 0.64,
     },
     Pitch {
         text: "2.00",
         mm: 2.0,
         pad: 1.35,
         drill: 0.8,
+        pin: 0.5,
     },
 ];
 
@@ -181,6 +188,7 @@ fn header(
     );
     // Pins are numbered along the rows: 1 and 2 are side by side in a two row part.
     let direction = if part == Part::Header { 1.0 } else { -1.0 };
+    let mut pins = Vec::with_capacity(rows * per_row);
     for row in 0..per_row {
         for column in 0..rows {
             let number = row * rows + column + 1;
@@ -189,11 +197,13 @@ fn header(
             } else {
                 Shape::Oval
             };
+            let at = Pt::new(direction * column as f64 * pitch.mm, row as f64 * pitch.mm);
+            pins.push(at);
             drawing.pad(&PadSpec::new(
                 number,
                 Kind::Through(pitch.drill),
                 shape,
-                Pt::new(direction * column as f64 * pitch.mm, row as f64 * pitch.mm),
+                at,
                 (pitch.pad, pitch.pad),
             ));
         }
@@ -246,5 +256,14 @@ fn header(
     );
 
     let top = outward(y0 - 0.5);
-    drawing.finish(top - 0.53, outward(y1 + 0.5) + 0.52)
+    super::shaped(
+        drawing.finish(top - 0.53, outward(y1 + 0.5) + 0.52),
+        Package::Header {
+            body: Rect::new(Pt::new(x0, y0), Pt::new(x1, y1)),
+            pitch: pitch.mm,
+            pin: pitch.pin,
+            pins,
+            socket: part == Part::Socket,
+        },
+    )
 }

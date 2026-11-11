@@ -206,7 +206,23 @@ use std::sync::OnceLock;
 
 use netsmith_kicad::footprint_spec::{self, FootprintSpec};
 
+use crate::body3d::{Lead, Package};
 use crate::footprint::Footprint;
+
+/// `footprint` with what its generator knows of the package's shape (for the 3D view only).
+fn shaped(mut footprint: Footprint, package: Package) -> Footprint {
+    footprint.package = Some(package);
+    footprint
+}
+
+/// The leads under the copper pads `pads` (the numbered ones, pin 1 first), on the edges of a
+/// body of `body`.
+fn leads_of(pads: &[draw::PadSpec], body: (f64, f64)) -> Vec<Lead> {
+    pads.iter()
+        .filter(|p| !p.number.is_empty())
+        .map(|p| Lead::at_pad(p.at, body))
+        .collect()
+}
 
 /// The generators a project can ask for by name and parameters (`gen:QFN(...)`, ADR 0104).
 pub const GENERATORS: [&str; 8] = [

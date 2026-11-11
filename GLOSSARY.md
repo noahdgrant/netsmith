@@ -656,6 +656,10 @@ _Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a pict
 The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it and netsmith's own rasterizer draws PNG renders of it (ADR 0105).
 _Avoid_: Model, mesh (a mesh is one piece of it), 3D export
 
+**Package shape**:
+The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). Another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.
+_Avoid_: 3D model (KiCad's or a maker's file), parametric model, mesh
+
 **Height preview**:
 A switch of the 3D view, labelled "preview at N mm", that stands the parts of unknown height up at N mm in the picture only. No check, finding, report, written file or the _Height coverage_ reads it (ADR 0105).
 _Avoid_: Default height, assumed height, placeholder height

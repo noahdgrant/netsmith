@@ -275,12 +275,21 @@ fn quad_flat_pack_in(p: &Package, library: &str, name: &str) -> Footprint {
     if let Some((size, paste)) = p.exposed {
         exposed_pad(&mut drawing, p.pins + 1, size, paste);
     }
-    quad_frame(
+    let package = crate::body3d::Package::GullWing {
+        body: (p.body, p.body),
+        span: (overall, overall),
+        lead_width: p.lead_width.nominal(),
+        lead_length: LEAD_LENGTH.nominal(),
+        leads: super::leads_of(&pads, (p.body, p.body)),
+        exposed: p.exposed.map(|(size, _)| size),
+    };
+    let footprint = quad_frame(
         drawing,
         &pads,
         per_side,
         per_side,
         (p.body, p.body),
         class.courtyard,
-    )
+    );
+    super::shaped(footprint, package)
 }

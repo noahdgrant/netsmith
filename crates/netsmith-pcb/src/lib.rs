@@ -28,6 +28,7 @@
 
 mod anneal;
 pub mod board;
+pub mod body3d;
 pub mod constraints;
 mod explain;
 pub mod export;
