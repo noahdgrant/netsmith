@@ -8503,13 +8503,36 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-   --> std/parts/regulator.nsm:99:5
-   |
-99 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    --> std/parts/regulator.nsm:104:5
+    |
+104 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 An output below the reference cannot be made, because the divider can only raise it: `.vout &= 0.9V +/- 1%` with a 1.0 V reference is refused in the same way.
+
+A board that needs the divider's resistors in one size states it on the divider, `.package &= "0603"`: both resistors are then picked in that package. A board that states nothing leaves the pick to the solver, as above.
+
+```nsm solve
+import std::parts::regulator::FeedbackDivider
+import std::sources::Rail
+
+board SizedDivider {
+    .divider: FeedbackDivider {
+        .vref &= 1.0V +/- 1%
+        .vout &= 3.8V +/- 3%
+        .current <= 1mA
+        .package &= "0603"
+    }
+    .out: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    .divider.top ~ .out.pos
+    .divider.bottom ~ .out.neg
+    .out.voltage == .divider.vout
+}
+```
 
 ### Switching regulators
 
@@ -8672,14 +8695,14 @@ board Overload {
 
 ```text
 error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:170:5
+    --> std/parts/regulator.nsm:175:5
     |
-170 |     -.sw.current <= .max_output_current
+175 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:426:5
+    --> std/parts/regulator.nsm:431:5
     |
-426 |     -.vout.current <= .buck.max_output_current
+431 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8748,9 +8771,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:436:5
+    --> std/parts/regulator.nsm:441:5
     |
-436 |     .on_time >= .buck.min_on_time
+441 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8825,9 +8848,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `stage.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`stage.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:443:5
+    --> std/parts/regulator.nsm:448:5
     |
-443 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+448 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -12399,7 +12422,7 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
 
-A board that needs a size for the resistor states it on the module: `PullUp`, `PullDown` and `I2cPullups` each have an `optional` `.package` (a text such as `"0402"`) that they forward to the resistor inside, so the board never reaches into the module (the design rule that a module is configured through its interface). `I2cPullups` gives the one package to both of its resistors. A board that states nothing leaves the pick to the solver, as before: the relation that forwards the member is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
+A board that needs a size for the resistor states it on the module: `PullUp`, `PullDown`, `I2cPullups` and `FeedbackDivider` each have an `optional` `.package` (a text such as `"0402"`) that they forward to the resistor inside, so the board never reaches into the module (the design rule that a module is configured through its interface). `I2cPullups` and `FeedbackDivider` give the one package to both of their resistors. A board that states nothing leaves the pick to the solver, as before: the relation that forwards the member is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
 
 ```nsm evaluate
 import std::bus::PullUp

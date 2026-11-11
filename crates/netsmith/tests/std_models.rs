@@ -36,10 +36,15 @@ fn picked(s: &Solution, path: &str) -> String {
 
 /// A divider that makes `vout` from a reference `vref`, on a board that takes its output.
 fn divider(vref: &str, vout: &str) -> String {
+    divider_with(vref, vout, "")
+}
+
+/// The same divider, with `extra` lines (such as a package) in its body.
+fn divider_with(vref: &str, vout: &str, extra: &str) -> String {
     format!(
         "import std::parts::regulator::FeedbackDivider\nimport std::sources::Rail\n\n\
          board Adjustable {{\n    .divider: FeedbackDivider {{\n        .vref &= {vref}\n        \
-         .vout &= {vout}\n    }}\n    .out: Rail {{\n        .pos.net &= \"VOUT\"\n        \
+         .vout &= {vout}\n        {extra}\n    }}\n    .out: Rail {{\n        .pos.net &= \"VOUT\"\n        \
          .neg.net &= \"GND\"\n    }}\n    .divider.top ~ .out.pos\n    .divider.bottom ~ .out.neg\n    \
          .out.voltage == .divider.vout\n}}\n"
     )
@@ -1185,6 +1190,58 @@ fn an_i2c_pullups_package_that_no_row_has_is_refused_with_its_name() {
     let all = messages(&s).join("\n");
     assert!(
         all.contains("has nothing for `pullups.sda_pullup`") && all.contains("\"0201\""),
+        "the usual message names the part and the package: {all}"
+    );
+}
+
+// ---- the package of the resistors inside FeedbackDivider (owner decision of 2026-11-11, item PK2) ----
+
+#[test]
+fn a_board_states_the_package_of_both_resistors_of_a_feedback_divider() {
+    let s = run(&divider_with(
+        "1.0V +/- 1%",
+        "3.8V +/- 3%",
+        ".package &= \"0402\"",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(package_of(&s, "divider.rtop.package"), "0402");
+    assert_eq!(package_of(&s, "divider.rbottom.package"), "0402");
+    let s = run(&divider_with(
+        "1.0V +/- 1%",
+        "3.8V +/- 3%",
+        ".package &= \"0603\"",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(package_of(&s, "divider.rtop.package"), "0603");
+    assert_eq!(package_of(&s, "divider.rbottom.package"), "0603");
+}
+
+#[test]
+fn a_feedback_divider_whose_package_nobody_states_is_picked_as_before() {
+    let s = run(&divider("1.0V +/- 1%", "3.8V +/- 3%"));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(picked(&s, "divider.rtop"), "6.2k");
+    assert_eq!(picked(&s, "divider.rbottom"), "2.2k");
+    // The solver chooses each resistor's package on its own: the pair is of two sizes today.
+    assert_eq!(package_of(&s, "divider.rtop.package"), "0603");
+    assert_eq!(package_of(&s, "divider.rbottom.package"), "0402");
+    assert!(
+        !not_evaluated(&s).iter().any(|r| r.contains("package")),
+        "an unstated package is no open relation: {:?}",
+        not_evaluated(&s)
+    );
+}
+
+#[test]
+fn a_feedback_dividers_package_that_no_row_has_is_refused_with_its_name() {
+    let s = run(&divider_with(
+        "1.0V +/- 1%",
+        "3.8V +/- 3%",
+        ".package &= \"0201\"",
+    ));
+    let all = messages(&s).join("\n");
+    assert!(
+        all.contains("has nothing for `divider.rbottom`") && all.contains("\"0201\""),
         "the usual message names the part and the package: {all}"
     );
 }
