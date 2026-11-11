@@ -1,0 +1,34 @@
+//! The XKB TS-1187A-B-A-B tactile switch (SMD, 5.1 x 5.1 mm, 1.5 mm high, 160 gf; LCSC
+//! C318884): SW1 (RESET) and SW2 (USER) of ORBIT, by the number in the author's schematic.
+//!
+//! XKB's drawing (TACT SWITCH TS-1187A-X-X-X, revision A0, one sheet) names four terminals
+//! A, B, C and D and draws A joined to B, C joined to D, and the button between the two pairs:
+//! the same circuit as the Wurth switch of the RP2350A Minimal. As there, each pair is one pin
+//! here, so a board states the net of a pair once. The pads are ORBIT's numbers: the two upper
+//! pads of its footprint are both numbered 1 and the two lower both 2, so the pair that
+//! carries RESET (or +3.3 V on the USER button) is `.a`, pad 1, and the other is `.b`, pad 2.
+//! The drawing's letters and the board's numbers are tied by nothing but the board.
+//!
+//! The ratings are the drawing's: contact rating 50 mA at 12 V DC.
+
+/// A single-pole, normally open push button with a pair of terminals on each side.
+part XkbTs1187a {
+    .designator &= "SW"
+
+    pins "SMD-4P,5.1x5.1mm" {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .rated_current: Current
+    .rated_voltage: Voltage
+    /// Through-current, a to b, while pressed.
+    .current: Current
+
+    .current <= .rated_current
+    bridge .a ~> .b
+
+    .mpn: String
+    .package: Package
+    catalog xkb_ts_1187a by .mpn { .mpn, .package, .rated_current, .rated_voltage }
+}
