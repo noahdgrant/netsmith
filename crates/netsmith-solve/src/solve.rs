@@ -357,6 +357,9 @@ pub struct Pick {
     /// range unless the design states one.
     pub temp_min: Option<f64>,
     pub temp_max: Option<f64>,
+    /// The row's `qualification` cell, `Aec` or `None` (ADR 0099): the part's qualification
+    /// unless the design states one. `Option::None` is a row that says nothing.
+    pub qualification: Option<String>,
     /// The cited range of the row's dielectric class, when it names a class that has one: it
     /// judges an end that neither the design nor the row states, and is the class's and not a
     /// datasheet's (`netsmith_check::environment::ClassRange`).
@@ -4011,6 +4014,7 @@ impl Solver<'_> {
                                 height: c.height,
                                 temp_min: c.temp_min,
                                 temp_max: c.temp_max,
+                                qualification: c.qualification.clone(),
                                 temp_class: c.class_range(),
                                 generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
                                 rejected: examined,
@@ -4219,10 +4223,16 @@ impl Solver<'_> {
         (end(min, true), end(max, false))
     }
 
+    /// Whether a candidate is out of the board's environment: its own range of temperatures
+    /// does not cover it, or it says it is not what the board requires of qualification.
+    fn outside_environment(&self, part: InstId, c: &Candidate) -> bool {
+        self.outside_temperatures(part, c) || self.unqualified(part, c)
+    }
+
     /// Whether a candidate's own range of temperatures, where the design states none for the
     /// part, does not cover the environment of its board at an end the row states. A row that
     /// states nothing is not out: it is offered, and the design stage names it (ADR 0099).
-    fn outside_environment(&self, part: InstId, c: &Candidate) -> bool {
+    fn outside_temperatures(&self, part: InstId, c: &Candidate) -> bool {
         let (row_min, row_max) = c.temperatures();
         if row_min.is_none() && row_max.is_none() {
             return false;
@@ -4239,42 +4249,100 @@ impl Solver<'_> {
         .refused()
     }
 
+    /// The variant of `Qualification` that a field of a part or of an environment states
+    /// (`Aec`, `None`), or `None` when nothing states it.
+    fn stated_variant(&self, field: FieldId) -> Option<String> {
+        match &self.model.field(field).domain {
+            Domain::Text(variant) => Some(variant.clone()),
+            _ => None,
+        }
+    }
+
+    /// Whether the board of a part requires a qualification of its parts
+    /// (`.environment.qualification &= Qualification::Aec`, ADR 0099).
+    fn requires_qualification(&self, part: InstId) -> bool {
+        let required = self
+            .model
+            .environment_qualification_of(part)
+            .and_then(|f| self.stated_variant(f));
+        netsmith_check::environment::requires_qualification(required.as_deref())
+    }
+
+    /// Whether a candidate says it is not qualified where the board requires qualification: the
+    /// design's own `.qualification` of the part, else the row's cell, is a variant that is not
+    /// `Aec`. A row that says nothing is not out: it is offered, and the design stage names it,
+    /// or refuses it if the design states `None` (ADR 0099), as for a range.
+    fn unqualified(&self, part: InstId, c: &Candidate) -> bool {
+        if c.qualification.is_none() || !self.requires_qualification(part) {
+            return false;
+        }
+        let stated = self
+            .model
+            .member(part, "qualification")
+            .and_then(|m| match m {
+                Member::Field(f) => self.stated_variant(f),
+                _ => None,
+            });
+        let claim = stated.or_else(|| c.qualification.clone());
+        netsmith_check::environment::QualificationFit::of(claim.as_deref())
+            == netsmith_check::environment::QualificationFit::NotMet
+    }
+
     /// What to add to a message when rows were left out because the temperatures they state
-    /// do not cover the board's environment.
+    /// do not cover the board's environment, or because they say they are not qualified where
+    /// the board requires it.
     fn environment_note(&self, job: &Job) -> Option<String> {
-        let (lo, hi) = self.environment_range(job.part)?;
-        let out: Vec<&Candidate> = job
+        let mut notes: Vec<String> = Vec::new();
+        if let Some((lo, hi)) = self.environment_range(job.part) {
+            let out: Vec<&Candidate> = job
+                .catalog
+                .candidates
+                .iter()
+                .filter(|c| self.outside_temperatures(job.part, c))
+                .collect();
+            let left_out = out.len();
+            // A row judged by the range of its class has said nothing of its own about an end:
+            // say which, because that range is the class's and a datasheet's may be narrower or wider.
+            let mut by_class: Vec<&str> = out
+                .iter()
+                .filter(|c| {
+                    c.class_range().is_some() && (c.temp_min.is_none() || c.temp_max.is_none())
+                })
+                .filter_map(|c| c.class_range().map(|r| r.class))
+                .collect();
+            by_class.sort_unstable();
+            by_class.dedup();
+            let class_note = if by_class.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; a row that states no temperature of its own is judged by the range of its dielectric class ({}), which is the class's and not its datasheet's: add `temp_min` and `temp_max` to the row to say its own",
+                    by_class.join(", ")
+                )
+            };
+            if left_out > 0 {
+                notes.push(format!(
+                    "{left_out} {} left out because the temperatures {} state do not cover the board's environment, `.environment.temperature` {}: a row's `temp_min` and `temp_max` are its datasheet's{class_note}",
+                    if left_out == 1 { "row was" } else { "rows were" },
+                    if left_out == 1 { "it" } else { "they" },
+                    netsmith_check::environment::show_range(lo, hi),
+                ));
+            }
+        }
+        let left_out = job
             .catalog
             .candidates
             .iter()
-            .filter(|c| self.outside_environment(job.part, c))
-            .collect();
-        let left_out = out.len();
-        // A row judged by the range of its class has said nothing of its own about an end:
-        // say which, because that range is the class's and a datasheet's may be narrower or wider.
-        let mut by_class: Vec<&str> = out
-            .iter()
-            .filter(|c| c.class_range().is_some() && (c.temp_min.is_none() || c.temp_max.is_none()))
-            .filter_map(|c| c.class_range().map(|r| r.class))
-            .collect();
-        by_class.sort_unstable();
-        by_class.dedup();
-        let class_note = if by_class.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "; a row that states no temperature of its own is judged by the range of its dielectric class ({}), which is the class's and not its datasheet's: add `temp_min` and `temp_max` to the row to say its own",
-                by_class.join(", ")
-            )
-        };
-        (left_out > 0).then(|| {
-            format!(
-                "{left_out} {} left out because the temperatures {} state do not cover the board's environment, `.environment.temperature` {}: a row's `temp_min` and `temp_max` are its datasheet's{class_note}",
+            .filter(|c| self.unqualified(job.part, c))
+            .count();
+        if left_out > 0 {
+            notes.push(format!(
+                "{left_out} {} left out because {} not qualified (`None`) and the board's `.environment.qualification` requires `Aec`: a row's `qualification` is its datasheet's",
                 if left_out == 1 { "row was" } else { "rows were" },
-                if left_out == 1 { "it" } else { "they" },
-                netsmith_check::environment::show_range(lo, hi),
-            )
-        })
+                if left_out == 1 { "it says it is" } else { "they say they are" },
+            ));
+        }
+        (!notes.is_empty()).then(|| notes.join("; "))
     }
 
     /// Whether a candidate's package has every pin that the board connects (ADR 0016). A

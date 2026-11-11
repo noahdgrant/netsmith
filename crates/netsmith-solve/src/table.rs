@@ -24,6 +24,7 @@
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `height` | how tall the part's body stands above the face of the board it is on, a length of one value (`2.4mm`), read from the datasheet or the manufacturer's drawing, with the document, its revision and the page or table in the `source` cell (ADR 0094). The part's `.height` is this when nothing in the design states one; empty means the height is unknown. A part whose `catalog` lists `.height` as a column of its own reads it as that column instead |
 //! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature as the datasheet prints it (`-40degC`, or `233.15K`, which is the same temperature), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A figure that is a junction range (`TJ`) is accepted as the part's range and the part is judged by it: a junction range that covers the environment is a pass, and the part's own heating is not computed, which is the limit of the check. A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
+//! | `qualification` | the qualification the part's datasheet says its ordering code has: `Aec` where the datasheet or the maker's product page says it is qualified to an AEC standard (AEC-Q100 for integrated circuits, Q101 for discrete semiconductors, Q200 for passives; the `notes` say which, with the document, its revision and the page), `None` where it says the ordering code is not qualified (the commercial grade of a part that has a qualified one), and empty where nothing says, which is unknown and not a refusal. Never written from memory (ADR 0099). A design whose board's `.environment` states `.qualification &= Qualification::Aec` is checked against it: a row that says `None` is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.qualification` in its source states it for every row |
 //! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
 //! | `source` | where the row was read. Required when the row has an `lcsc` or `mpn` |
@@ -112,7 +113,7 @@ use crate::catalog::{Candidate, Derating, Library, Value};
 use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
-const FIXED: [&str; 16] = [
+const FIXED: [&str; 17] = [
     "lcsc",
     "mpn",
     "library",
@@ -120,6 +121,7 @@ const FIXED: [&str; 16] = [
     "height",
     "temp_min",
     "temp_max",
+    "qualification",
     "price",
     "price_breaks",
     "stock",
@@ -460,6 +462,7 @@ impl Table {
                 },
                 temp_min: row.temperature("temp_min")?,
                 temp_max: row.temperature("temp_max")?,
+                qualification: row.cell("qualification").map(str::to_string),
                 generic: None,
             });
         }
@@ -493,6 +496,13 @@ impl Row {
         {
             return Err(format!(
                 "{at}: assembly `{assembly}` is not fab, hand, none or consigned"
+            ));
+        }
+        if let Some(qualification) = self.cell("qualification")
+            && !["None", "Aec"].contains(&qualification)
+        {
+            return Err(format!(
+                "{at}: qualification `{qualification}` is not None or Aec (`Aec` where the datasheet says the ordering code is qualified, `None` where it says it is not, empty where it says nothing)"
             ));
         }
         if let (Some(lo), Some(hi)) = (self.temperature("temp_min")?, self.temperature("temp_max")?)

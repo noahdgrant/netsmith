@@ -92,6 +92,7 @@ row "0 0 0 0 0" # an empty change
 
 # --- what a test or the editor skill reads: the tests, not KiCad or the recipes -------------
 row "1 0 0 0 0" docs/LANGUAGE.md
+row "1 0 0 0 0" docs/symbol-gallery.html
 row "1 0 0 0 0" .agents/skills/netsmith-dev-verify/SKILL.md .agents/skills/netsmith-write-nsm/SKILL.md
 row "1 0 0 0 0" .claude/settings.json
 row "1 0 1 0 0" .agents/skills/netsmith-dev-verify-editor/SKILL.md

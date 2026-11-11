@@ -170,6 +170,10 @@ pub struct Candidate {
     /// row states none, which is not a range of zero kelvin.
     pub temp_min: Option<f64>,
     pub temp_max: Option<f64>,
+    /// The qualification the row's datasheet states for its ordering code, the row's
+    /// `qualification` cell (ADR 0099): `Some("Aec")`, `Some("None")` where the datasheet says
+    /// the ordering code is not qualified, and `None` where the row says nothing.
+    pub qualification: Option<String>,
     /// Set for a generic part (ADR 0047): it has no supplier number, and a later step
     /// resolves it to a row of the catalog.
     pub generic: Option<Generic>,

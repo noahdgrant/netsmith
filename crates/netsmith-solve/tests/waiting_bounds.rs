@@ -31,6 +31,7 @@ fn resistor(ohms: f64) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        qualification: None,
         generic: None,
     }
 }

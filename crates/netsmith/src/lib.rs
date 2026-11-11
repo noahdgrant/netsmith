@@ -7,6 +7,7 @@ pub mod constraints;
 pub mod dxf;
 pub mod editor;
 pub mod fab;
+mod fab_environment;
 pub mod heights;
 pub mod init;
 pub mod layout;
@@ -88,6 +89,10 @@ pub struct Built {
     /// the build. With `guidelines = "error"` or `--strict` the build stops instead and
     /// this is empty.
     pub guidelines: Vec<Guideline>,
+    /// What the judgement against the board's environment did, for `fab-notes.txt` (ADR 0099):
+    /// `None` for a board with no environment. `fab` judges the generic parts it resolves to a
+    /// row after this.
+    pub environment: Option<netsmith_design::environment::Tally>,
     /// What the power model leaves unsettled, as notes that did not stop the build: a rail
     /// nothing supplies, a load whose current the solver did not settle, a converter whose
     /// efficiency it did not settle. A rail that can draw more than its supply gives stops
@@ -288,9 +293,16 @@ impl Built {
 
     /// The guideline findings as the command line prints them, one line each.
     pub fn guideline_warnings(&self) -> Vec<String> {
+        self.guideline_warnings_except(&[])
+    }
+
+    /// [`Self::guideline_warnings`] without the environment findings about `replaced` parts,
+    /// which `fab` says again with the rows it found for them (`fab_environment`).
+    pub(crate) fn guideline_warnings_except(&self, replaced: &[InstId]) -> Vec<String> {
         let label = self.label();
         self.guidelines
             .iter()
+            .filter(|g| !(g.rule == "environment" && g.at.is_some_and(|at| replaced.contains(&at))))
             .map(|g| format!("{label}: {} guideline: {}", g.rule, g.message))
             .collect()
     }
@@ -1340,6 +1352,7 @@ fn export(
         providers: Vec::new(),
         design_notes,
         guidelines: designed.guidelines,
+        environment: designed.environment,
         power: Vec::new(),
         trace: Trace {
             model: model.clone(),
