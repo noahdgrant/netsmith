@@ -11,17 +11,21 @@
 //! four pads, `.vbus.neg` four, `.dp` two (A6, B6) and `.dm` two (A7, B7). The shell is the four
 //! plated legs, all numbered `S1` (the board's footprint does), one pin.
 //!
-//! It is a provider of the standard generic `UsbCSinkReceptacle` and of `Connector`, as the
-//! Easyduino example's Shouhan receptacle is: the generic gives it `.vbus` (a rail: the host's
-//! source for the DC analysis), `.package` and `.mpn`. A board that uses the receptacle itself
-//! (its CC pins go to a USB Type-C port protection IC and not to Rd resistors, so the standard
-//! `UsbCSink` module does not fit) writes `.j4: GtUsb7004` and joins its pins.
+//! It is a provider of `Connector` only, **not** of the standard `UsbCSinkReceptacle`: that generic
+//! says the receptacle is a source of VBUS (a host's), and this board's port is the other way
+//! round, a source that the board's own converter drives (the board states the rail on VBUS). So
+//! `.vbus` here is a plain rail of the part (what a load draws, not a source). The board's CC
+//! pins go to a USB Type-C port protection IC and not to Rd resistors, so the standard `UsbCSink`
+//! module does not fit either: a board writes `.j4: GtUsb7004` and joins its pins.
 
-import std::parts::connector::{Connector, UsbCSinkReceptacle}
+import std::parts::connector::Connector
+import std::sources::Rail
 
 /// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell, in the footprint of the
 /// maker's recommended PCB layout.
-part GtUsb7004 provides UsbCSinkReceptacle, Connector {
+part GtUsb7004 provides Connector {
+    .vbus: Rail
+
     pins "SMD" {
         //  pin       kind           name      pads
         .vbus.pos power         "VBUS"    "A4" "A9" "B4" "B9"
@@ -35,5 +39,7 @@ part GtUsb7004 provides UsbCSinkReceptacle, Connector {
         .shell    passive       "SHELL"   "S1"
     }
 
+    .package: Package
+    .mpn: String
     catalog gt_usb_7004 by .mpn { .mpn, .package }
 }

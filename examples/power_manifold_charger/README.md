@@ -4,10 +4,9 @@ A port of the open **Power Manifold charger module** (a USB-C Power Delivery "ch
 netsmith, the fourth showcase board of epic #308 (after the RP2350A Minimal, ORBIT and the
 Easyduino ESP32-S3), and the one that stresses the solver's DC analysis hardest: a buck-boost
 converter with a feedback network and an inductor, a linear regulator, comparator thresholds and
-a USB-C Power Delivery front end. **This is the first stage: the project, the licence, the
-author's files and the survey.** `src/main.nsm` is a placeholder that builds, not the charger's
-circuit; the parts, the board, its proof and the physical file are the stages that follow
-(issue #417).
+a USB-C Power Delivery front end. **The schematic is done**: `src/main.nsm` is the board
+`PowerManifoldCharger`, the same circuit as the design's, with its nets proved equal by a test
+(below). The physical file and the parity gate are the stage that follows (issue #417).
 
 ## Source
 
@@ -69,9 +68,10 @@ folder are netsmith's** (MIT, like the rest of the repository).
 
 ## What is here
 
-- `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project and its board (a
-  placeholder for now) and the board's pick lock (`netsmith lock --update` refreshes it; CI
-  checks it).
+- `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project, its board and the board's
+  pick lock (`netsmith lock --update` refreshes it; CI checks it). The other files of `src/` are
+  the parts (see "Parts"), `catalogs/` the rows they and the passives need, `libs/` the
+  footprints, `kicad.toml` what KiCad calls them.
 - `LICENSE`: the CERN-OHL-P-2.0 text, as the author ships it.
 - `reference/charger-module.kicad_pcb`, `charger-module.kicad_sch`, `CHANGELOG.md`: their board
   and schematic files and the module's changelog, unchanged (1.6 MB, 450 kB, 12 kB).
@@ -86,10 +86,98 @@ folder are netsmith's** (MIT, like the rest of the repository).
 From this folder:
 
 ```sh
-netsmith build    # the schematic, in out/ (a placeholder until the board stage)
+netsmith build    # the schematic, in out/ (no KiCad install needed)
 ```
 
-The checks are in `crates/netsmith/tests/power_manifold.rs`.
+The checks are in `crates/netsmith/tests/power_manifold.rs` (the board and the table),
+`power_manifold_ics.rs` and `power_manifold_parts.rs` (the parts).
+
+## Same nets
+
+`crates/netsmith/tests/power_manifold.rs`, module `board` (no KiCad needed; the ERC test skips
+where there is no `kicad-cli`). The reference's connectivity is read from the committed
+`reference/charger-module.kicad_pcb` with `Netlist::from_kicad_pcb` (netsmith's own reader), and
+the board's from the built design. `PARTS` pairs the 89 parts by member path with the design's
+designator (the members are named for what the part does: `.mcu` is U1, `.converter` U3,
+`.protector` U5, `.q_port_a` Q3, `.sda_pullup` R3 ...).
+
+- `every_pad_has_the_same_pads_on_its_net_as_in_the_charger_board`: for every pad of every part the
+  set of the other pads on its net is the same on both sides. Passes: 85 nets less the 26 of one
+  pad. Every pin is joined with `~` to a **named pin** (`.mcu.pb6 ~ ...`), never to a request, and
+  every two-pin part has its pad 1 where the design has it (`.a` is pad 1: no pair is exchanged).
+  The control `the_comparison_sees_a_pad_on_the_wrong_net` puts U1 pad 13 on the net of pad 14 and
+  requires the comparison to name `U1.13`.
+- `netsmith_compare_says_the_nets_are_the_same`: `netsmith-netlist::compare` with every value and
+  footprint blanked and the designators paired by the table: `match`.
+- `the_resistors_and_capacitors_have_the_charger_boards_values_and_packages`: all 27 resistors and
+  38 capacitors have the value and the package of the reference's footprint.
+- `the_parts_have_the_lcsc_numbers_of_the_charger_boards_footprints`: 84 parts carry an `LCSC`
+  property in the board file; all but the ceramics of `OTHER_ROW` are picked as that number (below).
+- `the_open_pins_are_the_ones_the_reference_leaves_open`: the pads on the board's `unconnected-(...)`
+  nets (26) are the pads that no net of the design names, but U6's pad 6 (below).
+- `the_optimizer_cannot_move_a_pin` (no request, no pin file entry) and
+  `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC: the two findings
+  below and no other; skipped where `kicad-cli` is not found).
+
+### Differences from the reference (all of them)
+
+- **U6's pad 6.** The reference leaves pad 6 of the USBLC6-2SC6 open and uses pad 1 for I/O1. The
+  device joins pads 1 and 6 inside, so the part's pin `.io1` has both pads, and the design's
+  netlist (a pin once, however many pads) puts pad 6 on `/USB_DATA`. The tests skip that pad
+  (`JOINED_INSIDE`), and the open-pin test says why. The part is UMW's USBLC6-2SC6 (what LCSC and
+  JLCPCB sell as C2687116), not ST's.
+- **`/USB_DATA` is one net of five pads**: J4's D+ (A6, B6) and D- (A7, B7) and U6 pin 1 are
+  joined, as the design has it (a dedicated charging port shorts D+ and D-). The receptacle's part
+  is therefore a plain `Connector` with `.dp` and `.dm` joined on the board, and **not** a provider
+  of the standard `UsbCSinkReceptacle`: that generic is a source of VBUS, and this port is driven
+  by the board's own converter.
+- **PA9 and PA10 are tied to ground** (U1 pads 29 and 32). The design types them "unspecified" in
+  its symbol; the port's are the datasheet's (bidirectional), and KiCad's rules refuse a
+  bidirectional pin on a net with a power flag: two `pin_to_pin` findings, asserted by name.
+- **Part numbers.** The design states no tolerance or voltage, and the solver picks the first
+  catalog row that fits the value, the package and the rail. For a 100 nF 0402 it picks
+  C1525 (16 V, Basic) and the board has C307331 (50 V), for 1 uF, 4.7 uF, 2.2 uF and 10 uF
+  parts the board's number is another row too: 19 ceramics (`OTHER_ROW`). The two Sunlord
+  inductors, the shunts and every other part have the board's number. U2 is C89826, which is the
+  LP2985**A**-33DBVR (1 % grade), where the board's value field says "LP2985-3.3"; C46550469
+  (C39) is an 8 x 9 mm part on the 8 x 10 mm footprint the board draws.
+- **Net names.** The design's nets are named as KiCad names them (`/SW1`, `/VBUS_GATE`); the port
+  names the rails and generates the others from the pin they join (`net-boot1_cap.a`). The tests
+  pair pads, never names.
+- **Pours.** The board states the ground pour on both outer layers and the first inner layer and
+  the 5 V pour on the second inner layer; the design has a 3.3 V pour on its second inner layer
+  too (a layer here has one pour net), and pours of `/VIN`, `/SW1`, `/VOUT_CONV` and others on
+  the outer layers, which the port does not state.
+- **The marker.** `HOT_SURFACE_SMALL` (a graphic on the back face, `REF**`, no pad) is not a part.
+- **What the design has that this does not:** the 3D models and every drawing of its silkscreen.
+
+## What the solver checks
+
+- **Checked:** the microcontroller's supply window (1.7 V to 3.6 V) and the comparator's (1.6 V to
+  6.5 V) against the 3.3 V rail the LP2985 makes, the protector's (2.7 V to 5.5 V) against the slot's
+  5 V rail, the LP2985's input (from the slot's 5 V) and the tolerance of every rail the board states.
+  The 24 V input is stated as 20.4 V to 28.8 V (24 V, +20 %/-15 %: the design's architecture notes),
+  and the converter's output as the 5 V to 21 V of a USB-PD contract, an **ideal source of the
+  board's own statement**, since no part models the converter.
+- **Not evaluated (73 notes):** the TPS55288 is a part with no `dc` statement and the language has
+  no buck-boost generic (only `Buck`), so its input window (`converter.vin.voltage >= 2.7V`), the
+  current of the input, the output and the shunts, the fuse, the inductors and the capacitors
+  that hang on those rails are listed as not evaluated; the MOSFETs' gate drive (`q_*.gate_source_voltage
+  >= q_*.gate_threshold`: the gates are driven by pins that state no level); the LP2985's dropout and
+  power (nothing states what the 3.3 V rail draws: the microcontroller states no current); the
+  divider resistors; and every capacitor's bias on the rails behind the converter. The test
+  `the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed` pins a few of
+  them: when a part states what is missing, it fails and this paragraph is to be rewritten.
+- **Gaps this port found (for the owner):**
+  - there is no generic for a buck-boost (boost) converter or for a USB-C port protection IC, so
+    the board's most interesting circuit (the feedback and compensation network, the inductor
+    and the output capacitors of the TPS55288) is wired and proved equal but **not analysed**;
+  - there is no open-drain output kind (the comparator's two outputs and the microcontroller's
+    pin share the protector's enable line: two `output` pins on one net are refused, so the
+    TLV7022's outputs are `tri_state`, with no levels);
+  - there is no NTC thermistor model (the dividers' currents are not seen), and the `Fuse` and
+    `Capacitor` generics have no column for the fuse's I2t or the electrolytic's ESR;
+  - a pin's own recommended window (EN, CC1c, VBAT) can only be stated through a `Rail`.
 
 ## Survey
 
