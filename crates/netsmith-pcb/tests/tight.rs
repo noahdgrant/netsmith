@@ -160,6 +160,7 @@ fn measured() {
             },
         );
         let took = started.elapsed();
+        common::write_measured(&board, &format!("tight-seed{seed}"));
         let on_u1 = routing
             .left
             .lines

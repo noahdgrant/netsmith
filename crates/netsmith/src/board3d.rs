@@ -607,6 +607,49 @@ pub fn run(
     layout: Option<&std::path::Path>,
     board: Option<&str>,
 ) -> Result<Report, String> {
+    placed(
+        name,
+        text,
+        loader,
+        catalogs,
+        libraries,
+        layout,
+        board,
+        |built, board| {
+            let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
+            report(built, &scene(built, board), &sourcing)
+        },
+    )
+}
+
+/// The scene of one board, picked and placed as [`run`] does: what the rasterizer and the
+/// `.glb` writer draw.
+pub fn scene_of(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+) -> Result<Scene, String> {
+    placed(
+        name, text, loader, catalogs, libraries, layout, board, scene,
+    )
+}
+
+/// `then` of the board [`run`] picks, built and placed.
+#[allow(clippy::too_many_arguments)]
+fn placed<T>(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+    then: impl FnOnce(&Built, &Board) -> T,
+) -> Result<T, String> {
     let outcome = crate::outcome_with(name, text, loader, catalogs, Some(libraries))
         .map_err(|problems| crate::render_problems(&problems))?;
     let names: Vec<String> = outcome
@@ -653,6 +696,5 @@ pub fn run(
         crate::layout::PlaceFailure::Board(e) => fail(e.to_string()),
         crate::layout::PlaceFailure::Layout(e) => fail(e),
     })?;
-    let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
-    Ok(report(built, &scene(built, &board), &sourcing))
+    Ok(then(built, &board))
 }

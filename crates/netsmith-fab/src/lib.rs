@@ -81,6 +81,7 @@ pub mod plot;
 pub mod polygons;
 pub mod raster;
 pub mod rotation;
+pub mod score;
 pub mod sexp;
 
 pub use board::{Board, BoardPart, Fit, Side};
