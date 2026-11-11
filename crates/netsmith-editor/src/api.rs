@@ -300,6 +300,37 @@ pub struct Saved {
     pub stamp: String,
 }
 
+/// Lock or unlock the pin of one request (`POST /api/pins/lock`): the pin file's `lock` line.
+/// Locking a request that has no entry in the file yet writes the entry, with the pin it has.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PinLock {
+    /// The board as the page names it (`GET /api/board?name=`).
+    pub board: String,
+    /// The request's path, the key of its entry in the pin file (`status`).
+    pub request: String,
+    pub locked: bool,
+}
+
+/// Move one request to another pin that offers its function (`POST /api/pins/move`): the pin
+/// file's `pin` line, and `source = "hand"`, because a person chose it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PinMove {
+    pub board: String,
+    pub request: String,
+    /// The pin's path in the part (`p03`).
+    pub pin: String,
+}
+
+/// What a write of the pin file did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PinWritten {
+    /// The pin file, as the project names it (`src/main.pins.toml`).
+    pub file: String,
+}
+
 /// A new file (`POST /api/fs/create-file`): its path from the project root (`src/power.nsm`)
 /// and its text. Refused if the path is taken.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -509,7 +540,8 @@ pub struct PartInfo {
     /// The pin requests that ask this part for a pin (`.status: .u.GPIO`, ADR 0101), in the byte
     /// order of their paths, each with the pin it got or the message of the check when it got
     /// none. Absent for a part no request asks. What the editor shows of the pin file: it
-    /// computes the assignment in memory and never writes the file.
+    /// computes the assignment in memory; the page's padlock and move write only the `lock`, `pin` and
+    /// `source` lines of one entry (`POST /api/pins/lock`, `/api/pins/move`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub pin_requests: Option<Vec<PinRequestInfo>>,
@@ -549,6 +581,28 @@ pub struct PinRequestInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub message: Option<String>,
+    /// The pins the request may be moved to, which is what the page offers to move it: every
+    /// pin of the part that offers the function and that the source does not hold (the one it
+    /// has now is among them), in the byte order of the paths. Empty for a request with no pin.
+    #[serde(default)]
+    pub offers: Vec<PinOffer>,
+}
+
+/// A pin that a request may have, and whether another request has it now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PinOffer {
+    /// The pin's path in the part (`p03`).
+    pub pin: String,
+    /// Its pad in the package, as the design has it; absent when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pad: Option<String>,
+    /// The request that has this pin now, which a move to it is refused for; absent for a free
+    /// pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub held_by: Option<String>,
 }
 
 /// What the solver derived for a part, as numbers and as text (ADR 0009, ADR 0013): the
@@ -1503,6 +1557,9 @@ pub fn typescript() -> String {
         Project,
         FileContent,
         Saved,
+        PinLock,
+        PinMove,
+        PinWritten,
         NewFile,
         NewFolder,
         Rename,
@@ -1518,6 +1575,7 @@ pub fn typescript() -> String {
         Pending,
         PartInfo,
         PinRequestInfo,
+        PinOffer,
         Solved,
         Tolerance,
         Rating,

@@ -2,15 +2,16 @@
 //! only: the pin file (`<stem>.pins.toml`, ADR 0101) as the pin map of a part, and the pick
 //! lock (`<stem>.lock.toml`, ADR 0100) as what `netsmith lock --check` says of it.
 //!
-//! Neither is written. The pin map is what the check assigned in memory, as it does on every
-//! analysis; the lock is solved again with no holding and compared with the file, as `lock
-//! --check` does, which needs no KiCad. Whether the editor ever writes either file is the
-//! owner's to decide (issue list of the pull request that added this).
+//! The pin map is what the check assigned in memory, as it does on every analysis; the lock is
+//! solved again with no holding and compared with the file, as `lock --check` does, which needs
+//! no KiCad. The lock is never written here. The pin file is written by `pinwrite.rs`, the
+//! `lock`, `pin` and `source` lines of one entry at a time (the owner's decision on the editor's
+//! writes, ED2 of the pin epic).
 
 use std::path::Path;
 
 use netsmith_check::{PinsOutcome, SpaceRequest};
-use netsmith_editor::api::{PickLockInfo, PinRequestInfo};
+use netsmith_editor::api::{PickLockInfo, PinOffer, PinRequestInfo};
 
 use crate::project::Target;
 
@@ -33,22 +34,36 @@ pub(super) fn pin_requests(
         .map_or(&[], |s| s.requests.as_slice());
     for r in served {
         let entry = entries.and_then(|e| e.get(&r.key));
-        let pad = part
-            .pins
+        let pad_of = |pin: &str| {
+            part.pins
+                .iter()
+                .find(|p| p.name == pin)
+                .map(|p| p.pads.join(", "))
+                .filter(|pads| !pads.is_empty())
+        };
+        let offers = r
+            .offers
             .iter()
-            .find(|p| p.name == r.pin)
-            .map(|p| p.pads.join(", "))
-            .filter(|pads| !pads.is_empty());
+            .map(|pin| PinOffer {
+                pin: pin.clone(),
+                pad: pad_of(pin),
+                held_by: served
+                    .iter()
+                    .find(|o| o.pin == *pin && o.key != r.key)
+                    .map(|o| o.key.clone()),
+            })
+            .collect();
         let held = entry.is_some_and(|e| before.and_then(|b| b.get(&r.key)) == Some(e));
         out.push(PinRequestInfo {
             request: r.key.clone(),
             function: r.capability.clone(),
             pin: Some(r.pin.clone()),
-            pad,
+            pad: pad_of(&r.pin),
             locked: r.lock,
             entry: entry.map(|e| e.source.word().to_string()),
             from: Some(if held { "file" } else { "run" }.to_string()),
             message: None,
+            offers,
         });
     }
     for u in pins
@@ -66,6 +81,7 @@ pub(super) fn pin_requests(
             locked: false,
             entry: None,
             from: None,
+            offers: Vec::new(),
             message: Some(if u.message.is_empty() {
                 "the check gave this request no pin; the problems list says why".to_string()
             } else {

@@ -17,6 +17,7 @@ mod orders;
 mod outline;
 mod panel;
 mod pcb;
+mod pinwrite;
 pub(crate) mod power;
 mod progress;
 mod release;
@@ -41,7 +42,8 @@ use netsmith_editor::{
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-        PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SchematicHints, SystemView,
+        PcbFindings, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
+        SchematicHints, SystemView,
     },
 };
 
@@ -822,6 +824,22 @@ impl Backend for Workspace {
 
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError> {
         self.edit_layout(edit)
+    }
+
+    fn pin_lock(&self, edit: &PinLock) -> Result<PinWritten, ApiError> {
+        self.write_pin(
+            &edit.board,
+            &edit.request,
+            &pinwrite::Change::Lock(edit.locked),
+        )
+    }
+
+    fn pin_move(&self, edit: &PinMove) -> Result<PinWritten, ApiError> {
+        self.write_pin(
+            &edit.board,
+            &edit.request,
+            &pinwrite::Change::Move(edit.pin.clone()),
+        )
     }
 
     fn build(&self, say: &Say, cancel: &Cancel) -> Result<BuildReport, ApiError> {

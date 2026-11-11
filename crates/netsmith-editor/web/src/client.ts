@@ -22,6 +22,9 @@ import type {
   PcbFindings,
   PcbReport,
   PcbScene,
+  PinLock,
+  PinMove,
+  PinWritten,
   PowerTree,
   Project,
   Saved,
@@ -158,6 +161,10 @@ export const api = {
   route: (board: string) => post<PcbReport>(`/api/pcb/route?${q({ board })}`),
   pcbScene: (board: string) => getJson<PcbScene>(`/api/pcb/scene?${q({ board })}`),
   pcbEdit: (edit: PcbEdit) => post<PcbEdited>('/api/pcb/edit', edit),
+  /** Lock or unlock a pin request: the `lock` line of its entry in the pin file (ADR 0101), and no other line. `ApiFailure` 422 says why not. */
+  pinLock: (edit: PinLock) => post<PinWritten>('/api/pins/lock', edit),
+  /** Move a request to another pin of its part that offers its function: the entry's `pin` and `source` lines. `ApiFailure` 422 says why not. */
+  pinMove: (edit: PinMove) => post<PinWritten>('/api/pins/move', edit),
   pcbFindings: (board: string) => getJson<PcbFindings>(`/api/pcb/findings?${q({ board })}`),
   pcbDrc: (board: string) => post<PcbFindings>(`/api/pcb/drc?${q({ board })}`),
   async cancelRoute(): Promise<void> {

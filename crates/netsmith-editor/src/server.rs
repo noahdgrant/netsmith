@@ -22,6 +22,7 @@
 //! | `GET /api/board`, `schematic.svg`, `power`, `system`, `panel`, `bom` | the views of a board or a system, computed from the solved model and not from the text |
 //! | `GET /api/schematic-hints`, `PUT /api/schematic-hints` | the schematic layout file beside the board's source (ADR 0061): `422` with the line for text that does not read, `409` for a stale stamp |
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
+//! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
@@ -132,6 +133,8 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/bom",
     "/api/compare",
     "/api/catalog/refresh",
+    "/api/pins/lock",
+    "/api/pins/move",
     "/api/pcb/route",
     "/api/pcb/scene",
     "/api/pcb/edit",
@@ -320,6 +323,8 @@ fn router(state: Shared) -> Router {
         .route("/api/compare", get(compare))
         .route("/api/compare/cancel", post(cancel_compare))
         .route("/api/catalog/refresh", post(refresh_catalogs))
+        .route("/api/pins/lock", post(pin_lock))
+        .route("/api/pins/move", post(pin_move))
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
         .route("/api/pcb/scene", get(pcb_scene))
@@ -826,6 +831,22 @@ async fn pcb_drc(
     let board = param(&q, "board")?;
     let say = progress(&s, "drc", &board);
     json(move || s.backend.pcb_drc(&board, &say)).await
+}
+
+async fn pin_lock(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::PinWritten>, ApiError> {
+    let edit: crate::api::PinLock = body(&bytes)?;
+    json(move || s.backend.pin_lock(&edit)).await
+}
+
+async fn pin_move(
+    State(s): State<Shared>,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::PinWritten>, ApiError> {
+    let edit: crate::api::PinMove = body(&bytes)?;
+    json(move || s.backend.pin_move(&edit)).await
 }
 
 async fn pcb_edit(

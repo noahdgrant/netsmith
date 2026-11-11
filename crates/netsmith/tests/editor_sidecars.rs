@@ -1,5 +1,6 @@
 //! What the editor shows of the two files beside a source file, read only: the pin map of a part
-//! (ADR 0101) and the state of the pick lock (ADR 0100). Neither file is ever written.
+//! (ADR 0101) and the state of the pick lock (ADR 0100). Reading writes neither file; the pin file's
+//! `lock`, `pin` and `source` lines are written by the calls `editor_pin_write.rs` tests.
 
 use std::fs;
 use std::path::Path;

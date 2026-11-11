@@ -6,7 +6,8 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GitInfo, OrderInfo, OrderReport, PanelView, PcbEdit, PcbEdited,
-    PcbFindings, PcbReport, PcbScene, PowerTree, Project, Saved, SchematicHints, SystemView,
+    PcbFindings, PcbReport, PcbScene, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
+    SchematicHints, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -287,6 +288,21 @@ pub trait Backend: Send + Sync + 'static {
     /// is not as the change says it was, and with 400 if an entry is wrong; then nothing is
     /// written.
     fn pcb_edit(&self, edit: &PcbEdit) -> Result<PcbEdited, ApiError>;
+    /// Lock or unlock the pin of one pin request: the `lock` line of its entry in the pin file
+    /// beside the board's source, and nothing else of the file (ADR 0101). Refused with 422 and
+    /// the reason for a request that has no pin, and with 409 if the pin file is not as the
+    /// analysis read it; then nothing is written. The project is analysed again as the file
+    /// changed.
+    fn pin_lock(&self, _edit: &PinLock) -> Result<PinWritten, ApiError> {
+        Err(ApiError::not_found("this project has no pin file to write"))
+    }
+    /// Move one pin request to another pin of its part: the `pin` and `source` lines of its
+    /// entry, and nothing else of the file. Refused with 422 and the reason unless the pin is
+    /// in the part, offers the function, is held by no other request or by the source, and the
+    /// request is not locked; and with 409 as [`Backend::pin_lock`] is.
+    fn pin_move(&self, _edit: &PinMove) -> Result<PinWritten, ApiError> {
+        Err(ApiError::not_found("this project has no pin file to write"))
+    }
     /// Write the KiCad schematics. `cancel` stops it at its next checkpoint (`ApiError::cancelled`);
     /// the schematics of a file written before are kept, none of the board it was on.
     fn build(&self, say: &Say, cancel: &Cancel) -> Result<BuildReport, ApiError>;
