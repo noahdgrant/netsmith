@@ -41,8 +41,8 @@
 //! a verb and a mini-language beside the quantity algebra the language has, with order, ranges,
 //! tolerances and expressions to specify again. Two places for one fact is ADR 0001's refusal.
 //!
-//! **Relations between two parts** (ADR 0045 section 12; provisional, to be reviewed by the
-//! maintainer). A relation (`==`, `>=`, `<=`) is one between two parts when, with every part
+//! **Relations between two parts** (ADR 0045 section 12; the reading below is accepted as built
+//! by the owner, 2026-11-11). A relation (`==`, `>=`, `<=`) is one between two parts when, with every part
 //! that mentions no `.place` evaluated to a constant, the places left are exactly two: a
 //! position along one axis of two different parts, with coefficients 1 and -1. Anything else
 //! (a sum of two places, a turn, a module's own `.place`, two fields of one part, a product)
@@ -61,9 +61,10 @@
 //! error before placing. The check is `netsmith_fab::drc::constraints::Relation`, the rule
 //! `constraint`: an error, or a warning with `constraints = "warn"`, never waived by
 //! `--allow-drc-violations`. A `row` statement of the physical file lowers to these relations
-//! (`netsmith-check/src/row.rs`). Not done: a module's box or a turn as an end of a relation, a
-//! relation among three places, the line between the two parts in the PCB view, and a drag
-//! that keeps a relation.
+//! (`netsmith-check/src/row.rs`). Not planned until a board needs it: a module's box or a turn
+//! as an end of a relation (both could be added without changing the syntax), a relation among
+//! three places, the line between the two parts in the PCB view, and a drag that keeps a
+//! relation.
 //!
 //! **Risks the decision accepted.** The body box is only as good as the footprint's `F.Fab`
 //! (a connector whose shell is not drawn there is measured by its courtyard, which is larger;
@@ -78,10 +79,9 @@
 //! `MountingHole.head_diameter`, a box check for a module's `.place.x` and `.y`, and a polygon
 //! outline (C8, issue #57).
 //!
-//! **Left over from the build of the requirements** (ADR 0045 section 8, "Questions left to
-//! the user", word for word): "the spelling of the fields as `String` for `side`; and whether
-//! `x`/`y` on a module (its box centre) should be accepted (it is, and measured on the box
-//! round all its parts)."
+//! **Two choices of the build of the requirements** (ADR 0045 section 8; accepted as built by
+//! the owner, 2026-11-11): the fields are spelt as `String` for `side`, and `x`/`y` on a module
+//! (its box centre) are accepted, measured on the box round all its parts.
 
 use std::collections::BTreeMap;
 
@@ -616,7 +616,7 @@ pub(crate) fn plan(
         // The edges the part's own requirements put its body at or past (ADR 0045, section 10).
         let may = stated_edges(&reqs, width, height);
         // A window that is wholly outside a fixed outline. A part whose requirement states an
-        // overhang on an edge (PROVISIONAL, ADR 0045 section 10) may have its centre outside
+        // overhang on an edge (ADR 0045 section 10, accepted as built 2026-11-11) may have its centre outside
         // in that direction: its body is meant to stick out, and the pads staying inside is
         // the overhang rule's. A window on `x` or `y` keeps the old rule.
         for (q, slot) in reach.iter_mut().enumerate() {

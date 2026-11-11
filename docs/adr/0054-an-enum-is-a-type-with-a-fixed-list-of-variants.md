@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # An enum is a type with a fixed list of variants
 
-Written overnight on 2026-11-05 by an agent told to pick an option and go on. The syntax `enum` and `Enum::Variant`, the prelude and the refusal of text are the owner's to accept or change. Tests 1 (std, every project's `.assembly` lines and later the bus roles use it) and 3 (a text value). Cut from `git show 8023ee9:docs/adr/0054-an-enum-is-a-type-with-a-fixed-list-of-variants.md`.
+Written on 2026-11-05 by an agent told to pick an option and go on. Accepted as built by the owner, 2026-11-11. Tests 1 (std, every project's `.assembly` lines and later the bus roles use it) and 3 (a text value). Cut from `git show 8023ee9:docs/adr/0054-an-enum-is-a-type-with-a-fixed-list-of-variants.md`.
 
 Amends ADR 0042 (a module may expose assembly) and ADR 0024 (assembly is a field of the part): the value is no longer text. ADR 0042 had rejected an `Assembly` type of fixed words "for now ... it can be added if wrong words in modules prove a real cost". The owner asked for it on 2026-11-05. The cost it removes: `.assembly &= "hnad"` was accepted by the checker and the solver and refused only when the board was lowered, with a message that named the part but not the line.
 
@@ -30,7 +30,7 @@ This broke every `.nsm` that stated assembly. The std library, the examples, the
 
 ## What was rejected
 
-- Accepting both text and variants for one release: two spellings of one thing for as long as it lasts, and the checker would carry text into a typed field. If the owner wants a release with both, it is a warning in `check_value` in place of the error, and nothing else changes.
+- Accepting both text and variants for one release: two spellings of one thing for as long as it lasts, and the checker would carry text into a typed field. No release with both is planned.
 - `AssemblyMode.Hand`, with a dot: a dot starts a member path, and a bare name inside a block is looked up outward as a member, so it would read as a path whose first segment does not exist. `::` already separates a name from what is in it and a path never has it, so it needs no new token.
 - Bare variant names (`.assembly &= Hand`): a variant would share the namespace of members, nets and rails, and a reader could not tell a variant from a member.
 - A marker such as `#Hand` or `'hand'`: a new token for what `Enum::Variant` says; `'...'` is the quoted name of a member (`.'5'`).
@@ -44,7 +44,8 @@ Diagnostics print `AssemblyMode::Hand` only where they were changed (the contrad
 
 ## Left open
 
-- The spelling: `enum Name { ... }` and `Name::Variant`, with `::` used for a value as well as for a path.
+Nothing. The choices below were made by the author and are accepted as built:
+
+- The spelling `enum Name { ... }` and `Name::Variant`, with `::` used for a value as well as for a path.
 - `AssemblyMode` in scope with no import.
-- The hard error for text, in place of a release that accepts both.
-- Projects outside this repository whose modules still declare `.assembly_mode: String`, which this change refuses.
+- The hard error for text, with no release that accepts both. A project outside this repository whose modules declare `.assembly_mode: String` changes it to `AssemblyMode`, as the Migration section says.

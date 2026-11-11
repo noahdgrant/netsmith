@@ -38,8 +38,8 @@
 /// get an unchecked part without knowing. The solver's "nothing for it" message counts the rows
 /// left out for an empty cell. No row of the standard catalog is blank.
 ///
-/// Left open, for the owner: is "never offered" the rule the owner wants for an unrated part, or
-/// "offered and not evaluated"?
+/// The rule "never offered" for an unrated part is accepted as built by the owner,
+/// 2026-11-11.
 generic Resistor {
     .designator &= "R"
 
@@ -284,7 +284,7 @@ generic Crystal {
 /// checks). A catalog column for the trip multiple needs a source for each row and is not
 /// built. `Diode` has no power rating in std (`.max_power` is a Zener's), so the forward drop
 /// times the fault current is not checked. `Switch` and `Inductor` are not given
-/// `.supply_fault_current`; it is one line each once the owner has taken the convention.
+/// `.supply_fault_current`; it is one line each when a board needs it (the convention: ADR 0105).
 generic Fuse {
     .designator &= "F"
 

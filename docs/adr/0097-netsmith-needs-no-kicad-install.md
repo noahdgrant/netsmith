@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # netsmith needs no KiCad install

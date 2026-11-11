@@ -1,4 +1,4 @@
-//! A part's height from the catalog row it was picked as (ADR 0094, PROVISIONAL): the row's
+//! A part's height from the catalog row it was picked as (ADR 0094): the row's
 //! `height` cell is the part's `.height` when the design states none; a stated `.height`
 //! wins; a row with no cell leaves the part with no height, which is reported unchecked and
 //! never taken as flat; and a board with a height limit says how many of its parts have a

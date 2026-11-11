@@ -27,8 +27,9 @@
 //! not found: nothing in the part says it is one, and the checker does not guess from a name.
 //! A marker for one (a `pins` row flag or an interface member) and a pull-up beyond an
 //! unmated connector (a `.pulled_up_outside` member of `I2c`) would be language changes, and
-//! the owner's to decide; nor does the undriven-input rule follow a mate, since it already
-//! counts a connector pin as a driver and has no false alarm to remove.
+//! are not built (ADR 0090, accepted as built by the owner, 2026-11-11); nor does the
+//! undriven-input rule follow a mate, since it already counts a connector pin as a driver and
+//! has no false alarm to remove.
 
 use std::collections::HashSet;
 

@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A part can be consigned: the owner ships it to the board house
 
-Issue 243. The owner asked for "a way to mark 'I will ship this to the board house'"; the spelling, the cell contents and the other choices were the agent's, each the conservative option of the issue, and the owner has not confirmed them. The text before the cut is `git show 8a15457:docs/adr/0084-a-part-can-be-consigned.md`. Meets the first test: `Consigned` is a variant that boards write. The reasoning about what JLCPCB reads, the table of how `Fab` and `Consigned` differ and the format's limits are the doc comment of `bom_entries` in `crates/netsmith/src/fab.rs`; the user's view is `docs/LANGUAGE.md` ("Who assembles a part", "Consigned parts"); the variant's own comment is in `std/prelude.nsm`.
+Issue 243. The owner asked for "a way to mark 'I will ship this to the board house'"; the spelling, the cell contents and the other choices were the agent's, each the conservative option of the issue. Accepted as built by the owner, 2026-11-11, with all seven choices below. The text before the cut is `git show 8a15457:docs/adr/0084-a-part-can-be-consigned.md`. Meets the first test: `Consigned` is a variant that boards write. The reasoning about what JLCPCB reads, the table of how `Fab` and `Consigned` differ and the format's limits are the doc comment of `bom_entries` in `crates/netsmith/src/fab.rs`; the user's view is `docs/LANGUAGE.md` ("Who assembles a part", "Consigned parts"); the variant's own comment is in `std/prelude.nsm`.
 
 `AssemblyMode` had three values (ADR 0024, ADR 0054). `Fab`: the board house places a part it buys, so the part needs a supplier part number. `Hand`: soldered by hand, out of the BOM and the placement file. `None`: not fitted. A real 12 V automotive board has a processor that JLCPCB can place but does not stock. The owner buys it and ships it to JLCPCB (its consigned parts service). None of the three says that: `Fab` refuses the part for its missing number, and `Hand` leaves it out of the placement file, so the board house would not place it.
 
@@ -12,14 +12,14 @@ A fourth variant, `AssemblyMode::Consigned`, stated in every way `Hand` and `Non
 
 Rejected. `Supplied`, `OwnerSupplied` and `Customer` as the name: each names who and not what the board house does. `Fab` plus a flag on the part: a second spelling for the same thing, against "one correct way", and it would not carry through `.assembly_mode`. A separate `ConsignedByNumber` for a part whose row has an `lcsc`: the difference is only whether a cell is filled.
 
-The cost. The editor's bill of materials shows a consigned part as an ordinary line with no number and no price: its API has a `hand_solder` flag and no consigned one, and a new field changes the generated types and the committed bundle. `bom.csv` and the order page are not tested against JLCPCB; nobody has uploaded a `bom.csv` with an empty cell for a registered consigned part from netsmith, and the notes tell the person ordering to look at the matching interface. A quantity (spares, attrition) for the consignment is the owner's to register on JLCPCB's site; netsmith states what the board needs, not what to ship.
+The cost. The editor's bill of materials shows a consigned part as an ordinary line with no number and no price: its API has a `hand_solder` flag and no consigned one, and a new field changes the generated types and the committed bundle (not built; issue #19). `bom.csv` and the order page are not tested against JLCPCB; nobody has uploaded a `bom.csv` with an empty cell for a registered consigned part from netsmith (a person must do this; checklist in issue #10), and the notes tell the person ordering to look at the matching interface. A quantity (spares, attrition) for the consignment is the owner's to register on JLCPCB's site; netsmith states what the board needs, not what to ship.
 
-Left open, the choices for the owner, word for word:
+The seven choices, with the alternatives each one was taken over:
 
-1. "**The name.** `Consigned` was taken from JLCPCB's own term and the issue's example."
-2. "**One variant for every consignment.** A part whose catalog row has an `lcsc` can also be consigned (the owner registers the C-number). It is the same variant: the difference is only whether the cell is filled."
-3. "**The mark in `bom.csv`.** Options: (a) an empty LCSC cell and the manufacturer's number as the comment, built here; (b) a fifth column such as `Consigned` (unknown to JLCPCB's uploader, risk of a failed upload); (c) a word in the LCSC cell (fails JLCPCB's own part number check); (d) leave consigned parts out of `bom.csv` and `cpl.csv` and list them in the notes only (the board house would not place them, which is the purpose). If JLCPCB documents a marker, (a) changes in one function (`bom_entries`)."
-4. "**The comment is the manufacturer's number** and not the value, for a consigned part that has one. The value stays when the row has none. Alternative: the value always, with the number in a note only."
-5. "**A consigned part in the project default.** Allowed, because the manifest and the column accept the same words. Alternative: refuse it in the manifest."
-6. "**A consigned generic stays generic** (no LCSC number is chosen). Alternative: resolve it like any generic, which would put a C-number in the BOM that the owner never meant to buy."
-7. "**The notes line** is `consigned: <parts> (<number>, <quantity>)` under the same heading style as `hand-solder:`. A unit count of spares is left out."
+1. **The name.** `Consigned` was taken from JLCPCB's own term and the issue's example.
+2. **One variant for every consignment.** A part whose catalog row has an `lcsc` can also be consigned (the owner registers the C-number). It is the same variant: the difference is only whether the cell is filled.
+3. **The mark in `bom.csv`.** Options: (a) an empty LCSC cell and the manufacturer's number as the comment, built here; (b) a fifth column such as `Consigned` (unknown to JLCPCB's uploader, risk of a failed upload); (c) a word in the LCSC cell (fails JLCPCB's own part number check); (d) leave consigned parts out of `bom.csv` and `cpl.csv` and list them in the notes only (the board house would not place them, which is the purpose). If JLCPCB documents a marker, (a) changes in one function (`bom_entries`).
+4. **The comment is the manufacturer's number** and not the value, for a consigned part that has one. The value stays when the row has none. Alternative: the value always, with the number in a note only.
+5. **A consigned part in the project default.** Allowed, because the manifest and the column accept the same words. Alternative: refuse it in the manifest.
+6. **A consigned generic stays generic** (no LCSC number is chosen). Alternative: resolve it like any generic, which would put a C-number in the BOM that the owner never meant to buy.
+7. **The notes line** is `consigned: <parts> (<number>, <quantity>)` under the same heading style as `hand-solder:`. A unit count of spares is left out.

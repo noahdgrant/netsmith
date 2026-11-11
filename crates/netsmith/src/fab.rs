@@ -103,7 +103,7 @@ pub const DEFAULT_ROUTE_TIMEOUT: Duration = Duration::from_secs(300);
 /// Whether constraints were asked to be strict: `--constraints error` for this run
 /// (`flag == Some(false)`, `Some(true)` being `warn`), else `constraints = "error"` in the
 /// manifest. Unset is not strict here, though a violated requirement is an error either way
-/// (ADR 0045, "Height limits", PROVISIONAL).
+/// (ADR 0045, "Height limits").
 pub fn constraints_strict(manifest: Option<&str>, flag: Option<bool>) -> bool {
     match flag {
         Some(warn) => !warn,
@@ -135,7 +135,7 @@ pub struct FabOptions {
     pub only: Option<Vec<String>>,
     /// Constraints were asked to be strict (`fab --constraints error`, or `constraints =
     /// "error"` in the manifest, and not the default): a part under a height limit that states
-    /// no height is then an error and not a warning (ADR 0045, "Height limits", PROVISIONAL).
+    /// no height is then an error and not a warning (ADR 0045, "Height limits").
     /// `--allow-drc-violations` does not waive it.
     pub strict_heights: bool,
     /// The pick lock of the source (`pick_lock`): written when it does not exist, compared with
@@ -386,8 +386,8 @@ pub fn fab_with_options(
     Ok(made)
 }
 
-/// What the requirements prove about a board before any placing (ADR 0045 section 14,
-/// PROVISIONAL): lines that cannot all hold, a courtyard past an edge nobody stated, a part
+/// What the requirements prove about a board before any placing (ADR 0045 section 14): lines
+/// that cannot all hold, a courtyard past an edge nobody stated, a part
 /// bigger than the outline. It takes milliseconds and starts no placer.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrecheckReport {
@@ -617,7 +617,7 @@ fn fab_board(
             .collect();
         // When the placer could not meet the requirements of the physical file, the faults
         // above are its symptoms: say first which lines are not met and which cannot all hold,
-        // and keep the same list in `placement-failure.txt` (ADR 0045, PROVISIONAL).
+        // and keep the same list in `placement-failure.txt` (ADR 0045).
         let unmet = board.explain_requirements(&built.design, &placement);
         if !problems.is_empty() {
             let mut errors = String::new();
@@ -1617,7 +1617,8 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// should place but that has no part number is kept without one, so the packaging step can
 /// refuse it by name.
 ///
-/// Why a consigned part looks like this (ADR 0084, provisional). `Fab` is "the board house
+/// Why a consigned part looks like this (ADR 0084; the owner accepted its seven
+/// choices as built on 2026-11-11). `Fab` is "the board house
 /// buys it" and `Consigned` is "the board house places it, and the owner supplies it"; they
 /// share everything but the supplier. Both are in `cpl.csv` and in this bill. `Fab` needs an
 /// `lcsc` (`fab` refuses without); `Consigned` does not, and its comment is the manufacturer's
@@ -1644,13 +1645,14 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// upload; a word in the LCSC cell fails the check of `C` plus digits. The row therefore keeps
 /// designator, footprint and comment, and the marking is in `fab-notes.txt` and in `order.txt`
 /// of an order, not in `bom.csv`. Not tested: JLCPCB's order page. Nobody has uploaded a
-/// `bom.csv` with an empty cell for a registered consigned part from netsmith; the notes tell
-/// the person ordering to look at the matching interface (the `prepare-fab-order` step). If
+/// `bom.csv` with an empty cell for a registered consigned part from netsmith (a person must do
+/// this; checklist in issue #10); the notes tell the person ordering to look at the matching
+/// interface (the `prepare-fab-order` step). If
 /// JLCPCB documents a marker, the mark changes in this one function.
 ///
 /// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
 /// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
-/// a new field changes the generated types and the committed bundle).
+/// a new field changes the generated types and the committed bundle; not built, issue #19).
 pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
     for s in sourcing.iter().filter(|s| s.assembled()) {

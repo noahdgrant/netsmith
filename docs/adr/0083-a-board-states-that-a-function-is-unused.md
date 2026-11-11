@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A board states that a function is unused
 
-The owner chose, on 2026-11-08, that a board states a function is unused. An agent wrote the word, its place, what counts as a use and the reading of test pads, each with the alternatives it rejected. Tests 1 and 3. Cut from `git show 8023ee9:docs/adr/0083-a-board-states-that-a-function-is-unused.md`.
+The owner chose, on 2026-11-08, that a board states a function is unused. An agent wrote the word, its place, what counts as a use and the reading of test pads, each with the alternatives it rejected. Accepted as built by the owner, 2026-11-11. Tests 1 and 3. Cut from `git show 8023ee9:docs/adr/0083-a-board-states-that-a-function-is-unused.md`.
 
 ## The problem
 
@@ -34,7 +34,7 @@ An interface that the board states unused and also uses is an error. The two sta
 - an interface joined to another with `~`, which equates their values (a rail of the board that supplies the port is one);
 - a function the board chooses on a pin of it (`.processor.usb.dm.function &= "USB_DM"`).
 
-The second item is new: pull request #323 (issue #293, item 5) added it on the owner's decision of 2026-11-09, so this list is the checker's reading. The questions it left are under "Left open".
+The second item came with pull request #323 (issue #293, item 5), on the owner's decision of 2026-11-09; what it left is under "Left open".
 
 ## What `unused` means for test pads
 
@@ -44,15 +44,20 @@ A board names the nets of a module's USB pads and brings them out to unpopulated
 
 - **A guard on the relation, `when .usb is used`.** It puts the condition in every part that has a limit, restates it in each relation, and needs a notion of "used" that the part cannot know: the board decides. It is also a conditional in the language, which ADR 0074 rejected for the same reason.
 - **`optional` on the limit's member** (ADR 0074). The limit is on `usb.vbus.voltage`, a member of `Rail` in `std`, which every use of `Rail` would then carry; and the relation is skipped when nothing states the member, while the board has a different fact to state (the interface is unused), which also takes the source, the levels and the connection rule out.
-- **`.processor.usb: unused`**, the owner's example. A declaration says `.name: Type`, so `unused` would be read as a type and the statement as a second declaration of a member that exists, with a lowercase type that the checker would have to treat as a word. The keyword form is the same as `tie`, `bridge` and `peripheral`: a word first, then what it is about, and it needs no change to the declaration grammar. The word is the owner's example, and the owner may still choose the other spelling.
+- **`.processor.usb: unused`**, the owner's example. A declaration says `.name: Type`, so `unused` would be read as a type and the statement as a second declaration of a member that exists, with a lowercase type that the checker would have to treat as a word. The keyword form is the same as `tie`, `bridge` and `peripheral`: a word first, then what it is about, and it needs no change to the declaration grammar. The word and the keyword form are accepted as built.
 - **`.processor.usb.function &= "NONE"`**, the form a pin takes for no function. It names a pin and a function of a table that has no `NONE`, and it cannot say that an interface of several pins and a rail is unused.
 - **A `no_connect` kind** on the interface's pins. It says the pin must stay open for ever, in the part, which is the datasheet's word for a pin that must not be connected, and the USB pins are not that.
 
 ## Left open
 
-- Whether a part may state a function unused by default (a processor in a package without USB). That is a statement about the part and not the board, and a package with no USB pads already has no pins to connect.
-- The DC analysis (`crates/netsmith-solve/src/dc`) was not changed and still reads the rails of an unused interface. No finding of it shows for the test boards of this change; a board where one does is a case to add.
-- Whether a module or a part may forward an `unused` to an interface inside it. A board names only what a module's interface shows (ADR 0004), so it cannot reach an interface inside a module.
-- From pull request #323: "Does a series `Inductor`, `Capacitor`, `Diode`/`Schottky`, or `Switch` count? A diode ORing VBUS into a rail feeds the board as much as a fuse does. Today none is followed."
-- From pull request #323: "A series part from the interface to ground (a pull-down, a bleed resistor): I did not count it, as the ADR does not count a return. A bleed resistor on `vbus` to ground does load the rail; say if that should be a use."
-- From pull request #323: "A series part whose far end reaches another pin of the same part that holds the interface (a processor fed from its own VBUS through a bead) is not a use, the same as a direct join inside the part." The narrowest reading was taken for all three.
+Not built, and not planned until a board needs it:
+
+- A part stating a function unused by default (a processor in a package without USB). That is a statement about the part and not the board, and a package with no USB pads already has no pins to connect.
+- The DC analysis (`crates/netsmith-solve/src/dc`) still reads the rails of an unused interface. No finding of it shows for the test boards of this change; a board where one does is a case to add.
+- A module or a part forwarding an `unused` to an interface inside it. A board names only what a module's interface shows (ADR 0004), so it cannot reach an interface inside a module.
+
+From pull request #323, the series parts of a use (`series_use` in `crates/netsmith-check/src/unused.rs`):
+
+- Not built: a series `Inductor`, `Capacitor`, `Diode`/`Schottky` or `Switch` is not followed. A diode ORing VBUS into a rail feeds the board as much as a fuse does, and the owner kept it so, 2026-11-11.
+- Built, on the owner's decisions of 2026-11-10: a series part from the interface to the return `neg`, or to the supply that nothing on the board sources (a pull-down, a bleed resistor, a pull-up), is a pull and no use; a path to a rail that the board sources is a use.
+- Built: a series part whose far end reaches another pin of the part that holds the interface (a processor fed from its own VBUS through a bead) is not a use, the same as a direct join inside the part.

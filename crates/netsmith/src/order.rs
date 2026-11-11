@@ -53,11 +53,11 @@
 //!   it holds an `order.txt`, so nothing else is deleted and a board dropped from the order does
 //!   not linger. If any board fails, nothing of the summary is written and all the problems are
 //!   reported. Every board of an order is routed and checked again when the order runs, even if a
-//!   plain `fab` made it; a cache of finished packages is a later optimisation.
+//!   plain `fab` made it; a cache of finished packages is a later optimisation (not built, issue #62).
 //! - **`order.txt`**, for a person: the number of board designs and of boards; for each board its
 //!   copies, copper layers, size in mm, thickness (or "thickness open"), the finish (`finish not
 //!   stated`: the process definitions do not carry a surface finish, and netsmith will not say one it
-//!   does not know), the parts the board house assembles and on how many BOM lines, the
+//!   does not know; a sourced surface-finish field is not built, issue #62), the parts the board house assembles and on how many BOM lines, the
 //!   hand-solder parts; the combined bill of materials; "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
 //!   once for each copy because the check is of the design (`Package::unverified`).

@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A board asks a part for a pin by capability, and the pin file keeps the answer
 
-The owner decided on 2026-11-04 and 2026-11-09 that a board may ask for "any GPIO" and let the tool pick the pin, that the answer lives in a file beside the source, that the answer is stable between runs, and that the tool must later be able to move pins itself because some boards will not route without it. This ADR records the spelling and the file, which are syntax and a file format and so hard to reverse. The owner accepted the first choice of each row of `docs/research/pin-assignment-options.md` section 6; this ADR is `proposed` because the owner may still amend them.
+The owner decided on 2026-11-04 and 2026-11-09 that a board may ask for "any GPIO" and let the tool pick the pin, that the answer lives in a file beside the source, that the answer is stable between runs, and that the tool must later be able to move pins itself because some boards will not route without it. This ADR records the spelling and the file, which are syntax and a file format and so hard to reverse. The owner accepted the first choice of each row of `docs/research/pin-assignment-options.md` section 6; the owner accepted this ADR on 2026-11-11.
 
 A request is a member declared with a function of a part as its type: `.status: .u.GPIO`. It is a pin of the board (`.status ~ .led.a` works as it does for any pin), and its name is its key. The type names the part (`.u`) and what the pin must offer: a function a row of the part lists, or a function of a peripheral offered on the pin (`.tx: .u.UARTE1_TX`). The `fn` lists and the request are all that says which pins are interchangeable: a request may have any pin that offers the capability, and a pin the source names never moves. The part declares nothing new.
 

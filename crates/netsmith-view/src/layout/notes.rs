@@ -73,8 +73,8 @@
 //! only into a drawing that has a note. `data-anchors` has the references of all the parts of the
 //! design's note (`Note::anchors`), each once, also those on another sheet, empty for the note of a
 //! sheet. The page lights a note with any of its parts and the parts of a note that has the focus
-//! from this list. Nets are not marked: a note lighting the nets it is about would be a new thing
-//! for the owner to decide (which net of a rail, and what a note of ground lights).
+//! from this list. Nets are not marked: a note lighting the nets it is about would need a rule for
+//! which net of a rail it is, and what a note of ground lights.
 //!
 //! **Rejected.** Reconstructing a relation from the solver's expression tree (constants and paths
 //! lose the way the author wrote them); reading `//` comments for "TODO" or "NOTE:" lines (not
@@ -86,15 +86,16 @@
 //! **Cost.** A sheet with notes is bigger by the margin or the strip. A note beside a part may
 //! stand where a later change of the drawing would want room.
 //!
-//! **Left open, for the owner (the status of ADR 0060 was proposed: the owner decided on
-//! 2026-11-05 that `///` doc comments and `==` relations may be drawn as notes, and "the rules
-//! for what is drawn, where and how many are for the owner to review").** Whether a relation of
-//! a library module (a `BuckStage` feedback relation) should be drawn. Whether `>=` and `<=`
-//! relations should (they state a claim to verify, not what the circuit is). Whether a module's
-//! doc comment should say which module it is when a small board draws modules as one sheet: the
-//! proposal is a heading with the module's path on the note of a module that is not on a sheet of
-//! its own, and it needs the drawing to know whether it holds one module or several, which no
-//! layout entry point passes down today, so it is a change of the layout's interface.
+//! **Choices, accepted as built by the owner, 2026-11-11.** The status of ADR 0060 was proposed:
+//! the owner decided on 2026-11-05 that `///` doc comments and `==` relations may be drawn as
+//! notes, and the rules for what is drawn, where and how many were left to review. A relation of
+//! a library module (a `BuckStage` feedback relation) is not drawn, and neither is a `>=` or `<=`
+//! relation, which states a claim to verify and not what the circuit is. A note lights no net
+//! (above). A module's doc comment does not say which module it is when a small board draws
+//! modules as one sheet: a heading with the module's path on the note of a module that is not on a
+//! sheet of its own needs the drawing to know whether it holds one module or several, which no
+//! layout entry point passes down, so it is a change of the layout's interface; not planned
+//! until a board needs it.
 
 use std::collections::HashMap;
 

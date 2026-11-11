@@ -62,7 +62,7 @@ use netsmith_solve::{Catalogs, Solution, solve, solve_system};
 use crate::{Problem, Stage};
 
 /// The most provider combinations one board or system is tried with. A trial is a whole
-/// solve, so the bound is on time, as `MAX_TRIALS` of the part search is.
+/// solve, so the bound is on time, as `SearchBudget::trials` of the part search is.
 pub const MAX_PROVIDER_TRIALS: usize = 64;
 
 /// The most uses the message about the bound names; the others are counted.

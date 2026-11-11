@@ -26,7 +26,7 @@ What a user needs is in `docs/LANGUAGE.md` ("Peripherals that share hardware" an
 
 Carried: peripherals that share one unit and run one at a time, several units of one kind, a cap on how many of a kind run at once (`limit`), two pins or functions that exclude each other, a function that exists on some pins only (a row lists it), a function any pin of a class can carry (`on`), and which core owns a pin.
 
-Left out, each for a reason: a rule of one silicon revision (the board's author can do nothing about it; it stays in the part's doc comment with the erratum's number); a rule that depends on a speed (firmware sets it and the board does not state it); what firmware sets (clocks, security attributes, drive strength); a DMA stream (software assigns it); a pair that must be used together (question 6, not built); the tool picking the pin (ADR 0016 left it open; a `peripheral` is the data that would drive it).
+Left out, each for a reason: a rule of one silicon revision (the board's author can do nothing about it; it stays in the part's doc comment with the erratum's number); a rule that depends on a speed (firmware sets it and the board does not state it); what firmware sets (clocks, security attributes, drive strength); a DMA stream (software assigns it); a pair that must be used together (question 6, not planned until a board needs it); the tool picking the pin (ADR 0101 built it; a `peripheral` is the data that drives it).
 
 ## What was rejected
 
@@ -40,10 +40,11 @@ A pin that lists only a class has several functions, because its peripherals' li
 
 ## Left open
 
-Decided as recommended, not built:
+Accepted as built by the owner, 2026-11-11. Function names stay text, not variants (ADR 0016), with the nearest name in the message.
 
-- A pair that must be used together (`needs`: both pins of an antenna or neither). "Recommend not now, and one construct, if a second part has one."
-- A `note` on a peripheral, printed when it is used. "A revision's erratum is reachable as a doc comment, and a note a board cannot clear is noise."
-- A module that exports a peripheral as a unit (an interface that carries a selection). "The equation costs one line for each exported pin and works today."
-- Peripherals in generics: refused "until a generic of microcontrollers exists with two providers".
-- Function names as text or as variants: "text for now (ADR 0016) with the nearest name in the message".
+Not built, and not planned until a board needs it:
+
+- A pair that must be used together (`needs`: both pins of an antenna or neither). One construct, if a second part has one.
+- A `note` on a peripheral, printed when it is used. A revision's erratum is reachable as a doc comment, and a note a board cannot clear is noise.
+- A module that exports a peripheral as a unit (an interface that carries a selection). The equation costs one line for each exported pin and works today.
+- Peripherals in generics: refused until a generic of microcontrollers exists with two providers.

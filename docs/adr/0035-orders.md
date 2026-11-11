@@ -25,4 +25,4 @@ A key is a board as its output folder names it (`Board`, or `System/member`), or
 
 **Panels.** ADR 0020 item 6 deferred panels, and an order is not a panel: it is a list of separate packages to order together. ADR 0040 decided the panel questions this ADR listed and built stage P0: an order key may name a panel, and its quantity then counts panels.
 
-**Left open.** A cache of finished packages, which is an optimisation and not needed to be correct. A finish for the surface (`finish not stated` in `order.txt`: the process definitions do not carry one, and netsmith will not say one it does not know).
+**Not built** (issue #62). A cache of finished packages, which is an optimisation and not needed to be correct. A finish for the surface (`finish not stated` in `order.txt`: the process definitions do not carry one, and netsmith will not say one it does not know).

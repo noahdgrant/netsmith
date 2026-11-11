@@ -1,4 +1,4 @@
-//! Generic capacitors, inductors and LEDs (ADR 0047, provisional). A generic ceramic
+//! Generic capacitors, inductors and LEDs (ADR 0047). A generic ceramic
 //! capacitor resolves only to a row with a recorded DC-bias curve (owner decision,
 //! 2026-11-03); the ratings of an inductor and an LED are read from the design. All parts
 //! and numbers in the rows here are invented.

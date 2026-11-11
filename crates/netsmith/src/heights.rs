@@ -48,26 +48,25 @@
 //!   height stops before a step that would put its body over a limit it is too tall for
 //!   (`pcb/limits.ts`). The arrow-key nudge, turn and flip are not held.
 //!
-//! **Open, word for word from ADR 0045 section 11** ("Open for the maintainer"):
-//! - "Whether the catalog `height` column (section 2) should come first. (Built by ADR 0094,
-//!   provisional.)"
-//! - "That a height-only keepout forbids nothing else, rather than needing `.parts &= "allow"`
-//!   written out." (The owner confirmed it on 2026-11-04.)
-//! - "That `.layers` names the faces a limit applies to." (Confirmed 2026-11-04.)
-//! - "Whether an unknown height should be an error even with the key unset (the key defaults to
-//!   `error`, so by that default it would be). Now it is an error only when `error` is asked
-//!   for explicitly, by the flag or the manifest, and a warning otherwise."
-//! - "Whether the margin (now 0.25 mm) should come from the process instead of the placer's
-//!   constant."
-//! - "Whether the editor's drag limit (above) should also hold the arrow-key nudge, rotate and
-//!   flip; whether a part with no stated height should be held (here it is not, as in the placer
-//!   and the check); and whether a drag should refuse a limit at all or only name it, as it does
-//!   for a keepout for parts today (it refuses nothing there)."
-//! - "Reading a limit from the DXF (a layer that carries a height, or a 3D entity), which needs
-//!   a rule that is not a guess."
-//! - "A limit or a keepout that a part carries now keeps the other parts out in the placer (the
-//!   section above); whether the fit's face-sharing step should read it too, and whether a
-//!   carried zone that forbids parts should read `.layers` for the faces, are the owner's."
+//! **Choices of section 11, accepted as built by the owner, 2026-11-11** (each was a question in
+//! the ADR's text; the answer is what the rules above do):
+//! - The catalog `height` column is the second source, after a stated `.height` (ADR 0094).
+//! - A height-only keepout forbids nothing else, so `.parts &= "allow"` need not be written out
+//!   (confirmed 2026-11-04).
+//! - `.layers` names the faces a limit applies to (confirmed 2026-11-04).
+//! - An unknown height under a limit is an error only when `error` is asked for explicitly, by
+//!   the flag or the manifest, and a warning otherwise, although the key defaults to `error`.
+//! - The margin is `HEIGHT_ZONE_MARGIN`, the placer's constant, 0.25 mm, and not a value of the
+//!   process.
+//! - The editor's drag stops at a limit, and the arrow-key nudge, turn and flip are not held; a
+//!   part with no stated height is not held (as in the placer and the check); a keepout for
+//!   parts is named by a drag and refuses nothing.
+//! - The fit's face-sharing step does not read a limit or a keepout that a part carries, and a
+//!   carried zone that forbids parts keeps out parts on both faces, with no reading of
+//!   `.layers`.
+//!
+//! Not built: reading a limit from the DXF (a layer that carries a height, or a 3D entity),
+//! which needs a rule that is not a guess (issue #27).
 
 use std::collections::BTreeMap;
 

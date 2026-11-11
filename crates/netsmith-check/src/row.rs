@@ -13,7 +13,8 @@
 //! wherever parts are numbered (`tp10` after `tp9`, so `.pads.tp2` has designator `TP2`); before,
 //! designators followed the paths as text and the labels disagreed with the physical file.
 //!
-//! **Provisional readings**, all word for word from ADR 0048 (the owner to confirm or change):
+//! **Readings of the statement and the order**, all word for word from ADR 0048 (accepted as built
+//! by the owner, 2026-11-11):
 //! - "The words `along` and `pitch` are read as words only inside a `row` statement, and `row`
 //!   begins one only when a path with a leading dot follows, so `row`, `along` and `pitch` stay
 //!   usable as names."
@@ -35,8 +36,9 @@
 //!   of one number (`tp02`, `tp2`) are ordered by the number of digits so that the order is
 //!   total."
 //!
-//! Not built: a start offset (`from`), a row of a module's parts addressed by the module (the
-//! editor's "pin here" does not write a row), and a row whose parts are not one numbered run.
+//! Not built, and not planned until a board needs it: a start offset (`from`), a row of a
+//! module's parts addressed by the module, and a row whose parts are not one numbered run. The
+//! editor's "pin here" does not write a row (issue #56).
 
 use netsmith_lang::ast::{Axis, BinOp, CmpOp, Constraint, Expr, Ident, Path, Row};
 
