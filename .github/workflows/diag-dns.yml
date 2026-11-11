@@ -1,0 +1,16 @@
+name: diag-dns
+on:
+  pull_request:
+    paths: ['.github/workflows/diag-dns.yml']
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          cat /etc/os-release | head -3
+          echo "--- resolv.conf"; cat /etc/resolv.conf
+          echo "--- resolvectl"; resolvectl status 2>&1 | head -30 || true
+          echo "--- getent"; for h in archive.ubuntu.com security.ubuntu.com azure.archive.ubuntu.com github.com static.rust-lang.org; do echo "$h: $(getent hosts $h | head -2 | tr '\n' ' ')"; done
+          echo "--- apt sources"; cat /etc/apt/apt-mirrors.txt 2>/dev/null; ls /etc/apt/sources.list.d/; cat /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null | head -20
+          echo "--- apt-get update"; sudo apt-get update 2>&1 | tail -15 || true
+          echo "--- apt-cache policy kicad"; apt-cache policy kicad | head -6
