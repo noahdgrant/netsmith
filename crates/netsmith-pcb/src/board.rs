@@ -1766,6 +1766,20 @@ impl Board {
             .fold(straight, f64::min)
     }
 
+    /// How far a pad's copper is from the board edge: negative if any of it is outside. A round
+    /// pad is measured as the circle it is, so that a plated mounting hole near a rounded
+    /// corner is not taken for a pad whose box corner nearly touches the edge; any other pad is
+    /// measured by its box.
+    fn pad_edge_distance(&self, a: &Placed, pad: &Pad) -> f64 {
+        let round = pad.shape == crate::footprint::PadShape::Circle
+            && pad.extent.is_none()
+            && (pad.width - pad.height).abs() < 1e-9;
+        if round {
+            return self.outline_shape().depth(a.pad_centre(pad)) - pad.width / 2.0;
+        }
+        self.edge_distance(&a.pad_bounds(pad))
+    }
+
     /// The net a pad is on, if any.
     pub fn net_of(&self, refdes: &str, number: &str) -> Option<&BoardNet> {
         self.nets.iter().find(|n| {
@@ -2134,7 +2148,7 @@ impl Board {
                 .pads
                 .iter()
                 .filter(|p| a.pad_layers(p) != (false, false))
-                .map(|p| self.edge_distance(&a.pad_bounds(p)))
+                .map(|p| self.pad_edge_distance(a, p))
                 .fold(f64::MAX, f64::min);
             if nearest < self.rules.copper_to_edge - 1e-9 {
                 problems.push(PlacementProblem::PadNearEdge {
@@ -2673,6 +2687,40 @@ pub(crate) mod tests {
         assert!(found, "{leftmost} is not named: {problems:?}");
         board.outline.min.x = left - board.rules.copper_to_edge;
         assert_eq!(near_edge(&board), vec![], "exactly the rule is allowed");
+    }
+
+    /// A round pad of a mounting hole in a rounded corner is measured as the circle it is: its
+    /// box corner is nearly at the arc (0.05 mm), the copper is 1.09 mm from it.
+    #[test]
+    fn a_round_pad_near_a_rounded_corner_is_measured_as_a_circle() {
+        let mut board = Board::from_design(
+            &led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        board.outline = Rect {
+            min: Pt::new(0.0, 0.0),
+            max: Pt::new(50.0, 50.0),
+        };
+        board.corner_radius = 5.0;
+        let mut part = board.parts[0].clone();
+        let mut pad = part.footprint.pads[0].clone();
+        pad.shape = crate::footprint::PadShape::Circle;
+        pad.width = 5.0;
+        pad.height = 5.0;
+        pad.at = Pt::new(0.0, 0.0);
+        pad.extent = None;
+        part.at = Pt::new(4.0, 4.0);
+        part.rotation = 0.0;
+        let circle = board.pad_edge_distance(&part, &pad);
+        let by_box = board.edge_distance(&part.pad_bounds(&pad));
+        let expected = 5.0 - 2f64.sqrt() - 2.5;
+        assert!((circle - expected).abs() < 1e-9, "{circle}");
+        assert!(by_box < 0.06, "{by_box}");
+        // A pad that is not round is still measured by its box.
+        pad.shape = crate::footprint::PadShape::Rect;
+        assert!((board.pad_edge_distance(&part, &pad) - by_box).abs() < 1e-9);
     }
 
     fn close(a: Pt, b: Pt) -> bool {
