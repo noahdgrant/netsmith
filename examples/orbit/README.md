@@ -158,6 +158,169 @@ can group them as the RP2350 board did.
 
 ## Parts
 
+### The connectors, switches, crystal, LEDs and inductor
+
+The non-passive, non-IC parts of ORBIT's board are the nine kinds below, plus the four mounting
+holes `H1` to `H4` and the logo `O`, which belong to the board stage (the holes are plated
+`MountingHole_*_Pad_Via` footprints, 2.5 mm and 2.2 mm; `std/kicad.toml` has non-plated M2 and
+M3 rows only; the logo is `board_only`). The resistors and capacitors are standard parts, and
+the five ICs (`U1`, `U15`, `U16`, `U17`, `U22`) are not in this section. A part here says what
+a part is; which signal is on which pin, where each stands and the designators of ORBIT's
+(`U10` is the crystal, `L1`, `D1` to `D3`, `USB1`, `BAT1`, `SW1`, `SW2`, `BOOT0`, `PWR1`) are
+the board's (the standard crystal's letter is `Y`, the standard connector's `J`). Each
+must-match footprint is compared pad for pad with `reference/placements.toml` by a test
+(`crates/netsmith/tests/orbit.rs`, module `small_parts`): number, centre in the footprint's own
+frame (0.05 mm), size, shape, kind, drill and angle; the fixture board of the tests builds with
+all the parts and no KiCad install. The footprints are files of the project's own library,
+`libs/orbit_small_parts.pretty`, listed in `kicad.toml`. **No dimension was guessed**: what is
+not on a drawing is listed as assumed, and where the board differs from a drawing the footprint
+of a must-match part follows the board and says so. Numbers are mm; x is to the right and y
+down, the part seen from the component side, as in the reference table. Every PDF was fetched
+on 2026-11-10.
+
+- **USB1, `ShouHanMini5ptp`** (`src/shouhan_mini_5ptp.nsm`): Shou Han MINI 5PTP, mini USB B
+  receptacle, 5 contacts, SMT right angle, LCSC C2681563, JLCPCB Extended (the JLCPCB page and
+  LCSC's record were read; `catalogs/usb_mini_b.csv`; price and stock not recorded). Pins:
+  VBUS 1, D- 2, D+ 3, ID 4, GND 5, and the shield, one pin of the four pads 6 to 9.
+  `provides Connector`. Footprint `USB_Mini-B_ShouHan_MINI-5PTP`: 11 pads (the nine numbered
+  ones and two unnumbered locating holes of 0.9 mm, which are in the table as holes).
+  - Source: the maker's approval sheet for `MINI 5PTP-GZ` (Shenzhen Shouhan Technology Co.,
+    three pages, the drawing's revision `A0`, dated 2020.8.24; the PDF that LCSC links for the
+    number, `datasheet.lcsc.com/datasheet/pdf/a6202504fc03d733b65a4279f29d71f7.pdf`, SHA-256
+    `4d72b9694f5d`): page 1, the view "RECOMMENDED PCB LAYOUT"; page 2, the ratings (1 A per
+    contact, 30 V DC). Its pages carry the maker's name as a watermark and state no copyright.
+  - **Read:** signal pads 0.50 wide at 0.8 pitch (4 x 0.8, 0.50), 2.30 long (2.30); shell
+    pads 2.50 x 2.00 (2.50, 2.00), 5.50 apart in the depth of the connector (5.50) and 8.90 across
+    (8.90); two holes of 0.9 mm (2 x 0.9), 4.40 apart (4.40).
+  - **Derived by arithmetic:** the shell pads' centres at 2.25 and 7.75 mm from the drawing's
+    datum line (1.00 + 1.25; 5.50 apart) and the holes' line at 5.20 from it, so with the
+    holes' line as y = 0 the shell pads' centres are at y = -2.55 and 2.95, the board's.
+  - **Differs from the drawing, the footprint follows the board:** the board's signal pads are
+    2.2 long and centred at y = -2.95 (from -4.05 to -1.85), the drawing's 2.30 long from -3.80
+    to -1.50; its shell pads are 2.2 long against 2.5; its holes are at y = 0.1, the drawing's
+    at 0 against the shell pads (up to 0.35 mm at an edge). Whether the maker drew another
+    revision or the author shortened the pads is not known.
+  - **Assumed:** the pad numbers (the drawing numbers none: the board's; the order VBUS, D-,
+    D+, ID, GND is the board's nets and the USB-IF specification was not read); the shell on
+    pads 6 to 9, one pin; paste on the SMD pads; the courtyard; no silkscreen or 3D model.
+- **BAT1, `JstB2bPhSm4Tb`** (`src/jst_b2b_ph_sm4_tb.nsm`): JST B2B-PH-SM4-TB(LF)(SN), 2 contacts at
+  2.0 mm, top entry, SMT, two mounting tabs, LCSC C160352, JLCPCB Extended
+  (`catalogs/jst_ph_smt.csv`). Pins 1, 2 and `MP` (the two tabs, both numbered `MP` as KiCad
+  and the board do). `provides Connector`. Footprint
+  `JST_B2B-PH-SM4-TB_1x02-1MP_P2.00mm_Vertical`: 4 pads.
+  - Source: JST, "PH CONNECTOR, 2.0mm pitch" (the PDF that LCSC links for C160352,
+    `datasheet.lcsc.com/datasheet/pdf/6c6fce4367275d84ec6a99bf09f1250f.pdf`, 3 pages, SHA-256
+    `4e41351f0926`; no revision or date is printed): page 1, "SMT type, SM4 type, top entry";
+    page 3 for the part number of 2 circuits. No notice of copyright was seen on page 1.
+  - **Read:** the contact pitch 2 (+-0.05) and the tab length 3 (+-0.1). The chain of
+    dimensions 1.6, 1.6 and 2 (+-0.1, +-0.1, +-0.05) next to them could not be tied to pad
+    edges with certainty and is not used.
+  - **Assumed (the board's):** every other number: contacts 1.0 x 5.5 centred at y = 0.5, tabs
+    1.6 x 3.0 at x = +-3.4, y = -1.75; the origin; the rounded-rectangle shape (ratio 0.25,
+    KiCad's default) of the four pads; pad numbers 1 and 2 left to right and `MP`; paste on
+    all pads; no body, silkscreen or model.
+- **J1 and J2, the standard `Header1x8`:** 1 x 8, 2.54 mm. The generator's
+  `PinHeader_1x08_P2.54mm_Vertical` is the board's footprint pad for pad (1.7 x 1.7 mm, drill
+  1.0 mm, pin 1 square, the others oval), so no project footprint was written. ORBIT's schematic
+  states no LCSC number for them: the standard row is a header of the standard catalog and is
+  soldered by hand (ADR 0024).
+- **SW1 (RESET) and SW2 (USER), `XkbTs1187a`** (`src/xkb_ts_1187a.nsm`): XKB TS-1187A-B-A-B,
+  tactile switch, 5.1 x 5.1 mm, SPST, 1.5 mm high, 160 gf, LCSC C318884, 50 mA 12 V
+  (`catalogs/xkb_ts_1187a.csv`; JLCPCB's page printed no library type, so the cell is empty).
+  Pins `A` (pad 1, the two upper pads) and `B` (pad 2, the two lower pads), one pin for each pair
+  as in the RP2350A Minimal's switch. Footprint
+  `SW_Push_XKB_TS-1187A_CK_KSC6-pad-layout`: 4 pads, the board's.
+  - Source: XKB Industrial Precision, drawing "TS-1187A-X-X-X", "TACT SWITCH", revision A0, sheet 1/1
+    (`datasheet.lcsc.com/datasheet/pdf/56c8799ae5193945a16a1ffbe378246a.pdf`, SHA-256
+    `64b75233cada`): the circuit (terminals A and B joined, C and D joined, the button between
+    the pairs), the specification (contact rating 50 mA at 12 V DC) and the ordering codes
+    (`B` 160 gf, `A` 1.5 mm, `B` brass keystake). No notice of copyright was seen.
+  - **The pad pattern is not this part's.** ORBIT's footprint is KiCad's
+    `SW_Push_1P1T_NO_CK_KSC6xxJ` (C&K), pads 2.8 x 1.0 at +-2.9 and +-2.0, which are the J-bend
+    "PAD LAYOUT" of the C&K KSC series catalogue (page B-50, "KSC Series, Sealed Tact Switch
+    for SMT", the Farnell copy `farnell.com/datasheets/2706287.pdf`, SHA-256 `03a6544b6ea7`:
+    8.6 over the pads, 3 between them, 4 between the rows), a 6.2 mm sealed switch. XKB's own
+    "P.C.B. LAYOUT" draws four pads 7.0 over their outer edges, 5.0 over the inner ones, 4.5 and
+    3.0 in the other direction, so (arithmetic) 1.0 x 0.75 mm pads at +-3.0 and +-1.875: each of
+    them lies inside the board's pad, so the part can be soldered to the board's pads, though not
+    by its recommended layout. The footprint is the board's (must match).
+  - **Assumed:** that terminals A and B are pad 1 and C and D pad 2 (the drawing's letters and
+    the board's numbers are tied by nothing); the courtyard; no silkscreen or model.
+- **BOOT0 and PWR1, `HroK3_1270`** (`src/hro_k3_1270.nsm`): HRO (Korean Hroparts Elec) K3-1270
+  slide switch, SPDT, SMT right angle. ORBIT's schematic and board name it **K3-1270L-F1** and
+  give LCSC **C145857**, which JLCPCB and LCSC list as the **K3-1270S-F2** (JLCPCB Extended,
+  300 mA, 6 V; the ratings are the record's, the drawings state none;
+  `catalogs/hro_k3_1270.csv`). Pins `A` (pad 1), `B` (pad 2), `COM` (pad 3), `MOUNT` (the two
+  thru-hole posts, pads 4 and 5). Footprint `SW_Slide_HRO_K3-1270L-F1`: 5 pads.
+  - Source: HRO, "TOGGLE SWITCHES", drawings K3-1270L-F1 and K3-1270S-F2 (and K3-1270R-F1, not
+    used), each one sheet, revision A, 2013/9/25 (the PDFs that LCSC links for C145857:
+    `datasheet.lcsc.com/datasheet/pdf/ad2d443178044447afa1cc589acd4217.pdf` (L-F1, SHA-256
+    `35c95adcd83d`) and `.../39879f36987cf1f5e28bc2ed9bba2339.pdf` (S-F2, `9064d610d33a`)). The
+    sheets carry the maker's name as a watermark and state no copyright.
+  - **Read** (the two drawings agree): "PCB Layout (Pattern side)": three pads 0.90 wide and
+    2.50 long (0.90, 2.50) at 2.00 pitch (2.00, 2.00), 2 holes of 0.80 (2 x 0.80) 6.30 apart
+    (6.30), the first pad 2.15 from the first hole (2.15), 5.00 from the pads' outer ends to
+    the holes' line (5.00); the circuit diagram: the third terminal is the wide one, joined in
+    position A to the first and in position B to the second.
+  - **Derived by arithmetic:** the pads at y = -1, 1 and 3 and the holes at y = -3.15 and 3.15
+    (-3.15 + 2.15 = -1), the pads' centres at x = -1.875 and the holes' at 1.875 (5.00 - 2.50 =
+    2.50 from the pads' inner ends to the line): the board's numbers to the last digit.
+  - **Differs between the two drawings:** the L-F1 marks its second position (b) with an arrow
+    and the characters 复位, which I read as a spring-return ("reset") position; the S-F2 has no
+    such mark. The operating force is 150 +-100 gf (L-F1) and 120 +-50 gf (S-F2). The pad layout
+    is the same. **Which of the two ORBIT's PWR1 should be is for the owner** (see below).
+  - **Assumed:** the terminal numbers (the drawings number none: the board's); the 1.4 mm
+    annular pads of the posts (the board's); the courtyard; no silkscreen or model.
+  - **What the language cannot say:** the knob's position (see "For the owner"). The part
+    states `bridge .a ~> .com`, position A, as the closed one in a chain: a convention, the
+    path ORBIT's PWR1 uses (pads 1 and 3); BOOT0 has +3.3 V on pad 2 and its pad 1 on a
+    net of its own, `Net-(BOOT0-Pad1)`, for the other position.
+- **U10, the standard `Crystal`:** the YXC X50328MSB2GI, 8 MHz, 20 pF, 5032 two-pad package,
+  LCSC C115962, is already a row of the standard `crystal` catalog (JLCPCB and LCSC records read
+  2026-11-01; `data/jlcpcb/catalog/crystal.csv`), and the generator's
+  `Crystal_SMD_5032-2Pin_5.0x3.2mm` is ORBIT's footprint pad for pad (2.0 x 2.4 mm at +-1.85),
+  so the project has no file for it. LCSC's record re-read on 2026-11-10 is the same part
+  (YXC X50328MSB2GI, SMD5032-2P).
+- **L1, the standard `Inductor`, package 0806:** Murata DFE201612E-R47M=P2, 0.47 uH, LCSC
+  C668312, JLCPCB Extended (`catalogs/inductor.csv`, which adds its row to the standard
+  `inductor` catalog; `kicad.toml` maps the package `0806` to `L_Murata_DFE201612E`).
+  - Source: Murata, reference specification J(E)TE243A-0006B-01, "DFE201612E" (9 pages,
+    marked "Reference Only"; the PDF that LCSC links,
+    `datasheet.lcsc.com/datasheet/pdf/b8f89bf2cd49b99b92d10b430994df40.pdf`, SHA-256
+    `d4e77d3e1874`): page 1 (physical dimensions 2.0 x 1.6, 1.2 max), page 2 (electrical
+    specifications: 0.47 uH +-20%, 26 mohm maximum, 5.5 A by inductance change, 4.5 A by
+    temperature rise), page 5 (recommended PCB pattern).
+  - **Read:** pads 1.8 long (1.8), 0.8 between them (0.8), 2.4 over both (2.4). **Derived:**
+    pads 0.8 x 1.8 mm with centres at +-0.8 mm.
+  - **Differs from the board** (not a must-match part): the author's pads are 1.2 x 1.82 mm at
+    +-0.86 mm (`INDC2016X120N`, the author's own library), 0.12 mm further apart in pitch and 0.4 mm wider.
+    **Assumed:** pad numbers 1 and 2 (the datasheet numbers none); no body or model.
+- **D1 and D2 (green) and D3 (blue), `Everlight19217Ghc` and `Everlight19217Bhc`**
+  (`src/everlight_19_217.nsm`): Everlight 19-217/GHC-YR1S2/3T (LCSC C72043, JLCPCB Extended)
+  and 19-217/BHC-ZL1M2RY/3T (C72041, Extended), 0603, each a provider of the standard `Led`
+  with its own catalog (`catalogs/everlight_19_217_ghc.csv`, `..._bhc.csv`), so that a board
+  names the exact part (the generic declares no `.mpn`, so a use of `Led` cannot ask for one).
+  The footprint is the standard 0603 LED, `LED_0603_1608Metric` from the generator: ORBIT's
+  pads exactly (0.875 x 0.95 at +-0.7875). D1 to D3 are not must-match.
+  - Source, green: Everlight, "19-217/GHC-YR1S2/3T", Rev. 2, device no. DSE-0006617, prepared
+    09-Feb-2012, 10 pages, a distributor's copy (`static.maritex.eu`, SHA-256 `cb21a3fec7ba`:
+    the JLCPCB record links no datasheet and LCSC's links for the number are other makers'
+    sheets): page 3, forward voltage 2.70 / 3.30 / 3.70 V (min / typ / max) at 20 mA, operating
+    temperature -40 to +85 C. Blue: Everlight, "19-217/BHC-ZL1M2RY/3T", Revision 2, released
+    Jun.13.2013, device no. DSE-0009312 (the document that LCSC links, SHA-256 `b95337e6421f`):
+    page 2, forward voltage 2.50 min and 3.10 max at 5 mA (tolerance +-0.1 V, not added),
+    operating temperature -40 to +85 C. Both carry "Copyright (c) 2010, Everlight All Rights
+    Reserved" in their footers: nothing was copied, only the numbers were taken.
+  - **Assumed:** the pad numbers (pad 1 the cathode, as the board's nets have it; the
+    datasheets read number no pad).
+- **What the tests check, and what they do not:** the pad tables against the reference table
+  for the eight must-match parts (and U10 and D1 to D3 exactly, L1 within 0.15 mm); that the
+  pin table names each pad of its footprint once; the nets of the reference board's pads
+  against the pins (USB1 pads 1 to 5, BAT1's, the buttons', BOOT0's and PWR1's common
+  terminal); that each catalog row records its JLCPCB page and the day, and no price or
+  stock; and the fixture build with no KiCad. **Not run:** KiCad's ERC or DRC (no
+  schematic of the board exists yet), and no part was compared with a physical sample.
+
 ### The five ICs (`src/`, `catalogs/`, `kicad.toml`, `libs/orbit_ics.pretty/`)
 
 Each IC of ORBIT is a netsmith part with a pin table written by hand from the maker's

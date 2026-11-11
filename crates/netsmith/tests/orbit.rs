@@ -411,6 +411,575 @@ fn the_board_checks_and_solves() {
     assert_eq!(names, ["Orbit"]);
 }
 
+/// ORBIT's connectors, switches, inductor, crystal and LEDs as parts (`src/shouhan_mini_5ptp.nsm`,
+/// `src/jst_b2b_ph_sm4_tb.nsm`, `src/xkb_ts_1187a.nsm`, `src/hro_k3_1270.nsm`,
+/// `src/everlight_19_217.nsm`, and the standard `Header1x8`, `Crystal` and `Inductor` with the
+/// project's own rows and footprints). The must-match ones (USB1, BAT1, J1, J2, SW1, SW2, BOOT0,
+/// PWR1) are compared pad for pad with the reference table; the others only have to build and be
+/// close. Nothing here needs KiCad.
+mod small_parts {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use netsmith::project::Target;
+    use netsmith::{Libraries, build_with};
+    use netsmith_kicad::install::Search;
+    use netsmith_kicad::testlib;
+    use netsmith_pcb::{Footprint, PadKind, PadShape};
+
+    use super::{number, parsed, project, read, tables};
+
+    /// A small board of our own, never built by the project: one of each part, so that the
+    /// parts, the catalogs and the `kicad.toml` rows build together.
+    const FIXTURE: &str = r#"
+import src::everlight_19_217::{Everlight19217Bhc, Everlight19217Ghc}
+import src::hro_k3_1270::HroK3_1270
+import src::jst_b2b_ph_sm4_tb::JstB2bPhSm4Tb
+import src::shouhan_mini_5ptp::ShouHanMini5ptp
+import src::xkb_ts_1187a::XkbTs1187a
+import std::parts::connector::Header1x8
+import std::parts::passive::{Crystal, Inductor}
+import std::sources::Rail
+
+board SmallPartsFixture {
+    .vbus: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+    .usb: ShouHanMini5ptp { .mpn &= "MINI 5PTP" }
+    .vbus.pos ~ .usb.vbus
+    .vbus.neg ~ .usb.gnd
+
+    .bat: JstB2bPhSm4Tb { .mpn &= "B2B-PH-SM4-TB(LF)(SN)" }
+    .vbus.neg ~ .bat.p1
+    .power: HroK3_1270 { .mpn &= "K3-1270S-F2" }
+    .bat.p2 ~ .power.a
+    .boot: HroK3_1270 { .mpn &= "K3-1270S-F2" }
+    .power.com ~ .boot.a
+
+    .reset: XkbTs1187a { .mpn &= "TS-1187A-B-A-B" }
+    .user: XkbTs1187a { .mpn &= "TS-1187A-B-A-B" }
+    .reset.b ~ .vbus.neg
+    .user.b ~ .vbus.neg
+
+    .west: Header1x8
+    .east: Header1x8
+    .west.p1 ~ .vbus.neg
+    .east.p1 ~ .vbus.neg
+
+    .xtal: Crystal {
+        .package &= "5032"
+        .frequency &= 8MHz +/- 30ppm
+    }
+    .l1: Inductor {
+        .package &= "0806"
+        .inductance &= 470nH +/- 20%
+    }
+    .charge: Everlight19217Ghc
+    .led2: Everlight19217Bhc
+}
+"#;
+
+    fn libraries() -> Libraries {
+        let nowhere = testlib::TempDir::new("orbit-no-kicad");
+        Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        build_with(
+            "fixture.nsm",
+            FIXTURE,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    fn part<'a>(built: &'a netsmith::Built, path: &str) -> &'a netsmith_core::Part {
+        built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| panic!("no part {path}"))
+    }
+
+    /// The footprint a kind and package are exported with, loaded as the build loads it.
+    fn footprint(libraries: &Libraries, kind: &str, package: &str) -> Footprint {
+        let mapped = libraries
+            .mapping
+            .map(kind, Some(package))
+            .unwrap_or_else(|e| panic!("{kind} {package}: {e}"));
+        libraries
+            .footprints
+            .load(&mapped.footprint)
+            .unwrap_or_else(|e| panic!("{}: {e}", mapped.footprint))
+    }
+
+    fn shape_word(pad: &netsmith_pcb::Pad) -> &'static str {
+        if pad.extent.is_some() {
+            return "custom";
+        }
+        match pad.shape {
+            PadShape::Rect => "rect",
+            PadShape::RoundRect => "roundrect",
+            PadShape::Oval => "oval",
+            PadShape::Circle => "circle",
+        }
+    }
+
+    fn as_f(v: &toml::Value) -> f64 {
+        v.as_float()
+            .or_else(|| v.as_integer().map(|i| i as f64))
+            .unwrap()
+    }
+
+    /// Every difference between the pads of `footprint` and those of the reference's
+    /// `reference` footprint: number, centre in the footprint's own frame (0.05 mm), size
+    /// (0.05 mm), drill (0.05 mm), shape, kind and angle. Empty when they are the same.
+    fn pad_differences(footprint: &Footprint, table: &toml::Table, reference: &str) -> Vec<String> {
+        let part = *tables(table, "part")
+            .iter()
+            .find(|p| p["reference"].as_str() == Some(reference))
+            .unwrap_or_else(|| panic!("no part {reference}"));
+        let rotation = number(part, "rotation");
+        let wanted = part["pads"].as_array().unwrap();
+        let mut differences = Vec::new();
+        if footprint.pads.len() != wanted.len() {
+            differences.push(format!(
+                "{reference}: {} pads, the reference has {}",
+                footprint.pads.len(),
+                wanted.len()
+            ));
+        }
+        let mut used = vec![false; footprint.pads.len()];
+        for pad in wanted {
+            let pad = pad.as_table().unwrap();
+            let (n, x, y) = (
+                pad["number"].as_str().unwrap(),
+                number(pad, "x"),
+                number(pad, "y"),
+            );
+            let found = footprint.pads.iter().enumerate().find(|(i, own)| {
+                !used[*i]
+                    && own.number == n
+                    && (own.at.x - x).abs() <= 0.05
+                    && (own.at.y - y).abs() <= 0.05
+            });
+            let Some((i, own)) = found else {
+                differences.push(format!(
+                    "{reference} pad {n:?}: none at ({x}, {y}) within 0.05 mm; pads of that number are at {:?}",
+                    footprint
+                        .pads
+                        .iter()
+                        .filter(|p| p.number == n)
+                        .map(|p| (p.at.x, p.at.y))
+                        .collect::<Vec<_>>()
+                ));
+                continue;
+            };
+            used[i] = true;
+            let at = format!("{reference} pad {n:?} at ({x}, {y})");
+            let size = pad["size"].as_array().unwrap();
+            let (w, h) = (as_f(&size[0]), as_f(&size[1]));
+            // A pad turned by 90 degrees has its size's two numbers the other way round in
+            // the file; the table gives the size in the pad's own frame, and so does the
+            // footprint, so they are compared as they are.
+            if (own.width - w).abs() > 0.05 || (own.height - h).abs() > 0.05 {
+                differences.push(format!(
+                    "{at}: size {} x {}, the reference's {w} x {h}",
+                    own.width, own.height
+                ));
+            }
+            let want_shape = pad["shape"].as_str().unwrap();
+            if shape_word(own) != want_shape {
+                differences.push(format!(
+                    "{at}: shape {}, the reference's {want_shape}",
+                    shape_word(own)
+                ));
+            }
+            let want_kind = match pad["type"].as_str().unwrap() {
+                "smd" => PadKind::Smd,
+                "thru_hole" => PadKind::ThruHole,
+                "np_thru_hole" => PadKind::NpThruHole,
+                other => panic!("{at}: type {other}"),
+            };
+            if own.kind != want_kind {
+                differences.push(format!(
+                    "{at}: kind {:?}, the reference's {want_kind:?}",
+                    own.kind
+                ));
+            }
+            // The file's pad angle includes the footprint's rotation; a rectangle, a circle
+            // or an oval turned by 180 degrees is as it was.
+            let turn =
+                pad.get("angle").map_or(0.0, |_| number(pad, "angle")) - rotation - own.angle;
+            let off = turn.rem_euclid(180.0).min(180.0 - turn.rem_euclid(180.0));
+            if off > 1e-6 {
+                differences.push(format!(
+                    "{at}: angle {} differs from the reference's",
+                    own.angle
+                ));
+            }
+            let want_drill = if let Some(slot) = pad.get("drill_slot") {
+                let slot = slot.as_array().unwrap();
+                Some((as_f(&slot[0]), as_f(&slot[1])))
+            } else if pad.contains_key("drill") {
+                Some((number(pad, "drill"), number(pad, "drill")))
+            } else {
+                None
+            };
+            match (own.drill, want_drill) {
+                (None, None) => {}
+                (Some(d), Some((a, b)))
+                    if (d.width - a).abs() <= 0.05 && (d.height - b).abs() <= 0.05 => {}
+                (d, w) => differences.push(format!(
+                    "{at}: drill {:?}, the reference's {w:?}",
+                    d.map(|d| (d.width, d.height))
+                )),
+            }
+        }
+        differences
+    }
+
+    fn reference_table() -> toml::Table {
+        parsed(&read("reference/placements.toml"))
+    }
+
+    /// The pads of ORBIT's part with their nets: pad number to nets (a number may repeat).
+    fn reference_nets(reference: &str) -> BTreeMap<String, BTreeSet<String>> {
+        let table = reference_table();
+        let parts = tables(&table, "part");
+        let part = parts
+            .iter()
+            .find(|p| p["reference"].as_str() == Some(reference))
+            .unwrap_or_else(|| panic!("the reference has no {reference}"));
+        let mut nets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for pad in part["pads"].as_array().unwrap() {
+            let pad = pad.as_table().unwrap();
+            if let (Some(n), Some(net)) = (
+                pad["number"].as_str().filter(|n| !n.is_empty()),
+                pad.get("net").and_then(|n| n.as_str()),
+            ) {
+                nets.entry(n.to_string())
+                    .or_default()
+                    .insert(net.to_string());
+            }
+        }
+        nets
+    }
+
+    /// The parts of the project, as `(reference, kind, package)`, for the pad comparison.
+    const MUST_MATCH: [(&str, &str, &str); 8] = [
+        ("USB1", "ShouHanMini5ptp", "SMD"),
+        ("BAT1", "JstB2bPhSm4Tb", "SMD,P=2mm"),
+        ("J1", "Header1x8", "2.54mm"),
+        ("J2", "Header1x8", "2.54mm"),
+        ("SW1", "XkbTs1187a", "SMD-4P,5.1x5.1mm"),
+        ("SW2", "XkbTs1187a", "SMD-4P,5.1x5.1mm"),
+        ("BOOT0", "HroK3_1270", "SMD,8.8x2mm"),
+        ("PWR1", "HroK3_1270", "SMD,8.8x2mm"),
+    ];
+
+    #[test]
+    fn the_must_match_footprints_have_the_pads_of_orbits_board() {
+        let libraries = libraries();
+        let table = reference_table();
+        let mut differences = Vec::new();
+        for (reference, kind, package) in MUST_MATCH {
+            let footprint = footprint(&libraries, kind, package);
+            differences.extend(pad_differences(&footprint, &table, reference));
+        }
+        assert!(
+            differences.is_empty(),
+            "the footprints differ from ORBIT's pads:\n{}",
+            differences.join("\n")
+        );
+        // Pads counted as the board has them: the locating holes of USB1 and the repeated
+        // numbers of the buttons and the battery's tabs are pads too.
+        for (reference, kind, package, pads) in [
+            ("USB1", "ShouHanMini5ptp", "SMD", 11),
+            ("BAT1", "JstB2bPhSm4Tb", "SMD,P=2mm", 4),
+            ("J1", "Header1x8", "2.54mm", 8),
+            ("SW1", "XkbTs1187a", "SMD-4P,5.1x5.1mm", 4),
+            ("BOOT0", "HroK3_1270", "SMD,8.8x2mm", 5),
+        ] {
+            assert_eq!(
+                footprint(&libraries, kind, package).pads.len(),
+                pads,
+                "{reference}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_comparison_of_pads_sees_a_pad_that_moved_or_changed() {
+        let libraries = libraries();
+        let table = reference_table();
+        let good = footprint(&libraries, "HroK3_1270", "SMD,8.8x2mm");
+        assert!(pad_differences(&good, &table, "PWR1").is_empty());
+        let mut moved = good.clone();
+        moved.pads[0].at.x += 0.2;
+        let mut swapped = good.clone();
+        let (w, h) = (swapped.pads[1].width, swapped.pads[1].height);
+        (swapped.pads[1].width, swapped.pads[1].height) = (h, w);
+        let mut drilled = good.clone();
+        drilled.pads[3].drill = None;
+        let mut turned = good.clone();
+        turned.pads[2].angle += 90.0;
+        for (what, wrong) in [
+            ("moved", moved),
+            ("swapped", swapped),
+            ("drilled", drilled),
+            ("turned", turned),
+        ] {
+            let differences = pad_differences(&wrong, &table, "PWR1");
+            assert_eq!(differences.len(), 1, "a pad {what}: {differences:?}");
+        }
+        let mut short = good.clone();
+        short.pads.pop();
+        assert!(!pad_differences(&short, &table, "PWR1").is_empty());
+    }
+
+    #[test]
+    fn the_other_parts_build_and_are_close_to_orbits() {
+        let libraries = libraries();
+        let table = reference_table();
+        // U10: the standard 5032 crystal is the board's own footprint, pad for pad.
+        let crystal = footprint(&libraries, "Crystal", "5032");
+        assert_eq!(
+            pad_differences(&crystal, &table, "U10"),
+            Vec::<String>::new()
+        );
+        // D1 to D3: the standard 0603 LED, pad for pad (D2 and D3 stand turned by 90 degrees,
+        // which the footprint's frame does not see).
+        let led = footprint(&libraries, "Everlight19217Ghc", "0603");
+        for reference in ["D1", "D2", "D3"] {
+            assert_eq!(
+                pad_differences(&led, &table, reference),
+                Vec::<String>::new(),
+                "{reference}"
+            );
+        }
+        assert_eq!(
+            footprint(&libraries, "Everlight19217Bhc", "0603")
+                .pads
+                .len(),
+            2
+        );
+        // L1: Murata's recommended pattern, not the board's. Two pads, centres 1.6 mm apart
+        // where the board's are 1.72 mm apart (a difference of 0.12 mm).
+        let inductor = footprint(&libraries, "Inductor", "0806");
+        assert_eq!(inductor.pads.len(), 2);
+        let pitch = (inductor.pads[1].at.x - inductor.pads[0].at.x).abs();
+        assert!((pitch - 1.6).abs() < 1e-9, "{pitch}");
+        assert!((pitch - 1.72).abs() < 0.15);
+        for pad in &inductor.pads {
+            assert_eq!((pad.width, pad.height), (0.8, 1.8));
+        }
+    }
+
+    #[test]
+    fn the_fixture_builds_with_no_kicad_and_every_part_is_the_one_the_board_names() {
+        let built = built();
+        assert!(!built.schematic.is_empty());
+        let sourced = |path: &str| {
+            let refdes = &part(&built, path).refdes;
+            built
+                .sourcing
+                .iter()
+                .find(|s| &s.refdes == refdes)
+                .unwrap_or_else(|| panic!("no {path} in the sourcing"))
+        };
+        for (path, lcsc, mpn) in [
+            ("usb", "C2681563", "MINI 5PTP"),
+            ("bat", "C160352", "B2B-PH-SM4-TB(LF)(SN)"),
+            ("power", "C145857", "K3-1270S-F2"),
+            ("boot", "C145857", "K3-1270S-F2"),
+            ("reset", "C318884", "TS-1187A-B-A-B"),
+            ("user", "C318884", "TS-1187A-B-A-B"),
+            ("xtal", "C115962", "X50328MSB2GI"),
+            ("l1", "C668312", "DFE201612E-R47M=P2"),
+            ("charge", "C72043", "19-217/GHC-YR1S2/3T"),
+            ("led2", "C72041", "19-217/BHC-ZL1M2RY/3T"),
+        ] {
+            let row = sourced(path);
+            assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{path}");
+            assert_eq!(row.mpn.as_deref(), Some(mpn), "{path}");
+        }
+        // The headers have no number in ORBIT's schematic and are soldered by hand.
+        for path in ["west", "east"] {
+            assert_eq!(sourced(path).assembly, netsmith_design::Assembly::Hand);
+        }
+        // Every part has the designator letters of ORBIT's (U10, the crystal, is `Y` here: the
+        // standard crystal's letter).
+        for (path, letters) in [
+            ("usb", "J"),
+            ("bat", "J"),
+            ("power", "SW"),
+            ("reset", "SW"),
+            ("l1", "L"),
+            ("charge", "D"),
+            ("xtal", "Y"),
+        ] {
+            assert!(
+                part(&built, path).refdes.trim_end_matches(char::is_numeric) == letters,
+                "{path}: {}",
+                part(&built, path).refdes
+            );
+        }
+    }
+
+    #[test]
+    fn the_pin_tables_name_every_pad_of_their_footprints_once() {
+        let libraries = libraries();
+        let built = built();
+        for (path, kind, package) in [
+            ("usb", "ShouHanMini5ptp", "SMD"),
+            ("bat", "JstB2bPhSm4Tb", "SMD,P=2mm"),
+            ("power", "HroK3_1270", "SMD,8.8x2mm"),
+            ("reset", "XkbTs1187a", "SMD-4P,5.1x5.1mm"),
+        ] {
+            let pads: Vec<&String> = part(&built, path)
+                .pins
+                .iter()
+                .flat_map(|p| p.pads.iter())
+                .collect();
+            let unique: BTreeSet<&String> = pads.iter().copied().collect();
+            assert_eq!(pads.len(), unique.len(), "{path}: a pad on two pins");
+            let footprint = footprint(&libraries, kind, package);
+            let footprint_pads: BTreeSet<String> = footprint
+                .pad_numbers()
+                .into_iter()
+                .filter(|n| !n.is_empty())
+                .map(str::to_string)
+                .collect();
+            let table_pads: BTreeSet<String> = unique.iter().map(|s| s.to_string()).collect();
+            assert_eq!(table_pads, footprint_pads, "{path}");
+        }
+        assert!(part(&built, "usb").is_connector());
+        assert!(part(&built, "bat").is_connector());
+        // USB1's shell is one pin of four pads, BAT1's tabs and the switches' mounting posts
+        // are one pin each.
+        let pads = |path: &str, pin: &str| -> Vec<String> {
+            part(&built, path)
+                .pins
+                .iter()
+                .find(|p| p.datasheet == pin)
+                .unwrap_or_else(|| panic!("{path} has no pin {pin}"))
+                .pads
+                .clone()
+        };
+        assert_eq!(pads("usb", "SHIELD"), ["6", "7", "8", "9"]);
+        assert_eq!(pads("bat", "MP"), ["MP"]);
+        assert_eq!(pads("power", "MOUNT"), ["4", "5"]);
+        assert_eq!(pads("power", "COM"), ["3"]);
+        assert_eq!(pads("reset", "A"), ["1"]);
+        assert_eq!(pads("reset", "B"), ["2"]);
+    }
+
+    #[test]
+    fn orbits_nets_agree_with_the_pins_of_each_part() {
+        let nets = |reference: &str, pad: &str| -> BTreeSet<String> {
+            reference_nets(reference)
+                .get(pad)
+                .unwrap_or_else(|| panic!("{reference} pad {pad} has no net"))
+                .clone()
+        };
+        let only = |reference: &str, pad: &str, net: &str| {
+            assert_eq!(nets(reference, pad), BTreeSet::from([net.to_string()]));
+        };
+        // USB1: VBUS, D-, D+, (ID), GND on pads 1 to 5 as the pin table has them.
+        only("USB1", "1", "VBUS");
+        only("USB1", "2", "/USB_D-");
+        only("USB1", "3", "/USB_D+");
+        only("USB1", "5", "GND");
+        // BAT1: pad 1 is ground, pad 2 the battery's plus (through PWR1).
+        only("BAT1", "1", "GND");
+        only("BAT1", "2", "Net-(BAT1-Pin_2)");
+        // The buttons: the pair of pad 1 and the pair of pad 2 are one net each.
+        only("SW1", "1", "NRST");
+        only("SW1", "2", "GND");
+        only("SW2", "1", "+3.3V");
+        only("SW2", "2", "Net-(C18-Pad1)");
+        // The slide switches: the common terminal (pad 3) is the MCU's BOOT0 pin on BOOT0 and
+        // the +BATT rail on PWR1, with pad 2 at +3.3 V on BOOT0 and pad 1 on the battery's
+        // plus on PWR1.
+        only("BOOT0", "2", "+3.3V");
+        only("BOOT0", "3", "Net-(U16-BOOT0)");
+        only("PWR1", "1", "Net-(BAT1-Pin_2)");
+        only("PWR1", "3", "+BATT");
+        // The headers: pin N is pad N, the board's signals are in the table.
+        only("J1", "1", "GND");
+        only("J1", "8", "+3.3V");
+        only("J2", "8", "PA6");
+    }
+
+    #[test]
+    fn the_rows_record_their_pages_and_leave_price_and_stock_empty() {
+        for (file, lcsc, library) in [
+            ("catalogs/usb_mini_b.csv", "C2681563", "Extended"),
+            ("catalogs/jst_ph_smt.csv", "C160352", "Extended"),
+            ("catalogs/hro_k3_1270.csv", "C145857", "Extended"),
+            ("catalogs/xkb_ts_1187a.csv", "C318884", ""),
+            ("catalogs/inductor.csv", "C668312", "Extended"),
+            ("catalogs/everlight_19_217_ghc.csv", "C72043", "Extended"),
+            ("catalogs/everlight_19_217_bhc.csv", "C72041", "Extended"),
+        ] {
+            let text = read(file);
+            assert_eq!(text.lines().count(), 2, "{file}: one row");
+            let mut reader = csv_row(&text);
+            let mut cell = |name: &str| reader.remove(name).unwrap_or_default();
+            assert_eq!(cell("lcsc"), lcsc, "{file}");
+            assert_eq!(cell("library"), library, "{file}");
+            assert_eq!(cell("price"), "", "{file}: price is not read");
+            assert_eq!(cell("stock"), "", "{file}: stock is not read");
+            let source = cell("source");
+            assert!(
+                source.contains(&format!("https://jlcpcb.com/partdetail/{lcsc}")),
+                "{file}: the JLCPCB page"
+            );
+            assert!(
+                source.contains("2026-11-10"),
+                "{file}: the day the page was read"
+            );
+            assert!(source.contains("LCSC"), "{file}: LCSC's record");
+        }
+        let target = Target::resolve_from(&project(), None).unwrap();
+        assert!(target.catalogs().is_ok());
+    }
+
+    /// The first row of a CSV text as column name to cell (quotes of cells that hold commas).
+    fn csv_row(text: &str) -> BTreeMap<String, String> {
+        fn split(line: &str) -> Vec<String> {
+            let (mut cells, mut cell, mut quoted) = (Vec::new(), String::new(), false);
+            let mut chars = line.chars().peekable();
+            while let Some(c) = chars.next() {
+                match (c, quoted) {
+                    ('"', true) if chars.peek() == Some(&'"') => {
+                        cell.push('"');
+                        chars.next();
+                    }
+                    ('"', _) => quoted = !quoted,
+                    (',', false) => cells.push(std::mem::take(&mut cell)),
+                    (c, _) => cell.push(c),
+                }
+            }
+            cells.push(cell);
+            cells
+        }
+        let mut lines = text.lines();
+        let header = split(lines.next().unwrap());
+        let row = split(lines.next().unwrap());
+        assert_eq!(header.len(), row.len(), "the row has the header's columns");
+        header.into_iter().zip(row).collect()
+    }
+}
+
 /// The five ICs of ORBIT as parts: the charger (U1), the buck-boost converter (U15), the
 /// microcontroller (U16), the EEPROM (U17) and the USB-UART bridge (U22), each with its pin
 /// table, footprint and catalog row, and what the reference board says about them.
