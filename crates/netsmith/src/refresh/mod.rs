@@ -121,16 +121,18 @@
 //! call), the repository has never agreed anything with LCSC, and the sites' general terms could
 //! not be read (the pages are rendered by script). The measures above (opt-in, sequential, a
 //! pause, a cache, an honest User-Agent) are courtesy and not permission. A person must read LCSC's
-//! terms before the command is advertised beyond this repository, and the command and the editor's
-//! button should be withdrawn or changed if they forbid it. Until the official APIs are used, the
-//! JLCPCB price, stock and library are read by hand.
+//! terms before the command is advertised beyond this repository (a person must do this;
+//! checklist in issue #10), and the command and the editor's button should be withdrawn or
+//! changed if they forbid it. Until the official APIs are used, the JLCPCB price, stock and
+//! library are read by hand.
 //!
-//! **Not decided.** Whether to refresh the standard catalogs on a schedule, or on a release, and
-//! who commits them. Showing a live price in the editor without writing a file, for a part of the
-//! standard catalogs. A second supplier (Mouser, Digi-Key, which have official APIs and keys) or
-//! the official JLCPCB and LCSC APIs: the code has one place that reads a record, which is where
-//! another would go. That this is the only command that touches the network is a fact of the code;
-//! as a rule it is not in `docs/DESIGN-RULES.md`, and the owner may want it there.
+//! **Not built.** Refreshing the standard catalogs on a schedule or on a release, and who commits
+//! them, is not planned until a board needs it. A live price in the editor without writing a file,
+//! for a part of the standard catalogs: issue #8. A second supplier (Mouser, Digi-Key, which have
+//! official APIs and keys) or the official JLCPCB and LCSC APIs: issue #30; the code has one place
+//! that reads a record, which is where another would go. That this is the only command that
+//! touches the network is a fact of the code and not a rule in `docs/DESIGN-RULES.md`; it is not
+//! planned as one until a board needs it.
 
 mod csvfile;
 mod date;

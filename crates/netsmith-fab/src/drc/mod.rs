@@ -128,8 +128,10 @@
 //! unrouted-by-design nets, footprint-against-library and schematic parity (KiCad's
 //! `lib_footprint_*`, `extra_footprint`), and the electrical rules check (the solver does most of
 //! it). Silkscreen text uses netsmith's own font, so a text that only just clears a pad can be
-//! judged differently. JLCPCB's own check has not been run on a package: the cross-check says
-//! netsmith agrees with KiCad, not that a fabricator will accept the board.
+//! judged differently. The pour categories and the rules above are not built (issue #61).
+//! JLCPCB's own check has not been run on a package: the cross-check says netsmith agrees with
+//! KiCad, not that a fabricator will accept the board (issue #12; a person must do it, checklist
+//! in issue #10).
 
 mod checks;
 mod connect;

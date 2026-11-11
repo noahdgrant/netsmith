@@ -32,12 +32,13 @@
 //!   resistor of 1 % the error is second order, about `(tolerance / 2)^2`. `net::check_interior`
 //!   draws points inside the ranges and counts those outside the hull (a fixed seed; tests
 //!   only). A stated margin of that size for any element with a range wider than 5 %, and a
-//!   sound enclosure by interval Newton or affine arithmetic, are not built: the owner has not
-//!   decided (ADR 0076, left open).
-//! - Not built: a cache of an island's result keyed by its netlist and boundary ranges, so an
-//!   edit solves only the island it is in; and sensitivity corners (the sign of a quantity's
-//!   derivative with respect to each value, one extra solve per value, says which end of each
-//!   range gives its extreme: `n + 2` solves a quantity for a monotone one, past 2^n).
+//!   sound enclosure by interval Newton or affine arithmetic, are not built, and stay so until
+//!   the interior check fails on a real design (the owner, 2026-11-11; ADR 0076).
+//! - Not built, and not planned until a board needs it: a cache of an island's result keyed by
+//!   its netlist and boundary ranges, so an edit solves only the island it is in; and
+//!   sensitivity corners (the sign of a quantity's derivative with respect to each value, one
+//!   extra solve per value, says which end of each range gives its extreme: `n + 2` solves a
+//!   quantity for a monotone one, past 2^n).
 //! - The cost budget when this was written: at most 5 % of the solver's time, because the editor
 //!   re-solves on every edit (a debug build of the crate is optimised, `[profile.dev.package.
 //!   netsmith-solve]` in the root `Cargo.toml`).

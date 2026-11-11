@@ -53,7 +53,7 @@
 //!   generics, and the unit tests build a `Part` by hand with a kind and no `provides`. They
 //!   are about different things (what a layout hangs in series, what the placer calls a
 //!   decoupling capacitor).
-//! - `netsmith-lower/src/lib.rs` `default_value`: `"Led"` shows `LED` as the value of an LED the
+//! - `netsmith-design/src/lib.rs` `default_value`: `"Led"` shows `LED` as the value of an LED the
 //!   solver did not pick. It is a display default the language cannot declare, and reading
 //!   `provides` would change that line of a bill of materials for a provider.
 //! - `hand_soldered`, `is_connector`, `is_mechanical` and `Label` name parts, not generics (the

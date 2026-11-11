@@ -1350,16 +1350,16 @@ impl Checker<'_> {
     ///   pull-up on its rail would be told that its rail draws what the part draws and nothing
     ///   more, and fail a balance that is right.
     ///
-    /// Left open, for the owner: a module that wraps another module (`.vdd ~ .inner.vdd`) is not
-    /// covered. The inner rail is a port, whose current the inner module's own balance sets from
-    /// its part, and a module's balance of two terms already equates the two when nothing else is
-    /// unknown; a reference rail on that net still stops it. The decision named a part inside;
-    /// extending it to an inner module's port is the owner's. A wrapper's bus interface
-    /// (`.spi.levels.reference ~ .vcc`, issue 188) is a member of the module and joined to the
-    /// module's rail, not to a part's, so the rule does not see it: the reference of a part's own
-    /// levels is left out of the balance, the module's own is not, and the module states
-    /// `.current &= 0A` for it. The same applies to the `neg` pins: the return nets are checked
-    /// and never solved from (ADR 0014).
+    /// Accepted as built by the owner, 2026-11-11: a module that wraps another module
+    /// (`.vdd ~ .inner.vdd`) is not covered. The inner rail is a port, whose current the inner
+    /// module's own balance sets from its part, and a module's balance of two terms already
+    /// equates the two when nothing else is unknown; a reference rail on that net still stops it.
+    /// The decision named a part inside; extending it to an inner module's port is not planned
+    /// until a board needs it. A wrapper's bus interface (`.spi.levels.reference ~ .vcc`, issue
+    /// 188) is a member of the module and joined to the module's rail, not to a part's, so the
+    /// rule does not see it: the reference of a part's own levels is left out of the balance, the
+    /// module's own is not, and the module states `.current &= 0A` for it. The same applies to
+    /// the `neg` pins: the return nets are checked and never solved from (ADR 0014).
     fn rail_aliases(&self) -> Vec<(InstId, InstId)> {
         let pairs = &self.model.rail_aliases;
         let mut counts: HashMap<InstId, usize> = HashMap::new();

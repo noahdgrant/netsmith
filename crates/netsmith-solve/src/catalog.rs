@@ -229,6 +229,10 @@ impl Default for SearchBudget {
     fn default() -> Self {
         SearchBudget {
             trials: 250_000,
+            // Chosen from the speed of an invented board (about 20 s of a release build), and
+            // accepted by the owner on 2026-11-11 (ADR 0057). No real board has been measured
+            // yet; the owner will measure it. If a real search stops sooner than a person
+            // waits, the number comes down.
             work: 1_000_000_000,
         }
     }

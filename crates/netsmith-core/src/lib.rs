@@ -345,13 +345,13 @@ pub struct Keepout {
     pub copper: bool,
     pub parts: bool,
     /// The tallest a part may stand where the keepout is, in mm, on the faces in `layers`
-    /// (ADR 0045, "Height limits", PROVISIONAL). `None`: no height limit. A keepout that
+    /// (ADR 0045, "Height limits"). `None`: no height limit. A keepout that
     /// states a limit and none of `tracks`, `vias`, `copper` and `parts` forbids nothing else.
     pub max_height: Option<f64>,
 }
 
 /// How tall a part stands above the board, as the design states it (ADR 0045, "Height
-/// limits", PROVISIONAL). A part the design does not state a height for is not here: its
+/// limits"). A part the design does not state a height for is not here: its
 /// height is unknown, and it is reported as such where a limit applies to it, never taken
 /// as zero.
 #[derive(Debug, Clone, PartialEq)]

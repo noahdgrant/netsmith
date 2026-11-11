@@ -105,9 +105,9 @@ fn natural_segment_order(a: &str, b: &str) -> std::cmp::Ordering {
 /// A text field narrows to one value, so the letters a standard kind states cannot be changed by
 /// a part's user or a board: "contradiction on `r.designator`: it is already "R", which does not
 /// overlap "Z"". It is the limit ADR 0024 records for `.assembly` and is accepted for the same
-/// reason: a resistor is `R`. A default that a board may replace, for the letters of a standard
-/// kind and for `.assembly`, is a separate language choice (one for both) and is left open, for the
-/// owner.
+/// reason: a resistor is `R`; the owner accepted it as built, 2026-11-11. A default that a board
+/// may replace, for the letters of a standard kind and for `.assembly`, is not built (one language
+/// choice for both; not planned until a board needs it).
 ///
 /// The layout file is keyed by the path of a part (ADR 0032), so a saved placement does not move
 /// when letters change. It was checked two ways: a test
@@ -1342,6 +1342,28 @@ mod tests {
     }
 
     /// The names and letters of the standard library's definitions.
+    /// The names of the standard library's `generic` definitions.
+    fn std_generics() -> Vec<String> {
+        let std = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std");
+        let mut names = Vec::new();
+        let mut dirs = vec![std];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if path.extension().is_some_and(|e| e == "nsm") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    names.extend(text.lines().filter_map(|line| {
+                        let rest = line.strip_prefix("generic ")?;
+                        Some(rest.split([' ', '{']).next().unwrap().to_string())
+                    }));
+                }
+            }
+        }
+        names
+    }
+
     fn std_parts() -> Vec<(String, Option<String>)> {
         std_definitions()
             .into_iter()
@@ -1422,7 +1444,13 @@ mod tests {
     /// and no other does.
     #[test]
     fn every_standard_connector_kind_provides_the_connector_generic() {
+        // A generic provides nothing itself: a generic with the letters `J` (the USB-C sink
+        // receptacle) passes them to its providers, which are checked here like any part.
+        let generics = std_generics();
         for (name, letters, provides) in std_definitions() {
+            if generics.contains(&name) {
+                continue;
+            }
             assert_eq!(
                 provides
                     .iter()

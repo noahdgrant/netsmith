@@ -51,8 +51,8 @@
 /// own wording for a reversed diode (the relation already says it in numbers); `.drop` as the
 /// voltage (the DC analysis reads it as the forward voltage, so deriving it from the rail
 /// would contradict the analysis for every blocking diode). A diode between two rails (an
-/// OR-ing diode) is across no rail and is not checked. The name, and a field-name convention
-/// against a keyword, are the owner's to confirm.
+/// OR-ing diode) is across no rail and is not checked. The name, and the field-name convention
+/// (ADR 0105), are accepted as built (the owner, 2026-11-11).
 part Diode {
     .designator &= "D"
 
@@ -242,8 +242,8 @@ generic Schottky {
 /// voltage is the 25 C range at the test current; the dynamic impedance at another current is not
 /// modelled.
 ///
-/// Left open, for the owner: the unit of the coefficient, the name and kind of the shift, which
-/// marker guards what, and the relation's form are the owner's to confirm or replace.
+/// The unit of the coefficient, the name and kind of the shift, which marker guards what, and the
+/// relation's form are accepted as built by the owner, 2026-11-11.
 generic Zener {
     .designator &= "D"
 
@@ -320,7 +320,7 @@ generic Zener {
 /// wants the transient and not the reversal states no `.reverse_peak` on that rail; two
 /// members, a steady `.reverse_voltage` and a transient `.reverse_peak`, would be a second
 /// member on every rail, and are not built. `TvsBidirectional` is not given the field: it
-/// clamps a reverse transient as a forward one, so what to check is the owner's to say.
+/// clamps a reverse transient as a forward one, so nothing is checked (accepted as built, 2026-11-11).
 ///
 /// Why `.breakdown_voltage` is an optional column (ADR 0073). A design could not say that a TVS
 /// diode must stay non-conducting with a margin above the highest its line reaches, because the
@@ -357,8 +357,8 @@ generic Zener {
 /// Cost. The check is the design's own: the library does not say which margin is enough, and a
 /// design with a TVS diode and no `.breakdown_voltage` line has no margin check.
 ///
-/// Left open, for the owner: the written record, the rejected alternatives and the placement of
-/// the optional-column rule are for the owner to confirm.
+/// The written record, the rejected alternatives and the placement of the optional-column rule are
+/// accepted as built by the owner, 2026-11-11.
 generic Tvs {
     .designator &= "D"
 
@@ -442,7 +442,7 @@ generic Tvs {
 /// that differs by polarity) has no field here. Three-pin parts (`D_TVS_Dual_*`) and multi-line
 /// ESD arrays are not covered; each is its own part. The Littelfuse rows are Extended parts;
 /// no Basic bidirectional row was read. The name, the pin names and the member-or-generic
-/// choice are the owner's to confirm.
+/// choice are accepted as built (the owner, 2026-11-11).
 generic TvsBidirectional {
     .designator &= "D"
 
