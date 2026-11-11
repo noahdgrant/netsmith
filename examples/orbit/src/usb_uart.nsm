@@ -1,0 +1,50 @@
+//! The USB to UART bridge of ORBIT: the CP2102 (U22) and the capacitors on its supplies.
+//!
+//! ORBIT's circuit: the USB data lines `D+` and `D-` go straight to the chip (no series
+//! resistor); `REGIN` and `VBUS` are both on the USB rail; the chip's own 3.3 V regulator
+//! output `VDD` is on a net of its own, with a 4.7 uF (C20) and a 100 nF (C21) capacitor to
+//! ground, and does not feed anything; C23 (1 uF) and C24 (100 nF) are on `VBUS`. `RXD` and
+//! `TXD` go to the MCU's USART1; every other pin is left open.
+
+import src::cp2102::Cp2102
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+/// The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data
+/// pins, `.rxd` to the MCU's transmit pin and `.txd` to its receive pin.
+module UsbUart {
+    .vbus: Rail
+    .dp: Pin
+    .dm: Pin
+    /// The chip's receive input (the line the host sends the MCU's output on).
+    .rxd: Pin
+    /// The chip's transmit output.
+    .txd: Pin
+
+    /// U22: the CP2102-GMR (LCSC C6568).
+    .ic: Cp2102 { .mpn &= "CP2102-GMR" }
+    /// C20, on the chip's regulator output.
+    .vdd_bulk: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    /// C21, on the chip's regulator output.
+    .vdd_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    /// C23, on `VBUS`.
+    .vbus_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603" }
+    /// C24, on `VBUS`.
+    .vbus_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+
+    .ic.regin ~ .vbus.pos
+    .ic.vbus ~ .vbus.pos
+    .ic.gnd ~ .vbus.neg
+    .ic.d_plus ~ .dp
+    .ic.d_minus ~ .dm
+    .ic.rxd ~ .rxd
+    .ic.txd ~ .txd
+
+    .ic.vdd ~ .vdd_bulk.a
+    .ic.vdd ~ .vdd_100n.a
+    .vdd_bulk.b ~ .vbus.neg
+    .vdd_100n.b ~ .vbus.neg
+
+    .vbus.pos ~> .vbus_1u ~> .vbus.neg
+    .vbus.pos ~> .vbus_100n ~> .vbus.neg
+}
