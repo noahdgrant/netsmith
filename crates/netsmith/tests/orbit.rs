@@ -2287,6 +2287,88 @@ mod board {
         );
     }
 
+    /// The pads of the CP2102's `NC` pin (the datasheet's table has one pin of these ten): the pads
+    /// of `NC`, but not pad 18 (`NC/VPP`, a pin of its own).
+    const NC_PADS: [&str; 10] = ["10", "13", "14", "15", "16", "17", "19", "20", "21", "22"];
+
+    /// The pads that share a net with pad `pad` of `refdes` in `netlist` (`to_reference` names the
+    /// designators as ORBIT's board does), and the names of the nets the pad is on.
+    fn pad_net_mates(
+        netlist: &Netlist,
+        to_reference: &BTreeMap<String, String>,
+        refdes: &str,
+        pad: &str,
+    ) -> (Vec<Pad>, Vec<String>) {
+        let mut mates = Vec::new();
+        let mut names = Vec::new();
+        for net in &netlist.nets {
+            let pads: Vec<Pad> = net
+                .pins
+                .iter()
+                .map(|(c, pin)| {
+                    let r = &netlist.components[*c].refdes;
+                    (to_reference.get(r).unwrap_or(r).clone(), pin.clone())
+                })
+                .collect();
+            if pads.iter().any(|(r, p)| r == refdes && p == pad) {
+                names.push(net.name.clone());
+                mates.extend(pads.into_iter().filter(|(r, p)| !(r == refdes && p == pad)));
+            }
+        }
+        (mates, names)
+    }
+
+    /// The datasheet's `NC` pin is one pin of ten pads in the design (pad 18, `NC/VPP`, is another
+    /// pin), and ORBIT's board has the same ten pads as ten separate unconnected pads, each on a
+    /// net of its own with no other pad. The comparison above reads pads, not pins, so it cannot
+    /// tell the two shapes apart: this says that every one of the ten is unconnected on both sides
+    /// (no other pad on its net), and that the design's pin does not join them.
+    #[test]
+    fn the_ten_nc_pads_are_unconnected_on_both_sides() {
+        let built = built();
+        let bridge = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.kind == "Cp2102")
+            .expect("the board has a Cp2102");
+        let nc: Vec<_> = bridge.pins.iter().filter(|p| p.datasheet == "NC").collect();
+        assert_eq!(nc.len(), 1, "one `NC` pin, as the datasheet's table has it");
+        assert_eq!(format!("{:?}", nc[0].kind), "NoConnect");
+        assert_eq!(nc[0].pads, NC_PADS);
+        let to_reference = designators(&built);
+        let ours = design_netlist(&built);
+        let theirs = reference();
+        for pad in NC_PADS {
+            let (mates, ours_names) = pad_net_mates(&ours, &to_reference, "U22", pad);
+            assert_eq!(mates, Vec::<Pad>::new(), "the board's U22 pad {pad}");
+            let (mates, names) = pad_net_mates(&theirs, &BTreeMap::new(), "U22", pad);
+            assert_eq!(mates, Vec::<Pad>::new(), "ORBIT's U22 pad {pad}");
+            // A pad alone on its net is on no net of the netlist (the reader keeps nets of two
+            // pads or more): neither side has the pad on a net.
+            assert_eq!(names, Vec::<String>::new(), "ORBIT's U22 pad {pad}");
+            assert_eq!(
+                ours_names,
+                Vec::<String>::new(),
+                "the board's U22 pad {pad}"
+            );
+        }
+        // The board file names each of the ten pads' nets after the pad (`unconnected-(U22-NC@1-
+        // Pad13)`): ten nets of one pad each, not one net of ten.
+        let file = read(&format!("reference/{REFERENCE}"));
+        let nets: BTreeSet<&str> = file
+            .split('"')
+            .filter(|t| t.starts_with("unconnected-(U22-NC") && t.ends_with(')'))
+            .collect();
+        for pad in NC_PADS {
+            let named: Vec<&&str> = nets
+                .iter()
+                .filter(|n| n.ends_with(&format!("-Pad{pad})")))
+                .collect();
+            assert_eq!(named.len(), 1, "ORBIT's U22 pad {pad}: {nets:?}");
+        }
+    }
+
     /// The exchange of the two resistors' pads is the only thing that stands between the
     /// board's pads and ORBIT's: read as they are, the differences are all on `SWAPPED`.
     #[test]
