@@ -56,9 +56,9 @@
 //! would apply to a declared pin and a part that states `vol` alone would be a note again. If the
 //! pin kind is chosen, this rule's test for a driver changes and nothing else.
 //!
-//! Left open by ADR 0046, for the owner: more parts with datasheet levels; levels across a level
-//! shifter or a series resistor, and for open-drain lines (the voltage of a net is followed only
-//! through resistors).
+//! Not built from ADR 0046: more parts with datasheet levels (issue #64), and levels across a
+//! level shifter or a series resistor (issue #63; the voltage of a net is followed only through
+//! resistors). Open-drain lines have levels since ADR 0075, above.
 //!
 //! Levels stated as fractions of one rail are compared at one supply voltage (ADR 0082). The
 //! levels are compared as two intervals, and an interval counts a value once for each time it is
@@ -85,9 +85,10 @@
 //! would be a rounded `1 / k` (write `0.5 * .vdd.voltage`); a factor that is a range is not read as
 //! one; two rails that a board gives the same range on two nets are two voltages.
 //!
-//! Left open, for the owner: whether to extend the rule to affine forms (a fraction of the supply
-//! with an offset, `.vdd.voltage - 0.4V`), which a corner comparison decides exactly; and whether
-//! the pull-up path above wants the same treatment for a receiver at a fraction of that rail.
+//! Accepted as built by the owner, 2026-11-11. Not built: the rule for affine forms (a fraction of
+//! the supply with an offset, `.vdd.voltage - 0.4V`), which a corner comparison decides exactly,
+//! and the same treatment of the pull-up path above for a receiver at a fraction of that rail; not
+//! planned until a board needs it.
 
 use std::cell::OnceCell;
 use std::collections::{BTreeSet, HashMap};

@@ -307,7 +307,7 @@ interface Usb2 {
 ///   listed as not evaluated, so every pull-up on a rail with no stated peak would print a note
 ///   that it did not print before, and its resistor's current would be unknown (the fault this
 ///   module fixes). A default of the rail's peak has the same effect. There is no way in the
-///   language to read a value only when it is stated, and adding one is the owner's decision.
+///   language to read a value only when it is stated, and none is built.
 /// - Widening the lower end always, to `-(peak / resistance)`: it makes every budget on a pull-up's
 ///   rail fail or lose its meaning for a board with no such driver.
 /// - Only writing both assumptions in the doc: a board that has the driver then has nothing to
@@ -318,8 +318,8 @@ interface Usb2 {
 /// the draw's range is the span from it to the draw with the line low, so the two cannot be told
 /// apart in time (the interval is wider than a mix of the two would give, never narrower).
 ///
-/// Left open, for the owner (the module and the marker `required` on its resistance were decided
-/// in principle on 2026-11-06; the rest was an agent's, told to pick an option and go on):
+/// Accepted as built by the owner, 2026-11-11 (the module was decided in principle on
+/// 2026-11-06; the rest was an agent's, told to pick an option and go on):
 ///
 /// - The names `.line`, `.line_low` and `.resistor`.
 /// - That the draw is the worst case, 0 to `supply.voltage / resistance`, unless the board
@@ -527,11 +527,11 @@ module I2cPullups {
 /// first. (`Logic` has since an optional `.ii`, ADR 0076 amendment 8, which ADR 0079 does not
 /// mention.)
 ///
-/// Left open, for the owner (a std module in today's language, no new syntax): the names
-/// `reference`, `line_high` and `line_top`, and the choice that the module draws nothing from a
-/// rail, were made by an agent; the pin's input current was not built and is left to the owner.
-/// That the share is of the line being high, and that `.line_top` is the board's to widen for a
-/// stronger driver, are the other things to look at.
+/// The names `reference`, `line_high` and `line_top`, and the choice that the module draws
+/// nothing from a rail, were made by an agent (a std module in today's language, no new syntax);
+/// so were that the share is of the line being high, and that `.line_top` is the board's to widen
+/// for a stronger driver. Accepted as built by the owner, 2026-11-11. The pin's input current is
+/// stated by the part as the optional `.ii` of its `Logic`, not by this module.
 module PullDown {
     .reference: Rail
     .reference.current &= 0A

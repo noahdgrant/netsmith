@@ -242,8 +242,8 @@ generic Schottky {
 /// voltage is the 25 C range at the test current; the dynamic impedance at another current is not
 /// modelled.
 ///
-/// Left open, for the owner: the unit of the coefficient, the name and kind of the shift, which
-/// marker guards what, and the relation's form are the owner's to confirm or replace.
+/// The unit of the coefficient, the name and kind of the shift, which marker guards what, and the
+/// relation's form are accepted as built by the owner, 2026-11-11.
 generic Zener {
     .designator &= "D"
 
@@ -357,8 +357,8 @@ generic Zener {
 /// Cost. The check is the design's own: the library does not say which margin is enough, and a
 /// design with a TVS diode and no `.breakdown_voltage` line has no margin check.
 ///
-/// Left open, for the owner: the written record, the rejected alternatives and the placement of
-/// the optional-column rule are for the owner to confirm.
+/// The written record, the rejected alternatives and the placement of the optional-column rule are
+/// accepted as built by the owner, 2026-11-11.
 generic Tvs {
     .designator &= "D"
 
