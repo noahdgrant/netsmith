@@ -404,3 +404,67 @@ fn the_seven_kinds_are_the_words_of_the_unknown_kind_message() {
         ]
     );
 }
+
+#[test]
+fn a_function_may_be_marked_a_class() {
+    let src = row(
+        ".gpio26 bidirectional \"GPIO26\" \"40\" fn GPIO:bidirectional class ADC0:input optional",
+    );
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let row = &table.rows[0];
+    let got: Vec<(&str, Option<PinKind>, bool)> = row
+        .functions
+        .iter()
+        .map(|f| (f.name.name.as_str(), f.kind.map(|k| k.0), f.class.is_some()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("GPIO", Some(PinKind::Bidirectional), true),
+            ("ADC0", Some(PinKind::Input), false),
+        ]
+    );
+    assert_eq!(row.requirement.map(|r| r.0), Some(Requirement::Optional));
+    let printed = file.to_source();
+    assert!(
+        printed.contains("fn GPIO:bidirectional class ADC0:input optional"),
+        "{printed}"
+    );
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn the_class_marker_belongs_to_the_function_before_it() {
+    // Last in the list, at the end of a line, and before `optional`.
+    let src = row(
+        ".a bidirectional \"A\" \"1\" fn ADC0:input GPIO class\n        .b input \"B\" \"2\" fn GPIO class optional",
+    );
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let marked = |i: usize| -> Vec<bool> {
+        table.rows[i]
+            .functions
+            .iter()
+            .map(|f| f.class.is_some())
+            .collect()
+    };
+    assert_eq!(marked(0), [false, true]);
+    assert_eq!(marked(1), [true]);
+    // A function that is called `class` is a name where a name is meant.
+    let src = row(".a bidirectional \"A\" \"1\" fn class GPIO class");
+    let file = parse(&src).unwrap();
+    let Item::Pins(table) = &file.definitions[0].items[0] else {
+        panic!()
+    };
+    let got: Vec<(&str, bool)> = table.rows[0]
+        .functions
+        .iter()
+        .map(|f| (f.name.name.as_str(), f.class.is_some()))
+        .collect();
+    assert_eq!(got, [("class", false), ("GPIO", true)]);
+}
