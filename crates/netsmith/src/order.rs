@@ -808,6 +808,7 @@ pub fn fab_order(
             only: Some(mine),
             layout: Some(crate::layout::layout_path(&source.path)),
             lock: using,
+            pin_map_source: Some(source.stable_name(target.project.as_ref())),
             ..options.clone()
         };
         match fab_with_options(

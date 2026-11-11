@@ -105,9 +105,9 @@ tried them.
 ```sh
 mkdir blink && cd blink
 netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files
-netsmith build      # a KiCad schematic in out/, and for a board with pin requests its pin map for firmware (`.pins.h`, `.pins.json`)
+netsmith build      # a KiCad schematic in out/
 netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787
-netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt
+netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
 netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 
