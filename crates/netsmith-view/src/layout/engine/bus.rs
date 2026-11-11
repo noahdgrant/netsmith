@@ -112,25 +112,28 @@
 //! schematic crosses the same wires, and the owner chose the bus for the two-ended case knowing the
 //! same cost (ADR 0049); but it is a cost. No rule of `check` is broken on any board.
 //!
-//! **Left open, for the owner (the status of ADR 0067 was proposed: "the four gaps that ADR 0049
-//! left open in the drawing are closed; the choices below (the arrowheads, dotted names for a
-//! nested interface, the thresholds of a shared bus, the text at a flag) are for the owner to
-//! review; nothing in the language changes").**
+//! **Choices, accepted as built by the owner, 2026-11-11.** The status of ADR 0067 was proposed:
+//! "the four gaps that ADR 0049 left open in the drawing are closed; the choices below (the
+//! arrowheads, dotted names for a nested interface, the thresholds of a shared bus, the text at a
+//! flag) are for the owner to review; nothing in the language changes". The arrowheads, the dotted
+//! names, the text at a flag, the thresholds (three members between two places, two among three,
+//! eight parts), the rule that a part beside a pin keeps a net out, and the first instance by
+//! path naming a shared bus are as described above. Not built:
 //! - *A pull-up on a shared bus.* An I2C bus always has pull-ups (ADR 0044), and a net with a
 //!   pull-up beside a pin is not a member, so an I2C bus whose pull-ups are on the same sheet as
 //!   its devices is still drawn as nets. When the pull-ups are in a module of their own, drawn by
 //!   module (`I2cPullups`), the sheet with the devices has the nets continue (a flag) and is drawn
 //!   as a bus. A pull-up as a branch off the thick line (a resistor whose signal pin ends on the
 //!   line like an entry) is the way to close it; it needs the engine to place a small part beside
-//!   a line and not beside a pin, which it does not do.
-//! - *Pure containers* of interfaces (above).
-//! - *The thresholds* (three members between two places, two among three, eight parts) and the
-//!   rule that a part beside a pin keeps a net out.
-//! - *Which instance names a shared bus* (above).
-//! - *A bus through a part*: a level translator or an ESD array that joins two nets.
-//! - *The direction as a role*, if ADR 0064 is accepted.
-//! - *Whether the arrowheads should be a setting* (a very busy bus of bidirectional pins, a
-//!   processor's GPIO, has two on each entry).
+//!   a line and not beside a pin, which it does not do. Not planned until a board needs it.
+//! - *Pure containers* of interfaces (above): a change to `netsmith-design`; not planned until a
+//!   board needs it.
+//! - *A bus through a part*: a level translator or an ESD array that joins two nets; not planned
+//!   until a board needs it.
+//! - *The direction as a role.* ADR 0064 is accepted, and the drawing still reads the pin kind;
+//!   not planned until a board needs it.
+//! - *The arrowheads as a setting* (a very busy bus of bidirectional pins, a processor's GPIO,
+//!   has two on each entry); not planned until a board needs it.
 
 use super::*;
 

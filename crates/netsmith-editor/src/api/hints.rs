@@ -46,7 +46,7 @@
 //!   everything hangs from one part): the page finds out afterwards, when the part is where it was
 //!   from the reference part in the drawing that came back, says "nothing was arranged" and writes
 //!   the entry back. Marking such blocks in the drawing would let the page refuse before the
-//!   write, and is left to the owner.
+//!   write; not built, issue #19.
 //! - *Keys.* With a part selected whose block can move: the arrows nudge one grid step and
 //!   `Shift+Arrow` ten; `r` turns a quarter counterclockwise from the orientation drawn,
 //!   `Shift+R` the other way; `m` mirrors; `Backspace` or `Delete` clears the entry. The arrows
@@ -66,9 +66,9 @@
 //!   of stage `layout` opens it at its line. It cannot be renamed on its own; it can be deleted
 //!   on its own (the file is then gone, not `version = 1`), and it goes with its source.
 //!
-//! Left open: the preview of a drag moves the part and not its block, so satellites and wires jump
-//! when the file is written (showing the block needs its membership in the drawing); a drag in
-//! the overview (all modules) is not offered, the cards being thumbnails.
+//! Not built (issue #19): the preview of a drag moves the part and not its block, so satellites
+//! and wires jump when the file is written (showing the block needs its membership in the
+//! drawing); a drag in the overview (all modules) is not offered, the cards being thumbnails.
 
 use std::collections::BTreeMap;
 

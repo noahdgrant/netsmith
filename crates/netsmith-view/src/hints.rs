@@ -130,16 +130,18 @@
 //! - JSON or a custom syntax: TOML is what ADR 0032 uses, reads and diffs well, and the reader
 //!   is already a dependency of the workspace (`toml`, with its spans for line numbers).
 //!
-//! **Cost and left open.** Two sidecars per source file now (`.pcb.toml`, `.sch.toml`), three
-//! with the physical file (ADR 0048); each is optional. A rename of a part inside a module leaves
-//! entries with a finding; the editor could rewrite the file in the same edit that renames, which
-//! is not built. A sheet is a top-level module instance of the board: a part of a module nested
+//! **Cost and what is not built.** The file's name, keys, grid, frame, findings and the Alt
+//! modifier that pins were left to review: accepted as built by the owner, 2026-11-11. Two
+//! sidecars per source file now (`.pcb.toml`, `.sch.toml`), three with the physical file
+//! (ADR 0048); each is optional. A rename of a part inside a module leaves entries with a
+//! finding; the editor could rewrite the file in the same edit that renames, which is not built
+//! (issue #19). A sheet is a top-level module instance of the board: a part of a module nested
 //! in a module is keyed by its path from that instance, and if sheets ever become nested the key
 //! of a part changes with them. A part with several units (ADR 0050) is moved as the box of its
-//! primary unit and no unit has a key of its own (`u1#2` would be the shape, not designed here).
-//! The sheets' arrangement on the page (the grid of boxes of a big board) is not hinted: only
-//! what is inside a sheet. Not built, at any stage: wires, labels, buses or nets in the file; a
-//! per-unit key; a tool that renames entries with a part.
+//! primary unit and no unit has a key of its own (`u1#2` would be the shape; not built, not
+//! designed, issue #19). The sheets' arrangement on the page (the grid of boxes of a big board) is
+//! not hinted: only what is inside a sheet (not built, issue #19). Not built, at any stage: wires,
+//! labels, buses or nets in the file; a per-unit key; a tool that renames entries with a part.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
