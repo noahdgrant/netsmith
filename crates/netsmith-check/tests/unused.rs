@@ -689,3 +689,102 @@ fn a_series_part_inside_the_module_that_holds_the_interface_is_no_use() {
         c.render()
     );
 }
+
+// A source that is itself in an interface stated `unused` sources nothing: the board says that
+// nothing uses it. So a pull to a rail that only such a pin or such a `dc source` feeds is still
+// a pull to a rail nothing on the board sources, and is no use, though a load is on its net.
+
+/// Zhub, an invented part with an interface whose `vbus` pin is an output, and Zpwr, one whose
+/// rail (`.pwr`) a `dc source` gives.
+const HUB: &str = r#"
+part Zhub {
+    .aux: Usb2
+
+    pins {
+        .aux.vbus.pos output        "OUT"  "1"
+        .aux.vbus.neg power         "GND"  "2"
+        .aux.dp       bidirectional "DP"   "3"
+        .aux.dm       bidirectional "DM"   "4"
+    }
+}
+
+part Zpwr {
+    .pwr: Rail
+    dc source .pwr
+
+    pins {
+        .pwr.pos power "P" "1"
+        .pwr.neg power "N" "2"
+    }
+}
+"#;
+
+#[test]
+fn an_output_pin_in_an_interface_stated_unused_does_not_source_the_rail() {
+    let c = run(&format!(
+        "{HUB}{LOAD}{}",
+        board(
+            "    .hub: Zhub\n    .rail: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"5V\"\n        .neg.net &= \"GND\"\n    }\n    .rail.pos ~ .hub.aux.vbus.pos\n    .load: Zload\n    .rail.pos ~ .load.in\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .rail.pos\n    unused .proc.usb\n    unused .hub.aux\n"
+        )
+    ));
+    let said = messages(&c);
+    // The processor's pull is not made a use by a source that is not one.
+    assert!(
+        !said
+            .iter()
+            .any(|m| m.contains("`proc.usb.dp` is connected")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_dc_source_rail_in_an_interface_stated_unused_does_not_source_the_rail() {
+    let c = run(&format!(
+        "{HUB}{LOAD}{}",
+        board(
+            "    .hub: Zpwr\n    .rail: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"5V\"\n        .neg.net &= \"GND\"\n    }\n    .rail ~ .hub.pwr\n    .load: Zload\n    .rail.pos ~ .load.in\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .rail.pos\n    unused .proc.usb\n    unused .hub.pwr\n"
+        )
+    ));
+    let said = messages(&c);
+    assert!(
+        said.iter()
+            .any(|m| m.contains("`hub.pwr") && m.contains("is stated `unused`")),
+        "{}",
+        c.render()
+    );
+    assert!(
+        !said
+            .iter()
+            .any(|m| m.contains("`proc.usb.dp` is connected")),
+        "{}",
+        c.render()
+    );
+}
+
+/// Ztri, an invented part with a tri-state pin on a rail.
+const TRI: &str = r#"
+part Ztri {
+    pins {
+        .out tri_state "OUT" "1"
+    }
+}
+"#;
+
+#[test]
+fn a_path_to_a_rail_with_a_tri_state_pin_on_it_is_a_use() {
+    let c = run(&format!(
+        "{TRI}{LOAD}{}",
+        board(
+            "    .t: Ztri\n    .rail: Rail {\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"BUS\"\n        .neg.net &= \"GND\"\n    }\n    .rail.pos ~ .t.out\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .rail.pos\n    unused .proc.usb\n"
+        )
+    ));
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m
+                .contains("`proc.usb.dp` is connected here through `r` (a `Resistor`) to `t.out`")),
+        "{}",
+        c.render()
+    );
+}

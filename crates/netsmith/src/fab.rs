@@ -49,10 +49,25 @@ pub struct Fabricated {
     pub facts: BoardFacts,
 }
 
-/// What `netsmith fab` says when it finds no KiCad. netsmith's own design rules check and its
-/// Gerbers need none; KiCad is only the witness of `--cross-check`, which plots the boards and
-/// runs KiCad's design rules check to compare with netsmith's own (ADR 0034, ADR 0037).
-pub const NO_KICAD_NOTE: &str = "note: KiCad is not installed, so --cross-check (KiCad's plots and design rules check, compared with netsmith's own) is not available; netsmith's own design rules check still runs";
+/// What `netsmith fab` says when it finds no KiCad, and why there is none: KiCad is switched off
+/// (`NETSMITH_NO_KICAD`, which hides an install that may be there) or it was not found. netsmith's
+/// own design rules check and its Gerbers need none; KiCad is only the witness of
+/// `--cross-check`, which plots the boards and runs KiCad's design rules check to compare with
+/// netsmith's own (ADR 0034, ADR 0037). `scripts/check-no-kicad.sh` greps for either lead
+/// ("KiCad is switched off", "KiCad is not installed") as the proof that KiCad was hidden.
+pub fn no_kicad_note(search: &netsmith_kicad::install::Search) -> String {
+    let why = if search.is_off() {
+        format!(
+            "KiCad is switched off ({} is set)",
+            netsmith_kicad::install::NO_KICAD_VARIABLE
+        )
+    } else {
+        "KiCad is not installed".to_string()
+    };
+    format!(
+        "note: {why}, so --cross-check (KiCad's plots and design rules check, compared with netsmith's own) is not available; netsmith's own design rules check still runs"
+    )
+}
 
 /// Why there is no `kicad-cli` when KiCad is switched off (`NETSMITH_NO_KICAD`), for the message of
 /// a command that needs one: the search then finds none whatever `KICAD_CLI` says, so a message
@@ -1151,8 +1166,9 @@ fn fab_board_pinned(
                 on_disk_left.map_or_else(|| "?".to_string(), |n| n.to_string()),
             ));
             result.push_str(&format!(
-                "  pins: the files in {} are those of the last round of pins, which is not the pin map written (making the board again with it left more connections); do not order from them\n",
-                dir.display()
+                "  pins: the files in {} are those of the last round of pins, which is not the pin map written ({}); do not order from them\n",
+                dir.display(),
+                why_earlier_files_stay(remake_left)
             ));
             if let Err(e) = back {
                 result.push_str(&format!(
@@ -1210,6 +1226,15 @@ fn keep_earlier_files(remake_left: Option<usize>, on_disk_left: Option<usize>) -
         (Some(remake), Some(on_disk)) => remake > on_disk,
         (Some(_), None) => false,
         (None, _) => true,
+    }
+}
+
+/// What to say of a remake whose board did not replace the files before it: it made no board
+/// (`None`: it failed before it routed, in placement, say) or it left more connections.
+fn why_earlier_files_stay(remake_left: Option<usize>) -> &'static str {
+    match remake_left {
+        Some(_) => "making the board again with it left more connections",
+        None => "making the board again with it made no board",
     }
 }
 
@@ -1681,6 +1706,10 @@ mod tests {
         assert!(keep_earlier_files(Some(4), Some(3)));
         // No board made: nothing to put in their place.
         assert!(keep_earlier_files(None, Some(3)));
+        // What is said of it depends on which happened.
+        assert!(why_earlier_files_stay(Some(4)).contains("left more connections"));
+        assert!(why_earlier_files_stay(None).contains("made no board"));
+        assert!(!why_earlier_files_stay(None).contains("left more connections"));
         assert!(keep_earlier_files(None, None));
         // The files before are not known: the remake is not held against them.
         assert!(!keep_earlier_files(Some(9), None));
@@ -1710,13 +1739,30 @@ mod tests {
     }
     #[test]
     fn the_note_without_kicad_says_netsmiths_own_check_still_runs() {
-        let note = super::NO_KICAD_NOTE;
+        let note = super::no_kicad_note(&netsmith_kicad::install::Search::under("/nowhere"));
+        assert!(note.contains("KiCad is not installed"), "{note}");
         assert!(note.contains("--cross-check"), "{note}");
         assert!(
             note.contains("netsmith's own design rules check still runs"),
             "{note}"
         );
         assert!(!note.contains("none of its own"), "{note}");
+    }
+
+    #[test]
+    fn the_note_says_when_kicad_is_switched_off_and_not_that_it_is_not_installed() {
+        let note = super::no_kicad_note(
+            &netsmith_kicad::install::Search::under("/nowhere").with_no_kicad(),
+        );
+        assert!(
+            note.contains("KiCad is switched off (NETSMITH_NO_KICAD is set)"),
+            "{note}"
+        );
+        assert!(!note.contains("not installed"), "{note}");
+        assert!(
+            note.contains("netsmith's own design rules check still runs"),
+            "{note}"
+        );
     }
 
     use super::*;

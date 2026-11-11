@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Tests scripts/check-example-locks.sh over a fake examples folder with a stub `netsmith` (it
+# exits with the code in $STUB_CODE for `lock --check`, and records nothing): the script must pass
+# for boards with locks, and fail for no board at all, for an orphan lock (naming the file), and
+# for a stale lock. It needs nothing but bash.
+#   scripts/check-example-locks-test
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/check-example-locks.sh"
+
+tree="$(mktemp -d)"
+trap 'rm -rf "$tree"' EXIT
+
+stub="$tree/netsmith"
+cat > "$stub" <<'STUB'
+#!/usr/bin/env bash
+exit "${STUB_CODE:-0}"
+STUB
+chmod +x "$stub"
+
+failed=0
+
+# fresh: an empty examples folder.
+fresh() {
+    rm -rf "$tree/examples"
+    mkdir -p "$tree/examples"
+}
+
+# run <name> <want exit> <text the output must hold or ''>: the script over the folder.
+run() {
+    local name="$1" want="$2" text="$3" code=0 out
+    out="$(NETSMITH_EXAMPLES_DIR="$tree/examples" "$script" "$stub" 2>&1)" || code=$?
+    if [ "$code" -ne "$want" ]; then
+        echo "FAIL  $name: exit $code, wanted $want"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failed=1
+    elif [ -n "$text" ] && ! printf '%s' "$out" | grep -qF -- "$text"; then
+        echo "FAIL  $name: the output does not say: $text"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failed=1
+    else
+        echo "ok    $name"
+    fi
+}
+
+fresh
+run "no board at all fails" 1 "found no board"
+
+fresh
+touch "$tree/examples/led.nsm" "$tree/examples/led.lock.toml"
+touch "$tree/examples/led.physical.nsm"
+mkdir -p "$tree/examples/proj/src"
+touch "$tree/examples/proj/netsmith.toml" "$tree/examples/proj/src/main.nsm" "$tree/examples/proj/src/main.lock.toml"
+run "boards with their locks pass" 0 "2 boards, every pick lock is current"
+
+touch "$tree/examples/gone.lock.toml"
+run "an orphan lock beside the boards fails and names the file" 1 "gone.lock.toml: an orphan pick lock"
+rm "$tree/examples/gone.lock.toml"
+
+touch "$tree/examples/proj/src/old.lock.toml"
+run "an orphan lock inside a project fails and names the file" 1 "proj/src/old.lock.toml: an orphan pick lock"
+rm "$tree/examples/proj/src/old.lock.toml"
+
+# A folder with no netsmith.toml is not a board.
+mkdir -p "$tree/examples/notes"
+run "a folder that is no project is not counted" 0 "2 boards"
+
+out_code=0
+STUB_CODE=1 NETSMITH_EXAMPLES_DIR="$tree/examples" "$script" "$stub" > "$tree/out" 2>&1 || out_code=$?
+if [ "$out_code" -eq 1 ] && grep -q "the pick lock is stale or missing" "$tree/out"; then
+    echo "ok    a stale lock fails"
+else
+    echo "FAIL  a stale lock: exit $out_code"
+    sed 's/^/      /' "$tree/out"
+    failed=1
+fi
+
+if [ "$failed" -ne 0 ]; then
+    echo "check-example-locks-test: FAILED"
+    exit 1
+fi
+echo "check-example-locks-test: ok"

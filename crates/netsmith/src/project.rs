@@ -797,6 +797,35 @@ pub struct SourceFile {
     pub path: PathBuf,
 }
 
+impl SourceFile {
+    /// The file's name for output that must not depend on where the command runs (the pin map
+    /// for firmware): its path from the project's root (the folder of `netsmith.toml`) with `/`
+    /// between the parts, or the file's own name when there is no project (or the file is not
+    /// under its root).
+    pub fn stable_name(&self, project: Option<&Project>) -> String {
+        let file_name = || {
+            self.path
+                .file_name()
+                .map_or_else(|| self.name.clone(), |n| n.to_string_lossy().into_owned())
+        };
+        let Some(project) = project else {
+            return file_name();
+        };
+        let resolve = |p: &Path| fs::canonicalize(p).or_else(|_| std::path::absolute(p));
+        let (Ok(root), Ok(path)) = (resolve(&project.root), resolve(&self.path)) else {
+            return file_name();
+        };
+        match path.strip_prefix(&root) {
+            Ok(rest) => rest
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+            Err(_) => file_name(),
+        }
+    }
+}
+
 /// What a command acts on: the files, the project they belong to if any, and where output
 /// goes by default.
 #[derive(Debug, Clone)]
@@ -1013,6 +1042,16 @@ impl Target {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_stable_name_is_the_path_from_the_root_or_the_file_name() {
+        let file = SourceFile {
+            name: "../led.nsm".to_string(),
+            path: PathBuf::from("../led.nsm"),
+        };
+        // No project: the file's name, from whatever folder it was named.
+        assert_eq!(file.stable_name(None), "led.nsm");
+    }
+
     use super::*;
 
     fn parse(text: &str) -> Result<Manifest, String> {

@@ -347,6 +347,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The script's own checks, over a fake examples folder with a stub binary (bash only, quick).
+      - name: Test the script
+        run: scripts/check-example-locks-test
+
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 

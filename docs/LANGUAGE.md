@@ -2489,7 +2489,7 @@ error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A function can be chosen on any number of pins when the part says it is a **class**: the row writes `class` after the function, `fn GPIO class`. A microcontroller whose ADC inputs are also plain GPIOs lists `GPIO` on every such pin, and a board that uses all of them as GPIO chooses `GPIO` on each (a class is also what `peripheral NAME on CLASS` names, "A peripheral on any pin"; the two spellings make a function a class in the same way). A connected pin that lists `GPIO` and an ADC input still needs one of them chosen, and a function no row marks stays on one pin.
+A function can be chosen on any number of pins when the part says it is a **class**: the row writes `class` after the function, `fn GPIO class`. A microcontroller whose ADC inputs are also plain GPIOs lists `GPIO` on every such pin, and a board that uses all of them as GPIO chooses `GPIO` on each (a class is also what `peripheral NAME on CLASS` names, "A peripheral on any pin"; the two spellings make a function a class in the same way). A connected pin that lists `GPIO` and an ADC input still needs one of them chosen, and a function no row marks stays on one pin. A `class` right after a function's name (and its `:kind`) is always that function's marker, so a function that is itself called `class` is a name only as the first function after `fn` or right after a function that already has its marker (`fn GPIO class class`).
 
 ```nsm module=src::mcu8
 /// A microcontroller with two pins that are GPIO or an ADC input. Illustrative; not a real part.

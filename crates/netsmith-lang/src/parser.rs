@@ -1215,8 +1215,10 @@ impl Parser {
                     Tok::Ident(w) if w != "optional" && w != "required" => {
                         let name = self.ident("a function name")?;
                         let kind = self.function_kind(&name)?;
-                        // `class` after a function's name marks it; a function that is itself
-                        // called `class` is the name right after `fn` or after another name.
+                        // `class` right after a function's name (and its kind) is that function's
+                        // marker, whatever comes before. So a function that is itself called
+                        // `class` is a name only where a name is read: first after `fn`, or after a
+                        // function that already has its marker (`fn GPIO class class`).
                         let class = match &self.peek().tok {
                             Tok::Ident(w) if w == "class" => Some(self.bump().span),
                             _ => None,

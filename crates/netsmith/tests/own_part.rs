@@ -478,6 +478,19 @@ fn cross_check_with_kicad_switched_off_says_what_hides_kicad_cli() {
 }
 
 #[test]
+fn fab_with_kicad_switched_off_says_it_is_switched_off_not_that_it_is_not_installed() {
+    let dir = TempDir::new("own-part-fab-note");
+    project(&dir, &sensor_row("gen:SOT23(pins=3)"));
+    // The run may stop at a later stage: the note comes first.
+    let (_, err) = switched_off(&dir, &["fab"]);
+    assert!(
+        err.contains("note: KiCad is switched off (NETSMITH_NO_KICAD is set)"),
+        "{err}"
+    );
+    assert!(!err.contains("KiCad is not installed"), "{err}");
+}
+
+#[test]
 fn compare_of_a_schematic_with_kicad_switched_off_says_what_hides_kicad_cli() {
     let dir = TempDir::new("own-part-compare");
     fs::write(dir.join("a.kicad_sch"), "").unwrap();
