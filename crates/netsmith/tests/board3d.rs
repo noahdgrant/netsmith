@@ -270,3 +270,174 @@ fn a_limit_a_part_breaks_is_drawn_as_broken() {
     let dir = netsmith_kicad::testlib::TempDir::new("render-lidded");
     render(&scene, "lidded", dir.path());
 }
+
+/// The JSON chunk of a `.glb` file.
+fn glb_json(glb: &[u8]) -> serde_json::Value {
+    netsmith_pcb::gltf::json_chunk(glb).expect("a GLB file")
+}
+
+fn glb_node<'a>(doc: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+    doc["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["name"] == name)
+        .unwrap_or_else(|| panic!("no node `{name}`"))
+}
+
+#[test]
+fn glb_writes_the_scene_as_gltf_and_prints_nothing_else() {
+    let examples = repo().join("examples");
+    let before = std::fs::read_dir(&examples).unwrap().count();
+    let out = netsmith_kicad::testlib::TempDir::new("board3d-glb");
+    let (a, b) = (out.join("a.glb"), out.join("b.glb"));
+    for file in [&a, &b] {
+        let run = board3d(
+            &examples,
+            &["four_layer.nsm", "--glb", file.to_str().unwrap()],
+        );
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert!(
+            run.stdout.is_empty(),
+            "{}",
+            String::from_utf8_lossy(&run.stdout)
+        );
+    }
+    let glb = std::fs::read(&a).unwrap();
+    assert_eq!(glb, std::fs::read(&b).unwrap(), "the same bytes each time");
+    assert_eq!(&glb[..4], b"glTF");
+    let doc = glb_json(&glb);
+    let root = &glb_node(&doc, "board")["extras"]["netsmith"];
+    assert_eq!(root["kind"], "board");
+    assert_eq!(root["board"], "FourLayerExample");
+    assert_eq!(root["stack_thickness_mm"], 1.6062);
+    let j1 = &glb_node(&doc, "J1")["extras"]["netsmith"];
+    assert_eq!(j1["path"], "power_in");
+    assert_eq!(j1["provenance"], "catalog");
+    assert_eq!(std::fs::read_dir(&examples).unwrap().count(), before);
+
+    // With `--json` too, the report is printed and the same file written.
+    let c = out.join("c.glb");
+    let (report, _) = json(
+        &examples,
+        &["four_layer.nsm", "--json", "--glb", c.to_str().unwrap()],
+    );
+    assert_eq!(report["board"]["name"], "FourLayerExample");
+    assert_eq!(std::fs::read(&c).unwrap(), glb);
+
+    let run = board3d(&examples, &["four_layer.nsm", "--glb"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("--glb needs a file"));
+}
+
+#[test]
+fn an_unknown_height_is_flat_in_the_glb_and_the_limit_it_breaks_is_marked() {
+    let out = netsmith_kicad::testlib::TempDir::new("board3d-glb-lid");
+    let file = out.join("lid.glb");
+    let run = board3d(
+        &fixtures(),
+        &["height_limits.nsm", "--glb", file.to_str().unwrap()],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let doc = glb_json(&std::fs::read(&file).unwrap());
+    let bare = &glb_node(&doc, "J3")["extras"]["netsmith"];
+    assert_eq!(bare["provenance"], "unknown");
+    assert!(bare["height_mm"].is_null() && bare["z_top_mm"].is_null());
+    let mesh = glb_node(&doc, "J3")["mesh"].as_u64().unwrap() as usize;
+    let material = doc["meshes"][mesh]["primitives"][0]["material"]
+        .as_u64()
+        .unwrap() as usize;
+    assert_eq!(doc["materials"][material]["name"], "body-unknown");
+    let lid = &glb_node(&doc, "limit:lid:top")["extras"]["netsmith"];
+    assert_eq!(lid["violated"], true);
+    assert_eq!(lid["tallest"], "tall");
+    let codes: Vec<&str> = glb_node(&doc, "board")["extras"]["netsmith"]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["too_tall", "height_unchecked"]);
+}
+
+/// A GET over a socket: the status, the head (lower case) and the body's bytes.
+fn http_bytes(port: u16, target: &str) -> (u16, String, Vec<u8>) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).unwrap();
+    s.set_read_timeout(Some(std::time::Duration::from_secs(60)))
+        .unwrap();
+    write!(
+        s,
+        "GET {target} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut raw = Vec::new();
+    s.read_to_end(&mut raw).unwrap();
+    let end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    let head = String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase();
+    let status = head.split(' ').nth(1).unwrap().parse().unwrap();
+    (status, head, raw[end + 4..].to_vec())
+}
+
+#[test]
+fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() {
+    let dir = netsmith_kicad::testlib::TempDir::new("board3d-editor-glb");
+    for name in [
+        "height_limits.nsm",
+        "height_limits.pcb.toml",
+        "height_limits.physical.nsm",
+    ] {
+        std::fs::copy(fixtures().join(name), dir.join(name)).unwrap();
+    }
+    // The command line as a person runs it, with the KiCad this machine has, as the editor in
+    // this process has it.
+    let file = dir.join("cli.glb");
+    let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(["board3d", "height_limits.nsm", "--glb"])
+        .arg(&file)
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let written = std::fs::read(&file).unwrap();
+
+    let target = netsmith::project::Target::resolve_from(
+        dir.path(),
+        Some(dir.join("height_limits.nsm").to_str().unwrap()),
+    )
+    .unwrap();
+    let editor = netsmith::editor::Workspace::open(target).unwrap();
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || netsmith_editor::serve(listener, std::sync::Arc::new(editor)));
+
+    let (status, head, scene) = http_bytes(port, "/api/pcb/scene?board=Lidded");
+    assert_eq!(status, 200, "{head}");
+    let scene: serde_json::Value = serde_json::from_slice(&scene).unwrap();
+    let (status, head, served) = http_bytes(port, "/api/pcb/3d?board=Lidded");
+    assert_eq!(status, 200, "{head}");
+    assert!(head.contains("content-type: model/gltf-binary"), "{head}");
+    let stamp = scene["layoutStamp"].as_str().unwrap();
+    assert!(
+        head.contains(&format!(
+            "x-netsmith-layout-stamp: {}",
+            stamp.to_ascii_lowercase()
+        )),
+        "the stamp of the placement the 2D view drew ({stamp}): {head}"
+    );
+    assert!(served == written, "the editor's file is the command's");
+    let (status, _, _) = http_bytes(port, "/api/pcb/3d?board=Nope");
+    assert_eq!(status, 404);
+}

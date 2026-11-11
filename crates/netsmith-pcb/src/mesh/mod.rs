@@ -31,7 +31,7 @@ mod scene;
 mod triangulate;
 pub mod trig;
 
-pub use scene::{UNKNOWN_LIFT, hole_segments, of_scene, slot};
+pub use scene::{BodyPieces, Pieces, UNKNOWN_LIFT, hole_segments, of_scene, pieces, slot};
 pub use triangulate::triangulate;
 
 use std::fmt;
