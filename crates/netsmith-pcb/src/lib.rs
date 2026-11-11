@@ -29,6 +29,7 @@
 mod anneal;
 pub mod board;
 pub mod constraints;
+pub mod copper;
 mod explain;
 pub mod export;
 mod fit;

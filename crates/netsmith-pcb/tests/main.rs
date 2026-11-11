@@ -5,6 +5,7 @@
 
 mod cancel;
 mod common;
+mod copper;
 mod cutout_pads;
 mod drc;
 mod edge_wall;

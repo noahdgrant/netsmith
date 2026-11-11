@@ -77,6 +77,7 @@ pub mod kicad;
 pub mod pads;
 pub mod panel;
 pub mod plot;
+pub mod polygons;
 pub mod raster;
 pub mod rotation;
 pub mod sexp;
@@ -584,8 +585,9 @@ pub(crate) fn plot_rules(pcb: &Path) -> plot::Rules {
     plot_rules_of(Some(&pro))
 }
 
-/// [`plot_rules`], from the text of the project file.
-pub(crate) fn plot_rules_of(pro: Option<&str>) -> plot::Rules {
+/// The rules the plot needs, from the text of the project file beside the board (`.kicad_pro`):
+/// what `fab` plots with, and what `netsmith_pcb::copper` fills the pours with.
+pub fn plot_rules_of(pro: Option<&str>) -> plot::Rules {
     let pro = pro.unwrap_or_default();
     let number = |key: &str| -> Option<f64> {
         let at = pro.find(&format!("\"{key}\""))?;
