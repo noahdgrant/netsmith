@@ -119,6 +119,14 @@ The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_hei
 The `height` cell of a catalog row, a fixed column (ADR 0094, provisional): how tall the part's body stands above the face of the board, the greatest the manufacturer's document allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. It is the part's `.height` when the design states none; a stated `.height` wins, and no row is chosen or refused for its height. An empty cell means the height is unknown, which is never zero.
 _Avoid_: Default height, typical height
 
+**Height provenance**:
+Where a part's height came from, in the 3D view and its scene: `stated` (the source or the physical file states `.height`), `catalog` (the picked row's _Catalog height_) or `unknown` (neither; drawn as a hatched outline, never given a height), in that order of strength (ADR 0094, ADR 0105).
+_Avoid_: Height source (a row's `source` is its document), height origin, confidence
+
+**Height coverage**:
+How many of a board's fitted parts have a known height, out of all of them, as the 3D view shows it (ADR 0105). A part with an unknown height lowers it; a _Height preview_ does not raise it.
+_Avoid_: Model coverage, completeness, height score
+
 **Pin protrusion**:
 How far the pins of a through-hole part protrude out of the far side of the board (`.pin_protrusion`, a length, ADR 0045, header of `crates/netsmith-pcb/src/protrusion.rs`; the owner chose the name on 2026-11-04), whether they were cut after soldering or bought short. The board's physical file states it for one part, narrowing it as it narrows `.height`; a part that states none has an unknown protrusion, which is not zero, and its pads stay an obstacle for a part on that face. A part on that face may stand over the pins when it is fitted by hand, states its height, and the protrusion plus that height fits the height limit there. `fab-notes.txt` and `order.txt` then say how to cut the pins (a `trim:` line).
 _Avoid_: Tail, tail height, lead length, stub
@@ -639,6 +647,18 @@ _Avoid_: Viewer, IDE, GUI
 **View**:
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
+
+**3D view**:
+The editor's view of a board in three dimensions, in the PCB section: the board as its stackup makes it, the copper, and each part's _Body_ extruded to its height, read-only (ADR 0105). It displays the _Scene_; it moves nothing (a part is moved in the 2D PCB view) and draws no third-party 3D model.
+_Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a picture of the scene)
+
+**Scene**:
+The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it and netsmith's own rasterizer draws PNG renders of it (ADR 0105).
+_Avoid_: Model, mesh (a mesh is one piece of it), 3D export
+
+**Height preview**:
+A switch of the 3D view, labelled "preview at N mm", that stands the parts of unknown height up at N mm in the picture only. No check, finding, report, written file or the _Height coverage_ reads it (ADR 0105).
+_Avoid_: Default height, assumed height, placeholder height
 
 **Satellite**:
 A small part that the editor's schematic draws beside the pin of a main part (an IC, a connector) that it serves: a decoupling capacitor, a pull-up, a bootstrap capacitor, a divider. It is wired to that pin always, and its rail pins have a stub and a power symbol of their own (see _Power symbol_). The main part and its satellites are one block.
