@@ -34,8 +34,9 @@
 //!
 //! # What the annealer does, why, and what it measured
 //!
-//! This is ADR 0033 (accepted after the owner's review of 2026-11-04; the parts marked
-//! PROVISIONAL were not reviewed by the owner) and the placer part of ADR 0031. It replaced
+//! This is ADR 0033 (accepted after the owner's review of 2026-11-04) and the placer part of
+//! ADR 0031. The parts that were provisional (busy parts, below) are accepted as built by the
+//! owner, 2026-11-11. It replaced
 //! the row layout (connectors in two columns, the rest in rows of 30 mm, nothing turned, the
 //! order improved by up to 8 passes of pair swaps) as the placer. The rows are kept as the
 //! annealer's start and as the first test of whether the parts fit a size that was asked for
@@ -126,30 +127,30 @@
 //! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
 //! nearest power pin pad on each net. No number and no annotation is read.
 //!
-//! **Busy parts** (ADR 0031, PROVISIONAL, not reviewed by the owner). A part with 16 to 66 pads
-//! ([`BUSY_ESCAPE`] to [`BUSY_MOST`] of escape) asks, from its neighbour, the sum of the two
-//! escape spaces and not the larger (the same channel serves both rows), and each mm short of it
-//! costs [`W_GAP`] plus up to [`W_ESCAPE`] instead of [`W_GAP`] alone. Found on a 35 x 60 mm
-//! board with two QFN packages that 14 nets join: the annealer put them 0.5 mm apart where the
-//! gap it asks for was 1.47 and 0.99 mm, the 12 + 8 pads of two rows that face each other had to
-//! leave through a channel in which three tracks fit, and the link test said "closed" at the pad
-//! end in more than half of the failed attempts. It was the placement, not the order of the
-//! lines. Lines left over seeds 0 to 11 went from 96 (0 of 12 seeds done) to 28 (1 of 12), and
-//! the courtyards of the two packages are 3.5 mm apart (`two_busy_packages_*` keeps them at 2
-//! mm or more). Pairs where neither part is busy are costed as before. Tried and not kept: the
-//! larger of the two escape spaces at a heavier weight (17, 16, 13 lines at 40, 100, 300, 1000),
-//! the same rule for every pair with one busy part and no limit (it spaced every small part
-//! away from a module of 80 pads by up to 2.4 mm and left 64 lines on the tight board against
-//! 41), and no weight for a QFN against a resistor (54).
+//! **Busy parts** (ADR 0031). A part with 16 to 66 pads ([`BUSY_ESCAPE`] to [`BUSY_MOST`] of
+//! escape) asks, from its neighbour, the sum of the two escape spaces and not the larger (the
+//! same channel serves both rows), and each mm short of it costs [`W_GAP`] plus up to
+//! [`W_ESCAPE`] instead of [`W_GAP`] alone. Found on a 35 x 60 mm board with two QFN packages
+//! that 14 nets join: the annealer put them 0.5 mm apart where the gap it asks for was 1.47 and
+//! 0.99 mm, the 12 + 8 pads of two rows that face each other had to leave through a channel in
+//! which three tracks fit, and the link test said "closed" at the pad end in more than half of
+//! the failed attempts. It was the placement, not the order of the lines. Lines left over seeds
+//! 0 to 11 went from 96 (0 of 12 seeds done) to 28 (1 of 12), and the courtyards of the two
+//! packages are 3.5 mm apart (`two_busy_packages_*` keeps them at 2 mm or more). Pairs where
+//! neither part is busy are costed as before. Tried and not kept: the larger of the two escape
+//! spaces at a heavier weight (17, 16, 13 lines at 40, 100, 300, 1000), the same rule for every
+//! pair with one busy part and no limit (it spaced every small part away from a module of 80
+//! pads by up to 2.4 mm and left 64 lines on the tight board against 41), and no weight for a
+//! QFN against a resistor (54).
 //!
-//! Choices for the owner (not made; the conservative one is built): a limit of 66 pads, or none
-//! (without one the mixed board gets the same 28 lines and the tight one gets worse, 41 to 64;
-//! the alternatives are a limit stated in the process or a part's own datasheet, or a ring that
-//! is a keepout the router can see); a soft weight, or a rule (the escape space stays soft: a
-//! hard minimum would refuse boards that place today); 300 and 0.03 mm a pad (both tuned on two
-//! invented boards over 12 seeds, where seed to seed varies by two to three lines); and the room
-//! round a part with more than 66 pads, which is still the plain gap plus its escape space at the
-//! plain weight (an open item, "escape rings").
+//! Choices (the conservative one is built, accepted as built by the owner, 2026-11-11): a limit
+//! of 66 pads, or none (without one the mixed board gets the same 28 lines and the tight one
+//! gets worse, 41 to 64; the alternatives are a limit stated in the process or a part's own
+//! datasheet, or a ring that is a keepout the router can see); a soft weight, or a rule (the
+//! escape space stays soft: a hard minimum would refuse boards that place today); 300 and 0.03
+//! mm a pad (both tuned on two invented boards over 12 seeds, where seed to seed varies by two
+//! to three lines); and the room round a part with more than 66 pads, which is still the plain
+//! gap plus its escape space at the plain weight (the "escape rings" are not built; issue #58).
 //!
 //! **Measured** on the two synthetic boards of `tests/synthetic.rs` (the only boards in this
 //! repository, so anyone can re-measure; `cargo test --release -p netsmith-pcb --test main
@@ -188,10 +189,10 @@
 //! reference text of a turned part). The decoupling pull is a distance with no number from a
 //! source.
 //!
-//! **Left open** (the owner's review of 2026-11-04 asked for the first): a public reference
-//! board of a real design, with a module, whose wire, crossings and check results are measured
-//! and kept, so the weights are tuned on something a reader can run. The `layout` block of the
-//! language (P3 of ADR 0030) is not built.
+//! **For a person** (the owner's review of 2026-11-04 asked for it; checklist in issue #10): a
+//! public reference board of a real design, with a module, whose wire, crossings and check results
+//! are measured and kept, so the weights are tuned on something a reader can run. The `layout`
+//! block of the language (P3 of ADR 0030) is not built (issues #58 and #59).
 
 use crate::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
 use crate::constraints::{PlanOffset, Want, axis_of, offset, quarter};
