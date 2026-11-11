@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves that `build` and `fab` need no KiCad (ADR 0097, step 4): builds and fabs every example
+# Proves that `build`, `fab` and `board3d` need no KiCad (ADR 0097, step 4): builds and fabs every example
 # that is meant to build, with KiCad's symbol and footprint libraries and `kicad-cli` hidden, and
 # fails if a run exits with an error or says that KiCad is missing.
 #
@@ -159,6 +159,14 @@ for file in "$repo"/examples/*.nsm; do
     name="${base%.nsm}"
     step "build examples/$base" "$work/examples" build "$base" --out "$work/out/$name"
     step "fab   examples/$base" "$work/examples" fab "$base" --out "$work/fab/$name"
+done
+
+# `board3d` places a board as `fab` does and prints its 3D scene (ADR 0105), with no KiCad either:
+# a board of two layers, of four, with an outline and pours from a layout file, and one board of a
+# file of several.
+for args in "led.nsm" "four_layer.nsm" "outline_and_pours.nsm" "two_boards.nsm --board TwoBoards/led"; do
+    # shellcheck disable=SC2086 # the arguments are words
+    step "board3d examples/$args" "$work/examples" board3d $args --json
 done
 
 # The projects: run from their folder, as a person does.
