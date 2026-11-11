@@ -617,6 +617,25 @@ footprint = "netsmith:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 SHELL = "SHIELD"
 
 [[part]]
+kind = "UsbCSinkReceptacle"
+package = "GCT_USB4105_16P"
+default = true
+symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
+footprint = "netsmith:USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal"
+
+[part.pin_names]
+SHELL = "SHIELD"
+
+[[part]]
+kind = "UsbCSinkReceptacle"
+package = "HRO_TYPE-C-31-M-12"
+symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
+footprint = "netsmith:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
+
+[part.pin_names]
+SHELL = "SHIELD"
+
+[[part]]
 kind = "ProgrammingPads6"
 package = "TC2030-NL"
 default = true

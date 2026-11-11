@@ -87,6 +87,7 @@ mod stock_note;
 mod supply;
 mod timings;
 mod unused;
+mod usb_c_sink;
 mod values;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
