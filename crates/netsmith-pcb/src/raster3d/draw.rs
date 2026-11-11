@@ -306,7 +306,7 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                 .filter(|n| n.len() == mesh.positions.len()),
             Shading::Flat => None,
         };
-        for t in mesh.indices.chunks_exact(3) {
+        for t in mesh.indices.as_chunks::<3>().0 {
             let ix = [t[0] as usize, t[1] as usize, t[2] as usize];
             if ix.iter().any(|&i| i >= mesh.positions.len()) {
                 continue;
