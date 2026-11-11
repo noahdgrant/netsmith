@@ -24,7 +24,7 @@ use crate::artwork::{Artwork, Graphic, Pad, PadKind, PadShape, Shape, TrackShape
 use crate::edge::{self, Outline as BoardEdge};
 use crate::fill;
 use crate::font;
-use crate::gbr::{Ap, Contour, Gerber, escape};
+use crate::gbr::{Ap, Contour, Gerber, Pen, escape};
 use crate::geom::{Arc, Pt};
 use crate::gerber::{self, GerberError};
 use crate::kicad::Output;
@@ -148,7 +148,7 @@ fn pad_function(pad: &Pad) -> &'static str {
 }
 
 fn copper(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     edge: &BoardEdge,
@@ -196,8 +196,8 @@ fn copper(
 /// The openings of the mask on one face: pads (grown by their margin), vias that are not
 /// tented, and what is drawn on the mask layer. The file is a negative: what is drawn is
 /// where the mask is open.
-fn mask(
-    g: &mut Gerber,
+pub fn mask(
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     notes: &mut Vec<String>,
@@ -246,7 +246,7 @@ fn mask(
 /// rectangle keeps its corner ratio. A trapezoid or custom pad is shrunk evenly by the
 /// ratio of its shorter side.
 fn paste(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     notes: &mut Vec<String>,
@@ -289,12 +289,12 @@ fn paste(
 }
 
 /// The silkscreen: lines, arcs, circles, polygons and text.
-fn ink(g: &mut Gerber, art: &Artwork, layer: &str, notes: &mut Vec<String>) {
+fn ink(g: &mut dyn Pen, art: &Artwork, layer: &str, notes: &mut Vec<String>) {
     drawings(g, art, layer, None, notes);
 }
 
 /// The board outline: each line and arc stroked with the outline's pen.
-fn outline(g: &mut Gerber, art: &Artwork, notes: &mut Vec<String>) {
+fn outline(g: &mut dyn Pen, art: &Artwork, notes: &mut Vec<String>) {
     for gr in art.graphics.iter().filter(|gr| gr.layer == "Edge.Cuts") {
         let width = if gr.width > 0.0 {
             gr.width
@@ -332,8 +332,8 @@ fn outline(g: &mut Gerber, art: &Artwork, notes: &mut Vec<String>) {
 }
 
 /// Everything drawn and written on `layer` (graphics and text), as ink.
-fn drawings(
-    g: &mut Gerber,
+pub fn drawings(
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     function: Option<&'static str>,
@@ -347,7 +347,7 @@ fn drawings(
 
 /// The text written on `layer`, as ink.
 fn texts(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     function: Option<&'static str>,
@@ -383,7 +383,7 @@ fn texts(
     }
 }
 
-fn draw_graphic(g: &mut Gerber, gr: &Graphic, function: Option<&'static str>) {
+fn draw_graphic(g: &mut dyn Pen, gr: &Graphic, function: Option<&'static str>) {
     let width = if gr.width > 0.0 {
         gr.width
     } else {

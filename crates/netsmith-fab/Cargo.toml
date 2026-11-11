@@ -14,6 +14,8 @@ path = "tests/main.rs"
 [dependencies]
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 serde_json = "1.0.154"
+# Polygon unions and differences, for the copper as polygons (`polygons`, ADR 0105).
+i_overlay = "9.1.0"
 # Where `kicad-cli` is (`install::Search`), the one place that knows the search order.
 netsmith-kicad = { path = "../netsmith-kicad" }
 # The PNG writer of the debug pictures (`netsmith_core::png`).
