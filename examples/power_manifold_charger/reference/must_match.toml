@@ -1,0 +1,11 @@
+# The reference designators of the charger module's board file that a copy of the board must
+# reproduce (`must_match = true` in placements.toml); read by
+#   cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml <file>
+# The outline and every hole are always must-match. Not listed, so reported and not required:
+# the ICs, the MOSFETs, the inductors, the fuse, the test pads, the resistors, the capacitors and
+# the routing.
+parts = [
+    "J2", # the Tag-Connect TC2030 programming pads (the SWD pins of the STM32G071)
+    "J3", # the PCIe x1 edge connector (the module's backplane connector: gold fingers, back face)
+    "J4", # the USB-C receptacle (GT-USB-7004)
+]

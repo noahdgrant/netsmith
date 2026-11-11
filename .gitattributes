@@ -11,6 +11,11 @@ examples/easyduino_esp32s3/LICENSE -text
 examples/easyduino_esp32s3/reference/Easyduino_* -text
 examples/easyduino_esp32s3/reference/References.kicad_sch -text
 
+# Power Manifold charger module: the licence, the board file and the schematic are kept byte for byte.
+examples/power_manifold_charger/LICENSE -text
+examples/power_manifold_charger/reference/charger-module.* -text
+examples/power_manifold_charger/reference/CHANGELOG.md -text
+
 # ORBIT's licence, board file and schematic are kept byte for byte as its author ships them.
 examples/orbit/LICENSE -text
 examples/orbit/reference/*.kicad_pcb -text

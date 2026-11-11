@@ -61,6 +61,7 @@ mod pin_swaps;
 mod pinout;
 mod pins;
 mod power_issues;
+mod power_manifold;
 mod precheck;
 mod project;
 mod protrusion;

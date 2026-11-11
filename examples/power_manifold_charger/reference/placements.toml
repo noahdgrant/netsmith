@@ -1,0 +1,1460 @@
+# Reference placements, read from a KiCad board file by
+#   cargo run -p netsmith --example reference_table -- <file.kicad_pcb>
+# Do not edit: run the program again. A test checks that this file is its output.
+#
+# Units are millimetres and degrees, as in the KiCad file. The origin is the file's own page
+# origin, x grows to the right and y grows DOWN, as in KiCad's board editor. A rotation is
+# KiCad's: positive turns counter-clockwise as seen on the screen, so with y down a point
+# (x, y) of the footprint lands at (x cos a + y sin a, y cos a - x sin a) from its position.
+#
+# [outline]: the bounding box of the Edge.Cuts lines and arcs (the arcs' extent included) and,
+#   when every arc has one radius, the corner radius; both are worked out from the drawn
+#   points and rounded to 0.1 micrometre. [[hole]]: a non-plated pad (np_thru_hole), or the
+#   drilled pad of a plated MountingHole footprint, its place on the board, its drill diameter,
+#   its pad's size [width, height] and its net (left out for none). [[part]]: every footprint,
+#   sorted by reference: its name, layer, position and rotation (0 when the file has none). A pad's x
+#   and y are in the footprint's own frame (before its rotation); `angle` is the pad's own
+#   angle as the file writes it (it includes the footprint's rotation) and is left out when the
+#   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
+#   `drill_slot` the [width, height] of an oval one; `extent` (a custom pad only) is the box
+#   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
+#   own frame and with each stroke's half width added; `net` is the net's name and is left out
+#   for a pad no net names.
+# must_match = true marks what a copy of the board must reproduce (the outline, the holes and the
+#   parts of the board's must-match list); false is reported, not required.
+# A [[hole]] with plated = true is the drilled pad (the one with the largest drill) of a
+#   MountingHole footprint of KiCad's library, which draws its hole as a plated pad.
+
+[source]
+file = "charger-module.kicad_pcb"
+version = "20260206"
+generator = "pcbnew"
+generator_version = "10.0"
+date = "2026-09-02"
+rev = "v0.16.2"
+footprints = 90
+
+[outline]
+must_match = true
+min_x = 54.8
+min_y = 26
+max_x = 156
+max_y = 50
+width = 101.2
+height = 24
+lines = 14
+arcs = 1
+corner_radius = 0.95
+
+[[hole]]
+must_match = true
+reference = "J2"
+x = 134.76
+y = 47.3
+drill = 0.9906
+size = [0.9906, 0.9906]
+
+[[hole]]
+must_match = true
+reference = "J2"
+x = 139.84
+y = 46.284
+drill = 0.9906
+size = [0.9906, 0.9906]
+
+[[hole]]
+must_match = true
+reference = "J2"
+x = 139.84
+y = 48.316
+drill = 0.9906
+size = [0.9906, 0.9906]
+
+[[hole]]
+must_match = true
+reference = "J4"
+x = 150.82
+y = 40.89
+drill = 0.6
+size = [0.6, 0.6]
+
+[[hole]]
+must_match = true
+reference = "J4"
+x = 150.82
+y = 35.11
+drill = 0.6
+size = [0.6, 0.6]
+
+[[part]]
+reference = "C1"
+footprint = "Local Library:C_0603_1608Metric"
+layer = "F.Cu"
+x = 117.295
+y = 41.85
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.775, y = 0, angle = 180, size = [0.9, 0.95], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.775, y = 0, angle = 180, size = [0.9, 0.95], net = "GND" },
+]
+
+[[part]]
+reference = "C2"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 117.84
+y = 40.65
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C3"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 117.85
+y = 38.75
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C4"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 117.85
+y = 39.7
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C5"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 117.85
+y = 43.05
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "/~{RST}" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C6"
+footprint = "Local Library:CP_Elec_6.3x7.7"
+layer = "F.Cu"
+x = 69.9
+y = 30.1
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -2.7, y = 0, angle = 180, size = [3.5, 1.6], net = "/EMI_VIN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 2.7, y = 0, angle = 180, size = [3.5, 1.6], net = "GND" },
+]
+
+[[part]]
+reference = "C7"
+footprint = "Local Library:C_0603_1608Metric"
+layer = "F.Cu"
+x = 96.25
+y = 47.38
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.775, y = 0, angle = 180, size = [0.9, 0.95], net = "+5V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.775, y = 0, angle = 180, size = [0.9, 0.95], net = "GND" },
+]
+
+[[part]]
+reference = "C8"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 76.1
+y = 28.9
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 90, size = [1.15, 1.8], net = "/EMI_VIN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 90, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C9"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 78.4
+y = 28.9
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 90, size = [1.15, 1.8], net = "/EMI_VIN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 90, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C10"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 80.05
+y = 30.3
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "/EMI_VIN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C11"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 102.5
+y = 46.23
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "Net-(U2-BP)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C12"
+footprint = "Local Library:C_0805_2012Metric"
+layer = "F.Cu"
+x = 96.2
+y = 45.08
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.95, y = 0, angle = 180, size = [1, 1.45], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.95, y = 0, angle = 180, size = [1, 1.45], net = "GND" },
+]
+
+[[part]]
+reference = "C13"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 96.2
+y = 38.77
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "Net-(U3-DITH{slash}SYNC)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C14"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 124.45
+y = 47.4
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "/NTC_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C15"
+footprint = "Capacitor_SMD:C_0603_1608Metric"
+layer = "F.Cu"
+x = 93.3
+y = 39.3
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.775, y = 0, angle = 270, size = [0.9, 0.95], net = "/EMI_VIN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.775, y = 0, angle = 270, size = [0.9, 0.95], net = "GND" },
+]
+
+[[part]]
+reference = "C16"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 127.27
+y = 47.4
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "/NTC_PLUG" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C18"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 126.35
+y = 47.4
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "/VOUT_SENSE" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 270, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C19"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 117.85
+y = 44
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "/VBUS_SENSE" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C20"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 91.7
+y = 37.67
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "/SW1" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "Net-(U3-BOOT1)" },
+]
+
+[[part]]
+reference = "C21"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 91.3
+y = 32.6
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, size = [0.56, 0.62], net = "/SW2" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, size = [0.56, 0.62], net = "Net-(U3-BOOT2)" },
+]
+
+[[part]]
+reference = "C22"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 142.3
+y = 39.45
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, size = [0.56, 0.62], net = "/CC1" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C23"
+footprint = "Local Library:C_0805_2012Metric"
+layer = "F.Cu"
+x = 91.35
+y = 30.35
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.95, y = 0, angle = 90, size = [1, 1.45], net = "Net-(U3-VCC)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.95, y = 0, angle = 90, size = [1, 1.45], net = "GND" },
+]
+
+[[part]]
+reference = "C24"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 142.3
+y = 41.35
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, size = [0.56, 0.62], net = "/CC2" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C25"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 92.8
+y = 28.05
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "Net-(C25-Pad1)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C26"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 133.48
+y = 41.4
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "/IANA" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C27"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 142.28
+y = 40.4
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, size = [0.56, 0.62], net = "Net-(U5-CBIAS)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C28"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 92.85
+y = 31
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "Net-(U3-VCC)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C29"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 93.75
+y = 28.05
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "Net-(U3-COMP)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C30"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 130.25
+y = 36.2
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C31"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 126.45
+y = 27.37
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "/VOUT" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 90, size = [0.56, 0.62], net = "/VBUS_GATE" },
+]
+
+[[part]]
+reference = "C32"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 105.45
+y = 34.425
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "/VOUT_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C33"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 103.15
+y = 34.425
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "/VOUT_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C34"
+footprint = "Capacitor_SMD:C_0603_1608Metric"
+layer = "F.Cu"
+x = 133.03
+y = 39.25
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.775, y = 0, angle = 180, size = [0.9, 0.95], net = "+5V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.775, y = 0, angle = 180, size = [0.9, 0.95], net = "GND" },
+]
+
+[[part]]
+reference = "C35"
+footprint = "Local Library:C_0402_1005Metric"
+layer = "F.Cu"
+x = 133.48
+y = 40.45
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "+5V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.48, y = 0, angle = 180, size = [0.56, 0.62], net = "GND" },
+]
+
+[[part]]
+reference = "C36"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 100.85
+y = 34.425
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "/VOUT_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C37"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 98.55
+y = 34.425
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "/VOUT_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 270, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C38"
+footprint = "Local Library:C_1206_3216Metric"
+layer = "F.Cu"
+x = 146.9
+y = 34
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.475, y = 0, angle = 90, size = [1.15, 1.8], net = "/VBUS" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.475, y = 0, angle = 90, size = [1.15, 1.8], net = "GND" },
+]
+
+[[part]]
+reference = "C39"
+footprint = "Capacitor_SMD:CP_Elec_8x10"
+layer = "F.Cu"
+x = 111
+y = 34.4
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -3.25, y = 0, angle = 270, size = [3.5, 2.5], net = "/VOUT_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 3.25, y = 0, angle = 270, size = [3.5, 2.5], net = "GND" },
+]
+
+[[part]]
+reference = "D1"
+footprint = "LED_SMD:LED_0603_1608Metric"
+layer = "F.Cu"
+x = 118.85
+y = 34.9
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.7875, y = 0, angle = 270, size = [0.875, 0.95], net = "Net-(D1-K)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.7875, y = 0, angle = 270, size = [0.875, 0.95], net = "+5V" },
+]
+
+[[part]]
+reference = "D2"
+footprint = "Local Library:DFN1610-2_L1.6-W1.0-P1.05-RD"
+layer = "F.Cu"
+x = 145
+y = 34.68
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -0.52, y = 0, angle = 180, size = [0.9, 0.6], net = "/VBUS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.52, y = 0, angle = 180, size = [0.9, 0.6], net = "GND" },
+]
+
+[[part]]
+reference = "F1"
+footprint = "Local Library:FUSE-SMD_L6.1-W2.7"
+layer = "F.Cu"
+x = 68.1
+y = 44.5
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "rect", x = -2.33, y = 0, size = [2.91, 2.905], net = "/VIN_PREFUSE" },
+    { number = "2", type = "smd", shape = "rect", x = 2.33, y = 0, size = [2.91, 2.905], net = "/VIN" },
+]
+
+[[part]]
+reference = "FB1"
+footprint = "Inductor_SMD:L_0603_1608Metric"
+layer = "F.Cu"
+x = 89.6
+y = 30.5125
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.7875, y = 0, angle = 90, size = [0.875, 0.95], net = "Net-(U3-VCC)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.7875, y = 0, angle = 90, size = [0.875, 0.95], net = "+5V" },
+]
+
+[[part]]
+reference = "J1"
+footprint = "TestPoint:TestPoint_Pad_D1.5mm"
+layer = "F.Cu"
+x = 107.46
+y = 45
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "circle", x = 0, y = 0, size = [1.5, 1.5], net = "/USART_TX" },
+]
+
+[[part]]
+reference = "J2"
+footprint = "Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"
+layer = "F.Cu"
+x = 137.3
+y = 47.3
+rotation = 0
+must_match = true
+pads = [
+    { number = "", type = "np_thru_hole", shape = "circle", x = -2.54, y = 0, size = [0.9906, 0.9906], drill = 0.9906 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 2.54, y = -1.016, size = [0.9906, 0.9906], drill = 0.9906 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 2.54, y = 1.016, size = [0.9906, 0.9906], drill = 0.9906 },
+    { number = "1", type = "connect", shape = "circle", x = -1.27, y = 0.635, size = [0.7874, 0.7874], net = "+3.3V" },
+    { number = "2", type = "connect", shape = "circle", x = -1.27, y = -0.635, size = [0.7874, 0.7874], net = "/SWDIO" },
+    { number = "3", type = "connect", shape = "circle", x = 0, y = 0.635, size = [0.7874, 0.7874], net = "/~{RST}" },
+    { number = "4", type = "connect", shape = "circle", x = 0, y = -0.635, size = [0.7874, 0.7874], net = "/SWCLK" },
+    { number = "5", type = "connect", shape = "circle", x = 1.27, y = 0.635, size = [0.7874, 0.7874], net = "GND" },
+    { number = "6", type = "connect", shape = "circle", x = 1.27, y = -0.635, size = [0.7874, 0.7874], net = "unconnected-(J2-Pad6)" },
+]
+
+[[part]]
+reference = "J3"
+footprint = "Local Library:BUS_PCIexpress_x1"
+layer = "B.Cu"
+x = 58.25
+y = 45.65
+rotation = 90
+must_match = true
+pads = [
+    { number = "A1", type = "connect", shape = "rect", x = 0, y = 0.55, angle = 90, size = [0.7, 3.2], net = "Net-(J3-~{PRSNT1})" },
+    { number = "A2", type = "connect", shape = "rect", x = 1, y = 0, angle = 90, size = [0.7, 4.3], net = "/VIN_PREFUSE" },
+    { number = "A3", type = "connect", shape = "rect", x = 2, y = 0, angle = 90, size = [0.7, 4.3], net = "/VIN_PREFUSE" },
+    { number = "A4", type = "connect", shape = "rect", x = 3, y = 0, angle = 90, size = [0.7, 4.3], net = "/VIN_PREFUSE" },
+    { number = "A5", type = "connect", shape = "rect", x = 4, y = 0, angle = 90, size = [0.7, 4.3], net = "/VIN_PREFUSE" },
+    { number = "A6", type = "connect", shape = "rect", x = 5, y = 0, angle = 90, size = [0.7, 4.3], net = "/VIN_PREFUSE" },
+    { number = "A7", type = "connect", shape = "rect", x = 6, y = 0, angle = 90, size = [0.7, 4.3], net = "/VIN_PREFUSE" },
+    { number = "A8", type = "connect", shape = "rect", x = 7, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A9", type = "connect", shape = "rect", x = 8, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A10", type = "connect", shape = "rect", x = 9, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A11", type = "connect", shape = "rect", x = 10, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A12", type = "connect", shape = "rect", x = 13, y = 0, angle = 90, size = [0.7, 4.3], net = "+5V" },
+    { number = "A13", type = "connect", shape = "rect", x = 14, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A14", type = "connect", shape = "rect", x = 15, y = 0, angle = 90, size = [0.7, 4.3], net = "/SCL" },
+    { number = "A15", type = "connect", shape = "rect", x = 16, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A16", type = "connect", shape = "rect", x = 17, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A17", type = "connect", shape = "rect", x = 18, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "A18", type = "connect", shape = "rect", x = 19, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B1", type = "connect", shape = "rect", x = 0, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B2", type = "connect", shape = "rect", x = 1, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B3", type = "connect", shape = "rect", x = 2, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B4", type = "connect", shape = "rect", x = 3, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B5", type = "connect", shape = "rect", x = 4, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B6", type = "connect", shape = "rect", x = 5, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B7", type = "connect", shape = "rect", x = 6, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B8", type = "connect", shape = "rect", x = 7, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B9", type = "connect", shape = "rect", x = 8, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B10", type = "connect", shape = "rect", x = 9, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B11", type = "connect", shape = "rect", x = 10, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B12", type = "connect", shape = "rect", x = 13, y = 0, angle = 90, size = [0.7, 4.3], net = "+5V" },
+    { number = "B13", type = "connect", shape = "rect", x = 14, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+    { number = "B14", type = "connect", shape = "rect", x = 15, y = 0, angle = 90, size = [0.7, 4.3], net = "/SDA" },
+    { number = "B15", type = "connect", shape = "rect", x = 16, y = 0, angle = 90, size = [0.7, 4.3], net = "/~{ALERT}" },
+    { number = "B16", type = "connect", shape = "rect", x = 17, y = 0, angle = 90, size = [0.7, 4.3], net = "/EN" },
+    { number = "B17", type = "connect", shape = "rect", x = 18, y = 0.55, angle = 90, size = [0.7, 3.2], net = "Net-(J3-~{PRSNT1})" },
+    { number = "B18", type = "connect", shape = "rect", x = 19, y = 0, angle = 90, size = [0.7, 4.3], net = "GND" },
+]
+
+[[part]]
+reference = "J4"
+footprint = "Local Library:USB-C-SMD_GT-USB-7004"
+layer = "F.Cu"
+x = 152.13
+y = 38
+rotation = 90
+must_match = true
+pads = [
+    { number = "", type = "np_thru_hole", shape = "circle", x = -2.89, y = -1.31, angle = 90, size = [0.6, 0.6], drill = 0.6 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 2.89, y = -1.31, angle = 90, size = [0.6, 0.6], drill = 0.6 },
+    { number = "A1", type = "smd", shape = "rect", x = -3.35, y = -2.38, angle = 90, size = [0.3, 1.14], net = "GND" },
+    { number = "A4", type = "smd", shape = "rect", x = -2.55, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/VBUS" },
+    { number = "A5", type = "smd", shape = "rect", x = -1.25, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/CC1" },
+    { number = "A6", type = "smd", shape = "rect", x = -0.25, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/USB_DATA" },
+    { number = "A7", type = "smd", shape = "rect", x = 0.25, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/USB_DATA" },
+    { number = "A8", type = "smd", shape = "rect", x = 1.25, y = -2.38, angle = 90, size = [0.3, 1.14], net = "unconnected-(J4-SBU1-PadA8)" },
+    { number = "A9", type = "smd", shape = "rect", x = 2.25, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/VBUS" },
+    { number = "A12", type = "smd", shape = "rect", x = 3.35, y = -2.38, angle = 90, size = [0.3, 1.14], net = "GND" },
+    { number = "B1", type = "smd", shape = "rect", x = 3.05, y = -2.38, angle = 90, size = [0.3, 1.14], net = "GND" },
+    { number = "B4", type = "smd", shape = "rect", x = 2.55, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/VBUS" },
+    { number = "B5", type = "smd", shape = "rect", x = 1.75, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/CC2" },
+    { number = "B6", type = "smd", shape = "rect", x = 0.75, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/USB_DATA" },
+    { number = "B7", type = "smd", shape = "rect", x = -0.75, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/USB_DATA" },
+    { number = "B8", type = "smd", shape = "rect", x = -1.75, y = -2.38, angle = 90, size = [0.3, 1.14], net = "unconnected-(J4-SBU2-PadB8)" },
+    { number = "B9", type = "smd", shape = "rect", x = -2.25, y = -2.38, angle = 90, size = [0.3, 1.14], net = "/VBUS" },
+    { number = "B12", type = "smd", shape = "rect", x = -3.05, y = -2.38, angle = 90, size = [0.3, 1.14], net = "GND" },
+    { number = "S1", type = "thru_hole", shape = "oval", x = -4.32, y = -1.81, angle = 90, size = [1, 1.9], drill_slot = [0.599998, 1.499997], net = "GND" },
+    { number = "S1", type = "thru_hole", shape = "oval", x = -4.32, y = 2.37, angle = 90, size = [1, 1.6], drill_slot = [0.599998, 1.199998], net = "GND" },
+    { number = "S1", type = "thru_hole", shape = "oval", x = 4.32, y = -1.81, angle = 90, size = [1, 1.9], drill_slot = [0.599998, 1.499997], net = "GND" },
+    { number = "S1", type = "thru_hole", shape = "oval", x = 4.32, y = 2.37, angle = 90, size = [1, 1.6], drill_slot = [0.599998, 1.199998], net = "GND" },
+]
+
+[[part]]
+reference = "J5"
+footprint = "TestPoint:TestPoint_Pad_D1.5mm"
+layer = "F.Cu"
+x = 110
+y = 45
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "circle", x = 0, y = 0, size = [1.5, 1.5], net = "GND" },
+]
+
+[[part]]
+reference = "J6"
+footprint = "TestPoint:TestPoint_Pad_D1.5mm"
+layer = "F.Cu"
+x = 112.54
+y = 45
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "circle", x = 0, y = 0, size = [1.5, 1.5], net = "/USART_RX" },
+]
+
+[[part]]
+reference = "L1"
+footprint = "Local Library:L_Sunlord_MWSA0603S"
+layer = "F.Cu"
+x = 69.980902
+y = 38.2
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -3.025, y = 0, angle = 90, size = [2.35, 3.5], net = "/VIN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 3.025, y = 0, angle = 90, size = [2.35, 3.5], net = "/EMI_VIN" },
+]
+
+[[part]]
+reference = "L2"
+footprint = "Inductor_SMD:L_Sunlord_MWSA1005S"
+layer = "F.Cu"
+x = 85.8
+y = 39.15
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -4.75, y = 0, angle = 90, size = [4.1, 4.1], net = "/SW1" },
+    { number = "2", type = "smd", shape = "roundrect", x = 4.75, y = 0, angle = 90, size = [4.1, 4.1], net = "/SW2" },
+]
+
+[[part]]
+reference = "Q1"
+footprint = "Package_TO_SOT_SMD:TDSON-8-1"
+layer = "F.Cu"
+x = 76.635
+y = 34.8
+rotation = 90
+must_match = false
+pads = [
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = -0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = 0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "custom", x = 0.65, y = 0, angle = 90, size = [3.75, 4.41], extent = [1.875, -2.205, 2.675, 2.205] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = -0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = 0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -1.905, angle = 90, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -0.635, angle = 90, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 0.635, angle = 90, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 1.905, angle = 90, size = [0.75, 0.5] },
+    { number = "1", type = "smd", shape = "roundrect", x = -2.9, y = -1.905, angle = 90, size = [0.85, 0.5], net = "/SW1" },
+    { number = "2", type = "smd", shape = "roundrect", x = -2.9, y = -0.635, angle = 90, size = [0.85, 0.5], net = "/SW1" },
+    { number = "3", type = "smd", shape = "roundrect", x = -2.9, y = 0.635, angle = 90, size = [0.85, 0.5], net = "/SW1" },
+    { number = "4", type = "smd", shape = "roundrect", x = -2.9, y = 1.905, angle = 90, size = [0.85, 0.5], net = "Net-(Q1-G)" },
+    { number = "5", type = "smd", shape = "rect", x = 1.05, y = 0, angle = 90, size = [4.55, 4.41], net = "/EMI_VIN" },
+]
+
+[[part]]
+reference = "Q2"
+footprint = "Package_TO_SOT_SMD:TDSON-8-1"
+layer = "F.Cu"
+x = 76.635
+y = 42
+rotation = 90
+must_match = false
+pads = [
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = -0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = 0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "custom", x = 0.65, y = 0, angle = 90, size = [3.75, 4.41], extent = [1.875, -2.205, 2.675, 2.205] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = -0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = 0.85, angle = 90, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -1.905, angle = 90, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -0.635, angle = 90, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 0.635, angle = 90, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 1.905, angle = 90, size = [0.75, 0.5] },
+    { number = "1", type = "smd", shape = "roundrect", x = -2.9, y = -1.905, angle = 90, size = [0.85, 0.5], net = "GND" },
+    { number = "2", type = "smd", shape = "roundrect", x = -2.9, y = -0.635, angle = 90, size = [0.85, 0.5], net = "GND" },
+    { number = "3", type = "smd", shape = "roundrect", x = -2.9, y = 0.635, angle = 90, size = [0.85, 0.5], net = "GND" },
+    { number = "4", type = "smd", shape = "roundrect", x = -2.9, y = 1.905, angle = 90, size = [0.85, 0.5], net = "Net-(Q2-G)" },
+    { number = "5", type = "smd", shape = "rect", x = 1.05, y = 0, angle = 90, size = [4.55, 4.41], net = "/SW1" },
+]
+
+[[part]]
+reference = "Q3"
+footprint = "Package_TO_SOT_SMD:TDSON-8-1"
+layer = "F.Cu"
+x = 122.15
+y = 29.295
+rotation = 180
+must_match = false
+pads = [
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = -0.85, angle = 180, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = 0.85, angle = 180, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "custom", x = 0.65, y = 0, angle = 180, size = [3.75, 4.41], extent = [1.875, -2.205, 2.675, 2.205] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = -0.85, angle = 180, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = 0.85, angle = 180, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -1.905, angle = 180, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -0.635, angle = 180, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 0.635, angle = 180, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 1.905, angle = 180, size = [0.75, 0.5] },
+    { number = "1", type = "smd", shape = "roundrect", x = -2.9, y = -1.905, angle = 180, size = [0.85, 0.5], net = "/VBUS_SRC" },
+    { number = "2", type = "smd", shape = "roundrect", x = -2.9, y = -0.635, angle = 180, size = [0.85, 0.5], net = "/VBUS_SRC" },
+    { number = "3", type = "smd", shape = "roundrect", x = -2.9, y = 0.635, angle = 180, size = [0.85, 0.5], net = "/VBUS_SRC" },
+    { number = "4", type = "smd", shape = "roundrect", x = -2.9, y = 1.905, angle = 180, size = [0.85, 0.5], net = "/VBUS_GATE" },
+    { number = "5", type = "smd", shape = "rect", x = 1.05, y = 0, angle = 180, size = [4.55, 4.41], net = "/VOUT" },
+]
+
+[[part]]
+reference = "Q4"
+footprint = "Package_TO_SOT_SMD:TDSON-8-1"
+layer = "F.Cu"
+x = 130.75
+y = 29.285
+rotation = 0
+must_match = false
+pads = [
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = -0.85, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = -0.2, y = 0.85, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "custom", x = 0.65, y = 0, size = [3.75, 4.41], extent = [1.875, -2.205, 2.675, 2.205] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = -0.85, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 1.5, y = 0.85, size = [1.5, 1.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -1.905, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = -0.635, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 0.635, size = [0.75, 0.5] },
+    { number = "", type = "smd", shape = "roundrect", x = 2.905, y = 1.905, size = [0.75, 0.5] },
+    { number = "1", type = "smd", shape = "roundrect", x = -2.9, y = -1.905, size = [0.85, 0.5], net = "/VBUS_SRC" },
+    { number = "2", type = "smd", shape = "roundrect", x = -2.9, y = -0.635, size = [0.85, 0.5], net = "/VBUS_SRC" },
+    { number = "3", type = "smd", shape = "roundrect", x = -2.9, y = 0.635, size = [0.85, 0.5], net = "/VBUS_SRC" },
+    { number = "4", type = "smd", shape = "roundrect", x = -2.9, y = 1.905, size = [0.85, 0.5], net = "/VBUS_GATE" },
+    { number = "5", type = "smd", shape = "rect", x = 1.05, y = 0, size = [4.55, 4.41], net = "/VBUSf" },
+]
+
+[[part]]
+reference = "R1"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 121.95
+y = 33.55
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/EN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R2"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 122.55
+y = 47.4
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "/OVP_REF" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R3"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 122.9
+y = 33.55
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "/SDA" },
+]
+
+[[part]]
+reference = "R4"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 123.86
+y = 33.55
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "/SCL" },
+]
+
+[[part]]
+reference = "R5"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 130.1
+y = 47.4
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/USB_SDA" },
+]
+
+[[part]]
+reference = "R6"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 129.15
+y = 47.4
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/USB_SCL" },
+]
+
+[[part]]
+reference = "R7"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 125.95
+y = 33.8
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "Net-(D1-K)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "Net-(U1-PB3)" },
+]
+
+[[part]]
+reference = "R8"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 127.85
+y = 33.8
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "Net-(U1-PA15)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/TCPP_EN" },
+]
+
+[[part]]
+reference = "R9"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 126.9
+y = 33.8
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/TCPP_EN" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R10"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 131.05
+y = 47.41
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/CONVERTER_FLT" },
+]
+
+[[part]]
+reference = "R11"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 97.2
+y = 38.8
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "GND" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "Net-(U3-FSW)" },
+]
+
+[[part]]
+reference = "R12"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 123.5
+y = 47.4
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/NTC_CONV" },
+]
+
+[[part]]
+reference = "R13"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 132.35
+y = 43.2
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "/~{FLG}" },
+]
+
+[[part]]
+reference = "R14"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 80
+y = 37.2
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "Net-(Q1-G)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/DR1H" },
+]
+
+[[part]]
+reference = "R16"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 128.2
+y = 47.4
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/NTC_PLUG" },
+]
+
+[[part]]
+reference = "R17"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 119.64
+y = 32.6
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "/VOUT" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "/VOUT_SENSE" },
+]
+
+[[part]]
+reference = "R18"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 125.38
+y = 47.4
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "/VOUT_SENSE" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R19"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 145.7
+y = 41
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "/VBUS" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 270, size = [0.54, 0.64], net = "/VBUS_SENSE" },
+]
+
+[[part]]
+reference = "R20"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 117.86
+y = 44.95
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "/VBUS_SENSE" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R21"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 80
+y = 44.4
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "Net-(Q2-G)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "/DR1L" },
+]
+
+[[part]]
+reference = "R22"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 95.65
+y = 28.04
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "Net-(U3-MODE)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R23"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 94.71
+y = 28.04
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "Net-(U3-ILIM)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 90, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R24"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 93.3
+y = 29.45
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "Net-(U3-COMP)" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "Net-(C25-Pad1)" },
+]
+
+[[part]]
+reference = "R25"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 130.24
+y = 35.25
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, size = [0.54, 0.64], net = "+3.3V" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, size = [0.54, 0.64], net = "/OVP_CEIL" },
+]
+
+[[part]]
+reference = "R26"
+footprint = "Local Library:R_0402_1005Metric"
+layer = "F.Cu"
+x = 130.24
+y = 34.3
+rotation = 180
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "/OVP_CEIL" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.51, y = 0, angle = 180, size = [0.54, 0.64], net = "GND" },
+]
+
+[[part]]
+reference = "R27"
+footprint = "Resistor_SMD:R_1206_3216Metric"
+layer = "F.Cu"
+x = 135.8
+y = 29.3
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.4625, y = 0, angle = 90, size = [1.125, 1.75], net = "/VBUS" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.4625, y = 0, angle = 90, size = [1.125, 1.75], net = "/VBUSf" },
+]
+
+[[part]]
+reference = "R28"
+footprint = "Resistor_SMD:R_1206_3216Metric"
+layer = "F.Cu"
+x = 117.15
+y = 29.245
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.4625, y = 0, angle = 90, size = [1.125, 1.75], net = "/VOUT_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 1.4625, y = 0, angle = 90, size = [1.125, 1.75], net = "/VOUT" },
+]
+
+[[part]]
+reference = "REF**"
+footprint = "Local Library:HOT_SURFACE_SMALL"
+layer = "B.Cu"
+x = 86.25
+y = 33.55
+rotation = 0
+must_match = false
+pads = []
+
+[[part]]
+reference = "TH1"
+footprint = "Local Library:R_0603_1608Metric"
+layer = "F.Cu"
+x = 98.4
+y = 38.2
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.825, y = 0, angle = 90, size = [0.8, 0.95], net = "/NTC_CONV" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.825, y = 0, angle = 90, size = [0.8, 0.95], net = "GND" },
+]
+
+[[part]]
+reference = "TH2"
+footprint = "Local Library:R_0603_1608Metric"
+layer = "F.Cu"
+x = 147.1
+y = 42.8
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -0.825, y = 0, size = [0.8, 0.95], net = "/NTC_PLUG" },
+    { number = "2", type = "smd", shape = "roundrect", x = 0.825, y = 0, size = [0.8, 0.95], net = "GND" },
+]
+
+[[part]]
+reference = "U1"
+footprint = "Local Library:LQFP-48_L7.0-W7.0-P0.50-LS9.0-BL"
+layer = "F.Cu"
+x = 125.12
+y = 40.45
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "oval", x = -2.75, y = 4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PC13-Pad1)" },
+    { number = "2", type = "smd", shape = "oval", x = -2.25, y = 4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PC14-OSC32_IN-Pad2)" },
+    { number = "3", type = "smd", shape = "oval", x = -1.75, y = 4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PC15-OSC32_OUT-Pad3)" },
+    { number = "4", type = "smd", shape = "oval", x = -1.25, y = 4.25, angle = 270, size = [0.27, 1.5], net = "+3.3V" },
+    { number = "5", type = "smd", shape = "oval", x = -0.75, y = 4.25, angle = 270, size = [0.27, 1.5], net = "+3.3V" },
+    { number = "6", type = "smd", shape = "oval", x = -0.25, y = 4.25, angle = 270, size = [0.27, 1.5], net = "+3.3V" },
+    { number = "7", type = "smd", shape = "oval", x = 0.25, y = 4.25, angle = 270, size = [0.27, 1.5], net = "GND" },
+    { number = "8", type = "smd", shape = "oval", x = 0.75, y = 4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PF0-OSC_IN-Pad8)" },
+    { number = "9", type = "smd", shape = "oval", x = 1.25, y = 4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PF1-OSC_OUT-Pad9)" },
+    { number = "10", type = "smd", shape = "oval", x = 1.75, y = 4.25, angle = 270, size = [0.27, 1.5], net = "/~{RST}" },
+    { number = "11", type = "smd", shape = "oval", x = 2.25, y = 4.25, angle = 270, size = [0.27, 1.5], net = "/VBUS_SENSE" },
+    { number = "12", type = "smd", shape = "oval", x = 2.75, y = 4.25, angle = 270, size = [0.27, 1.5], net = "/IANA" },
+    { number = "13", type = "smd", shape = "oval", x = 4.25, y = 2.75, angle = 270, size = [1.5, 0.27], net = "/USART_TX" },
+    { number = "14", type = "smd", shape = "oval", x = 4.25, y = 2.25, angle = 270, size = [1.5, 0.27], net = "/USART_RX" },
+    { number = "15", type = "smd", shape = "oval", x = 4.25, y = 1.75, angle = 270, size = [1.5, 0.27], net = "/OVP_REF" },
+    { number = "16", type = "smd", shape = "oval", x = 4.25, y = 1.25, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PA5-Pad16)" },
+    { number = "17", type = "smd", shape = "oval", x = 4.25, y = 0.75, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PA6-Pad17)" },
+    { number = "18", type = "smd", shape = "oval", x = 4.25, y = 0.25, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PA7-Pad18)" },
+    { number = "19", type = "smd", shape = "oval", x = 4.25, y = -0.25, angle = 270, size = [1.5, 0.27], net = "/NTC_CONV" },
+    { number = "20", type = "smd", shape = "oval", x = 4.25, y = -0.75, angle = 270, size = [1.5, 0.27], net = "/VOUT_SENSE" },
+    { number = "21", type = "smd", shape = "oval", x = 4.25, y = -1.25, angle = 270, size = [1.5, 0.27], net = "/NTC_PLUG" },
+    { number = "22", type = "smd", shape = "oval", x = 4.25, y = -1.75, angle = 270, size = [1.5, 0.27], net = "/USB_SCL" },
+    { number = "23", type = "smd", shape = "oval", x = 4.25, y = -2.25, angle = 270, size = [1.5, 0.27], net = "/USB_SDA" },
+    { number = "24", type = "smd", shape = "oval", x = 4.25, y = -2.75, angle = 270, size = [1.5, 0.27], net = "/CONVERTER_FLT" },
+    { number = "25", type = "smd", shape = "oval", x = 2.75, y = -4.25, angle = 270, size = [0.27, 1.5], net = "/~{FLG}" },
+    { number = "26", type = "smd", shape = "oval", x = 2.25, y = -4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PB14-Pad26)" },
+    { number = "27", type = "smd", shape = "oval", x = 1.75, y = -4.25, angle = 270, size = [0.27, 1.5], net = "/UCPD_CC2" },
+    { number = "28", type = "smd", shape = "oval", x = 1.25, y = -4.25, angle = 270, size = [0.27, 1.5], net = "/UCPD_CC1" },
+    { number = "29", type = "smd", shape = "oval", x = 0.75, y = -4.25, angle = 270, size = [0.27, 1.5], net = "GND" },
+    { number = "30", type = "smd", shape = "oval", x = 0.25, y = -4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PC6-Pad30)" },
+    { number = "31", type = "smd", shape = "oval", x = -0.25, y = -4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PC7-Pad31)" },
+    { number = "32", type = "smd", shape = "oval", x = -0.75, y = -4.25, angle = 270, size = [0.27, 1.5], net = "GND" },
+    { number = "33", type = "smd", shape = "oval", x = -1.25, y = -4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PA11[PA9]-Pad33)" },
+    { number = "34", type = "smd", shape = "oval", x = -1.75, y = -4.25, angle = 270, size = [0.27, 1.5], net = "unconnected-(U1-PA12[PA10]-Pad34)" },
+    { number = "35", type = "smd", shape = "oval", x = -2.25, y = -4.25, angle = 270, size = [0.27, 1.5], net = "/SWDIO" },
+    { number = "36", type = "smd", shape = "oval", x = -2.75, y = -4.25, angle = 270, size = [0.27, 1.5], net = "/SWCLK" },
+    { number = "37", type = "smd", shape = "oval", x = -4.25, y = -2.75, angle = 270, size = [1.5, 0.27], net = "Net-(U1-PA15)" },
+    { number = "38", type = "smd", shape = "oval", x = -4.25, y = -2.25, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PD0-Pad38)" },
+    { number = "39", type = "smd", shape = "oval", x = -4.25, y = -1.75, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PD1-Pad39)" },
+    { number = "40", type = "smd", shape = "oval", x = -4.25, y = -1.25, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PD2-Pad40)" },
+    { number = "41", type = "smd", shape = "oval", x = -4.25, y = -0.75, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PD3-Pad41)" },
+    { number = "42", type = "smd", shape = "oval", x = -4.25, y = -0.25, angle = 270, size = [1.5, 0.27], net = "Net-(U1-PB3)" },
+    { number = "43", type = "smd", shape = "oval", x = -4.25, y = 0.25, angle = 270, size = [1.5, 0.27], net = "/TCPP_EN" },
+    { number = "44", type = "smd", shape = "oval", x = -4.25, y = 0.75, angle = 270, size = [1.5, 0.27], net = "/~{ALERT}" },
+    { number = "45", type = "smd", shape = "oval", x = -4.25, y = 1.25, angle = 270, size = [1.5, 0.27], net = "/SCL" },
+    { number = "46", type = "smd", shape = "oval", x = -4.25, y = 1.75, angle = 270, size = [1.5, 0.27], net = "/SDA" },
+    { number = "47", type = "smd", shape = "oval", x = -4.25, y = 2.25, angle = 270, size = [1.5, 0.27], net = "/EN" },
+    { number = "48", type = "smd", shape = "oval", x = -4.25, y = 2.75, angle = 270, size = [1.5, 0.27], net = "unconnected-(U1-PB9-Pad48)" },
+]
+
+[[part]]
+reference = "U2"
+footprint = "Package_TO_SOT_SMD:SOT-23-5"
+layer = "F.Cu"
+x = 100
+y = 46.23
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.1375, y = -0.95, angle = 90, size = [1.325, 0.6], net = "+5V" },
+    { number = "2", type = "smd", shape = "roundrect", x = -1.1375, y = 0, angle = 90, size = [1.325, 0.6], net = "GND" },
+    { number = "3", type = "smd", shape = "roundrect", x = -1.1375, y = 0.95, angle = 90, size = [1.325, 0.6], net = "+5V" },
+    { number = "4", type = "smd", shape = "roundrect", x = 1.1375, y = 0.95, angle = 90, size = [1.325, 0.6], net = "Net-(U2-BP)" },
+    { number = "5", type = "smd", shape = "roundrect", x = 1.1375, y = -0.95, angle = 90, size = [1.325, 0.6], net = "+3.3V" },
+]
+
+[[part]]
+reference = "U3"
+footprint = "Local Library:VQFN-HR-26_L4.0-W3.5_TPS55288RPMR"
+layer = "F.Cu"
+x = 94.74
+y = 34.6
+rotation = 90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "custom", x = -1.85, y = -1.79, angle = 90, size = [0.005, 0.005], extent = [-0.4499, -0.2374, 0.4501, 0.4626], net = "/DR1L" },
+    { number = "2", type = "smd", shape = "rect", x = -1.9, y = -1, angle = 90, size = [0.6, 0.25], net = "/DR1H" },
+    { number = "3", type = "smd", shape = "rect", x = -1.84, y = -0.5, angle = 90, size = [0.725, 0.25], net = "/EMI_VIN" },
+    { number = "4", type = "smd", shape = "rect", x = -1.84, y = 0, angle = 90, size = [0.725, 0.25], net = "/EN" },
+    { number = "5", type = "smd", shape = "rect", x = -1.84, y = 0.5, angle = 90, size = [0.725, 0.25], net = "/USB_SCL" },
+    { number = "6", type = "smd", shape = "rect", x = -1.9, y = 1, angle = 90, size = [0.6, 0.25], net = "/USB_SDA" },
+    { number = "7", type = "smd", shape = "custom", x = -1.85, y = 1.79, angle = 90, size = [0.005, 0.005], extent = [-0.4499, -0.4625, 0.4501, 0.2375], net = "Net-(U3-DITH{slash}SYNC)" },
+    { number = "8", type = "smd", shape = "rect", x = -1.13, y = 1.67, angle = 90, size = [0.25, 0.625], net = "Net-(U3-FSW)" },
+    { number = "9", type = "smd", shape = "rect", x = -0.62, y = 1.67, angle = 90, size = [0.25, 0.625], net = "GND" },
+    { number = "10", type = "smd", shape = "rect", x = -0.13, y = 1.67, angle = 90, size = [0.25, 0.625], net = "GND" },
+    { number = "11", type = "smd", shape = "rect", x = 0.6, y = 1.67, angle = 90, size = [0.25, 0.625], net = "/VOUT_CONV" },
+    { number = "12", type = "smd", shape = "rect", x = 1.1, y = 1.67, angle = 90, size = [0.25, 0.625], net = "/VOUT_CONV" },
+    { number = "13", type = "smd", shape = "custom", x = 1.85, y = 1.79, angle = 90, size = [0.005, 0.005], extent = [-0.45, -0.4626, 0.45, 0.2374], net = "/VOUT" },
+    { number = "14", type = "smd", shape = "rect", x = 1.9, y = 1, angle = 90, size = [0.6, 0.25], net = "/CONVERTER_FLT" },
+    { number = "15", type = "smd", shape = "rect", x = 1.84, y = 0.5, angle = 90, size = [0.725, 0.25], net = "Net-(U3-MODE)" },
+    { number = "16", type = "smd", shape = "rect", x = 1.84, y = 0, angle = 90, size = [0.725, 0.25], net = "unconnected-(U3-CDC-Pad16)" },
+    { number = "17", type = "smd", shape = "rect", x = 1.84, y = -0.5, angle = 90, size = [0.725, 0.25], net = "Net-(U3-ILIM)" },
+    { number = "18", type = "smd", shape = "rect", x = 1.9, y = -1, angle = 90, size = [0.6, 0.25], net = "Net-(U3-COMP)" },
+    { number = "19", type = "smd", shape = "custom", x = 1.85, y = -1.79, angle = 90, size = [0.005, 0.005], extent = [-0.45, -0.2374, 0.45, 0.4626], net = "Net-(U3-VCC)" },
+    { number = "20", type = "smd", shape = "rect", x = 1.05, y = -1.64, angle = 90, size = [0.25, 0.675], net = "Net-(U3-BOOT2)" },
+    { number = "21", type = "smd", shape = "rect", x = 0.25, y = -1.68, angle = 90, size = [0.25, 0.6], net = "/SW2" },
+    { number = "22", type = "smd", shape = "rect", x = -0.25, y = -1.68, angle = 90, size = [0.25, 0.6], net = "Net-(U3-BOOT1)" },
+    { number = "23", type = "smd", shape = "rect", x = -1.05, y = -1.64, angle = 90, size = [0.25, 0.675], net = "/SW1" },
+    { number = "24", type = "smd", shape = "rect", x = -0.62, y = 0, angle = 90, size = [0.375, 1.435], net = "GND" },
+    { number = "25", type = "smd", shape = "rect", x = 0, y = 0, angle = 90, size = [0.375, 1.435], net = "/SW2" },
+    { number = "26", type = "smd", shape = "rect", x = 0.62, y = 0, angle = 90, size = [0.375, 1.435], net = "/VOUT_CONV" },
+]
+
+[[part]]
+reference = "U4"
+footprint = "Local Library:SOT-23-8_L2.9-W1.6-P0.65-LS2.8-BR"
+layer = "F.Cu"
+x = 133.85
+y = 35.25
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "oval", x = 1.23, y = 0.98, size = [1.252, 0.35], net = "/TCPP_EN" },
+    { number = "2", type = "smd", shape = "oval", x = 1.23, y = 0.33, size = [1.252, 0.35], net = "/VOUT_SENSE" },
+    { number = "3", type = "smd", shape = "oval", x = 1.23, y = -0.32, size = [1.252, 0.35], net = "/OVP_REF" },
+    { number = "4", type = "smd", shape = "oval", x = 1.23, y = -0.98, size = [1.252, 0.35], net = "GND" },
+    { number = "5", type = "smd", shape = "oval", x = -1.23, y = -0.98, size = [1.252, 0.35], net = "/OVP_CEIL" },
+    { number = "6", type = "smd", shape = "oval", x = -1.23, y = -0.32, size = [1.252, 0.35], net = "/VOUT_SENSE" },
+    { number = "7", type = "smd", shape = "oval", x = -1.23, y = 0.33, size = [1.252, 0.35], net = "/TCPP_EN" },
+    { number = "8", type = "smd", shape = "oval", x = -1.23, y = 0.98, size = [1.252, 0.35], net = "+3.3V" },
+]
+
+[[part]]
+reference = "U5"
+footprint = "Local Library:QFN-18_L3.5-W3.5-P0.50-TL-EP2.2"
+layer = "F.Cu"
+x = 137.9
+y = 40.39
+rotation = 0
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "oval", x = -1.71, y = -1, size = [0.79, 0.28], net = "/TCPP_EN" },
+    { number = "2", type = "smd", shape = "oval", x = -1.71, y = -0.5, size = [0.79, 0.28], net = "/UCPD_CC1" },
+    { number = "3", type = "smd", shape = "oval", x = -1.71, y = 0, size = [0.79, 0.28], net = "+5V" },
+    { number = "4", type = "smd", shape = "oval", x = -1.71, y = 0.5, size = [0.79, 0.28], net = "/UCPD_CC2" },
+    { number = "5", type = "smd", shape = "oval", x = -1.71, y = 1, size = [0.79, 0.28], net = "/IANA" },
+    { number = "6", type = "smd", shape = "oval", x = -0.75, y = 1.71, size = [0.28, 0.79], net = "/VBUS_GATE" },
+    { number = "7", type = "smd", shape = "oval", x = -0.25, y = 1.71, size = [0.28, 0.79], net = "/VBUS_SRC" },
+    { number = "8", type = "smd", shape = "oval", x = 0.25, y = 1.71, size = [0.28, 0.79], net = "/VBUS" },
+    { number = "9", type = "smd", shape = "oval", x = 0.75, y = 1.71, size = [0.28, 0.79], net = "/VBUSf" },
+    { number = "10", type = "smd", shape = "oval", x = 1.71, y = 1, size = [0.79, 0.28], net = "GND" },
+    { number = "11", type = "smd", shape = "oval", x = 1.71, y = 0.5, size = [0.79, 0.28], net = "/CC2" },
+    { number = "12", type = "smd", shape = "oval", x = 1.71, y = 0, size = [0.79, 0.28], net = "Net-(U5-CBIAS)" },
+    { number = "13", type = "smd", shape = "oval", x = 1.71, y = -0.5, size = [0.79, 0.28], net = "/CC1" },
+    { number = "14", type = "smd", shape = "oval", x = 1.71, y = -1, size = [0.79, 0.28], net = "GND" },
+    { number = "15", type = "smd", shape = "oval", x = 0.75, y = -1.71, size = [0.28, 0.79], net = "GND" },
+    { number = "16", type = "smd", shape = "oval", x = 0.25, y = -1.71, size = [0.28, 0.79], net = "/USB_SDA" },
+    { number = "17", type = "smd", shape = "oval", x = -0.25, y = -1.71, size = [0.28, 0.79], net = "/USB_SCL" },
+    { number = "18", type = "smd", shape = "oval", x = -0.75, y = -1.71, size = [0.28, 0.79], net = "/~{FLG}" },
+    { number = "19", type = "smd", shape = "rect", x = 0, y = 0, size = [2.2, 2.2], net = "GND" },
+]
+
+[[part]]
+reference = "U6"
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
+layer = "F.Cu"
+x = 142.85
+y = 43.9375
+rotation = -90
+must_match = false
+pads = [
+    { number = "1", type = "smd", shape = "roundrect", x = -1.1375, y = -0.95, angle = 270, size = [1.325, 0.6], net = "/USB_DATA" },
+    { number = "2", type = "smd", shape = "roundrect", x = -1.1375, y = 0, angle = 270, size = [1.325, 0.6], net = "GND" },
+    { number = "3", type = "smd", shape = "roundrect", x = -1.1375, y = 0.95, angle = 270, size = [1.325, 0.6], net = "unconnected-(U6-I{slash}O2-Pad3)" },
+    { number = "4", type = "smd", shape = "roundrect", x = 1.1375, y = 0.95, angle = 270, size = [1.325, 0.6], net = "unconnected-(U6-I{slash}O2-Pad4)" },
+    { number = "5", type = "smd", shape = "roundrect", x = 1.1375, y = 0, angle = 270, size = [1.325, 0.6], net = "unconnected-(U6-VBUS-Pad5)" },
+    { number = "6", type = "smd", shape = "roundrect", x = 1.1375, y = -0.95, angle = 270, size = [1.325, 0.6], net = "unconnected-(U6-I{slash}O1-Pad6)" },
+]
