@@ -57,7 +57,7 @@
 //!
 //! **Open, word for word from ADR 0045 section 10** (the text says both "Nothing is left open in
 //! this section" and, in "Where the code differs", "Still open: (c), (d) and (h)"; they
-//! disagree, and issue #11 still has every box unchecked). (a) "Whether a window on `.x` or `.y`
+//! disagree, and the answers settle it; issue #11 is closed). (a) "Whether a window on `.x` or `.y`
 //! should state an overhang (now it does not: only the edge fields do). **Decided 2026-11-03:
 //! only the edge fields.**" (b) "Whether a locked part should state every edge it is past (now
 //! it does not need to). **Decided 2026-11-03: it must.**" (c) "The courtyard wall, which was a
