@@ -160,12 +160,13 @@
 //! catalogs (`Catalogs::with_search_budget`), so a test lowers it; there is no manifest key
 //! and no flag. Rejected: a time limit (the result would depend on the machine, and its test
 //! would be flaky), a lower trial limit (a small board may need many trials), a limit over
-//! every group together (many small groups do many trials in all, none a runaway). Left open:
-//! the number was chosen from the invented board's speed, not from a real board's trial cost;
-//! if a real search stops sooner than a person waits, it comes down. The hopeless scan and
-//! `search_again_together` have a budget each, so a group that gives up and is searched again
-//! with another gets a second budget. A failing group does not say which part to state a value
-//! for: the search does not know it.
+//! every group together (many small groups do many trials in all, none a runaway). The number
+//! was chosen from the invented board's speed, not from a real board's trial cost, and the
+//! owner accepted it on 2026-11-11; if a real search stops sooner than a person waits, it comes
+//! down. The hopeless scan and `search_again_together` have a budget each, so a group that
+//! gives up and is searched again with another gets a second budget. A failing group does not
+//! say which part to state a value for, because the search does not know it (not built; issue
+//! #65).
 //!
 //! **The order of the groups must not decide the board** (9.3). Groups are picked in path
 //! order, and a bound that reads values of two groups waits for the parts that feed it, so the
@@ -176,8 +177,8 @@
 //! dependence on a name that was found.) `Mark` keeps the state before each group, and
 //! `search_again_together` goes back to before the first earlier group that shares a relation
 //! with a failed one and searches again with the failed group first. Parts that were found are
-//! never searched again, so a board that built keeps its picks. Limits: only the order "failed
-//! group first" is tried, not every order and not a joint search (a joint search of four
+//! never searched again, so a board that built keeps its picks. Limits (not built; issue #65):
+//! only the order "failed group first" is tried, not every order and not a joint search (a joint search of four
 //! resistors from the 700 rows of the real catalog had not ended after two minutes in a debug
 //! build); the clones of `Mark` cost 1.5 ms of a 1.1 s build on the largest example, and would
 //! be kept only for groups that share a relation if a board ever shows the cost. A failed retry
@@ -188,10 +189,10 @@
 //! 0065); `transfer.rs` has the bound that reaches a part (ADR 0065, stage 0); `narrow.rs` has
 //! the skipping of candidates by blocks (issue #184), checked by `Catalogs::with_narrowing_audit`.
 //!
-//! # Left open for the owner (ADR 0057)
+//! # Where to read ADR 0057
 //!
-//! ADR 0057 was written overnight by an agent, each decision its own, "and the first one changes
-//! which part is picked for some designs". The owner has not confirmed it. Where to read it:
+//! The first change of ADR 0057 changes which part is picked for some designs. The owner
+//! accepted ADR 0057 as built on 2026-11-11, with its work limit. Where to read it:
 //! `try_candidate` (the `changed` set and the condition that no part still to be chosen feeds the
 //! relation: "the one place where a design that built could stop building"), `constants` (what
 //! counts as a value no pick changes: a mistake there splits parts that are coupled), `hopeless`

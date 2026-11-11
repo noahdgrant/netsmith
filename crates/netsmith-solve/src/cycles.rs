@@ -64,13 +64,12 @@
 //! merges it through a balance is reported for the checks the first did not name. The cost is a
 //! second search of the equations and balances, made only when a relation was left unevaluated.
 //!
-//! # Left open for the owner (ADR 0057)
+//! # Severity and wording (ADR 0057)
 //!
-//! ADR 0057 was written overnight by an agent, each decision its own, and the owner has not
-//! confirmed it. Two items it named: "whether `warn` by default is right" for the open circle
-//! finding (`open_circle_findings` in `crates/netsmith/src/lib.rs`), and "the wording of the
-//! finding for a net, and whether the root fix for a zero term should exist at all"
-//! (`Model::draw_is_zero`).
+//! The open circle finding is a warning by default (`open_circle_findings` in
+//! `crates/netsmith/src/lib.rs`), and an error under `--strict`. The wording of the finding for a
+//! net, and the root fix for a zero term (`Model::draw_is_zero`), are as built. Accepted as
+//! built by the owner, 2026-11-11.
 
 use std::collections::{BTreeMap, BTreeSet};
 
