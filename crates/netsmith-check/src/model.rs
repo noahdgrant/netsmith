@@ -347,6 +347,9 @@ pub struct PinRow {
 pub struct PinFunction {
     pub name: String,
     pub kind: Option<PinKind>,
+    /// The row marks the function `class` (`fn GPIO class`): the board may choose it on any
+    /// number of pins.
+    pub class: bool,
 }
 
 impl PinRow {

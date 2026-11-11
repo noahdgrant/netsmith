@@ -2048,7 +2048,7 @@ pins "DFN-8-EP" {
 tie .sense ~ .vout.pos
 ```
 
-A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] ...] [optional | required]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one (see Functions).
+A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
 
 | Kind | Meaning | Must be connected? |
 |---|---|---|
@@ -2140,7 +2140,7 @@ Rules.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
 - `optional` is for a `power` or `input` pin that may float; `required` is for an `output`, `bidirectional` or `passive` pin that may not. Neither is accepted where it changes nothing.
-- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class ("A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
+- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class (`fn GPIO class` in a row, "Functions"; or a function that a peripheral is `on`, "A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
 - Two `power` pins that are both supplies on one net are not checked yet.
@@ -2433,6 +2433,53 @@ error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
    |
 19 |     .u.pb6.function &= "UART1_TX"
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A function can be chosen on any number of pins when the part says it is a **class**: the row writes `class` after the function, `fn GPIO class`. A microcontroller whose ADC inputs are also plain GPIOs lists `GPIO` on every such pin, and a board that uses all of them as GPIO chooses `GPIO` on each (a class is also what `peripheral NAME on CLASS` names, "A peripheral on any pin"; the two spellings make a function a class in the same way). A connected pin that lists `GPIO` and an ADC input still needs one of them chosen, and a function no row marks stays on one pin.
+
+```nsm module=src::mcu8
+/// A microcontroller with two pins that are GPIO or an ADC input. Illustrative; not a real part.
+part Mcu8 {
+    pins {
+        .gpio0 bidirectional "GPIO0"      "1" fn GPIO class
+        .gpio1 bidirectional "GPIO1_ADC0" "2" fn GPIO class ADC0:input
+        .gpio2 bidirectional "GPIO2_ADC1" "3" fn GPIO class ADC1:input
+    }
+}
+```
+
+```nsm
+import src::mcu8::Mcu8
+import std::parts::passive::Resistor
+
+board GpioOnTwoPins {
+    .u: Mcu8
+    .a: Resistor
+    .b: Resistor
+    .u.gpio1 ~ .a.a
+    .u.gpio2 ~ .b.a
+    .u.gpio1.function &= "GPIO"
+    .u.gpio2.function &= "GPIO"
+}
+```
+
+The marker is a fact of the function, so every row that lists it carries it. A row that lists the function without it, a marker on a function that `peripheral NAME on CLASS` already makes a class, and a marker on a line of a peripheral (which is on one pin at a time) are refused in the part:
+
+```nsm fails
+part Mcu8b {
+    pins {
+        .gpio0 bidirectional "GPIO0" "1" fn GPIO class
+        .gpio1 bidirectional "GPIO1" "2" fn GPIO
+    }
+}
+```
+
+```text
+error: `.gpio1` lists `GPIO` without `class`, which `.gpio0` marks as a class; a class is a fact of the function, so write `fn GPIO class` on every row that lists it
+  --> main.nsm:4:9
+  |
+4 |         .gpio1 bidirectional "GPIO1" "2" fn GPIO
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A module hides the parts inside it, so a board cannot write `.hub.mcu.pa2.function`. A module that wants its board to choose a function on a pin it exports passes the choice on with the equation `.mcu.pa2.function == .scl.function`, inside the module: the part's pin takes the function that the board states on the module's pin, and every check of the part applies to it as if the board had written it.

@@ -516,14 +516,9 @@ impl<'a> Run<'a> {
         }
         for (function, mut pins) in chosen {
             // A class names what a pin can be, not one use of it: `GPIO` on two pins is two
-            // pins that are plain GPIOs (ADR 0101).
-            let class = model
-                .instance(part)
-                .rules
-                .peripherals
-                .iter()
-                .any(|p| p.class.as_deref() == Some(function.as_str()));
-            if class {
+            // pins that are plain GPIOs (ADR 0101). A peripheral that is `on` a function and
+            // a row's `class` marker both make one.
+            if model.is_class(part, &function) {
                 continue;
             }
             // A function that rows list on several pins (`ANALOG`) may be asked for by several

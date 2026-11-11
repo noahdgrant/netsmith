@@ -926,6 +926,7 @@ impl<'a> Checker<'a> {
         }
         self.process(&def.items);
         if kind == InstKind::Part {
+            self.finish_classes(id);
             self.finish_rules(id);
             self.finish_dc(id);
         }

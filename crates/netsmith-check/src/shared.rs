@@ -478,6 +478,76 @@ impl Checker<'_> {
             self.report(source, span, message);
         }
     }
+
+    /// The mistakes of the `class` markers of a part's rows (`fn GPIO class`). A class is a
+    /// fact of the function, so every row that lists it carries the marker; a function that a
+    /// peripheral is `on` is one already, and a line of a peripheral is on one pin at a time.
+    pub(crate) fn finish_classes(&mut self, part: InstId) {
+        let inst = self.model.instance(part);
+        let rules = inst.rules.clone();
+        let tables = inst.tables.clone();
+        let mut found: Vec<(SourceId, Span, String)> = Vec::new();
+        let pin_of = |model: &crate::model::Model, row: &crate::model::PinRow| {
+            format!(".{}", model.path_below(row.pin, part))
+        };
+
+        // The first row that marks each function, in the order the tables are written.
+        let mut marked: BTreeMap<&str, String> = BTreeMap::new();
+        for table in &tables {
+            for row in &table.rows {
+                for f in row.functions.iter().filter(|f| f.class) {
+                    marked
+                        .entry(&f.name)
+                        .or_insert_with(|| pin_of(&self.model, row));
+                }
+            }
+        }
+        for table in &tables {
+            for row in &table.rows {
+                let pin = pin_of(&self.model, row);
+                for f in &row.functions {
+                    let Some(first) = marked.get(f.name.as_str()) else {
+                        continue;
+                    };
+                    if !f.class {
+                        found.push((
+                            table.source,
+                            row.span,
+                            format!(
+                                "`{pin}` lists `{}` without `class`, which `{first}` marks as a class; a class is a fact of the function, so write `fn {} class` on every row that lists it",
+                                f.name, f.name
+                            ),
+                        ));
+                    } else if let Some(p) = rules
+                        .peripherals
+                        .iter()
+                        .find(|p| p.class.as_deref() == Some(f.name.as_str()))
+                    {
+                        found.push((
+                            table.source,
+                            row.span,
+                            format!(
+                                "`{pin}` marks `{}` as a class, which `peripheral {} on {}` already makes it; remove `class` from the row",
+                                f.name, p.name, f.name
+                            ),
+                        ));
+                    } else if let Some((p, _)) = self.model.peripheral_of(part, &f.name) {
+                        found.push((
+                            table.source,
+                            row.span,
+                            format!(
+                                "`{pin}` marks `{}` as a class, but it is a line of `peripheral {}`, which is on one pin at a time; a class is a function that no peripheral lists",
+                                f.name, p.name
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        for (source, span, message) in found {
+            self.report(source, span, message);
+        }
+    }
 }
 
 /// Names for a message, six at most, then `...`.
