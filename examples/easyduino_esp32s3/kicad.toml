@@ -1,14 +1,42 @@
 # What KiCad calls the parts this project defines itself (ADR 0021).
 #
-# The footprints written for this board are in the project's own libraries, so that a build
-# needs no KiCad install (the files are the project's): `libs/easyduino_ics.pretty` holds the
-# module's and the Schottky diode's; README.md (Parts) records the document, revision and page of
-# each and what was read, derived or assumed. The parts are drawn from their pin tables (no
-# `symbol`, ADR 0097), except the diode, whose symbol is the one netsmith draws itself.
-#
-# Not here: the AMS1117-3.3 (U5) is the standard `LinearRegulator` in the package SOT-223, which
-# `std/kicad.toml` already maps to the generator's `SOT-223-3_TabPin2`: a project may not map a
-# pair that the standard mapping maps, so it has no row.
+# The interface parts (J1 and J2, SW1 and SW2, U2) are written into the project's own library
+# `libs/easyduino_must_match.pretty`, so that a build needs no KiCad install; the files are
+# written from the makers' drawings where one could be read and otherwise from the reference
+# board's own pads. `README.md` (Parts) records the document, revision and page of each, and
+# what was read, derived or assumed. Every symbol is drawn from the part's pin table (no
+# `symbol` key, ADR 0097).
+[[library]]
+name = "easyduino_must_match"
+footprints = "libs/easyduino_must_match.pretty"
+
+# J1 and J2: the USB Type-C receptacle, Shouhan TYPE-C 16PIN 2MD(073), LCSC C2765186.
+[[part]]
+kind = "ShouhanTypeC16Pin"
+package = "SMD"
+default = true
+footprint = "easyduino_must_match:USB_C_Receptacle_Shouhan_TYPE-C-16PIN-2MD-073"
+
+# SW1 and SW2: the XUNPU TS-1088-AR02016 tactile switch, LCSC C720477.
+[[part]]
+kind = "XunpuTs1088"
+package = "SMD,4x3mm"
+default = true
+footprint = "easyduino_must_match:SW_XUNPU_TS-1088-AR02016"
+
+# U2: the development board's two 22-pin headers, one footprint of 44 pads.
+[[part]]
+kind = "Esp32S3DevKitCHeaders"
+package = "2x22,P=2.54mm"
+default = true
+footprint = "easyduino_must_match:PinHeader_2x22_P2.54mm_Espressif_ESP32-S3-DevKitC-1"
+
+# The module, the bridge, the transistors and the diodes: the second library, `libs/easyduino_ics.pretty`
+# (the module's and the Schottky diode's footprints, written from the makers' land patterns). The
+# AMS1117-3.3 (U5) is the standard `LinearRegulator` in SOT-223, which `std/kicad.toml` maps to
+# the generator's `SOT-223-3_TabPin2`: a project may not map a pair that the standard
+# mapping maps, so it has no row. The symbols are drawn from the pin tables (no `symbol` key,
+# ADR 0097), except the diode's, which netsmith draws itself.
 
 [[library]]
 name = "easyduino_ics"

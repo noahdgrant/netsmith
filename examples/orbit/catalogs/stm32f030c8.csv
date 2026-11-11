@@ -1,0 +1,2 @@
+lcsc,mpn,package,library,source,notes
+C23922,STM32F030C8T6,LQFP-48(7x7),Extended,https://jlcpcb.com/partdetail/C23922 (JLCPCB parts library page read on 2026-11-10: STMicroelectronics STM32F030C8T6; package LQFP-48(7x7); library type Extended) ; LCSC https://www.lcsc.com/product-detail/C23922.html (read on 2026-11-10: STM32F030C8T6; package LQFP-48(7x7)),STMicroelectronics. The LCSC number is the one on ORBIT schematic U16 (the symbol there is STM32F030C8Tx). Price and stock not recorded. Pins: src/stm32f030c8.nsm.

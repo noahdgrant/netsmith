@@ -413,6 +413,627 @@ fn the_placeholder_board_checks_and_solves() {
     assert_eq!(names, ["EasyduinoEsp32s3"]);
 }
 
+/// The board's interface parts: the USB Type-C receptacles (J1, J2), the buttons (SW1, SW2), the
+/// headers (U2) and the LEDs (D1 to D4). The first four kinds' pads must equal the reference
+/// board's (the parity rule): the footprints are the project's own, in
+/// `libs/easyduino_must_match.pretty`, compared pad for pad with `reference/placements.toml`.
+mod must_match_parts {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use netsmith::project::Target;
+    use netsmith::{Libraries, build_with};
+    use netsmith_kicad::install::Search;
+    use netsmith_kicad::testlib;
+    use netsmith_pcb::{Footprint, PadKind, PadShape};
+
+    use super::{number, parsed, project, read, tables};
+
+    /// A small board of our own, never the project's: one of each part, so that the parts, the
+    /// catalogs and the `kicad.toml` rows build together. The receptacle's power contacts are on
+    /// a rail, which makes the board's checks and the pinout validation run.
+    const FIXTURE: &str = r#"
+import src::devkitc_headers::Esp32S3DevKitCHeaders
+import src::shouhan_type_c_16pin::ShouhanTypeC16Pin
+import src::xunpu_ts_1088::XunpuTs1088
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+board InterfaceBare {
+    .usb_power: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+    .usb: ShouhanTypeC16Pin { .mpn &= "TYPE-C 16PIN 2MD(073)" }
+    .button: XunpuTs1088 { .mpn &= "TS-1088-AR02016" }
+    .headers: Esp32S3DevKitCHeaders
+    .led: Led {
+        .color &= "BLUE"
+        .package &= "0402"
+        .forward_voltage &= 2.6V..3.2V
+        .current &= 3mA..10mA
+    }
+    .r: Resistor {}
+
+    .usb_power.pos ~ .usb.vbus
+    .usb_power.neg ~ .usb.gnd
+    .usb.shield ~ .usb.gnd
+    .button.a ~ .usb.cc1
+    .button.b ~ .usb_power.neg
+    .headers.v3v3 ~ .usb_power.pos
+    .headers.gnd ~ .usb_power.neg
+    .headers.gpio4 ~ .usb.dp
+    .led.current == (.usb_power.voltage - .led.forward_voltage) / .r.resistance
+    .usb_power.pos ~> .r ~> .led ~> .usb_power.neg
+}
+"#;
+
+    /// A machine with no KiCad install, and the project's own `kicad.toml` and libraries.
+    fn libraries() -> Libraries {
+        let nowhere = testlib::TempDir::new("easyduino-no-kicad");
+        Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        build_with(
+            "interface.nsm",
+            FIXTURE,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    fn part_of<'a>(built: &'a netsmith::Built, kind: &str) -> &'a netsmith_core::Part {
+        built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.kind == kind)
+            .unwrap_or_else(|| panic!("no {kind}"))
+    }
+
+    fn footprint(libraries: &Libraries, kind: &str, package: &str) -> Footprint {
+        let mapped = libraries.mapping.map(kind, Some(package)).unwrap();
+        libraries
+            .footprints
+            .load(&mapped.footprint)
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// The three footprints the reference's must-match parts need: reference designators, kind,
+    /// package.
+    const PARTS: [(&str, &str, &str); 5] = [
+        ("J1", "ShouhanTypeC16Pin", "SMD"),
+        ("J2", "ShouhanTypeC16Pin", "SMD"),
+        ("SW1", "XunpuTs1088", "SMD,4x3mm"),
+        ("SW2", "XunpuTs1088", "SMD,4x3mm"),
+        ("U2", "Esp32S3DevKitCHeaders", "2x22,P=2.54mm"),
+    ];
+
+    fn shape_word(pad: &netsmith_pcb::Pad) -> &'static str {
+        if pad.extent.is_some() {
+            return "custom";
+        }
+        match pad.shape {
+            PadShape::Rect => "rect",
+            PadShape::RoundRect => "roundrect",
+            PadShape::Oval => "oval",
+            PadShape::Circle => "circle",
+        }
+    }
+
+    /// Every difference between the pads of `footprint` and those of the reference's `reference`
+    /// footprint, with the parity rule's tolerance of 0.05 mm on centre, size and drill: number,
+    /// centre in the footprint's own frame, size, drill, shape, kind and angle. Empty when they
+    /// are the same.
+    fn pad_differences(footprint: &Footprint, table: &toml::Table, reference: &str) -> Vec<String> {
+        const TOLERANCE: f64 = 0.05;
+        let part = *tables(table, "part")
+            .iter()
+            .find(|p| p["reference"].as_str() == Some(reference))
+            .unwrap_or_else(|| panic!("no part {reference}"));
+        let rotation = number(part, "rotation");
+        let wanted = part["pads"].as_array().unwrap();
+        let mut differences = Vec::new();
+        if footprint.pads.len() != wanted.len() {
+            differences.push(format!(
+                "{reference}: {} pads, the reference has {}",
+                footprint.pads.len(),
+                wanted.len()
+            ));
+        }
+        let as_f = |v: &toml::Value| v.as_float().or_else(|| v.as_integer().map(|i| i as f64));
+        let mut used = vec![false; footprint.pads.len()];
+        for pad in wanted {
+            let pad = pad.as_table().unwrap();
+            let (n, x, y) = (
+                pad["number"].as_str().unwrap(),
+                number(pad, "x"),
+                number(pad, "y"),
+            );
+            let found = footprint.pads.iter().enumerate().find(|(i, own)| {
+                !used[*i]
+                    && own.number == n
+                    && (own.at.x - x).abs() <= TOLERANCE
+                    && (own.at.y - y).abs() <= TOLERANCE
+            });
+            let Some((i, own)) = found else {
+                differences.push(format!(
+                    "{reference} pad {n:?}: none at ({x}, {y}) within {TOLERANCE} mm; pads of that number are at {:?}",
+                    footprint
+                        .pads
+                        .iter()
+                        .filter(|p| p.number == n)
+                        .map(|p| (p.at.x, p.at.y))
+                        .collect::<Vec<_>>()
+                ));
+                continue;
+            };
+            used[i] = true;
+            let at = format!("{reference} pad {n:?} at ({x}, {y})");
+            let size = pad["size"].as_array().unwrap();
+            let (w, h) = (as_f(&size[0]).unwrap(), as_f(&size[1]).unwrap());
+            if (own.width - w).abs() > TOLERANCE || (own.height - h).abs() > TOLERANCE {
+                differences.push(format!(
+                    "{at}: size {} x {}, the reference's {w} x {h}",
+                    own.width, own.height
+                ));
+            }
+            let want_shape = pad["shape"].as_str().unwrap();
+            if shape_word(own) != want_shape {
+                differences.push(format!(
+                    "{at}: shape {}, the reference's {want_shape}",
+                    shape_word(own)
+                ));
+            }
+            let want_kind = match pad["type"].as_str().unwrap() {
+                "smd" => PadKind::Smd,
+                "thru_hole" => PadKind::ThruHole,
+                "np_thru_hole" => PadKind::NpThruHole,
+                other => panic!("{at}: type {other}"),
+            };
+            if own.kind != want_kind {
+                differences.push(format!(
+                    "{at}: kind {:?}, the reference's {want_kind:?}",
+                    own.kind
+                ));
+            }
+            // The file's pad angle includes the footprint's rotation; a turn of 180 degrees
+            // leaves a rectangle, a circle or an oval as it was.
+            let turn =
+                pad.get("angle").map_or(0.0, |_| number(pad, "angle")) - rotation - own.angle;
+            let off = turn.rem_euclid(180.0).min(180.0 - turn.rem_euclid(180.0));
+            if off > 1e-6 {
+                differences.push(format!(
+                    "{at}: angle {} differs from the reference's",
+                    own.angle
+                ));
+            }
+            let want_drill = if let Some(slot) = pad.get("drill_slot") {
+                let slot = slot.as_array().unwrap();
+                Some((as_f(&slot[0]).unwrap(), as_f(&slot[1]).unwrap()))
+            } else if pad.contains_key("drill") {
+                Some((number(pad, "drill"), number(pad, "drill")))
+            } else {
+                None
+            };
+            match (own.drill, want_drill) {
+                (None, None) => {}
+                (Some(d), Some((a, b)))
+                    if (d.width - a).abs() <= TOLERANCE && (d.height - b).abs() <= TOLERANCE => {}
+                (d, w) => differences.push(format!(
+                    "{at}: drill {:?}, the reference's {w:?}",
+                    d.map(|d| (d.width, d.height))
+                )),
+            }
+        }
+        differences
+    }
+
+    #[test]
+    fn every_part_checks_and_the_fixture_builds_with_no_kicad() {
+        // The build ran `validate_pinout` on each part (a pad of the pin table that the
+        // footprint lacks, or a footprint pad that no pin names, stops it) and wrote the
+        // schematic with symbols drawn from the pin tables.
+        let built = built();
+        assert!(!built.schematic.is_empty());
+        let mapping = netsmith_kicad::Mapping::for_project(Some(&project())).unwrap();
+        for (kind, package, footprint) in [
+            (
+                "ShouhanTypeC16Pin",
+                "SMD",
+                "easyduino_must_match:USB_C_Receptacle_Shouhan_TYPE-C-16PIN-2MD-073",
+            ),
+            (
+                "XunpuTs1088",
+                "SMD,4x3mm",
+                "easyduino_must_match:SW_XUNPU_TS-1088-AR02016",
+            ),
+            (
+                "Esp32S3DevKitCHeaders",
+                "2x22,P=2.54mm",
+                "easyduino_must_match:PinHeader_2x22_P2.54mm_Espressif_ESP32-S3-DevKitC-1",
+            ),
+        ] {
+            let mapped = mapping.map(kind, Some(package)).unwrap();
+            assert_eq!(mapped.footprint, footprint, "{kind}");
+            assert_eq!(mapped.lib_id, None, "{kind}: drawn from the pin table");
+            let file = footprint.trim_start_matches("easyduino_must_match:");
+            assert!(
+                project()
+                    .join("libs/easyduino_must_match.pretty")
+                    .join(format!("{file}.kicad_mod"))
+                    .is_file(),
+                "{file}"
+            );
+        }
+        // The LED is the standard one, in the 0402 package of the standard rows.
+        let led = part_of(&built, "Led");
+        assert_eq!(led.package.as_deref(), Some("0402"));
+        assert!(led.refdes.starts_with('D'));
+    }
+
+    #[test]
+    fn the_receptacle_and_the_headers_are_connectors_with_the_pins_of_their_pads() {
+        let built = built();
+        for (kind, refdes, pins, pads) in [
+            ("ShouhanTypeC16Pin", 'J', 9, 17),
+            ("Esp32S3DevKitCHeaders", 'J', 40, 44),
+        ] {
+            let part = part_of(&built, kind);
+            assert!(part.is_connector(), "{kind} provides Connector");
+            assert!(part.refdes.starts_with(refdes), "{kind}: {}", part.refdes);
+            assert_eq!(part.pins.len(), pins, "{kind}: pins");
+            let numbers: Vec<&String> = part.pins.iter().flat_map(|p| &p.pads).collect();
+            assert_eq!(
+                numbers.iter().collect::<BTreeSet<_>>().len(),
+                numbers.len(),
+                "{kind}: a pad is on one pin only"
+            );
+            assert_eq!(numbers.len(), pads, "{kind}: pads");
+        }
+        let usb = part_of(&built, "ShouhanTypeC16Pin");
+        let pads = |name: &str| -> Vec<&str> {
+            usb.pins
+                .iter()
+                .find(|p| p.datasheet == name)
+                .unwrap_or_else(|| panic!("no pin {name}"))
+                .pads
+                .iter()
+                .map(String::as_str)
+                .collect()
+        };
+        // The contacts the receptacle joins inside are one pin; the shell is one pin whose pad
+        // number the footprint repeats four times.
+        assert_eq!(pads("VBUS"), ["A4", "A9", "B4", "B9"]);
+        assert_eq!(pads("GND"), ["A1", "A12", "B1", "B12"]);
+        assert_eq!(pads("D+"), ["A6", "B6"]);
+        assert_eq!(pads("D-"), ["A7", "B7"]);
+        assert_eq!(pads("CC1"), ["A5"]);
+        assert_eq!(pads("CC2"), ["B5"]);
+        assert_eq!(pads("SBU1"), ["A8"]);
+        assert_eq!(pads("SBU2"), ["B8"]);
+        assert_eq!(pads("SHIELD"), ["S1"]);
+        let headers = part_of(&built, "Esp32S3DevKitCHeaders");
+        let on = |name: &str| -> Vec<&str> {
+            headers
+                .pins
+                .iter()
+                .find(|p| p.datasheet == name)
+                .unwrap()
+                .pads
+                .iter()
+                .map(String::as_str)
+                .collect()
+        };
+        assert_eq!(on("3V3"), ["1", "2"]);
+        assert_eq!(on("GND"), ["22", "23", "24", "44"]);
+        assert_eq!(on("5V"), ["21"]);
+        assert_eq!(on("GPIO0"), ["31"]);
+    }
+
+    #[test]
+    fn the_buttons_have_two_pins_on_pads_1_and_2_and_a_part_number_to_order_by() {
+        let built = built();
+        let button = part_of(&built, "XunpuTs1088");
+        assert!(button.refdes.starts_with("SW"), "{}", button.refdes);
+        let mut pads: Vec<_> = button.pins.iter().map(|p| p.pads.clone()).collect();
+        pads.sort();
+        assert_eq!(pads, [["1"], ["2"]]);
+        let sourced = built
+            .sourcing
+            .iter()
+            .find(|s| s.kind == "XunpuTs1088")
+            .unwrap();
+        assert_eq!(sourced.lcsc.as_deref(), Some("C720477"));
+        let receptacle = built
+            .sourcing
+            .iter()
+            .find(|s| s.kind == "ShouhanTypeC16Pin")
+            .unwrap();
+        assert_eq!(receptacle.lcsc.as_deref(), Some("C2765186"));
+    }
+
+    #[test]
+    fn the_headers_are_soldered_by_hand_and_have_no_lcsc_number() {
+        let built = built();
+        let headers = built
+            .sourcing
+            .iter()
+            .find(|s| s.kind == "Esp32S3DevKitCHeaders")
+            .unwrap();
+        assert_eq!(headers.lcsc, None);
+        assert_eq!(headers.assembly, netsmith_design::Assembly::Hand);
+    }
+
+    #[test]
+    fn the_led_is_the_blue_0402_of_the_boards_bill_of_materials() {
+        let built = built();
+        let led = built
+            .sourcing
+            .iter()
+            .find(|s| s.kind == "Led")
+            .expect("the LED is in the bill of materials");
+        assert_eq!(led.lcsc.as_deref(), Some("C434447"), "{led:?}");
+    }
+
+    /// The reference's must-match parts, with the number of pads each has.
+    #[test]
+    fn the_pads_of_each_must_match_footprint_are_those_of_the_reference_board() {
+        let libraries = libraries();
+        let table = parsed(&read("reference/placements.toml"));
+        let mut differences = Vec::new();
+        for (reference, kind, package) in PARTS {
+            let footprint = footprint(&libraries, kind, package);
+            differences.extend(pad_differences(&footprint, &table, reference));
+        }
+        assert!(
+            differences.is_empty(),
+            "the footprints differ from the reference's pads:\n{}",
+            differences.join("\n")
+        );
+        // The numbers: the receptacle 16 contacts, the shell and the two unnumbered pegs, the
+        // button 2, the headers 1 to 44.
+        let usb = footprint(&libraries, "ShouhanTypeC16Pin", "SMD");
+        assert_eq!(usb.pads.len(), 22);
+        assert_eq!(usb.pad_numbers().len(), 18, "16 contacts, S1 and no number");
+        let switch = footprint(&libraries, "XunpuTs1088", "SMD,4x3mm");
+        assert_eq!(switch.pads.len(), 2);
+        let headers = footprint(&libraries, "Esp32S3DevKitCHeaders", "2x22,P=2.54mm");
+        assert_eq!(headers.pads.len(), 44);
+        let expected: BTreeSet<String> = (1..=44).map(|n| n.to_string()).collect();
+        assert_eq!(
+            headers
+                .pad_numbers()
+                .into_iter()
+                .map(String::from)
+                .collect::<BTreeSet<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn the_comparison_of_pads_says_what_differs() {
+        // Not vacuous: a pad moved by 0.1 mm, one of the wrong size and a slot of another
+        // length are each named.
+        let libraries = libraries();
+        let table = parsed(&read("reference/placements.toml"));
+        let mut usb = footprint(&libraries, "ShouhanTypeC16Pin", "SMD");
+        usb.pads[0].at.x += 0.1;
+        usb.pads[1].width = 0.8;
+        let slot = usb.pads.iter_mut().find(|p| p.number == "S1").unwrap();
+        slot.drill = Some(netsmith_pcb::Drill {
+            width: 0.6,
+            height: 1.0,
+        });
+        let differences = pad_differences(&usb, &table, "J1");
+        assert_eq!(differences.len(), 3, "{differences:?}");
+        assert!(differences[0].contains("none at"), "{differences:?}");
+        assert!(differences[1].contains("size 0.8"), "{differences:?}");
+        assert!(differences[2].contains("drill"), "{differences:?}");
+        // A header pad turned a quarter is a different pad.
+        let mut headers = footprint(&libraries, "Esp32S3DevKitCHeaders", "2x22,P=2.54mm");
+        headers.pads[0].angle = 0.0;
+        let differences = pad_differences(&headers, &table, "U2");
+        assert_eq!(differences.len(), 1, "{differences:?}");
+        assert!(differences[0].contains("angle"), "{differences:?}");
+    }
+
+    /// What the reference's net on a pad is called by the part's pin, for each must-match part.
+    fn pin_for_net(reference: &str, net: &str) -> String {
+        let net = net.trim_start_matches('/');
+        match (reference, net) {
+            (_, "GND") => "GND".into(),
+            ("U2", "+3.3V") => "3V3".into(),
+            ("U2", "VBUS") => "5V".into(),
+            ("U2", "USB2_D-") => "GPIO19".into(),
+            ("U2", "USB2_D+") => "GPIO20".into(),
+            ("U2", n) => n.into(),
+            (_, n) if n.starts_with("VBUS") => "VBUS".into(),
+            (_, n) if n.starts_with("CC1_") => "CC1".into(),
+            (_, n) if n.starts_with("CC2_") => "CC2".into(),
+            (_, n) if n.ends_with("_D+") => "D+".into(),
+            (_, n) if n.ends_with("_D-") => "D-".into(),
+            (_, n) if n.starts_with("unconnected-(") && n.contains("-SBU1-") => "SBU1".into(),
+            (_, n) if n.starts_with("unconnected-(") && n.contains("-SBU2-") => "SBU2".into(),
+            (r, n) => panic!("{r}: net {n}"),
+        }
+    }
+
+    #[test]
+    fn each_pad_of_the_reference_is_on_the_pin_that_carries_its_net() {
+        // The reference's nets, read from its table, against the pin each pad belongs to: the
+        // receptacle's contacts, the shell's `S1` on ground and the header pins that the
+        // Espressif guide names (the net is the pin's name).
+        let built = built();
+        let table = parsed(&read("reference/placements.toml"));
+        for (reference, kind) in [
+            ("J1", "ShouhanTypeC16Pin"),
+            ("J2", "ShouhanTypeC16Pin"),
+            ("U2", "Esp32S3DevKitCHeaders"),
+        ] {
+            let part = part_of(&built, kind);
+            let pin_of_pad: BTreeMap<&str, &str> = part
+                .pins
+                .iter()
+                .flat_map(|p| p.pads.iter().map(|n| (n.as_str(), p.datasheet.as_str())))
+                .collect();
+            let pads = tables(&table, "part")
+                .into_iter()
+                .find(|p| p["reference"].as_str() == Some(reference))
+                .unwrap()["pads"]
+                .as_array()
+                .unwrap()
+                .clone();
+            let mut checked = 0;
+            for pad in pads {
+                let pad = pad.as_table().unwrap();
+                let (n, net) = (pad["number"].as_str().unwrap(), pad.get("net"));
+                let Some(net) = net.and_then(|n| n.as_str()) else {
+                    assert_eq!(n, "", "{reference}: only the pegs have no net");
+                    continue;
+                };
+                let want = if n == "S1" {
+                    "SHIELD".to_string()
+                } else {
+                    pin_for_net(reference, net)
+                };
+                assert_eq!(
+                    pin_of_pad.get(n).copied(),
+                    Some(want.as_str()),
+                    "{reference} pad {n} is on {net}"
+                );
+                checked += 1;
+            }
+            assert_eq!(
+                checked,
+                if reference == "U2" { 44 } else { 20 },
+                "{reference}"
+            );
+        }
+        // The buttons: pad 1 on ground and pad 2 on the signal, as the reference has them.
+        for (reference, signal) in [("SW1", "/EN"), ("SW2", "/GPIO0")] {
+            let pads = tables(&table, "part")
+                .into_iter()
+                .find(|p| p["reference"].as_str() == Some(reference))
+                .unwrap()["pads"]
+                .as_array()
+                .unwrap()
+                .clone();
+            let net = |n: &str| {
+                pads.iter()
+                    .map(|p| p.as_table().unwrap())
+                    .find(|p| p["number"].as_str() == Some(n))
+                    .unwrap()["net"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            };
+            assert_eq!((net("1").as_str(), net("2").as_str()), ("GND", signal));
+        }
+    }
+
+    #[test]
+    fn the_header_footprint_does_not_draw_the_boards_outline() {
+        // The reference draws the outline in U2's footprint; the physical file draws ours.
+        for entry in std::fs::read_dir(project().join("libs/easyduino_must_match.pretty")).unwrap()
+        {
+            let path = entry.unwrap().path();
+            let text = std::fs::read_to_string(&path).unwrap();
+            assert!(!text.contains("Edge.Cuts"), "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn the_catalog_rows_name_the_parts_and_where_they_were_read() {
+        for (file, lcsc, mpn, page, library) in [
+            (
+                "catalogs/shouhan_type_c_16pin.csv",
+                "C2765186",
+                "\"TYPE-C 16PIN 2MD(073)\"",
+                "https://jlcpcb.com/partdetail/C2765186",
+                Some("Extended"),
+            ),
+            (
+                "catalogs/xunpu_ts_1088.csv",
+                "C720477",
+                "TS-1088-AR02016",
+                "https://jlcpcb.com/partdetail/C720477",
+                None,
+            ),
+            (
+                "catalogs/led.csv",
+                "C434447",
+                "SZYY0402B",
+                "https://jlcpcb.com/partdetail/C434447",
+                Some("Extended"),
+            ),
+        ] {
+            let rows = read(file);
+            let header = rows.lines().next().unwrap();
+            assert_eq!(rows.lines().count(), 2, "{file}: one row");
+            let row = rows.lines().nth(1).unwrap();
+            assert!(row.starts_with(&format!("{lcsc},")), "{file}: {row}");
+            assert!(
+                row.contains(mpn.trim_matches('"')),
+                "{file}: the part number"
+            );
+            assert!(row.contains(page), "{file}: the page it was read from");
+            assert!(
+                row.contains(&format!("https://www.lcsc.com/product-detail/{lcsc}.html")),
+                "{file}: LCSC's page"
+            );
+            assert!(row.contains("2026-11-10"), "{file}: the day it was read");
+            assert!(
+                row.contains("reference/Easyduino_ESP32S3_BOM.csv"),
+                "{file}: the reference's own number"
+            );
+            if let Some(library) = library {
+                assert!(
+                    row.contains(&format!(",{library},")),
+                    "{file}: library type"
+                );
+            } else {
+                assert!(
+                    row.contains("does not say Basic or Extended"),
+                    "{file}: no library type was read"
+                );
+            }
+            // Price and stock are not recorded.
+            let columns: Vec<&str> = header.split(',').collect();
+            if let (Some(p), Some(s)) = (
+                columns.iter().position(|c| *c == "price"),
+                columns.iter().position(|c| *c == "stock"),
+            ) {
+                let cells = csv_cells(row);
+                assert_eq!(cells[p], "", "{file}: price");
+                assert_eq!(cells[s], "", "{file}: stock");
+            }
+        }
+        let target = Target::resolve_from(&project(), None).unwrap();
+        assert!(target.catalogs().is_ok());
+    }
+
+    /// The cells of one line of a CSV file (quotes around a cell with commas).
+    fn csv_cells(line: &str) -> Vec<String> {
+        let (mut cells, mut cell, mut quoted) = (Vec::new(), String::new(), false);
+        for c in line.chars() {
+            match (c, quoted) {
+                ('"', _) => quoted = !quoted,
+                (',', false) => cells.push(std::mem::take(&mut cell)),
+                (c, _) => cell.push(c),
+            }
+        }
+        cells.push(cell);
+        cells
+    }
+}
+
 /// The module, the USB-UART bridge, the regulator, the auto-reset transistors and the Schottky
 /// diodes (U1, U3, U5, Q1, Q2, D2, D3): the parts of `src/esp32_s3_wroom_1.nsm`,
 /// `src/cp2102n.nsm`, `src/ss8050.nsm`, the project's catalogs and the rows of `kicad.toml`.

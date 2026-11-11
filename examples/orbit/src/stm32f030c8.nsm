@@ -1,0 +1,95 @@
+//! The STM32F030C8 microcontroller, STMicroelectronics, in the 48-pin LQFP package (7 x 7 mm,
+//! 0.5 mm pitch), order code STM32F030C8T6: the U16 of ORBIT. ORBIT's symbol is KiCad's
+//! `STM32F030C8Tx` and its footprint `LQFP-48_7x7mm_P0.5mm`; the LCSC number it carries
+//! (C23922) is the STM32F030C8T6.
+//!
+//! The pin table was WRITTEN BY HAND from ST's datasheet "STM32F030x4/x6/x8/xC: Value-line
+//! ARM-based 32-bit MCU with up to 256-KB Flash, timers, ADC, communication interfaces,
+//! 2.4-3.6 V operation" (DocID024849 Rev 2, January 2015, 96 pages; the document ORBIT's
+//! schematic links as DM00088500). ST's own server did not answer, so the file read is a
+//! mirror of ST's PDF (<https://pdf.direnc.net/upload/stm32f030c8t6-datasheet.pdf>, fetched on
+//! 2026-11-10); a web search names a later revision (Rev 5, November 2021) which was not read:
+//! compare the table with it before a board is ordered. Read: Figure 5 "LQFP48 48-pin package
+//! pinout (top view), for STM32F030x4/6/8 devices" (printed page 25) and Table 11 "pin
+//! definitions" (printed pages 28 to 33, the LQFP48 column, with the pin type and the notes).
+//! The datasheet is copyrighted: the numbers and names are facts, the words and the
+//! arrangement here are ours.
+//!
+//! The package pins of the `x8` devices are not the `xC` ones: pads 35 and 36 are `PF6` and
+//! `PF7` here (Table 11 notes 4 and 5: on the `xC` devices they are `VSS` and `VDD`), and the
+//! part is the STM32F030C8, so they are I/Os. The pin type of Table 11 decides the kind: `S` is
+//! `power`, `I/O` is `bidirectional` (including `NRST`, "I/O" with the reset structure), and
+//! `BOOT0`, type `I`, is `input`.
+//!
+//! The functions: every I/O has `GPIO`. The alternate and additional functions of Table 11 and
+//! Table 12 are NOT all written (as the RP2350 part leaves its peripherals out): only the ones
+//! of the pins ORBIT's board uses, from the table's rows and with no direction (the table gives
+//! none): the 8 MHz oscillator on `PF0` and `PF1`, the 32 kHz one on `PC14` and `PC15`,
+//! `USART1_TX` on `PA9` and `USART1_RX` on `PA10`, `I2C1_SCL` on `PB6` and `I2C1_SDA` on `PB7`,
+//! and the debug port, `SWDIO` on `PA13` and `SWCLK` on `PA14` (the datasheet's note 7: they
+//! are those after a reset). A board that connects a pin with more than one function chooses
+//! it: `.u.pa9.function &= "USART1_TX"`.
+//!
+//! What is deliberately left out: levels, ratings, the clock, timing and every model (the part
+//! is a boundary of the design: the checks that need a number are listed as not evaluated), and
+//! the other alternate functions.
+
+/// The STM32F030C8: an Arm Cortex-M0 microcontroller with 64 KB of flash, in the 48-pin LQFP
+/// package. Pin names are the datasheet's (the table's `PA13 (SWDIO)` is `PA13` here, and
+/// `PF0-OSC_IN` is written as it is). The pad numbers are the datasheet's LQFP48 pin numbers.
+part Stm32F030C8 {
+    .designator &= "U"
+
+    pins "LQFP-48(7x7)" {
+        //  pin     kind           name             pads
+        .vdd     power          "VDD"            "1" "24" "48"
+        .pc13    bidirectional  "PC13"           "2"   fn GPIO
+        .pc14    bidirectional  "PC14-OSC32_IN"  "3"   fn GPIO OSC32_IN
+        .pc15    bidirectional  "PC15-OSC32_OUT" "4"   fn GPIO OSC32_OUT
+        .pf0     bidirectional  "PF0-OSC_IN"     "5"   fn GPIO OSC_IN
+        .pf1     bidirectional  "PF1-OSC_OUT"    "6"   fn GPIO OSC_OUT
+        .nrst    bidirectional  "NRST"           "7"
+        .vssa    power          "VSSA"           "8"
+        .vdda    power          "VDDA"           "9"
+        .pa0     bidirectional  "PA0"            "10"  fn GPIO
+        .pa1     bidirectional  "PA1"            "11"  fn GPIO
+        .pa2     bidirectional  "PA2"            "12"  fn GPIO
+        .pa3     bidirectional  "PA3"            "13"  fn GPIO
+        .pa4     bidirectional  "PA4"            "14"  fn GPIO
+        .pa5     bidirectional  "PA5"            "15"  fn GPIO
+        .pa6     bidirectional  "PA6"            "16"  fn GPIO
+        .pa7     bidirectional  "PA7"            "17"  fn GPIO
+        .pb0     bidirectional  "PB0"            "18"  fn GPIO
+        .pb1     bidirectional  "PB1"            "19"  fn GPIO
+        .pb2     bidirectional  "PB2"            "20"  fn GPIO
+        .pb10    bidirectional  "PB10"           "21"  fn GPIO
+        .pb11    bidirectional  "PB11"           "22"  fn GPIO
+        .vss     power          "VSS"            "23" "47"
+        .pb12    bidirectional  "PB12"           "25"  fn GPIO
+        .pb13    bidirectional  "PB13"           "26"  fn GPIO
+        .pb14    bidirectional  "PB14"           "27"  fn GPIO
+        .pb15    bidirectional  "PB15"           "28"  fn GPIO
+        .pa8     bidirectional  "PA8"            "29"  fn GPIO
+        .pa9     bidirectional  "PA9"            "30"  fn GPIO USART1_TX
+        .pa10    bidirectional  "PA10"           "31"  fn GPIO USART1_RX
+        .pa11    bidirectional  "PA11"           "32"  fn GPIO
+        .pa12    bidirectional  "PA12"           "33"  fn GPIO
+        .pa13    bidirectional  "PA13"           "34"  fn GPIO SWDIO
+        .pf6     bidirectional  "PF6"            "35"  fn GPIO
+        .pf7     bidirectional  "PF7"            "36"  fn GPIO
+        .pa14    bidirectional  "PA14"           "37"  fn GPIO SWCLK
+        .pa15    bidirectional  "PA15"           "38"  fn GPIO
+        .pb3     bidirectional  "PB3"            "39"  fn GPIO
+        .pb4     bidirectional  "PB4"            "40"  fn GPIO
+        .pb5     bidirectional  "PB5"            "41"  fn GPIO
+        .pb6     bidirectional  "PB6"            "42"  fn GPIO I2C1_SCL
+        .pb7     bidirectional  "PB7"            "43"  fn GPIO I2C1_SDA
+        .boot0   input          "BOOT0"          "44"
+        .pb8     bidirectional  "PB8"            "45"  fn GPIO
+        .pb9     bidirectional  "PB9"            "46"  fn GPIO
+    }
+
+    .mpn: String
+    .package: Package
+    catalog stm32f030c8 by .mpn { .mpn, .package }
+}

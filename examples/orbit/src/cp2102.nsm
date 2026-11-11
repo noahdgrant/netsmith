@@ -1,0 +1,64 @@
+//! The CP2102 USB to UART bridge, Silicon Labs, in the 28-pin QFN package (5 x 5 mm, 0.5 mm
+//! pitch, exposed pad), order code CP2102-GMR: the U22 of ORBIT.
+//!
+//! The pin table was WRITTEN BY HAND from Silicon Labs' datasheet "CP2102/9, Single-Chip USB to
+//! UART Bridge" (Rev. 1.6, 12/13, 27 pages as read; Silicon Labs' own server refused the
+//! download, so the file read, fetched on 2026-11-10, is a copy of the PDF hosted by a
+//! distributor: <https://hestore.hu/prod_getfile.php?id=8719>; a web search says Silicon Labs
+//! now recommends the CP2102N for new designs): Table 9 "CP2102/9 Pin Definitions" (printed page
+//! 11) for the pins, their types and what they are, and Figure 2 "QFN-28 Pinout Diagram (Top
+//! View)" (printed page 12) for the numbering and the centre pad, which the figure labels
+//! `GND`. The datasheet is copyrighted: the numbers and names are facts, the words and the
+//! arrangement here are ours.
+//!
+//! The kinds follow the "Type" column: `D In` is `input`, `D Out` is `output`, `D I/O` is
+//! `bidirectional` (`D+`, `D-` and `RST`, whose output is open-drain), `Power In` and `Power
+//! Out` is `power` (`VDD` is both: the 3.3 V regulator's output, or the supply when the chip is
+//! self-powered; `REGIN` is the regulator's 5 V input). The modem control inputs and the
+//! outputs `RTS` and `DTR` and the suspend outputs are marked "can be left unconnected when
+//! not used" (note 3), so the inputs among them are `optional`. `VBUS` is the sense input
+//! that tells the chip the USB cable is connected. The pins that the table calls `NC` ("left
+//! unconnected or tied to VDD") are `no_connect`: this part keeps them open, which the datasheet
+//! allows; a board that ties one to `VDD` needs another table. Pin 18, `NC / VPP`, is the pin
+//! that the CP2109 uses for programming and is a no-connect on the CP2102.
+//!
+//! The exposed pad is pad 29, as in ORBIT's board and in the KiCad convention; the datasheet
+//! numbers no centre pad (the figure labels it `GND`) and the land pattern calls it the "centre
+//! pad". It is joined to `GND` here: a pad of the same net as pin 3.
+//!
+//! What is deliberately left out: levels, ratings, the regulator and every model (the part is a
+//! boundary of the design: the checks that need a number are listed as not evaluated).
+
+/// The CP2102: a USB 2.0 full-speed to UART bridge with an on-chip 3.3 V regulator and
+/// transceiver, in the 28-pin QFN. Pin names are the datasheet's (`SUSPEND#` is its overlined
+/// `SUSPEND`). `TXD` and `RXD` are the chip's own: its `TXD` is the line that a UART sends on.
+part Cp2102 {
+    .designator &= "U"
+
+    pins "WQFN-28-EP(5x5)" {
+        //  pin       kind           name        pads
+        .dcd       input          "DCD"       "1" optional
+        .ri        input          "RI"        "2" optional
+        .gnd       power          "GND"       "3" "29"
+        .d_plus    bidirectional  "D+"        "4"
+        .d_minus   bidirectional  "D-"        "5"
+        .vdd       power          "VDD"       "6"
+        .regin     power          "REGIN"     "7"
+        .vbus      input          "VBUS"      "8"
+        .rst       bidirectional  "RST"       "9"
+        .nc        no_connect     "NC"        "10" "13" "14" "15" "16" "17" "19" "20" "21" "22"
+        .suspend_n output         "SUSPEND#"  "11"
+        .suspend   output         "SUSPEND"   "12"
+        .nc_vpp    no_connect     "NC/VPP"    "18"
+        .cts       input          "CTS"       "23" optional
+        .rts       output         "RTS"       "24"
+        .rxd       input          "RXD"       "25"
+        .txd       output         "TXD"       "26"
+        .dsr       input          "DSR"       "27" optional
+        .dtr       output         "DTR"       "28"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog cp2102 by .mpn { .mpn, .package }
+}

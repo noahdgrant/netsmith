@@ -1,0 +1,68 @@
+//! The two 22-pin headers of Espressif's ESP32-S3-DevKitC-1, as the one part, 44 pads, that the
+//! Easyduino ESP32-S3 board's footprint `Espressif:ESP32-S3-DevKitC` (its U2) is. Soldered by
+//! hand: the board's bill of materials has no LCSC number for it, and the part has no catalog
+//! (ADR 0024).
+//!
+//! The pins are the pins of the development board, named as the signal each carries, so a pin
+//! that the headers repeat is one pin with several pads: `.v3v3` on pads 1 and 2 and `.gnd` on
+//! pads 22, 23, 24 and 44 (the board's four ground pins, tied to one net there). The pad numbers
+//! are the footprint's: pads 1 to 22 are the left header J1 of Espressif's user guide (its pin
+//! numbers, 1 at the top) and pads 23 to 44 are the right header J3 numbered from the other end
+//! (pad 45 - n is J3 pin n, the footprint runs up the right row). Names are those of the user
+//! guide's two tables (ESP32-S3-DevKitC-1 v1.1, "Header Block"): `3V3`, `RST` (here `EN`, the net
+//! of the Easyduino board), `5V` (the net `VBUS`), `G` (here `GND`) and the GPIO numbers; the
+//! guide's `TX` and `RX` are GPIO43 and GPIO44, and pins 19 and 20 of J3 are GPIO20 (USB D+)
+//! and GPIO19 (USB D-). Every pin is `passive`: a header says nothing about a direction.
+
+import std::parts::connector::Connector
+
+/// The two 22-pin headers of the ESP32-S3-DevKitC-1: 40 pins on 44 pads.
+part Esp32S3DevKitCHeaders provides Connector {
+    pins "2x22,P=2.54mm" {
+        //  pin        kind     name      pads
+        .v3v3     passive "3V3"        "1" "2"
+        .en       passive "EN"         "3"
+        .gpio4    passive "GPIO4"      "4"
+        .gpio5    passive "GPIO5"      "5"
+        .gpio6    passive "GPIO6"      "6"
+        .gpio7    passive "GPIO7"      "7"
+        .gpio15   passive "GPIO15"     "8"
+        .gpio16   passive "GPIO16"     "9"
+        .gpio17   passive "GPIO17"     "10"
+        .gpio18   passive "GPIO18"     "11"
+        .gpio8    passive "GPIO8"      "12"
+        .gpio3    passive "GPIO3"      "13"
+        .gpio46   passive "GPIO46"     "14"
+        .gpio9    passive "GPIO9"      "15"
+        .gpio10   passive "GPIO10"     "16"
+        .gpio11   passive "GPIO11"     "17"
+        .gpio12   passive "GPIO12"     "18"
+        .gpio13   passive "GPIO13"     "19"
+        .gpio14   passive "GPIO14"     "20"
+        .vbus     passive "5V"         "21"
+        .gnd      passive "GND"        "22" "23" "24" "44"
+        .gpio19   passive "GPIO19"     "25"
+        .gpio20   passive "GPIO20"     "26"
+        .gpio21   passive "GPIO21"     "27"
+        .gpio47   passive "GPIO47"     "28"
+        .gpio48   passive "GPIO48"     "29"
+        .gpio45   passive "GPIO45"     "30"
+        .gpio0    passive "GPIO0"      "31"
+        .gpio35   passive "GPIO35"     "32"
+        .gpio36   passive "GPIO36"     "33"
+        .gpio37   passive "GPIO37"     "34"
+        .gpio38   passive "GPIO38"     "35"
+        .gpio39   passive "GPIO39"     "36"
+        .gpio40   passive "GPIO40"     "37"
+        .gpio41   passive "GPIO41"     "38"
+        .gpio42   passive "GPIO42"     "39"
+        .gpio2    passive "GPIO2"      "40"
+        .gpio1    passive "GPIO1"      "41"
+        .gpio44   passive "GPIO44"     "42"
+        .gpio43   passive "GPIO43"     "43"
+    }
+
+    /// The only package: the footprint with the two rows.
+    .package: Package
+    .package &= "2x22,P=2.54mm"
+}
