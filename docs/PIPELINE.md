@@ -6,7 +6,7 @@ person writes beside a board (layout files, the physical file) are inputs. The f
 writes are outputs, and no stage reads one back, except the pick lock (`<stem>.lock.toml`,
 ADR 0100, proposed): `build`, `fab` and `fab --order` write it when it is absent, `netsmith lock --update` rewrites it, and the solve stage then holds
 each part to the row it names; and the pin file (`<stem>.pins.toml`, ADR 0101, proposed, below).
-`NETSMITH_TIMINGS=1` prints the seconds of each stage.
+`NETSMITH_TIMINGS=1` prints the seconds of each stage; `docs/solver-timings.md` has them for a board with two buck stages.
 
 Written against `main` at `b504854`. Where a name in the code differs from the name a person
 would expect, the diagram says so. The code is the authority: `crates/netsmith/src/lib.rs`

@@ -1,0 +1,6 @@
+[project]
+name = "two_buck"
+top_level = ["two_buck.nsm"]
+out = "out"
+fab = "fab"
+kicad = 9

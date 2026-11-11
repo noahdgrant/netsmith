@@ -118,6 +118,38 @@ fn every_example_passes_erc_with_kicads_own_symbols() {
     }
 }
 
+/// `examples/two_buck`, a project of 59 parts with an invented IC drawn from its pin table:
+/// KiCad's ERC on its schematic (skipped where `kicad-cli` is not installed). It is the
+/// regulator-heavy board that `docs/solver-timings.md` times.
+#[test]
+fn the_two_buck_example_passes_erc() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/two_buck");
+    let target =
+        netsmith::project::Target::resolve_from(&root, None).unwrap_or_else(|e| panic!("{e}"));
+    let libraries = Libraries::for_project(Some(&root)).unwrap_or_else(|e| panic!("{e}"));
+    let file = &target.files[0];
+    let text = std::fs::read_to_string(&file.path).unwrap();
+    let built = build_with(
+        &file.name,
+        &text,
+        &target.loader().unwrap(),
+        &target.catalogs().unwrap(),
+        &libraries,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    for b in built {
+        let Some(found) = erc(&b.design.name, &b.schematic) else {
+            return;
+        };
+        assert_eq!(
+            with_the_machines_libraries(found),
+            Vec::<String>::new(),
+            "{}",
+            b.label()
+        );
+    }
+}
+
 /// The violations of ERC without the ones that say a library is not in KiCad's configuration:
 /// a runner that has KiCad installed but no user library table (CI) says that of every stock
 /// library, and it is about the machine, not the schematic. Every other violation stays, the
