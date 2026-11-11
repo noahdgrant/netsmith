@@ -2,6 +2,7 @@
 
 use netsmith_lang::Span;
 use netsmith_lang::ast::{self, BinOp, CmpOp, ConnectOp};
+use netsmith_quantity::{Dimension, Quantity};
 
 use crate::checker::{Checker, Res};
 use std::collections::{HashMap, HashSet};
@@ -651,6 +652,7 @@ impl Checker<'_> {
         self.derive_chain_values();
         self.equate_bus_values();
         self.derive_bus_figures();
+        self.derive_temperature_shift();
     }
 
     /// Give each `I2cPullups` the figures of the parts on its bus (ADR 0102).
@@ -757,6 +759,64 @@ impl Checker<'_> {
                     own: false,
                 });
             }
+        }
+    }
+
+    /// Give a part that has a `temperature_shift` and a `voltage_over_temperature` (the `Zener`)
+    /// the shift of the board's environment: the board's `.environment.temperature` less the
+    /// 25 C that a datasheet states its figures at, so -40 C to 125 C is `-65K..100K`.
+    ///
+    /// It is derived only when all of these hold, and otherwise nothing changes for the part:
+    ///
+    /// - the board states an environment temperature (an `&=`, or the `?=` of a named
+    ///   environment);
+    /// - the design states no `.temperature_shift` of its own: one it states overrides the
+    ///   derivation, as for the figures of a bus (`derive_bus_figures`);
+    /// - the design reads the part's `.voltage_over_temperature` in a relation of its own
+    ///   (`.z.voltage_over_temperature <= 18V`). The shift makes the library's relation, and
+    ///   with it the row's `temperature_coefficient`, asked of every row (ADR 0078), so a board
+    ///   that never bounds the voltage over temperature must not lose the rows that state no
+    ///   coefficient to an environment it stated for another reason.
+    ///
+    /// The value is the relation `temperature_shift == environment.temperature - 25 C`, from the
+    /// range's two ends, so the worst case of the library's relation is the hot corner at the
+    /// environment's hot end and the cold corner at its cold end.
+    fn derive_temperature_shift(&mut self) {
+        let parts: Vec<(InstId, FieldId, FieldId, FieldId)> = self
+            .model
+            .instances()
+            .filter_map(|(id, _)| {
+                let (shift, voltage) = self.model.temperature_shift_of(id)?;
+                let environment = self.model.environment_temperature_of(id)?;
+                Some((id, shift, voltage, environment))
+            })
+            .collect();
+        for (part, shift, voltage, environment) in parts {
+            if self.board_states(shift) || !self.board_states(environment) {
+                continue;
+            }
+            let read = self.model.relations.iter().any(|r| {
+                let mut fields = Vec::new();
+                r.lhs.fields(&mut fields);
+                r.rhs.fields(&mut fields);
+                !r.own && fields.contains(&voltage)
+            });
+            if !read {
+                continue;
+            }
+            let Ok(reference) = Quantity::point(
+                Dimension::TEMPERATURE,
+                crate::environment::DATASHEET_TEMPERATURE,
+            ) else {
+                continue;
+            };
+            let value = RExpr::Bin(
+                BinOp::Sub,
+                Box::new(RExpr::Field(environment)),
+                Box::new(RExpr::Const(reference)),
+            );
+            let at = self.model.instance(part).at();
+            self.derived(shift, value, at);
         }
     }
 

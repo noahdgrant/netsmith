@@ -273,3 +273,147 @@ fn a_zener_that_states_no_voltage_across_12v_is_given_a_row_that_reaches_the_rai
     assert_eq!(picks.len(), 1, "{picks:#?}");
     assert!(picks[0].contains("BZT52C12 12V"), "{picks:#?}");
 }
+
+// The shift from the board's environment (ENV2-Z, ADR 0099): a board that states an environment
+// and bounds `.voltage_over_temperature` is given `.temperature_shift` as the environment's
+// temperature less 25 C; a shift the board states overrides it.
+
+/// A board with `.environment: Environment { .temperature &= <range> }`, and the Zener's
+/// own statements `zener` and `body` after it.
+fn in_environment(range: &str, zener: &str, body: &str) -> String {
+    let src = board(zener, body);
+    src.replacen(
+        "import std::sources::Rail\n",
+        "import std::sources::Rail\nimport std::env::Environment\n",
+        1,
+    )
+    .replacen(
+        "    .z: Zener",
+        &format!("    .environment: Environment {{ .temperature &= {range} }}\n    .z: Zener"),
+        1,
+    )
+}
+
+const BOUND: &str = "    .z.voltage_over_temperature <= 18V";
+
+#[test]
+fn the_shift_is_derived_from_the_environment_and_gives_the_worst_case_band() {
+    // -40 degC to 125 degC is -65 K..100 K from 25 degC: the band of the BZT52C15 is the
+    // one that the same board states by hand (12.955 V..16.9 V).
+    let derived = in_environment("-40degC..125degC", FIFTEEN, BOUND);
+    let by_hand = board(&format!("{FIFTEEN}\n {OVER_TEMPERATURE}"), BOUND);
+    assert_eq!(run(&derived, &standard()), run(&by_hand, &standard()));
+    let (m, picks) = run(&derived, &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks, ["z BZT52C15 15V 500mW Zener SOD-123 C2104"]);
+
+    // The bound is made over that band: a limit between the typical and the worst case is
+    // refused with the derived hot and cold corners, as a stated shift gives.
+    let tight = in_environment(
+        "-40degC..125degC",
+        FIFTEEN,
+        "    .z.voltage_over_temperature <= 16V",
+    );
+    let (m, _) = run(&tight, &standard());
+    assert!(
+        m.iter().any(
+            |x| x.contains("z.voltage_over_temperature must always be at most 16V")
+                && x.contains("12.95V..16.9V")
+        ),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_milder_environment_gives_a_narrower_band() {
+    // 0 degC to 70 degC is -25 K..45 K: 15.6 V + 13 mV * 45 = 16.185 V, so a limit of
+    // 16.5 V that the -40..125 degC board fails is met.
+    let src =
+        |range: &str| in_environment(range, FIFTEEN, "    .z.voltage_over_temperature <= 16.5V");
+    let (m, picks) = run(&src("0degC..70degC"), &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1);
+    let (m, _) = run(&src("-40degC..125degC"), &standard());
+    assert!(!m.is_empty());
+}
+
+#[test]
+fn a_stated_shift_overrides_the_environment() {
+    // The board states 0 K..10 K (25 degC to 35 degC) in an environment of -40 degC to 125
+    // degC: the stated shift is the one used, so the 16 V limit that the environment's own
+    // shift (16.9 V at the hot corner) breaks is met by 15.6 V + 13 mV * 10 = 15.73 V.
+    let stated = in_environment(
+        "-40degC..125degC",
+        &format!("{FIFTEEN}\n .temperature_shift &= 0K..10K"),
+        "    .z.voltage_over_temperature <= 16V",
+    );
+    let (m, picks) = run(&stated, &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1);
+    let derived = in_environment(
+        "-40degC..125degC",
+        FIFTEEN,
+        "    .z.voltage_over_temperature <= 16V",
+    );
+    assert!(!run(&derived, &standard()).0.is_empty());
+}
+
+#[test]
+fn no_environment_leaves_the_shift_unstated() {
+    // No environment: the bound is listed as not evaluated, as before, and nothing is derived.
+    let plain = board(FIFTEEN, BOUND);
+    let (m, picks) = run(&plain, &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1);
+    assert_eq!(deferred(&plain), deferred(&board(FIFTEEN, "")) + 1);
+}
+
+#[test]
+fn an_environment_changes_nothing_for_a_board_that_does_not_bound_the_voltage() {
+    // The environment is stated for another reason, and the Zener is picked from a project
+    // catalog whose row states no coefficient: the row is offered and picked as it is with no
+    // environment, and nothing is deferred beyond what the plain board defers.
+    let mut old = Catalogs::empty();
+    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    let plain = board(FIFTEEN, "");
+    let with_environment = in_environment("-40degC..125degC", FIFTEEN, "");
+    let (m, picks) = run(&with_environment, &old);
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks, ["z ZZ15 15V Zener"]);
+    assert_eq!(run(&plain, &old), (m, picks));
+    assert_eq!(deferred(&with_environment), deferred(&plain));
+}
+
+#[test]
+fn a_row_with_no_coefficient_is_not_offered_to_a_bound_over_the_environment() {
+    // The design asks for the voltage over the environment's range and the row cannot give
+    // it: it is not picked with a wrong number, and the message names the column.
+    let mut old = Catalogs::empty();
+    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    let src = in_environment("-40degC..125degC", FIFTEEN, BOUND);
+    let (m, picks) = run(&src, &old);
+    assert!(picks.is_empty(), "{picks:#?}");
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(m[0].contains("temperature_coefficient"), "{}", m[0]);
+}
+
+#[test]
+fn an_environment_that_does_not_hold_25_degc_gives_the_band_over_its_own_range() {
+    // 50 degC to 80 degC is 25 K..55 K: the voltage is over that range, not widened to the
+    // 25 degC the datasheet states. 13.8 V + 9.2 mV * 25 = 14.03 V at the least, and
+    // 15.6 V + 13 mV * 55 = 16.315 V at the most.
+    let src = in_environment(
+        "50degC..80degC",
+        FIFTEEN,
+        "    .z.voltage_over_temperature >= 14V",
+    );
+    let (m, picks) = run(&src, &standard());
+    assert!(m.is_empty(), "{m:#?}");
+    assert_eq!(picks.len(), 1);
+    let src = in_environment(
+        "50degC..80degC",
+        FIFTEEN,
+        "    .z.voltage_over_temperature >= 14.1V",
+    );
+    assert!(!run(&src, &standard()).0.is_empty());
+}
