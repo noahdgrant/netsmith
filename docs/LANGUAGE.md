@@ -488,7 +488,7 @@ error: the currents on net `3V3` do not add up: `supply.current` must stay withi
 
 ## Enums: a value from a fixed list
 
-An `enum` names a type whose values are a fixed list of variants (ADR 0054, proposed). It is declared at the top of a file, like a definition, and a variant is written `Enum::Variant`:
+An `enum` names a type whose values are a fixed list of variants (ADR 0054). It is declared at the top of a file, like a definition, and a variant is written `Enum::Variant`:
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -1045,7 +1045,7 @@ Rules.
 
 ### A value that may stay open
 
-Some numbers are on a datasheet only sometimes: an IC may name the largest DC resistance of the inductor it works with, or leave it out. A check against such a number is made when the IC states it and means nothing when it does not. A member says so with the word `optional` after its type (ADR 0074, proposed), the word that a `pins` row and a catalog column already use for "may be absent":
+Some numbers are on a datasheet only sometimes: an IC may name the largest DC resistance of the inductor it works with, or leave it out. A check against such a number is made when the IC states it and means nothing when it does not. A member says so with the word `optional` after its type (ADR 0074), the word that a `pins` row and a catalog column already use for "may be absent":
 
 ```nsm solve
 interface Limits {
@@ -1127,7 +1127,7 @@ error: `max_dcr` is `optional` (at main.nsm:2) and is stated here with `&=`, in 
 
 ### A function the board does not use
 
-A datasheet states some limits for a function whether or not a design uses it: a microcontroller's datasheet limits the voltage on its USB VBUS pin to 4.35 V to 5.5 V, and a board that has no USB port leaves the pin open. The part states the limit once and it is true for every board, so it stays in the part (libraries state only what is always true). A board that never connects the port was left with two notes it could do nothing about: `not evaluated: processor.usb.vbus.voltage >= 4.35V` (and its twin for 5.5 V), because nothing gives the pin a voltage, and `processor.usb.vbus.pos has no source: nothing supplies it` in the power view. The board says that nothing on it uses the interface, with a statement of its own (ADR 0083, proposed):
+A datasheet states some limits for a function whether or not a design uses it: a microcontroller's datasheet limits the voltage on its USB VBUS pin to 4.35 V to 5.5 V, and a board that has no USB port leaves the pin open. The part states the limit once and it is true for every board, so it stays in the part (libraries state only what is always true). A board that never connects the port was left with two notes it could do nothing about: `not evaluated: processor.usb.vbus.voltage >= 4.35V` (and its twin for 5.5 V), because nothing gives the pin a voltage, and `processor.usb.vbus.pos has no source: nothing supplies it` in the power view. The board says that nothing on it uses the interface, with a statement of its own (ADR 0083):
 
 ```nsm-fragment
 unused .processor.usb
@@ -1937,7 +1937,7 @@ error: a bridge needs two different terminals
 
 ### Who assembles a part
 
-Every part has a field `.assembly`, of the type `AssemblyMode`, that it does not declare (declaring it again is an error). `AssemblyMode` is an enum (see Enums, below) that every file knows without an import. It says who puts the part on the board, and `fab` honours it (ADR 0024, provisional; the type is ADR 0054, proposed):
+Every part has a field `.assembly`, of the type `AssemblyMode`, that it does not declare (declaring it again is an error). `AssemblyMode` is an enum (see Enums, below) that every file knows without an import. It says who puts the part on the board, and `fab` honours it (ADR 0024, provisional; the type is ADR 0054):
 
 | Value | Meaning |
 |---|---|

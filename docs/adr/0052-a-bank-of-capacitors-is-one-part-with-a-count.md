@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A bank of capacitors is one part with a count
 
-Written overnight on 2026-11-05 by an agent told to pick an option and go on. The syntax and the semantics are the owner's to accept or change; the plan lists this ADR as one the owner reads (is `.count` a std member, so a fold, or a language rule worth recording). Not knowing, it is kept, cut to a page. Tests 2 (the solver and lowering read a member by its name) and 3 (no repeat or array construct). Cut from `git show 8023ee9:docs/adr/0052-a-bank-of-capacitors-is-one-part-with-a-count.md`.
+Written on 2026-11-05 by an agent told to pick an option and go on. Accepted as built by the owner, 2026-11-11. Tests 2 (the solver and lowering read a member by its name) and 3 (no repeat or array construct). Cut from `git show 8023ee9:docs/adr/0052-a-bank-of-capacitors-is-one-part-with-a-count.md`.
 
 ## The problem
 
@@ -39,9 +39,11 @@ The search is longer for a part with a range. The most a count may be is 64 (`MA
 
 ## Left open
 
-- The name `.count`, and that the solver and lowering read it by name.
+Nothing. The choices below were made by the author and are accepted as built:
+
+- The name `.count`, read by the solver and lowering by name, and the language rule that a std `Capacitor` with a range of whole numbers is a bank.
 - `?=` for `1..8` in `BuckStage` and the 8 (one number in `std/parts/regulator.nsm`); `.input_count` and `.output_count` as the module's way to state a count.
 - The path `stage.output_cap#2`.
-- `Capacitor` carrying `.count` for every capacitor against a separate part.
-- Whether a user part may be a bank, with a marker in the language.
-- Whether the limit of 64 is right.
+- `Capacitor` carrying `.count` for every capacitor, against a separate part.
+- A user part cannot be a bank, and the language has no marker for one.
+- The limit of 64, and a requirement on a bank's part holds for every capacitor, not the first.

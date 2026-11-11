@@ -105,15 +105,15 @@
 //!   joined bus, also when another end states one, because the note is not a finding `--strict`
 //!   can stop on. It stays a guideline: a part joined to a bus that states no role is still
 //!   correct, only less judged.
-//! - **`Levels` states `.reference.current &= 0A`** (`std/logic.nsm`, provisional,
-//!   2026-11-07). A part joins a bus interface's reference rail to its own supply, and `~`
+//! - **`Levels` states `.reference.current &= 0A`** (`std/logic.nsm`, 2026-11-07;
+//!   accepted as built by the owner, 2026-11-11). A part joins a bus interface's reference rail to its own supply, and `~`
 //!   equates every field of two rails but `current`, so the reference stayed a rail of its own
 //!   on the supply's net with a current nobody states, the net had two unknown terms, and the
 //!   power view said the loads had a current the solver had not settled. A statement inside an
 //!   interface applies to every instance and sits on the field itself, so a join does not have
 //!   to carry it; a `?=` default would also settle it, but a reference that draws is a mistake
 //!   that should be refused. A part that states another value for it is refused as a
-//!   contradiction. `Logic` has the same shape and states nothing yet (ADR 0066, open question
+//!   contradiction. `Logic` has the same shape and states nothing, as built (ADR 0066, open question
 //!   3).
 //!
 //! # Not carried, with the reason

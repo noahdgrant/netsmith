@@ -4,7 +4,7 @@ status: accepted
 
 # Buses state who drives each line, at which levels and how fast
 
-The owner accepted the words and the shapes: the status line said "The words `lines`, `role`, `limit`, `single`, `crosses` and `tri_state`, the enum for each bus's roles, the member `.levels` and the shared `.frequency` were reviewed and accepted by the owner as written". The choices made later by an agent "for review" are listed under "Left open", and are not accepted by this line. Tests 1 (words in `std/bus.nsm` that boards and parts write) and 3 (the alternatives below). Cut from `git show 8023ee9:docs/adr/0064-bus-roles-and-levels.md`. Source files cite its stages and sections: they are in that text. In `GLOSSARY.md` a **Bus** is the interfaces of one definition that share a net; the editor's drawing of an interface is ADR 0067.
+The owner reviewed and accepted the words and the shapes as written: the words `lines`, `role`, `limit`, `single`, `crosses` and `tri_state`, the enum for each bus's roles, the member `.levels` and the shared `.frequency`. The choices made later by an agent, listed under "Left open", were accepted as built by the owner, 2026-11-11. Tests 1 (words in `std/bus.nsm` that boards and parts write) and 3 (the alternatives below). Cut from `git show 8023ee9:docs/adr/0064-bus-roles-and-levels.md`. Source files cite its stages and sections: they are in that text. In `GLOSSARY.md` a **Bus** is the interfaces of one definition that share a net; the editor's drawing of an interface is ADR 0067.
 
 ## The problem
 
@@ -36,12 +36,14 @@ User text is in `docs/LANGUAGE.md` ("Buses", "Roles and lines of a bus", "Logic 
 
 ## Left open
 
-Built by an agent "for review", each with its alternatives in the headers named above:
+Built by an agent "for review", each with its alternatives in the headers named above, and accepted as built:
 
 - `UsbRole::Passthrough` for a receptacle (`UsbC2`), the name, and recognising it as a variant with no `lines`; alternatives `Receptacle`, a keyword, a role `none`, asking the receptacle for a role.
-- The `bus role` guideline for a joined bus whose end states no role, which stays a guideline (an error only under `--strict` or `guidelines = "error"`). Question 4: "when a joined bus without a role is an error", "not planned", the owner's to say when.
-- `Levels` states `.reference.current &= 0A` (provisional, 2026-11-07); `Logic` still does not (ADR 0066, open question 3).
+- The `bus role` guideline for a joined bus whose end states no role, which stays a guideline (an error only under `--strict` or `guidelines = "error"`). An error by default is not planned (question 4).
+- `Levels` states `.reference.current &= 0A` (2026-11-07); `Logic` does not (ADR 0066).
 - `~` between two `Spi` joins `cs`, as before (question 3); "if the cost shows, stage 3 makes `~` skip a `single` line".
 - `SpiMode`, optional (question 8), and `Uart` without a role.
 
-Not built, as decided: roles on the ports of a board in a system (question 7), I2C addresses (9), `open_drain` as a kind (10: "later, as its own ADR"), and a general mark for "a member that a join leaves alone" (6: three names are not yet a pattern).
+Not built, and not planned until a board needs it: roles on the ports of a board in a system (question 7), I2C addresses (9), and a general mark for "a member that a join leaves alone" (6: three names are not yet a pattern).
+
+Not built, as decided: `open_drain` as a kind (10: "later, as its own ADR").
