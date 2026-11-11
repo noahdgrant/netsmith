@@ -1,0 +1,62 @@
+# Which part of the board `netsmith fab` writes is which part of Easyduino's board: one line per
+# part, `<Easyduino's reference> = "<the reference in fab's .kicad_pcb>"`, for example
+#   J1 = "J1"
+# A part of reference/placements.toml with no line here is `unmapped` to the parity checker: a
+# failure for the parts the table marks must_match (J1, J2, SW1, SW2, U2), a note for the others.
+#
+# All 35 parts are paired. netsmith's references come from the kind of the part and the order of
+# its declaration in `src/main.nsm` (a part's letter, then the count of that letter), so most of
+# Easyduino's differ: the headers are the board's J3 (they are a connector there, U2 in
+# Easyduino's file), the bridge is U2 and the regulator U3. The pairing is by what each part is,
+# proved by the test `board` of crates/netsmith/tests/easyduino.rs (`PARTS`: the member of the
+# design; the other tests there show that every pad has the same pads on its net on both
+# sides), and the test `the_parity_checkers_designator_map_is_the_designs_own` holds this file
+# against the design's designators: it fails, and prints the map, when a part declared ahead of
+# another renumbers it. Where several parts are alike (the 100 nF on EN and GPIO0, the three
+# 22 uF, the CC resistors of a receptacle) the pairing is the design's own member, which the
+# README says is arbitrary where the nets are the same.
+
+# The must-match parts: the receptacles, the buttons and the headers.
+J1 = "J1"       # USB-C of the bridge, `.usb_uart.connector`
+J2 = "J2"       # USB-C of the module's own USB, `.usb_native.connector`
+SW1 = "SW1"     # RESET, `.reset`
+SW2 = "SW2"     # BOOT, `.boot`
+U2 = "J3"       # the two 22-pin headers, `.headers`
+
+# The chips and the transistors.
+U1 = "U1"       # ESP32-S3-WROOM-1, `.module`
+U3 = "U2"       # CP2102N, `.bridge`
+U5 = "U3"       # AMS1117-3.3, `.regulator`
+Q1 = "Q1"       # `.auto_reset.q_en`
+Q2 = "Q2"       # `.auto_reset.q_boot`
+
+# The diodes and the LEDs.
+D1 = "D3"       # power LED, `.power_led`
+D2 = "D1"       # Schottky of J1, `.usb_uart_diode`
+D3 = "D2"       # Schottky of J2, `.usb_native_diode`
+D4 = "D4"       # GPIO38 LED, `.user_led`
+
+# The resistors.
+R1 = "R9"       # EN pull-up, `.en_pullup.resistor`
+R2 = "R1"       # CC1 of J1, `.usb_uart.cc1_pulldown`
+R3 = "R2"       # CC2 of J1, `.usb_uart.cc2_pulldown`
+R4 = "R7"       # DTR to Q1, `.auto_reset.r_dtr`
+R5 = "R8"       # RTS to Q2, `.auto_reset.r_rts`
+R6 = "R10"      # power LED, `.power_led_resistor`
+R7 = "R3"       # CC1 of J2, `.usb_native.cc1_pulldown`
+R8 = "R4"       # CC2 of J2, `.usb_native.cc2_pulldown`
+R9 = "R11"      # GPIO38 LED, `.user_led_resistor`
+R10 = "R6"      # SUSPEND pull-down, `.suspend_pulldown.resistor`
+R11 = "R5"      # bridge reset pull-up, `.bridge_reset_pullup.resistor`
+
+# The capacitors.
+C1 = "C2"       # 1 uF on VBUS, `.vbus_1u`
+C2 = "C3"       # 100 nF on VBUS, `.vbus_100n`
+C3 = "C1"       # 100 nF on the bridge's VDD, `.bridge_vdd_cap`
+C4 = "C8"       # 100 nF on EN, `.en_100n_a`
+C5 = "C5"       # 100 nF on 3.3 V, `.v3v3_100n`
+C6 = "C4"       # 22 uF on VBUS, `.vbus_22u`
+C7 = "C6"       # 22 uF on 3.3 V, `.v3v3_22u_a`
+C8 = "C9"       # 100 nF on EN, `.en_100n_b`
+C9 = "C10"      # 100 nF on GPIO0, `.boot_100n`
+C10 = "C7"      # 22 uF on 3.3 V, `.v3v3_22u_b`

@@ -4,7 +4,8 @@
 //! were given. `build`, `fab` and the editor give it to the checker with the source
 //! ([`attach`]); `build` and `fab` also write it when a run picks a pin ([`sync`]), and
 //! `--locked` makes a run that would change it stop instead, as `cargo --locked` does for
-//! `Cargo.lock`. The editor assigns in memory and never writes it.
+//! `Cargo.lock`. The editor assigns in memory; the only writes it makes are the `lock`, `pin` and
+//! `source` lines of one entry (`editor/pinwrite.rs`).
 
 use std::collections::HashMap;
 use std::fs;

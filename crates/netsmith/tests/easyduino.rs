@@ -2097,6 +2097,51 @@ mod board {
         assert!(built.schematic.starts_with("(kicad_sch"));
     }
 
+    /// `reference/designators.toml`, which the parity checker reads, pairs each of Easyduino's
+    /// designators with the one `fab` writes for the same part, and so must say what the
+    /// design's own designators are (`PARTS` pairs the parts by what they are: the member
+    /// path). The design's designators come from the kind of the part and the order of its
+    /// declaration, so a part added to `src/main.nsm` ahead of another renumbers it, and this
+    /// fails until the map is written again; the message prints the map as it must be.
+    #[test]
+    fn the_parity_checkers_designator_map_is_the_designs_own() {
+        let built = built();
+        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let mut expected: Vec<(String, String)> = designators(&built)
+            .into_iter()
+            .map(|(refdes, reference)| (reference, refdes))
+            .collect();
+        let wrong: Vec<String> = expected
+            .iter()
+            .filter(|(reference, refdes)| map.get(reference) != Some(refdes.as_str()))
+            .map(|(reference, refdes)| {
+                format!(
+                    "{reference}: the map says {:?}, the design has {refdes}",
+                    map.get(reference)
+                )
+            })
+            .collect();
+        expected.sort();
+        let lines: String = expected
+            .iter()
+            .map(|(reference, refdes)| format!("{reference} = \"{refdes}\"\n"))
+            .collect();
+        assert!(
+            wrong.is_empty(),
+            "{}\nthe map as it must be:\n{lines}",
+            wrong.join("\n")
+        );
+        // All 35 parts of the reference are paired, and the map has nothing else.
+        assert_eq!(map.len(), PARTS.len());
+        assert_eq!(map.len(), 35);
+        // The four interface parts and the headers are the physical file's: they are the
+        // table's must-match references.
+        for reference in ["J1", "J2", "SW1", "SW2", "U2"] {
+            assert!(map.get(reference).is_some(), "{reference} is not mapped");
+        }
+    }
+
     /// Every pad whose other pads on its net are not the same on both sides, one line each.
     fn net_differences(
         ours: &BTreeMap<Pad, BTreeSet<Pad>>,

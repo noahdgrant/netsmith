@@ -230,6 +230,28 @@ stamp: string, readonly: boolean, };
 
 export type Saved = { stamp: string, };
 
+export type PinLock = { 
+/**
+ * The board as the page names it (`GET /api/board?name=`).
+ */
+board: string, 
+/**
+ * The request's path, the key of its entry in the pin file (`status`).
+ */
+request: string, locked: boolean, };
+
+export type PinMove = { board: string, request: string, 
+/**
+ * The pin's path in the part (`p03`).
+ */
+pin: string, };
+
+export type PinWritten = { 
+/**
+ * The pin file, as the project names it (`src/main.pins.toml`).
+ */
+file: string, };
+
 export type NewFile = { path: string, text: string, };
 
 export type NewFolder = { path: string, };
@@ -348,7 +370,8 @@ solved?: Solved,
  * The pin requests that ask this part for a pin (`.status: .u.GPIO`, ADR 0101), in the byte
  * order of their paths, each with the pin it got or the message of the check when it got
  * none. Absent for a part no request asks. What the editor shows of the pin file: it
- * computes the assignment in memory and never writes the file.
+ * computes the assignment in memory; the page's padlock and move write only the `lock`, `pin` and
+ * `source` lines of one entry (`POST /api/pins/lock`, `/api/pins/move`).
  */
 pinRequests?: Array<PinRequestInfo>, };
 
@@ -388,7 +411,28 @@ from?: string,
  * Why the request has no pin: the message the check gave, in its own words. Absent when
  * the request has one.
  */
-message?: string, };
+message?: string, 
+/**
+ * The pins the request may be moved to, which is what the page offers to move it: every
+ * pin of the part that offers the function and that the source does not hold (the one it
+ * has now is among them), in the byte order of the paths. Empty for a request with no pin.
+ */
+offers: Array<PinOffer>, };
+
+export type PinOffer = { 
+/**
+ * The pin's path in the part (`p03`).
+ */
+pin: string, 
+/**
+ * Its pad in the package, as the design has it; absent when it has none.
+ */
+pad?: string, 
+/**
+ * The request that has this pin now, which a move to it is refused for; absent for a free
+ * pin.
+ */
+heldBy?: string, };
 
 export type Solved = { 
 /**

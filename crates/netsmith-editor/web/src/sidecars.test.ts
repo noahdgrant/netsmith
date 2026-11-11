@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PickLockInfo, PinRequestInfo } from './api';
-import { lockView, pinRows, withoutPin } from './sidecars';
+import { cannotMove, lockView, padlockTitle, pinFileOf, pinRows, targetsOf, withoutPin } from './sidecars';
 
-const req = (over: Partial<PinRequestInfo>): PinRequestInfo => ({ request: 'status', function: 'GPIO', locked: false, ...over });
+const req = (over: Partial<PinRequestInfo>): PinRequestInfo => ({ request: 'status', function: 'GPIO', locked: false, offers: [], ...over });
 const lock = (over: Partial<PickLockInfo>): PickLockInfo => ({ file: 'src/main.lock.toml', exists: true, current: true, diff: [], reported: '', ...over });
 
 describe('the pin map rows', () => {
@@ -27,6 +27,38 @@ describe('the pin map rows', () => {
   });
   it('is empty for a part no request asks', () => {
     expect(pinRows(undefined)).toEqual([]);
+  });
+});
+
+describe('the pins a request may be moved to', () => {
+  const offers = [{ pin: 'p00', pad: '3' }, { pin: 'p01', pad: '4', heldBy: 'vbat' }, { pin: 'p02' }];
+  const r = req({ pin: 'p00', pad: '3', offers });
+  it('marks the pin it has, a pin another request holds and a free pin', () => {
+    expect(targetsOf(r).map((t) => [t.pin, t.state])).toEqual([['p00', 'current'], ['p01', 'held'], ['p02', 'free']]);
+  });
+  it('names each pin for a screen reader and says why a held pin is refused', () => {
+    const t = targetsOf(r);
+    expect(t[0].label).toBe('p00, pad 3, where it is now');
+    expect(t[1].label).toBe('p01, pad 4, held by vbat');
+    expect(t[1].title).toContain('held by `vbat`');
+    expect(t[2]).toMatchObject({ label: 'p02', pad: '', title: 'Move `status` to p02' });
+  });
+  it('is carried by the rows', () => {
+    expect(pinRows([r])[0].targets).toHaveLength(3);
+  });
+  it('says what a padlock does in plain words, with the file it writes', () => {
+    expect(padlockTitle({ request: 'status', locked: false }, 'src/main.pins.toml')).toBe('Unlocked: a run may move this pin to make the board route. Click to lock it (writes `lock = true` in src/main.pins.toml).');
+    expect(padlockTitle({ request: 'status', locked: true }, 'src/main.pins.toml')).toContain('Click to unlock it (removes `lock = true` from src/main.pins.toml)');
+  });
+  it('names the pin file from the source file', () => {
+    expect(pinFileOf('src/main.nsm')).toBe('src/main.pins.toml');
+  });
+  it('lets a request move unless it is locked, has no pin or has nowhere to go', () => {
+    const [row] = pinRows([r]);
+    expect(cannotMove(row)).toBeNull();
+    expect(cannotMove({ ...row, locked: true })).toBe('Unlock `status` to move it.');
+    expect(cannotMove({ ...row, message: 'no pin' })).toBe('This request has no pin yet.');
+    expect(cannotMove({ ...row, targets: row.targets.slice(0, 1) })).toBe('No other pin offers this function.');
   });
 });
 

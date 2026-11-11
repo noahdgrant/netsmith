@@ -133,7 +133,7 @@ impl PinFile {
 }
 
 /// A key as TOML writes it: bare when it can be, else quoted (`"hub.scl"`).
-fn toml_key(key: &str) -> String {
+pub(crate) fn toml_key(key: &str) -> String {
     let bare = !key.is_empty()
         && key
             .chars()
@@ -145,7 +145,7 @@ fn toml_key(key: &str) -> String {
     }
 }
 
-fn toml_string(s: &str) -> String {
+pub(crate) fn toml_string(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         match c {
