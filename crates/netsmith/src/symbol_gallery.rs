@@ -106,6 +106,9 @@ pub struct IcSection {
     pub note: String,
     /// The symbol netsmith draws.
     pub ours: Symbol,
+    /// What a sheet shows as the part's value (its pick's label, or its kind's default): the
+    /// page draws the symbol as placed, with this in the `Value` field.
+    pub value: String,
     pub kicad: Option<String>,
     pub no_kicad: String,
 }
@@ -141,6 +144,11 @@ pub fn example_ics(examples: &Path) -> Result<Vec<IcSection>, String> {
             title: ic.title.to_string(),
             note: ic.note.to_string(),
             ours,
+            value: if part.value.is_empty() {
+                part.kind.clone()
+            } else {
+                part.value.clone()
+            },
             kicad: ic.kicad.map(str::to_string),
             no_kicad: ic.no_kicad.to_string(),
         });
@@ -342,7 +350,18 @@ impl Canvas {
             return;
         }
         let (x, y) = at;
-        let length = text.chars().count() as f64 * size * 0.58;
+        // Capitals, digits and the underscore are wide, a few lower-case letters narrow: an
+        // estimate that errs wide, so that no text is cut off at the frame.
+        let length: f64 =
+            text.chars()
+                .map(|c| match c {
+                    'A'..='Z' | '0'..='9' | '_' | 'm' | 'w' => 0.74,
+                    'i' | 'l' | 'j' | 't' | 'f' | 'r' | '.' | ',' | '\'' | '|' | ':' | ';'
+                    | '-' => 0.42,
+                    _ => 0.6,
+                })
+                .sum::<f64>()
+                * size;
         let (from, to) = match anchor {
             "start" => (0.0, length),
             "end" => (-length, 0.0),
@@ -663,7 +682,7 @@ fn draw_pin(canvas: &mut Canvas, pin: &Sexp, show: &PinShow) {
     }
 }
 
-fn draw_field(canvas: &mut Canvas, symbol: &Sexp, name: &str) {
+fn draw_field(canvas: &mut Canvas, symbol: &Sexp, name: &str, shown: Option<&str>) {
     let Some(prop) = symbol
         .find_all("property")
         .find(|p| p.args().first().and_then(Sexp::text) == Some(name))
@@ -673,7 +692,7 @@ fn draw_field(canvas: &mut Canvas, symbol: &Sexp, name: &str) {
     if hides(prop) {
         return;
     }
-    let text = prop.args().get(1).and_then(Sexp::text).unwrap_or("");
+    let text = shown.unwrap_or_else(|| prop.args().get(1).and_then(Sexp::text).unwrap_or(""));
     let at = prop.find("at");
     let (x, y) = at.map_or((0.0, 0.0), |a| (number(a, 0), number(a, 1)));
     let rotation = at.map_or(0.0, |a| number(a, 2)).rem_euclid(180.0);
@@ -694,7 +713,7 @@ fn draw_field(canvas: &mut Canvas, symbol: &Sexp, name: &str) {
 
 /// Draw a symbol: `definition` is its `(symbol "<name>" ...)`, flattened, as
 /// [`Symbol::definition`] gives it. Unit 1 and the first body style are drawn.
-pub fn draw_symbol(definition: &Sexp) -> Drawing {
+pub fn draw_symbol(definition: &Sexp, value: Option<&str>) -> Drawing {
     let mut canvas = Canvas {
         body: String::new(),
         bounds: Bounds::EMPTY,
@@ -724,8 +743,8 @@ pub fn draw_symbol(definition: &Sexp) -> Drawing {
             draw_pin(&mut canvas, pin, &show);
         }
     }
-    draw_field(&mut canvas, definition, "Reference");
-    draw_field(&mut canvas, definition, "Value");
+    draw_field(&mut canvas, definition, "Reference", None);
+    draw_field(&mut canvas, definition, "Value", value);
     let shapes = canvas.shapes;
     let extent = if shapes.is_empty() {
         (0.0, 0.0)
@@ -879,10 +898,10 @@ enum Stock<'a> {
     Symbol(&'a Symbol),
 }
 
-fn pair(ours: &Symbol, stock: Stock<'_>, ours_label: &str) -> String {
-    let drawn = draw_symbol(ours.definition());
+fn pair(ours: &Symbol, value: Option<&str>, stock: Stock<'_>, ours_label: &str) -> String {
+    let drawn = draw_symbol(ours.definition(), value);
     let theirs = match &stock {
-        Stock::Symbol(s) => Some(draw_symbol(s.definition())),
+        Stock::Symbol(s) => Some(draw_symbol(s.definition(), None)),
         _ => None,
     };
     let frame = match &theirs {
@@ -1046,6 +1065,7 @@ pub fn render(kicad: Option<&SymbolLib>, ics: &[IcSection]) -> String {
             let stock = stock_of(kicad, Some(id), "");
             out.push_str(&pair(
                 &ours,
+                None,
                 stock.borrowed(),
                 &format!("netsmith's {bare}"),
             ));
@@ -1059,7 +1079,9 @@ pub fn render(kicad: Option<&SymbolLib>, ics: &[IcSection]) -> String {
             "<p class=\"lede\">A part with no symbol of its own is drawn as a box from its pin \
              table (<code>generate.rs</code>): power in and ground on the left, power out on the \
              right, the rest in pin order. These are the pin tables of four parts of \
-             <code>examples/</code>.</p>\n",
+             <code>examples/</code>. netsmith's box is drawn as a sheet shows the part, with the \
+             part's own value under it (the library's name for the symbol, which says the package, \
+             is not shown).</p>\n",
         );
         for ic in ics {
             let _ = writeln!(
@@ -1071,7 +1093,12 @@ pub fn render(kicad: Option<&SymbolLib>, ics: &[IcSection]) -> String {
                 escape(&ic.note)
             );
             let stock = stock_of(kicad, ic.kicad.as_deref(), &ic.no_kicad);
-            out.push_str(&pair(&ic.ours, stock.borrowed(), &ic.title));
+            out.push_str(&pair(
+                &ic.ours,
+                Some(&ic.value),
+                stock.borrowed(),
+                &ic.title,
+            ));
             out.push_str("</section>\n");
         }
     }

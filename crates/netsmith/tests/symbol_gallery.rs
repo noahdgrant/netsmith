@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use netsmith::symbol_gallery::{EXAMPLE_ICS, example_ics, render};
-use netsmith_kicad::{SymbolLib, passives, testlib};
+use netsmith_kicad::{SymbolLib, generate, passives, testlib};
 
 fn examples() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
@@ -150,4 +150,77 @@ fn the_committed_page_has_a_section_for_every_symbol_so_it_is_written_again_when
     );
     let titles: Vec<String> = EXAMPLE_ICS.iter().map(|ic| ic.title.to_string()).collect();
     assert_eq!(attribute_values(&page, "data-ic"), titles);
+}
+
+/// The text of a symbol's field.
+fn field(symbol: &netsmith_kicad::Symbol, name: &str) -> String {
+    symbol
+        .definition()
+        .find_all("property")
+        .find(|p| p.args().first().and_then(|a| a.text()) == Some(name))
+        .and_then(|p| p.args().get(1)?.text().map(str::to_string))
+        .unwrap_or_default()
+}
+
+#[test]
+fn no_pin_name_of_an_ic_box_is_over_another_and_a_value_is_not_the_internal_name() {
+    let ics = example_ics(&examples()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(ics.len(), 4);
+    let page = render(None, &ics);
+    for ic in &ics {
+        assert_eq!(
+            generate::overlapping_names(&ic.ours),
+            Vec::<(String, String)>::new(),
+            "{}",
+            ic.title
+        );
+        // The library's `Value` is the part's kind and the name (the key, with the package) is
+        // longer; a sheet shows the part's own value, which the page draws.
+        let name = ic
+            .ours
+            .lib_id()
+            .strip_prefix("netsmith:")
+            .unwrap()
+            .to_string();
+        let library_value = field(&ic.ours, "Value");
+        assert!(
+            name.starts_with(&library_value) && name != library_value,
+            "{name}"
+        );
+        assert!(
+            !ic.value.is_empty() && !ic.value.contains("_SOT"),
+            "{}",
+            ic.value
+        );
+        assert!(
+            page.contains(&format!(">{}</text>", ic.value)),
+            "the page does not show the value `{}` of {}",
+            ic.value,
+            ic.title
+        );
+        assert!(
+            !page.contains(&format!(">{name}</text>")),
+            "the page shows the internal name `{name}`"
+        );
+    }
+}
+
+#[test]
+fn a_fet_s_fields_start_clear_of_its_body_and_it_draws_its_body_diode() {
+    for id in ["Transistor_FET:Q_NMOS_GSD", "Transistor_FET:Q_PMOS_GSD"] {
+        let fet = passives::symbol(id).unwrap();
+        for name in ["Reference", "Value"] {
+            assert_eq!(fet.field_justify(name), ["left"], "{id} {name}");
+            let (x, _, _) = fet.field_offset(name).unwrap();
+            // The circle ends at 1.651 + 2.794 = 4.445 mm.
+            assert!(x > 4.445, "{id} {name} starts at {x}, over the body");
+        }
+        // The diode's rail between the drain's and the source's leads.
+        assert!(
+            fet.definition()
+                .to_kicad_string()
+                .contains("(xy 3.302 1.778)"),
+            "{id} has no body diode"
+        );
+    }
 }
