@@ -9,17 +9,25 @@
 //! receptacle joins the two inside (the plug's orientation picks one of them): `.vbus` has four
 //! pads, `.gnd` four, `.dp` two (A6, B6) and `.dm` two (A7, B7). The shell is the four plated legs,
 //! all numbered `S1` (the drawing gives them no number and the board's footprint calls them S1),
-//! one pin. The board's `.shield` is its ground.
+//! one pin. The board's `.shield` is its ground. `.vbus` is the rail of the VBUS and GND contacts: the
+//! contacts are the rail's `pos` and `neg`, so a board can state the supply's voltage and the
+//! DC analysis can start from it (the host is the receptacle's source).
 
 import std::parts::connector::Connector
+import std::sources::Rail
 
-/// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell: `.vbus`, `.gnd`, `.cc1`,
-/// `.cc2`, `.dp`, `.dm`, `.sbu1`, `.sbu2` and `.shield`.
+/// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell: `.vbus` (a rail: `.vbus.pos`
+/// and `.vbus.neg`), `.cc1`, `.cc2`, `.dp`, `.dm`, `.sbu1`, `.sbu2` and `.shield`. As `UsbCPower`
+/// does, it gives the supply of a host that plugs in: the DC analysis takes `.vbus` as a source,
+/// over the range the design states for `.voltage`.
 part ShouhanTypeC16Pin provides Connector {
+    .vbus: Rail
+    dc source .vbus
+
     pins "SMD" {
-        //  pin       kind           name       pads
-        .vbus   power         "VBUS"     "A4" "A9" "B4" "B9"
-        .gnd    power         "GND"      "A1" "A12" "B1" "B12"
+        //  pin          kind           name       pads
+        .vbus.pos power         "VBUS"     "A4" "A9" "B4" "B9"
+        .vbus.neg power         "GND"      "A1" "A12" "B1" "B12"
         .cc1    passive       "CC1"      "A5"
         .cc2    passive       "CC2"      "B5"
         .dp     bidirectional "D+"       "A6" "B6"

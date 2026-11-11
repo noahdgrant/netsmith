@@ -23,6 +23,13 @@
 //! pin floating)". The centre pad is "GND"; its number, 29, is the one the generator's
 //! footprint gives it (and Easyduino's board).
 //!
+//! DCD, CTS and DSR are `optional` (they may float): the datasheet says the hardware handshake
+//! and the modem control pins work only when the host enables them (section 4.3.7, printed page
+//! 21: "the device must be configured to use hardware flow control on the USB host"; section
+//! 4.3.11, page 23: "the modem control pins are enabled when requested on the host"). It does not
+//! say in words that an unused input may be left open, and Easyduino's board leaves all three
+//! open (README, "For the owner").
+//!
 //! What is deliberately left out: levels, ratings and timing (the part is a boundary of the
 //! design: the checks that need a number are listed as not evaluated, among them the supply
 //! range, the 5 V regulator and the USB transceiver's figures), the other packages (QFN24 and
@@ -38,7 +45,7 @@ part Cp2102n {
 
     pins "QFN-28-EP(5x5)" {
         //  pin       kind           name            pads
-        .dcd      input          "DCD"           "1"
+        .dcd      input          "DCD"           "1" optional
         .ri_clk   bidirectional  "RI/CLK"        "2"
         .gnd      power          "GND"           "3" "29"
         .dp       bidirectional  "D+"            "4"
@@ -60,11 +67,11 @@ part Cp2102n {
         .gpio6    bidirectional  "GPIO.6"        "20"
         .gpio5    bidirectional  "GPIO.5"        "21"
         .gpio4    bidirectional  "GPIO.4"        "22"
-        .cts      input          "CTS"           "23"
+        .cts      input          "CTS"           "23" optional
         .rts      output         "RTS"           "24"
         .rxd      input          "RXD"           "25"
         .txd      output         "TXD"           "26"
-        .dsr      input          "DSR"           "27"
+        .dsr      input          "DSR"           "27" optional
         .dtr      output         "DTR"           "28"
     }
 

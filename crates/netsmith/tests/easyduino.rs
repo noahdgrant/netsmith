@@ -6,7 +6,7 @@
 //! This is the first board whose file draws its outline inside a footprint, has four copper
 //! layers and has parts that carry several pads of one number: the first tests run the reading
 //! on small boards of our own that have each of those, and the rest prove what the committed
-//! table and the placeholder hold.
+//! table and the board hold.
 
 use std::fs;
 use std::path::PathBuf;
@@ -397,7 +397,7 @@ fn the_license_is_the_cern_ohl_p_text_with_its_notice() {
 }
 
 #[test]
-fn the_placeholder_board_checks_and_solves() {
+fn the_board_checks_and_solves() {
     let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
     let (loader, catalogs) = (target.loader().unwrap(), target.catalogs().unwrap());
     assert_eq!(target.files.len(), 1);
@@ -455,9 +455,8 @@ board InterfaceBare {
     }
     .r: Resistor {}
 
-    .usb_power.pos ~ .usb.vbus
-    .usb_power.neg ~ .usb.gnd
-    .usb.shield ~ .usb.gnd
+    .usb_power ~ .usb.vbus
+    .usb.shield ~ .usb.vbus.neg
     .button.a ~ .usb.cc1
     .button.b ~ .usb_power.neg
     .headers.v3v3 ~ .usb_power.pos
@@ -1087,8 +1086,7 @@ board IcsFixture {
     .q2: Ss8050 { .mpn &= "SS8050" }
     .d2: Schottky { .package &= "SMD1006" }
 
-    .rail.pos ~ .u1.v3v3
-    .rail.neg ~ .u1.gnd
+    .rail ~ .u1.vdd
     .usb.pos ~ .u3.vbus
     .usb.pos ~ .u3.vregin
     .rail.pos ~ .u3.vdd
@@ -1886,5 +1884,804 @@ board IcsFixture {
                 footprint
             );
         }
+    }
+}
+
+/// The board itself, `src/main.nsm`: the schematic of Easyduino's ESP32-S3 circuit (item B3c of
+/// epic #308). The proofs: the nets are Easyduino's (read from the committed `.kicad_pcb` as a
+/// file, with no KiCad), the pin map of the headers, the receptacles and the buttons is
+/// Easyduino's and made of named pins, and the board builds with no KiCad install.
+///
+/// Pads that share a number are one pad here, as `Netlist::from_kicad_pcb` reads them and as
+/// the design's netlist has them (a pin is one entry however many pads it has): the nine pads
+/// 41 of the module are the pin `41`, the four shield pads `S1` of each receptacle the pin `S1`,
+/// and the regulator's output and tab (two pads 2) the pin `2`.
+mod board {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use netsmith::compare::netlist_of_design;
+    use netsmith::project::Target;
+    use netsmith::{Libraries, build_with};
+    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Mapping, testlib};
+    use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, normalize_value, report};
+
+    use super::{REFERENCE, project, read};
+
+    /// Where each part of Easyduino's board is in the netsmith board (the path of its member),
+    /// by Easyduino's reference designator. The two receptacles' parts are inside the modules
+    /// `usb_uart` (J1, with R2 and R3) and `usb_native` (J2, with R7 and R8), the auto-reset
+    /// pair in `auto_reset`. The three 22 uF tantalum capacitors, the three 100 nF on EN and
+    /// GPIO0 and the other 100 nF and 10 kohm parts are named by what they do, so each pair is
+    /// one-to-one (which of C4 and C8 is which is arbitrary: both are 100 nF from EN to ground).
+    const PARTS: &[(&str, &str)] = &[
+        ("U1", "module"),
+        ("U2", "headers"),
+        ("U3", "bridge"),
+        ("U5", "regulator"),
+        ("J1", "usb_uart.connector"),
+        ("J2", "usb_native.connector"),
+        ("SW1", "reset"),
+        ("SW2", "boot"),
+        ("Q1", "auto_reset.q_en"),
+        ("Q2", "auto_reset.q_boot"),
+        ("D1", "power_led"),
+        ("D2", "usb_uart_diode"),
+        ("D3", "usb_native_diode"),
+        ("D4", "user_led"),
+        ("R1", "en_pullup.resistor"),
+        ("R2", "usb_uart.cc1_pulldown"),
+        ("R3", "usb_uart.cc2_pulldown"),
+        ("R4", "auto_reset.r_dtr"),
+        ("R5", "auto_reset.r_rts"),
+        ("R6", "power_led_resistor"),
+        ("R7", "usb_native.cc1_pulldown"),
+        ("R8", "usb_native.cc2_pulldown"),
+        ("R9", "user_led_resistor"),
+        ("R10", "suspend_pulldown.resistor"),
+        ("R11", "bridge_reset_pullup.resistor"),
+        ("C1", "vbus_1u"),
+        ("C2", "vbus_100n"),
+        ("C3", "bridge_vdd_cap"),
+        ("C4", "en_100n_a"),
+        ("C5", "v3v3_100n"),
+        ("C6", "vbus_22u"),
+        ("C7", "v3v3_22u_a"),
+        ("C8", "en_100n_b"),
+        ("C9", "boot_100n"),
+        ("C10", "v3v3_22u_b"),
+    ];
+
+    /// The two resistors whose pads 1 and 2 are exchanged against Easyduino's: a resistor has
+    /// no polarity, and netsmith's chain and `PullUp` enter a resistor at pad 1 (README,
+    /// "Differences from the reference").
+    const SWAPPED: [&str; 2] = ["R6", "R11"];
+
+    fn libraries() -> Libraries {
+        let nowhere = testlib::TempDir::new("easyduino-board-no-kicad");
+        Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn built() -> netsmith::Built {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let source = &target.files[0];
+        let text = std::fs::read_to_string(&source.path).unwrap();
+        build_with(
+            &source.name,
+            &text,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+    }
+
+    fn reference() -> Netlist {
+        Netlist::from_kicad_pcb(&read(&format!("reference/{REFERENCE}")))
+            .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// The design's reference designator for each of Easyduino's, by designator.
+    fn designators(built: &netsmith::Built) -> BTreeMap<String, String> {
+        PARTS
+            .iter()
+            .map(|(reference, path)| {
+                let part = built
+                    .design
+                    .parts
+                    .iter()
+                    .find(|p| p.path == *path)
+                    .unwrap_or_else(|| panic!("{reference}: the board has no part `{path}`"));
+                (part.refdes.clone(), (*reference).to_string())
+            })
+            .collect()
+    }
+
+    type Pad = (String, String);
+
+    /// For each pad that is on a net with another pad: the other pads of the net, in Easyduino's
+    /// designators (`to_reference` maps a designator of this netlist). `swapped` names the parts
+    /// whose pads 1 and 2 are read exchanged.
+    fn neighbours(
+        netlist: &Netlist,
+        to_reference: &BTreeMap<String, String>,
+        swapped: &[&str],
+    ) -> BTreeMap<Pad, BTreeSet<Pad>> {
+        let mut out = BTreeMap::new();
+        for net in &netlist.nets {
+            let pads: BTreeSet<Pad> = net
+                .pins
+                .iter()
+                .map(|(c, pin)| {
+                    let refdes = &netlist.components[*c].refdes;
+                    let refdes = to_reference.get(refdes).unwrap_or(refdes).clone();
+                    let pin = match (swapped.contains(&refdes.as_str()), pin.as_str()) {
+                        (true, "1") => "2",
+                        (true, "2") => "1",
+                        (_, other) => other,
+                    };
+                    (refdes, pin.to_string())
+                })
+                .collect();
+            let pads: Vec<Pad> = pads.into_iter().collect();
+            if pads.len() < 2 {
+                continue;
+            }
+            for pad in &pads {
+                let others = pads.iter().filter(|p| *p != pad).cloned().collect();
+                out.insert(pad.clone(), others);
+            }
+        }
+        out
+    }
+
+    /// The same netlist with the value and footprint of every component blanked: only the
+    /// wiring is left to compare. `swapped` names the parts whose pads 1 and 2 are exchanged.
+    fn wiring_only(netlist: &Netlist, swapped: &[&str]) -> Netlist {
+        let components = netlist
+            .components
+            .iter()
+            .map(|c| (c.refdes.clone(), String::new(), String::new()))
+            .collect();
+        let nets = netlist
+            .nets
+            .iter()
+            .map(|n| {
+                let pins = n
+                    .pins
+                    .iter()
+                    .map(|(c, pin)| {
+                        let refdes = netlist.components[*c].refdes.clone();
+                        let pin = match (swapped.contains(&refdes.as_str()), pin.as_str()) {
+                            (true, "1") => "2".to_string(),
+                            (true, "2") => "1".to_string(),
+                            (_, other) => other.to_string(),
+                        };
+                        (refdes, pin)
+                    })
+                    .collect();
+                (n.name.clone(), pins)
+            })
+            .collect();
+        Netlist::from_parts(components, nets).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn design_netlist(built: &netsmith::Built) -> Netlist {
+        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
+        netlist_of_design(&built.design, &mapping).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn the_board_builds_with_no_kicad_and_has_the_35_parts_of_easyduinos_board() {
+        let built = built();
+        assert_eq!(designators(&built).len(), PARTS.len());
+        let own: Vec<&str> = built
+            .design
+            .parts
+            .iter()
+            .map(|p| p.path.as_str())
+            .filter(|path| !PARTS.iter().any(|(_, part)| part == path))
+            .collect();
+        assert_eq!(own, Vec::<&str>::new(), "a part that is not Easyduino's");
+        let reference = reference();
+        let theirs: BTreeSet<&str> = reference
+            .components
+            .iter()
+            .map(|c| c.refdes.as_str())
+            .collect();
+        let ours: BTreeSet<&str> = PARTS.iter().map(|(r, _)| *r).collect();
+        assert_eq!(theirs.len(), 35);
+        assert_eq!(theirs, ours);
+        assert!(built.schematic.starts_with("(kicad_sch"));
+    }
+
+    /// Every pad whose other pads on its net are not the same on both sides, one line each.
+    fn net_differences(
+        ours: &BTreeMap<Pad, BTreeSet<Pad>>,
+        theirs: &BTreeMap<Pad, BTreeSet<Pad>>,
+    ) -> Vec<String> {
+        let mut differences = Vec::new();
+        let pads: BTreeSet<&Pad> = ours.keys().chain(theirs.keys()).collect();
+        let empty = BTreeSet::new();
+        for pad in pads {
+            let (a, b) = (
+                ours.get(pad).unwrap_or(&empty),
+                theirs.get(pad).unwrap_or(&empty),
+            );
+            if a != b {
+                differences.push(format!(
+                    "{}.{}: board has {:?}, Easyduino has {:?}",
+                    pad.0,
+                    pad.1,
+                    a.difference(b).collect::<Vec<_>>(),
+                    b.difference(a).collect::<Vec<_>>()
+                ));
+            }
+        }
+        differences
+    }
+
+    /// The proof: for every pad of every part of Easyduino's board, the set of the other pads
+    /// on its net is the same as on the board's. It is made from the committed `.kicad_pcb` as a
+    /// file (`Netlist::from_kicad_pcb`) and the design's nets, with no `kicad-cli`. The pads of
+    /// R6 and R11 are read exchanged on the reference's side (see `SWAPPED`). The 20 pads on
+    /// nets of one pad (`unconnected-(...)`: 16 pins of U3 and the receptacles' SBU1 and SBU2)
+    /// are on no net with another pad, and so have no entry on either side: the design leaves
+    /// the same pins open, and `the_open_pins_are_the_ones_the_reference_leaves_open` says which.
+    #[test]
+    fn every_pad_has_the_same_pads_on_its_net_as_in_easyduinos_board() {
+        let built = built();
+        let to_reference = designators(&built);
+        let ours = neighbours(&design_netlist(&built), &to_reference, &[]);
+        let theirs = neighbours(&reference(), &BTreeMap::new(), &SWAPPED);
+        let differences = net_differences(&ours, &theirs);
+        assert!(differences.is_empty(), "{}", differences.join("\n"));
+        // It is a real comparison: both sides have many pads on nets.
+        assert!(
+            theirs.len() > 100 && ours.len() == theirs.len(),
+            "{} {}",
+            ours.len(),
+            theirs.len()
+        );
+    }
+
+    /// Without the exchange, the two differ at exactly the pads of R6 and R11 and the pads on
+    /// their nets: the exchange is real, and bounded to those two resistors.
+    #[test]
+    fn only_r6_and_r11_have_their_pads_exchanged() {
+        let built = built();
+        let to_reference = designators(&built);
+        let ours = neighbours(&design_netlist(&built), &to_reference, &[]);
+        let theirs = neighbours(&reference(), &BTreeMap::new(), &[]);
+        let differences = net_differences(&ours, &theirs);
+        let parts: BTreeSet<&str> = differences
+            .iter()
+            .map(|d| d.split('.').next().unwrap())
+            .collect();
+        assert_eq!(
+            parts,
+            BTreeSet::from([
+                "D1", "R6", "R11", "U3", "C1", "C2", "C6", "D2", "D3", "U5", "U2"
+            ])
+            .into_iter()
+            .filter(|p| differences.iter().any(|d| d.starts_with(&format!("{p}."))))
+            .collect::<BTreeSet<_>>(),
+            "{differences:?}"
+        );
+        // Every difference is on a net of R6 or R11: D1's anode, VBUS, or the bridge's reset.
+        assert!(!differences.is_empty());
+        assert!(
+            differences
+                .iter()
+                .any(|d| d.starts_with("R6.1") || d.starts_with("R6.2"))
+        );
+        assert!(
+            differences
+                .iter()
+                .any(|d| d.starts_with("R11.1") || d.starts_with("R11.2"))
+        );
+    }
+
+    /// The same, by `netsmith-netlist`'s `compare` (what `netsmith compare` runs), with the
+    /// designators paired by the table above and the value and footprint left out of the
+    /// comparison.
+    #[test]
+    fn netsmith_compare_says_the_nets_are_the_same() {
+        let built = built();
+        let to_reference = designators(&built);
+        let a = wiring_only(&design_netlist(&built), &[]);
+        let b = wiring_only(&reference(), &SWAPPED);
+        let pairs = to_reference
+            .iter()
+            .map(|(ours, theirs)| (ours.clone(), theirs.clone()))
+            .collect();
+        let options = Options {
+            identity: Identity::Map(pairs),
+            ..Options::default()
+        };
+        let outcome = compare(&a, &b, &options).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
+    }
+
+    /// The comparison would see a wrong net: it is the comparison above that runs, on a board
+    /// whose U2 pad 4 (GPIO4) is on another net, and its answer is the pad.
+    #[test]
+    fn the_comparison_sees_a_pad_on_the_wrong_net() {
+        let built = built();
+        let to_reference = designators(&built);
+        let mut ours = neighbours(&design_netlist(&built), &to_reference, &[]);
+        let theirs = neighbours(&reference(), &BTreeMap::new(), &SWAPPED);
+        assert_eq!(net_differences(&ours, &theirs), Vec::<String>::new());
+        // U2 pad 4 carries GPIO4; say it carried the net of pad 5.
+        let key = ("U2".to_string(), "4".to_string());
+        let wrong = ours
+            .get(&("U2".to_string(), "5".to_string()))
+            .unwrap()
+            .clone();
+        assert_ne!(ours[&key], wrong, "the wrong net must be another one");
+        ours.insert(key, wrong);
+        let differences = net_differences(&ours, &theirs);
+        assert!(
+            differences.iter().any(|d| d.starts_with("U2.4: board has")),
+            "{differences:?}"
+        );
+        // A pad that is on a net on one side only is a difference as well.
+        let mut ours = neighbours(&design_netlist(&built), &to_reference, &[]);
+        ours.remove(&("U2".to_string(), "4".to_string()));
+        assert!(
+            net_differences(&ours, &theirs)
+                .iter()
+                .any(|d| d.starts_with("U2.4: ")),
+        );
+    }
+
+    /// The values of the resistors and capacitors are Easyduino's (`5.1k` and `5k1` are one
+    /// value) and the package is the one their footprint says: `1005` (metric) is 0402 and
+    /// the tantalum `CP_EIA-3216` is the case A of EIA 3216-18, `CASE-A-3216-18`.
+    #[test]
+    fn the_resistors_and_capacitors_have_easyduinos_values_and_packages() {
+        let built = built();
+        let reference = reference();
+        let mut wrong = Vec::new();
+        let mut checked = 0;
+        for (name, path) in PARTS
+            .iter()
+            .filter(|(r, _)| r.starts_with('R') || r.starts_with('C'))
+        {
+            let part = built.design.parts.iter().find(|p| p.path == *path).unwrap();
+            let theirs = &reference.components[reference.find(name).unwrap()];
+            if normalize_value(&part.value, true) != normalize_value(&theirs.value, true) {
+                wrong.push(format!(
+                    "{name}: value {} against {}",
+                    part.value, theirs.value
+                ));
+            }
+            let package = if theirs.footprint.contains("1005") {
+                "0402"
+            } else if theirs.footprint.contains("CP_EIA-3216") {
+                "CASE-A-3216-18"
+            } else {
+                panic!("{name}: footprint {}", theirs.footprint)
+            };
+            if part.package.as_deref() != Some(package) {
+                wrong.push(format!(
+                    "{name}: package {:?} against {package}",
+                    part.package
+                ));
+            }
+            checked += 1;
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+        assert_eq!(checked, 21, "11 resistors and 10 capacitors");
+    }
+
+    /// Every part of the board is sourced with the LCSC number of Easyduino's bill of
+    /// materials, but for the bridge's (the BOM's C6568 is the older CP2102, README) and the
+    /// headers (hand-soldered, the BOM's `-`).
+    #[test]
+    fn the_parts_have_the_lcsc_numbers_of_easyduinos_bill_of_materials() {
+        let built = built();
+        let to_reference = designators(&built);
+        let bom = read("reference/Easyduino_ESP32S3_BOM.csv");
+        let mut theirs = BTreeMap::new();
+        for line in bom.lines().skip(1) {
+            let cells: Vec<&str> = line.split(',').map(|c| c.trim_matches('"')).collect();
+            theirs.insert(cells[0].to_string(), cells[4].to_string());
+        }
+        assert_eq!(theirs.len(), 35);
+        let mut wrong = Vec::new();
+        for s in &built.sourcing {
+            let reference = &to_reference[&s.refdes];
+            let bom_number = &theirs[reference];
+            match reference.as_str() {
+                "U2" => assert_eq!(s.lcsc, None),
+                "U3" => assert_eq!(
+                    (s.lcsc.as_deref(), bom_number.as_str()),
+                    (Some("C1550553"), "C6568")
+                ),
+                _ => {
+                    if s.lcsc.as_deref() != Some(bom_number.as_str()) {
+                        wrong.push(format!("{reference}: {:?} against {bom_number}", s.lcsc));
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// The net a pad of a part is on, as the signal it carries in Easyduino's terms: the
+    /// design's net name for a rail or ground, else the other pads on it, in Easyduino's
+    /// designators.
+    fn others_on_net(
+        built: &netsmith::Built,
+        to_reference: &BTreeMap<String, String>,
+        path: &str,
+        pad: &str,
+    ) -> (String, BTreeSet<Pad>) {
+        let part = built.design.parts.iter().find(|p| p.path == path).unwrap();
+        let net = built
+            .design
+            .nets
+            .iter()
+            .find(|n| {
+                n.pins
+                    .iter()
+                    .any(|p| p.refdes == part.refdes && p.pin == pad)
+            })
+            .unwrap_or_else(|| panic!("{path}.{pad} is on no net"));
+        let others = net
+            .pins
+            .iter()
+            .filter(|p| !(p.refdes == part.refdes && p.pin == pad))
+            .map(|p| (to_reference[&p.refdes].clone(), p.pin.clone()))
+            .collect();
+        (net.name.clone(), others)
+    }
+
+    /// The signal a pad of the module carries, by the pin of the module's table: the datasheet's
+    /// name of the pin that the net reaches (`IO4`, `RXD0`, `EN`).
+    fn module_pin_on(built: &netsmith::Built, net_name: &str) -> Option<String> {
+        let module = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.path == "module")
+            .unwrap();
+        let net = built.design.nets.iter().find(|n| n.name == net_name)?;
+        net.pins
+            .iter()
+            .filter(|p| p.refdes == module.refdes)
+            .filter_map(|p| module.pins.iter().find(|q| q.pads.contains(&p.pin)))
+            .map(|q| q.datasheet.clone())
+            .next()
+    }
+
+    /// What each header pad carries on Easyduino's board, from its net name: a rail, ground, or
+    /// the module's GPIO (`/GPIO44` is the module's pad `RXD0`, `/GPIO43` its `TXD0`, and
+    /// `/USB2_D-` and `/USB2_D+` its `IO19` and `IO20`).
+    fn reference_signals() -> BTreeMap<String, String> {
+        let reference = reference();
+        let c = reference.find("U2").unwrap();
+        let mut out = BTreeMap::new();
+        for (pad, net) in &reference.components[c].pins {
+            let name = reference.nets[*net]
+                .name
+                .trim_start_matches('/')
+                .to_string();
+            let signal = match name.as_str() {
+                "GND" | "+3.3V" | "VBUS" | "EN" => name,
+                "GPIO44" => "RXD0".to_string(),
+                "GPIO43" => "TXD0".to_string(),
+                "USB2_D-" => "IO19".to_string(),
+                "USB2_D+" => "IO20".to_string(),
+                other => format!("IO{}", other.strip_prefix("GPIO").unwrap()),
+            };
+            out.insert(pad.clone(), signal);
+        }
+        out
+    }
+
+    /// The headers' pin map is Easyduino's, pad by pad, and it is made of named pins: the
+    /// module's pin that a header pad reaches is the one on the net of that pad in the design.
+    #[test]
+    fn the_header_pins_carry_easyduinos_signals() {
+        let built = built();
+        let design = &built.design;
+        let headers = design.parts.iter().find(|p| p.path == "headers").unwrap();
+        let expected = reference_signals();
+        assert_eq!(expected.len(), 44, "two headers of 22 pads, each on a net");
+        let mut wrong = Vec::new();
+        for (pad, signal) in &expected {
+            let net = design
+                .nets
+                .iter()
+                .find(|n| {
+                    n.pins
+                        .iter()
+                        .any(|p| p.refdes == headers.refdes && p.pin == *pad)
+                })
+                .unwrap_or_else(|| panic!("U2.{pad} is on no net"));
+            let found = match signal.as_str() {
+                "GND" | "+3.3V" | "VBUS" => net.name.clone(),
+                _ => module_pin_on(&built, &net.name).unwrap_or_default(),
+            };
+            if found != *signal {
+                wrong.push(format!("U2.{pad}: {found}, Easyduino's is {signal}"));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+        // Every header pin is joined to a named pin, not to a request: the source has no `.GPIO`.
+        let source = read("src/main.nsm");
+        assert!(
+            !source.contains(": .module."),
+            "a request for a pin of the module"
+        );
+        assert!(
+            built
+                .design
+                .parts
+                .iter()
+                .find(|p| p.path == "module")
+                .unwrap()
+                .pins
+                .iter()
+                .all(|p| p.function.is_none())
+        );
+    }
+
+    /// The receptacles carry Easyduino's signals on each contact: VBUS on the net behind the
+    /// receptacle's diode, ground on the ground and the shield, each CC on its 5.1 kohm resistor
+    /// to ground, the data pair on the bridge (J1) or the module and the headers (J2), and the
+    /// sideband contacts alone.
+    #[test]
+    fn the_receptacles_carry_easyduinos_signals() {
+        let built = built();
+        let to_reference = designators(&built);
+        // (receptacle, path, cc1 resistor, cc2 resistor, vbus net, diode, d+ partner, d- partner)
+        let receptacles = [
+            (
+                "J1",
+                "usb_uart.connector",
+                "R2",
+                "R3",
+                "VBUS1",
+                "D2",
+                ("U3", "4"),
+                ("U3", "5"),
+            ),
+            (
+                "J2",
+                "usb_native.connector",
+                "R7",
+                "R8",
+                "VBUS2",
+                "D3",
+                ("U1", "14"),
+                ("U1", "13"),
+            ),
+        ];
+        let reference = reference();
+        let mut checked = 0;
+        for (j, path, cc1, cc2, vbus, diode, dp, dm) in receptacles {
+            // Every pad of the reference's receptacle is on the design's net the same way.
+            let c = reference.find(j).unwrap();
+            let mut seen = BTreeSet::new();
+            for (pad, net) in &reference.components[c].pins {
+                seen.insert(pad.clone());
+                let theirs = reference.nets[*net].name.as_str();
+                let (name, others) = others_on_net(&built, &to_reference, path, pad);
+                let has =
+                    |part: &str, pin: &str| others.contains(&(part.to_string(), pin.to_string()));
+                let ok = match pad.as_str() {
+                    "A1" | "A12" | "B1" | "B12" | "S1" => name == "GND" && theirs == "GND",
+                    "A4" | "A9" | "B4" | "B9" => {
+                        name == vbus && theirs == format!("/{vbus}") && has(diode, "2")
+                    }
+                    "A5" => has(cc1, "1") && others.len() == 1,
+                    "B5" => has(cc2, "1") && others.len() == 1,
+                    "A6" | "B6" => has(dp.0, dp.1),
+                    "A7" | "B7" => has(dm.0, dm.1),
+                    other => panic!("{j}: pad {other}"),
+                };
+                assert!(
+                    ok,
+                    "{j}.{pad}: design net {name} {others:?}, Easyduino's {theirs}"
+                );
+                checked += 1;
+            }
+            // The reader leaves a pad that is alone on its net out of a part's pins: the
+            // sideband contacts A8 and B8 (`the_open_pins_are_the_ones_the_reference_leaves_open`).
+            assert_eq!(
+                seen.len(),
+                15,
+                "{j}: 14 contacts on nets, and the shield S1"
+            );
+        }
+        assert_eq!(checked, 30, "15 contacts on nets for each receptacle");
+    }
+
+    /// The buttons: SW1 (RESET) has ground on pad 1 and EN on pad 2, SW2 (BOOT) ground on pad 1
+    /// and GPIO0 on pad 2, as on Easyduino's board.
+    #[test]
+    fn the_buttons_have_easyduinos_nets_on_their_pads() {
+        let built = built();
+        let to_reference = designators(&built);
+        let reference = reference();
+        for (button, path, signal, module_pad) in [
+            ("SW1", "reset", "/EN", "3"),
+            ("SW2", "boot", "/GPIO0", "27"),
+        ] {
+            let c = reference.find(button).unwrap();
+            let nets: BTreeMap<&str, &str> = reference.components[c]
+                .pins
+                .iter()
+                .map(|(pad, net)| (pad.as_str(), reference.nets[*net].name.as_str()))
+                .collect();
+            assert_eq!(nets["1"], "GND");
+            assert_eq!(nets["2"], signal);
+            let (ground, _) = others_on_net(&built, &to_reference, path, "1");
+            assert_eq!(ground, "GND");
+            let (_, others) = others_on_net(&built, &to_reference, path, "2");
+            assert!(
+                others.contains(&("U1".to_string(), module_pad.to_string())),
+                "{button}: {others:?}"
+            );
+        }
+    }
+
+    /// The pins that the reference leaves open (20 pads on nets named `unconnected-(...)`, read
+    /// from the committed table) are the pads that no net of the design names: 16 pins of the
+    /// bridge and the receptacles' SBU1 and SBU2 (pads A8 and B8), and no other pad of the
+    /// board is open. (The netlist reader drops a net of one pad, so the proof of the nets above
+    /// says nothing about them.)
+    #[test]
+    fn the_open_pins_are_the_ones_the_reference_leaves_open() {
+        let built = built();
+        let to_reference = designators(&built);
+        let table = super::parsed(&read("reference/placements.toml"));
+        let mut theirs: BTreeSet<Pad> = BTreeSet::new();
+        for part in super::tables(&table, "part") {
+            let reference = part["reference"].as_str().unwrap();
+            for pad in part["pads"].as_array().unwrap() {
+                let pad = pad.as_table().unwrap();
+                let net = pad.get("net").and_then(|n| n.as_str()).unwrap_or("");
+                if net.starts_with("unconnected-(") {
+                    theirs.insert((
+                        reference.to_string(),
+                        pad["number"].as_str().unwrap().to_string(),
+                    ));
+                }
+            }
+        }
+        assert_eq!(theirs.len(), 20, "{theirs:?}");
+        let ours: BTreeSet<Pad> = {
+            let design = &built.design;
+            let mut on_net: BTreeSet<Pad> = BTreeSet::new();
+            for net in &design.nets {
+                for p in &net.pins {
+                    on_net.insert((to_reference[&p.refdes].clone(), p.pin.clone()));
+                }
+            }
+            // Every pad of a part of the design that no net names.
+            let mut open = BTreeSet::new();
+            for part in &design.parts {
+                for pin in &part.pins {
+                    for pad in &pin.pads {
+                        let key = (to_reference[&part.refdes].clone(), pad.clone());
+                        if !on_net.contains(&key) {
+                            open.insert(key);
+                        }
+                    }
+                }
+            }
+            open
+        };
+        // The design's netlist has a pin once however many pads it has; the pads of the open
+        // set are the pins' pads, and a pin on a net has all its pads on it.
+        assert_eq!(ours, theirs, "ours {ours:?}");
+    }
+
+    /// What the solver does and does not check on the power path (README, "What the solver
+    /// checks"): the regulator's output current (500 mA, the reference's figure from USB) is
+    /// held to the AMS1117's rating and the output rail to the module's supply window, and the
+    /// dropout from USB through a Schottky diode is NOT evaluated, because the bridge's supply
+    /// pins and its reset line (a pull-up to VBUS) are not modelled, so the rail's voltage has
+    /// no value. This pins that gap: when the bridge states a supply current and the dropout
+    /// is evaluated, this test fails and the README's paragraph is to be rewritten.
+    #[test]
+    fn the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed() {
+        let built = built();
+        let listed = |needle: &str| built.notes.iter().any(|n| n.contains(needle));
+        // Checked (not listed): the supply window of the module, the regulator's current.
+        assert!(!listed("module.vdd"), "{:?}", built.notes);
+        assert!(!listed(
+            "not evaluated: -regulator.vout.current <= regulator.max_current"
+        ));
+        // Not evaluated: the dropout and the regulator's power.
+        assert!(listed(
+            "not evaluated: regulator.vin.voltage >= (regulator.vout.voltage + regulator.dropout)"
+        ));
+        assert!(listed(
+            "the balance on net `VBUS` is incomplete: `bridge.vbus`, `bridge.vregin` are not modelled"
+        ));
+    }
+
+    /// The module's supply window is a real check: a regulator that gives 3.7 V is refused.
+    #[test]
+    fn a_regulator_that_gives_more_than_the_modules_window_is_refused() {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let source = &target.files[0];
+        let text = std::fs::read_to_string(&source.path).unwrap();
+        let wrong = text.replace(
+            "    .module.vdd ~ .v3v3\n",
+            "    .module.vdd ~ .v3v3\n    .v3v3.voltage &= 3.7V +/- 1%\n",
+        );
+        assert_ne!(wrong, text);
+        let result = build_with(
+            &source.name,
+            &wrong,
+            &target.loader().unwrap(),
+            &target.catalogs().unwrap(),
+            &libraries(),
+        );
+        let message = match result {
+            Ok(_) => panic!("a 3.7 V rail was accepted"),
+            Err(e) => format!("{e:?}"),
+        };
+        assert!(
+            message.contains("3.6V") || message.contains("vdd") || message.contains("v3v3"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn the_electrical_rules_check_of_kicad_passes_on_the_schematic() {
+        let built = built();
+        let Some(found) = crate::erc::erc(&built.design.name, &built.schematic) else {
+            return;
+        };
+        assert_eq!(
+            crate::erc::with_the_machines_libraries(found),
+            Vec::<String>::new()
+        );
+    }
+
+    /// The pin optimizer (ADR 0101) moves only a pin that a request got. The board has none:
+    /// the check's `spaces` for it are empty, the pin file has no entry and there is none on
+    /// disk. The module's table has no function rows (a pin is one name), so a header pad
+    /// could not even be joined to a request for "any GPIO".
+    #[test]
+    fn the_optimizer_cannot_move_a_header_pad() {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let source = &target.files[0];
+        let text = std::fs::read_to_string(&source.path).unwrap();
+        let (loader, catalogs) = (target.loader().unwrap(), target.catalogs().unwrap());
+        let libraries = libraries();
+        let outcome =
+            netsmith::outcome_with(&source.name, &text, &loader, &catalogs, Some(&libraries))
+                .unwrap_or_else(|p| panic!("{}", p[0].rendered));
+        let requests = outcome
+            .pins
+            .spaces
+            .get("EasyduinoEsp32s3")
+            .map_or(0, |parts| {
+                parts.iter().map(|s| s.requests.len()).sum::<usize>()
+            });
+        assert_eq!(requests, 0, "the board asks for a pin somewhere");
+        assert!(
+            outcome
+                .pins
+                .file
+                .boards
+                .get("EasyduinoEsp32s3")
+                .is_none_or(|e| e.is_empty())
+        );
+        assert!(outcome.pins.unserved.values().all(|u| u.is_empty()));
+        assert!(
+            !project().join("src/main.pins.toml").exists(),
+            "a pin file would keep an answer for a request"
+        );
     }
 }

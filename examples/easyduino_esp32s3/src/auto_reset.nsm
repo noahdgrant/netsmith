@@ -1,0 +1,35 @@
+//! The automatic bootloader of the Easyduino ESP32-S3 board (the circuit of Espressif's
+//! development board): two NPN transistors and two 10 kohm resistors that let the USB-UART
+//! bridge's DTR and RTS lines pull the module's EN and GPIO0 low in the sequence that puts it
+//! into its download mode.
+//!
+//! Q1 has its base on DTR through R4, its pad 2 on EN and its pad 3 on RTS; Q2 has its base on
+//! RTS through R5, its pad 2 on GPIO0 and its pad 3 on DTR (Easyduino's nets, pad for pad). The
+//! SS8050's pad 2 is its emitter and pad 3 its collector (see `ss8050.nsm`): with this part the
+//! lines to EN and GPIO0 are on the emitters, which is what the board's nets say, and the
+//! symbol of the reference calls pad 2 the collector. The README lists the question.
+
+import src::ss8050::Ss8050
+import std::parts::passive::Resistor
+
+/// The auto-reset pair. `.dtr` and `.rts` go to the bridge's DTR and RTS, `.en` to the module's
+/// EN and `.boot` to its GPIO0.
+module AutoReset {
+    .dtr: Pin
+    .rts: Pin
+    .en: Pin
+    .boot: Pin
+
+    .q_en: Ss8050 { .mpn &= "SS8050" }
+    .q_boot: Ss8050 { .mpn &= "SS8050" }
+    .r_dtr: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .r_rts: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+
+    .dtr ~> .r_dtr ~> .q_en.base
+    .en ~ .q_en.emitter
+    .rts ~ .q_en.collector
+
+    .rts ~> .r_rts ~> .q_boot.base
+    .boot ~ .q_boot.emitter
+    .dtr ~ .q_boot.collector
+}
