@@ -1,0 +1,38 @@
+//! The SS8050 NPN transistor, JSMSEMI, in the SOT-23 package: the Q1 and Q2 of the Easyduino
+//! ESP32-S3 board (the auto-reset pair).
+//!
+//! The pin table was WRITTEN BY HAND from JSMSEMI's datasheet "SS8050, NPN Silicon Epitaxial
+//! Planar Transistor" (four pages, no revision or date printed; the PDF's creation date is
+//! 2020-09-10), the copy that LCSC links for C916392, fetched on 2026-11-10
+//! (<https://datasheet.lcsc.com/datasheet/pdf/2f339e880cffebee9efb3d9c52bb2bb7.pdf>, SHA-256
+//! `198dacbb0442`): the symbol and the package picture on page 1 give pin 1 as the base, pin 2
+//! as the emitter and pin 3 as the collector, in a SOT-23 with pins 1 and 2 on one side and
+//! pin 3 on the other. **The emitter is pad 2 and the collector pad 3**: the symbol of
+//! Easyduino's board (`Q_NPN_BCE`) lists base, collector, emitter as pins 1 to 3, and its
+//! board puts the signal that pulls `/EN` low on pad 2 (see the README).
+//!
+//! The three pins are `passive`: a transistor's pins have no direction of their own (the
+//! standard `NMosfet` has a passive source and drain for the same reason).
+//!
+//! What is deliberately left out: every rating and model (the part is a boundary of the
+//! design: the checks that need a number are listed as not evaluated). The datasheet's figures
+//! that a model would use are on pages 1 and 2: V(CBO) 40 V, V(CEO) 25 V, V(EBO) 6 V, IC 1.5 A,
+//! PC 300 mW, hFE 120 to 400 at VCE = 1 V and IC = 100 mA, VCE(sat) at most 0.5 V at IC = 800
+//! mA and IB = 80 mA. There is no standard bipolar transistor to provide.
+
+/// The SS8050, a 25 V, 1.5 A NPN transistor in a SOT-23 package. Pad 1 is the base, pad 2 the
+/// emitter and pad 3 the collector.
+part Ss8050 {
+    .designator &= "Q"
+
+    pins "SOT-23" {
+        //  pin       kind     name  pads
+        .base      passive  "B"   "1"
+        .emitter   passive  "E"   "2"
+        .collector passive  "C"   "3"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog ss8050 by .mpn { .mpn, .package }
+}

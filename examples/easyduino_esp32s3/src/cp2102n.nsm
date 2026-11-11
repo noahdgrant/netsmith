@@ -1,0 +1,74 @@
+//! The CP2102N USB to UART bridge, Silicon Labs (now Skyworks), in the 28-pin QFN package
+//! (5 x 5 mm, 0.5 mm pitch, centre pad), orderable as CP2102N-A02-GQFN28: the U3 of the
+//! Easyduino ESP32-S3 board.
+//!
+//! The pin table was WRITTEN BY HAND from Silicon Labs' "CP2102N Data Sheet", Rev. 1.5 (48
+//! pages; the revision history on printed page 46 lists revision 1.0 of May 2016 and the PDF's
+//! creation date is 2020-11-13), the copy that LCSC links for C1550553, fetched on 2026-11-10
+//! (<https://datasheet.lcsc.com/datasheet/pdf/11ab89ca3026e9cb7cc85ffe9557abff.pdf>, SHA-256
+//! `70ea7a01045c`): Figure 5.1 "CP2102N QFN28 Pinout" and Table 5.1 "Pin Definitions for
+//! CP2102N QFN28" (printed pages 27 and 28) for the pad numbers, names and descriptions;
+//! printed page 12's Table 3.3 note 1 for the reset pin (it is driven low during reset events).
+//! The datasheet is copyrighted (Silicon Laboratories): only facts are taken here (numbers,
+//! names, kinds).
+//!
+//! The kinds follow the descriptions of Table 5.1: "Digital Input" is `input`, "Digital
+//! Output" is `output`, "Digital Input/Output" and the USB data pair are `bidirectional`.
+//! Two pads say two things: pad 2 is the ring indicator input or the clock output (`RI/CLK`)
+//! and is `bidirectional`; the general purpose pads 16 to 19 are inputs or outputs and have a
+//! second function each, and are `bidirectional` too. The reset pin RSTb is read as an input
+//! that the part also drives low during reset, so it is `bidirectional`. `VDD` is "Supply
+//! Power Input / 5V Regulator Output" and `VREGIN` the regulator's input: both are `power`.
+//! `VBUS` is "Digital Input. VBUS Sense Input": an `input`. Pad 10 is "No Connect (leave this
+//! pin floating)". The centre pad is "GND"; its number, 29, is the one the generator's
+//! footprint gives it (and Easyduino's board).
+//!
+//! What is deliberately left out: levels, ratings and timing (the part is a boundary of the
+//! design: the checks that need a number are listed as not evaluated, among them the supply
+//! range, the 5 V regulator and the USB transceiver's figures), the other packages (QFN24 and
+//! QFN20 number the pads differently) and the other ordering variants (the part's name ends in
+//! the hardware revision A02, the grade G and, for tape and reel, R).
+
+/// The CP2102N: a USB 2.0 full-speed function controller with an on-chip 5 V to 3.3 V
+/// regulator, a USB transceiver, an oscillator and a UART with the modem control lines, in the
+/// QFN28 package. The pin names are the datasheet's, with `b` for its overbar (`RSTb`,
+/// `SUSPENDb`).
+part Cp2102n {
+    .designator &= "U"
+
+    pins "QFN-28-EP(5x5)" {
+        //  pin       kind           name            pads
+        .dcd      input          "DCD"           "1"
+        .ri_clk   bidirectional  "RI/CLK"        "2"
+        .gnd      power          "GND"           "3" "29"
+        .dp       bidirectional  "D+"            "4"
+        .dm       bidirectional  "D-"            "5"
+        .vdd      power          "VDD"           "6"
+        .vregin   power          "VREGIN"        "7"
+        .vbus     input          "VBUS"          "8"
+        .rstb     bidirectional  "RSTb"          "9"
+        .nc       no_connect     "NC"            "10"
+        .suspendb output         "SUSPENDb"      "11"
+        .suspend  output         "SUSPEND"       "12"
+        .chren    output         "CHREN"         "13"
+        .chr1     output         "CHR1"          "14"
+        .chr0     output         "CHR0"          "15"
+        .gpio3    bidirectional  "GPIO.3/WAKEUP" "16"
+        .gpio2    bidirectional  "GPIO.2/RS485"  "17"
+        .gpio1    bidirectional  "GPIO.1/RXT"    "18"
+        .gpio0    bidirectional  "GPIO.0/TXT"    "19"
+        .gpio6    bidirectional  "GPIO.6"        "20"
+        .gpio5    bidirectional  "GPIO.5"        "21"
+        .gpio4    bidirectional  "GPIO.4"        "22"
+        .cts      input          "CTS"           "23"
+        .rts      output         "RTS"           "24"
+        .rxd      input          "RXD"           "25"
+        .txd      output         "TXD"           "26"
+        .dsr      input          "DSR"           "27"
+        .dtr      output         "DTR"           "28"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog cp2102n by .mpn { .mpn, .package }
+}
