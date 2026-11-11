@@ -20,6 +20,23 @@
 //! - outer copper on 2 layers: 1, 2, 2.5, 3.5 or 4.5 oz. Track and space limits are given
 //!   per weight, so `TwoLayer` is the 1 oz process.
 //!
+//! - the rules added on 2026-11-11 from the same page, re-read that day (issue #431): a via 0.1 mm
+//!   (0.15 mm preferred) wider than its hole; via hole to track 0.2 mm, NPTH to track 0.2 mm, PTH
+//!   to track 0.28 mm (0.35 mm recommended); SMD pad to pad, different nets, 0.15 mm; 0.09 mm
+//!   between a soldermask opening and a neighbouring trace; non-plated holes at least 0.5 mm,
+//!   plated slots 0.5 mm on 2 layers and 0.35 mm on more, non-plated slots 1.0 mm; and that a
+//!   hole of 0.1 or 0.15 mm, or of 0.2 or 0.25 mm in a via under 0.45 mm, "will cost more"
+//!   (the via the router draws, `.via_drill` and `.via_diameter`)
+//!
+//! Rules of the page that no field states, and why (issue #431): "BGA pad to trace 0.09 mm"
+//! (local; the 0.1 mm space is stated); "minimum SMD pad 0.25 x 0.25 mm" (a footprint is the
+//! part's land pattern, and parts JLCPCB assembles have narrower pads, such as 0.4 mm pitch
+//! QFNs, so a refusal would refuse boards JLCPCB makes); "same-net track spacing 0.25 mm" (the
+//! page does not say what it measures); coils, hatched grids, castellated holes, plugged vias
+//! and blind slots (netsmith draws none of them); the hole size, hole position and track width
+//! tolerances (not a distance on the board: the width tolerance is a margin for the current,
+//! issue #431); and the rules of copper heavier than 1 oz (issue #431, step S1b).
+//!
 //! - vias in pads: the page lists "epoxy filled and capped" vias of 0.15 mm to 0.55 mm, which
 //!   is what lets a via sit in a pad ("vias can be placed within BGA pads using filled and
 //!   plated-over vias"); a soldermask-plugged via is not one, because it needs no mask
@@ -58,12 +75,16 @@ interface TwoLayer {
     /// The smallest copper disc of a via.
     .min_via_diameter: Length
     .min_via_diameter &= 0.25mm..1m
-    /// The least copper left round a drilled hole.
+    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
+    /// `.min_via_ring`.
     .min_annular_ring: Length
     .min_annular_ring &= 0.18mm..1m
-    /// The least space between the edges of two holes.
+    /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
+    /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
     .min_hole_to_hole: Length
     .min_hole_to_hole &= 0.45mm..1m
+    .min_via_hole_to_hole: Length
+    .min_via_hole_to_hole &= 0.2mm..1m
     /// The least space between copper and a routed board edge.
     .min_edge_clearance: Length
     .min_edge_clearance &= 0.2mm..1m
@@ -79,6 +100,45 @@ interface TwoLayer {
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..1m
+    /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
+    /// mm preferred) larger than via hole size", half of it on each side (issue #431).
+    .min_via_ring: Length
+    .min_via_ring &= 0.05mm..1m
+    /// The least space from the edge of a via's hole or a non-plated hole to a track of another
+    /// net: the page's "via hole to track" and "NPTH to track", 0.2 mm each.
+    .min_hole_clearance: Length
+    .min_hole_clearance &= 0.2mm..1m
+    /// The least space from a plated pad's hole to a track of another net: "PTH to track
+    /// 0.28 mm, 0.35 mm is recommended".
+    .min_plated_hole_clearance: Length
+    .min_plated_hole_clearance &= 0.28mm..1m
+    /// The least space between surface-mount pads of different nets: "SMD pad to pad
+    /// clearance (different nets) 0.15 mm".
+    .min_pad_to_pad: Length
+    .min_pad_to_pad &= 0.15mm..1m
+    /// The least space between a solder mask opening and a track of another net: "keep at
+    /// least 0.09 mm clearance between soldermask openings and neighboring traces".
+    .min_mask_to_track: Length
+    .min_mask_to_track &= 0.09mm..1m
+    /// The smallest non-plated hole ("min. non-plated holes 0.50 mm"), the narrowest plated
+    /// slot ("2-layer: 0.5 mm, multi-layer: 0.35 mm") and the narrowest non-plated slot
+    /// ("1.0 mm").
+    .min_npth_drill: Length
+    .min_npth_drill &= 0.5mm..1m
+    .min_plated_slot: Length
+    .min_plated_slot &= 0.5mm..1m
+    .min_npth_slot: Length
+    .min_npth_slot &= 1mm..1m
+    /// The via the router draws, its hole and its copper: an offer the board may replace
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.25 mm in a 0.45 mm
+    /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
+    /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
+    /// less than 0.45 mm, will cost more", and its copper is 0.2 mm wider than its hole, more
+    /// than the 0.15 mm the page prefers.
+    .via_drill: Length
+    .via_drill ?= 0.25mm
+    .via_diameter: Length
+    .via_diameter ?= 0.45mm
     /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
     /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
     /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
@@ -171,12 +231,16 @@ interface FourLayer {
     /// The smallest copper disc of a via.
     .min_via_diameter: Length
     .min_via_diameter &= 0.25mm..1m
-    /// The least copper left round a drilled hole.
+    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
+    /// `.min_via_ring`.
     .min_annular_ring: Length
     .min_annular_ring &= 0.15mm..1m
-    /// The least space between the edges of two holes.
+    /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
+    /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
     .min_hole_to_hole: Length
     .min_hole_to_hole &= 0.45mm..1m
+    .min_via_hole_to_hole: Length
+    .min_via_hole_to_hole &= 0.2mm..1m
     /// The least space between copper and a routed board edge.
     .min_edge_clearance: Length
     .min_edge_clearance &= 0.2mm..1m
@@ -196,6 +260,45 @@ interface FourLayer {
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..1m
+    /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
+    /// mm preferred) larger than via hole size", half of it on each side (issue #431).
+    .min_via_ring: Length
+    .min_via_ring &= 0.05mm..1m
+    /// The least space from the edge of a via's hole or a non-plated hole to a track of another
+    /// net: the page's "via hole to track" and "NPTH to track", 0.2 mm each.
+    .min_hole_clearance: Length
+    .min_hole_clearance &= 0.2mm..1m
+    /// The least space from a plated pad's hole to a track of another net: "PTH to track
+    /// 0.28 mm, 0.35 mm is recommended".
+    .min_plated_hole_clearance: Length
+    .min_plated_hole_clearance &= 0.28mm..1m
+    /// The least space between surface-mount pads of different nets: "SMD pad to pad
+    /// clearance (different nets) 0.15 mm".
+    .min_pad_to_pad: Length
+    .min_pad_to_pad &= 0.15mm..1m
+    /// The least space between a solder mask opening and a track of another net: "keep at
+    /// least 0.09 mm clearance between soldermask openings and neighboring traces".
+    .min_mask_to_track: Length
+    .min_mask_to_track &= 0.09mm..1m
+    /// The smallest non-plated hole ("min. non-plated holes 0.50 mm"), the narrowest plated
+    /// slot ("2-layer: 0.5 mm, multi-layer: 0.35 mm") and the narrowest non-plated slot
+    /// ("1.0 mm").
+    .min_npth_drill: Length
+    .min_npth_drill &= 0.5mm..1m
+    .min_plated_slot: Length
+    .min_plated_slot &= 0.35mm..1m
+    .min_npth_slot: Length
+    .min_npth_slot &= 1mm..1m
+    /// The via the router draws, its hole and its copper: an offer the board may replace
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.25 mm in a 0.45 mm
+    /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
+    /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
+    /// less than 0.45 mm, will cost more", and its copper is 0.2 mm wider than its hole, more
+    /// than the 0.15 mm the page prefers.
+    .via_drill: Length
+    .via_drill ?= 0.25mm
+    .via_diameter: Length
+    .via_diameter ?= 0.45mm
     /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
     /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
     /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to

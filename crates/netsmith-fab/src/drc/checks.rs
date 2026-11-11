@@ -52,9 +52,10 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     mask_bridges(&mut out);
     rule_areas(&mut out);
     via_in_pad(&mut out);
+    super::fab_rules::run(&mut out);
 }
 
-fn same_net(a: &Option<String>, b: &Option<String>) -> bool {
+pub(crate) fn same_net(a: &Option<String>, b: &Option<String>) -> bool {
     match (a, b) {
         (Some(x), Some(y)) => x == y,
         (None, None) => true,
@@ -233,7 +234,7 @@ fn sizes(out: &mut Out<'_>) {
 }
 
 /// The copper left between a hole and the edge of the pad round it, the least all round.
-fn ring_width(copper: &[Shape], hole: &Shape) -> f64 {
+pub(crate) fn ring_width(copper: &[Shape], hole: &Shape) -> f64 {
     // How far inside the pad's copper a point is: the distance to its edge, or negative
     // outside.
     let depth = |p: Pt| -> f64 {

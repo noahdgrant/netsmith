@@ -23,14 +23,31 @@ pub struct Rules {
     /// The copper of the vias the router places, and their drill.
     pub via_diameter: f64,
     pub via_drill: f64,
+    /// The smallest copper disc of a via the process makes, which the check holds every via to.
+    pub min_via_diameter: f64,
     /// The smallest drilled hole.
     pub min_through_hole: f64,
-    /// The least space between the edges of two holes.
+    /// The least space between the edges of two holes when one is a pad's, and between two
+    /// vias' holes.
     pub hole_to_hole: f64,
+    pub via_hole_to_hole: f64,
     /// The least space between copper and the board edge.
     pub copper_to_edge: f64,
-    /// The least copper ring left round a via's drill.
+    /// The least copper ring left round a plated pad's hole, and round a via's hole.
     pub min_annular_ring: f64,
+    pub via_ring: f64,
+    /// The least space from the edge of a via's or a non-plated hole to a track of another net,
+    /// and from a plated pad's hole (issue #431).
+    pub hole_clearance: f64,
+    pub plated_hole_clearance: f64,
+    /// The least space between surface-mount pads of different nets.
+    pub pad_to_pad: f64,
+    /// The least space between a solder mask opening and a track of another net.
+    pub mask_to_track: f64,
+    /// The smallest non-plated hole, and the narrowest plated and non-plated slot.
+    pub npth_drill: f64,
+    pub plated_slot: f64,
+    pub npth_slot: f64,
     /// The smallest silkscreen text, and its thinnest stroke.
     pub min_text_height: f64,
     pub min_text_thickness: f64,
@@ -92,19 +109,39 @@ impl Rules {
                 ));
             }
         };
-        let via_drill = process.min_drill;
-        let ring_diameter = via_drill + 2.0 * process.min_annular_ring;
-        let via_diameter = process.min_via_diameter.max(round(ring_diameter));
+        // The via is the process's (a default the board may replace, issue #431), and must meet
+        // its own rules.
+        let (via_drill, via_diameter) = (process.via_drill, process.via_diameter);
+        let ring = (via_diameter - via_drill) / 2.0;
+        if via_drill < process.min_drill - 1e-9
+            || via_diameter < process.min_via_diameter - 1e-9
+            || ring < process.min_via_ring - 1e-9
+        {
+            return Err(format!(
+                "the via of `{}` is {via_diameter} mm with a {via_drill} mm hole, but the process makes a hole of at least {} mm, a via of at least {} mm and {} mm of copper round its hole: widen `.process.via_diameter` or `.process.via_drill`",
+                process.name, process.min_drill, process.min_via_diameter, process.min_via_ring
+            ));
+        }
         Ok(Rules {
             clearance: process.min_clearance,
             min_track_width: process.min_track,
             track_width: process.min_track,
             via_diameter,
+            min_via_diameter: process.min_via_diameter,
             via_drill,
             min_through_hole: process.min_drill,
             hole_to_hole: process.min_hole_to_hole,
+            via_hole_to_hole: process.min_via_hole_to_hole,
             copper_to_edge: process.min_edge_clearance,
             min_annular_ring: process.min_annular_ring,
+            via_ring: process.min_via_ring,
+            hole_clearance: process.min_hole_clearance,
+            plated_hole_clearance: process.min_plated_hole_clearance,
+            pad_to_pad: process.min_pad_to_pad,
+            mask_to_track: process.min_mask_to_track,
+            npth_drill: process.min_npth_drill,
+            plated_slot: process.min_plated_slot,
+            npth_slot: process.min_npth_slot,
             min_text_height: process.min_text_height,
             min_text_thickness: process.min_silk_width,
             silk_to_pad: process.min_silk_to_pad,
@@ -224,14 +261,14 @@ impl Rules {
                                 ("min_clearance", N(self.clearance)),
                                 ("min_copper_edge_clearance", N(self.copper_to_edge)),
                                 ("min_hole_clearance", N(self.clearance)),
-                                ("min_hole_to_hole", N(self.hole_to_hole)),
+                                ("min_hole_to_hole", N(self.via_hole_to_hole)),
                                 ("min_silk_clearance", N(self.silk_to_pad)),
                                 ("min_text_height", N(self.min_text_height)),
                                 ("min_text_thickness", N(self.min_text_thickness)),
                                 ("min_through_hole_diameter", N(self.min_through_hole)),
                                 ("min_track_width", N(self.min_track_width)),
-                                ("min_via_annular_width", N(self.min_annular_ring)),
-                                ("min_via_diameter", N(self.via_diameter)),
+                                ("min_via_annular_width", N(self.via_ring)),
+                                ("min_via_diameter", N(self.min_via_diameter)),
                             ]),
                         ),
                         ("rule_severities", o(severities)),
@@ -263,11 +300,6 @@ impl Rules {
         out.push('\n');
         out
     }
-}
-
-/// A length rounded to a nanometre, so sums of millimetre values print as written.
-fn round(mm: f64) -> f64 {
-    (mm * 1e6).round() / 1e6
 }
 
 /// Just enough JSON to write a project file.
@@ -395,9 +427,12 @@ mod tests {
             (r.clearance, r.min_track_width, r.track_width),
             (0.1, 0.1, 0.1)
         );
-        assert_eq!((r.via_drill, r.min_through_hole), (0.15, 0.15));
+        assert_eq!((r.via_drill, r.min_through_hole), (0.25, 0.15));
         assert_eq!((r.hole_to_hole, r.copper_to_edge), (0.45, 0.2));
-        assert_eq!(r.min_annular_ring, 0.18);
+        assert_eq!((r.min_annular_ring, r.via_ring), (0.18, 0.05));
+        assert_eq!((r.hole_clearance, r.plated_hole_clearance), (0.2, 0.28));
+        assert_eq!((r.pad_to_pad, r.mask_to_track), (0.15, 0.09));
+        assert_eq!((r.npth_drill, r.plated_slot, r.npth_slot), (0.5, 0.5, 1.0));
         assert_eq!((r.min_text_height, r.min_text_thickness), (1.0, 0.15));
         assert_eq!(r.silk_to_pad, 0.15);
     }
@@ -407,18 +442,32 @@ mod tests {
         assert!(rules().via_in_pad);
         let no = Rules::for_process(&process_from(&[".via_in_pad &= 0mm"])).unwrap();
         assert!(!no.via_in_pad);
-        // The router's via is 0.51 mm wide on this process: a limit under it is none.
+        // The router's via is 0.45 mm wide on this process: a limit under it is none.
         let narrow = Rules::for_process(&process_from(&[".via_in_pad &= 0mm..0.4mm"])).unwrap();
         assert!(!narrow.via_in_pad);
     }
 
     #[test]
-    fn a_via_keeps_its_ring_round_the_drill() {
+    fn the_via_is_the_smallest_at_the_standard_price_and_keeps_its_hole_clear() {
         let r = rules();
-        // A 0.15 mm drill with 0.18 mm of copper each side is wider than the 0.25 mm via.
-        assert_eq!(r.via_diameter, 0.51);
-        assert!(((r.via_diameter - r.via_drill) / 2.0 - r.min_annular_ring).abs() < 1e-9);
+        // 0.25 mm in 0.45 mm: JLCPCB charges more for a smaller hole or a narrower via.
+        assert_eq!((r.via_drill, r.via_diameter), (0.25, 0.45));
+        // Its copper and the clearance keep a track the page's 0.2 mm from its hole.
+        assert!((r.via_diameter - r.via_drill) / 2.0 + r.clearance >= r.hole_clearance - 1e-9);
         assert!(r.track_width >= r.min_track_width);
+    }
+
+    #[test]
+    fn a_board_may_choose_another_via_and_the_process_refuses_one_it_cannot_make() {
+        let wide = Rules::for_process(&process_from(&[
+            ".via_drill &= 0.3mm",
+            ".via_diameter &= 0.6mm",
+        ]))
+        .unwrap();
+        assert_eq!((wide.via_drill, wide.via_diameter), (0.3, 0.6));
+        let thin = process_from(&[".via_drill &= 0.3mm", ".via_diameter &= 0.35mm"]);
+        let err = Rules::for_process(&thin).unwrap_err();
+        assert!(err.contains("0.05 mm of copper round its hole"), "{err}");
     }
 
     #[test]
@@ -426,12 +475,10 @@ mod tests {
         let tight = Rules::for_process(&process_from(&[
             ".min_track &= 0.15mm..1m",
             ".min_clearance &= 0.2mm..1m",
-            ".min_via_diameter &= 0.8mm..1m",
         ]))
         .unwrap();
         assert_eq!((tight.min_track_width, tight.track_width), (0.15, 0.15));
         assert_eq!(tight.clearance, 0.2);
-        assert_eq!(tight.via_diameter, 0.8);
         assert_eq!(
             tight.copper_to_edge, 0.2,
             "what was not narrowed is unchanged"
@@ -463,9 +510,8 @@ mod tests {
         let r = Rules::for_process(&four_layer_process(&[])).unwrap();
         assert_eq!((r.min_track_width, r.track_width), (0.09, 0.09));
         assert_eq!(r.clearance, 0.1);
-        assert_eq!((r.via_drill, r.min_annular_ring), (0.15, 0.15));
-        // A 0.15 mm drill with 0.15 mm of copper each side is wider than the 0.25 mm via.
-        assert_eq!(r.via_diameter, 0.45);
+        assert_eq!((r.via_drill, r.min_annular_ring), (0.25, 0.15));
+        assert_eq!((r.via_diameter, r.plated_slot), (0.45, 0.35));
         assert_eq!(
             r.plane_clearance, 0.3,
             "the inner layer hole space is the larger"
@@ -484,11 +530,11 @@ mod tests {
         for line in [
             r#""min_clearance": 0.1"#,
             r#""min_copper_edge_clearance": 0.2"#,
-            r#""min_hole_to_hole": 0.45"#,
+            r#""min_hole_to_hole": 0.2"#,
             r#""min_through_hole_diameter": 0.15"#,
             r#""min_track_width": 0.1"#,
-            r#""min_via_annular_width": 0.18"#,
-            r#""min_via_diameter": 0.51"#,
+            r#""min_via_annular_width": 0.05"#,
+            r#""min_via_diameter": 0.25"#,
             r#""min_text_height": 1"#,
             r#""min_text_thickness": 0.15"#,
             r#""silk_over_copper": "warning""#,

@@ -967,7 +967,7 @@ fn stitching_vias_join_the_pours_to_the_ground_plane_on_a_grid() {
     for (i, a) in b.vias.iter().enumerate() {
         for c in &b.vias[i + 1..] {
             assert!(
-                a.at.distance(c.at) >= rules.hole_to_hole + rules.via_drill - 1e-9,
+                a.at.distance(c.at) >= rules.via_hole_to_hole + rules.via_drill - 1e-9,
                 "{a:?} {c:?}"
             );
         }
