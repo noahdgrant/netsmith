@@ -1,0 +1,104 @@
+//! The physical file of ORBIT: what must be where for the board to be interchangeable with
+//! mohamedboubaker's ORBIT (MIT, Copyright (c) 2023 mohamedboubaker; see `README.md` and
+//! `LICENSE`): the outline, the four mounting holes, the USB and battery connectors, the two
+//! pin headers, the two buttons and the two slide switches.
+//!
+//! Every number is read from their board file (`reference/ORBIT.kicad_pcb`, tabulated in
+//! `reference/placements.toml`) and is written here from the board's own corner, the
+//! upper-left corner of the outline (x 124, y 70 in their file), with y growing downward.
+//! A requirement is measured from the BODY of a part (the outline its footprint draws on
+//! `F.Fab`, else its courtyard) and not from the footprint's origin, which is what the parity
+//! checker compares; where the two differ, the comment says so and gives the origin's place
+//! in their file.
+//!
+//! The parts that need not match (the ICs, the crystal, the inductor, the LEDs, the resistors
+//! and the capacitors) have no line here: the placer puts them.
+
+import std::parts::mechanical::MountingHole
+import std::pcb::Outline
+
+physical for Orbit {
+    case {
+        // The outline: 50 x 50 mm (x 124 to 174, y 70 to 120 in their file) with 5 mm corner
+        // arcs.
+        .outline: Outline {
+            .width &= 50mm
+            .height &= 50mm
+            .corner_radius &= 5mm
+        }
+
+        // Their H1 to H4 are KiCad's `MountingHole_*_Pad_Via`: a plated drilled pad (5 mm
+        // around a 2.5 mm drill, 4.4 mm around the M2 one's 2.2 mm) with a ring of eight 0.8 mm
+        // vias. These are `PlatedHole`s with the drilled pad alone: three of the project's
+        // row `M2.5` (`kicad.toml`) and the standard M2 one for H3. The ring of vias is not
+        // required to match and is not drawn.
+        .hole1: MountingHole { .package &= "M2.5-plated" }
+        .hole2: MountingHole { .package &= "M2.5-plated" }
+        .hole3: MountingHole { .package &= "M2-plated" }
+        .hole4: MountingHole { .package &= "M2.5-plated" }
+    }
+
+    // Their H1 at (170, 74), H2 at (128, 74), H3 at (128, 116) and H4 at (170, 116). The
+    // courtyard of each footprint is centred on its origin.
+    .hole1.place.x &= 46mm
+    .hole1.place.y &= 4mm
+    .hole2.place.x &= 4mm
+    .hole2.place.y &= 4mm
+    .hole3.place.x &= 4mm
+    .hole3.place.y &= 46mm
+    .hole4.place.x &= 46mm
+    .hole4.place.y &= 46mm
+
+    // USB1, the mini USB receptacle: their USB1 is at (149, 75) turned 180 degrees. The
+    // body is the courtyard, x -5.7 to 5.7 and y -4.3 to 4.2 of the footprint, so its centre is
+    // 0.05 mm above the origin of the footprint and, turned half a turn, 0.05 mm below the origin:
+    // (149, 75.05).
+    .usb.place.x &= 25mm
+    .usb.place.y &= 5.05mm
+    .usb.place.rotation &= 180
+    .usb.place.side &= "top"
+
+    // BAT1, the JST PH battery connector: their BAT1 is at (161, 75.5), not turned. The body
+    // is the courtyard, x -4.6 to 4.6 and y -3.5 to 3.6, so its centre is 0.05 mm below the
+    // origin: (161, 75.55).
+    .battery.place.x &= 37mm
+    .battery.place.y &= 5.55mm
+    .battery.place.rotation &= 0
+    .battery.place.side &= "top"
+
+    // J1 and J2, the 1 x 8 headers: their J1 is at (126.5, 92) and J2 at (171.5, 92), not turned,
+    // the origin at pin 1. The body (`F.Fab`) is x -1.27 to 1.27 and y -1.27 to 19.05 of the
+    // footprint: its centre is 8.89 mm below the origin, at (126.5, 100.89) and (171.5, 100.89).
+    .header_west.place.x &= 2.5mm
+    .header_west.place.y &= 30.89mm
+    .header_west.place.rotation &= 0
+    .header_west.place.side &= "top"
+    .header_east.place.x &= 47.5mm
+    .header_east.place.y &= 30.89mm
+    .header_east.place.rotation &= 0
+    .header_east.place.side &= "top"
+
+    // BOOT0 at (127.125, 82.5) and PWR1 at (170.875, 82.5), the two slide switches, turned
+    // 180 and 0 degrees. The body is the courtyard, x -3.5 to 3.0 and y -4.6 to 4.6, so its
+    // centre is 0.25 mm left of the origin: turned half a turn BOOT0's is 0.25 mm right of
+    // it, (127.375, 82.5); PWR1's is (170.625, 82.5).
+    .boot_switch.place.x &= 3.375mm
+    .boot_switch.place.y &= 12.5mm
+    .boot_switch.place.rotation &= 180
+    .boot_switch.place.side &= "top"
+    .power_switch.place.x &= 46.625mm
+    .power_switch.place.y &= 12.5mm
+    .power_switch.place.rotation &= 0
+    .power_switch.place.side &= "top"
+
+    // SW1 (RESET) at (161.5, 114.5), not turned, and SW2 (USER) at (136.5, 114.5) turned 180.
+    // The courtyard is centred on the origin (x -4.6 to 4.6, y -2.8 to 2.8).
+    .reset_button.place.x &= 37.5mm
+    .reset_button.place.y &= 44.5mm
+    .reset_button.place.rotation &= 0
+    .reset_button.place.side &= "top"
+    .user_button.place.x &= 12.5mm
+    .user_button.place.y &= 44.5mm
+    .user_button.place.rotation &= 180
+    .user_button.place.side &= "top"
+}

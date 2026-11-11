@@ -2,7 +2,7 @@
 //! mohamedboubaker; see `README.md` and `LICENSE`), an STM32F030 board that runs from a
 //! battery, charges it from USB and is programmed over USB through a CP2102, written in
 //! netsmith. The circuit only: the outline, the mounting holes and the places of the
-//! connectors, switches and buttons are for the physical file (a later stage).
+//! connectors, switches and buttons are in the physical file, `main.physical.nsm`.
 //!
 //! Its nets are theirs, and the proof is the test
 //! `every_pad_has_the_same_pads_on_its_net_as_in_orbits_board` (`crates/netsmith/tests/orbit.rs`,
@@ -141,10 +141,13 @@ board Orbit {
     /// BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1
     /// on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.
     .boot_switch: HroK3_1270 { .mpn &= "K3-1270S-F2" }
-    /// R2.
-    .boot_pulldown: PullDown { .resistance &= 10kohm +/- 1%; .package &= "0603" }
-    .boot_pulldown.reference ~ .v3v3
-    .boot_pulldown.line ~ .boot_switch.a
+    /// R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its
+    /// pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a
+    /// `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of
+    /// R2's pad 2 in ORBIT's board, and the parity checker compares the pad.
+    .boot_pulldown: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0603" }
+    .boot_pulldown.a ~ .vbus.neg
+    .boot_pulldown.b ~ .boot_switch.a
     .boot_switch.b ~ .v3v3.pos
     .boot_switch.com ~ .mcu.boot0
 

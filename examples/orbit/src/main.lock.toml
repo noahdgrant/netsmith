@@ -10,7 +10,7 @@ row = "B2B-PH-SM4-TB(LF)(SN)"
 lcsc = "C160352"
 mpn = "B2B-PH-SM4-TB(LF)(SN)"
 
-[Orbit.parts."boot_pulldown.resistor"]
+[Orbit.parts."boot_pulldown"]
 catalog = "resistor"
 row = "10kΩ 1% 0603 C25804"
 lcsc = "C25804"

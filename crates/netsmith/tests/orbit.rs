@@ -1959,7 +1959,7 @@ mod board {
         ("D2", "led1"),
         ("D3", "led2"),
         ("R1", "charger.status_resistor"),
-        ("R2", "boot_pulldown.resistor"),
+        ("R2", "boot_pulldown"),
         ("R3", "charger.rprog"),
         ("R4", "led1_resistor"),
         ("R5", "led2_resistor"),
@@ -1994,11 +1994,19 @@ mod board {
     /// are the physical file's (the logo `O` is no part of the netlist: it has no pad).
     const LEFT_OUT: [&str; 4] = ["H1", "H2", "H3", "H4"];
 
-    /// The resistors whose two pads are numbered the other way round in the design: a pull-down
-    /// (`PullDown`, whose resistor runs from the line to ground) and the two I2C pull-ups
-    /// (`I2cPullups`, from the supply to the line) put their resistor's pad 1 where ORBIT has
-    /// pad 2. The two pads of a resistor are interchangeable; the board's pads are the other way.
-    const SWAPPED: [&str; 3] = ["R2", "R9", "R10"];
+    /// The mounting holes of the physical file (`.hole1` to `.hole4`), as ORBIT's `H1` to `H4`.
+    const HOLE_PATHS: [(&str, &str); 4] = [
+        ("H1", "hole1"),
+        ("H2", "hole2"),
+        ("H3", "hole3"),
+        ("H4", "hole4"),
+    ];
+
+    /// The resistors whose two pads are numbered the other way round in the design: the two I2C
+    /// pull-ups (`I2cPullups`, from the supply to the line) put their resistor's pad 1 where ORBIT
+    /// has pad 2 (R2, once a `PullDown`, is a plain resistor joined as ORBIT's, for BOOT0's pad
+    /// 1). The two pads of a resistor are interchangeable; the board's pads are the other way.
+    const SWAPPED: [&str; 2] = ["R9", "R10"];
 
     fn libraries() -> Libraries {
         let nowhere = testlib::TempDir::new("orbit-board-no-kicad");
@@ -2008,9 +2016,19 @@ mod board {
 
     fn built_from(text: &str) -> Result<netsmith::Built, String> {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
-        let source = &target.files[0];
+        built_named(&target.files[0].name, text)
+    }
+
+    /// A board of its own (a fixture) is built under another name than `main.nsm`, so that the
+    /// physical file beside `main.nsm`, which is the board `Orbit`'s, is not looked for it.
+    fn fixture_board(text: &str) -> Result<netsmith::Built, String> {
+        built_named("fixture.nsm", text)
+    }
+
+    fn built_named(name: &str, text: &str) -> Result<netsmith::Built, String> {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
         build_with(
-            &source.name,
+            name,
             text,
             &target.loader().unwrap(),
             &target.catalogs().unwrap(),
@@ -2181,6 +2199,7 @@ mod board {
             .iter()
             .map(|p| p.path.as_str())
             .filter(|path| !PARTS.iter().any(|(_, part)| part == path))
+            .filter(|path| !HOLE_PATHS.iter().any(|(_, hole)| hole == path))
             .collect();
         assert_eq!(own, Vec::<&str>::new(), "a part that is not ORBIT's");
         let reference = reference();
@@ -2204,9 +2223,52 @@ mod board {
         assert!(built.schematic.starts_with("(kicad_sch"));
     }
 
+    /// `reference/designators.toml` (the parity checker's map from ORBIT's references to the
+    /// references `fab` writes) says what the design says: designators come from the kind of a
+    /// part and the order of its declaration, so a part added to `src/main.nsm` ahead of another
+    /// renumbers it and this fails until the map is written again. Every one of the 48 parts of the
+    /// circuit is paired once, and nothing else is: the four holes of the physical file are judged
+    /// by the checker as holes, by place and drill, and the logo has no pad.
+    #[test]
+    fn the_parity_checkers_designator_map_is_the_designs_own() {
+        let built = built();
+        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let mut wrong = Vec::new();
+        for (reference, path) in PARTS {
+            let part = built
+                .design
+                .parts
+                .iter()
+                .find(|p| p.path == *path)
+                .unwrap_or_else(|| panic!("{reference}: the board has no part `{path}`"));
+            if map.get(reference) != Some(part.refdes.as_str()) {
+                wrong.push(format!(
+                    "{reference}: the map says {:?}, the design has {} (`{path}`)",
+                    map.get(reference),
+                    part.refdes
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+        assert_eq!(map.len(), PARTS.len());
+        // Each design part is the target of one entry only.
+        let mut targets: Vec<&str> = PARTS
+            .iter()
+            .map(|(reference, _)| map.get(reference).unwrap())
+            .collect();
+        targets.sort_unstable();
+        targets.dedup();
+        assert_eq!(
+            targets.len(),
+            map.len(),
+            "two parts of ORBIT's are one part"
+        );
+    }
+
     /// The proof: for every pad of every part of ORBIT's board, the set of the other pads on its
     /// net is the same as on the board's. It is made from the committed `.kicad_pcb` as a file
-    /// and the design's nets, with no `kicad-cli`. The three resistors of `SWAPPED` are read with
+    /// and the design's nets, with no `kicad-cli`. The two resistors of `SWAPPED` are read with
     /// their two pads exchanged (README, "Differences").
     #[test]
     fn every_pad_has_the_same_pads_on_its_net_as_in_orbits_board() {
@@ -2225,10 +2287,10 @@ mod board {
         );
     }
 
-    /// The exchange of the three resistors' pads is the only thing that stands between the
+    /// The exchange of the two resistors' pads is the only thing that stands between the
     /// board's pads and ORBIT's: read as they are, the differences are all on `SWAPPED`.
     #[test]
-    fn only_the_three_resistors_have_pads_numbered_the_other_way() {
+    fn only_the_two_resistors_have_pads_numbered_the_other_way() {
         let built = built();
         let to_reference = designators(&built);
         let ours = neighbours(&design_netlist(&built), &to_reference, false);
@@ -2257,7 +2319,7 @@ mod board {
     fn netsmith_compare_says_the_nets_are_the_same() {
         let built = built();
         let to_reference = designators(&built);
-        let a = wiring_only(&design_netlist(&built), &to_reference, &[], true);
+        let a = wiring_only(&design_netlist(&built), &to_reference, &LEFT_OUT, true);
         let b = wiring_only(&reference(), &BTreeMap::new(), &LEFT_OUT, false);
         let pairs = to_reference
             .iter()
@@ -2415,6 +2477,8 @@ mod board {
                 by_hand.push(s.kind.as_str());
             }
         }
+        // The four mounting holes of the physical file are fitted by nobody and need no number.
+        by_hand.retain(|kind| *kind != "MountingHole");
         assert!(unsourced.is_empty(), "{}", unsourced.join(", "));
         assert_eq!(by_hand, ["Header1x8", "Header1x8"]);
     }
@@ -2597,8 +2661,8 @@ board DividerFixture {
     .vout.voltage == .ic.vref * (1 + .top.resistance / .bottom.resistance)
 }
 "#;
-        built_from(&fixture.replace("TOP", "560")).unwrap_or_else(|e| panic!("{e}"));
-        let error = built_from(&fixture.replace("TOP", "510"))
+        fixture_board(&fixture.replace("TOP", "560")).unwrap_or_else(|e| panic!("{e}"));
+        let error = fixture_board(&fixture.replace("TOP", "510"))
             .err()
             .expect("510 kohm gives 3.05 V");
         assert!(
@@ -2632,14 +2696,14 @@ board ProgrammingFixture {
     .ic.rprog == .r.resistance
 }
 "#;
-        let error = built_from(&fixture.replace("RVALUE", "2kohm"))
+        let error = fixture_board(&fixture.replace("RVALUE", "2kohm"))
             .err()
             .expect("2 kohm at 1% is 1.98 kohm at worst");
         assert!(
             error.contains("1.98kΩ..2.02kΩ is not always above 2kΩ"),
             "{error}"
         );
-        built_from(&fixture.replace("RVALUE", "2.2kohm")).unwrap_or_else(|e| panic!("{e}"));
+        fixture_board(&fixture.replace("RVALUE", "2.2kohm")).unwrap_or_else(|e| panic!("{e}"));
         // The board states the nominal value, which is ORBIT's and the part's least.
         assert!(
             read("src/charger.nsm").contains(".ic.rprog &= 2kohm"),
