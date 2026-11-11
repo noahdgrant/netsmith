@@ -34,6 +34,12 @@ pub fn scene(built: &Built, board: &Board) -> Scene {
     )
 }
 
+/// The scene of a placed board as a `.glb` file (`netsmith_pcb::gltf`), labelled as the report
+/// labels it: what `board3d --glb` writes and the editor's `GET /api/pcb/3d` serves.
+pub fn glb(built: &Built, board: &Board) -> Vec<u8> {
+    netsmith_pcb::gltf::glb(&scene(built, board), &built.label())
+}
+
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub schema: u32,
@@ -692,8 +698,9 @@ impl Report {
 }
 
 /// The report of one board of the source `text` (named `name`), placed with the layout file
-/// `layout` if it exists. `board` picks it by name or label (`system/member`); with none, the
-/// source must hold one board. The error is the message to print.
+/// `layout` if it exists, and the scene it was made from (for the `.glb` file). `board` picks it
+/// by name or label (`system/member`); with none, the source must hold one board. The error is
+/// the message to print.
 pub fn run(
     name: &str,
     text: &str,
@@ -702,7 +709,55 @@ pub fn run(
     libraries: &crate::Libraries,
     layout: Option<&std::path::Path>,
     board: Option<&str>,
-) -> Result<Report, String> {
+) -> Result<(Report, Scene), String> {
+    placed(
+        name,
+        text,
+        loader,
+        catalogs,
+        libraries,
+        layout,
+        board,
+        |built, board| {
+            let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
+            let scene = scene(built, board);
+            match report(built, &scene, &sourcing) {
+                Ok(report) => Ok((report, scene)),
+                Err(e) => Err(format!("error: {}: {e}\n", built.label())),
+            }
+        },
+    )
+    .and_then(|made| made)
+}
+
+/// The scene of one board, picked and placed as [`run`] does: what the rasterizer and the
+/// `.glb` writer draw.
+pub fn scene_of(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+) -> Result<Scene, String> {
+    placed(
+        name, text, loader, catalogs, libraries, layout, board, scene,
+    )
+}
+
+/// `then` of the board [`run`] picks, built and placed.
+#[allow(clippy::too_many_arguments)]
+fn placed<T>(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+    then: impl FnOnce(&Built, &Board) -> T,
+) -> Result<T, String> {
     let outcome = crate::outcome_with(name, text, loader, catalogs, Some(libraries))
         .map_err(|problems| crate::render_problems(&problems))?;
     let names: Vec<String> = outcome
@@ -749,6 +804,5 @@ pub fn run(
         crate::layout::PlaceFailure::Board(e) => fail(e.to_string()),
         crate::layout::PlaceFailure::Layout(e) => fail(e),
     })?;
-    let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
-    report(built, &scene(built, &board), &sourcing).map_err(fail)
+    Ok(then(built, &board))
 }

@@ -267,6 +267,9 @@ pub struct Footprint {
     pub mask_openings: Vec<Rect>,
     /// The file as read, which the `.kicad_pcb` writer copies from.
     pub source: Sexp,
+    /// What the generator that made the footprint knows of the package's shape, for the 3D
+    /// view ([`crate::body3d`]). `None` for a footprint read from a file. Nothing written reads it.
+    pub package: Option<crate::body3d::Package>,
 }
 
 impl Footprint {
@@ -424,6 +427,7 @@ impl Footprint {
             reference_size,
             mask_openings,
             source,
+            package: None,
         })
     }
 

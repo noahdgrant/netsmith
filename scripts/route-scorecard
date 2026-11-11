@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# The route scorecard (issue #431, step S0): routes the three ported boards with `netsmith fab`
+# twice each (the time of each run, and whether the two board files are byte for byte the same),
+# routes the invented `tight_board` and `mixed_board` of netsmith-pcb's tests for the seeds in
+# NETSMITH_SEEDS (default 0..1), and prints the scorecard (`netsmith_fab::score`) of every
+# board beside the hand-routed reference of each ported one.
+#
+# Usage: scripts/route-scorecard [out-dir]
+# The out-dir (default: a new temporary folder, kept) holds the fab packages, the board files of
+# the invented boards, `times.txt` and `scorecard.json`. It builds release binaries; set
+# NETSMITH_SKIP_INVENTED=1 to leave out the invented boards (their tests build netsmith-pcb's
+# test executable). Builds take turns through the lock file NETSMITH_LOCK (default
+# /tmp/netsmith-heavy.lock). Nothing in the repository is written.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+out="${1:-$(mktemp -d)}"
+mkdir -p "$out"
+out="$(cd "$out" && pwd)"
+build() { (cd "$repo" && flock "${NETSMITH_LOCK:-/tmp/netsmith-heavy.lock}" env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-3}" cargo "$@"); }
+
+build build --quiet --release -p netsmith --bin netsmith
+build build --quiet --release -p netsmith-fab --example route_score
+bin="$repo/target/release/netsmith"
+score="$repo/target/release/examples/route_score"
+
+: > "$out/times.txt"
+boards=()
+for example in rp2350_minimal orbit easyduino_esp32s3; do
+    for run in 1 2; do
+        dir="$out/$example-$run"
+        rm -rf "$dir"
+        start=$(date +%s.%N)
+        (cd "$repo/examples/$example" && "$bin" fab src/main.nsm --out "$dir" > "$dir.log" 2>&1) \
+            || echo "warning: fab of $example (run $run) failed, see $dir.log" >&2
+        end=$(date +%s.%N)
+        printf '%s run %s: %.1f s\n' "$example" "$run" "$(echo "$end - $start" | bc)" >> "$out/times.txt"
+    done
+    first=$(find "$out/$example-1" -name '*.kicad_pcb' | head -1)
+    second=$(find "$out/$example-2" -name '*.kicad_pcb' | head -1)
+    if [ -n "$first" ] && cmp -s "$first" "$second"; then
+        echo "$example: the two runs wrote the same board" >> "$out/times.txt"
+    else
+        echo "$example: the two runs wrote DIFFERENT boards" >> "$out/times.txt"
+    fi
+    reference=$(find "$repo/examples/$example/reference" -name '*.kicad_pcb' | head -1)
+    boards+=("$reference")
+    [ -n "$first" ] && boards+=("$first")
+done
+
+if [ -z "${NETSMITH_SKIP_INVENTED:-}" ]; then
+    for test in tight::measured mixed::measured; do
+        NETSMITH_SEEDS="${NETSMITH_SEEDS:-0..1}" NETSMITH_BOARD_OUT="$out/invented" \
+            build test --quiet --release -p netsmith-pcb --test main "$test" -- --ignored --nocapture \
+            2>> "$out/times.txt" || echo "warning: $test failed" >&2
+    done
+    while IFS= read -r f; do boards+=("$f"); done < <(find "$out/invented" -name '*.kicad_pcb' | sort)
+fi
+
+cat "$out/times.txt"
+"$score" "${boards[@]}"
+"$score" --json "${boards[@]}" > "$out/scorecard.json"
+echo "written to $out"

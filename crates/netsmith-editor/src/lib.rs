@@ -41,6 +41,8 @@ mod server;
 pub use assets::{
     bundle_hash, bundle_is_present, find as find_asset, git_describe, missing_bundle_message,
 };
-pub use backend::{AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Say, Work};
+pub use backend::{
+    AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Pcb3d, Say, Work,
+};
 pub use netsmith_core::job::Cancel;
 pub use server::{PENDING_HEADER, Server, serve, serve_with_backlog};

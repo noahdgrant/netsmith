@@ -609,6 +609,7 @@ fn measured() {
             },
         );
         let took = started.elapsed();
+        common::write_measured(&board, &format!("mixed-seed{seed}"));
         // What the routed copper breaks in the design rules check (an unrouted line is not one).
         let broken = drc_errors(&board)
             .iter()

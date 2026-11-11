@@ -9,13 +9,15 @@
 //! - [`compare`], [`compare_tolerant`] and [`diff_image`] compare two [`Image`]s drawn
 //!   on the same grid; [`Image::to_png`] writes one for a person to look at.
 //!
-//! Nothing here depends on a crate outside `std`.
+//! Nothing here depends on a crate outside `std` but `netsmith-core`, whose PNG writer
+//! ([`netsmith_core::png`]) writes the debug pictures.
 
 mod excellon;
 mod geom;
 mod gerber;
 mod macros;
-mod png;
+
+use netsmith_core::png;
 
 pub use excellon::{Hole, parse_excellon};
 pub use gerber::{gerber_extent, render_gerber};
@@ -316,8 +318,8 @@ pub fn diff_image(a: &Image, b: &Image) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::png::{adler32, crc32};
     use super::*;
+    use netsmith_core::png::{adler32, crc32};
 
     fn image(w: usize, h: usize, lit: &[(usize, usize)]) -> Image {
         let mut bits = vec![0; w * h];

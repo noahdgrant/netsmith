@@ -60,6 +60,7 @@ The fixture is `scripts/editor-verify-js/fixtures/constrained.nsm` with its phys
 ## Gotchas
 
 - The drawing the canvas gets is `PcbScene.svg` from `GET /api/pcb/scene?board=`, with the part boxes and pads beside it as data; `POST /api/pcb/edit` is the only way a position changes. Both are typed in `api.rs`.
+- `GET /api/pcb/3d?board=` is the same placement as glTF 2.0 binary (`model/gltf-binary`, the bytes `netsmith board3d --glb` writes for an unrouted board; contract in `docs/BOARD3D.md`), with the placement's layout stamp in `X-Netsmith-Layout-Stamp`, equal to `PcbScene.layoutStamp`. To check one by hand: `curl -s -o b.glb 'http://127.0.0.1:<port>/api/pcb/3d?board=<name>'`.
 - Recipes click where the scene says (`pcb-helpers.mjs` turns a board position into a window position with the drawing's `getScreenCTM`); a hover or a click that lands on the ratsnest or the reference text would miss the pad, so those layers have `pointer-events: none`.
 - Recipes name a part by its instance path (`PART` in `pcb-helpers.mjs`: `stage.output_cap`) and read its designator from the scene (`labelOf`), never write `C1` or `U7`: designators follow the kind of the part and the placer and have changed before. The placer also chooses the turn a part starts with, so a recipe checks a quarter turn against the turn it read, not against 0.
 - The server is the binary: after changing the page, `cargo build -p netsmith`, then `cleanup` and `launch` again, or the recipe drives the old page.

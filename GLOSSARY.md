@@ -171,6 +171,10 @@ _Avoid_: Lockfile (Cargo's word for a file of versions), solved-design file (a d
 One line on stderr for each stage of a run (`timing: solve LedExample 12.3 ms`), printed when the environment variable `NETSMITH_TIMINGS` is set to anything but empty or `0`, and nothing otherwise (`netsmith_core::timings`). A stage inside another (`solve.dc` in `solve`) is counted in the one around it. The numbers are wall time of one run, taken on whatever the machine was doing.
 _Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benchmark
 
+**Route scorecard**:
+The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::score`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length and the skew of diff pairs. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
+_Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placement), benchmark
+
 **Derived placement**:
 The placer's way of choosing where parts go: from the circuit alone, with nothing written in the source. It keeps the parts of a module instance together, puts a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, turns parts by right angles, and keeps reference text clear of other parts, all by simulated annealing with a seeded random generator (ADR 0033).
 _Avoid_: Autoplace, autorouter placement
@@ -655,6 +659,10 @@ _Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a pict
 **Scene**:
 The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it and netsmith's own rasterizer draws PNG renders of it (ADR 0105).
 _Avoid_: Model, mesh (a mesh is one piece of it), 3D export
+
+**Package shape**:
+The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). Another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.
+_Avoid_: 3D model (KiCad's or a maker's file), parametric model, mesh
 
 **Height preview**:
 A switch of the 3D view, labelled "preview at N mm", that stands the parts of unknown height up at N mm in the picture only. No check, finding, report, written file or the _Height coverage_ reads it (ADR 0105).
