@@ -502,25 +502,73 @@ fn outline_items(r: &Board, a: &Board, tol: &Tolerances, items: &mut Vec<Item>) 
     ));
 }
 
-fn hole_items(r: &Board, a: &Board, tol: &Tolerances, items: &mut Vec<Item>) {
+/// The id of each hole's item, in the order of `holes`: `hole <ref>` (`hole extra <ref>` with
+/// `extra`), and `hole <ref>#1`, `hole <ref>#2`, ... when one footprint has several holes (a
+/// connector with two pegs), numbered by the holes' places (top to bottom, then left to right),
+/// so that the ids are unique and do not depend on the order of the file's pads.
+fn hole_ids(holes: &[Hole], extra: bool) -> Vec<String> {
+    let prefix = if extra { "hole extra" } else { "hole" };
+    holes
+        .iter()
+        .enumerate()
+        .map(|(i, h)| {
+            let mut same: Vec<usize> = (0..holes.len())
+                .filter(|&j| holes[j].reference == h.reference)
+                .collect();
+            if same.len() == 1 {
+                return format!("{prefix} {}", h.reference);
+            }
+            same.sort_by(|&p, &q| {
+                holes[p]
+                    .y
+                    .total_cmp(&holes[q].y)
+                    .then(holes[p].x.total_cmp(&holes[q].x))
+            });
+            let n = same.iter().position(|&j| j == i).unwrap_or(0) + 1;
+            format!("{prefix} {}#{n}", h.reference)
+        })
+        .collect()
+}
+
+/// The board's hole that each hole of the reference is paired with (the nearest centre of those
+/// not taken yet, from the outline's corner of each), or `None` when the board has none left.
+fn pair_holes(r: &Board, a: &Board) -> Vec<Option<usize>> {
     let (rc, ac) = (corner(r), corner(a));
     let rel = |h: &Hole, c: (f64, f64)| (h.x - c.0, h.y - c.1);
     let mut used = vec![false; a.holes.len()];
-    for hole in &r.holes {
+    r.holes
+        .iter()
+        .map(|hole| {
+            let (hx, hy) = rel(hole, rc);
+            let nearest = a
+                .holes
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !used[*i])
+                .map(|(i, h)| {
+                    let (x, y) = rel(h, ac);
+                    (i, dist(x - hx, y - hy))
+                })
+                .min_by(|p, q| p.1.total_cmp(&q.1))
+                .map(|(i, _)| i);
+            if let Some(i) = nearest {
+                used[i] = true;
+            }
+            nearest
+        })
+        .collect()
+}
+
+fn hole_items(r: &Board, a: &Board, tol: &Tolerances, items: &mut Vec<Item>) {
+    let (rc, ac) = (corner(r), corner(a));
+    let rel = |h: &Hole, c: (f64, f64)| (h.x - c.0, h.y - c.1);
+    let ids = hole_ids(&r.holes, false);
+    let pairs = pair_holes(r, a);
+    let mut used = vec![false; a.holes.len()];
+    for ((hole, id), nearest) in r.holes.iter().zip(ids).zip(pairs) {
         let (hx, hy) = rel(hole, rc);
-        let nearest = a
-            .holes
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| !used[*i])
-            .map(|(i, h)| {
-                let (x, y) = rel(h, ac);
-                (i, dist(x - hx, y - hy))
-            })
-            .min_by(|p, q| p.1.total_cmp(&q.1));
-        let id = format!("hole {}", hole.reference);
         let item = Item::new(id, "position", &hole.reference, true).within(tol.hole);
-        let Some((i, _)) = nearest else {
+        let Some(i) = nearest else {
             items.push(
                 item.noting("the board has no hole to match this one")
                     .judge(false),
@@ -572,14 +620,17 @@ fn hole_items(r: &Board, a: &Board, tol: &Tolerances, items: &mut Vec<Item>) {
             && !net_wrong;
         items.push(item.noting(note).judge(good));
     }
-    for (_, h) in a.holes.iter().enumerate().filter(|(i, _)| !used[*i]) {
+    let extra_ids = hole_ids(&a.holes, true);
+    for (h, id) in a
+        .holes
+        .iter()
+        .zip(extra_ids)
+        .enumerate()
+        .filter(|(i, _)| !used[*i])
+        .map(|(_, p)| p)
+    {
         let (x, y) = rel(h, ac);
-        let mut item = Item::new(
-            format!("hole extra {}", h.reference),
-            "position",
-            &format!("extra {}", h.reference),
-            false,
-        );
+        let mut item = Item::new(id, "position", &format!("extra {}", h.reference), false);
         item.verdict = Verdict::Info;
         items.push(item.noting(format!(
             "a hole of the board at ({}, {}), drill {}, that the reference does not have",
@@ -1216,6 +1267,15 @@ fn overlay(rep: &ParityReport) -> String {
     );
 
     let failing: BTreeSet<&str> = rep.failures().map(|i| i.subject.as_str()).collect();
+    // Holes are in no designator map: a board's hole is red when the item of the reference's
+    // hole that it is paired with fails.
+    let failing_ids: BTreeSet<&str> = rep.failures().map(|i| i.id.as_str()).collect();
+    let failing_holes: BTreeSet<usize> = hole_ids(&r.holes, false)
+        .iter()
+        .zip(pair_holes(r, a))
+        .filter(|(id, _)| failing_ids.contains(id.as_str()))
+        .filter_map(|(_, i)| i)
+        .collect();
     for (board, c, color, tag) in [(r, rc, BLUE, "reference"), (a, ac, ORANGE, "board")] {
         let _ = writeln!(
             s,
@@ -1237,13 +1297,20 @@ fn overlay(rep: &ParityReport) -> String {
                 String::new()
             }
         );
-        for h in &board.holes {
+        for (i, h) in board.holes.iter().enumerate() {
+            let red = tag == "board" && failing_holes.contains(&i);
             let _ = writeln!(
                 s,
-                "<circle class=\"hole\" cx=\"{}\" cy=\"{}\" r=\"{}\"/>",
+                "<circle class=\"hole{}\" cx=\"{}\" cy=\"{}\" r=\"{}\"{}/>",
+                if red { " fail" } else { "" },
                 num(h.x - c.0),
                 num(h.y - c.1),
-                num(h.drill / 2.0)
+                num(h.drill / 2.0),
+                if red {
+                    format!(" stroke=\"{RED}\" stroke-width=\"0.2\"")
+                } else {
+                    String::new()
+                }
             );
         }
         for part in &board.parts {
@@ -1388,4 +1455,125 @@ fn pad_svg(part: &Part, pad: &Pad, c: (f64, f64)) -> String {
         num(x),
         num(y)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hole(reference: &str, x: f64, y: f64) -> Hole {
+        Hole {
+            reference: reference.to_string(),
+            x,
+            y,
+            drill: 1.0,
+            size: (1.0, 1.0),
+            net: None,
+            plated: false,
+        }
+    }
+
+    fn board(holes: Vec<Hole>) -> Board {
+        Board {
+            outline: Outline {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 50.0,
+                max_y: 30.0,
+                lines: 4,
+                radii: Vec::new(),
+            },
+            holes,
+            parts: Vec::new(),
+        }
+    }
+
+    fn report(reference: &Board, actual: &Board) -> ParityReport {
+        let map = DesignatorMap::identity(reference);
+        check(reference, actual, &map, &Tolerances::default())
+    }
+
+    fn red_circles(svg: &str) -> usize {
+        svg.lines()
+            .filter(|l| l.starts_with("<circle class=\"hole fail\"") && l.contains(RED))
+            .count()
+    }
+
+    /// A hole of the board that fails (here: 1 mm off its place) is drawn red, by the style a
+    /// failing part has; a hole that passes is not. Holes are in no designator map.
+    #[test]
+    fn a_failing_hole_is_red_in_the_overlay() {
+        let reference = board(vec![hole("H1", 5.0, 5.0), hole("H2", 45.0, 5.0)]);
+        let passing = board(vec![hole("H1", 5.0, 5.0), hole("H2", 45.0, 5.0)]);
+        let svg = report(&reference, &passing).overlay_svg();
+        assert_eq!(red_circles(&svg), 0, "{svg}");
+        assert!(!svg.contains("class=\"hole fail\""), "{svg}");
+
+        let moved = board(vec![hole("H1", 5.0, 5.0), hole("H2", 45.0, 6.0)]);
+        let rep = report(&reference, &moved);
+        assert_eq!(
+            rep.failures().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+            ["hole H2"]
+        );
+        let svg = rep.overlay_svg();
+        assert_eq!(red_circles(&svg), 1, "{svg}");
+        // The red one is the board's H2 (at y 6), and none of the reference's.
+        assert!(
+            svg.contains("<circle class=\"hole fail\" cx=\"45\" cy=\"6\""),
+            "{svg}"
+        );
+    }
+
+    /// A drill that is wrong also reddens the hole, whichever the failing field.
+    #[test]
+    fn a_hole_with_a_wrong_drill_is_red() {
+        let reference = board(vec![hole("H1", 5.0, 5.0)]);
+        let mut wrong = hole("H1", 5.0, 5.0);
+        wrong.drill = 1.5;
+        let svg = report(&reference, &board(vec![wrong])).overlay_svg();
+        assert_eq!(red_circles(&svg), 1, "{svg}");
+    }
+
+    /// A footprint with one hole keeps the id `hole <ref>`; one with several has an id of its
+    /// own for each, numbered by place (not by the order of the pads), and the items are unique.
+    #[test]
+    fn a_footprints_holes_have_unique_ids() {
+        // Pads in the order bottom, top; the numbers go by place: top first.
+        let reference = board(vec![
+            hole("J1", 10.0, 20.0),
+            hole("J1", 10.0, 10.0),
+            hole("H1", 40.0, 5.0),
+        ]);
+        let ids = hole_ids(&reference.holes, false);
+        assert_eq!(ids, ["hole J1#2", "hole J1#1", "hole H1"]);
+
+        let mut actual = reference.clone();
+        actual.holes[1].y = 11.0; // J1's top peg is 1 mm off
+        let rep = report(&reference, &actual);
+        let ids: Vec<&str> = rep.items.iter().map(|i| i.id.as_str()).collect();
+        for id in ["hole J1#1", "hole J1#2", "hole H1"] {
+            assert_eq!(ids.iter().filter(|i| **i == id).count(), 1, "{ids:?}");
+        }
+        assert_eq!(
+            rep.failures().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+            ["hole J1#1"]
+        );
+        // Only that peg is red.
+        assert_eq!(red_circles(&rep.overlay_svg()), 1);
+    }
+
+    /// The holes of the board that the reference lacks are told apart the same way.
+    #[test]
+    fn extra_holes_of_one_footprint_have_unique_ids() {
+        let reference = board(Vec::new());
+        let actual = board(vec![hole("J2", 10.0, 10.0), hole("J2", 20.0, 10.0)]);
+        let rep = report(&reference, &actual);
+        let ids: Vec<&str> = rep
+            .items
+            .iter()
+            .map(|i| i.id.as_str())
+            .filter(|id| id.starts_with("hole"))
+            .collect();
+        assert_eq!(ids, ["hole extra J2#1", "hole extra J2#2"]);
+    }
 }
