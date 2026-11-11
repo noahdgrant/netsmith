@@ -247,6 +247,11 @@ pub fn resolve_generics(
                     s.mpn = row.mpn;
                     s.library = row.library;
                     s.catalog_height = row.height;
+                    s.resolved_row = Some(netsmith_design::ResolvedRow {
+                        name: row.name,
+                        temp_min: row.temp_min,
+                        temp_max: row.temp_max,
+                    });
                 }
                 Err(message) => unresolved.push(Unresolved {
                     refdes: s.refdes.clone(),
@@ -365,6 +370,7 @@ mod tests {
             assembly: Assembly::Fab,
             assembly_stated: false,
             catalog_height: None,
+            resolved_row: None,
             generic: Some(Generic {
                 catalog: "resistor".into(),
                 package: "0402".into(),

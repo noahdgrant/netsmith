@@ -10,7 +10,7 @@
 //! the solver picked, and whether the part is assembled by the manufacturer or soldered by
 //! hand. Those are sourcing data, not CAD data, so they are not part of the [`Design`].
 
-mod environment;
+pub mod environment;
 mod features;
 pub use features::Sites;
 pub mod guidelines;
@@ -811,6 +811,20 @@ pub struct Sourced {
     /// Set for a generic part (ADR 0047): the solver chose its value and nothing else, and
     /// `lcsc`, `mpn` and `library` are empty until it is resolved to a row of a catalog.
     pub generic: Option<netsmith_solve::Generic>,
+    /// The catalog row a generic part was resolved to, once `fab` or the bill of materials has
+    /// resolved it (`None` before, and for a part that was not generic): the row's name and its
+    /// temperature range in kelvin, for the judgement against the board's environment (ADR 0099).
+    pub resolved_row: Option<ResolvedRow>,
+}
+
+/// The catalog row that stands for a generic part, as far as the judgement against the board's
+/// environment needs it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedRow {
+    /// What a message calls the row.
+    pub name: String,
+    pub temp_min: Option<f64>,
+    pub temp_max: Option<f64>,
 }
 
 impl Sourced {
@@ -838,6 +852,9 @@ pub struct Designed {
     /// What the design does against a guideline (ADR 0036): findings that a person decides
     /// about, which the project may make blocking (`guidelines = "error"`).
     pub guidelines: Vec<guidelines::Guideline>,
+    /// What the judgement against the board's environment did (ADR 0099): for the notes of `fab`.
+    /// `None` for a board with no environment.
+    pub environment: Option<environment::Tally>,
     /// Things worth knowing that did not stop the design stage: the nets with a current that is
     /// not known, whose tracks are therefore a lower bound (ADR 0036).
     pub notes: Vec<String>,
@@ -1080,6 +1097,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 assembly_stated,
                 catalog_height: pick.and_then(|p| p.height),
                 generic: pick.and_then(|p| p.generic.clone()),
+                resolved_row: None,
             });
             parts.push(Part {
                 refdes: refdes.clone(),
@@ -1207,7 +1225,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
     let mut guideline_findings = plan.findings;
     // Every fitted part against the board's environment, if it states one (ADR 0099).
-    guideline_findings.extend(environment::judge(model, &fitted, &mut errors));
+    let judged = environment::judge(model, &fitted, &mut errors);
+    guideline_findings.extend(judged.findings);
 
     if errors.is_empty() {
         Ok(Designed {
@@ -1223,6 +1242,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             sourcing,
             origins,
             guidelines: guideline_findings,
+            environment: judged.tally,
             note_causes: std::iter::repeat_n(netsmith_core::Cause::Track, plan.notes.len())
                 .chain(std::iter::repeat_n(
                     netsmith_core::Cause::Other,
