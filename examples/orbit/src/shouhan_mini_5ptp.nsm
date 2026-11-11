@@ -1,0 +1,31 @@
+//! The mini USB B receptacle of Shenzhen Shouhan Technology, MINI 5PTP (LCSC C2681563): the USB1
+//! of ORBIT. Surface mount, right angle, five contacts, a shell that is soldered at four pads
+//! and two locating holes. The author's schematic calls it `USB Connector`.
+//!
+//! The maker's approval sheet (part number written `MINI 5PTP-GZ`, three pages, the drawing
+//! dated 2020.8.24) draws the part and a RECOMMENDED PCB LAYOUT but numbers neither the
+//! contacts nor the shell. The numbers are ORBIT's: contacts 1 to 5 as the board's USB nets
+//! say (VBUS, D-, D+, an unconnected ID, GND), and the shell on pads 6 to 9, which the board
+//! carries. The pin names are the USB signals' own, not the maker's. Contact current 1 A,
+//! 30 V DC (page 2 and the drawing).
+
+import std::parts::connector::Connector
+
+/// A mini USB B receptacle, 5 contacts, SMT. `.vbus` and `.gnd` are the power contacts, `.id`
+/// is the ID contact (not connected on a device), `.shield` is the metal shell, four pads that
+/// are one pin. The two locating holes have no pad number and are not in the pin table.
+part ShouHanMini5ptp provides Connector {
+    pins {
+        //  pin        kind           name       pads
+        .vbus     power         "VBUS"     "1"
+        .dm       bidirectional "D-"       "2"
+        .dp       bidirectional "D+"       "3"
+        .id       passive       "ID"       "4"
+        .gnd      power         "GND"      "5"
+        .shield   passive       "SHIELD"   "6" "7" "8" "9"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog usb_mini_b by .mpn { .mpn, .package }
+}

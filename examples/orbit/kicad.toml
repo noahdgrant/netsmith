@@ -1,0 +1,61 @@
+# What KiCad calls the parts this project defines itself (ADR 0021).
+#
+# The footprints of the connectors, switches and the inductor are written into the project's own
+# library `libs/orbit_small_parts.pretty` (no KiCad install is needed: the files are the
+# project's); README.md (Parts) records the document, revision and page of each and what was
+# read, derived or assumed. The parts are drawn from their pin tables (no `symbol`, ADR 0097).
+#
+# Not here: the crystal (U10) and the 1 x 8 headers (J1, J2) are standard parts, mapped by
+# `std/kicad.toml` to the generators' footprints.
+
+[[library]]
+name = "orbit_small_parts"
+footprints = "libs/orbit_small_parts.pretty"
+
+# USB1: Shou Han MINI 5PTP, mini USB B receptacle; the pads of ORBIT's board.
+[[part]]
+kind = "ShouHanMini5ptp"
+package = "SMD"
+default = true
+footprint = "orbit_small_parts:USB_Mini-B_ShouHan_MINI-5PTP"
+
+# BAT1: JST B2B-PH-SM4-TB(LF)(SN); the pads of ORBIT's board.
+[[part]]
+kind = "JstB2bPhSm4Tb"
+package = "SMD,P=2mm"
+default = true
+footprint = "orbit_small_parts:JST_B2B-PH-SM4-TB_1x02-1MP_P2.00mm_Vertical"
+
+# SW1 and SW2: XKB TS-1187A-B-A-B, with the pad pattern of ORBIT's board (README.md).
+[[part]]
+kind = "XkbTs1187a"
+package = "SMD-4P,5.1x5.1mm"
+default = true
+footprint = "orbit_small_parts:SW_Push_XKB_TS-1187A_CK_KSC6-pad-layout"
+
+# BOOT0 and PWR1: HRO K3-1270, the PCB layout of the maker's K3-1270L-F1 drawing.
+[[part]]
+kind = "HroK3_1270"
+package = "SMD,8.8x2mm"
+default = true
+footprint = "orbit_small_parts:SW_Slide_HRO_K3-1270L-F1"
+
+# L1: the 0806 (2016 metric) package of the Murata inductor; the standard rows stop at 0805 and
+# 1210, and no generator answers 2016. The pads are Murata's recommended PCB pattern.
+[[part]]
+kind = "Inductor"
+package = "0806"
+footprint = "orbit_small_parts:L_Murata_DFE201612E"
+
+# D1 to D3: the Everlight LEDs are 0603, the generator's footprint of the standard LED.
+[[part]]
+kind = "Everlight19217Ghc"
+package = "0603"
+default = true
+footprint = "LED_SMD:LED_0603_1608Metric"
+
+[[part]]
+kind = "Everlight19217Bhc"
+package = "0603"
+default = true
+footprint = "LED_SMD:LED_0603_1608Metric"

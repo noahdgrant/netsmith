@@ -1,0 +1,25 @@
+//! The JST B2B-PH-SM4-TB(LF)(SN), a wire-to-board header with two contacts at 2.0 mm pitch,
+//! top entry, surface mount, with two mounting tabs (LCSC C160352): the BAT1 of ORBIT, the
+//! battery connector.
+//!
+//! JST's catalog (PH connector, 3 pages) draws the SMT layout of the SM4 type (page 1) and lists
+//! the part number for 2 circuits (page 3). It numbers neither the contacts nor the tabs. The
+//! numbers are the board's: contacts 1 and 2, and the two tabs both `MP` (KiCad's name for the
+//! mounting pads of a connector), which are one pin here, `.mount`: they are solder tabs, not
+//! contacts. ORBIT puts `GND` on pad 1 and the battery's plus on pad 2.
+
+import std::parts::connector::Connector
+
+/// A 2-contact, 2.0 mm pitch, top-entry SMT header with two mounting tabs.
+part JstB2bPhSm4Tb provides Connector {
+    pins {
+        //  pin        kind     name      pads
+        .p1       passive "1"       "1"
+        .p2       passive "2"       "2"
+        .mount    passive "MP"      "MP"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog jst_ph_smt by .mpn { .mpn, .package }
+}

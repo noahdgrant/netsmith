@@ -1,0 +1,30 @@
+//! Two Everlight 19-217 0603 LEDs, the parts of ORBIT's D1 to D3 by the numbers of its
+//! schematic: the green 19-217/GHC-YR1S2/3T (LCSC C72043; D1, the charge indicator, and D2,
+//! LED1) and the blue 19-217/BHC-ZL1M2RY/3T (C72041; D3, LED2).
+//!
+//! Each is a provider of the standard `Led` with a catalog of its own, so a board that writes
+//! `.d1: Everlight19217Ghc` has this LED and no other, with the colour and the forward voltage
+//! of the datasheet. The standard `Led` cannot be asked for by number: the generic declares no
+//! `.mpn`. The pins are the standard LED's: pad 1 is the cathode and pad 2 the anode, as
+//! ORBIT's board has them (its D1 has the net `Net-(D1-K)` on pad 1 and `Net-(D1-A)` on pad
+//! 2); the datasheets read here number no pad.
+
+import std::parts::passive::Led
+
+/// The Everlight 19-217/GHC-YR1S2/3T, brilliant green, 0603.
+part Everlight19217Ghc provides Led {
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+    catalog everlight_19_217_ghc { .color, .forward_voltage, .package }
+}
+
+/// The Everlight 19-217/BHC-ZL1M2RY/3T, blue, 0603.
+part Everlight19217Bhc provides Led {
+    pins {
+        .anode   passive "A" "2"
+        .cathode passive "K" "1"
+    }
+    catalog everlight_19_217_bhc { .color, .forward_voltage, .package }
+}
