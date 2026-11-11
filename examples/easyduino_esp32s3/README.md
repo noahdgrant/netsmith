@@ -167,7 +167,8 @@ four lines), the four holes (J1 and J2's pegs, place and drill, 0.00 mm off), J1
 (position, rotation, layer, each of 22 pads' geometry and net), SW1 7 and SW2 7 (position,
 rotation, layer, two pads' geometry and nets), U2 91 (position, rotation, layer and every one
 of the 44 pads' centre, size, shape, drill and net: each header pin carries its original's
-signal). Every difference is 0.000 mm. 30 warnings: a pad's net is named differently on the
+signal). Every difference is 0.000 mm, but pads 20 to 22 of U2, which are 0.004 mm off the grid in
+their file (the checker's tolerance is 0.05). 51 warnings: a pad's net is named differently on the
 two boards (the generated names) and the pads on it are the same.
 
 **Not matched, reported only:** the module (8.65 mm lower than theirs, as it is on the board),
