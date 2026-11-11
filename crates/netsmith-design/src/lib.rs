@@ -1331,6 +1331,28 @@ mod tests {
     }
 
     /// The names and letters of the standard library's definitions.
+    /// The names of the standard library's `generic` definitions.
+    fn std_generics() -> Vec<String> {
+        let std = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std");
+        let mut names = Vec::new();
+        let mut dirs = vec![std];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if path.extension().is_some_and(|e| e == "nsm") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    names.extend(text.lines().filter_map(|line| {
+                        let rest = line.strip_prefix("generic ")?;
+                        Some(rest.split([' ', '{']).next().unwrap().to_string())
+                    }));
+                }
+            }
+        }
+        names
+    }
+
     fn std_parts() -> Vec<(String, Option<String>)> {
         std_definitions()
             .into_iter()
@@ -1411,7 +1433,13 @@ mod tests {
     /// and no other does.
     #[test]
     fn every_standard_connector_kind_provides_the_connector_generic() {
+        // A generic provides nothing itself: a generic with the letters `J` (the USB-C sink
+        // receptacle) passes them to its providers, which are checked here like any part.
+        let generics = std_generics();
         for (name, letters, provides) in std_definitions() {
+            if generics.contains(&name) {
+                continue;
+            }
             assert_eq!(
                 provides
                     .iter()
