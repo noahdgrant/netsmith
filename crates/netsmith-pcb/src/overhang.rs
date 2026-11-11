@@ -46,34 +46,27 @@
 //!   or parts outside. Two parts that hang over the same edge may overlap beyond it, as the
 //!   check allows (`Engine::room` clips the courtyard of a part that states an overhang).
 //!
-//! **Owner decisions** (all nine questions of issue #11): only the edge fields state an
-//! overhang, not `.x` or `.y`; a locked part must state every edge it is past (a lock fixes
-//! where the part is and allows nothing by itself); `fab` warns on a stated overhang; silkscreen
-//! over the edge stays a warning; no limit on how far a part may hang; the derived wall is
-//! accepted, as ADR 0033 records it; the hole-part two-face rule is accepted, as ADR 0031
-//! records it; a module cannot state an overhang for its parts ("a module's author does not
-//! know the case"; a module that needs one offers a value, as ADR 0042 describes, and the
-//! board states the requirement); the annealer agrees with the check.
-//!
-//! **Open, word for word from ADR 0045 section 10** (the text says both "Nothing is left open in
-//! this section" and, in "Where the code differs", "Still open: (c), (d) and (h)"; they
-//! disagree, and issue #11 still has every box unchecked). (a) "Whether a window on `.x` or `.y`
-//! should state an overhang (now it does not: only the edge fields do). **Decided 2026-11-03:
-//! only the edge fields.**" (b) "Whether a locked part should state every edge it is past (now
-//! it does not need to). **Decided 2026-11-03: it must.**" (c) "The courtyard wall, which was a
-//! fixed 2.0 mm and is now derived from the process (ADR 0033): a stated overhang keeps it on
-//! the other sides. **Decided 2026-11-04: accepted, as in ADR 0033.**" (d) "The hole-part
-//! two-face rule changed (ADR 0031): a footprint that draws its courtyard on one face's layer
-//! only is judged on the other face by its pads; the courtyard rules are otherwise unchanged.
-//! **Decided 2026-11-04: accepted, as in ADR 0031.**" (e) "Whether `fab` should list a stated
-//! overhang as a warning, not a note. **Decided 2026-11-03: a warning.**" (f) "The limit on how
-//! far a part may hang. **Decided 2026-11-03: no limit.**" (g) "Silkscreen over the edge stays
-//! a warning. **Decided 2026-11-03: it stays a warning.**" (h) "A module's `.place` does not
-//! state an overhang for its parts. **Decided 2026-11-04: it stays refused.**" (i) "Two parts
-//! that hang over the same edge may overlap beyond it in the check, but the annealer still keeps
-//! their whole courtyards apart (stricter than the check). **Decided 2026-11-04: the annealer
-//! is changed to agree with the check.**" ADR 0048 adds: whether a module's physical file may
-//! state an overhang stays the owner's.
+//! **The nine decisions of section 10** (all decided, 2026-11-03 and 2026-11-04; issue #11 is
+//! closed). The ADR's text gave each as a question with the owner's answer, word for word:
+//! (a) "Whether a window on `.x` or `.y` should state an overhang (now it does not: only the
+//! edge fields do). **Decided 2026-11-03: only the edge fields.**" (b) "Whether a locked part
+//! should state every edge it is past (now it does not need to). **Decided 2026-11-03: it
+//! must.**" (c) "The courtyard wall, which was a fixed 2.0 mm and is now derived from the
+//! process (ADR 0033): a stated overhang keeps it on the other sides. **Decided 2026-11-04:
+//! accepted, as in ADR 0033.**" (d) "The hole-part two-face rule changed (ADR 0031): a footprint
+//! that draws its courtyard on one face's layer only is judged on the other face by its pads;
+//! the courtyard rules are otherwise unchanged. **Decided 2026-11-04: accepted, as in ADR
+//! 0031.**" (e) "Whether `fab` should list a stated overhang as a warning, not a note.
+//! **Decided 2026-11-03: a warning.**" (f) "The limit on how far a part may hang. **Decided
+//! 2026-11-03: no limit.**" (g) "Silkscreen over the edge stays a warning. **Decided
+//! 2026-11-03: it stays a warning.**" (h) "A module's `.place` does not state an overhang for
+//! its parts. **Decided 2026-11-04: it stays refused.**" (a module's author does not know the
+//! case; a module that needs one offers a value, as ADR 0042 describes, and the board states
+//! the requirement). (i) "Two parts that hang over the same edge may overlap beyond it in the
+//! check, but the annealer still keeps their whole courtyards apart (stricter than the check).
+//! **Decided 2026-11-04: the annealer is changed to agree with the check.**" Whether a module's
+//! physical file may state an overhang is the module layer of ADR 0048, which is not built
+//! (issue #52).
 
 use crate::geometry::{Pt, Rect};
 

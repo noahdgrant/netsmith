@@ -41,7 +41,7 @@
 //! corrected because no board of the evidence had one, so `fab-notes.txt` lists it as
 //! unverified.
 //!
-//! **A size to fit** (ADR 0045 section 10, PROVISIONAL). The rows no longer decide whether the
+//! **A size to fit** (ADR 0045 section 10). The rows no longer decide whether the
 //! parts fit, since they never turn a part and count a part that hangs over the edge whole.
 //! If the rows are too big the annealer is run in the size anyway, first on the faces the
 //! parts are on, then, if that fails, with the parts nobody placed shared between the faces by
@@ -166,7 +166,7 @@ pub struct PlaceOptions {
     /// ([`Rules::DEFAULT_EDGE_WALL`]).
     pub wall: Option<f64>,
     /// The areas that limit how tall a part may stand, in the board's coordinates (ADR 0045,
-    /// "Height limits", PROVISIONAL). A part with a stated height above a zone's limit keeps
+    /// "Height limits"). A part with a stated height above a zone's limit keeps
     /// its body (grown by a small margin; its courtyard if the footprint draws no fabrication
     /// outline) out of the zone on the faces the zone limits; a part with no stated
     /// height is not kept out (nobody knows whether it fits; the check reports it).
@@ -298,7 +298,7 @@ pub struct DoesNotFit {
     /// design: for the full list [`DoesNotFit::full_report`] writes.
     pub parts: Box<[PartState]>,
     /// The requirements of the physical file that are not met where the placer ended, and
-    /// the lines that cannot all hold where that is proved (PROVISIONAL, ADR 0045). Filled
+    /// the lines that cannot all hold where that is proved (ADR 0045). Filled
     /// by `Board::from_design_placed`, which knows the design; `None` before, and for a
     /// design that states no requirement.
     pub requirements: Option<Box<crate::explain::RequirementReport>>,
@@ -1021,7 +1021,7 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
         .collect()
 }
 
-/// Whether the height limits leave no room for the part on `face` (PROVISIONAL, ADR 0045
+/// Whether the height limits leave no room for the part on `face` (ADR 0045
 /// section 11): its height is known, and the zones that rule it out there cover the face so
 /// that no place inside the outline's margin is left where its body (grown by the placer's
 /// margin) is clear of them, in either turn. A part with no stated height is never forbidden
@@ -1387,7 +1387,7 @@ fn oversize(
     found
 }
 
-/// [`oversize`] for the parts as loaded, before any placing (PROVISIONAL, ADR 0045 section 14):
+/// [`oversize`] for the parts as loaded, before any placing (ADR 0045 section 14):
 /// the parts that are too big for an outline of `fit` in every turn their requirements and the
 /// layout file leave them. `options` must already hold the plan of the requirements (the pins,
 /// the wants and the overhangs). The mechanical parts are left out: they go to the corners.

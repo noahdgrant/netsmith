@@ -214,7 +214,7 @@ pub(crate) const TEXT_EDGE: f64 = 0.5;
 /// The space wanted between a courtyard and a keepout.
 const KEEPOUT_GAP: f64 = 0.25;
 /// How far a part's body is kept from a height-limited zone it is too tall for, in mm (ADR 0045
-/// section 11, owner decision 2026-11-04). PROVISIONAL: the placer's own small clearance for
+/// section 11, owner decision 2026-11-04). The placer's own small clearance for
 /// keepouts, [`KEEPOUT_GAP`]. The process's copper clearance (0.1 to 0.2 mm) is smaller than
 /// the 0.25 mm the placer already wants beside a keepout, and a height limit is not copper,
 /// so the placer's constant is used and a process with more clearance changes nothing here.
