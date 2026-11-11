@@ -300,6 +300,7 @@ impl Checker<'_> {
                 .map(|f| PinFunction {
                     name: f.name.name.clone(),
                     kind: f.kind.map(|(k, _)| k),
+                    class: f.class.is_some(),
                 })
                 .collect(),
             requirement: row.requirement.map(|(r, _)| r),

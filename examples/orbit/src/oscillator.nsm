@@ -1,0 +1,34 @@
+//! The 8 MHz oscillator of ORBIT: the crystal U10 and the two load capacitors C11 and C12.
+//!
+//! ORBIT's circuit, from the nets of their board file: the crystal's pad 1 is the MCU's
+//! `OSC_IN` (their net `/HSE_IN`) with a 30 pF capacitor to ground, its pad 2 is `OSC_OUT`
+//! (`/HSE_OUT`) with the other 30 pF capacitor to ground. There is no damping resistor and the
+//! crystal has no ground pad.
+
+import std::parts::passive::{Capacitor, Crystal}
+
+/// An 8 MHz crystal with a load capacitor from each terminal to ground. Join `.xin` and `.xout`
+/// to the MCU's oscillator pins and `.gnd` to ground.
+module Oscillator {
+    .xin: Pin
+    .xout: Pin
+    .gnd: Pin
+
+    /// The YXC X50328MSB2GI of ORBIT's schematic (LCSC C115962), 8 MHz, in the 5032 package. ORBIT
+    /// writes only `8MHz`; the +/- 30 ppm is the part's, a row of the standard crystal catalog.
+    .crystal: Crystal {
+        .frequency &= 8MHz +/- 30ppm
+        .package &= "5032"
+    }
+    /// 30 pF C0G on the input side (ORBIT's value).
+    .load_in: Capacitor { .capacitance &= 30pF +/- 5%; .package &= "0603" }
+    /// 30 pF C0G on the output side.
+    .load_out: Capacitor { .capacitance &= 30pF +/- 5%; .package &= "0603" }
+
+    .xin ~ .crystal.a
+    .xin ~ .load_in.a
+    .load_in.b ~ .gnd
+    .crystal.b ~ .xout
+    .xout ~ .load_out.a
+    .load_out.b ~ .gnd
+}

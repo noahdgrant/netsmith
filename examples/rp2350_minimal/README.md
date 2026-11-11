@@ -133,8 +133,7 @@ are netsmith's** (MIT, like the rest of the repository).
   (R9) on Raspberry Pi's board, so that net is not named like the pin. X1's pads 2 and 4 are `GND`,
   pad 1 is `XIN` and pad 3 is on the net of a damping resistor (R2) to `XOUT`.
 - **Left out on purpose:** the alternate functions of the pins (a GPIO has `GPIO`, and
-  GPIO26 to GPIO29 also `ADC0` to `ADC3`; the pins are fixed by Raspberry Pi's board, so none is
-  chosen), the functions of the QSPI pins, and every level, rating and model. With no model the
+  GPIO26 to GPIO29 also `ADC0` to `ADC3`; the board chooses `GPIO` on those four), the functions of the QSPI pins, and every level, rating and model. With no model the
   part is a boundary of the design, and the checks that need a number are listed as not
   evaluated.
 
@@ -489,7 +488,8 @@ put them. Open it in a browser.
   the 100 nF. Two ICs' details (the RP2350A's ADC functions) see below.
 - **GPIO26 to GPIO29** are on their header pads as `GPIO26_ADC0` to `GPIO29_ADC3`; the part
   offers each pin as GPIO or as an ADC input and a connected pin needs one chosen, so the board
-  says `ADC0` to `ADC3` (see For the owner in the pull request). The pads are the same either way.
+  says `GPIO` on all four (the part marks `GPIO` `class`, which a function may be chosen on
+  many pins). The pads are the same either way.
 
 ### What the checks say
 

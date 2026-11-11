@@ -1,35 +1,247 @@
-//! PLACEHOLDER: the port of ORBIT is in progress (see
-//! `README.md` and epic #308). This file is only a small valid board, an LED on a 5 V supply,
-//! so that the project builds and its checks run while the parts of the real board are added
-//! one at a time. It is not the circuit of ORBIT and has none of its nets.
+//! ORBIT: the circuit of mohamedboubaker's open design (MIT, Copyright (c) 2023
+//! mohamedboubaker; see `README.md` and `LICENSE`), an STM32F030 board that runs from a
+//! battery, charges it from USB and is programmed over USB through a CP2102, written in
+//! netsmith. The circuit only: the outline, the mounting holes and the places of the
+//! connectors, switches and buttons are for the physical file (a later stage).
+//!
+//! Its nets are theirs, and the proof is the test
+//! `every_pad_has_the_same_pads_on_its_net_as_in_orbits_board` (`crates/netsmith/tests/orbit.rs`,
+//! module `board`), which compares the wiring alone with the netlist of their board file.
+//! The pin-to-signal mapping of the two 1 x 8 headers is theirs too, and it is FIXED: each
+//! header pin is joined to a named pin of the MCU (`.mcu.pb11`) and never to a request for
+//! "any GPIO" (`.x: .mcu.GPIO`, ADR 0101). Only a request is moved by the pin optimizer of
+//! `fab`, so the firmware's pin map cannot change.
+//!
+//! The parts are in `src/`: the charger (`charger.nsm`), the buck-boost regulator
+//! (`buck_boost.nsm`), the USB-UART bridge (`usb_uart.nsm`) and the crystal (`oscillator.nsm`)
+//! are modules with the parts around each chip; the rest is here.
 
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
+import src::at24c128c::At24C128C
+import src::buck_boost::BuckBoost
+import src::charger::Charger
+import src::everlight_19_217::{Everlight19217Bhc, Everlight19217Ghc}
+import src::hro_k3_1270::HroK3_1270
+import src::jst_b2b_ph_sm4_tb::JstB2bPhSm4Tb
+import src::oscillator::Oscillator
+import src::shouhan_mini_5ptp::ShouHanMini5ptp
+import src::stm32f030c8::Stm32F030C8
+import src::usb_uart::UsbUart
+import src::xkb_ts_1187a::XkbTs1187a
+import std::bus::{I2cPullups, PullDown}
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x8
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
 
 board Orbit {
     .process: TwoLayer {
         .stackup.thickness &= 1.6mm
+        // Ground is the copper poured over the board, as in ORBIT (a `GND` zone on both layers).
+        .bottom.net &= "GND"
     }
 
-    .supply: Rail {
+    // ---- The connectors: USB1, BAT1, J1, J2 ----
+
+    /// The mini USB B receptacle: the supply and the programming port.
+    .usb: ShouHanMini5ptp { .mpn &= "MINI 5PTP" }
+    /// The battery connector, a JST PH with two contacts: pin 1 is ground, pin 2 the battery's plus.
+    .battery: JstB2bPhSm4Tb { .mpn &= "B2B-PH-SM4-TB(LF)(SN)" }
+    /// J1, the west header: ground, SWDIO, SWCLK, NRST, PC14, PA2, PA3 and 3.3 V.
+    .header_west: Header1x8
+    /// J2, the east header: ground, PB11, PB10, PB2, PB1, PB0, PA7 and PA6.
+    .header_east: Header1x8
+
+    // ---- The rails ----
+
+    /// USB's VBUS, the only external supply. 5 V +/- 5% is USB's 4.75 V to 5.25 V.
+    .vbus: Rail {
         .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
+        .pos.net &= "VBUS"
         .neg.net &= "GND"
     }
-
-    .led: Led {
-        .current &= 5mA..15mA
+    /// The battery's rail behind the power switch, `+BATT`. The schematic names no cell, so no
+    /// voltage is stated.
+    .vbatt: Rail {
+        .pos.net &= "+BATT"
+        .neg.net &= "GND"
     }
+    /// The 3.3 V rail of the buck-boost regulator. ORBIT's schematic names it `+3.3V`; the
+    /// window is a stated requirement (as for the RP2350A Minimal), and the regulator's divider
+    /// derives the output, which the check compares with it.
+    .v3v3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "+3.3V"
+        .neg.net &= "GND"
+    }
+    .vbus.neg ~ .vbatt.neg
+    .vbus.neg ~ .v3v3.neg
 
-    .r1: Resistor {}
+    // ---- The power path: USB -> charger -> battery -> buck-boost ----
 
-    .power_in: Header1x2
-    .supply.pos ~ .power_in.p1
-    .supply.neg ~ .power_in.p2
+    .usb.vbus ~ .vbus.pos
+    .usb.gnd ~ .vbus.neg
 
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .charger: Charger
+    .charger.vbus ~ .vbus
+    .charger.vbatt ~ .vbatt
 
-    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+    /// PWR1: the slide switch between the battery connector and the `+BATT` rail.
+    .power_switch: HroK3_1270 { .mpn &= "K3-1270S-F2" }
+    .battery.p1 ~ .vbus.neg
+    .battery.p2 ~ .power_switch.a
+    .power_switch.com ~ .vbatt.pos
+
+    .buck_boost: BuckBoost
+    .buck_boost.vin ~ .vbatt
+    .buck_boost.vout ~ .v3v3
+
+    // ---- The microcontroller ----
+
+    /// U16, the STM32F030C8. Every pin that a header or a part uses is named here, so none moves.
+    .mcu: Stm32F030C8 { .mpn &= "STM32F030C8T6" }
+    .mcu.vdd ~ .v3v3.pos
+    .mcu.vdda ~ .v3v3.pos
+    .mcu.vss ~ .vbus.neg
+    .mcu.vssa ~ .vbus.neg
+
+    /// C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.
+    .v3v3_bulk: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    .v3v3_100n_1: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .v3v3_100n_2: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .v3v3_100n_3: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .v3v3_100n_4: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .v3v3.pos ~> .v3v3_bulk ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_1 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_2 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_3 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n_4 ~> .v3v3.neg
+
+    // ---- The crystal (U10, C11, C12) ----
+
+    .oscillator: Oscillator
+    .mcu.pf0.function &= "OSC_IN"
+    .mcu.pf1.function &= "OSC_OUT"
+    .oscillator.xin ~ .mcu.pf0
+    .oscillator.xout ~ .mcu.pf1
+    .oscillator.gnd ~ .vbus.neg
+
+    // ---- Reset (SW1, C9) ----
+
+    /// SW1, RESET: pulls NRST to ground.
+    .reset_button: XkbTs1187a { .mpn &= "TS-1187A-B-A-B" }
+    /// C9, on NRST.
+    .reset_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .mcu.nrst ~ .reset_button.a
+    .reset_button.b ~ .vbus.neg
+    .mcu.nrst ~ .reset_cap.a
+    .reset_cap.b ~ .vbus.neg
+
+    // ---- The boot switch (BOOT0, R2) ----
+
+    /// BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1
+    /// on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.
+    .boot_switch: HroK3_1270 { .mpn &= "K3-1270S-F2" }
+    /// R2.
+    .boot_pulldown: PullDown { .resistance &= 10kohm +/- 1%; .package &= "0603" }
+    .boot_pulldown.reference ~ .v3v3
+    .boot_pulldown.line ~ .boot_switch.a
+    .boot_switch.b ~ .v3v3.pos
+    .boot_switch.com ~ .mcu.boot0
+
+    // ---- The user button (SW2, R11, R12, C18, C19) ----
+
+    /// SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor
+    /// and a 100 nF capacitor take it to the MCU's pin.
+    .user_button: XkbTs1187a { .mpn &= "TS-1187A-B-A-B" }
+    /// R12.
+    .user_pulldown: PullDown { .resistance &= 100kohm +/- 1%; .package &= "0603" }
+    /// C18.
+    .user_node_cap: Capacitor { .capacitance &= 10pF +/- 5%; .package &= "0603" }
+    /// R11.
+    .user_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0603" }
+    /// C19, on the MCU's pin.
+    .user_pin_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .user_button.a ~ .v3v3.pos
+    .user_button.b ~ .user_pulldown.line
+    .user_pulldown.reference ~ .v3v3
+    .user_button.b ~ .user_node_cap.a
+    .user_node_cap.b ~ .vbus.neg
+    .user_button.b ~ .user_series.b
+    .user_series.a ~ .mcu.pc15
+    .user_series.a ~ .user_pin_cap.a
+    .user_pin_cap.b ~ .vbus.neg
+
+    // ---- The LEDs (D2, D3 and their resistors R4, R5) ----
+    // Their reference values are LED1 (D2, green) and LED2 (D3, blue), and ORBIT's nets are the
+    // other way round: D2 is on the net the schematic calls `LED2` (PA5), D3 on `LED1` (PA4).
+
+    /// D2 and R4, on PA5.
+    .led1: Everlight19217Ghc
+    .led1_resistor: Resistor { .resistance &= 1.5kohm +/- 1%; .package &= "0603" }
+    .mcu.pa5 ~> .led1_resistor ~> .led1 ~> .vbus.neg
+    /// D3 and R5, on PA4.
+    .led2: Everlight19217Bhc
+    .led2_resistor: Resistor { .resistance &= 1.5kohm +/- 1%; .package &= "0603" }
+    .mcu.pa4 ~> .led2_resistor ~> .led2 ~> .vbus.neg
+
+    // ---- USB and the serial link (USB1, U22) ----
+
+    .usb_uart: UsbUart
+    .usb_uart.vbus ~ .vbus
+    .usb.dp ~ .usb_uart.dp
+    .usb.dm ~ .usb_uart.dm
+    .mcu.pa9.function &= "USART1_TX"
+    .mcu.pa10.function &= "USART1_RX"
+    .mcu.pa9 ~ .usb_uart.rxd
+    .mcu.pa10 ~ .usb_uart.txd
+
+    // ---- The EEPROM on the I2C bus (U17, R9, R10) ----
+
+    /// U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.
+    .eeprom: At24C128C { .mpn &= "AT24C128C-SSHM-T" }
+    .eeprom.vcc ~ .v3v3.pos
+    .eeprom.gnd ~ .vbus.neg
+    .eeprom.a0 ~ .v3v3.pos
+    .eeprom.a1 ~ .v3v3.pos
+    .eeprom.a2 ~ .vbus.neg
+    .eeprom.wp ~ .vbus.neg
+    .mcu.pb6.function &= "I2C1_SCL"
+    .mcu.pb7.function &= "I2C1_SDA"
+    .mcu.pb6 ~ .eeprom.scl
+    .mcu.pb7 ~ .eeprom.sda
+    /// R9 and R10: 2.2 kohm on each line to 3.3 V.
+    .i2c_pullups: I2cPullups { .resistance &= 2.2kohm +/- 1%; .package &= "0603" }
+    .i2c_pullups.supply ~ .v3v3
+    .i2c_pullups.bus.levels.reference ~ .v3v3
+    .i2c_pullups.bus.scl ~ .mcu.pb6
+    .i2c_pullups.bus.sda ~ .mcu.pb7
+
+    // ---- The headers: ORBIT's pin map, joined pin by pin (fixed) ----
+
+    .mcu.pa13.function &= "SWDIO"
+    .mcu.pa14.function &= "SWCLK"
+    // PC14 and PC15 are plain GPIO in ORBIT (the 32 kHz crystal is not fitted), and a connected
+    // pin with several functions has one chosen. `GPIO` cannot be chosen on two pins (it is no
+    // class), so each takes the function whose name it carries, as the RP2350A Minimal's ADC
+    // pins do. Nothing reads which: the pad is on the pin either way. The pull request that
+    // added this board lists it under "For the owner".
+    .mcu.pc14.function &= "OSC32_IN"
+    .mcu.pc15.function &= "OSC32_OUT"
+    .header_west.p1 ~ .vbus.neg
+    .header_west.p2 ~ .mcu.pa13
+    .header_west.p3 ~ .mcu.pa14
+    .header_west.p4 ~ .mcu.nrst
+    .header_west.p5 ~ .mcu.pc14
+    .header_west.p6 ~ .mcu.pa2
+    .header_west.p7 ~ .mcu.pa3
+    .header_west.p8 ~ .v3v3.pos
+
+    .header_east.p1 ~ .vbus.neg
+    .header_east.p2 ~ .mcu.pb11
+    .header_east.p3 ~ .mcu.pb10
+    .header_east.p4 ~ .mcu.pb2
+    .header_east.p5 ~ .mcu.pb1
+    .header_east.p6 ~ .mcu.pb0
+    .header_east.p7 ~ .mcu.pa7
+    .header_east.p8 ~ .mcu.pa6
 }

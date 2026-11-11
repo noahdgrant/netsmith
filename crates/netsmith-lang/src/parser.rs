@@ -775,6 +775,7 @@ impl Parser {
                     functions.push(PinFunction {
                         name: function,
                         kind,
+                        class: None,
                         line,
                     });
                 }
@@ -1214,9 +1215,16 @@ impl Parser {
                     Tok::Ident(w) if w != "optional" && w != "required" => {
                         let name = self.ident("a function name")?;
                         let kind = self.function_kind(&name)?;
+                        // `class` after a function's name marks it; a function that is itself
+                        // called `class` is the name right after `fn` or after another name.
+                        let class = match &self.peek().tok {
+                            Tok::Ident(w) if w == "class" => Some(self.bump().span),
+                            _ => None,
+                        };
                         functions.push(PinFunction {
                             name,
                             kind,
+                            class,
                             line: None,
                         });
                     }

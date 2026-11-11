@@ -1110,6 +1110,21 @@ part Pad {
     }
 }
 
+/// A linear regulator that makes a rail from another. Illustrative; not a real part.
+part Regulator {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+    dc linear_regulator .vin .vout
+
+    pins {
+        .vin.pos  power "IN"  "1"
+        .vin.neg  power "GND" "2"
+        .vout.pos power "OUT" "3"
+    }
+}
+
 /// A USB receptacle that the bus goes through.
 part Receptacle {
     .usb: Usb2
@@ -1234,7 +1249,7 @@ error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `
    |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A pull to a rail is no use. A series part whose far end is a rail of the board, the supply `pos` or the return `neg`, only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
+A pull to a rail that nothing on the board sources is no use. A series part whose far end is the return `neg`, or the `pos` of a rail of the board that nothing on the board sources (the supply, which comes from outside the board), only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A rail that something on the board sources is not the supply, and a path to it is a use, as it was before: the rail is made or fed on the board, so the interface's pin feeds the board. A rail is sourced on the board when its `pos` net holds the output rail of a `dc linear_regulator` or `dc switching_regulator`, the rail of a `dc source`, or a pin whose table says it is an `output` (a charger's). A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
 
 ```nsm evaluate
 import src::processor::{Processor, Receptacle}
@@ -1256,8 +1271,47 @@ board Pulled {
     unused .processor.usb
 }
 ```
+The same pull to a rail that a regulator on the board makes is a use: `.vbus` is the regulator's output, so the pin feeds the board.
 
-A series part that leads only to test pads, to a rail (a pull-up or a pull-down proves nothing), or to another interface that is stated unused, brings no use. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
+```nsm fails
+import src::processor::{Processor, Receptacle, Regulator}
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Fed {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+    }
+    .vbus: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .regulator: Regulator
+    .processor: Processor
+    .jack: Receptacle
+    .pull_up: Resistor
+    .supply ~ .regulator.vin
+    .vbus ~ .regulator.vout
+    .vbus ~ .processor.vdd
+    .jack.usb.vbus.neg ~ .supply.neg
+    .processor.usb.dp ~> .pull_up ~> .vbus.pos
+    unused .processor.usb
+}
+```
+
+```text
+error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to `regulator.vout.pos` (net `3V3`), but `processor.usb` is stated `unused` at main.nsm:25: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:24:5
+   |
+24 |     .processor.usb.dp ~> .pull_up ~> .vbus.pos
+   |     ^^^^^^^^^^^^^^^^^
+```
+
+
+A series part that leads only to test pads, to a rail nothing on the board sources (a pull-up or a pull-down proves nothing), or to another interface that is stated unused, brings no use. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
 
 Rules.
 
@@ -2048,7 +2102,7 @@ pins "DFN-8-EP" {
 tie .sense ~ .vout.pos
 ```
 
-A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] ...] [optional | required]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one (see Functions).
+A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [optional | required]`, on one line, or ended by `;`. The names and pads are text, so they are quoted. A function is a plain name, with a kind of its own after a colon when the datasheet gives one, and `class` after it when the board may choose it on many pins (see Functions).
 
 | Kind | Meaning | Must be connected? |
 |---|---|---|
@@ -2140,7 +2194,7 @@ Rules.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
 - `optional` is for a `power` or `input` pin that may float; `required` is for an `output`, `bidirectional` or `passive` pin that may not. Neither is accepted where it changes nothing.
-- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class ("A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
+- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class (`fn GPIO class` in a row, "Functions"; or a function that a peripheral is `on`, "A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
 - Two `power` pins that are both supplies on one net are not checked yet.
@@ -2433,6 +2487,53 @@ error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
    |
 19 |     .u.pb6.function &= "UART1_TX"
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A function can be chosen on any number of pins when the part says it is a **class**: the row writes `class` after the function, `fn GPIO class`. A microcontroller whose ADC inputs are also plain GPIOs lists `GPIO` on every such pin, and a board that uses all of them as GPIO chooses `GPIO` on each (a class is also what `peripheral NAME on CLASS` names, "A peripheral on any pin"; the two spellings make a function a class in the same way). A connected pin that lists `GPIO` and an ADC input still needs one of them chosen, and a function no row marks stays on one pin.
+
+```nsm module=src::mcu8
+/// A microcontroller with two pins that are GPIO or an ADC input. Illustrative; not a real part.
+part Mcu8 {
+    pins {
+        .gpio0 bidirectional "GPIO0"      "1" fn GPIO class
+        .gpio1 bidirectional "GPIO1_ADC0" "2" fn GPIO class ADC0:input
+        .gpio2 bidirectional "GPIO2_ADC1" "3" fn GPIO class ADC1:input
+    }
+}
+```
+
+```nsm
+import src::mcu8::Mcu8
+import std::parts::passive::Resistor
+
+board GpioOnTwoPins {
+    .u: Mcu8
+    .a: Resistor
+    .b: Resistor
+    .u.gpio1 ~ .a.a
+    .u.gpio2 ~ .b.a
+    .u.gpio1.function &= "GPIO"
+    .u.gpio2.function &= "GPIO"
+}
+```
+
+The marker is a fact of the function, so every row that lists it carries it. A row that lists the function without it, a marker on a function that `peripheral NAME on CLASS` already makes a class, and a marker on a line of a peripheral (which is on one pin at a time) are refused in the part:
+
+```nsm fails
+part Mcu8b {
+    pins {
+        .gpio0 bidirectional "GPIO0" "1" fn GPIO class
+        .gpio1 bidirectional "GPIO1" "2" fn GPIO
+    }
+}
+```
+
+```text
+error: `.gpio1` lists `GPIO` without `class`, which `.gpio0` marks as a class; a class is a fact of the function, so write `fn GPIO class` on every row that lists it
+  --> main.nsm:4:9
+  |
+4 |         .gpio1 bidirectional "GPIO1" "2" fn GPIO
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A module hides the parts inside it, so a board cannot write `.hub.mcu.pa2.function`. A module that wants its board to choose a function on a pin it exports passes the choice on with the equation `.mcu.pa2.function == .scl.function`, inside the module: the part's pin takes the function that the board states on the module's pin, and every check of the part applies to it as if the board had written it.

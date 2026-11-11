@@ -474,6 +474,127 @@ fn a_fuse_and_a_bead_to_the_supply_are_no_use() {
     assert!(c.is_ok(), "{}", c.render());
 }
 
+// The owner's decision of 2026-11-10 (item U3): only a rail that nothing on the board sources is
+// a rail for a pull. A rail that a regulator makes, or that the board sources with `dc source`
+// or an output pin, is fed from the board, and a path to it from the interface is a use.
+
+/// Zldo, an invented regulator that makes a rail; Zsrc, an invented part that sources one with
+/// `dc source`; Zcharger, an invented part with an output pin on a rail.
+const SOURCES: &str = r#"
+part Zldo {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+    dc linear_regulator .vin .vout
+
+    pins {
+        .vin.pos  power "IN"  "1"
+        .vin.neg  power "GND" "2"
+        .vout.pos power "OUT" "3"
+    }
+}
+
+part Zsrc {
+    .out: Rail
+    dc source .out
+
+    pins {
+        .out.pos power "P" "1"
+        .out.neg power "N" "2"
+    }
+}
+
+part Zcharger {
+    pins {
+        .out output "OUT" "1"
+    }
+}
+"#;
+
+#[test]
+fn a_path_to_a_rail_that_a_regulator_makes_is_a_use() {
+    // `.rail` is the output of the regulator on the board: the interface's pin feeds the board.
+    let c = run(&format!(
+        "{SOURCES}{LOAD}{}",
+        board(
+            "    .ldo: Zldo\n    .rail: Rail {\n        .voltage &= 1.8V +/- 5%\n        .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n    }\n    .supply ~ .ldo.vin\n    .rail ~ .ldo.vout\n    .f: Fuse\n    .proc.usb.vbus.pos ~> .f ~> .rail.pos\n    unused .proc.usb\n"
+        )
+    ));
+    assert!(
+        messages(&c).iter().any(|m| m.contains(
+            "`proc.usb.vbus.pos` is connected here through `f` (a `Fuse`) to `ldo.vout.pos`"
+        )),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_path_to_a_rail_that_the_board_sources_with_dc_source_is_a_use() {
+    let c = run(&format!(
+        "{SOURCES}{LOAD}{}",
+        board(
+            "    .src: Zsrc\n    .rail: Rail {\n        .voltage &= 5V +/- 5%\n        .pos.net &= \"5V\"\n        .neg.net &= \"GND\"\n    }\n    .rail ~ .src.out\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .rail.pos\n    unused .proc.usb\n"
+        )
+    ));
+    assert!(
+        messages(&c).iter().any(|m| m.contains(
+            "`proc.usb.dp` is connected here through `r` (a `Resistor`) to `src.out.pos`"
+        )),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_path_to_a_rail_with_an_output_pin_on_it_is_a_use() {
+    let c = run(&format!(
+        "{SOURCES}{LOAD}{}",
+        board(
+            "    .charger: Zcharger\n    .rail: Rail {\n        .voltage &= 4.2V +/- 5%\n        .pos.net &= \"VBAT\"\n        .neg.net &= \"GND\"\n    }\n    .rail.pos ~ .charger.out\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .rail.pos\n    unused .proc.usb\n"
+        )
+    ));
+    assert!(
+        messages(&c).iter().any(|m| m.contains(
+            "`proc.usb.dp` is connected here through `r` (a `Resistor`) to `charger.out`"
+        )),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_fuse_to_an_intermediate_rail_then_to_a_load_pin_is_a_use() {
+    // The rail is made by a regulator and the fuse leads on to a load.
+    let c = run(&format!(
+        "{SOURCES}{LOAD}{}",
+        board(
+            "    .ldo: Zldo\n    .rail: Rail {\n        .voltage &= 1.8V +/- 5%\n        .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n    }\n    .supply ~ .ldo.vin\n    .rail ~ .ldo.vout\n    .f: Fuse\n    .load: Zload\n    .proc.usb.vbus.pos ~> .f ~> .load.in\n    unused .proc.usb\n"
+        )
+    ));
+    assert!(
+        messages(&c)
+            .iter()
+            .any(|m| m.contains("through `f` (a `Fuse`) to `load.in`")),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_pull_to_the_supply_is_no_use_when_a_regulator_on_the_board_makes_another_rail() {
+    // The supply is still the rail that nothing on the board sources, though it feeds a
+    // regulator; the return still counts.
+    let c = run(&format!(
+        "{SOURCES}{LOAD}{}",
+        board(
+            "    .ldo: Zldo\n    .rail: Rail {\n        .voltage &= 1.8V +/- 5%\n        .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n    }\n    .supply ~ .ldo.vin\n    .rail ~ .ldo.vout\n    .r: Resistor\n    .r2: Resistor\n    .proc.usb.dp ~> .r ~> .supply.pos\n    .proc.usb.dp ~> .r2 ~> .supply.neg\n    unused .proc.usb\n"
+        )
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+}
+
 #[test]
 fn a_pull_up_whose_pin_also_reaches_a_load_through_another_path_is_a_use() {
     let c = series(

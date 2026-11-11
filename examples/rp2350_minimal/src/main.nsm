@@ -215,14 +215,13 @@ board Rp2350Minimal {
 
     // ---- The headers: Raspberry Pi's pin map, joined pin by pin (fixed) ----
     // GPIO26 to GPIO29 are GPIO or ADC inputs, and a connected pin has one function chosen.
-    // `GPIO` cannot be chosen on all four (a function sits on one pin of a part unless it is a
-    // class), so each takes its own ADC input, the name Raspberry Pi's nets and header carry
-    // (`GPIO26_ADC0`). Nothing else on the board reads which: the pad is on the pin either way.
-    // The pull request that added this board lists it under "For the owner".
-    .mcu.gpio26.function &= "ADC0"
-    .mcu.gpio27.function &= "ADC1"
-    .mcu.gpio28.function &= "ADC2"
-    .mcu.gpio29.function &= "ADC3"
+    // The header carries them as GPIO pins (the nets are `GPIO26_ADC0` ...), so the board
+    // chooses `GPIO`, which the part marks as a class and so may be chosen on all four. Nothing
+    // else on the board reads which: the pad is on the pin either way.
+    .mcu.gpio26.function &= "GPIO"
+    .mcu.gpio27.function &= "GPIO"
+    .mcu.gpio28.function &= "GPIO"
+    .mcu.gpio29.function &= "GPIO"
 
     .header_low.p2 ~ .v3v3.pos
     .header_low.p4 ~ .mcu.gpio0

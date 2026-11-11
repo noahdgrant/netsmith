@@ -1,0 +1,62 @@
+//! The buck-boost regulator of ORBIT: the TPS63802 (U15) that makes 3.3 V from the battery.
+//!
+//! ORBIT's circuit: `VIN` and `EN` are on the battery rail `+BATT`, `MODE`, `AGND` and `GND`
+//! on ground; the 0.47 uH inductor L1 is between `L1` and `L2`; `FB` is the tap of a divider
+//! from the output (R7, 560 kohm) to ground (R8, 100 kohm); `PG` has a 100 kohm pull-up (R6) to
+//! the output; C14 (10 uF) is on the input and C13 (22 uF) on the output.
+//!
+//! The output is what the divider makes of the part's reference: `vout = vref * (1 + R7 / R8)`
+//! = 0.5 V * 6.6 = 3.3 V. The module writes that relation itself, with ORBIT's two resistors,
+//! because `std::parts::regulator::FeedbackDivider` picks its resistors and cannot be given
+//! these two (README, "Differences" and the pull request's "For the owner").
+
+import src::tps63802::Tps63802
+import std::bus::PullUp
+import std::parts::passive::{Capacitor, Inductor, Resistor}
+import std::sources::Rail
+
+/// A battery to 3.3 V buck-boost converter. Join `.vin` to the battery's rail and `.vout` to
+/// the 3.3 V rail.
+module BuckBoost {
+    .vin: Rail
+    .vout: Rail
+
+    /// U15: the TPS63802DLAR (LCSC C2845237).
+    .ic: Tps63802 { .mpn &= "TPS63802DLAR" }
+    /// L1: 0.47 uH.
+    .inductor: Inductor { .inductance &= 0.47uH +/- 20%; .package &= "0806" }
+    /// R7, from the output to `FB`.
+    .divider_top: Resistor { .resistance &= 560kohm +/- 1%; .package &= "0603" }
+    /// R8, from `FB` to ground.
+    .divider_bottom: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0603" }
+    /// R6, the pull-up of the power-good output.
+    .pg_pullup: PullUp { .resistance &= 100kohm +/- 1%; .package &= "0603" }
+    /// C14, the input capacitor.
+    .input_cap: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0603" }
+    /// C13, the output capacitor.
+    .output_cap: Capacitor { .capacitance &= 22uF +/- 20%; .package &= "0603" }
+
+    .ic.vin ~ .vin.pos
+    .ic.en ~ .vin.pos
+    .ic.mode ~ .vin.neg
+    .ic.agnd ~ .vin.neg
+    .ic.gnd ~ .vin.neg
+    .vout.neg ~ .vin.neg
+    .ic.vout ~ .vout.pos
+
+    .ic.l1 ~ .inductor.a
+    .inductor.b ~ .ic.l2
+
+    .vout.pos ~ .divider_top.a
+    .divider_top.b ~ .ic.fb
+    .ic.fb ~ .divider_bottom.a
+    .divider_bottom.b ~ .vin.neg
+    // The output the divider sets, derived from the part's reference and the two resistors.
+    .vout.voltage == .ic.vref * (1 + .divider_top.resistance / .divider_bottom.resistance)
+
+    .pg_pullup.supply ~ .vout
+    .pg_pullup.line ~ .ic.pg
+
+    .vin.pos ~> .input_cap ~> .vin.neg
+    .vout.pos ~> .output_cap ~> .vout.neg
+}
