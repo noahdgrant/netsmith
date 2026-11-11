@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A range takes its ends from values, and the level translator states its levels and its draw
 
-Amends ADR 0063 (the two open questions it ended with) and ADR 0027 (what counts as a stated term of a budget). Implemented on 2026-11-06 by an agent told to go with what makes sense from earlier decisions: every choice here, the meaning of an end with no value, the `&=` that states the draw, the input's levels and the output that states none, is the agent's. The plan classed it a fold with a language caveat and asked the owner to read it; since the meaning of an end with no value is a rule of the language that nobody has accepted, it is kept, cut to a page. Tests 2 (an unknown end claims nothing) and 3. Cut from `git show 8023ee9:docs/adr/0066-a-range-takes-its-ends-from-values-and-the-level-translator-states-its-levels-and-draw.md`.
+Amends ADR 0063 (the two open questions it ended with) and ADR 0027 (what counts as a stated term of a budget). Implemented on 2026-11-06 by an agent told to go with what makes sense from earlier decisions. The meaning of an end with no value, the `&=` that states the draw, the input's levels and the output that states none are the agent's choices, accepted as built by the owner, 2026-11-11. Tests 2 (an unknown end claims nothing) and 3. Cut from `git show 8023ee9:docs/adr/0066-a-range-takes-its-ends-from-values-and-the-level-translator-states-its-levels-and-draw.md`.
 
 ## Decision
 
@@ -18,7 +18,7 @@ Amends ADR 0063 (the two open questions it ended with) and ADR 0027 (what counts
 
 **`LevelTranslator`** (`std/parts/logic.nsm`): `.a` and `.y` are `Logic` lines. The input's `.vih` is `.vt_plus_max`, its `.vil` is `.vt_minus_min` and `.a.line.abs_max` is `.a_abs_max`, so the solver judges the driver with no statement of the board. The output states no level, because the datasheet gives `VOH` and `VOL` only at a stated load. The draw is the part's own, `.vcc.current &= 0A .. .max_supply_current`, so a design that picks a row gets the row's range on its rail. Both `Logic` references state `.reference.current &= 0A`. The breaking change is the pin paths (`.a.line`, `.y.line`); nothing but tests and the guide used the generic. The reasoning is in its doc comment; the language side is in `docs/LANGUAGE.md` ("A range whose end is a value", "A wrapper module's rail") and `crates/netsmith-solve/src/eval.rs`.
 
-A design's wider draw is intersected with the part's, silently: a design's `0A..3mA` against the row's `0A..750nA` gives `0A..750nA`, and only a range wholly outside is a contradiction. The owner decided to follow atopile, whose `&=` is an intersection and nothing else (its v2 language guide, which is not in this repository).
+A design's wider draw is intersected with the part's, silently: a design's `0A..3mA` against the row's `0A..750nA` gives `0A..750nA`, and only a range wholly outside is a contradiction. The owner chose to follow atopile, whose `&=` is an intersection and nothing else (its v2 language guide, which is not in this repository).
 
 ## What was rejected
 
@@ -34,9 +34,11 @@ A design that has a true draw above the row's must give the part a row of its ow
 
 ## Left open
 
-- The meaning of an end with no value ("claims nothing while it waits"): the owner is asked to accept it.
-- "Output levels: columns (`.voh_drop` and `.vol_max` at a stated `.load_current`, or a pair per load) and how a catalog marks a column optional, so that existing rows still load." ADR 0078 has since answered how a catalog marks a column optional; the output's columns stay open.
-- "`?=` instead of `&=` for the draw, if a design must be able to state a draw wider than the row's."
-- "Whether `Logic` states `.reference.current &= 0A` itself, for every part that joins its reference to its own rail."
-- "A tolerance with names (`.x +/- .y`): not done."
-- Whether a part's supply current includes the load its outputs source (review finding 2): not decided. atopile's model does not answer it. `LevelTranslator` keeps `0A .. .max_supply_current`.
+Nothing. The choices below are accepted as built:
+
+- An end with no value claims nothing while it waits.
+- The output of `LevelTranslator` states no level; the columns `.voh_drop` and `.vol_max` at a stated `.load_current`, or a pair per load, are not built (ADR 0078 answered how a catalog marks a column optional). They are not planned until a board needs them.
+- The draw is stated with `&=`, an intersection with no note, and not with `?=`: a design cannot state a draw wider than the row's.
+- `Logic` does not state `.reference.current &= 0A` itself; `Levels` and the two references of `LevelTranslator` do.
+- A tolerance with names (`.x +/- .y`) is not built.
+- A part's supply current does not include the load its outputs source. atopile's model does not answer it, and `LevelTranslator` keeps `0A .. .max_supply_current`.

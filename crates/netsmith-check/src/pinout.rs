@@ -311,7 +311,7 @@ impl Model {
     /// points at the board's statement through the forwarding, and the message of a connected
     /// pin that is not chosen names the module's pin that the board writes.
     ///
-    /// Two choices of the agent that wrote it, for the owner to read. When nothing passes the choice
+    /// Two choices, accepted as built by the owner, 2026-11-11. When nothing passes the choice
     /// on, the part's own pin still says it has several functions to choose from: that message is
     /// right (nothing chose one) and was there before, so both errors are printed and the new one
     /// says where the choice went. And an equation with the exported pin on the left

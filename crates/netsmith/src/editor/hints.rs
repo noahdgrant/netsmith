@@ -44,14 +44,13 @@
 //! the page's, or a person's, to do, and an empty file draws what no file draws. Two `PUT`s are
 //! one after the other (the lock the PCB edit holds).
 //!
-//! **Cost, and what is left open.** A change to the file analyses the **whole project**, not only
+//! **Cost, and what is not built.** A change to the file analyses the **whole project**, not only
 //! the drawing: check, solve, design stage and draw run again, because the drawing is made inside
 //! the analysis and a board's build (`Built`) is not kept apart from it. For a project whose
 //! analysis takes seconds that is the delay of every drag. The fix is to redraw the boards from
 //! the last build when only a `.sch.toml` changed (the drawing needs only the design, groups,
 //! rails and marks the build holds, plus the hints); it needs `Built` to be shared (it is not
-//! `Clone`) and a version bump with no analysis, as the PCB layout file has. Not built, for the
-//! owner to decide. A board a system places twice has one table (its definition's name), and
+//! `Clone`) and a version bump with no analysis, as the PCB layout file has. Not built; issue #19. A board a system places twice has one table (its definition's name), and
 //! each of the two members gets the findings: a problem shows once, as the dock does for any
 //! problem of two boards with the same message and place.
 

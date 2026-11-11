@@ -118,7 +118,7 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
     };
     let mut ids = Ids(Vec::new());
     // A part under a height limit that states no height: a warning that names it, never a
-    // pass (ADR 0045, "Height limits", PROVISIONAL).
+    // pass (ADR 0045, "Height limits").
     let unchecked: Vec<PcbFinding> = board
         .heights_unchecked()
         .into_iter()
@@ -340,7 +340,7 @@ fn from_drc(f: &drc::Finding, board: &Board, ids: &mut Ids) -> PcbFinding {
     finding
 }
 
-/// What the requirements prove before any placing (ADR 0045 section 14, PROVISIONAL), as
+/// What the requirements prove before any placing (ADR 0045 section 14), as
 /// `constraint` findings: the lines that cannot both hold, a courtyard past an edge nobody
 /// stated and a part bigger than the outline are errors, the suspicious are warnings. The board
 /// is not placed, so a finding has no place of its own; it is at the sheet's origin, with the

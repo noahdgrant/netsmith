@@ -113,11 +113,19 @@ An area of a board, or of a part in its own frame, where tracks, vias, copper po
 _Avoid_: Exclusion zone, restricted area
 
 **Height limit**:
-The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, provisional, ADR 0045; the rule is in the header of `crates/netsmith/src/heights.rs`), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero. The check measures the part's body against the zone; the placer keeps the body, plus a small margin, out of it (owner decision 2026-11-04); a part with no fabrication outline has only its courtyard.
+The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, ADR 0045; the rule is in the header of `crates/netsmith/src/heights.rs`), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero. The check measures the part's body against the zone; the placer keeps the body, plus a small margin, out of it (owner decision 2026-11-04); a part with no fabrication outline has only its courtyard.
 
 **Catalog height**:
-The `height` cell of a catalog row, a fixed column (ADR 0094, provisional): how tall the part's body stands above the face of the board, the greatest the manufacturer's document allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. It is the part's `.height` when the design states none; a stated `.height` wins, and no row is chosen or refused for its height. An empty cell means the height is unknown, which is never zero.
+The `height` cell of a catalog row, a fixed column (ADR 0094): how tall the part's body stands above the face of the board, the greatest the manufacturer's document allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. It is the part's `.height` when the design states none; a stated `.height` wins, and no row is chosen or refused for its height. An empty cell means the height is unknown, which is never zero.
 _Avoid_: Default height, typical height
+
+**Height provenance**:
+Where a part's height came from, in the 3D view and its scene: `stated` (the source or the physical file states `.height`), `catalog` (the picked row's _Catalog height_) or `unknown` (neither; drawn as a hatched outline, never given a height), in that order of strength (ADR 0094, ADR 0105).
+_Avoid_: Height source (a row's `source` is its document), height origin, confidence
+
+**Height coverage**:
+How many of a board's fitted parts have a known height, out of all of them, as the 3D view shows it (ADR 0105). A part with an unknown height lowers it; a _Height preview_ does not raise it.
+_Avoid_: Model coverage, completeness, height score
 
 **Pin protrusion**:
 How far the pins of a through-hole part protrude out of the far side of the board (`.pin_protrusion`, a length, ADR 0045, header of `crates/netsmith-pcb/src/protrusion.rs`; the owner chose the name on 2026-11-04), whether they were cut after soldering or bought short. The board's physical file states it for one part, narrowing it as it narrows `.height`; a part that states none has an unknown protrusion, which is not zero, and its pads stay an obstacle for a part on that face. A part on that face may stand over the pins when it is fitted by hand, states its height, and the protrusion plus that height fits the height limit there. `fab-notes.txt` and `order.txt` then say how to cut the pins (a `trim:` line).
@@ -128,7 +136,7 @@ A range on where a part, or the parts of a module, may go, stated in the board's
 _Avoid_: Constraint (as the name of the thing a person writes: a finding is a `constraint` finding), position (a position is what the layout file holds)
 
 **Relation between parts**:
-A requirement on two parts together, written in the physical file as the equation of two `.place` fields (`.radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm`, ADR 0045, provisional; header of `crates/netsmith-pcb/src/constraints.rs`): the measure of one part's body minus the measure of the other's, along one axis, lies in a window. The placer holds it and moves the two parts together; `fab` measures it as a `constraint` finding that names both parts, the offset, the window and the line. It is no bound on either part.
+A requirement on two parts together, written in the physical file as the equation of two `.place` fields (`.radio.row_b.place.x - .radio.row_a.place.x == 17.5mm +/- 0.05mm`, ADR 0045; header of `crates/netsmith-pcb/src/constraints.rs`): the measure of one part's body minus the measure of the other's, along one axis, lies in a window. The placer holds it and moves the two parts together; `fab` measures it as a `constraint` finding that names both parts, the offset, the window and the line. It is no bound on either part.
 _Avoid_: Constraint between parts, pitch rule, offset constraint (an `Offset` is how the design carries it)
 
 **Row statement**:
@@ -140,7 +148,7 @@ What the case, the product and the layout designer require of a board, as oppose
 _Avoid_: PCB constraints (it is not the circuit's constraint and not a result), sidecar (the layout file is the sidecar)
 
 **Overhang**:
-A part whose courtyard is past an edge of the outline on purpose, such as a plug that sticks out of the case. The design says it may (provisional, ADR 0045; the rule is in the header of `crates/netsmith-pcb/src/overhang.rs`): a requirement on the part's own `.place.left`, `.right`, `.top` or `.bottom` whose whole window is at or beyond the same edge of the outline, A lock in the layout file does not say it: a locked part states every edge it is past, like any other part (owner decision, 2026-11-03). Then the courtyard past that edge is not an error and counts as clipped to the outline, also in the placer's overlap cost; pads are still checked, an edge not stated is still an error (also for a locked part), and `fab` prints each overhang as a warning and lists it among the warnings in `fab-notes.txt`. The body (`F.Fab`) is not checked.
+A part whose courtyard is past an edge of the outline on purpose, such as a plug that sticks out of the case. The design says it may (ADR 0045; the rule is in the header of `crates/netsmith-pcb/src/overhang.rs`): a requirement on the part's own `.place.left`, `.right`, `.top` or `.bottom` whose whole window is at or beyond the same edge of the outline, A lock in the layout file does not say it: a locked part states every edge it is past, like any other part (owner decision, 2026-11-03). Then the courtyard past that edge is not an error and counts as clipped to the outline, also in the placer's overlap cost; pads are still checked, an edge not stated is still an error (also for a locked part), and `fab` prints each overhang as a warning and lists it among the warnings in `fab-notes.txt`. The body (`F.Fab`) is not checked.
 _Avoid_: Hang-over, protrusion, outside the board (an undeclared overhang is the error `not wholly inside the board outline`)
 
 **Body**:
@@ -187,7 +195,7 @@ Everything around a buck converter IC except the IC: `std::parts::regulator::Buc
 _Avoid_: Buck module, power stage
 
 **Bank**:
-Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052, proposed). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. The design stage makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0068 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
+Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. The design stage makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0068 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
 **Dielectric**:
@@ -215,11 +223,11 @@ Who puts a part on the board: the field `.assembly` of every part, of the type `
 _Avoid_: Population, fitting, DNP
 
 **Consigned part**:
-A part that the board house places and solders, and that the owner buys and ships to it (JLCPCB's consigned parts service). Stated as `AssemblyMode::Consigned` (`.assembly &= AssemblyMode::Consigned`, a module's `.assembly_mode`, the word `consigned` in a catalog row's `assembly` column or the manifest's `assembly`). It is in `cpl.csv` and in `bom.csv` with its manufacturer's number as the comment and the LCSC cell empty, needs no `lcsc`, is listed in `fab-notes.txt` under `consigned:`, and is printed as `consigned` by `build`. The stock note and the unresolved generic warning do not apply to it, since the owner supplies it (ADR 0084, provisional).
+A part that the board house places and solders, and that the owner buys and ships to it (JLCPCB's consigned parts service). Stated as `AssemblyMode::Consigned` (`.assembly &= AssemblyMode::Consigned`, a module's `.assembly_mode`, the word `consigned` in a catalog row's `assembly` column or the manifest's `assembly`). It is in `cpl.csv` and in `bom.csv` with its manufacturer's number as the comment and the LCSC cell empty, needs no `lcsc`, is listed in `fab-notes.txt` under `consigned:`, and is printed as `consigned` by `build`. The stock note and the unresolved generic warning do not apply to it, since the owner supplies it (ADR 0084).
 _Avoid_: Customer-supplied part, owner-supplied part, free-issue part, kitted part, supplied part (use _consigned_, as the board house does); and, for the mode, a flag on a `Fab` part
 
 **Enum**:
-A type whose values are a fixed list of named variants, declared with `enum Name { A, B }` and imported like a definition (ADR 0054, proposed). A variant is written with its enum, `Name::A`; a field of the enum type takes only its variants, with `&=`, `?=` and `==`. `AssemblyMode` is the one enum in scope in every file without an import (`std/prelude.nsm`).
+A type whose values are a fixed list of named variants, declared with `enum Name { A, B }` and imported like a definition (ADR 0054). A variant is written with its enum, `Name::A`; a field of the enum type takes only its variants, with `&=`, `?=` and `==`. `AssemblyMode` is the one enum in scope in every file without an import (`std/prelude.nsm`).
 _Avoid_: Option set, choice list, constant, tag, quoted word (for a value that is one of a fixed list)
 
 **Variant**:
@@ -339,11 +347,11 @@ One of the four voltages of a `Logic` line, or of the `Levels` of a bus interfac
 _Avoid_: Threshold, noise margin
 
 **Swing**:
-The range of voltage a `Logic` line can have, `.swing` of the `Logic` or of the `Levels` of a bus interface (ADR 0081, provisional), relative to the line's ground (the `neg` of its `.reference` rail) and read as written, so `-0.3V..1.8V` goes 0.3 V below the ground. A part states it when its outputs swing to a supply that has no pad. The absolute-maximum check holds a receiver's limits against it; a line that states none swings from its ground to the top of its reference rail.
+The range of voltage a `Logic` line can have, `.swing` of the `Logic` or of the `Levels` of a bus interface (ADR 0081), relative to the line's ground (the `neg` of its `.reference` rail) and read as written, so `-0.3V..1.8V` goes 0.3 V below the ground. A part states it when its outputs swing to a supply that has no pad. The absolute-maximum check holds a receiver's limits against it; a line that states none swings from its ground to the top of its reference rail.
 _Avoid_: Output range, internal rail (a rail has pads)
 
 **Open-drain line**:
-A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075, provisional) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. When the DC analysis solves the line (every driver states `vol` at a test current), the high is the voltage of the line with every driver let go, which also sees a divider or a diode in the pull-up (ADR 0076, amendment 8, provisional). There is no kind or marker for it in the language.
+A line that a device only pulls low or releases, and a resistor to a rail holds high, such as the `sda` of an `I2c` bus. The levels check (ADR 0075) recognises a driver of one by what its part states, a `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail: the line's high is that rail's voltage range, which the receivers' `vih` is judged against. When the DC analysis solves the line (every driver states `vol` at a test current), the high is the voltage of the line with every driver let go, which also sees a divider or a diode in the pull-up (ADR 0076, amendment 8, provisional). There is no kind or marker for it in the language.
 _Avoid_: Open-collector (KiCad's name for the pin type, which netsmith does not have), wired-AND
 
 **Level translator**:
@@ -363,15 +371,15 @@ A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member 
 _Avoid_: Computed range, dynamic range
 
 **Supply budget**:
-What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13, provisional). A rail that states no `.current` has no budget.
+What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13). A rail that states no `.current` has no budget.
 _Avoid_: Current limit (a part's own relation), Load rating
 
 **Stated rail**:
-A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a statement of the design narrowed (`.stage.vin.voltage &= 4.2V..5.5V`, a module port's seed or a window), on a node the DC analysis solved. The range it states has to enclose the range the analysis found, and a statement that does is kept as it is; one that does not is an error that names the field, both ranges and the states at the end that goes outside (ADR 0076, amendment 17, provisional). Not checked: a rail past a regulator's output, and a node a source holds (a source's voltage is an input).
+A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a statement of the design narrowed (`.stage.vin.voltage &= 4.2V..5.5V`, a module port's seed or a window), on a node the DC analysis solved. The range it states has to enclose the range the analysis found, and a statement that does is kept as it is; one that does not is an error that names the field, both ranges and the states at the end that goes outside (ADR 0076, amendment 17). Not checked: a rail past a regulator's output, and a node a source holds (a source's voltage is an input).
 _Avoid_: Seed (the start window of a circle, which is one use of a stated rail), claim, assumed window (it is never kept, and is not stated)
 
 **Absolute maximum**:
-The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12, provisional). A pin of a part that is not a `Logic` line states its limit through a `Logic` whose `.line` is joined to the pin inside the part (the `Lt8641`'s `.sync_mode_limit`, ADR 0095, provisional); a pin joined to nothing outside its part is not judged.
+The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12). A pin of a part that is not a `Logic` line states its limit through a `Logic` whose `.line` is joined to the pin inside the part (the `Lt8641`'s `.sync_mode_limit`, ADR 0095); a pin joined to nothing outside its part is not judged.
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
 **Terminal**:
@@ -402,11 +410,11 @@ The current a logic level was measured at, written after the value: `.voh &= .vd
 _Avoid_: Load current (a part's `.current` is its draw), drive current
 
 **Leakage (`Ii`)**:
-The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8, provisional). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
+The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
 _Avoid_: Input current (a part's `.current` is its draw), bias current, input impedance
 
 **Net current (from the analysis)**:
-The most current that flows into a net the DC analysis solved: at each corner the sum of what the elements put into the net, and the largest of those over the corners (ADR 0076, amendment 8, provisional). It sizes the net's tracks in place of the sum of every current at its largest (ADR 0036), which is larger where the loads follow one voltage. Only a net between elements that no rail holds has one: a supply, a ground or a regulator's output is on several islands.
+The most current that flows into a net the DC analysis solved: at each corner the sum of what the elements put into the net, and the largest of those over the corners (ADR 0076, amendment 8). It sizes the net's tracks in place of the sum of every current at its largest (ADR 0036), which is larger where the loads follow one voltage. Only a net between elements that no rail holds has one: a supply, a ground or a regulator's output is on several islands.
 _Avoid_: Corner-wise sum, worst-case current (a worst case is an end of a range, and this is a sum taken inside each corner)
 
 **Operating point**:
@@ -426,11 +434,11 @@ A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal s
 _Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
 
 **Pick-time analysis**:
-The DC analysis run inside the search of picks, with the last part of a group chosen: the island of the network that has a part of the group is solved with the picks in it, cut at the rails whose voltage an earlier pass worked out, and the rails on it that nothing gave get its voltage, so the checks that read them judge the pick. It is what a hand-written `.vout.voltage == .vin.voltage - .r.drop` did for a series resistor in front of a clamp. It solves only an island with no regulator in it (ADR 0076, amendment 10, provisional). The pass after the picks is the analysis that every pick is finally judged on.
+The DC analysis run inside the search of picks, with the last part of a group chosen: the island of the network that has a part of the group is solved with the picks in it, cut at the rails whose voltage an earlier pass worked out, and the rails on it that nothing gave get its voltage, so the checks that read them judge the pick. It is what a hand-written `.vout.voltage == .vin.voltage - .r.drop` did for a series resistor in front of a clamp. It solves only an island with no regulator in it (ADR 0076, amendment 10). The pass after the picks is the analysis that every pick is finally judged on.
 _Avoid_: Trial analysis, inner analysis, solver loop
 
 **Quiescent current**:
-The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own, the same member and the `dc switching_regulator` statement's optional fourth operand (the LT8641's `.quiescent_current`, from `.iq_max` in Burst Mode and `.iq_skipping_max` otherwise, ADR 0096, provisional).
+The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own, the same member and the `dc switching_regulator` statement's optional fourth operand (the LT8641's `.quiescent_current`, from `.iq_max` in Burst Mode and `.iq_skipping_max` otherwise, ADR 0096).
 _Avoid_: Ground current, standby current, supply current (a regulator's supply current is what its input draws, the load included)
 
 **Source (at DC)**:
@@ -463,11 +471,11 @@ A CSV file of the rows of one catalog: a header of the catalog's columns (field 
 `netsmith catalog refresh`, the opt-in command that checks each row of catalog files against LCSC's product record (never JLCPCB): the manufacturer's number and package. A row that agrees is VERIFIED and gets the day in its `checked` column, the one cell it writes (only if the file has the column); a row that disagrees is a CONFLICT and a part LCSC no longer lists is MISSING, and neither is changed. It never writes `price`, `stock`, `price_breaks`, `library` or `date` (JLCPCB's numbers, which LCSC's differ from), and says in a note when LCSC lists stock 0 where the row has some. `catalog age` lists the rows whose price and stock were read more than 90 days ago, the age at which the editor's bill of materials calls a price stale, and the rows whose price and stock are unknown (ADR 0039, ADR 0047; a refresh never changes `date`).
 
 **Supply provider**:
-A source of price and stock for a part number, behind one trait: given an LCSC or manufacturer's number it answers with quotes, each saying its channel (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047, provisional).
+A source of price and stock for a part number, behind one trait: given an LCSC or manufacturer's number it answers with quotes, each saying its channel (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047).
 _Avoid_: Supplier feed, price list (a file provider reads one)
 
 **Generic part**:
-(A pick, not a definition: see **generic**.) A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047, provisional).
+(A pick, not a definition: see **generic**.) A passive or LED the solver chooses by value alone: a resistor, a ceramic capacitor, an inductor or an LED with no supplier or part number. A rating it cannot know (a capacitor's rated voltage, an inductor's saturation current and DC resistance, an LED's forward voltage) is taken from what the design states or demands. A separate step resolves it to a catalog row (JLCPCB Basic first; a capacitor only to a row with a recorded DC-bias curve), or reports it unresolved with the nearest alternatives and whether the checks pass with each (ADR 0047).
 _Avoid_: Virtual part, ideal part
 
 **Synthesized provider**:
@@ -479,34 +487,34 @@ The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`
 _Avoid_: Surge voltage, transient voltage (the transient is the event; the peak is the number)
 
 **Minimum on-time**:
-The shortest time a buck IC's high-side switch stays on, and its twin the minimum off-time: `.min_on_time` and `.min_off_time` of `Buck`, `optional` members that a part states at the largest its datasheet gives (ADR 0093, provisional). `BuckStage` checks that its `.on_time`, `vout / (vin * fsw)`, and its `.off_time`, `(vin - vout) / (vin * fsw)`, are not below them in the worst case the ranges give: the minimum on-time bounds the highest input for an output and a frequency, the minimum off-time the least headroom of the input over the output (the IC's dropout). A linear regulator's dropout is its own member, `.dropout`.
+The shortest time a buck IC's high-side switch stays on, and its twin the minimum off-time: `.min_on_time` and `.min_off_time` of `Buck`, `optional` members that a part states at the largest its datasheet gives (ADR 0093). `BuckStage` checks that its `.on_time`, `vout / (vin * fsw)`, and its `.off_time`, `(vin - vout) / (vin * fsw)`, are not below them in the worst case the ranges give: the minimum on-time bounds the highest input for an output and a frequency, the minimum off-time the least headroom of the input over the output (the IC's dropout). A linear regulator's dropout is its own member, `.dropout`.
 _Avoid_: Minimum pulse width, minimum duty cycle, tON limit
 
 **Voltage margin**:
-The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085, provisional), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
+The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
 _Avoid_: Derating factor, safety factor, headroom
 
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail. A diode's bias is the voltage in the direction it blocks, and it is negative when the diode is wired to conduct (see **Bridge voltage**).
 
 **Bridge voltage**:
-The `.bridge_voltage` of a diode (`Diode`, `Schottky`, `Zener`, `Tvs`): the voltage from the first end of its `bridge` to the second, which the checker gives a diode across a rail without being told, with the sign of the way it is wired: the rail's voltage when the first end is on `pos`, its negative when it is on `neg` (ADR 0088, provisional). The part's own relations read it, so a diode wired the wrong way round across a rail is found and named.
+The `.bridge_voltage` of a diode (`Diode`, `Schottky`, `Zener`, `Tvs`): the voltage from the first end of its `bridge` to the second, which the checker gives a diode across a rail without being told, with the sign of the way it is wired: the rail's voltage when the first end is on `pos`, its negative when it is on `neg` (ADR 0088). The part's own relations read it, so a diode wired the wrong way round across a rail is found and named.
 _Avoid_: Polarity, orientation (as a field)
 
 **Supply peak**:
-The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086, provisional). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.
+The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.
 _Avoid_: Chain voltage, input peak
 
 **Reverse peak**:
-The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091, provisional). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
+The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
 _Avoid_: Negative peak, reverse transient
 
 **Fault current**:
-The `.limit_current` of a `Fuse` (its rating: the most it lets through) and the `.supply_fault_current` of a part behind it in a `~>` chain (a `Diode` or a `Schottky`), which the checker gives it as the `.limit_current` of the nearest part in front of it that has one (ADR 0091, provisional), so a diode is rated for what the fuse can pass before it opens, and not only for the load's draw (its `.current`).
+The `.limit_current` of a `Fuse` (its rating: the most it lets through) and the `.supply_fault_current` of a part behind it in a `~>` chain (a `Diode` or a `Schottky`), which the checker gives it as the `.limit_current` of the nearest part in front of it that has one (ADR 0091), so a diode is rated for what the fuse can pass before it opens, and not only for the load's draw (its `.current`).
 _Avoid_: Trip current, surge current
 
 **On-resistance test voltage**:
-The `.on_resistance_vgs` of a `NMosfet` or a `PMosfet` and the column of that name in the `n_mosfet` and `p_mosfet` catalogs: the gate-source voltage that the datasheet guarantees `.on_resistance` at, the test condition of its RDS(on) row (ADR 0092, provisional). The gate drive the design gives the part (`.gate_source_voltage`) must always be at least it. An optional column: a row that records no voltage is offered and the check is not evaluated for it, and a design that states a requirement on the member is offered only the rows that record one.
+The `.on_resistance_vgs` of a `NMosfet` or a `PMosfet` and the column of that name in the `n_mosfet` and `p_mosfet` catalogs: the gate-source voltage that the datasheet guarantees `.on_resistance` at, the test condition of its RDS(on) row (ADR 0092). The gate drive the design gives the part (`.gate_source_voltage`) must always be at least it. An optional column: a row that records no voltage is offered and the check is not evaluated for it, and a design that states a requirement on the member is offered only the rows that record one.
 _Avoid_: Test Vgs, drive voltage (for the member), gate rating
 
 **Marked value**:
@@ -574,15 +582,15 @@ A value declared in a module or a board (not in a part, an interface or a catalo
 _Avoid_: Missing value, unset member, open value
 
 **Optional member**:
-A value declared with the word `optional` after its type, `.max_inductor_dcr: Resistance optional`, in a part, a module, an interface or a generic (ADR 0074, proposed). A design may leave it unstated, and a relation that reads it is then skipped: not checked, not listed as not evaluated, no finding. It is skipped only when nothing **states** the member: an `&=`, an applied `?=`, an equation with the member alone on its left, or a bound against numbers alone (`<=`, `>=`), anywhere in the design, also on the other side of a `~` join. A relation that reads another value that nothing states is still not evaluated, once the optional member is stated. It is the same word as `optional` in a `pins` row and in a catalog column (an **Optional column**), a modifier that says a thing may be absent. Not the `required` of ADR 0069, which was dropped.
+A value declared with the word `optional` after its type, `.max_inductor_dcr: Resistance optional`, in a part, a module, an interface or a generic (ADR 0074). A design may leave it unstated, and a relation that reads it is then skipped: not checked, not listed as not evaluated, no finding. It is skipped only when nothing **states** the member: an `&=`, an applied `?=`, an equation with the member alone on its left, or a bound against numbers alone (`<=`, `>=`), anywhere in the design, also on the other side of a `~` join. A relation that reads another value that nothing states is still not evaluated, once the optional member is stated. It is the same word as `optional` in a `pins` row and in a catalog column (an **Optional column**), a modifier that says a thing may be absent. Not the `required` of ADR 0069, which was dropped.
 _Avoid_: Nullable, maybe, conditional check
 
 **Unused interface**:
-An interface of a part or a module that the board states nothing on it uses, `unused .processor.usb` (ADR 0083, proposed). Its pins need no source and no connection, the relations that read only its values (a limit the datasheet states for the function) are not checked or listed as not evaluated, and its levels and absolute maximums do not run. Not "nothing is connected": a net that goes only to test pads, the return to ground, and a series `Resistor`, `Fuse` or `FerriteBead` that pulls a pin to the return or to a rail of the board that nothing on the board sources (the supply: a pull-up or a pull-down), are not uses. A rail that a regulator, a `dc source` or an output pin on the board sources is not the supply: a path to it is a use. A board that also uses it (a pin on a net with a pin of another part that is not passive, also through a series `Resistor`, `Fuse` or `FerriteBead`, however many; a `~` to another interface; a function chosen on a pin) is an error that shows both lines.
+An interface of a part or a module that the board states nothing on it uses, `unused .processor.usb` (ADR 0083). Its pins need no source and no connection, the relations that read only its values (a limit the datasheet states for the function) are not checked or listed as not evaluated, and its levels and absolute maximums do not run. Not "nothing is connected": a net that goes only to test pads, the return to ground, and a series `Resistor`, `Fuse` or `FerriteBead` that pulls a pin to the return or to a rail of the board that nothing on the board sources (the supply: a pull-up or a pull-down), are not uses. A rail that a regulator, a `dc source` or an output pin on the board sources is not the supply: a path to it is a use. A board that also uses it (a pin on a net with a pin of another part that is not passive, also through a series `Resistor`, `Fuse` or `FerriteBead`, however many; a `~` to another interface; a function chosen on a pin) is an error that shows both lines.
 _Avoid_: Disabled function, skipped port, ignored interface, `no_connect` interface
 
 **Optional column**:
-A column of a part's `catalog` statement that ends with `optional`, `catalog tvs { ..., .breakdown_voltage optional }`, in a standard part or a project's own (ADR 0078, provisional). A file of the catalog may leave it out and a row may leave its cell empty; such a row is offered to a design that says nothing about the field and is not offered to one that states it. Any column that is not marked needs a value in every row. It is the same word as in an **Optional member** and in a `pins` row, but a separate thing: a member's marker skips a check, a column's marker lets a row be empty.
+A column of a part's `catalog` statement that ends with `optional`, `catalog tvs { ..., .breakdown_voltage optional }`, in a standard part or a project's own (ADR 0078). A file of the catalog may leave it out and a row may leave its cell empty; such a row is offered to a design that says nothing about the field and is not offered to one that states it. Any column that is not marked needs a value in every row. It is the same word as in an **Optional member** and in a `pins` row, but a separate thing: a member's marker skips a check, a column's marker lets a row be empty.
 _Avoid_: Nullable column, sparse column, optional field
 
 **Closed-form check**:
@@ -606,7 +614,7 @@ A value the checker gives a member of a module from the parts it cannot reach, b
 _Avoid_: Computed value, inferred value, rollup
 
 **Temperature shift**:
-How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that states none gets the shift of its board's `.environment.temperature` (less the 25 C) when it bounds `.voltage_over_temperature`, and one that does neither has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
+How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that states none gets the shift of its board's `.environment.temperature` (less the 25 C) when it bounds `.voltage_over_temperature`, and one that does neither has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
 _Avoid_: Absolute temperature, delta T (the range of temperatures a board's surroundings reach is its _Environment_, and a part's is its _Temperature range_)
 
 **Ohm bound**:
@@ -643,6 +651,18 @@ _Avoid_: Viewer, IDE, GUI
 **View**:
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
+
+**3D view**:
+The editor's view of a board in three dimensions, in the PCB section: the board as its stackup makes it, the copper, and each part's _Body_ extruded to its height, read-only (ADR 0105). It displays the _Scene_; it moves nothing (a part is moved in the 2D PCB view) and draws no third-party 3D model.
+_Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a picture of the scene)
+
+**Scene**:
+The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it and netsmith's own rasterizer draws PNG renders of it (ADR 0105).
+_Avoid_: Model, mesh (a mesh is one piece of it), 3D export
+
+**Height preview**:
+A switch of the 3D view, labelled "preview at N mm", that stands the parts of unknown height up at N mm in the picture only. No check, finding, report, written file or the _Height coverage_ reads it (ADR 0105).
+_Avoid_: Default height, assumed height, placeholder height
 
 **Satellite**:
 A small part that the editor's schematic draws beside the pin of a main part (an IC, a connector) that it serves: a decoupling capacitor, a pull-up, a bootstrap capacitor, a divider. It is wired to that pin always, and its rail pins have a stub and a power symbol of their own (see _Power symbol_). The main part and its satellites are one block.

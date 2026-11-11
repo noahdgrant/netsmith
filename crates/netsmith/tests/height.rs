@@ -1,4 +1,4 @@
-//! Height limits (ADR 0045, "Height limits", PROVISIONAL): a part states how tall it stands,
+//! Height limits (ADR 0045, "Height limits"): a part states how tall it stands,
 //! a keepout states the tallest a part may be where it is, the annealer keeps a tall part out
 //! from under a low zone, and `check_placement` and `fab` name a part that is too tall, with
 //! the numbers. A part with no stated height is reported as unchecked, never taken as flat.

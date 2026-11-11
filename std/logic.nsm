@@ -66,8 +66,8 @@ import std::sources::Rail
 ///   level that counts as stated, which would make a swing alone start the check of every pair on
 ///   the net.
 ///
-/// The question ADR 0081 first left open, whether `voh` should default to the swing's high, was
-/// answered by its amendment 1 (the owner approved the derivation, 2026-11-08).
+/// ADR 0081 first left open whether `voh` should default to the swing's high; its amendment 1
+/// answered it (the owner approved the derivation, 2026-11-08). Accepted as built, 2026-11-11.
 ///
 /// Three members are `optional` (ADR 0074) and a part states those its datasheet gives, for the
 /// DC analysis (ADR 0076, amendment 8): `.ii`, the most current the pin takes or gives when it

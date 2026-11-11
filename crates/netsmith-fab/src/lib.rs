@@ -34,14 +34,15 @@
 //! so `fab` has no "not run (KiCad not installed)" path. The pour fill is part of this
 //! because a board with pours cannot be plotted without it.
 //!
-//! **Status of the design.** The owner accepted it on 2026-11-04 (the ADR's text: "The owner
-//! accepted the design on 2026-11-04"), and kept it provisional until one real package has gone
-//! through JLCPCB's order preview and JLCPCB's own design check (issue #12). Only the owner can do
-//! that, since it needs an order account. The person who does it looks at the planes (the pours
-//! are written in clear polarity inside a copper file, which KiCad does not do) and at the
-//! silkscreen (our font), and records the board, the date, what the preview showed and any file
-//! JLCPCB refused or changed. Until then nothing here claims that JLCPCB accepts these files, and
-//! every package JLCPCB accepted before was KiCad's. Result so far: none.
+//! **Status of the design.** The owner accepted it on 2026-11-04 and kept it `accepted` on
+//! 2026-11-11, although no package has been through JLCPCB's order preview yet. That check is
+//! open, not a reason for another status: one real package must go through JLCPCB's order preview
+//! and JLCPCB's own design check (issue #12; a person must do it, checklist in issue #10, and it
+//! needs an order account). The person looks at the planes (the pours are written in clear
+//! polarity inside a copper file, which KiCad does not do) and at the silkscreen (our font), and
+//! records the board, the date, what the preview showed and any file JLCPCB refused or changed in
+//! ADR 0034. Until then nothing here claims that JLCPCB accepts these files, and every package
+//! JLCPCB accepted before was KiCad's. Result: none yet.
 //!
 //! **What is not checked, and the limits.** JLCPCB has not been given these files. They were
 //! accepted by KiCad's Gerber loader only in the sense that KiCad's plot of the same board

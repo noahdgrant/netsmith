@@ -36,11 +36,13 @@
 //! `sbu2` of `UsbC2`); the six-contact power-only receptacle has no A1, A4, B1 or B4, so
 //! `UsbCPower` has VBUS on A9 and B9 and GND on A12 and B12.
 //!
-//! **`build` and `fab` need the libraries; `check`, `solve`, `compare` and the editor's reading do
-//! not.** `outcome_with` takes `Option<&Libraries>`; with `None` no KiCad file is read, and the
-//! board's `schematic`, `project` and `report` are empty. `build`, `fab` and the editor's build and
-//! fab read them and stop, once, with the path and the variable when one is missing. The editor
-//! draws a box where a symbol is missing. ADR 0097 (proposed) would change this.
+//! **`check`, `solve`, `compare` and the editor's reading read no KiCad file; `build` and `fab`
+//! read one only for an id netsmith cannot answer** (ADR 0097). `outcome_with` takes
+//! `Option<&Libraries>`; with `None` no KiCad file is read, and the board's `schematic`, `project`
+//! and `report` are empty. netsmith answers the ids of its own mapping itself, so `build`, `fab`
+//! and the editor's build and fab stop, once, with the path and the variable, only when a KiCad id
+//! of a project's `kicad.toml` is in no `[[library]]` and no generator makes it, and no installed
+//! library has it. The editor draws a box where a symbol is missing.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

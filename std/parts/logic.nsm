@@ -34,7 +34,8 @@ import std::sources::Rail
 /// pad 1 (KiCad's `74xGxx:74LVC1G04` leaves that pad out, and the pin validation (ADR 0016,
 /// decision 8) does not count a `no_connect` pad that the footprint has and the symbol lacks as a
 /// disagreement). It has no catalog row, because an LCSC number needs its
-/// own evidence (`data/jlcpcb/README.md`), so `fab` refuses a board with it until one is added. A
+/// own evidence (`data/jlcpcb/README.md`), so `fab` refuses a board with it until one is added (a
+/// person must find the number and its source; checklist in #10). A
 /// level check does not know the load (the part states the load of its numbers, above), and a
 /// standard kind cannot be given other levels by a board, because it is one value (the limit of
 /// `.assembly`, ADR 0024).
@@ -107,8 +108,9 @@ part Sn74lvc1g04 {
 /// The pad of each pin is the same in the 5-pin packages of the single-gate logic families
 /// (pad 1 NC, 2 A, 3 GND, 4 Y, 5 VCC), and there is a table for each package that its catalog
 /// has. That is the order of KiCad's stock symbol `74xGxx:74LVC1G17`; `std/kicad.toml` names no
-/// symbol for the kind on the two packages, which are drawn from the pin table. A package with another order (a 6-pin one with two grounds)
-/// is another table in a provider, and a translator of another family is a provider of its own.
+/// symbol for the kind on the two packages, which are drawn from the pin table. A package with
+/// another order (a 6-pin one with two grounds) is another table in a provider, and a translator
+/// of another family is a provider of its own: not planned until a board needs one.
 ///
 /// The reference rails (ADR 0066). A `Logic` line's `.reference` is joined to `.vcc` by `~`, which
 /// equates everything but the current, so the reference is a rail of its own on the same net with
@@ -117,7 +119,7 @@ part Sn74lvc1g04 {
 /// `.a.reference.current &= 0A` and `.y.reference.current &= 0A`: the lines name the supply for
 /// their levels and carry nothing, and all the draw is `.vcc.current`. This is true of any part
 /// that joins a `Logic` reference to its own rail (`Sn74lvc1g04` too); `Logic` was not changed,
-/// which would change every part and example that has one (open question 3 of ADR 0066).
+/// which would change every part and example that has one (ADR 0066, accepted as built).
 ///
 /// The draw is the row's own (ADR 0066). `.vcc.current &= 0A .. .max_supply_current` replaced
 /// `.vcc.current <= .max_supply_current`: a bound checks a value that the design states, and the
@@ -195,13 +197,11 @@ part Sn74lvc1g04 {
 /// the generic should have a `.vcc.current` range through a catalog column, which needs a range
 /// whose ends are values, a change to the language (answered in the same way by ADR 0066, for
 /// this generic); and a first real row of the catalog with its source, from whoever can read the
-/// JLCPCB and LCSC records.
+/// JLCPCB and LCSC records (a person must do this; checklist in #10).
 ///
-/// Left open, for the owner (the changes were approved by the owner; the rest was an agent's): the
-/// name `LevelTranslator`, its members and relations, the choice of a header-only catalog file,
-/// and the wording of the stage 0 message of ADR 0071 (see `function_of` in
-/// `crates/netsmith-check/src/pinout.rs`). Open: a package with another pad order, and a first
-/// real row of the catalog.
+/// The name `LevelTranslator`, its members and relations, the choice of a header-only catalog
+/// file, and the wording of the stage 0 message of ADR 0071 (see `function_of` in
+/// `crates/netsmith-check/src/pinout.rs`) are accepted as built by the owner, 2026-11-11.
 generic LevelTranslator {
     .designator &= "U"
 
