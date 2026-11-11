@@ -337,7 +337,8 @@ fn rail_pins(model: &crate::model::Model) -> HashSet<InstId> {
 }
 
 /// The pins that put a voltage on a net on the board: the `pos` pin of the rail that a `dc
-/// source` gives and of the output rail of a `dc linear_regulator` or `dc switching_regulator`,
+/// source` gives (also the `dc source .vbus` that a std connector states: a supply joined to a
+/// connector has a source on the board) and of the output rail of a `dc linear_regulator` or `dc switching_regulator`,
 /// and every terminal whose table says it is an output (`output` or `tri_state`), such as a
 /// charger's, unless it is in an interface stated `unused` (a pin that the board says nothing
 /// uses sources nothing). A `power` pin with no `dc` statement is not told from a load's by the checker, so

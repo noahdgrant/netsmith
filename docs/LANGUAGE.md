@@ -1365,7 +1365,7 @@ error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to 
 ```
 
 
-A series part that leads only to test pads, to a rail nothing on the board sources (a pull-up or a pull-down proves nothing), or to another interface that is stated unused, brings no use. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
+A series part that leads only to test pads, to a rail nothing on the board sources (a pull-up or a pull-down proves nothing), or to another interface that is stated unused, brings no use. A rail whose source is outside the board is the board's supply, and only a pull to it proves nothing; a `dc source` that a connector states (`UsbCPower` and `UsbCSinkReceptacle` state `dc source .vbus`, `Obd2M` `dc source .vbatt`) counts as a source on the board, so a pull-up from an unused interface to a supply joined to such a connector is an error: the interface is used. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
 
 Rules.
 

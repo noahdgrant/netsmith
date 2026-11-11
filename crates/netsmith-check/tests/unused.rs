@@ -547,6 +547,38 @@ fn a_path_to_a_rail_that_the_board_sources_with_dc_source_is_a_use() {
     );
 }
 
+// The owner's decision of 2026-11-11: the rule counts any `dc source` on the net of a board's
+// rail, also the `dc source .vbus` that a std connector states. So a supply joined to such a
+// connector has a source on the board, and a pull from an unused interface to it is a use.
+
+#[test]
+fn a_pull_to_a_supply_with_no_source_on_the_board_is_allowed() {
+    // The supply's source is outside the board: it is the rail for a pull.
+    let c =
+        series("    .r: Resistor\n    .proc.usb.dp ~> .r ~> .supply.pos\n    unused .proc.usb\n");
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_pull_to_a_supply_joined_to_a_connector_that_states_dc_source_is_a_use() {
+    // `UsbCPower` states `dc source .vbus`: with the supply joined to it, the board has a source
+    // for the supply, which is no longer the rail for a pull.
+    let c = run(&format!(
+        "import std::parts::connector::UsbCPower\n{LOAD}{}",
+        board(
+            "    .conn: UsbCPower\n    .supply ~ .conn.vbus\n    .r: Resistor\n    .proc.usb.dp ~> .r ~> .supply.pos\n    unused .proc.usb\n"
+        )
+    ));
+    assert_eq!(
+        messages(&c),
+        [
+            "`proc.usb.dp` is connected here through `r` (a `Resistor`) to `conn.vbus.pos` (net `3V3`), but `proc.usb` is stated `unused` at test.nsm:63: the interface is either used or not; remove the connection, or remove `unused`"
+        ],
+        "{}",
+        c.render()
+    );
+}
+
 #[test]
 fn a_path_to_a_rail_with_an_output_pin_on_it_is_a_use() {
     let c = run(&format!(
