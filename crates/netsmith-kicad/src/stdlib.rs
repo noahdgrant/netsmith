@@ -1,6 +1,6 @@
 //! netsmith's own standard library of KiCad files: footprints (and the symbols that go with
 //! them) of packages that KiCad's libraries do not have and the generators of ADR 0043 do not
-//! make (ADR 0087, provisional).
+//! make (ADR 0087).
 //!
 //! The files are in `std/libs/` as `.kicad_mod` and `.kicad_sym` text, compiled into the
 //! binary like `std/kicad.toml`, and answer to the library name [`NAME`]: a row of

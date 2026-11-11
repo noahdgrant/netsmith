@@ -1,5 +1,6 @@
 //! Which lines of the physical file are not met, and which cannot all hold, when the placer
-//! ends without an arrangement that meets them (ADR 0045, PROVISIONAL).
+//! ends without an arrangement that meets them (ADR 0045 sections 13 and 14; the choices below are
+//! accepted as built by the owner, 2026-11-11).
 //!
 //! [`explain`] reads the arrangement the placer ended on and the design's requirements, and
 //! gives two lists:
@@ -31,8 +32,7 @@
 //! file, ended with a requirement not met (`--constraints warn` and a layout file leave that to
 //! the check after routing). A hole to hole or hole to copper fault names the pad of each hole.
 //!
-//! **Before the placer starts** (ADR 0045 section 14, issue #99; provisional, to be reviewed by
-//! the maintainer). [`before_placing`] runs on the parts as loaded, after `constraints::plan`
+//! **Before the placer starts** (ADR 0045 section 14, issue #99). [`before_placing`] runs on the parts as loaded, after `constraints::plan`
 //! and before any placing, in `Board::from_design_placed` (so `fab` and the editor's placement)
 //! and in `netsmith build`. It takes milliseconds (5 ms for 100 parts with windows in a debug
 //! build; a test asserts under 100 ms), is deterministic and starts no placer: the placer takes
@@ -63,8 +63,8 @@
 //!
 //! A part that states a face against its module's face is refused by the checker when the board
 //! is built (`enclosure_sensor.rs`), also before any placing. The report of where the placer
-//! ended stays for what the pre-check cannot prove, and for `--constraints warn`. The choice of
-//! what to prove, and what to leave to the check after placing, is the maintainer's to review.
+//! ended stays for what the pre-check cannot prove, and for `--constraints warn`. What is proved
+//! and what is left to the check after placing are as listed above, accepted as built by the owner.
 
 use std::collections::BTreeSet;
 
@@ -154,7 +154,7 @@ pub struct Fault {
 }
 
 /// What the requirements of the physical file, the circuit and the layout file prove about
-/// where the parts can go, before the placer runs (ADR 0045 section 14, PROVISIONAL). Only
+/// where the parts can go, before the placer runs (ADR 0045 section 14). Only
 /// what is proved is an error; what is only suspicious is a warning. The same proofs as
 /// [`RequirementReport::conflicts`], run on the windows the requirements leave and not on
 /// the places the placer ended with, so no placement is attempted.

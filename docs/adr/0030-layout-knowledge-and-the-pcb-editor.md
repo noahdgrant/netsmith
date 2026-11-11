@@ -17,11 +17,11 @@ Meets tests 1 (a `layout` block in the part is a language construct, and a route
 
 **The cost.** One new block in the language, a second file beside the layout file (the routes cache), a router that must take the copper already on the board as obstacles and route a chosen set of nets, and a placer that had to become much better than the rows before any of it showed. A constraint is a finding, so a design that cannot meet a datasheet number says so with a reason and the report shows it. The layout file's format, the placer and the editor's PCB view are built and live in their headers: `crates/netsmith-pcb/src/layout.rs` (the file, and why it is apart from the schematic's `<stem>.sch.toml`), `anneal.rs` and `place.rs` (the placer), `crates/netsmith/src/editor/pcb.rs` (the PCB view and its edit protocol) and `crates/netsmith-editor/src/server.rs` (the routes).
 
-**Left open.** Word for word from the questions of the text before the cut, where they are not decided above:
-- "**Where a datasheet's layout fact lives.** A1, a `layout` block in the part with a mandatory `source` (recommended); A2, a library TOML; or A3, doc comments only and a placer that knows nothing." Decision 1 chose A1; the spelling of the block and of the seven statements is the owner's.
-- "**How strict are constraints?** Findings that never stop `build`, shown by `fab`, optional `--strict-layout` that refuses a package with an unwaived one (recommended); or always a blocker; or never in `fab`." ADR 0036's `--strict` is built; whether a separate flag for the layout block exists is open.
-- "**A rasteriser.** PNG for agents that can look needs one dependency (a pure-Rust SVG renderer) or a headless browser the user has already; or SVG only and the agent reads `layout show` data."
-- "**Module layouts as reusable sub-layouts (A4)**: a result of regeneration stored with the module, or not wanted."
-- "**An agent chat in the editor**: no (recommended); the agent works through the CLI and the files, and the editor shows the result."
-- Regenerating one module (every part outside it locked for the run, the nets of its parts ripped up and routed again, a preview with the findings before and after, one undo step) and `netsmith place`, `route` and `layout check` are not built; the order of the plan is the author's.
-- Decided since and no longer open: one layout file apart from the schematic's (ADR 0032, ADR 0061); DRC with coordinates (ADR 0037); two-sided placement (ADR 0031).
+**Choices of the text before the cut, and what is not built.** Accepted as built by the owner, 2026-11-11, where the code has them:
+- Where a datasheet's layout fact lives: A1, a `layout` block in the part with a mandatory `source` (decision 1). The owner chose A1; the spelling of the block and of its seven statements (`near`, `away`, `loop`, `keepout`, `edge`, `vias`, `route`) is decided when the block is built (issue #59).
+- How strict constraints are: findings that never stop `build`, shown by `fab`, and refused by `--strict` (ADR 0036) when unwaived. A separate `--strict-layout` is not built; it is decided with the `layout` block (issue #59).
+- A rasteriser: none. The board is drawn as SVG (`crates/netsmith-pcb/src/svg.rs`) and netsmith takes no PNG renderer or headless browser as a dependency.
+- Module layouts as reusable sub-layouts (A4) are not wanted; a regenerated layout belongs to the board.
+- No agent chat in the editor: the agent works through the CLI and the files, and the editor shows the result.
+- Not built: regenerating one module (every part outside it locked for the run, the nets of its parts ripped up and routed again, a preview with the findings before and after, one undo step), partial routing, `netsmith place`, `route` and `layout check`, and the routes cache `<stem>.routes.toml` (issue #59).
+- Decided since: one layout file apart from the schematic's (ADR 0032, ADR 0061); DRC with coordinates (ADR 0037); two-sided placement (ADR 0031).

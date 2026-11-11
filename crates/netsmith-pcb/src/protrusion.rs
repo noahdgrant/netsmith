@@ -51,8 +51,8 @@
 //! protrusion above what the part kind allows, is the ordinary refused claim of the solver,
 //! which gives both numbers and points at the line of the bound.
 //!
-//! **Provisional readings** (the simplest reading of the decisions, for the owner to confirm or
-//! change, word for word from ADR 0045 section 15):
+//! **Readings of the decisions** (the simplest reading of them, word for word from ADR 0045
+//! section 15; accepted as built by the owner, 2026-11-11):
 //! - "A protrusion is one value (`&=`). A bounded range (a kind that says at most 3 mm, a board
 //!   that says nothing) is unknown."
 //! - "A covering part with holes of its own is judged by the old rule."
@@ -68,10 +68,10 @@
 //! - "The cross-check against KiCad's own courtyard check was not run: `crosscheck` uses default
 //!   extras, so KiCad and netsmith both report the overlap and agree."
 //! - "The PCB view's drawing of the protruding pins and the covering part is not built; the
-//!   editor lists the findings."
+//!   editor lists the findings." Not planned until a board needs it.
 //!
 //! ADR 0048 (decision 12) adds that `.pin_protrusion`, like `.height`, may also be narrowed in
-//! the board's circuit source, a second spelling (ADR 0001) until the owner says which stays.
+//! the board's circuit source: both places stay, as built.
 
 use crate::board::{Placed, Side};
 use crate::geometry::Rect;

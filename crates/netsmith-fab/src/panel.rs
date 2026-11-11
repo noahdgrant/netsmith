@@ -46,7 +46,7 @@
 //! on the same layer as the board outline (`Edge.Cuts`) and are marked "V-CUT". Where pages differ
 //! the stricter is stated; for routed panels the pages disagreed (spacing 1.6 or 2 mm against a
 //! blog minimum of 1.2 mm; mouse-bite hole pitch 0.2 to 0.3 mm against 0.35 to 0.4 mm), which is
-//! open until P2 is built. Not found in any of them: the V-cut file format JLCPCB reads for a
+//! open until P2 is built (issue #62). Not found in any of them: the V-cut file format JLCPCB reads for a
 //! customer Gerber panel, designator rules for panel assembly, and the tab count per board.
 //!
 //! **What `fab` writes** is `fab/<Panel>/`: one Gerber set, the drill files, `bom.csv`, `cpl.csv`,
@@ -84,7 +84,8 @@
 //! outline layer), or how many tabs a routed panel needs. `fab-notes.txt` says so in a line that
 //! starts "UNVERIFIED" and keeps the single board's `bom.csv` and `cpl.csv` beside the panel for
 //! the other path (order the single board and let JLCPCB make the panel, which adds its own rails
-//! and fiducials). One real quote with a P0 panel should come before P2.
+//! and fiducials). One real quote with a P0 panel should come before P2: a person must get it
+//! (checklist in issue #10; issue #62).
 //!
 //! **Not built** (issues #16 and #62): different boards on one panel (rows of one height, a V-cut
 //! must run across), a board of a system as the cell, a cell in another file, rotation, per-cell
@@ -93,10 +94,10 @@
 //! count and so is a different panel; to order one or two plug-ins the order names those boards
 //! loose, or a second panel), and moving cells in the editor.
 //!
-//! **Left open** (ADR 0040 question 7): panel assembly with JLCPCB. "The designator scheme,
-//! V-cut Gerber format and tab rules are unpublished in what was read. Recommend one real quote
-//! with a P0 panel before P2; until then the package states them as unverified." The two
-//! disagreements between JLCPCB's pages about routed panels (above) are open until P2.
+//! **For a person** (ADR 0040; checklist in issue #10): panel assembly with JLCPCB. "The designator
+//! scheme, V-cut Gerber format and tab rules are unpublished in what was read. Recommend one real
+//! quote with a P0 panel before P2; until then the package states them as unverified." The two
+//! disagreements between JLCPCB's pages about routed panels (above) are open until P2 (issue #62).
 //! The decisions the user took on 2026-11-02, in the ADR's words: "a panel is a `panel`
 //! definition in `.nsm` (cells, spacing, tabs and rails, with per-cell placement in the layout
 //! file); an order may name a panel and its quantity counts panels; the first step is a V-score

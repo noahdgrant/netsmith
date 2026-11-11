@@ -1,5 +1,5 @@
 //! Generic capacitors, inductors and LEDs in one design, from the solver to the bill of
-//! materials and `fab` (ADR 0047, provisional). Every part and number here is invented or
+//! materials and `fab` (ADR 0047). Every part and number here is invented or
 //! stated by the design itself; no test reaches a supplier.
 
 use netsmith_kicad::testlib::TempDir;

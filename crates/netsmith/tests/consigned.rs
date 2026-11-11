@@ -1,4 +1,4 @@
-//! A consigned part (ADR 0083, provisional): the owner buys it and ships it to the board
+//! A consigned part (ADR 0083): the owner buys it and ships it to the board
 //! house, which places and solders it. It is in `cpl.csv` and `bom.csv`, needs no `lcsc`, is
 //! printed as `consigned` by `build`, and neither the stock note (#202) nor the unresolved
 //! generic warning (#208) is made for it. The boards and the parts are invented.

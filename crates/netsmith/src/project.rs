@@ -91,7 +91,7 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pins: Option<String>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
-    /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047, provisional). `"none"` offers
+    /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047). `"none"` offers
     /// only the catalog's rows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub series: Option<String>,
@@ -100,7 +100,7 @@ pub struct Manifest {
     /// read and written beside it.
     #[serde(skip)]
     pub orders: Vec<Order>,
-    /// The `[supply]` table (ADR 0047, provisional): where price and stock come from. Read
+    /// The `[supply]` table (ADR 0047): where price and stock come from. Read
     /// and written beside `[project]`. It has no field for a key or a password.
     #[serde(skip)]
     pub supply: Option<SupplyConfig>,

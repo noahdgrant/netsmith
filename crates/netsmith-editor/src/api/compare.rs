@@ -12,7 +12,7 @@
 //! a second ref, to parts, nets, rails, ports, systems, the PCB, the bill of materials and
 //! problems, and says what differs. It is the one view that is about two readings of the
 //! project; every other endpoint describes the last one. The identity rules, the sentence and
-//! the defaults the owner has not reviewed are in `crates/netsmith/src/editor/diff.rs`; how a
+//! the choices behind them are in `crates/netsmith/src/editor/diff.rs`; how a
 //! ref is read, kept and limited is in `git.rs` and `compare.rs` beside it.
 //!
 //! **The requests.**

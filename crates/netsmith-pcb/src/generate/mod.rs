@@ -67,8 +67,8 @@
 //!   span of a lead, the exposed-pad clearance rule and the paste coverage; the Rust here was written
 //!   from that maths, shares no code or structure with it, and is MIT like the rest of netsmith.
 //!   **Whether reading GPL code to learn a published formula taints what is written is the owner's
-//!   to judge; the formulas are IPC's.** (Carried word for word from ADR 0043; the owner has not
-//!   decided it, and an agent does not.) Translating that Python into Rust would make the Rust a
+//!   to judge; the formulas are IPC's.** (Carried word for word from ADR 0043. A person must judge
+//!   it; checklist in issue #10.) Translating that Python into Rust would make the Rust a
 //!   derivative of GPL code (ADR 0041), so a generator works from IPC-7351 and the package
 //!   drawings.
 //! - Its `data/package/no_lead/*.yaml` (fetched 2026-11-04) hold the body, lead, exposed pad and
@@ -89,7 +89,7 @@
 //! - KiCad's footprints (CC-BY-SA 4.0 with the design exception, see ADR 0097) are used as the
 //!   check and not copied: the test reads them from an installed KiCad, and none is in this
 //!   repository.
-//! - **Not decided, and the owner's (ADR 0041 question 2):** "Is the IPC-7351 route acceptable (IPC
+//! - **Not decided; for a person (ADR 0041 question 2; checklist in issue #10):** "Is the IPC-7351 route acceptable (IPC
 //!   documents are paid), or should the dimensions come from manufacturers' drawings, package by
 //!   package?" and "Whether the IPC-SM-782 tables can be read freely is the owner's to check (IPC
 //!   standards are paid documents)." And: "Whether pad geometry computed from the IPC formulas
@@ -163,13 +163,13 @@
 //! four whose courtyard is another number, crystals named for a maker's part and through-hole
 //! crystals, and connectors other than pin headers, mounting holes and fiducials (the std rows that
 //! name those still read KiCad's library: `Button_Switch_SMD`, `MountingHole`, `Fiducial`).
-//! Open: whether a depopulated BGA grid can be a rule (a list of missing balls per row). The ten SC-70
+//! Not built (issue #15): a depopulated BGA grid as a rule (a list of missing balls per row). The ten SC-70
 //! footprints of KiCad 9.0.0 are hand-drawn (pads 0.65 x 0.4 mm at 0.65 mm pitch, one drawn body
 //! and a courtyard that is not a margin round the pads), so they are recorded rows and not a rule;
 //! KiCad 9.0.7 regenerates them with IPC pads from JEDEC MO-203 and drops the hand soldering
-//! twins, so a name here agrees with 9.0.0, the version the tests read (issue #103), and not
+//! twins, so a name here agrees with 9.0.0, the version the tests read, and not
 //! with 9.0.7: if the project moves to a later library the rows are to be replaced by a rule from
-//! MO-203. A BGA is circular pads on the pitch, lettered A to Y without I, O, Q, S, X, Z, then AA,
+//! MO-203 (issue #15). A BGA is circular pads on the pitch, lettered A to Y without I, O, Q, S, X, Z, then AA,
 //! a courtyard 1 mm outside the body, the pad diameter recorded per row (it is not a function of the
 //! pitch: 0.5 mm pitch alone has pads from 0.2 to 0.35 mm); of KiCad's 200 `Package_BGA`
 //! footprints, 83 have a full grid of one pitch and one pad size and 79 of those agree. A TSSOP
@@ -181,9 +181,9 @@
 //! same name, which `fab` never reads. A board built with generated footprints differs from one
 //! built with KiCad's in silkscreen and in text positions, and in pads by less than 0.01 mm.
 //!
-//! **Status.** ADR 0043 was marked "provisional" and is `proposed`: the families grow one
-//! validated package at a time, and a new row must agree with KiCad's footprint or state why not.
-//! The owner has not said it is accepted.
+//! **Status.** ADR 0043 stays `proposed`: the licence questions above are for a person (issue #10).
+//! The families grow one validated package at a time (issue #15), and a new row must agree with
+//! KiCad's footprint or state why not.
 
 mod bga;
 mod chip;

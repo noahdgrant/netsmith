@@ -84,7 +84,7 @@
 //! starts with `N errors on disk:`, because a file that does not build has no boards on disk
 //! and its boards would read as removed.
 //!
-//! **Left open: defaults taken without the owner, for review (ADR 0059).** (1) A part the placer
+//! **Choices, accepted as built by the owner, 2026-11-11 (ADR 0059).** (1) A part the placer
 //! chose on both sides (`derived`) is never listed as moved, because the placer moves it for every
 //! part that is added, and that is not something the design said; a part stated on one side only
 //! is compared. (2) The outline is compared only when the design states it
@@ -94,7 +94,7 @@
 //! edit, which is why it is the last thing in the sentence and not red anywhere; the other
 //! choice is leaving notes to the tab. (5) Only a system rail that no board lists is listed under
 //! the system; the other choice, listing every system rail, repeats every rail change twice.
-//! (6) What is the same part, net and rail on both sides: the owner reviews these rules.
+//! (6) What is the same part, net and rail on both sides: the rules of Identity above.
 //!
 //! **Rejected.** A text diff of the sources: it is `git diff` and the page can show it from the
 //! file endpoint, and it cannot say that a rail lost headroom (a renumbered designator rewrites

@@ -1,5 +1,5 @@
 //! When no placement meets the requirements of a physical file, the refusal names the lines
-//! (ADR 0045, PROVISIONAL): every requirement not met where the placer ended, with its
+//! (ADR 0045): every requirement not met where the placer ended, with its
 //! `file:line`, the text of the line, the part, the measured value, the window and how far
 //! out; and the lines that cannot all hold, where that is proved from the windows the lines
 //! leave, the keepouts, the height limits and the outline. A conflict that cannot be proved

@@ -13,8 +13,9 @@
 //! # Decisions, and what was rejected (ADR 0036)
 //!
 //! The user's behaviour is in `docs/LANGUAGE.md` ("Track width against current"). The owner
-//! accepted the check on 2026-11-02; the amendments below it were provisional, and amendments 3
-//! and 4 (marked) await the owner's review.
+//! accepted the check on 2026-11-02. Amendments 1 to 4 and their choices are accepted as built by
+//! the owner, 2026-11-11. The IPC constants are the one provisional part (see the end of the
+//! decisions).
 //!
 //! **Why a check at all.** A rail's `.min_track` sets the width of its nets, and the solver
 //! knows the worst-case current. Nothing compared them: a 2 A rail drawn at the process's 0.1
@@ -70,7 +71,7 @@
 //! the result is an extrapolation. A wide net can make a tight board harder to route, and no limit
 //! caps the width.
 //!
-//! **Amendment 1 (issue #4, PROVISIONAL): the router sizes every net.** The owner's direction on
+//! **Amendment 1 (issue #4): the router sizes every net.** The owner's direction on
 //! issue #4 was: there are standards for track width by current, the router should work the
 //! current out of the schematic, and a user who has to state a width has found a failure of the
 //! router. So no syntax was added. After the currents are solved, a net with at least two
@@ -83,7 +84,7 @@
 //! currents of a net with two or more unknown ones unsolved, issue #18); amendment 3 replaced it.
 //! The formula and its source are below.
 //!
-//! **Amendment 2 (issue #4, PROVISIONAL): the sum, by Kirchhoff's current law.** The first
+//! **Amendment 2 (issue #4): the sum, by Kirchhoff's current law.** The first
 //! amendment took the largest single current on a net, which is wrong wherever two things share a
 //! net (a ground that two rails return through carries both). The carriers are a rail (a load takes
 //! its `current` out of the net its `pos` is on and puts it back into the net its `neg` is on; a
@@ -116,11 +117,11 @@
 //! that carries 3 A is a finding (at its narrowest, 0.8 mm, it carries 2.03 A at 10 K; amendment
 //! 5).
 //!
-//! Choices of amendment 2 made without the owner, to be reviewed: the larger of the two sums rather
-//! than the load side alone; a module's port left out only when something inside it is on the net;
-//! the pessimism at a regulator's ground left as it is; no quiescent current added.
+//! Choices of amendment 2: the larger of the two sums rather than the load side alone; a module's
+//! port left out only when something inside it is on the net; the pessimism at a regulator's
+//! ground left as it is; no quiescent current added.
 //!
-//! **Amendment 3 (PROVISIONAL, awaiting the owner's review): a net with a current that is not known
+//! **Amendment 3: a net with a current that is not known
 //! is sized for the known part.** Found on a real 12 V automotive board: a net carried a modem load
 //! of 1.2 A that was stated and a divider resistor whose current the solver could not work out. The
 //! first and second amendments left such a net at the process's least track, 0.09 mm, and then
@@ -143,7 +144,7 @@
 //! wide); and a finding that fails the build. The code is `plan_tracks`; the tests are in
 //! `tests/guidelines.rs`.
 //!
-//! **Amendment 4 (PROVISIONAL, awaiting the owner's review): a current that is not known but
+//! **Amendment 4: a current that is not known but
 //! bounded.** ADR 0026's Ohm bound gives a resistor whose current nothing states an upper bound,
 //! `max |Va - Vb| / R`, when both ends have a known voltage range. It is not a current, and the
 //! track planner does not size for it: a bound across a supply (a fuse across 16 V is 323 A) would
@@ -165,12 +166,12 @@
 //! carries is that of the width less the tolerance (1 mm carries what 0.8 mm does), and the finding
 //! says so. `ipc2221_width` and `ipc2221_current` are the plain formula and do not change.
 //!
-//! **Left open** (the owner's): whether a net whose rail states a `.min_track` should also get the
-//! note when a current on it is not known (it does not today; the guideline names the missing
-//! carriers instead); whether the note should be a guideline that `--strict` can turn into an
-//! error; and the choices of amendment 2 above. The IPC constants below are PROVISIONAL until
-//! someone with the standard compares them. No example of `examples/` changed its widths or notes
-//! with any amendment: their currents are milliamps, at the process's least track.
+//! **As built, not done.** A net whose rail states a `.min_track` gets no note when a current on it
+//! is not known (the guideline names the missing carriers instead), and the note is not a guideline
+//! that `--strict` can turn into an error. **Provisional:** the IPC constants below, until someone
+//! with the standard compares them (it is paywalled; a person must do it, checklist in issue #10).
+//! No example of `examples/` changed its widths or notes with any amendment: their currents are
+//! milliamps, at the process's least track.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model};
 use netsmith_core::{Features, NetCurrent, OUNCE_OF_COPPER, Process};
@@ -192,16 +193,16 @@ const MIL: f64 = 0.0254;
 //   A   the conductor's cross-section in square mils (width times copper thickness),
 //   b = 0.44, c = 0.725,
 //   k = 0.048 for a conductor on an outer layer (in air) and 0.024 on an inner layer.
-// The standard is paywalled and was not read here; the formula, the constants and their
-// meaning were taken from several agreeing published derivations (Altium's IPC-2221
-// calculator page, the `pcb-toolkit` crate's `current.rs`, circuit.rocks), and checked by
-// hand in `tests/guidelines.rs`. It is an empirical fit to old measurements of tracks in
+// The standard is paywalled and was not read here, so the constants are PROVISIONAL until a person
+// compares them with it (issue #10); the formula, the constants and their meaning were taken from
+// several agreeing published derivations (Altium's IPC-2221 calculator page, the `pcb-toolkit`
+// crate's `current.rs`, circuit.rocks), and checked by hand in `tests/guidelines.rs`. It is an empirical fit to old measurements of tracks in
 // air, and the calculators say it holds only inside the ranges of those measurements (which
 // this code did not verify against the standard): outside them the result is extrapolated.
 //
-// Assumed, not from the standard, and PROVISIONAL (ADR 0036): the copper weight is the
-// process's `stackup.copper_weight` (1 oz, 0.035 mm, for JLCPCB's two-layer outer copper),
-// and the rise is the board's `.process.max_temperature_rise` or, when it states none,
+// Assumed, not from the standard (the tool's choices, accepted as built, ADR 0036): the copper
+// weight is the process's `stackup.copper_weight` (1 oz, 0.035 mm, for JLCPCB's two-layer outer
+// copper), and the rise is the board's `.process.max_temperature_rise` or, when it states none,
 // [`DEFAULT_TEMPERATURE_RISE`]. Tracks are on outer layers, so `K_EXTERNAL`.
 
 /// The IPC-2221 constant `k` for a track on an outer layer, in air.

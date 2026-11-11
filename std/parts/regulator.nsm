@@ -276,8 +276,8 @@ interface Buck {
 /// each IC's own relations (each would write the same two lines, and the stage is where the
 /// output, the input and the frequency meet). A linear regulator's dropout was already
 /// checked: `LinearRegulator` states `.vin.voltage >= .vout.voltage + .dropout`. The names
-/// `.min_on_time` and `.min_off_time` (the `Lt8641` spells its own `.t_on_min`), and whether
-/// the `Lt8641` should state its 50 ns and 110 ns on `Buck` too, are the owner's to confirm.
+/// `.min_on_time` and `.min_off_time` (the `Lt8641` spells its own `.t_on_min`), and the `Lt8641`
+/// not stating its 50 ns and 110 ns on `Buck`, are accepted as built (the owner, 2026-11-11).
 ///
 /// The divider's current and the quiescent current of the IC are not added to the load, so
 /// the inductor carries the load: `.inductor.current == -.vout.current` (the IC's own current
@@ -306,8 +306,8 @@ interface Buck {
 /// a few volts, so an IC that asks for 10 uF or more at 12 V finds no capacitor; the guide's
 /// invented IC is 4.5 V to 6 V. A frequency that a resistor sets is one more relation the IC
 /// writes (`.buck.fsw == 24GHz * 1ohm / .rt_value`, tested). The naming (`Buck`, `BuckStage`,
-/// `FeedbackDivider`, the catalog names) and the board's four joins for a buck are choices the
-/// owner may want different (ADR 0025).
+/// `FeedbackDivider`, the catalog names) and the board's four joins for a buck (ADR 0025) are
+/// accepted as built by the owner, 2026-11-11.
 module BuckStage {
     /// Joined to the IC's `buck`.
     .buck: Buck
@@ -415,8 +415,8 @@ module BuckStage {
     /// would read it, and a rail has no reason to know how parts are derated); a default of
     /// 1.25 (it changes every existing board and golden). The name, the steady voltage taking
     /// the margin too, and whether other std modules that hold capacitors across a rail take
-    /// the same member when they are added (none exists besides `BuckStage`) are the owner's
-    /// to confirm.
+    /// the same member when they are added (none exists besides `BuckStage`) are accepted as
+    /// built (the owner, 2026-11-11).
     .voltage_margin: Number
     .voltage_margin ?= 1
 
@@ -605,10 +605,10 @@ module BuckStage {
 ///   unloaded stage is larger than this relation's, and a current that the balance and the
 ///   analysis cannot share is an error naming both ranges (ADR 0076, amendment 15): a std
 ///   stage with a 0 A output is refused for its inductor's current and for `u.vin.current`,
-///   and a sleep budget cannot be shown to pass on one. The default, the floor of zero, the
-///   0.5 mA as the upper end for modes with no figure over temperature, and whether the
-///   divider belongs in the IC's input current (it does at the physical converter) are the
-///   owner's to confirm.
+///   and a sleep budget cannot be shown to pass on one (not built; issue #63: whether the
+///   stage's divider belongs in the IC's input current, as it does at the physical
+///   converter). The default, the floor of zero and the 0.5 mA as the upper end for modes
+///   with no figure over temperature are accepted as built (the owner, 2026-11-11).
 /// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
 ///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
 ///   Functions, p.10), so the board states `.bias_voltage` and joins the pin.
@@ -641,10 +641,10 @@ module BuckStage {
 ///   The solver skips a pin that nothing outside its own part is joined to, for every part
 ///   and not this one only (`absolute_maximums` in `crates/netsmith-solve/src/levels.rs`): an
 ///   optional input left floating has no voltage to judge, and a required one is already an
-///   error. Whether the limits are a `Logic` joined inside the part, a voltage the board
-///   states or a general pin-level limit, `PG` and `FB` left unstated until the solver can
-///   judge them, the reading of the table as voltages from `GND`, and the skip for every part
-///   are the owner's to confirm.
+///   error. The limits as a `Logic` joined inside the part (and not a voltage the board
+///   states or a general pin-level limit), `PG` and `FB` left unstated until the solver can
+///   judge them, the reading of the table as voltages from `GND`, and the skip for every
+///   part are accepted as built (the owner, 2026-11-11).
 ///
 /// Pins (Pin Functions, p.10 and p.11, and the Pin Configuration, p.2): 1 BIAS, 2 INTVCC,
 /// 3 BST, 4 VIN1, 5 and 12 not present, 6 and 7 GND1, 8 and 9 SW, 10 and 11 GND2, 13 VIN2,

@@ -41,7 +41,7 @@
 //! corrected because no board of the evidence had one, so `fab-notes.txt` lists it as
 //! unverified.
 //!
-//! **A size to fit** (ADR 0045 section 10, PROVISIONAL). The rows no longer decide whether the
+//! **A size to fit** (ADR 0045 section 10). The rows no longer decide whether the
 //! parts fit, since they never turn a part and count a part that hangs over the edge whole.
 //! If the rows are too big the annealer is run in the size anyway, first on the faces the
 //! parts are on, then, if that fails, with the parts nobody placed shared between the faces by
@@ -60,7 +60,7 @@
 //! and state to `placement-failure.txt` and names the file in the message (PROVISIONAL, not
 //! reviewed by the owner).
 //!
-//! **At the limit** (PROVISIONAL, not reviewed by the owner; found on a real, very tight board,
+//! **At the limit** (accepted as built by the owner, 2026-11-11; found on a real, very tight board,
 //! measured here only on invented ones in `tests/tight_limits.rs`). (1) A part whose courtyard
 //! is a tenth of a face or more was left 1 to 15 mm outside by the annealer on a crowded
 //! board, which moves a big block as it moves a resistor and rarely finds a hole for it. When
@@ -79,7 +79,7 @@
 //! (below the 1e-6 mm the placement check ignores), and a shortfall is shown with the digits it
 //! needs. Measured on invented boards (35 x 60 mm, parts of 4 to 6 x 3 to 4 mm, seeds 0 to
 //! 15): 160 small parts, 6 of 16 seeds placed before and 15 of 16 after; one 15 x 37 mm part
-//! on the bottom face among 115 small parts, 8 of 16 before and 16 of 16 after. Open: the
+//! on the bottom face among 115 small parts, 8 of 16 before and 16 of 16 after. Limits: the
 //! retries cost up to five times the time of a refused placement, and the large-part corner is
 //! chosen without looking at the nets.
 //!
@@ -95,14 +95,16 @@
 //! caller chooses the parts (a module's, from `Placed::path`), the region and whether locked
 //! ones are left out.
 //!
-//! **Left open** (the rotation and mirroring of bottom parts in the position file are
-//! unmeasured, a footprint's 3D model is copied unchanged for a part on the back, connectors
-//! are not moved to the back, a mask opening drawn in a footprint keeps vias away but not
-//! tracks). The two-face rule was checked against KiCad 9's check (`tests/hole_faces.rs`, 16
-//! boards): KiCad flags nothing the rule passes, `courtyards_overlap` agrees layer by layer,
-//! and where the rule keeps a courtyard off a part's pads KiCad's `pth_inside_courtyard`
-//! (ignored by default) flags only the holes, so the rule is stricter by about 0.55 mm round the
-//! pads. Hierarchical placement and the `layout` block of the language are not built.
+//! **Limits.** The rotation and mirroring of bottom parts in the position file are unmeasured:
+//! a person must check them against JLCPCB's assembly preview (issue #12; checklist in issue
+//! #10). A footprint's 3D model is copied unchanged for a part on the back, and connectors are
+//! not moved to the back: not planned until a board needs it. A mask opening drawn in a
+//! footprint keeps vias away but not tracks (not built; issue #58). The two-face rule was
+//! checked against KiCad 9's check (`tests/hole_faces.rs`, 16 boards): KiCad flags nothing the
+//! rule passes, `courtyards_overlap` agrees layer by layer, and where the rule keeps a
+//! courtyard off a part's pads KiCad's `pth_inside_courtyard` (ignored by default) flags only
+//! the holes, so the rule is stricter by about 0.55 mm round the pads. Hierarchical placement
+//! and the `layout` block of the language are not built (issues #58 and #59).
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -166,7 +168,7 @@ pub struct PlaceOptions {
     /// ([`Rules::DEFAULT_EDGE_WALL`]).
     pub wall: Option<f64>,
     /// The areas that limit how tall a part may stand, in the board's coordinates (ADR 0045,
-    /// "Height limits", PROVISIONAL). A part with a stated height above a zone's limit keeps
+    /// "Height limits"). A part with a stated height above a zone's limit keeps
     /// its body (grown by a small margin; its courtyard if the footprint draws no fabrication
     /// outline) out of the zone on the faces the zone limits; a part with no stated
     /// height is not kept out (nobody knows whether it fits; the check reports it).
@@ -298,7 +300,7 @@ pub struct DoesNotFit {
     /// design: for the full list [`DoesNotFit::full_report`] writes.
     pub parts: Box<[PartState]>,
     /// The requirements of the physical file that are not met where the placer ended, and
-    /// the lines that cannot all hold where that is proved (PROVISIONAL, ADR 0045). Filled
+    /// the lines that cannot all hold where that is proved (ADR 0045). Filled
     /// by `Board::from_design_placed`, which knows the design; `None` before, and for a
     /// design that states no requirement.
     pub requirements: Option<Box<crate::explain::RequirementReport>>,
@@ -1021,7 +1023,7 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
         .collect()
 }
 
-/// Whether the height limits leave no room for the part on `face` (PROVISIONAL, ADR 0045
+/// Whether the height limits leave no room for the part on `face` (ADR 0045
 /// section 11): its height is known, and the zones that rule it out there cover the face so
 /// that no place inside the outline's margin is left where its body (grown by the placer's
 /// margin) is clear of them, in either turn. A part with no stated height is never forbidden
@@ -1387,7 +1389,7 @@ fn oversize(
     found
 }
 
-/// [`oversize`] for the parts as loaded, before any placing (PROVISIONAL, ADR 0045 section 14):
+/// [`oversize`] for the parts as loaded, before any placing (ADR 0045 section 14):
 /// the parts that are too big for an outline of `fit` in every turn their requirements and the
 /// layout file leave them. `options` must already hold the plan of the requirements (the pins,
 /// the wants and the overhangs). The mechanical parts are left out: they go to the corners.
@@ -2305,7 +2307,7 @@ mod tests {
     fn courtyards_of_the_two_faces_may_overlap_but_not_over_the_pads_of_a_hole_part() {
         // Through-hole headers (also kept as connectors) among resistors, with resistors on
         // the back all round. The header draws its courtyard on F.CrtYd only, so the back
-        // is judged by its pads (ADR 0031, provisional).
+        // is judged by its pads (ADR 0031).
         let mut parts = resistors(12, "0603");
         parts.push(part("J1", "Header1x2", None));
         parts.push(part("J2", "Header1x2", None));
