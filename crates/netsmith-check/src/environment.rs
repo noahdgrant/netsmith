@@ -7,6 +7,11 @@
 //! Temperatures are kelvin everywhere and are shown with their Celsius value beside them, in
 //! the language's own spelling (`degC`, ADR 0103), because a datasheet prints Celsius.
 
+/// The temperature a datasheet states its figures at, 25 C, in kelvin: a part's
+/// `.temperature_shift` is the kelvin away from it, and a board's environment gives it one
+/// (`Checker::derive_temperature_shift`).
+pub const DATASHEET_TEMPERATURE: f64 = 298.15;
+
 /// What the comparison found for each end of the environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fit {

@@ -178,16 +178,27 @@ generic Schottky {
 /// `Voltage` because no kind holds volts per kelvin). `.leakage_current` is the reverse current
 /// below the breakdown, stated at `.leakage_test_voltage`.
 ///
-/// A design that runs the clamp over a temperature range states how far it goes from the 25 C
-/// of the datasheet, `.temperature_shift &= -65K..100K` (kelvin away from 25 C: 125 C is
-/// `100K`, -40 C is `-65K`; a range gives both corners). `.voltage_over_temperature` is then
+/// A design that runs the clamp over a temperature range has `.temperature_shift`, how far the
+/// temperature goes from the 25 C of the datasheet (kelvin away from 25 C: 125 C is `100K`,
+/// -40 C is `-65K`; a range gives both corners). A board that states an environment
+/// (`.environment.temperature`, ADR 0099) does not write it: the checker derives it as the
+/// environment's temperature less 25 C, so `-40degC..125degC` is `-65K..100K`, and the
+/// shift is the row's `.temperature_coefficient` applied over that range. A board that states
+/// `.temperature_shift` itself, `&= -65K..100K`, overrides the derivation. The checker derives
+/// it only for a board that bounds `.voltage_over_temperature` (`.z.voltage_over_temperature
+/// <= 45V`), since the shift asks every row for its coefficient: a board that does not bound
+/// it keeps the rows that state none, as it did before. A board with no environment and no
+/// stated shift has no such relation, so it is not listed as not evaluated, and the row's
+/// temperature coefficient is not asked for. `.voltage_over_temperature` is then
 /// `.zener_voltage + .temperature_coefficient * .temperature_shift`, in the worst case: the
 /// upper end of the range is the voltage at the hot corner and the lower end the voltage at
 /// the cold one, so `.z.voltage_over_temperature <= 45V` is the check of a clamp against a
-/// limit. A design that states no shift has no such relation, so it is not listed as not
-/// evaluated, and the row's temperature coefficient is not asked for. `.voltage_over_temperature`
-/// is the datasheet's typical figure carried over the range: a datasheet's coefficient is
-/// not a bound on a part, and the margin is the design's.
+/// limit. The environment's range is used as it stands: one that does not hold 25 C (`50degC..
+/// 80degC` is `25K..55K`) gives the band over that range, not one widened to the datasheet's
+/// 25 C. `.voltage_over_temperature` is the datasheet's typical figure carried over the range:
+/// a datasheet's coefficient is not a bound on a part (the standard rows state the datasheet's
+/// typical coefficient as its minimum to maximum, in `notes`, with the page), and the margin is
+/// the design's.
 ///
 /// A Zener is a clamp, not a rectifier, so across a rail `.bias >= 0V` says it is not forward
 /// biased (ADR 0088): it fails for one with its anode on `pos`. It is `0V` and not

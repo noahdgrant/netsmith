@@ -26,6 +26,7 @@ pub mod refresh;
 pub mod resolve;
 mod stock;
 pub mod supply;
+pub mod symbol_gallery;
 mod values;
 
 use std::path::{Path, PathBuf};
