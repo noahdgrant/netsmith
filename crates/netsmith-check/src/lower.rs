@@ -308,18 +308,20 @@ impl Checker<'_> {
         }
     }
 
-    /// `min(.f)` and `max(.f)` (ADR 0098): the least and the greatest value of the range of the
-    /// field `.f`, as one value of the field's own kind. They are the only functions.
+    /// `min(.f)` and `max(.f)` (ADR 0098), the least and the greatest value of the range of the
+    /// field `.f`, and `nominal(.f)`, its centre, each as one value of the field's own kind.
+    /// They are the only functions.
     fn lower_call(&mut self, name: &ast::Ident, args: &[Expr], span: Span) -> Option<Typed> {
         let word = name.name.as_str();
         let end = match word {
             "min" => RangeEnd::Min,
             "max" => RangeEnd::Max,
+            "nominal" => RangeEnd::Nominal,
             _ => {
                 self.error(
                     name.span,
                     format!(
-                        "`{word}` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range"
+                        "`{word}` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range, and `nominal(.field)`, its centre"
                     ),
                 );
                 return None;
@@ -330,31 +332,52 @@ impl Checker<'_> {
                 0 => "no argument".to_string(),
                 n => format!("{n} arguments"),
             };
-            self.error(
-                span,
-                format!(
-                    "`{word}` takes one field, such as `{word}(.bias)`, but this has {count}: it reads the {} value of one field's range, and is not the {} of several values",
-                    if end == RangeEnd::Min { "least" } else { "greatest" },
-                    if end == RangeEnd::Min { "smaller" } else { "larger" },
+            let message = match end {
+                RangeEnd::Nominal => format!(
+                    "`{word}` takes one field, such as `{word}(.resistance)`, but this has {count}: it reads the value one field is stated at, the centre of its range"
                 ),
-            );
+                _ => format!(
+                    "`{word}` takes one field, such as `{word}(.bias)`, but this has {count}: it reads the {} value of one field's range, and is not the {} of several values",
+                    if end == RangeEnd::Min {
+                        "least"
+                    } else {
+                        "greatest"
+                    },
+                    if end == RangeEnd::Min {
+                        "smaller"
+                    } else {
+                        "larger"
+                    },
+                ),
+            };
+            self.error(span, message);
             return None;
         };
         if !matches!(arg, Expr::Path(_)) {
+            let what = if end == RangeEnd::Nominal {
+                "the centre of a field's range"
+            } else {
+                "one end of a field's range"
+            };
             self.error(
                 arg.span(),
                 format!(
-                    "the argument of `{word}` is a field, such as `{word}(.bias)`, not `{}`: it reads one end of a field's range",
+                    "the argument of `{word}` is a field, such as `{word}(.bias)`, not `{}`: it reads {what}",
                     arg.to_source()
                 ),
             );
             return None;
         }
         if !self.range_ends {
+            let what = if end == RangeEnd::Nominal {
+                "the centre of a range"
+            } else {
+                "one end of a range"
+            };
             self.error(
                 span,
                 format!(
-                    "`{}` can only be used in a `<=` or `>=` statement: it reads one end of a range, and nothing is worked out from it",
+                    "`{}` can only be used in a `<=` or `>=` statement: it reads {what}, and nothing is worked out from it",
                     Expr::Call { name: name.clone(), args: args.to_vec(), span }.to_source()
                 ),
             );
@@ -366,7 +389,12 @@ impl Checker<'_> {
             self.error(
                 arg.span(),
                 format!(
-                    "`{word}` reads the end of a number's range, but `{}` is {what}",
+                    "`{word}` reads the {} of a number's range, but `{}` is {what}",
+                    if end == RangeEnd::Nominal {
+                        "centre"
+                    } else {
+                        "end"
+                    },
                     arg.to_source()
                 ),
             );

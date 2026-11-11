@@ -700,11 +700,65 @@ error: `max(.a.voltage)` can only be used in a `<=` or `>=` statement: it reads 
   |
 7 |     .a.voltage == max(.a.voltage)
   |                   ^^^^^^^^^^^^^^^
-error: `abs` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range
+error: `abs` is not a function; the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range, and `nominal(.field)`, its centre
   --> main.nsm:8:5
   |
 8 |     abs(.a.voltage) <= 5V
   |     ^^^
+```
+
+### The nominal value
+
+A datasheet gives some limits for the value a part is meant to be built with, not for the worst case of its tolerance: a charger's programming resistor is "2 kohm to 67 kohm", and a 2 kohm resistor at 1% is 1.98 kohm to 2.02 kohm, so `.rprog >= 2kohm` (for every value) refuses it. `nominal(.f)` is the value the field is stated at, without its tolerance, as one number of the field's own kind, and `nominal(.rprog) >= 2kohm` compares that: the 2 kohm resistor meets it, and one of 1.8 kohm does not. It follows `min` and `max` (ADR 0098) in everything but the point it reads, and the worst-case rule is the same for every other statement: `.rprog >= 2kohm` still reads 1.98 kohm.
+
+What the language can say is the centre of the range. A range is stored as its two ends and nothing more, so `nominal(.f)` is their mean: `2kohm +/- 1%` is 2 kohm, `3.3V +/- 5%` is 3.3 V, a value is itself, and a range with no stated centre, `1kohm..3kohm`, is 2 kohm. The mean is rounded to 12 significant digits, so that the ends of `3.3V +/- 5%` (3.135 V and 3.465 V, not exact in a float) average to 3.3 V and `nominal(.v) >= 3.3V` holds. A field that is a range because a design narrowed it, or because it is worked out from other fields (`.f == .a / .b`), has the centre of the range it has when the check is made, which is not always the value anyone wrote: a quotient's range is not centred on the quotient of the centres.
+
+```nsm solve
+import std::sources::Rail
+
+board Nominal {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "A"
+        .neg.net &= "GND"
+    }
+    nominal(.supply.voltage) >= 3.3V
+    nominal(.supply.voltage) <= 3.4V
+}
+```
+
+Rules.
+
+- The rules of the ends apply to it unchanged. The argument is one field, written as a member path; `nominal` is read in a `<=` or `>=` statement, on either side and inside arithmetic, and a `==`, `&=` or `?=` is refused it; it never narrows, a field with no value yet makes the relation wait (listed as not evaluated), and a relation that reads it gives no bound to another field and never turns away a group of catalog rows without trying them (the centre of a group's range is not the value of any row in it).
+- A failed relation names the call: `nominal(supply.voltage) must be at least 3.4V, but 3.3V is below 3.4V: it compares the value a field is stated at, without its tolerance, so change the value or the bound`.
+
+A nominal below the bound, and a plain bound on the same field:
+
+```nsm fails
+import std::sources::Rail
+
+board Nominal {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "A"
+        .neg.net &= "GND"
+    }
+    nominal(.supply.voltage) >= 3.4V
+    .supply.voltage >= 3.3V
+}
+```
+
+```text
+error: nominal(supply.voltage) must be at least 3.4V, but 3.3V is below 3.4V: it compares the value a field is stated at, without its tolerance, so change the value or the bound
+  --> main.nsm:9:5
+  |
+9 |     nominal(.supply.voltage) >= 3.4V
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: supply.voltage must always be at least 3.3V, but 3.135V..3.465V is not always above 3.3V
+   --> main.nsm:10:5
+   |
+10 |     .supply.voltage >= 3.3V
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Defaults a board can replace

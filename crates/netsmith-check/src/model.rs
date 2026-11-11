@@ -631,25 +631,30 @@ pub enum RExpr {
     /// `lo..hi` where an end is not a fixed number (ADR 0066): the smallest range that holds
     /// the low end's lowest value and the high end's highest, once both are known.
     Range(Box<RExpr>, Box<RExpr>),
-    /// `min(.f)` or `max(.f)` (ADR 0098): the least or the greatest value of a field's range, as
-    /// one value. It is read, never solved for: the solver does not narrow `.f` through a
-    /// relation that holds it, and a statement that is not `<=` or `>=` is refused it.
+    /// `min(.f)`, `max(.f)` (ADR 0098) or `nominal(.f)`: the least value, the greatest value or
+    /// the centre of a field's range, as one value. It is read, never solved for: the solver
+    /// does not narrow `.f` through a relation that holds it, and a statement that is not `<=`
+    /// or `>=` is refused it.
     End(RangeEnd, FieldId),
 }
 
-/// Which end of a field's range `min(.f)` or `max(.f)` reads.
+/// Which point of a field's range `min(.f)`, `max(.f)` or `nominal(.f)` reads: the least end,
+/// the greatest end, or the centre, which is the value the field is stated at when its range is
+/// a value with a tolerance (a range is stored as its two ends and nothing else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RangeEnd {
     Min,
     Max,
+    Nominal,
 }
 
 impl RangeEnd {
-    /// The word that is written: `min` or `max`.
+    /// The word that is written: `min`, `max` or `nominal`.
     pub fn word(self) -> &'static str {
         match self {
             Self::Min => "min",
             Self::Max => "max",
+            Self::Nominal => "nominal",
         }
     }
 }

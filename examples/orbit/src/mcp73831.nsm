@@ -56,9 +56,10 @@ part Mcp73831 {
     /// The fast charge current, nominal: `1000 V / RPROG` (datasheet section 5.1.2, page 15).
     .charge_current: Current
     .charge_current == 1000V / .rprog
-    // The programming resistor's range (page 4).
-    .rprog >= 2kohm
-    .rprog <= 67kohm
+    // The programming resistor's range (page 4) is for its nominal value: a resistor of 2 kohm
+    // at 1% is a good one, though its worst case is 1.98 kohm.
+    nominal(.rprog) >= 2kohm
+    nominal(.rprog) <= 67kohm
 
     /// The regulated battery voltage of the order code, a column of the catalog row.
     .vreg: Voltage

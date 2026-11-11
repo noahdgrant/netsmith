@@ -440,3 +440,24 @@ fn a_call_that_is_not_closed_is_a_parse_error() {
     assert_eq!(line, 3);
     assert!(message.contains("`,` or `)`"), "{message}");
 }
+
+#[test]
+fn nominal_is_a_call_like_min_and_max_and_prints_back() {
+    // `nominal(.f)` reads the value a field is stated at: the parser reads it as any call.
+    match expr("nominal(.rprog)") {
+        Expr::Call { name, args, .. } => {
+            assert_eq!(name.name, "nominal");
+            assert_eq!(args.len(), 1);
+            assert!(matches!(&args[0], Expr::Path(p) if p.to_source() == ".rprog"));
+        }
+        other => panic!("expected a call, got {other:?}"),
+    }
+    assert_eq!(canon("nominal( .ic.rprog )"), "nominal(.ic.rprog)");
+    assert_eq!(canon("nominal(.a) + 1kohm"), "nominal(.a) + 1kohm");
+    let src = "part P {\n    nominal(.rprog) >= 2kohm\n    nominal(.rprog) <= 67kohm\n}\n";
+    let file = parse(src).unwrap();
+    assert_eq!(file.to_source(), src);
+    // A member called `nominal` is still a path.
+    assert!(matches!(expr(".nominal"), Expr::Path(_)));
+    assert!(matches!(expr("nominal"), Expr::Path(_)));
+}

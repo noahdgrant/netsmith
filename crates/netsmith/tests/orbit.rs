@@ -2833,13 +2833,14 @@ board BuckBoostFixture {
 
     /// A finding about ORBIT's circuit: the charger's programming resistor is 2 kohm, the
     /// datasheet's least (page 4, "Charge Impedance Range", 2 to 67 kohm), and with the 1% of the
-    /// LCSC part ORBIT names (C22975) the resistor is 1.98 kohm at worst. Tying the resistor to
-    /// the part's `.rprog` is refused for that; the board states the nominal 2 kohm for the part
-    /// instead (`src/charger.nsm`), and a resistor of 2.2 kohm, the next E24 value, is accepted.
-    /// The module is built as the file is, and a copy of it that ties the resistor instead of
-    /// stating the value is refused for the reason above.
+    /// LCSC part ORBIT names (C22975) the resistor is 1.98 kohm at worst. The datasheet's range is
+    /// for the nominal value, so the part states `nominal(.rprog) >= 2kohm` and the resistor,
+    /// tied to the part's `.rprog` (`src/charger.nsm`), is accepted at 2 kohm +/- 1%; a nominal
+    /// of 1.8 kohm is below the least and refused, and 2.2 kohm is accepted. The charger module is
+    /// built as the file is, and copies of it with the resistor at 1.8 kohm, and of the part with
+    /// the plain bound, are refused.
     #[test]
-    fn the_programming_resistor_at_one_percent_is_below_the_datasheets_least() {
+    fn the_programming_resistor_at_one_percent_meets_the_datasheets_nominal_least() {
         let fixture = r#"
 import src::mcp73831::Mcp73831
 import std::parts::passive::Resistor
@@ -2857,16 +2858,28 @@ board ProgrammingFixture {
     .ic.rprog == .r.resistance
 }
 "#;
-        let error = fixture_board(&fixture.replace("RVALUE", "2kohm"))
+        // ORBIT's R3: 2 kohm at 1% is 1.98 kohm at worst, and its nominal is the least.
+        fixture_board(&fixture.replace("RVALUE", "2kohm")).unwrap_or_else(|e| panic!("{e}"));
+        fixture_board(&fixture.replace("RVALUE", "2.2kohm")).unwrap_or_else(|e| panic!("{e}"));
+        // A nominal below the least is refused, and the message says it compares the nominal.
+        let error = fixture_board(&fixture.replace("RVALUE", "1.8kohm"))
             .err()
-            .expect("2 kohm at 1% is 1.98 kohm at worst");
+            .expect("1.8 kohm is below the datasheet's 2 kohm");
         assert!(
-            error.contains("1.98kΩ..2.02kΩ is not always above 2kΩ"),
+            error.contains("nominal(ic.rprog) must be at least 2kΩ, but 1.8kΩ is below 2kΩ"),
             "{error}"
         );
-        fixture_board(&fixture.replace("RVALUE", "2.2kohm")).unwrap_or_else(|e| panic!("{e}"));
+        // Above the greatest too.
+        let error = fixture_board(&fixture.replace("RVALUE", "68kohm"))
+            .err()
+            .expect("68 kohm is above the datasheet's 67 kohm");
+        assert!(
+            error.contains("nominal(ic.rprog) must be at most 67kΩ, but 68kΩ is above 67kΩ"),
+            "{error}"
+        );
 
-        // The charger module itself, built from its file: the board states the nominal value.
+        // The charger module itself, built from its file: it ties the part's `RPROG` to the
+        // resistor fitted, and the 2 kohm +/- 1% resistor meets the nominal bound.
         let charger = r#"
 import src::charger::Charger
 import std::sources::Rail
@@ -2881,12 +2894,35 @@ board ChargerFixture {
 "#;
         built_named_with("fixture.nsm", charger, &[]).unwrap_or_else(|e| panic!("{e}"));
         let module = read("src/charger.nsm");
-        let stated = "    .ic.rprog &= 2kohm\n";
-        assert_eq!(module.matches(stated).count(), 1);
-        let tied = module.replace(stated, "    .ic.rprog == .rprog.resistance\n");
-        let error = built_named_with("fixture.nsm", charger, &[("charger.nsm", tied)])
+        let tie = "    .ic.rprog == .rprog.resistance\n";
+        assert_eq!(module.matches(tie).count(), 1);
+        // Control: the resistor at 1.8 kohm in a copy of the charger is refused.
+        let resistor = ".resistance &= 2kohm +/- 1%";
+        assert_eq!(module.matches(resistor).count(), 1);
+        let low = module.replace(resistor, ".resistance &= 1.8kohm +/- 1%");
+        let error = built_named_with("fixture.nsm", charger, &[("charger.nsm", low)])
             .err()
-            .expect("tying the resistor to the part is refused");
+            .expect("1.8 kohm is below the datasheet's least");
+        assert!(
+            error.contains("nominal(charger.ic.rprog) must be at least 2kΩ"),
+            "{error}"
+        );
+        // Control: the charger with the tie deleted is not refused for it (nothing is read).
+        built_named_with(
+            "fixture.nsm",
+            charger,
+            &[("charger.nsm", module.replace(tie, ""))],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        // Control: the part's bounds as plain bounds, which read the worst case, refuse the
+        // resistor the board fits: the nominal bound is what accepts it.
+        let part = read("src/mcp73831.nsm");
+        let nominal = "    nominal(.rprog) >= 2kohm\n";
+        assert_eq!(part.matches(nominal).count(), 1);
+        let plain = part.replace(nominal, "    .rprog >= 2kohm\n");
+        let error = built_named_with("fixture.nsm", charger, &[("mcp73831.nsm", plain)])
+            .err()
+            .expect("1.98 kohm at worst is below a plain 2 kohm");
         assert!(
             error.contains("1.98kΩ..2.02kΩ is not always above 2kΩ"),
             "{error}"
