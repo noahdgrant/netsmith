@@ -1738,3 +1738,74 @@ fn a_relation_that_names_a_part_is_about_the_parts_it_names_and_not_the_rails_pa
     let d = designed(NOTED).unwrap();
     assert_eq!(relation_anchors(&d), [["light.d", "light.r"]]);
 }
+
+/// A capacitor whose row names a dielectric class and no range is judged by the class's range
+/// (ADR 0099): met, it passes; over it, the refusal says the figure is the class's, not the
+/// datasheet's.
+#[test]
+fn a_part_whose_row_has_only_a_class_is_judged_by_the_classs_range() {
+    let rows = |class: &str| {
+        let mut c = Catalogs::empty();
+        c.add_file(
+            "capacitor",
+            "catalogs/capacitor.csv",
+            &format!(
+                "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,library,source\nZZC-1,100nF +/- 10%,derate capacitance by bias:,16V,0402,{class},Basic,https://example.invalid/zzc.pdf\n"
+            ),
+        )
+        .unwrap();
+        c
+    };
+    let src = "\
+import std::env::Environment
+import std::parts::passive::Capacitor
+import std::sources::Rail
+board B {
+    .environment: Environment { .temperature &= -40degC..125degC }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }
+    .c: Capacitor { .capacitance &= 100nF +/- 10% }
+    .supply.pos ~> .c ~> .supply.neg
+}
+";
+    let c = check("t.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    // X7R reaches 125 degC: judged and met, nothing named.
+    let mut s = solve(&c.boards[0], &rows("X7R"));
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    let met = design_board(&c.boards[0], &s).unwrap();
+    assert!(
+        met.guidelines.iter().all(|g| g.rule != "environment"),
+        "{:?}",
+        met.guidelines
+            .iter()
+            .map(|g| &g.message)
+            .collect::<Vec<_>>()
+    );
+    // The same pick held to the class X5R (the solver would not offer it) is refused, with the
+    // class and its source in the message.
+    s.picks[0].temp_class = netsmith_check::environment::class_range("X5R");
+    let errors = design_board(&c.boards[0], &s).expect_err("refused");
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    assert!(
+        errors[0].contains("`c` works up to 358.15 K (85degC) only (from the class X5R, per Murata C03E (2019-11-22) p.2"),
+        "{}",
+        errors[0]
+    );
+    assert!(
+        errors[0].contains("a property of the class code and not of this part"),
+        "{}",
+        errors[0]
+    );
+    // A class that states a row's own end: the row's figure is named as the row's.
+    s.picks[0].temp_max = Some(348.15);
+    let errors = design_board(&c.boards[0], &s).expect_err("refused");
+    assert!(
+        errors[0].contains("the catalog row ZZC-1 states `temp_max`"),
+        "{}",
+        errors[0]
+    );
+}

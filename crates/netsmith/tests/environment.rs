@@ -658,6 +658,144 @@ fn a_part_that_is_not_fitted_is_not_judged() {
     assert!(!findings[0].contains("r2"), "{}", findings[0]);
 }
 
+// ---- a row with only a dielectric class (ADR 0099, ENV2-C) ----------------------------------
+
+const CAPACITOR_HEADER: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,temp_min,temp_max,library,source\n";
+
+/// A board with a supply and one bypass capacitor of the invented 100 nF rows of
+/// [`class_rows`], and `extra` inside it.
+fn bypass_board(extra: &str) -> String {
+    format!(
+        "\
+import std::env::Environment
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Widget {{
+    .supply: Rail {{
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= \"3V3\"
+        .neg.net &= \"GND\"
+    }}
+    .c: Capacitor {{ .capacitance &= 100nF +/- 10% }}
+    .supply.pos ~> .c ~> .supply.neg
+{extra}}}
+"
+    )
+}
+
+/// Project capacitor rows, each of the one value only they have. `rows` are the cells from
+/// `dielectric` to `temp_max`.
+fn class_rows(rows: &[(&str, &str)]) -> Catalogs {
+    let mut text = CAPACITOR_HEADER.to_string();
+    for (mpn, cells) in rows {
+        text.push_str(&format!(
+            "{mpn},100nF +/- 10%,derate capacitance by bias:,16V,0402,{cells},Basic,https://example.invalid/{mpn}.pdf\n"
+        ));
+    }
+    let mut c = Catalogs::empty();
+    c.add_file("capacitor", "catalogs/capacitor.csv", &text)
+        .unwrap();
+    c
+}
+
+fn environment(low: &str, high: &str) -> String {
+    format!("    .environment: Environment {{ .temperature &= {low}..{high} }}\n")
+}
+
+#[test]
+fn a_row_with_only_a_class_is_judged_by_the_classes_range_and_met() {
+    // X5R is -55 to 85 degC: the board's -40 to 85 degC is inside it, so the part is judged,
+    // met, and not named as unjudged.
+    let rows = class_rows(&[("ZZC-X5R", "X5R,,")]);
+    let b = build(&bypass_board(&environment(COLD, WARM)), &rows).unwrap();
+    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZZC-X5R"));
+    assert!(
+        environment_findings(&b).is_empty(),
+        "{:?}",
+        environment_findings(&b)
+    );
+}
+
+#[test]
+fn a_row_with_only_a_class_that_does_not_cover_the_environment_is_not_met_and_says_the_class() {
+    // The same row at 125 degC is over X5R's 85 degC.
+    let rows = class_rows(&[("ZZC-X5R", "X5R,,")]);
+    let e = refused(&bypass_board(&environment(COLD, HOT)), &rows);
+    assert!(
+        e.contains("the `capacitor` catalog has nothing for `c`"),
+        "{e}"
+    );
+    assert!(
+        e.contains("1 row was left out because the temperatures it state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC)"),
+        "{e}"
+    );
+    assert!(
+        e.contains("a row that states no temperature of its own is judged by the range of its dielectric class (X5R), which is the class's and not its datasheet's"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_row_of_a_class_that_covers_the_environment_is_taken_when_an_earlier_one_does_not() {
+    // X5R first stops at 85 degC; X7R's class range reaches 125 degC and is picked.
+    let rows = class_rows(&[("ZZC-X5R", "X5R,,"), ("ZZC-X7R", "X7R,,")]);
+    let b = build(&bypass_board(&environment(COLD, HOT)), &rows).unwrap();
+    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZZC-X7R"));
+    assert!(environment_findings(&b).is_empty());
+}
+
+#[test]
+fn a_rows_own_range_beats_its_class_at_the_end_it_states() {
+    // The X5R row states 125 degC itself: the class's 85 degC is ignored at that end, and the
+    // class still gives the cold end (-55 degC) the row leaves empty.
+    let rows = class_rows(&[("ZZC-X5R", "X5R,,398.15K")]);
+    let b = build(&bypass_board(&environment(COLD, HOT)), &rows).unwrap();
+    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZZC-X5R"));
+    assert!(environment_findings(&b).is_empty());
+    // The other way: an X7R row that states 85 degC itself is out at 125 degC, though the class
+    // says 125 degC.
+    let rows = class_rows(&[("ZZC-X7R", "X7R,218.15K,358.15K")]);
+    let e = refused(&bypass_board(&environment(COLD, HOT)), &rows);
+    assert!(e.contains("1 row was left out because"), "{e}");
+    assert!(
+        !e.contains("dielectric class"),
+        "a row that states both ends has none of its range from the class: {e}"
+    );
+    // The row's own cold end beats the class's too: -20 degC is over a stated -10 degC.
+    let rows = class_rows(&[("ZZC-X7R", "X7R,263.15K,398.15K")]);
+    let e = refused(&bypass_board(&environment(COLD, HOT)), &rows);
+    assert!(e.contains("1 row was left out because"), "{e}");
+}
+
+#[test]
+fn a_row_with_no_class_and_no_range_is_still_unjudged_and_named() {
+    let rows = class_rows(&[("ZZC-NONE", ",,")]);
+    let b = build(&bypass_board(&environment(COLD, WARM)), &rows).unwrap();
+    let findings = environment_findings(&b);
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert!(
+        findings[0].contains("`c` (Capacitor) was picked as ZZC-NONE and its catalog row states no `temp_min` and no `temp_max`"),
+        "{}",
+        findings[0]
+    );
+}
+
+#[test]
+fn the_design_may_state_the_range_of_a_part_whose_row_has_only_a_class() {
+    // The design states both ends, and speaks for the part: the class is not read.
+    let extra = format!(
+        "{}    .c.temp_min &= {COLD}\n    .c.temp_max &= 423.15K\n",
+        environment(COLD, HOT)
+    );
+    let rows = class_rows(&[("ZZC-X5R", "X5R,,")]);
+    let b = build(&bypass_board(&extra), &rows);
+    // The solver reads the design's statement before the class, so the 85 degC row is offered.
+    let b = b.unwrap();
+    assert_eq!(b.sourcing[0].mpn.as_deref(), Some("ZZC-X5R"));
+    assert!(environment_findings(&b).is_empty());
+}
+
 // ---- qualification (ADR 0099, the second requirement of an environment) ----------------
 
 /// A board whose environment is `-40degC..85degC` and, if `required` is given, requires it of

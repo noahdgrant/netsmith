@@ -360,6 +360,10 @@ pub struct Pick {
     /// The row's `qualification` cell, `Aec` or `None` (ADR 0099): the part's qualification
     /// unless the design states one. `Option::None` is a row that says nothing.
     pub qualification: Option<String>,
+    /// The cited range of the row's dielectric class, when it names a class that has one: it
+    /// judges an end that neither the design nor the row states, and is the class's and not a
+    /// datasheet's (`netsmith_check::environment::ClassRange`).
+    pub temp_class: Option<&'static netsmith_check::environment::ClassRange>,
     /// Set if the candidate is a generic part (ADR 0047): it has no part number yet, and
     /// [`crate::resolve`] finds the row that stands for it.
     pub generic: Option<crate::Generic>,
@@ -4011,6 +4015,7 @@ impl Solver<'_> {
                                 temp_min: c.temp_min,
                                 temp_max: c.temp_max,
                                 qualification: c.qualification.clone(),
+                                temp_class: c.class_range(),
                                 generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),
                                 rejected: examined,
                                 count: count.map_or(1, |n| n as u32),
@@ -4228,7 +4233,8 @@ impl Solver<'_> {
     /// part, does not cover the environment of its board at an end the row states. A row that
     /// states nothing is not out: it is offered, and the design stage names it (ADR 0099).
     fn outside_temperatures(&self, part: InstId, c: &Candidate) -> bool {
-        if c.temp_min.is_none() && c.temp_max.is_none() {
+        let (row_min, row_max) = c.temperatures();
+        if row_min.is_none() && row_max.is_none() {
             return false;
         }
         let Some(environment) = self.environment_range(part) else {
@@ -4237,8 +4243,8 @@ impl Solver<'_> {
         let (stated_min, stated_max) = self.stated_temperatures(part);
         netsmith_check::environment::Fit::of(
             environment,
-            stated_min.or(c.temp_min),
-            stated_max.or(c.temp_max),
+            stated_min.or(row_min),
+            stated_max.or(row_max),
         )
         .refused()
     }
@@ -4288,15 +4294,35 @@ impl Solver<'_> {
     fn environment_note(&self, job: &Job) -> Option<String> {
         let mut notes: Vec<String> = Vec::new();
         if let Some((lo, hi)) = self.environment_range(job.part) {
-            let left_out = job
+            let out: Vec<&Candidate> = job
                 .catalog
                 .candidates
                 .iter()
                 .filter(|c| self.outside_temperatures(job.part, c))
-                .count();
+                .collect();
+            let left_out = out.len();
+            // A row judged by the range of its class has said nothing of its own about an end:
+            // say which, because that range is the class's and a datasheet's may be narrower or wider.
+            let mut by_class: Vec<&str> = out
+                .iter()
+                .filter(|c| {
+                    c.class_range().is_some() && (c.temp_min.is_none() || c.temp_max.is_none())
+                })
+                .filter_map(|c| c.class_range().map(|r| r.class))
+                .collect();
+            by_class.sort_unstable();
+            by_class.dedup();
+            let class_note = if by_class.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "; a row that states no temperature of its own is judged by the range of its dielectric class ({}), which is the class's and not its datasheet's: add `temp_min` and `temp_max` to the row to say its own",
+                    by_class.join(", ")
+                )
+            };
             if left_out > 0 {
                 notes.push(format!(
-                    "{left_out} {} left out because the temperatures {} state do not cover the board's environment, `.environment.temperature` {}: a row's `temp_min` and `temp_max` are its datasheet's",
+                    "{left_out} {} left out because the temperatures {} state do not cover the board's environment, `.environment.temperature` {}: a row's `temp_min` and `temp_max` are its datasheet's{class_note}",
                     if left_out == 1 { "row was" } else { "rows were" },
                     if left_out == 1 { "it" } else { "they" },
                     netsmith_check::environment::show_range(lo, hi),
