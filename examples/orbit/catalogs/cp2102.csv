@@ -1,0 +1,2 @@
+lcsc,mpn,package,library,source,notes
+C6568,CP2102-GMR,WQFN-28-EP(5x5),Extended,https://jlcpcb.com/partdetail/C6568 (JLCPCB parts library page read on 2026-11-10: Skyworks/Silicon Labs CP2102-GMR; package WQFN-28-EP(5x5); library type Extended) ; LCSC https://www.lcsc.com/product-detail/C6568.html (read on 2026-11-10: CP2102-GMR; package WQFN-28-EP(5x5)),"Silicon Labs (JLCPCB lists the maker as Skyworks/Silicon Labs). The LCSC number is the one on ORBIT schematic U22, written there as `LCSC Part#` (no space). Price and stock not recorded. Pins: src/cp2102.nsm."
