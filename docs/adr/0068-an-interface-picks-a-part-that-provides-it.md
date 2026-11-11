@@ -32,8 +32,10 @@ A trial is a full solve (0.22 s for a 58-part board, release build), so a use wi
 
 ## Left open
 
-- The fallback to the generic's own kind in `kicad.toml`, so providers that draw alike need one entry (later).
-- The old term: keep _generic part_ (what the synthesized provider makes) beside _generic_, or rename it in a later ADR.
-- Syntax for a bank and for an optional column, and the E-series in the language: none until a second user exists. A standard generic that declares a numeric `.count` could be a bank without a list (`BANKS` in `model.rs` holds `["Capacitor"]`); "the owner may want it, or the marker ADR 0052 rejected."
-- A use of a generic inside a generic; varying only the uses a diagnostic names (only the failing case's cost would change).
-- A pick as a note or a finding: a note.
+Nothing. The owner accepted these on 2026-11-11, as built:
+
+- No fallback to the generic's own kind in `kicad.toml`: providers that draw alike each need an entry.
+- _generic part_ (what the synthesized provider makes) stays beside _generic_.
+- No syntax for a bank, an optional column or the E-series until a second user exists. A standard generic with a numeric `.count` is a bank only if `BANKS` in `model.rs` (`["Capacitor"]`) names it.
+- A use of a generic inside a generic is refused; only the uses a diagnostic names are varied.
+- A pick is a note, not a finding.
