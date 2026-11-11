@@ -12,7 +12,7 @@
 
 use netsmith_check::InstId;
 use netsmith_design::Sourced;
-use netsmith_design::environment::{Fitted, judge};
+use netsmith_design::environment::{Fitted, judge, judge_qualification};
 use netsmith_solve::Pick;
 
 use crate::Built;
@@ -40,7 +40,13 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
     // row stands for (one the owner consigns, or one that needs no number): the first sourced
     // line of a part stands for a bank.
     let mut picks: Vec<(InstId, usize, Option<Pick>)> = Vec::new();
-    for &part in &designed.pending {
+    let waiting: Vec<InstId> = designed
+        .pending
+        .iter()
+        .chain(&designed.qualification_pending)
+        .copied()
+        .collect();
+    for &part in &waiting {
         let Some(at) = built.trace.origins.iter().position(|&o| o == part) else {
             continue;
         };
@@ -61,23 +67,32 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
             temp_min: row.temp_min,
             temp_max: row.temp_max,
             temp_class: row.temp_class,
+            qualification: row.qualification.clone(),
             generic: None,
             rejected: 0,
             count: 1,
         });
         picks.push((part, at, pick));
     }
-    let fitted: Vec<Fitted<'_>> = picks
-        .iter()
-        .map(|(part, at, pick)| Fitted {
-            part: *part,
-            kind: &sourcing[*at].kind,
-            assembly: sourcing[*at].assembly,
-            pick: pick.as_ref(),
-        })
-        .collect();
+    // The parts whose temperatures were waiting for the row are judged whole; the ones that were
+    // judged for temperature and wait for their qualification only are judged for that alone, so
+    // that nothing is counted twice.
+    let fit = |wanted: bool| -> Vec<Fitted<'_>> {
+        picks
+            .iter()
+            .filter(|(part, _, _)| designed.pending.contains(part) == wanted)
+            .map(|(part, at, pick)| Fitted {
+                part: *part,
+                kind: &sourcing[*at].kind,
+                assembly: sourcing[*at].assembly,
+                pick: pick.as_ref(),
+            })
+            .collect()
+    };
     let mut errors = Vec::new();
-    let judged = judge(&built.trace.model, &fitted, &mut errors);
+    let mut judged = judge(&built.trace.model, &fit(true), &mut errors);
+    let (qualification, _) = judge_qualification(&built.trace.model, &fit(false), &mut errors);
+    judged.findings.extend(qualification);
     if !errors.is_empty() {
         errors.sort();
         errors.dedup();
@@ -99,7 +114,7 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
     let label = built.label();
     Ok(Resolved {
         notes: tally.notes(),
-        replaced: designed.pending.clone(),
+        replaced: waiting,
         findings: judged
             .findings
             .iter()
@@ -176,6 +191,7 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
             temp_min: min,
             temp_max: max,
             temp_class: None,
+            qualification: None,
         })
     }
 
@@ -257,6 +273,7 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
                 temp_min: None,
                 temp_max: None,
                 temp_class: Some(class),
+                qualification: None,
             }),
         );
         let done = judge_resolved(&b, &sourcing).unwrap();
@@ -288,6 +305,53 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
         let b = built(&src);
         let sourcing = sourcing(&b, row(Some(293.15), Some(303.15)));
         let done = judge_resolved(&b, &sourcing).unwrap();
+        assert!(
+            done.notes[0].ends_with("1 met, 0 NOT MET, 0 UNJUDGED"),
+            "{}",
+            done.notes[0]
+        );
+    }
+
+    #[test]
+    fn a_resolved_row_is_judged_for_the_qualification_the_board_requires() {
+        let src = board(
+            "    .environment: Environment { .temperature &= -40degC..85degC }\n    .environment.qualification &= Qualification::Aec\n",
+        );
+        let b = built(&src);
+        let with = |qualification: Option<&str>| {
+            // The row's range covers the environment, so only the qualification is in question.
+            let sourcing = sourcing(
+                &b,
+                Some(ResolvedRow {
+                    name: "ACME-X".into(),
+                    temp_min: Some(233.15),
+                    temp_max: Some(398.15),
+                    temp_class: None,
+                    qualification: qualification.map(str::to_string),
+                }),
+            );
+            judge_resolved(&b, &sourcing)
+        };
+        let done = with(Some("Aec")).unwrap();
+        assert!(done.findings.is_empty(), "{:?}", done.findings);
+        let errors = with(Some("None")).unwrap_err();
+        assert!(
+            errors[0].starts_with(
+                "`r1` is not qualified (the catalog row ACME-X states `qualification` `None`"
+            ),
+            "{}",
+            errors[0]
+        );
+        let done = with(None).unwrap();
+        assert_eq!(done.findings.len(), 1, "{:?}", done.findings);
+        assert!(
+            done.findings[0].contains(
+                "`r1` (Resistor) was picked as ACME-X and its catalog row states no `qualification`"
+            ),
+            "{}",
+            done.findings[0]
+        );
+        // The line of `fab-notes.txt` counts temperatures only.
         assert!(
             done.notes[0].ends_with("1 met, 0 NOT MET, 0 UNJUDGED"),
             "{}",

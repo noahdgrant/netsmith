@@ -1600,6 +1600,25 @@ impl Model {
         }
     }
 
+    /// The `qualification` field of the environment of the board a part is on, the
+    /// qualification the board requires of every fitted part (ADR 0099). A board with no
+    /// `.environment`, or one whose environment has no `qualification` of that kind, has none.
+    pub fn environment_qualification_of(&self, part: InstId) -> Option<FieldId> {
+        let env = self.environment_of(part)?;
+        match self.member(env, "qualification")? {
+            Member::Field(f) if self.is_qualification(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    /// Whether a field is of the enum `Qualification`.
+    fn is_qualification(&self, field: FieldId) -> bool {
+        match self.field(field).kind {
+            FieldKind::Enum(e) => self.enums[e.0].name == "Qualification",
+            _ => false,
+        }
+    }
+
     /// The `temperature_shift` and `voltage_over_temperature` fields of a part, how far the
     /// temperature goes from the datasheet's 25 C and the voltage over that shift (the `Zener`,
     /// ADR 0080). A part with only one of them, or with them of another kind, has none; the

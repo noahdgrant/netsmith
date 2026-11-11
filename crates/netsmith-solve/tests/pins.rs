@@ -98,6 +98,7 @@ fn ldo_row(name: &str, package: &str) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        qualification: None,
         generic: None,
     }
 }
@@ -272,6 +273,7 @@ fn mcu_row(mpn: &str, package: &str) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        qualification: None,
         generic: None,
     }
 }

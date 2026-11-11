@@ -31,6 +31,7 @@ fn resistor(ohms: f64, percent: f64) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        qualification: None,
         generic: None,
     }
 }
@@ -438,6 +439,7 @@ fn cap(name: &str, effective_uf: f64) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        qualification: None,
         generic: None,
     }
 }

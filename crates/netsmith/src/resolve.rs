@@ -252,6 +252,7 @@ pub fn resolve_generics(
                         temp_min: row.temp_min,
                         temp_max: row.temp_max,
                         temp_class: row.temp_class,
+                        qualification: row.qualification,
                     });
                 }
                 Err(message) => unresolved.push(Unresolved {

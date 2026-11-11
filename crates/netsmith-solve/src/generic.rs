@@ -733,6 +733,8 @@ pub struct Orderable {
     pub temp_max: Option<f64>,
     /// The cited range of the row's dielectric class, if it names one that has a range.
     pub temp_class: Option<&'static netsmith_check::environment::ClassRange>,
+    /// The row's `qualification` cell, `Aec` or `None`, if it has one (ADR 0099).
+    pub qualification: Option<String>,
     /// Rows that fit but were passed over because a provider said they have no stock.
     pub passed_over: Vec<String>,
 }
@@ -923,6 +925,7 @@ pub fn resolve(
             temp_min: c.temp_min,
             temp_max: c.temp_max,
             temp_class: c.class_range(),
+            qualification: c.qualification.clone(),
             passed_over,
         });
     }

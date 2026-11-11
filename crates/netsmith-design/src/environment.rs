@@ -9,10 +9,18 @@
 //! already left such rows out of the choice, so a refusal here is a range the design states, or
 //! a row held by a pin). A part that states none, at one end or both, is kept, and a guideline
 //! finding names it: a pick the check could not judge is never passed in silence.
+//!
+//! A board that also states `.environment.qualification &= Qualification::Aec` has every fitted
+//! part judged the same way against its qualification: the design's own `.qualification` of the
+//! part, else the catalog row's. A part that says `Aec` is met, one that says `None` (its
+//! datasheet says the ordering code is not qualified) is refused, and one that says nothing is
+//! kept and named in a guideline finding.
 
 use std::collections::BTreeMap;
 
-use netsmith_check::environment::{Fit, show, show_range};
+use netsmith_check::environment::{
+    Fit, QualificationFit, requires_qualification, show, show_range,
+};
 use netsmith_check::{Domain, InstId, Member, Model};
 use netsmith_solve::Pick;
 
@@ -47,6 +55,11 @@ pub struct Tally {
     pub no_row: usize,
     /// Generic parts (ADR 0047) whose row `fab` finds, and then judges: not judged yet.
     pub pending: Vec<InstId>,
+    /// Generic parts the design stage found unjudged for the qualification the board requires,
+    /// and which are not in `pending` (their temperatures were judged): `fab` judges their
+    /// qualification with the row it finds. Not counted in the line of `fab-notes.txt`, which is
+    /// about temperatures.
+    pub qualification_pending: Vec<InstId>,
 }
 
 impl Tally {
@@ -135,10 +148,44 @@ fn stated(model: &Model, part: InstId, name: &str, hi: bool) -> Option<f64> {
     }
 }
 
-/// Judge every fitted part of a board against its environment. Errors are refusals, and the
-/// returned findings are the guidelines. A board with no `.environment` is not judged and says
-/// nothing (a board with none states no requirement).
+/// Judge every fitted part of a board against its environment: the temperatures and, where the
+/// board requires one, the qualification. Errors are refusals, and the returned findings are
+/// the guidelines. A board with no `.environment` is not judged and says nothing (a board with
+/// none states no requirement). The tally counts the temperature judgement only: the line of
+/// `fab-notes.txt` is about temperatures, and a qualification is reported by its findings and
+/// errors.
 pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> Judged {
+    let mut judged = judge_temperatures(model, parts, errors);
+    let (findings, waiting) = judge_qualification(model, parts, errors);
+    judged.findings.extend(findings);
+    if let Some(tally) = &mut judged.tally {
+        tally.qualification_pending = waiting
+            .into_iter()
+            .filter(|p| !tally.pending.contains(p))
+            .collect();
+    }
+    judged
+}
+
+/// What groups the parts of one finding: one catalog row, or one kind with no row.
+fn group_key(fitted: &Fitted<'_>) -> (bool, String) {
+    match fitted.pick {
+        Some(p) if p.generic.is_none() => (true, format!("{} {}", p.catalog, p.candidate)),
+        Some(p) => (false, format!("{} generic", p.catalog)),
+        None => (false, fitted.kind.to_string()),
+    }
+}
+
+/// What a message calls a part's type: the name it was placed as, else its kind.
+fn type_of(model: &Model, fitted: &Fitted<'_>) -> String {
+    model
+        .instance(fitted.part)
+        .placed_as
+        .clone()
+        .unwrap_or_else(|| fitted.kind.to_string())
+}
+
+fn judge_temperatures(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> Judged {
     let board = model.root;
     let Some(Member::Inst(environment)) = model.member(board, "environment") else {
         return Judged::default();
@@ -230,24 +277,16 @@ pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> J
                 ));
             }
         } else if fit.unjudged() {
-            let key = match fitted.pick {
-                Some(p) if p.generic.is_none() => (true, format!("{} {}", p.catalog, p.candidate)),
-                Some(p) => (false, format!("{} generic", p.catalog)),
-                None => (false, fitted.kind.to_string()),
-            };
+            let key = group_key(fitted);
             match fitted.pick {
                 Some(p) if p.generic.is_none() => tally.no_range += 1,
                 // A generic part has its row when `fab` resolves it, and is judged then.
                 Some(_) => tally.pending.push(part),
                 None => tally.no_row += 1,
             }
-            types.entry(key.clone()).or_insert_with(|| {
-                model
-                    .instance(part)
-                    .placed_as
-                    .clone()
-                    .unwrap_or_else(|| fitted.kind.to_string())
-            });
+            types
+                .entry(key.clone())
+                .or_insert_with(|| type_of(model, fitted));
             unjudged.entry(key).or_default().push((part, fit.missing()));
         } else {
             tally.met += 1;
@@ -304,4 +343,114 @@ pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> J
         findings,
         tally: Some(tally),
     }
+}
+
+/// A part's own statement of its qualification, `Aec` or `None`, if the design states one.
+fn stated_qualification(model: &Model, part: InstId) -> Option<String> {
+    match model.member(part, "qualification")? {
+        Member::Field(f) => match &model.field(f).domain {
+            Domain::Text(variant) => Some(variant.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Judge every fitted part against the qualification the board's environment requires
+/// (`.environment.qualification &= Qualification::Aec`). A board that states none, or states
+/// `Qualification::None`, requires nothing and says nothing. The second answer is the generic
+/// parts that have no row yet, which `fab` judges again once it has resolved them.
+pub fn judge_qualification(
+    model: &Model,
+    parts: &[Fitted<'_>],
+    errors: &mut Vec<String>,
+) -> (Vec<Guideline>, Vec<InstId>) {
+    let board = model.root;
+    let Some(field) = model.environment_qualification_of(board) else {
+        return (Vec::new(), Vec::new());
+    };
+    let required = match &model.field(field).domain {
+        Domain::Text(variant) => Some(variant.as_str()),
+        _ => None,
+    };
+    if !requires_qualification(required) {
+        return (Vec::new(), Vec::new());
+    }
+    let path = model.path_of_field(field);
+    let mut unjudged: BTreeMap<(bool, String), Vec<InstId>> = BTreeMap::new();
+    let mut types: BTreeMap<(bool, String), String> = BTreeMap::new();
+    // The generic parts with no row yet: `fab` judges them again with the row it finds.
+    let mut waiting: Vec<InstId> = Vec::new();
+    for fitted in parts {
+        if fitted.assembly == Assembly::None || fitted.kind == "Label" {
+            continue;
+        }
+        let part = fitted.part;
+        let own = stated_qualification(model, part);
+        let row = fitted.pick.and_then(|p| p.qualification.clone());
+        let claim = own.clone().or(row.clone());
+        let name = model.path_of(part);
+        match QualificationFit::of(claim.as_deref()) {
+            QualificationFit::Met => {}
+            QualificationFit::NotMet => {
+                let from = match (&own, &row) {
+                    (Some(_), _) => format!("the design states `.{name}.qualification`"),
+                    _ => format!(
+                        "the catalog row {} states `qualification` `None`, which is its datasheet's: the ordering code is not the qualified one",
+                        fitted.pick.map_or("", |p| p.candidate.as_str())
+                    ),
+                };
+                errors.push(format!(
+                    "`{name}` is not qualified ({from}), but the board's environment requires `Qualification::Aec` (`{path}`): choose a part whose datasheet says it is qualified, or drop the requirement"
+                ));
+            }
+            QualificationFit::Unjudged => {
+                let key = group_key(fitted);
+                types
+                    .entry(key.clone())
+                    .or_insert_with(|| type_of(model, fitted));
+                if fitted.pick.is_some_and(|p| p.generic.is_some()) {
+                    waiting.push(part);
+                }
+                unjudged.entry(key).or_default().push(part);
+            }
+        }
+    }
+    let mut findings = Vec::new();
+    for (key, mut group) in unjudged {
+        group.sort();
+        let names: Vec<String> = group
+            .iter()
+            .map(|p| format!("`{}`", model.path_of(*p)))
+            .collect();
+        let first = model.path_of(group[0]);
+        let example = format!(
+            "`.{first}.qualification &= Qualification::Aec` for a datasheet that says the part is AEC qualified"
+        );
+        let ty = &types[&key];
+        let (is_row, what) = &key;
+        let many = group.len() > 1;
+        let message = if *is_row {
+            let row = what.split_once(' ').map_or(what.as_str(), |(_, row)| row);
+            format!(
+                "{} ({ty}) {} picked as {row} and its catalog row states no `qualification`, so {} not judged against the board's environment, which requires `Qualification::Aec` (`{path}`): add `qualification` of the datasheet to the row (`Aec` where it says the part is qualified, `None` where it says it is not) or state it on the part, as {example}",
+                names.join(", "),
+                if many { "were" } else { "was" },
+                if many { "they are" } else { "it is" },
+            )
+        } else {
+            format!(
+                "{} ({ty}) {} no catalog row to state a qualification, and the design states none, so {} not judged against the board's environment, which requires `Qualification::Aec` (`{path}`): state it from the datasheet, as {example}",
+                names.join(", "),
+                if many { "have" } else { "has" },
+                if many { "they are" } else { "it is" },
+            )
+        };
+        findings.push(Guideline {
+            rule: "environment",
+            message,
+            at: Some(group[0]),
+        });
+    }
+    (findings, waiting)
 }

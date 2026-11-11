@@ -3949,7 +3949,7 @@ catalog_dirs = ["catalogs"]
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
 - The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only a column that the part's `catalog` statement marks `optional` (ADR 0078, below) may be empty in a row that is offered. The standard parts mark the four that were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor`, `dielectric` of `capacitor` and `breakdown_voltage` of `tvs`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
-- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature as the datasheet prints it, `85degC` or `358.15K`; a junction range stands for the part's range and the part is judged by it, which is the limit of the check; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `mpn` (the manufacturer's; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature as the datasheet prints it, `85degC` or `358.15K`; a junction range stands for the part's range and the part is judged by it, which is the limit of the check; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `qualification` (`Aec` where the part's datasheet says its ordering code is AEC qualified, `None` where it says it is not, empty where it says nothing; the part's `.qualification` is it when the design states none; a board that requires `Qualification::Aec` of its `.environment` is checked against it, ADR 0099; see Qualification, under The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
 
 `price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see Commands). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`; `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
 
@@ -6238,7 +6238,7 @@ error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has n
 
 ## The environment of a board
 
-A board can say what it is exposed to: the member `.environment` (ADR 0099, **provisional**: the owner has accepted the recommended answers of `docs/research/environment-and-grade.md`, and this stage is the temperature only). Every fitted part is then checked against it. The board has the member as it has its `.process`, an interface of the standard library, `std::env::Environment`, whose one field is the range of temperatures the board's surroundings reach.
+A board can say what it is exposed to: the member `.environment` (ADR 0099, **provisional**: the owner has accepted the recommended answers of `docs/research/environment-and-grade.md`, and this stage is the temperature and the qualification). Every fitted part is then checked against it. The board has the member as it has its `.process`, an interface of the standard library, `std::env::Environment`, whose fields are the range of temperatures the board's surroundings reach and, if the board asks for it, the qualification its parts must have (see Qualification, below).
 
 A temperature is written in degrees Celsius or kelvin, `-40degC..125degC` or `233.15K..398.15K` (the same range, ADR 0103; see Temperatures under Values), and a message shows both. `C` alone is the coulomb, so `-40C` is a charge and is refused where a temperature is wanted.
 
@@ -6421,6 +6421,80 @@ error: the `capacitor` catalog has nothing for `c`, which needs capacitance with
 - **What it proves.** The check says the part works at the air temperature of the board. It does not say which temperature a datasheet's range is (ambient, junction or operating: the row's `notes` say what the record prints), it adds no heat of the part's own, and a rating at 25 C (`.max_power` of a resistor, a fuse's hold current) is not derated by it. A part that works at 125 C does not carry its 25 C rating there. Radiation, outgassing, screening and lot traceability are not checked at all.
 - **A generic part is judged when `fab` finds its row.** A `Resistor`, `Capacitor` or `Led` named by its value has no catalog row when the board is built (ADR 0047), so the build names it as not judged. `fab` resolves it to the row it would order and judges that row with the same rule: a row inside the environment is met and says nothing, a row outside it stops `fab` before anything is placed or written (the message names the part, the row and its LCSC number, the figures and the environment), and a row that states no range is named and counted as unjudged. A board with no environment is not judged here either.
 - **`fab-notes.txt` says what was checked.** A board that has an environment gets two lines there: how many fitted parts were compared with it and met, how many were not met (a part that is not met stops the build and `fab`, so the count is zero in a package that was written), how many were not judged (a range stated at one end only or at neither, a part with no catalog row, a generic part no row stands for), and that radiation, outgassing, screening and lot traceability, and the part's own heating, are not checked. A board with no environment gets neither line.
+
+### Qualification
+
+A board can also require a qualification of every part it fits: `.environment.qualification &= Qualification::Aec`, written like any variant of an enum (ADR 0054). `Qualification` is in the prelude, so it needs no import, and it has two variants: `Aec` (the datasheet says the part is qualified to an AEC standard of its kind: AEC-Q100 for integrated circuits, Q101 for discrete semiconductors, Q200 for passives) and `None` (the datasheet says the part's ordering code is not qualified). It names a family and not a standard: the catalog row's `notes` say which AEC document its datasheet states, with the page, and the enum has no variant for a grade. Nothing is derived from a part's temperature range and nothing the other way: a part's printed range can exceed its grade.
+
+A part states what its datasheet says in the built-in member `.qualification` of every part, or its catalog row does, in the optional fixed column `qualification` (`Aec`, `None`, or empty; see Catalog files). A part is judged only against a stated requirement, and in the same three outcomes as a temperature range:
+
+- **Met.** The part's `.qualification` or its row says `Aec`. Nothing is named.
+- **Not met.** The part or its row says `None`. A row that says it is not offered, and the solver's message says how many rows were left out and why; a part whose own `.qualification` says `None` is an error that names the part and where it was stated.
+- **Unjudged.** Nothing states it, which is unknown and not a refusal. The part is kept and a guideline finding names it, with what to add (a `warning:` by default, an error with `--strict`, as for a range). A generic part with no row yet is unjudged in the same way until `fab` finds the row that stands for it.
+
+A board that states no qualification requirement, or states `Qualification::None`, which asks for nothing, is not judged by it and says nothing: every board that does not write the line has the same findings as before. The named environments of `std::env` state no qualification, so `Automotive` (a temperature range) does not by itself ask for one: a board that wants both writes `.environment: Automotive { .qualification &= Qualification::Aec }`.
+
+A row says `Aec` only where its datasheet or the maker's product page says so, and the row's `source` has the document, the page and the day. Two standard rows state it today: the prosemi `1206HV-3A` fuse (`Aec`, AEC-Q200, "AEC-Q200 Automotive Grade Certified", datasheet page 1) and the Vishay `SS3H10-E3/9AT` Schottky diode (`None`: its datasheet says the E3 ordering code is the commercial grade and the AEC-Q101 qualified grade is the HE3 code, which is another row). Every other standard row says nothing, so a board that requires `Aec` has them named.
+
+```nsm solve warns
+import std::env::Environment
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Dash {
+    .environment: Environment {
+        .temperature &= -40degC..85degC
+        .qualification &= Qualification::Aec
+    }
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+```text
+Dash: environment guideline: `r1` (Resistor) was picked as 1kΩ 1% 0402 C11702 and its catalog row states no `qualification`, so it is not judged against the board's environment, which requires `Qualification::Aec` (`environment.qualification`): add `qualification` of the datasheet to the row (`Aec` where it says the part is qualified, `None` where it says it is not) or state it on the part, as `.r1.qualification &= Qualification::Aec` for a datasheet that says the part is AEC qualified
+```
+
+A row that says `None` is left out. Here only the `SS3H10-E3/9AT` row is a Schottky diode of 100 V and 3 A, and it says it is not qualified:
+
+```nsm fails
+import std::env::Environment
+import std::parts::diode::Schottky
+import std::sources::Rail
+
+board Rectifier {
+    .environment: Environment {
+        .temperature &= -40degC..85degC
+        .qualification &= Qualification::Aec
+    }
+    .supply: Rail {
+        .voltage &= 12V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .d: Schottky {
+        .max_reverse_voltage &= 100V
+        .max_forward_current &= 3A
+    }
+    .supply.pos ~> .d ~> .supply.neg
+}
+```
+
+```text
+error: the `schottky` catalog has nothing for `d`, which needs max_reverse_voltage within 100V and max_forward_current within 3A (1 row was left out because it says it is not qualified (`None`) and the board's `.environment.qualification` requires `Aec`: a row's `qualification` is its datasheet's)
+   --> main.nsm:15:5
+   |
+15 |     .d: Schottky {
+   |     ^^^^^^^^^^^^
+
+```
+
+What it proves. The check says what the datasheet of the ordering code says and nothing about the board: a part qualified to AEC-Q200 is not shown to have passed any other test, and the sentence of a datasheet is not a certificate. The `Qualification` of a stricter standard is not a stronger claim: there is one variant, `Aec`, so a board cannot ask for AEC-Q100 Grade 0 by this member (the temperature range of the part says what a grade says).
 
 ### The manifest's default
 
@@ -12974,7 +13048,8 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
-| `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`). Every fitted part is checked against it (ADR 0099). |
+| `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`), and `.qualification`, the qualification it requires of every fitted part (`Qualification::Aec`). Every fitted part is checked against it (ADR 0099). |
+| `std::prelude::Qualification` (in scope everywhere, no import) | The family of qualification a part claims: `None` (its datasheet says the ordering code is not qualified) and `Aec` (AEC-Q100, Q101 or Q200). The type of the built-in `.qualification` of every part, of the catalog column `qualification` and of `.environment.qualification` (ADR 0099). See Qualification, under The environment of a board. |
 | `std::env::Automotive` | A named environment: AEC-Q100 Grade 1, -40degC..125degC (AEC-Q100-REV-J, Table 1, ambient operating temperature range), offered so a board narrows it. See Named environments. |
 | `std::env::AutomotiveGrade0` | AEC-Q100 Grade 0, -40degC..150degC, the same table. |
 | `std::env::AutomotiveGrade2` | AEC-Q100 Grade 2, -40degC..105degC, the same table. |

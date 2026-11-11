@@ -827,6 +827,8 @@ pub struct ResolvedRow {
     pub temp_max: Option<f64>,
     /// The cited range of the row's dielectric class, for an end the row leaves empty.
     pub temp_class: Option<&'static netsmith_check::environment::ClassRange>,
+    /// The row's `qualification` cell, `Aec` or `None`, if it has one.
+    pub qualification: Option<String>,
 }
 
 impl Sourced {
