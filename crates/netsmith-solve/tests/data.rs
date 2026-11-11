@@ -270,14 +270,16 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
 }
 
 /// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the four
-/// crystals, whose figure is the JLCPCB listing text, and 330 rows read from a datasheet (297
-/// ambient or operating ranges, 26 junction ranges of the diodes and the MOSFET, and 7 operating
-/// ranges of LEDs). Update it with the rows.
-const ROWS_WITH_TEMPERATURE: usize = 334;
+/// crystals, whose figure is the JLCPCB listing text, and 341 rows read from a datasheet (303
+/// ambient or operating ranges, 26 junction ranges of the diodes and the MOSFET, and 12 operating
+/// ranges of LEDs; the 1N5819WS, whose range is the one figure of its operating and storage
+/// range, is counted with the ranges and not with the junction ones). Update it with the rows.
+const ROWS_WITH_TEMPERATURE: usize = 345;
 
 /// The catalogs of semiconductors whose datasheets print a junction range (`TJ`) and no ambient
-/// one. A row of them that states a range states that one, and its `notes` say so (ADR 0099): the
-/// environment check judges the part by it, which is the limit of that check.
+/// one. A row of them that states a range says in its `notes` which temperature it is (ADR 0099): a
+/// junction range is the part's range, and the environment check judges the part by it, which is
+/// the limit of that check.
 const JUNCTION_CATALOGS: [&str; 5] = ["schottky", "tvs", "tvs_bidirectional", "zener", "n_mosfet"];
 
 /// A temperature cell such as `233.15K`, in kelvin.
@@ -351,11 +353,13 @@ fn every_temperature_range_is_two_kelvin_figures_and_its_row_names_the_datasheet
                 "{name} {lcsc}: the notes do not name the datasheet: {notes}"
             );
             if JUNCTION_CATALOGS.contains(&name) {
-                junction += 1;
                 assert!(
                     notes.contains("junction"),
-                    "{name} {lcsc}: the figure is a junction range and the notes must say so: {notes}"
+                    "{name} {lcsc}: the notes of a diode or MOSFET row must say which temperature the figure is: {notes}"
                 );
+                if notes.contains("it is a junction temperature range") {
+                    junction += 1;
+                }
             }
         }
     }
