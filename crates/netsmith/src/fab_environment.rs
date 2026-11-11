@@ -60,6 +60,7 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
             height: s.catalog_height,
             temp_min: row.temp_min,
             temp_max: row.temp_max,
+            temp_class: row.temp_class,
             generic: None,
             rejected: 0,
             count: 1,
@@ -174,6 +175,7 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
             name: "ACME-X".into(),
             temp_min: min,
             temp_max: max,
+            temp_class: None,
         })
     }
 
@@ -239,6 +241,28 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
             done.notes[0].ends_with(
                 "0 met, 0 NOT MET, 1 UNJUDGED (1 with a range stated at one end only or at neither)"
             ),
+            "{}",
+            done.notes[0]
+        );
+    }
+
+    #[test]
+    fn a_row_with_only_a_dielectric_class_is_judged_by_the_classs_cited_range() {
+        let b = built(&board(WARM));
+        let class = netsmith_check::environment::class_range("X7R").expect("X7R has a range");
+        let sourcing = sourcing(
+            &b,
+            Some(ResolvedRow {
+                name: "ACME-X".into(),
+                temp_min: None,
+                temp_max: None,
+                temp_class: Some(class),
+            }),
+        );
+        let done = judge_resolved(&b, &sourcing).unwrap();
+        assert!(done.findings.is_empty(), "{:?}", done.findings);
+        assert!(
+            done.notes[0].ends_with("1 met, 0 NOT MET, 0 UNJUDGED"),
             "{}",
             done.notes[0]
         );
