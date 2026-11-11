@@ -1,0 +1,30 @@
+//! The XUNPU (DongGuan XunPu Electronics) tactile switch TS-1088-AR02016, SMD, 5.0 x 3.0 mm, 2.0
+//! mm high, 160 gf: SW1 (RESET) and SW2 (BOOT) of the Easyduino ESP32-S3 board (LCSC C720477,
+//! `catalogs/xunpu_ts_1088.csv`).
+//!
+//! The maker's drawing ("TACT SWITCH" TS-1088-ARXXXXXX, revision A, scale 1:1, one sheet: no
+//! date) has two terminals, 1 and 2, and the circuit diagram is a normally open switch between
+//! them. The standard `Switch` has no catalog (so no LCSC number), so the part is the project's
+//! own: the same two pins, and the rating of the drawing's table: 50 mA, 12 V DC.
+
+/// A single-pole, normally open push button with two terminals.
+part XunpuTs1088 {
+    .designator &= "SW"
+
+    pins "SMD,4x3mm" {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    .rated_current: Current
+    .rated_voltage: Voltage
+    /// Through-current, a to b, while pressed.
+    .current: Current
+
+    .current <= .rated_current
+    bridge .a ~> .b
+
+    .mpn: String
+    .package: Package
+    catalog xunpu_ts_1088 by .mpn { .mpn, .package, .rated_current, .rated_voltage }
+}

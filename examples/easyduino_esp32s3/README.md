@@ -188,3 +188,110 @@ prepreg (the author's notes name JLCPCB's JLC04161H-7628 for the USB pair's impe
 - The position list has `U2` at y = -59.75136 (y up): the file has y = +59.75136.
 - `netsmith compare` needs KiCad's `kicad-cli` to read the schematic; the board file reads with
   no KiCad (`Netlist::from_kicad_pcb` finds 35 parts).
+
+## Parts
+
+Numbers are mm; the origin and axes of every footprint are those of the reference's (x right, y
+down, the part seen from the component side). A drawing's copyright or confidentiality notice is
+about the document: nothing was copied, only dimensions and facts. Each footprint is in
+`libs/easyduino_must_match.pretty` (no KiCad install is needed) and is compared pad for pad with
+`reference/placements.toml` by `crates/netsmith/tests/easyduino.rs` (number, centre, size, shape,
+kind, angle and drill, all within 0.05 mm: the parity rule's tolerance). Every symbol is drawn from
+the part's pin table.
+
+### The interface parts: J1, J2, SW1, SW2, U2 and the LEDs
+
+- **J1 and J2, `ShouhanTypeC16Pin`** (`src/shouhan_type_c_16pin.nsm`): the receptacle the board
+  buys is LCSC **C2765186**, Shouhan (SHOU HAN) `TYPE-C 16PIN 2MD(073)`, a 16-contact USB 2.0
+  Type-C receptacle, right angle SMT with four shell legs (the board file's footprint is another
+  maker's, G-Switch `GT-USB-7010ASV`: the LCSC number is the part, the footprint is a stand-in with
+  the same land pattern). `provides Connector`. Nine pins: `.vbus` (A4, A9, B4, B9), `.gnd` (A1,
+  A12, B1, B12), `.cc1` (A5), `.cc2` (B5), `.dp` (A6, B6), `.dm` (A7, B7), `.sbu1` (A8), `.sbu2`
+  (B8) and `.shield`, whose pad number `S1` is on four plated slots (as the RP2350 example's
+  micro-USB has its shield on several pads); the two non-plated pegs have no number and no pin. The
+  contacts that the receptacle joins inside (the plug picks A or B) are one pin each.
+  - Catalog row (`catalogs/shouhan_type_c_16pin.csv`): C2765186, package `SMD`, library type
+    **Extended**: JLCPCB's page `jlcpcb.com/partdetail/C2765186` and LCSC's
+    `lcsc.com/product-detail/C2765186.html`, read on 2026-11-10 (both name the part, 16 contacts,
+    SMD). Price and stock are not recorded.
+  - Source: Shouhan's "SPECIFICATION FOR APPROVAL" for `TYPE-C 16PIN 2MD(073)` (the PDF that
+    LCSC's record links, `datasheet.lcsc.com/datasheet/pdf/2d53d8d8199c9dd6666d9bc9ac7c3a1e.pdf`,
+    6 pages, SHA-256 `fe10da58945c`, no date printed), read on 2026-11-10: the drawing sheet (title
+    block: TYPE-C 16PIN 2MD(073), REV A, SHEET 1 OF 1, scale 1:8, tolerance X.XXX +/-0.05) with its
+    "PIN ASSIGNMENTS" table and the view "RECOMMENDED PCB LAYOUT (TOP VIEW)". The drawing's title
+    block says "CUSTOMER COPY"; the pages after it are the maker's test conditions.
+  - **Read** (labels at 400 dpi): contact pads 0.60 wide for the four power and ground pads
+    (0.60 (4X)) and 0.30 wide for the eight signal pads (0.30 (8X)), at +/-3.20 (6.40), +/-2.40
+    (4.80), +/-1.75 (3.50), +/-1.25 (2.50), +/-0.75 (1.50) and +/-0.25 (0.50); the names of the
+    sixteen contacts (the table); four shell slots: two of 2.10 with a 0.60 x 1.70 hole and two of
+    1.80 with a 0.60 x 1.40 hole (2.10, 1.70, 1.80, 1.40, 0.60 (4X)), 8.64 apart (8.64); two plain
+    holes of 0.65 (0.65 (2X)), 5.78 apart (5.78); from the lower slots' centre to the upper slots'
+    4.18, to the pegs 3.68, and to the pads' inner edge 4.17 and outer edge 5.32.
+  - **Differs from the drawing, the footprint follows the reference board** (the parity rule wins):
+    the board's contact pads are 1.24 long, centred at y = -3.725, where the drawing gives 1.15 (5.32
+    - 4.17), centred 0.055 further in (the inner edges agree to 0.01); the upper and lower slots are
+    4.20 apart (the drawing's 4.18); the pegs are at y = -2.605 (the drawing's 3.68 above the lower
+    slot gives the same).
+  - **Assumed** (not on the drawing): the pad numbers' sides (A and B as the table), the origin
+    (the reference's: on the centre line, 1.075 above the lower slots), the shell slots' outer
+    width, 1.00 (the drawing labels only the 0.60 hole, and the outer length), that the slots are
+    plated and numbered `S1` (the board's), the pegs unplated, paste on the contacts only,
+    courtyard (the pads and 0.25), no silkscreen, 3D model or pick-and-place rotation.
+- **SW1 (RESET) and SW2 (BOOT), `XunpuTs1088`** (`src/xunpu_ts_1088.nsm`): LCSC **C720477**, XUNPU
+  (DongGuan XunPu Electronics) `TS-1088-AR02016`, a 5.0 x 3.0 mm SMD tactile switch (the board
+  file's footprint is Alps' `SKRK`; LCSC's number is this part). The standard `Switch` has no
+  catalog (so no LCSC number), so the part is the project's own, as the RP2350 example's tactile
+  switch is: pins `.a` (pad 1) and `.b` (pad 2), rated 50 mA and 12 V DC.
+  - Catalog row (`catalogs/xunpu_ts_1088.csv`): JLCPCB and LCSC pages read on 2026-11-10 (the
+    JLCPCB page names the part and the package `SMD, 4x3mm` and **does not say Basic or Extended**,
+    so `library` is empty). Price, stock, height and temperatures are empty (the drawing prints no
+    height maximum nor temperature range; LCSC's page lists 2 mm and -30 to +80 C, and no document
+    read here prints them).
+  - Source: XUNPU's drawing "TACT SWITCH" `TS-1088-ARXXXXXX`, rev. A, scale 1:1, one sheet
+    (`datasheet.lcsc.com/datasheet/pdf/0475ac02febf455ca9ddcfb380b0df0d.pdf`, 1 page, SHA-256
+    `368d4cc2c26b`, no date printed), read on 2026-11-10: the rating table (50 mA, DC 12 V, contact
+    resistance 100 mohm, 50 gf, travel 0.2 mm), the circuit diagram (two terminals, normally open)
+    and the "PCB WELDING DRAWING": 5.50 overall, 3.40 between the pads' inner edges, 2.00 long.
+  - **Differs from the drawing, the footprint follows the reference board:** the drawing's pads are
+    1.05 x 2.00 at +/-2.225; the board's, `SKRK`'s, are 0.8 x 2.0 at +/-2.1 (the inner edges agree,
+    at +/-1.70). **Not read:** why the board uses Alps' pattern for this part. A board made from
+    the footprint solders the switch on pads 0.25 mm narrower than the maker's.
+  - **Assumed:** everything but the two pads: roundrect corners (the reference's 0.25 ratio), paste
+    on both, courtyard and body outline (the drawing's 5.00 x 3.00 body, no silkscreen), no 3D model.
+- **U2, `Esp32S3DevKitCHeaders`** (`src/devkitc_headers.nsm`): the development board's two 22-pin
+  headers, 44 pads, one footprint that draws no outline (see below). `provides Connector`.
+  The part has 40 pins: the signal each carries, named as the net the reference has on that pad
+  (`.v3v3` on pads 1 and 2, `.gnd` on pads 22, 23, 24 and 44, `.vbus` ("5V") on pad 21, `.en`, and
+  `.gpio0` to `.gpio48`; pads 25 and 26, which the reference calls `/USB2_D-` and `/USB2_D+`, are
+  `.gpio19` and `.gpio20`). All pins are `passive`. **Hand-soldered** (ADR 0024): the board's BOM has
+  `-` for it, so there is no catalog and no row, and a test holds that it has no LCSC number.
+  - Source: Espressif, "ESP32-S3-DevKitC-1 v1.1" user guide, section "Header Block" (the English
+    page `docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide_v1.1.html`,
+    read on 2026-11-10; the page prints no revision of its own besides the board's v1.1, and its
+    footer a copyright of 2016-2026): the J1 and J3 tables for the pin numbers and names (J1 pins 1
+    to 22 are footprint pads 1 to 22; J3 pin n is pad 45 - n: the footprint numbers the right row
+    from the bottom). The page has no dimensions.
+  - **Assumed from the reference board** (no maker document with a land pattern was read): every
+    pad (44 ovals, 1.2 x 2.0 mm turned 270 degrees as the file has them, drill 0.8 mm,
+    thru-hole), the 2.54 pitch and the 22.86 row spacing, the origin at pad 1. Pads 20 to 22 are at
+    the grid's place here and 3.7 um and 2.7 um off it in the file (the parity tolerance is 0.05).
+    Courtyard: the pads and 0.25. **The footprint does not draw the board's outline**: the
+    reference's U2 draws the four `Edge.Cuts` lines of the 25.86 x 63.90 mm board inside the
+    footprint; here they are not copied, and a test checks that no footprint of the library has
+    `Edge.Cuts`. The physical-file stage draws the outline itself, with a rectangle from x 127.105 to
+    152.965 and y 58.6514 to 122.5486 in the reference's frame (U2's origin is at 128.605,
+    59.75136), and places U2, J1, J2, SW1 and SW2 where the table has them.
+- **D1 to D4, the standard `Led`** in the 0402 package (the footprint is the generator's, pad 1 the
+  cathode: the board has pad 1 on ground and pad 2 on the resistor or net, D1 and D4 alike). The
+  board's two LEDs have one part, LCSC **C434447**, Yongyu Photoelectric `SZYY0402B`, **blue**,
+  0402 (the board's BOM has "LED" with no colour; the part's page says blue). The project's own
+  `catalogs/led.csv` has its row: JLCPCB's page `jlcpcb.com/partdetail/C434447` (Extended) and
+  LCSC's, read on 2026-11-10; the manufacturer's specification for approval (issue date 2017/09/04,
+  7 pages, SHA-256 `a4f1d15c5c37`, page 2): Vf 2.6 V to 3.2 V at 5 mA, operating temperature -40 to
+  +85 C (the document does not say ambient). The datasheet has neither the polarity nor a land
+  pattern, so the pads are the standard 0402's. The standard blue 0402 row (XL-1005UBC, 2.6 V to 3.4 V) comes
+  first in the solver's order, so a board that wants this part states `.color &= "BLUE"`,
+  `.package &= "0402"` and `.forward_voltage &= 2.6V..3.2V`, as the test's fixture does.
+- **What is not done here** (the next stages): the module, the bridge, the regulator, the
+  transistors and the diodes are other parts; the passives are the standard ones. The board
+  (`main.nsm`) is still the placeholder.
