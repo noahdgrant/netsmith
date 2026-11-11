@@ -468,3 +468,48 @@ fn the_class_marker_belongs_to_the_function_before_it() {
         .collect();
     assert_eq!(got, [("class", false), ("GPIO", true)]);
 }
+
+#[test]
+fn a_class_after_a_function_name_is_its_marker_so_a_function_called_class_comes_first_or_after_a_marker()
+ {
+    // The functions of a row as (name, marked).
+    let functions = |tail: &str| -> Vec<(String, bool)> {
+        let file = parse(&row(&format!(".a bidirectional \"A\" \"1\" fn {tail}"))).unwrap();
+        let Item::Pins(table) = &file.definitions[0].items[0] else {
+            panic!()
+        };
+        table.rows[0]
+            .functions
+            .iter()
+            .map(|f| (f.name.name.clone(), f.class.is_some()))
+            .collect()
+    };
+    let named = |pairs: &[(&str, bool)]| -> Vec<(String, bool)> {
+        pairs.iter().map(|(n, m)| (n.to_string(), *m)).collect()
+    };
+    // `class` after a name (and its kind) is that name's marker, never a function: `fn GPIO class`
+    // is one function, where it used to be two (before #394).
+    assert_eq!(functions("GPIO class"), named(&[("GPIO", true)]));
+    assert_eq!(functions("GPIO:input class"), named(&[("GPIO", true)]));
+    assert_eq!(
+        functions("ADC0 GPIO class"),
+        named(&[("ADC0", false), ("GPIO", true)])
+    );
+    // A function called `class` is the first name after `fn` ...
+    assert_eq!(
+        functions("class GPIO"),
+        named(&[("class", false), ("GPIO", false)])
+    );
+    // ... can be marked itself ...
+    assert_eq!(functions("class class"), named(&[("class", true)]));
+    // ... and follows a name that already has its marker, since a second `class` cannot mark it.
+    assert_eq!(
+        functions("GPIO class class"),
+        named(&[("GPIO", true), ("class", false)])
+    );
+    // Anywhere else a `class` marks the name before it, and the next one is a name again.
+    assert_eq!(
+        functions("GPIO class class class"),
+        named(&[("GPIO", true), ("class", true)])
+    );
+}
