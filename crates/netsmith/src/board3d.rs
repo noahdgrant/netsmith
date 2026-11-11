@@ -32,6 +32,12 @@ pub fn scene(built: &Built, board: &Board) -> Scene {
     )
 }
 
+/// The scene of a placed board as a `.glb` file (`netsmith_pcb::gltf`), labelled as the report
+/// labels it: what `board3d --glb` writes and the editor's `GET /api/pcb/3d` serves.
+pub fn glb(built: &Built, board: &Board) -> Vec<u8> {
+    netsmith_pcb::gltf::glb(&scene(built, board), &built.label())
+}
+
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub schema: u32,
@@ -596,8 +602,9 @@ impl Report {
 }
 
 /// The report of one board of the source `text` (named `name`), placed with the layout file
-/// `layout` if it exists. `board` picks it by name or label (`system/member`); with none, the
-/// source must hold one board. The error is the message to print.
+/// `layout` if it exists, and the scene it was made from (for the `.glb` file). `board` picks it
+/// by name or label (`system/member`); with none, the source must hold one board. The error is
+/// the message to print.
 pub fn run(
     name: &str,
     text: &str,
@@ -606,7 +613,7 @@ pub fn run(
     libraries: &crate::Libraries,
     layout: Option<&std::path::Path>,
     board: Option<&str>,
-) -> Result<Report, String> {
+) -> Result<(Report, Scene), String> {
     placed(
         name,
         text,
@@ -617,7 +624,8 @@ pub fn run(
         board,
         |built, board| {
             let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
-            report(built, &scene(built, board), &sourcing)
+            let scene = scene(built, board);
+            (report(built, &scene, &sourcing), scene)
         },
     )
 }

@@ -36,6 +36,7 @@ mod fit;
 pub mod footprint;
 pub mod generate;
 pub mod geometry;
+pub mod gltf;
 pub mod layout;
 pub mod mesh;
 pub mod overhang;

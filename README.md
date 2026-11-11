@@ -109,6 +109,7 @@ netsmith build      # a KiCad schematic in out/
 netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787
 netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
 netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, overlaps (docs/BOARD3D.md)
+netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
 netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 
@@ -138,7 +139,7 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 - `docs/LANGUAGE.md`: the language guide, with a quick start, every construct with a tested
   example and the real error you get when you misuse it, and the standard library.
 - `docs/PIPELINE.md`: the stages a design goes through, from source to a fab package, with diagrams.
-- `docs/BOARD3D.md`: `netsmith board3d`, the board's 3D scene as a JSON report.
+- `docs/BOARD3D.md`: `netsmith board3d`, the board's 3D scene as a JSON report and as a `.glb` file.
 - `docs/CONCEPTS.md`: how parts, modules, boards and systems combine.
   `docs/PROJECT-LAYOUT.md`: a repository with several boards.
 - `docs/symbol-gallery.html` (open it in a browser): every symbol netsmith draws, beside the KiCad

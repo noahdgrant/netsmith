@@ -1,4 +1,4 @@
-# `netsmith board3d`: the board in 3D, as data
+# `netsmith board3d`: the board in 3D, as data and as glTF
 
 `netsmith board3d` places a board as `fab` and the editor place it and prints its _Scene_
 (ADR 0105): the board as its stackup makes it, each part's body box from its face to its height,
@@ -10,20 +10,23 @@ and no KiCad.
 netsmith board3d examples/led.nsm                 # a short summary
 netsmith board3d examples/led.nsm --json          # the report below, on stdout
 netsmith board3d examples/two_boards.nsm --board TwoBoards/led --json
+netsmith board3d examples/led.nsm --glb led.glb   # the scene as glTF 2.0 binary (below)
 ```
 
 - The board is placed exactly as `fab` places it: the pick lock beside the source holds the
   picks, the physical file's requirements and the layout file (`<stem>.pcb.toml`) are read, and
   the layout file's positions are put on the board. Nothing is routed, so there are no vias yet.
-- Nothing is written: not the pick lock, not the pin file, not the layout file.
+- Nothing is written but the `--glb` file: not the pick lock, not the pin file, not the layout
+  file. With `--glb` alone nothing is printed; with `--json` too the report is printed as well.
 - No KiCad is needed (ADR 0097); the `no-kicad` job runs it with KiCad hidden.
 - The same source gives the same bytes: every list is in a fixed order and every length is
   rounded to a nanometre.
 - A file of several boards needs `--board` (`Name`, or `System/member` for a board of a system).
   With no file it acts on the project's top-level file; a project of several needs `--board` or a
   file.
-- Exit 0 when the report is printed, 1 when the board does not build or cannot be placed (the
-  error is `fab`'s), 2 when the command cannot start.
+- Exit 0 when the report is printed (and the file written), 1 when the board does not build or
+  cannot be placed (the error is `fab`'s), 2 when the command cannot start or the file cannot be
+  written.
 
 ## The frame
 
@@ -103,3 +106,41 @@ from `z = -thickness` down to `z = -thickness - height`.
 
 Copper (pads, tracks, vias, planes and pours, with their nets) is not in the report yet; it comes
 with the copper of the 3D view (#430).
+
+## The `.glb` file
+
+`board3d --glb <file.glb>` writes the same scene as glTF 2.0 binary
+(`crates/netsmith-pcb/src/gltf.rs`). It is the file the editor's 3D view displays: the editor
+serves it at `GET /api/pcb/3d?board=<name>` (`model/gltf-binary`), drawn from the placement its
+PCB view shows, with that placement's layout stamp in the `X-Netsmith-Layout-Stamp` header. For
+a board the editor has not routed, its bytes are the ones `board3d --glb` writes. Any glTF viewer
+opens it, and a script reads the ids from the JSON chunk. The file passes the Khronos glTF
+validator with no errors and no warnings.
+
+The contract, schema 1 (a viewer is written against it: a field removed or changed in meaning
+raises `schema`, a field added does not):
+
+- **Units and axes are glTF's**: metres, right-handed, Y up. A scene point `(x, y, z)` in mm is
+  `(x, z, -y) * 0.001` in the file, in the vertex data (no node has a transform): the top face is
+  `y = 0`, the outline's bottom-left corner the origin, its top edge toward `-z`. The numbers in
+  the `extras` stay in the frame above, in mm, as in the JSON report (their names end in `_mm`).
+- **The same scene gives the same bytes.** The order of nodes, meshes, materials and accessors is
+  fixed, and `asset.generator` is `netsmith`, with no version and no time.
+- **Nodes.** Each carries `extras.netsmith.kind`. The one root, `board`, has its children in this
+  order:
+
+| Node | `extras.netsmith` |
+|---|---|
+| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
+| `substrate` | `kind: "substrate"`: the laminate. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`) and one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel |
+| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height |
+| `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it); its volume is the mesh |
+| `protrusions` | one child per part whose pins stand out of the far face by a stated length, `pins:<refdes>`: `kind: "protrusion"`, `path`, `length_mm` |
+| `copper:<layer>` | reserved for the copper (#430), with children `kind: "copper"`, `layer`, `net` |
+
+A node whose shape has no area has no mesh, and is still there.
+
+- **Materials**, by name, metallic-roughness: `substrate`, `mask-top`, `mask-bottom`, `copper`,
+  `body`, `body-unknown`, `metal`, `mark`, `limit` and `limit-violated` (the last two see-through,
+  `alphaMode: BLEND`). All ten are always written, in this order. Their colours are the
+  rasterizer's light palette in linear light. No glTF extension is used.

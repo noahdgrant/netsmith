@@ -94,9 +94,12 @@ fn main() -> ExitCode {
         }
         Ok(Command::Lock { file, mode }) => run_lock(file.as_deref(), mode),
         Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
-        Ok(Command::Board3d { file, board, json }) => {
-            run_board3d(file.as_deref(), board.as_deref(), json)
-        }
+        Ok(Command::Board3d {
+            file,
+            board,
+            json,
+            glb,
+        }) => run_board3d(file.as_deref(), board.as_deref(), json, glb.as_deref()),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
         Ok(Command::DxfImport {
@@ -727,10 +730,16 @@ fn run_fab(
 
 /// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file
 /// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
-/// stdout with `--json`, a summary without. A project of several top-level files takes the first
-/// that has the board `--board` names. Exit 0 when the report is printed, 1 when the board does
-/// not build or place, 2 when the command cannot start.
-fn run_board3d(file: Option<&str>, board: Option<&str>, json: bool) -> ExitCode {
+/// stdout with `--json`, the scene as a `.glb` file with `--glb` (and no summary), a summary with
+/// neither. A project of several top-level files takes the first that has the board `--board`
+/// names. Exit 0 when the report is printed (and the file written), 1 when the board does not
+/// build or place, 2 when the command cannot start or the file cannot be written.
+fn run_board3d(
+    file: Option<&str>,
+    board: Option<&str>,
+    json: bool,
+    glb: Option<&Path>,
+) -> ExitCode {
     let (target, loader, catalogs) = match target(file, false) {
         Ok(t) => t,
         Err(code) => return code,
@@ -775,10 +784,17 @@ fn run_board3d(file: Option<&str>, board: Option<&str>, json: bool) -> ExitCode 
             Some(&netsmith::layout::layout_path(&source.path)),
             board,
         ) {
-            Ok(report) => {
+            Ok((report, scene)) => {
+                if let Some(out) = glb {
+                    let bytes = netsmith_pcb::gltf::glb(&scene, &report.board.name);
+                    if let Err(e) = fs::write(out, bytes) {
+                        eprintln!("error: {}: {e}", out.display());
+                        return ExitCode::from(2);
+                    }
+                }
                 if json {
                     print!("{}", report.json());
-                } else {
+                } else if glb.is_none() {
                     print!("{}", report.summary());
                 }
                 return ExitCode::SUCCESS;

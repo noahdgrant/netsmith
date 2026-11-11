@@ -761,6 +761,26 @@ impl Backend for Workspace {
         Ok(scene)
     }
 
+    fn pcb_3d(&self, board: &str) -> Result<netsmith_editor::Pcb3d, ApiError> {
+        // The placement `pcb_scene` draws, kept in `state.pcb`: placed here only when the board
+        // has not been placed since the files were read, and then kept for the 2D view too.
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                return Ok(pcb::glb(entry, &data));
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let glb = pcb::glb(&entry, &data);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        Ok(glb)
+    }
+
     fn pcb_findings(&self, board: &str) -> Result<PcbFindings, ApiError> {
         let (version, data) = {
             let state = self.fresh();
