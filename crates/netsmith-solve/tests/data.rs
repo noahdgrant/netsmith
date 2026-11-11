@@ -1104,6 +1104,69 @@ fn every_standard_capacitor_states_the_class_its_listing_prints() {
     assert_eq!(seen.len(), 3, "{seen:?}");
 }
 
+/// A row's own temperature range is its datasheet's, and a class's range is what the makers
+/// print for the class code (ADR 0099): every class a standard capacitor row names has a cited
+/// range, and no row's own range reaches beyond its class's (a datasheet that said so would be
+/// a row or a class entry to look at again). A row that states a range is judged by it alone.
+#[test]
+fn every_standard_capacitor_class_has_a_cited_range_that_covers_the_rows_own() {
+    let cat = catalog("capacitor");
+    for c in &cat.candidates {
+        let Some(Value::Text(class)) = c.column("dielectric") else {
+            panic!("{} has no dielectric", c.name);
+        };
+        let range = netsmith_check::environment::class_range(class).unwrap_or_else(|| {
+            panic!(
+                "{} is of the class {class}, which has no cited range",
+                c.name
+            )
+        });
+        assert!(!range.source.is_empty(), "{class}");
+        assert_eq!(c.class_range().map(|r| r.class), Some(range.class));
+        let (own_min, own_max) = (c.temp_min.unwrap(), c.temp_max.unwrap());
+        assert!(
+            own_min >= range.min - 1e-9 && own_max <= range.max + 1e-9,
+            "{} states {own_min} K to {own_max} K, wider than the class {class} ({} K to {} K)",
+            c.name,
+            range.min,
+            range.max
+        );
+        // The row's own range is the one used.
+        assert_eq!(c.temperatures(), (Some(own_min), Some(own_max)));
+    }
+}
+
+/// A candidate with a class and no range of its own has the class's; an end it states is its own;
+/// a class with no cited range gives nothing.
+#[test]
+fn a_candidate_takes_the_classs_range_only_where_it_states_none() {
+    let with = |class: &str, min: Option<f64>, max: Option<f64>| Candidate {
+        columns: vec![("dielectric".into(), Value::Text(class.into()))],
+        temp_min: min,
+        temp_max: max,
+        ..Default::default()
+    };
+    assert_eq!(
+        with("X5R", None, None).temperatures(),
+        (Some(218.15), Some(358.15))
+    );
+    assert_eq!(
+        with("X5R", None, Some(398.15)).temperatures(),
+        (Some(218.15), Some(398.15))
+    );
+    assert_eq!(
+        with("X7R", Some(233.15), None).temperatures(),
+        (Some(233.15), Some(398.15))
+    );
+    assert_eq!(with("Y5V", None, None).temperatures(), (None, None));
+    assert!(with("Y5V", None, None).class_range().is_none());
+    assert_eq!(
+        Candidate::default().temperatures(),
+        (None, None),
+        "a row with no class and no range has none"
+    );
+}
+
 /// The heating current of an inductor is a column that no standard row fills: no value has a
 /// recorded rise (ADR 0055).
 #[test]
