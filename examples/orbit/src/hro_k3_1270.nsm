@@ -1,0 +1,43 @@
+//! The HRO (Korean Hroparts Elec) K3-1270 slide switch, SPDT, surface mount, right angle:
+//! BOOT0 and PWR1 of ORBIT. The author's schematic and board name it K3-1270L-F1; the LCSC
+//! number they give, C145857, is the K3-1270S-F2 (see the catalog row and the README: the two
+//! drawings have the same PCB layout and circuit, but the L-F1 draws its second position as a
+//! return position).
+//!
+//! The drawing (HRO, TOGGLE SWITCHES, K3-1270L-F1 and K3-1270S-F2, revision A, 2013/9/25, one
+//! sheet each) draws three terminals, the third wider, and two positions: in one the first
+//! terminal is joined to the third, in the other the second is joined to the third. So the
+//! third terminal is the common one. It numbers no terminal; the numbers are ORBIT's (pads 1,
+//! 2 and 3 at y = -1, 1 and 3 mm of its footprint). The two thru-hole pads, 4 and 5, are the
+//! mounting posts (the two 0.8 mm holes of the drawing): one pin, `.mount`.
+//!
+//! What the language cannot say: which position the knob is in. The part has no statement for
+//! a switch of two positions, so `bridge .a ~> .com` takes position A as the closed one in a
+//! chain (the path ORBIT's PWR1 uses, pads 1 and 3), which is a convention of this file and
+//! not a datasheet fact; a board that uses the other position joins `.b` and `.com` itself and
+//! the chain does not follow it. The ratings are the JLCPCB record's (300 mA, 6 V), not the
+//! drawing's, which has none.
+
+/// An SPDT slide switch: `.com` is joined to `.a` in position A and to `.b` in position B.
+part HroK3_1270 {
+    .designator &= "SW"
+
+    pins "SMD,8.8x2mm" {
+        .a      passive "A"      "1"
+        .b      passive "B"      "2"
+        .com    passive "COM"    "3"
+        .mount  passive "MOUNT"  "4" "5"
+    }
+
+    .rated_current: Current
+    .rated_voltage: Voltage
+    /// Through-current, a to common, in position A.
+    .current: Current
+
+    .current <= .rated_current
+    bridge .a ~> .com
+
+    .mpn: String
+    .package: Package
+    catalog hro_k3_1270 by .mpn { .mpn, .package, .rated_current, .rated_voltage }
+}
