@@ -49,9 +49,9 @@ use netsmith_editor::{
     },
 };
 use netsmith_pcb::{
-    Board, Layout, Rect, RouteOptions, Side, apply_layout,
+    Board, Layout, Rect, RouteOptions, Side,
     layout::{BoardLayout, Face, KeepoutPlace, PartPlace, copper_layers},
-    place_options, route_with, svg,
+    route_with, svg,
 };
 
 use super::{
@@ -204,24 +204,19 @@ pub fn place_with(
 ) -> Result<Entry, PlaceError> {
     let other = |e: ApiError| PlaceError::Other(e);
     let libraries = data.libraries().map_err(other)?;
-    let mut options = place_options(&data.built.design, layout.as_ref().map(|l| &l.0));
-    options.lines_warn = data.constraints_warn;
-    let mut board = Board::from_design_placed(
+    let (board, _) = crate::layout::place(
         &data.built.design,
-        &libraries.mapping,
-        &libraries.footprints,
-        &options,
+        layout.as_ref(),
+        libraries,
+        data.constraints_warn,
     )
     .map_err(|e| match e {
-        netsmith_pcb::BoardError::Unplaceable(found) => {
+        crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::Unplaceable(found)) => {
             PlaceError::Unplaceable(name.to_string(), found)
         }
-        e => PlaceError::Other(board_error(name, &e)),
+        crate::layout::PlaceFailure::Board(e) => PlaceError::Other(board_error(name, &e)),
+        crate::layout::PlaceFailure::Layout(e) => PlaceError::Layout(format!("{name}: {e}")),
     })?;
-    if let Some((layout, file)) = &layout {
-        apply_layout(&mut board, layout, file)
-            .map_err(|e| PlaceError::Layout(format!("{name}: {e}")))?;
-    }
     Ok(Entry {
         board,
         routed: false,

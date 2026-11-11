@@ -18,6 +18,7 @@ mod maker_vs_kicad;
 mod mixed;
 mod protrusion;
 mod routing;
+mod scene3d;
 mod synthetic;
 mod tight;
 mod tight_limits;
