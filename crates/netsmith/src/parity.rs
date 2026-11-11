@@ -12,8 +12,13 @@
 //! and a plated slot of the same number) are paired by the nearest centre in the footprint's own
 //! frame, and each pair is compared in that frame: a pad turned by 90 degrees has its width and
 //! height swapped, so the same copper written two ways is the same, and a turned pad is not an
-//! equal one. A part of nothing but non-plated pads is a mounting hole (judged as a hole); any
-//! other part with such a pad (a peg) is still a part, and the peg is a pad of it.
+//! equal one. A part of nothing but non-plated pads is a mounting hole (judged as a hole), and so
+//! is a plated `MountingHole*` footprint of KiCad's library, whose drilled pad is the hole; any
+//! other part with a non-plated pad (a peg) is still a part, and the peg is a pad of it.
+//!
+//! **Holes** are paired by the nearest centre and judged by place, drill, whether the hole is
+//! plated, the pad's size and its net (by name; a made-up name is no net). A ring of vias around
+//! a plated hole is not compared.
 //!
 //! **The origin.** `fab` writes a board with an origin of its own, so no figure is compared as
 //! the file states it. Each board is read from the **upper-left corner of its outline's bounding
@@ -34,6 +39,9 @@
 //! connectivity vouches for it (another mapped pad is on its net, in both boards), and says so
 //! in a warning; with no other mapped pad on the net nothing vouches and it fails. Map U1 and
 //! the other parts, even those that need not match, so that the connectivity has pads to see.
+//! A pad with no net is not a made-up name: where the reference's pad is on a net with other
+//! pads (mapped or not) it does not pass against a pad that is on no net or alone on its own
+//! (and the other way round); two pads with no other pad on their nets pass.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -84,7 +92,7 @@ const EPS: f64 = 1e-6;
 pub const WHAT_IS_COMPARED: [&str; 5] = [
     "outline: the bounding box, the corner radius, the number of Edge.Cuts lines and arcs and \
      each arc's radius",
-    "hole: place and drill",
+    "hole: place, drill, plated or not, the pad's size, the pad's net",
     "part: position, rotation, layer",
     "pad: number, centre, size and angle in the footprint's frame, shape, the extent of a \
      custom pad's polygon, drill (both sides of a slot), type",
@@ -520,25 +528,49 @@ fn hole_items(r: &Board, a: &Board, tol: &Tolerances, items: &mut Vec<Item>) {
             continue;
         };
         used[i] = true;
-        let (x, y) = rel(&a.holes[i], ac);
+        let other = &a.holes[i];
+        let (x, y) = rel(other, ac);
         let (dx, dy) = (x - hx, y - hy);
-        let dd = a.holes[i].drill - hole.drill;
+        let dd = other.drill - hole.drill;
+        let dsize = (other.size.0 - hole.size.0, other.size.1 - hole.size.1);
         let mut item = item.at(dx, dy);
         item.dvalue = Some(dd);
-        let good = dist(dx, dy) <= tol.hole + EPS && dd.abs() <= tol.hole_drill + EPS;
-        items.push(
-            item.noting(format!(
-                "drill {} against {}{}",
-                num(a.holes[i].drill),
-                num(hole.drill),
-                if dd.abs() > tol.hole_drill + EPS {
-                    format!(" (tol {})", num(tol.hole_drill))
-                } else {
-                    String::new()
-                }
-            ))
-            .judge(good),
+        item.dsize = Some(dsize);
+        let drill_wrong = dd.abs() > tol.hole_drill + EPS;
+        let size_wrong = dsize.0.abs() > tol.pad_size + EPS || dsize.1.abs() > tol.pad_size + EPS;
+        let plating_wrong = other.plated != hole.plated;
+        // A made-up name is no net (a mounting hole's pad is on a net of its own or on none).
+        let net_of = |h: &Hole| h.net.as_deref().and_then(plain);
+        let net_wrong = net_of(hole) != net_of(other);
+        let named = |h: &Hole| h.net.as_deref().unwrap_or("(none)").to_string();
+        let mut note = format!("drill {} against {}", num(other.drill), num(hole.drill));
+        if drill_wrong {
+            let _ = write!(note, " (tol {})", num(tol.hole_drill));
+        }
+        let _ = write!(
+            note,
+            ", pad {} x {} against {} x {}",
+            num(other.size.0),
+            num(other.size.1),
+            num(hole.size.0),
+            num(hole.size.1)
         );
+        if size_wrong {
+            let _ = write!(note, " (tol {})", num(tol.pad_size));
+        }
+        let plating = |h: &Hole| if h.plated { "plated" } else { "non-plated" };
+        if plating_wrong {
+            let _ = write!(note, "; {} against {}", plating(other), plating(hole));
+        }
+        if net_wrong {
+            let _ = write!(note, "; net {} against {}", named(other), named(hole));
+        }
+        let good = dist(dx, dy) <= tol.hole + EPS
+            && !drill_wrong
+            && !size_wrong
+            && !plating_wrong
+            && !net_wrong;
+        items.push(item.noting(note).judge(good));
     }
     for (_, h) in a.holes.iter().enumerate().filter(|(i, _)| !used[*i]) {
         let (x, y) = rel(h, ac);
@@ -639,7 +671,7 @@ fn part_items(
         );
         pad_items(part, found, tol, items);
     }
-    net_items(&pairs, items, warnings);
+    net_items(&pairs, (&net_sizes(r), &net_sizes(a)), items, warnings);
 }
 
 /// What two paired pads differ by.
@@ -971,7 +1003,35 @@ impl Nets {
     }
 }
 
-fn net_items(pairs: &[(&Part, &Part)], items: &mut Vec<Item>, warnings: &mut Vec<String>) {
+/// How many pads are on each net of a board, every part counted, mapped or not.
+fn net_sizes(board: &Board) -> BTreeMap<String, usize> {
+    let mut sizes = BTreeMap::new();
+    for pad in board
+        .parts
+        .iter()
+        .flat_map(|p| &p.pads)
+        .filter(|p| p.kind != "np_thru_hole")
+    {
+        if let Some(net) = pad.net.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            *sizes.entry(net.to_string()).or_default() += 1;
+        }
+    }
+    sizes
+}
+
+/// A pad that nothing is connected to: it names no net, or its net has no other pad on the board.
+fn alone(sizes: &BTreeMap<String, usize>, net: Option<&str>) -> bool {
+    net.map(str::trim)
+        .filter(|n| !n.is_empty())
+        .is_none_or(|n| sizes.get(n).copied().unwrap_or(0) <= 1)
+}
+
+fn net_items(
+    pairs: &[(&Part, &Part)],
+    (their_sizes, our_sizes): (&BTreeMap<String, usize>, &BTreeMap<String, usize>),
+    items: &mut Vec<Item>,
+    warnings: &mut Vec<String>,
+) {
     let paired: Vec<Paired> = pairs.iter().map(|(r, a)| pair_pads(r, a)).collect();
     let (mut theirs, mut ours) = (Nets::default(), Nets::default());
     for ((r, _), p) in pairs.iter().zip(&paired) {
@@ -1019,6 +1079,24 @@ fn net_items(pairs: &[(&Part, &Part)], items: &mut Vec<Item>, warnings: &mut Vec
             let same_class = rc == ac;
             let (good, note) = match (rn.and_then(plain), an.and_then(plain)) {
                 (Some(r), Some(a)) if r == a => (true, named(rn)),
+                // Neither name says anything. A pad on no net is not a made-up name: where one
+                // side has other pads on the pad's net (mapped or not) and the other has none,
+                // they are not the same pad.
+                (None, None) if alone(their_sizes, rn) != alone(our_sizes, an) => (
+                    false,
+                    format!(
+                        "{} against {}: {}",
+                        named(an),
+                        named(rn),
+                        if alone(their_sizes, rn) {
+                            "the board's pad is on a net with other pads, and the reference's is \
+                             on none or alone on its own"
+                        } else {
+                            "the reference connects the pad to other pads, and the board's is on \
+                             no net or alone on its own"
+                        }
+                    ),
+                ),
                 (Some(_), Some(_)) if same_class && !rc.is_empty() => {
                     warnings.push(format!(
                         "part {} pad {label}: the net is {} on the board and {} in the reference; \

@@ -12,8 +12,8 @@
 # J1 here and its J1 is J3. Where several parts are alike (the four 100 nF capacitors on +3V3 C3
 # to C6, the two 1.5 kohm resistors R4 and R5, the two 4.7 uF) the pairing is arbitrary: they
 # are on the same nets. ORBIT's H1 to H4 have no line: the checker judges a plated mounting hole
-# as a hole, by its place and drill, and not as a part (`crates/netsmith/src/parity.rs`); the
-# logo `O` has no pad. A test (`the_parity_checkers_designator_map_is_the_designs_own`) holds this
+# as a hole, by its place, drill, plating, pad size and net, and not as a part
+# (`crates/netsmith/src/parity.rs`); the logo `O` has no pad. A test (`the_parity_checkers_designator_map_is_the_designs_own`) holds this
 # file against the design's own designators.
 
 # The connectors, the switches and the buttons (must match).
@@ -42,7 +42,7 @@ D3 = "D3"      # led2
 
 # The resistors.
 R1 = "R2"      # charger.status_resistor
-R2 = "R6"      # boot_pulldown.resistor
+R2 = "R6"      # boot_pulldown
 R3 = "R1"      # charger.rprog
 R4 = "R9"      # led1_resistor
 R5 = "R10"     # led2_resistor

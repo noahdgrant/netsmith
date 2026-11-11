@@ -425,16 +425,16 @@
 <rect x="25.15" y="46.04" width="0.56" height="0.62" rx="0.28" transform="rotate(0 25.43 46.35)"/>
 </g>
 <g class="part" data-ref="H1">
-<ellipse cx="12.03" cy="4" rx="1.375" ry="1.375"/>
+<ellipse cx="12.03" cy="4" rx="1.575" ry="1.575"/>
 </g>
 <g class="part" data-ref="H2">
-<ellipse cx="39.97" cy="4" rx="1.375" ry="1.375"/>
+<ellipse cx="39.97" cy="4" rx="1.575" ry="1.575"/>
 </g>
 <g class="part" data-ref="H3">
-<ellipse cx="39.97" cy="47.18" rx="1.375" ry="1.375"/>
+<ellipse cx="39.97" cy="47.18" rx="1.575" ry="1.575"/>
 </g>
 <g class="part" data-ref="H4">
-<ellipse cx="12.03" cy="47.18" rx="1.375" ry="1.375"/>
+<ellipse cx="12.03" cy="47.18" rx="1.575" ry="1.575"/>
 </g>
 <g class="part" data-ref="J1">
 <rect x="27.1" y="3.65" width="0.4" height="1.75" rx="0" transform="rotate(-180 27.3 4.525)"/>

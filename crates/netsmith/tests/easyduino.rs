@@ -1964,18 +1964,44 @@ mod board {
     }
 
     fn built() -> netsmith::Built {
+        built_from(&source(), &[]).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// The text of `src/main.nsm`.
+    fn source() -> String {
+        read("src/main.nsm")
+    }
+
+    /// The board built from `text` as its `src/main.nsm`, with the modules named in `modules`
+    /// (a file of `src/`, as `esp32_s3_wroom_1.nsm`, and the text to read for it) as they are
+    /// there instead of the files on disk; the error is the build's message.
+    fn built_from(text: &str, modules: &[(&str, String)]) -> Result<netsmith::Built, String> {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
         let source = &target.files[0];
-        let text = std::fs::read_to_string(&source.path).unwrap();
+        let unsaved: std::collections::HashMap<std::path::PathBuf, String> = modules
+            .iter()
+            .map(|(file, text)| {
+                let found = target
+                    .project
+                    .as_ref()
+                    .unwrap()
+                    .modules()
+                    .unwrap()
+                    .into_iter()
+                    .find(|m| m.path.ends_with(format!("src/{file}")))
+                    .unwrap_or_else(|| panic!("src/{file} is not a module of the project"));
+                (found.path, text.clone())
+            })
+            .collect();
         build_with(
             &source.name,
-            &text,
-            &target.loader().unwrap(),
+            text,
+            &target.loader_with(&unsaved).unwrap(),
             &target.catalogs().unwrap(),
             &libraries(),
         )
-        .unwrap_or_else(|e| panic!("{e}"))
-        .remove(0)
+        .map(|mut boards| boards.remove(0))
+        .map_err(|e| format!("{e:?}"))
     }
 
     fn reference() -> Netlist {
@@ -2279,6 +2305,66 @@ mod board {
             net_differences(&ours, &theirs)
                 .iter()
                 .any(|d| d.starts_with("U2.4: ")),
+        );
+    }
+
+    /// The same comparison on the source: the text of the board with the header's GPIO4 pin
+    /// joined to the module's IO5 instead of IO4 is built, and the comparison finds exactly
+    /// that. (The test above edits the computed map; this one edits what a person writes.)
+    #[test]
+    fn the_comparison_sees_a_header_pin_on_the_wrong_module_pin_in_the_source() {
+        let text = source();
+        let line = "    .headers.gpio4 ~ .module.io4\n";
+        assert_eq!(text.matches(line).count(), 1);
+        let theirs = neighbours(&reference(), &BTreeMap::new(), &SWAPPED);
+        let wiring_of = |text: &str| {
+            let built = built_from(text, &[]).unwrap_or_else(|e| panic!("{e}"));
+            let to_reference = designators(&built);
+            let ours = neighbours(&design_netlist(&built), &to_reference, &[]);
+            (built, to_reference, ours)
+        };
+        // The control: the text as it is (rebuilt from the string) has no difference.
+        let (control, control_map, ours) = wiring_of(&text);
+        assert_eq!(net_differences(&ours, &theirs), Vec::<String>::new());
+
+        let wrong = text.replace(line, "    .headers.gpio4 ~ .module.io5\n");
+        assert_ne!(wrong, text);
+        let (moved, moved_map, ours) = wiring_of(&wrong);
+        let differences = net_differences(&ours, &theirs);
+        // The pads that differ are those of the two nets involved: the header's pad 4, its
+        // pad 5 (on IO5's net, which now has pad 4 too) and the module's pads IO4 and IO5.
+        let pads: BTreeSet<&str> = differences
+            .iter()
+            .map(|d| d.split(':').next().unwrap())
+            .collect();
+        assert!(pads.contains("U2.4"), "{differences:?}");
+        assert!(
+            differences.iter().any(|d| d.starts_with("U2.4: board has")),
+            "{differences:?}"
+        );
+        assert_eq!(pads.len(), 4, "{differences:?}");
+        assert!(
+            pads.iter()
+                .all(|p| p.starts_with("U1.") || p.starts_with("U2.")),
+            "only the header and the module are involved: {differences:?}"
+        );
+        // And `compare`: the control matches, the edit does not.
+        let compare_text = |built: &netsmith::Built, to_reference: &BTreeMap<String, String>| {
+            let a = wiring_only(&design_netlist(built), &[]);
+            let b = wiring_only(&reference(), &SWAPPED);
+            let options = Options {
+                identity: Identity::Map(to_reference.clone().into_iter().collect()),
+                ..Options::default()
+            };
+            compare(&a, &b, &options).unwrap_or_else(|e| panic!("{e}"))
+        };
+        let outcome = compare_text(&control, &control_map);
+        assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
+        let outcome = compare_text(&moved, &moved_map);
+        assert!(
+            !matches!(outcome, Outcome::Match(_)),
+            "{}",
+            report(&outcome)
         );
     }
 
@@ -2683,30 +2769,65 @@ mod board {
         ));
     }
 
-    /// The module's supply window is a real check: a regulator that gives 3.7 V is refused.
+    /// The upper edge of the module's supply window, as `src/esp32_s3_wroom_1.nsm` states it
+    /// (Table 6-2: VDD33 3.0 V to 3.6 V).
+    const WINDOW_TOP: &str = "    .vdd.voltage <= 3.6V\n";
+
+    /// The module's supply window is a real check, and the test says which one refuses. The
+    /// AMS1117-3.3's row gives 3.201 V to 3.399 V, inside the module's 3.0 V to 3.6 V, so no
+    /// regulator that is within its own row can break the real window: the window is tested
+    /// with a COPY of the module whose window is narrower (3.3 V at the most), where the row's
+    /// range is no longer inside it. The build is refused, and the message names the module's
+    /// relation (`module.vdd.voltage`, its limit) and the regulator's range; with the window
+    /// as wide as the datasheet's (or 3.4 V) the same board builds, so the window alone is the
+    /// cause.
     #[test]
-    fn a_regulator_that_gives_more_than_the_modules_window_is_refused() {
-        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
-        let source = &target.files[0];
-        let text = std::fs::read_to_string(&source.path).unwrap();
+    fn a_regulator_outside_the_modules_window_is_refused_for_that_window() {
+        let module = read("src/esp32_s3_wroom_1.nsm");
+        assert_eq!(module.matches(WINDOW_TOP).count(), 1);
+        let build = |top: &str| {
+            let copy = module.replace(WINDOW_TOP, &format!("    .vdd.voltage <= {top}\n"));
+            built_from(&source(), &[("esp32_s3_wroom_1.nsm", copy)])
+        };
+        build("3.6V").unwrap_or_else(|e| panic!("{e}"));
+        build("3.4V").unwrap_or_else(|e| panic!("{e}"));
+        let message = build("3.3V")
+            .err()
+            .expect("3.399 V is above a 3.3 V window");
+        assert!(
+            message.contains("module.vdd.voltage") && message.contains("3.3V"),
+            "{message}"
+        );
+        assert!(message.contains("3.399V"), "{message}");
+    }
+
+    /// A rail that the board states at 3.7 V is refused too, and the message says by which
+    /// relations: the project's `ldo` catalog has no regulator for 3.663 V to 3.737 V (the
+    /// AMS1117-3.3's row is 3.201 V to 3.399 V), and the module's window (`at most 3.6V`)
+    /// is not met by that range. Both are named, so this test does not say which of the two
+    /// alone would refuse it: the test above, with a narrower window in a copy of the module,
+    /// does that for the window.
+    #[test]
+    fn a_rail_stated_at_3v7_is_refused_by_the_catalog_and_by_the_modules_window() {
+        let text = source();
         let wrong = text.replace(
             "    .module.vdd ~ .v3v3\n",
             "    .module.vdd ~ .v3v3\n    .v3v3.voltage &= 3.7V +/- 1%\n",
         );
         assert_ne!(wrong, text);
-        let result = build_with(
-            &source.name,
-            &wrong,
-            &target.loader().unwrap(),
-            &target.catalogs().unwrap(),
-            &libraries(),
-        );
-        let message = match result {
-            Ok(_) => panic!("a 3.7 V rail was accepted"),
-            Err(e) => format!("{e:?}"),
-        };
+        let message = built_from(&wrong, &[])
+            .err()
+            .expect("a 3.7 V rail was accepted");
         assert!(
-            message.contains("3.6V") || message.contains("vdd") || message.contains("v3v3"),
+            message.contains("the `ldo` catalog has nothing for `regulator`")
+                && message.contains("vout.voltage within 3.663V..3.737V"),
+            "{message}"
+        );
+        assert!(
+            message.contains(
+                "module.vdd.voltage must always be at most 3.6V, but 3.663V..3.737V is not \
+                 always below 3.6V"
+            ),
             "{message}"
         );
     }

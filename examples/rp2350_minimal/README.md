@@ -71,7 +71,8 @@ are netsmith's** (MIT, like the rest of the repository).
   places of J1 to J4, SW1 and SW2, each number read from their board (see The physical file).
 - `src/main.pcb.toml`: the layout file, with only a placer seed (see The physical file).
 - `libs/rp2350_minimal.pretty/MountingHole_2.75mm_M2.5.kicad_mod` and its row in `kicad.toml`:
-  the 2.75 mm non-plated hole (the standard rows have only M2 and M3).
+  the 2.75 mm non-plated hole with the 3.15 mm mask opening of Raspberry Pi's (the standard rows
+  have only M2 and M3; the parity checker compares the pad's size).
 - `reference/parity-overlay.svg`: the picture of the parity check (see Parity).
 
 ## Parts
@@ -273,7 +274,8 @@ failure):
 - the outline: the bounding box (width, height), the corner radius, the number of `Edge.Cuts`
   lines and arcs and each arc's radius (a corner cut by a line, or a cut-out inside the board,
   changes the count and fails though the box is the same);
-- each mounting hole's place and drill;
+- each hole's place and drill, whether it is plated, its pad's size and its pad's net (by name; a
+  made-up name is no net);
 - for the connectors, buttons and headers (J1 to J4, SW1, SW2), each part's position, rotation
   and layer;
 - each pad, one by one: number, centre in its footprint, size and angle in the footprint's frame
@@ -283,8 +285,9 @@ failure):
   surface pad and a plated slot for each of 6, 7, 9 and 10) are paired by the nearest centre in
   the footprint, and each pair is judged.
 
-A part of nothing but non-plated pads is a mounting hole; a connector with a peg is still a part
-and the peg is a pad of it. Reported, never a failure (`info`): the same figures of every other
+A part of nothing but non-plated pads is a mounting hole, and so is a plated `MountingHole*`
+footprint of KiCad's library (its drilled pad is the hole; a ring of vias round it is not
+compared); a connector with a peg is still a part and the peg is a pad of it. Reported, never a failure (`info`): the same figures of every other
 part (MCU, flash, crystal, regulator, inductor, decoupling), pads reported as one line per part.
 Not compared, because the table does not hold it: a rounded rectangle's corner ratio, a custom
 pad's anchor shape and its polygon's shape inside the box, a pad's layers, mask and paste, the
@@ -305,7 +308,9 @@ are not plain), and through the connectivity otherwise. A pad's net passes when 
 equal, or when they differ and the same mapped pads are on the net in both boards (a warning
 says so); two header pads on each other's nets fail. A name that differs, or of which one is
 made up (`Net-(...)`, `unconnected-...` or none), with no other mapped pad on the net to vouch
-for it fails: nothing vouches for it.
+for it fails: nothing vouches for it. A pad with no net is not a made-up name: where the pad's
+net in one board has other pads (mapped or not) it does not pass against a pad that is on no net,
+or alone on its own, in the other (both unconnected passes).
 
 **Tolerances** (mm, degrees). The owner's: outline and mounting holes 0.05, positions of parts
 0.1, rotation exact (modulo 360), pad numbers equal, nets equal. Chosen where the owner was
@@ -402,13 +407,12 @@ What stops a run that does not finish: the router's own limit of 300 s (`--route
 its four tries; it then writes the board marked INCOMPLETE and the run fails (`INCOMPLETE:`, with
 the unrouted connections in `routing-failure.txt`). The board is not ready to order then.
 
-The parity checker on that board (`must-match: 220 ok, 0 failed`; the 220 lines are in the pull
-request that added this):
+The parity checker on that board (`must-match: 225 ok, 0 failed`, which the gate's `min_ok` holds):
 
 | Must match | Result |
 |---|---|
 | Outline, 52 x 51 mm and radius 3 mm | ok (0.000 off) |
-| Mounting holes MH1 to MH4, place and drill 2.75 mm | ok (0.000 off) |
+| Mounting holes MH1 to MH4, place, drill 2.75 mm, non-plated, 3.15 mm pad, no net | ok (0.000 off) |
 | J1, micro-USB: place, rotation 180, layer, 15 pads | ok |
 | J2, 2 x 18 header: place, rotation 270, layer, 36 pads | ok |
 | J3, 2 x 18 header: place, rotation 270, layer, 36 pads | ok |

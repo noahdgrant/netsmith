@@ -8,7 +8,7 @@
 //! (<https://datasheet.lcsc.com/datasheet/pdf/11ab89ca3026e9cb7cc85ffe9557abff.pdf>, SHA-256
 //! `70ea7a01045c`): Figure 5.1 "CP2102N QFN28 Pinout" and Table 5.1 "Pin Definitions for
 //! CP2102N QFN28" (printed pages 27 and 28) for the pad numbers, names and descriptions;
-//! printed page 12's Table 3.3 note 1 for the reset pin (it is driven low during reset events).
+//! printed page 11's Table 3.3 note 1 for the reset pin (it is driven low during reset events).
 //! The datasheet is copyrighted (Silicon Laboratories): only facts are taken here (numbers,
 //! names, kinds).
 //!
