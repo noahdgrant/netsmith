@@ -144,6 +144,27 @@ pub struct TrackCopper {
     pub width: f64,
 }
 
+impl TrackCopper {
+    /// The copper of the piece: what a round pen of its width sweeps from one end to the other
+    /// (a stadium), drawn by the pen the Gerbers' strokes are, with its ends cut no further
+    /// than 2 µm from their curves.
+    pub fn outline(&self) -> Area {
+        let mut pen = Polygons::new();
+        gbr::Pen::line(
+            &mut pen,
+            self.width,
+            None,
+            geom::Pt::new(self.from.x, self.from.y),
+            geom::Pt::new(self.to.x, self.to.y),
+            &[],
+        );
+        areas(&pen).into_iter().next().unwrap_or(Area {
+            outer: Vec::new(),
+            holes: Vec::new(),
+        })
+    }
+}
+
 /// A via.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViaCopper {
@@ -696,6 +717,24 @@ mod tests {
             assert_eq!(pad.refdes, "J1");
             assert!(c.mask[1].areas.iter().any(|a| in_area(a, pad.at)));
         }
+    }
+
+    #[test]
+    fn a_track_has_the_outline_of_a_round_ended_stroke() {
+        let t = TrackCopper {
+            net: None,
+            from: Pt::new(1.0, 2.0),
+            to: Pt::new(4.0, 2.0),
+            width: 0.5,
+        };
+        let o = t.outline();
+        assert!(o.holes.is_empty());
+        let (lo, hi) = bounds(o.outer.iter().copied());
+        assert!((lo.x - 0.75).abs() < 1e-9 && (hi.x - 4.25).abs() < 1e-9);
+        assert!((lo.y - 1.75).abs() < 1e-9 && (hi.y - 2.25).abs() < 1e-9);
+        // The rectangle between the ends and a disc at each end, a little less the cut curves.
+        let want = 3.0 * 0.5 + std::f64::consts::PI * 0.25 * 0.25;
+        assert!((o.size() - want).abs() < 5e-3, "{} and {want}", o.size());
     }
 
     #[test]
