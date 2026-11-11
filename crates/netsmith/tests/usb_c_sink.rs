@@ -2,7 +2,7 @@
 //! Type-C specification (5.1 kohm on each of CC1 and CC2) built in and `.vbus`, the host's
 //! supply, a source for the checks downstream. The boards are small fixtures; no KiCad.
 
-use netsmith::{Built, Libraries, build_with};
+use netsmith::{Built, Libraries, Outcome, build_with, outcome_with};
 use netsmith_check::{Loader, check};
 use netsmith_core::{Net, PinKind};
 use netsmith_kicad::install::Search;
@@ -73,7 +73,7 @@ fn on_net(net: &Net, refdes: &str) -> Vec<String> {
 #[test]
 fn the_receptacle_has_one_rd_resistor_on_each_cc_contact_to_ground() {
     let built = built(".rd_package &= \"0402\"");
-    let jacks = kind(&built, "UsbCSinkReceptacle");
+    let jacks = kind(&built, "UsbCReceptacle16P");
     assert_eq!(jacks.len(), 1);
     let jack = &jacks[0].refdes;
     let resistors = kind(&built, "Resistor");
@@ -171,7 +171,7 @@ fn the_vbus_rail_is_a_source_that_supplies_what_the_loads_draw() {
 #[test]
 fn it_is_a_connector_for_the_placer_and_the_schematic() {
     let built = built("");
-    let jack = &kind(&built, "UsbCSinkReceptacle")[0];
+    let jack = &kind(&built, "UsbCReceptacle16P")[0];
     assert!(jack.is_connector(), "the receptacle provides Connector");
     assert!(jack.refdes.starts_with('J'), "{}", jack.refdes);
     // The Rd resistors are not connectors.
@@ -206,7 +206,7 @@ fn the_package_picks_the_footprint_and_the_default_is_the_gct_one() {
         ),
     ] {
         let built = built(jack);
-        let part = &kind(&built, "UsbCSinkReceptacle")[0];
+        let part = &kind(&built, "UsbCReceptacle16P")[0];
         let mapped = libraries
             .mapping
             .map(&part.kind, part.package.as_deref())
@@ -245,7 +245,7 @@ fn the_receptacle_has_the_pads_of_the_standard_usb_2_receptacle() {
          board B {\n .jack: UsbC2\n .supply: Rail { .voltage &= 5V +/- 5% }\n .jack.usb.vbus ~ .supply\n}\n",
         "UsbC2",
     );
-    let sink = pads(&board("", ""), "UsbCSinkReceptacle");
+    let sink = pads(&board("", ""), "UsbCReceptacle16P");
     assert_eq!(usb2, sink);
     assert_eq!(sink.len(), 17);
 }
@@ -261,7 +261,7 @@ fn kind_pads(built: &Built, name: &str) -> std::collections::BTreeSet<String> {
 #[test]
 fn the_pins_are_the_supply_the_data_pair_the_cc_pair_and_the_shell() {
     let built = built("");
-    let jack = kind(&built, "UsbCSinkReceptacle")[0];
+    let jack = kind(&built, "UsbCReceptacle16P")[0];
     let row = |name: &str| -> (PinKind, Vec<String>) {
         let p = jack.pins.iter().find(|p| p.name == name).unwrap();
         (p.kind, p.pads.clone())
@@ -276,4 +276,134 @@ fn the_pins_are_the_supply_the_data_pair_the_cc_pair_and_the_shell() {
     assert_eq!(row("sbu1").1, ["A8"]);
     assert_eq!(row("sbu2").1, ["B8"]);
     assert_eq!(row("shell").1, ["S1"]);
+}
+
+/// A receptacle of a project's own, as the Easyduino has one: a part that provides the generic,
+/// with the maker's pin table for its own package and a one-row catalog. Invented.
+const OWN_RECEPTACLE: &str = "\
+import std::parts::connector::{Connector, UsbCSinkReceptacle}
+
+part AcmeReceptacle provides UsbCSinkReceptacle, Connector {
+    pins \"SMD\" {
+        .vbus.pos power         \"VBUS\"   \"A4\" \"A9\" \"B4\" \"B9\"
+        .vbus.neg power         \"GND\"    \"A1\" \"A12\" \"B1\" \"B12\"
+        .cc1      passive       \"CC1\"    \"A5\"
+        .cc2      passive       \"CC2\"    \"B5\"
+        .dp       bidirectional \"D+\"     \"A6\" \"B6\"
+        .dm       bidirectional \"D-\"     \"A7\" \"B7\"
+        .sbu1     passive       \"SBU1\"   \"A8\"
+        .sbu2     passive       \"SBU2\"   \"B8\"
+        .shield   passive       \"SHIELD\" \"S1\"
+    }
+    .shell ~ .shield
+    catalog acme_receptacle by .mpn { .mpn, .package }
+}
+";
+
+const ACME_ROWS: &str = "\
+lcsc,mpn,package,library,source
+C0000001,ACME-USBC-16,SMD,Extended,https://example.invalid/acme-usbc-16
+";
+
+/// The board of `board`, with the project's receptacle in scope (a file the board imports).
+fn with_own_receptacle(jack: &str) -> Result<Outcome, String> {
+    let mut loader = Loader::std();
+    loader.insert("src::acme", "src/acme.nsm", OWN_RECEPTACLE);
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file("acme_receptacle", "catalogs/acme_receptacle.csv", ACME_ROWS)
+        .unwrap();
+    let src = format!(
+        "import src::acme::AcmeReceptacle   // brings the provider in scope\n{}",
+        board(jack, "")
+    );
+    outcome_with("sink.nsm", &src, &loader, &catalogs, None).map_err(|problems| {
+        problems
+            .iter()
+            .map(|p| p.message.clone())
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+}
+
+fn parts_of(outcome: &Outcome, kind: &str) -> usize {
+    outcome.boards[0]
+        .design
+        .parts
+        .iter()
+        .filter(|p| p.kind == kind)
+        .count()
+}
+
+#[test]
+fn a_provider_the_project_adds_is_chosen_for_its_package_and_number() {
+    let outcome = with_own_receptacle(
+        ".package &= \"SMD\"\n.receptacle_mpn &= \"ACME-USBC-16\"\n.rd_package &= \"0402\"",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(parts_of(&outcome, "AcmeReceptacle"), 1);
+    assert_eq!(
+        parts_of(&outcome, "UsbCReceptacle16P"),
+        0,
+        "not the standard one"
+    );
+    let built = &outcome.boards[0];
+    let jack = built
+        .design
+        .parts
+        .iter()
+        .find(|p| p.kind == "AcmeReceptacle")
+        .unwrap();
+    assert!(jack.is_connector());
+    // It is the same module: the Rd resistors, the shell on ground, the same nets.
+    let ground = net_of(built, &jack.refdes, "A1");
+    assert!(on_net(ground, &jack.refdes).contains(&"S1".to_string()));
+    assert_eq!(ground.pins.len(), 5 + 2);
+    let lcsc = built
+        .sourcing
+        .iter()
+        .find(|s| s.refdes == jack.refdes)
+        .and_then(|s| s.lcsc.as_deref());
+    assert_eq!(lcsc, Some("C0000001"));
+    assert!(outcome.boards.iter().all(|b| {
+        b.design
+            .parts
+            .iter()
+            .filter(|p| p.kind == "Resistor")
+            .count()
+            == 2
+    }));
+}
+
+#[test]
+fn the_standard_receptacle_stays_the_default_when_a_project_adds_a_provider() {
+    // The project's receptacle is in scope, and the board states nothing about it: the standard
+    // provider comes first and serves, with its footprint rows as before.
+    let outcome = with_own_receptacle("").unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(parts_of(&outcome, "UsbCReceptacle16P"), 1);
+    assert_eq!(parts_of(&outcome, "AcmeReceptacle"), 0);
+    // The standard package that the standard receptacle has a table for still picks it.
+    let outcome =
+        with_own_receptacle(".package &= \"HRO_TYPE-C-31-M-12\"").unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(parts_of(&outcome, "UsbCReceptacle16P"), 1);
+}
+
+#[test]
+fn a_package_that_no_provider_has_is_refused_with_the_reason_for_each() {
+    let Err(err) = with_own_receptacle(".package &= \"QFN\"") else {
+        panic!("a package that no provider has must not build");
+    };
+    assert!(
+        err.contains("no UsbCSinkReceptacle provider satisfies"),
+        "{err}"
+    );
+}
+
+#[test]
+fn the_standard_receptacle_is_a_provider_of_the_generic_and_a_connector() {
+    // Placed by its own name it is the same part, with the same pins as the generic's use.
+    let built = built(".package &= \"HRO_TYPE-C-31-M-12\"");
+    let jack = &kind(&built, "UsbCReceptacle16P")[0];
+    assert!(jack.provides.iter().any(|g| g == "UsbCSinkReceptacle"));
+    assert!(jack.is_connector());
 }

@@ -580,6 +580,7 @@ fn failure(
                     .map(|d| (r.diagnostics.len(), d.message.clone()))
             })
     };
+    let mut closest_provider = None;
     let message = if s.gave_up {
         let mut paths: Vec<String> = uses
             .iter()
@@ -607,6 +608,7 @@ fn failure(
             .min_by_key(|(i, _, n)| (*n, *i))
             .expect("at least the first provider was tried");
         let (closest_index, closest_name, _) = closest;
+        closest_provider = Some(*closest_index);
         let because = describe(*closest_index).map(|(_, m)| m).unwrap_or_default();
         let mut text = format!(
             "no {} provider satisfies {}: the closest of the {} in scope, {}, fails because {}",
@@ -661,6 +663,40 @@ fn failure(
     let mut problem = Problem::of(Stage::Solve, &diagnostic, sources);
     problem.board = Some(board_of(&diagnostic));
     problems.push(problem);
+    if let Some(closest_index) = closest_provider {
+        // The message names the first diagnostic of the closest trial. A diagnostic that every
+        // trial of the search has, whichever provider stood, is the design's own (a regulator
+        // the catalog cannot serve, a window a rail is outside of): the search must not hide
+        // it, or a board with two providers in scope for a use would report one mistake of an
+        // unrelated part and drop the rest.
+        let closest = s
+            .records
+            .iter()
+            .filter(|r| {
+                r.choices
+                    .iter()
+                    .any(|(p, c)| *p == u.path && *c == closest_index)
+            })
+            .min_by_key(|r| r.diagnostics.len());
+        let named = closest
+            .and_then(|r| r.diagnostics.first())
+            .map(|d| &d.message);
+        let others: Vec<Diagnostic> = closest
+            .map(|r| {
+                r.diagnostics
+                    .iter()
+                    .filter(|d| Some(&d.message) != named)
+                    .filter(|d| {
+                        s.records
+                            .iter()
+                            .all(|r| r.diagnostics.iter().any(|e| e.message == d.message))
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        problems.extend(crate::diagnostic_problems(&others, sources, &board_of));
+    }
     problems
 }
 

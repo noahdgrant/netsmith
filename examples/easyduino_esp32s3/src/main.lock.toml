@@ -112,19 +112,19 @@ row = "10kΩ 1% 0402 C25744"
 lcsc = "C25744"
 mpn = "0402WGF1002TCE"
 
-[EasyduinoEsp32s3.parts."usb_native.cc1_pulldown"]
+[EasyduinoEsp32s3.parts."usb_native.cc1_rd"]
 catalog = "resistor"
 row = "5.1kΩ 1% 0402 C25905"
 lcsc = "C25905"
 mpn = "0402WGF5101TCE"
 
-[EasyduinoEsp32s3.parts."usb_native.cc2_pulldown"]
+[EasyduinoEsp32s3.parts."usb_native.cc2_rd"]
 catalog = "resistor"
 row = "5.1kΩ 1% 0402 C25905"
 lcsc = "C25905"
 mpn = "0402WGF5101TCE"
 
-[EasyduinoEsp32s3.parts."usb_native.connector"]
+[EasyduinoEsp32s3.parts."usb_native.receptacle"]
 catalog = "shouhan_type_c_16pin"
 row = "TYPE-C 16PIN 2MD(073)"
 lcsc = "C2765186"
@@ -136,19 +136,19 @@ row = "RB161QS-40T18R 40V 1A Schottky SMD1006 C2837790"
 lcsc = "C2837790"
 mpn = "RB161QS-40T18R"
 
-[EasyduinoEsp32s3.parts."usb_uart.cc1_pulldown"]
+[EasyduinoEsp32s3.parts."usb_uart.cc1_rd"]
 catalog = "resistor"
 row = "5.1kΩ 1% 0402 C25905"
 lcsc = "C25905"
 mpn = "0402WGF5101TCE"
 
-[EasyduinoEsp32s3.parts."usb_uart.cc2_pulldown"]
+[EasyduinoEsp32s3.parts."usb_uart.cc2_rd"]
 catalog = "resistor"
 row = "5.1kΩ 1% 0402 C25905"
 lcsc = "C25905"
 mpn = "0402WGF5101TCE"
 
-[EasyduinoEsp32s3.parts."usb_uart.connector"]
+[EasyduinoEsp32s3.parts."usb_uart.receptacle"]
 catalog = "shouhan_type_c_16pin"
 row = "TYPE-C 16PIN 2MD(073)"
 lcsc = "C2765186"

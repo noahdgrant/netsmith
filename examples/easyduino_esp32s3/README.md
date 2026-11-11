@@ -61,10 +61,9 @@ netsmith's** (MIT, like the rest of the repository).
 ## What is here
 
 - `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project, its board and the board's
-  pick lock (`netsmith lock --update` refreshes it; CI checks it). `src/usb_c_input.nsm` (a
-  receptacle and the two 5.1 kohm resistors on its CC contacts, used for J1 and for J2) and
-  `src/auto_reset.nsm` (the two transistors and two resistors of the automatic bootloader) are
-  the board's modules; the other files of `src/` are the parts (below). `catalogs/capacitor.csv`
+  pick lock (`netsmith lock --update` refreshes it; CI checks it). `src/auto_reset.nsm` (the two transistors and
+  two resistors of the automatic bootloader) is the board's module (J1 and J2 are the standard
+  `UsbCSink`, a receptacle and the two 5.1 kohm resistors on its CC contacts, see below); the other files of `src/` are the parts (below). `catalogs/capacitor.csv`
   is the row of the 22 uF tantalum capacitor.
 - `LICENSE`: the CERN-OHL-P-2.0 text, as the author ships it.
 - `reference/Easyduino_ESP32S3.kicad_pcb`, `Easyduino_ESP32S3.kicad_sch`, `References.kicad_sch`:
@@ -117,7 +116,7 @@ and one recorded part, below). `netsmith fab` writes the board as a four-layer J
   in the `case` section), measured from the board's upper-left corner. Their file draws it in
   four lines inside the footprint U2 (the headers); ours is drawn by the physical file and
   the footprint of U2 draws no `Edge.Cuts` (a test holds that).
-- **J1, J2, SW1, SW2, U2** are placed by `.usb_uart.connector`, `.usb_native.connector`,
+- **J1, J2, SW1, SW2, U2** are placed by `.usb_uart.receptacle`, `.usb_native.receptacle`,
   `.reset`, `.boot` and `.headers`: x, y, rotation and face. A requirement is measured from a
   part's **body** (what its footprint draws on `F.Fab`, else the courtyard) and the checker
   compares the footprint's origin, so for J1 and J2 (courtyard 1.25 mm above the origin) and U2
@@ -403,7 +402,12 @@ the part's pin table.
   buys is LCSC **C2765186**, Shouhan (SHOU HAN) `TYPE-C 16PIN 2MD(073)`, a 16-contact USB 2.0
   Type-C receptacle, right angle SMT with four shell legs (the board file's footprint is another
   maker's, G-Switch `GT-USB-7010ASV`: the LCSC number is the part, the footprint is a stand-in with
-  the same land pattern). `provides Connector`. Nine pins: `.vbus.pos` (A4, A9, B4, B9) and `.vbus.neg` (A1,
+  the same land pattern). It `provides UsbCSinkReceptacle` (and `Connector`): J1 and J2 are the
+  standard module `UsbCSink`, which takes a receptacle that provides the generic, and the board
+  states `.package &= "SMD"` and `.receptacle_mpn &= "TYPE-C 16PIN 2MD(073)"` for each, so that the
+  standard receptacle (it has pin tables for its own two footprints only) is passed over and this
+  one is picked; `.rd_package &= "0402"` is the resistors'. The generic gives it `.vbus`, `.mpn` and
+  `.package`; the shell is the generic's `.shell`, tied to the pin `.shield` (the maker's name). Nine pins: `.vbus.pos` (A4, A9, B4, B9) and `.vbus.neg` (A1,
   A12, B1, B12), the two ends of one rail `.vbus` (it has `dc source .vbus`, as std's `UsbCPower`
   has, so the DC analysis starts from the host: the board states 4.75 V to 5.25 V; this was
   added with the board, the pads and datasheet names are unchanged), `.cc1` (A5), `.cc2` (B5), `.dp` (A6, B6), `.dm` (A7, B7), `.sbu1` (A8), `.sbu2`

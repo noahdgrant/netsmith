@@ -19,10 +19,11 @@ import src::auto_reset::AutoReset
 import src::cp2102n::Cp2102n
 import src::devkitc_headers::Esp32S3DevKitCHeaders
 import src::esp32_s3_wroom_1::Esp32S3Wroom1
-import src::usb_c_input::UsbCInput
+import src::shouhan_type_c_16pin::ShouhanTypeC16Pin   // brings the Shouhan receptacle in scope as a provider of `UsbCSinkReceptacle`
 import src::xunpu_ts_1088::XunpuTs1088
 import std::bus::{PullDown, PullUp}
 import std::mfg::jlcpcb::FourLayer
+import std::parts::connector::UsbCSink
 import std::parts::diode::Schottky
 import std::parts::passive::{Capacitor, Led, Resistor}
 import std::parts::regulator::LinearRegulator
@@ -60,9 +61,9 @@ board EasyduinoEsp32s3 {
     // ---- The interface parts: J1, J2, SW1, SW2, U2 ----
 
     /// J1: the receptacle of the bridge.
-    .usb_uart: UsbCInput
+    .usb_uart: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "TYPE-C 16PIN 2MD(073)"; .rd_package &= "0402" }
     /// J2: the receptacle of the module's own USB.
-    .usb_native: UsbCInput
+    .usb_native: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "TYPE-C 16PIN 2MD(073)"; .rd_package &= "0402" }
     /// The development board's two 22-pin headers (U2), hand-soldered.
     .headers: Esp32S3DevKitCHeaders
     /// SW1, RESET: pulls EN to ground.
