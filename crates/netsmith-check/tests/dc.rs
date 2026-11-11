@@ -511,6 +511,11 @@ fn the_connectors_that_give_a_supply_state_a_source() {
     for (import, name, rail) in [
         ("connector::Obd2M", "Obd2M", "vbatt"),
         ("connector::UsbCPower", "UsbCPower", "vbus"),
+        (
+            "connector::UsbCSinkReceptacle",
+            "UsbCSinkReceptacle",
+            "vbus",
+        ),
     ] {
         let src = format!("import std::parts::{import}\nboard B {{\n    .c: {name}\n}}\n");
         let c = run(&src);

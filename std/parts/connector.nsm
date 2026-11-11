@@ -27,6 +27,7 @@
 //! sixteen-contact USB 2.0 receptacle has the sideband pads A8 and B8 (see `UsbC2`).
 
 import std::bus::{Usb2, UsbRole}
+import std::parts::passive::Resistor
 import std::sources::Rail
 
 /// What a connector says about how it meets another (ADR 0040). A system mates two connectors
@@ -406,6 +407,69 @@ part UsbC2 provides Connector {
     }
 
     .package: Package
+}
+
+/// The receptacle of a device that takes power from a USB Type-C host: sixteen contacts for USB
+/// 2.0, as `UsbC2` has them, with `.vbus` the supply the host gives (`pos` on VBUS, `neg` on
+/// GND), taken by the DC analysis as a source over the range the design states for `.voltage`,
+/// as `UsbCPower` does. `.cc1` and `.cc2` are the configuration channel contacts, `.dp` and
+/// `.dm` the data pair (the two rows are one pin each, as in `UsbC2`), `.sbu1` and `.sbu2` the
+/// sideband contacts, left open, and `.shell` the shield. It carries no resistors: `UsbCSink`
+/// adds the Rd that tells the host the device wants power, and is what a board uses.
+part UsbCSinkReceptacle provides Connector {
+    .vbus: Rail
+    dc source .vbus
+
+    pins {
+        .vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"
+        .vbus.neg power         "GND"   "A1" "B1" "A12" "B12"
+        .dp       bidirectional "D+"    "A6" "B6"
+        .dm       bidirectional "D-"    "A7" "B7"
+        .cc1      passive       "CC1"   "A5"
+        .cc2      passive       "CC2"   "B5"
+        .sbu1     passive       "SBU1"  "A8"
+        .sbu2     passive       "SBU2"  "B8"
+        .shell    passive       "SHELL" "S1"
+    }
+
+    .package: Package
+}
+
+/// A USB Type-C receptacle for a device that takes its power from a host (a sink), with the
+/// device's side of the Type-C specification built in: one 5.1 kohm pull-down (Rd) from each of
+/// CC1 and CC2 to ground, which tells the host to supply VBUS. `.vbus` is the supply the host
+/// gives (`pos` on VBUS, `neg` on GND, the receptacle's source for the DC analysis: the board
+/// states `.voltage`), and `.dp` and `.dm` are the data pair. The shell is joined to ground.
+/// The sideband contacts are not brought out. The two resistors are parts of the bill of
+/// materials (`R`), 5.1 kohm with a tolerance of 1 %, inside the specification's 20 %. A board
+/// that wants a footprint other than the default states `.package` (the receptacle's, as for
+/// `UsbC2`), and the Rd's package with `.rd_package` (`"0402"`); left out, the solver picks it.
+///
+/// It is a module, and a module cannot provide `Connector` (the generic has a `pins` table, which
+/// only a part provides); the connector of the board is its receptacle, which does, so the placer
+/// and the schematic treat it as one.
+module UsbCSink {
+    .vbus: Rail
+    .dp: Pin
+    .dm: Pin
+    /// The receptacle's package: the name of a footprint row, such as `"GCT_USB4105_16P"`.
+    .package: Package optional
+    /// The package of the two Rd resistors, a text such as `"0402"`.
+    .rd_package: Package optional
+
+    .receptacle: UsbCSinkReceptacle
+    .receptacle.package == .package
+    .cc1_rd: Resistor { .resistance &= 5.1kohm +/- 1% }
+    .cc2_rd: Resistor { .resistance &= 5.1kohm +/- 1% }
+    .cc1_rd.package == .rd_package
+    .cc2_rd.package == .rd_package
+
+    .receptacle.vbus ~ .vbus
+    .receptacle.dp ~ .dp
+    .receptacle.dm ~ .dm
+    .receptacle.shell ~ .vbus.neg
+    .receptacle.cc1 ~> .cc1_rd ~> .vbus.neg
+    .receptacle.cc2 ~> .cc2_rd ~> .vbus.neg
 }
 
 /// An OBD-II (SAE J1962) 16-pin vehicle connector, male: the plug that goes into the vehicle's
