@@ -49,8 +49,7 @@
 //!   (`pcb/limits.ts`). The arrow-key nudge, turn and flip are not held.
 //!
 //! **Open, word for word from ADR 0045 section 11** ("Open for the maintainer"):
-//! - "Whether the catalog `height` column (section 2) should come first. (Built by ADR 0094,
-//!   provisional.)"
+//! - "Whether the catalog `height` column (section 2) should come first. (Built by ADR 0094.)"
 //! - "That a height-only keepout forbids nothing else, rather than needing `.parts &= "allow"`
 //!   written out." (The owner confirmed it on 2026-11-04.)
 //! - "That `.layers` names the faces a limit applies to." (Confirmed 2026-11-04.)

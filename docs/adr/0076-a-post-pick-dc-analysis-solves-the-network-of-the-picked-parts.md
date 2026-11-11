@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A post-pick DC analysis solves the network of the picked parts
@@ -28,17 +28,14 @@ One pass is added between the pick and the final verification of the relations: 
 
 **Cost.** An island over 65536 combinations (and less when it is large) is left alone with a note that says to cut it at a node a rail holds. The pass is deterministic. Two corners per part that can reach zero ohm, so an island with several beads has more combinations.
 
-**Left open.** The first text's owner questions, carried over:
+**Accepted as built by the owner, 2026-11-11**, with the 17 amendments of the cut text. Among them, amendments 2, 14, 15 and 17 can turn a design that built into a failure: a stated field is a budget, an efficiency outside `0 < eff <= 1` is an error, a disagreement between the balance and the analysis is an error, and a stated range that does not enclose the circuit's is an error. The owner also accepted "meet, not exceed" for a supply's `.current` budget (ADR 0038's reading).
 
-1. "A sound enclosure for non-monotone quantities. The corner hull is the circuit's range only where the quantity is monotone; a power can peak inside the box. The ADR proposes a stated margin of about `(tolerance/2)^2` for any element with a range wider than 5 %, and says a sound enclosure (interval Newton, affine arithmetic) is possible and not built. Recommendation: no change until the interior check fails on a real design."
-2. "The island limit (65536 combinations, work 2^28): over it a note names the island and nothing is written."
-3. "What was not established (the section lists nine): the cost on a whole board (the real board is not a file of this repository), the fixed point's convergence for a regulator with hysteresis, and the fuse's missing maximum resistance."
-4. A part with two elements, "a MOSFET's body diode" or "a dual diode, a resistor network": no `dc` statement names a second one. Whether "a part with a `bridge` and no `dc` should be an error at the checker or only a note of the analysis" (a note today).
-5. "Which node a buck holds": the IC's switch pin, so a window the board states on the rail past the inductor is not checked.
-6. "A load that states nothing still gives blind picks (a part is taken with no current to judge its rating against); making that a finding or the worst case is choice 1, alternative (a), and is the owner's." (Alternative (a): an unstated load means the regulator's rated limit.)
-7. "the rule for which rails are sources is the owner's" (issue #289): a rail with a window on a module port that the board joins to a connector's supply is not a source.
-8. The peak along a chain: the chain carries the voltage and not the `.peak` (ADR 0086 gives a fuse the peak).
-9. "Meet, not exceed": a supply's `.current` is a budget the loads must be able to meet (ADR 0038's rule). The stricter reading, the loads' high end against the budget, "would be changing ADR 0038 too".
-10. Not built: a line with a `.swing` in the analysis, naming each boundary, the cache of an island's result, and the `1 mohm` floors of a MOSFET's `Rds(on)` and a pin's output resistance.
+**Not built, and limits.**
 
-The "Choices for the owner" of the 17 amendments are the engineer's, each "Taken" with its alternatives, for the owner to confirm. They are in the cut text, and in the issue opened from the pull request that cut this ADR.
+1. A sound enclosure for non-monotone quantities (a stated margin of about `(tolerance/2)^2`, interval Newton, affine arithmetic): no change until the interior check fails on a real design (the owner accepted the digest's recommendation).
+2. The island limit (65536 combinations, work 2^28), the cost on a whole board, the fixed point's convergence for a regulator with hysteresis, and the fuse's missing maximum resistance: issue #45.
+3. A part with two elements (a body diode, a dual diode, a resistor network), and whether a part with a `bridge` and no `dc` is an error at the checker (a note today): not planned until a board needs it.
+4. Which node a buck holds (the IC's switch pin, so a window stated on the rail past the inductor is not checked): issue #63.
+5. A load that states nothing gives blind picks (a finding, or the regulator's rated limit as the worst case): issue #18.
+6. Which rails are sources: issue #289.
+7. The peak along a chain (the chain carries the voltage, not the `.peak`; ADR 0086 gives a fuse the peak), a line with a `.swing` in the analysis, naming each boundary, the cache of an island's result, and the `1 mohm` floors of a MOSFET's `Rds(on)` and a pin's output resistance: not planned until a board needs it.
