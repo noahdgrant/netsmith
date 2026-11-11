@@ -4,20 +4,206 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
-[EasyduinoEsp32s3.parts."led"]
-catalog = "led"
-row = "KT-0603R RED LED 0603 C2286"
-lcsc = "C2286"
-mpn = "KT-0603R"
+[EasyduinoEsp32s3.parts."auto_reset.q_boot"]
+catalog = "ss8050"
+row = "SS8050"
+lcsc = "C916392"
+mpn = "SS8050"
 
-[EasyduinoEsp32s3.parts."power_in"]
-catalog = "header"
-row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
-mpn = "PH2.54-1X2P-H25"
+[EasyduinoEsp32s3.parts."auto_reset.q_en"]
+catalog = "ss8050"
+row = "SS8050"
+lcsc = "C916392"
+mpn = "SS8050"
 
-[EasyduinoEsp32s3.parts."r1"]
+[EasyduinoEsp32s3.parts."auto_reset.r_dtr"]
 catalog = "resistor"
-row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
-mpn = "0402WGF3300TCE"
+row = "10kΩ 1% 0402 C25744"
+lcsc = "C25744"
+mpn = "0402WGF1002TCE"
+
+[EasyduinoEsp32s3.parts."auto_reset.r_rts"]
+catalog = "resistor"
+row = "10kΩ 1% 0402 C25744"
+lcsc = "C25744"
+mpn = "0402WGF1002TCE"
+
+[EasyduinoEsp32s3.parts."boot"]
+catalog = "xunpu_ts_1088"
+row = "TS-1088-AR02016 tactile switch SMD 4x3mm C720477"
+lcsc = "C720477"
+mpn = "TS-1088-AR02016"
+
+[EasyduinoEsp32s3.parts."boot_100n"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EasyduinoEsp32s3.parts."bridge"]
+catalog = "cp2102n"
+row = "CP2102N-A02-GQFN28"
+lcsc = "C1550553"
+mpn = "CP2102N-A02-GQFN28"
+
+[EasyduinoEsp32s3.parts."bridge_reset_pullup.resistor"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0402 C25905"
+lcsc = "C25905"
+mpn = "0402WGF5101TCE"
+
+[EasyduinoEsp32s3.parts."bridge_vdd_cap"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EasyduinoEsp32s3.parts."en_100n_a"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EasyduinoEsp32s3.parts."en_100n_b"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EasyduinoEsp32s3.parts."en_pullup.resistor"]
+catalog = "resistor"
+row = "10kΩ 1% 0402 C25744"
+lcsc = "C25744"
+mpn = "0402WGF1002TCE"
+
+[EasyduinoEsp32s3.parts."module"]
+catalog = "esp32_s3_wroom_1"
+row = "ESP32-S3-WROOM-1-N4"
+lcsc = "C2913197"
+mpn = "ESP32-S3-WROOM-1-N4"
+
+[EasyduinoEsp32s3.parts."power_led"]
+catalog = "led"
+row = "SZYY0402B BLUE LED 0402 C434447"
+lcsc = "C434447"
+mpn = "SZYY0402B"
+
+[EasyduinoEsp32s3.parts."power_led_resistor"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0402 C25905"
+lcsc = "C25905"
+mpn = "0402WGF5101TCE"
+
+[EasyduinoEsp32s3.parts."regulator"]
+catalog = "ldo"
+row = "AMS1117-3.3 3.3V 1A LDO SOT-223 C6186"
+lcsc = "C6186"
+mpn = "AMS1117-3.3"
+
+[EasyduinoEsp32s3.parts."reset"]
+catalog = "xunpu_ts_1088"
+row = "TS-1088-AR02016 tactile switch SMD 4x3mm C720477"
+lcsc = "C720477"
+mpn = "TS-1088-AR02016"
+
+[EasyduinoEsp32s3.parts."suspend_pulldown.resistor"]
+catalog = "resistor"
+row = "10kΩ 1% 0402 C25744"
+lcsc = "C25744"
+mpn = "0402WGF1002TCE"
+
+[EasyduinoEsp32s3.parts."usb_native.cc1_pulldown"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0402 C25905"
+lcsc = "C25905"
+mpn = "0402WGF5101TCE"
+
+[EasyduinoEsp32s3.parts."usb_native.cc2_pulldown"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0402 C25905"
+lcsc = "C25905"
+mpn = "0402WGF5101TCE"
+
+[EasyduinoEsp32s3.parts."usb_native.connector"]
+catalog = "shouhan_type_c_16pin"
+row = "TYPE-C 16PIN 2MD(073)"
+lcsc = "C2765186"
+mpn = "TYPE-C 16PIN 2MD(073)"
+
+[EasyduinoEsp32s3.parts."usb_native_diode"]
+catalog = "schottky"
+row = "RB161QS-40T18R 40V 1A Schottky SMD1006 C2837790"
+lcsc = "C2837790"
+mpn = "RB161QS-40T18R"
+
+[EasyduinoEsp32s3.parts."usb_uart.cc1_pulldown"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0402 C25905"
+lcsc = "C25905"
+mpn = "0402WGF5101TCE"
+
+[EasyduinoEsp32s3.parts."usb_uart.cc2_pulldown"]
+catalog = "resistor"
+row = "5.1kΩ 1% 0402 C25905"
+lcsc = "C25905"
+mpn = "0402WGF5101TCE"
+
+[EasyduinoEsp32s3.parts."usb_uart.connector"]
+catalog = "shouhan_type_c_16pin"
+row = "TYPE-C 16PIN 2MD(073)"
+lcsc = "C2765186"
+mpn = "TYPE-C 16PIN 2MD(073)"
+
+[EasyduinoEsp32s3.parts."usb_uart_diode"]
+catalog = "schottky"
+row = "RB161QS-40T18R 40V 1A Schottky SMD1006 C2837790"
+lcsc = "C2837790"
+mpn = "RB161QS-40T18R"
+
+[EasyduinoEsp32s3.parts."user_led"]
+catalog = "led"
+row = "SZYY0402B BLUE LED 0402 C434447"
+lcsc = "C434447"
+mpn = "SZYY0402B"
+
+[EasyduinoEsp32s3.parts."user_led_resistor"]
+catalog = "resistor"
+row = "2.4kΩ 1% 0402 C25882"
+lcsc = "C25882"
+mpn = "0402WGF2401TCE"
+
+[EasyduinoEsp32s3.parts."v3v3_100n"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EasyduinoEsp32s3.parts."v3v3_22u_a"]
+catalog = "capacitor"
+row = "22uF 10% 10V tantalum CASE-A-3216-18 C11366"
+lcsc = "C11366"
+mpn = "TAJA226K010RNJ"
+
+[EasyduinoEsp32s3.parts."v3v3_22u_b"]
+catalog = "capacitor"
+row = "22uF 10% 10V tantalum CASE-A-3216-18 C11366"
+lcsc = "C11366"
+mpn = "TAJA226K010RNJ"
+
+[EasyduinoEsp32s3.parts."vbus_100n"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[EasyduinoEsp32s3.parts."vbus_1u"]
+catalog = "capacitor"
+row = "1uF 10% 25V X5R 0402 C52923"
+lcsc = "C52923"
+mpn = "CL05A105KA5NQNC"
+
+[EasyduinoEsp32s3.parts."vbus_22u"]
+catalog = "capacitor"
+row = "22uF 10% 10V tantalum CASE-A-3216-18 C11366"
+lcsc = "C11366"
+mpn = "TAJA226K010RNJ"

@@ -1,10 +1,10 @@
 # Easyduino ESP32-S3
 
 A port of the open **Easyduino ESP32-S3** board to netsmith, the second showcase board of epic
-#308 (after the RP2350A Minimal). **The port is in progress: this folder holds the first stage
-only**, the scaffold, the licence and the reference table. `src/main.nsm` is a placeholder
-board (an LED on a supply) that stands in until the parts and the circuit are written; it is
-not Easyduino's circuit.
+#308 (after the RP2350A Minimal). **The schematic is done**: `src/main.nsm` is the board
+`EasyduinoEsp32s3`, the same circuit as Easyduino's, with its nets proved equal by a test
+(below). **The physical file (outline, fixed places of the interface parts) and the parity
+gate are the next item**: `netsmith fab` is not run on this project yet.
 
 ## Source
 
@@ -44,7 +44,8 @@ netsmith's** (MIT, like the rest of the repository).
 ## Goal
 
 1. **The same nets.** The schematic of the port and Easyduino's design are the same circuit:
-   a test will prove it by comparing the wiring alone, as the RP2350A Minimal's does.
+   a test proves it by comparing the wiring alone, as the RP2350A Minimal's does (see "Same
+   nets" below).
 2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable with
    theirs in these ways, and the parity checker with tolerances will fail when one is off:
    - the board outline (25.86 x 63.90 mm; see NOTE-FOR-LATER: the file draws it in U2);
@@ -58,8 +59,12 @@ netsmith's** (MIT, like the rest of the repository).
 
 ## What is here
 
-- `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project, its (placeholder) board and
-  the board's pick lock (`netsmith lock --update` refreshes it; CI checks it).
+- `netsmith.toml`, `src/main.nsm`, `src/main.lock.toml`: the project, its board and the board's
+  pick lock (`netsmith lock --update` refreshes it; CI checks it). `src/usb_c_input.nsm` (a
+  receptacle and the two 5.1 kohm resistors on its CC contacts, used for J1 and for J2) and
+  `src/auto_reset.nsm` (the two transistors and two resistors of the automatic bootloader) are
+  the board's modules; the other files of `src/` are the parts (below). `catalogs/capacitor.csv`
+  is the row of the 22 uF tantalum capacitor.
 - `LICENSE`: the CERN-OHL-P-2.0 text, as the author ships it.
 - `reference/Easyduino_ESP32S3.kicad_pcb`, `Easyduino_ESP32S3.kicad_sch`, `References.kicad_sch`:
   their board and schematic files, unchanged (1.0 MB, 260 kB, 6 kB).
@@ -85,9 +90,123 @@ netsmith build    # the schematic, in out/
 netsmith fab      # the package for the board house, in fab/
 ```
 
-Both build the placeholder for now. `netsmith compare` can read their board file as one side
-(`netsmith compare reference/Easyduino_ESP32S3.kicad_pcb out/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_sch`)
-and says nothing useful until the port is finished.
+`build` needs no KiCad install (`NETSMITH_NO_KICAD=1 netsmith build` is the same). `fab` has no
+outline to place the parts on yet (the physical file is the next item); do not run it.
+
+`netsmith compare` reads their board file as one side, but the bare command is not the proof:
+`netsmith compare reference/Easyduino_ESP32S3.kicad_pcb src/main.nsm --loose-values` says that
+both have 35 components and 57 nets and then `different: 31 differences`, which are names and
+numbering: 11 parts correspond but carry another value or footprint name (the tantalum
+capacitors, the diode, the receptacle, the buttons, the transistors, the bridge's variant), and
+because the designators come out in another order and several parts are interchangeable (the
+CC resistors of the two receptacles, the three 100 nF on EN and GPIO0), the bare run pairs
+some of them across and lists nets that are the same as different. The test below pairs the
+parts by a table and compares the wiring alone.
+
+## Same nets
+
+`crates/netsmith/tests/easyduino.rs`, module `board` (no KiCad needed; the ERC test skips where
+there is no `kicad-cli`). The reference's connectivity is read from the committed
+`reference/Easyduino_ESP32S3.kicad_pcb` as a file with `Netlist::from_kicad_pcb` (netsmith's own
+s-expression reader, which `compare` uses), and the board's from the built design.
+
+- `every_pad_has_the_same_pads_on_its_net_as_in_easyduinos_board`: the 35 parts are paired by a
+  table of member path to Easyduino's designator (`PARTS`); for every pad of every part the set
+  of the other pads on its net is the same on both sides. **Pads that share a number are one
+  pad**, as the reader joins them (and the design's netlist has a pin once however many pads it
+  has): the nine pads 41 of the module, the four shield pads `S1` of each receptacle and the
+  regulator's output and tab (two pads 2). Passes, with 191 pads on 57 nets on each side.
+  The wrong-net control `the_comparison_sees_a_pad_on_the_wrong_net` puts U2 pad 4 on the net of
+  pad 5 and requires the comparison to name `U2.4`, and to see a pad that is on a net on one
+  side only.
+- `netsmith_compare_says_the_nets_are_the_same`: `netsmith-netlist::compare` with every value and
+  footprint blanked and the designators paired by the table: `match`.
+- `the_resistors_and_capacitors_have_easyduinos_values_and_packages`: all 11 resistors and 10
+  capacitors have the value and the package of the reference's footprint (`1005` is 0402, the
+  tantalum `CP_EIA-3216` is `CASE-A-3216-18`).
+- `the_parts_have_the_lcsc_numbers_of_easyduinos_bill_of_materials`: every part is picked as
+  the BOM's LCSC number, but U3 (below) and U2 (hand-soldered, `-` in the BOM).
+- `the_open_pins_are_the_ones_the_reference_leaves_open`: the 20 pads on nets named
+  `unconnected-(...)` (16 pins of the bridge, SBU1 and SBU2 of each receptacle) are the pads that
+  no net of the design names, and no other pad is open. (The reader drops a net of one pad, so
+  the proofs above say nothing about them; this one does.)
+- The pin map: `the_header_pins_carry_easyduinos_signals` (all 44 pads of U2),
+  `the_receptacles_carry_easyduinos_signals` (every contact of J1 and J2: VBUS behind its diode,
+  ground and shield, each CC on its own 5.1 kohm resistor, D+ and D-, the sideband contacts open)
+  and `the_buttons_have_easyduinos_nets_on_their_pads` (SW1 pad 2 on EN, SW2 pad 2 on GPIO0, pad
+  1 on ground). Every header pad is joined to a **named pin of the module** in the source
+  (`.headers.gpio4 ~ .module.io4`), never to a request, and the module's table has no function
+  rows at all, so the pin optimizer (ADR 0101) has nothing it can move:
+  `the_optimizer_cannot_move_a_header_pad` checks that the check's spaces for the board are empty
+  and that there is no pin file.
+- ERC: `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (clean where `kicad-cli`
+  exists, skipped where not).
+
+### Differences from the reference (all of them)
+
+- **R6 and R11 have their pads 1 and 2 exchanged.** Easyduino's R6 (the power LED's resistor)
+  has pad 1 on the LED and pad 2 on VBUS, and R11 (the bridge's reset pull-up) pad 1 on the reset
+  line and pad 2 on VBUS. netsmith's `~>` chain and the std `PullUp` enter a resistor at its pad
+  1, so ours have pad 1 on VBUS. A resistor has no polarity. The test reads the reference's two
+  resistors with the pads exchanged (`SWAPPED`), and `only_r6_and_r11_have_their_pads_exchanged`
+  shows that without the exchange the two boards differ at exactly the pads on those two nets.
+- **U3 is not the same chip number.** The reference's BOM and board say C6568, which is the older
+  CP2102 (see U3 below); the port is the CP2102N that its schematic names (C1550553). Same pins.
+- **The designators differ** (declaration order: the module's parts are declared in the
+  modules and the headers come after the chips, so for example the board's U2 is the bridge,
+  not the headers). The tests pair parts by member path. The parity checker's designator map is
+  the physical-file item's.
+- **Which of C4 and C8 is which** (both 100 nF from EN to ground) is arbitrary.
+- **Tolerances.** The reference states values only. The tolerance of each part is the one of the
+  LCSC part its BOM names (1 % resistors, 10 % capacitors), which is what the catalog row says.
+- **The tantalum capacitor's footprint** is a file of the project's (`CP_EIA-3216-18_Tantalum_A`),
+  pads as the reference's `CP_EIA-3216-10_Kemet-I` has them (1.415 x 1.39 mm at +-1.3525 mm);
+  the part is Kyocera AVX's TAJA226K010RNJ (the number's own pages), whose land pattern was not
+  read.
+- **Pours.** The board states the GND pour on both outer layers and the first inner layer and
+  the +3.3V pour on the second inner layer; the reference has a +3.3V pour on its top layer too
+  (a layer here has one pour net).
+- **What the reference has that this does not:** its notes say a polyfuse was added on the USB-C
+  input; there is none among the 35 footprints, and none here.
+
+## What the solver checks
+
+Everything here is from the reference's own words or from a datasheet figure that a part file
+or a catalog row records with its page; nothing is a number the port made up.
+
+- **The 3.3 V rail against the module's supply window.** The AMS1117-3.3 row states the
+  output 3.201 V to 3.399 V (datasheet page 2, over the operating range); the module's `.vdd`
+  states 3.0 V to 3.6 V (ESP32-S3-WROOM-1 datasheet Table 6-2). The solver checks the first
+  inside the second, and refuses a regulator that gives more
+  (`a_regulator_that_gives_more_than_the_modules_window_is_refused`).
+- **The regulator's current and the module's required supply current.** The reference's notes
+  say "Output Current at 3.3V: 1 A (External Source) 500mA (USB)". The board states the
+  regulator's output current as the USB figure, `-500mA..0A`, because nothing on the 3.3 V net
+  states a draw (the module has no stated current: the datasheet's figures are typical
+  values for radio states, which were not read). It is checked against the row's `max_current`,
+  0.8 A: the module's own requirement of 0.5 A from its supply (Table 6-2, "current delivered
+  by external power supply") is met by it. The reference's 1 A for an external source is **above
+  the row's 0.8 A**: the datasheet's headline is 1 A and its current limit 900 mA minimum, but
+  0.8 A is the highest current at which the dropout is stated, so a board that states 1 A is
+  refused. No board of this project states it.
+- **NOT evaluated: the dropout from USB.** The reference feeds the regulator from VBUS through a
+  Schottky diode (D2 or D3). With the USB window 4.75 V to 5.25 V (the figure the RP2350 board
+  uses; the reference says "5V (USB UART OR USB ESP32)") and the diode's 0.6 V (ROHM's maximum
+  VF at 1 A, the row's figure), the input is at least 4.15 V, and the regulator needs its
+  output's top, 3.399 V, plus the dropout, 1.3 V at most, which is 4.699 V. **By the catalog's
+  figures the dropout does not hold in the worst case**, and nothing says it does: the 1.3 V is
+  the datasheet's maximum at 0.8 A (page 3, note 4) and the board draws at most 0.5 A, the
+  diode's 0.6 V is its figure at 1 A (it is less at 0.5 A), and the datasheet gives no
+  dropout at a lighter load. The solver does not make the check: the bridge's VBUS and VREGIN
+  pins and its reset line (a pull-up to VBUS on a pin that states no drive) are not modelled and
+  the datasheet states no maximum supply current for the bridge (Table 3.2 has typical
+  values only), so the rail behind the diodes has no voltage and the relation is listed as not
+  evaluated (`the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed` pins
+  that). The arithmetic above is the README's and not a finding of the tool.
+- **Not checked, listed as not evaluated:** every diode's current and bias, the CC
+  resistors' and pull-ups' power (nothing states the currents of the lines they hold), the
+  power LED's current, the buttons' current, the strapping pins' levels at boot (see "For the
+  owner" in the pull request).
 
 ## NOTE-FOR-LATER
 
@@ -205,8 +324,10 @@ the part's pin table.
   buys is LCSC **C2765186**, Shouhan (SHOU HAN) `TYPE-C 16PIN 2MD(073)`, a 16-contact USB 2.0
   Type-C receptacle, right angle SMT with four shell legs (the board file's footprint is another
   maker's, G-Switch `GT-USB-7010ASV`: the LCSC number is the part, the footprint is a stand-in with
-  the same land pattern). `provides Connector`. Nine pins: `.vbus` (A4, A9, B4, B9), `.gnd` (A1,
-  A12, B1, B12), `.cc1` (A5), `.cc2` (B5), `.dp` (A6, B6), `.dm` (A7, B7), `.sbu1` (A8), `.sbu2`
+  the same land pattern). `provides Connector`. Nine pins: `.vbus.pos` (A4, A9, B4, B9) and `.vbus.neg` (A1,
+  A12, B1, B12), the two ends of one rail `.vbus` (it has `dc source .vbus`, as std's `UsbCPower`
+  has, so the DC analysis starts from the host: the board states 4.75 V to 5.25 V; this was
+  added with the board, the pads and datasheet names are unchanged), `.cc1` (A5), `.cc2` (B5), `.dp` (A6, B6), `.dm` (A7, B7), `.sbu1` (A8), `.sbu2`
   (B8) and `.shield`, whose pad number `S1` is on four plated slots (as the RP2350 example's
   micro-USB has its shield on several pads); the two non-plated pegs have no number and no pin. The
   contacts that the receptacle joins inside (the plug picks A or B) are one pin each.
@@ -292,9 +413,6 @@ the part's pin table.
   pattern, so the pads are the standard 0402's. The standard blue 0402 row (XL-1005UBC, 2.6 V to 3.4 V) comes
   first in the solver's order, so a board that wants this part states `.color &= "BLUE"`,
   `.package &= "0402"` and `.forward_voltage &= 2.6V..3.2V`, as the test's fixture does.
-- **What is not done here** (the next stages): the module, the bridge, the regulator, the
-  transistors and the diodes are other parts; the passives are the standard ones. The board
-  (`main.nsm`) is still the placeholder.
 
 ### The module, the bridge, the regulator, the transistors and the diodes (U1, U3, U5, Q1, Q2, D2, D3)
 
@@ -309,7 +427,11 @@ the transistor on purpose: with no model each part is a boundary of the design, 
 that need a number are listed as not evaluated. Documents were fetched on 2026-11-10.
 
 - **U1, `Esp32S3Wroom1`** (`src/esp32_s3_wroom_1.nsm`): Espressif's ESP32-S3-WROOM-1 with the
-  PCB antenna, 41 pins: 40 edge pads and the ground pad, `EPAD`, which is pad 41. Source:
+  PCB antenna, 41 pins: 40 edge pads and the ground pad, `EPAD`, which is pad 41. The supply is a
+  rail, `.vdd` (`.vdd.pos` the `3V3` pad, `.vdd.neg` the ground pads), with the datasheet's
+  window of Table 6-2 (printed page 27): VDD33 3.0 V minimum, 3.3 V typical, 3.6 V maximum
+  (added with the board, so that the regulator's output is checked against it); the module's
+  own supply current is not stated. Source:
   Espressif, "ESP32-S3-WROOM-1 & ESP32-S3-WROOM-1U Datasheet", Version 1.8 (revision history
   dated 2026-03-02, 53 pages, SHA-256 `27d71971da07`, from
   <https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf>):
@@ -352,7 +474,9 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
     ESP32-S3-WROOM-1-N4 (4 MB quad flash, no PSRAM), package "SMD, 25.5x18mm" as JLCPCB's page
     says; the JLCPCB and LCSC pages were read on 2026-11-10 and agree with the BOM of the
     reference. Price and stock are not recorded.
-- **U3, `Cp2102n`** (`src/cp2102n.nsm`): Silicon Labs' (now Skyworks') CP2102N in the QFN28
+- **U3, `Cp2102n`** (`src/cp2102n.nsm`): (DCD, CTS and DSR are `optional`, added with the board:
+  Easyduino leaves them open and the datasheet says the handshake and modem-control pins act only
+  when the host enables them, pages 21 and 23; it does not say in words that they may float.) Silicon Labs' (now Skyworks') CP2102N in the QFN28
   package, orderable as CP2102N-A02-GQFN28. Source: "CP2102N Data Sheet", Rev. 1.5 (48 pages;
   the copy LCSC links for C1550553, SHA-256 `70ea7a01045c`, PDF created 2020-11-13): Table 1.1
   (page 2) for the ordering key, Figure 5.1 and Table 5.1 (pages 27 and 28) for the pins,
@@ -421,6 +545,20 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
     reference's pads are the generator's 0402 diode, 0.59 x 0.64 mm and 0.97 mm apart: ROHM's
     centres are 0.16 mm nearer and its pads 0.24 mm shorter (the test states both). The pad
     numbers agree: pad 1 on `VBUS` is the cathode, pad 2 the anode.
+- **C6, C7 and C10, the 22 uF tantalum capacitors** (std `Capacitor`, package `CASE-A-3216-18`,
+  the project's row in `catalogs/capacitor.csv`, footprint `libs/easyduino_ics.pretty/CP_EIA-3216-18_Tantalum_A.kicad_mod`):
+  the part of the BOM's LCSC **C11366**, Kyocera AVX **TAJA226K010RNJ**, 22 uF +/-10 %, 10 V,
+  case A (EIA 3216-18), library type Extended. Source: JLCPCB's page `jlcpcb.com/partdetail/C11366`
+  and LCSC's `lcsc.com/product-detail/C11366.html`, read on 2026-11-10 (they agree on the
+  number, value, tolerance, voltage and package; JLCPCB lists no manufacturer and an ESR of 3
+  ohm at 100 kHz, LCSC names Kyocera AVX and says one document is available, which has no link on
+  the page). No datasheet was read, so the row has **no DC-bias curve, no dielectric class, no
+  height and no temperature range** (the -55 to +125 C that JLCPCB prints is not a document
+  read). The footprint is the reference's pads (`CP_EIA-3216-10_Kemet-I` of KiCad's library:
+  1.415 x 1.39 mm roundrects at +-1.3525 mm, pad 1 the positive terminal), written as a file of
+  the project with the body outline of the case (3.2 x 1.6 mm) on `F.Fab`: the part's own land
+  pattern was not read. The reference board's three are on rails (C6 on VBUS, C7 and C10 on
+  +3.3V) with pad 1 on the rail, as ours are.
 - **What the reference says about them** (checked by the tests against
   `reference/placements.toml`): every pad of U1 carries the net that names its pin (`/GPIOn` is
   `IOn`, `/GPIO44` and `/GPIO43` the pads `RXD0` and `TXD0`, `/USB2_D-` and `/USB2_D+` pads 13
@@ -428,8 +566,5 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
   `D+`, `D-`, `VREGIN` and `VBUS` on `VBUS`, `VDD` on its own net, `RSTb`, `SUSPENDb`, `RTS`,
   `DTR`, and `RXD` and `TXD` on the module's `/GPIO43` and `/GPIO44` (cross-wired, as the
   UART is); its 16 open pads are on nets named after the same pins.
-- **For the board stage:** the AMS1117's dropout is 1.3 V at most, and the reference feeds it
-  from `VBUS` through a Schottky diode (D2 or D3, 0.6 V at 1 A): a 5 V +/- 5 % supply less a
-  diode is 4.15 V in the worst case, below 3.4 V plus 1.3 V, so the checker may name it; the
-  dropout is at a load of 0.8 A and is lower at the module's lighter load, which the catalog
-  cannot say.
+- **The dropout** the board stage was to name: see "What the solver checks" (it is not
+  evaluated, and the catalog's figures say it does not hold in the worst case).
