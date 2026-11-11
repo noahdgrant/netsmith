@@ -4,20 +4,290 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
-[Orbit.parts."led"]
-catalog = "led"
-row = "KT-0603R RED LED 0603 C2286"
-lcsc = "C2286"
-mpn = "KT-0603R"
+[Orbit.parts."battery"]
+catalog = "jst_ph_smt"
+row = "B2B-PH-SM4-TB(LF)(SN)"
+lcsc = "C160352"
+mpn = "B2B-PH-SM4-TB(LF)(SN)"
 
-[Orbit.parts."power_in"]
-catalog = "header"
-row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
-mpn = "PH2.54-1X2P-H25"
-
-[Orbit.parts."r1"]
+[Orbit.parts."boot_pulldown.resistor"]
 catalog = "resistor"
-row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
-mpn = "0402WGF3300TCE"
+row = "10kΩ 1% 0603 C25804"
+lcsc = "C25804"
+mpn = "0603WAF1002T5E"
+
+[Orbit.parts."boot_switch"]
+catalog = "hro_k3_1270"
+row = "K3-1270S-F2"
+lcsc = "C145857"
+mpn = "K3-1270S-F2"
+
+[Orbit.parts."buck_boost.divider_bottom"]
+catalog = "resistor"
+row = "100kΩ 1% 0603 C25803"
+lcsc = "C25803"
+mpn = "0603WAF1003T5E"
+
+[Orbit.parts."buck_boost.divider_top"]
+catalog = "resistor"
+row = "560kΩ 1% 0603 C101109"
+lcsc = "C101109"
+mpn = "CR0603FA5603G"
+
+[Orbit.parts."buck_boost.ic"]
+catalog = "tps63802"
+row = "TPS63802DLAR"
+lcsc = "C2845237"
+mpn = "TPS63802DLAR"
+
+[Orbit.parts."buck_boost.inductor"]
+catalog = "inductor"
+row = "DFE201612E-R47M=P2 470nH 5.5A inductor 0806 C668312"
+lcsc = "C668312"
+mpn = "DFE201612E-R47M=P2"
+
+[Orbit.parts."buck_boost.input_cap"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[Orbit.parts."buck_boost.output_cap"]
+catalog = "capacitor"
+row = "22uF 20% 6.3V X5R 0603 C59461"
+lcsc = "C59461"
+mpn = "CL10A226MQ8NRNC"
+
+[Orbit.parts."buck_boost.pg_pullup.resistor"]
+catalog = "resistor"
+row = "100kΩ 1% 0603 C25803"
+lcsc = "C25803"
+mpn = "0603WAF1003T5E"
+
+[Orbit.parts."charger.ic"]
+catalog = "mcp73831"
+row = "MCP73831T-2ACI/OT"
+lcsc = "C424093"
+mpn = "MCP73831T-2ACI/OT"
+
+[Orbit.parts."charger.rprog"]
+catalog = "resistor"
+row = "2kΩ 1% 0603 C22975"
+lcsc = "C22975"
+mpn = "0603WAF2001T5E"
+
+[Orbit.parts."charger.status_led"]
+catalog = "everlight_19_217_ghc"
+row = "19-217/GHC-YR1S2/3T"
+lcsc = "C72043"
+mpn = "19-217/GHC-YR1S2/3T"
+
+[Orbit.parts."charger.status_resistor"]
+catalog = "resistor"
+row = "1.5kΩ 1% 0603 C22843"
+lcsc = "C22843"
+mpn = "0603WAF1501T5E"
+
+[Orbit.parts."charger.vbatt_cap"]
+catalog = "capacitor"
+row = "4.7uF 10% 16V X5R 0603 C19666"
+lcsc = "C19666"
+mpn = "CL10A475KO8NNNC"
+
+[Orbit.parts."charger.vbus_cap"]
+catalog = "capacitor"
+row = "4.7uF 10% 16V X5R 0603 C19666"
+lcsc = "C19666"
+mpn = "CL10A475KO8NNNC"
+
+[Orbit.parts."eeprom"]
+catalog = "at24c128c"
+row = "AT24C128C-SSHM-T"
+lcsc = "C6478"
+mpn = "AT24C128C-SSHM-T"
+
+[Orbit.parts."header_east"]
+catalog = "header"
+row = "HX PZ2.54-1x8P ZZ 8-pin 2.54mm header C32713274"
+lcsc = "C32713274"
+mpn = "HX PZ2.54-1x8P ZZ"
+
+[Orbit.parts."header_west"]
+catalog = "header"
+row = "HX PZ2.54-1x8P ZZ 8-pin 2.54mm header C32713274"
+lcsc = "C32713274"
+mpn = "HX PZ2.54-1x8P ZZ"
+
+[Orbit.parts."i2c_pullups.scl_pullup"]
+catalog = "resistor"
+row = "2.2kΩ 1% 0603 C4190"
+lcsc = "C4190"
+mpn = "0603WAF2201T5E"
+
+[Orbit.parts."i2c_pullups.sda_pullup"]
+catalog = "resistor"
+row = "2.2kΩ 1% 0603 C4190"
+lcsc = "C4190"
+mpn = "0603WAF2201T5E"
+
+[Orbit.parts."led1"]
+catalog = "everlight_19_217_ghc"
+row = "19-217/GHC-YR1S2/3T"
+lcsc = "C72043"
+mpn = "19-217/GHC-YR1S2/3T"
+
+[Orbit.parts."led1_resistor"]
+catalog = "resistor"
+row = "1.5kΩ 1% 0603 C22843"
+lcsc = "C22843"
+mpn = "0603WAF1501T5E"
+
+[Orbit.parts."led2"]
+catalog = "everlight_19_217_bhc"
+row = "19-217/BHC-ZL1M2RY/3T"
+lcsc = "C72041"
+mpn = "19-217/BHC-ZL1M2RY/3T"
+
+[Orbit.parts."led2_resistor"]
+catalog = "resistor"
+row = "1.5kΩ 1% 0603 C22843"
+lcsc = "C22843"
+mpn = "0603WAF1501T5E"
+
+[Orbit.parts."mcu"]
+catalog = "stm32f030c8"
+row = "STM32F030C8T6"
+lcsc = "C23922"
+mpn = "STM32F030C8T6"
+
+[Orbit.parts."oscillator.crystal"]
+catalog = "crystal"
+row = "X50328MSB2GI 8MHz 20pF crystal 5032 C115962"
+lcsc = "C115962"
+mpn = "X50328MSB2GI"
+
+[Orbit.parts."oscillator.load_in"]
+catalog = "capacitor"
+row = "30pF 5% 50V C0G 0603 C1658"
+lcsc = "C1658"
+mpn = "0603CG300J500NT"
+
+[Orbit.parts."oscillator.load_out"]
+catalog = "capacitor"
+row = "30pF 5% 50V C0G 0603 C1658"
+lcsc = "C1658"
+mpn = "0603CG300J500NT"
+
+[Orbit.parts."power_switch"]
+catalog = "hro_k3_1270"
+row = "K3-1270S-F2"
+lcsc = "C145857"
+mpn = "K3-1270S-F2"
+
+[Orbit.parts."reset_button"]
+catalog = "xkb_ts_1187a"
+row = "TS-1187A-B-A-B"
+lcsc = "C318884"
+mpn = "TS-1187A-B-A-B"
+
+[Orbit.parts."reset_cap"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."usb"]
+catalog = "usb_mini_b"
+row = "MINI 5PTP"
+lcsc = "C2681563"
+mpn = "MINI 5PTP"
+
+[Orbit.parts."usb_uart.ic"]
+catalog = "cp2102"
+row = "CP2102-GMR"
+lcsc = "C6568"
+mpn = "CP2102-GMR"
+
+[Orbit.parts."usb_uart.vbus_100n"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."usb_uart.vbus_1u"]
+catalog = "capacitor"
+row = "1uF 10% 50V X5R 0603 C15849"
+lcsc = "C15849"
+mpn = "CL10A105KB8NNNC"
+
+[Orbit.parts."usb_uart.vdd_100n"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."usb_uart.vdd_bulk"]
+catalog = "capacitor"
+row = "4.7uF 10% 16V X5R 0603 C19666"
+lcsc = "C19666"
+mpn = "CL10A475KO8NNNC"
+
+[Orbit.parts."user_button"]
+catalog = "xkb_ts_1187a"
+row = "TS-1187A-B-A-B"
+lcsc = "C318884"
+mpn = "TS-1187A-B-A-B"
+
+[Orbit.parts."user_node_cap"]
+catalog = "capacitor"
+row = "10pF 5% 50V C0G 0603 C1634"
+lcsc = "C1634"
+mpn = "CL10C100JB8NNNC"
+
+[Orbit.parts."user_pin_cap"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."user_pulldown.resistor"]
+catalog = "resistor"
+row = "100kΩ 1% 0603 C25803"
+lcsc = "C25803"
+mpn = "0603WAF1003T5E"
+
+[Orbit.parts."user_series"]
+catalog = "resistor"
+row = "1kΩ 1% 0603 C21190"
+lcsc = "C21190"
+mpn = "0603WAF1001T5E"
+
+[Orbit.parts."v3v3_100n_1"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."v3v3_100n_2"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."v3v3_100n_3"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."v3v3_100n_4"]
+catalog = "capacitor"
+row = "100nF 10% 50V X7R 0603 C14663"
+lcsc = "C14663"
+mpn = "CC0603KRX7R9BB104"
+
+[Orbit.parts."v3v3_bulk"]
+catalog = "capacitor"
+row = "4.7uF 10% 16V X5R 0603 C19666"
+lcsc = "C19666"
+mpn = "CL10A475KO8NNNC"

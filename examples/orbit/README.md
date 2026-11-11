@@ -1,11 +1,10 @@
 # ORBIT
 
 A port of **ORBIT**, an open STM32F030 board with USB, battery charging and a buck-boost
-regulator, to netsmith, as the second showcase after the RP2350A Minimal (epic #308). **Only the
-scaffold is done:** the licence, the reference files and the reference table, read from their
-board file. The parts, the schematic and the physical file are later stages, and
-`src/main.nsm` is a placeholder (a small valid board that checks and solves, and nothing of
-ORBIT's circuit).
+regulator, to netsmith, as the second showcase after the RP2350A Minimal (epic #308). **The
+schematic is done:** `src/main.nsm` is the board `Orbit`, the circuit of their design with the
+same nets (proved by a test, see "The board"). The physical file (outline, holes, fixed
+positions) and the parity gate are the next stage, so `fab` is not expected to pass yet.
 
 ## Source
 
@@ -36,11 +35,11 @@ not required. Which parts must match is `reference/must_match.toml` (see below).
 
 ## What is here
 
-- `netsmith.toml`, `src/main.nsm`: the project and its (placeholder) board, `Orbit`.
-- `src/main.lock.toml`: the pick lock of the placeholder board (the catalog row each part was
-  picked as), written by `netsmith lock --update`; CI checks it with
-  `scripts/check-example-locks.sh`. Later stages must run `netsmith lock --update` when the
-  board's parts change, and commit the lock.
+- `netsmith.toml`, `src/main.nsm`: the project and its board, `Orbit`, with the modules
+  `src/charger.nsm`, `src/buck_boost.nsm`, `src/usb_uart.nsm` and `src/oscillator.nsm`.
+- `src/main.lock.toml`: the pick lock of the board (the catalog row each part was picked as),
+  written by `netsmith lock --update`; CI checks it with `scripts/check-example-locks.sh`. A
+  change to the board's parts needs `netsmith lock --update` and the new lock committed.
 - `LICENSE`: their licence text.
 - `reference/ORBIT.kicad_pcb`, `reference/ORBIT.kicad_sch`: their board and schematic, unchanged
   (680 KB and 211 KB).
@@ -420,3 +419,115 @@ that name, the nets named after a pin (`Net-(U15-FB)`, `unconnected-(U22-DCD-Pad
 and every pad of the reference is a pad of the part. Two things ORBIT's board shows: its charger's
 STAT drives the LED D1's cathode (`Net-(D1-K)`), and CP2102's `VDD` pad has decoupling on a net of
 its own, `Net-(U22-VDD)`, which is not the 3.3 V rail.
+
+## The board
+
+`src/main.nsm` is ORBIT's circuit, 48 parts: their 53 footprints less the four mounting holes
+(`H1` to `H4`) and the logo `O`, which are the physical file's. Build it from this folder with
+`netsmith build` (with `NETSMITH_NO_KICAD=1` too: the project needs no KiCad install). It builds
+with no error and no warning; what the build prints are notes (below).
+
+- **Structure.** Four modules hold the parts around each chip: `Charger` (the MCP73831 U1, its
+  programming resistor R3, the status LED D1 with R1, C7 and C8), `BuckBoost` (the TPS63802 U15,
+  L1, the feedback divider R7 and R8, the power-good pull-up R6, C13 and C14), `UsbUart` (the
+  CP2102 U22 with C20, C21, C23 and C24) and `Oscillator` (the crystal U10, C11 and C12). The
+  board has the connectors, the two slide switches and the two buttons, the MCU with its
+  decoupling, the two LEDs D2 and D3, the EEPROM U17 with `I2cPullups` (R9, R10), `PullDown`
+  for R2 and R12, and three named rails: `VBUS` (5 V +/- 5%, USB's), `+BATT` and `+3.3V`
+  (3.3 V +/- 5%).
+- **Header pin map** is ORBIT's and FIXED: J1 (`header_west`) is ground, SWDIO, SWCLK, NRST,
+  PC14, PA2, PA3, 3.3 V, and J2 (`header_east`) is ground, PB11, PB10, PB2, PB1, PB0, PA7, PA6,
+  each pad joined to a named MCU pin (`.header_east.p2 ~ .mcu.pb11`), never to a request
+  (`.x: .mcu.GPIO`), so the pin optimizer (ADR 0101) cannot move one. There is no
+  `main.pins.toml`.
+- **Supplies and what the solver checks.** `VBUS` is declared 5 V +/- 5% (USB's) and `+3.3V`
+  3.3 V +/- 5% (the schematic's net name; the window is a stated requirement). The regulator's
+  output is not stated but derived: `BuckBoost` holds `vout == vref * (1 + R7 / R8)` with the
+  part's `vref` (500 mV +/- 1%, TPS63802 datasheet page 6) and ORBIT's 560 kohm and 100 kohm at
+  1%, which is 3.212 V to 3.390 V, inside the window; a wrong divider stops the build (test).
+  The charger's `.rprog` is 2 kohm and `.charge_current == 1000V / .rprog` is 500 mA (datasheet
+  section 5.1.2). The `+BATT` rail has no voltage: ORBIT names no cell.
+
+### Same nets
+
+Tests in `crates/netsmith/tests/orbit.rs`, module `board` (no KiCad; run
+`cargo test -p netsmith --test main orbit::board`):
+
+- `every_pad_has_the_same_pads_on_its_net_as_in_orbits_board`: the netlist of the committed
+  `reference/ORBIT.kicad_pcb`, read as a file with netsmith's own reader
+  (`Netlist::from_kicad_pcb`), against the design's, parts paired by a table of member path to
+  ORBIT's designator. For each of the 48 parts' pads, the set of other pads on its net is the same
+  (every pad on a net with another pad: both sides have the same number of them).
+- `netsmith_compare_says_the_nets_are_the_same`: `netsmith-netlist::compare` (what `netsmith
+  compare` runs) with value and footprint blanked: `match`, with the designators paired and with no
+  pairing. Why not the bare `netsmith compare reference/ORBIT.kicad_pcb src/main.nsm`: it pairs
+  parts by value and footprint, and ORBIT's footprints have other names (`Project Footprints:...`).
+- `the_comparison_sees_a_pad_on_the_wrong_net`: the comparison can fail (a pad on another net, a
+  pad on no net, and a design with one header pin moved).
+- `the_resistors_and_capacitors_have_orbits_values_and_packages` (12 resistors, 18 capacitors,
+  all 0603) and `the_solver_picks_the_lcsc_parts_of_orbits_schematic`: each resistor and
+  capacitor is picked as the part whose LCSC number ORBIT's schematic names.
+- `the_header_pins_carry_orbits_signals`, `the_optimizer_cannot_move_a_header_pad`,
+  `every_assembled_part_is_sourced`, `the_board_has_no_warning_and_no_guideline_finding`, and
+  the ERC test (KiCad's electrical rules check of the built schematic; it skips where there is
+  no `kicad-cli`).
+
+### Differences from ORBIT's board (all of them)
+
+- `H1` to `H4`, `O`: the physical file's (mounting holes, logo); they have no net.
+- **Three resistors have their two pads numbered the other way round:** R2 (`PullDown`
+  runs its resistor from the line, pad 1, to ground; ORBIT's pad 1 is on ground), R9 and R10
+  (`I2cPullups` runs each from the supply, pad 1, to the line; ORBIT's pad 1 is on the line). The
+  pads of a resistor are interchangeable; the test reads them exchanged, lists them, and
+  another test (`only_the_three_resistors_have_pads_numbered_the_other_way`) says they are the
+  only ones.
+- **C3 to C6** (four 100 nF on `+3.3V`) are interchangeable: which of them is called `C4` is
+  arbitrary.
+- **Their U1's value is `MCP73031`**; the part is the MCP73831 (see "Parts"). **U17 has no LCSC
+  number in ORBIT**; the board's is C6478 (see "Parts"). **U10 is the standard `Crystal`**; ORBIT
+  states `8MHz` only and the +/- 30 ppm is the catalog row's.
+- **The tolerances are the catalog rows'.** ORBIT's schematic states values and LCSC numbers and
+  no tolerance. The board states the tolerance of the row each LCSC number is in the standard
+  catalog (1% for the resistors, 10% for the 100 nF, 4.7 uF, 1 uF and 10 uF capacitors, 20% for the
+  22 uF, 5% for the C0G 30 pF and 10 pF), so the solver picks the same parts.
+- **D2 and D3:** ORBIT's value fields are `LED1` for D2 and `LED2` for D3, and their
+  nets are the other way round (D2 is on the net called `LED2`, PA5; D3 on `LED1`, PA4). The
+  board follows the nets.
+- PC14 and PC15 take the functions `OSC32_IN` and `OSC32_OUT` (a connected pin with several
+  functions has one chosen, and `GPIO` cannot be chosen on two pins); they are GPIO in ORBIT, and
+  the pad is on the pin either way.
+
+### What the checker found (new problems in ORBIT's circuit and in netsmith)
+
+- **R3 is under the charger's least.** The MCP73831's `PROG` resistor range is 2 kohm to 67 kohm
+  (DC characteristics, page 4) and ORBIT's R3 is 2 kohm; with the 1% of its LCSC part (C22975) it is
+  1.98 kohm at worst, and the check refuses to tie the resistor to the part's `.rprog` (test
+  `the_programming_resistor_at_one_percent_is_below_the_datasheets_least`). The board states the
+  nominal 2 kohm for the part and the resistor's own 1% separately (the datasheet's table gives
+  450 to 550 mA at 2 kohm, so the part is specified at its edge). No catalog row can meet it: the
+  next E24 value is 2.2 kohm (455 mA).
+- **The green LEDs on a 3.3 V pin.** D2 is green (Everlight 19-217/GHC, forward voltage 2.7 to
+  3.7 V at 20 mA, its datasheet page 3) behind 1.5 kohm from a 3.3 V output: at the top of the
+  range it does not turn on. The part has no model of its pin's output level, so the board does
+  not check it (the LED's current is `not evaluated`); this is a note for the owner of the design.
+- **KiCad's ERC refused the CP2102's `NC` pin of ten pads.** A pin of several pads is drawn as
+  stacked pins, and the schematic writer types the extra ones `passive` and flags each open, so a
+  `no_connect` pin with several pads gets a flag on the same point as its own `no_connect` pad:
+  `no_connect_connected: Pin with 'no connection' type is connected`. `src/cp2102.nsm` now has ten
+  `NC` pins of one pad each (`.nc10`, `.nc13`, ...), which the ERC accepts; the pads and nets are
+  the same. The writer is netsmith's (`crates/netsmith-kicad/src/schematic.rs`), not fixed here.
+- **The pad numbering of the std pull-ups** (above) and the other gaps are in the pull request's
+  "For the owner".
+
+### Notes the build prints (what is not evaluated)
+
+The ICs are boundaries (their pin tables only, #389), so a check that needs a current or a
+level is `not evaluated`: the resistor and LED currents behind a pin, the switches' current
+against their rating, the inductor's current, the capacitors' bias. `VBUS has no source` (the mini
+USB receptacle states no `dc source`, as the RP2350A Minimal's) and `+BATT has no source` (a battery
+connector cannot be a source with the voltage of a cell the schematic does not name).
+
+### What was not run
+
+`fab` (no physical file yet: the parts have no outline to be placed on), KiCad's DRC, and the
+parity checker (the next stage). The ERC test ran only where `kicad-cli` was found.

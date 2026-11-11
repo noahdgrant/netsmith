@@ -1,0 +1,50 @@
+//! The battery charger of ORBIT: the MCP73831 (U1) with its programming resistor, its status
+//! LED and the capacitors on its two supplies.
+//!
+//! ORBIT's circuit: `VDD` is the USB rail `VBUS`, `VBAT` is the battery rail `+BATT`, `VSS` is
+//! ground; `PROG` has a 2 kohm resistor (R3) to ground, which sets the fast charge current to
+//! 1000 V / 2 kohm = 500 mA (the part's equation); `STAT` is the cathode of a green LED (D1)
+//! whose anode reaches `VBUS` through 1.5 kohm (R1), so the LED lights while the charger pulls
+//! `STAT` low. C8 (4.7 uF) is on `VBUS` and C7 (4.7 uF) on `+BATT`.
+
+import src::everlight_19_217::Everlight19217Ghc
+import src::mcp73831::Mcp73831
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
+/// A single-cell Li-Ion charger from USB. Join `.vbus` to the USB rail and `.vbatt` to the
+/// battery's rail.
+module Charger {
+    .vbus: Rail
+    .vbatt: Rail
+
+    /// U1: the MCP73831T-2ACI/OT (4.2 V, LCSC C424093; ORBIT's schematic writes the value as
+    /// `MCP73031`).
+    .ic: Mcp73831 { .mpn &= "MCP73831T-2ACI/OT" }
+    /// R3, from `PROG` to ground: 2 kohm sets 500 mA.
+    .rprog: Resistor { .resistance &= 2kohm +/- 1%; .package &= "0603" }
+    /// R1, the status LED's series resistor.
+    .status_resistor: Resistor { .resistance &= 1.5kohm +/- 1%; .package &= "0603" }
+    /// D1, the charge status LED, green.
+    .status_led: Everlight19217Ghc
+    /// C8, on the USB side.
+    .vbus_cap: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    /// C7, on the battery side.
+    .vbatt_cap: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+
+    .ic.vdd ~ .vbus.pos
+    .ic.vss ~ .vbus.neg
+    .ic.vbat ~ .vbatt.pos
+    .vbatt.neg ~ .vbus.neg
+    .ic.prog ~ .rprog.b
+    .rprog.a ~ .vbus.neg
+    // The programming resistor is 2 kohm: the nominal value is stated for the part, not tied to the
+    // resistor, because at 1% it is 1.98 kohm at worst, under the part's 2 kohm minimum (README,
+    // "What the checker found"); tying them (`.ic.rprog == .rprog.resistance`) is refused.
+    .ic.rprog &= 2kohm
+
+    .vbus.pos ~> .status_resistor ~> .status_led ~> .ic.stat
+
+    .vbus.pos ~> .vbus_cap ~> .vbus.neg
+    .vbatt.pos ~> .vbatt_cap ~> .vbatt.neg
+}
