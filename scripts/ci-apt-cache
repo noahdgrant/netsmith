@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Installs what a CI job needs from Ubuntu's archive (KiCad 9, or Chromium's system libraries
+# for Playwright) from a folder of cached .deb files, and from the archive only where the
+# folder has none, or its files do not install. The folder is what the `apt-cache` action
+# (.github/actions/apt-cache) restores and saves with actions/cache.
+#   scripts/ci-apt-cache <kicad|chromium> <folder>
+#
+# Why: the runners' Ubuntu mirrors (archive.ubuntu.com and the others) have been unreachable for
+# hours (2026-11-11), and every job that ran `apt-get update` failed with them. A warm cache
+# needs no mirror: the .deb files are installed by path, which needs neither `apt-get update`
+# nor a package list. Two details, both found by running it with no network: the install names
+# no source (`Dir::Etc::sourcelist`, `sourceparts`), because with the runner's package lists
+# apt downloads a package from the archive even when the same version is given as a file; and
+# it does not pass `--no-download`, with which apt fails on a local file with an internal error.
+#
+# The cold path is the plain install it replaces, with `apt-get` retries on (they help a flaky
+# mirror, not a dead one). apt keeps every .deb it downloads in /var/cache/apt/archives, so
+# after the install that folder is exactly the packages that were installed on top of the
+# runner image (apt-get clean empties it first): it is copied into the cache folder.
+# Writes `filled=true` to $GITHUB_OUTPUT when it did, so the action saves the folder.
+set -eu
+
+what="${1:?usage: ci-apt-cache <kicad|chromium> <folder>}"
+dir="${2:?usage: ci-apt-cache <kicad|chromium> <folder>}"
+here="$(cd "$(dirname "$0")" && pwd)"
+
+SUDO=sudo
+[ "$(id -u)" != 0 ] || SUDO=
+
+# The install of the cold path. The packages are the ones the `kicad` job installs: kicad-cli
+# and the stock libraries (recommended by `kicad`, not depended on); the 3D models
+# (kicad-packages3d, several GB) are not installed, nothing here reads them.
+install() {
+    case "$what" in
+        kicad)
+            $SUDO apt-get update
+            $SUDO apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
+            ;;
+        chromium)
+            # Playwright's own list of Chromium's libraries and fonts for this Ubuntu (apt-get
+            # update and install, nothing else); the browser itself is not a package.
+            cd "$here/editor-verify-js"
+            npx playwright install-deps chromium
+            ;;
+        *)
+            echo "ci-apt-cache: unknown install '$what'" >&2
+            exit 2
+            ;;
+    esac
+}
+
+if compgen -G "$dir/*.deb" > /dev/null; then
+    echo "package cache: installing $(find "$dir" -name '*.deb' | wc -l) packages for $what from $dir (no archive needed)"
+    start=$SECONDS
+    if $SUDO apt-get -o Dir::Etc::sourcelist=/dev/null -o Dir::Etc::sourceparts=/dev/null \
+        install --yes --no-install-recommends "$dir"/*.deb; then
+        echo "package cache: installed for $what in $((SECONDS - start)) s"
+        exit 0
+    fi
+    echo "::warning::the cached packages for $what did not install (the runner image moved?); installing from the archive"
+fi
+
+echo "package cache: nothing usable for $what, installing from the archive"
+start=$SECONDS
+echo 'Acquire::Retries "5";' | $SUDO tee /etc/apt/apt.conf.d/80-ci-retries > /dev/null
+$SUDO apt-get clean
+install
+echo "package cache: installed for $what from the archive in $((SECONDS - start)) s"
+
+rm -rf "$dir"
+mkdir -p "$dir"
+if compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then
+    $SUDO cp /var/cache/apt/archives/*.deb "$dir"/
+    $SUDO chown -R "$(id -u):$(id -g)" "$dir"
+    echo "package cache: kept $(find "$dir" -name '*.deb' | wc -l) packages, $(du -sh "$dir" | cut -f1)"
+    echo "filled=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+else
+    echo "package cache: the install downloaded no package, nothing to keep"
+fi

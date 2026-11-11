@@ -1,0 +1,71 @@
+# Installs KiCad 9 or Chromium's system libraries from a cache of the .deb files, and from
+# Ubuntu's archive only when the cache has none that installs (scripts/ci-apt-cache says why and
+# how). The runners' Ubuntu mirrors were unreachable on 2026-11-11; with a warm cache a job needs
+# none of them.
+#
+# The cache key is the install, the runner image's OS and version, and a hash of this action, the
+# script and Playwright's lockfile (a change to the package list or to Playwright changes it).
+# A job restores the key of its own image or, failing that, the newest one of the same install:
+# the packages of an older image still install on a newer one unless a library moved, and where
+# they do not, the script falls back to the archive. Only a push to main (or the scheduled and
+# manual run of .github/workflows/apt-cache.yml, which is on main) saves a cache, like the Rust
+# cache, so the pull requests do not fill the repository's quota with a copy each. To fill a
+# missing cache by hand (an image of today with none): `gh workflow run apt-cache.yml` on main.
+# To replace a cache that is wrong: change `v1` in the key below (or `gh cache delete` its key).
+name: apt-cache
+description: Install KiCad 9 or Chromium's system libraries from a cache of .deb files
+
+inputs:
+  install:
+    description: "kicad or chromium (what scripts/ci-apt-cache installs)"
+    required: true
+  name:
+    description: >-
+      The name of the cache, when jobs install the same thing on top of different packages (the
+      recipes job installs KiCad after Chromium's libraries, so its list of packages is shorter
+      than the kicad job's: they must not share a cache). Defaults to the install.
+    default: ""
+  exact:
+    description: "true: restore only the key of this image (the refresh workflow, which must not stop at an older cache)"
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Name the package cache
+      id: key
+      shell: bash
+      env:
+        NAME: ${{ inputs.name || inputs.install }}
+        HASH: ${{ hashFiles('.github/actions/apt-cache/action.yml', 'scripts/ci-apt-cache', 'scripts/editor-verify-js/package-lock.json') }}
+      run: |
+        prefix="apt-$NAME-${ImageOS:-unknown}-${HASH:0:16}-v1-"
+        {
+          echo "prefix=$prefix"
+          echo "key=$prefix${ImageVersion:-unknown}"
+          echo "dir=$HOME/apt-debs/$NAME"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Restore the package cache
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.key.outputs.dir }}
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ inputs.exact != 'true' && steps.key.outputs.prefix || '' }}
+
+    - name: Install ${{ inputs.install }}
+      id: install
+      shell: bash
+      env:
+        INSTALL: ${{ inputs.install }}
+        DIR: ${{ steps.key.outputs.dir }}
+      run: ${{ github.workspace }}/scripts/ci-apt-cache "$INSTALL" "$DIR"
+
+    # Saved only when the install had to fill the folder (the cache had nothing that installed).
+    - name: Save the package cache
+      if: steps.install.outputs.filled == 'true' && steps.restore.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.key.outputs.dir }}
+        key: ${{ steps.key.outputs.key }}

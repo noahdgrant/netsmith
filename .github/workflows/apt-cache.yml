@@ -1,0 +1,55 @@
+# Fills the package caches of ci.yml (the .deb files of KiCad 9 and of Chromium's system
+# libraries, .github/actions/apt-cache) for the runner image of today, so a pull request finds
+# them when Ubuntu's mirrors are down. Every day, and by hand (`gh workflow run apt-cache.yml`)
+# after a change to the package list or when a cache is wrong. A run that cannot reach the
+# mirrors fails and leaves the caches as they are; the jobs of ci.yml then use the newest cache
+# of an older image.
+#
+# The jobs mirror those of ci.yml: the `kicad` job installs KiCad on the bare image, the `recipes`
+# job installs Chromium's libraries first and KiCad on top of them (a shorter list of packages,
+# so a cache of its own). The caches are saved only from main: dispatch it on main.
+name: apt-cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  kicad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/apt-cache
+        with:
+          install: kicad
+          exact: true
+
+  recipes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci --no-audit --no-fund
+        working-directory: scripts/editor-verify-js
+
+      - uses: ./.github/actions/apt-cache
+        with:
+          install: chromium
+          exact: true
+
+      - uses: ./.github/actions/apt-cache
+        with:
+          install: kicad
+          name: recipes-kicad
+          exact: true
