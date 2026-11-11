@@ -9,8 +9,10 @@
 //!   is an error that names both lines. A series `Resistor`, `Fuse` or `FerriteBead` that leads
 //!   from the interface to such a net is a use too ([`series_use`], pull request #323, the
 //!   owner's decision of 2026-11-09); an inductor, capacitor, diode or switch in series is not
-//!   followed. A series part whose far end is a rail of the board, the supply `pos` or the
-//!   return `neg`, is a pull and no use (the owner's decision of 2026-11-10); ADR 0083 lists
+//!   followed. A series part whose far end is the return `neg`, or the supply `pos` (a
+//!   rail of the board that nothing on the board sources), is a pull and no use; a rail that a
+//!   regulator, a `dc source` or an output pin of the board sources is not the supply, and a
+//!   path to it is a use (the owner's decisions of 2026-11-10, U2 and U3); ADR 0083 lists
 //!   the inductor, capacitor, diode and switch as left open;
 //! - the relations that read only values of the interface (`usb.vbus.voltage >= 4.35V`) are
 //!   taken out of the model, so the solver neither checks them nor lists them as not
@@ -29,7 +31,7 @@ use netsmith_lang::ast::{self, PinKind};
 
 use crate::checker::{Checker, Res};
 use crate::diag::SourceId;
-use crate::model::{InstId, InstKind, Member, Unused};
+use crate::model::{DcKind, InstId, InstKind, Member, Unused};
 
 /// How a message says the board joined it, when it names the statement that did.
 const HERE: &str = "connected here";
@@ -309,9 +311,12 @@ impl Checker<'_> {
 
 /// The pins that make a net a rail for a series part: the `neg` pin of every rail (a net that
 /// holds one is a return, and every return is one net), and the `pos` pin of every rail the
-/// board itself declares (the supply). A part or a module that leads from the interface to such
-/// a net only pulls the pin to a rail.
+/// board itself declares that nothing on the board sources (the supply, whose source is outside
+/// the board; owner's decision of 2026-11-10, item U3). A rail with a source on the board is not
+/// one: a regulator makes or feeds it, so a part or a module that leads from the interface to
+/// it feeds the board, and that is a use.
 fn rail_pins(model: &crate::model::Model) -> HashSet<InstId> {
+    let sourced = sourced_pins(model);
     let mut pins = HashSet::new();
     for (id, _) in model.instances() {
         let Some((_, pos, neg)) = model.rail_of(id) else {
@@ -321,20 +326,57 @@ fn rail_pins(model: &crate::model::Model) -> HashSet<InstId> {
         let on_board = model
             .owner_of(id)
             .is_some_and(|o| model.instance(o).kind == InstKind::Board);
-        if on_board {
+        let has_source = model
+            .net_of(pos)
+            .is_some_and(|net| net.pins.iter().any(|p| sourced.contains(p)));
+        if on_board && !has_source {
             pins.insert(pos);
         }
     }
     pins
 }
 
+/// The pins that put a voltage on a net on the board: the `pos` pin of the rail that a `dc
+/// source` gives and of the output rail of a `dc linear_regulator` or `dc switching_regulator`,
+/// and every terminal whose table says it is an output (`output` or `tri_state`), such as a
+/// charger's, unless it is in an interface stated `unused` (a pin that the board says nothing
+/// uses sources nothing). A `power` pin with no `dc` statement is not told from a load's by the checker, so
+/// it is not a source here.
+fn sourced_pins(model: &crate::model::Model) -> HashSet<InstId> {
+    let mut sourced = HashSet::new();
+    for (_, dc) in model.dc_elements() {
+        let rail = match dc.kind {
+            DcKind::Source => dc.pins.first(),
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator => dc.pins.get(1),
+            _ => None,
+        };
+        if let Some((_, pos, _)) = rail.and_then(|&r| model.rail_of(r))
+            && model.unused_by(pos).is_none()
+        {
+            sourced.insert(pos);
+        }
+    }
+    for (id, _) in model.instances() {
+        if model.is_terminal(id)
+            && model.unused_by(id).is_none()
+            && matches!(
+                model.pin_kind(id),
+                Some(PinKind::Output) | Some(PinKind::TriState)
+            )
+        {
+            sourced.insert(id);
+        }
+    }
+    sourced
+}
+
 /// A use that goes through series passives (a fuse, a resistor, a ferrite bead): from `pin`,
 /// of an interface stated unused, along nets and across the two ends of such parts, to a net
 /// that has a non-passive pin of another part. Returns the parts crossed (in order), the pin
 /// reached and the name of its net. A part inside the module that holds the interface is the
-/// module's own wiring, and a net that is a rail of the board, the supply `pos` or the return
-/// `neg` (a pull-up or a pull-down, owner's decision of 2026-11-10), is not a use, as a return
-/// is not for a pin of the interface itself; a series part that leads only to passive pins
+/// module's own wiring, and a net that is a rail for a pull ([`rail_pins`]: the return `neg`,
+/// or the `pos` of a rail of the board that nothing on the board sources, the supply; a
+/// pull-up or a pull-down, owner's decisions of 2026-11-10) is not a use; a series part that leads only to passive pins
 /// (test pads), to a rail or to another interface stated unused finds none.
 fn series_use(
     model: &crate::model::Model,
