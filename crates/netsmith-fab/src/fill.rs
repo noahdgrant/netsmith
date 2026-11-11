@@ -9,6 +9,10 @@
 //! then the caller draws every pad, via and track dark again. What the reader sees is the
 //! pour with the clearances cut out, which is the fill.
 //!
+//! It draws with a [`Pen`]: the Gerber file, or [`crate::polygons::Polygons`], which works the
+//! same objects out as polygons with holes. `netsmith_pcb::copper` fills a board's pours that
+//! way for the 3D view (ADR 0105), so its pours are this fill and there is one filler.
+//!
 //! This is the same picture KiCad's fill makes, with these differences (also issue #61):
 //! copper that no pad, via or track of the net reaches (islands) is not
 //! removed, and slivers narrower than the zone's minimum thickness are not trimmed.
@@ -31,7 +35,7 @@
 
 use crate::artwork::{Artwork, Connect, PadKind, Shape, TrackShape, Zone};
 use crate::edge::Outline as BoardEdge;
-use crate::gbr::{Contour, Gerber};
+use crate::gbr::{Contour, Pen};
 use crate::geom::{self, Arc, Bounds, Pt};
 use crate::pads::{self, Outline};
 use crate::plot::Rules;
@@ -46,7 +50,7 @@ const VIA_THERMAL: bool = false;
 /// Writes the fill of every zone of `layer` that holds no fill of its own in the file.
 /// `edge_clearance` is the copper-to-edge clearance of the board.
 pub fn pour(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     edge: &BoardEdge,
@@ -119,7 +123,7 @@ fn zone_bounds(z: &Zone) -> Option<Bounds> {
 /// Clears the outside of the board, the cutouts, and a band of `2 * clearance` along every
 /// edge line.
 fn keep_out_of_the_edge(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     art: &Artwork,
     edge: &BoardEdge,
     clearance: f64,
@@ -163,7 +167,7 @@ fn keep_out_of_the_edge(
 }
 
 /// A shape's outline stroked with a round pen (in whatever polarity the file is in).
-fn stroke_shape(g: &mut Gerber, shape: &Shape, width: f64) {
+fn stroke_shape(g: &mut dyn Pen, shape: &Shape, width: f64) {
     match shape {
         Shape::Line(a, b) => stroke(g, *a, *b, width),
         Shape::Arc(arc) => g.arc(width, None, arc, &[]),
@@ -190,7 +194,7 @@ fn stroke_shape(g: &mut Gerber, shape: &Shape, width: f64) {
     }
 }
 
-fn stroke(g: &mut Gerber, a: Pt, b: Pt, width: f64) {
+fn stroke(g: &mut dyn Pen, a: Pt, b: Pt, width: f64) {
     if a == b {
         g.flash(crate::gbr::Ap::Circle(width), None, a, &[]);
     } else {
@@ -200,7 +204,7 @@ fn stroke(g: &mut Gerber, a: Pt, b: Pt, width: f64) {
 
 /// Clears what one zone keeps away from on `layer`.
 fn around_copper(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     art: &Artwork,
     layer: &str,
     z: &Zone,
@@ -325,7 +329,7 @@ fn hole_outline(pad: &crate::artwork::Pad, d: &crate::artwork::Drill) -> Outline
 }
 
 fn draw_grown(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     shape: &Outline,
     by: f64,
     part: &str,
@@ -345,7 +349,7 @@ fn draw_grown(
 /// spokes, which run along the axes turned by `angle` (the pad's turn and its spoke angle,
 /// [`crate::artwork::Pad::spoke_angle`]). A custom pad is joined solid.
 fn thermal(
-    g: &mut Gerber,
+    g: &mut dyn Pen,
     shape: &Outline,
     centre: Pt,
     angle: f64,
@@ -394,6 +398,7 @@ fn thermal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gbr::Gerber;
 
     fn art(items: &str) -> Artwork {
         Artwork::parse(&format!(

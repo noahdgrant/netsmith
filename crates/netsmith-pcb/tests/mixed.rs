@@ -535,22 +535,32 @@ fn the_mixed_board_is_routed_completely() {
     }
 }
 
-/// Seed 2 is one the plain negotiation leaves two lines of; the lines ripped up one for another
-/// finish it. Nothing in that is random: the same board is routed to the same copper.
+/// Seed 7 is one that ripping up the nets in a line's way leaves three lines of; the negotiation
+/// and the lines ripped up one for another finish it. (It was seed 2 until the via became
+/// JLCPCB's standard-price 0.2 in 0.45 mm, issue #431; seed 2 now needs the other orders of
+/// `the_mixed_board_is_routed_completely`.) Nothing in that is random: the same board is routed
+/// to the same copper.
 #[test]
 fn lines_ripped_up_for_lines_ripped_up_finish_a_board_and_the_same_board_gives_the_same_copper() {
-    let route = || {
-        let mut board = mixed_board(2, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
+    let route = |negotiate: bool| {
+        let mut board = mixed_board(7, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
         let routing = route_with(
             &mut board,
             RouteOptions {
                 retry_orders: false,
+                negotiate,
                 time_limit: Some(Duration::from_secs(120)),
                 ..RouteOptions::default()
             },
         );
         assert!(!routing.stopped);
-        assert!(routing.left.is_empty(), "{:#?}", routing.left.lines);
+        (board, routing.left)
+    };
+    let (_, without) = route(false);
+    assert!(!without.is_empty(), "the rip-up alone leaves lines");
+    let route = || {
+        let (board, left) = route(true);
+        assert!(left.is_empty(), "{:#?}", left.lines);
         board
     };
     let (a, b) = (route(), route());
@@ -609,6 +619,7 @@ fn measured() {
             },
         );
         let took = started.elapsed();
+        common::write_measured(&board, &format!("mixed-seed{seed}"));
         // What the routed copper breaks in the design rules check (an unrouted line is not one).
         let broken = drc_errors(&board)
             .iter()

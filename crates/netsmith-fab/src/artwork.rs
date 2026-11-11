@@ -320,10 +320,16 @@ pub struct Artwork {
 impl Artwork {
     pub fn parse(src: &str) -> Result<Artwork, ArtworkError> {
         let root = sexp::parse(src).map_err(|e| ArtworkError::Parse(e.to_string()))?;
+        Self::from_sexp(&root)
+    }
+
+    /// [`Artwork::parse`] of a board file already read into its tree, or built as one in
+    /// memory (`netsmith_pcb::copper` does, with no file and no text in between).
+    pub fn from_sexp(root: &Sexp) -> Result<Artwork, ArtworkError> {
         if root.head() != Some("kicad_pcb") {
             return Err(ArtworkError::NotABoard);
         }
-        Reader::new(&root)?.read()
+        Reader::new(root)?.read()
     }
 
     /// Whether `pad` has copper on `layer`: it is on the layer, unless it is a hole with no
@@ -543,8 +549,16 @@ impl<'a> Reader<'a> {
         if let Some(name) = n.items().get(2).and_then(Sexp::text) {
             return Some(name).filter(|n| !n.is_empty()).map(str::to_string);
         }
-        let i: i64 = n.items().get(1)?.text()?.parse().ok()?;
-        self.nets.get(&i).filter(|n| !n.is_empty()).cloned()
+        // KiCad 10 writes the name alone, `(net "GND")`, and has no table of numbered nets;
+        // KiCad 9 and older write the number alone on tracks and vias, `(net 3)`.
+        let first = n.items().get(1)?.text()?;
+        match first.parse::<i64>().ok().and_then(|i| self.nets.get(&i)) {
+            Some(name) => Some(name).filter(|n| !n.is_empty()).cloned(),
+            None if self.nets.is_empty() => {
+                Some(first).filter(|n| !n.is_empty()).map(str::to_string)
+            }
+            None => None,
+        }
     }
 
     fn read(mut self) -> Result<Artwork, ArtworkError> {
@@ -1198,6 +1212,22 @@ mod tests {
 	(via (at 5 6) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
 	(gr_rect (start 0 0) (end 10 5) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
 )"#;
+
+    #[test]
+    fn a_kicad_10_board_names_its_nets_with_no_numbers() {
+        let a = Artwork::parse(
+            r#"(kicad_pcb (version 20260206) (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (footprint "L:R" (layer "F.Cu") (at 0 0)
+              (property "Reference" "R1" (at 0 0 0) (layer "F.Fab"))
+              (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net "GND")))
+            (segment (start 0 0) (end 2 0) (width 0.2) (layer "F.Cu") (net "GND"))
+            (via (at 2 0) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net "+3V3")))"#,
+        )
+        .unwrap();
+        assert_eq!(a.pads[0].net.as_deref(), Some("GND"));
+        assert_eq!(a.tracks[0].net.as_deref(), Some("GND"));
+        assert_eq!(a.vias[0].net.as_deref(), Some("+3V3"));
+    }
 
     #[test]
     fn a_footprints_own_margins_and_clearance_are_its_pads_unless_a_pad_says_its_own() {
