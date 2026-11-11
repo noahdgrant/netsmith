@@ -147,3 +147,131 @@ connector's pin 6.
   reach 21 V).
 
 Gaps found while porting are recorded in the stage that finds them.
+
+## Parts
+
+Numbers are mm. Every pin table was written by hand from the datasheet named (facts only: numbers, names, kinds); every symbol is
+drawn from the pin table; every catalog row names its record and datasheet (`catalogs/`, with `data/jlcpcb/README.md` as the rule). The footprints of the project
+are in `libs/` (`power_manifold_must_match.pretty`: the receptacle J4 and the edge connector J3, equal pad for pad to the reference's; `power_manifold_ics.pretty`:
+the three big ICs; `power_manifold_parts.pretty`: the others), and none draws `Edge.Cuts`. Read on 2026-11-11.
+
+### The three integrated circuits (U1, U3, U5)
+
+
+Files (all under examples/power_manifold_charger/ unless noted), nothing committed:
+src/stm32g071c8.nsm, src/tps55288.nsm, src/tcpp02_m18.nsm; catalogs/stm32g071c8.csv, catalogs/tps55288.csv,
+catalogs/tcpp02_m18.csv; kicad.toml (new: library `power_manifold_ics` + 3 [[part]] rows);
+libs/power_manifold_ics.pretty/{LQFP-48_7x7mm_P0.5mm_ST_DS12232, VQFN-HR-26_3.5x4mm_P0.5mm_TI_RPM0026A,
+QFN-18-1EP_3.5x3.5mm_P0.5mm_EP2.2x2.2mm_ST}.kicad_mod; crates/netsmith/tests/power_manifold_ics.rs (12 tests) and the
+line `mod power_manifold_ics;` in crates/netsmith/tests/main.rs. Footprint generator script (not in the repo):
+.../scratchpad/genfp.py. Every pin table was written by hand (facts only: numbers, names, kinds). Symbols are drawn from
+the pin tables (no `symbol` key). Documents fetched 2026-11-11.
+
+##
+`cargo test -p netsmith --test main power_manifold_ics::` 12 passed (also `power_manifold::`, 17 total); `cargo fmt --all --check`
+clean; `cargo clippy -p netsmith --all-targets` clean. The fixture board (the test's own) builds with no KiCad install.
+Not run: the workspace suite, `netsmith lock --check`, any KiCad ERC/DRC.
+
+#### U1, kind `Stm32G071C8` (src/stm32g071c8.nsm), package "LQFP-48(7x7)", 48 pads
+Datasheet: ST DS12232 Rev 3 (March 2020, 133 pp; LCSC's copy, SHA-256 96d7e9ca1500; ST's server did not answer; a later
+revision may exist). Figure 5 (printed p.37) and Table 12 (pp.41-47, LQFP48 column) for pads, names, types.
+Kinds: Table 12 type S = `power` (pads 4 VBAT, 5 VREF+, 6 VDD/VDDA, 7 VSS/VSSA), I/O = `bidirectional` (all 44 others,
+PF2-NRST included; no pin of type I). Pad names: 1 PC13, 2 PC14-OSC32_IN, 3 PC15-OSC32_OUT, 8 PF0-OSC_IN, 9 PF1-OSC_OUT,
+10 PF2-NRST, 11-18 PA0-PA7, 19-21 PB0-PB2, 22-27 PB10-PB15, 28 PA8, 29 PA9, 30 PC6, 31 PC7, 32 PA10, 33 "PA11 [PA9]",
+34 "PA12 [PA10]", 35 PA13, 36 PA14-BOOT0, 37 PA15, 38-41 PD0-PD3, 42-48 PB3-PB9.
+Supply: rail `.vdd` (`.vdd.pos` = pad 6, `.vdd.neg` = pad 7), VDD 1.7 V to 3.6 V (Table 21, p.55, note 1: guaranteed down to
+VPDR min after reset release). VBAT (1.55-3.6 V, Table 21) and VREF+ (section 3.7.1, p.17: = VDDA below 2 V, 2 V..VDDA above,
+may be grounded when unused) are plain `power` pins, windows not stated. Abs max (Table 18: VDD 4.0 V, FT pins VDD+4.0 V,
+FT_c 5.5 V) not stated. Alternate functions left out (no `fn`), no levels.
+Footprint: project file from ST's recommended footprint (Figure 39, p.114): pads 1.20 x 0.30 mm, 0.50 mm pitch, 9.70 mm outer
+to outer, 5.80 mm along a side, 7.30 mm inner to inner. The generator's `LQFP-48_7x7mm_P0.5mm` does NOT match (pads
+1.475 x 0.30 at 4.1625 from the middle, 0.0875 mm off). Frame = the reference's (pad 1 at (-2.75, 4.25), counter-clockwise).
+Against the reference `LQFP-48_L7.0-W7.0-P0.50-LS9.0-BL` (test): same numbers, centres identical (0.00 mm), reference pads
+1.50 x 0.27 mm, i.e. 0.30 mm longer and 0.03 mm narrower than ST's: NOT within 0.05 mm, recorded and asserted.
+Reference nets (test): 18 pads open, 2 on a `Net-(U1-..)` network, 28 on named nets; every KiCad-symbol name in the net names
+equals the table's name at that pad; pads 4/5/6 on +3.3V, 7 on GND, 29 (PA9) and 32 (PA10) on GND; PA2/PA3 USART_TX/RX,
+PB6/PB7 SCL/SDA, PB10/PB11 USB_SCL/SDA, PA13/PA14 SWDIO/SWCLK agree with Tables 13 and 14 (pp.48-49).
+Catalog (C529341, Extended): JLCPCB page `jlcpcb.com/partdetail/C529341` and LCSC page returned C529341 = STM32G071C8T6, ST,
+LQFP-48(7x7); JLCPCB says library type Extended. Ordering code 8 = 64 KB flash (datasheet section 7).
+
+#### U3, kind `Tps55288` (src/tps55288.nsm), package "VQFN-26-HR(3.5x4)", 26 pads
+Datasheet: TI SLVSF01B (Nov 2018, rev. Dec 2020, 55 pp in the PDF fetched from ti.com/lit/ds/symlink/tps55288.pdf, SHA-256
+2b60a3054038; not the copy LCSC links). Figure 5-1 and Table 5-1 (printed pp.3-4).
+Pads/kinds (I/O column; PWR = power): 1 DR1L out, 2 DR1H out, 3 VIN power, 4 EN/UVLO in, 5 SCL in, 6 SDA bidir, 7 DITH/SYNC in,
+8 FSW out, 9+24 PGND power, 10 AGND power, 11+26 VOUT power, 12 ISP in, 13 ISN in, 14 FB/INT bidir, 15 MODE in, 16 CDC out,
+17 ILIM out, 18 COMP in (table I; description says amplifier output), 19 VCC out, 20 BOOT2 passive, 21+25 SW2 passive,
+22 BOOT1 passive, 23 SW1 passive. Deliberate deviation: SW1, SW2, BOOT1, BOOT2 are `passive` (table prints I/I/I/O for power-stage
+nodes and bootstrap-capacitor pins). Pads 24-26 are the second pad of PGND/SW2/VOUT per the table.
+Supply: rail `.vin` (`.vin.pos` VIN, `.vin.neg` PGND pads 9, 24), VIN 2.7 V to 36 V (section 6.3, p.5). AGND is its own pin (the
+datasheet does not say the grounds are one net). Not stated: output 0.8-22 V, abs max (section 6.1), L/C ranges. No buck-boost
+generic exists, so no `dc` statement: rail analysis stops at the part.
+Footprint: project file from TI's example board layout, RPM0026A, drawing 4224618/A (PDF page 53; outline PDF page 52). Pad
+1 top left, counter-clockwise (the reference's frame). Corner pads 1, 7, 13, 19 are L shaped, written as custom pads (rect anchor
+0.4 x 0.575 + polygon arm, stroke 0); middle pads 0.375 x 1.425; lead pads rounded rectangles (ratio 0.2, a reading of TI's R0.05).
+Against the reference `VQFN-HR-26_L4.0-W3.5_TPS55288RPMR` (test): all 26 pads within 0.05 mm (largest centre difference 0.041 mm,
+largest side difference 0.025 mm; the reference's corner polygons have a 0.1 mm stroke, so its copper is 0.05 mm larger all round,
+which the comparison removes).
+Reference nets (test): 1 pad open (16 CDC), 8 on `Net-(U3-..)` networks, 17 on named nets; ISP (12) is on /VOUT_CONV and ISN (13)
+on /VOUT, FB/INT (14) is /CONVERTER_FLT.
+Catalog (C2864583, Extended): JLCPCB and LCSC pages returned C2864583 = TPS55288RPMR, TI, VQFN-26-HR(3.5x4); JLCPCB: Extended.
+
+#### U5, kind `Tcpp02M18` (src/tcpp02_m18.nsm), package "QFN-18 (3.5x3.5)", 19 pads
+Datasheet: ST DS13787 Rev 4 (May 2022, 27 pp; LCSC's copy, SHA-256 291a75882c46). Figure 1 and Table 1 (printed p.2).
+Pads/kinds: 1 EN in, 2 CC1 bidir, 3 VCC_VCONN power, 4 CC2 bidir, 5 IANA out, 6 GATE out, 7 SRC in, 8 VBUSc in, 9 Isense in,
+10+14+19 GND power (table calls the exposed pad EP, Figure 1 prints it 19), 11 CC2c bidir, 12 CBIAS out, 13 CC1c bidir,
+15 I2C_ADD in, 16 SDA bidir, 17 SCL bidir, 18 FLGn out.
+Supply: rail `.vcc` (`.vcc.pos` VCC_VCONN, `.vcc.neg` GND pads), 2.7 V to 5.5 V (Table 4, p.5). Not stated: the 1.7-3.6 V logic
+rows, the 0-22 V VBUS/CC rows, abs max (Table 2: VCC_VCONN 7 V, VBUSc/Isense/SRC/CC1c/CC2c 24 V), thresholds.
+Footprint: project file from ST's recommended footprint (Figure 12, p.20): lead pads 0.50 x 0.30 mm at 1.55 mm from the middle,
+3.60 mm outer to outer, exposed pad 2.20 x 2.20 mm, 0.20 mm gap; rounded outer ends drawn as roundrect 0.25 (an assumption).
+No generator row has an 18-pad QFN. Against the reference `QFN-18_L3.5-W3.5-P0.50-TL-EP2.2` (test): exposed pad identical; lead pads
+0.16 mm farther out (1.71 vs 1.55) and 0.29 mm longer (0.79 vs 0.50): NOT within 0.05 mm, recorded and asserted. All 19 pad
+numbers and nets agree with the table (pads 10, 14, 19 and I2C_ADD 15 on GND).
+Catalog (C3662929, Extended): JLCPCB and LCSC pages returned C3662929 = TCPP02-M18, ST, QFN-18 (3.5x3.5); JLCPCB: Extended.
+
+#### Not verified / assumptions
+- Price and stock are not recorded in any row. LCSC pages: only the product facts above were read; JLCPCB's stock was not read.
+- Mask and paste on every pad, no silkscreen/3D, courtyard = pads + 0.25 mm (assumed); pick-and-place rotation unverified (none of
+  the three has been assembled). Pad shapes (roundrect ratios) are assumptions. TPS55288's LCSC datasheet copy was not read (TI's
+  was); a newer SLVSF01 revision or newer DS12232 may exist. The three footprints differ from the reference's: U1 and U5 by more
+  than 0.05 mm (above), so the board's U1/U5 pads are ST's, not the reference's.
+#### Language gaps
+- No std generic for a buck-boost converter or a USB-C protection IC: both parts provide none and have no `dc` statement.
+- A pin's own recommended window (EN 1.7-3.6 V, CC1c 0-22 V, VBAT 1.55-3.6 V) can only be stated through a Rail or Logic; left out.
+- The datasheet's I/O column cannot always be followed (SW/BOOT nodes are power-stage pins, COMP is an output described as input):
+  `passive` was used for four, `input` kept for COMP. No syntax invented.
+
+### The other parts
+
+Evidence method: LCSC record = wmsc.lcsc.com product endpoint (the data behind the product page; WebFetch of the page only for C108342); JLCPCB library type = WebFetch of jlcpcb.com/partdetail/C...; datasheets = the PDF LCSC links (SHA-256 prefixes are in each row's `source`).
+Files: src/{gt_usb_7004,pcie_x1_edge_fingers,bsc059n04ls6,lp2985,usblc6_2sc6,tlv7022,antc1608_ntc}.nsm; catalogs/{capacitor,resistor,inductor,fuse,ferrite_bead,tvs,gt_usb_7004,bsc059n04ls6,lp2985,usblc6_2sc6,tlv7022,antc1608_ntc}.csv; libs/power_manifold_must_match.pretty (2 files), libs/power_manifold_parts.pretty (8 files); blocks appended to kicad.toml; crates/netsmith/tests/power_manifold_parts.rs and its `mod` line.
+
+STD KINDS, PROJECT ROWS (all Extended, JLCPCB page; price/stock not recorded; LCSC record agrees on mpn+package unless noted)
+- Capacitor (catalogs/capacitor.csv): C108342 FH 0603B475K100NT 4.7u 10V X7R 0603 (no curve/temp/height: FH datasheet not used; LCSC stock 0); C95841 Samsung CL21B106KOQNNNE 10u 16V X7R 0805; C1713 CL21A106KOQNNNE 10u 16V X5R 0805 (LCSC stock 0); C13533 CL05C331JB5NNNC 330p 50V C0G 0402 (flat curve 0:1 then 0.99, Samsung library); C5199872 CL10B105KB8NQNC 1u 50V X7R 0603 (curve from Samsung library, 1 Vrms 1 kHz, 20 steps, margin 0.01, deep: 0.88 at 5 V); C50254 CL31B225KBHNNNE 2.2u 50V X7R 1206 (library EMPTY: page shows only the word Basic, no field); C89632 CL31B106KBHNNNE 10u 50V X7R 1206. Samsung rows: temp from Samsung MLCC catalog p.5 (C5199872: its own spec p.2), height = library page Thickness+tol; class II >= 2.2u have no curve by the README rule.
+  C46550469 JIERR MA35V220M8X9 220u 35V polymer, package "SMD,D8xL9mm": datasheet MA series Rev:2.0 p.4 (ESR 28 mohm, 2.9 A: not columns), temp -55..105. C3151829 ROQANG RVT1H101M0607 100uF 50V (not just "100uF") "SMD,D6.3xL7.7mm", RVT sheet p.1, p.4 part key; temp -55..105. No curve/dielectric/height for both.
+- Resistor (resistor.csv, 62.5 mW): C25897 49.9k, C25086 1R (0402WGF100KTCE = 100x10^-2, UNI-ROYAL V.3 p.2), C54968 56.2k (UNI-ROYAL, temp -55..155 p.5/9); C2933099 45.3k, C2960799 57.6k (FOJAN FRC FJ-JS-3001-V3.0/2026.04.25, p.5). tempco column left empty.
+  Shunts 1206, 1 W: C7420011 FOJAN FRM121WFR007TM 7m (LCSC's PDF is the 0-ohm FRM jumper sheet, so only the records' 1 W; no temp); C105362 PSA FMF06FTHR010-LH 10m (FMF-Rev.14.0.G20 p.3/9: 1 W at 70 C, +/-70 ppm; -55..170). New kicad.toml row Resistor "1206" (generator R_1206_3216Metric).
+- Inductor: C112125 Sunlord MWSA0603S-1R0MT 1u, "SMD,7x6.6mm": Isat 12 A (Max col; JLCPCB's 15 A is Typ), DCR 7.4 m, h 3.0 mm; C17700183 MWSA1005S-5R6MT 5.6u "SMD,11.5x10mm": Isat 12.3 A, DCR 17 m, h 5.0 mm; Sunlord MWSA-S sheet rev 2023/1/11 (copy hosted at e2e.ti.com) p.6 / p.9 / dims p.3, temp -40..125. rms_current empty (rise not matched). **LCSC returns "Part not found" for both numbers; the rows rest on the JLCPCB record only: decide whether to keep them.**
+- Fuse C142876 Littelfuse 0451008.MRL 8 A 125 V, "2410": 451/453 sheet rev 06/15/17 p.2 (cold R 0.0077 ohm nominal, I2t 20.23 not a column), p.4 (6.10x2.69x2.69, h 2.94, -55..125).
+- FerriteBead C85833 Murata BLM18KG601SN1D 600 ohm +/-25% @100 MHz, 1.3 A (85 C; 1.0 A at 125 C), 0.15 ohm: JENF243A-0003AC-01 p.1, p.4 (h 0.95, -55..125). Std 0603 footprint.
+- Tvs (D2) C1974707 ST ESDA25P35-1U1M: DocID029556 Rev 2 (July 2017) p.2: VRM 22 V, VBR min 23.3 V, VCL 41 V at IPP 35 A (8/20us), Tj -55..150; p.1 Fig.1 pin 1 = cathode, 2 = anode (standard Tvs K=1, A=2); p.4 h 0.60. Footprint = ST Fig.10 land pattern (p.5): 0.55x0.80 at +-0.625 (reference: 0.6x0.9 at +-0.52, 0.105 mm off).
+
+PARTS WITH PIN TABLES (kind kinds: P=passive)
+- NtcThermistor TH1/TH2: `Antc1608Ntc` (APV ANTC1608-103F3380FB, C52155402, keyed catalog antc1608_ntc, designator TH): .a "1" .b "2" (P). Row: 10k +/-1% at 25 C, B25/50 3380 K +/-1%, B25/85 3435 K, 100 mW, 0.31 mA, h 0.95, -40..125; APV sheet rev 2026-06-21 p.1, p.2, p.4. No dc statement (boundary). Footprint = generator 0603.
+- Q1-Q4 `Bsc059n04ls6 provides NMosfet` (Infineon, C534356, TDSON-8FL): G "4" input; S "1" "2" "3"; D "5" (P; pins 5-8 fused, as the reference footprint). Row: 40 V, 17 A (TA 25 C, RthJA 50; 59 A is TC 25 C), VGS +/-20, Vth 1.3..2.3 V, RDS(on) 8.4 mohm max at 4.5 V (5.9 mohm at 10 V), Tj -55..175; Rev 2.0 2018-07-31 p.3, p.4, board pads p.11. Footprint: reference pads 1-5 + 4 paste apertures (not the unnumbered lead pads). Height not read.
+- U2 `Lp2985 provides LinearRegulator` (TI LP2985A-33DBVR, C89826): VIN "1" power, GND "2" power, ON/OFF "3" input, BYPASS "4" P, VOUT "5" power. SLVS522O (rev Jan 2015): 3.3 V +/-3.5% (A grade, 1-150 mA, -40..125), dropout 0.575 V at 150 mA, 0.15 A, quiescent 0..125 uA unloaded, TJ -40..125. No max_power (datasheet gives only RthJA 206 and a formula). **BOM name is LP2985-3.3; C89826 is the A grade.** Generator SOT-23-5.
+- U6 `Usblc62sc6` (C2687116): .io1 "1" "6"; .gnd "2"; .io2 "3" "4"; .vbus "5" (all P). **LCSC/JLCPCB sell UMW's USBLC6-2SC6, not ST's**; UMW datasheet Nov.2024 p.1 pin figure, p.2 TJ -55..125. Generator SOT-23-6.
+- U4 `Tlv7022` (TI TLV7022DDFR, C2862588): OUTA "1" tri_state, INA- "2", INA+ "3", VEE "4" (supply.neg), INB+ "5", INB- "6" (inputs), OUTB "7" tri_state, VCC "8" (supply.pos). Supply 1.6..6.5 V (Table 6.5); datasheet read is the Chinese edition ZHCSGK4E (11/2019); the pin table is the DGK one (no DDF pinout printed; reference nets agree). No reference inside the part. Footprint: TI DDF0008A example layout, reference frame (pad 1 lower right).
+- J4 `GtUsb7004 provides UsbCSinkReceptacle, Connector` (G-Switch GT-USB-7004, C2686968, keyed catalog gt_usb_7004): same 9 pins as Easyduino's Shouhan (VBUS A4 A9 B4 B9, GND A1 A12 B1 B12, CC1 A5, CC2 B5, D+ A6 B6, D- A7 B7, SBU1 A8, SBU2 B8, SHELL S1); drawing REV A1 2024.11.14 agrees with the reference pads; footprint libs/power_manifold_must_match.pretty/USB_C_Receptacle_GT-USB-7004 equals the reference (0.05 mm). Use it directly, not UsbCSink (CC goes to U5).
+- J3 `PcieX1EdgeFingers provides Connector`: 36 passive pins .a1-.a18/.b1-.b18, pads A1..B18 (comments carry the reference's pin functions; CEM spec not read), AssemblyMode::None, no catalog. Footprint PCIe_x1_Edge_Fingers equals the reference pads (A on F.Cu, B on B.Cu as stored; no Edge.Cuts; test enforces for both libraries).
+- J2: std ProgrammingPads6 (TC2030-NL): its std footprint equals the reference pads (tested, 0.05 mm). J1/J5/J6: std TestPoint "D1.5mm", equals reference (tested). HOT_SURFACE_SMALL marker (REF**): graphic only, skipped.
+
+FOOTPRINT BLOCKS in kicad.toml: Tvs DFN1610-2, Fuse 2410, Inductor x2, Capacitor "SMD,D8xL9mm" (reference pads of KiCad CP_Elec_8x10 though the part is 8x9) and "SMD,D6.3xL7.7mm", Resistor 1206, plus one block per part above.
+
+FOR THE OWNER / GAPS
+1. Open-drain output has no pin kind: two `output` pins on /TCPP_EN are refused ("net has two outputs"); TLV7022 outputs are `tri_state`, no levels.
+2. No NTC model: the divider current of TH1/TH2 is not seen.
+3. Reference quirks, ported as drawn: U6 pad 6 (I/O1) unconnected while the part joins pads 1 and 6 (pad 6 lands on /USB_DATA); I/O2 and VBUS open; J4 D+/D- and both contacts all on /USB_DATA; J2 pad 6 open; C39 footprint 8x10 vs 8x9 part.
+4. Fuse has no I2t/blow-time column; Capacitor none for ESR/ripple; tempco and rms_current left empty on purpose.
+5. Rows to check: LCSC stock 0 for C108342 and C1713 (JLCPCB shows no stock); C50254 library type; the two Sunlord numbers (no LCSC record). Never fetched, so not added: none.
+

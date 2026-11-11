@@ -1,0 +1,36 @@
+//! The USBLC6-2SC6, a two-line USB ESD protection array in SOT-23-6: the U6 of the Power Manifold
+//! charger module (LCSC C2687116, `catalogs/usblc6_2sc6.csv`). **The part LCSC and JLCPCB list for
+//! that number is UMW's (UTD Semiconductor) USBLC6-2SC6**, a part of the same name and pinout as
+//! ST's, and the pin table is read from UMW's datasheet.
+//!
+//! The pin table was WRITTEN BY HAND from "UMW USBLC6-2SC6" (7 pages, `Nov.2024`, the PDF that
+//! LCSC links for C2687116, fetched on 2026-11-11), section 4 "Pinning information" (page 1,
+//! the figure of the SOT-23-6 with the numbers 1 to 6 and the names under and over them):
+//! pad 1 `I/O1`, 2 `GND`, 3 `I/O2`, 4 `I/O2`, 5 `VBUS`, 6 `I/O1`. The two pads of a line are
+//! joined inside (the figure shows one diode bridge between I/O1 and I/O1, and between I/O2 and
+//! I/O2), so a line is one pin with two pads: `.io1` on pads 1 and 6, `.io2` on pads 3 and 4.
+//! Every pin is `passive`: the part is a protection diode array, with no direction and no logic
+//! level, and a passive pin may float. The datasheet does not say that `I/O2` and `VBUS` may be
+//! left open; the reference board leaves them unconnected (and pad 6, the second pad of `I/O1`,
+//! unconnected too: here it is on the same net as pad 1, as the part joins them).
+//!
+//! What is deliberately left out: every rating and model (clamping voltage 10 V at 1 A and 15 V
+//! at 6 A, stand-off voltage 5 V, junction capacitance 0.8 pF to ground and 0.35 pF between
+//! lines, on pages 2 and 3), which are listed in the row's notes.
+
+/// The USBLC6-2SC6: one `GND`, one `VBUS` and two protected lines, `I/O1` and `I/O2`.
+part Usblc62sc6 {
+    .designator &= "U"
+
+    pins "SOT-23-6" {
+        //  pin     kind     name    pads
+        .io1  passive "I/O1"  "1" "6"
+        .gnd  passive "GND"   "2"
+        .io2  passive "I/O2"  "3" "4"
+        .vbus passive "VBUS"  "5"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog usblc6_2sc6 by .mpn { .mpn, .package }
+}

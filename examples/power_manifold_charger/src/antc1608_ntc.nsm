@@ -1,0 +1,35 @@
+//! The APV ANTC1608-103F3380FB chip NTC thermistor, 10 kohm at 25 C, 0603: TH1 (`NTC_CONV`) and
+//! TH2 (`NTC_PLUG`) of the Power Manifold charger module (LCSC C52155402,
+//! `catalogs/antc1608_ntc.csv`). Std has no thermistor, so the part is the project's own: two
+//! passive pins, `.a` (pad 1) and `.b` (pad 2) (a thermistor is not polarized), and the figures
+//! of the datasheet's table for this ordering code.
+//!
+//! The figures are the catalog row's (`catalogs/antc1608_ntc.csv`, with the document, revision
+//! and page): the zero-power resistance at 25 C with its tolerance, the two B constants,
+//! the rated power and the permissible operating current. Nothing is stated about the
+//! resistance at another temperature: the language has no temperature-dependent resistor, so the
+//! part is a boundary for the DC analysis (no `dc` statement, no `bridge`).
+
+/// A chip NTC thermistor with two terminals.
+part Antc1608Ntc {
+    .designator &= "TH"
+
+    pins "0603" {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    /// The zero-power resistance at 25 C, with its tolerance.
+    .resistance_25c: Resistance
+    /// The B constants, in kelvin, as the datasheet gives them (25 C and 50 C; 25 C and 85 C).
+    .b_constant_25_50: Temperature
+    .b_constant_25_85: Temperature
+    /// The rated electric power at 25 C.
+    .rated_power: Power
+    /// The permissible operating current at 25 C.
+    .max_current: Current
+
+    .mpn: String
+    .package: Package
+    catalog antc1608_ntc by .mpn { .mpn, .package, .resistance_25c, .b_constant_25_50, .b_constant_25_85, .rated_power, .max_current }
+}

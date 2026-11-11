@@ -1,0 +1,172 @@
+# What KiCad calls the parts this project defines itself (ADR 0021).
+#
+# The library `libs/power_manifold_ics.pretty` holds the footprints of the three hard ICs
+# (U1, U3 and U5), written from the makers' recommended land patterns (no KiCad install is
+# needed: the files are the project's); README.md (Parts) records the document, revision and
+# page of each and what was read, derived or assumed. Every symbol is drawn from the part's pin
+# table (no `symbol` key, ADR 0097).
+[[library]]
+name = "power_manifold_ics"
+footprints = "libs/power_manifold_ics.pretty"
+
+# U1: the STM32G071C8T6 in LQFP-48, 7 x 7 mm, 0.5 mm pitch. The generator's
+# `LQFP-48_7x7mm_P0.5mm` has pads of 1.475 x 0.30 mm centred 4.1625 mm from the middle, the
+# reference board's are 1.50 x 0.27 mm centred 4.25 mm: ST's recommended footprint (DS12232
+# Rev 3, Figure 39, page 114) has 1.20 x 0.30 mm pads centred 4.25 mm, so the footprint is a
+# file of the project's library.
+[[part]]
+kind = "Stm32G071C8"
+package = "LQFP-48(7x7)"
+default = true
+footprint = "power_manifold_ics:LQFP-48_7x7mm_P0.5mm_ST_DS12232"
+
+# U3: the TPS55288RPMR in VQFN-HR-26 (TI RPM0026A), 3.5 x 4 mm, with L shaped corner pads. No
+# generator answers it: the footprint is TI's example board layout (SLVSF01B, PDF page 53).
+[[part]]
+kind = "Tps55288"
+package = "VQFN-26-HR(3.5x4)"
+default = true
+footprint = "power_manifold_ics:VQFN-HR-26_3.5x4mm_P0.5mm_TI_RPM0026A"
+
+# U5: the TCPP02-M18 in QFN-18, 3.5 x 3.5 mm, 0.5 mm pitch, exposed pad 2.2 x 2.2 mm. The
+# generators have no 18-pad QFN of this pitch with these lead pads: ST's recommended footprint
+# (DS13787 Rev 4, Figure 12, page 20) is a file of the project's library.
+[[part]]
+kind = "Tcpp02M18"
+package = "QFN-18 (3.5x3.5)"
+default = true
+footprint = "power_manifold_ics:QFN-18-1EP_3.5x3.5mm_P0.5mm_EP2.2x2.2mm_ST"
+
+# The interface parts (J3 and J4) are written into the project's own library
+# `libs/power_manifold_must_match.pretty`, so that a build needs no KiCad install; the files
+# are written from the makers' drawings where one could be read and otherwise from the
+# reference board's own pads. README.md (Parts) records the document, revision and page of each
+# and what was read, derived or assumed. J2 (the Tag-Connect pads) is the standard
+# `ProgrammingPads6` and the test pads J1, J5 and J6 the standard `TestPoint` (D1.5mm): their
+# standard footprints are compared with the reference's pads by
+# `crates/netsmith/tests/power_manifold_parts.rs`.
+[[library]]
+name = "power_manifold_must_match"
+footprints = "libs/power_manifold_must_match.pretty"
+
+# J4: the G-Switch GT-USB-7004 USB Type-C receptacle, LCSC C2686968.
+[[part]]
+kind = "GtUsb7004"
+package = "SMD"
+default = true
+footprint = "power_manifold_must_match:USB_C_Receptacle_GT-USB-7004"
+
+# J3: the PCI Express x1 card edge, 36 gold fingers (the board's own copper, no LCSC number).
+[[part]]
+kind = "PcieX1EdgeFingers"
+package = "PCIe-x1-edge"
+default = true
+footprint = "power_manifold_must_match:PCIe_x1_Edge_Fingers"
+
+# The other parts the project's own `src/` files define, and the standard kinds' rows for
+# packages that std/kicad.toml does not map: the second library, `libs/power_manifold_parts.pretty`
+# (footprints written from the makers' land patterns where one was read, and otherwise from the
+# reference board's pads). The symbols are drawn from the pin tables (no `symbol` key, ADR
+# 0097) except where a standard kind's row names one, as std/kicad.toml does.
+[[library]]
+name = "power_manifold_parts"
+footprints = "libs/power_manifold_parts.pretty"
+
+# Q1 to Q4: the Infineon BSC059N04LS6 in TDSON-8 FL: the reference board's pads, which are the
+# 'Boardpads' of the maker's Figure 2 (Rev. 2.0).
+[[part]]
+kind = "Bsc059n04ls6"
+package = "TDSON-8FL"
+default = true
+footprint = "power_manifold_parts:TDSON-8FL_Infineon_BSC059N04LS6"
+
+# U2: the LP2985 in SOT-23-5: the generator's footprint, which is the reference board's
+# (Package_TO_SOT_SMD:SOT-23-5).
+[[part]]
+kind = "Lp2985"
+package = "SOT-23-5"
+default = true
+footprint = "Package_TO_SOT_SMD:SOT-23-5"
+
+# U6: the USBLC6-2SC6 in SOT-23-6: the generator's footprint, which is the reference board's.
+[[part]]
+kind = "Usblc62sc6"
+package = "SOT-23-6"
+default = true
+footprint = "Package_TO_SOT_SMD:SOT-23-6"
+
+# U4: the TLV7022DDFR in SOT-23-THIN-8 (TI DDF0008A): the datasheet's example board layout.
+[[part]]
+kind = "Tlv7022"
+package = "SOT-23-THIN-8"
+default = true
+footprint = "power_manifold_parts:SOT-23-THIN-8_TI_DDF0008A"
+
+# TH1 and TH2: the APV NTC thermistor in 0603: the generator's 0603 chip footprint.
+[[part]]
+kind = "Antc1608Ntc"
+package = "0603"
+default = true
+footprint = "Resistor_SMD:R_0603_1608Metric"
+
+# D2: the ST ESDA25P35-1U1M (a `Tvs` row in `catalogs/tvs.csv`) in DFN 1610, 2 terminals: the
+# maker's footprint recommendation (DocID029556 Rev 2, Figure 10).
+[[part]]
+kind = "Tvs"
+package = "DFN1610-2"
+symbol = "Device:D_Zener"
+footprint = "power_manifold_parts:DFN1610-2_ST_ESDA25P35-1U1M"
+
+# F1: the Littelfuse 0451008.MRL (a `Fuse` row in `catalogs/fuse.csv`), size 2410: the
+# reference board's pads. std/kicad.toml maps 0603 and 1206 only.
+[[part]]
+kind = "Fuse"
+package = "2410"
+symbol = "Device:Fuse"
+footprint = "power_manifold_parts:Fuse_Littelfuse_451_2410"
+
+# L1 and L2: the Sunlord MWSA0603S-1R0MT and MWSA1005S-5R6MT (`Inductor` rows in
+# `catalogs/inductor.csv`); the package names are JLCPCB's. The footprints are the land patterns
+# of Sunlord's MWSA-S series sheet (2023/1/11).
+[[part]]
+kind = "Inductor"
+package = "SMD,7x6.6mm"
+symbol = "Device:L"
+footprint = "power_manifold_parts:L_Sunlord_MWSA0603S"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+[[part]]
+kind = "Inductor"
+package = "SMD,11.5x10mm"
+symbol = "Device:L"
+footprint = "power_manifold_parts:L_Sunlord_MWSA1005S"
+
+[part.pin_names]
+A = "1"
+B = "2"
+
+# C39 and C6: the JIERR polymer capacitor and the ROQANG electrolytic (`Capacitor` rows in
+# `catalogs/capacitor.csv`); the standard capacitor rows stop at the ceramic sizes 0402 to
+# 1210. The footprints are the reference board's pads (pad 1 is the positive terminal).
+[[part]]
+kind = "Capacitor"
+package = "SMD,D8xL9mm"
+symbol = "Device:C"
+footprint = "power_manifold_parts:CP_Elec_8x10_SMD"
+
+[[part]]
+kind = "Capacitor"
+package = "SMD,D6.3xL7.7mm"
+symbol = "Device:C"
+footprint = "power_manifold_parts:CP_Elec_6.3x7.7_SMD"
+
+# R27 and R28: the 1206 current sense resistors (`Resistor` rows in `catalogs/resistor.csv`);
+# std/kicad.toml maps the resistor sizes 0402 to 0805 only. The generator has the footprint.
+[[part]]
+kind = "Resistor"
+package = "1206"
+symbol = "Device:R"
+footprint = "Resistor_SMD:R_1206_3216Metric"
