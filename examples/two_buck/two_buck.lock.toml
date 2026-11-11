@@ -1,0 +1,281 @@
+# The catalog row each part of each board was picked as, written by `netsmith build` and
+# `netsmith fab` when this file does not exist. Commit it: a change to a catalog or to the
+# solver that would move a pick shows here and not only in the bill of materials. Refresh it
+# with `netsmith lock --update`. Nothing in it is edited by hand.
+version = 1
+
+[TwoBuck.parts."buck_3v3.boost"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_3v3.bulk"]
+catalog = "capacitor"
+row = "22uF 20% 6.3V X5R 0603 C59461"
+lcsc = "C59461"
+mpn = "CL10A226MQ8NRNC"
+
+[TwoBuck.parts."buck_3v3.decoupling"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_3v3.enable_bottom"]
+catalog = "resistor"
+row = "33kΩ 1% 0402 C25779"
+lcsc = "C25779"
+mpn = "0402WGF3302TCE"
+
+[TwoBuck.parts."buck_3v3.enable_top"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
+[TwoBuck.parts."buck_3v3.input_decoupling"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_3v3.light"]
+catalog = "led"
+row = "KT-0603R RED LED 0603 C2286"
+lcsc = "C2286"
+mpn = "KT-0603R"
+
+[TwoBuck.parts."buck_3v3.light_resistor"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[TwoBuck.parts."buck_3v3.pg_pullup.resistor"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
+[TwoBuck.parts."buck_3v3.stage.divider.rbottom"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+lcsc = "C25104"
+mpn = "0402WGF3300TCE"
+
+[TwoBuck.parts."buck_3v3.stage.divider.rtop"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[TwoBuck.parts."buck_3v3.stage.inductor"]
+catalog = "inductor"
+row = "MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758"
+lcsc = "C285758"
+mpn = "MHCD322512A-2R2M-A8S"
+
+[TwoBuck.parts."buck_3v3.stage.input_cap"]
+catalog = "capacitor"
+row = "2.2uF 10% 100V X7R 1210 C55151"
+lcsc = "C55151"
+mpn = "CL32B225KCJSNNE"
+
+[TwoBuck.parts."buck_3v3.stage.output_cap"]
+catalog = "capacitor"
+row = "47uF 20% 6.3V X5R 0805 C16780"
+lcsc = "C16780"
+mpn = "CL21A476MQYNNNE"
+
+[TwoBuck.parts."buck_5v.boost"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_5v.bulk"]
+catalog = "capacitor"
+row = "22uF 20% 6.3V X5R 0603 C59461"
+lcsc = "C59461"
+mpn = "CL10A226MQ8NRNC"
+
+[TwoBuck.parts."buck_5v.decoupling"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_5v.enable_bottom"]
+catalog = "resistor"
+row = "33kΩ 1% 0402 C25779"
+lcsc = "C25779"
+mpn = "0402WGF3302TCE"
+
+[TwoBuck.parts."buck_5v.enable_top"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
+[TwoBuck.parts."buck_5v.input_decoupling"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_5v.light"]
+catalog = "led"
+row = "KT-0603R RED LED 0603 C2286"
+lcsc = "C2286"
+mpn = "KT-0603R"
+
+[TwoBuck.parts."buck_5v.light_resistor"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[TwoBuck.parts."buck_5v.pg_pullup.resistor"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
+[TwoBuck.parts."buck_5v.stage.divider.rbottom"]
+catalog = "resistor"
+row = "510Ω 1% 0402 C25123"
+lcsc = "C25123"
+mpn = "0402WGF5100TCE"
+
+[TwoBuck.parts."buck_5v.stage.divider.rtop"]
+catalog = "resistor"
+row = "2.7kΩ 1% 0603 C13167"
+lcsc = "C13167"
+mpn = "0603WAF2701T5E"
+
+[TwoBuck.parts."buck_5v.stage.inductor"]
+catalog = "inductor"
+row = "MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758"
+lcsc = "C285758"
+mpn = "MHCD322512A-2R2M-A8S"
+
+[TwoBuck.parts."buck_5v.stage.input_cap"]
+catalog = "capacitor"
+row = "2.2uF 10% 100V X7R 1210 C55151"
+lcsc = "C55151"
+mpn = "CL32B225KCJSNNE"
+
+[TwoBuck.parts."buck_5v.stage.output_cap"]
+catalog = "capacitor"
+row = "47uF 20% 6.3V X5R 0805 C16780"
+lcsc = "C16780"
+mpn = "CL21A476MQYNNNE"
+
+[TwoBuck.parts."bulk_5v"]
+catalog = "capacitor"
+row = "22uF 20% 6.3V X5R 0603 C59461"
+lcsc = "C59461"
+mpn = "CL10A226MQ8NRNC"
+
+[TwoBuck.parts."bulk_a"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[TwoBuck.parts."bulk_b"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[TwoBuck.parts."bulk_c"]
+catalog = "capacitor"
+row = "10uF 10% 10V X5R 0603 C19702"
+lcsc = "C19702"
+mpn = "CL10A106KP8NNNC"
+
+[TwoBuck.parts."input_light"]
+catalog = "led"
+row = "KT-0603R RED LED 0603 C2286"
+lcsc = "C2286"
+mpn = "KT-0603R"
+
+[TwoBuck.parts."input_light_resistor"]
+catalog = "resistor"
+row = "4.7kΩ 1% 0402 C25900"
+lcsc = "C25900"
+mpn = "0402WGF4701TCE"
+
+[TwoBuck.parts."ldo"]
+catalog = "ldo"
+row = "XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446"
+lcsc = "C5446"
+mpn = "XC6206P332MR-G"
+
+[TwoBuck.parts."ldo_bulk"]
+catalog = "capacitor"
+row = "4.7uF 20% 10V X5R 0402 C23733"
+lcsc = "C23733"
+mpn = "CL05A475MP5NRNC"
+
+[TwoBuck.parts."ldo_in"]
+catalog = "capacitor"
+row = "1uF 10% 25V X5R 0402 C52923"
+lcsc = "C52923"
+mpn = "CL05A105KA5NQNC"
+
+[TwoBuck.parts."ldo_light"]
+catalog = "led"
+row = "KT-0603R RED LED 0603 C2286"
+lcsc = "C2286"
+mpn = "KT-0603R"
+
+[TwoBuck.parts."ldo_light_resistor"]
+catalog = "resistor"
+row = "1kΩ 1% 0402 C11702"
+lcsc = "C11702"
+mpn = "0402WGF1001TCE"
+
+[TwoBuck.parts."ldo_out"]
+catalog = "capacitor"
+row = "1uF 10% 25V X5R 0402 C52923"
+lcsc = "C52923"
+mpn = "CL05A105KA5NQNC"
+
+[TwoBuck.parts."power_3v3"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[TwoBuck.parts."power_3v3a"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[TwoBuck.parts."power_5v"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[TwoBuck.parts."power_in"]
+catalog = "header"
+row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
+lcsc = "C42431798"
+mpn = "PH2.54-1X2P-H25"
+
+[TwoBuck.parts."reverse_diode"]
+catalog = "schottky"
+row = "SS34 40V 3A Schottky SMA C8678"
+lcsc = "C8678"
+mpn = "SS34"
+
+[TwoBuck.parts."surge"]
+catalog = "tvs"
+row = "SMAJ24A 24V TVS SMA C113962"
+lcsc = "C113962"
+mpn = "SMAJ24A"
