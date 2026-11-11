@@ -451,14 +451,31 @@ fn property(name: &str, value: &str, pos: (f64, f64), hide: bool) -> Sexp {
     )
 }
 
-fn visible_property(name: &str, value: &str, pos: (f64, f64), angle: f64) -> Sexp {
+fn visible_property(
+    name: &str,
+    value: &str,
+    pos: (f64, f64),
+    angle: f64,
+    justify: &[String],
+) -> Sexp {
+    let mut shown = effects(false);
+    // A field the symbol justifies (a FET's text starts at its position, clear of the body) is
+    // placed with the same justification, as KiCad copies it from the library symbol.
+    if !justify.is_empty()
+        && let Sexp::List(items) = &mut shown
+    {
+        items.push(Sexp::node(
+            "justify",
+            justify.iter().map(|w| Sexp::atom(w.as_str())).collect(),
+        ));
+    }
     Sexp::node(
         "property",
         vec![
             Sexp::string(name),
             Sexp::string(value),
             at(pos.0, pos.1, angle),
-            effects(false),
+            shown,
         ],
     )
 }
@@ -548,7 +565,13 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64), roo
         if hide {
             property(name, value, (x + dx, y - dy), true)
         } else {
-            visible_property(name, value, (x + dx, y - dy), rot)
+            visible_property(
+                name,
+                value,
+                (x + dx, y - dy),
+                rot,
+                &placement.symbol.field_justify(name),
+            )
         }
     };
     let mut items = vec![

@@ -349,6 +349,23 @@ impl Symbol {
         self.pin(number).map(|p| p.kind)
     }
 
+    /// How the symbol justifies a field's text (`left`, `right`, `top`, `bottom`, `mirror`), as
+    /// its `(justify ...)` says; empty for centred text.
+    pub fn field_justify(&self, field: &str) -> Vec<String> {
+        self.definition
+            .find_all("property")
+            .find(|p| p.args().first().and_then(Sexp::text) == Some(field))
+            .and_then(|p| p.find("effects")?.find("justify"))
+            .map(|j| {
+                j.args()
+                    .iter()
+                    .filter_map(Sexp::text)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Where the symbol wants a field (`Reference`, `Value`) relative to its origin, as
     /// `(x, y, rotation)` with y up.
     pub fn field_offset(&self, field: &str) -> Option<(f64, f64, f64)> {

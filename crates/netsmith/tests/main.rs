@@ -85,6 +85,7 @@ mod std_models;
 mod std_zener;
 mod stock_note;
 mod supply;
+mod symbol_gallery;
 mod timings;
 mod two_buck;
 mod unused;
