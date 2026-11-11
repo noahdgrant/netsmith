@@ -46,7 +46,8 @@
 # A change to the workflows, the actions (.github/actions) or to scripts/ runs everything, and so does a path nothing here knows:
 # when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
 # the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md and
-# the skills in .agents/skills (crates/netsmith/tests/guide.rs, src/init.rs), so those count as code.
+# the skills in .agents/skills (crates/netsmith/tests/guide.rs, src/init.rs), so those count as code;
+# so does docs/symbol-gallery.html (crates/netsmith/tests/symbol_gallery.rs compares it with the rendered page).
 # A push to main skips this script: the job runs everything there.
 # The rules are pinned by scripts/ci-changes-test (the `changes` job runs it).
 #   scripts/ci-changes < paths
@@ -102,7 +103,7 @@ while IFS= read -r path; do
         # Prose that nothing reads.
         .github/ISSUE_TEMPLATE/* | .github/*.md | .github/CODEOWNERS | .github/dependabot.yml | .github/PULL_REQUEST_TEMPLATE*) ;;
         .gitignore | .gitattributes | .editorconfig | LICENSE* | GLOSSARY.md) ;;
-        docs/LANGUAGE.md) rust=true ;;
+        docs/LANGUAGE.md | docs/symbol-gallery.html) rust=true ;;
         docs/*) ;;
         .agents/skills/netsmith-dev-verify-editor/*) rust=true recipes=true ;;
         .agents/skills/* | .claude/*) rust=true ;;
