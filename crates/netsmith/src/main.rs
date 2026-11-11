@@ -1,4 +1,4 @@
-//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor` and `compare`.
+//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor`, `board3d` and `compare`.
 
 use std::{
     env, fs,
@@ -94,6 +94,9 @@ fn main() -> ExitCode {
         }
         Ok(Command::Lock { file, mode }) => run_lock(file.as_deref(), mode),
         Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
+        Ok(Command::Board3d { file, board, json }) => {
+            run_board3d(file.as_deref(), board.as_deref(), json)
+        }
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
         Ok(Command::DxfImport {
@@ -720,6 +723,71 @@ fn run_fab(
         }
     }
     code
+}
+
+/// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file
+/// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
+/// stdout with `--json`, a summary without. A project of several top-level files takes the first
+/// that has the board `--board` names. Exit 0 when the report is printed, 1 when the board does
+/// not build or place, 2 when the command cannot start.
+fn run_board3d(file: Option<&str>, board: Option<&str>, json: bool) -> ExitCode {
+    let (target, loader, catalogs) = match target(file, false) {
+        Ok(t) => t,
+        Err(code) => return code,
+    };
+    if no_boards(&target) {
+        return ExitCode::from(2);
+    }
+    if target.files.len() > 1 && board.is_none() {
+        eprintln!(
+            "error: the project has {} top-level files; name one, or a board with `--board <name>`",
+            target.files.len()
+        );
+        return ExitCode::from(2);
+    }
+    let libraries = match timings::stage("libraries", "", || libraries(&target)) {
+        Ok(l) => l,
+        Err(code) => return code,
+    };
+    let mut errors = String::new();
+    for source in &target.files {
+        let text = match fs::read_to_string(&source.path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("{}: {e}", source.name);
+                return ExitCode::from(2);
+            }
+        };
+        // The pick lock holds the parts it names to their rows, as for `fab`; it is not written.
+        let (held, _) = match netsmith::pick_lock::open(&source.path, &catalogs, false) {
+            Ok(opened) => opened,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::from(2);
+            }
+        };
+        match netsmith::board3d::run(
+            &source.name,
+            &text,
+            &loader,
+            held.as_ref().unwrap_or(&catalogs),
+            &libraries,
+            Some(&netsmith::layout::layout_path(&source.path)),
+            board,
+        ) {
+            Ok(report) => {
+                if json {
+                    print!("{}", report.json());
+                } else {
+                    print!("{}", report.summary());
+                }
+                return ExitCode::SUCCESS;
+            }
+            Err(e) => errors.push_str(&e),
+        }
+    }
+    eprint!("{errors}");
+    ExitCode::FAILURE
 }
 
 /// `netsmith fab --order`: list the project's orders, or make one (ADR 0035).

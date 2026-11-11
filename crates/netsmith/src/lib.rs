@@ -1,5 +1,6 @@
 //! The whole pipeline, from source text to a KiCad schematic.
 
+pub mod board3d;
 mod bus_roles;
 pub mod cli;
 pub mod compare;
