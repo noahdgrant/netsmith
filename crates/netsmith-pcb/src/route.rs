@@ -1018,7 +1018,7 @@ fn search(
 /// Straight runs through a list of cells on one layer; a single cell has none.
 #[cfg(test)]
 fn runs(grid: &Grid, cells: &[(usize, usize)]) -> Vec<(Pt, Pt)> {
-    let none = vec![false; cells.len()];
+    let none = vec![0u8; cells.len()];
     runs_with(grid, cells, &none)
         .into_iter()
         .map(|(a, b, _)| (a, b))
