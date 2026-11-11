@@ -14,6 +14,9 @@ path = "tests/main.rs"
 [dependencies]
 netsmith-core = { path = "../netsmith-core" }
 netsmith-kicad = { path = "../netsmith-kicad" }
+# The pour filler and the drawing code of the Gerbers, which the copper as data reuses
+# (`copper`, ADR 0105). netsmith-fab depends on no other netsmith crate but netsmith-kicad.
+netsmith-fab = { path = "../netsmith-fab" }
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.8"
 uuid = { version = "1", features = ["v5"] }
@@ -21,5 +24,4 @@ uuid = { version = "1", features = ["v5"] }
 [dev-dependencies]
 netsmith-check = { path = "../netsmith-check" }
 netsmith = { path = "../netsmith" }
-netsmith-fab = { path = "../netsmith-fab" }
 netsmith-solve = { path = "../netsmith-solve" }
