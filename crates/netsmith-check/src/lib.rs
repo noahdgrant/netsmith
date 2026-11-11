@@ -16,6 +16,7 @@ mod lower;
 mod mate;
 mod model;
 mod optional;
+mod pinedit;
 mod pinfile;
 mod pinout;
 mod pins;
@@ -41,6 +42,7 @@ pub use model::{
     Pinout, Provider, RExpr, RangeEnd, Relation, Requirement, Role, SharedMember, SharedRes,
     Snapshot, Tie, Unused, Written,
 };
+pub use pinedit::edit_entry;
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};
 
 use std::collections::BTreeMap;

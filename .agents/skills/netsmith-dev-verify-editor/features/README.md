@@ -17,6 +17,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | Schematic view and click-through | `schematic.md` | `schematic`, `big-schematic` | `two_boards`, `big` |
 | Schematic box of a part with a `tri_state` pin (the side it is on, the mark of an open one) | `schematic.md` | `tri-state` | `tri_state` |
 | Pin map of the selected part (pin, pad, function, lock, where it came from, the check's message for a request with no pin) and the pick lock's state and diff, read only; the lock file is watched | `pin-map.md` | `pin-map` | `pin_map` |
+| Padlock and move of a pin request write the pin file's `lock`, `pin` and `source` lines only; refusals with the server's words | `pin-map.md` | `pin-lock` | `pin_map` |
 | Schematic layout file (server side): hints read and drawn, findings in the Problems list at the file and line, `GET`/`PUT /api/schematic-hints`, the watcher | `schematic-hints.md` | `schematic-hints` | `two_boards` |
 | Arranging the schematic by hand: drag on the grid with a ghost, Alt pins, Esc cancels, the anchor is inert, a refused drop is put back; arrows, `r`, `m`, Backspace; clear a module or the file; the layout file in the tree and in Source | `schematic-layout.md` | `layout-drag`, `layout-keys`, `layout-clear` | `two_boards` |
 | Schematic and the shared selection: go to anything lands on the module at a legible zoom with a ring, a net picked in the drawing, a flag followed, Esc clears everywhere | `schematic-integration.md` | `schematic-integration` | `schematic_bench` |

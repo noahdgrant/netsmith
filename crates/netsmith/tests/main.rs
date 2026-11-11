@@ -26,6 +26,7 @@ mod editor_fields;
 mod editor_files;
 mod editor_hints;
 mod editor_panic;
+mod editor_pin_write;
 mod editor_sidecars;
 mod editor_unicode;
 mod editor_verify;
