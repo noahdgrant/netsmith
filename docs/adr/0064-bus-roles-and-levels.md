@@ -46,4 +46,4 @@ Built by an agent "for review", each with its alternatives in the headers named 
 
 Not built, and not planned until a board needs it: roles on the ports of a board in a system (question 7), I2C addresses (9), and a general mark for "a member that a join leaves alone" (6: three names are not yet a pattern).
 
-Not built, as decided: `open_drain` as a kind (10: "later, as its own ADR").
+Not built, as decided: `open_drain` as a kind (10: "later, as its own ADR"). The owner kept the inference of ADR 0075 on 2026-11-11 and adds a kind only when a part breaks it.

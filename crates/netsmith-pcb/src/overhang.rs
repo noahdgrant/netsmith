@@ -35,7 +35,7 @@
 //! - *The body's centre.* The placer refuses a requirement that leaves the body's centre
 //!   wholly outside a fixed outline, except along an axis, in a direction, where the part's own
 //!   edge requirement states the overhang (`stated_edges`). A window on `.x` or `.y` keeps the
-//!   refusal. Provisional, to be reviewed by the maintainer.
+//!   refusal. Accepted as built by the owner, 2026-11-11.
 //! - *Not checked.* The body (`F.Fab`) need not stay inside, and the part of the courtyard
 //!   outside the outline, the silkscreen and the text are not measured (`silk_edge_clearance`
 //!   stays a warning, as in KiCad). How far a part hangs is whatever its window says.

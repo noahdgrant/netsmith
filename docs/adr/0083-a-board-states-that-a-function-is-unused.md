@@ -58,6 +58,6 @@ Not built, and not planned until a board needs it:
 
 From pull request #323, the series parts of a use (`series_use` in `crates/netsmith-check/src/unused.rs`):
 
-- Not built: a series `Inductor`, `Capacitor`, `Diode`/`Schottky` or `Switch` is not followed. A diode ORing VBUS into a rail feeds the board as much as a fuse does, and whether one is a use is not decided.
+- Not built: a series `Inductor`, `Capacitor`, `Diode`/`Schottky` or `Switch` is not followed. A diode ORing VBUS into a rail feeds the board as much as a fuse does, and the owner kept it so, 2026-11-11.
 - Built, on the owner's decisions of 2026-11-10: a series part from the interface to the return `neg`, or to the supply that nothing on the board sources (a pull-down, a bleed resistor, a pull-up), is a pull and no use; a path to a rail that the board sources is a use.
 - Built: a series part whose far end reaches another pin of the part that holds the interface (a processor fed from its own VBUS through a bead) is not a use, the same as a direct join inside the part.

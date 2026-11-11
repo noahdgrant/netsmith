@@ -12,8 +12,9 @@
 //!   followed. A series part whose far end is the return `neg`, or the supply `pos` (a
 //!   rail of the board that nothing on the board sources), is a pull and no use; a rail that a
 //!   regulator, a `dc source` or an output pin of the board sources is not the supply, and a
-//!   path to it is a use (the owner's decisions of 2026-11-10, U2 and U3); ADR 0083 lists
-//!   the inductor, capacitor, diode and switch as left open;
+//!   path to it is a use (the owner's decisions of 2026-11-10, U2 and U3); the owner kept
+//!   the inductor, capacitor, diode and switch out on 2026-11-11 (not planned until a board
+//!   needs it);
 //! - the relations that read only values of the interface (`usb.vbus.voltage >= 4.35V`) are
 //!   taken out of the model, so the solver neither checks them nor lists them as not
 //!   evaluated;

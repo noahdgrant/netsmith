@@ -51,10 +51,10 @@
 //! pull-up and not reported as missing, where the note was the only sign that the model is
 //! incomplete. The rule needs `vol`, a pull-up, and a rail with a voltage.
 //!
-//! Left open, for the owner: whether to keep the inference, or to add a way for a part to say that
-//! a pin is open-drain (a pin kind, or a marker on the interface's `lines`), after which the rule
-//! would apply to a declared pin and a part that states `vol` alone would be a note again. If the
-//! pin kind is chosen, this rule's test for a driver changes and nothing else.
+//! Decided by the owner, 2026-11-11: the inference stays. A pin kind, or a marker on the
+//! interface's `lines`, for open drain is added only when a real part breaks the inference; the
+//! rule's test for a driver then changes and nothing else, and a part that states `vol` alone
+//! would be a note again for a declared pin.
 //!
 //! Not built from ADR 0046: more parts with datasheet levels (issue #64), and levels across a
 //! level shifter or a series resistor (issue #63; the voltage of a net is followed only through

@@ -616,7 +616,7 @@ pub(crate) fn plan(
         // The edges the part's own requirements put its body at or past (ADR 0045, section 10).
         let may = stated_edges(&reqs, width, height);
         // A window that is wholly outside a fixed outline. A part whose requirement states an
-        // overhang on an edge (PROVISIONAL, ADR 0045 section 10) may have its centre outside
+        // overhang on an edge (ADR 0045 section 10, accepted as built 2026-11-11) may have its centre outside
         // in that direction: its body is meant to stick out, and the pads staying inside is
         // the overhang rule's. A window on `x` or `y` keeps the old rule.
         for (q, slot) in reach.iter_mut().enumerate() {

@@ -75,10 +75,10 @@
 //! `docs/research/physical-file-syntax-options.md`, section 8), what a board's file may override
 //! of it (V1, V2 or V3 there), whether it may state an overhang, anchors (`anchor .dock =
 //! .row_a`, A1), and a `Region` carried by a part with a height limit (G2, a new type whose
-//! members are not decided). The attachment and the override rule are language design and are
-//! decided when the module layer is built. A physical file for a `system` or a `panel` (ADR
-//! 0040: a panel's mounting holes, mated-connector alignment across boards, a panel's rails) is
-//! not planned until a board needs it. The shared `enclosure` definition is held until the
+//! members are not decided). Decided by the owner, 2026-11-11: a statement in the module names its
+//! physical file (T3), and the board's file may only narrow what the module states (V1). A
+//! physical file for a `system` or a `panel` (ADR 0040: a panel's mounting holes, mated-connector
+//! alignment across boards, a panel's rails) is not planned until a board needs it. The shared `enclosure` definition is held until the
 //! mechanical side can export data (issue #46). What leaves the circuit source is what decision
 //! 7 names (`.place`, `Outline`, `Cutout`, `MountingHole`, `Fiducial`, `Label` and a board-drawn
 //! `Keepout`); the spelling inside the physical file stays `.place` (accepted as built by the
