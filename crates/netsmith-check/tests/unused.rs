@@ -728,7 +728,16 @@ fn an_output_pin_in_an_interface_stated_unused_does_not_source_the_rail() {
         )
     ));
     let said = messages(&c);
-    // The processor's pull is not made a use by a source that is not one.
+    // The one thing the board gets wrong is the hub's connection to a load while the interface
+    // is stated `unused`; the processor's pull is not made a use by a source that is not one.
+    assert!(!c.is_ok(), "{}", c.render());
+    assert_eq!(said.len(), 1, "{}", c.render());
+    assert!(
+        said[0].contains("`hub.aux.vbus.pos` is connected here to `load.in`")
+            && said[0].contains("`hub.aux` is stated `unused`"),
+        "{}",
+        c.render()
+    );
     assert!(
         !said
             .iter()
@@ -753,6 +762,8 @@ fn a_dc_source_rail_in_an_interface_stated_unused_does_not_source_the_rail() {
         "{}",
         c.render()
     );
+    assert!(!c.is_ok(), "{}", c.render());
+    assert_eq!(said.len(), 1, "{}", c.render());
     assert!(
         !said
             .iter()

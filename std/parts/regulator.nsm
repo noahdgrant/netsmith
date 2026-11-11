@@ -384,6 +384,7 @@ module BuckStage {
     /// a rise that a current limit stretches (a large output capacitor, a load that draws at
     /// start-up) is longer than this and is not in the figure.
     .soft_start_time: Time
+    /// The current the feedback divider draws from the output.
     .divider_current: Current
     /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0085):
     /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
