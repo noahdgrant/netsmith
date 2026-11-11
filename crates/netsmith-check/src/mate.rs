@@ -91,9 +91,9 @@
 //! contacts. Messages are one line each (the multi-line form would need a notes field on
 //! diagnostics).
 //!
-//! **Left open** (the owner's, ADR 0040 question 8): partial mates and isolated grounds are
+//! **Refused, not built** (ADR 0040, issue #16): partial mates and isolated grounds are
 //! "refused in v1. Recommend a later `.contacts` subset on the mate and a `.isolated` mark on a
-//! rail, each with its own check, if a design needs them". Question 9: pin ratings are sourced by
+//! rail, each with its own check, if a design needs them". Pin ratings are sourced by
 //! series from public datasheets, starting with the one series the kit uses, and the rating check
 //! is "not evaluated" for a connector with no row.
 

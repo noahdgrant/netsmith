@@ -1,6 +1,6 @@
 //! A through-hole part whose footprint draws its courtyard on one face's layer only is judged
 //! on the other face by its pads, so a large part may sit on the other face over the rest of
-//! its body (PROVISIONAL, ADR 0031). A footprint that draws both courtyard layers, or none,
+//! its body (ADR 0031). A footprint that draws both courtyard layers, or none,
 //! keeps counting on both faces. The parts are invented: a right-angle header whose two pads
 //! are at one end of a 5 x 13.5 mm body, and an 8 x 8 mm part with two pads.
 
@@ -337,7 +337,7 @@ fn netsmith_keeps_a_wider_band_round_the_pads_than_kicads_hole_check() {
     // the pads 1.7 mm and the process's clearance 0.2 mm: netsmith keeps the courtyard out
     // of 0.85 + 0.2 mm, KiCad's `pth_inside_courtyard` only out of the hole's 0.5 mm. So
     // between 0.5 and 1.05 mm netsmith flags what KiCad does not; the other way round there
-    // is nothing (PROVISIONAL, ADR 0031).
+    // is nothing (ADR 0031).
     for (edge, ours, kicad_hole) in [
         (0.3, true, true),
         (0.45, true, true),

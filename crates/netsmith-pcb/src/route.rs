@@ -28,8 +28,8 @@
 //!
 //! # Why the router is shaped so
 //!
-//! This is ADR 0031, accepted after the owner's review of 2026-11-04; the parts marked
-//! PROVISIONAL were not reviewed by the owner.
+//! This is ADR 0031, accepted after the owner's review of 2026-11-04. The parts that were
+//! provisional (the rip-up chain, below) are accepted as built by the owner, 2026-11-11.
 //!
 //! A real board has a module whose pads are 0.6 mm squares on a 1.1 mm pitch, and parts on both
 //! faces. The first router left the pads inside the module unrouted: it kept half a cell and a
@@ -60,7 +60,7 @@
 //! There is no fan-out stage that puts a via beside each pad of a dense footprint before
 //! routing: the search already puts a via on any free cell next to a pad, and a pad with no
 //! free cell beside it is the case a via in the pad is for. A fan-out stage was tried on a
-//! branch (PR #85, not merged, PROVISIONAL; it was `RouteOptions::fan_out`, off by default):
+//! branch (PR #85, not merged; it was `RouteOptions::fan_out`, off by default):
 //! each pad of a fine-pitch part (at least 8 surface-mount pads, its
 //! box narrower than a via with the process's space on each side, another pad nearer than
 //! that) got a fixed track to the nearest cell where a via may stand, deepest pads first. On
@@ -142,8 +142,8 @@
 //! outer ring next to the board edge can be sealed in a pocket by two other nets' vias, one on
 //! each side of the pad.
 //!
-//! **Choices for the owner** (not made; the conservative one is what is built, PROVISIONAL,
-//! not reviewed by the owner):
+//! **Choices** (the conservative one is what is built, accepted as built by the owner,
+//! 2026-11-11):
 //!
 //! - Rip up single lines, not nets. A net's other lines stay where they are. The alternative,
 //!   nets as before, keeps the connection of a net's pads together but ripped up 3 to 20 lines
@@ -157,7 +157,7 @@
 //!   their copper a little and keep them routed: more code (a track moved must keep its
 //!   clearance to everything beside it), and not needed on the board that measured it.
 //!
-//! **Left open** (issue #3 stays open): the invented tight board in 27 x 25 mm still leaves 1
+//! **Not done** (issue #3 is open): the invented tight board in 27 x 25 mm still leaves 1
 //! to 3 lines on the module on 4 of 12 seeds. A router that can move a track (push and shove),
 //! or reserve a pad's way out before the others are routed without fixing where it goes, and
 //! the placer weighing the capacity of the strip between a module and the edge, are not done.

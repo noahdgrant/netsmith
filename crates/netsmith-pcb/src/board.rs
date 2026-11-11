@@ -267,7 +267,7 @@ impl Placed {
     }
 
     /// What face `face` of the board the part takes room on, and whether that room is its
-    /// pads (PROVISIONAL, ADR 0031): a surface-mount part takes its courtyard on its own face
+    /// pads (ADR 0031): a surface-mount part takes its courtyard on its own face
     /// only; a part with a hole takes its courtyard on both, except that a footprint which
     /// draws its courtyard on only one face's layer is judged on the other face by its pads,
     /// each grown by `clearance`, so a part on that face may stand over the rest of its

@@ -20,7 +20,7 @@
 //!
 //! # The places in full, and what is verified (ADR 0021, accepted by the owner on 2026-11-04)
 //!
-//! ADR 0097 (proposed) makes this lookup an optional source and not a default: `build` and `fab`
+//! ADR 0097 (accepted) makes this lookup an optional source and not a default: `build` and `fab`
 //! stop only when a part names a KiCad id that netsmith cannot answer and no installed library has
 //! it. [`NO_KICAD_VARIABLE`] switches the whole search off, for the proof that a run needs none
 //! (`scripts/check-no-kicad.sh`).
@@ -47,7 +47,8 @@
 //! tested only against invented install trees ([`Search::under`]); the machine this was written on
 //! had no Linux, snap or flatpak KiCad, and the snap and flatpak paths are the least certain. The
 //! owner accepted the ADR on 2026-11-04 with these lookups still unverified, and they stay so
-//! until someone runs them on a real Linux, macOS, snap or flatpak install (issue #6).
+//! until someone runs them on a real Linux, macOS, snap or flatpak install (issue #6; a person must
+//! do it, checklist in issue #10).
 //!
 //! **Finding the program** ([`Search::kicad_cli`], which `netsmith_fab::KicadCliExe::locate`
 //! calls, so `fab`, the editor and the tests all agree) takes the first of: `$KICAD_CLI` (used

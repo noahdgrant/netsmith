@@ -60,7 +60,7 @@
 //! and state to `placement-failure.txt` and names the file in the message (PROVISIONAL, not
 //! reviewed by the owner).
 //!
-//! **At the limit** (PROVISIONAL, not reviewed by the owner; found on a real, very tight board,
+//! **At the limit** (accepted as built by the owner, 2026-11-11; found on a real, very tight board,
 //! measured here only on invented ones in `tests/tight_limits.rs`). (1) A part whose courtyard
 //! is a tenth of a face or more was left 1 to 15 mm outside by the annealer on a crowded
 //! board, which moves a big block as it moves a resistor and rarely finds a hole for it. When
@@ -79,7 +79,7 @@
 //! (below the 1e-6 mm the placement check ignores), and a shortfall is shown with the digits it
 //! needs. Measured on invented boards (35 x 60 mm, parts of 4 to 6 x 3 to 4 mm, seeds 0 to
 //! 15): 160 small parts, 6 of 16 seeds placed before and 15 of 16 after; one 15 x 37 mm part
-//! on the bottom face among 115 small parts, 8 of 16 before and 16 of 16 after. Open: the
+//! on the bottom face among 115 small parts, 8 of 16 before and 16 of 16 after. Limits: the
 //! retries cost up to five times the time of a refused placement, and the large-part corner is
 //! chosen without looking at the nets.
 //!
@@ -95,14 +95,16 @@
 //! caller chooses the parts (a module's, from `Placed::path`), the region and whether locked
 //! ones are left out.
 //!
-//! **Left open** (the rotation and mirroring of bottom parts in the position file are
-//! unmeasured, a footprint's 3D model is copied unchanged for a part on the back, connectors
-//! are not moved to the back, a mask opening drawn in a footprint keeps vias away but not
-//! tracks). The two-face rule was checked against KiCad 9's check (`tests/hole_faces.rs`, 16
-//! boards): KiCad flags nothing the rule passes, `courtyards_overlap` agrees layer by layer,
-//! and where the rule keeps a courtyard off a part's pads KiCad's `pth_inside_courtyard`
-//! (ignored by default) flags only the holes, so the rule is stricter by about 0.55 mm round the
-//! pads. Hierarchical placement and the `layout` block of the language are not built.
+//! **Limits.** The rotation and mirroring of bottom parts in the position file are unmeasured:
+//! a person must check them against JLCPCB's assembly preview (issue #12; checklist in issue
+//! #10). A footprint's 3D model is copied unchanged for a part on the back, and connectors are
+//! not moved to the back: not planned until a board needs it. A mask opening drawn in a
+//! footprint keeps vias away but not tracks (not built; issue #58). The two-face rule was
+//! checked against KiCad 9's check (`tests/hole_faces.rs`, 16 boards): KiCad flags nothing the
+//! rule passes, `courtyards_overlap` agrees layer by layer, and where the rule keeps a
+//! courtyard off a part's pads KiCad's `pth_inside_courtyard` (ignored by default) flags only
+//! the holes, so the rule is stricter by about 0.55 mm round the pads. Hierarchical placement
+//! and the `layout` block of the language are not built (issues #58 and #59).
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -2305,7 +2307,7 @@ mod tests {
     fn courtyards_of_the_two_faces_may_overlap_but_not_over_the_pads_of_a_hole_part() {
         // Through-hole headers (also kept as connectors) among resistors, with resistors on
         // the back all round. The header draws its courtyard on F.CrtYd only, so the back
-        // is judged by its pads (ADR 0031, provisional).
+        // is judged by its pads (ADR 0031).
         let mut parts = resistors(12, "0603");
         parts.push(part("J1", "Header1x2", None));
         parts.push(part("J2", "Header1x2", None));
