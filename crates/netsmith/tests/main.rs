@@ -7,6 +7,7 @@ mod common;
 
 mod alternatives;
 mod bank;
+mod board3d;
 mod build;
 mod catalog_height;
 mod cli_help;

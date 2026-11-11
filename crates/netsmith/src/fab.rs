@@ -22,7 +22,7 @@ use netsmith_fab::panel::{CellFacts, CellInput, Spec};
 use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
 use netsmith_pcb::{
-    Board, RouteOptions, Trim, apply_layout, kicad_pcb, kicad_pro, place_options, route_with, svg,
+    Board, RouteOptions, Trim, kicad_pcb, kicad_pro, place_options, route_with, svg,
 };
 use netsmith_solve::Catalogs;
 
@@ -595,23 +595,21 @@ fn fab_board(
             built.label(),
             built.design.parts.len()
         ));
-        let mut placement = place_options(&built.design, layout.as_ref().map(|l| &l.0));
-        placement.lines_warn = catalogs.constraints_warn();
-        let mut board = timings::stage("fab.place", &label, || {
-            Board::from_design_placed(
+        let (mut board, placement) = timings::stage("fab.place", &label, || {
+            crate::layout::place(
                 &built.design,
-                &libraries.mapping,
-                &libraries.footprints,
-                &placement,
+                layout.as_ref(),
+                libraries,
+                catalogs.constraints_warn(),
             )
         })
         .map_err(|e| match e {
-            netsmith_pcb::BoardError::DoesNotFit(e) => fail(placement_failure(&e, out)),
-            e => fail(e.to_string()),
+            crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::DoesNotFit(e)) => {
+                fail(placement_failure(&e, out))
+            }
+            crate::layout::PlaceFailure::Board(e) => fail(e.to_string()),
+            crate::layout::PlaceFailure::Layout(e) => fail(e),
         })?;
-        if let Some((layout, file)) = layout {
-            apply_layout(&mut board, layout, file).map_err(|e| fail(e.to_string()))?;
-        }
         let problems: Vec<String> = board
             .check_placement()
             .iter()

@@ -68,8 +68,11 @@
 //! Not built: reading a limit from the DXF (a layer that carries a height, or a 3D entity),
 //! which needs a rule that is not a guess (issue #27).
 
+use std::collections::BTreeMap;
+
 use netsmith_core::{Design, PartHeight};
 use netsmith_design::Sourced;
+use netsmith_pcb::scene3d::HeightProvenance;
 use netsmith_solve::Catalogs;
 
 use crate::resolve::resolve_generics;
@@ -134,6 +137,30 @@ pub(crate) fn from_catalog_rows(
     found
 }
 
+/// Where each part's height came from (the glossary's _Height provenance_), by path: `catalog`
+/// for a part of `catalog`, else `stated` for a part the design states a height for, else
+/// `unknown`. [`Coverage`] counts by the same rule, and the 3D scene reads it
+/// (`netsmith_pcb::scene3d`).
+pub fn provenance(
+    design: &Design,
+    catalog: &[CatalogHeight],
+) -> BTreeMap<String, HeightProvenance> {
+    design
+        .parts
+        .iter()
+        .map(|p| {
+            let from = if catalog.iter().any(|c| c.path == p.path) {
+                HeightProvenance::Catalog
+            } else if design.features.heights.iter().any(|h| h.path == p.path) {
+                HeightProvenance::Stated
+            } else {
+                HeightProvenance::Unknown
+            };
+            (p.path.clone(), from)
+        })
+        .collect()
+}
+
 /// How many parts of a board have a known height, for the notes of a board that has a height
 /// limit: the parts counted are those that have a body (a label has none).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,24 +180,18 @@ impl Coverage {
         {
             return None;
         }
-        let bodies: Vec<&str> = design
-            .parts
-            .iter()
-            .filter(|p| p.kind != "Label")
-            .map(|p| p.path.as_str())
-            .collect();
-        let known = bodies
-            .iter()
-            .filter(|path| design.features.heights.iter().any(|h| h.path == **path))
-            .count();
-        let from_catalog = catalog
-            .iter()
-            .filter(|c| bodies.contains(&c.path.as_str()))
-            .count();
+        let from = provenance(design, catalog);
+        let count = |want| {
+            design
+                .parts
+                .iter()
+                .filter(|p| p.kind != "Label" && from[&p.path] == want)
+                .count()
+        };
         Some(Self {
-            parts: bodies.len(),
-            stated: known - from_catalog.min(known),
-            catalog: from_catalog,
+            parts: design.parts.iter().filter(|p| p.kind != "Label").count(),
+            stated: count(HeightProvenance::Stated),
+            catalog: count(HeightProvenance::Catalog),
         })
     }
 

@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 
-use netsmith_core::OUNCE_OF_COPPER;
 use netsmith_kicad::sexp::Sexp;
 use uuid::Uuid;
 
@@ -16,6 +15,7 @@ use crate::geometry::{Pt, Rect};
 use crate::place::ORIGIN;
 use crate::rules::Rules;
 use crate::shape::{Edge, RoundRect};
+use crate::stackup::LayerKind;
 
 /// The file format KiCad 9.0 writes.
 const VERSION: &str = "20241229";
@@ -57,21 +57,9 @@ fn paper_for(outline: &Rect) -> &'static str {
         .map_or("A0", |(name, _, _)| name)
 }
 
-/// The thickness of a solder mask layer, in mm, which JLCPCB's page gives as at least this.
-const MASK: f64 = 0.01;
-
-/// A length rounded to a nanometre, so sums of millimetre values print as written.
-fn round(mm: f64) -> f64 {
-    (mm * 1e6).round() / 1e6
-}
-
-/// The stackup the board's process builds. Two layers are two copper layers of the
-/// process's weight round one core, which makes up the rest of the thickness the board
-/// chose. Four are the outer copper, a prepreg, an inner layer, a core, an inner layer, a
-/// prepreg and the outer copper, each as the process states it.
+/// The stackup the board's process builds ([`crate::stackup::layers`], the list the 3D scene
+/// reads too), with KiCad's silkscreen and paste layers round it.
 fn setup(board: &Board) -> Sexp {
-    let stackup = &board.process.stackup;
-    let copper_mm = round(stackup.copper_weight * OUNCE_OF_COPPER);
     let layer = |name: &str, kind: &str, rest: Vec<Sexp>| {
         let mut items = vec![
             Sexp::string(name),
@@ -82,19 +70,6 @@ fn setup(board: &Board) -> Sexp {
     };
     let thickness = |t: f64| Sexp::node("thickness", vec![Sexp::num(t)]);
     let text = |key: &str, v: &str| Sexp::node(key, vec![Sexp::string(v)]);
-    let mask = |name: &str, kind: &str| {
-        layer(
-            name,
-            kind,
-            vec![
-                text("color", "Green"),
-                thickness(MASK),
-                text("material", "Dry Film"),
-                Sexp::node("epsilon_r", vec![Sexp::num(3.3)]),
-                Sexp::node("loss_tangent", vec![Sexp::num(0.0)]),
-            ],
-        )
-    };
     let silk = |name: &str, kind: &str| {
         layer(
             name,
@@ -102,50 +77,46 @@ fn setup(board: &Board) -> Sexp {
             vec![text("color", "White"), text("material", "Liquid Photo")],
         )
     };
-    let copper = |name: &str, mm: f64| layer(name, "copper", vec![thickness(mm)]);
-    let dielectric = |number: usize, kind: &str, mm: f64, material: &str, epsilon: f64| {
-        layer(
-            &format!("dielectric {number}"),
-            kind,
-            vec![
-                thickness(mm),
-                text("material", material),
-                Sexp::node("epsilon_r", vec![Sexp::num(epsilon)]),
-                Sexp::node("loss_tangent", vec![Sexp::num(0.02)]),
-            ],
-        )
-    };
     let mut body = vec![
         silk("F.SilkS", "Top Silk Screen"),
         layer("F.Paste", "Top Solder Paste", vec![]),
-        mask("F.Mask", "Top Solder Mask"),
-        copper("F.Cu", copper_mm),
     ];
-    match &stackup.inner {
-        None => {
-            let core_mm = round(
-                stackup
-                    .chosen_thickness()
-                    .expect("a board is only made once its thickness is chosen")
-                    - 2.0 * copper_mm
-                    - 2.0 * MASK,
-            );
-            body.push(dielectric(1, "core", core_mm, "FR4", 4.5));
-        }
-        Some(inner) => {
-            let (first, last) = (&board.planes[0].layer, &board.planes[1].layer);
-            body.extend([
-                dielectric(1, "prepreg", inner.prepreg, "7628", inner.prepreg_epsilon),
-                copper(first, inner.copper),
-                dielectric(2, "core", inner.core, "FR4", inner.core_epsilon),
-                copper(last, inner.copper),
-                dielectric(3, "prepreg", inner.prepreg, "7628", inner.prepreg_epsilon),
-            ]);
-        }
+    for l in crate::stackup::layers(board) {
+        let material = || text("material", l.material.unwrap_or_default());
+        let epsilon = || Sexp::node("epsilon_r", vec![Sexp::num(l.epsilon.unwrap_or_default())]);
+        body.push(match l.kind {
+            LayerKind::Mask => {
+                let kind = if l.name.starts_with("F.") {
+                    "Top Solder Mask"
+                } else {
+                    "Bottom Solder Mask"
+                };
+                layer(
+                    &l.name,
+                    kind,
+                    vec![
+                        text("color", "Green"),
+                        thickness(l.thickness),
+                        material(),
+                        epsilon(),
+                        Sexp::node("loss_tangent", vec![Sexp::num(0.0)]),
+                    ],
+                )
+            }
+            LayerKind::Copper => layer(&l.name, "copper", vec![thickness(l.thickness)]),
+            LayerKind::Core | LayerKind::Prepreg => layer(
+                &l.name,
+                l.kind.word(),
+                vec![
+                    thickness(l.thickness),
+                    material(),
+                    epsilon(),
+                    Sexp::node("loss_tangent", vec![Sexp::num(0.02)]),
+                ],
+            ),
+        });
     }
     body.extend([
-        copper("B.Cu", copper_mm),
-        mask("B.Mask", "Bottom Solder Mask"),
         layer("B.Paste", "Bottom Solder Paste", vec![]),
         silk("B.SilkS", "Bottom Silk Screen"),
         text("copper_finish", "HAL lead-free"),
