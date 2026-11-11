@@ -110,3 +110,21 @@ kind = "Cp2102"
 package = "WQFN-28-EP(5x5)"
 default = true
 footprint = "orbit_ics:QFN-28-1EP_5x5mm_P0.5mm_EP3.25x3.25mm_SiliconLabs_CP2102"
+
+# H1 to H4: the plated mounting holes of ORBIT's board (its footprints `MountingHole_2.5mm_Pad_Via`
+# and `MountingHole_2.2mm_M2_Pad_Via`: a drilled pad of twice the drill, with a ring of eight
+# vias). A physical file may declare a `MountingHole` and no `PlatedHole`, and the standard
+# `MountingHole` rows are non-plated, so these two rows are a `MountingHole` whose project
+# footprint draws the drilled pad PLATED, without the ring of vias (ORBIT's pad is the one that
+# the screw touches). The symbol is netsmith's own.
+[[part]]
+kind = "MountingHole"
+package = "M2.5-plated"
+symbol = "Mechanical:MountingHole"
+footprint = "orbit_small_parts:MountingHole_2.5mm_M2.5_Pad"
+
+[[part]]
+kind = "MountingHole"
+package = "M2-plated"
+symbol = "Mechanical:MountingHole"
+footprint = "orbit_small_parts:MountingHole_2.2mm_M2_Pad"

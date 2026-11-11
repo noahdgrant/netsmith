@@ -3,8 +3,10 @@
 A port of **ORBIT**, an open STM32F030 board with USB, battery charging and a buck-boost
 regulator, to netsmith, as the second showcase after the RP2350A Minimal (epic #308). **The
 schematic is done:** `src/main.nsm` is the board `Orbit`, the circuit of their design with the
-same nets (proved by a test, see "The board"). The physical file (outline, holes, fixed
-positions) and the parity gate are the next stage, so `fab` is not expected to pass yet.
+same nets (proved by a test, see "The board"). **So is the board:** `src/main.physical.nsm` states
+the outline, the four plated holes and the places of the connectors, switches and buttons, and
+`netsmith fab` writes a 50 x 50 mm PCB that routes completely in about 10 s and that the parity
+checker finds equal to theirs in every must-match item (129 of 129, see "The result").
 
 ## Source
 
@@ -40,6 +42,13 @@ not required. Which parts must match is `reference/must_match.toml` (see below).
 - `src/main.lock.toml`: the pick lock of the board (the catalog row each part was picked as),
   written by `netsmith lock --update`; CI checks it with `scripts/check-example-locks.sh`. A
   change to the board's parts needs `netsmith lock --update` and the new lock committed.
+- `src/main.physical.nsm`: the physical file (outline, holes, the must-match parts' places);
+  `src/main.pcb.toml`: the layout file, only the placer's seed (see "The physical file").
+- `libs/orbit_small_parts.pretty/MountingHole_2.5mm_M2.5_Pad.kicad_mod` and
+  `MountingHole_2.2mm_M2_Pad.kicad_mod`: the plated hole footprints of the physical file.
+- `reference/designators.toml`: which part of the board `fab` writes is which of theirs (48 lines);
+  `reference/parity-overlay.svg`: the picture of the last parity run (a generated file, see
+  "Parity").
 - `LICENSE`: their licence text.
 - `reference/ORBIT.kicad_pcb`, `reference/ORBIT.kicad_sch`: their board and schematic, unchanged
   (680 KB and 211 KB).
@@ -433,7 +442,7 @@ with no error and no warning; what the build prints are notes (below).
   CP2102 U22 with C20, C21, C23 and C24) and `Oscillator` (the crystal U10, C11 and C12). The
   board has the connectors, the two slide switches and the two buttons, the MCU with its
   decoupling, the two LEDs D2 and D3, the EEPROM U17 with `I2cPullups` (R9, R10), `PullDown`
-  for R2 and R12, and three named rails: `VBUS` (5 V +/- 5%, USB's), `+BATT` and `+3.3V`
+  for R12 (R2 is a plain resistor, see "Differences"), and three named rails: `VBUS` (5 V +/- 5%, USB's), `+BATT` and `+3.3V`
   (3.3 V +/- 5%).
 - **Header pin map** is ORBIT's and FIXED: J1 (`header_west`) is ground, SWDIO, SWCLK, NRST,
   PC14, PA2, PA3, 3.3 V, and J2 (`header_east`) is ground, PB11, PB10, PB2, PB1, PB0, PA7, PA6,
@@ -475,12 +484,16 @@ Tests in `crates/netsmith/tests/orbit.rs`, module `board` (no KiCad; run
 ### Differences from ORBIT's board (all of them)
 
 - `H1` to `H4`, `O`: the physical file's (mounting holes, logo); they have no net.
-- **Three resistors have their two pads numbered the other way round:** R2 (`PullDown`
-  runs its resistor from the line, pad 1, to ground; ORBIT's pad 1 is on ground), R9 and R10
+- **Two resistors have their two pads numbered the other way round:** R9 and R10
   (`I2cPullups` runs each from the supply, pad 1, to the line; ORBIT's pad 1 is on the line). The
   pads of a resistor are interchangeable; the test reads them exchanged, lists them, and
-  another test (`only_the_three_resistors_have_pads_numbered_the_other_way`) says they are the
-  only ones.
+  another test (`only_the_two_resistors_have_pads_numbered_the_other_way`) says they are the
+  only ones. **R2 had it too, and no longer does:** it was a `PullDown` (whose resistor has its
+  pad 1 on the line and its pad 2 on ground), ORBIT's has pad 1 on ground and pad 2 on BOOT0's
+  pad 1, and BOOT0 must match: the parity checker compares the pads on BOOT0's net and saw R2.1
+  against R2.2. R2 is now a plain `Resistor` joined as ORBIT's (`.a` to ground, `.b` to the
+  switch); the part is the same pick, and `src/main.lock.toml` has its path under a new key.
+  R9 and R10 are not must-match parts and keep the std module's numbering.
 - **C3 to C6** (four 100 nF on `+3.3V`) are interchangeable: which of them is called `C4` is
   arbitrary.
 - **Their U1's value is `MCP73031`**; the part is the MCP73831 (see "Parts"). **U17 has no LCSC
@@ -529,5 +542,179 @@ connector cannot be a source with the voltage of a cell the schematic does not n
 
 ### What was not run
 
-`fab` (no physical file yet: the parts have no outline to be placed on), KiCad's DRC, and the
-parity checker (the next stage). The ERC test ran only where `kicad-cli` was found.
+KiCad's DRC (netsmith's own design rules check ran in `fab`) and a comparison of any part with a
+physical sample. The ERC test ran only where `kicad-cli` was found.
+
+## Parity
+
+`cargo run -p netsmith --example parity -- <board.kicad_pcb> --table reference/placements.toml
+--map reference/designators.toml [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith
+fab` writes (in `fab/Orbit/`) with their board, as `reference/placements.toml` states it. What it
+compares, the tolerances (outline and holes 0.05 mm, positions of parts 0.1 mm, rotation exact,
+pad numbers and nets equal), the origin (the upper-left corner of the outline) and the meaning of
+the verdicts are those of the RP2350A Minimal's checker, described in
+`examples/rp2350_minimal/README.md` ("Parity"); the checker is `netsmith::parity`. Without
+`--table` and `--map` the program reads the RP2350A Minimal's files. The test
+`orbit_pcb_matches_the_original` (`crates/netsmith/tests/orbit_parity.rs`) runs `netsmith fab
+--locked --route-timeout 20` with no KiCad, accepts a complete or an INCOMPLETE board (only a
+failure that says `INCOMPLETE:`), fails when a must-match item is not `ok`, and fails when
+`reference/parity-overlay.svg` is not the overlay of the board it got. It shares its code with
+the RP2350A Minimal's test (`crates/netsmith/tests/common/mod.rs`).
+
+**The map.** ORBIT's references and netsmith's differ (netsmith numbers a kind's parts in the
+order of declaration: ORBIT's USB1 is J1 here, its J1 is J3, its U10 is Y1), so
+`reference/designators.toml` has one line for each of the 48 parts of the circuit, paired by value,
+pad count and nets, and a test (`the_parity_checkers_designator_map_is_the_designs_own`) holds it
+against the design's own designators. H1 to H4 have no line: the checker judges a plated mounting
+hole as a hole, by its place and drill (next section), and the logo has no pad.
+
+**Plated holes.** Their H1 to H4 are `MountingHole_*_Pad_Via` footprints: a plated drilled pad
+with a ring of eight vias, all pads numbered 1. The table has each as a `[[hole]]` with
+`plated = true` and as a part. The checker used to judge such a part by every pad, so the ring of
+vias, which the owner does not require, would have failed it; it now judges a plated hole as a
+hole (the same place and drill, tolerance 0.05 mm) and not as a part, as it does a non-plated one
+(`crates/netsmith/src/parity.rs`, a test in `orbit_parity.rs`: a copy of their board with no vias
+passes, a hole moved by 0.1 mm or with another drill fails).
+
+**The overlay** `reference/parity-overlay.svg` is a generated file: both boards at one scale,
+theirs in blue and netsmith's in orange, a failing must-match item in red with its offset. Make
+it again, from this folder, after `netsmith fab --locked`, from the repository's root:
+
+```sh
+cargo run -p netsmith --example parity -- examples/orbit/fab/Orbit/Orbit.kicad_pcb \
+    --table examples/orbit/reference/placements.toml \
+    --map examples/orbit/reference/designators.toml \
+    --svg examples/orbit/reference/parity-overlay.svg
+```
+
+`fab` is deterministic (the same source, physical file and seed give the same board; three runs
+gave byte-identical overlays), and the test says so when the file is stale. It shows: the
+outline and the four plated holes coincide (the ring of vias is theirs alone: blue circles round
+each hole), the two slide switches, the battery connector, the mini USB connector with its two
+locating holes, the two button footprints and the two pin headers sit exactly under their blue
+originals (their orange is drawn over the blue), and everywhere else the orange parts are where
+the placer put them: the five ICs, the crystal, the inductor, the LEDs and the 30 resistors and
+capacitors are all elsewhere, which is allowed. Open it in a browser.
+
+## Run it
+
+From this folder:
+
+```sh
+netsmith build          # the schematic, in out/ (no KiCad needed)
+netsmith fab --locked   # the package for the board house, in fab/Orbit/; about 10 s
+```
+
+`--locked` stops the run if the parts it picks differ from `src/main.lock.toml` and never writes
+the pick lock; it also means `--pins locked`, which is all there is to say about pins here,
+because the board has no pin requests (the header pins are joined to named MCU pins, so the pin
+optimizer has nothing to move). With KiCad hidden (`NETSMITH_NO_KICAD=1`) the run is the same.
+`scripts/check-no-kicad.sh` fabs the project too (about 10 s of its 22). Then the parity check
+above.
+
+## The physical file
+
+`src/main.physical.nsm` is `physical for Orbit`: every figure is read from their board file
+(`reference/placements.toml`), in millimetres from the upper-left corner of the outline (x 124,
+y 70 in their file), y down, and the comment above each line says which of theirs it is.
+
+- **The outline:** a 50 x 50 mm `Outline` with a 5 mm corner radius (their four lines and four
+  5 mm arcs).
+- **The mounting holes:** four plated holes at their places: `.hole1` to `.hole4` are their H1 to
+  H4 in order. **The physical file's `case` section takes a `MountingHole` and no `PlatedHole`**
+  (a `PlatedHole` there is an error that says a part belongs in the circuit source), and the
+  standard `MountingHole` rows are non-plated. So these are `MountingHole`s whose project rows
+  (`kicad.toml`, packages `M2.5-plated` and `M2-plated`) name a footprint of
+  `libs/orbit_small_parts.pretty` that draws the drilled pad PLATED: `MountingHole_2.5mm_M2.5_Pad`
+  (H1, H2 and H4: pad 5 mm, drill 2.5 mm) and `MountingHole_2.2mm_M2_Pad` (H3: pad 4.4 mm, drill
+  2.2 mm). **The ring of eight vias of their footprints is not drawn** (not required); the hole,
+  its place, its drill and its plated pad are theirs. The two pads are one pad numbered `1` with
+  no net, as theirs; the part has no pin in the circuit, so the schematic does not show it. The
+  courtyard of each is the circle of its pad, 2.5 and 2.2 mm in radius, which is as large as a
+  courtyard may be in a rounded corner of this outline (a courtyard is a box to the placer's
+  check). The footprints' names start with `MountingHole`, which is how the checker's reader
+  takes their drilled pad as a hole.
+- **USB1, BAT1, J1, J2, SW1, SW2, BOOT0 and PWR1:** `.place.x`, `.y`, `.rotation` and `.side` of
+  `.usb`, `.battery`, `.header_west`, `.header_east`, `.reset_button`, `.user_button`,
+  `.boot_switch` and `.power_switch`. A requirement is measured from the **body** of a part (the
+  `F.Fab` outline, else the courtyard), and the checker compares the footprint's **origin**, so
+  where the body is not centred on the origin the line states the body's centre: the USB
+  connector's courtyard is 0.05 mm off, the battery connector's 0.05 mm, the headers' bodies
+  (the origin is at pin 1) 8.89 mm, and the slide switches' 0.25 mm. A requirement with a single
+  value for every field fixes the part, so these are put exactly where theirs are.
+- **Everything else** has no line: the ICs, the crystal, the inductor, the LEDs, the resistors and
+  the capacitors are the placer's.
+
+The ground pour on the back (`.bottom.net &= "GND"` in the process in `src/main.nsm`, as in their
+board, whose `GND` zone is on both layers) came with the schematic. The layout file
+`src/main.pcb.toml` has only `seed = 7`, a placer seed (it keeps a solution and never a
+requirement; it locks no part). The seed does not move the physical file's parts.
+
+## The result
+
+The last run (`fab --locked`, seed 7; a debug build in which `netsmith-pcb` is optimised; one run
+at a time, on an otherwise idle machine; `NETSMITH_TIMINGS=1`):
+
+| Step | Result |
+|---|---|
+| Placement | 52 parts on 50 x 50 mm in 3.5 s |
+| Routing | all 125 connections routed, on try 1 of 4, in 5.2 s |
+| Design rules check | passed (0 violations; 4 silkscreen warnings: the texts of H1, H2 and J1 touch or nearly touch the board edge, and the polygon of one part overlaps H4's text) |
+| Requirements | 40 of 40 satisfied |
+| `fab` in all | 8.9 s (9.9 s in the two later runs) |
+
+What stops a run that does not finish: the router's own 300 s limit (`--route-timeout`), or its
+four tries; it then writes the board marked INCOMPLETE and the run fails (`INCOMPLETE:`, with the
+unrouted connections in `routing-failure.txt`).
+
+**How seed 7 was found.** The first run (seed 0, no layout file; the ground pour was there)
+placed in 4 s and the router stopped after four tries, in 24 s, with **1 of 125 connections
+unrouted**: the USB data pair, `J1.3` to `U4.4` (D+). The other levers: the seeds 1 to 6 and 8
+to 11 each leave one connection of the same pair (`J1.2` to `U4.5` or `J1.3` to `U4.4`) after 17
+to 38 s; **seed 7 routes everything, on the first try**. No design rule was weakened (the process
+is JLCPCB's TwoLayer, unchanged), no keepout was needed, and the physical file's parts are the
+same under every seed. The must-match items passed on every one of those boards.
+
+The parity checker on that board, `must-match: 129 ok, 0 failed` (the lines are in the pull
+request that added this):
+
+| Must match | Result |
+|---|---|
+| Outline, 50 x 50 mm, radius 5 mm, 4 lines and 4 arcs | ok (0.000 off) |
+| H1 to H4, place and drill (2.5, 2.5, 2.2 and 2.5 mm) | ok (0.000 off) |
+| USB1, mini USB: place, rotation 180, layer, 9 pads and 2 locating holes | ok |
+| BAT1, JST PH: place, rotation 0, layer, 4 pads | ok |
+| J1 and J2, 1 x 8 headers: place, rotation 0, layer, 8 pads each | ok |
+| SW1 and SW2, buttons: place, rotation 0 and 180, layer, 4 pads each | ok |
+| BOOT0 and PWR1, slide switches: place, rotation 180 and 0, layer, 5 pads each | ok |
+| The pin-to-signal map of J1 and J2 | ok: each header pad is on the pad of the MCU that theirs is (the nets are named differently, so the connectivity vouches: 23 warnings say so, for these and the other pads on made-up names) |
+
+**What is not matched** (reported, never a failure; 72 items outside their tolerance): the
+places and rotations of the ICs (U1 charger 23.5 mm left and 9.65 mm up from theirs, U15 16.25
+left and 12.55 up, U16 the MCU 0.6 right and 10.85 down, U17 3.95 left, U22 5.65 right and 8.86
+down), of the crystal (U10, 14.4 right and 11.15 up), the inductor (L1, 18.5 left and 13.6 up),
+the LEDs and the 30 resistors and capacitors; the pads of the parts whose footprint is not theirs
+(L1 0.06 mm, U15 and U22: the datasheets' land patterns against the author's, README "Footprints";
+for U22 nine pads of the two have no partner, which was not looked into: the part is not required); the ring of vias of
+the four holes; and the routing: the copper is netsmith's own, and nothing is claimed about it.
+
+## For the owner
+
+- **A plated hole in the physical file.** The `case` section takes `MountingHole` (non-plated, by
+  its standard rows) and not `PlatedHole`, whose declaration is refused. Used here: a project row
+  that maps the package `M2.5-plated` of `MountingHole` to a footprint with a plated pad; it
+  works, and nothing in the language changed. What a language change could be: (1) let `case`
+  take a `PlatedHole` too (`.hole1: PlatedHole { .package &= "M2.5" }`; its pin `p1` then has to
+  be allowed with no net in a physical file); cost: a part with a pin appears in a file that says
+  it states no circuit; (2) a `MountingHole` flag, `.plated &= 1` or a kind `PlatedMountingHole`
+  with no pin: the language has no boolean, so a kind (as ADR 0020 chose for the std), cost: a
+  second std kind that differs by a footprint; (3) leave it as it is. Recommendation: (3) until a
+  second board needs it; the project footprint says what it is.
+- **The ring of vias** of their holes (eight 0.8 mm vias on a circle of 1.875 mm radius) is not drawn:
+  footprints of the project could carry it (and the placer would then keep copper off it), and
+  the owner's list does not ask for it.
+- **The checker said `fail` on BOOT0's net because of R2** (above): the checker compares pads, not
+  nets of interchangeable pads. Option: leave as is (the design now follows ORBIT's numbering of
+  R2), or teach the checker that the two pads of a two-pin passive are interchangeable (the same
+  pads on the net up to a swap), which is a rule about what "equal" means and so the owner's.
+  R9 and R10 keep the std module's numbering and are not must-match.
