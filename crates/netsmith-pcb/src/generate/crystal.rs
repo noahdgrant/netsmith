@@ -9,6 +9,7 @@
 
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
 use super::outline::SILK_TO_COPPER;
+use crate::body3d::Package;
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -311,5 +312,8 @@ fn crystal(c: &Crystal) -> Footprint {
         );
     }
     let top = -min_y.abs().max(max_y);
-    drawing.finish(top - 0.7, -top + 0.7)
+    super::shaped(
+        drawing.finish(top - 0.7, -top + 0.7),
+        Package::Crystal { body: c.body },
+    )
 }

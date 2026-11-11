@@ -28,6 +28,7 @@
 
 mod anneal;
 pub mod board;
+pub mod body3d;
 pub mod constraints;
 pub mod copper;
 mod explain;

@@ -122,5 +122,8 @@ fn diode(p: &Package) -> Footprint {
     drawing.line(Draw::Silk, Pt::new(p.centre, -y), Pt::new(-x, -y));
 
     let reference_y = -(court.1 + 0.7);
-    drawing.finish(reference_y, -reference_y)
+    super::shaped(
+        drawing.finish(reference_y, -reference_y),
+        crate::body3d::Package::Molded { body: p.body },
+    )
 }
