@@ -34,6 +34,7 @@ mod enclosure_sensor;
 mod environment;
 mod erc;
 mod fab;
+mod fab_environment;
 mod fab_no_part_number;
 mod generic_parts;
 mod guide;
