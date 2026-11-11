@@ -7,6 +7,7 @@ mod bias;
 mod bus_peripherals;
 mod cancel;
 mod catalog_optional;
+mod class_marker;
 mod classes;
 mod common;
 mod dc;

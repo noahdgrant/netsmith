@@ -2380,6 +2380,37 @@ mod board {
         assert_eq!(requests(&moved), 1);
     }
 
+    /// GPIO26 to GPIO29 are GPIO or an ADC input, and the board chooses `GPIO` on all four: the
+    /// part marks `GPIO` as a class (`fn GPIO class`), so one function may be chosen on four
+    /// pins (a function that no row marks is refused on the second pin: `netsmith-check`'s
+    /// `class_marker` tests).
+    #[test]
+    fn the_four_adc_pins_all_choose_gpio_because_the_part_marks_it_a_class() {
+        let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let source = &target.files[0];
+        let text = fs::read_to_string(&source.path).unwrap();
+        for n in 26..=29 {
+            assert!(
+                text.contains(&format!(".mcu.gpio{n}.function &= \"GPIO\"")),
+                "gpio{n}"
+            );
+        }
+        let part = read("src/rp2350a.nsm");
+        let rows: Vec<&str> = part
+            .lines()
+            .filter(|l| l.trim_start().starts_with(".gpio"))
+            .collect();
+        assert_eq!(rows.len(), 30);
+        assert!(
+            rows.iter().all(|l| l.contains("fn GPIO class")),
+            "every GPIO row"
+        );
+        let (loader, catalogs) = (target.loader().unwrap(), target.catalogs().unwrap());
+        let libraries = libraries_without_kicad();
+        netsmith::outcome_with(&source.name, &text, &loader, &catalogs, Some(&libraries))
+            .unwrap_or_else(|p| panic!("{}", p[0].rendered));
+    }
+
     #[test]
     fn the_electrical_rules_check_of_kicad_passes_on_the_schematic() {
         let built = built();

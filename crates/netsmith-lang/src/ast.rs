@@ -276,6 +276,9 @@ pub struct Pad {
 pub struct PinFunction {
     pub name: Ident,
     pub kind: Option<(PinKind, Span)>,
+    /// `class` after the function in a pin row (`fn GPIO class`): the function is a class, which
+    /// the board may choose on any number of pins of the part. Always None in a peripheral.
+    pub class: Option<Span>,
     /// `as sclk`: in a peripheral that has a bus (`as Spi SpiRole::Master`), the line of the bus
     /// that the function is (ADR 0064). Always None in a pin row.
     pub line: Option<Ident>,

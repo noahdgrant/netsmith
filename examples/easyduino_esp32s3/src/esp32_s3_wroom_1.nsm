@@ -22,6 +22,14 @@
 //! (Table 4-1, printed page 13) are GPIO0 (pad `IO0`, weak pull-up), GPIO3 (`IO3`, floating),
 //! GPIO45 (`IO45`, weak pull-down) and GPIO46 (`IO46`, weak pull-down).
 //!
+//! The supply is a rail, `.vdd` (the `3V3` pad and the ground pads), with the datasheet's
+//! recommended window: Table 6-2 (printed page 27) VDD33 3.0 V minimum, 3.3 V typical, 3.6 V
+//! maximum, so the DC analysis checks a regulator's output against it. The table's other row,
+//! "current delivered by external power supply" 0.5 A minimum, is a requirement on the supply and
+//! not a draw: the module's own current is not stated (the datasheet's power consumption figures
+//! are typical values for the radio's states, none was read), and a board states what its
+//! regulator supplies.
+//!
 //! What is deliberately left out: the alternate functions of the pads (Table 3-1's last
 //! column: touch, ADC, SPI, UART, JTAG, clock outputs), the levels, ratings and timing (the
 //! part is a boundary of the design: the checks that need a number are listed as not
@@ -30,15 +38,23 @@
 //! `IO47` and `IO48` work at 1.8 V). The catalog row is the N4 variant (4 MB quad flash, no
 //! PSRAM), where all of them are available.
 
+import std::sources::Rail
+
 /// The ESP32-S3-WROOM-1 module: a Wi-Fi and Bluetooth LE module with a PCB antenna, 18 x 25.5
 /// mm, 40 edge pads and a ground pad, on 1.27 mm pitch. The pad numbers are the datasheet's.
+/// `.vdd` is its supply, the rail of the `3V3` pad and the ground pads.
 part Esp32S3Wroom1 {
     .designator &= "U"
 
+    .vdd: Rail
+    // Table 6-2, Recommended Operating Conditions (printed page 27): VDD33 3.0 V to 3.6 V.
+    .vdd.voltage >= 3.0V
+    .vdd.voltage <= 3.6V
+
     pins "SMD, 25.5x18mm" {
         //  pin     kind           name     pads
-        .gnd    power         "GND"    "1" "40" "41"
-        .v3v3   power         "3V3"    "2"
+        .vdd.neg power        "GND"    "1" "40" "41"
+        .vdd.pos power        "3V3"    "2"
         .en     input         "EN"     "3"
         .io4    bidirectional "IO4"    "4"
         .io5    bidirectional "IO5"    "5"

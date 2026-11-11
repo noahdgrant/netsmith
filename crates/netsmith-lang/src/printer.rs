@@ -80,6 +80,9 @@ impl PinFunction {
             Some((kind, _)) => format!("{}:{}", self.name.to_source(), kind.word()),
             None => self.name.to_source(),
         };
+        if self.class.is_some() {
+            out.push_str(" class");
+        }
         if let Some(line) = &self.line {
             let _ = write!(out, " as {}", line.to_source());
         }

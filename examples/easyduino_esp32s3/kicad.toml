@@ -77,3 +77,13 @@ kind = "Schottky"
 package = "SMD1006"
 symbol = "Device:D_Schottky"
 footprint = "easyduino_ics:D_ROHM_SMD1006"
+
+# C6, C7 and C10: the 22 uF tantalum capacitor of the reference board (Kyocera AVX TAJA226K010RNJ,
+# LCSC C11366), case A, EIA 3216-18. The standard capacitor rows stop at the ceramic sizes
+# 0402 to 1210 and no generator answers a molded tantalum chip, so the footprint is a file of
+# the project's library: the reference board's pads (README, Parts).
+[[part]]
+kind = "Capacitor"
+package = "CASE-A-3216-18"
+symbol = "Device:C"
+footprint = "easyduino_ics:CP_EIA-3216-18_Tantalum_A"

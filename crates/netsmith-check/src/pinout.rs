@@ -232,6 +232,22 @@ impl Model {
         found
     }
 
+    /// Whether the function is a class of the part: the board may choose it on any number of
+    /// pins. It is one when a peripheral is `on` it, or when a row marks it (`fn GPIO class`).
+    /// The two spellings mean the same, and this is the one place that says so.
+    pub fn is_class(&self, part: InstId, function: &str) -> bool {
+        let inst = self.instance(part);
+        inst.rules
+            .peripherals
+            .iter()
+            .any(|p| p.class.as_deref() == Some(function))
+            || inst.tables.iter().any(|t| {
+                t.rows
+                    .iter()
+                    .any(|r| r.functions.iter().any(|f| f.class && f.name == function))
+            })
+    }
+
     /// Whether a pin with this row can be the function: the row lists it, or a peripheral on a
     /// function the row lists does.
     pub fn offers(&self, part: InstId, row: &PinRow, function: &str) -> bool {
