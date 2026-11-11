@@ -25,6 +25,11 @@
 # twenty seconds, and restores the cache); scripts/ci-test-slices proves that the slices of each
 # run every test once.
 #
+# KiCad 9 and Chromium's system libraries come from a cache of the .deb files, not from Ubuntu's
+# mirrors (.github/actions/apt-cache, scripts/ci-apt-cache): when the mirrors are down (they were
+# for hours on 2026-11-11, and every apt-get of every job failed) a job with a warm cache still
+# passes. .github/workflows/apt-cache.yml fills the caches every day.
+#
 # The `recipes` job drives the editor in headless Chromium (Playwright, Node 22): it builds the
 # `netsmith` binary and runs `scripts/editor-verify-all`, every recipe of
 # scripts/editor-verify-js/recipes against the fixture it declares. It installs KiCad 9 the way
@@ -225,10 +230,15 @@ jobs:
       # kicad-cli, and the stock symbol and footprint libraries (separate packages, only
       # recommended by `kicad`). The 3D models (kicad-packages3d, several GB) are not installed,
       # nothing here reads them.
-      - name: Install KiCad 9
+      # From the cache of .deb files (.github/actions/apt-cache), from the archive when it has
+      # none that installs: the job does not need Ubuntu's mirrors.
+      - name: Install KiCad 9 from the package cache
+        uses: ./.github/actions/apt-cache
+        with:
+          install: kicad
+
+      - name: Check KiCad 9
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
           kicad-cli --version
           dpkg -l kicad kicad-symbols kicad-footprints | tail -3
           case "$(kicad-cli --version)" in
@@ -397,8 +407,8 @@ jobs:
       - name: Every recipe runs in exactly one slice
         run: scripts/ci-recipe-slices ${{ strategy.job-total }}
 
-      # The browser is cached; its system libraries and fonts are not, so they are installed
-      # either way.
+      # The browser is cached, and so are the .deb files of its system libraries and fonts
+      # (.github/actions/apt-cache, the same cache as the KiCad install below).
       - name: Cache Playwright's Chromium
         id: browsers
         uses: actions/cache@v4
@@ -406,20 +416,26 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('scripts/editor-verify-js/package-lock.json') }}
 
-      - name: Install Chromium
-        working-directory: scripts/editor-verify-js
-        run: |
-          if [ "${{ steps.browsers.outputs.cache-hit }}" = true ]; then
-            npx playwright install-deps chromium
-          else
-            npx playwright install --with-deps chromium
-          fi
+      - name: Install Chromium's system libraries from the package cache
+        uses: ./.github/actions/apt-cache
+        with:
+          install: chromium
 
-      - name: Install KiCad 9
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends kicad kicad-symbols kicad-footprints
-          kicad-cli --version
+      - name: Install Chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        working-directory: scripts/editor-verify-js
+        run: npx playwright install chromium
+
+      # After Chromium's libraries, so its list of packages is shorter than the `kicad` job's:
+      # a cache of its own.
+      - name: Install KiCad 9 from the package cache
+        uses: ./.github/actions/apt-cache
+        with:
+          install: kicad
+          name: recipes-kicad
+
+      - name: Check KiCad 9
+        run: kicad-cli --version
 
       # The same KiCad 9.0.0 libraries as the `kicad` job (same cache key), so the footprints are
       # the ones the editor's checks were written against.

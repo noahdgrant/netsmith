@@ -100,6 +100,8 @@ row "1 0 0 0 0" rustfmt.toml clippy.toml
 # --- workflows and scripts: everything ------------------------------------------------------
 row "1 1 1 1 1" .github/workflows/ci.yml
 row "1 1 1 1 1" .github/workflows/pr-title.yml
+row "1 1 1 1 1" .github/workflows/apt-cache.yml
+row "1 1 1 1 1" .github/actions/apt-cache/action.yml
 row "1 1 1 1 1" scripts/ci-changes
 row "1 1 1 1 1" scripts/editor-verify-js/recipes/pcb.mjs
 row "1 1 1 1 1" scripts/ci-changes-test
