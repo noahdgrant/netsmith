@@ -657,3 +657,214 @@ fn a_part_that_is_not_fitted_is_not_judged() {
     );
     assert!(!findings[0].contains("r2"), "{}", findings[0]);
 }
+
+// ---- qualification (ADR 0099, the second requirement of an environment) ----------------
+
+/// A board whose environment is `-40degC..85degC` and, if `required` is given, requires it of
+/// every fitted part: `Qualification::Aec` or `Qualification::None`. The resistor is
+/// `31.6kohm`, the value of the project rows below.
+fn qualified_board(required: Option<&str>, own: &str) -> String {
+    let requirement = required.map_or(String::new(), |q| {
+        format!("    .environment.qualification &= Qualification::{q}\n")
+    });
+    board(&format!(
+        "    .environment: Environment {{ .temperature &= {COLD}..{WARM} }}\n{requirement}{own}"
+    ))
+    .replace("71.5kohm", "31.6kohm")
+}
+
+/// A project's resistor row of `31.6kohm`, whose range covers the environment, with the given
+/// `qualification` cell (the column is there, and its cell may be empty).
+fn qualification_row(cell: &str) -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file(
+        "resistor",
+        "catalogs/resistor.csv",
+        &format!(
+            "mpn,resistance,max_power,package,temp_min,temp_max,library,source,qualification\nACME-Q,31.6kohm +/- 1%,62.5mW,0402,233.15K,358.15K,Basic,https://example.invalid/acme.pdf page 1,{cell}\n"
+        ),
+    )
+    .unwrap();
+    c
+}
+
+/// The environment findings that are about a qualification.
+fn qualification_findings(b: &netsmith::Built) -> Vec<String> {
+    environment_findings(b)
+        .into_iter()
+        .filter(|w| w.contains("`qualification`"))
+        .collect()
+}
+
+#[test]
+fn a_part_whose_row_says_aec_meets_a_required_qualification_and_is_not_named() {
+    let b = build(&qualified_board(Some("Aec"), ""), &qualification_row("Aec")).unwrap();
+    let r1 = b.sourcing.iter().find(|s| s.kind == "Resistor").unwrap();
+    assert_eq!(r1.mpn.as_deref(), Some("ACME-Q"));
+    // The crystal's rows say nothing and are named; the resistor met it and is not.
+    let findings = qualification_findings(&b);
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert!(findings[0].contains("`xtal`"), "{}", findings[0]);
+    assert!(!findings[0].contains("`r1`"), "{}", findings[0]);
+}
+
+#[test]
+fn a_part_whose_row_says_it_is_not_qualified_is_not_offered_and_the_message_says_so() {
+    let e = refused(
+        &qualified_board(Some("Aec"), ""),
+        &qualification_row("None"),
+    );
+    assert!(
+        e.contains("the `resistor` catalog has nothing for `r1`"),
+        "{e}"
+    );
+    assert!(
+        e.contains("1 row was left out because it says it is not qualified (`None`) and the board's `.environment.qualification` requires `Aec`: a row's `qualification` is its datasheet's"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_qualification_the_design_states_as_none_is_refused_with_the_real_message() {
+    // The row says nothing, so the solver keeps it; the design states `None` for the part, and
+    // the design stage refuses it as it does a stated range that does not cover.
+    let e = refused(
+        &qualified_board(
+            Some("Aec"),
+            "    .r1.qualification &= Qualification::None\n",
+        ),
+        &qualification_row(""),
+    );
+    assert!(
+        e.contains("`r1` is not qualified (the design states `.r1.qualification`), but the board's environment requires `Qualification::Aec` (`environment.qualification`): choose a part whose datasheet says it is qualified, or drop the requirement"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_part_whose_row_says_nothing_is_offered_and_named_with_what_to_write() {
+    let b = build(&qualified_board(Some("Aec"), ""), &qualification_row("")).unwrap();
+    let findings = qualification_findings(&b);
+    assert_eq!(findings.len(), 2, "{findings:#?}");
+    let r1 = findings.iter().find(|f| f.contains("`r1`")).unwrap();
+    assert!(
+        r1.starts_with("Widget: environment guideline: `r1` (Resistor) was picked as "),
+        "{r1}"
+    );
+    assert!(
+        r1.contains("and its catalog row states no `qualification`, so it is not judged against the board's environment, which requires `Qualification::Aec` (`environment.qualification`)"),
+        "{r1}"
+    );
+    assert!(
+        r1.contains("add `qualification` of the datasheet to the row (`Aec` where it says the part is qualified, `None` where it says it is not) or state it on the part, as `.r1.qualification &= Qualification::Aec` for a datasheet that says the part is AEC qualified"),
+        "{r1}"
+    );
+    // The part is still picked: an empty cell is unknown, not a refusal.
+    let r = b.sourcing.iter().find(|s| s.kind == "Resistor").unwrap();
+    assert_eq!(r.mpn.as_deref(), Some("ACME-Q"));
+    // A catalog with no `qualification` column at all says nothing in the same way.
+    let b = build(&qualified_board(Some("Aec"), ""), &project_rows()).unwrap();
+    assert!(
+        qualification_findings(&b)
+            .iter()
+            .any(|f| f.contains("`r1`") && f.contains("states no `qualification`"))
+    );
+}
+
+#[test]
+fn a_part_states_its_own_qualification_whatever_its_row_says() {
+    let b = build(
+        &qualified_board(Some("Aec"), "    .r1.qualification &= Qualification::Aec\n"),
+        &qualification_row("None"),
+    )
+    .unwrap();
+    assert!(
+        qualification_findings(&b)
+            .iter()
+            .all(|f| !f.contains("`r1`"))
+    );
+}
+
+#[test]
+fn a_board_that_requires_no_qualification_is_judged_as_before() {
+    // No requirement, and a requirement of `None`, ask for nothing: a row that says `None`
+    // is offered and nothing is named, as with no `qualification` column at all.
+    for required in [None, Some("None")] {
+        for cell in ["None", "Aec", ""] {
+            let b = build(&qualified_board(required, ""), &qualification_row(cell)).unwrap();
+            let r = b.sourcing.iter().find(|s| s.kind == "Resistor").unwrap();
+            assert_eq!(r.mpn.as_deref(), Some("ACME-Q"));
+            assert!(
+                qualification_findings(&b).is_empty(),
+                "{required:?} {cell:?}: {:#?}",
+                qualification_findings(&b)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_qualification_is_judged_when_the_environment_states_no_temperature() {
+    let src = board("    .environment: Environment { .qualification &= Qualification::Aec }\n");
+    let b = build(&src, &jlcpcb()).unwrap();
+    let findings = environment_findings(&b);
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.contains("states no temperature, so no part is judged")),
+        "{findings:#?}"
+    );
+    assert!(
+        qualification_findings(&b)
+            .iter()
+            .any(|f| f.contains("`r1` (Resistor)")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn a_qualification_cell_that_is_not_none_or_aec_is_refused_with_its_line() {
+    let rows = |cell: &str| {
+        let mut c = Catalogs::jlcpcb();
+        c.add_file(
+            "resistor",
+            "catalogs/resistor.csv",
+            &format!(
+                "mpn,resistance,max_power,package,library,source,qualification\nACME-Q,31.6kohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme.pdf,{cell}\n"
+            ),
+        )
+        .map(|_| c)
+    };
+    for cell in ["AEC-Q200", "aec", "Aec-Q200", "yes"] {
+        let e = rows(cell).unwrap_err();
+        assert!(
+            e.contains("catalogs/resistor.csv:2")
+                && e.contains(&format!("qualification `{cell}` is not None or Aec")),
+            "{e}"
+        );
+    }
+    assert!(rows("Aec").is_ok() && rows("None").is_ok() && rows("").is_ok());
+}
+
+#[test]
+fn a_requirement_can_be_added_to_a_named_environment_that_offers_none() {
+    // `Industrial` offers a range and no qualification, and a board adds the requirement.
+    let named = |extra: &str| {
+        board(extra).replace(
+            "import std::env::Environment",
+            "import std::env::Industrial",
+        )
+    };
+    let src = named("    .environment: Industrial { .qualification &= Qualification::Aec }\n");
+    let b = build(&src, &jlcpcb()).unwrap();
+    assert!(
+        qualification_findings(&b)
+            .iter()
+            .any(|f| f.contains("`r1` (Resistor)")),
+        "{:#?}",
+        environment_findings(&b)
+    );
+    // A board that states no requirement is not judged by it, under any named environment.
+    let b = build(&named("    .environment: Industrial { }\n"), &jlcpcb()).unwrap();
+    assert!(qualification_findings(&b).is_empty());
+}

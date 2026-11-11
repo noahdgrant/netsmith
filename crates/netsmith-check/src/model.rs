@@ -1600,6 +1600,25 @@ impl Model {
         }
     }
 
+    /// The `qualification` field of the environment of the board a part is on, the
+    /// qualification the board requires of every fitted part (ADR 0099). A board with no
+    /// `.environment`, or one whose environment has no `qualification` of that kind, has none.
+    pub fn environment_qualification_of(&self, part: InstId) -> Option<FieldId> {
+        let env = self.environment_of(part)?;
+        match self.member(env, "qualification")? {
+            Member::Field(f) if self.is_qualification(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    /// Whether a field is of the enum `Qualification`.
+    fn is_qualification(&self, field: FieldId) -> bool {
+        match self.field(field).kind {
+            FieldKind::Enum(e) => self.enums[e.0].name == "Qualification",
+            _ => false,
+        }
+    }
+
     /// The `temp_min` and `temp_max` fields of a part, the least and the greatest temperature
     /// it works at (ADR 0099). Every part has both; anything else has none.
     pub fn temperature_range_of(&self, part: InstId) -> Option<(FieldId, FieldId)> {

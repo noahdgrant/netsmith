@@ -20,3 +20,18 @@ enum AssemblyMode {
     /// and the fab notes list it as consigned (ADR 0084, provisional).
     Consigned,
 }
+
+/// The qualification a part claims, the type of the built-in `.qualification` of every part
+/// and of the `.qualification` a board's `.environment` requires (ADR 0099). It is a family
+/// and not a standard: AEC-Q100 (integrated circuits), AEC-Q101 (discrete semiconductors) and
+/// AEC-Q200 (passives) are each `Aec`, and the `notes` of a catalog row say which of them its
+/// datasheet states (Automotive Electronics Council, https://www.aecouncil.com/). A part's
+/// qualification belongs to its ordering code and not to its kind: a part stands as qualified
+/// only where a datasheet says so, and a row states nothing otherwise.
+enum Qualification {
+    /// The datasheet says the part is not qualified (the ordering code of the row is the
+    /// commercial grade). As a requirement of an environment it asks for nothing.
+    None,
+    /// The datasheet says the part is qualified to an AEC standard of its kind.
+    Aec,
+}

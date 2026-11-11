@@ -6,6 +6,9 @@
 //! judged on that end; an end that nothing states is not judged, and the caller names it.
 //! Temperatures are kelvin everywhere and are shown with their Celsius value beside them, in
 //! the language's own spelling (`degC`, ADR 0103), because a datasheet prints Celsius.
+//!
+//! A board can also require a qualification (`.environment.qualification &= Qualification::Aec`),
+//! and a part's claim is met, not met or unjudged in the same way ([`QualificationFit`]).
 
 /// What the comparison found for each end of the environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +55,35 @@ impl Fit {
         }
         out
     }
+}
+
+/// What a part's claim of qualification says against a board that requires `Aec` (ADR 0099).
+/// A qualification is a family (`Qualification::Aec`), so there is no order between claims: the
+/// part says `Aec` (met), says `None`, that its ordering code is not qualified (not met), or
+/// says nothing (unjudged, and the caller names it, as for a part with no stated range).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualificationFit {
+    Met,
+    NotMet,
+    Unjudged,
+}
+
+impl QualificationFit {
+    /// `claim` is the variant the part or its catalog row states, `Aec` or `None`; `None` for
+    /// nothing stated.
+    pub fn of(claim: Option<&str>) -> Self {
+        match claim {
+            Some("Aec") => QualificationFit::Met,
+            Some(_) => QualificationFit::NotMet,
+            None => QualificationFit::Unjudged,
+        }
+    }
+}
+
+/// Whether a stated requirement asks for anything: only `Aec` does. `Qualification::None`
+/// asks for nothing, as a board that states no qualification.
+pub fn requires_qualification(requirement: Option<&str>) -> bool {
+    requirement == Some("Aec")
 }
 
 /// `358.15 K (85degC)`: a temperature as the messages show it.
@@ -103,6 +135,16 @@ mod tests {
         assert_eq!(Fit::of(env, None, None).missing(), ["temp_min", "temp_max"]);
         // A refused end is refused whatever the other end says.
         assert!(Fit::of(env, None, Some(358.15)).refused());
+    }
+
+    #[test]
+    fn a_qualification_is_met_not_met_or_unjudged() {
+        assert_eq!(QualificationFit::of(Some("Aec")), QualificationFit::Met);
+        assert_eq!(QualificationFit::of(Some("None")), QualificationFit::NotMet);
+        assert_eq!(QualificationFit::of(None), QualificationFit::Unjudged);
+        assert!(requires_qualification(Some("Aec")));
+        assert!(!requires_qualification(Some("None")));
+        assert!(!requires_qualification(None));
     }
 
     #[test]

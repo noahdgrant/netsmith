@@ -698,6 +698,15 @@ impl<'a> Checker<'a> {
         FieldKind::Enum(self.enum_id(m, i))
     }
 
+    /// The enum of the prelude that the built-in `.qualification` of a part, and the
+    /// `.qualification` of an environment, have the type of (ADR 0099).
+    pub(crate) fn qualification_kind(&mut self) -> FieldKind {
+        let (m, i) = self
+            .prelude_def("Qualification")
+            .expect("the prelude defines Qualification");
+        FieldKind::Enum(self.enum_id(m, i))
+    }
+
     // ---- elaboration ---------------------------------------------------------
 
     /// The loaded files, shared with the earlier models when nothing was loaded since.
@@ -859,6 +868,14 @@ impl<'a> Checker<'a> {
                         .add_field(id, name, FieldKind::Quantity(Dimension::TEMPERATURE));
                 self.model.add_member(id, name, Member::Field(field));
             }
+            // And one for the qualification it claims (ADR 0099): the part or the board states
+            // it, a catalog row may state it, and the design stage compares it with what the
+            // board's `.environment` requires. A part that states none claims none, which is
+            // not the same as claiming `Qualification::None`.
+            let kind = self.qualification_kind();
+            let field = self.model.add_field(id, "qualification", kind);
+            self.model
+                .add_member(id, "qualification", Member::Field(field));
             // And one for how far its pins stand out of the board, on the face opposite the
             // part, once they are cut short (ADR 0045 section 15, PROVISIONAL): the board's
             // physical file states it for an instance, the kind may bound it. A part that

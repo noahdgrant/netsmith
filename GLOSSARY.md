@@ -49,12 +49,16 @@ The design rules and stackup of the factory that makes a board, such as `std::mf
 _Avoid_: Fab house, rule set, technology
 
 **Environment**:
-What a board is exposed to, the member `.environment` of a board: an interface such as `std::env::Environment` whose `.temperature` is the range of temperatures its surroundings reach, `-40degC..125degC` (ADR 0099, provisional; the `degC` unit is ADR 0103). Every fitted part is checked against it. The manifest's `environment` names the definition a board gets when it declares none; a board with neither is not judged and says nothing. A library states no environment of its own: it is the board's, or the project's.
-_Avoid_: Conditions, operating conditions, grade (a grade is a qualification and a margin, which are not built), mission profile
+What a board is exposed to, the member `.environment` of a board: an interface such as `std::env::Environment` whose `.temperature` is the range of temperatures its surroundings reach, `-40degC..125degC` (ADR 0099, provisional; the `degC` unit is ADR 0103). Every fitted part is checked against it. The manifest's `environment` names the definition a board gets when it declares none; a board with neither is not judged and says nothing. A board can also require a qualification of every fitted part, `.environment.qualification &= Qualification::Aec`. A library states no environment of its own: it is the board's, or the project's.
+_Avoid_: Conditions, operating conditions, grade (a grade is a qualification and a margin; only the qualification is built), mission profile
 
 **Temperature range**:
 The lowest and the highest temperature a part works at: its built-in `.temp_min` and `.temp_max`, which its catalog row gives in the fixed columns `temp_min` and `temp_max` when the design states none, each one temperature as the datasheet prints it. A row that states none is offered and named, never passed (ADR 0099, provisional). A figure that is a junction range (a diode's `TJ`) is accepted as the part's range and the part is judged by it; the part's own heating is not computed, which is the limit of the check. It is not the part's rating at 25 C (`.max_power`), and not the board's `.environment.temperature`, which the part's range must cover.
 _Avoid_: Operating range, thermal limits, rating (for the range)
+
+**Qualification**:
+The family of automotive qualification (AEC-Q100, Q101 or Q200) that a part's datasheet says its ordering code has: the enum `Qualification { None, Aec }` of the prelude, a part's built-in `.qualification`, which its catalog row gives in the fixed column `qualification` when the design states none, and what a board's `.environment.qualification` requires of every fitted part (ADR 0099, provisional). `Aec` is written only where a datasheet or a maker's product page says so, `None` where it says the ordering code is not the qualified one, and an empty cell says nothing: the part is offered and named, never passed. A family and not a standard: the row's `notes` say which AEC document and the page.
+_Avoid_: Grade (the temperature grades of AEC-Q100 are an _Environment_'s range, not a qualification), certification, automotive grade (for the column)
 
 **Via in pad**:
 A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy and caps it with plating so that the solder stays on the pad; the process says up to what size it does that (`.via_in_pad`), and `fab-notes.txt` lists the pads that have one. The router uses one only when a pad cannot be reached any other way.
