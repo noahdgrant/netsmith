@@ -16,6 +16,14 @@
 //! - The pin's name is the datasheet's, and its electrical type follows its kind and, for a power
 //!   pin, whether the solved design says it gives power ([`pin_type`]).
 //! - Every pin and the box are on KiCad's 50 mil (1.27 mm) grid.
+//! - No pin name is over another or over a column of names: the box is wide enough for the two
+//!   longest names of a row, and tall enough that the names of the pins along the top and the
+//!   bottom (which run down and up inside the box) end clear of every row whose names would
+//!   reach them ([`clashes`]).
+//! - The library symbol's `Value` is the part's kind (`LinearRegulator`), not the symbol's
+//!   name (`LinearRegulator_SOT-23_out2`, which also says the package and the pins that give
+//!   power, and is what tells two drawings of a kind apart): a sheet's instance shows the part's
+//!   own value, and the name is for the library only.
 //!
 //! The same table gives the same bytes: nothing here reads a clock, a map's order or the
 //! machine.
@@ -38,6 +46,11 @@ const CHAR_STEPS: f64 = 0.6;
 const MIN_WIDTH: i32 = 8;
 /// The text of the symbol's fields, mm.
 const TEXT: f64 = 1.27;
+/// Where a pin name starts inside the box, in grid steps: the pin-name offset of 1.016 mm.
+const NAME_OFFSET: f64 = 0.8;
+/// The height of a line of text, in grid steps, and the clear space kept round it.
+const TEXT_STEPS: f64 = 1.0;
+const NAME_GAP: f64 = 0.3;
 
 /// The side of the box a pin is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,7 +204,15 @@ fn make(part: &Part, footprint: &str, hashed: bool) -> Option<Symbol> {
     }
     let plain = symbol_name_for(&part.kind, part.package.as_deref(), &part.pins);
     let reference = reference_prefix(&part.refdes);
-    let drawn = |name: &str| draw(name, &reference, footprint, &[part.pins.iter().collect()]);
+    let drawn = |name: &str| {
+        draw(
+            name,
+            &part.kind,
+            &reference,
+            footprint,
+            &[part.pins.iter().collect()],
+        )
+    };
     let name = if hashed {
         // Everything the symbol is made of (the table, the reference letters, the footprint) is
         // in the drawing under the plain name.
@@ -221,6 +242,112 @@ impl Entry<'_> {
 
 fn longest(entries: &[Entry]) -> f64 {
     entries.iter().map(Entry::chars).fold(0.0, f64::max)
+}
+
+/// The x and name length of each pin along one edge of a box, in grid steps.
+type Along<'a> = &'a [(i32, f64)];
+
+/// Whether a name along the top or the bottom of a box would touch the name of a pin on the left
+/// or the right. Everything is in grid steps, y up from the middle of the box. `sides` are the
+/// lengths of the names on the left and right, row by row from the top (row `r` is at
+/// `y = rows - 1 - 2r`); `ends` are the x and name length of each pin along the top and along the
+/// bottom. A name along the top starts [`NAME_OFFSET`] below the box's edge and runs down, one
+/// along the bottom runs up; it is a line of text wide ([`TEXT_STEPS`]), and a name of a row
+/// starts [`NAME_OFFSET`] inside its edge and runs toward the middle. They clash when the
+/// spans of both axes meet, with [`NAME_GAP`] to spare.
+fn clashes(
+    half_width: i32,
+    half_height: i32,
+    sides: (&[f64], &[f64]),
+    ends: (Along, Along),
+) -> bool {
+    let (left, right) = sides;
+    let rows = left.len().max(right.len()).max(1) as i32;
+    let (w, h) = (f64::from(half_width), f64::from(half_height));
+    let reach = TEXT_STEPS / 2.0 + NAME_GAP;
+    for (is_top, pins) in [(true, ends.0), (false, ends.1)] {
+        for &(x, chars) in pins {
+            let x = f64::from(x);
+            // The part of the box's height the name covers, as y spans.
+            let (low, high) = if is_top {
+                (h - NAME_OFFSET - chars * CHAR_STEPS, h)
+            } else {
+                (-h, -h + NAME_OFFSET + chars * CHAR_STEPS)
+            };
+            for row in 0..rows as usize {
+                let y = f64::from(rows - 1 - 2 * row as i32);
+                if y + reach < low || y - reach > high {
+                    continue;
+                }
+                let l_end = left
+                    .get(row)
+                    .map(|c| -w + NAME_OFFSET + c * CHAR_STEPS + NAME_GAP);
+                let r_start = right
+                    .get(row)
+                    .map(|c| w - NAME_OFFSET - c * CHAR_STEPS - NAME_GAP);
+                if l_end.is_some_and(|end| end > x - TEXT_STEPS / 2.0)
+                    || r_start.is_some_and(|start| start < x + TEXT_STEPS / 2.0)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// The pairs of visible pins (by pad) whose names overlap in `symbol`, as this module lays it out:
+/// every name is a line of text of the width of its characters, starting a pin-name offset past
+/// the pin's inner end (unit 1 and the first body style, which is all [`symbol`] draws). A
+/// drawing made here has none; the gallery's test and this module's run it over real boxes.
+pub fn overlapping_names(symbol: &Symbol) -> Vec<(String, String)> {
+    let (char_width, height, offset) = (CHAR_STEPS * GRID, TEXT_STEPS * GRID, NAME_OFFSET * GRID);
+    // (x0, y0, x1, y1) of each visible pin's name.
+    let boxes: Vec<(&str, [f64; 4])> = symbol
+        .pins_of_unit(1)
+        .filter(|p| !p.hidden && !p.name.is_empty() && p.name != "~")
+        .map(|p| {
+            let (sin, cos) = p.angle.to_radians().sin_cos();
+            let (ex, ey) = (p.x + cos * p.length, p.y + sin * p.length);
+            let length = p.name.chars().count() as f64 * char_width;
+            let rect = match p.angle as i32 {
+                0 => [
+                    ex + offset,
+                    ey - height / 2.0,
+                    ex + offset + length,
+                    ey + height / 2.0,
+                ],
+                180 => [
+                    ex - offset - length,
+                    ey - height / 2.0,
+                    ex - offset,
+                    ey + height / 2.0,
+                ],
+                270 => [
+                    ex - height / 2.0,
+                    ey - offset - length,
+                    ex + height / 2.0,
+                    ey - offset,
+                ],
+                _ => [
+                    ex - height / 2.0,
+                    ey + offset,
+                    ex + height / 2.0,
+                    ey + offset + length,
+                ],
+            };
+            (p.number.as_str(), rect)
+        })
+        .collect();
+    let mut out = Vec::new();
+    for (i, (a, ra)) in boxes.iter().enumerate() {
+        for (b, rb) in &boxes[i + 1..] {
+            if ra[0] < rb[2] && rb[0] < ra[2] && ra[1] < rb[3] && rb[1] < ra[3] {
+                out.push((a.to_string(), b.to_string()));
+            }
+        }
+    }
+    out
 }
 
 /// The smallest whole number of grid steps that is at least `steps`.
@@ -328,11 +455,34 @@ fn unit_node(
     let vertical = !(top.is_empty() && bottom.is_empty());
     // The names of the pins along the top and bottom run down and up inside the box.
     let upright = ceil_steps((longest(&top) + longest(&bottom)) * CHAR_STEPS) + 2;
-    let half_height = if vertical {
+    let mut half_height = if vertical {
         (rows + 1).max(3).max((upright + 1) / 2)
     } else {
         rows + 1
     };
+    // A name along the top runs down into the box and one along the bottom runs up: taller
+    // until none reaches a row whose names would touch it.
+    let along = |entries: &[Entry]| -> Vec<(i32, f64)> {
+        let first = -((entries.len().saturating_sub(1) as i32 * across) / 2);
+        entries
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (first + i as i32 * across, e.chars()))
+            .collect()
+    };
+    let (along_top, along_bottom) = (along(&top), along(&bottom));
+    let (left_chars, right_chars): (Vec<f64>, Vec<f64>) = (
+        left.iter().map(Entry::chars).collect(),
+        right.iter().map(Entry::chars).collect(),
+    );
+    while clashes(
+        half_width,
+        half_height,
+        (&left_chars, &right_chars),
+        (&along_top, &along_bottom),
+    ) {
+        half_height += 1;
+    }
 
     let mut nodes: Vec<Sexp> = Vec::new();
     let mut add = |entry: &Entry, position: (i32, i32), angle: f64| {
@@ -411,8 +561,16 @@ fn unit_node(
 
 /// The definition `(symbol "<name>" ...)` of a part with `units`, each the pins of one box,
 /// with the box of each unit. `reference` is the designator's letters and `footprint` the
-/// KiCad footprint id, for the fields. The name is bare, as a library file holds it.
-pub fn draw(name: &str, reference: &str, footprint: &str, units: &[Vec<&PartPin>]) -> Sexp {
+/// KiCad footprint id, for the fields; `value` is the `Value` field, what the library shows for
+/// the part (the kind, not the name, which is the library's key). The name is bare, as a
+/// library file holds it.
+pub fn draw(
+    name: &str,
+    value: &str,
+    reference: &str,
+    footprint: &str,
+    units: &[Vec<&PartPin>],
+) -> Sexp {
     let mut items = vec![
         Sexp::string(name),
         Sexp::node(
@@ -437,7 +595,7 @@ pub fn draw(name: &str, reference: &str, footprint: &str, units: &[Vec<&PartPin>
     let reference_at = (0.0, mm(height + 1 + if above { PIN_LENGTH } else { 0 }));
     let value_at = (0.0, -mm(height + 1 + if below { PIN_LENGTH } else { 0 }));
     items.push(property("Reference", reference, reference_at, false));
-    items.push(property("Value", name, value_at, false));
+    items.push(property("Value", value, value_at, false));
     items.push(property("Footprint", footprint, (0.0, 0.0), true));
     items.push(property("Datasheet", "~", (0.0, 0.0), true));
     items.push(property("Description", "", (0.0, 0.0), true));
@@ -745,6 +903,7 @@ mod tests {
         ];
         let definition = draw(
             "Dual",
+            "Dual",
             "U",
             "a:b",
             &[supply.iter().collect(), signals.iter().collect()],
@@ -790,10 +949,9 @@ mod tests {
         assert_eq!(first, again);
         assert!(first.contains("(property \"Reference\" \"U\""), "{first}");
         assert!(first.contains("(property \"Footprint\" \"a:b\""), "{first}");
-        assert!(
-            first.contains("(property \"Value\" \"Ldo8_DFN-8_EP\""),
-            "{first}"
-        );
+        // The value is the part's kind, and the name (with the package) only the library's key.
+        assert!(first.contains("(property \"Value\" \"Ldo8\""), "{first}");
+        assert!(first.contains("(symbol \"Ldo8_DFN-8_EP_1_1\""), "{first}");
     }
 
     #[test]
@@ -845,5 +1003,70 @@ mod tests {
             .collect();
         xs.sort_by(f64::total_cmp);
         assert!(xs.windows(2).all(|w| w[1] - w[0] >= 2.54 - 1e-6), "{xs:?}");
+    }
+
+    #[test]
+    fn no_name_is_over_another_when_names_run_down_from_the_top_into_rows_of_long_names() {
+        // An STM32-like box: four supplies along the top (the longest `VDDA`) and, in its first
+        // rows, the longest names of its two columns, which reach the middle of the box.
+        let mut pins = Vec::new();
+        for (i, name) in ["VDD", "VDD", "VDD", "VDDA"].iter().enumerate() {
+            pins.push(pin("v", name, PinKind::Power, &[&format!("{}", i + 1)]));
+        }
+        for (i, name) in ["VSS", "VSSA"].iter().enumerate() {
+            pins.push(pin("g", name, PinKind::Power, &[&format!("{}", i + 10)]));
+        }
+        let left = ["PC14-OSC32_IN", "PF0-OSC_IN", "NRST", "PA1", "PA3", "PA5"];
+        let right = ["PC15-OSC32_OUT", "PF1-OSC_OUT", "PA0", "PA2", "PA4", "PA6"];
+        for (i, (l, r)) in left.iter().zip(right).enumerate() {
+            pins.push(pin("a", l, PinKind::Input, &[&format!("{}", 20 + i)]));
+            pins.push(pin("b", r, PinKind::Output, &[&format!("{}", 40 + i)]));
+        }
+        let symbol = symbol(&part("Mcu", Some("LQFP"), pins), "a:b").unwrap();
+        assert_eq!(overlapping_names(&symbol), Vec::<(String, String)>::new());
+        // The same box with the rule left out would have clashed: the box is taller than the six
+        // rows of names need alone.
+        let rectangle = symbol
+            .definition()
+            .find_all("symbol")
+            .next()
+            .unwrap()
+            .find("rectangle")
+            .unwrap()
+            .clone();
+        let top: f64 = rectangle.find("start").unwrap().args()[1]
+            .text()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(top > mm(7), "the box is only {top} mm above its middle");
+    }
+
+    #[test]
+    fn the_checker_finds_names_that_overlap() {
+        // Two pins on one row whose names meet in the middle, and one along the top whose name
+        // runs down into the row.
+        let text = "(symbol \"Bad\" (symbol \"Bad_1_1\"
+            (pin input line (at -7.62 0 0) (length 2.54)
+                (name \"AAAAAAAAAA\" (effects (font (size 1.27 1.27)))) (number \"1\" (effects (font (size 1.27 1.27)))))
+            (pin output line (at 7.62 0 180) (length 2.54)
+                (name \"BBBBBBBBBB\" (effects (font (size 1.27 1.27)))) (number \"2\" (effects (font (size 1.27 1.27)))))
+            (pin power_in line (at 0 5.08 270) (length 2.54)
+                (name \"CCCCCC\" (effects (font (size 1.27 1.27)))) (number \"3\" (effects (font (size 1.27 1.27)))))))";
+        let bad = Symbol::from_definition(
+            "netsmith:Bad",
+            "Bad",
+            Sexp::parse(text).expect("the text reads"),
+        )
+        .unwrap();
+        let found = overlapping_names(&bad);
+        assert_eq!(
+            found,
+            [
+                ("1".to_string(), "2".to_string()),
+                ("1".to_string(), "3".to_string()),
+                ("2".to_string(), "3".to_string())
+            ]
+        );
     }
 }

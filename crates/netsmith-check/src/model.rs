@@ -1619,6 +1619,24 @@ impl Model {
         }
     }
 
+    /// The `temperature_shift` and `voltage_over_temperature` fields of a part, how far the
+    /// temperature goes from the datasheet's 25 C and the voltage over that shift (the `Zener`,
+    /// ADR 0080). A part with only one of them, or with them of another kind, has none; the
+    /// checker derives the shift from the board's environment (`Checker::derive_temperature_shift`).
+    pub fn temperature_shift_of(&self, part: InstId) -> Option<(FieldId, FieldId)> {
+        if self.instance(part).kind != InstKind::Part {
+            return None;
+        }
+        let field = |name: &str, dim: Dimension| match self.member(part, name)? {
+            Member::Field(f) if self.field(f).kind == FieldKind::Quantity(dim) => Some(f),
+            _ => None,
+        };
+        Some((
+            field("temperature_shift", Dimension::TEMPERATURE)?,
+            field("voltage_over_temperature", Dimension::VOLTAGE)?,
+        ))
+    }
+
     /// The `temp_min` and `temp_max` fields of a part, the least and the greatest temperature
     /// it works at (ADR 0099). Every part has both; anything else has none.
     pub fn temperature_range_of(&self, part: InstId) -> Option<(FieldId, FieldId)> {

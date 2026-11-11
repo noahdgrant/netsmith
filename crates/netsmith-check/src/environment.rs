@@ -10,6 +10,11 @@
 //! A board can also require a qualification (`.environment.qualification &= Qualification::Aec`),
 //! and a part's claim is met, not met or unjudged in the same way ([`QualificationFit`]).
 
+/// The temperature a datasheet states its figures at, 25 C, in kelvin: a part's
+/// `.temperature_shift` is the kelvin away from it, and a board's environment gives it one
+/// (`Checker::derive_temperature_shift`).
+pub const DATASHEET_TEMPERATURE: f64 = 298.15;
+
 /// What the comparison found for each end of the environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fit {

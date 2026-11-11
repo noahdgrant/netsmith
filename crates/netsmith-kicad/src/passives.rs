@@ -440,6 +440,16 @@ fn mosfet(n_channel: bool) -> Vec<Shape> {
             Fill::Solid,
         )
     };
+    // The body diode, in parallel with the channel from source to drain: the same side the
+    // channel arrow points, so that it conducts from the source toward the drain in an N-channel
+    // part and the other way in a P-channel one. A bar and a triangle on a rail 0.762 mm outside
+    // the leads' column.
+    let rail = 3.302;
+    let (bar, apex, base) = if n_channel {
+        (0.381, 0.381, -0.254)
+    } else {
+        (-0.381, -0.381, 0.254)
+    };
     vec![
         Shape::Circle {
             center: (1.651, 0.0),
@@ -452,12 +462,26 @@ fn mosfet(n_channel: bool) -> Vec<Shape> {
         line(&[(channel, 2.286), (channel, 1.27)], BODY),
         line(&[(channel, 0.508), (channel, -0.508)], BODY),
         line(&[(channel, -1.27), (channel, -2.286)], BODY),
-        line(&[(2.54, 2.54), (2.54, 1.778), (channel, 1.778)], THIN),
+        line(&[(2.54, 2.54), (2.54, 1.778)], THIN),
+        line(
+            &[
+                (channel, -1.778),
+                (rail, -1.778),
+                (rail, 1.778),
+                (channel, 1.778),
+            ],
+            THIN,
+        ),
         line(&[(2.54, -2.54), (2.54, 0.0), (channel, 0.0)], THIN),
-        line(&[(2.54, -1.778), (channel, -1.778)], THIN),
         dot((2.54, 1.778)),
         dot((2.54, -1.778)),
         arrow,
+        line(&[(rail - 0.381, bar), (rail + 0.381, bar)], THIN),
+        polygon(
+            &[(rail, apex), (rail - 0.381, base), (rail + 0.381, base)],
+            THIN,
+            Fill::None,
+        ),
     ]
 }
 
@@ -762,6 +786,9 @@ struct Spec {
     /// Whether a bill of materials lists a part drawn with it: not a hole or a fiducial, which
     /// nobody buys or fits (KiCad's own symbols say the same).
     in_bom: bool,
+    /// Whether the `Reference` and `Value` fields are left-justified (the text starts at its
+    /// position, as KiCad's FET symbols have it, so that it stands clear of the body).
+    fields_left: bool,
     /// The look.
     glyph: Vec<Shape>,
 }
@@ -786,6 +813,7 @@ const BASE: Spec = Spec {
     pin_part: "1_1",
     power: false,
     in_bom: true,
+    fields_left: false,
     glyph: Vec::new(),
 };
 
@@ -969,6 +997,7 @@ fn passive_specs() -> Vec<Spec> {
                 hidden: HIDDEN,
             },
             pins: fet_pins(),
+            fields_left: true,
             glyph: nmos(),
             ..BASE
         },
@@ -984,6 +1013,7 @@ fn passive_specs() -> Vec<Spec> {
                 hidden: HIDDEN,
             },
             pins: fet_pins(),
+            fields_left: true,
             glyph: pmos(),
             ..BASE
         },
@@ -1250,6 +1280,7 @@ fn mechanical_specs() -> Vec<Spec> {
             glyph: power_flag(),
             // As KiCad's own flag says; the flag the exporter places is `#FLG`, which no bill lists.
             in_bom: true,
+            fields_left: false,
         },
     ]
 }
@@ -1277,18 +1308,21 @@ pub fn covers_library(library: &str) -> bool {
         .any(|s| s.id.split_once(':').is_some_and(|(l, _)| l == library))
 }
 
-fn effects(hide: bool) -> Sexp {
+fn effects(hide: bool, left: bool) -> Sexp {
     let mut items = vec![Sexp::node(
         "font",
         vec![Sexp::node("size", vec![Sexp::num(1.27), Sexp::num(1.27)])],
     )];
+    if left {
+        items.push(Sexp::node("justify", vec![Sexp::atom("left")]));
+    }
     if hide {
         items.push(Sexp::node("hide", vec![Sexp::atom("yes")]));
     }
     Sexp::node("effects", items)
 }
 
-fn property(name: &str, value: &str, at: (f64, f64, f64), hide: bool) -> Sexp {
+fn property(name: &str, value: &str, at: (f64, f64, f64), hide: bool, left: bool) -> Sexp {
     Sexp::node(
         "property",
         vec![
@@ -1298,7 +1332,7 @@ fn property(name: &str, value: &str, at: (f64, f64, f64), hide: bool) -> Sexp {
                 "at",
                 vec![Sexp::num(at.0), Sexp::num(at.1), Sexp::num(at.2)],
             ),
-            effects(hide),
+            effects(hide, left),
         ],
     )
 }
@@ -1322,11 +1356,11 @@ fn pin_node(spec: &PinSpec) -> Sexp {
     }
     items.push(Sexp::node(
         "name",
-        vec![Sexp::string(&spec.name), effects(false)],
+        vec![Sexp::string(&spec.name), effects(false, false)],
     ));
     items.push(Sexp::node(
         "number",
-        vec![Sexp::string(&spec.number), effects(false)],
+        vec![Sexp::string(&spec.number), effects(false, false)],
     ));
     Sexp::node("pin", items)
 }
@@ -1367,11 +1401,18 @@ fn definition(spec: &Spec) -> Sexp {
             spec.reference,
             spec.reference_at,
             spec.reference_hidden,
+            spec.fields_left,
         ),
-        property("Value", name, spec.value_at, false),
-        property("Footprint", "", (0.0, 0.0, 0.0), true),
-        property("Datasheet", "~", (0.0, 0.0, 0.0), true),
-        property("Description", &spec.description, (0.0, 0.0, 0.0), true),
+        property("Value", name, spec.value_at, false, spec.fields_left),
+        property("Footprint", "", (0.0, 0.0, 0.0), true, false),
+        property("Datasheet", "~", (0.0, 0.0, 0.0), true, false),
+        property(
+            "Description",
+            &spec.description,
+            (0.0, 0.0, 0.0),
+            true,
+            false,
+        ),
     ]);
     let mut drawing = vec![Sexp::string(format!("{name}_0_1"))];
     drawing.extend(spec.glyph.iter().map(Shape::node));
