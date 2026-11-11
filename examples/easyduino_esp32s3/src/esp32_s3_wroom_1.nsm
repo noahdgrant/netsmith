@@ -1,0 +1,84 @@
+//! The ESP32-S3-WROOM-1 module, Espressif, with the PCB antenna: the U1 of the Easyduino
+//! ESP32-S3 board.
+//!
+//! The pin table was WRITTEN BY HAND from Espressif's datasheet "ESP32-S3-WROOM-1 &
+//! ESP32-S3-WROOM-1U Datasheet", Version 1.8 (revision history dated 2026-03-02, 53 pages,
+//! fetched on 2026-11-10 from
+//! <https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf>):
+//! Figure 3-1 "Pin Layout (Top View)" (printed page 10) for the pad numbers and Table 3-1 "Pin
+//! Definitions" (printed pages 11 and 12) for the names and the types (P power, I input, I/O/T
+//! input, output and high impedance). The datasheet is copyrighted (Espressif Systems
+//! (Shanghai) Co., Ltd., all rights reserved): only facts are taken here (numbers, names,
+//! kinds), none of its text or table.
+//!
+//! The datasheet says the module has 41 pins: the 40 edge pads and `EPAD`, the ground pad at
+//! the middle of the underside. Pad 41 is one pin here, as the datasheet has it; the footprint
+//! draws it as the nine 0.9 mm squares of the recommended land pattern, all numbered 41, as
+//! Easyduino's board does. Pads 1 and 40 are ground too.
+//!
+//! The names are the datasheet's (`IO4`, `RXD0`, `TXD0`). Which pad is which GPIO of the chip
+//! is in Table 3-1's function column: the pad `RXD0` is GPIO44 (U0RXD), `TXD0` is GPIO43
+//! (U0TXD), `IO19` is GPIO19 and `USB_D-`, `IO20` is GPIO20 and `USB_D+`. The strapping pins
+//! (Table 4-1, printed page 13) are GPIO0 (pad `IO0`, weak pull-up), GPIO3 (`IO3`, floating),
+//! GPIO45 (`IO45`, weak pull-down) and GPIO46 (`IO46`, weak pull-down).
+//!
+//! What is deliberately left out: the alternate functions of the pads (Table 3-1's last
+//! column: touch, ADC, SPI, UART, JTAG, clock outputs), the levels, ratings and timing (the
+//! part is a boundary of the design: the checks that need a number are listed as not
+//! evaluated), and the other variants' differences (footnote b of Table 3-1: with Octal SPI
+//! PSRAM the pads `IO35`, `IO36` and `IO37` are not available; footnote c: on the ESP32-S3R16V
+//! `IO47` and `IO48` work at 1.8 V). The catalog row is the N4 variant (4 MB quad flash, no
+//! PSRAM), where all of them are available.
+
+/// The ESP32-S3-WROOM-1 module: a Wi-Fi and Bluetooth LE module with a PCB antenna, 18 x 25.5
+/// mm, 40 edge pads and a ground pad, on 1.27 mm pitch. The pad numbers are the datasheet's.
+part Esp32S3Wroom1 {
+    .designator &= "U"
+
+    pins "SMD, 25.5x18mm" {
+        //  pin     kind           name     pads
+        .gnd    power         "GND"    "1" "40" "41"
+        .v3v3   power         "3V3"    "2"
+        .en     input         "EN"     "3"
+        .io4    bidirectional "IO4"    "4"
+        .io5    bidirectional "IO5"    "5"
+        .io6    bidirectional "IO6"    "6"
+        .io7    bidirectional "IO7"    "7"
+        .io15   bidirectional "IO15"   "8"
+        .io16   bidirectional "IO16"   "9"
+        .io17   bidirectional "IO17"   "10"
+        .io18   bidirectional "IO18"   "11"
+        .io8    bidirectional "IO8"    "12"
+        .io19   bidirectional "IO19"   "13"
+        .io20   bidirectional "IO20"   "14"
+        .io3    bidirectional "IO3"    "15"
+        .io46   bidirectional "IO46"   "16"
+        .io9    bidirectional "IO9"    "17"
+        .io10   bidirectional "IO10"   "18"
+        .io11   bidirectional "IO11"   "19"
+        .io12   bidirectional "IO12"   "20"
+        .io13   bidirectional "IO13"   "21"
+        .io14   bidirectional "IO14"   "22"
+        .io21   bidirectional "IO21"   "23"
+        .io47   bidirectional "IO47"   "24"
+        .io48   bidirectional "IO48"   "25"
+        .io45   bidirectional "IO45"   "26"
+        .io0    bidirectional "IO0"    "27"
+        .io35   bidirectional "IO35"   "28"
+        .io36   bidirectional "IO36"   "29"
+        .io37   bidirectional "IO37"   "30"
+        .io38   bidirectional "IO38"   "31"
+        .io39   bidirectional "IO39"   "32"
+        .io40   bidirectional "IO40"   "33"
+        .io41   bidirectional "IO41"   "34"
+        .io42   bidirectional "IO42"   "35"
+        .rxd0   bidirectional "RXD0"   "36"
+        .txd0   bidirectional "TXD0"   "37"
+        .io2    bidirectional "IO2"    "38"
+        .io1    bidirectional "IO1"    "39"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog esp32_s3_wroom_1 by .mpn { .mpn, .package }
+}

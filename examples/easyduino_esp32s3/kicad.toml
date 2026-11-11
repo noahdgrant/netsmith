@@ -1,0 +1,51 @@
+# What KiCad calls the parts this project defines itself (ADR 0021).
+#
+# The footprints written for this board are in the project's own libraries, so that a build
+# needs no KiCad install (the files are the project's): `libs/easyduino_ics.pretty` holds the
+# module's and the Schottky diode's; README.md (Parts) records the document, revision and page of
+# each and what was read, derived or assumed. The parts are drawn from their pin tables (no
+# `symbol`, ADR 0097), except the diode, whose symbol is the one netsmith draws itself.
+#
+# Not here: the AMS1117-3.3 (U5) is the standard `LinearRegulator` in the package SOT-223, which
+# `std/kicad.toml` already maps to the generator's `SOT-223-3_TabPin2`: a project may not map a
+# pair that the standard mapping maps, so it has no row.
+
+[[library]]
+name = "easyduino_ics"
+footprints = "libs/easyduino_ics.pretty"
+
+# U1: Espressif ESP32-S3-WROOM-1, the recommended land pattern of the datasheet (Figure 11-1).
+[[part]]
+kind = "Esp32S3Wroom1"
+package = "SMD, 25.5x18mm"
+default = true
+footprint = "easyduino_ics:ESP32-S3-WROOM-1_18x25.5mm_P1.27mm"
+
+# U3: the CP2102N in QFN-28, 5 x 5 mm, 0.5 mm pitch, centre pad 3.35 x 3.35 mm. The footprint is
+# the generator's: the datasheet's land pattern (Silicon Labs CP2102N Rev. 1.5, Figure 6.2 and
+# Table 6.2, printed page 35) has the same pitch, pad count and centre pad (X2 = Y2 = 3.35 mm);
+# its lead pads are 0.30 x 0.95 mm with centres 4.80 mm apart (C1 = C2), the generator's
+# 0.25 x 0.80 mm with centres 4.90 mm apart (the reference board's pads, too).
+[[part]]
+kind = "Cp2102n"
+package = "QFN-28-EP(5x5)"
+default = true
+footprint = "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm"
+
+# Q1 and Q2: the SS8050 in the generator's SOT-23 (the datasheet's package outline and
+# soldering footprint, page 4, are the plain SOT-23; Easyduino's board uses the wide-lead
+# SOT-23W).
+[[part]]
+kind = "Ss8050"
+package = "SOT-23"
+default = true
+footprint = "Package_TO_SOT_SMD:SOT-23"
+
+# D2 and D3: ROHM's SMD1006 (1.0 x 0.6 mm) is the size of a 0402 chip, but ROHM's land is smaller
+# than the 0402 land of the generators (0.35 x 0.60 mm pads, 0.65 mm apart, against 0.59 x 0.64
+# mm and 0.97 mm), so the footprint is a file of the project's own library.
+[[part]]
+kind = "Schottky"
+package = "SMD1006"
+symbol = "Device:D_Schottky"
+footprint = "easyduino_ics:D_ROHM_SMD1006"
