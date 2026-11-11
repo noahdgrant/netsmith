@@ -6,6 +6,7 @@
 mod backjump;
 mod bank;
 mod buck_ripple;
+mod buck_soft_start;
 mod bus_clock;
 mod bus_figures;
 mod bus_levels;

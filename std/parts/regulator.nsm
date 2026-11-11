@@ -198,6 +198,15 @@ interface Buck {
     /// headroom of the input over the output the IC keeps its frequency at, its dropout:
     /// `(vin - vout) / (vin * fsw)` is never less than it. Optional, as `min_on_time`.
     .min_off_time: Time optional
+    /// How long the output takes to rise to its regulation point after the converter starts, at
+    /// the soft-start of the IC as it is (an internal ramp), as the datasheet gives it: a time,
+    /// or the span between its minimum and maximum, with the page in the part's doc comment.
+    /// Optional (ADR 0074): an IC whose datasheet gives no such time states nothing, and an IC
+    /// whose ramp a board capacitor sets (a soft-start pin) states a time only if the datasheet
+    /// gives one for a stated capacitor. `BuckStage` forwards it as `.soft_start_time`, which a
+    /// board bounds (`.stage.soft_start_time <= 5ms`); while nothing bounds it the check is
+    /// not made, and a bound on an IC that states no time is listed as not evaluated.
+    .soft_start_time: Time optional
     /// The capacitance the datasheet asks for on the input and the output, as effective
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance
@@ -366,7 +375,15 @@ module BuckStage {
     /// stage's check of the IC's `min_on_time` and `min_off_time` (ADR 0093).
     .on_time: Time
     .off_time: Time
-    /// The current the feedback divider draws from the output.
+    /// How long the output takes to rise at start-up: the IC's `.buck.soft_start_time`, as the
+    /// datasheet gives it. A closed-form check against a requirement (not a simulation): a
+    /// board bounds it (`.stage.soft_start_time <= 5ms`, or `>=` to keep an inrush down), and the
+    /// bound holds over the whole span the IC states. Not evaluated, and listed as such, when
+    /// the IC states no time; while no board bounds it nothing is checked and nothing is said.
+    /// It is the IC's own ramp: the output capacitance and the load do not change it here, and
+    /// a rise that a current limit stretches (a large output capacitor, a load that draws at
+    /// start-up) is longer than this and is not in the figure.
+    .soft_start_time: Time
     .divider_current: Current
     /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0085):
     /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
@@ -437,6 +454,7 @@ module BuckStage {
     .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
     .on_time == .vout.voltage / (.vin.voltage * .buck.fsw)
     .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .buck.fsw)
+    .soft_start_time == .buck.soft_start_time
     .output_ripple == .ripple / (8 * .buck.fsw * .output_count * .output_cap.effective_capacitance) + .ripple * .output_esr / .output_count
     .on_time >= .buck.min_on_time
     .off_time >= .buck.min_off_time
@@ -518,6 +536,16 @@ module BuckStage {
 ///   its own inductors, not a guarantee, and below 0.2 mA the figure is too high, where
 ///   the input current is a few microamps anyway. A board of one input voltage may state a
 ///   narrower range for its own conditions.
+/// - Soft-start: `.buck.soft_start_time` is left unstated. The datasheet gives no time: the
+///   TR/SS pin "allows user control of output voltage ramp rate" with an "internal 1.9uA
+///   pull-up current" (Pin Functions, p.10; Output Voltage Tracking and Soft-Start, p.19),
+///   TR/SS Source Current 1.2 uA to 2.6 uA, typically 1.9 uA (Electrical Characteristics,
+///   p.3), and "the TR/SS pin may be left floating if the function is not needed" (p.19),
+///   with no ramp time for that case. It states no equation for the time of a capacitor
+///   either; its Typical Applications (p.1, p.22 and p.23) draw 10 nF on the pin and give no
+///   time for it. A time computed from 10 nF and 1.9 uA would be this repository's figure and
+///   not the datasheet's, so a bound on `.stage.soft_start_time` with this part is listed as
+///   not evaluated. Whether the part should model the capacitor is the owner's to decide.
 /// - Switching frequency is held only inside two limits the datasheet gives, which keep the
 ///   stage's ripple (computed at the programmed frequency) right. The highest frequency
 ///   for an input is `(VOUT + VSW(BOT)) / (tON(MIN) * (VIN - VSW(TOP) + VSW(BOT)))`
