@@ -1619,7 +1619,8 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// should place but that has no part number is kept without one, so the packaging step can
 /// refuse it by name.
 ///
-/// Why a consigned part looks like this (ADR 0084, provisional). `Fab` is "the board house
+/// Why a consigned part looks like this (ADR 0084, provisional; the owner accepted its seven
+/// choices as built on 2026-11-11). `Fab` is "the board house
 /// buys it" and `Consigned` is "the board house places it, and the owner supplies it"; they
 /// share everything but the supplier. Both are in `cpl.csv` and in this bill. `Fab` needs an
 /// `lcsc` (`fab` refuses without); `Consigned` does not, and its comment is the manufacturer's
@@ -1646,13 +1647,14 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// upload; a word in the LCSC cell fails the check of `C` plus digits. The row therefore keeps
 /// designator, footprint and comment, and the marking is in `fab-notes.txt` and in `order.txt`
 /// of an order, not in `bom.csv`. Not tested: JLCPCB's order page. Nobody has uploaded a
-/// `bom.csv` with an empty cell for a registered consigned part from netsmith; the notes tell
-/// the person ordering to look at the matching interface (the `prepare-fab-order` step). If
+/// `bom.csv` with an empty cell for a registered consigned part from netsmith (a person must do
+/// this; checklist in issue #10); the notes tell the person ordering to look at the matching
+/// interface (the `prepare-fab-order` step). If
 /// JLCPCB documents a marker, the mark changes in this one function.
 ///
 /// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
 /// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
-/// a new field changes the generated types and the committed bundle).
+/// a new field changes the generated types and the committed bundle; not built, issue #19).
 pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
     for s in sourcing.iter().filter(|s| s.assembled()) {

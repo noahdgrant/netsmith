@@ -103,13 +103,13 @@
 //! part that states its limits the other way (`.vin.voltage - .vout.voltage >= 1V`) has no range
 //! for this purpose.
 //!
-//! # Left open
+//! # What counts, and the interface
 //!
-//! "What counts as a state of a part (the part's own `>=` and `<=` on a field say where its
-//! equations apply, and a state outside is not a state of the circuit for the checks) is the
-//! owner's to accept or change; the alternative is to refuse more circles." Also for the owner to
-//! look at: that a value starts only from a stated range of the same kind, and that
-//! `Solution::seeded` and the note are the whole interface (no new syntax, no new member).
+//! What counts as a state of a part: the part's own `>=` and `<=` on a field say where its
+//! equations apply, and a state outside is not a state of the circuit for the checks. The
+//! alternative was to refuse more circles. A value starts only from a stated range of the same
+//! kind, and `Solution::seeded` and the note are the whole interface (no new syntax, no new
+//! member). Accepted as built by the owner, 2026-11-11.
 
 use std::collections::HashSet;
 
