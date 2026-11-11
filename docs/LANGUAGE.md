@@ -6385,6 +6385,7 @@ error: Warm: `led` works up to 348.15 K (75degC) only (the design states `.led.t
 - **Parts that are not fitted** (`.assembly` is `AssemblyMode::None`: a mounting hole, a fiducial) and labels are not judged. A part soldered by hand or consigned is, because it sees the same air.
 - **Each board of a system has its own environment.** A system does not state one.
 - **A junction range is a part's range.** A part whose datasheet gives a junction temperature range (`TJ`, in the Schottky, TVS and Zener diodes and the AO3400A of the standard catalogs, each row's `notes` say so) and no ambient one is judged by that figure as it stands: a junction range that covers the environment is a pass. The check does not compute how far the part's own heating lifts its junction above the air, so this is the limit of it: a part whose junction range just covers the environment can still be too hot at its junction in that air, and the self-heating margin is a design's to check.
+- **A Zener's temperature shift follows the environment.** A board that bounds a Zener's `.voltage_over_temperature` and states no `.temperature_shift` is given the environment's range less 25 C as the shift (see _Voltage across a part_); a shift it states overrides it.
 - **What it proves.** The check says the part works at the air temperature of the board. It does not say which temperature a datasheet's range is (ambient, junction or operating: the row's `notes` say what the record prints), it adds no heat of the part's own, and a rating at 25 C (`.max_power` of a resistor, a fuse's hold current) is not derated by it. A part that works at 125 C does not carry its 25 C rating there. Radiation, outgassing, screening and lot traceability are not checked at all.
 
 ### The manifest's default
@@ -8200,14 +8201,14 @@ board Conducts {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:270:5
+    --> std/parts/diode.nsm:281:5
     |
-270 |     min(.bias) <= max(.zener_voltage)
+281 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:270:5
+    --> std/parts/diode.nsm:281:5
     |
-270 |     min(.bias) <= max(.zener_voltage)
+281 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8218,10 +8219,34 @@ A Zener has the figures a design needs to bound a clamp over temperature (issue 
 | `.test_current` | The current the datasheet publishes `.zener_voltage` at (IZT). The row's `.zener_voltage` is the minimum to maximum at this current. |
 | `.temperature_coefficient` | The change of `.zener_voltage` for one kelvin, as the datasheet's range. A `Voltage`, because no kind holds volts per kelvin: `18.4mV..22mV` is "18.4 to 22 mV/C". The datasheet's figure is a typical one, so the margin is the design's. |
 | `.leakage_current`, `.leakage_test_voltage` | The reverse current below the breakdown, and the reverse voltage it is stated at. |
-| `.temperature_shift` | How far the temperature goes from the 25 C the datasheet states, in kelvin: `-65K..100K` for -40 C to 125 C. A design states it; it is an `optional` member (ADR 0074). |
+| `.temperature_shift` | How far the temperature goes from the 25 C the datasheet states, in kelvin: `-65K..100K` for -40 C to 125 C. A board that states an environment has it derived (below); a design may state it, which overrides the derivation. It is an `optional` member (ADR 0074). |
 | `.voltage_over_temperature` | `.zener_voltage + .temperature_coefficient * .temperature_shift`, worst case: the upper end of the range is the voltage at the hot corner and the lower end the voltage at the cold one. |
 
-A column that a row leaves empty is no obstacle to a design that does not mention it, and a design that names one (`.z.leakage_current <= 1uA`) is offered only the rows that state it. A design that states no `.temperature_shift` has no `.voltage_over_temperature`: nothing is checked, nothing is listed for the relation, and the row's coefficient is not asked for, so every board written before the columns picks as it did. A design that states the shift is offered only the rows that state the coefficient, so a row without it is never picked with a wrong number. A bound on `.voltage_over_temperature` with no shift stated is listed as not evaluated.
+A column that a row leaves empty is no obstacle to a design that does not mention it, and a design that names one (`.z.leakage_current <= 1uA`) is offered only the rows that state it. A design that states no `.temperature_shift` has no `.voltage_over_temperature`: nothing is checked, nothing is listed for the relation, and the row's coefficient is not asked for, so every board written before the columns picks as it did. A design that states the shift is offered only the rows that state the coefficient, so a row without it is never picked with a wrong number. A bound on `.voltage_over_temperature` with no shift stated and no environment is listed as not evaluated.
+
+A board that states an environment (`.environment.temperature`, _The environment of a board_) does not need to state the shift: the checker derives it as the environment's temperature less 25 C, so `-40degC..125degC` is `-65K..100K`, and `.voltage_over_temperature` is the row's coefficient carried over that range, the hot corner at the environment's hot end and the cold corner at its cold end. The standard rows state the datasheet's typical coefficient as its minimum to maximum, so the derived band is the typical value times the range, with the margin the design's. A `.temperature_shift` the design states overrides the derivation, and an environment that does not hold 25 C (`50degC..80degC` is `25K..55K`) gives the band over its own range. The shift is derived only for a board that bounds `.voltage_over_temperature` in a relation of its own: the shift asks every row for its coefficient, so a board that never bounds it keeps the rows that state none (a project's rows with an empty `temperature_coefficient`), as it did without an environment. A board that bounds it and has a row with no coefficient is not offered that row, and the message names the column, as for a stated shift.
+
+```nsm evaluate
+import std::env::Environment
+import std::parts::diode::Zener
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board PinClamp {
+    .environment: Environment { .temperature &= -40degC..125degC }
+    .input: Rail {
+        .voltage &= 24V +/- 10%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .r: Resistor { .resistance &= 2.2kohm +/- 1% }
+    .z: Zener { .zener_voltage &= 13V..16V }
+    .z.bias == .z.voltage_over_temperature
+    .z.current == (.input.voltage - .z.voltage_over_temperature) / .r.resistance
+    .z.voltage_over_temperature <= 18V
+    .input.pos ~> .r ~> .z ~> .input.neg
+}
+```
 
 A supply pin held under its absolute maximum by a series resistor and a Zener. The board's own numbers: a 24 V input, a pin that stands 18 V, and a clamp that must hold from -40 C to 125 C. The picked row is BZT52C15 (13.8 V to 15.6 V at 5 mA, 9.2 to 13.0 mV/C). Its hot corner is 15.6 V + 13.0 mV * 100 = 16.9 V, under the 18 V; its cold corner is 13.8 V + 13.0 mV * (-65) = 12.955 V (a message prints it as `12.95V`). The Zener's voltage is that whole range, so the current through it and its power are checked at the worst end of it.
 
@@ -8326,9 +8351,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:384:5
+    --> std/parts/diode.nsm:395:5
     |
-384 |     .bias <= .standoff_voltage
+395 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8438,9 +8463,9 @@ board Reversed {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:269:5
+    --> std/parts/diode.nsm:280:5
     |
-269 |     .bias >= 0V
+280 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -700mV
    --> std/parts/diode.nsm:92:5
@@ -8448,9 +8473,9 @@ error: d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is 
 92 |     .bias >= -.forward_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:269:5
+    --> std/parts/diode.nsm:280:5
     |
-269 |     .bias >= 0V
+280 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
