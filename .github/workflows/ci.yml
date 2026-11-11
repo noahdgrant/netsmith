@@ -106,6 +106,9 @@ jobs:
         run: scripts/adr-check
 
       - id: flags
+        # `shell: bash` runs with `-eo pipefail`: a crash of ci-changes fails the step instead of
+        # being hidden by `tee` (no outputs would skip every job, and ci-ok accepts a skip).
+        shell: bash
         run: |
           everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\n'; }
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
