@@ -38,8 +38,8 @@
 /// get an unchecked part without knowing. The solver's "nothing for it" message counts the rows
 /// left out for an empty cell. No row of the standard catalog is blank.
 ///
-/// Left open, for the owner: is "never offered" the rule the owner wants for an unrated part, or
-/// "offered and not evaluated"?
+/// The rule "never offered" for an unrated part is accepted as built by the owner,
+/// 2026-11-11.
 generic Resistor {
     .designator &= "R"
 

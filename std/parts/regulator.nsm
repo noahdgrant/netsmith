@@ -306,8 +306,8 @@ interface Buck {
 /// a few volts, so an IC that asks for 10 uF or more at 12 V finds no capacitor; the guide's
 /// invented IC is 4.5 V to 6 V. A frequency that a resistor sets is one more relation the IC
 /// writes (`.buck.fsw == 24GHz * 1ohm / .rt_value`, tested). The naming (`Buck`, `BuckStage`,
-/// `FeedbackDivider`, the catalog names) and the board's four joins for a buck are choices the
-/// owner may want different (ADR 0025).
+/// `FeedbackDivider`, the catalog names) and the board's four joins for a buck (ADR 0025) are
+/// accepted as built by the owner, 2026-11-11.
 module BuckStage {
     /// Joined to the IC's `buck`.
     .buck: Buck
