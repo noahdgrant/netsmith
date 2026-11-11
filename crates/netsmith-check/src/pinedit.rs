@@ -220,6 +220,12 @@ fn add(lines: &mut Vec<String>, file: &PinFile, board: &str, key: &str, to: &Pin
         !t.is_empty() && !t.starts_with('#')
     });
     if !has_content {
+        // A comment-only file may end without a line end: the comment keeps its text and gets one.
+        if let Some(last) = lines.last_mut()
+            && !last.ends_with('\n')
+        {
+            last.push_str(eol);
+        }
         lines.push(format!("version = {VERSION}{eol}"));
     }
     // After the last entry of the board, so that its entries stay together; else at the end.

@@ -140,6 +140,16 @@ fn a_new_entry_of_a_board_the_file_lacks_goes_at_the_end_and_a_missing_file_gets
 }
 
 #[test]
+fn a_comment_only_file_without_a_trailing_newline_keeps_its_comment_line() {
+    let out = edit_entry("# mine", "B", "a", &entry("p00", false, EntrySource::Hand)).unwrap();
+    assert!(out.starts_with("# mine\nversion = 1\n"), "{out}");
+    assert!(
+        out.ends_with("[B.pins.a]\npin = \"p00\"\nfunction = \"GPIO\"\nsource = \"hand\"\n"),
+        "{out}"
+    );
+}
+
+#[test]
 fn no_trailing_newline_and_crlf_files_are_kept() {
     let bare = "version = 1\n\n[B.pins.a]\npin = \"p00\"\nfunction = \"GPIO\"\nsource = \"auto\"";
     let out = edit_entry(bare, "B", "a", &entry("p00", true, EntrySource::Auto)).unwrap();

@@ -353,11 +353,16 @@ fn every_temperature_range_is_two_kelvin_figures_and_its_row_names_the_datasheet
                 "{name} {lcsc}: the notes do not name the datasheet: {notes}"
             );
             if JUNCTION_CATALOGS.contains(&name) {
+                // Exactly one statement: the figure is a junction range (counted below), or the
+                // datasheet's one figure "does not say junction or ambient" (the 1N5819WS's
+                // operating range). A note that merely contains the word `junction` proves neither.
+                let is_junction = notes.contains("it is a junction temperature range");
+                let says_not = notes.contains("does not say junction");
                 assert!(
-                    notes.contains("junction"),
-                    "{name} {lcsc}: the notes of a diode or MOSFET row must say which temperature the figure is: {notes}"
+                    is_junction != says_not,
+                    "{name} {lcsc}: the notes of a diode or MOSFET row must say which temperature the figure is, as a junction range or as one the datasheet does not name, and not both: {notes}"
                 );
-                if notes.contains("it is a junction temperature range") {
+                if is_junction {
                     junction += 1;
                 }
             }

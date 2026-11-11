@@ -602,7 +602,7 @@ A value the checker gives a member of a module from the parts it cannot reach, b
 _Avoid_: Computed value, inferred value, rollup
 
 **Temperature shift**:
-How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that does not has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
+How far the temperature of a design goes from the 25 C a datasheet states, in kelvin, as a range (`.z.temperature_shift &= -65K..100K` is -40 C to 125 C). The member `.temperature_shift: Temperature optional` of a `Zener` (ADR 0080, provisional): a design that states it has `.voltage_over_temperature`, the Zener's voltage at the hot and the cold corner, from the picked row's temperature coefficient; a design that states none gets the shift of its board's `.environment.temperature` (less the 25 C) when it bounds `.voltage_over_temperature`, and one that does neither has no such relation. Not an absolute temperature, and not the rise of a track or a part (`.max_temperature_rise`).
 _Avoid_: Absolute temperature, delta T (the range of temperatures a board's surroundings reach is its _Environment_, and a part's is its _Temperature range_)
 
 **Ohm bound**:
