@@ -1,0 +1,35 @@
+//! The USB Type-C receptacle of Shouhan (Shenzhen Shouhan Technology), TYPE-C 16PIN 2MD(073): the
+//! J1 and the J2 of the Easyduino ESP32-S3 board (LCSC C2765186, `catalogs/shouhan_type_c_16pin.csv`).
+//! A 16-contact USB 2.0 receptacle, surface mount, right angle, with four shell legs.
+//!
+//! The maker's drawing (TYPE-C 16PIN 2MD(073), revision A, scale 1:8, one sheet: no date) names
+//! the contacts in its "PIN ASSIGNMENTS" table: A1 and B12 `GND`, A4, A9, B4 and B9 `VBUS`, A5
+//! `CC1` and B5 `CC2`, A6 `DP1` and B6 `DP2` (D+), A7 `DN1` and B7 `DN2` (D-), A8 `SBU1` and B8
+//! `SBU2`, A12 and B1 `GND`. A signal that two contacts carry is one pin here, since the
+//! receptacle joins the two inside (the plug's orientation picks one of them): `.vbus` has four
+//! pads, `.gnd` four, `.dp` two (A6, B6) and `.dm` two (A7, B7). The shell is the four plated legs,
+//! all numbered `S1` (the drawing gives them no number and the board's footprint calls them S1),
+//! one pin. The board's `.shield` is its ground.
+
+import std::parts::connector::Connector
+
+/// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell: `.vbus`, `.gnd`, `.cc1`,
+/// `.cc2`, `.dp`, `.dm`, `.sbu1`, `.sbu2` and `.shield`.
+part ShouhanTypeC16Pin provides Connector {
+    pins "SMD" {
+        //  pin       kind           name       pads
+        .vbus   power         "VBUS"     "A4" "A9" "B4" "B9"
+        .gnd    power         "GND"      "A1" "A12" "B1" "B12"
+        .cc1    passive       "CC1"      "A5"
+        .cc2    passive       "CC2"      "B5"
+        .dp     bidirectional "D+"       "A6" "B6"
+        .dm     bidirectional "D-"       "A7" "B7"
+        .sbu1   passive       "SBU1"     "A8"
+        .sbu2   passive       "SBU2"     "B8"
+        .shield passive       "SHIELD"   "S1"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog shouhan_type_c_16pin by .mpn { .mpn, .package }
+}
