@@ -2,7 +2,9 @@
 //!
 //! The board's `.environment.temperature` is a range, and every fitted part (not a mounting
 //! hole, a fiducial or a label) is judged against it, in this order of what says the part's
-//! range: the design (`.temp_min`, `.temp_max` of the part), else the catalog row it was picked as.
+//! range: the design (`.temp_min`, `.temp_max` of the part), else the catalog row it was picked as,
+//! else the cited range of the row's dielectric class (`netsmith_check::environment::ClassRange`,
+//! a class's property and not a datasheet's, which every message that rests on it says).
 //! A part whose range does not cover the environment is refused here, as an error (the solver
 //! already left such rows out of the choice, so a refusal here is a range the design states, or
 //! a row held by a pin). A part that states none, at one end or both, is kept, and a guideline
@@ -184,7 +186,17 @@ pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> J
         );
         let row_min = fitted.pick.and_then(|p| p.temp_min);
         let row_max = fitted.pick.and_then(|p| p.temp_max);
-        let (min, max) = (min.or(row_min), max.or(row_max));
+        // The range of the dielectric class of the row fills an end that neither the design nor
+        // the row states. A generic part has no row yet (its row is found at `fab`), so it has no
+        // class here either.
+        let class = fitted
+            .pick
+            .filter(|p| p.generic.is_none())
+            .and_then(|p| p.temp_class);
+        let (min, max) = (
+            min.or(row_min).or(class.map(|c| c.min)),
+            max.or(row_max).or(class.map(|c| c.max)),
+        );
         let fit = Fit::of((lo, hi), min, max);
         let name = model.path_of(part);
         if fit.refused() {
@@ -199,7 +211,7 @@ pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> J
                         .and_then(|p| p.lcsc.as_deref())
                         .map_or(String::new(), |lcsc| format!(" ({lcsc})"))
                 ),
-                (None, None) => String::new(),
+                (None, None) => class.map(|c| c.from_class()).unwrap_or_default(),
             };
             if fit.hot == Some(false) {
                 errors.push(format!(

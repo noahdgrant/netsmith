@@ -28,6 +28,6 @@ KiCad stays in two roles. It is an optional cross-check: `kicad-cli` for ERC and
 **Left open.**
 
 - The look of the generated symbols: whether the passives match KiCad's shapes closely or follow another standard, and the pin names and numbers it shows. This is for the owner.
-- How a project's own part gets a footprint with no KiCad: ADR 0104 (proposed) makes it a generator name and its parameters in `kicad.toml` (`gen:`), or a `.kicad_mod` file listed as a `[[library]]`; the owner has yet to accept it.
+- How a project's own part gets a footprint with no KiCad: ADR 0104 (accepted) makes it a generator name and its parameters in `kicad.toml` (`gen:`), or a `.kicad_mod` file listed as a `[[library]]`.
 - How `generated_vs_kicad` keeps running in CI: it skips where KiCad's libraries are absent, so the `kicad` job (KiCad 9 with `kicad-symbols` and `kicad-footprints`) must stay, run it, and fail where it now skips, so that a missing install is not a pass.
 - Whether KiCad 8 is supported for the cross-check. It is untried today.

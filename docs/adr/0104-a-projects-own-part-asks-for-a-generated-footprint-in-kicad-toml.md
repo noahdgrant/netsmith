@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A project's own part asks for a generated footprint in its kicad.toml
 
-Decides the second question that ADR 0097 left open ("how a project's own part gets a footprint with no KiCad"). The owner chose on 2026-11-10 that a project may ask netsmith to generate a footprint by generator name and parameters, besides supplying `.kicad_mod` files through `[[library]]`; the spelling is this ADR's, and the owner has not accepted it. It meets test 1 (it is a file format: a project's `kicad.toml` and the ids of its written boards depend on the spelling) and test 3 (it rejects two obvious alternatives, below).
+Decides the second question that ADR 0097 left open ("how a project's own part gets a footprint with no KiCad"). The owner chose on 2026-11-10 that a project may ask netsmith to generate a footprint by generator name and parameters, besides supplying `.kicad_mod` files through `[[library]]`; the owner confirmed the spelling on 2026-11-11. It meets test 1 (it is a file format: a project's `kicad.toml` and the ids of its written boards depend on the spelling) and test 3 (it rejects two obvious alternatives, below).
 
 **Decision.** The `footprint` of a `[[part]]` row of `kicad.toml` is a `Library:Name` id, or `gen:Generator(key=value, ...)`:
 

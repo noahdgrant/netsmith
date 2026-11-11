@@ -6380,6 +6380,38 @@ board Warm {
 error: Warm: `led` works up to 348.15 K (75degC) only (the design states `.led.temp_max`), under the board's environment, which reaches 358.15 K (85degC) (`environment.temperature` 233.15 K to 358.15 K (-40degC to 85degC)): choose a part rated for it or narrow the environment
 ```
 
+- **A row that names a dielectric class and states no range is judged by the class's range.** A capacitor row with a `dielectric` cell (`X5R`, `X7R`, `C0G`) and no `temp_min` or `temp_max` of its own takes the operating temperature range that makers print for that class code (X5R -55degC to 85degC, X7R and C0G -55degC to 125degC; the documents are cited in the doc comment of `ClassRange` in `crates/netsmith-check/src/environment.rs`), at the end its cells leave empty. A class range is a property of the class code and not of a particular part, which may be rated narrower, so the row's own cell, or the design's statement, always wins at its end, and every message that rests on a class range says "from the class X5R, per ..." and not that the datasheet states it. A class with no cited range (none in the standard rows) leaves the row unjudged and named, as a row with no class does. A project's own row can use it: the cell is read from any catalog that has a `dielectric` column of the class names. Here the row states a class and nothing else, and 85degC is inside X5R's range while 125degC is not:
+
+```csv file=catalogs/capacitor.csv set=class_only
+mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,library,source
+ACME-C33N3,33.3nF +/- 10%,derate capacitance by bias:,16V,0402,X5R,Basic,https://example.invalid/acme-c33n3.pdf
+```
+
+```nsm fails catalogs=class_only
+import std::env::Environment
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Hot {
+    .environment: Environment { .temperature &= -40degC..125degC }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
+    .supply.pos ~> .c ~> .supply.neg
+}
+```
+
+```text
+error: the `capacitor` catalog has nothing for `c`, which needs capacitance within 29.97nF..36.63nF (15 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC): a row's `temp_min` and `temp_max` are its datasheet's; a row that states no temperature of its own is judged by the range of its dielectric class (X5R), which is the class's and not its datasheet's: add `temp_min` and `temp_max` to the row to say its own)
+   --> main.nsm:12:5
+   |
+12 |     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
+   |     ^^^^^^^^^^^^^
+```
+
 - **A board with no environment is not judged** and says nothing: no check, no finding. The same holds for a board of a project whose manifest names none.
 - **A board that has an environment that states no temperature** (`.environment: Environment { }`) is told so, and no part is judged.
 - **Parts that are not fitted** (`.assembly` is `AssemblyMode::None`: a mounting hole, a fiducial) and labels are not judged. A part soldered by hand or consigned is, because it sees the same air.
