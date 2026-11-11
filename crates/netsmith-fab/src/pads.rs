@@ -5,7 +5,7 @@
 //! clearance a zone keeps round it.
 
 use crate::artwork::{Pad, PadShape, Primitive};
-use crate::gbr::{Ap, Contour, Gerber};
+use crate::gbr::{Ap, Contour, Pen};
 use crate::geom::{self, Arc, Bounds, Pt, circle_polygon, is_right_angle, steps_for};
 
 /// A custom pad's primitive on the board.
@@ -447,7 +447,7 @@ impl Outline {
     }
 
     /// Draws the shape as copper (dark, or clear if the file is in clear polarity).
-    pub fn draw(&self, g: &mut Gerber, function: Option<&'static str>, attrs: &[String]) {
+    pub fn draw(&self, g: &mut dyn Pen, function: Option<&'static str>, attrs: &[String]) {
         match self {
             Outline::Circle { c, r } => g.flash(Ap::Circle(2.0 * r), function, *c, attrs),
             Outline::Rect { c, w, h, angle } => {
@@ -521,7 +521,7 @@ impl Outline {
 }
 
 /// A primitive of a custom pad as copper.
-fn draw_prim(g: &mut Gerber, p: &Prim, function: Option<&'static str>, attrs: &[String]) {
+fn draw_prim(g: &mut dyn Pen, p: &Prim, function: Option<&'static str>, attrs: &[String]) {
     match p {
         Prim::Line { a, b, width } => {
             if *width > 0.0 {
@@ -579,6 +579,7 @@ fn draw_prim(g: &mut Gerber, p: &Prim, function: Option<&'static str>, attrs: &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gbr::Gerber;
 
     fn pad(shape: PadShape, size: (f64, f64), angle: f64) -> Pad {
         Pad {

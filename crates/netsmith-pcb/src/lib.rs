@@ -29,6 +29,7 @@
 mod anneal;
 pub mod board;
 pub mod constraints;
+pub mod copper;
 mod explain;
 pub mod export;
 mod fit;
@@ -43,7 +44,9 @@ pub mod quality;
 pub mod ratsnest;
 pub mod route;
 pub mod rules;
+pub mod scene3d;
 pub mod shape;
+pub mod stackup;
 mod stitch;
 pub mod svg;
 pub mod validate;

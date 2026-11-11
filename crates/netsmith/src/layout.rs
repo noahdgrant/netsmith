@@ -48,3 +48,37 @@ pub fn read(file: &Path, boards: &[String]) -> Result<Option<(Layout, String)>, 
         .map_err(|e| e.to_string())?;
     Ok(Some((layout, name)))
 }
+
+/// Why [`place`] made no board.
+pub enum PlaceFailure {
+    /// The design cannot be made into a placed board (a footprint, a process, the placer).
+    Board(netsmith_pcb::BoardError),
+    /// The layout file does not fit the placed board.
+    Layout(String),
+}
+
+/// The board of `design` placed as `fab`, the editor's PCB view and `board3d` place it: the
+/// layout file's faces and locks tell the placer what to keep, and its positions are then put on
+/// the board. `lines_warn` makes an unmet requirement of the physical file a warning (ADR 0045).
+/// The options are returned for what measures the requirements afterwards.
+pub fn place(
+    design: &netsmith_core::Design,
+    layout: Option<&(Layout, String)>,
+    libraries: &crate::Libraries,
+    lines_warn: bool,
+) -> Result<(netsmith_pcb::Board, netsmith_pcb::PlaceOptions), PlaceFailure> {
+    let mut options = netsmith_pcb::place_options(design, layout.map(|l| &l.0));
+    options.lines_warn = lines_warn;
+    let mut board = netsmith_pcb::Board::from_design_placed(
+        design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &options,
+    )
+    .map_err(PlaceFailure::Board)?;
+    if let Some((layout, file)) = layout {
+        netsmith_pcb::apply_layout(&mut board, layout, file)
+            .map_err(|e| PlaceFailure::Layout(e.to_string()))?;
+    }
+    Ok((board, options))
+}
