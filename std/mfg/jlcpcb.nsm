@@ -130,13 +130,13 @@ interface TwoLayer {
     .min_npth_slot: Length
     .min_npth_slot &= 1mm..1m
     /// The via the router draws, its hole and its copper: an offer the board may replace
-    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.25 mm in a 0.45 mm
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.2 mm in a 0.45 mm
     /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
     /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
-    /// less than 0.45 mm, will cost more", and its copper is 0.2 mm wider than its hole, more
-    /// than the 0.15 mm the page prefers.
+    /// less than 0.45 mm, will cost more", and 0.2 mm is its "preferred min. via hole size";
+    /// the copper is 0.25 mm wider than the hole, more than the 0.15 mm the page prefers.
     .via_drill: Length
-    .via_drill ?= 0.25mm
+    .via_drill ?= 0.2mm
     .via_diameter: Length
     .via_diameter ?= 0.45mm
     /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
@@ -290,13 +290,13 @@ interface FourLayer {
     .min_npth_slot: Length
     .min_npth_slot &= 1mm..1m
     /// The via the router draws, its hole and its copper: an offer the board may replace
-    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.25 mm in a 0.45 mm
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.2 mm in a 0.45 mm
     /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
     /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
-    /// less than 0.45 mm, will cost more", and its copper is 0.2 mm wider than its hole, more
-    /// than the 0.15 mm the page prefers.
+    /// less than 0.45 mm, will cost more", and 0.2 mm is its "preferred min. via hole size";
+    /// the copper is 0.25 mm wider than the hole, more than the 0.15 mm the page prefers.
     .via_drill: Length
-    .via_drill ?= 0.25mm
+    .via_drill ?= 0.2mm
     .via_diameter: Length
     .via_diameter ?= 0.45mm
     /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to

@@ -427,7 +427,7 @@ mod tests {
             (r.clearance, r.min_track_width, r.track_width),
             (0.1, 0.1, 0.1)
         );
-        assert_eq!((r.via_drill, r.min_through_hole), (0.25, 0.15));
+        assert_eq!((r.via_drill, r.min_through_hole), (0.2, 0.15));
         assert_eq!((r.hole_to_hole, r.copper_to_edge), (0.45, 0.2));
         assert_eq!((r.min_annular_ring, r.via_ring), (0.18, 0.05));
         assert_eq!((r.hole_clearance, r.plated_hole_clearance), (0.2, 0.28));
@@ -450,8 +450,8 @@ mod tests {
     #[test]
     fn the_via_is_the_smallest_at_the_standard_price_and_keeps_its_hole_clear() {
         let r = rules();
-        // 0.25 mm in 0.45 mm: JLCPCB charges more for a smaller hole or a narrower via.
-        assert_eq!((r.via_drill, r.via_diameter), (0.25, 0.45));
+        // 0.2 mm in 0.45 mm: JLCPCB charges more for a smaller hole or a narrower via.
+        assert_eq!((r.via_drill, r.via_diameter), (0.2, 0.45));
         // Its copper and the clearance keep a track the page's 0.2 mm from its hole.
         assert!((r.via_diameter - r.via_drill) / 2.0 + r.clearance >= r.hole_clearance - 1e-9);
         assert!(r.track_width >= r.min_track_width);
@@ -510,7 +510,7 @@ mod tests {
         let r = Rules::for_process(&four_layer_process(&[])).unwrap();
         assert_eq!((r.min_track_width, r.track_width), (0.09, 0.09));
         assert_eq!(r.clearance, 0.1);
-        assert_eq!((r.via_drill, r.min_annular_ring), (0.25, 0.15));
+        assert_eq!((r.via_drill, r.min_annular_ring), (0.2, 0.15));
         assert_eq!((r.via_diameter, r.plated_slot), (0.45, 0.35));
         assert_eq!(
             r.plane_clearance, 0.3,

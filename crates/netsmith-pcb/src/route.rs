@@ -217,10 +217,13 @@ const CHAIN_SEARCHES: usize = 600;
 const CHAIN_TOTAL: usize = 3000;
 const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
 
-/// The most times the whole board is routed, each with the lines in another order. Putting
-/// the lines of a fine-pitch grid first is one more order, so the last of the others is
-/// dropped for it: a board is routed at most as many times as before.
-const MOST_TRIES: usize = 4;
+/// The most times the whole board is routed, each with the lines in another order: the lines
+/// of a fine-pitch grid first, shortest first, longest first, by net and in reverse net order.
+/// A board that routes on the first order is routed once; the fifth order (reverse net order)
+/// was dropped while there were four, and it finishes the invented mixed board on seed 2 since
+/// the via became 0.2 in 0.45 mm (issue #431), so it costs time only on a board that the other
+/// four leave unfinished.
+const MOST_TRIES: usize = 5;
 
 /// What a move costs, in tenths of a millimetre of track.
 const STEP: i64 = 10;
