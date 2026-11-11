@@ -153,3 +153,155 @@ fn no_field_is_narrowed_through_a_relation_that_reads_an_end() {
     assert_eq!(domain(&s, "b.voltage"), "4.7V..5.5V");
     assert_eq!(domain(&s, "w.voltage"), "unset");
 }
+
+// ---- nominal(.f) ----------------------------------------------------------------------
+
+/// A board with rails stated with a tolerance, a range with no stated centre and a value.
+fn nominal_board(statements: &str) -> String {
+    format!(
+        "import std::sources::Rail\nboard B {{\n    .n: Rail {{ .voltage &= 3.3V +/- 5% }}\n    \
+         .a: Rail {{ .voltage &= 4V..6V }}\n    .c: Rail {{ .voltage &= 12V }}\n    \
+         .w: Rail {{ }}\n    {statements}\n}}\n"
+    )
+}
+
+fn run_nominal(statements: &str) -> Solution {
+    let src = nominal_board(statements);
+    let c = check("test.nsm", &src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    solve(&c.boards[0], &Catalogs::empty())
+}
+
+fn about_nominal(s: &Solution) -> Vec<String> {
+    s.diagnostics
+        .iter()
+        .map(|d| d.message.clone())
+        .filter(|m| m.contains("nominal("))
+        .collect()
+}
+
+#[test]
+fn a_nominal_is_the_value_a_field_is_stated_at_without_its_tolerance() {
+    // 3.3 V +/- 5% is 3.135 V to 3.465 V: the plain bound reads the worst case and is refused,
+    // the nominal is 3.3 V and meets it. The ends of the range do not average to exactly 3.3 in
+    // a float; the comparison is made on the stated value.
+    let plain = run_nominal(".n.voltage >= 3.3V");
+    assert_eq!(plain.diagnostics.len(), 1, "{:#?}", plain.diagnostics);
+    assert!(
+        plain.diagnostics[0]
+            .message
+            .contains("must always be at least 3.3V")
+    );
+    for statement in [
+        "nominal(.n.voltage) >= 3.3V",
+        "nominal(.n.voltage) <= 3.3V",
+        "3.3V <= nominal(.n.voltage)",
+        "nominal(.n.voltage) >= 3.2V",
+        "nominal(.n.voltage) <= 3.4V",
+    ] {
+        let s = run_nominal(statement);
+        assert!(
+            s.diagnostics.is_empty(),
+            "{statement}: {:#?}",
+            s.diagnostics
+        );
+    }
+}
+
+#[test]
+fn a_nominal_below_the_bound_is_refused_and_the_message_names_nominal() {
+    let s = run_nominal("nominal(.n.voltage) >= 3.4V");
+    let m = about_nominal(&s);
+    assert_eq!(m.len(), 1, "{:#?}", s.diagnostics);
+    assert!(
+        m[0].contains("nominal(n.voltage) must be at least 3.4V, but 3.3V is below 3.4V"),
+        "{m:#?}"
+    );
+    assert!(m[0].contains("without its tolerance"), "{m:#?}");
+    let s = run_nominal("nominal(.n.voltage) <= 3.2V");
+    let m = about_nominal(&s);
+    assert_eq!(m.len(), 1, "{:#?}", s.diagnostics);
+    assert!(
+        m[0].contains("nominal(n.voltage) must be at most 3.2V, but 3.3V is above 3.2V"),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_range_with_no_stated_centre_has_its_middle_as_nominal() {
+    // A range is stored as its two ends, so 4 V to 6 V is read at 5 V, and a value at itself.
+    for statement in [
+        "nominal(.a.voltage) >= 5V",
+        "nominal(.a.voltage) <= 5V",
+        "nominal(.c.voltage) >= 12V",
+        "nominal(.c.voltage) <= 12V",
+    ] {
+        let s = run_nominal(statement);
+        assert!(
+            s.diagnostics.is_empty(),
+            "{statement}: {:#?}",
+            s.diagnostics
+        );
+    }
+    for statement in [
+        "nominal(.a.voltage) >= 5.1V",
+        "nominal(.a.voltage) <= 4.9V",
+        "nominal(.c.voltage) >= 12.1V",
+    ] {
+        let s = run_nominal(statement);
+        assert_eq!(
+            about_nominal(&s).len(),
+            1,
+            "{statement}: {:#?}",
+            s.diagnostics
+        );
+    }
+}
+
+#[test]
+fn a_nominal_of_a_field_with_no_value_waits_as_the_ends_do() {
+    let without = run_nominal("");
+    let waiting = run_nominal("nominal(.w.voltage) >= 3V");
+    assert!(
+        about_nominal(&waiting).is_empty(),
+        "{:#?}",
+        waiting.diagnostics
+    );
+    assert_eq!(waiting.deferred.len(), without.deferred.len() + 1);
+    let listed: Vec<String> = waiting
+        .deferred
+        .iter()
+        .map(|&i| waiting.model.show_expr(&waiting.model.relations()[i].lhs))
+        .collect();
+    assert!(
+        listed.iter().any(|l| l == "nominal(w.voltage)"),
+        "{listed:#?}"
+    );
+    // Given a value it is made.
+    let met = run_nominal(".w.voltage &= 5V +/- 1%\n    nominal(.w.voltage) >= 5V");
+    assert_eq!(met.deferred.len(), without.deferred.len());
+    assert!(met.diagnostics.is_empty(), "{:#?}", met.diagnostics);
+    let missed = run_nominal(".w.voltage &= 5V +/- 1%\n    nominal(.w.voltage) >= 5.1V");
+    assert_eq!(about_nominal(&missed).len(), 1, "{:#?}", missed.diagnostics);
+}
+
+#[test]
+fn no_field_is_narrowed_through_a_relation_that_reads_a_nominal() {
+    let before = run_nominal("");
+    for statements in [
+        "nominal(.n.voltage) >= 3V",
+        "nominal(.n.voltage) >= 4V",
+        "nominal(.w.voltage) <= 5V",
+        "5V >= nominal(.w.voltage)",
+        "nominal(.a.voltage) <= nominal(.c.voltage)",
+    ] {
+        let s = run_nominal(statements);
+        for path in ["n.voltage", "a.voltage", "c.voltage", "w.voltage"] {
+            assert_eq!(
+                domain(&s, path),
+                domain(&before, path),
+                "`{statements}` changed {path}"
+            );
+        }
+    }
+}

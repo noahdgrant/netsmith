@@ -2674,11 +2674,12 @@ board DividerFixture {
 
     /// A finding about ORBIT's circuit: the charger's programming resistor is 2 kohm, the
     /// datasheet's least (page 4, "Charge Impedance Range", 2 to 67 kohm), and with the 1% of the
-    /// LCSC part ORBIT names (C22975) the resistor is 1.98 kohm at worst. Tying the resistor to
-    /// the part's `.rprog` is refused for that; the board states the nominal 2 kohm for the part
-    /// instead (`src/charger.nsm`), and a resistor of 2.2 kohm, the next E24 value, is accepted.
+    /// LCSC part ORBIT names (C22975) the resistor is 1.98 kohm at worst. The datasheet's range is
+    /// for the nominal value, so the part states `nominal(.rprog) >= 2kohm` and the resistor,
+    /// tied to the part's `.rprog` (`src/charger.nsm`), is accepted at 2 kohm +/- 1%; a nominal
+    /// of 1.8 kohm is below the least and refused, and 2.2 kohm is accepted.
     #[test]
-    fn the_programming_resistor_at_one_percent_is_below_the_datasheets_least() {
+    fn the_programming_resistor_at_one_percent_meets_the_datasheets_nominal_least() {
         let fixture = r#"
 import src::mcp73831::Mcp73831
 import std::parts::passive::Resistor
@@ -2696,18 +2697,33 @@ board ProgrammingFixture {
     .ic.rprog == .r.resistance
 }
 "#;
-        let error = fixture_board(&fixture.replace("RVALUE", "2kohm"))
+        // ORBIT's R3: 2 kohm at 1% is 1.98 kohm at worst, and its nominal is the least.
+        fixture_board(&fixture.replace("RVALUE", "2kohm")).unwrap_or_else(|e| panic!("{e}"));
+        fixture_board(&fixture.replace("RVALUE", "2.2kohm")).unwrap_or_else(|e| panic!("{e}"));
+        // A nominal below the least is refused, and the message says it compares the nominal.
+        let error = fixture_board(&fixture.replace("RVALUE", "1.8kohm"))
             .err()
-            .expect("2 kohm at 1% is 1.98 kohm at worst");
+            .expect("1.8 kohm is below the datasheet's 2 kohm");
         assert!(
-            error.contains("1.98kΩ..2.02kΩ is not always above 2kΩ"),
+            error.contains("nominal(ic.rprog) must be at least 2kΩ, but 1.8kΩ is below 2kΩ"),
             "{error}"
         );
-        fixture_board(&fixture.replace("RVALUE", "2.2kohm")).unwrap_or_else(|e| panic!("{e}"));
-        // The board states the nominal value, which is ORBIT's and the part's least.
+        // Above the greatest too.
+        let error = fixture_board(&fixture.replace("RVALUE", "68kohm"))
+            .err()
+            .expect("68 kohm is above the datasheet's 67 kohm");
         assert!(
-            read("src/charger.nsm").contains(".ic.rprog &= 2kohm"),
-            "the charger states the nominal programming resistance"
+            error.contains("nominal(ic.rprog) must be at most 67kΩ, but 68kΩ is above 67kΩ"),
+            "{error}"
+        );
+        // The part's plain bound read the worst case; the part states the nominal one.
+        let part = read("src/mcp73831.nsm");
+        assert!(part.contains("nominal(.rprog) >= 2kohm"));
+        assert!(part.contains("nominal(.rprog) <= 67kohm"));
+        // The charger ties the part's `RPROG` to the resistor fitted.
+        assert!(
+            read("src/charger.nsm").contains(".ic.rprog == .rprog.resistance"),
+            "the charger ties the part's RPROG to its programming resistor"
         );
     }
 

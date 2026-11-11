@@ -198,3 +198,50 @@ fn a_bound_that_reads_an_end_is_not_carried_to_the_part_the_member_is_held_to() 
     let waiting = run(&lamp(""), resistors());
     assert_eq!(s.deferred.len(), waiting.deferred.len() + 1);
 }
+
+#[test]
+fn a_block_is_not_refused_by_the_hull_for_a_relation_that_reads_a_nominal() {
+    // The hull of a block of 3 V and 10 V rows is 3 V to 10 V, whose centre is 6.5 V; a row's own
+    // nominal is its value. `.limit <= nominal(.vz)` with a limit of 8 V fails at the hull's
+    // centre, and the 10 V row meets it: a skipped block would lose the row. With the audit on,
+    // a row skipped that a trial accepts stops the solver.
+    for (relation, limit, wanted) in [
+        (".limit <= nominal(.vz)", "8V", "HIGH1"),
+        ("nominal(.vz) >= .limit", "8V", "HIGH1"),
+        ("nominal(.vz) <= .limit", "5V", "LOW0"),
+        (".limit >= nominal(.vz)", "5V", "LOW0"),
+        // The centre of the hull is 6.5 V, between the two rows: it meets what no row meets.
+        (".limit <= nominal(.vz)", "6V", "HIGH1"),
+    ] {
+        let src = board(relation).replace("5V", limit);
+        let reference = run(&src, mixed().with_narrowing(false));
+        let narrowed = run(
+            &src,
+            mixed().with_narrowing(true).with_narrowing_audit(true),
+        );
+        assert_eq!(picked(&reference), vec![wanted], "`{relation}` (reference)");
+        assert_eq!(picked(&narrowed), vec![wanted], "`{relation}`");
+        assert!(
+            narrowed.diagnostics.is_empty(),
+            "`{relation}`: {:?}",
+            narrowed.diagnostics
+        );
+    }
+}
+
+#[test]
+fn a_rating_is_not_bounded_by_the_nominal_of_a_range_that_a_later_pick_narrows() {
+    // As for `max(.v)`: the nominal of `v` read when the capacitor is resolved is the centre of
+    // 5 V to 14 V, and the resistor's pick narrows `v` afterwards: the bound is not carried.
+    let s = run(&rating_board(".c.max_voltage >= nominal(.v)"), caps());
+    assert!(!need(&s).contains("rated voltage"), "{}", need(&s));
+    assert!(!need(&s).contains("9.5 V"), "{}", need(&s));
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+}
+
+#[test]
+fn a_bound_that_reads_a_nominal_is_not_carried_to_the_part_the_member_is_held_to() {
+    let s = run(&lamp(".lamp.balance >= nominal(.floor)"), resistors());
+    assert_eq!(picked(&s), vec!["330"]);
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+}

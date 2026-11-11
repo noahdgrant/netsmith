@@ -378,8 +378,8 @@ What is not what it seems:
 #### What each part states
 
 - `Mcp73831`: the datasheet's charge current equation `IREG = 1000 V / RPROG` (section 5.1.2,
-  page 15) as `.charge_current == 1000V / .rprog`, with `RPROG` between 2 kohm and 67 kohm (DC
-  characteristics, "Charge Impedance Range", page 4), and the regulated voltage of the order code,
+  page 15) as `.charge_current == 1000V / .rprog`, with the nominal `RPROG` between 2 kohm and 67 kohm
+  (`nominal(.rprog)`; DC characteristics, "Charge Impedance Range", page 4), and the regulated voltage of the order code,
   `.vreg` 4.168 V to 4.232 V (the "-2" line of "Regulated Output Voltage", page 3), as a column of
   the catalog row. The equation is nominal: the table of page 3 gives 90 to 110 mA at 10 kohm
   (-5 to +55 C), and that spread is not in the relation.
@@ -454,8 +454,8 @@ with no error and no warning; what the build prints are notes (below).
   output is not stated but derived: `BuckBoost` holds `vout == vref * (1 + R7 / R8)` with the
   part's `vref` (500 mV +/- 1%, TPS63802 datasheet page 6) and ORBIT's 560 kohm and 100 kohm at
   1%, which is 3.212 V to 3.390 V, inside the window; a wrong divider stops the build (test).
-  The charger's `.rprog` is 2 kohm and `.charge_current == 1000V / .rprog` is 500 mA (datasheet
-  section 5.1.2). The `+BATT` rail has no voltage: ORBIT names no cell.
+  The charger's `.rprog` is the 2 kohm +/- 1% resistor fitted and `.charge_current == 1000V / .rprog`
+  is 495 to 505 mA (datasheet section 5.1.2). The `+BATT` rail has no voltage: ORBIT names no cell.
 
 ### Same nets
 
@@ -512,13 +512,15 @@ Tests in `crates/netsmith/tests/orbit.rs`, module `board` (no KiCad; run
 
 ### What the checker found (new problems in ORBIT's circuit and in netsmith)
 
-- **R3 is under the charger's least.** The MCP73831's `PROG` resistor range is 2 kohm to 67 kohm
-  (DC characteristics, page 4) and ORBIT's R3 is 2 kohm; with the 1% of its LCSC part (C22975) it is
-  1.98 kohm at worst, and the check refuses to tie the resistor to the part's `.rprog` (test
-  `the_programming_resistor_at_one_percent_is_below_the_datasheets_least`). The board states the
-  nominal 2 kohm for the part and the resistor's own 1% separately (the datasheet's table gives
-  450 to 550 mA at 2 kohm, so the part is specified at its edge). No catalog row can meet it: the
-  next E24 value is 2.2 kohm (455 mA).
+- **R3 is at the charger's least, so only its nominal value meets it.** The MCP73831's `PROG`
+  resistor range is 2 kohm to 67 kohm (DC characteristics, page 4) and ORBIT's R3 is 2 kohm; with
+  the 1% of its LCSC part (C22975) it is 1.98 kohm at worst, under a plain `.rprog >= 2kohm`, which
+  reads the worst case. A datasheet's design range is for the nominal value, so the part states
+  `nominal(.rprog) >= 2kohm` and `<= 67kohm` (`nominal`, `docs/LANGUAGE.md`, "The nominal value")
+  and the charger ties the part's `.rprog` to the resistor fitted (`.ic.rprog == .rprog.resistance`),
+  so `.charge_current` is worked out from it (495 to 505 mA). A 1.8 kohm resistor is refused (test
+  `the_programming_resistor_at_one_percent_meets_the_datasheets_nominal_least`). The datasheet's
+  table gives 450 to 550 mA at 2 kohm, so the part is specified at its edge.
 - **The green LEDs on a 3.3 V pin.** D2 is green (Everlight 19-217/GHC, forward voltage 2.7 to
   3.7 V at 20 mA, its datasheet page 3) behind 1.5 kohm from a 3.3 V output: at the top of the
   range it does not turn on. The part has no model of its pin's output level, so the board does

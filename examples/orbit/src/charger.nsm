@@ -38,10 +38,10 @@ module Charger {
     .vbatt.neg ~ .vbus.neg
     .ic.prog ~ .rprog.b
     .rprog.a ~ .vbus.neg
-    // The programming resistor is 2 kohm: the nominal value is stated for the part, not tied to the
-    // resistor, because at 1% it is 1.98 kohm at worst, under the part's 2 kohm minimum (README,
-    // "What the checker found"); tying them (`.ic.rprog == .rprog.resistance`) is refused.
-    .ic.rprog &= 2kohm
+    // The part's `RPROG` is the resistor fitted, so `.charge_current` is worked out from it. The
+    // part's range (2 to 67 kohm) is for the nominal value (`nominal(.rprog)`), so the 2 kohm
+    // resistor at 1% (1.98 kohm at worst) meets it.
+    .ic.rprog == .rprog.resistance
 
     .vbus.pos ~> .status_resistor ~> .status_led ~> .ic.stat
 

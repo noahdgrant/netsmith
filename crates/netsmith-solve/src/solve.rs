@@ -221,7 +221,7 @@ use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
-use crate::eval::{EvalError, Val, eval, fields_in, reads_end, relation_reads_end};
+use crate::eval::{EvalError, Val, eval, fields_in, reads_end, reads_nominal, relation_reads_end};
 use crate::generic::{Need, Sense};
 use crate::lock::LockedRow;
 
@@ -2337,7 +2337,16 @@ impl Solver<'_> {
                             .max(1e-30);
                         // An end of a range is one number (ADR 0098): the two numbers are
                         // compared, and "always" would say more than the check does.
-                        let message = if reads_end(&r.lhs) || reads_end(&r.rhs) {
+                        let message = if reads_nominal(&r.lhs) || reads_nominal(&r.rhs) {
+                            // `nominal(.f)` is the value a field is stated at, whatever its
+                            // tolerance; a bound on it is no claim about the worst case.
+                            format!(
+                                "{} must be {word} {}, but {l} is {} {v}: it compares the value a field is stated at, without its tolerance, so change the value or the bound",
+                                show(&r.lhs),
+                                show(&r.rhs),
+                                if r.op == CmpOp::Ge { "below" } else { "above" },
+                            )
+                        } else if reads_end(&r.lhs) || reads_end(&r.rhs) {
                             format!(
                                 "{} must be {word} {}, but {l} is {} {v}: no value of the two ranges meets it, so change one of them",
                                 show(&r.lhs),

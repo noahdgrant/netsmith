@@ -346,6 +346,10 @@ _Avoid_: Level shifter, voltage translator
 `min(.f)` and `max(.f)` (ADR 0098, proposed): the least and the greatest value of the range of the field `.f`, each as one number of the field's own kind, written in a `<=` or `>=` statement (`min(.bias) <= max(.zener_voltage)`). The comparison is then made on two numbers, so it says "can hold for some value", which a plain `<=` ("for every value") cannot. A range end is read and never solved for: it narrows nothing, and a relation that holds one waits, listed as not evaluated, while the field has no value. Not the smaller of two values, as `min(a, b)` is in other languages: it takes one field.
 _Avoid_: Bound function, lo and hi (the names the owner may choose instead), a range with values at its ends (that is `lo..hi` with values for `lo` and `hi`, a different thing)
 
+**Nominal value**:
+`nominal(.f)`: the value a field is stated at, without its tolerance, as one number of the field's own kind, written in a `<=` or `>=` statement (`nominal(.rprog) >= 2kohm`) for a datasheet limit on the value a part is built with. A range is stored as its two ends, so it is their mean (`2kohm +/- 1%` is 2 kohm, `1kohm..3kohm` is 2 kohm). Read like a range end: never solved for, never prunes, waits while the field has no value. The plain `>=` still reads the worst case.
+_Avoid_: Typical value (a datasheet's typical column is a different figure), centre value
+
 **Range with values at its ends**:
 A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
 _Avoid_: Computed range, dynamic range

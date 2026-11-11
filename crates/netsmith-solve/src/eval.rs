@@ -68,7 +68,8 @@ pub fn eval(model: &Model, e: &RExpr) -> Result<Val, EvalError> {
 }
 
 /// Whether `e` has a range with a value at an end somewhere in it (ADR 0066), or reads the end
-/// of a field's range (`min(.f)`, ADR 0098): neither is a smooth function of its fields.
+/// of a field's range (`min(.f)`, ADR 0098; also `max(.f)` and `nominal(.f)`): neither is a
+/// smooth function of its fields.
 fn has_range(e: &RExpr) -> bool {
     match e {
         RExpr::Range(..) | RExpr::End(..) => true,
@@ -78,7 +79,7 @@ fn has_range(e: &RExpr) -> bool {
     }
 }
 
-/// Whether `e` reads the end of a field's range (`min(.f)` or `max(.f)`, ADR 0098).
+/// Whether `e` reads a point of a field's range (`min(.f)`, `max(.f)` or `nominal(.f)`, ADR 0098).
 pub fn reads_end(e: &RExpr) -> bool {
     match e {
         RExpr::End(..) => true,
@@ -88,7 +89,18 @@ pub fn reads_end(e: &RExpr) -> bool {
     }
 }
 
-/// Whether the relation `r` reads the end of a field's range on either side. Such a relation
+/// Whether `e` reads the centre of a field's range (`nominal(.f)`).
+pub fn reads_nominal(e: &RExpr) -> bool {
+    match e {
+        RExpr::End(RangeEnd::Nominal, _) => true,
+        RExpr::End(..) => false,
+        RExpr::Neg(x) => reads_nominal(x),
+        RExpr::Bin(_, a, b) | RExpr::Range(a, b) => reads_nominal(a) || reads_nominal(b),
+        RExpr::Const(_) | RExpr::Text(_) | RExpr::Field(_) => false,
+    }
+}
+
+/// Whether the relation `r` reads a point of a field's range (`min`, `max` or `nominal`) on either side. Such a relation
 /// is verified on the final values and nothing more: it is never used to refuse a block of
 /// candidates (the hull's end is no enclosure of a row's own point) and never to take a bound for
 /// another field (a range only narrows, so the end it read may be stale, ADR 0098).
@@ -204,6 +216,23 @@ fn value_of(model: &Model, f: FieldId, env: &Env) -> Result<Quantity, EvalError>
     }
 }
 
+/// The centre of a range: the value a field is stated at when its range is a value with a
+/// tolerance. A range is stored as its two ends, so this is their mean, and for `1kohm..3kohm`,
+/// which states no centre, it is 2 kohm. A point is its own centre. The mean of ends that came
+/// from `center +/- tol` is the center up to the last bit or two of a float (3.135 and 3.465 do
+/// not average to exactly 3.3), which would fail `nominal(.v) >= 3.3V` by a rounding error, so
+/// the result is rounded to 12 significant digits.
+fn centre(range: &Quantity) -> f64 {
+    let mid = range.mid();
+    if mid == 0.0 || !mid.is_finite() {
+        return mid;
+    }
+    let digits = 11 - mid.abs().log10().floor() as i32;
+    let scale = 10f64.powi(digits);
+    let rounded = (mid * scale).round() / scale;
+    if rounded.is_finite() { rounded } else { mid }
+}
+
 /// Fields that appear more than once and are not a single value, in a fixed order.
 fn repeated_variables(model: &Model, e: &RExpr, env: &Env) -> Result<Vec<FieldId>, EvalError> {
     let mut all = Vec::new();
@@ -311,6 +340,7 @@ fn plain(model: &Model, e: &RExpr, env: &Env, budget: &mut usize) -> Result<Val,
             let at = match end {
                 RangeEnd::Min => range.lo(),
                 RangeEnd::Max => range.hi(),
+                RangeEnd::Nominal => centre(&range),
             };
             Quantity::point(range.dim(), at)
                 .map(Val::Q)

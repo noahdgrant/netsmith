@@ -127,3 +127,65 @@ fn the_ends_are_read_only_in_a_less_or_greater_statement() {
     one_error(".a.voltage ?= max(.b.voltage)", said);
     one_error("max(.b.voltage) == .a.voltage", said);
 }
+
+#[test]
+fn nominal_is_read_in_a_less_or_greater_statement_like_the_ends() {
+    for statement in [
+        "nominal(.a.voltage) >= 2V",
+        "3V <= nominal(.b.voltage)",
+        "nominal(.a.voltage) + 1V <= nominal(.b.voltage) * 2",
+        "nominal(.a.voltage) <= max(.b.voltage)",
+    ] {
+        let c = run(statement);
+        assert!(c.is_ok(), "{statement}: {}", c.render());
+    }
+    let c = run("nominal(.a.voltage) >= 2V");
+    let model = &c.standalone_boards().next().unwrap().model;
+    let relation = model.relations().last().unwrap();
+    assert_eq!(model.show_expr(&relation.lhs), "nominal(a.voltage)");
+    let mut fields = Vec::new();
+    relation.lhs.fields(&mut fields);
+    assert_eq!(fields.len(), 1);
+}
+
+#[test]
+fn nominal_is_refused_where_a_value_would_be_taken_from_it() {
+    // A nominal is a point read from a range: `==`, `&=` and `?=` would give a field a value
+    // from it.
+    let said = "`nominal(.b.voltage)` can only be used in a `<=` or `>=` statement: it reads the centre of a range";
+    one_error(".a.voltage == nominal(.b.voltage)", said);
+    one_error(".a.voltage &= nominal(.b.voltage)", said);
+    one_error(".a.voltage ?= nominal(.b.voltage)", said);
+    one_error("nominal(.b.voltage) == .a.voltage", said);
+}
+
+#[test]
+fn nominal_takes_one_field() {
+    one_error(
+        "nominal(.a.voltage, .b.voltage) >= 1V",
+        "`nominal` takes one field, such as `nominal(.resistance)`, but this has 2 arguments",
+    );
+    one_error("nominal() >= 1V", "`nominal` takes one field");
+    one_error(
+        "nominal(.a.voltage + 1V) >= 1V",
+        "the argument of `nominal` is a field, such as `nominal(.bias)`, not `.a.voltage + 1V`",
+    );
+    one_error("nominal(5V) >= 1V", "the argument of `nominal` is a field");
+    one_error(
+        "nominal(.a.pos.net) >= 1V",
+        "`nominal` reads the centre of a number's range, but `.a.pos.net` is text",
+    );
+    one_error("nominal(.a.nothing) >= 1V", "nothing");
+    one_error(
+        "nominal(.a.voltage) >= 5mA",
+        "the two sides do not match: left is",
+    );
+}
+
+#[test]
+fn the_list_of_functions_in_the_refusal_names_nominal() {
+    one_error(
+        "abs(.a.voltage) <= 5V",
+        "the functions are `min(.field)` and `max(.field)`, the least and the greatest value of a field's range, and `nominal(.field)`, its centre",
+    );
+}
