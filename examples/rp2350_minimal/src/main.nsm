@@ -182,7 +182,7 @@ board Rp2350Minimal {
     // through another; both can be left off. A 10 kohm resistor holds it high.
     .ss_link: Resistor { .resistance &= 0ohm..0.05ohm; .package &= "0402" }
     .gpio0_link: Resistor { .resistance &= 0ohm..0.05ohm; .package &= "0402" }
-    .ss_pullup: PullUp { .resistance &= 10kohm +/- 1% }
+    .ss_pullup: PullUp { .resistance &= 10kohm +/- 1%; .package &= "0402" }
     .flash.cs ~ .ss_link.b
     .ss_link.a ~ .mcu.qspi_ss
     .flash.cs ~ .gpio0_link.b

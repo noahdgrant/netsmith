@@ -16,6 +16,7 @@ mod consigned;
 mod constraints;
 mod defaults;
 mod dxf;
+mod easyduino;
 mod editor;
 mod editor_cancel;
 mod editor_compare;

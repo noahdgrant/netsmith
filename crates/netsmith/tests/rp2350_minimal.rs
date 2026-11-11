@@ -2250,9 +2250,6 @@ mod board {
             } else {
                 panic!("{name}: footprint {}", theirs.footprint)
             };
-            // R1 is the standard `PullUp`, which does not let a board state the package of its
-            // resistor: the solver picks a 0603 (README, "Differs from Raspberry Pi's board").
-            let package = if *name == "R1" { "0603" } else { package };
             if part.package.as_deref() != Some(package) {
                 wrong.push(format!(
                     "{name}: package {:?} against {package}",

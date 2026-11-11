@@ -1,0 +1,35 @@
+//! PLACEHOLDER: the port of the Easyduino ESP32-S3 board is in progress (see `README.md` and
+//! epic #308). This file is only a small valid board, an LED on a 5 V supply, so that the
+//! project builds and its checks run while the parts of the real board are added one at a
+//! time. It is not Easyduino's circuit and has none of its nets.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board EasyduinoEsp32s3 {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+
+    .led: Led {
+        .current &= 5mA..15mA
+    }
+
+    .r1: Resistor {}
+
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
