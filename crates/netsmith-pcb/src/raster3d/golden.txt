@@ -1,0 +1,9 @@
+# FNV-1a 64 of the PNG bytes of each golden picture of raster3d's tests.
+# Rewrite with NETSMITH_RENDER3D_BLESS=1 cargo test -p netsmith-pcb --lib raster3d::
+# and look at the pictures first (NETSMITH_RENDER3D_OUT=<folder>).
+top ccc942c573bf95d0
+iso 5ceb28ba2d95a34c
+iso-dark 5739e944bbbb7dad
+iso-perspective 705245581da2b1f2
+iso-bottom-xray 9719f86983fcbd4a
+front-section 44143f71df8e6d96

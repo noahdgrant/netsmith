@@ -555,6 +555,9 @@ dependencies = [
 [[package]]
 name = "netsmith-core"
 version = "0.1.0"
+dependencies = [
+ "flate2",
+]
 
 [[package]]
 name = "netsmith-design"
@@ -590,6 +593,7 @@ dependencies = [
 name = "netsmith-fab"
 version = "0.1.0"
 dependencies = [
+ "netsmith-core",
  "netsmith-kicad",
  "serde_json",
  "zip",

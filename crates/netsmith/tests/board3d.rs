@@ -168,3 +168,105 @@ fn a_file_of_several_boards_needs_board_and_names_them() {
     let out = board3d(&examples, &["two_boards.nsm", "--board", "nope"]);
     assert_eq!(out.status.code(), Some(1));
 }
+
+/// The scene of the board in `source` (a path from the repository), built and placed as
+/// `board3d` does (the same target, loader and catalogs, its pick lock held, its physical and
+/// layout files read), with no KiCad.
+fn scene_of(source: &str) -> netsmith_pcb::scene3d::Scene {
+    let path = repo().join(source);
+    let target =
+        netsmith::project::Target::resolve_from(&repo(), Some(path.to_str().unwrap())).unwrap();
+    let file = &target.files[0];
+    let text = std::fs::read_to_string(&file.path).unwrap();
+    let catalogs = target.catalogs().unwrap();
+    let (held, _) = netsmith::pick_lock::open(&file.path, &catalogs, false).unwrap();
+    let nowhere = netsmith_kicad::testlib::TempDir::new("render-no-kicad");
+    let search = netsmith_kicad::install::Search::under(nowhere.path()).with_no_kicad();
+    let root = target.project.as_ref().map(|p| p.root.as_path());
+    let libraries = netsmith::Libraries::for_project_by(root, &search).unwrap();
+    netsmith::board3d::scene_of(
+        &file.name,
+        &text,
+        &target.loader().unwrap(),
+        held.as_ref().unwrap_or(&catalogs),
+        &libraries,
+        Some(&netsmith::layout::layout_path(&file.path)),
+        None,
+    )
+    .unwrap()
+}
+
+/// Draws the scene's meshes from the iso and top views into `dir`, and into
+/// `NETSMITH_RENDER3D_OUT` when it is set, to look at; returns the iso picture's bytes.
+fn render(scene: &netsmith_pcb::scene3d::Scene, name: &str, dir: &Path) -> Vec<u8> {
+    use netsmith_pcb::raster3d::{RenderOptions, View, render_view};
+    let meshes = netsmith_pcb::mesh::of_scene(scene);
+    let options = RenderOptions {
+        width: 800,
+        height: 500,
+        ..RenderOptions::default()
+    };
+    let mut iso = Vec::new();
+    for view in [View::Iso, View::Top] {
+        let png = render_view(&meshes, view, &options).to_png();
+        let file = format!("{name}-{}.png", view.name());
+        std::fs::write(dir.join(&file), &png).unwrap();
+        if let Some(out) = std::env::var_os("NETSMITH_RENDER3D_OUT") {
+            std::fs::create_dir_all(&out).unwrap();
+            std::fs::write(Path::new(&out).join(&file), &png).unwrap();
+        }
+        if view == View::Iso {
+            iso = png;
+        }
+    }
+    iso
+}
+
+#[test]
+fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    let scene = scene_of("examples/led.nsm");
+    let meshes = of_scene(&scene);
+    // The board, then one mesh per part with its path for an id.
+    assert_eq!(meshes[0].id, "board");
+    assert_eq!(meshes[0].material, Material::Substrate);
+    for body in &scene.bodies {
+        let mine: Vec<_> = meshes.iter().filter(|m| m.id == body.path).collect();
+        let want = if body.height.is_some() {
+            Material::Body
+        } else {
+            Material::BodyUnknown
+        };
+        assert!(
+            mine.iter().any(|m| m.material == want),
+            "{}: {:?}",
+            body.path,
+            mine.iter().map(|m| m.material).collect::<Vec<_>>()
+        );
+    }
+    let dir = netsmith_kicad::testlib::TempDir::new("render-led");
+    let a = render(&scene, "led", dir.path());
+    let b = render(&scene_of("examples/led.nsm"), "led", dir.path());
+    assert_eq!(a, b);
+    assert_eq!(of_scene(&scene), of_scene(&scene_of("examples/led.nsm")));
+}
+
+#[test]
+fn a_limit_a_part_breaks_is_drawn_as_broken() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    let scene = scene_of("scripts/editor-verify-js/fixtures/height_limits.nsm");
+    let meshes = of_scene(&scene);
+    let limits: Vec<_> = meshes
+        .iter()
+        .filter(|m| m.id.starts_with("limit:"))
+        .map(|m| m.material)
+        .collect();
+    assert!(
+        limits.contains(&Material::LimitViolated),
+        "{limits:?} {:?}",
+        scene.limits
+    );
+    assert!(meshes.iter().any(|m| m.material == Material::BodyUnknown));
+    let dir = netsmith_kicad::testlib::TempDir::new("render-lidded");
+    render(&scene, "lidded", dir.path());
+}
