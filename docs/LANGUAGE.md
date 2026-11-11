@@ -8590,7 +8590,7 @@ board SizedDivider {
 
 ### Switching regulators
 
-A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, optionally the minimum on-time and off-time of the switch (`min_on_time`, `min_off_time`, ADR 0093), and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
+A buck converter is an IC, an inductor, two capacitors and a feedback divider. The IC is the one part that differs, so the library splits the work (ADR 0025). `std::parts::regulator::Buck` is an interface of what a datasheet says: the switching node `sw` (a rail the IC supplies, joined to the inductor), the feedback pin `fb`, the reference `vref`, the switching frequency `fsw`, the input range, the largest output current, the efficiency as a range, the smallest inductance, optionally the least saturation current (`min_inductor_saturation`) and the largest DC resistance (`max_inductor_dcr`) an inductor may have, optionally the minimum on-time and off-time of the switch (`min_on_time`, `min_off_time`, ADR 0093), optionally the time the output takes to rise (`soft_start_time`, below), and the capacitance asked for on each side. `std::parts::regulator::BuckStage` is a module of everything else: the inductor and the two capacitors, picked from the catalogs (each capacitor rated for the `.peak` of its rail when the board states one and always for the rail's steady voltage, so a peak stated too low cannot weaken it; each side a bank of identical capacitors in parallel when one is not enough), and a `FeedbackDivider` that sets the output from the reference.
 
 A concrete IC is a `part` that writes its pin table, its datasheet numbers, one relation, the input current from the output current and the efficiency (`vin = vout * iout / efficiency` over the whole efficiency range, so it reaches the supply as any load does, ADR 0007 and ADR 0014), and what it is at DC, `dc switching_regulator .vin .buck.sw .buck.efficiency` (and, for an IC whose datasheet gives its own current with nothing loaded, a fourth operand, `.quiescent_current`, ADR 0096; see "What a part is at DC" and "DC analysis": it lets the solver work out the input current through the parts in front of the IC, and the input voltage they leave it). This one is invented for this guide:
 
@@ -8754,9 +8754,9 @@ error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 
 175 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:431:5
+    --> std/parts/regulator.nsm:448:5
     |
-431 |     -.vout.current <= .buck.max_output_current
+448 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8825,9 +8825,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:441:5
+    --> std/parts/regulator.nsm:459:5
     |
-441 |     .on_time >= .buck.min_on_time
+459 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8902,9 +8902,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `stage.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`stage.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:448:5
+    --> std/parts/regulator.nsm:466:5
     |
-448 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+466 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -8930,6 +8930,148 @@ board NoEsr {
     .stage: BuckStage {
         .vout.voltage &= 1.8V +/- 3%
         .output_ripple <= 20mV
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+The start-up time is a closed-form check against a requirement (`docs/research/closed-form-checks.md`, check 4; no simulation: the figure is the datasheet's). `Buck` has an `optional` member `.soft_start_time` (ADR 0074), how long the output takes to rise to its regulation point at the IC's own ramp, as its datasheet gives it, a time or the span between its minimum and maximum, with the page in the part's doc comment. `BuckStage` forwards it as `.soft_start_time`, and a board states its requirement as a bound on that member, as it does for any other (`.soft_start_time <= 5ms`, or `>=` for a ramp slow enough to keep the inrush down). The bound holds over the whole span the IC gives. A board that bounds nothing has no check, and the build says nothing about it. An IC whose datasheet gives no time, or whose ramp a capacitor on a soft-start pin sets without the datasheet stating a time for it (the `Lt8641`'s: it gives the pin's current and no time, p.10, p.19), states nothing, and a bound on it is listed as not evaluated, never passed. The figure is the IC's ramp: a rise that a current limit stretches, because of a large output capacitance or a load that draws while the output rises, is longer than it. This IC, invented for this guide, ramps in 2 ms to 4 ms:
+
+```nsm module=src::zbk4
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+/// A 2 A buck converter for 4.5 V to 6 V with an internal soft-start. Illustrative; not a real part.
+part Zbk4 {
+    .vin: Rail
+    .buck: Buck {
+        .vref &= 0.8V +/- 1.5%
+        .fsw &= 1.2MHz +/- 15%
+        .min_input_voltage &= 4.5V
+        .max_input_voltage &= 6V
+        .max_output_current &= 2A
+        .efficiency &= 0.85..0.95
+        .min_inductance &= 1.5uH
+        .min_inductor_saturation &= 3A
+        .max_inductor_dcr &= 0.1ohm
+        .min_input_capacitance &= 2uF
+        .min_output_capacitance &= 10uF
+        .soft_start_time &= 2ms..4ms
+    }
+    .buck.sw.neg ~ .vin.neg
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+    dc switching_regulator .vin .buck.sw .buck.efficiency
+
+    pins {
+        //  pin          kind    name   pads
+        .vin.pos       power   "VIN"  "1" "2"
+        .vin.neg       power   "GND"  "3" "9"
+        .buck.sw.pos   power   "SW"   "4" "5"
+        .buck.fb       input   "FB"   "6"
+        .en            input   "EN"   "7"
+    }
+}
+```
+
+A board that needs the output up within 5 ms holds it, since 4 ms is the slowest:
+
+```nsm evaluate
+import src::zbk4::Zbk4
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board Quick {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk4
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .soft_start_time <= 5ms
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+A requirement of 3 ms is not held by the slowest end, and the message names the span and the bound:
+
+```nsm fails
+import src::zbk4::Zbk4
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board TooSlow {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk4
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .soft_start_time <= 3ms
+    }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en ~ .input.pos
+}
+```
+
+```text
+error: stage.soft_start_time must always be at most 3ms, but 2ms..4ms is not always below 3ms
+   --> main.nsm:19:9
+   |
+19 |         .soft_start_time <= 3ms
+   |         ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+With `Zbk2`, which states no time, the same bound is not evaluated: the stage's member has no value, and the bound is listed as such.
+
+```nsm evaluate
+import src::zbk2::Zbk2
+import std::parts::regulator::BuckStage
+import std::sources::Rail
+
+board NoTime {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .u: Zbk2
+    .stage: BuckStage {
+        .vout.voltage &= 1.8V +/- 3%
+        .soft_start_time <= 5ms
     }
 
     .input ~ .stage.vin
