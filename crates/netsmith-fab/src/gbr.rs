@@ -178,6 +178,42 @@ pub fn escape(value: &str) -> String {
     out
 }
 
+/// What the drawing code of the writers draws with: the Gerber file itself, or a pen that
+/// keeps what is drawn as polygons ([`crate::polygons::Polygons`], for the copper as data,
+/// ADR 0105). The calls are the file's objects, in order: one code draws both, so the polygons
+/// are the same copper the file holds. Points are in KiCad's board coordinates (mm, y down);
+/// the offsets inside an aperture are in the file's frame (y up), as [`Ap`] says.
+pub trait Pen {
+    /// Switches to dark (`true`) or clear polarity for what follows.
+    fn polarity(&mut self, dark: bool);
+    /// The aperture `ap` flashed at `at`.
+    fn flash(&mut self, ap: Ap, function: Option<&'static str>, at: Pt, attrs: &[String]);
+    /// A stroke with a round pen of `width` from `a` to `b`.
+    fn line(&mut self, width: f64, function: Option<&'static str>, a: Pt, b: Pt, attrs: &[String]);
+    /// A stroke with a round pen of `width` along `arc`.
+    fn arc(&mut self, width: f64, function: Option<&'static str>, arc: &Arc, attrs: &[String]);
+    /// A filled region.
+    fn region(&mut self, contour: Contour, function: Option<&'static str>, attrs: &[String]);
+}
+
+impl Pen for Gerber {
+    fn polarity(&mut self, dark: bool) {
+        Gerber::polarity(self, dark);
+    }
+    fn flash(&mut self, ap: Ap, function: Option<&'static str>, at: Pt, attrs: &[String]) {
+        Gerber::flash(self, ap, function, at, attrs);
+    }
+    fn line(&mut self, width: f64, function: Option<&'static str>, a: Pt, b: Pt, attrs: &[String]) {
+        Gerber::line(self, width, function, a, b, attrs);
+    }
+    fn arc(&mut self, width: f64, function: Option<&'static str>, arc: &Arc, attrs: &[String]) {
+        Gerber::arc(self, width, function, arc, attrs);
+    }
+    fn region(&mut self, contour: Contour, function: Option<&'static str>, attrs: &[String]) {
+        Gerber::region(self, contour, function, attrs);
+    }
+}
+
 impl Gerber {
     /// A file whose origin (0, 0) is at `origin` of the board.
     pub fn new(origin: Pt) -> Self {

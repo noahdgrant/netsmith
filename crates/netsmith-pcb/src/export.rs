@@ -619,6 +619,12 @@ fn rule_area(board: &Board, k: &KeepoutArea) -> Sexp {
 
 /// The text of a `.kicad_pcb` for the board.
 pub fn kicad_pcb(board: &Board) -> String {
+    board_tree(board).to_kicad_string()
+}
+
+/// The `.kicad_pcb` of the board as a tree, before it is written as text: what
+/// [`crate::copper`] reads the board's copper from, so that it is the copper of the file.
+pub(crate) fn board_tree(board: &Board) -> Sexp {
     let nets = NetNumbers::of(board);
 
     let mut items = vec![
@@ -727,7 +733,7 @@ pub fn kicad_pcb(board: &Board) -> String {
             &format!("{}/cutout/{}", board.name, cutout.name),
         ));
     }
-    Sexp::List(items).to_kicad_string()
+    Sexp::List(items)
 }
 
 #[cfg(test)]

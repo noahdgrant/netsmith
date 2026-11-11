@@ -320,10 +320,16 @@ pub struct Artwork {
 impl Artwork {
     pub fn parse(src: &str) -> Result<Artwork, ArtworkError> {
         let root = sexp::parse(src).map_err(|e| ArtworkError::Parse(e.to_string()))?;
+        Self::from_sexp(&root)
+    }
+
+    /// [`Artwork::parse`] of a board file already read into its tree, or built as one in
+    /// memory (`netsmith_pcb::copper` does, with no file and no text in between).
+    pub fn from_sexp(root: &Sexp) -> Result<Artwork, ArtworkError> {
         if root.head() != Some("kicad_pcb") {
             return Err(ArtworkError::NotABoard);
         }
-        Reader::new(&root)?.read()
+        Reader::new(root)?.read()
     }
 
     /// Whether `pad` has copper on `layer`: it is on the layer, unless it is a hole with no
