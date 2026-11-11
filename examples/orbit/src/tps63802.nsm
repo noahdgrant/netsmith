@@ -1,0 +1,57 @@
+//! The TPS63802 buck-boost converter, Texas Instruments, in the 10-pin VSON-HR (DLA) package,
+//! 2 x 3 mm, order code TPS63802DLAR: the U15 of ORBIT, which makes the 3.3 V rail from the
+//! battery.
+//!
+//! The pin table was WRITTEN BY HAND from TI's datasheet "TPS63802 2-A, High-efficient, Low IQ
+//! Buck-boost Converter in DFN Package" (literature number SLVSEU9D, November 2018, revised
+//! January 2021, 38 pages, fetched on 2026-11-10 from
+//! <https://www.ti.com/lit/ds/symlink/tps63802.pdf>): section 7, Figure 7-1 and Table 7-1
+//! "Pin Functions" (printed page 4) for the pads, names and what each pin is. The datasheet is
+//! copyrighted: the numbers and names are facts, the words and the arrangement here are ours.
+//!
+//! The kinds: `EN` and `MODE` are `input` (the table says neither may be left floating), `FB`
+//! is `input`, `PG` is `output` (the table says "open-drain output"), `VIN`, `VOUT`, `GND` and
+//! `AGND` are `power`, and the inductor's pins `L1` and `L2` are `passive`: the inductor is
+//! between them and the part's own switches drive them.
+//!
+//! The only figure stated is the feedback regulation voltage `.vref`: 500 mV, with an accuracy
+//! of -1 to +1 % in PWM mode (electrical characteristics, section 8.5, printed page 6), for the
+//! feedback divider (`std::parts::regulator::FeedbackDivider`: `.divider.vref == .u.vref`). In
+//! power save mode (`MODE` low) the datasheet gives no accuracy in that table, and the value is
+//! the PWM one. Everything else is left out, so the part is a boundary of the design and the
+//! checks that need a number are listed as not evaluated: the input range (1.3 V to 5.5 V, and
+//! more than 1.8 V to start), the output range (1.8 V to 5.2 V), the current limits, the
+//! quiescent current, the switching frequency, the recommended inductance (0.37 to 0.57 uH,
+//! 0.47 uH nominal) and the input and output capacitance (section 8.3, page 5). No std generic
+//! is a buck-boost converter (`Buck` is a step-down interface, and `LinearRegulator` is a
+//! linear one), so the part provides none and has no `dc` statement: the analysis of a rail
+//! stops at it.
+
+/// The TPS63802 in the 10-pin DLA package. Pin names are the datasheet's; the pad numbers are
+/// its pin numbers. There is no exposed pad: `GND` (pad 8) is the long pad in the middle of
+/// the right-hand side of the land pattern. `.vref` is the voltage the feedback pin is held at.
+part Tps63802 {
+    .designator &= "U"
+
+    pins "VSON-10(2x3)" {
+        //  pin    kind     name    pads
+        .en      input    "EN"    "1"
+        .mode    input    "MODE"  "2"
+        .agnd    power    "AGND"  "3"
+        .fb      input    "FB"    "4"
+        .pg      output   "PG"    "5"
+        .vout    power    "VOUT"  "6"
+        .l2      passive  "L2"    "7"
+        .gnd     power    "GND"   "8"
+        .l1      passive  "L1"    "9"
+        .vin     power    "VIN"   "10"
+    }
+
+    /// The feedback regulation voltage, 500 mV +/- 1 % in PWM mode (page 6).
+    .vref: Voltage
+    .vref &= 0.5V +/- 1%
+
+    .mpn: String
+    .package: Package
+    catalog tps63802 by .mpn { .mpn, .package }
+}

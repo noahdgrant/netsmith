@@ -1,0 +1,69 @@
+//! The MCP73831 single-cell Li-Ion / Li-Polymer charge management controller, Microchip, in the
+//! 5-lead SOT-23 package, order code MCP73831T-2ACI/OT (4.20 V, option AC): the U1 of ORBIT.
+//! ORBIT's schematic writes the value as `MCP73031`; its symbol is `MCP73831/2` and the LCSC
+//! number it carries (C424093) is the MCP73831T-2ACI/OT, so the part is the MCP73831.
+//!
+//! The pin table was WRITTEN BY HAND from Microchip's datasheet "MCP73831/2, Miniature
+//! Single-Cell, Fully Integrated Li-Ion, Li-Polymer Charge Management Controllers" (document
+//! DS20001984G, July 2014, 28 pages, fetched on 2026-11-10 from
+//! <https://ww1.microchip.com/downloads/en/DeviceDoc/20001984g.pdf>): Table 3-1 "Pin Function
+//! Tables" and sections 3.1 to 3.6 (printed page 11) for the pads, names and what each pin is.
+//! The datasheet is copyrighted: the numbers and names are facts, the words and the arrangement
+//! here are ours.
+//!
+//! The kinds: `STAT` is `tri_state` because the datasheet says "STAT is a tri-state logic
+//! output on the MCP73831 and an open-drain output on the MCP73832" (section 3.3, page 11;
+//! Table 5-1, page 15: high impedance in shutdown). `PROG` is `input`: the charge current is
+//! set by a resistor to `VSS`, and a logic high there disables the charger (section 5.2.2,
+//! page 15). `VBAT` is the drain of the pass transistor and goes to the battery's plus
+//! terminal; it is `power` like `VDD`.
+//!
+//! What is stated, and where it comes from (nothing else is: the part is otherwise a boundary
+//! of the design, and the checks that need a number are listed as not evaluated):
+//!
+//! - The charge current equation of section 5.1.2 (page 15): `IREG = 1000 V / RPROG`, with
+//!   `RPROG` between 2 kohm and 67 kohm (DC characteristics, "PROG Input", "Charge Impedance
+//!   Range", page 4). It is the nominal value: the datasheet's table of the fast charge
+//!   current (page 3) gives 90 to 110 mA for 10 kohm, 450 to 550 mA for 2.0 kohm and 12.5 to
+//!   16.5 mA for 67 kohm, at -5 to +55 C, and that spread is NOT in `.charge_current`.
+//! - The regulated output voltage `.vreg` is a column of the catalog row (the order code's
+//!   "-2": 4.168 V to 4.232 V, DC characteristics, "Voltage Regulation", page 3, at
+//!   VDD = VREG + 1 V, IOUT = 10 mA, TA = -5 to +55 C).
+//!
+//! Left out on purpose: the supply range (3.75 V to 6 V, page 3), the status output's levels,
+//! the preconditioning and termination ratios of the option AC, the thermal limits and
+//! the second package (the 8-lead DFN, whose pad 9 is the exposed pad). No generic of std is a
+//! charger, so the part provides none.
+
+/// The MCP73831 in the 5-lead SOT-23: a linear charger for one Li-Ion or Li-Polymer cell, with a
+/// status output for an LED or a host. Pin names are the datasheet's; the pad numbers are
+/// those of its SOT-23-5 column. `.rprog` is the resistor from `PROG` to `VSS` (a board states
+/// `.u.rprog == .r_prog.resistance`) and `.charge_current` the fast charge current it sets.
+part Mcp73831 {
+    .designator &= "U"
+
+    pins "SOT-23-5" {
+        //  pin     kind       name    pads
+        .stat    tri_state  "STAT"  "1"
+        .vss     power      "VSS"   "2"
+        .vbat    power      "VBAT"  "3"
+        .vdd     power      "VDD"   "4"
+        .prog    input      "PROG"  "5"
+    }
+
+    /// The programming resistor, from `PROG` to `VSS`.
+    .rprog: Resistance
+    /// The fast charge current, nominal: `1000 V / RPROG` (datasheet section 5.1.2, page 15).
+    .charge_current: Current
+    .charge_current == 1000V / .rprog
+    // The programming resistor's range (page 4).
+    .rprog >= 2kohm
+    .rprog <= 67kohm
+
+    /// The regulated battery voltage of the order code, a column of the catalog row.
+    .vreg: Voltage
+
+    .mpn: String
+    .package: Package
+    catalog mcp73831 by .mpn { .mpn, .package, .vreg }
+}

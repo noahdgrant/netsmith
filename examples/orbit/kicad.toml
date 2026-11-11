@@ -1,0 +1,57 @@
+# What KiCad calls the parts this project defines itself (ADR 0021).
+#
+# The footprints are the generators' (named as KiCad names them) or files of the project's own
+# libraries in `libs/` (no KiCad install is needed: the files are the project's, or generated);
+# `README.md` (Parts) records the document, revision and page of each and what was read, derived
+# or assumed. The symbols are drawn from the pin tables (no `symbol` key, ADR 0097).
+
+# The five ICs: the charger, the buck-boost converter, the microcontroller, the EEPROM and the
+# USB-UART bridge. Two of their footprints are in the project's own library.
+[[library]]
+name = "orbit_ics"
+footprints = "libs/orbit_ics.pretty"
+
+# U1: MCP73831 in the 5-lead SOT-23. The generator's `SOT-23-5` (the same pads as ORBIT's
+# footprint, `Package_TO_SOT_SMD:SOT-23-5`); the datasheet's package drawing C04-091B (page 22)
+# has pitch 0.95 mm and 2.20 to 3.20 mm over the leads, and no land pattern.
+[[part]]
+kind = "Mcp73831"
+package = "SOT-23-5"
+default = true
+footprint = "Package_TO_SOT_SMD:SOT-23-5"
+
+# U15: TPS63802 in the 10-pin VSON-HR (DLA). No generator draws it: the footprint is the
+# "Example Board Layout" of TI's drawing DLA0010A, in the project's library.
+[[part]]
+kind = "Tps63802"
+package = "VSON-10(2x3)"
+default = true
+footprint = "orbit_ics:VSON-10-HR_2x3mm_P0.5mm_TI_DLA0010A"
+
+# U16: STM32F030C8 in the LQFP-48, 7 x 7 mm, 0.5 mm pitch: the generator's footprint, which
+# is ORBIT's (`Package_QFP:LQFP-48_7x7mm_P0.5mm`). ST's recommended footprint (Figure 31, page 86)
+# has pads of 1.20 x 0.30 mm at 4.25 mm from the middle; each lies inside the generator's pad
+# (1.475 x 0.30 mm at 4.1625 mm).
+[[part]]
+kind = "Stm32F030C8"
+package = "LQFP-48(7x7)"
+default = true
+footprint = "Package_QFP:LQFP-48_7x7mm_P0.5mm"
+
+# U17: AT24C128C in the 8-lead SOIC, 150 mil (3.90 mm body). The generator's footprint; the
+# datasheet's land pattern C04-2057-SN (page 27) is pads of 1.55 x 0.60 mm at 2.70 mm from the
+# middle, the generator's are 1.95 x 0.60 mm at 2.475 mm (the outer edges are 0.025 mm apart).
+[[part]]
+kind = "At24C128C"
+package = "SOIC-8"
+default = true
+footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+# U22: CP2102 in the 28-pin QFN, 5 x 5 mm, with an exposed pad: the land pattern of
+# Silicon Labs' datasheet, in the project's library (ORBIT's own footprint has its pads
+# 0.19 mm further out).
+[[part]]
+kind = "Cp2102"
+package = "WQFN-28-EP(5x5)"
+default = true
+footprint = "orbit_ics:QFN-28-1EP_5x5mm_P0.5mm_EP3.25x3.25mm_SiliconLabs_CP2102"
