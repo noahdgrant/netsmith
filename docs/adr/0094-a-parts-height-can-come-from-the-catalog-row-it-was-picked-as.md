@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A part's height can come from the catalog row it was picked as
@@ -16,4 +16,4 @@ Rejected: an ordinary `.height optional` column of every `catalog` statement (AD
 
 Cost: one more name among the row's own columns, and a design cannot ask the solver for a part of at most 3 mm. A generic part (ADR 0047) has the height of the row `fab` resolves it to, which can depend on the stock a supply provider reports; a bank (ADR 0052) gives each part the row's height. No standard row had a height when this was written, so no existing board changed; rows with a height are added in their own change, with their sources (`data/jlcpcb/README.md`).
 
-Left open, for the owner: whether a 3D bounding-box reader is wanted for parts that are in no catalog, knowing that its number would need its own marker in every report; whether package-standard heights should give a limit (an upper bound, reported as such) and not a height; whether the editor's hover should say where a height came from; whether `fab-notes.txt` should report on every board and not only one with a limit; whether the design should be told when its stated height is lower than the row's. The owner has not confirmed the fixed column, the greatest figure as the number, or the order of the sources.
+Accepted as built by the owner, 2026-11-11: the fixed column, the greatest figure as the number, the order of the sources, and `fab-notes.txt` only for a board with a limit. Not built: a 3D bounding-box reader for parts in no catalog (it would need its own marker in every report) and package-standard heights as a limit and not a height (issue #27); the editor's hover saying where a height came from (issue #19); telling the design that its stated height is lower than the row's: not planned until a board needs it.

@@ -284,7 +284,7 @@ generic Crystal {
 /// checks). A catalog column for the trip multiple needs a source for each row and is not
 /// built. `Diode` has no power rating in std (`.max_power` is a Zener's), so the forward drop
 /// times the fault current is not checked. `Switch` and `Inductor` are not given
-/// `.supply_fault_current`; it is one line each once the owner has taken the convention.
+/// `.supply_fault_current`; it is one line each when a board needs it (the convention: ADR 0105).
 generic Fuse {
     .designator &= "F"
 

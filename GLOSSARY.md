@@ -116,7 +116,7 @@ _Avoid_: Exclusion zone, restricted area
 The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, ADR 0045; the rule is in the header of `crates/netsmith/src/heights.rs`), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero. The check measures the part's body against the zone; the placer keeps the body, plus a small margin, out of it (owner decision 2026-11-04); a part with no fabrication outline has only its courtyard.
 
 **Catalog height**:
-The `height` cell of a catalog row, a fixed column (ADR 0094, provisional): how tall the part's body stands above the face of the board, the greatest the manufacturer's document allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. It is the part's `.height` when the design states none; a stated `.height` wins, and no row is chosen or refused for its height. An empty cell means the height is unknown, which is never zero.
+The `height` cell of a catalog row, a fixed column (ADR 0094): how tall the part's body stands above the face of the board, the greatest the manufacturer's document allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. It is the part's `.height` when the design states none; a stated `.height` wins, and no row is chosen or refused for its height. An empty cell means the height is unknown, which is never zero.
 _Avoid_: Default height, typical height
 
 **Pin protrusion**:
@@ -359,15 +359,15 @@ A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member 
 _Avoid_: Computed range, dynamic range
 
 **Supply budget**:
-What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13, provisional). A rail that states no `.current` has no budget.
+What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13). A rail that states no `.current` has no budget.
 _Avoid_: Current limit (a part's own relation), Load rating
 
 **Stated rail**:
-A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a statement of the design narrowed (`.stage.vin.voltage &= 4.2V..5.5V`, a module port's seed or a window), on a node the DC analysis solved. The range it states has to enclose the range the analysis found, and a statement that does is kept as it is; one that does not is an error that names the field, both ranges and the states at the end that goes outside (ADR 0076, amendment 17, provisional). Not checked: a rail past a regulator's output, and a node a source holds (a source's voltage is an input).
+A rail whose `.voltage`, or the `.voltage` of any rail joined to it by `~`, a statement of the design narrowed (`.stage.vin.voltage &= 4.2V..5.5V`, a module port's seed or a window), on a node the DC analysis solved. The range it states has to enclose the range the analysis found, and a statement that does is kept as it is; one that does not is an error that names the field, both ranges and the states at the end that goes outside (ADR 0076, amendment 17). Not checked: a rail past a regulator's output, and a node a source holds (a source's voltage is an input).
 _Avoid_: Seed (the start window of a circle, which is one use of a stated rail), claim, assumed window (it is never kept, and is not stated)
 
 **Absolute maximum**:
-The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12, provisional). A pin of a part that is not a `Logic` line states its limit through a `Logic` whose `.line` is joined to the pin inside the part (the `Lt8641`'s `.sync_mode_limit`, ADR 0095, provisional); a pin joined to nothing outside its part is not judged.
+The voltages a pin survives, `.abs_min` and `.abs_max` of the pin, relative to its ground. The solver holds them against the worst-case voltage of the pin's net (ADR 0046), which for a net the DC analysis solved is the range of its node voltage (ADR 0076, amendment 12). A pin of a part that is not a `Logic` line states its limit through a `Logic` whose `.line` is joined to the pin inside the part (the `Lt8641`'s `.sync_mode_limit`, ADR 0095); a pin joined to nothing outside its part is not judged.
 _Avoid_: Rating (a rating is a field such as `.max_power`)
 
 **Terminal**:
@@ -398,11 +398,11 @@ The current a logic level was measured at, written after the value: `.voh &= .vd
 _Avoid_: Load current (a part's `.current` is its draw), drive current
 
 **Leakage (`Ii`)**:
-The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8, provisional). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
+The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
 _Avoid_: Input current (a part's `.current` is its draw), bias current, input impedance
 
 **Net current (from the analysis)**:
-The most current that flows into a net the DC analysis solved: at each corner the sum of what the elements put into the net, and the largest of those over the corners (ADR 0076, amendment 8, provisional). It sizes the net's tracks in place of the sum of every current at its largest (ADR 0036), which is larger where the loads follow one voltage. Only a net between elements that no rail holds has one: a supply, a ground or a regulator's output is on several islands.
+The most current that flows into a net the DC analysis solved: at each corner the sum of what the elements put into the net, and the largest of those over the corners (ADR 0076, amendment 8). It sizes the net's tracks in place of the sum of every current at its largest (ADR 0036), which is larger where the loads follow one voltage. Only a net between elements that no rail holds has one: a supply, a ground or a regulator's output is on several islands.
 _Avoid_: Corner-wise sum, worst-case current (a worst case is an end of a range, and this is a sum taken inside each corner)
 
 **Operating point**:
@@ -422,11 +422,11 @@ A part that states `dc linear_regulator` or `dc switching_regulator`: an ideal s
 _Avoid_: Converter model, power stage (a `BuckStage` is the module around the IC, and the IC is the regulator)
 
 **Pick-time analysis**:
-The DC analysis run inside the search of picks, with the last part of a group chosen: the island of the network that has a part of the group is solved with the picks in it, cut at the rails whose voltage an earlier pass worked out, and the rails on it that nothing gave get its voltage, so the checks that read them judge the pick. It is what a hand-written `.vout.voltage == .vin.voltage - .r.drop` did for a series resistor in front of a clamp. It solves only an island with no regulator in it (ADR 0076, amendment 10, provisional). The pass after the picks is the analysis that every pick is finally judged on.
+The DC analysis run inside the search of picks, with the last part of a group chosen: the island of the network that has a part of the group is solved with the picks in it, cut at the rails whose voltage an earlier pass worked out, and the rails on it that nothing gave get its voltage, so the checks that read them judge the pick. It is what a hand-written `.vout.voltage == .vin.voltage - .r.drop` did for a series resistor in front of a clamp. It solves only an island with no regulator in it (ADR 0076, amendment 10). The pass after the picks is the analysis that every pick is finally judged on.
 _Avoid_: Trial analysis, inner analysis, solver loop
 
 **Quiescent current**:
-The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own, the same member and the `dc switching_regulator` statement's optional fourth operand (the LT8641's `.quiescent_current`, from `.iq_max` in Burst Mode and `.iq_skipping_max` otherwise, ADR 0096, provisional).
+The current a regulator draws from its input for itself, with its output unloaded: the datasheet's quiescent (or ground pin) current. `LinearRegulator` has it as the member `.quiescent_current` (default none), a part narrows it from its datasheet, the regulator's input current is the load and this, and the part's `dc linear_regulator` statement names it as its third operand, so the DC analysis draws it at the input too (ADR 0076, amendment 9). A buck IC states its own, the same member and the `dc switching_regulator` statement's optional fourth operand (the LT8641's `.quiescent_current`, from `.iq_max` in Burst Mode and `.iq_skipping_max` otherwise, ADR 0096).
 _Avoid_: Ground current, standby current, supply current (a regulator's supply current is what its input draws, the load included)
 
 **Source (at DC)**:
@@ -475,34 +475,34 @@ The highest voltage a rail reaches, transients included: the `.peak` of a `Rail`
 _Avoid_: Surge voltage, transient voltage (the transient is the event; the peak is the number)
 
 **Minimum on-time**:
-The shortest time a buck IC's high-side switch stays on, and its twin the minimum off-time: `.min_on_time` and `.min_off_time` of `Buck`, `optional` members that a part states at the largest its datasheet gives (ADR 0093, provisional). `BuckStage` checks that its `.on_time`, `vout / (vin * fsw)`, and its `.off_time`, `(vin - vout) / (vin * fsw)`, are not below them in the worst case the ranges give: the minimum on-time bounds the highest input for an output and a frequency, the minimum off-time the least headroom of the input over the output (the IC's dropout). A linear regulator's dropout is its own member, `.dropout`.
+The shortest time a buck IC's high-side switch stays on, and its twin the minimum off-time: `.min_on_time` and `.min_off_time` of `Buck`, `optional` members that a part states at the largest its datasheet gives (ADR 0093). `BuckStage` checks that its `.on_time`, `vout / (vin * fsw)`, and its `.off_time`, `(vin - vout) / (vin * fsw)`, are not below them in the worst case the ranges give: the minimum on-time bounds the highest input for an output and a frequency, the minimum off-time the least headroom of the input over the output (the IC's dropout). A linear regulator's dropout is its own member, `.dropout`.
 _Avoid_: Minimum pulse width, minimum duty cycle, tON limit
 
 **Voltage margin**:
-The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085, provisional), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
+The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
 _Avoid_: Derating factor, safety factor, headroom
 
 **Bias**:
 The DC voltage across a part: a capacitor, a diode, a Zener or a TVS diode. A part with a `.bias` and a `bridge` placed between a rail's `pos` and `neg` has the rail's voltage as its `.bias` without being told; a design states `.bias` only for a part that is across no rail. A diode's bias is the voltage in the direction it blocks, and it is negative when the diode is wired to conduct (see **Bridge voltage**).
 
 **Bridge voltage**:
-The `.bridge_voltage` of a diode (`Diode`, `Schottky`, `Zener`, `Tvs`): the voltage from the first end of its `bridge` to the second, which the checker gives a diode across a rail without being told, with the sign of the way it is wired: the rail's voltage when the first end is on `pos`, its negative when it is on `neg` (ADR 0088, provisional). The part's own relations read it, so a diode wired the wrong way round across a rail is found and named.
+The `.bridge_voltage` of a diode (`Diode`, `Schottky`, `Zener`, `Tvs`): the voltage from the first end of its `bridge` to the second, which the checker gives a diode across a rail without being told, with the sign of the way it is wired: the rail's voltage when the first end is on `pos`, its negative when it is on `neg` (ADR 0088). The part's own relations read it, so a diode wired the wrong way round across a rail is found and named.
 _Avoid_: Polarity, orientation (as a field)
 
 **Supply peak**:
-The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086, provisional). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.
+The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.
 _Avoid_: Chain voltage, input peak
 
 **Reverse peak**:
-The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091, provisional). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
+The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
 _Avoid_: Negative peak, reverse transient
 
 **Fault current**:
-The `.limit_current` of a `Fuse` (its rating: the most it lets through) and the `.supply_fault_current` of a part behind it in a `~>` chain (a `Diode` or a `Schottky`), which the checker gives it as the `.limit_current` of the nearest part in front of it that has one (ADR 0091, provisional), so a diode is rated for what the fuse can pass before it opens, and not only for the load's draw (its `.current`).
+The `.limit_current` of a `Fuse` (its rating: the most it lets through) and the `.supply_fault_current` of a part behind it in a `~>` chain (a `Diode` or a `Schottky`), which the checker gives it as the `.limit_current` of the nearest part in front of it that has one (ADR 0091), so a diode is rated for what the fuse can pass before it opens, and not only for the load's draw (its `.current`).
 _Avoid_: Trip current, surge current
 
 **On-resistance test voltage**:
-The `.on_resistance_vgs` of a `NMosfet` or a `PMosfet` and the column of that name in the `n_mosfet` and `p_mosfet` catalogs: the gate-source voltage that the datasheet guarantees `.on_resistance` at, the test condition of its RDS(on) row (ADR 0092, provisional). The gate drive the design gives the part (`.gate_source_voltage`) must always be at least it. An optional column: a row that records no voltage is offered and the check is not evaluated for it, and a design that states a requirement on the member is offered only the rows that record one.
+The `.on_resistance_vgs` of a `NMosfet` or a `PMosfet` and the column of that name in the `n_mosfet` and `p_mosfet` catalogs: the gate-source voltage that the datasheet guarantees `.on_resistance` at, the test condition of its RDS(on) row (ADR 0092). The gate drive the design gives the part (`.gate_source_voltage`) must always be at least it. An optional column: a row that records no voltage is offered and the check is not evaluated for it, and a design that states a requirement on the member is offered only the rows that record one.
 _Avoid_: Test Vgs, drive voltage (for the member), gate rating
 
 **Marked value**:
