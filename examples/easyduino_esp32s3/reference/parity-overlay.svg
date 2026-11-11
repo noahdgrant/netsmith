@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="378.6" height="858.972" viewBox="-6 -6 37.86 85.897" font-family="sans-serif" font-size="1.1">
-<title>Parity overlay: Raspberry Pi's board (blue) and netsmith's (orange)</title>
+<title>Parity overlay: the original board (blue) and netsmith's (orange)</title>
 <rect x="-6" y="-6" width="37.86" height="85.897" fill="#ffffff"/>
 <g class="reference" fill="none" stroke="#2b6cb0" stroke-width="0.12">
 <rect class="outline" x="0" y="0" width="25.86" height="63.897" rx="0"/>
@@ -645,5 +645,5 @@
 <text class="label" x="16.795" y="34.549" fill="#2d3748">SW2 position: dx +0.000 dy +0.000</text>
 <text class="label" x="1.5" y="1.1" fill="#2d3748">U2 position: dx +0.000 dy +0.000</text>
 </g>
-<g class="legend" stroke="none"><text x="0" y="68.897" fill="#2b6cb0">blue: Raspberry Pi's board</text><text x="16" y="68.897" fill="#dd6b20">orange: netsmith's board</text><text x="34" y="68.897" fill="#e53e3e">red: a must-match item that fails</text><text x="0" y="70.897" fill="#4a5568">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text><text x="0" y="72.897" fill="#4a5568">a part is judged on position, rotation and layer, each pad on number, centre, size, shape, drill and net, the outline on its box, radius and elements</text></g>
+<g class="legend" stroke="none"><text x="0" y="68.897" fill="#2b6cb0">blue: the original board</text><text x="16" y="68.897" fill="#dd6b20">orange: netsmith's board</text><text x="34" y="68.897" fill="#e53e3e">red: a must-match item that fails</text><text x="0" y="70.897" fill="#4a5568">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text><text x="0" y="72.897" fill="#4a5568">a part is judged on position, rotation and layer, each pad on number, centre, size, shape, drill and net, the outline on its box, radius and elements</text></g>
 </svg>
