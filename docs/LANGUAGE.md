@@ -8997,7 +8997,7 @@ board NoEsr {
 }
 ```
 
-The start-up time is a closed-form check against a requirement (`docs/research/closed-form-checks.md`, check 4; no simulation: the figure is the datasheet's). `Buck` has an `optional` member `.soft_start_time` (ADR 0074), how long the output takes to rise to its regulation point at the IC's own ramp, as its datasheet gives it, a time or the span between its minimum and maximum, with the page in the part's doc comment. `BuckStage` forwards it as `.soft_start_time`, and a board states its requirement as a bound on that member, as it does for any other (`.soft_start_time <= 5ms`, or `>=` for a ramp slow enough to keep the inrush down). The bound holds over the whole span the IC gives. A board that bounds nothing has no check, and the build says nothing about it. An IC whose datasheet gives no time, or whose ramp a capacitor on a soft-start pin sets without the datasheet stating a time for it (the `Lt8641`'s: it gives the pin's current and no time, p.10, p.19), states nothing, and a bound on it is listed as not evaluated, never passed. The figure is the IC's ramp: a rise that a current limit stretches, because of a large output capacitance or a load that draws while the output rises, is longer than it. This IC, invented for this guide, ramps in 2 ms to 4 ms:
+The start-up time is a closed-form check against a requirement (`docs/research/closed-form-checks.md`, check 4; no simulation: the figure is the datasheet's). `Buck` has an `optional` member `.soft_start_time` (ADR 0074), how long the output takes to rise to its regulation point at the IC's own ramp, as its datasheet gives it, a time or the span between its minimum and maximum, with the page in the part's doc comment. `BuckStage` forwards it as `.soft_start_time`, and a board states its requirement as a bound on that member, as it does for any other (`.soft_start_time <= 5ms`, or `>=` for a ramp slow enough to keep the inrush down). The bound holds over the whole span the IC gives. A board that bounds nothing has no check, and the build says nothing about it. An IC whose datasheet gives no time states nothing, and a bound on it is listed as not evaluated, never passed. An IC whose ramp a capacitor on a soft-start pin sets, and whose datasheet gives the pin's current and no time (the `Lt8641`'s, p.10, p.19), states a time only for a capacitor the board states: see the soft-start paragraph of the `Lt8641` below. The figure is the IC's ramp: a rise that a current limit stretches, because of a large output capacitance or a load that draws while the output rises, is longer than it. This IC, invented for this guide, ramps in 2 ms to 4 ms:
 
 ```nsm module=src::zbk4
 import std::parts::regulator::Buck
@@ -9212,6 +9212,106 @@ board Converter {
     .u.bst ~> .boost ~> .u.buck.sw.pos
     .u.intvcc ~> .intvcc_cap ~> .input.neg
 }
+```
+
+The IC's soft-start is set by a capacitor on `TR/SS`, and the datasheet gives no time for one: a pull-up current of 1.2 uA to 2.6 uA, 1.9 uA typical (Electrical Characteristics, p.3), and an output that tracks the pin "from 0V to 0.8V" (p.19). The part has an `optional` member `.css`, the capacitor, and the time it computes from those figures alone, `.buck.soft_start_time == .css * 0.8V / .tr_ss_current` (the pull-up current is the member `.tr_ss_current`, a range). Because the current is a range the time is one, and the smallest current gives the longest time: 10 nF is 3.077 ms to 6.667 ms (4.211 ms at the typical current), and a bound is held against the end that misses it. While the board states no `.css` the relation is skipped, the time is unstated and a bound on `.stage.soft_start_time` is listed as not evaluated, as for any IC that gives no time. `BuckStage` does not forward `.css`: it is the IC's own member, so the board states it on the part (`.u.css &= 10nF +/- 10%`, or `.u.css == .soft_start.capacitance` for the capacitor it puts on the pin). This board needs the output up within 8 ms with a 10 nF capacitor of 10 % on the pin; the worst case, 11 nF at 1.2 uA, is 7.33 ms:
+
+```nsm evaluate catalogs=lt8641
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::{BuckStage, Lt8641}
+import std::sources::Rail
+
+board Converter {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 36V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+    }
+    .u: Lt8641 {
+        .mpn &= "LT8641IUDC#WPBF"
+        .css &= 10nF +/- 10%
+    }
+    .stage: BuckStage {
+        .vout.voltage &= 3.3V +/- 4%
+        .soft_start_time <= 8ms
+    }
+    .rt: Resistor { .resistance &= 47kohm +/- 1% }
+    .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+    .intvcc_cap: Capacitor { .capacitance &= 1uF +/- 20% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en_uv ~ .input.pos
+    .u.bias ~ .output.pos
+    .u.bias_voltage == .output.voltage
+    .u.sync_mode ~ .input.neg
+    .u.rt ~> .rt ~> .input.neg
+    .u.rt_resistance == .rt.resistance
+    .u.bst ~> .boost ~> .u.buck.sw.pos
+    .u.intvcc ~> .intvcc_cap ~> .input.neg
+}
+```
+
+The same board with a bound of 5 ms is not held, and the message names the range:
+
+```nsm fails catalogs=lt8641
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::{BuckStage, Lt8641}
+import std::sources::Rail
+
+board Converter {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 36V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+    }
+    .u: Lt8641 {
+        .mpn &= "LT8641IUDC#WPBF"
+        .css &= 10nF
+    }
+    .stage: BuckStage {
+        .vout.voltage &= 3.3V +/- 4%
+        .soft_start_time <= 5ms
+    }
+    .rt: Resistor { .resistance &= 47kohm +/- 1% }
+    .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+    .intvcc_cap: Capacitor { .capacitance &= 1uF +/- 20% }
+
+    .input ~ .stage.vin
+    .input ~ .u.vin
+    .stage.vout ~ .output
+    .stage.buck ~ .u.buck
+    .u.en_uv ~ .input.pos
+    .u.bias ~ .output.pos
+    .u.bias_voltage == .output.voltage
+    .u.sync_mode ~ .input.neg
+    .u.rt ~> .rt ~> .input.neg
+    .u.rt_resistance == .rt.resistance
+    .u.bst ~> .boost ~> .u.buck.sw.pos
+    .u.intvcc ~> .intvcc_cap ~> .input.neg
+}
+```
+
+```text
+error: stage.soft_start_time must always be at most 5ms, but 3.076ms..6.667ms is not always below 5ms
+   --> main.nsm:23:9
+   |
+23 |         .soft_start_time <= 5ms
+   |         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The part states the absolute maximum of three pins besides VIN and BIAS, from its Absolute Maximum Ratings (p.2): `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each as a `Logic` (`.tr_ss_limit` and the like) whose `.line` is the pin inside the part, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046, ADR 0095, provisional). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode_limit.line.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
