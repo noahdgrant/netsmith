@@ -58,7 +58,7 @@ flowchart TD
         place["Place"]
         route["Route"]
         drc["Design rules check (netsmith's own)"]
-        pack["Write board, Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt"]
+        pack["Write board, Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt,<br/>pin map for firmware (.pins.h, .pins.json) when there are requests"]
         resolve --> sup --> pre --> place --> route --> drc --> pack
     end
     side --> place

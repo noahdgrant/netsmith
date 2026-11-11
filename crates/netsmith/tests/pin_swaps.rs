@@ -793,7 +793,7 @@ fn the_search_time_is_taken_from_the_budget_before_a_round_routes() {
 /// A project of the swaps board in `root`: the source, its physical file, its libraries, and a pin
 /// file that holds the requests on `p00` to `p09` in order, none locked (what a first assignment
 /// gives, and what the optimizer would change on a board that does not route).
-fn project(root: &Path) {
+pub fn project(root: &Path) {
     fs::create_dir_all(root.join("src")).unwrap();
     libraries(root);
     fs::write(root.join("netsmith.toml"), "[project]\nname = \"swaps\"\n").unwrap();
@@ -813,7 +813,7 @@ fn project(root: &Path) {
     fs::write(root.join("src/main.pins.toml"), pins).unwrap();
 }
 
-fn netsmith(root: &Path, args: &[&str]) -> std::process::Output {
+pub fn netsmith(root: &Path, args: &[&str]) -> std::process::Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .args(args)
         .current_dir(root)

@@ -147,6 +147,10 @@ pub struct FabOptions {
     /// `pin_swap`). `None` leaves the pins alone: a board that does not route is INCOMPLETE as
     /// before. The command line gives `Some` unless an order is made.
     pub pins: Option<PinsUse>,
+    /// The name of the source file as the pin map for firmware names it (`<board>.pins.h` and
+    /// `.pins.json`, which every board with pin requests gets in its output folder): the path
+    /// from the project's root. `None` names the file as `fab` was given it.
+    pub pin_map_source: Option<String>,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -242,6 +246,7 @@ impl Default for FabOptions {
             strict_heights: false,
             lock: None,
             pins: None,
+            pin_map_source: None,
         }
     }
 }
@@ -309,6 +314,19 @@ pub fn fab_with_options(
         }
         None => None,
     };
+    // Two requests that are one signal in the C header of the pin map are an error, said now
+    // with every other check of the source and before any board is placed or written.
+    let mut collisions = String::new();
+    for built in &built_boards {
+        let source = options.pin_map_source.as_deref().unwrap_or(name);
+        let spaces = pin_state.spaces_of(built);
+        if let Err(message) = crate::pin_export::render(&built.design, spaces, source) {
+            collisions.push_str(&format!("{message}\n"));
+        }
+    }
+    if !collisions.is_empty() {
+        return Err(collisions);
+    }
     for built in &built_boards {
         if let Some(only) = &options.only
             && !only.contains(&built.label())
@@ -509,10 +527,16 @@ fn fab_board(
     say: &dyn Fn(String),
     stuck: &mut Option<Stuck>,
     pin_notes: &[String],
+    pin_map_of: &PinMapOf,
 ) -> Result<BoardRun, String> {
     {
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
         let name = &built.design.name;
+        // The pin map for firmware is of the pins THIS pass was made with, which are the pins
+        // of the board it writes, so a pass whose files are kept or put back (see
+        // `fab_board_pinned`) leaves the map of its own board beside it. A signal name that
+        // collides in C is an error here, before anything is placed.
+        let pin_map = pin_map_of.render(built)?;
 
         // A generic part (ADR 0047) becomes the row that stands for it now; one that no row
         // stands for cannot be ordered, and is refused by name with the nearest rows.
@@ -718,6 +742,12 @@ fn fab_board(
             fs::write(&file, contents).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }
 
+        // The pin map for firmware, beside the board: written for an incomplete board too,
+        // whose pins are the ones it was routed with. A board with no request has none, and
+        // the two files an earlier run left are removed.
+        let pin_files = crate::pin_export::write(&dir, name, pin_map.as_ref())
+            .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
+
         // The project's own libraries and the standard library's own files that the board
         // uses, so KiCad finds the footprints.
         libraries
@@ -792,6 +822,7 @@ fn fab_board(
         })
         .map_err(|e| fail(e.to_string()))?;
         let mut files = vec![pcb_path.clone()];
+        files.extend(pin_files);
         files.extend(
             timings::stage("fab.write", &label, || pkg.write(&dir))
                 .map_err(|e| fail(e.to_string()))?,
@@ -876,6 +907,15 @@ struct PinState {
 }
 
 impl PinState {
+    /// What the check decided about the requests of the parts of `built`, as the run began: none
+    /// for a board of a system, whose requests are the system's.
+    fn spaces_of(&self, built: &Built) -> &[PartSpace] {
+        match self.spaces.get(&built.board) {
+            Some(spaces) if built.system.is_none() => spaces,
+            _ => &[],
+        }
+    }
+
     fn new(pins: &netsmith_check::PinsOutcome) -> Self {
         Self {
             original: pins.file.clone(),
@@ -883,6 +923,24 @@ impl PinState {
             spaces: pins.spaces.clone(),
             proposed: None,
         }
+    }
+}
+
+/// What a pass of `fab_board` writes the pin map for firmware from: the pins of the requests of
+/// the board that pass made, and the source file's name for the files.
+struct PinMapOf<'a> {
+    spaces: &'a [PartSpace],
+    source: &'a str,
+}
+
+impl PinMapOf<'_> {
+    /// The pin map of `built` (`None`: no request, or a board of a system).
+    fn render(&self, built: &Built) -> Result<Option<crate::pin_export::PinMap>, String> {
+        if built.system.is_some() {
+            return Ok(None);
+        }
+        crate::pin_export::render(&built.design, self.spaces, self.source)
+            .map_err(|message| format!("{message}\n"))
     }
 }
 
@@ -932,6 +990,7 @@ fn fab_board_pinned(
     say: &dyn Fn(String),
 ) -> Result<BoardRun, String> {
     let mut first_stuck = None;
+    let source = options.pin_map_source.as_deref().unwrap_or(pass.name);
     let first = fab_board(
         built,
         out,
@@ -943,6 +1002,10 @@ fn fab_board_pinned(
         say,
         &mut first_stuck,
         &[],
+        &PinMapOf {
+            spaces: state.spaces_of(built),
+            source,
+        },
     );
     let (Some(pins), Err(message), Some(first_stuck)) = (&options.pins, &first, first_stuck) else {
         return first;
@@ -1091,6 +1154,10 @@ fn fab_board_pinned(
             say,
             &mut stuck,
             &notes,
+            &PinMapOf {
+                spaces: &spaces_again,
+                source,
+            },
         ) {
             Ok(run) => {
                 say(format!("{label}: pins: round {round}: the board routes"));
@@ -1148,6 +1215,10 @@ fn fab_board_pinned(
             say,
             &mut again,
             &notes,
+            &PinMapOf {
+                spaces: &best_spaces,
+                source,
+            },
         );
         let remake_left = match (&remade, &again) {
             (Ok(_), _) => Some(0),

@@ -452,45 +452,6 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
     }
 }
 
-/// The pin map of a board for the firmware author (`None` when it has no pin request): a board
-/// of a system has none, because its requests are the system's.
-fn pin_maps_of(
-    built: &netsmith::Built,
-    pins: &netsmith_check::PinsOutcome,
-    source: &str,
-) -> Result<Option<netsmith::pin_export::PinMap>, String> {
-    if built.system.is_some() {
-        return Ok(None);
-    }
-    netsmith::pin_export::render(&built.design, &built.board, pins, source)
-}
-
-/// Write the board's pin map into `dir`, or remove the one an earlier run left there when the
-/// board has no request now.
-fn write_pin_map(
-    dir: &Path,
-    board: &str,
-    map: Option<&netsmith::pin_export::PinMap>,
-) -> std::io::Result<()> {
-    use netsmith::pin_export::{header_name, json_name};
-    let (header, json) = (dir.join(header_name(board)), dir.join(json_name(board)));
-    match map {
-        Some(map) => {
-            fs::write(header, &map.header)?;
-            fs::write(json, &map.json)
-        }
-        None => {
-            for file in [header, json] {
-                match fs::remove_file(file) {
-                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
-                    _ => {}
-                }
-            }
-            Ok(())
-        }
-    }
-}
-
 fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool) -> ExitCode {
     let (target, loader, catalogs) = match target(file, strict) {
         Ok(t) => t,
@@ -527,7 +488,7 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
             .map_err(|problems| render_problems(&problems));
         let settled = built.and_then(|outcome| {
             netsmith::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock)
-                .map(|settled| (outcome.boards, outcome.pins, settled))
+                .map(|settled| (outcome.boards, settled))
                 .map_err(|e| format!("{e}\n"))
         });
         match settled {
@@ -535,7 +496,7 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                 eprint!("{problems}");
                 code = ExitCode::FAILURE;
             }
-            Ok((boards, pins, settled)) => {
+            Ok((boards, settled)) => {
                 if let Some(file) = &settled.wrote {
                     println!("wrote {}", file.display());
                 }
@@ -569,23 +530,7 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                     code = ExitCode::FAILURE;
                     continue;
                 }
-                // The pin map for firmware, by request name, of each board that has requests;
-                // two requests that are one signal in C stop the build before it writes.
-                let mut pin_maps = Vec::new();
-                for b in &boards {
-                    match pin_maps_of(b, &pins, &source.stable_name(target.project.as_ref())) {
-                        Ok(map) => pin_maps.push(map),
-                        Err(message) => {
-                            eprintln!("{message}");
-                            unplaceable = true;
-                        }
-                    }
-                }
-                if unplaceable {
-                    code = ExitCode::FAILURE;
-                    continue;
-                }
-                for (b, pin_map) in boards.into_iter().zip(pin_maps) {
+                for b in boards {
                     let dir = match b.write(out) {
                         Ok(dir) => dir,
                         Err(e) => {
@@ -593,10 +538,6 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
                             return ExitCode::from(2);
                         }
                     };
-                    if let Err(e) = write_pin_map(&dir, &b.design.name, pin_map.as_ref()) {
-                        eprintln!("{}: {e}", dir.display());
-                        return ExitCode::from(2);
-                    }
                     // The project's own libraries and the standard library's own files that
                     // the board uses, so KiCad finds the symbols.
                     if let Err(e) = libraries.write_tables(&dir, &b.design) {
@@ -724,6 +665,7 @@ fn run_fab(
         strict_heights: strict_heights(&target, constraints_warn),
         lock: None,
         pins: None,
+        pin_map_source: None,
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -745,6 +687,7 @@ fn run_fab(
         let options = FabOptions {
             layout: Some(netsmith::layout::layout_path(&source.path)),
             lock: Some(using),
+            pin_map_source: Some(source.stable_name(target.project.as_ref())),
             pins: Some(netsmith::fab::PinsUse {
                 locked_by,
                 ..netsmith::fab::PinsUse::new(pins_mode, netsmith::pins::pins_path(&source.path))
@@ -845,6 +788,7 @@ fn run_order(
         lock: None,
         // An order is a release: it never moves a pin by itself.
         pins: None,
+        pin_map_source: None,
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(
