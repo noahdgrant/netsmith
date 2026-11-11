@@ -591,6 +591,7 @@ name = "netsmith-fab"
 version = "0.1.0"
 dependencies = [
  "netsmith-kicad",
+ "serde",
  "serde_json",
  "zip",
 ]

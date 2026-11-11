@@ -141,6 +141,8 @@ pub mod shape;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
+pub(crate) use model::outline_shapes;
+pub(crate) use rules::matches_pattern;
 pub use rules::{Class, Rules};
 
 /// How bad a finding is. A rule the project file says to ignore produces none.

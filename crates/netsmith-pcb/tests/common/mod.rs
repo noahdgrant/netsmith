@@ -754,3 +754,24 @@ pub fn land_grid_board_sized(
     .unwrap_or_else(|e| panic!("{e}"));
     (board, walled)
 }
+
+/// Writes a measured board's `.kicad_pcb` and `.kicad_pro` as `<name>.kicad_pcb` into the
+/// folder `NETSMITH_BOARD_OUT` names, if it names one, for the route scorecard
+/// (`scripts/route-scorecard`).
+pub fn write_measured(board: &Board, name: &str) {
+    let Some(dir) = std::env::var_os("NETSMITH_BOARD_OUT") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).expect("the folder can be made");
+    std::fs::write(
+        dir.join(format!("{name}.kicad_pcb")),
+        netsmith_pcb::kicad_pcb(board),
+    )
+    .expect("the board file can be written");
+    std::fs::write(
+        dir.join(format!("{name}.kicad_pro")),
+        netsmith_pcb::kicad_pro(board),
+    )
+    .expect("the project file can be written");
+}
