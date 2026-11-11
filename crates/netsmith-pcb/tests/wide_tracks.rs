@@ -128,6 +128,7 @@ fn with_currents(mut board: Board) -> Board {
             net: net.clone(),
             current: 1.0,
             least_width: *width,
+            vias: 1,
         })
         .collect();
     board
@@ -183,4 +184,50 @@ fn a_rail_sized_by_its_current_is_necked_down_only_near_its_own_pads() {
         .unwrap();
         assert_eq!(report.count(drc::Rule::TrackCurrent), 0, "{name}\n{report}");
     }
+}
+
+#[test]
+fn a_rail_whose_current_one_via_does_not_carry_changes_layer_through_vias_side_by_side() {
+    let mut board = with_currents(synthetic_board(4, 40, 8, 8, 20, 20));
+    for c in &mut board.net_currents {
+        c.vias = 3;
+    }
+    let routing = route_with(&mut board, RouteOptions::default());
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    let rails: Vec<String> = board.net_currents.iter().map(|c| c.net.clone()).collect();
+    let on_rails = board.vias.iter().filter(|v| rails.contains(&v.net)).count();
+    assert!(on_rails >= 3, "the rails change layer: {on_rails} vias");
+    assert_eq!(
+        netsmith_pcb::parallel::short_clusters(&board),
+        Vec::new(),
+        "every via of a rail stands with two more"
+    );
+    let extras = drc::Extras {
+        via_counts: board.via_counts(),
+        ..drc::Extras::default()
+    };
+    let report = drc::check(
+        &netsmith_pcb::kicad_pcb(&board),
+        Some(&netsmith_pcb::kicad_pro(&board)),
+        &extras,
+    )
+    .unwrap();
+    assert_eq!(report.count(drc::Rule::ViaCurrent), 0, "{report}");
+    assert_eq!(errors(&board), Vec::<String>::new());
+    // And the check counts: with four needed, the clusters of three are short.
+    let more = drc::Extras {
+        via_counts: board
+            .via_counts()
+            .into_iter()
+            .map(|(n, _)| (n, 4))
+            .collect(),
+        ..drc::Extras::default()
+    };
+    let report = drc::check(
+        &netsmith_pcb::kicad_pcb(&board),
+        Some(&netsmith_pcb::kicad_pro(&board)),
+        &more,
+    )
+    .unwrap();
+    assert!(report.count(drc::Rule::ViaCurrent) >= 1, "{report}");
 }

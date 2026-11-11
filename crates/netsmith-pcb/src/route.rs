@@ -492,6 +492,9 @@ struct Masks {
     /// fits: elsewhere a necked track is the width its current needs. `None` when the two are
     /// one width.
     pinch: Option<[Vec<bool>; 2]>,
+    /// Where a via could stand before [`Router::room_for_vias`] kept only the cells with room
+    /// for a cluster: where the others of a cluster stand. `None` when it did not run.
+    via_alone: Option<Vec<bool>>,
     /// How often lines have fought over each cell while the router negotiated, which makes
     /// a track through it dearer. Empty when it is not negotiating.
     history: [Vec<u8>; 2],
@@ -514,6 +517,7 @@ impl Masks {
             via: vec![false; window.cells()],
             wide: None,
             pinch: None,
+            via_alone: None,
             history: [Vec::new(), Vec::new()],
             soft: None,
         }
@@ -1472,6 +1476,75 @@ impl<'a> Router<'a> {
             .min(self.width_of(line))
     }
 
+    /// For a net whose current one via does not carry, leave a cell open for a via only where
+    /// the others fit beside it (issue #431, [`crate::parallel`]): enough cells a cluster's step
+    /// away, on the four straight or the four diagonal directions, open for a via too.
+    fn room_for_vias(&self, line: usize, masks: &mut Masks) {
+        if self.vias_needed(line) <= 1 {
+            return;
+        }
+        let w = masks.window;
+        let keep: Vec<bool> = (0..w.cells())
+            .map(|c| {
+                masks.via[c]
+                    || self
+                        .cluster_cells(line, masks, w.i0 + c % w.nx, w.j0 + c / w.nx)
+                        .is_none()
+            })
+            .collect();
+        masks.via_alone = Some(std::mem::replace(&mut masks.via, keep));
+    }
+
+    /// How many vias side by side the line's net needs where it changes layer.
+    fn vias_needed(&self, line: usize) -> usize {
+        let net = &self.lines[line].net;
+        self.board
+            .net_currents
+            .iter()
+            .find(|c| &c.net == net)
+            .map_or(1, |c| c.vias)
+    }
+
+    /// Where the other vias of the line's cluster stand round a via at cell (i, j): a cluster's
+    /// step from its centre (their copper overlaps, their holes keep the via-to-via space), on
+    /// the four straight directions or else the four diagonal ones, the first whose nearest
+    /// cells the masks leave open for a via, in that order. `None` if too few are open.
+    fn cluster_cells(&self, line: usize, masks: &Masks, i: usize, j: usize) -> Option<Vec<Pt>> {
+        let want = self.vias_needed(line).saturating_sub(1).min(4);
+        let rules = &self.board.rules;
+        let step = rules.via_hole_to_hole + rules.via_drill + crate::parallel::MARGIN;
+        let w = masks.window;
+        let centre = self.grid.centre(i, j);
+        let open = |p: Pt| {
+            let (a, b) = (
+                ((p.x - self.grid.origin.x) / PITCH).round(),
+                ((p.y - self.grid.origin.y) / PITCH).round(),
+            );
+            if a >= 0.0 && b >= 0.0 && w.contains(a as usize, b as usize) {
+                let alone = masks.via_alone.as_ref().unwrap_or(&masks.via);
+                !alone[w.index(a as usize, b as usize)]
+            } else {
+                false
+            }
+        };
+        let r = std::f64::consts::FRAC_1_SQRT_2;
+        for set in [
+            [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)],
+            [(r, r), (-r, r), (-r, -r), (r, -r)],
+        ] {
+            let found: Vec<Pt> = set
+                .iter()
+                .map(|(a, b)| Pt::new(centre.x + a * step, centre.y + b * step))
+                .filter(|&p| open(p))
+                .take(want)
+                .collect();
+            if found.len() >= want {
+                return Some(found);
+            }
+        }
+        None
+    }
+
     /// Whether a point is within `reach` of the pads of a part an end of the line is on.
     fn near_end_by(&self, line: usize, p: Pt, reach: f64) -> bool {
         let l = &self.lines[line];
@@ -1694,6 +1767,7 @@ impl<'a> Router<'a> {
                     masks.wide = Some(std::mem::replace(&mut masks.track, narrow));
                 }
             }
+            self.room_for_vias(line, &mut masks);
             self.add_history(&mut masks);
             match link(&masks, from, goal, extras) {
                 Link::Joined => {}
@@ -1868,6 +1942,18 @@ impl<'a> Router<'a> {
                     diameter: rules.via_diameter,
                     drill: rules.via_drill,
                 });
+                // The others of its cluster, where the masks left room (issue #431).
+                for at in self
+                    .cluster_cells(line, masks, path[k].0, path[k].1)
+                    .unwrap_or_default()
+                {
+                    vias.push(Via {
+                        net: l.net.clone(),
+                        at,
+                        diameter: rules.via_diameter,
+                        drill: rules.via_drill,
+                    });
+                }
             }
             start = k;
         }
@@ -2441,6 +2527,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         board.tracks.extend(r.tracks);
         board.vias.extend(r.vias);
     }
+    // A via that does not carry its net's current gets others beside it (issue #431).
+    crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);
     Routing {

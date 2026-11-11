@@ -734,6 +734,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             None => None,
         },
         track_width_tolerance: number(find("track_width_tolerance")),
+        hole_plating: mm(find("hole_plating")),
         stackup: Stackup {
             layers,
             thickness: match find("stackup.thickness") {

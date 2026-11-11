@@ -38,6 +38,7 @@ pub mod generate;
 pub mod geometry;
 pub mod layout;
 pub mod overhang;
+pub mod parallel;
 mod place;
 pub mod protrusion;
 pub mod quality;

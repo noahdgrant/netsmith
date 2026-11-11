@@ -1575,6 +1575,16 @@ impl Board {
         }))
     }
 
+    /// The nets that need more than one via side by side where they change layer, and how
+    /// many (issue #431).
+    pub fn via_counts(&self) -> Vec<(String, usize)> {
+        self.net_currents
+            .iter()
+            .filter(|c| c.vias > 1)
+            .map(|c| (c.net.clone(), c.vias))
+            .collect()
+    }
+
     /// The nets whose current needs more than the process's least track, with the least width
     /// it needs: what the design rules check holds their routed copper to (issue #431).
     pub fn least_widths(&self) -> Vec<(String, f64)> {

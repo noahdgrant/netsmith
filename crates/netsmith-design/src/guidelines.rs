@@ -249,6 +249,23 @@ pub fn ipc2221_width(current: f64, copper: f64, rise: f64, layer: Layer) -> f64 
     area / (copper / MIL) * MIL
 }
 
+/// The current a via with a hole of `drill` mm, plated `plating` mm thick, carries for a rise of
+/// `rise` kelvin (issue #431): IPC-2221's formula over the copper of the barrel, the ring of the
+/// plating round the finished hole, with the inner-layer constant, since the barrel is
+/// inside the board and sheds less heat than a track in air. Calculators differ here (some take
+/// the outer constant, some IPC-2152's charts); the inner one is the lower of IPC-2221's two. A
+/// 0.2 mm hole plated 0.018 mm carries 0.56 A at 10 K.
+pub fn via_current(drill: f64, plating: f64, rise: f64) -> f64 {
+    if drill <= 0.0 || plating <= 0.0 {
+        return 0.0;
+    }
+    // A drill is the finished hole: the plating is round it.
+    let inner = drill / 2.0;
+    let outer = inner + plating;
+    let area = std::f64::consts::PI * (outer * outer - inner * inner) / (MIL * MIL);
+    Layer::Internal.k() * rise.powf(0.44) * area.powf(0.725)
+}
+
 /// What a design does against a guideline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Guideline {
@@ -610,10 +627,17 @@ pub fn plan_tracks(
             0.0
         };
         if total > 0.0 {
+            let each = via_current(process.via_drill, process.hole_plating, rise);
+            let vias = if each > 0.0 {
+                ((total / each) - 1e-9).ceil().max(1.0) as usize
+            } else {
+                1
+            };
             plan.currents.push(NetCurrent {
                 net: net.name.clone(),
                 current: total,
                 least_width: needs,
+                vias,
             });
         }
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
