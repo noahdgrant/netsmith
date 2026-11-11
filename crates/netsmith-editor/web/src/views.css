@@ -103,7 +103,7 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .pinrow { display: grid; grid-template-columns: 1.875rem minmax(0, 1fr); align-items: center; gap: 0.375rem; }
 .pinrow .chip { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pin-no { color: var(--text-faint); font-family: var(--mono); font-size: var(--fs-sm); text-align: right; font-variant-numeric: tabular-nums; }
-/* The pin map of a part and the board's pick lock, read only (ADR 0101, ADR 0100). */
+/* The pin map of a part (a padlock and a move write the pin file, ADR 0101) and the board's pick lock, read only (ADR 0100). */
 .pinmap { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .pm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.5rem; row-gap: 1px; align-items: baseline; padding: 0.3125rem 2px; border-bottom: 1px solid var(--row-line); font-size: var(--fs-sm); }
 .pm-row:last-child { border-bottom: none; }
@@ -114,6 +114,25 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .pm-origin { font-size: var(--fs-xs); }
 .pm-lock { display: inline-flex; align-items: center; gap: 0.1875rem; }
 .pm-row.none .pm-req { color: var(--danger-text); }
+.pm-pinbox { display: inline-flex; align-items: center; gap: 0.25rem; }
+.pm-pin.grab { cursor: grab; border-radius: var(--r-sm); }
+.pm-pin.grab:hover { background: var(--hover); }
+.pm-padlock { display: inline-grid; place-items: center; width: var(--h-sm); height: var(--h-sm); padding: 0; background: none; border: 1px solid transparent; border-radius: var(--r-sm); color: var(--text-faint); cursor: pointer; }
+.pm-padlock:hover:not(:disabled) { background: var(--hover); color: var(--text); border-color: var(--border); }
+.pm-padlock.on { color: var(--text); }
+.pm-padlock:disabled { cursor: progress; opacity: 0.6; }
+.pm-padlock:focus-visible, .pm-move:focus-visible, .pm-target:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+.pm-move { margin-left: auto; font-size: var(--fs-xs); }
+.pm-move[aria-disabled="true"] { color: var(--text-faint); cursor: not-allowed; text-decoration: none; }
+.pm-moves { grid-column: 1 / -1; margin: 0.25rem 0 0.125rem; padding: 0.375rem 0.5rem; background: var(--surface-3); border-radius: var(--r-sm); }
+.pm-moves-help { margin: 0 0 0.375rem; }
+.pm-targets { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.pm-target { display: inline-flex; align-items: baseline; gap: 0.1875rem; height: var(--h-sm); padding: 0 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
+.pm-target.free { border-color: var(--sel); }
+.pm-target.free:hover, .pm-target.free:focus-visible { background: var(--hover); }
+.pm-target.held { border-style: dashed; color: var(--text-muted); }
+.pm-target.current { background: var(--surface-3); border-color: transparent; color: var(--text-muted); cursor: default; }
+.pm-target[aria-disabled="true"] { cursor: default; }
 .pm-msg { grid-column: 1 / -1; margin-top: 0.125rem; color: var(--danger-text); line-height: 1.45; overflow-wrap: anywhere; }
 .lock-state { font-weight: var(--fw-normal); }
 .lock-state.warn { color: var(--warning-text); } .lock-state.bad { color: var(--danger-text); } .lock-state.ok { color: var(--text-muted); }
