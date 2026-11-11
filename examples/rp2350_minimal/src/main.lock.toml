@@ -120,9 +120,9 @@ mpn = "RC0402JR-070RL"
 
 [Rp2350Minimal.parts."ss_pullup.resistor"]
 catalog = "resistor"
-row = "10kΩ 1% 0603 C25804"
-lcsc = "C25804"
-mpn = "0603WAF1002T5E"
+row = "10kΩ 1% 0402 C25744"
+lcsc = "C25744"
+mpn = "0402WGF1002TCE"
 
 [Rp2350Minimal.parts."usb"]
 catalog = "micro_usb"

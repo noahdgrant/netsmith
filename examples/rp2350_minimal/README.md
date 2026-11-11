@@ -443,7 +443,8 @@ put them. Open it in a browser.
   with Raspberry Pi's value and tolerance and the package of their footprint (`1005` metric is
   `0402`, `2012` is `0805`; the tolerances are the 1 % of the resistors, 10 % of the 100 nF and
   10 uF, 20 % of the 4.7 uF and 5 % of the 15 pF, from the Description property of each part).
-  R1 is a `PullUp`. The 1 kohm in front of each button is a plain `Resistor`.
+  R1 is a `PullUp` that states its resistor's package (`.package &= "0402"`). The 1 kohm in
+  front of each button is a plain `Resistor`.
 - **The headers' pin map is fixed.** `.header_low` (J2) and `.header_high` (J3) are joined
   pin by pin to **named** pins of the chip (`.header_low.p12 ~ .mcu.gpio4`), exactly as their
   pads are. The pin optimizer of `fab` (ADR 0101) moves only a pin that a *request* got
@@ -477,8 +478,6 @@ put them. Open it in a browser.
 - **U2's tab pad.** Their footprint numbers the NCP1117's tab 4 (net `+3V3`, the output); the
   datasheet's pin is 2 and the generator's footprint numbers it 2. Same pin, same net, another
   number: the test reads their pad 4 as pad 2.
-- **R1's package.** The standard `PullUp` picks its resistor in 0603 and does not let a board
-  state the package (the board cannot reach inside the module); theirs is 0402.
 - **Which 100 nF is which.** Their eight on `+3V3` and three on `+1V1` are interchangeable, so
   `C12` of theirs is any of the board's eight: the test's table pairs them in order.
 - **Decoupling capacitors belong to no pin** in the source, as in their board file (the netlist

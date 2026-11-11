@@ -1,0 +1,14 @@
+# The reference designators of Easyduino's board file that a copy of the board must reproduce
+# (`must_match = true` in placements.toml); read by
+#   cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml <file>
+# The outline and every hole are always must-match. Not listed, so reported and not required:
+# the module (U1), the USB-UART bridge (U3), the regulator (U5), the transistors, the diodes,
+# the LEDs, the passives and the routing.
+parts = [
+    "J1",  # the USB-C receptacle of the bridge
+    "J2",  # the USB-C receptacle of the module's own USB
+    "SW1", # the RESET button (pad 2 on EN)
+    "SW2", # the BOOT button (pad 2 on GPIO0)
+    "U2",  # the footprint of the development board's two 22-pin headers (44 pads); it also
+           # draws the board's outline (see README.md)
+]

@@ -12298,6 +12298,44 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
 
+A board that needs a size for the resistor states it on the module: `PullUp`, `PullDown` and `I2cPullups` each have an `optional` `.package` (a text such as `"0402"`) that they forward to the resistor inside, so the board never reaches into the module (the design rule that a module is configured through its interface). `I2cPullups` gives the one package to both of its resistors. A board that states nothing leaves the pick to the solver, as before: the relation that forwards the member is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
+
+```nsm evaluate
+import std::bus::PullUp
+import std::sources::Rail
+
+/// A gate with an active-low reset. Illustrative; not a real part.
+part SizedGate {
+    .designator &= "U"
+    .vcc: Rail
+    .vcc.current &= 100uA..1mA
+
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .reset_n input "RST#" "3"
+    }
+}
+
+board Sized {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .gate: SizedGate
+    .supply ~ .gate.vcc
+
+    // The same pull-up as above, in the 0402 package.
+    .pull: PullUp {
+        .resistance &= 10kohm +/- 1%
+        .package &= "0402"
+    }
+    .supply ~ .pull.supply
+    .pull.line ~ .gate.reset_n
+}
+```
+
 ### A pull-down on one line
 
 A boot-mode pin, an enable or a gate often needs a resistor from the line to ground, so that it reads low when its driver lets go. A plain `Resistor` from the line to the rail's `neg` works for the circuit and leaves the resistor's current unknown: nothing in the circuit says what the driver puts into it, and its drop and power wait. `std::bus::PullDown` is that resistor with its current stated, the mirror of `PullUp`.
@@ -12360,7 +12398,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:532), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:541), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 ## The standard library

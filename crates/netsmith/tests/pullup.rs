@@ -398,3 +398,43 @@ fn a_board_that_states_its_rails_peak_can_have_the_draw_worked_out_at_it() {
     let plain = run(&pullup(""));
     assert!(range(&plain, "pull.resistor.current").hi() < draw.hi());
 }
+
+// ---- the package of the resistor inside (owner decision of 2026-11-10, item PK1) ----
+
+fn package_of(s: &Solution, path: &str) -> String {
+    match s.model.domain_at(path) {
+        Some(Domain::Text(t)) => t.clone(),
+        other => panic!("`{path}` is {other:?}"),
+    }
+}
+
+#[test]
+fn a_board_states_the_package_of_the_resistor_inside_a_pullup() {
+    let s = run(&pullup(".package &= \"0402\""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(package_of(&s, "pull.resistor.package"), "0402");
+    assert_eq!(picked(&s, "pull.resistor"), "10k");
+}
+
+#[test]
+fn a_pullup_whose_package_nobody_states_is_picked_as_before() {
+    let s = run(&pullup(""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    // The solver chooses, and does not state it: no `.package` was written by the board.
+    assert_eq!(package_of(&s, "pull.resistor.package"), "0603");
+    assert!(
+        !not_evaluated(&s).iter().any(|r| r.contains("package")),
+        "an unstated package is no open relation: {:?}",
+        not_evaluated(&s)
+    );
+}
+
+#[test]
+fn a_package_that_no_row_has_is_refused_with_its_name() {
+    let s = run(&pullup(".package &= \"0201\""));
+    let all = messages(&s).join("\n");
+    assert!(
+        all.contains("has nothing for `pull.resistor`") && all.contains("\"0201\""),
+        "the usual message names the part and the package: {all}"
+    );
+}
