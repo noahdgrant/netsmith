@@ -2311,6 +2311,36 @@ mod board {
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
+    /// Every part the board house assembles has an LCSC number and no generic is left
+    /// unresolved; the headers are the one part soldered by hand. The board has no warning
+    /// and no guideline finding: what is left is notes.
+    #[test]
+    fn every_assembled_part_is_sourced_and_the_board_has_no_guideline_finding() {
+        let built = built();
+        let mut unsourced = Vec::new();
+        let mut by_hand = Vec::new();
+        for s in &built.sourcing {
+            if s.assembled() {
+                if s.lcsc.is_none() || s.generic.is_some() {
+                    unsourced.push(format!("{} {}", s.refdes, s.kind));
+                }
+            } else {
+                by_hand.push(s.kind.as_str());
+            }
+        }
+        assert!(unsourced.is_empty(), "{}", unsourced.join(", "));
+        assert_eq!(by_hand, ["Esp32S3DevKitCHeaders"]);
+        assert!(
+            built.guidelines.is_empty(),
+            "{:?}",
+            built
+                .guidelines
+                .iter()
+                .map(|g| g.message.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
     /// The net a pad of a part is on, as the signal it carries in Easyduino's terms: the
     /// design's net name for a rail or ground, else the other pads on it, in Easyduino's
     /// designators.
