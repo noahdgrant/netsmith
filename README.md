@@ -13,7 +13,7 @@ and routed PCB with a Gerber package for JLCPCB, on two layers or on four with g
 supply planes inside. The editor (`netsmith editor`) shows the source and the board in a
 browser.
 
-Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks where KiCad is installed, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). The rest build and fab with no KiCad at all (see Install). Many of the decisions behind the language are provisional and unreviewed (see Limitations).
+Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks where KiCad is installed, except `carrier_and_cards.nsm`, whose invented parts have no KiCad symbol (it is checked and solved only). The rest build and fab with no KiCad at all (see Install). Some of the decisions behind the language are still `proposed` and wait for review (see Limitations).
 
 ## An example
 
@@ -164,9 +164,8 @@ netsmith analyzes a worst-case DC operating point of the picked parts: every vol
   its own beside a board, `<stem>.physical.nsm`, and the same lines in the board are an error
   (ADR 0048, #52). The board level is built, and the placer and `fab` hold a relation between
   two parts (ADR 0045); the module layer, a physical file for a `system` or a `panel`, and the
-  editor writing its keepouts to that file (it writes the layout file) are not. The provisional
-  readings are in the ADR's "Built".
-- Several of the decisions in `docs/adr/` are provisional and unreviewed (#10).
+  editor writing its keepouts to that file (it writes the layout file) are not. The readings are in the ADR's "Built".
+- Nine ADRs in `docs/adr/` are `proposed` and wait for review: 0049, 0050, 0051, 0072, 0098, 0099, 0100, 0102 and 0103.
 
 ## Licence
 

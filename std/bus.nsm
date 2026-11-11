@@ -363,7 +363,7 @@ module PullUp {
 /// (Fast-mode), `120ns` (Fast-mode Plus), and `Cb <= 400pF` (550 pF in Fast-mode Plus). A board
 /// states the limit of the mode it runs, `.pullups.rise_time <= 300ns` and
 /// `.pullups.bus_capacitance <= 400pF`: the module builds none in, since the mode is the board's
-/// choice and a mode table in `std::bus` is the owner's to decide. A bound holds in the worst
+/// choice. A bound holds in the worst
 /// case, the highest resistance (its tolerance) and the highest capacitance; the supply does not
 /// enter, since both points are fractions of it.
 ///
