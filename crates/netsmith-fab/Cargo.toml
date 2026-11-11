@@ -13,6 +13,7 @@ path = "tests/main.rs"
 
 [dependencies]
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 # Polygon unions and differences, for the copper as polygons (`polygons`, ADR 0105).
 i_overlay = "9.1.0"
