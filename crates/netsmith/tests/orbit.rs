@@ -2026,11 +2026,37 @@ mod board {
     }
 
     fn built_named(name: &str, text: &str) -> Result<netsmith::Built, String> {
+        built_named_with(name, text, &[])
+    }
+
+    /// A board of its own, with the modules named in `modules` (a file of `src/`, as
+    /// `buck_boost.nsm`, and the text to read for it) as they are there instead of the files on
+    /// disk: the control of a test edits a copy of a module that the board imports.
+    fn built_named_with(
+        name: &str,
+        text: &str,
+        modules: &[(&str, String)],
+    ) -> Result<netsmith::Built, String> {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
+        let unsaved: std::collections::HashMap<std::path::PathBuf, String> = modules
+            .iter()
+            .map(|(file, text)| {
+                let found = target
+                    .project
+                    .as_ref()
+                    .unwrap()
+                    .modules()
+                    .unwrap()
+                    .into_iter()
+                    .find(|m| m.path.ends_with(format!("src/{file}")))
+                    .unwrap_or_else(|| panic!("src/{file} is not a module of the project"));
+                (found.path, text.clone())
+            })
+            .collect();
         build_with(
             name,
             text,
-            &target.loader().unwrap(),
+            &target.loader_with(&unsaved).unwrap(),
             &target.catalogs().unwrap(),
             &libraries(),
         )
@@ -2287,6 +2313,88 @@ mod board {
         );
     }
 
+    /// The pads of the CP2102's `NC` pin (the datasheet's table has one pin of these ten): the pads
+    /// of `NC`, but not pad 18 (`NC/VPP`, a pin of its own).
+    const NC_PADS: [&str; 10] = ["10", "13", "14", "15", "16", "17", "19", "20", "21", "22"];
+
+    /// The pads that share a net with pad `pad` of `refdes` in `netlist` (`to_reference` names the
+    /// designators as ORBIT's board does), and the names of the nets the pad is on.
+    fn pad_net_mates(
+        netlist: &Netlist,
+        to_reference: &BTreeMap<String, String>,
+        refdes: &str,
+        pad: &str,
+    ) -> (Vec<Pad>, Vec<String>) {
+        let mut mates = Vec::new();
+        let mut names = Vec::new();
+        for net in &netlist.nets {
+            let pads: Vec<Pad> = net
+                .pins
+                .iter()
+                .map(|(c, pin)| {
+                    let r = &netlist.components[*c].refdes;
+                    (to_reference.get(r).unwrap_or(r).clone(), pin.clone())
+                })
+                .collect();
+            if pads.iter().any(|(r, p)| r == refdes && p == pad) {
+                names.push(net.name.clone());
+                mates.extend(pads.into_iter().filter(|(r, p)| !(r == refdes && p == pad)));
+            }
+        }
+        (mates, names)
+    }
+
+    /// The datasheet's `NC` pin is one pin of ten pads in the design (pad 18, `NC/VPP`, is another
+    /// pin), and ORBIT's board has the same ten pads as ten separate unconnected pads, each on a
+    /// net of its own with no other pad. The comparison above reads pads, not pins, so it cannot
+    /// tell the two shapes apart: this says that every one of the ten is unconnected on both sides
+    /// (no other pad on its net), and that the design's pin does not join them.
+    #[test]
+    fn the_ten_nc_pads_are_unconnected_on_both_sides() {
+        let built = built();
+        let bridge = built
+            .design
+            .parts
+            .iter()
+            .find(|p| p.kind == "Cp2102")
+            .expect("the board has a Cp2102");
+        let nc: Vec<_> = bridge.pins.iter().filter(|p| p.datasheet == "NC").collect();
+        assert_eq!(nc.len(), 1, "one `NC` pin, as the datasheet's table has it");
+        assert_eq!(format!("{:?}", nc[0].kind), "NoConnect");
+        assert_eq!(nc[0].pads, NC_PADS);
+        let to_reference = designators(&built);
+        let ours = design_netlist(&built);
+        let theirs = reference();
+        for pad in NC_PADS {
+            let (mates, ours_names) = pad_net_mates(&ours, &to_reference, "U22", pad);
+            assert_eq!(mates, Vec::<Pad>::new(), "the board's U22 pad {pad}");
+            let (mates, names) = pad_net_mates(&theirs, &BTreeMap::new(), "U22", pad);
+            assert_eq!(mates, Vec::<Pad>::new(), "ORBIT's U22 pad {pad}");
+            // A pad alone on its net is on no net of the netlist (the reader keeps nets of two
+            // pads or more): neither side has the pad on a net.
+            assert_eq!(names, Vec::<String>::new(), "ORBIT's U22 pad {pad}");
+            assert_eq!(
+                ours_names,
+                Vec::<String>::new(),
+                "the board's U22 pad {pad}"
+            );
+        }
+        // The board file names each of the ten pads' nets after the pad (`unconnected-(U22-NC@1-
+        // Pad13)`): ten nets of one pad each, not one net of ten.
+        let file = read(&format!("reference/{REFERENCE}"));
+        let nets: BTreeSet<&str> = file
+            .split('"')
+            .filter(|t| t.starts_with("unconnected-(U22-NC") && t.ends_with(')'))
+            .collect();
+        for pad in NC_PADS {
+            let named: Vec<&&str> = nets
+                .iter()
+                .filter(|n| n.ends_with(&format!("-Pad{pad})")))
+                .collect();
+            assert_eq!(named.len(), 1, "ORBIT's U22 pad {pad}: {nets:?}");
+        }
+    }
+
     /// The exchange of the two resistors' pads is the only thing that stands between the
     /// board's pads and ORBIT's: read as they are, the differences are all on `SWAPPED`.
     #[test]
@@ -2374,8 +2482,23 @@ mod board {
         );
         assert_ne!(moved, source());
         let moved = built_from(&moved).unwrap_or_else(|e| panic!("{e}"));
-        let a = wiring_only(&design_netlist(&moved), &designators(&moved), &[], true);
         let b = wiring_only(&reference(), &BTreeMap::new(), &LEFT_OUT, false);
+        // Both sides leave out the four holes, as in the test above, so that the edit is the one
+        // thing the two differ by: the control, the same board without the edit, matches.
+        let unmoved = wiring_only(
+            &design_netlist(&built),
+            &designators(&built),
+            &LEFT_OUT,
+            true,
+        );
+        let outcome = compare(&unmoved, &b, &Options::default()).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
+        let a = wiring_only(
+            &design_netlist(&moved),
+            &designators(&moved),
+            &LEFT_OUT,
+            true,
+        );
         let outcome = compare(&a, &b, &Options::default()).unwrap_or_else(|e| panic!("{e}"));
         assert!(
             !matches!(outcome, Outcome::Match(_)),
@@ -2624,45 +2747,79 @@ mod board {
         assert!(built.sourcing.iter().all(|s| s.generic.is_none()));
     }
 
-    /// The regulator's output is what the divider makes of the part's reference, and the board
-    /// states the window the schematic's net name names (3.3 V, +/- 5%): 0.5 V +/- 1% times
-    /// (1 + 560 kohm / 100 kohm), each resistor good to 1%, is 3.212 V to 3.390 V, inside
-    /// 3.135 V to 3.465 V. The check is the divider's equation in `src/buck_boost.nsm`, and it is
-    /// real: with a 510 kohm top resistor the output is 2.969 V to 3.133 V and the build stops.
-    #[test]
-    fn the_dividers_output_is_inside_the_window_and_the_check_sees_a_wrong_divider() {
-        let low: f64 = 0.5 * 0.99 * (1.0 + 560.0 * 0.99 / (100.0 * 1.01));
-        let high: f64 = 0.5 * 1.01 * (1.0 + 560.0 * 1.01 / (100.0 * 0.99));
-        assert!((low - 3.212).abs() < 0.001 && (high - 3.390).abs() < 0.001);
-        assert!(low > 3.3 * 0.95 && high < 3.3 * 1.05);
-        // The mutated module is a file of the project, so the control is a board of its own.
-        let fixture = r#"
-import src::tps63802::Tps63802
-import std::parts::passive::Resistor
+    /// A board of its own that has the REAL `src/buck_boost.nsm` between a battery and a 3.3 V
+    /// rail whose window is `WINDOW`. The module file is the project's, so a control that
+    /// edits it hands the build a copy of the text for `buck_boost.nsm` (`built_named_with`).
+    const BUCK_BOOST_FIXTURE: &str = r#"
+import src::buck_boost::BuckBoost
 import std::sources::Rail
 
-board DividerFixture {
-    .vin: Rail { .voltage &= 3.6V +/- 10%; .pos.net &= "VIN"; .neg.net &= "GND" }
-    .vout: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VOUT"; .neg.net &= "GND" }
-    .ic: Tps63802 { .mpn &= "TPS63802DLAR" }
-    .top: Resistor { .resistance &= TOPkohm +/- 1%; .package &= "0603" }
-    .bottom: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0603" }
-    .ic.vin ~ .vin.pos
-    .ic.vout ~ .vout.pos
-    .vout.neg ~ .vin.neg
-    .ic.gnd ~ .vin.neg
-    .ic.agnd ~ .vin.neg
-    .ic.en ~ .vin.pos
-    .ic.mode ~ .vin.neg
-    .ic.fb ~ .top.b
-    .ic.fb ~ .bottom.a
-    .top.a ~ .vout.pos
-    .bottom.b ~ .vin.neg
-    .vout.voltage == .ic.vref * (1 + .top.resistance / .bottom.resistance)
+board BuckBoostFixture {
+    .battery: Rail { .voltage &= 3.6V +/- 10%; .pos.net &= "BATT"; .neg.net &= "GND" }
+    .rail: Rail { .voltage &= WINDOW; .pos.net &= "VOUT"; .neg.net &= "GND" }
+    .regulator: BuckBoost
+    .regulator.vin ~ .battery
+    .regulator.vout ~ .rail
 }
 "#;
-        fixture_board(&fixture.replace("TOP", "560")).unwrap_or_else(|e| panic!("{e}"));
-        let error = fixture_board(&fixture.replace("TOP", "510"))
+
+    /// The divider's relation line of `src/buck_boost.nsm`.
+    const DIVIDER_RELATION: &str = "    .vout.voltage == .ic.vref * (1 + .divider_top.resistance / .divider_bottom.resistance)\n";
+
+    /// The regulator's output is what the divider makes of the part's reference, and the board
+    /// states the window the schematic's net name names (3.3 V, +/- 5%): 0.5 V +/- 1% times
+    /// (1 + 560 kohm / 100 kohm), each resistor good to 1%, is 3.212 V to 3.391 V, inside
+    /// 3.135 V to 3.465 V. The test builds the module's own file, `src/buck_boost.nsm`, and
+    /// reads the output range off its error for a narrower window; the controls build a COPY of
+    /// the text: with the divider's relation line deleted nothing checks the window, with it
+    /// broken the board is refused, and with a 510 kohm top resistor the output is 2.969 V to
+    /// 3.133 V and the build stops only while the line is there.
+    #[test]
+    fn the_dividers_output_is_inside_the_window_and_the_check_sees_a_wrong_divider() {
+        let module = read("src/buck_boost.nsm");
+        assert_eq!(module.matches(DIVIDER_RELATION).count(), 1);
+        let window = |w: &str| BUCK_BOOST_FIXTURE.replace("WINDOW", w);
+        let build = |w: &str, module: Option<&String>| {
+            let modules: Vec<(&str, String)> = module
+                .map(|m| ("buck_boost.nsm", m.clone()))
+                .into_iter()
+                .collect();
+            built_named_with("fixture.nsm", &window(w), &modules)
+        };
+
+        // The real module: inside the schematic's window, and the output range it works out to
+        // is the one the arithmetic gives (the error of a window that is narrower names it).
+        build("3.3V +/- 5%", None).unwrap_or_else(|e| panic!("{e}"));
+        let low: f64 = 0.5 * 0.99 * (1.0 + 560.0 * 0.99 / (100.0 * 1.01));
+        let high: f64 = 0.5 * 1.01 * (1.0 + 560.0 * 1.01 / (100.0 * 0.99));
+        assert!((low - 3.212).abs() < 0.001 && (high - 3.391).abs() < 0.001);
+        assert!(low > 3.3 * 0.95 && high < 3.3 * 1.05);
+        let error = build("3.3V +/- 2%", None)
+            .err()
+            .expect("3.212 V to 3.391 V is not inside 3.3 V +/- 2%");
+        assert!(
+            error.contains("must stay within 3.234V..3.366V")
+                && error.contains("works out to 3.212V..3.391V"),
+            "{error}"
+        );
+
+        // Control: the relation line deleted from a copy. Nothing derives the output now, so
+        // the narrow window is accepted: the line is what checked it.
+        let without = module.replace(DIVIDER_RELATION, "");
+        build("3.3V +/- 2%", Some(&without)).unwrap_or_else(|e| panic!("{e}"));
+        // Control: the line broken (the resistors the wrong way up) from a copy: refused.
+        let broken = module.replace(
+            DIVIDER_RELATION,
+            "    .vout.voltage == .ic.vref * (1 + .divider_bottom.resistance / .divider_top.resistance)\n",
+        );
+        let error = build("3.3V +/- 5%", Some(&broken))
+            .err()
+            .expect("the inverted divider gives 0.59 V");
+        assert!(error.contains("must stay within 3.135V..3.465V"), "{error}");
+        // Control: a 510 kohm top resistor in a copy is refused with the line, accepted without.
+        let wrong = module.replace("560kohm", "510kohm");
+        assert_ne!(wrong, module);
+        let error = build("3.3V +/- 5%", Some(&wrong))
             .err()
             .expect("510 kohm gives 3.05 V");
         assert!(
@@ -2670,6 +2827,8 @@ board DividerFixture {
                 && error.contains("works out to 2.969V..3.133V"),
             "{error}"
         );
+        build("3.3V +/- 5%", Some(&wrong.replace(DIVIDER_RELATION, "")))
+            .unwrap_or_else(|e| panic!("{e}"));
     }
 
     /// A finding about ORBIT's circuit: the charger's programming resistor is 2 kohm, the
@@ -2677,7 +2836,9 @@ board DividerFixture {
     /// LCSC part ORBIT names (C22975) the resistor is 1.98 kohm at worst. The datasheet's range is
     /// for the nominal value, so the part states `nominal(.rprog) >= 2kohm` and the resistor,
     /// tied to the part's `.rprog` (`src/charger.nsm`), is accepted at 2 kohm +/- 1%; a nominal
-    /// of 1.8 kohm is below the least and refused, and 2.2 kohm is accepted.
+    /// of 1.8 kohm is below the least and refused, and 2.2 kohm is accepted. The charger module is
+    /// built as the file is, and copies of it with the resistor at 1.8 kohm, and of the part with
+    /// the plain bound, are refused.
     #[test]
     fn the_programming_resistor_at_one_percent_meets_the_datasheets_nominal_least() {
         let fixture = r#"
@@ -2716,14 +2877,55 @@ board ProgrammingFixture {
             error.contains("nominal(ic.rprog) must be at most 67kΩ, but 68kΩ is above 67kΩ"),
             "{error}"
         );
-        // The part's plain bound read the worst case; the part states the nominal one.
-        let part = read("src/mcp73831.nsm");
-        assert!(part.contains("nominal(.rprog) >= 2kohm"));
-        assert!(part.contains("nominal(.rprog) <= 67kohm"));
-        // The charger ties the part's `RPROG` to the resistor fitted.
+
+        // The charger module itself, built from its file: it ties the part's `RPROG` to the
+        // resistor fitted, and the 2 kohm +/- 1% resistor meets the nominal bound.
+        let charger = r#"
+import src::charger::Charger
+import std::sources::Rail
+
+board ChargerFixture {
+    .vbus: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBUS"; .neg.net &= "GND" }
+    .vbatt: Rail { .pos.net &= "BATT"; .neg.net &= "GND" }
+    .charger: Charger
+    .charger.vbus ~ .vbus
+    .charger.vbatt ~ .vbatt
+}
+"#;
+        built_named_with("fixture.nsm", charger, &[]).unwrap_or_else(|e| panic!("{e}"));
+        let module = read("src/charger.nsm");
+        let tie = "    .ic.rprog == .rprog.resistance\n";
+        assert_eq!(module.matches(tie).count(), 1);
+        // Control: the resistor at 1.8 kohm in a copy of the charger is refused.
+        let resistor = ".resistance &= 2kohm +/- 1%";
+        assert_eq!(module.matches(resistor).count(), 1);
+        let low = module.replace(resistor, ".resistance &= 1.8kohm +/- 1%");
+        let error = built_named_with("fixture.nsm", charger, &[("charger.nsm", low)])
+            .err()
+            .expect("1.8 kohm is below the datasheet's least");
         assert!(
-            read("src/charger.nsm").contains(".ic.rprog == .rprog.resistance"),
-            "the charger ties the part's RPROG to its programming resistor"
+            error.contains("nominal(charger.ic.rprog) must be at least 2kΩ"),
+            "{error}"
+        );
+        // Control: the charger with the tie deleted is not refused for it (nothing is read).
+        built_named_with(
+            "fixture.nsm",
+            charger,
+            &[("charger.nsm", module.replace(tie, ""))],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        // Control: the part's bounds as plain bounds, which read the worst case, refuse the
+        // resistor the board fits: the nominal bound is what accepts it.
+        let part = read("src/mcp73831.nsm");
+        let nominal = "    nominal(.rprog) >= 2kohm\n";
+        assert_eq!(part.matches(nominal).count(), 1);
+        let plain = part.replace(nominal, "    .rprog >= 2kohm\n");
+        let error = built_named_with("fixture.nsm", charger, &[("mcp73831.nsm", plain)])
+            .err()
+            .expect("1.98 kohm at worst is below a plain 2 kohm");
+        assert!(
+            error.contains("1.98kΩ..2.02kΩ is not always above 2kΩ"),
+            "{error}"
         );
     }
 

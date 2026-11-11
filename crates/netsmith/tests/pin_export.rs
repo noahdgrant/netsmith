@@ -212,6 +212,53 @@ fn build_writes_the_header_and_the_json_beside_the_schematic_and_a_board_without
     assert!(!board.join("Sensors.pins.json").exists());
 }
 
+/// Run `build` in `cwd` on `file` (a path from `cwd`), writing to `out`.
+fn build_file(cwd: &Path, file: &str, out: &Path) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .current_dir(cwd)
+        .args(["build", file, "--out"])
+        .arg(out)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn the_source_in_the_pin_map_does_not_depend_on_the_working_directory() {
+    let dir = TempDir::new("pin-export-cwd");
+    write_project(dir.path());
+    fs::create_dir_all(dir.path().join("src")).unwrap();
+    fs::write(dir.path().join("src/main.nsm"), source(REQUESTS)).unwrap();
+    // The same project file, named from its root, from a folder inside it, and with a `..` in
+    // the way: the same bytes.
+    let runs = [
+        (dir.path().to_path_buf(), "src/main.nsm"),
+        (dir.path().join("src"), "main.nsm"),
+        (dir.path().join("src"), "../src/main.nsm"),
+    ];
+    let mut files = Vec::new();
+    for (i, (cwd, file)) in runs.iter().enumerate() {
+        let out = dir.path().join(format!("out{i}"));
+        let run = build_file(cwd, file, &out);
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        files.push((
+            fs::read_to_string(out.join("Sensors/Sensors.pins.h")).unwrap(),
+            fs::read_to_string(out.join("Sensors/Sensors.pins.json")).unwrap(),
+        ));
+    }
+    assert!(files[0].0.contains("from src/main.nsm."), "{}", files[0].0);
+    assert!(
+        files[0].1.contains("\"source\": \"src/main.nsm\""),
+        "{}",
+        files[0].1
+    );
+    assert_eq!(files[0], files[1]);
+    assert_eq!(files[0], files[2]);
+}
+
 /// The blocks of the guide's section "A pin by capability": the part, the board, the header
 /// and the JSON map.
 fn guide_blocks() -> (String, String, String, String) {

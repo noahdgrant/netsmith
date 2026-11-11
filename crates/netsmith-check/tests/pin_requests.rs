@@ -508,6 +508,47 @@ fn two_requests_for_a_function_that_one_pin_offers_are_still_refused() {
     );
 }
 
+/// Zuart, an invented part whose rows list one line of a UART (`UART1_TX`) on two pins by hand:
+/// no peripheral lists it and no row marks it a `class`.
+const ZUART: &str = r#"
+part Zuart {
+    pins {
+        .p00 bidirectional "P0.00" "1" fn GPIO UART1_TX:output
+        .p01 bidirectional "P0.01" "2" fn GPIO UART1_TX:output
+    }
+}
+"#;
+
+#[test]
+fn requests_for_a_row_listed_line_that_no_peripheral_lists_each_get_a_pin() {
+    // Pins today's behaviour (an open question for the owner, in the pull request that added
+    // this test): the exemption of requests applies to every function that is not a line of a
+    // peripheral, and `UART1_TX` here is only listed by rows. Two requests for it are accepted
+    // and each gets its own pin, as two for `ANALOG` do; two pins the source chooses it on by
+    // hand are refused.
+    let text = |statements: &str| format!("{ZUART}\nboard B {{\n    .u: Zuart\n{statements}\n}}\n");
+    let c = check(
+        "main.nsm",
+        &text("    .a: .u.UART1_TX\n    .b: .u.UART1_TX\n"),
+        &Loader::std(),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(pins(&c), [pair("a", "p00"), pair("b", "p01")]);
+    // By hand it is refused, as it was.
+    let by_hand = check(
+        "main.nsm",
+        &text("    .u.p00.function &= \"UART1_TX\"\n    .u.p01.function &= \"UART1_TX\"\n"),
+        &Loader::std(),
+    );
+    assert!(
+        messages(&by_hand)
+            .iter()
+            .any(|m| m.contains("function `UART1_TX` is chosen on both `u.p00` and `u.p01`")),
+        "{}",
+        by_hand.render()
+    );
+}
+
 #[test]
 fn a_direction_that_disagrees_with_the_net_is_refused() {
     // Two transmitters on one net: the usual rule for two outputs, on the result.

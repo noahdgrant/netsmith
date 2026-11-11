@@ -181,6 +181,10 @@ pub fn placements_toml_with(pcb: &str, source: &str, must: &MustMatch) -> Result
         let _ = writeln!(out, "x = {}", num(hole.x));
         let _ = writeln!(out, "y = {}", num(hole.y));
         let _ = writeln!(out, "drill = {}", num(hole.drill));
+        let _ = writeln!(out, "size = [{}, {}]", num(hole.size.0), num(hole.size.1));
+        if let Some(net) = &hole.net {
+            let _ = writeln!(out, "net = {}", quote(net));
+        }
         if hole.plated {
             let _ = writeln!(out, "plated = true");
         }
@@ -220,9 +224,10 @@ const HEADER: &str = "\
 #
 # [outline]: the bounding box of the Edge.Cuts lines and arcs (the arcs' extent included) and,
 #   when every arc has one radius, the corner radius; both are worked out from the drawn
-#   points and rounded to 0.1 micrometre. [[hole]]: a non-plated pad (np_thru_hole),
-#   its place on the board and its drill diameter. [[part]]: every footprint, sorted by
-#   reference: its name, layer, position and rotation (0 when the file has none). A pad's x
+#   points and rounded to 0.1 micrometre. [[hole]]: a non-plated pad (np_thru_hole), or the
+#   drilled pad of a plated MountingHole footprint, its place on the board, its drill diameter,
+#   its pad's size [width, height] and its net (left out for none). [[part]]: every footprint,
+#   sorted by reference: its name, layer, position and rotation (0 when the file has none). A pad's x
 #   and y are in the footprint's own frame (before its rotation); `angle` is the pad's own
 #   angle as the file writes it (it includes the footprint's rotation) and is left out when the
 #   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
@@ -249,19 +254,26 @@ const MUST_MATCH_LIST_PARAGRAPH: &str = "\
 #[derive(Debug, Clone)]
 pub struct Board {
     pub outline: Outline,
-    /// The non-plated holes (`np_thru_hole` pads with a round drill), by place on the board.
+    /// The holes: the non-plated ones (`np_thru_hole` pads with a round drill) and the drilled
+    /// pad of each plated `MountingHole` footprint, by place on the board.
     pub holes: Vec<Hole>,
     /// Every footprint, sorted by reference (letters, then the number).
     pub parts: Vec<Part>,
 }
 
-/// A mounting hole: the reference of its footprint, its place on the board and its drill.
+/// A hole: the reference of its footprint, its place on the board, its drill, its pad's size
+/// and the pad's net.
 #[derive(Debug, Clone)]
 pub struct Hole {
     pub reference: String,
     pub x: f64,
     pub y: f64,
     pub drill: f64,
+    /// The drilled pad's width and height (the pad of a plated mounting hole is larger than its
+    /// drill; a non-plated one is usually the drill's size).
+    pub size: (f64, f64),
+    /// The pad's net, if the file gives it one.
+    pub net: Option<String>,
     /// `true` for the drilled pad of a `MountingHole` footprint that draws its hole plated
     /// (`thru_hole`), as KiCad's `MountingHole_*_Pad*` footprints do; `false` for an
     /// `np_thru_hole` pad.
@@ -302,6 +314,8 @@ fn board_of(root: &Sexp, source: &str) -> Result<Board, String> {
                 x,
                 y,
                 drill,
+                size: pad.size.unwrap_or((drill, drill)),
+                net: pad.net.clone(),
                 plated: false,
             });
         }
@@ -343,6 +357,8 @@ fn plated_mounting_hole(part: &Part) -> Option<Hole> {
         x,
         y,
         drill: pad.drill?,
+        size: pad.size.unwrap_or((pad.drill?, pad.drill?)),
+        net: pad.net.clone(),
         plated: true,
     })
 }
@@ -393,11 +409,24 @@ impl Board {
         };
         let mut holes = Vec::new();
         for h in array_of(&table, "hole") {
+            let size = match h
+                .get("size")
+                .and_then(toml::Value::as_array)
+                .map(Vec::as_slice)
+            {
+                Some([w, hh]) => (value(w, "a [[hole]] size")?, value(hh, "a [[hole]] size")?),
+                _ => return Err("a [[hole]] has no size = [width, height]".to_string()),
+            };
             holes.push(Hole {
                 reference: text_field(h, "reference", "a [[hole]]")?,
                 x: field(h, "x", "a [[hole]]")?,
                 y: field(h, "y", "a [[hole]]")?,
                 drill: field(h, "drill", "a [[hole]]")?,
+                size,
+                net: h
+                    .get("net")
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_string),
                 plated: h.get("plated").and_then(toml::Value::as_bool) == Some(true),
             });
         }

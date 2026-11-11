@@ -1,0 +1,207 @@
+//! A 12 V input board with two independent buck stages (5 V and 3.3 V), a linear post-regulator
+//! on the 5 V rail, reverse-polarity and surge protection, and the parts around them: bulk and
+//! decoupling capacitors, a power light on every rail, test points, and a connector for the input
+//! and one for each output. It is the regulator-heavy board of about
+//! sixty parts that `docs/solver-timings.md` times (stage by stage, with `NETSMITH_TIMINGS=1`).
+//!
+//! The buck IC, `BenchBuck`, is invented: the standard library's one buck IC (`Lt8641`) has no
+//! catalog row and no standard inductor has the DC resistance it asks for, so no stage around it
+//! can be solved with the standard catalogs alone. The invented IC states the same kind of
+//! numbers (`Buck`, one relation from its output to its input current, and its element at DC) and
+//! asks for nothing the standard rows cannot give. Every other part is a standard generic and is
+//! picked from the standard catalogs. Nothing here is a design to build.
+
+import std::bus::PullUp
+import std::parts::connector::Header1x2
+import std::parts::diode::{Schottky, Tvs}
+import std::parts::mechanical::TestPoint
+import std::parts::passive::{Capacitor, Led, Resistor}
+import std::parts::regulator::{BuckStage, Buck, LinearRegulator}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+/// An invented 3 A buck converter IC for 4.5 V to 60 V in an SOIC-8: boot, input, enable,
+/// power-good, feedback, two grounds and the switching node. Not a real part.
+part BenchBuck {
+    .vin: Rail
+    .buck: Buck {
+        .vref &= 0.8V +/- 1%
+        .fsw &= 1.2MHz +/- 15%
+        .min_input_voltage &= 4.5V
+        .max_input_voltage &= 60V
+        .max_output_current &= 3A
+        .efficiency &= 0.85..0.95
+        .min_inductance &= 1.5uH
+        .min_inductor_saturation &= 3A
+        .max_inductor_dcr &= 0.1ohm
+        .min_input_capacitance &= 2uF
+        .min_output_capacitance &= 10uF
+    }
+    .buck.sw.neg ~ .vin.neg
+    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+    dc switching_regulator .vin .buck.sw .buck.efficiency
+
+    pins {
+        //  pin          kind     name   pads
+        .bst           passive  "BST"  "1" required
+        .vin.pos       power    "VIN"  "2"
+        .en            input    "EN"   "3"
+        .pg            output   "PG"   "4"
+        .buck.fb       input    "FB"   "5"
+        .vin.neg       power    "GND"  "6" "7"
+        .buck.sw.pos   power    "SW"   "8"
+    }
+
+    .package: Package
+}
+
+/// One buck stage: the IC, its stage (inductor, input and output capacitor banks and the
+/// feedback divider), the bootstrap capacitor, a power-good pull-up and the power light.
+module BuckSupply {
+    .vin: Rail
+    .vout: Rail
+
+    .ic: BenchBuck { .package &= "SOIC-8" }
+    .stage: BuckStage
+    .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+    .pg_pullup: PullUp { .resistance &= 100kohm +/- 5% }
+    .light_resistor: Resistor { .resistance &= 1kohm +/- 5% }
+    .light: Led { .color &= "RED"; .forward_voltage &= 1.8V..2.5V }
+    .decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
+    .bulk: Capacitor { .capacitance &= 22uF +/- 20% }
+    .input_decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
+    /// The enable divider: the stage starts above about 7 V.
+    .enable_top: Resistor { .resistance &= 100kohm +/- 1% }
+    .enable_bottom: Resistor { .resistance &= 33kohm +/- 1% }
+    .pg_test: TestPoint
+
+    .vin ~ .stage.vin
+    .vin ~ .ic.vin
+    .stage.vout ~ .vout
+    .stage.buck ~ .ic.buck
+    .vin.pos ~> .enable_top ~> .ic.en
+    .ic.en ~> .enable_bottom ~> .vin.neg
+    .pg_test.p1 ~ .ic.pg
+    .ic.bst ~> .boost ~> .ic.buck.sw.pos
+    .pg_pullup.supply ~ .vout
+    .pg_pullup.line ~ .ic.pg
+    .light.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance
+    .vout.pos ~> .light_resistor ~> .light ~> .vout.neg
+    .vout.pos ~> .decoupling ~> .vout.neg
+    .vout.pos ~> .bulk ~> .vout.neg
+    .vin.pos ~> .input_decoupling ~> .vin.neg
+}
+
+board TwoBuck {
+    /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    /// The 12 V supply, from outside the board: 9 V to 16 V.
+    .input: Rail {
+        .voltage &= 9V..16V
+        .pos.net &= "VIN_RAW"
+        .neg.net &= "GND"
+    }
+    /// The input after the reverse-polarity diode.
+    .vin: Rail {
+        .voltage &= 8.3V..15.8V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    /// The 5 V rail, made by the first buck stage and the load it carries.
+    .out_5v: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+        .current &= 0mA..1500mA
+    }
+    /// The 3.3 V rail, made by the second buck stage.
+    .out_3v3: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..1500mA
+    }
+    /// The quiet 3.3 V rail, made from the 5 V rail by the linear regulator.
+    .out_3v3a: Rail {
+        .pos.net &= "3V3A"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+
+    /// A Schottky diode in series: a supply connected the wrong way round is blocked.
+    .reverse_diode: Schottky { .current &= 0A..3A }
+    /// A TVS diode across the input: a surge is clamped under what the ICs survive.
+    .surge: Tvs { .protected_limit &= 60V }
+    .bulk_a: Capacitor { .capacitance &= 10uF +/- 20% }
+    .bulk_b: Capacitor { .capacitance &= 10uF +/- 20% }
+    .bulk_c: Capacitor { .capacitance &= 10uF +/- 20% }
+
+    .buck_5v: BuckSupply { .vout.voltage &= 5V +/- 5% }
+    .buck_3v3: BuckSupply { .vout.voltage &= 3.3V +/- 5% }
+
+    .ldo: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
+    .ldo_in: Capacitor { .capacitance &= 1uF +/- 20% }
+    .ldo_out: Capacitor { .capacitance &= 1uF +/- 20% }
+    .bulk_5v: Capacitor { .capacitance &= 22uF +/- 20% }
+    .ldo_bulk: Capacitor { .capacitance &= 4.7uF +/- 20% }
+    .ldo_light_resistor: Resistor { .resistance &= 1kohm +/- 5% }
+    .ldo_light: Led { .color &= "RED"; .forward_voltage &= 1.8V..2.5V }
+    .input_light_resistor: Resistor { .resistance &= 4.7kohm +/- 5% }
+    .input_light: Led { .color &= "RED"; .forward_voltage &= 1.8V..2.5V }
+
+    /// The input and each output leave through a header of their own.
+    .power_in: Header1x2
+    .power_5v: Header1x2
+    .power_3v3: Header1x2
+    .power_3v3a: Header1x2
+
+    .tp_vin: TestPoint
+    .tp_5v: TestPoint
+    .tp_3v3: TestPoint
+    .tp_3v3a: TestPoint
+    .tp_gnd: TestPoint
+    .tp_raw: TestPoint
+    .tp_gnd_b: TestPoint
+
+
+    .input.pos ~> .reverse_diode ~> .vin.pos
+    .input.pos ~> .surge ~> .input.neg
+    .input.neg ~ .vin.neg
+    .vin.pos ~> .bulk_a ~> .vin.neg
+    .vin.pos ~> .bulk_b ~> .vin.neg
+    .vin.pos ~> .bulk_c ~> .vin.neg
+    .vin ~ .buck_5v.vin
+    .vin ~ .buck_3v3.vin
+    .buck_5v.vout ~ .out_5v
+    .buck_3v3.vout ~ .out_3v3
+    .out_5v ~ .ldo.vin
+    .ldo.vout ~ .out_3v3a
+
+    .input_light.current == (.vin.voltage - .input_light.forward_voltage) / .input_light_resistor.resistance
+    .ldo_light.current == (.out_3v3a.voltage - .ldo_light.forward_voltage) / .ldo_light_resistor.resistance
+
+    .vin.pos ~> .input_light_resistor ~> .input_light ~> .vin.neg
+    .out_5v.pos ~> .ldo_in ~> .out_5v.neg
+    .out_5v.pos ~> .bulk_5v ~> .out_5v.neg
+    .out_3v3a.pos ~> .ldo_out ~> .out_3v3a.neg
+    .out_3v3a.pos ~> .ldo_bulk ~> .out_3v3a.neg
+    .out_3v3a.pos ~> .ldo_light_resistor ~> .ldo_light ~> .out_3v3a.neg
+
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .out_5v.pos ~ .power_5v.p1
+    .out_5v.neg ~ .power_5v.p2
+    .out_3v3.pos ~ .power_3v3.p1
+    .out_3v3.neg ~ .power_3v3.p2
+    .out_3v3a.pos ~ .power_3v3a.p1
+    .out_3v3a.neg ~ .power_3v3a.p2
+
+    .vin.pos ~ .tp_vin.p1
+    .out_5v.pos ~ .tp_5v.p1
+    .out_3v3.pos ~ .tp_3v3.p1
+    .out_3v3a.pos ~ .tp_3v3a.p1
+    .vin.neg ~ .tp_gnd.p1
+    .input.pos ~ .tp_raw.p1
+    .out_3v3.neg ~ .tp_gnd_b.p1
+}

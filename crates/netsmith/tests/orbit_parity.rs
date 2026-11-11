@@ -30,7 +30,7 @@ fn orbit_pcb_matches_the_original() {
         project: project(),
         tag: "orbit-parity-fab",
         parts: 48,
-        min_ok: 125,
+        min_ok: 129,
         route_seconds: ROUTE_SECONDS,
         regenerate: "from examples/orbit run `netsmith fab --locked`, then\n  cargo run -p \
                      netsmith --example parity -- fab/Orbit/Orbit.kicad_pcb --table \
@@ -117,4 +117,77 @@ fn a_plated_hole_is_judged_by_place_and_drill_and_not_by_its_ring_of_vias() {
         "{}",
         report.text()
     );
+}
+
+/// ORBIT's board file with the four plated mounting holes drawn as the standard non-plated
+/// `MountingHole` footprints draw them: one `np_thru_hole` pad of the drill's size, and no ring
+/// of vias.
+fn with_standard_holes(pcb: &str) -> String {
+    let mut out = String::new();
+    for line in pcb.lines() {
+        if line.contains("(size 0.8 0.8) (drill 0.5)") {
+            continue;
+        }
+        let line = if line.contains("(pad \"1\" thru_hole circle (at 0 0) (size 5 5) (drill 2.5)") {
+            "    (pad \"\" np_thru_hole circle (at 0 0) (size 2.5 2.5) (drill 2.5) (layers \"*.Cu\" \"*.Mask\"))"
+        } else if line.contains("(pad \"1\" thru_hole circle (at 0 0) (size 4.4 4.4) (drill 2.2)") {
+            "    (pad \"\" np_thru_hole circle (at 0 0) (size 2.2 2.2) (drill 2.2) (layers \"*.Cu\" \"*.Mask\"))"
+        } else {
+            line
+        };
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// The original's holes are plated pads of twice the drill. A board whose holes are the standard
+/// non-plated `MountingHole` ones (same places, same drills) is not the same board, and the
+/// checker says so on each of the four holes.
+#[test]
+fn standard_non_plated_mounting_holes_fail_where_the_original_has_plated_ones() {
+    let (table, pcb) = reference_file();
+    let standard = with_standard_holes(&pcb);
+    assert_ne!(standard, pcb);
+    // The mutated file reads as four holes of the same places and drills.
+    let board = netsmith::reference_table::read_board(&standard, "standard").unwrap();
+    let holes: Vec<_> = board
+        .holes
+        .iter()
+        .filter(|h| h.reference.starts_with('H'))
+        .collect();
+    assert_eq!(holes.len(), 4);
+    assert!(holes.iter().all(|h| !h.plated));
+    let report = check(&table, &standard);
+    assert!(!report.passed());
+    for hole in ["H1", "H2", "H3", "H4"] {
+        let item = report
+            .items
+            .iter()
+            .find(|i| i.id == format!("hole {hole}"))
+            .unwrap();
+        assert_eq!(item.verdict, Verdict::Fail, "{hole}\n{}", report.text());
+        assert!(item.note.contains("plated"), "{}", report.text());
+    }
+    // The control: the original's own file passes, so the four failures are the holes' doing.
+    assert!(check(&table, &pcb).passed());
+}
+
+/// The size of a hole's pad is compared: H1's 2.5 mm drill with a 2.6 mm pad, where the original's
+/// is 5 mm, fails, and the drill, the place and the plating being the original's.
+#[test]
+fn a_hole_with_the_right_drill_and_a_pad_of_the_wrong_size_fails() {
+    let (table, pcb) = reference_file();
+    let at = pcb.find("(at 170 74)").expect("H1");
+    let from = at + pcb[at..].find("(size 5 5) (drill 2.5)").expect("H1's pad");
+    let mut narrow = pcb.clone();
+    narrow.replace_range(from..from + "(size 5 5)".len(), "(size 2.6 2.6)");
+    let report = check(&table, &narrow);
+    assert!(!report.passed());
+    let h1 = report.items.iter().find(|i| i.id == "hole H1").unwrap();
+    assert_eq!(h1.verdict, Verdict::Fail, "{}", report.text());
+    assert!(h1.note.contains("pad"), "{}", report.text());
+    // Nothing but H1's hole failed.
+    let failed: Vec<&str> = report.failures().map(|i| i.id.as_str()).collect();
+    assert_eq!(failed, ["hole H1"], "{}", report.text());
 }

@@ -94,6 +94,11 @@ module FeedbackDivider {
     .current: Current
     .rtop: Resistor
     .rbottom: Resistor
+    /// The package of both resistors, a text such as `"0402"`; a board that does not state it
+    /// leaves the pick to the solver. One package for the pair, as `I2cPullups` has.
+    .package: Package optional
+    .rtop.package == .package
+    .rbottom.package == .package
 
     .current == .rtop.current
     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)

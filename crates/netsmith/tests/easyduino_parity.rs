@@ -26,7 +26,7 @@ fn easyduino_pcb_matches_the_original_where_it_must() {
         project: project(),
         tag: "easyduino-parity-fab",
         parts: 35,
-        min_ok: 100,
+        min_ok: 202,
         route_seconds: ROUTE_SECONDS,
         regenerate: "from examples/easyduino_esp32s3 run `netsmith fab --locked`, then\n  cargo run \
                      -p netsmith --example parity -- fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \

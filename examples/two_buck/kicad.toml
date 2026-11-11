@@ -1,0 +1,9 @@
+# What KiCad calls the one part this example defines itself (ADR 0021). It names no `symbol`, so
+# the IC is drawn from its pin table (ADR 0097), and its footprint is one that a generator
+# answers: no KiCad install is needed to build the example.
+
+[[part]]
+kind = "BenchBuck"
+package = "SOIC-8"
+default = true
+footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"

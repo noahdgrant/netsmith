@@ -931,8 +931,12 @@ impl FootprintLibrary {
         }
     }
 
-    /// Where `Library:Name` should be. For the standard library's own footprints that is the
-    /// file of the repository's `std/libs/`.
+    /// Where the file of `Library:Name` should be. For the standard library's own footprints that
+    /// is the file of the repository's `std/libs/`. It answers about files, not about what
+    /// [`FootprintLibrary::load`] can make: a footprint a generator makes has no file, and with
+    /// no KiCad install found the folder it would be in is not known (`root` is a guess), so for
+    /// a library that is neither the project's nor netsmith's own the answer is `NoInstall`,
+    /// though `load` still makes the generator-covered names (it never reads a path for them).
     pub fn path_of(&self, name: &str) -> Result<PathBuf, FootprintError> {
         if let Some(footprint) = std_name(name) {
             return Ok(PathBuf::from(format!(
@@ -1643,6 +1647,25 @@ mod tests {
         assert!(text.contains("usr/share/kicad/footprints"), "{text}");
         assert!(text.contains(install::SYMBOLS_VARIABLE), "{text}");
         assert!(text.contains(install::FOOTPRINTS_VARIABLE), "{text}");
+    }
+
+    #[test]
+    fn with_no_install_path_of_says_no_install_for_a_generated_name_that_load_still_makes() {
+        // `path_of` is about files (see its doc): a generated footprint has none, and the install
+        // that would hold one is not there.
+        let empty = netsmith_kicad::testlib::TempDir::new("no-kicad-path-of");
+        let library = FootprintLibrary::installed_by(&install::Search::under(empty.path()));
+        let name = "Resistor_SMD:R_0402_1005Metric";
+        assert!(library.load(name).is_ok());
+        let text = library.path_of(name).unwrap_err().to_string();
+        assert!(
+            text.contains(&format!("footprint `{name}` not found")),
+            "{text}"
+        );
+        assert!(
+            text.contains("no KiCad footprint libraries found"),
+            "{text}"
+        );
     }
 
     #[test]
