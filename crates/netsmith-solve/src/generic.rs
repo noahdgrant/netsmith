@@ -728,6 +728,11 @@ pub struct Orderable {
     pub name: String,
     /// The row's `height` in mm, if it has one (ADR 0094).
     pub height: Option<f64>,
+    /// The row's `temp_min` and `temp_max` in kelvin, if it has them (ADR 0099).
+    pub temp_min: Option<f64>,
+    pub temp_max: Option<f64>,
+    /// The cited range of the row's dielectric class, if it names one that has a range.
+    pub temp_class: Option<&'static netsmith_check::environment::ClassRange>,
     /// Rows that fit but were passed over because a provider said they have no stock.
     pub passed_over: Vec<String>,
 }
@@ -915,6 +920,9 @@ pub fn resolve(
             library: c.library,
             name: c.name.clone(),
             height: c.height,
+            temp_min: c.temp_min,
+            temp_max: c.temp_max,
+            temp_class: c.class_range(),
             passed_over,
         });
     }

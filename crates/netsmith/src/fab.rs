@@ -569,6 +569,11 @@ fn fab_board(
             return Err(errors);
         }
 
+        // The generic parts are judged against the board's environment with the rows they were
+        // resolved to: a row outside it would have been ordered, so nothing is placed (ADR 0099).
+        let environment = crate::fab_environment::judge_resolved(built, &sourcing)
+            .map_err(|errors| errors.into_iter().map(fail).collect::<String>())?;
+
         // What the requirements prove cannot be placed is said now, before the placer starts
         // (it can take a minute on a tight board).
         let precheck = timings::stage("fab.precheck", &label, || {
@@ -774,10 +779,13 @@ fn fab_board(
         );
         extras.extend(
             built
-                .guideline_warnings()
+                .guideline_warnings_except(&environment.replaced)
                 .into_iter()
+                .chain(environment.findings)
                 .map(|w| format!("warning: {w}")),
         );
+        // What the check of the environment did and did not do, for a board that has one.
+        extras.extend(environment.notes);
         // The notes lead with what is wrong, so that nobody orders an incomplete board.
         if let Some(incomplete) = &incomplete {
             extras.insert(0, format!("ERROR: INCOMPLETE: {}", incomplete.headline()));
@@ -1858,6 +1866,7 @@ mod tests {
             assembly_stated: false,
             catalog_height: None,
             generic: None,
+            resolved_row: None,
         }
     }
 
