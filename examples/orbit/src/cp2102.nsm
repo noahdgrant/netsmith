@@ -46,19 +46,7 @@ part Cp2102 {
         .regin     power          "REGIN"     "7"
         .vbus      input          "VBUS"      "8"
         .rst       bidirectional  "RST"       "9"
-        // Ten pins of one pad each, not one pin of ten pads: the schematic writer types the extra pads
-        // of a stacked pin "passive" and flags them open, and KiCad's ERC objects to the flag on the
-        // same point as the `no_connect` pad (README, "What the checker found").
-        .nc10      no_connect     "NC"        "10"
-        .nc13      no_connect     "NC"        "13"
-        .nc14      no_connect     "NC"        "14"
-        .nc15      no_connect     "NC"        "15"
-        .nc16      no_connect     "NC"        "16"
-        .nc17      no_connect     "NC"        "17"
-        .nc19      no_connect     "NC"        "19"
-        .nc20      no_connect     "NC"        "20"
-        .nc21      no_connect     "NC"        "21"
-        .nc22      no_connect     "NC"        "22"
+        .nc        no_connect     "NC"        "10" "13" "14" "15" "16" "17" "19" "20" "21" "22"
         .suspend_n output         "SUSPEND#"  "11"
         .suspend   output         "SUSPEND"   "12"
         .nc_vpp    no_connect     "NC/VPP"    "18"

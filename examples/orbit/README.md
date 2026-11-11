@@ -393,9 +393,9 @@ What is not what it seems:
 - `Stm32F030C8`, `At24C128C`, `Cp2102`: pin tables only. Alternate functions: the MCU's pins
   have `GPIO` and, only for the pins ORBIT's board uses, the oscillator, USART1, I2C1 and SWD
   functions (no direction: the table gives none); a board that connects a pin with more than one
-  function chooses it. `CP2102`'s `NC` pins are `no_connect` (the datasheet allows leaving
-  them open or tying them to `VDD`; this part keeps them open) and its modem inputs are
-  `optional` (note 3, page 11).
+  function chooses it. `CP2102`'s `NC` pin (ten pads) and its `NC/VPP` pin are `no_connect`
+  (the datasheet allows leaving them open or tying them to `VDD`; this part keeps them open) and
+  its modem inputs are `optional` (note 3, page 11).
 - Not modelled: logic levels, ratings and timing of any part, the I2C bus (`std::bus::I2c`) and
   the UART as interfaces (the board stage may add them: the pins are plain pins, as the RP2350
   parts are).
@@ -526,11 +526,13 @@ Tests in `crates/netsmith/tests/orbit.rs`, module `board` (no KiCad; run
   range it does not turn on. The part has no model of its pin's output level, so the board does
   not check it (the LED's current is `not evaluated`); this is a note for the owner of the design.
 - **KiCad's ERC refused the CP2102's `NC` pin of ten pads.** A pin of several pads is drawn as
-  stacked pins, and the schematic writer types the extra ones `passive` and flags each open, so a
-  `no_connect` pin with several pads gets a flag on the same point as its own `no_connect` pad:
-  `no_connect_connected: Pin with 'no connection' type is connected`. `src/cp2102.nsm` now has ten
-  `NC` pins of one pad each (`.nc10`, `.nc13`, ...), which the ERC accepts; the pads and nets are
-  the same. The writer is netsmith's (`crates/netsmith-kicad/src/schematic.rs`), not fixed here.
+  stacked pins, and the schematic writer typed the extra ones `passive` and flagged each open, so
+  a `no_connect` pin with several pads got a flag on the same point as its own `no_connect` pad:
+  `no_connect_connected: Pin with 'no connection' type is connected`. `src/cp2102.nsm` first had
+  ten `NC` pins of one pad each as a workaround. Pull request #396 fixed the writer (every pad of
+  such a stack is `passive`, with the one flag on the point), and `src/cp2102.nsm` is back to the
+  datasheet's table: one `no_connect` pin `NC` with the ten pads 10, 13 to 17 and 19 to 22. The
+  pads and nets are the same, and the ERC test of the schematic stays clean.
 - **The pad numbering of the std pull-ups** (above) and the other gaps are in the pull request's
   "For the owner".
 
