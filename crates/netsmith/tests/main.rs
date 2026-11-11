@@ -63,6 +63,7 @@ mod pins;
 mod power_issues;
 mod power_manifold;
 mod power_manifold_ics;
+mod power_manifold_parity;
 mod power_manifold_parts;
 mod precheck;
 mod project;

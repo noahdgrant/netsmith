@@ -36,6 +36,7 @@ fn orbit_pcb_matches_the_original() {
                      netsmith --example parity -- fab/Orbit/Orbit.kicad_pcb --table \
                      reference/placements.toml --map reference/designators.toml --svg \
                      reference/parity-overlay.svg",
+        known_failures: &[],
     });
 }
 

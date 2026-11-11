@@ -24,7 +24,11 @@ part Usblc62sc6 {
 
     pins "SOT-23-6" {
         //  pin     kind     name    pads
-        .io1  passive "I/O1"  "1" "6"
+        // Pins 1 and 6 are the same line inside the device (the datasheet's figure). The design
+        // uses pin 1 and leaves pin 6 open, so they are two pins here: a board that joins a net to
+        // one of them has the other open, as the design draws it.
+        .io1  passive "I/O1"  "1"
+        .io1_b passive "I/O1" "6"
         .gnd  passive "GND"   "2"
         .io2  passive "I/O2"  "3" "4"
         .vbus passive "VBUS"  "5"

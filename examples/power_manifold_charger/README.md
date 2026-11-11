@@ -6,7 +6,9 @@ Easyduino ESP32-S3), and the one that stresses the solver's DC analysis hardest:
 converter with a feedback network and an inductor, a linear regulator, comparator thresholds and
 a USB-C Power Delivery front end. **The schematic is done**: `src/main.nsm` is the board
 `PowerManifoldCharger`, the same circuit as the design's, with its nets proved equal by a test
-(below). The physical file and the parity gate are the stage that follows (issue #417).
+(below). **The physical file and the parity gate are done too**: `netsmith fab` writes a four-layer board
+with the original's card-edge connector, USB-C receptacle and programming pads where theirs are
+(see "The PCB" below), and the outline is the one known difference.
 
 ## Source
 
@@ -58,13 +60,17 @@ folder are netsmith's** (MIT, like the rest of the repository).
    circuit: a test proves it by comparing the wiring alone, as the earlier ports' do.
 2. **A matching PCB where it matters.** A board made by `netsmith fab` is interchangeable with
    theirs in these ways, and the parity checker (with tolerances) fails when one is off:
-   - the outline of the card: a 92.8 x 24 mm body and the PCIe x1 card-edge tab with its key
-     slot, 101.2 x 24 mm in all (the board file draws the body with four lines and the tab inside
-     the footprint J3);
-   - the card-edge connector (J3, fingers on the back face, every finger on its signal), the
-     USB-C receptacle (J4) and the Tag-Connect programming pads (J2).
+   - the card-edge connector (J3: 36 fingers, every finger on its signal, pad for pad), the
+     USB-C receptacle (J4) and the Tag-Connect programming pads (J2): the same positions,
+     rotations, pads and holes, with each pad on the same net;
+   - the size of the card: 101.2 x 24 mm (a 92.8 x 24 mm body and the PCIe x1 tab).
 
-   The other parts may be anywhere, and the routing will differ; the checker reports them.
+   **Not matched, and the one known failure of the gate:** the outline's shape. The board file
+   draws the body with four lines and the tab and its key slot (a 1.9 mm slot with a round end,
+   chamfered tab corners) with 11 lines and an arc inside the footprint J3: 14 lines and one
+   arc. The language's `Outline` is a rounded rectangle and has no notch, so the port's is a
+   rectangle of the same size (see "The PCB"). The other parts may be anywhere, and the routing
+   will differ; the checker reports them.
 
 ## What is here
 
@@ -76,6 +82,9 @@ folder are netsmith's** (MIT, like the rest of the repository).
 - `reference/charger-module.kicad_pcb`, `charger-module.kicad_sch`, `CHANGELOG.md`: their board
   and schematic files and the module's changelog, unchanged (1.6 MB, 450 kB, 12 kB).
 - `reference/must_match.toml`: which footprints a copy must reproduce (J2, J3 and J4).
+- `reference/designators.toml`: pairs the original's 89 designators with the ones `fab` writes
+  (a test holds it against the design); `reference/parity-overlay.svg`: the checker's picture of
+  the gate's run.
 - `reference/placements.toml`: the facts the checker needs, read from the board file: the
   outline, the holes and, for every footprint, its place, rotation and pads. Regenerate it with
   `cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml reference/charger-module.kicad_pcb > reference/placements.toml`
@@ -91,6 +100,70 @@ netsmith build    # the schematic, in out/ (no KiCad install needed)
 
 The checks are in `crates/netsmith/tests/power_manifold.rs` (the board and the table),
 `power_manifold_ics.rs` and `power_manifold_parts.rs` (the parts).
+
+## The PCB
+
+`src/main.physical.nsm` is the physical file: the outline and the place, rotation and face of the
+three parts that must match, each number read from `reference/placements.toml` and written from
+the board's own corner (the upper-left corner of the outline's bounding box: x 54.8, y 26 in
+their file). There is no layout file: the placer's first answer (seed 0) places the other 86 parts
+and routes about 240 of the 257 connections in the gate's 20 s (the gate allows an INCOMPLETE board: the
+parts' places do not depend on the router). The board is dense (89 parts on 101.2 x 24 mm, and
+the placer stops with the courtyards of two parts in each other for other seeds when the layout
+changes: try the next seed in `src/main.pcb.toml`). `netsmith fab` writes a four-layer JLCPCB
+board (`.top.net`, `.bottom.net` and `.inner1.net` ground, `.inner2.net` +5 V).
+**The router does not finish this board**: with its default effort (4 tries, 5 min in a debug
+build) 4 of the 256 connections are left, so `fab` exits 1 with `INCOMPLETE`, writes the board
+and the Gerbers marked incomplete, and says they are not ready to order. This is a finding about
+the router (89 parts on a board 24 mm high, and the placer's layout is the only one it gets), and `scripts/check-no-kicad.sh` lists the example in `no_fab` for
+it; the gate runs `fab` with a 20 s timeout and allows `INCOMPLETE`.
+
+- **The outline** is a 101.2 x 24 mm rectangle (`.outline: Outline` in `case`). Their file
+  draws it with four lines on the board for the body (x 63.2 to 156, y 26 to 50, the left side
+  only between y 46.3 and 50) and 11 lines and an arc in the footprint J3 for the tab (x 54.8 to
+  63.2) with a keying slot 1.9 mm wide and 7 mm long that opens to the card's end. **The port draws
+  none of the notch or the chamfers**: that is a gap of the language (no outline but a rounded
+  rectangle) and the gate's two known failures, `outline corner radius` (0 against their arc's
+  0.95 mm) and `outline elements` (4 lines against 14 lines and an arc). A board made from this
+  file has a card tab that is square at its end and has no key slot: **do not order it for a
+  backplane without cutting the slot**. The outline's size, 101.2 x 24 mm, matches.
+- **J3, the edge connector.** The 36 fingers are `connect` pads (an edge-connector pad: copper
+  on one face; KiCad's `connect`): side A is on the front face and side B on the back in the
+  original, which draws the footprint on the back face (`B.Cu`). `fab` writes a back-face
+  footprint with every x negated, so the project's footprint
+  (`libs/power_manifold_must_match.pretty/PCIe_x1_Edge_Fingers`) is drawn as seen from the back
+  (x negated), and equals the reference when placed on the bottom face, rotated 90 degrees: the
+  origin is 3.45 mm from the card's end and 19.65 mm from its top edge. Its courtyard (the pads
+  and 0.1 mm, on both faces) is what the physical file measures, so `.slot.place.y` is the
+  body's centre, 9.5 mm from the origin along the card. The footprint draws no `Edge.Cuts`.
+- **J4, the receptacle,** on the right edge, rotated 90 degrees, top face; its pegs are the
+  gate's two 0.6 mm holes, which the receptacle's footprint draws. Its D+ and D- are joined to
+  each other and to U6's pin 1 in the design (a dedicated charging port): the net `/USB_DATA` is
+  one net of five pads, and the gate checks every pad's net.
+- **J2, the programming pads,** a project footprint of the Tag-Connect TC2030-IDC-NL
+  (`TC2030-NL-connect` of `ProgrammingPads6`): the standard footprint's pads and three 0.99 mm
+  holes, with the pad type `connect` that the original's has (the parity rule compares a pad's
+  type; the standard one's pads are `smd`).
+
+### Run the parity check
+
+```sh
+netsmith fab --locked          # from this folder; writes fab/PowerManifoldCharger/
+cargo run -p netsmith --example parity -- fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
+    --table reference/placements.toml --map reference/designators.toml \
+    --svg reference/parity-overlay.svg
+```
+
+The gate is `crates/netsmith/tests/power_manifold_parity.rs` (`NETSMITH_NO_KICAD=1`,
+`fab --locked --route-timeout 20`, every must-match item `ok` but the two known failures of the
+outline, which it names, and the committed overlay equal to the one the board gives).
+
+**Result: `must-match: 144 ok, 2 failed`** (the two are the outline's corner radius and
+elements). Per item: the outline's size 1 ok, the five holes (J2's three and J4's two, 0.00 mm
+off), J2 (position, rotation, layer, 6 numbered pads and 3 holes, and each pad's net), J3 (the
+position, rotation and layer and each of the 36 fingers' geometry and net) and J4 (position,
+rotation, layer, 16 contacts, 4 shield legs and 2 pegs, and each pad's net). Every difference
+is 0.000 mm. **Reported, not gated:** every other part's place and turn.
 
 ## Same nets
 
@@ -114,18 +187,17 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
 - `the_parts_have_the_lcsc_numbers_of_the_charger_boards_footprints`: 84 parts carry an `LCSC`
   property in the board file; all but the ceramics of `OTHER_ROW` are picked as that number (below).
 - `the_open_pins_are_the_ones_the_reference_leaves_open`: the pads on the board's `unconnected-(...)`
-  nets (26) are the pads that no net of the design names, but U6's pad 6 (below).
+  nets (26) are the pads that no net of the design names.
 - `the_optimizer_cannot_move_a_pin` (no request, no pin file entry) and
   `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC: the two findings
   below and no other; skipped where `kicad-cli` is not found).
 
 ### Differences from the reference (all of them)
 
-- **U6's pad 6.** The reference leaves pad 6 of the USBLC6-2SC6 open and uses pad 1 for I/O1. The
-  device joins pads 1 and 6 inside, so the part's pin `.io1` has both pads, and the design's
-  netlist (a pin once, however many pads) puts pad 6 on `/USB_DATA`. The tests skip that pad
-  (`JOINED_INSIDE`), and the open-pin test says why. The part is UMW's USBLC6-2SC6 (what LCSC and
-  JLCPCB sell as C2687116), not ST's.
+- **U6's pins 1 and 6.** The device joins pads 1 and 6 (I/O1) inside, and the design uses pad 1
+  and leaves pad 6 open, so they are two pins of the part here (`.io1` and `.io1_b`) and pad 6 is
+  one of the 26 open pads. The part is UMW's USBLC6-2SC6 (what LCSC and JLCPCB sell as C2687116),
+  not ST's.
 - **`/USB_DATA` is one net of five pads**: J4's D+ (A6, B6) and D- (A7, B7) and U6 pin 1 are
   joined, as the design has it (a dedicated charging port shorts D+ and D-). The receptacle's part
   is therefore a plain `Connector` with `.dp` and `.dm` joined on the board, and **not** a provider

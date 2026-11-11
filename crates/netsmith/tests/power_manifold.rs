@@ -363,15 +363,6 @@ mod board {
 
     type Pad = (String, String);
 
-    /// The one pad that the part joins to another inside, and the reference leaves open: the
-    /// ESD array U6 has pads 1 and 6 for I/O1, one pin, which the design's netlist puts on the
-    /// net of pad 1 (README, "Differences from the reference").
-    const JOINED_INSIDE: [(&str, &str); 1] = [("U6", "6")];
-
-    fn skipped(refdes: &str, pin: &str) -> bool {
-        JOINED_INSIDE.contains(&(refdes, pin))
-    }
-
     /// For each pad that is on a net with another pad: the other pads of the net, in the
     /// design's designators (`to_reference` maps a designator of this netlist).
     fn neighbours(
@@ -388,7 +379,6 @@ mod board {
                     let refdes = to_reference.get(refdes).unwrap_or(refdes).clone();
                     (refdes, pin.clone())
                 })
-                .filter(|(refdes, pin)| !skipped(refdes, pin))
                 .collect();
             let pads: Vec<Pad> = pads.into_iter().collect();
             if pads.len() < 2 {
@@ -404,7 +394,7 @@ mod board {
 
     /// The same netlist with the value and footprint of every component blanked: only the
     /// wiring is left to compare.
-    fn wiring_only(netlist: &Netlist, to_reference: Option<&BTreeMap<String, String>>) -> Netlist {
+    fn wiring_only(netlist: &Netlist) -> Netlist {
         let components = netlist
             .components
             .iter()
@@ -418,10 +408,6 @@ mod board {
                     .pins
                     .iter()
                     .map(|(c, pin)| (netlist.components[*c].refdes.clone(), pin.clone()))
-                    .filter(|(refdes, pin)| {
-                        let name = to_reference.and_then(|m| m.get(refdes)).unwrap_or(refdes);
-                        !skipped(name, pin)
-                    })
                     .collect();
                 (n.name.clone(), pins)
             })
@@ -485,9 +471,7 @@ mod board {
         assert!(built.schematic.starts_with("(kicad_sch"));
     }
 
-    /// Pads that share a number are one pin in both netlists. Where the board joins pins that the
-    /// reference leaves open (README, "Differences from the reference") the one pad is named
-    /// here so that the test says so.
+    /// Pads that share a number are one pin in both netlists.
     #[test]
     fn every_pad_has_the_same_pads_on_its_net_as_in_the_charger_board() {
         let built = built();
@@ -501,10 +485,8 @@ mod board {
     fn netsmith_compare_says_the_nets_are_the_same() {
         let built = built();
         let to_reference = designators(&built);
-        // The design's netlist has the designators of its own order; the reference's pad 6 of
-        // U6 is left out of both sides (`JOINED_INSIDE`), which are compared by the table.
-        let a = wiring_only(&design_netlist(&built), Some(&to_reference));
-        let b = wiring_only(&reference(), None);
+        let a = wiring_only(&design_netlist(&built));
+        let b = wiring_only(&reference());
         let pairs = to_reference
             .iter()
             .map(|(ours, theirs)| (ours.clone(), theirs.clone()))
@@ -601,7 +583,7 @@ mod board {
     }
 
     /// The pads that the reference leaves open (its `unconnected-(...)` nets) are the pads that no
-    /// net of the design names, but for the one named in the README (U6 pad 6).
+    /// net of the design names.
     #[test]
     fn the_open_pins_are_the_ones_the_reference_leaves_open() {
         let built = built();
@@ -622,8 +604,6 @@ mod board {
             }
         }
         assert_eq!(theirs.len(), 26, "{theirs:?}");
-        // The design has U6's pad 6 on the net of pad 1 (`JOINED_INSIDE`), so it is not open.
-        theirs.retain(|(r, p)| !skipped(r, p));
         let design = &built.design;
         let mut on_net: BTreeSet<Pad> = BTreeSet::new();
         for net in &design.nets {
@@ -768,5 +748,54 @@ mod board {
         assert!(listed(
             "the balance on net `VOUT_CONV` is incomplete: `converter.vout` is not modelled"
         ));
+    }
+
+    /// `reference/designators.toml`, which the parity checker reads, pairs each of the design's
+    /// designators with the one `fab` writes for the same part, and so must say what the
+    /// design's own designators are (`PARTS` pairs the parts by what they are: the member
+    /// path). The design's designators come from the kind of the part and the order of its
+    /// declaration, so a part added to `src/main.nsm` ahead of another renumbers it, and this
+    /// fails until the map is written again; the message prints the map as it must be.
+    #[test]
+    fn the_parity_checkers_designator_map_is_the_designs_own() {
+        let built = built();
+        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let mut expected: Vec<(String, String)> = designators(&built)
+            .into_iter()
+            .map(|(refdes, reference)| (reference, refdes))
+            .collect();
+        let wrong: Vec<String> = expected
+            .iter()
+            .filter(|(reference, refdes)| map.get(reference) != Some(refdes.as_str()))
+            .map(|(reference, refdes)| {
+                format!(
+                    "{reference}: the map says {:?}, the design has {refdes}",
+                    map.get(reference)
+                )
+            })
+            .collect();
+        expected.sort_by_key(|(r, _)| {
+            let digits: String = r.chars().filter(char::is_ascii_digit).collect();
+            (
+                r.chars().filter(|c| c.is_alphabetic()).collect::<String>(),
+                digits.parse::<u32>().unwrap_or(0),
+            )
+        });
+        let lines: String = expected
+            .iter()
+            .map(|(reference, refdes)| format!("{reference} = \"{refdes}\"\n"))
+            .collect();
+        assert!(
+            wrong.is_empty(),
+            "{}\nthe map as it must be:\n{lines}",
+            wrong.join("\n")
+        );
+        // All 89 parts of the reference are paired, and the map has nothing else.
+        assert_eq!(map.len(), PARTS.len());
+        assert_eq!(map.len(), 89);
+        for reference in ["J2", "J3", "J4"] {
+            assert!(map.get(reference).is_some(), "{reference} is not mapped");
+        }
     }
 }

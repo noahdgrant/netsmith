@@ -253,7 +253,9 @@ fn shape_word(pad: &netsmith_pcb::Pad) -> &'static str {
 /// Every difference between the pads of `footprint` and those of the reference's `reference`
 /// footprint, with `tolerance` mm on centre, size and drill: number, centre in the footprint's
 /// own frame, size, drill, shape, kind and angle. Empty when they are the same. A `connect` pad
-/// of the file (an edge-connector pad: copper on one face) is a surface pad.
+/// of the file (an edge-connector pad: copper on one face) is a surface pad. A footprint that the
+/// reference has on the back face (`B.Cu`) is written by `fab` with every x negated, so the
+/// project's footprint of it is drawn as seen from the back: x is read negated.
 fn pad_differences(
     footprint: &Footprint,
     table: &toml::Table,
@@ -265,6 +267,11 @@ fn pad_differences(
         .find(|p| p["reference"].as_str() == Some(reference))
         .unwrap_or_else(|| panic!("no part {reference}"));
     let rotation = number(part, "rotation");
+    let mirror = if part["layer"].as_str() == Some("B.Cu") {
+        -1.0
+    } else {
+        1.0
+    };
     let wanted = part["pads"].as_array().unwrap();
     let mut differences = Vec::new();
     if footprint.pads.len() != wanted.len() {
@@ -280,7 +287,7 @@ fn pad_differences(
         let pad = pad.as_table().unwrap();
         let (n, x, y) = (
             pad["number"].as_str().unwrap(),
-            number(pad, "x"),
+            number(pad, "x") * mirror,
             number(pad, "y"),
         );
         let found = footprint.pads.iter().enumerate().find(|(i, own)| {
@@ -538,11 +545,13 @@ fn the_pins_of_the_parts_are_the_datasheets() {
             ("VOUT", &["5"]),
         ])
     );
-    // The ESD array: both pads of a line are one pin.
+    // The ESD array: pads 1 and 6 are one line inside and two pins here (the design leaves 6 open);
+    // pads 3 and 4 are one pin.
     assert_eq!(
         pins("Usblc62sc6"),
         owned(&[
-            ("I/O1", &["1", "6"]),
+            ("I/O1", &["1"]),
+            ("I/O1", &["6"]),
             ("GND", &["2"]),
             ("I/O2", &["3", "4"]),
             ("VBUS", &["5"]),

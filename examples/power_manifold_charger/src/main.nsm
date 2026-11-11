@@ -90,7 +90,7 @@ board PowerManifoldCharger {
     /// J4: USB_C_Receptacle_USB2.0_14P
     .usb: GtUsb7004 { .mpn &= "GT-USB-7004" }
     /// J2: TC2030
-    .swd: ProgrammingPads6
+    .swd: ProgrammingPads6 { .package &= "TC2030-NL-connect" }
     /// J1: TX
     .tp_tx: TestPoint { .package &= "D1.5mm" }
     /// J5: GND

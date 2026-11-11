@@ -170,3 +170,11 @@ kind = "Resistor"
 package = "1206"
 symbol = "Device:R"
 footprint = "Resistor_SMD:R_1206_3216Metric"
+
+# J2: the Tag-Connect TC2030-IDC-NL pads, as the reference board draws them: the standard
+# footprint's pads and holes, with the pad type `connect` (a pad that a spring pin presses on)
+# where the standard one's pads are `smd`. The parity rule compares the pad's type.
+[[part]]
+kind = "ProgrammingPads6"
+package = "TC2030-NL-connect"
+footprint = "power_manifold_must_match:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical"
