@@ -41,8 +41,8 @@
 //! physical file states where a part is and not what it is. The editor lists the file, checks it
 //! and draws it.
 //!
-//! **Provisional readings** (the simplest reading of what the owner decided, for the owner to
-//! confirm or change, word for word from ADR 0048):
+//! **Readings of the board level** (the simplest reading of what the owner decided, word for word
+//! from ADR 0048; accepted as built by the owner, 2026-11-11):
 //! - "The outline, cutouts, mounting holes, fiducials and labels are refused outside `case { }`,
 //!   and a `Keepout` may be anywhere in the unit (decision 7 names the outline, openings, holes,
 //!   fiducials and labels for the case, and "case regions")."
@@ -51,8 +51,8 @@
 //!   module layer later, and a keepout a part carries stays in the part)."
 //! - "A part's `.height` may be narrowed in a board's circuit source as before, and in its
 //!   physical file; decision 9 says the physical file "may narrow" it, so the two places are two
-//!   spellings (ADR 0001) until the owner says which one stays." The same holds for
-//!   `.pin_protrusion` (decision 12).
+//!   spellings (ADR 0001) until the owner says which one stays." Both places stay, as built; the
+//!   same holds for `.pin_protrusion` (decision 12).
 //! - "A statement in a physical file may mention only physical fields on either side of a
 //!   relation. A relation that compares a `.place` field with a circuit value (`.r1.place.x >=
 //!   .r1.resistance`) is refused."
@@ -70,19 +70,21 @@
 //! across files, and needs a read-only reach into modules, a new rule for a language that has
 //! kept modules closed since ADR 0004.
 //!
-//! **Not decided, the owner's** (language design, `AGENTS.md`;
-//! `docs/research/physical-file-syntax-options.md` gives the options): how a module's physical
-//! file attaches to its module (T1, T2 or T3 of the note), what a board's file may override of
-//! it, and whether the module layer may state an overhang; anchors (`anchor .dock = .row_a`,
-//! A1), which come with the module layer; a `Region` carried by a part with a height limit
-//! (G2), a new type whose members are not decided; a physical file for a `system` or a `panel`
-//! (ADR 0040: a panel's mounting holes, mated-connector alignment across boards, a panel's
-//! rails); the shared `enclosure` definition (issue #46, held until the mechanical side can
-//! export data); the exact list of what leaves the circuit source beyond `.place`, `Outline`,
-//! `Cutout` and a board-drawn `Keepout`; whether the spelling inside the physical file stays
-//! `.place`; and that the editor writes the keepouts it draws, and the moves of a keepout the
-//! physical file sizes, to the layout file as before (writing them here is decision 7 and is not
-//! built; issue #52).
+//! **Not built.** The module layer of decision 2 is not built (issue #52): how a module's
+//! physical file attaches to its module (T1, T2 or T3 of
+//! `docs/research/physical-file-syntax-options.md`, section 8), what a board's file may override
+//! of it (V1, V2 or V3 there), whether it may state an overhang, anchors (`anchor .dock =
+//! .row_a`, A1), and a `Region` carried by a part with a height limit (G2, a new type whose
+//! members are not decided). The attachment and the override rule are language design and are
+//! decided when the module layer is built. A physical file for a `system` or a `panel` (ADR
+//! 0040: a panel's mounting holes, mated-connector alignment across boards, a panel's rails) is
+//! not planned until a board needs it. The shared `enclosure` definition is held until the
+//! mechanical side can export data (issue #46). What leaves the circuit source is what decision
+//! 7 names (`.place`, `Outline`, `Cutout`, `MountingHole`, `Fiducial`, `Label` and a board-drawn
+//! `Keepout`); the spelling inside the physical file stays `.place` (accepted as built by the
+//! owner, 2026-11-11). The editor writes the keepouts it draws, and the moves of a keepout the
+//! physical file sizes, to the layout file as before; writing them here is decision 6 and is
+//! not built (issue #52).
 
 use std::collections::HashMap;
 use std::fs;

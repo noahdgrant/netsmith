@@ -103,7 +103,7 @@ pub const DEFAULT_ROUTE_TIMEOUT: Duration = Duration::from_secs(300);
 /// Whether constraints were asked to be strict: `--constraints error` for this run
 /// (`flag == Some(false)`, `Some(true)` being `warn`), else `constraints = "error"` in the
 /// manifest. Unset is not strict here, though a violated requirement is an error either way
-/// (ADR 0045, "Height limits", PROVISIONAL).
+/// (ADR 0045, "Height limits").
 pub fn constraints_strict(manifest: Option<&str>, flag: Option<bool>) -> bool {
     match flag {
         Some(warn) => !warn,
@@ -135,7 +135,7 @@ pub struct FabOptions {
     pub only: Option<Vec<String>>,
     /// Constraints were asked to be strict (`fab --constraints error`, or `constraints =
     /// "error"` in the manifest, and not the default): a part under a height limit that states
-    /// no height is then an error and not a warning (ADR 0045, "Height limits", PROVISIONAL).
+    /// no height is then an error and not a warning (ADR 0045, "Height limits").
     /// `--allow-drc-violations` does not waive it.
     pub strict_heights: bool,
     /// The pick lock of the source (`pick_lock`): written when it does not exist, compared with
@@ -386,8 +386,8 @@ pub fn fab_with_options(
     Ok(made)
 }
 
-/// What the requirements prove about a board before any placing (ADR 0045 section 14,
-/// PROVISIONAL): lines that cannot all hold, a courtyard past an edge nobody stated, a part
+/// What the requirements prove about a board before any placing (ADR 0045 section 14): lines
+/// that cannot all hold, a courtyard past an edge nobody stated, a part
 /// bigger than the outline. It takes milliseconds and starts no placer.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrecheckReport {
@@ -619,7 +619,7 @@ fn fab_board(
             .collect();
         // When the placer could not meet the requirements of the physical file, the faults
         // above are its symptoms: say first which lines are not met and which cannot all hold,
-        // and keep the same list in `placement-failure.txt` (ADR 0045, PROVISIONAL).
+        // and keep the same list in `placement-failure.txt` (ADR 0045).
         let unmet = board.explain_requirements(&built.design, &placement);
         if !problems.is_empty() {
             let mut errors = String::new();

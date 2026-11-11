@@ -1,12 +1,12 @@
 //! Resolving generic parts to orderable ones, when the bill of materials or `fab` is made
-//! (ADR 0047, provisional).
+//! (ADR 0047).
 //!
 //! The solver picks a generic resistor by value alone (`netsmith_solve::Generic`). Here each
 //! one becomes the row of a catalog that stands for it: Basic first, a row a provider says
 //! has no stock passed over. A part no row stands for is **unresolved**, with the nearest
 //! rows, and `fab` refuses it by name.
 //!
-//! **Checking the alternatives** (ADR 0047, issue #31, provisional). When the build finds an
+//! **Checking the alternatives** (ADR 0047, issue #31). When the build finds an
 //! unresolved generic part it plans a solve of the board with the part held to each of its
 //! nearest alternatives (`Catalogs::with_pin`). The solves are made when a caller first asks to
 //! show the result (the unresolved message of the bill of materials or `fab`), not by the build

@@ -1,4 +1,4 @@
-//! Price and stock from a provider (ADR 0047, provisional).
+//! Price and stock from a provider (ADR 0047).
 //!
 //! A catalog row says what a part is. What a supplier says about it today (the pieces in
 //! stock, the price at each quantity) comes from a [`SupplyProvider`], is asked for when the
@@ -10,7 +10,7 @@
 //! provider here talks to a supplier: their terms of use are unread (ADR 0039, ADR 0047).
 //! The solver, the checker and the language know nothing of this module.
 //!
-//! **The decision** (ADR 0047, provisional). A catalog row keeps what a part is (`lcsc`, `mpn`,
+//! **The decision** (ADR 0047; accepted by the owner, 2026-11-11). A catalog row keeps what a part is (`lcsc`, `mpn`,
 //! `library`, `package`, the electrical values, `source`, `checked`); price, stock and date are
 //! a supplier's word about a day and go stale within days. A file that still has the columns is
 //! read as the last resort of the chain, the `catalog` answer (the bill of materials and
@@ -59,29 +59,36 @@
 //! quantity below the first break shown at the first break's price with "from N pieces"; the
 //! 24 hour cache and the 90 day stale mark.
 //!
-//! **Not built, and open for the maintainer** (ADR 0047, word for word where quoted):
-//! - "Generic parts appended after the identity rows or instead of them? Appended keeps every
-//!   design as it is; instead is the clean model and changes which part existing designs get."
-//!   (Issue #33 records "appended, on by default" as decided on 2026-11-03; the ADR text does not.)
-//! - "Is "JLCPCB Basic, then Preferred, then Extended, then file order" the preferred-parts list,
-//!   or is it a file of its own (`preferred.csv`, a project's list that wins)?"
-//! - "Which real providers, and in which order: the LCSC API, JLCAPI, an aggregator (the Nexar
-//!   API, which Altium's bill of materials and KiCost use) or a community snapshot (the KiCad
-//!   JLCPCB plugin downloads one daily). Each needs the maintainer to read its terms and to
-//!   decide whose key a user brings."
-//! - "Should the editor offer a swap with the checks run for each alternative, and should `fab`
-//!   refuse an unresolved part (this ADR says it does) or build without it?" (The checks are
-//!   built; the swap is not.)
-//! - "The shipped `price`, `stock` and `date` columns: keep as the `catalog` provider's input
-//!   (this ADR), or remove the columns from the format."
-//! - The user-level credentials file (`$XDG_CONFIG_HOME/netsmith/supply.toml`) of item 5 was
-//!   not part of the question the owner answered, and the spelling of the manifest field that
-//!   names the variable (for example `key_env = "NETSMITH_LCSC_KEY"`) is not decided: neither
-//!   is built.
-//! - A `--offline` flag for the bill of materials and `fab` (`Supply::with_offline` exists and
-//!   is tested), a named preferred-parts file, the quantity of an order across boards, and the
-//!   editor's swap. Quantity breaks across several boards, currency conversion, taxes,
-//!   shipping and JLCPCB's feeder fee for each Extended part are "not decided here".
+//! **Choices accepted as built by the owner, 2026-11-11** (ADR 0047, each a question of the ADR's
+//! text with the answer the code gives):
+//! - Generic parts are appended after the identity rows and not put instead of them: appended
+//!   keeps every design as it is. The end state, in which the solver picks generic parts only
+//!   and resolution picks the row, would change which part existing designs get, and is not
+//!   planned.
+//! - "JLCPCB Basic, then Preferred, then Extended, then file order" is the preferred-parts rule
+//!   of resolution.
+//! - `fab` refuses an unresolved part, by name, with the three nearest rows and the result of the
+//!   checks with each.
+//! - The `price`, `stock` and `date` columns stay in the format, as the `catalog` answer that is
+//!   the last resort of the chain.
+//!
+//! **Credentials.** There is no user-level credentials file for now (owner, 2026-11-11). A
+//! credential is the name of an environment variable, written in the `[supply]` table of
+//! `netsmith.toml`; the spelling of that manifest field (for example `key_env =
+//! "NETSMITH_LCSC_KEY"`) is decided together with the first real provider (issue #30). Neither
+//! is built.
+//!
+//! **Not built:**
+//! - Which real providers, and in which order (the LCSC API, JLCAPI, an aggregator such as the
+//!   Nexar API, or a community snapshot such as the one the KiCad JLCPCB plugin downloads
+//!   daily): not now; issue #30. Each needs a person to read its terms of use and to decide
+//!   whose key a user brings: a person must do this, checklist in issue #10.
+//! - A named preferred-parts file (`preferred.csv`, a project's list that wins), a `--offline`
+//!   flag for the bill of materials and `fab` (`Supply::with_offline` exists and is tested), and
+//!   the quantity of an order across boards: issue #32.
+//! - The editor's swap, with the checks run for each alternative: issue #31.
+//! - Currency conversion, taxes, shipping and JLCPCB's feeder fee for each Extended part: not
+//!   planned until a board needs it.
 
 pub mod cache;
 pub mod file;

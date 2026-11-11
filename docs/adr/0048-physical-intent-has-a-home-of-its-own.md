@@ -4,7 +4,7 @@ status: accepted
 
 # Physical intent is written in a file of its own, apart from the circuit source
 
-Meets tests 1 (a third file beside the `.nsm` source and the layout file, and a language form for it) and 3 (a `pcb { }` block and an editor panel over the same file are the obvious alternatives). I relied on the status line: "accepted (owner decisions 2026-11-04) for decisions 1 to 7 and 10 and for the syntax choices recorded under "Syntax decisions"". The status line also said that anchors, how a module file attaches, a physical file for a `system` or a `panel`, and the exact list of what leaves are open: they are under *Left open*, and the `accepted` word does not cover them. The text before the cut is `git show 3e54ce1:docs/adr/0048-physical-intent-has-a-home-of-its-own.md` (122 lines; it also has the migration list, the "Built" log and the provisional readings). Issue #52 builds it.
+Meets tests 1 (a third file beside the `.nsm` source and the layout file, and a language form for it) and 3 (a `pcb { }` block and an editor panel over the same file are the obvious alternatives). I relied on the status line: "accepted (owner decisions 2026-11-04) for decisions 1 to 7 and 10 and for the syntax choices recorded under "Syntax decisions"". The status line also said that anchors, how a module file attaches, a physical file for a `system` or a `panel`, and the exact list of what leaves were open: the module layer is not built and they are under *Not built*. The text before the cut is `git show 3e54ce1:docs/adr/0048-physical-intent-has-a-home-of-its-own.md` (122 lines; it also has the migration list, the "Built" log and the provisional readings). Issue #52 builds it.
 
 **Decision** (owner, 2026-11-04, the answers to the ranked decisions of `docs/research/durable-home-for-pcb-intent.md`, section 8):
 
@@ -25,11 +25,12 @@ Meets tests 1 (a third file beside the `.nsm` source and the layout file, and a 
 
 **Where the rest went.** The built rules, the owner's syntax choices, the provisional readings and the costs, word for word: header of `crates/netsmith/src/physical.rs`. The `row` statement and the numbering: header of `crates/netsmith-check/src/row.rs`. The guide's "The physical file", `docs/research/physical-file-syntax-options.md`, and the tests `crates/netsmith-check/tests/physical.rs` and `crates/netsmith-lang/tests/physical.rs`. The migration of the repository's own examples is done and is in the history.
 
-**Left open** (the owner's; language design):
-- How a module's physical file attaches to its module (T1, T2 or T3 of `physical-file-syntax-options.md`), what a board's file may override of it, and whether the module layer may state an overhang (ADR 0045 keeps "a module cannot state one" until the owner says).
-- Anchors (A1), which come with the module layer, and a `Region` carried by a part with a height limit (G2), a new type whose members are not decided.
-- "A physical file for a `system` or a `panel` (ADR 0040). Mounting holes of a panel, mated-connector alignment across boards and a panel's rails are not designed."
-- The shared `enclosure` definition (issue #46) and "the exact list of what leaves under decision 10 beyond `.place`, `Outline`, `Cutout` and board-drawn `Keepout`".
-- Whether the spelling inside the physical file stays `.place`.
-- Six provisional readings of the board level and eight of the `row` statement and the natural order (headers named above), among them: the case section's contents are refused outside `case { }`; the old form's ban applies to a board's source and not a module's; and `.height` and `.pin_protrusion` may be narrowed in the circuit source and in the physical file, "two spellings (ADR 0001) until the owner says which one stays".
-- Where the code and this text differ: the editor writes the keepouts it draws to the layout file and not the physical file (decision 6; issue #52); the old "Built" note says relations are "not evaluated yet", which ADR 0045 section 12 replaced. I left both.
+**Choices accepted as built by the owner, 2026-11-11.** The spelling inside the physical file stays `.place`. The six readings of the board level and the eight of the `row` statement and the natural order are accepted as the headers named above give them, among them: the case section's contents are refused outside `case { }`; the old form's ban applies to a board's source and not a module's; and `.height` and `.pin_protrusion` may be narrowed in the circuit source and in the physical file, both places staying. What leaves the circuit source is what decision 7 names.
+
+**Not built.**
+- The module layer (decision 2; issue #52): how a module's physical file attaches to its module (T1, by stem; T2, named by the board's file; or T3, a statement in the module; `docs/research/physical-file-syntax-options.md` section 8), what a board's file may override of it, and whether the module layer may state an overhang (ADR 0045 keeps "a module cannot state one"). Language design, decided when it is built.
+- Anchors (A1, `anchor .dock = .row_a`), which come with the module layer, and a `Region` carried by a part with a height limit (G2), a new type whose members are not decided (issue #52).
+- A physical file for a `system` or a `panel` (ADR 0040): not planned until a board needs it. Mounting holes of a panel, mated-connector alignment across boards and a panel's rails are not designed.
+- The shared `enclosure` definition: issue #46.
+- Writing the keepouts the editor draws to the physical file; the editor writes them to the layout file (decision 6; issue #52).
+- A start offset (`from`) in a `row`, a row of a module's parts addressed by the module, and a row whose parts are not one numbered run: not planned until a board needs it.
