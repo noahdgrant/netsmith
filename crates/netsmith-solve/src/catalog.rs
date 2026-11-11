@@ -179,6 +179,27 @@ impl Candidate {
     pub fn column(&self, key: &str) -> Option<&Value> {
         self.columns.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
+
+    /// The cited temperature range of the row's dielectric class (ADR 0099), for a row that
+    /// names one in its `dielectric` column and whose class has a range. It fills an end of the
+    /// range that the row's own `temp_min` or `temp_max` leaves empty and nothing else: a
+    /// figure of the datasheet always wins.
+    pub fn class_range(&self) -> Option<&'static netsmith_check::environment::ClassRange> {
+        match self.column("dielectric") {
+            Some(Value::Text(class)) => netsmith_check::environment::class_range(class),
+            _ => None,
+        }
+    }
+
+    /// The row's lowest and highest temperature, in kelvin: its own cells, and where a cell
+    /// is empty the range of its dielectric class.
+    pub fn temperatures(&self) -> (Option<f64>, Option<f64>) {
+        let class = self.class_range();
+        (
+            self.temp_min.or(class.map(|c| c.min)),
+            self.temp_max.or(class.map(|c| c.max)),
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
