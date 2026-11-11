@@ -536,16 +536,38 @@ module BuckStage {
 ///   its own inductors, not a guarantee, and below 0.2 mA the figure is too high, where
 ///   the input current is a few microamps anyway. A board of one input voltage may state a
 ///   narrower range for its own conditions.
-/// - Soft-start: `.buck.soft_start_time` is left unstated. The datasheet gives no time: the
-///   TR/SS pin "allows user control of output voltage ramp rate" with an "internal 1.9uA
-///   pull-up current" (Pin Functions, p.10; Output Voltage Tracking and Soft-Start, p.19),
-///   TR/SS Source Current 1.2 uA to 2.6 uA, typically 1.9 uA (Electrical Characteristics,
-///   p.3), and "the TR/SS pin may be left floating if the function is not needed" (p.19),
-///   with no ramp time for that case. It states no equation for the time of a capacitor
-///   either; its Typical Applications (p.1, p.22 and p.23) draw 10 nF on the pin and give no
-///   time for it. A time computed from 10 nF and 1.9 uA would be this repository's figure and
-///   not the datasheet's, so a bound on `.stage.soft_start_time` with this part is listed as
-///   not evaluated. Whether the part should model the capacitor is the owner's to decide.
+/// - Soft-start: the datasheet gives no time, only the parts of one. The TR/SS pin "allows user
+///   control of output voltage ramp rate during start-up" and "an internal 1.9uA pull-up
+///   current from INTVCC on this pin allows a capacitor to program output voltage slew rate"
+///   (Pin Functions, p.10; Output Voltage Tracking and Soft-Start, p.19); the TR/SS Source
+///   Current is 1.2 uA minimum, 1.9 uA typical and 2.6 uA maximum (Electrical
+///   Characteristics, p.3, over the full temperature range); "from 0V to 0.8V, the TR/SS
+///   voltage will override the internal 0.8V reference input to the error amplifier, thus
+///   regulating the FB pin voltage to that of TR/SS pin. When TR/SS is above 0.8V, tracking
+///   is disabled" and the feedback regulates to the internal reference (p.19; "a TR/SS
+///   voltage below 0.8V forces the LT8641 to regulate the FB pin to equal the TR/SS pin
+///   voltage", p.10); and "the TR/SS pin may be left floating if the function is not needed"
+///   (p.19), with no ramp time for that case. Its Typical Applications (p.1, p.22 and p.23)
+///   draw 10 nF on the pin and state no time for it. The datasheet writes no equation for
+///   the time either. The part therefore has `.css`, the capacitor on TR/SS, an `optional`
+///   member (ADR 0074) that the board states (`.u.css &= 10nF +/- 10%`, or `.u.css ==
+///   .soft_start.capacitance` for the capacitor it puts on the pin), and computes the time
+///   the output takes to reach the 0.8 V at which tracking ends: a capacitor charged by a
+///   constant current rises at `I / C`, so `t = C * 0.8V / I` (the owner's relation, item
+///   CF2b of epic #308: the only figures in it are the datasheet's, and the equation is
+///   the charge on a capacitor, not one the datasheet writes). The current is the member
+///   `.tr_ss_current`, 1.2 uA to 2.6 uA (p.3), so the time is a range and the longest time
+///   is at the smallest current: with 10 nF, 8 nC / 2.6 uA = 3.077 ms to 8 nC / 1.2 uA =
+///   6.667 ms (4.211 ms at the typical 1.9 uA), and a board's bound
+///   `.stage.soft_start_time <= 5ms` is held against the 6.667 ms. While `.css` is
+///   unstated the relation is skipped, `.buck.soft_start_time` is unstated, and a bound on
+///   `.stage.soft_start_time` is listed as not evaluated, as before. Not in the time: the
+///   capacitor's own tolerance and aging (the board's `.css` states the range it wants held),
+///   the leakage of the pin, the 0.79 V to 0.822 V of the reference (p.2, the figure that
+///   the output settles at, not the one the datasheet gives for the end of the ramp), a
+///   rise stretched by a current limit (large output capacitance or a load that draws while
+///   the output rises), and the time from the enable going high to the start of the ramp
+///   (the datasheet gives none).
 /// - Switching frequency is held only inside two limits the datasheet gives, which keep the
 ///   stage's ripple (computed at the programmed frequency) right. The highest frequency
 ///   for an input is `(VOUT + VSW(BOT)) / (tON(MIN) * (VIN - VSW(TOP) + VSW(BOT)))`
@@ -691,9 +713,22 @@ part Lt8641 {
     }
     .buck.sw.neg ~ .vin.neg
     .buck.fsw == .fsw
+    .buck.soft_start_time == .css * 0.8V / .tr_ss_current
     .buck.min_inductance == (2 * .buck.sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
     .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency) + .quiescent_current
     dc switching_regulator .vin .buck.sw .buck.efficiency .quiescent_current
+
+    /// The capacitor on TR/SS, which the board states (`.u.css &= 10nF +/- 10%`) when it
+    /// needs the start-up time: the output ramps as the pin does, so `.buck.soft_start_time ==
+    /// .css * 0.8V / .tr_ss_current` (Output Voltage Tracking and Soft-Start, p.19; see the
+    /// doc comment of the part for the figures). Optional (ADR 0074): a board that states no
+    /// capacitor has no time, as before, and the relation is skipped.
+    .css: Capacitance optional
+    /// The current the TR/SS pin is pulled up with: 1.2 uA to 2.6 uA, 1.9 uA typical
+    /// (Electrical Characteristics, p.3, TR/SS Source Current). A range, so the time of the
+    /// ramp is one: the smallest current gives the longest time.
+    .tr_ss_current: Current
+    .tr_ss_current &= 1.2uA..2.6uA
 
     /// The largest peak output current, for a short time (front page, p.1).
     .peak_output_current: Current
