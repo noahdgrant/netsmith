@@ -113,7 +113,8 @@
 //! not added: the library's models have no figure for it (ADR 0025 ignores it) and one is not
 //! invented here. A switching regulator whose part states no efficiency leaves the input current
 //! unknown. A stated `.min_track` stays an override and is checked against the sum: 1 mm on a ground
-//! that carries 3 A is a finding (it carries 2.39 A at 10 K).
+//! that carries 3 A is a finding (at its narrowest, 0.8 mm, it carries 2.03 A at 10 K; amendment
+//! 5).
 //!
 //! Choices of amendment 2 made without the owner, to be reviewed: the larger of the two sums rather
 //! than the load side alone; a module's port left out only when something inside it is on the net;
@@ -155,6 +156,15 @@
 //! resistor whose ends have no range) keeps its note and its wording, and so does a net whose bound
 //! needs more than the width. The finding against a stated `.min_track` is as before.
 //!
+//! **Amendment 5 (issue #431): the width tolerance.** A fabricator's finished track can be
+//! narrower than the one drawn: JLCPCB states `.track_width_tolerance &= 0.2` (20 %) in its
+//! processes. A track is sized for the narrowest finished track the process's tolerance allows, so
+//! the width a net needs is IPC-2221's divided by `1 - tolerance`: 1.25 times it for JLCPCB, then
+//! rounded up to 0.01 mm as before (2 A in 1 oz at 10 K needs 0.7814 mm by the formula and is drawn
+//! at 0.98 mm). The check against a stated `.min_track` carries the same: the current that width
+//! carries is that of the width less the tolerance (1 mm carries what 0.8 mm does), and the finding
+//! says so. `ipc2221_width` and `ipc2221_current` are the plain formula and do not change.
+//!
 //! **Left open** (the owner's): whether a net whose rail states a `.min_track` should also get the
 //! note when a current on it is not known (it does not today; the guideline names the missing
 //! carriers instead); whether the note should be a guideline that `--strict` can turn into an
@@ -163,7 +173,7 @@
 //! with any amendment: their currents are milliamps, at the process's least track.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model};
-use netsmith_core::{Features, OUNCE_OF_COPPER, Process};
+use netsmith_core::{Features, NetCurrent, OUNCE_OF_COPPER, Process};
 
 /// The temperature rise the check designs to when the board states none, in kelvin. A
 /// default of this tool's and not a published figure (ADR 0036).
@@ -386,6 +396,8 @@ pub struct TrackPlan {
     pub findings: Vec<Guideline>,
     /// The nets with a current that is not known, whose tracks are a lower bound, by name.
     pub notes: Vec<String>,
+    /// The current of each net where some of it is known, and the least width that carries it.
+    pub currents: Vec<NetCurrent>,
 }
 
 /// The tracks of every net against the current the net carries, by IPC-2221 (ADR 0036).
@@ -428,6 +440,7 @@ pub fn plan_tracks(
         return plan;
     }
     let layer = Layer::External;
+    let tolerance = process.track_width_tolerance.clamp(0.0, 0.9);
     let (rise, rise_is_default) = match process.max_temperature_rise {
         Some(r) => (r, false),
         None => (DEFAULT_TEMPERATURE_RISE, true),
@@ -588,11 +601,20 @@ pub fn plan_tracks(
         // up, so a current that is not known can make the sum larger and never smaller. A net
         // is drawn at least as wide as the known part needs, which is no guess (ADR 0036,
         // amendment 3).
+        // Sized for the narrowest track the fabricator's tolerance allows (issue #431): a track
+        // drawn at `needs` is finished no narrower than the width IPC-2221 asks.
         let needs = if total > 0.0 {
-            ipc2221_width(total, copper, rise, layer)
+            ipc2221_width(total, copper, rise, layer) / (1.0 - tolerance)
         } else {
             0.0
         };
+        if total > 0.0 {
+            plan.currents.push(NetCurrent {
+                net: net.name.clone(),
+                current: total,
+                least_width: needs,
+            });
+        }
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
         // message says passes.
         let asks = (needs * 100.0 - 1e-9).ceil() / 100.0;
@@ -604,7 +626,8 @@ pub fn plan_tracks(
         // tracks are no lower bound, they are enough.
         let width = if sized { asks } else { process.min_track };
         let enough = bounded.is_some_and(|more| {
-            ipc2221_width(total + more, copper, rise, layer) <= width * (1.0 + 1e-9)
+            ipc2221_width(total + more, copper, rise, layer) / (1.0 - tolerance)
+                <= width * (1.0 + 1e-9)
         });
         if !unknown.is_empty() && stated.is_none() && supplied[index] && !enough {
             let known = (total > 0.0).then_some(total);
@@ -628,7 +651,8 @@ pub fn plan_tracks(
             continue;
         };
         let width = stated.max(process.min_track);
-        let carries = ipc2221_current(width, copper, rise, layer);
+        // What the narrowest finished track of that width carries.
+        let carries = ipc2221_current(width * (1.0 - tolerance), copper, rise, layer);
         if width >= needs {
             continue;
         }
@@ -673,7 +697,7 @@ pub fn plan_tracks(
         plan.findings.push(Guideline {
             rule: "IPC-2221",
             message: format!(
-                "net `{}` carries {carries_word} {} ({what}) but its tracks are {} mm wide (a rail's `.min_track`), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
+                "net `{}` carries {carries_word} {} ({what}) but its tracks are {} mm wide (a rail's `.min_track`), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} (at its narrowest, {}% under, the fabricator's tolerance) and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..1m`, or allow a higher `.process.max_temperature_rise`",
                 net.name,
                 amps(total),
                 mm(width),
@@ -683,6 +707,7 @@ pub fn plan_tracks(
                 mm(rise),
                 if rise_is_default { " (the default)" } else { "" },
                 amps(carries),
+                mm(tolerance * 100.0),
                 mm(asks),
                 mm(asks),
             ),

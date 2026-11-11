@@ -733,6 +733,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        track_width_tolerance: number(find("track_width_tolerance")),
         stackup: Stackup {
             layers,
             thickness: match find("stackup.thickness") {
@@ -1238,6 +1239,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     };
     features.net_widths.extend(plan.widths);
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
+    features.net_currents = plan.currents;
+    features.net_currents.sort_by(|a, b| a.net.cmp(&b.net));
     let mut guideline_findings = plan.findings;
     // Every fitted part against the board's environment, if it states one (ADR 0099).
     let judged = environment::judge(model, &fitted, &mut errors);

@@ -117,3 +117,70 @@ fn a_board_that_cannot_be_routed_says_so_and_what_it_drew_passes_the_check() {
         "{found:?}"
     );
 }
+
+/// The same rails, sized by their current: the width is the least their current needs.
+fn with_currents(mut board: Board) -> Board {
+    board = with_rails(board);
+    board.net_currents = board
+        .net_widths
+        .iter()
+        .map(|(net, width)| netsmith_core::NetCurrent {
+            net: net.clone(),
+            current: 1.0,
+            least_width: *width,
+        })
+        .collect();
+    board
+}
+
+#[test]
+fn a_rail_sized_by_its_current_is_necked_down_only_near_its_own_pads() {
+    for (seed, shape) in [(4, (40, 8, 8, 20, 20)), (1, (52, 17, 20, 72, 36))] {
+        let (chips, regs, per_side, ic, parts) = shape;
+        let mut board = with_currents(synthetic_board(seed, chips, regs, per_side, ic, parts));
+        let routing = route_with(&mut board, RouteOptions::default());
+        let name = format!("seed {seed}, {} parts", board.parts.len());
+        assert!(routing.left.is_empty(), "{name}: {:?}", routing.left.lines);
+        let reach = netsmith_pcb::route::NECK_REACH;
+        for t in &board.tracks {
+            let least = board.least_width(&t.net);
+            if t.width >= least - 1e-9 {
+                continue;
+            }
+            // Near the pads of a part on the net: the box round their centres, grown by the
+            // reach.
+            let boxes: Vec<netsmith_pcb::Rect> = board
+                .nets
+                .iter()
+                .filter(|n| n.name == t.net)
+                .flat_map(|n| n.pads.iter())
+                .filter_map(|p| board.neck_box(&p.refdes))
+                .map(|b| b.expanded(reach + 1e-6))
+                .collect();
+            let near = |p: Pt| {
+                boxes
+                    .iter()
+                    .any(|b| b.contains(&netsmith_pcb::Rect::new(p, p)))
+            };
+            assert!(
+                near(t.from) && near(t.to),
+                "{name}: {} is {} mm wide, under its {least} mm, away from its pads: {t:?}",
+                t.net,
+                t.width
+            );
+        }
+        // The design rules check, told the least widths, agrees.
+        let extras = drc::Extras {
+            least_widths: board.least_widths(),
+            neck_reach: reach,
+            ..drc::Extras::default()
+        };
+        let report = drc::check(
+            &netsmith_pcb::kicad_pcb(&board),
+            Some(&netsmith_pcb::kicad_pro(&board)),
+            &extras,
+        )
+        .unwrap();
+        assert_eq!(report.count(drc::Rule::TrackCurrent), 0, "{name}\n{report}");
+    }
+}

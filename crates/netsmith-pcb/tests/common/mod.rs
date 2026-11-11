@@ -64,6 +64,8 @@ pub fn process() -> netsmith_core::Process {
         ".min_clearance &= 0.2mm..1m",
         ".min_drill &= 0.24mm..1m",
         ".min_via_diameter &= 0.6mm..1m",
+        ".via_drill &= 0.24mm",
+        ".via_diameter &= 0.6mm",
         ".min_hole_to_hole &= 0.5mm..1m",
         ".min_edge_clearance &= 0.3mm..1m",
     ])
