@@ -283,7 +283,9 @@ pub struct ParityGate<'a> {
     pub tag: &'a str,
     /// The parts that `reference/designators.toml` pairs.
     pub parts: usize,
-    /// The least number of must-match items the checker must judge `ok`.
+    /// The number of must-match items the checker must judge `ok`, at least: the count the
+    /// board's README states, so that a lost item is noticed (a gate may be raised, never lowered
+    /// without the README saying why).
     pub min_ok: usize,
     /// The seconds `fab` may route (`--route-timeout`).
     pub route_seconds: &'a str,
@@ -349,7 +351,7 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     assert!(report.passed(), "{}", report.text());
     let (ok, failed) = report.must_match_counts();
     assert!(
-        ok > gate.min_ok && failed == 0,
+        ok >= gate.min_ok && failed == 0,
         "{ok} must-match items ok:\n{}",
         report.text()
     );
@@ -376,16 +378,34 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     );
 }
 
-fn find_pcb(dir: &Path) -> Option<PathBuf> {
-    for entry in fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
+/// Every `.kicad_pcb` under `dir`, sorted, so that the answer does not depend on the order the
+/// file system lists a folder in.
+fn find_pcbs(dir: &Path, found: &mut Vec<PathBuf>) {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    for path in entries {
         if path.is_dir() {
-            if let Some(found) = find_pcb(&path) {
-                return Some(found);
-            }
+            find_pcbs(&path, found);
         } else if path.extension().is_some_and(|e| e == "kicad_pcb") {
-            return Some(path);
+            found.push(path);
         }
     }
-    None
+}
+
+/// The one `.kicad_pcb` that `fab` wrote under `dir`: `None` when there is none, and a panic
+/// that lists them when there are several (the gate would not know which board to judge).
+fn find_pcb(dir: &Path) -> Option<PathBuf> {
+    let mut found = Vec::new();
+    find_pcbs(dir, &mut found);
+    assert!(
+        found.len() <= 1,
+        "fab wrote {} boards, and the gate judges exactly one: {found:?}",
+        found.len()
+    );
+    found.pop()
 }

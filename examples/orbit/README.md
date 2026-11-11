@@ -326,8 +326,10 @@ on 2026-11-10.
   pin table names each pad of its footprint once; the nets of the reference board's pads
   against the pins (USB1 pads 1 to 5, BAT1's, the buttons', BOOT0's and PWR1's common
   terminal); that each catalog row records its JLCPCB page and the day, and no price or
-  stock; and the fixture build with no KiCad. **Not run:** KiCad's ERC or DRC (no
-  schematic of the board exists yet), and no part was compared with a physical sample.
+  stock; and the fixture build with no KiCad. **Not run:** KiCad's DRC (netsmith's own design
+  rules check ran in `fab`), and no part was compared with a physical sample. KiCad's ERC of
+  the board's schematic is a test of its own (see "What was not run"): it runs only where
+  `kicad-cli` is found, and skips elsewhere.
 
 ### The five ICs (`src/`, `catalogs/`, `kicad.toml`, `libs/orbit_ics.pretty/`)
 
@@ -453,7 +455,7 @@ with no error and no warning; what the build prints are notes (below).
   3.3 V +/- 5% (the schematic's net name; the window is a stated requirement). The regulator's
   output is not stated but derived: `BuckBoost` holds `vout == vref * (1 + R7 / R8)` with the
   part's `vref` (500 mV +/- 1%, TPS63802 datasheet page 6) and ORBIT's 560 kohm and 100 kohm at
-  1%, which is 3.212 V to 3.390 V, inside the window; a wrong divider stops the build (test).
+  1%, which is 3.212 V to 3.391 V, inside the window; a wrong divider stops the build (test).
   The charger's `.rprog` is 2 kohm and `.charge_current == 1000V / .rprog` is 500 mA (datasheet
   section 5.1.2). The `+BATT` rail has no voltage: ORBIT names no cell.
 
@@ -566,15 +568,18 @@ order of declaration: ORBIT's USB1 is J1 here, its J1 is J3, its U10 is Y1), so
 `reference/designators.toml` has one line for each of the 48 parts of the circuit, paired by value,
 pad count and nets, and a test (`the_parity_checkers_designator_map_is_the_designs_own`) holds it
 against the design's own designators. H1 to H4 have no line: the checker judges a plated mounting
-hole as a hole, by its place and drill (next section), and the logo has no pad.
+hole as a hole, by its place, drill, plating, pad size and net (next section), and the logo has no
+pad.
 
 **Plated holes.** Their H1 to H4 are `MountingHole_*_Pad_Via` footprints: a plated drilled pad
 with a ring of eight vias, all pads numbered 1. The table has each as a `[[hole]]` with
 `plated = true` and as a part. The checker used to judge such a part by every pad, so the ring of
 vias, which the owner does not require, would have failed it; it now judges a plated hole as a
-hole (the same place and drill, tolerance 0.05 mm) and not as a part, as it does a non-plated one
-(`crates/netsmith/src/parity.rs`, a test in `orbit_parity.rs`: a copy of their board with no vias
-passes, a hole moved by 0.1 mm or with another drill fails).
+hole and not as a part, as it does a non-plated one: the same place and drill (0.05 mm), the same
+plating, the same pad (size 0.05 mm; theirs are 5 mm and 4.4 mm, twice the drill) and the same net
+(none), and not the ring of vias (`crates/netsmith/src/parity.rs`, tests in `orbit_parity.rs`: a
+copy of their board with no vias passes; a hole moved by 0.1 mm, with another drill, with a
+2.6 mm pad, or drawn as the standard non-plated `MountingHole` does, fails).
 
 **The overlay** `reference/parity-overlay.svg` is a generated file: both boards at one scale,
 theirs in blue and netsmith's in orange, a failing must-match item in red with its offset. Make

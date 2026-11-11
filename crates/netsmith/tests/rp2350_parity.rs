@@ -27,6 +27,13 @@ struct Spec {
     wider: f64,
     /// Added to the second mounting hole's x.
     hole_shift: f64,
+    /// The second mounting hole is written as KiCad's plated `MountingHole_*_Pad` family writes
+    /// it (a `thru_hole` pad), not as a non-plated `np_thru_hole` one.
+    hole_plated: bool,
+    /// The second mounting hole's pad size (its drill is 2.75).
+    hole_pad: f64,
+    /// The net of the second mounting hole's pad ("" for none).
+    hole_net: &'static str,
     /// Added to J2's x.
     j2_shift: f64,
     /// Added to J1's x.
@@ -54,6 +61,9 @@ impl Default for Spec {
             origin: (100.0, 50.0),
             wider: 0.0,
             hole_shift: 0.0,
+            hole_plated: false,
+            hole_pad: 2.75,
+            hole_net: "",
             j2_shift: 0.0,
             j1_shift: 0.0,
             sw1_rotation: 0.0,
@@ -211,11 +221,23 @@ fn pcb(spec: &Spec) -> String {
     s.push_str(&arc(ox + r, oy + r, r, 2));
 
     for (name, x) in [("MH1", 3.0), ("MH2", 37.0 + spec.hole_shift)] {
+        let second = name == "MH2";
+        let (library, kind) = if second && spec.hole_plated {
+            ("MountingHole_2.75mm_Pad", "thru_hole")
+        } else {
+            ("Hole", "np_thru_hole")
+        };
+        let pad = if second { spec.hole_pad } else { 2.75 };
+        let net = if second && !spec.hole_net.is_empty() {
+            net(spec, spec.hole_net)
+        } else {
+            String::new()
+        };
         s.push_str(&format!(
-            "\t(footprint \"Lib:Hole\"\n\t\t(layer \"F.Cu\")\n\t\t(at {} {})\n\t\t\
+            "\t(footprint \"Lib:{library}\"\n\t\t(layer \"F.Cu\")\n\t\t(at {} {})\n\t\t\
              (property \"Reference\" \"{name}\" (at 0 0 0) (layer \"F.SilkS\"))\n\t\t\
-             (pad \"\" np_thru_hole circle (at 0 0) (size 2.75 2.75) (drill 2.75) \
-             (layers \"*.Cu\"))\n\t)\n",
+             (pad \"\" {kind} circle (at 0 0) (size {pad} {pad}) (drill 2.75) \
+             (layers \"*.Cu\"){net})\n\t)\n",
             ox + x,
             oy + 3.0
         ));
@@ -408,6 +430,67 @@ fn a_mounting_hole_that_moved_by_a_tenth_fails() {
     fails(&report, "hole MH2");
     assert_eq!(item(&report, "hole MH1").verdict, Verdict::Ok);
     assert!((item(&report, "hole MH2").dx.unwrap() - 0.1).abs() < 1e-6);
+}
+
+/// A hole is judged by more than its place and drill: whether it is plated, its pad's size and
+/// its net. The reference's holes are non-plated 2.75 mm pads on no net.
+#[test]
+fn a_hole_that_is_plated_or_has_another_pad_or_net_fails() {
+    // The board's second hole is a plated pad of the same drill and size: not the same hole.
+    let report = run(&Spec {
+        hole_plated: true,
+        ..Spec::default()
+    });
+    fails(&report, "hole MH2");
+    assert!(
+        item(&report, "hole MH2").note.contains("plated"),
+        "{}",
+        report.text()
+    );
+    assert_eq!(item(&report, "hole MH1").verdict, Verdict::Ok);
+
+    // The same drill with a pad of 2.9 (the reference's is 2.75): a size difference.
+    let report = run(&Spec {
+        hole_pad: 2.9,
+        ..Spec::default()
+    });
+    fails(&report, "hole MH2");
+    assert!(
+        item(&report, "hole MH2").note.contains("pad"),
+        "{}",
+        report.text()
+    );
+    // Within the tolerance of a pad's size (0.05) it passes.
+    let report = run(&Spec {
+        hole_pad: 2.79,
+        ..Spec::default()
+    });
+    assert!(report.passed(), "{}", report.text());
+
+    // A plated hole on GND in the reference: the board's must be on GND too.
+    let plated_gnd = Spec {
+        hole_plated: true,
+        hole_net: "GND",
+        ..Spec::default()
+    };
+    let plated = Spec {
+        hole_plated: true,
+        ..Spec::default()
+    };
+    let report = run_pair(&plated_gnd, &plated_gnd);
+    assert!(report.passed(), "{}", report.text());
+    let report = run_pair(&plated_gnd, &plated);
+    fails(&report, "hole MH2");
+    assert!(
+        item(&report, "hole MH2").note.contains("net"),
+        "{}",
+        report.text()
+    );
+    let report = run_pair(&plated, &plated_gnd);
+    fails(&report, "hole MH2");
+    // Plated and unplated against each other, in both directions.
+    let report = run_pair(&plated, &Spec::default());
+    fails(&report, "hole MH2");
 }
 
 #[test]
@@ -947,6 +1030,69 @@ fn one_plain_name_and_one_made_up_pass_only_where_other_pads_vouch_for_the_net()
     );
 }
 
+/// A footprint of the reference that the map does not name: `R9`, one pad on `net`.
+fn r9(net: &str) -> String {
+    format!(
+        "\t(footprint \"Lib:R9\"\n\t\t(layer \"F.Cu\")\n\t\t(at 105 52 0)\n\t\t\
+         (property \"Reference\" \"R9\" (at 0 0 0) (layer \"F.SilkS\"))\n\t\t\
+         (pad \"1\" smd rect (at 0 0 0) (size 1 1) (layers \"F.Cu\") (net \"{net}\"))\n\t)\n"
+    )
+}
+
+const BEFORE_U1: &str = "\t(footprint \"Lib:U1\"";
+
+/// The reference's table with R9 in it, and the map of every part but R9.
+fn run_without_r9(reference: &Spec, board: &Spec) -> ParityReport {
+    let table = placements_toml(&pcb(reference), "synthetic.kicad_pcb").unwrap();
+    let parts = Board::from_table(&table).unwrap();
+    let map = DesignatorMap::parse(
+        &parts
+            .parts
+            .iter()
+            .filter(|p| p.reference != "R9")
+            .map(|p| format!("{0} = \"{0}\"\n", p.reference))
+            .collect::<String>(),
+    )
+    .unwrap();
+    check_text(&table, &pcb(board), &map, &Tolerances::default()).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// A pad with no net is not the same as a made-up name: `Net-(...)` says other pads are on the
+/// net, and a pad on a net with other pads (mapped or not) does not pass against a pad on none.
+/// Both unconnected passes.
+#[test]
+fn a_pad_that_the_reference_connects_does_not_pass_against_a_pad_with_no_net() {
+    let made_up = J2_PAD_7.replace("/ONLY", "Net-(J2-Pad7)");
+    // The reference's J2 pad 7 is on a made-up net that R9 (which the map does not name) is on.
+    let connected = edited(&[
+        (J2_PAD_7, &made_up),
+        (BEFORE_U1, &format!("{}{BEFORE_U1}", r9("Net-(J2-Pad7)"))),
+    ]);
+    let bare = edited(&[(J2_PAD_7, J2_PAD_7_BARE)]);
+    let report = run_without_r9(&connected, &bare);
+    fails(&report, "part J2 pad 7 net");
+    assert!(
+        item(&report, "part J2 pad 7 net").note.contains("connects"),
+        "{}",
+        report.text()
+    );
+
+    // And the other way: the board connects a pad that the reference leaves alone.
+    let report = run_pair(&bare, &connected);
+    fails(&report, "part J2 pad 7 net");
+
+    // Alone on its made-up net, the reference's pad is connected to nothing: it passes against
+    // a pad with no net, and so does a pad with none against another with none.
+    let alone = edited(&[(J2_PAD_7, &made_up)]);
+    let report = run_pair(&alone, &bare);
+    assert!(report.passed(), "{}", report.text());
+    let report = run_pair(&bare, &bare);
+    assert!(report.passed(), "{}", report.text());
+    // The same net with its other pad on both sides passes (a made-up name against a made-up one).
+    let report = run_without_r9(&connected, &connected);
+    assert!(report.passed(), "{}", report.text());
+}
+
 #[test]
 fn a_table_that_is_truncated_or_has_no_must_match_is_an_error() {
     let text = table();
@@ -1006,7 +1152,7 @@ fn the_report_says_what_each_verdict_compared() {
     let text = run(&Spec::default()).text();
     for phrase in [
         "compared  outline: the bounding box, the corner radius, the number of Edge.Cuts lines and arcs and each arc's radius",
-        "compared  hole: place and drill",
+        "compared  hole: place, drill, plated or not, the pad's size, the pad's net",
         "compared  part: position, rotation, layer",
         "compared  pad: number, centre, size and angle in the footprint's frame, shape, the extent of a custom pad's polygon, drill (both sides of a slot), type",
         "compared  net: each pad's own net, by its name or, where a name is made up, by the pads on it",
@@ -1105,7 +1251,7 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
         project: project(),
         tag: "rp2350-parity-fab",
         parts: 43,
-        min_ok: 200,
+        min_ok: 225,
         route_seconds: ROUTE_SECONDS,
         regenerate: "from examples/rp2350_minimal run `netsmith fab --locked`, then\n  cargo run -p \
                      netsmith --example parity -- fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \

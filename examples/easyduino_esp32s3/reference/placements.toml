@@ -9,9 +9,10 @@
 #
 # [outline]: the bounding box of the Edge.Cuts lines and arcs (the arcs' extent included) and,
 #   when every arc has one radius, the corner radius; both are worked out from the drawn
-#   points and rounded to 0.1 micrometre. [[hole]]: a non-plated pad (np_thru_hole),
-#   its place on the board and its drill diameter. [[part]]: every footprint, sorted by
-#   reference: its name, layer, position and rotation (0 when the file has none). A pad's x
+#   points and rounded to 0.1 micrometre. [[hole]]: a non-plated pad (np_thru_hole), or the
+#   drilled pad of a plated MountingHole footprint, its place on the board, its drill diameter,
+#   its pad's size [width, height] and its net (left out for none). [[part]]: every footprint,
+#   sorted by reference: its name, layer, position and rotation (0 when the file has none). A pad's x
 #   and y are in the footprint's own frame (before its rotation); `angle` is the pad's own
 #   angle as the file writes it (it includes the footprint's rotation) and is left out when the
 #   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
@@ -48,6 +49,7 @@ reference = "J1"
 x = 130.19
 y = 117.32
 drill = 0.65
+size = [0.65, 0.65]
 
 [[hole]]
 must_match = true
@@ -55,6 +57,7 @@ reference = "J1"
 x = 135.97
 y = 117.32
 drill = 0.65
+size = [0.65, 0.65]
 
 [[hole]]
 must_match = true
@@ -62,6 +65,7 @@ reference = "J2"
 x = 144.06
 y = 117.32
 drill = 0.65
+size = [0.65, 0.65]
 
 [[hole]]
 must_match = true
@@ -69,6 +73,7 @@ reference = "J2"
 x = 149.84
 y = 117.32
 drill = 0.65
+size = [0.65, 0.65]
 
 [[part]]
 reference = "C1"
