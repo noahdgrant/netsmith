@@ -1,0 +1,19 @@
+version = 1
+
+# The layout file keeps a solution, never a requirement (docs/LANGUAGE.md, "The layout file").
+# Everything the board must match of Easyduino's is in `main.physical.nsm`; the placer puts every
+# other part. It does not find a place for the module on its own once the buttons stand where
+# Easyduino's do (it puts the module on the back face or over the header pads, and `fab` stops
+# with the courtyards in each other), so the module is recorded here and locked: inside the two
+# header rows, above the buttons, on the top face, not turned. Easyduino's own module sits 7 mm
+# higher with its antenna 5.9 mm past the top edge of the board; this one is wholly on the board,
+# so no overhang is stated. The module need not match, and nothing is gated on this entry.
+[EasyduinoEsp32s3]
+seed = 0
+
+[EasyduinoEsp32s3.parts."module"]
+at = [12.96, 18.5]    # the footprint's origin, mm from the outline's top left corner
+rotation = 0
+side = "top"
+lock = true
+source = "hand"
