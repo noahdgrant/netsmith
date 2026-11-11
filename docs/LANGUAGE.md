@@ -1110,6 +1110,21 @@ part Pad {
     }
 }
 
+/// A linear regulator that makes a rail from another. Illustrative; not a real part.
+part Regulator {
+    .vin: Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+    dc linear_regulator .vin .vout
+
+    pins {
+        .vin.pos  power "IN"  "1"
+        .vin.neg  power "GND" "2"
+        .vout.pos power "OUT" "3"
+    }
+}
+
 /// A USB receptacle that the bus goes through.
 part Receptacle {
     .usb: Usb2
@@ -1234,7 +1249,7 @@ error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `
    |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A pull to a rail is no use. A series part whose far end is a rail of the board, the supply `pos` or the return `neg`, only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
+A pull to a rail that nothing on the board sources is no use. A series part whose far end is the return `neg`, or the `pos` of a rail of the board that nothing on the board sources (the supply, which comes from outside the board), only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A rail that something on the board sources is not the supply, and a path to it is a use, as it was before: the rail is made or fed on the board, so the interface's pin feeds the board. A rail is sourced on the board when its `pos` net holds the output rail of a `dc linear_regulator` or `dc switching_regulator`, the rail of a `dc source`, or a pin whose table says it is an `output` (a charger's). A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
 
 ```nsm evaluate
 import src::processor::{Processor, Receptacle}
@@ -1256,8 +1271,47 @@ board Pulled {
     unused .processor.usb
 }
 ```
+The same pull to a rail that a regulator on the board makes is a use: `.vbus` is the regulator's output, so the pin feeds the board.
 
-A series part that leads only to test pads, to a rail (a pull-up or a pull-down proves nothing), or to another interface that is stated unused, brings no use. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
+```nsm fails
+import src::processor::{Processor, Receptacle, Regulator}
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Fed {
+    .supply: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+    }
+    .vbus: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .regulator: Regulator
+    .processor: Processor
+    .jack: Receptacle
+    .pull_up: Resistor
+    .supply ~ .regulator.vin
+    .vbus ~ .regulator.vout
+    .vbus ~ .processor.vdd
+    .jack.usb.vbus.neg ~ .supply.neg
+    .processor.usb.dp ~> .pull_up ~> .vbus.pos
+    unused .processor.usb
+}
+```
+
+```text
+error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to `regulator.vout.pos` (net `3V3`), but `processor.usb` is stated `unused` at main.nsm:25: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:24:5
+   |
+24 |     .processor.usb.dp ~> .pull_up ~> .vbus.pos
+   |     ^^^^^^^^^^^^^^^^^
+```
+
+
+A series part that leads only to test pads, to a rail nothing on the board sources (a pull-up or a pull-down proves nothing), or to another interface that is stated unused, brings no use. Only a `Resistor`, a `Fuse` and a `FerriteBead` are series parts for this rule; a capacitor, an inductor, a diode or a switch in series is not followed (it is not yet decided whether one is a use).
 
 Rules.
 
