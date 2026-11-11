@@ -409,18 +409,43 @@ part UsbC2 provides Connector {
     .package: Package
 }
 
-/// The receptacle of a device that takes power from a USB Type-C host: sixteen contacts for USB
-/// 2.0, as `UsbC2` has them, with `.vbus` the supply the host gives (`pos` on VBUS, `neg` on
-/// GND), taken by the DC analysis as a source over the range the design states for `.voltage`,
-/// as `UsbCPower` does. `.cc1` and `.cc2` are the configuration channel contacts, `.dp` and
-/// `.dm` the data pair (the two rows are one pin each, as in `UsbC2`), `.sbu1` and `.sbu2` the
-/// sideband contacts, left open, and `.shell` the shield. It carries no resistors: `UsbCSink`
-/// adds the Rd that tells the host the device wants power, and is what a board uses.
-part UsbCSinkReceptacle provides Connector {
+/// The receptacle of a device that takes power from a USB Type-C host: what `UsbCSink` relies on,
+/// and no more. It is a generic (ADR 0068), so the receptacle is a part that provides it:
+/// `UsbCReceptacle16P` is the standard one, and a project adds the receptacle of its own maker
+/// as a part that says `provides UsbCSinkReceptacle`, with its own pads, footprint and catalog.
+/// It has sixteen contacts for USB 2.0, as `UsbC2` has them, with `.vbus` the supply the host
+/// gives (`pos` on VBUS, `neg` on GND), taken by the DC analysis as a source over the range the
+/// design states for `.voltage`, as `UsbCPower` does. `.cc1` and `.cc2` are the configuration
+/// channel contacts, `.dp` and `.dm` the data pair, `.sbu1` and `.sbu2` the sideband contacts,
+/// left open, and `.shell` the shield. It carries no resistors: `UsbCSink` adds the Rd that tells
+/// the host the device wants power, and is what a board uses. `.mpn` is the maker's number, which
+/// a project's receptacle lists as a column of its catalog.
+generic UsbCSinkReceptacle {
     .vbus: Rail
     dc source .vbus
 
     pins {
+        .vbus.pos power
+        .vbus.neg power
+        .dp       bidirectional
+        .dm       bidirectional
+        .cc1      passive
+        .cc2      passive
+        .sbu1     passive
+        .sbu2     passive
+        .shell    passive
+    }
+
+    .package: Package
+    .mpn: String
+}
+
+/// The standard receptacle of `UsbCSink`: sixteen contacts for USB 2.0 in the footprint of the
+/// GCT USB4105 (`"GCT_USB4105_16P"`, the default) or of the HRO TYPE-C-31-M-12
+/// (`"HRO_TYPE-C-31-M-12"`), the same pads in both as in `UsbC2`. A project's own receptacle is
+/// a part of its own that provides `UsbCSinkReceptacle`.
+part UsbCReceptacle16P provides UsbCSinkReceptacle, Connector {
+    pins "GCT_USB4105_16P" {
         .vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"
         .vbus.neg power         "GND"   "A1" "B1" "A12" "B12"
         .dp       bidirectional "D+"    "A6" "B6"
@@ -431,8 +456,17 @@ part UsbCSinkReceptacle provides Connector {
         .sbu2     passive       "SBU2"  "B8"
         .shell    passive       "SHELL" "S1"
     }
-
-    .package: Package
+    pins "HRO_TYPE-C-31-M-12" {
+        .vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"
+        .vbus.neg power         "GND"   "A1" "B1" "A12" "B12"
+        .dp       bidirectional "D+"    "A6" "B6"
+        .dm       bidirectional "D-"    "A7" "B7"
+        .cc1      passive       "CC1"   "A5"
+        .cc2      passive       "CC2"   "B5"
+        .sbu1     passive       "SBU1"  "A8"
+        .sbu2     passive       "SBU2"  "B8"
+        .shell    passive       "SHELL" "S1"
+    }
 }
 
 /// A USB Type-C receptacle for a device that takes its power from a host (a sink), with the
@@ -452,13 +486,20 @@ module UsbCSink {
     .vbus: Rail
     .dp: Pin
     .dm: Pin
-    /// The receptacle's package: the name of a footprint row, such as `"GCT_USB4105_16P"`.
-    .package: Package optional
+    /// The receptacle's package: the name of a footprint row, such as `"GCT_USB4105_16P"`, which
+    /// is the default. A package the standard receptacle has no pin table for takes a provider
+    /// of the project's.
+    .package: Package
+    .package ?= "GCT_USB4105_16P"
     /// The package of the two Rd resistors, a text such as `"0402"`.
     .rd_package: Package optional
 
+    /// The maker's number of the receptacle, to take a provider other than the standard one.
+    .receptacle_mpn: String optional
+
     .receptacle: UsbCSinkReceptacle
     .receptacle.package == .package
+    .receptacle.mpn == .receptacle_mpn
     .cc1_rd: Resistor { .resistance &= 5.1kohm +/- 1% }
     .cc2_rd: Resistor { .resistance &= 5.1kohm +/- 1% }
     .cc1_rd.package == .rd_package

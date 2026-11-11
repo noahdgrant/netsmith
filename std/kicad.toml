@@ -617,7 +617,7 @@ footprint = "netsmith:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 SHELL = "SHIELD"
 
 [[part]]
-kind = "UsbCSinkReceptacle"
+kind = "UsbCReceptacle16P"
 package = "GCT_USB4105_16P"
 default = true
 symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
@@ -627,7 +627,7 @@ footprint = "netsmith:USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal"
 SHELL = "SHIELD"
 
 [[part]]
-kind = "UsbCSinkReceptacle"
+kind = "UsbCReceptacle16P"
 package = "HRO_TYPE-C-31-M-12"
 symbol = "Connector:USB_C_Receptacle_USB2.0_16P"
 footprint = "netsmith:USB_C_Receptacle_HRO_TYPE-C-31-M-12"

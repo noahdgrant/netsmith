@@ -40,14 +40,14 @@ physical for EasyduinoEsp32s3 {
     // footprint draws no `F.Fab` outline): x -4.82 to 4.82 and y -4.7 to 2.2 of the footprint,
     // so its centre is 1.25 mm above the origin: (5.975, 61.2736 - 1.25) and (19.845, 61.2736 -
     // 1.25).
-    .usb_uart.connector.place.x &= 5.975mm
-    .usb_uart.connector.place.y &= 60.0236mm
-    .usb_uart.connector.place.rotation &= 0
-    .usb_uart.connector.place.side &= "top"
-    .usb_native.connector.place.x &= 19.845mm
-    .usb_native.connector.place.y &= 60.0236mm
-    .usb_native.connector.place.rotation &= 0
-    .usb_native.connector.place.side &= "top"
+    .usb_uart.receptacle.place.x &= 5.975mm
+    .usb_uart.receptacle.place.y &= 60.0236mm
+    .usb_uart.receptacle.place.rotation &= 0
+    .usb_uart.receptacle.place.side &= "top"
+    .usb_native.receptacle.place.x &= 19.845mm
+    .usb_native.receptacle.place.y &= 60.0236mm
+    .usb_native.receptacle.place.rotation &= 0
+    .usb_native.receptacle.place.side &= "top"
 
     // SW1 (RESET) at (136.3, 93.2) not turned, SW2 (BOOT) at (143.9, 93.2) turned 180. The
     // body (`F.Fab`) is centred on the origin.

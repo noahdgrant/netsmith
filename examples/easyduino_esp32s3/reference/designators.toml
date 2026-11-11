@@ -17,8 +17,8 @@
 # README says is arbitrary where the nets are the same.
 
 # The must-match parts: the receptacles, the buttons and the headers.
-J1 = "J1"       # USB-C of the bridge, `.usb_uart.connector`
-J2 = "J2"       # USB-C of the module's own USB, `.usb_native.connector`
+J1 = "J1"       # USB-C of the bridge, `.usb_uart.receptacle`
+J2 = "J2"       # USB-C of the module's own USB, `.usb_native.receptacle`
 SW1 = "SW1"     # RESET, `.reset`
 SW2 = "SW2"     # BOOT, `.boot`
 U2 = "J3"       # the two 22-pin headers, `.headers`
@@ -38,13 +38,13 @@ D4 = "D4"       # GPIO38 LED, `.user_led`
 
 # The resistors.
 R1 = "R9"       # EN pull-up, `.en_pullup.resistor`
-R2 = "R1"       # CC1 of J1, `.usb_uart.cc1_pulldown`
-R3 = "R2"       # CC2 of J1, `.usb_uart.cc2_pulldown`
+R2 = "R1"       # CC1 of J1, `.usb_uart.cc1_rd`
+R3 = "R2"       # CC2 of J1, `.usb_uart.cc2_rd`
 R4 = "R7"       # DTR to Q1, `.auto_reset.r_dtr`
 R5 = "R8"       # RTS to Q2, `.auto_reset.r_rts`
 R6 = "R10"      # power LED, `.power_led_resistor`
-R7 = "R3"       # CC1 of J2, `.usb_native.cc1_pulldown`
-R8 = "R4"       # CC2 of J2, `.usb_native.cc2_pulldown`
+R7 = "R3"       # CC1 of J2, `.usb_native.cc1_rd`
+R8 = "R4"       # CC2 of J2, `.usb_native.cc2_rd`
 R9 = "R11"      # GPIO38 LED, `.user_led_resistor`
 R10 = "R6"      # SUSPEND pull-down, `.suspend_pulldown.resistor`
 R11 = "R5"      # bridge reset pull-up, `.bridge_reset_pullup.resistor`

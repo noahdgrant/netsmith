@@ -9,21 +9,22 @@
 //! receptacle joins the two inside (the plug's orientation picks one of them): `.vbus` has four
 //! pads, `.gnd` four, `.dp` two (A6, B6) and `.dm` two (A7, B7). The shell is the four plated legs,
 //! all numbered `S1` (the drawing gives them no number and the board's footprint calls them S1),
-//! one pin. The board's `.shield` is its ground. `.vbus` is the rail of the VBUS and GND contacts: the
+//! one pin. The board's `.shell` is its ground. `.vbus` is the rail of the VBUS and GND contacts: the
 //! contacts are the rail's `pos` and `neg`, so a board can state the supply's voltage and the
 //! DC analysis can start from it (the host is the receptacle's source).
+//!
+//! It is a provider of the standard generic `UsbCSinkReceptacle` (ADR 0068), so the board uses the
+//! standard `UsbCSink` module and takes this receptacle for it by stating the package `"SMD"` and
+//! the number: the standard receptacle has no pin table for that package.
 
-import std::parts::connector::Connector
-import std::sources::Rail
+import std::parts::connector::{Connector, UsbCSinkReceptacle}
 
-/// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell: `.vbus` (a rail: `.vbus.pos`
-/// and `.vbus.neg`), `.cc1`, `.cc2`, `.dp`, `.dm`, `.sbu1`, `.sbu2` and `.shield`. As `UsbCPower`
-/// does, it gives the supply of a host that plugs in: the DC analysis takes `.vbus` as a source,
-/// over the range the design states for `.voltage`.
-part ShouhanTypeC16Pin provides Connector {
-    .vbus: Rail
-    dc source .vbus
-
+/// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell, the Shouhan one that
+/// `UsbCSink` takes for the package `"SMD"`. The generic gives it `.vbus` (a rail: `.vbus.pos`
+/// and `.vbus.neg`, taken by the DC analysis as a source over the range the design states for
+/// `.voltage`), `.package` and `.mpn`; the pins are `.cc1`, `.cc2`, `.dp`, `.dm`, `.sbu1`, `.sbu2`
+/// and the shell, whose row is `.shield` (the maker's name) and which the generic calls `.shell`.
+part ShouhanTypeC16Pin provides UsbCSinkReceptacle, Connector {
     pins "SMD" {
         //  pin          kind           name       pads
         .vbus.pos power         "VBUS"     "A4" "A9" "B4" "B9"
@@ -36,8 +37,7 @@ part ShouhanTypeC16Pin provides Connector {
         .sbu2   passive       "SBU2"     "B8"
         .shield passive       "SHIELD"   "S1"
     }
+    .shell ~ .shield
 
-    .mpn: String
-    .package: Package
     catalog shouhan_type_c_16pin by .mpn { .mpn, .package }
 }
