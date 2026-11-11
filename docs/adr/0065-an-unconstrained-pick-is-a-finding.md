@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # An unconstrained pick is a finding, and `required` goes

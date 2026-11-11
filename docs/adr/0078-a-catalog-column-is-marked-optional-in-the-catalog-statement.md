@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A catalog column is marked optional in the catalog statement

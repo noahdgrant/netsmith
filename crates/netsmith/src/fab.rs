@@ -1619,7 +1619,7 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// should place but that has no part number is kept without one, so the packaging step can
 /// refuse it by name.
 ///
-/// Why a consigned part looks like this (ADR 0084, provisional; the owner accepted its seven
+/// Why a consigned part looks like this (ADR 0084; the owner accepted its seven
 /// choices as built on 2026-11-11). `Fab` is "the board house
 /// buys it" and `Consigned` is "the board house places it, and the owner supplies it"; they
 /// share everything but the supplier. Both are in `cpl.csv` and in this bill. `Fab` needs an

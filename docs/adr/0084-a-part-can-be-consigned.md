@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A part can be consigned: the owner ships it to the board house

@@ -1944,7 +1944,7 @@ Every part has a field `.assembly`, of the type `AssemblyMode`, that it does not
 | `AssemblyMode::Fab` | The board house places and solders it: a BOM line and a placement row. |
 | `AssemblyMode::Hand` | Soldered by hand: not in the BOM or the placement file, and listed in `fab-notes.txt` as `hand-solder:`. |
 | `AssemblyMode::None` | Not fitted by anyone, such as a hole or a fiducial: in neither file, and listed in `fab-notes.txt` as `not fitted`. |
-| `AssemblyMode::Consigned` | The board house places and solders it, and you ship the part to the board house: a BOM line and a placement row, no supplier part number needed, and listed in `fab-notes.txt` as `consigned:` (ADR 0084, provisional). See Consigned parts, below. |
+| `AssemblyMode::Consigned` | The board house places and solders it, and you ship the part to the board house: a BOM line and a placement row, no supplier part number needed, and listed in `fab-notes.txt` as `consigned:` (ADR 0084). See Consigned parts, below. |
 
 Where the value comes from, weakest first (ADR 0028 amends ADR 0024):
 
@@ -4081,7 +4081,7 @@ error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
 
 #### An optional column
 
-A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078, provisional), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, `rms_current` and a TVS diode's `breakdown_voltage`, and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
+A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, `rms_current` and a TVS diode's `breakdown_voltage`, and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
 
 ```nsm module=src::zfuse
 /// A fuse with an optional surge rating. Illustrative; not a real part.

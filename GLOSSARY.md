@@ -211,7 +211,7 @@ Who puts a part on the board: the field `.assembly` of every part, of the type `
 _Avoid_: Population, fitting, DNP
 
 **Consigned part**:
-A part that the board house places and solders, and that the owner buys and ships to it (JLCPCB's consigned parts service). Stated as `AssemblyMode::Consigned` (`.assembly &= AssemblyMode::Consigned`, a module's `.assembly_mode`, the word `consigned` in a catalog row's `assembly` column or the manifest's `assembly`). It is in `cpl.csv` and in `bom.csv` with its manufacturer's number as the comment and the LCSC cell empty, needs no `lcsc`, is listed in `fab-notes.txt` under `consigned:`, and is printed as `consigned` by `build`. The stock note and the unresolved generic warning do not apply to it, since the owner supplies it (ADR 0084, provisional).
+A part that the board house places and solders, and that the owner buys and ships to it (JLCPCB's consigned parts service). Stated as `AssemblyMode::Consigned` (`.assembly &= AssemblyMode::Consigned`, a module's `.assembly_mode`, the word `consigned` in a catalog row's `assembly` column or the manifest's `assembly`). It is in `cpl.csv` and in `bom.csv` with its manufacturer's number as the comment and the LCSC cell empty, needs no `lcsc`, is listed in `fab-notes.txt` under `consigned:`, and is printed as `consigned` by `build`. The stock note and the unresolved generic warning do not apply to it, since the owner supplies it (ADR 0084).
 _Avoid_: Customer-supplied part, owner-supplied part, free-issue part, kitted part, supplied part (use _consigned_, as the board house does); and, for the mode, a flag on a `Fab` part
 
 **Enum**:
@@ -578,7 +578,7 @@ An interface of a part or a module that the board states nothing on it uses, `un
 _Avoid_: Disabled function, skipped port, ignored interface, `no_connect` interface
 
 **Optional column**:
-A column of a part's `catalog` statement that ends with `optional`, `catalog tvs { ..., .breakdown_voltage optional }`, in a standard part or a project's own (ADR 0078, provisional). A file of the catalog may leave it out and a row may leave its cell empty; such a row is offered to a design that says nothing about the field and is not offered to one that states it. Any column that is not marked needs a value in every row. It is the same word as in an **Optional member** and in a `pins` row, but a separate thing: a member's marker skips a check, a column's marker lets a row be empty.
+A column of a part's `catalog` statement that ends with `optional`, `catalog tvs { ..., .breakdown_voltage optional }`, in a standard part or a project's own (ADR 0078). A file of the catalog may leave it out and a row may leave its cell empty; such a row is offered to a design that says nothing about the field and is not offered to one that states it. Any column that is not marked needs a value in every row. It is the same word as in an **Optional member** and in a `pins` row, but a separate thing: a member's marker skips a check, a column's marker lets a row be empty.
 _Avoid_: Nullable column, sparse column, optional field
 
 **Closed-form check**:
