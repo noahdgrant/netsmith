@@ -43,7 +43,7 @@ pub enum BoardError {
     Constraints(Vec<String>),
     /// The requirements of the physical file, the circuit and the layout file provably cannot
     /// all hold, or a courtyard is past an edge nobody allowed: found before the placer ran
-    /// (ADR 0045 section 14, PROVISIONAL), so nothing was placed.
+    /// (ADR 0045 section 14), so nothing was placed.
     Unplaceable(Box<crate::explain::Precheck>),
     /// A net names a pad that its part's footprint does not have.
     NoPad {
@@ -95,7 +95,7 @@ impl std::fmt::Display for BoardError {
 impl std::error::Error for BoardError {}
 
 /// The refusal with the requirements of the physical file that are not met where the placer
-/// ended with the parts, and the lines that cannot all hold (PROVISIONAL, ADR 0045).
+/// ended with the parts, and the lines that cannot all hold (ADR 0045).
 /// `base` is what the layout file and the caller said, before the requirements were turned
 /// into places.
 fn explained(
@@ -267,7 +267,7 @@ impl Placed {
     }
 
     /// What face `face` of the board the part takes room on, and whether that room is its
-    /// pads (PROVISIONAL, ADR 0031): a surface-mount part takes its courtyard on its own face
+    /// pads (ADR 0031): a surface-mount part takes its courtyard on its own face
     /// only; a part with a hole takes its courtyard on both, except that a footprint which
     /// draws its courtyard on only one face's layer is judged on the other face by its pads,
     /// each grown by `clearance`, so a part on that face may stand over the rest of its
@@ -566,7 +566,7 @@ pub enum PlacementProblem {
     /// A pad is inside a keepout that forbids tracks, so no track can reach it.
     PadInKeepout { refdes: String, keepout: String },
     /// A part is taller than the height limit of a keepout it stands under (ADR 0045,
-    /// "Height limits", PROVISIONAL).
+    /// "Height limits").
     TooTall {
         refdes: String,
         path: String,
@@ -651,8 +651,8 @@ fn pad_text(number: &str) -> String {
 /// the rest of the checks measure.
 const HEIGHT_TOLERANCE: f64 = 0.0005;
 
-/// A part under a height limit that states no height (ADR 0045, "Height limits",
-/// PROVISIONAL): whether it fits is unknown, which is not a pass.
+/// A part under a height limit that states no height (ADR 0045, "Height limits"): whether it
+/// fits is unknown, which is not a pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeightUnchecked {
     pub refdes: String,
@@ -1021,7 +1021,7 @@ pub struct BoardKeepout {
     pub copper: bool,
     pub parts: bool,
     /// The tallest a part may stand in it, in mm, on the faces in `layers` (ADR 0045,
-    /// "Height limits", PROVISIONAL).
+    /// "Height limits").
     pub max_height: Option<f64>,
     /// Drawn in the editor and kept in the layout file, not stated in the source (ADR 0029).
     pub drawn: bool,
@@ -1842,7 +1842,7 @@ impl Board {
     }
 
     /// The requirements of `design`'s physical file that the parts are not at, and the lines
-    /// that cannot all hold where that is proved (PROVISIONAL, ADR 0045): what to say beside
+    /// that cannot all hold where that is proved (ADR 0045): what to say beside
     /// the faults [`Board::check_placement`] finds when the placer could not meet them.
     /// `options` is what the layout file and the caller said ([`place_options`]). `None` when
     /// the design states no requirement or all are met.
@@ -1879,7 +1879,7 @@ impl Board {
     }
 
     /// The through-hole parts whose pin protrusion the design states
-    /// (ADR 0045 section 15, PROVISIONAL), each with the parts that lie over them. The
+    /// (ADR 0045 section 15), each with the parts that lie over them. The
     /// manufacturing step they stand for is the person's to do.
     pub fn trims(&self) -> Vec<Trim> {
         let zones = self.height_zones();
@@ -1957,7 +1957,7 @@ impl Board {
     }
 
     /// The parts that stand under a height limit and state no height, so that whether they
-    /// fit is not known (ADR 0045, "Height limits", PROVISIONAL). Not a pass: each is named,
+    /// fit is not known (ADR 0045, "Height limits"). Not a pass: each is named,
     /// with the keepout and its limit. A label has no body and is left out.
     pub fn heights_unchecked(&self) -> Vec<HeightUnchecked> {
         let keepouts = self.keepout_areas();

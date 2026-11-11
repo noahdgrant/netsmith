@@ -421,6 +421,7 @@ part UsbC2 provides Connector {
 /// the host the device wants power, and is what a board uses. `.mpn` is the maker's number, which
 /// a project's receptacle lists as a column of its catalog.
 generic UsbCSinkReceptacle {
+    .designator &= "J"
     .vbus: Rail
     dc source .vbus
 

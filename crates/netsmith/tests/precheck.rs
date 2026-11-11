@@ -1,4 +1,4 @@
-//! The requirements are proved before the placer starts (ADR 0045 section 14, PROVISIONAL):
+//! The requirements are proved before the placer starts (ADR 0045 section 14):
 //! lines that cannot all hold, a courtyard past an edge nobody stated, a part bigger than the
 //! outline in every turn. `fab` and `build` say so at once, naming `file:line`, with no
 //! placement attempt; a board the placer can place is not refused. Every board here is

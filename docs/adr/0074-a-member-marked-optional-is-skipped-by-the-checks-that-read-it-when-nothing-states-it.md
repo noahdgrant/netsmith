@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A member marked optional is skipped by the checks that read it when nothing states it
 
-The owner chose the marker, its word and its place (`optional` after the type). An agent wrote the meaning of "stated", what the checker refuses, and where the skip is made, each with the alternatives it rejected. Tests 1 (a word in members that std and projects write) and 3 (a default, a solver rule, a conditional). Cut from `git show 8023ee9:docs/adr/0074-a-member-marked-optional-is-skipped-by-the-checks-that-read-it-when-nothing-states-it.md`.
+The owner chose the marker, its word and its place (`optional` after the type). An agent wrote the meaning of "stated", what the checker refuses, and where the skip is made, each with the alternatives it rejected. Accepted as built by the owner, 2026-11-11, with the three meanings of `optional` and the three rules of "stated". Tests 1 (a word in members that std and projects write) and 3 (a default, a solver rule, a conditional). Cut from `git show 8023ee9:docs/adr/0074-a-member-marked-optional-is-skipped-by-the-checks-that-read-it-when-nothing-states-it.md`.
 
 ## The problem
 
@@ -22,7 +22,7 @@ A member declaration may end with the word `optional` after its type, on the sam
 
 The word is a modifier of a declaration, not a statement and not a type. The parser reads it as a plain word, so a member, a type or a variable may still be called `optional`.
 
-"Stated" is a test on what is written, as ADR 0069 made it, and not on the solved value. A member is stated when its class (the members `~` joins to it) has one that an `&=` names or a `?=` default was applied to; that an equation has alone on its left when the right side reads no unstated optional member; or that a bound (`>=`, `<=`) holds against numbers alone. The three rules the owner is asked to confirm:
+"Stated" is a test on what is written, as ADR 0069 made it, and not on the solved value. A member is stated when its class (the members `~` joins to it) has one that an `&=` names or a `?=` default was applied to; that an equation has alone on its left when the right side reads no unstated optional member; or that a bound (`>=`, `<=`) holds against numbers alone. The three rules:
 
 1. A bound against numbers alone states the member. A bound against another member is a check.
 2. The library's own relation does not state it (`.dcr <= .buck.max_dcr` has the member alone on one side; counting it would make every optional member stated by the relation that reads it).
@@ -50,5 +50,4 @@ The checker refuses `optional` on a pin, on a member whose type is an interface,
 
 ## Left open
 
-- Whether other members of `Buck` and of std should be marked (`min_inductance` and the rest an IC may leave open). It is the owner's, member by member.
-- Whether the three rules of "stated" are right (the owner's question): a bound against numbers states the member; the library's own relation does not; the statement travels across `~`.
+Nothing. Accepted as built: `Buck` and the std members that carry `optional` now are the ones marked, and a further member is marked one at a time, when a datasheet states it only sometimes; and the three rules of "stated" (a bound against numbers states the member; the library's own relation does not; the statement travels across `~`).

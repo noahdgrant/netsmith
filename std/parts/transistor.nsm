@@ -46,7 +46,7 @@
 /// comparison is `>=` over the whole range of the drive: 5 V +/- 5 % does not meet a
 /// guarantee at 5 V. The figure is at 25 C and is not derated. The name `.on_resistance_vgs`
 /// (a magnitude as `.gate_source_voltage` is), the relation being the part's, and the solver
-/// rule above are the owner's to confirm.
+/// rule above are accepted as built (the owner, 2026-11-11).
 generic NMosfet {
     .designator &= "Q"
 

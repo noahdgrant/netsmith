@@ -17,7 +17,7 @@ enum AssemblyMode {
     None,
     /// The board house places and solders the part, and the owner ships the part to the board
     /// house: it is a line in the BOM and in the placement file, needs no supplier part number,
-    /// and the fab notes list it as consigned (ADR 0084, provisional).
+    /// and the fab notes list it as consigned (ADR 0084).
     Consigned,
 }
 

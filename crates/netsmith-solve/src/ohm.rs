@@ -27,7 +27,7 @@
 //! no voltage, a rail whose ground is not the ground the range is measured from. Then there is
 //! no bound.
 //!
-//! # Why (ADR 0026, the amendment on the Ohm bound; PROVISIONAL)
+//! # Why (ADR 0026, the amendment on the Ohm bound)
 //!
 //! Found on a real 12 V automotive board: about twenty of its 47 notes were the drop and power
 //! relations of ten passive parts on signal nets (pull-downs, a divider, series resistors into an
@@ -67,8 +67,8 @@
 //! still builds, with fewer notes. It is the first step of the owner's draft for a full DC
 //! analysis (ADR 0076, "the cheap bound") and that bound and nothing more.
 //!
-//! **Left open.** "The assumptions that no part on a net injects a voltage outside its hull, and
-//! that a pin's own part's rails limit its swing, are the owner's to review."
+//! **Assumptions.** No part on a net injects a voltage outside its hull, and a pin's own part's
+//! rails limit its swing (`part_swing`). Accepted as built by the owner, 2026-11-11.
 
 use std::collections::HashMap;
 

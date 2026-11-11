@@ -88,13 +88,14 @@
 //! lost against `required`: a module author can no longer force the board to state a value
 //! that no check reads; the remedy is the check, which is what the value was for.
 //!
-//! # Left open
+//! # Not built
 //!
 //! The transfer through `~` joins and through arithmetic, and `==` between two bare fields as a
-//! join ("a separate decision about `==`"). A bound on a column other than the three E-series
-//! generics' value columns. A parse error that points at the removed word `required` (not
-//! kept: a message for a removed word is another spelling to carry). A downstream project that
-//! used `required` has the word to delete, and its build stops at the parser until it does.
+//! join ("a separate decision about `==`"): not now. A bound on a column other than the three
+//! E-series generics' value columns: not planned until a board needs it. A parse error that
+//! points at the removed word `required` is not kept (a message for a removed word is another
+//! spelling to carry): `required` stays removed. The owner accepted these choices as built on
+//! 2026-11-11.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 

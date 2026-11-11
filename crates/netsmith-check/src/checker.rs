@@ -852,7 +852,7 @@ impl<'a> Checker<'a> {
                 self.model.add_member(id, name, Member::Field(field));
             }
             // And one for how tall its body stands above the board (ADR 0045, "Height
-            // limits", PROVISIONAL): the part or the board states it, and the design stage reads it.
+            // limits"): the part or the board states it, and the design stage reads it.
             // A part that does not has no height, which is not a height of zero.
             let field = self
                 .model
@@ -877,7 +877,7 @@ impl<'a> Checker<'a> {
             self.model
                 .add_member(id, "qualification", Member::Field(field));
             // And one for how far its pins stand out of the board, on the face opposite the
-            // part, once they are cut short (ADR 0045 section 15, PROVISIONAL): the board's
+            // part, once they are cut short (ADR 0045 section 15): the board's
             // physical file states it for an instance, the kind may bound it. A part that
             // does not has no known protrusion, which is not a protrusion of zero.
             let field =
