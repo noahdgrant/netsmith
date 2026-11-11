@@ -46,7 +46,9 @@ The language gained a block, three words (`pins`, `tie`, `fn`) and a pin kind se
 
 ## Left open
 
-- Connecting by function (`.u.uart1_tx`) and letting the tool assign the pin. ADR 0101, which is proposed, is one answer.
-- Whether the KiCad version in the manifest should be checked against the version in a library file's header: "A library written by a newer KiCad than the one `kicad-cli` is might not open."
-- Checking a symbol's `(alternate "TIM14_CH1" ...)` entries against a pin's functions: they use the vendor's peripheral numbering, which will not match a part's names in general.
-- Whether the router copes with a 0.65 mm pitch against the process minimum: "not tried".
+Accepted as built by the owner, 2026-11-11.
+
+- Connecting by function (`.u.uart1_tx`) and letting the tool assign the pin: ADR 0101 (accepted, built); issue #109 holds what is left.
+- Whether the KiCad version in the manifest should be checked against the version in a library file's header: "A library written by a newer KiCad than the one `kicad-cli` is might not open." Not built; issue #6.
+- Checking a symbol's `(alternate "TIM14_CH1" ...)` entries against a pin's functions: they use the vendor's peripheral numbering, which will not match a part's names in general. Not built; issue #5.
+- Whether the router copes with a 0.65 mm pitch against the process minimum: "not tried"; issue #3.

@@ -105,9 +105,9 @@ fn natural_segment_order(a: &str, b: &str) -> std::cmp::Ordering {
 /// A text field narrows to one value, so the letters a standard kind states cannot be changed by
 /// a part's user or a board: "contradiction on `r.designator`: it is already "R", which does not
 /// overlap "Z"". It is the limit ADR 0024 records for `.assembly` and is accepted for the same
-/// reason: a resistor is `R`. A default that a board may replace, for the letters of a standard
-/// kind and for `.assembly`, is a separate language choice (one for both) and is left open, for the
-/// owner.
+/// reason: a resistor is `R`; the owner accepted it as built, 2026-11-11. A default that a board
+/// may replace, for the letters of a standard kind and for `.assembly`, is not built (one language
+/// choice for both; not planned until a board needs it).
 ///
 /// The layout file is keyed by the path of a part (ADR 0032), so a saved placement does not move
 /// when letters change. It was checked two ways: a test

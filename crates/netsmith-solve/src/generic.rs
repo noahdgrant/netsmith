@@ -1,4 +1,4 @@
-//! Generic passives (ADR 0047, provisional): a part the solver chooses by value alone, and
+//! Generic passives (ADR 0047): a part the solver chooses by value alone, and
 //! the step that later resolves it to a row of a catalog.
 //!
 //! A generic resistor is a value of an E-series (E12, E24 or E96) with a tolerance, a package
@@ -7,7 +7,7 @@
 //! the bill of materials or the fab package is made: it finds the row of the catalog that is
 //! at least as good (Basic first), or says which rows are nearest.
 //!
-//! Capacitors, inductors and LEDs are generic too (ADR 0047, provisional), with one
+//! Capacitors, inductors and LEDs are generic too (ADR 0047), with one
 //! difference: a rating a generic part cannot know is left **open**. The solver fills it in
 //! from the design when the part is picked (what the design states, or the least a relation
 //! demands) and the generic part remembers it as a [`Need`], so the row that [`resolve`]
@@ -35,8 +35,9 @@
 //! with "Change the value in the design and build again": the build then checks every relation
 //! again with it.
 //!
-//! **What is provisional** (the agent's choices of 2026-11-04, issue #31; the owner's decision
-//! of 2026-11-03 is applied as given). A capacitor is a value of the series (1 pF to 100 uF), a
+//! **What the generic capacitor, inductor and LED are** (choices of 2026-11-04, issue #31,
+//! accepted as built by the owner, 2026-11-11; the owner's decision of 2026-11-03 is applied as
+//! given). A capacitor is a value of the series (1 pF to 100 uF), a
 //! tolerance (20%, 10% or 5%, widest tried first, so the weakest claim is the easiest to resolve)
 //! and a 0402, 0603 or 0805 package; an inductor is 1 nH to 1 mH, 30%, 20% or 10%, in 0402,
 //! 0603, 0805 or 1210; an LED is a package with colour and forward voltage open. The saturation
@@ -45,7 +46,7 @@
 //! `.effective_capacitance`, and says "generic parts have no recorded bias curve"; resolution
 //! accepts a capacitor row only if its cell has a curve (`Miss::NoCurve`).
 //!
-//! **Assumptions to confirm**, word for word from ADR 0047 (PROVISIONAL):
+//! **Assumptions**, word for word from ADR 0047 (accepted as built by the owner, 2026-11-11):
 //! 1. "The series of a capacitor or an inductor is the project's `series`, but E96 gives E24: E96
 //!    is a resistor series. The alternative is a fixed E12, or a series key for each kind."
 //! 2. "The packages, tolerances and value ranges above. They are the packages `std/kicad.toml`
@@ -66,7 +67,7 @@
 //!    numbers left out but its text statements (package, colour) kept."
 //!
 //! **Gaps in the catalogs** (reported, nothing added; a column is added only with a recorded
-//! source, `data/jlcpcb/README.md`, which is the owner's call): an LED has no maximum forward
+//! source, `data/jlcpcb/README.md`, and not planned until a board needs it): an LED has no maximum forward
 //! current column, so `Led` states no limit on `.current`, and a forward voltage is the
 //! datasheet's range at a test current (5 or 20 mA) that is not a column; an inductor has no
 //! temperature-rise (rms) current column, only the saturation current; a capacitor has no
@@ -153,7 +154,7 @@ impl Series {
     }
 
     /// The series capacitors and inductors are offered in: the project's, but never E96,
-    /// which is a resistor series (PROVISIONAL, ADR 0047).
+    /// which is a resistor series (ADR 0047).
     pub fn for_reactive(self) -> Series {
         match self {
             Series::E96 => Series::E24,

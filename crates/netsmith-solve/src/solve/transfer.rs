@@ -66,7 +66,7 @@
 //! changes every domain a bound reaches, the starts of ADR 0053 read bounds as the part's range,
 //! and a half-open range has no value in an expression. Only the check afterwards: the solver
 //! would take the 330 ohm row when a 20 kohm row existed. Transfer through `~` joins and
-//! through arithmetic (`x &= g * 2`): left open; a join is not written for values of parts, and
+//! through arithmetic (`x &= g * 2`): not built; a join is not written for values of parts, and
 //! arithmetic needs monotonic reasoning. The cost is about 120 lines of the solver and a way to
 //! add relations to the model and cut them off again.
 

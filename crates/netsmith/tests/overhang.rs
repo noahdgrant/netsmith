@@ -604,7 +604,7 @@ const CENTRE_OUTSIDE: &str = "    .plug.place.rotation &= 90
 
 #[test]
 fn a_body_whose_centre_is_off_the_board_may_be_required_when_the_edge_field_states_the_overhang() {
-    // PROVISIONAL (ADR 0045, section 10): the body is 40 mm long and ends 25 mm past the
+    // (ADR 0045, section 10, accepted as built 2026-11-11): the body is 40 mm long and ends 25 mm past the
     // bottom edge, so its centre is 5 mm outside; the pads, at the other end, are inside.
     let run = fab("centre-outside", &source(35, 60, 30, CENTRE_OUTSIDE), "");
     let made = run.made.as_ref().unwrap_or_else(|e| panic!("{e}"));
