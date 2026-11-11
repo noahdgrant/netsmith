@@ -1148,3 +1148,43 @@ fn a_pullup_of_a_few_ohms_is_picked_for_its_power_now_that_its_current_is_known(
         );
     }
 }
+
+// ---- the package of the resistors inside I2cPullups (owner decision of 2026-11-10, item PK1) ----
+
+fn package_of(s: &Solution, path: &str) -> String {
+    match s.model.domain_at(path) {
+        Some(Domain::Text(t)) => t.clone(),
+        other => panic!("`{path}` is {other:?}"),
+    }
+}
+
+#[test]
+fn a_board_states_the_package_of_both_resistors_of_i2c_pullups() {
+    let s = run(&i2c_board("4.7kohm +/- 5%", ".package &= \"0402\""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(package_of(&s, "pullups.sda_pullup.package"), "0402");
+    assert_eq!(package_of(&s, "pullups.scl_pullup.package"), "0402");
+}
+
+#[test]
+fn i2c_pullups_whose_package_nobody_states_are_picked_as_before() {
+    let s = run(&i2c_board("4.7kohm +/- 5%", ""));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(package_of(&s, "pullups.sda_pullup.package"), "0402");
+    assert_eq!(package_of(&s, "pullups.scl_pullup.package"), "0402");
+    assert!(
+        !not_evaluated(&s).iter().any(|r| r.contains("package")),
+        "an unstated package is no open relation: {:?}",
+        not_evaluated(&s)
+    );
+}
+
+#[test]
+fn an_i2c_pullups_package_that_no_row_has_is_refused_with_its_name() {
+    let s = run(&i2c_board("4.7kohm +/- 5%", ".package &= \"0201\""));
+    let all = messages(&s).join("\n");
+    assert!(
+        all.contains("has nothing for `pullups.sda_pullup`") && all.contains("\"0201\""),
+        "the usual message names the part and the package: {all}"
+    );
+}

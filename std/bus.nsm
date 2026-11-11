@@ -334,6 +334,10 @@ module PullUp {
     .resistance: Resistance
     .resistor: Resistor
     .resistance == .resistor.resistance
+    /// The resistor's package, a text such as `"0402"`; a board that does not state it leaves the
+    /// pick to the solver.
+    .package: Package optional
+    .resistor.package == .package
     .supply.pos ~> .resistor ~> .line
 
     .line_low: Number
@@ -429,6 +433,11 @@ module I2cPullups {
     .scl_pullup: Resistor
     .resistance == .sda_pullup.resistance
     .resistance == .scl_pullup.resistance
+    /// The package of both resistors, a text such as `"0402"`; a board that does not state it
+    /// leaves the pick to the solver.
+    .package: Package optional
+    .sda_pullup.package == .package
+    .scl_pullup.package == .package
     .supply.pos ~> .sda_pullup ~> .bus.sda
     .supply.pos ~> .scl_pullup ~> .bus.scl
 
@@ -530,6 +539,10 @@ module PullDown {
     .resistance: Resistance
     .resistor: Resistor
     .resistance == .resistor.resistance
+    /// The resistor's package, a text such as `"0402"`; a board that does not state it leaves the
+    /// pick to the solver.
+    .package: Package optional
+    .resistor.package == .package
     .line ~> .resistor ~> .reference.neg
 
     .line_high: Number
