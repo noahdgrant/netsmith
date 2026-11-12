@@ -324,6 +324,47 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
     assert_eq!(of_scene(&scene), of_scene(&scene_of("examples/led.nsm")));
 }
 
+/// A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std: a body
+/// of 0 mm is a statement, so each counts as known in the coverage, is `stated`, is no unknown
+/// height, and is not drawn as the flat outline of an unknown body.
+#[test]
+fn a_fiducial_a_mounting_hole_and_a_test_point_are_stated_flat_and_not_unknown() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    use netsmith_pcb::scene3d::HeightProvenance;
+    for (source, kinds) in [
+        (
+            "examples/outline_and_pours.nsm",
+            ["Fiducial", "MountingHole"],
+        ),
+        ("examples/two_buck/two_buck.nsm", ["TestPoint", "TestPoint"]),
+    ] {
+        let scene = scene_of(source);
+        let meshes = of_scene(&scene);
+        let flat: Vec<_> = scene
+            .bodies
+            .iter()
+            .filter(|b| kinds.contains(&b.kind.as_str()))
+            .collect();
+        assert!(
+            !flat.is_empty(),
+            "{source}: no fiducial, hole or test point"
+        );
+        for b in &flat {
+            assert_eq!(b.height, Some(0.0), "{source}: {}", b.path);
+            assert_eq!(b.provenance, HeightProvenance::Stated, "{}", b.path);
+            assert!(
+                !meshes
+                    .iter()
+                    .any(|m| m.id == b.path && m.material == Material::BodyUnknown),
+                "{}: drawn as an unknown height",
+                b.path
+            );
+        }
+        let known = scene.bodies.iter().filter(|b| b.height.is_some()).count();
+        assert_eq!(scene.coverage().known, known, "{source}");
+    }
+}
+
 #[test]
 fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
     use netsmith_pcb::mesh::{Material, Mesh, of_scene};
@@ -1207,4 +1248,31 @@ fn a_manifest_glb_that_is_not_a_boolean_is_an_error() {
     let run = fab(&dir, &["--out", "out"]);
     assert!(!run.status.success());
     assert!(String::from_utf8_lossy(&run.stderr).contains("glb"));
+}
+
+/// The layers of every board's stackup add up to within the fabricator's tolerance of the
+/// thickness it chose (1.6 mm nominal; JLCPCB's four-layer stack is 1.6062 mm with the mask).
+#[test]
+fn the_stackup_adds_up_to_the_nominal_thickness_within_the_fabricators_tolerance() {
+    let examples = repo().join("examples");
+    for file in ["led.nsm", "four_layer.nsm"] {
+        let (report, _) = json(&examples, &[file, "--json"]);
+        let board = &report["board"];
+        let nominal = board["thickness"].as_f64().unwrap();
+        let sum: f64 = board["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l["thickness"].as_f64().unwrap())
+            .sum();
+        assert!(
+            (board["stack_thickness"].as_f64().unwrap() - sum).abs() < 1e-9,
+            "{file}: stack_thickness is the sum of the layers"
+        );
+        let tolerance = netsmith_pcb::stackup::thickness_tolerance(nominal);
+        assert!(
+            (sum - nominal).abs() <= tolerance,
+            "{file}: the layers add up to {sum} mm, more than {tolerance} mm from {nominal} mm"
+        );
+    }
 }

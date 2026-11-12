@@ -10,6 +10,10 @@
 //! pins, and `TestPoint` has one `required` pin. A part with no pins is on no net and is fitted by
 //! nobody.
 //!
+//! A hole, a fiducial and a test point have no body: each states `.height &= 0mm`, a statement
+//! ("flat") and not a default, so a height limit and the 3D coverage count them as known and not
+//! as unknown. A board that gives one a height of its own contradicts it.
+//!
 //! Why parts (ADR 0020, decided by the owner on 2026-11-02): one mechanism for every footprint
 //! on the board, with a reference designator, a footprint through the export mapping, a place
 //! from the placer or the layout file, and a line in the schematic if it has a pin. The
@@ -42,6 +46,7 @@
 /// so it is on no net.
 part MountingHole {
     .designator &= "H"
+    .height &= 0mm
     .assembly &= AssemblyMode::None
     .package: Package
 }
@@ -51,6 +56,7 @@ part MountingHole {
 /// for a hole whose pad floats.
 part PlatedHole {
     .designator &= "H"
+    .height &= 0mm
 
     pins {
         .p1 passive "1" "1"
@@ -64,6 +70,7 @@ part PlatedHole {
 /// has no pins, so it is on no net.
 part Fiducial {
     .designator &= "FID"
+    .height &= 0mm
     .assembly &= AssemblyMode::None
     .package: Package
 }
@@ -72,6 +79,7 @@ part Fiducial {
 /// a test point on no net tests nothing.
 part TestPoint {
     .designator &= "TP"
+    .height &= 0mm
 
     pins {
         .p1 passive "TP" "1" required
