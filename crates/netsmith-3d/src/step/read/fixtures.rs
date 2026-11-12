@@ -395,3 +395,18 @@ pub fn assembly() -> String {
     ));
     f.w.file("FILE_DESCRIPTION((''),'2;1');\n")
 }
+
+/// A cylinder's side bounded by one loop round it, which no region of the surface has: the
+/// file and the face's id.
+pub fn loop_round_a_cylinder() -> (String, u64) {
+    let mut f = F::new();
+    let v = f.vertex([1.0, 0.0, 0.0]);
+    let c = f.circle([0.0; 3], 1.0);
+    let e = f.edge(v, v, c);
+    let axis = f.frame([0.0; 3], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]);
+    let cyl = f.w.add(format!("CYLINDRICAL_SURFACE('',{axis},1.)"));
+    let lp = f.bound(&[(e, true)], true);
+    let face = f.face(&[lp], cyl, true);
+    let s = f.solid("bad", &[face]);
+    (f.file(&[s], MM), face.0 as u64)
+}

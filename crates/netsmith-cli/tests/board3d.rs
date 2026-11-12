@@ -624,6 +624,23 @@ fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() 
     // The board's four holes are cylinders through its 1.6 mm.
     assert!(step.contains("CYLINDRICAL_SURFACE("));
     assert!(step.contains(",-1.6))"));
+    // netsmith's own reader (ADR 0108) reads it back: the board's solid is its outline through
+    // its thickness, and every solid faces out.
+    let scene = scene_of("examples/four_layer.nsm");
+    let model = netsmith_3d::step::read::read(step.as_bytes()).unwrap();
+    let board = model.pieces.iter().find(|p| p.mesh.id == "board").unwrap();
+    let b = board.mesh.bounds().unwrap();
+    let nm = |x: f64| (x * 1e6).round() / 1e6;
+    assert_eq!(b.min, [0.0, 0.0, -nm(scene.board.thickness)]);
+    assert_eq!(b.max, [nm(scene.board.width), nm(scene.board.height), 0.0]);
+    assert!(model.pieces.len() > 1, "the parts too");
+    for p in &model.pieces {
+        assert!(
+            p.mesh.closed && p.mesh.triangle_count() > 0,
+            "{}",
+            p.mesh.id
+        );
+    }
 
     // With `--glb` and `--json` too, all three are written, the same as alone.
     let (c, g) = (out.join("c.step"), out.join("c.glb"));

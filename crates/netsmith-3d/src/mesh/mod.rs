@@ -41,7 +41,7 @@ pub use scene::{
     UNKNOWN_LIFT, hole_segments, of_scene, pieces, slot,
 };
 pub use section::{PLATING, of_scene_section};
-pub use triangulate::triangulate;
+pub use triangulate::{triangulate, triangulate_keeping};
 
 use std::fmt;
 
