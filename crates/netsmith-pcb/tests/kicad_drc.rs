@@ -283,7 +283,8 @@ fn tracks_and_vias_that_are_too_close_are_caught() {
     b.vias.push(Via {
         net: "VCC".into(),
         at: Pt::new(b.outline.max.x - 1.5, b.outline.min.y + 1.5),
-        diameter: 0.4,
+        // 0.025 mm of copper round the drill: under the process's 0.05 mm.
+        diameter: 0.35,
         drill: 0.3,
     });
     let Some(report) = check("tight", &b) else {
@@ -967,7 +968,7 @@ fn stitching_vias_join_the_pours_to_the_ground_plane_on_a_grid() {
     for (i, a) in b.vias.iter().enumerate() {
         for c in &b.vias[i + 1..] {
             assert!(
-                a.at.distance(c.at) >= rules.hole_to_hole + rules.via_drill - 1e-9,
+                a.at.distance(c.at) >= rules.via_hole_to_hole + rules.via_drill - 1e-9,
                 "{a:?} {c:?}"
             );
         }

@@ -20,6 +20,15 @@ fn ours(board: &Board) -> Report {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
+        hole_to_track: Some(board.rules.hole_clearance),
+        plated_hole_clearance: Some(board.rules.plated_hole_clearance),
+        pad_to_pad: Some(board.rules.pad_to_pad),
+        pad_hole_to_hole: Some(board.rules.hole_to_hole),
+        mask_to_track: Some(board.rules.mask_to_track),
+        plated_slot: Some(board.rules.plated_slot),
+        npth_slot: Some(board.rules.npth_slot),
+        npth_drill: Some(board.rules.npth_drill),
+        pad_ring: Some(board.rules.min_annular_ring),
     };
     drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap_or_else(|e| panic!("{}: {e}", board.name))

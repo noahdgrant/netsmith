@@ -1703,12 +1703,22 @@ fn designator_key(designator: &str) -> (String, u32) {
 }
 
 /// What the design rules check needs that the board file does not say: the process's mask
-/// web and widest filled via, and the courtyards a protruding pin excuses (ADR 0045 section 15).
+/// web and widest filled via, the rules a project file cannot say (issue #431), and the
+/// courtyards a protruding pin excuses (ADR 0045 section 15).
 pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
     netsmith_fab::drc::Extras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
+        hole_to_track: Some(board.rules.hole_clearance),
+        plated_hole_clearance: Some(board.rules.plated_hole_clearance),
+        pad_to_pad: Some(board.rules.pad_to_pad),
+        pad_hole_to_hole: Some(board.rules.hole_to_hole),
+        mask_to_track: Some(board.rules.mask_to_track),
+        plated_slot: Some(board.rules.plated_slot),
+        npth_slot: Some(board.rules.npth_slot),
+        npth_drill: Some(board.rules.npth_drill),
+        pad_ring: Some(board.rules.min_annular_ring),
     }
 }
 
@@ -2051,5 +2061,160 @@ mod tests {
             incomplete.headline(),
             "1 connection(s) have no copper; this package is NOT ready to order, see routing-failure.txt"
         );
+    }
+
+    /// The fields of a process that are not a rule the router and the design rules check keep,
+    /// each with the reason (issue #431).
+    const NOT_A_COPPER_RULE: [(&str, &str); 10] = [
+        (
+            "min_plane_hole_clearance",
+            "kept by the plane's fill, which the check does not judge (ADR 0037)",
+        ),
+        ("inner1", "a plane, which the board names the net of"),
+        ("inner2", "a plane, which the board names the net of"),
+        ("fabricator", "a name, for the notes"),
+        ("source", "where the numbers are published, for the notes"),
+        (
+            "stackup",
+            "the build of the board: the writers' and the current check's",
+        ),
+        ("top", "a pour, which the board names the net of"),
+        ("bottom", "a pour, which the board names the net of"),
+        (
+            "max_temperature_rise",
+            "the track width check's rise (ADR 0036), not a distance",
+        ),
+        (
+            "min_silk_width",
+            "checked as the text's stroke (`min_text_thickness`) only; a drawn line is the footprint's",
+        ),
+    ];
+
+    /// The fields declared at the top level of `interface <name>` in `std/mfg/jlcpcb.nsm`, with
+    /// the value its `&=` or `?=` line gives, if any.
+    fn process_fields(name: &str) -> Vec<(String, Option<String>)> {
+        let text = include_str!("../../../std/mfg/jlcpcb.nsm");
+        let start = text
+            .find(&format!("interface {name} {{"))
+            .expect("the process is in the file");
+        let body = &text[start..];
+        let body = &body[..body.find("\n}").expect("the interface ends")];
+        let mut fields: Vec<(String, Option<String>)> = Vec::new();
+        for line in body.lines() {
+            let Some(rest) = line.strip_prefix("    .") else {
+                continue;
+            };
+            let word: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let after = rest[word.len()..].trim_start();
+            if after.starts_with(':') {
+                fields.push((word, None));
+            } else if let Some(value) = after
+                .strip_prefix("&=")
+                .or_else(|| after.strip_prefix("?="))
+                && let Some(f) = fields.iter_mut().find(|f| f.0 == word)
+            {
+                f.1 = Some(value.trim().to_string());
+            }
+        }
+        fields
+    }
+
+    /// The process of a board that states each of `narrowings` inside `.process { }`.
+    fn process(name: &str, narrowings: &[String]) -> netsmith_core::Process {
+        let mut lines: Vec<String> = narrowings.to_vec();
+        let nets = if name == "FourLayer" {
+            lines.push(".inner1.net &= \"GND\"".into());
+            lines.push(".inner2.net &= \"3V3\"".into());
+            "        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n"
+        } else {
+            lines.push(".stackup.thickness &= 1.6mm".into());
+            ""
+        };
+        let body: String = lines.iter().map(|l| format!("        {l}\n")).collect();
+        let source = format!(
+            "import std::mfg::jlcpcb::{name}\nimport std::parts::passive::Resistor\nboard T {{\n    .process: {name} {{\n{body}    }}\n    .r: Resistor {{\n{nets}    }}\n}}\n"
+        );
+        crate::build_with(
+            "t.nsm",
+            &source,
+            &netsmith_check::Loader::std(),
+            &netsmith_solve::Catalogs::jlcpcb(),
+            &crate::Libraries::sample(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .remove(0)
+        .design
+        .process
+        .expect("the board has a process")
+    }
+
+    /// What the router keeps and what the design rules check is given for a process: the
+    /// router's rules, and the project file with the extras `fab` passes.
+    fn what_is_kept(p: &netsmith_core::Process) -> Result<(String, String), String> {
+        let rules = netsmith_pcb::Rules::for_process(p)?;
+        let board_extras = netsmith_fab::drc::Extras {
+            mask_web: Some(rules.mask_bridge),
+            via_in_pad: Some(p.via_in_pad),
+            hole_to_track: Some(rules.hole_clearance),
+            plated_hole_clearance: Some(rules.plated_hole_clearance),
+            pad_to_pad: Some(rules.pad_to_pad),
+            pad_hole_to_hole: Some(rules.hole_to_hole),
+            mask_to_track: Some(rules.mask_to_track),
+            plated_slot: Some(rules.plated_slot),
+            npth_slot: Some(rules.npth_slot),
+            npth_drill: Some(rules.npth_drill),
+            pad_ring: Some(rules.min_annular_ring),
+            ..Default::default()
+        };
+        let check = format!("{}\n{board_extras:?}", rules.kicad_pro("T", &[]));
+        Ok((format!("{rules:?}"), check))
+    }
+
+    /// Every rule a process states reaches both the router and the design rules check: a
+    /// little more of it changes what each keeps, or makes the router refuse the process (a
+    /// rule of the via, which the via the process offers must meet). A field that is not such
+    /// a rule is listed with its reason (issue #431).
+    #[test]
+    fn every_rule_a_process_states_reaches_the_router_and_the_check() {
+        for name in ["TwoLayer", "FourLayer"] {
+            let base = what_is_kept(&process(name, &[])).unwrap();
+            for (field, value) in process_fields(name) {
+                if NOT_A_COPPER_RULE.iter().any(|(f, _)| *f == field) {
+                    continue;
+                }
+                let value = value.unwrap_or_else(|| panic!("{name}.{field} states no value"));
+                // A lower bound is raised by 0.01 mm, an upper bound lowered, a value moved.
+                let number: f64 = value
+                    .trim_start_matches("0mm..")
+                    .split("mm")
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or_else(|| panic!("{name}.{field}: cannot read {value}"));
+                let narrowed = if value.ends_with("..1m") {
+                    format!(".{field} &= {}mm..1m", number + 0.01)
+                } else if value.starts_with("0mm..") {
+                    format!(".{field} &= 0mm")
+                } else {
+                    format!(".{field} &= {}mm", number + 0.05)
+                };
+                let after = what_is_kept(&process(name, std::slice::from_ref(&narrowed)));
+                match after {
+                    Err(_) => {}
+                    Ok((router, check)) => {
+                        assert_ne!(
+                            router, base.0,
+                            "{name}: `{narrowed}` does not change the router's rules"
+                        );
+                        assert_ne!(
+                            check, base.1,
+                            "{name}: `{narrowed}` does not reach the design rules check"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

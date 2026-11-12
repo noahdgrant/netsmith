@@ -162,10 +162,31 @@ pub struct Process {
     pub min_drill: f64,
     /// The smallest copper disc of a via.
     pub min_via_diameter: f64,
-    /// The least copper left round a drilled hole.
+    /// The least copper left round a plated pad's hole.
     pub min_annular_ring: f64,
-    /// The least space between the edges of two holes.
+    /// The least copper left round a via's hole: half of how much wider the via is than its
+    /// hole (issue #431).
+    pub min_via_ring: f64,
+    /// The least space from the edge of a hole to copper of another net (a via's hole, a
+    /// non-plated hole), and from a plated pad's hole to a track.
+    pub min_hole_clearance: f64,
+    pub min_plated_hole_clearance: f64,
+    /// The least space between surface-mount pads of different nets.
+    pub min_pad_to_pad: f64,
+    /// The least space between a solder mask opening and a track of another net.
+    pub min_mask_to_track: f64,
+    /// The smallest non-plated hole, and the narrowest plated and non-plated slot.
+    pub min_npth_drill: f64,
+    pub min_plated_slot: f64,
+    pub min_npth_slot: f64,
+    /// The via the router draws: its hole and its copper (a default of the process the board
+    /// may replace, issue #431).
+    pub via_drill: f64,
+    pub via_diameter: f64,
+    /// The least space between the edges of two holes when one is a pad's, and between two
+    /// vias' holes.
     pub min_hole_to_hole: f64,
+    pub min_via_hole_to_hole: f64,
     /// The least space between copper and the board edge.
     pub min_edge_clearance: f64,
     /// The thinnest silkscreen stroke.

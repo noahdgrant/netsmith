@@ -217,10 +217,13 @@ const CHAIN_SEARCHES: usize = 600;
 const CHAIN_TOTAL: usize = 3000;
 const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
 
-/// The most times the whole board is routed, each with the lines in another order. Putting
-/// the lines of a fine-pitch grid first is one more order, so the last of the others is
-/// dropped for it: a board is routed at most as many times as before.
-const MOST_TRIES: usize = 4;
+/// The most times the whole board is routed, each with the lines in another order: the lines
+/// of a fine-pitch grid first, shortest first, longest first, by net and in reverse net order.
+/// A board that routes on the first order is routed once; the fifth order (reverse net order)
+/// was dropped while there were four, and it finishes the invented mixed board on seed 2 since
+/// the via became 0.2 in 0.45 mm (issue #431), so it costs time only on a board that the other
+/// four leave unfinished.
+const MOST_TRIES: usize = 5;
 
 /// What a move costs, in tenths of a millimetre of track.
 const STEP: i64 = 10;
@@ -1170,11 +1173,12 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                 // A hole with no copper (a mounting hole, a pogo-pin pad) still keeps
                 // copper and other holes away from its edge.
                 if let Some((a, b, radius)) = part.hole(pad) {
+                    // The page's "NPTH to track" (issue #431).
                     list.push(Obstacle {
                         net: None,
                         layers: [true, true],
                         form: Form::Segment(a, b, radius),
-                        clearance: rules.clearance + MARGIN,
+                        clearance: rules.clearance.max(rules.hole_clearance) + MARGIN,
                     });
                     // A via's hole keeps `hole_to_hole` from this hole's edge.
                     via_keepouts.push((
@@ -1185,10 +1189,27 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                 continue;
             }
             let bounds = part.pad_bounds(pad);
+            let pad_net = net_of
+                .get(&(part.refdes.as_str(), pad.number.as_str()))
+                .copied();
+            // A track keeps the page's "PTH to track" from a plated pad's hole, and "NPTH to
+            // track" from a hole with copper round it that is not plated (issue #431); the pad's
+            // copper and its clearance usually keep more.
+            if let Some((a, b, radius)) = part.hole(pad) {
+                let keep = if pad.kind == crate::footprint::PadKind::NpThruHole {
+                    rules.hole_clearance
+                } else {
+                    rules.plated_hole_clearance
+                };
+                list.push(Obstacle {
+                    net: pad_net,
+                    layers: [true, true],
+                    form: Form::Segment(a, b, radius),
+                    clearance: keep + MARGIN,
+                });
+            }
             list.push(Obstacle {
-                net: net_of
-                    .get(&(part.refdes.as_str(), pad.number.as_str()))
-                    .copied(),
+                net: pad_net,
                 layers: [front, back],
                 form: Form::Rect(bounds),
                 // The larger of the board's clearance and the pad's own, as the design
@@ -1473,7 +1494,7 @@ impl<'a> Router<'a> {
                 // Another via's hole keeps its distance, whatever the net.
                 keepouts.push((
                     Form::Circle(v.at, 0.0),
-                    rules.hole_to_hole + rules.via_drill + MARGIN,
+                    rules.via_hole_to_hole + rules.via_drill + MARGIN,
                 ));
             }
         }
