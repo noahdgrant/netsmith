@@ -45,7 +45,7 @@ fn part<'a>(report: &'a serde_json::Value, path: &str) -> &'a serde_json::Value 
 #[test]
 fn the_lidded_board_reports_the_part_too_tall_the_unknown_one_and_the_margin() {
     let (r, _) = json(&fixtures(), &["height_limits.nsm", "--json"]);
-    assert_eq!(r["schema"], 1);
+    assert_eq!(r["schema"], 2);
     assert_eq!(r["units"], "mm");
     assert_eq!(r["board"]["name"], "Lidded");
     assert_eq!(r["board"]["thickness"], 1.6);
@@ -167,6 +167,79 @@ fn a_file_of_several_boards_needs_board_and_names_them() {
     assert_eq!(r["board"]["name"], "TwoBoards/led");
     let out = board3d(&examples, &["two_boards.nsm", "--board", "nope"]);
     assert_eq!(out.status.code(), Some(1));
+}
+
+fn copper_layer<'a>(report: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+    report["copper"]["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["name"] == name)
+        .unwrap_or_else(|| panic!("no copper layer `{name}`"))
+}
+
+fn net_area(layer: &serde_json::Value, net: &str) -> f64 {
+    layer["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["net"] == net)
+        .unwrap_or_else(|| panic!("no copper of `{net}` on {}", layer["name"]))["area"]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn the_four_layer_example_has_copper_on_four_layers_with_the_planes_inside() {
+    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
+    let copper = &r["copper"];
+    let layers = copper["layers"].as_array().unwrap();
+    let names: Vec<&str> = layers.iter().map(|l| l["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]);
+    // Each copper layer is at the height of its entry in the stackup.
+    for l in layers {
+        let stack = r["board"]["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|k| k["name"] == l["name"])
+            .unwrap();
+        for key in ["z_top", "z_bottom", "thickness"] {
+            assert_eq!(l[key], stack[key], "{} {key}", l["name"]);
+        }
+    }
+    // The inner layers are planes, each of one net; the outer layer has the pads.
+    let (gnd, v3) = (copper_layer(&r, "In1.Cu"), copper_layer(&r, "In2.Cu"));
+    for (plane, net) in [(gnd, "GND"), (v3, "3V3")] {
+        assert!(plane["pours"].as_u64().unwrap() >= 1, "{plane}");
+        assert!(net_area(plane, net) > 100.0, "{plane}");
+    }
+    assert!(copper_layer(&r, "F.Cu")["pads"].as_u64().unwrap() > 0);
+    // Nothing is routed by this command, so there are no tracks or vias.
+    assert_eq!(copper["vias"], 0);
+    assert_eq!(copper_layer(&r, "F.Cu")["tracks"], 0);
+    assert!(copper["mask_openings"]["top"].as_u64().unwrap() > 0);
+    // Areas are rounded to 1e-4 mm2, so they print with at most four decimals.
+    for n in layers.iter().flat_map(|l| l["nets"].as_array().unwrap()) {
+        let a = n["area"].as_f64().unwrap();
+        assert_eq!((a * 1e4).round() / 1e4, a);
+    }
+}
+
+#[test]
+fn a_two_layer_board_has_two_copper_layers_and_the_same_bytes_every_run() {
+    let examples = repo().join("examples");
+    let (r, first) = json(&examples, &["led.nsm", "--json"]);
+    let names: Vec<&str> = r["copper"]["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["F.Cu", "B.Cu"]);
+    assert!(copper_layer(&r, "F.Cu")["pads"].as_u64().unwrap() > 0);
+    let (_, second) = json(&examples, &["led.nsm", "--json"]);
+    assert_eq!(first, second);
 }
 
 /// The scene of the board in `source` (a path from the repository), built and placed as
