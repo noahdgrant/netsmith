@@ -193,7 +193,7 @@ What it is:
   a flip to the other face (`Shift+F`), fit (`F` or `0`), and perspective or orthographic (`P`).
   The colours follow the editor's theme. With reduced motion the camera jumps instead of moving.
 - **Ways of looking**, in the bar at the bottom left (and the palette), none of them data:
-  - **X-ray** (`X`): the board, the mask and the bodies see-through, so the inner copper, the
+  - **X-ray** (`V`): the board, the mask and the bodies see-through, so the inner copper, the
     vias and the pads under parts show.
   - **Lit nets.** A net hovered or picked in the nets list, the problems dock or the schematic,
     or a pad clicked here (any copper while in x-ray), is lit on every layer with its vias'

@@ -131,6 +131,7 @@ export function View3d({ board }: { board: string }) {
       nets: () => v.netList(),
       previewCount: () => v.previewCount(),
       focused: () => v.focusedList(),
+      litReport: () => v.litReport(),
     };
     view3d.current = {
       preset: (p) => v.preset(p),
@@ -200,6 +201,15 @@ export function View3d({ board }: { board: string }) {
     viewer.current?.highlight(picked, lit ? [...lit.paths] : []);
     viewer.current?.setLook({ nets: litNets(pickedNet, lit ? lit.nets : []) });
   }, [picked, h, d, parts, pickedNet]);
+
+  // The pads' nets, from the 2D scene: a pad's barrel lights with its net.
+  const sc2 = scene2d.value;
+  useEffect(() => {
+    if (!sc2 || sc2.board !== board) return;
+    const nets = new Map<string, string>();
+    for (const p of sc2.parts) for (const pad of p.pads) if (pad.net) nets.set(`${p.path}:${pad.number}`, pad.net);
+    viewer.current?.setPadNets(nets);
+  }, [sc2, board, parts]);
 
   // X-ray, the colouring and the height preview (inspectMode.ts): the picture only.
   const xr = xray.value;

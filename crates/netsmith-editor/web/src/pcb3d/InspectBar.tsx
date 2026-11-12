@@ -35,7 +35,7 @@ export function InspectBar() {
         class={`tool small v3-tog ${xr ? 'on' : ''}`}
         aria-pressed={xr}
         data-tip="X-ray: see through the board, the mask and the bodies, to the inner copper, the vias and the pads under parts"
-        data-tip-keys="X"
+        data-tip-keys="V"
         data-testid="view-xray"
         onClick={toggleXray}
       >
@@ -174,6 +174,9 @@ export function InspectLegend({ by, parts, limits }: { by: ColourBy; parts: Part
         </span>
         {unknownKey}
         {limitKeys}
+      </div>
+      <div class="v3-legend-note" data-testid="margin-note">
+        Green from {mm(MARGIN_EASY_MM)} to spare under the limit over a part: a threshold of the picture, not a check
       </div>
     </div>
   );

@@ -43,7 +43,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, marginColour, xrayOpacity } from './inspect';
+import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
 import type { ColourBy } from './inspectMode';
 import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type PartInfo3d, readInfo } from './model';
 import { LOOKS, type Role, lit, roleOf } from './palette';
@@ -174,6 +174,8 @@ export class Viewer {
   private previewEdges: LineSegments[] = [];
   private focusedLimits = new Set<string>();
   private pulseAnim = 0;
+  /** The net of each pad, `path:pad`, from the 2D scene: a pad's barrel lights with its net. */
+  private padNets = new Map<string, string>();
   private look: Look = { xray: false, colourBy: 'provenance', nets: new Map(), previewMm: null };
   board: BoardInfo | null = null;
   /** Whether camera moves are instant (reduced motion). */
@@ -381,10 +383,28 @@ export class Viewer {
     });
   }
 
+  /** The net of a piece of copper or a barrel: its own, or its pad's. */
+  private netOf(info: CopperInfo): string | null {
+    return pieceNet(info, this.padNets);
+  }
+
+  /** The nets of the pads, `path:pad` to net (the 2D scene has them). */
+  setPadNets(nets: Map<string, string>) {
+    this.padNets = nets;
+    this.restyle();
+    this.request();
+  }
+
   /** The nets that have copper or a barrel in the scene, by name. */
   netList(): string[] {
-    return [...new Set(this.copper.map((c) => c.info.net).filter((n): n is string => n !== null))].sort();
+    return [...new Set(this.copper.map((c) => this.netOf(c.info)).filter((n): n is string => n !== null))].sort();
   }
+
+  /** What a lit net lights now (for a recipe): the layers with its copper lit, its barrels lit (vias and pads), and how many other pieces of copper are dimmed. */
+  litReport() {
+    return litReport(this.copper.map((c) => c.info), this.look.nets, this.padNets);
+  }
+
 
   /** The parts of the scene, in the file's order. */
   partList(): PartInfo3d[] {
@@ -521,7 +541,7 @@ export class Viewer {
         const state = this.stateOf(part.path);
         o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest', tint: this.tintOf(part, role) });
       } else if (info?.kind === 'copper' || info?.kind === 'hole') {
-        const net = (info as CopperInfo).net;
+        const net = this.netOf(info as CopperInfo);
         const state: State = (net !== null && nets.get(net)) || 'rest';
         o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest' });
       } else if (info?.kind === 'height_limit') {
@@ -719,13 +739,16 @@ export class Viewer {
     this.ray.setFromCamera(at, this.camera());
     // The copper is picked where it is bare (a pad, the gold), and anywhere while it is seen through the board.
     const seeThrough = this.look.xray || this.look.nets.size > 0;
-    const copper = this.copper.filter((c) => c.info.net !== null && (c.exposed || seeThrough)).map((c) => c.mesh);
+    const copper = this.copper.filter((c) => this.netOf(c.info) !== null && (c.exposed || seeThrough)).map((c) => c.mesh);
     const hits = this.ray.intersectObjects([...this.pickable, ...copper], false);
     let limit: LimitInfo | null = null;
     for (const h of hits) {
       const info = this.infoOf.get(h.object);
       if (info?.kind === 'part') return { kind: 'part', info: info as PartInfo3d };
-      if ((info?.kind === 'copper' || info?.kind === 'hole') && (info as CopperInfo).net !== null) return { kind: 'copper', info: info as CopperInfo };
+      if (info?.kind === 'copper' || info?.kind === 'hole') {
+        const net = this.netOf(info as CopperInfo);
+        if (net !== null) return { kind: 'copper', info: { ...(info as CopperInfo), net } };
+      }
       if (info?.kind === 'height_limit' && !limit) limit = info as LimitInfo;
     }
     return limit ? { kind: 'limit', info: limit } : null;

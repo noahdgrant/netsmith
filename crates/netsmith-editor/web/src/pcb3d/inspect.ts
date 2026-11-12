@@ -37,7 +37,12 @@ export function kindCounts(parts: PartInfo3d[]): { id: KindSwatch; label: string
 
 // ---- colour by height margin (a height map) ----
 
-/** At or above this margin a body is green; from 0 up to it, amber blending to green; below 0, red. */
+/**
+ * "Plenty to spare" on the height map, in mm: a body whose margin to the height limit over it is
+ * at least this much is green; from no margin up to it, amber blending to green; below no margin
+ * (too tall), red. It is a choice of the picture, not a rule of the design: no check reads it, and
+ * the margins themselves are the file's (`margin_mm`). The legend says it.
+ */
 export const MARGIN_EASY_MM = 1;
 
 export type MarginBand = 'over' | 'tight' | 'easy' | 'none';
@@ -95,7 +100,7 @@ export function xrayOpacity(role: Role): number | null {
 }
 
 /** How a lit net leaves the rest of the copper: this much of the background mixed in, and this see-through. */
-export const DIM = { toward: 0.62, opacity: 0.4 } as const;
+export const DIM = { toward: 0.75, opacity: 0.32 } as const;
 
 export type NetState = 'select' | 'hover';
 
@@ -105,6 +110,34 @@ export function litNets(picked: string | null, hovered: Iterable<string>): Map<s
   for (const n of hovered) out.set(n, 'hover');
   if (picked) out.set(picked, 'select');
   return out;
+}
+
+/** A piece of copper or a barrel as the view knows it: its own net (copper, a via), or its part's path and pad (a pad's barrel). */
+export interface Piece {
+  kind: string;
+  layer: string | null;
+  net: string | null;
+  path?: string;
+  pad?: string;
+}
+
+/** A piece's net: its own, else its pad's (`path:pad` in `padNets`, from the 2D scene). */
+export function pieceNet(p: Piece, padNets: ReadonlyMap<string, string>): string | null {
+  return p.net ?? (p.path && p.pad ? (padNets.get(`${p.path}:${p.pad}`) ?? null) : null);
+}
+
+/** What the lit nets light: the copper layers that have their copper, the barrels (vias and pads' holes) and the vias alone, and how many other pieces are dimmed. */
+export function litReport(pieces: Piece[], nets: ReadonlyMap<string, NetState>, padNets: ReadonlyMap<string, string>): { layers: string[]; barrels: number; vias: number; dimmed: number } {
+  const lit = pieces.filter((p) => {
+    const n = pieceNet(p, padNets);
+    return n !== null && nets.has(n);
+  });
+  return {
+    layers: [...new Set(lit.filter((p) => p.kind === 'copper').map((p) => p.layer ?? ''))].sort(),
+    barrels: lit.filter((p) => p.kind === 'hole').length,
+    vias: lit.filter((p) => p.kind === 'hole' && p.net !== null).length,
+    dimmed: nets.size ? pieces.length - lit.length : 0,
+  };
 }
 
 // ---- the height preview ----

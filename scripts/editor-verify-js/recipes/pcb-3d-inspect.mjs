@@ -1,4 +1,4 @@
-// The 3D view's ways of looking (features/pcb-3d.md, "Tools"): x-ray (X) makes the board and the
+// The 3D view's ways of looking (features/pcb-3d.md, "Tools"): x-ray (V) makes the board and the
 // bodies see-through; a net picked in the nets list is lit on every layer and the rest dimmed;
 // colour by kind and by height margin (a height map, with its legend); the height preview stands
 // the parts of unknown height up in the picture only, under a "preview" label, and the coverage
@@ -42,22 +42,25 @@ export async function run(tools) {
   const tall = partOf(s, 'power_in');
   const led = partOf(s, 'led');
   const cap = partOf(s, 'input_cap');
-  const reg = partOf(s, 'regulator');
   await page.getByTestId('pcb-3d-toggle').click();
   await page.waitForSelector(`${HOST}[data-ready]`, { timeout: 30000 });
   await page.locator(HOST).focus();
+  // Nearer, so the pads and the bodies' colours show in the pictures.
+  await page.keyboard.press('+');
+  await page.keyboard.press('+');
+  await settle(page);
   const chipBefore = await page.getByTestId('height-coverage').innerText();
 
-  step('x-ray: the key X makes the board, the mask and the bodies see-through, and again puts them back');
+  step('x-ray: the key V makes the board, the mask and the bodies see-through, and again puts them back');
   let capAt = await placeOf(page, cap.path);
   const solid = await ask(page, 'colourAt', capAt.x, capAt.y);
-  await page.keyboard.press('x');
+  await page.keyboard.press('v');
   await page.waitForFunction(() => document.querySelector('[data-testid=view-xray]')?.getAttribute('aria-pressed') === 'true');
   await settle(page);
   const seen = await ask(page, 'colourAt', capAt.x, capAt.y);
   expect(seen !== solid, `the capacitor's body is see-through in x-ray (${solid} to ${seen})`);
   await shot('xray');
-  await page.keyboard.press('x');
+  await page.keyboard.press('v');
   await page.waitForFunction(() => document.querySelector('[data-testid=view-xray]')?.getAttribute('aria-pressed') === 'false');
   await settle(page);
   expect((await ask(page, 'colourAt', capAt.x, capAt.y)) === solid, 'x-ray off: the body is solid again');
@@ -69,15 +72,12 @@ export async function run(tools) {
   await row.click();
   await page.waitForFunction(() => document.querySelector('.net-row.sel')?.innerText.includes('VIN'));
   await settle(page);
-  // The rest is dimmed: the regulator's body, not on the net's copper, is lighter or darker than it was.
-  const regAt = await placeOf(page, reg.path);
-  expect(regAt !== null, 'the regulator is still picked through the dimmed board');
-  if (nets.length) {
-    expect(nets.includes('VIN'), `the scene has the net's copper (${nets.join(', ')})`);
-  } else {
-    // The copper is in the file once PR 449 is in: until then the barrels and bodies are what dims.
-    step('(this scene has no copper groups yet: the net lights nothing, and the board dims as it would)');
-  }
+  // VIN is on the header's first pad (through the board, so on both layers), the regulator's input and the input capacitor.
+  expect(nets.includes('VIN') && nets.includes('GND'), `the scene has the nets' copper (${nets.join(', ')})`);
+  const lit = await ask(page, 'litReport');
+  expect(lit.layers.includes('F.Cu') && lit.layers.includes('B.Cu'), `VIN is lit on every layer it has copper on: ${lit.layers.join(', ')}`);
+  expect(lit.barrels >= 1, `its plated barrels are lit (${lit.barrels}; the board is not routed, so it has no vias: ${lit.vias})`);
+  expect(lit.dimmed > 0, `the other copper is dimmed (${lit.dimmed} pieces)`);
   await shot('net-lit');
   await row.click();
   await page.waitForFunction(() => !document.querySelector('.net-row.sel'));
@@ -85,11 +85,6 @@ export async function run(tools) {
   await page.mouse.move(5, 5);
   await page.waitForFunction(() => !document.documentElement.classList.contains('has-hover'));
 
-  // Nearer, so the bodies' colours show in the pictures.
-  await page.locator(HOST).focus();
-  await page.keyboard.press('+');
-  await page.keyboard.press('+');
-  await settle(page);
 
   step('colour by kind: the menu (and the key C), and a legend of the kinds on the board');
   capAt = await placeOf(page, cap.path);
@@ -109,6 +104,8 @@ export async function run(tools) {
   await page.waitForSelector('[data-testid=margin-legend]');
   const margin = await page.getByTestId('margin-legend').innerText();
   expect(/Over\s*1/.test(margin) && /Under 1 mm\s*1/.test(margin) && /1 mm\+\s*1/.test(margin) && /No limit over it\s*2/.test(margin), `the bands: ${margin.replace(/\n/g, ' | ')}`);
+  const note = await page.getByTestId('margin-note').innerText();
+  expect(note.includes('1 mm to spare') && note.includes('not a check'), `the legend says what green means: ${note}`);
   await settle(page);
   const ledAt = await placeOf(page, led.path);
   const [capM, ledM] = [await ask(page, 'colourAt', capAt.x, capAt.y), await ask(page, 'colourAt', ledAt.x, ledAt.y)];

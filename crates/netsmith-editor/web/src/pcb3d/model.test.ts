@@ -54,6 +54,7 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
     expect(readInfo({ netsmith: { kind: 'copper', layer: 'F.Cu', net: 'GND' } })).toEqual({ kind: 'copper', layer: 'F.Cu', net: 'GND' });
     expect(readInfo({ netsmith: { kind: 'copper', layer: 'F.Cu', net: null } })).toEqual({ kind: 'copper', layer: 'F.Cu', net: null });
     expect(readInfo({ netsmith: { kind: 'hole', net: 'VCC' } })).toEqual({ kind: 'hole', layer: null, net: 'VCC' });
+    expect(readInfo({ netsmith: { kind: 'hole', path: 'power_in', refdes: 'J1', pad: '1' } })).toEqual({ kind: 'hole', layer: null, net: null, path: 'power_in', pad: '1' });
   });
   it('a provenance it does not know is unknown, not a height source', () => {
     expect((readInfo({ netsmith: { kind: 'part', path: 'a', refdes: 'R1', provenance: 'nominal', height_mm: 1 } }) as PartInfo3d).provenance).toBe('unknown');

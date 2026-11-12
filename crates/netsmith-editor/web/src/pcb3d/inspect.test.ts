@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contrast, parseHex } from '../contrast';
 import css from '../themes.css?raw';
-import { DIM, KINDS, MARGIN_EASY_MM, extrudeFlat, findingTargets, inspectTokens, kindCounts, kindSwatch, litNets, marginBand, marginColour, xrayOpacity } from './inspect';
+import { DIM, KINDS, MARGIN_EASY_MM, extrudeFlat, findingTargets, inspectTokens, kindCounts, kindSwatch, litNets, litReport, marginBand, marginColour, pieceNet, xrayOpacity } from './inspect';
 import { COLOUR_BY, cycleColourBy, colourBy, heightPreview, inspectCommands, previewHeight, togglePreview } from './inspectMode';
 import type { LimitInfo, PartInfo3d } from './model';
 import { LOOKS, type Role } from './palette';
@@ -81,6 +81,34 @@ describe('lit nets', () => {
   });
 });
 
+describe('a lit net, in a scene with copper (the contract of docs/BOARD3D.md)', () => {
+  // A hand-made scene: VIN on both layers with a via and a pad's barrel, GND on the top layer.
+  const pieces = [
+    { kind: 'copper', layer: 'F.Cu', net: null },
+    { kind: 'copper', layer: 'F.Cu', net: 'VIN' },
+    { kind: 'copper', layer: 'F.Cu', net: 'GND' },
+    { kind: 'copper', layer: 'B.Cu', net: 'VIN' },
+    { kind: 'hole', layer: null, net: 'VIN' },
+    { kind: 'hole', layer: null, net: 'GND' },
+    { kind: 'hole', layer: null, net: null, path: 'power_in', pad: '1' },
+    { kind: 'hole', layer: null, net: null, path: 'power_in', pad: '2' },
+  ];
+  const pads = new Map([
+    ['power_in:1', 'VIN'],
+    ['power_in:2', 'GND'],
+  ]);
+  it('lights the net on every layer, its via and its pad’s barrel, and dims the rest', () => {
+    expect(litReport(pieces, litNets('VIN', []), pads)).toEqual({ layers: ['B.Cu', 'F.Cu'], barrels: 2, vias: 1, dimmed: 4 });
+    expect(litReport(pieces, litNets(null, ['GND']), pads)).toEqual({ layers: ['F.Cu'], barrels: 2, vias: 1, dimmed: 5 });
+    expect(litReport(pieces, litNets(null, []), pads)).toEqual({ layers: [], barrels: 0, vias: 0, dimmed: 0 });
+  });
+  it('a pad’s barrel takes its pad’s net, and copper with no net has none', () => {
+    expect(pieceNet(pieces[6], pads)).toBe('VIN');
+    expect(pieceNet(pieces[6], new Map())).toBeNull();
+    expect(pieceNet(pieces[0], pads)).toBeNull();
+  });
+});
+
 describe('the height preview', () => {
   it('reads a height a person types, from 0.1 to 50 mm, and nothing else', () => {
     expect(previewHeight('1')).toBe(1);
@@ -132,8 +160,9 @@ describe('the commands', () => {
       () => true,
     );
     const keys = cmds.map((c) => c.keys).filter(Boolean);
-    expect(keys).toEqual(['X', 'C', 'H']);
-    for (const k of keys) expect(['D', 'T', 'B', 'I', 'P', 'F', 'M', 'S', 'E', '0']).not.toContain(k);
+    expect(keys).toEqual(['V', 'C', 'H']);
+    // Not the 3D view's others, its tools' (measure M, section S and its axis X Y Z, layers apart E), the 2D board's (R F L K) or the schematic's (R M).
+    for (const k of keys) expect(['D', 'T', 'B', 'I', 'P', 'F', 'M', 'S', 'X', 'Y', 'Z', 'E', 'R', 'L', 'K', '0']).not.toContain(k);
     expect(colourBy.value).toBe('provenance');
     for (const c of [...COLOUR_BY.slice(1), COLOUR_BY[0]]) {
       cycleColourBy();

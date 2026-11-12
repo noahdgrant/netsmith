@@ -70,7 +70,8 @@ export function inspectCommands(in3d: () => boolean, here: () => boolean): Comma
       id: 'pcb.3d.xray',
       title: '3D view: X-ray (see through the board and the bodies)',
       group: 'PCB',
-      keys: 'X',
+      // Not X: the section plane (P4a) picks its axis with X, Y and Z.
+      keys: 'V',
       aliases: ['3d', 'xray', 'x-ray', 'transparent', 'see through', 'inner layers', 'vias'],
       keyFrom: here,
       when: in3d,

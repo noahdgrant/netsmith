@@ -48,6 +48,9 @@ export interface CopperInfo {
   kind: 'copper' | 'hole';
   layer: string | null;
   net: string | null;
+  /** A pad's barrel (`hole:<refdes>.<pad>`): its part's path and its pad; its net is the pad's, which the file does not say. */
+  path?: string;
+  pad?: string;
 }
 
 export interface LimitInfo {
@@ -112,7 +115,12 @@ export function readInfo(userData: unknown): Info | null {
     }
     case 'copper':
     case 'hole':
-      return { kind: n.kind, layer: typeof n.layer === 'string' ? n.layer : null, net: typeof n.net === 'string' ? n.net : null };
+      return {
+        kind: n.kind,
+        layer: typeof n.layer === 'string' ? n.layer : null,
+        net: typeof n.net === 'string' ? n.net : null,
+        ...(typeof n.path === 'string' && typeof n.pad === 'string' ? { path: n.path, pad: n.pad } : {}),
+      };
     case 'height_limit':
       return {
         kind: 'height_limit',
