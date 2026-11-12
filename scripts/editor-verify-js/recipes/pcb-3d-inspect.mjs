@@ -4,7 +4,8 @@
 // the parts of unknown height up in the picture only, under a "preview" label, and the coverage
 // chip does not move; a finding picked in the problems dock flies the camera to it and lights its
 // limit. The fixture has parts of several kinds under and beside a 3 mm lid: one too tall, one
-// with little to spare, two of unknown height.
+// with little to spare, two of unknown height, and outside it a regulator whose height is its
+// package standard's (ADR 0106).
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fresh, openPcb, partOf, scene } from '../pcb-helpers.mjs';
@@ -50,6 +51,29 @@ export async function run(tools) {
   await page.keyboard.press('+');
   await settle(page);
   const chipBefore = await page.getByTestId('height-coverage').innerText();
+
+  step("colour by provenance: the regulator's height is its package standard's (SOT-23, JEDEC TO-236), in a colour of its own, counted apart");
+  const regulator = partOf(s, 'regulator');
+  expect(chipBefore.includes('(1 from the package standard)'), `the chip counts it apart: ${chipBefore}`);
+  const legend = await page.getByTestId('height-legend').innerText();
+  expect(/Package standard\s*1/.test(legend) && /Unknown\s*2/.test(legend), `the legend: ${legend.replace(/\n/g, ' | ')}`);
+  const regAt = await placeOf(page, regulator.path);
+  const ledColour = await ask(page, 'colourAt', (await placeOf(page, led.path)).x, (await placeOf(page, led.path)).y);
+  const regColour = await ask(page, 'colourAt', regAt.x, regAt.y);
+  expect(regColour !== ledColour, `a standard height and a stated one are two colours (${regColour}, ${ledColour})`);
+  await page.mouse.move(regAt.x + 30, regAt.y + 30);
+  await page.mouse.move(regAt.x, regAt.y);
+  await page.waitForSelector('[data-testid=tip-3d]');
+  const regTip = await page.locator('[data-testid=tip-3d]').innerText();
+  expect(regTip.includes("1.12 mm tall, the package standard's maximum (JEDEC TO-236)"), `the hover says where the height came from: ${regTip.replace(/\n/g, ' | ')}`);
+  const inside = await page.evaluate((sel) => {
+    const [t, h] = [document.querySelector('[data-testid=tip-3d]').getBoundingClientRect(), document.querySelector(sel).getBoundingClientRect()];
+    return t.left >= h.left && t.right <= h.right;
+  }, HOST);
+  expect(inside, 'the tip is inside the view, not cut at its edge');
+  await shot('provenance-standard');
+  await page.mouse.move(5, 5);
+  await page.waitForFunction(() => !document.documentElement.classList.contains('has-hover'));
 
   step('x-ray: the key V makes the board, the mask and the bodies see-through, and again puts them back');
   let capAt = await placeOf(page, cap.path);

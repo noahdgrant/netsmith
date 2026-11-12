@@ -192,6 +192,9 @@ button.chip.v3-cov:hover:not(.ok) {
 .v3-sw-catalog {
   background: var(--pcb3d-body-catalog);
 }
+.v3-sw-standard {
+  background: var(--pcb3d-body-standard);
+}
 .v3-sw-unknown {
   background: repeating-linear-gradient(135deg, var(--pcb3d-unknown) 0 2px, transparent 2px 4.5px), var(--pcb3d-mask);
 }

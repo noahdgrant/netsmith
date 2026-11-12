@@ -206,9 +206,11 @@ What it is:
   copper and the silkscreen are in the same file, and the view draws each mesh by its
   material's name in the theme's colours.
 - **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
-  by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
+  by where its height came from: stated in the design, from the catalog row, or the package
+  standard's maximum (a colour of its own, ADR 0106). A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
-  (_Height coverage_); it lists the others, and a click on one selects it. A hover names a part's
+  (_Height coverage_), and how many of those are a package standard's ("3 of 4 parts have a known
+  height (1 from the package standard)"); it lists the parts with none, and a click on one selects it. A hover names a part's
   designator, its height and where the height came from.
 - **One selection with the rest of the editor.** A click selects a part in every view (the 2D
   board, the schematic, the tree, the bill of materials), and a selection made in any of them is

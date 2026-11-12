@@ -16,7 +16,7 @@ import type { Command } from '../commands';
 export type ColourBy = 'provenance' | 'kind' | 'margin';
 
 export const COLOUR_BY: { id: ColourBy; label: string; tip: string }[] = [
-  { id: 'provenance', label: 'Height provenance', tip: 'Colour each body by where its height came from: stated in the design, or the catalog row' },
+  { id: 'provenance', label: 'Height provenance', tip: 'Colour each body by where its height came from: stated in the design, the catalog row, or the package standard' },
   { id: 'kind', label: 'Kind', tip: 'Colour each body by the kind of part: resistor, capacitor, IC, connector…' },
   { id: 'margin', label: 'Height margin', tip: 'A height map: each body by its margin to the height limit over it, green to amber to red; grey where no limit is over it' },
 ];
