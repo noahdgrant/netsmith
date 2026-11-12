@@ -29,7 +29,7 @@
 //! few details are only for the picture: no check, report or written file reads them, none is a
 //! height, and each is a constant below with a doc comment that says so:
 //!
-//! - [`LEAD_THICKNESS`], [`LEAD_EXIT`] and [`GULL_WING_STANDOFF`]: the bend of a gull-wing lead.
+//! - [`LEAD_THICKNESS`], [`LEAD_EXIT`] and [`GULL_WING_STANDOFF`]: the bend of a gull-wing or J-bend lead.
 //! - [`NO_LEAD_TERMINAL_THICKNESS`], [`NO_LEAD_TERMINAL_EXPOSURE`] and [`NO_LEAD_STANDOFF`]: the
 //!   metal under a QFN or DFN.
 //! - [`BALL_PER_PAD`] and [`BALL_HEIGHT_PER_DIAMETER`]: a BGA's balls.
@@ -39,8 +39,9 @@
 //!   cathode.
 //!
 //! **Shaped:** chips (R, C, L, LED, D, fuse; ceramic body and two end terminals), the molded
-//! diodes SOD-123, SOD-323, SMA, SMB and SMC (the body and its cathode band; the makers'
-//! terminals are not in the data, so none is drawn), SOT-23 (-3, -5, -6), SOT-223 (three
+//! diodes SOD-123 and SOD-323 (two gull-wing terminals at the ends and a cathode band) and SMA,
+//! SMB and SMC (two J-bend terminals folded under the body, and the band), all from the sourced
+//! dimensions in `generate/diode.rs`, SOT-23 (-3, -5, -6), SOT-223 (three
 //! pins and the wide tab, from the sourced dimensions in `generate/sot.rs`), SOT-89-3 (three
 //! short leads on one side and the wide tab of pin 2 under the body and out of the other, from
 //! the sourced dimensions in `generate/tab.rs`), DPAK and D2PAK of two or three lead pads (the two
@@ -106,8 +107,12 @@ pub enum Package {
         terminal: f64,
         polarised: bool,
     },
-    /// A molded body with its terminals underneath (SOD, SMA), pad 1 the cathode at -x.
-    Molded { body: (f64, f64) },
+    /// A molded diode (SOD, SMA), pad 1 the cathode at -x: the body, and its two terminals where
+    /// the generator holds them (`None` draws the body and its band only).
+    Molded {
+        body: (f64, f64),
+        terminals: Option<Terminals>,
+    },
     /// Gull-wing leads out of the body's edges: the body (x, y), the span tip to tip across x and
     /// across y (the latter only read for leads on the top and bottom edges), and the lead's width
     /// and the length of its foot.
@@ -146,6 +151,29 @@ pub enum Package {
     },
     /// A ceramic crystal package with a metal lid.
     Crystal { body: (f64, f64) },
+}
+
+/// The two terminals of a molded diode, one out of each end of the body along x, in the middle
+/// of its width.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Terminals {
+    /// The span tip to tip along x, in mm.
+    pub span: f64,
+    /// The width of a terminal, in mm.
+    pub width: f64,
+    /// The length of a terminal's foot on the board, in mm.
+    pub foot: f64,
+    pub bend: Bend,
+}
+
+/// How a molded diode's terminal is bent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bend {
+    /// Out of the body's end, down, and the foot out away from the body (SOD).
+    GullWing,
+    /// Out of the body's end, down, and the foot folded back in flat under the body (DO-214:
+    /// SMA, SMB, SMC), so that the body sits on it.
+    J,
 }
 
 /// One lead of a package: the edge of the body it leaves, and its centre along that edge (y for
@@ -407,11 +435,7 @@ fn shape(package: &Package, h: f64) -> Vec<Solid> {
             terminal,
             polarised,
         } => chip(*body, *terminal, *polarised, h),
-        Package::Molded { body } => {
-            let mut out = vec![solid(Material::Body, centred(*body, 0.0, h))];
-            out.push(cathode_band(*body, 0.0, h));
-            out
-        }
+        Package::Molded { body, terminals } => molded(*body, *terminals, h),
         Package::GullWing {
             body,
             span,
@@ -419,7 +443,13 @@ fn shape(package: &Package, h: f64) -> Vec<Solid> {
             lead_length,
             leads,
             exposed,
-        } => gull_wing(*body, *span, *lead_width, *lead_length, leads, *exposed, h),
+        } => {
+            let mut out = gull_wing(*body, *span, *lead_width, *lead_length, leads, *exposed, h);
+            if let Some(p1) = first_point(leads, *body) {
+                out.push(pin1_mark(*body, p1, h));
+            }
+            out
+        }
         Package::NoLead {
             body,
             lead_width,
@@ -489,6 +519,41 @@ fn chip(body: (f64, f64), terminal: f64, polarised: bool, h: f64) -> Vec<Solid> 
     ];
     if polarised {
         out.push(cathode_band(body, t, h));
+    }
+    out
+}
+
+/// A molded body with a J-bend terminal out of each end: the lead leaves the end face partway up,
+/// bends down the outside, and its foot runs back in flat under the body, which sits on it.
+fn j_bend(body: (f64, f64), t: Terminals, h: f64) -> Vec<Solid> {
+    let thick = LEAD_THICKNESS.min(h / 4.0);
+    let (be, tip) = (body.0 / 2.0, t.span / 2.0);
+    // The underside of the lead where it leaves the end face.
+    let e = (LEAD_EXIT * h - thick / 2.0).max(thick).min(h - thick);
+    let outer = (tip - thick).max(be);
+    let inner = (tip - t.foot).max(0.0);
+    let mut out = vec![solid(Material::Body, centred(body, thick, h))];
+    for sign in [-1.0, 1.0] {
+        // (outward, z), round the lead's side.
+        let path = [
+            (be, e + thick),
+            (tip, e + thick),
+            (tip, 0.0),
+            (inner, 0.0),
+            (inner, thick),
+            (outer, thick),
+            (outer, e),
+            (be, e),
+        ];
+        out.push(solid(
+            Material::Metal,
+            Primitive::Prism {
+                axis: Axis::Y,
+                profile: path.iter().map(|&(o, z)| [sign * o, z]).collect(),
+                from: -t.width / 2.0,
+                to: t.width / 2.0,
+            },
+        ));
     }
     out
 }
@@ -577,9 +642,28 @@ fn gull_wing(
     if let Some(ep) = exposed {
         out.push(solid(Material::Metal, centred(ep, 0.0, standoff.max(t))));
     }
-    if let Some(p1) = first_point(leads, body) {
-        out.push(pin1_mark(body, p1, h));
-    }
+    out
+}
+
+/// A molded diode: the body, its two terminals where the generator holds them, and the cathode
+/// band at -x.
+fn molded(body: (f64, f64), terminals: Option<Terminals>, h: f64) -> Vec<Solid> {
+    let mut out = match terminals {
+        Some(t) if t.bend == Bend::J => j_bend(body, t, h),
+        Some(t) => {
+            let lead = |edge| Lead {
+                edge,
+                at: 0.0,
+                width: None,
+                reach: None,
+                under: None,
+            };
+            let leads = [lead(Edge::Left), lead(Edge::Right)];
+            gull_wing(body, (t.span, body.1), t.width, t.foot, &leads, None, h)
+        }
+        None => vec![solid(Material::Body, centred(body, 0.0, h))],
+    };
+    out.push(cathode_band(body, 0.0, h));
     out
 }
 
@@ -817,12 +901,137 @@ mod tests {
     }
 
     #[test]
-    fn a_molded_diode_is_its_body_and_a_band() {
-        let fp = made("Diode_SMD:D_SMA");
-        let shape = fits("D_SMA", &fp, 2.3);
-        assert_eq!(shape.solids.len(), 2);
-        let body = body_solid(&shape);
-        assert!((body.max[0] - 2.3).abs() < EPS && (body.max[1] - 1.5).abs() < EPS);
+    fn an_sma_smb_or_smc_has_two_j_bend_terminals_folded_under_its_body() {
+        // (id, body x, body y, span, terminal width, foot): onsemi's nominals (403D, 403A-03,
+        // 403-03), checked against Diodes' ranges.
+        for (id, bx, by, span, w, foot) in [
+            ("Diode_SMD:D_SMA", 4.6, 3.0, 5.21, 1.45, 1.14),
+            ("Diode_SMD:D_SMB", 4.6, 4.0, 5.44, 2.03, 1.02),
+            ("Diode_SMD:D_SMC", 7.1, 6.2, 7.94, 3.00, 1.02),
+        ] {
+            let shape = fits(id, &made(id), 2.3);
+            assert_eq!(count(&shape, Material::Metal), 2, "{id}");
+            assert_eq!(count(&shape, Material::Mark), 1, "{id}");
+            // The body is the footprint's, standing on the feet.
+            let body = body_solid(&shape);
+            assert!((body.max[0] - bx / 2.0).abs() < EPS, "{id}: {body:?}");
+            assert!((body.max[1] - by / 2.0).abs() < EPS, "{id}: {body:?}");
+            assert!((body.min[2] - LEAD_THICKNESS).abs() < EPS, "{id}: {body:?}");
+            let metal = metal_of(&shape);
+            let (left, right) = if metal[0].max[0] < 0.0 {
+                (&metal[0], &metal[1])
+            } else {
+                (&metal[1], &metal[0])
+            };
+            assert!((right.max[0] - left.min[0] - span).abs() < EPS, "{id}");
+            for b in [left, right] {
+                assert!(
+                    centre(b).abs() < EPS && (width(b) - w).abs() < EPS,
+                    "{id}: {b:?}"
+                );
+                assert!(b.min[2].abs() < EPS, "{id}: {b:?}");
+            }
+            for solid in shape
+                .solids
+                .iter()
+                .filter(|s| s.material == Material::Metal)
+            {
+                let Primitive::Prism { profile, .. } = &solid.primitive else {
+                    panic!("{id}: a terminal is a prism");
+                };
+                // The foot on the board runs `foot` back from the tip, in under the body.
+                let flat: Vec<f64> = profile
+                    .iter()
+                    .filter(|p| p[1] == 0.0)
+                    .map(|p| p[0])
+                    .collect();
+                let long = flat.iter().fold(f64::MIN, |a, &x| a.max(x))
+                    - flat.iter().fold(f64::MAX, |a, &x| a.min(x));
+                assert!((long - foot).abs() < EPS, "{id}: {long}");
+                let inner = flat.iter().fold(f64::MAX, |a, &x| a.min(x.abs()));
+                assert!(inner < bx / 2.0, "{id}: the foot is under the body");
+                // The terminal leaves the end face of the body, above the foot.
+                let exits = profile
+                    .iter()
+                    .any(|p| (p[0].abs() - bx / 2.0).abs() < EPS && p[1] > 0.0);
+                assert!(exits, "{id}: {profile:?}");
+            }
+            // The band is at -x, across the body's width; the top is the given height.
+            let band = mark_of(&shape);
+            assert!(
+                band.max[0] <= 0.0 && (width(&band) - by).abs() < EPS,
+                "{id}: {band:?}"
+            );
+            assert!((shape.bounds().unwrap().max[2] - 2.3).abs() < EPS, "{id}");
+        }
+    }
+
+    #[test]
+    fn a_sod_diode_has_two_terminals_and_a_band_to_its_sourced_dimensions() {
+        // (id, body x, body y, span, terminal width, foot): Diodes' typical values, checked
+        // against onsemi's cases 425 and 477.
+        for (id, bx, by, span, w, foot) in [
+            ("Diode_SMD:D_SOD-123", 2.8, 1.8, 3.65, 0.57, 0.30),
+            ("Diode_SMD:D_SOD-323", 1.8, 1.4, 2.50, 0.30, 0.30),
+        ] {
+            let shape = fits(id, &made(id), 1.2);
+            assert!(shape.solids.len() > 2, "{id} is still a box and a band");
+            assert_eq!(count(&shape, Material::Metal), 2, "{id}");
+            assert_eq!(count(&shape, Material::Mark), 1, "{id}");
+            let body = body_solid(&shape);
+            assert!((body.max[0] - bx / 2.0).abs() < EPS, "{id}: {body:?}");
+            assert!((body.max[1] - by / 2.0).abs() < EPS, "{id}: {body:?}");
+            let metal = metal_of(&shape);
+            assert_eq!(metal.len(), 2, "{id}");
+            let (left, right) = if metal[0].max[0] < 0.0 {
+                (&metal[0], &metal[1])
+            } else {
+                (&metal[1], &metal[0])
+            };
+            // The span tip to tip, each terminal in the middle of the width and as wide as sourced.
+            assert!((right.max[0] - left.min[0] - span).abs() < EPS, "{id}");
+            assert!((left.min[0] + span / 2.0).abs() < EPS, "{id}: {left:?}");
+            assert!((right.max[0] - span / 2.0).abs() < EPS, "{id}: {right:?}");
+            for b in [left, right] {
+                assert!(
+                    centre(b).abs() < EPS && (width(b) - w).abs() < EPS,
+                    "{id}: {b:?}"
+                );
+                assert!(b.min[2].abs() < EPS, "{id}: {b:?}");
+            }
+            // The foot is on the board at each tip: `foot` long past the bend, or the whole reach
+            // where the bend would start inside the body.
+            let reach = (span - bx) / 2.0;
+            for solid in shape
+                .solids
+                .iter()
+                .filter(|s| s.material == Material::Metal)
+            {
+                let Primitive::Prism { profile, .. } = &solid.primitive else {
+                    panic!("{id}: a terminal is a prism");
+                };
+                let flat: Vec<f64> = profile
+                    .iter()
+                    .filter(|p| p[1] == 0.0)
+                    .map(|p| p[0])
+                    .collect();
+                let long = flat.iter().fold(f64::MIN, |a, &x| a.max(x))
+                    - flat.iter().fold(f64::MAX, |a, &x| a.min(x));
+                assert!(
+                    (long - (foot + LEAD_THICKNESS).min(reach)).abs() < EPS,
+                    "{id}: {long}"
+                );
+            }
+            // The cathode band is at -x, across the whole width of the body.
+            let band = mark_of(&shape);
+            assert!(
+                band.max[0] <= 0.0 && band.min[0] >= -bx / 2.0,
+                "{id}: {band:?}"
+            );
+            assert!((width(&band) - by).abs() < EPS, "{id}: {band:?}");
+            // The height is the given one and not changed by the terminals.
+            assert!((shape.bounds().unwrap().max[2] - 1.2).abs() < EPS, "{id}");
+        }
     }
 
     #[test]

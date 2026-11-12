@@ -12,7 +12,8 @@ use std::{
 use netsmith::cli::{Command, LockMode, OrderRequest, RefreshRequest, parse_args};
 use netsmith::compare::{Request, Verdict, compare_files};
 use netsmith::editor::Workspace;
-use netsmith::fab::{FabOptions, fab_with_options};
+use netsmith::fab::{FabOptions, fab_detailed};
+use netsmith::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
 use netsmith::init::init;
 use netsmith::order::OrderLocks;
 use netsmith::project::{Project, Target};
@@ -33,8 +34,11 @@ fn main() -> ExitCode {
             println!("netsmith {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
-        Ok(Command::Help) => {
-            print!("{}", netsmith::cli::help());
+        Ok(Command::Help(command)) => {
+            match command {
+                Some(command) => print!("{}", netsmith::cli::command_help(&command)),
+                None => print!("{}", netsmith::cli::help()),
+            }
             ExitCode::SUCCESS
         }
         Ok(Command::Init { name }) => run_init(name.as_deref()),
@@ -43,14 +47,53 @@ fn main() -> ExitCode {
             out,
             strict,
             locked,
+            format,
+            notes,
         }) => timings::stage("build.total", "", || {
             // The pin file first: a request must have its pin before anything is built, and
             // `--locked` stops here before the pick lock or any file is written.
             if let Some(code) = sync_pins(file.as_deref(), locked) {
                 return code;
             }
-            run_build(file.as_deref(), out.as_deref(), strict, locked)
+            run_build(&BuildRun {
+                file: file.as_deref(),
+                out: out.as_deref(),
+                strict,
+                locked,
+                format,
+                notes,
+                write: true,
+            })
         }),
+        // `check` writes nothing, not even the pin file: a request without a pin is given one in
+        // memory, as the editor does.
+        Ok(Command::Check {
+            file,
+            strict,
+            format,
+            notes,
+        }) => run_build(&BuildRun {
+            file: file.as_deref(),
+            out: None,
+            strict,
+            locked: false,
+            format,
+            notes,
+            write: false,
+        }),
+        Ok(Command::Parity {
+            board,
+            table,
+            map,
+            svg,
+            format,
+        }) => run_parity(
+            &board,
+            table.as_deref(),
+            map.as_deref(),
+            svg.as_deref(),
+            format,
+        ),
         Ok(Command::Fab {
             file,
             out,
@@ -63,7 +106,16 @@ fn main() -> ExitCode {
             pins_locked,
             no_glb,
             order,
+            quiet,
+            format,
+            notes,
         }) => {
+            if order.is_some() && format == Format::Json {
+                eprintln!(
+                    "error: `fab --order` prints text only; `--format json` is for `fab` of a file or of the project's boards"
+                );
+                return ExitCode::from(2);
+            }
             if let Some(code) = sync_pins(file.as_deref(), locked) {
                 return code;
             }
@@ -91,6 +143,11 @@ fn main() -> ExitCode {
                         constraints_warn,
                         pins_locked,
                         no_glb,
+                        FabOutput {
+                            quiet,
+                            format,
+                            notes,
+                        },
                     )
                 }),
             }
@@ -102,7 +159,14 @@ fn main() -> ExitCode {
             board,
             json,
             glb,
-        }) => run_board3d(file.as_deref(), board.as_deref(), json, glb.as_deref()),
+            step,
+        }) => run_board3d(
+            file.as_deref(),
+            board.as_deref(),
+            json,
+            glb.as_deref(),
+            step.as_deref(),
+        ),
         Ok(Command::Render {
             file,
             board,
@@ -147,15 +211,19 @@ fn main() -> ExitCode {
             by_refdes,
             ignore_unconnected,
             loose_values,
-        }) => run_compare(&Request {
-            a: &a,
-            b: &b,
-            board: board.as_deref(),
-            map: map.as_deref(),
-            by_refdes,
-            ignore_unconnected,
-            loose_values,
-        }),
+            format,
+        }) => run_compare(
+            &Request {
+                a: &a,
+                b: &b,
+                board: board.as_deref(),
+                map: map.as_deref(),
+                by_refdes,
+                ignore_unconnected,
+                loose_values,
+            },
+            format,
+        ),
     }
 }
 
@@ -521,8 +589,47 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
     }
 }
 
-fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool) -> ExitCode {
-    let (target, loader, catalogs) = match target(file, strict) {
+/// What `build` and `check` are asked to do: `check` is `build` that writes nothing (#455).
+struct BuildRun<'a> {
+    file: Option<&'a str>,
+    out: Option<&'a Path>,
+    strict: bool,
+    locked: bool,
+    format: Format,
+    notes: NotesMode,
+    /// `build` writes the schematic, the lock and the libraries' tables; `check` writes nothing.
+    write: bool,
+}
+
+/// What a board said that did not stop it: printed as text, or kept for the JSON report.
+fn tell_built(b: &netsmith::Built, run: &BuildRun, report: &mut Report) {
+    if run.format == Format::Json {
+        report.add_built(b, run.notes);
+        return;
+    }
+    let notes = netsmith::findings::notes(b);
+    match run.notes {
+        NotesMode::All => {
+            for (_, note) in &notes {
+                eprintln!("note: {}", note.message);
+            }
+        }
+        NotesMode::Summary => {
+            if let Some(line) = netsmith::findings::summary_line(&b.label(), &notes) {
+                eprintln!("{line}");
+            }
+        }
+        NotesMode::None => {}
+    }
+    for warning in b.guideline_warnings() {
+        eprintln!("warning: {warning}");
+    }
+}
+
+fn run_build(run: &BuildRun) -> ExitCode {
+    let json = run.format == Format::Json;
+    let mut report = Report::new(if run.write { "build" } else { "check" });
+    let (target, loader, catalogs) = match target(run.file, run.strict) {
         Ok(t) => t,
         Err(code) => return code,
     };
@@ -533,8 +640,16 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
     if no_boards(&target) {
         return ExitCode::from(2);
     }
-    let out = out.unwrap_or(&target.build_out);
+    let out = run.out.unwrap_or(&target.build_out);
     let mut code = ExitCode::SUCCESS;
+    // An error that stops a file, printed or kept.
+    let fail = |report: &mut Report, finding: Finding, text: &str| {
+        if json {
+            report.findings.push(finding);
+        } else {
+            eprint!("{text}");
+        }
+    };
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
             Ok(t) => t,
@@ -545,88 +660,168 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
         };
 
         // The pick lock beside the source holds the parts it names to their rows.
-        let (held, using) = match netsmith::pick_lock::open(&source.path, &catalogs, locked) {
-            Ok(opened) => opened,
-            Err(e) => {
-                eprintln!("{e}");
-                return ExitCode::from(2);
+        let (held, using) =
+            match netsmith::pick_lock::open(&source.path, &catalogs, run.locked && run.write) {
+                Ok(opened) => opened,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(2);
+                }
+            };
+        let catalogs = held.as_ref().unwrap_or(&catalogs);
+        let outcome = match outcome_with(&source.name, &text, &loader, catalogs, Some(&libraries)) {
+            Ok(outcome) => outcome,
+            Err(problems) => {
+                code = ExitCode::FAILURE;
+                if json {
+                    report
+                        .findings
+                        .extend(netsmith::findings::of_problems(&problems));
+                } else {
+                    eprint!("{}", render_problems(&problems));
+                }
+                continue;
             }
         };
-        let catalogs = held.as_ref().unwrap_or(&catalogs);
-        let built = outcome_with(&source.name, &text, &loader, catalogs, Some(&libraries))
-            .map_err(|problems| render_problems(&problems));
-        let settled = built.and_then(|outcome| {
-            netsmith::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock)
-                .map(|settled| (outcome.boards, settled))
-                .map_err(|e| format!("{e}\n"))
-        });
-        match settled {
-            Err(problems) => {
-                eprint!("{problems}");
-                code = ExitCode::FAILURE;
-            }
-            Ok((boards, settled)) => {
-                if let Some(file) = &settled.wrote {
-                    println!("wrote {}", file.display());
-                }
-                for note in &settled.notes {
-                    eprintln!("note: {note}");
-                }
-                // What the requirements prove cannot be placed is said now, with no placing
-                // (ADR 0045 section 14); the layout file's locks count.
-                let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
-                let layout =
-                    netsmith::layout::read(&netsmith::layout::layout_path(&source.path), &names)
-                        .ok()
-                        .flatten();
-                let mut unplaceable = false;
-                for b in &boards {
-                    let found = netsmith::fab::precheck_board(
-                        b,
-                        layout.as_ref().map(|l| &l.0),
-                        &libraries,
-                        catalogs.constraints_warn(),
-                    );
-                    for warning in &found.warnings {
-                        eprintln!("warning: {}: {warning}", found.board);
+        // `build` writes the lock when there is none, and says how the picks differ from one;
+        // `check` writes nothing and only says how they differ.
+        let lock_notes = if run.write {
+            match netsmith::pick_lock::settle(&using, catalogs.pick_lock(), &outcome.lock) {
+                Ok(settled) => {
+                    if let Some(file) = &settled.wrote
+                        && !json
+                    {
+                        println!("wrote {}", file.display());
                     }
-                    for error in &found.errors {
-                        eprintln!("error: {}: {error}", found.board);
-                        unplaceable = true;
-                    }
+                    settled.notes
                 }
-                if unplaceable {
+                Err(e) => {
                     code = ExitCode::FAILURE;
+                    fail(
+                        &mut report,
+                        Finding::plain(Severity::Error, "lock", e.trim_start_matches("error: ")),
+                        &format!("{e}\n"),
+                    );
                     continue;
                 }
-                for b in boards {
-                    let dir = match b.write(out) {
-                        Ok(dir) => dir,
-                        Err(e) => {
-                            eprintln!("{}: {e}", b.dir(out).display());
-                            return ExitCode::from(2);
-                        }
-                    };
-                    // The project's own libraries and the standard library's own files that
-                    // the board uses, so KiCad finds the symbols.
-                    if let Err(e) = libraries.write_tables(&dir, &b.design) {
-                        eprintln!("{}: {e}", dir.display());
-                        return ExitCode::from(2);
-                    }
-                    print!("{}", b.report);
-                    for note in &b.notes {
-                        eprintln!("note: {note}");
-                    }
-                    for warning in b.guideline_warnings() {
-                        eprintln!("warning: {warning}");
-                    }
-                    for note in b.power_notes() {
-                        eprintln!("note: {note}");
-                    }
-                    println!("wrote {}", dir.display());
+            }
+        } else {
+            let indent = |lines: &[String]| {
+                lines
+                    .iter()
+                    .map(|l| format!("  {l}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            let mut notes: Vec<String> = catalogs
+                .pick_lock()
+                .map(|old| netsmith::pick_lock::compare(old, &outcome.lock).lines())
+                .filter(|lines| !lines.is_empty())
+                .map(|lines| {
+                    vec![format!(
+                        "the parts picked differ from {}:\n{}",
+                        using.file.display(),
+                        indent(&lines)
+                    )]
+                })
+                .unwrap_or_default();
+            if let Some(picks) = &using.picks {
+                let stale = netsmith::picks::stale(picks, &outcome.lock);
+                if !stale.is_empty() {
+                    notes.push(format!(
+                        "{} names parts the design no longer picks a row for:\n{}",
+                        picks.file,
+                        indent(&stale)
+                    ));
                 }
             }
+            notes
+        };
+        for note in &lock_notes {
+            if json {
+                report
+                    .findings
+                    .push(Finding::plain(Severity::Note, "note.other", note.clone()));
+            } else {
+                eprintln!("note: {note}");
+            }
         }
+        let boards = outcome.boards;
+        // What the requirements prove cannot be placed is said now, with no placing
+        // (ADR 0045 section 14); the layout file's locks count.
+        let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
+        let layout = netsmith::layout::read(&netsmith::layout::layout_path(&source.path), &names)
+            .ok()
+            .flatten();
+        let mut unplaceable = false;
+        for b in &boards {
+            let found = netsmith::fab::precheck_board(
+                b,
+                layout.as_ref().map(|l| &l.0),
+                &libraries,
+                catalogs.constraints_warn(),
+            );
+            for warning in &found.warnings {
+                if json {
+                    report.findings.push(Finding {
+                        board: Some(found.board.clone()),
+                        ..Finding::plain(Severity::Warning, "place", warning.clone())
+                    });
+                } else {
+                    eprintln!("warning: {}: {warning}", found.board);
+                }
+            }
+            for error in &found.errors {
+                unplaceable = true;
+                fail(
+                    &mut report,
+                    Finding {
+                        board: Some(found.board.clone()),
+                        ..Finding::plain(Severity::Error, "place", error.clone())
+                    },
+                    &format!("error: {}: {error}\n", found.board),
+                );
+            }
+        }
+        if unplaceable {
+            code = ExitCode::FAILURE;
+            continue;
+        }
+        for b in boards {
+            let mut written = None;
+            if run.write {
+                let dir = match b.write(out) {
+                    Ok(dir) => dir,
+                    Err(e) => {
+                        eprintln!("{}: {e}", b.dir(out).display());
+                        return ExitCode::from(2);
+                    }
+                };
+                // The project's own libraries and the standard library's own files that
+                // the board uses, so KiCad finds the symbols.
+                if let Err(e) = libraries.write_tables(&dir, &b.design) {
+                    eprintln!("{}: {e}", dir.display());
+                    return ExitCode::from(2);
+                }
+                if !json {
+                    print!("{}", b.report);
+                }
+                written = Some(dir);
+            }
+            tell_built(&b, run, &mut report);
+            match &written {
+                Some(dir) if !json => println!("wrote {}", dir.display()),
+                _ => {}
+            }
+            report.boards.push(BoardOut {
+                board: b.label(),
+                dir: written.map(|d| d.display().to_string()),
+            });
+        }
+    }
+    if json {
+        report.ok = code == ExitCode::SUCCESS;
+        print!("{}", report.to_json());
     }
     code
 }
@@ -703,7 +898,10 @@ fn run_fab(
     constraints_warn: Option<bool>,
     pins_locked: Option<bool>,
     no_glb: bool,
+    output: FabOutput,
 ) -> ExitCode {
+    let json = output.format == Format::Json;
+    let mut report = Report::new("fab");
     let (target, loader, mut catalogs) = match target(file, strict) {
         Ok(t) => t,
         Err(code) => return code,
@@ -747,7 +945,11 @@ fn run_fab(
             Some(secs) => Some(Duration::from_secs(secs)),
             None => FabOptions::default().route_timeout,
         },
-        progress: Some(|message| eprintln!("{message}")),
+        progress: Some(match (json, output.quiet) {
+            (true, _) => keep_line,
+            (false, true) => quiet_line,
+            (false, false) => |message| eprintln!("{message}"),
+        }),
         layout: None,
         allow_drc_violations,
         cross_check,
@@ -786,7 +988,7 @@ fn run_fab(
             }),
             ..options.clone()
         };
-        match fab_with_options(
+        match fab_detailed(
             &source.name,
             &text,
             &loader,
@@ -796,22 +998,131 @@ fn run_fab(
             kicad.as_ref().map(|k| k as &dyn KicadCli),
             &options,
         ) {
-            Err(problems) => {
-                eprint!("{problems}");
+            Err(failure) => {
                 code = ExitCode::FAILURE;
+                if json {
+                    if failure.problems.is_empty() {
+                        report.findings.push(Finding::plain(
+                            Severity::Error,
+                            "fab",
+                            failure.text.trim().trim_start_matches("error: "),
+                        ));
+                    } else {
+                        report
+                            .findings
+                            .extend(netsmith::findings::of_problems(&failure.problems));
+                    }
+                } else {
+                    eprint!("{}", failure.text);
+                }
             }
             Ok(boards) => {
                 for b in boards {
+                    let lines: Vec<&str> = b
+                        .notes
+                        .lines()
+                        .map(str::trim)
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    if json {
+                        report.notes.total += lines.len();
+                        if !lines.is_empty() {
+                            *report.notes.by_cause.entry("fab".to_string()).or_default() +=
+                                lines.len();
+                        }
+                        if output.notes == NotesMode::All {
+                            report.findings.extend(lines.iter().map(|l| Finding {
+                                board: Some(b.board.clone()),
+                                ..Finding::plain(Severity::Note, "fab", *l)
+                            }));
+                        }
+                        report.boards.push(BoardOut {
+                            board: b.board.clone(),
+                            dir: Some(b.dir.display().to_string()),
+                        });
+                        continue;
+                    }
                     print!("{}", b.summary);
                     println!("wrote {}", b.dir.display());
-                    if !b.notes.trim().is_empty() {
-                        eprintln!("\nbefore you order ({}):\n{}", b.board, b.notes.trim_end());
+                    match output.notes {
+                        NotesMode::All if !lines.is_empty() => {
+                            eprintln!("\nbefore you order ({}):\n{}", b.board, b.notes.trim_end());
+                        }
+                        NotesMode::Summary if !lines.is_empty() => eprintln!(
+                            "note: {}: {} lines to read before you order, in {} (`--notes all` prints them)",
+                            b.board,
+                            lines.len(),
+                            b.dir.join("fab-notes.txt").display()
+                        ),
+                        _ => {}
                     }
                 }
             }
         }
     }
+    if json {
+        // The warnings and notes that `fab` tells as it goes (a pick lock that differs, a
+        // guideline, a part that hangs over an edge) are findings too.
+        for line in take_kept_lines() {
+            if let Some(f) = finding_of_line(&line) {
+                report.findings.push(f);
+            }
+        }
+        report.ok = code == ExitCode::SUCCESS;
+        print!("{}", report.to_json());
+    }
     code
+}
+
+/// How `fab` prints: `--quiet`, `--format` and `--notes` (#455).
+#[derive(Clone, Copy)]
+struct FabOutput {
+    quiet: bool,
+    format: Format,
+    notes: NotesMode,
+}
+
+/// The lines `fab --format json` keeps as it goes, to make findings of the warnings and notes
+/// among them at the end. `progress` is a plain `fn`, so they are kept here.
+static KEPT: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn keep_line(message: &str) {
+    if let Ok(mut kept) = KEPT.lock() {
+        kept.push(message.to_string());
+    }
+}
+
+fn take_kept_lines() -> Vec<String> {
+    KEPT.lock()
+        .map(|mut k| std::mem::take(&mut *k))
+        .unwrap_or_default()
+}
+
+/// `fab --quiet`: the warnings and notes `fab` tells as it goes, and not its stages or the
+/// router's passes.
+fn quiet_line(message: &str) {
+    if finding_of_line(message).is_some() {
+        eprintln!("{message}");
+    }
+}
+
+/// A line `fab` told as it went, as a finding when it is a warning or a note: `note: ...`,
+/// `warning: ...`, or `<board>: warning: ...`.
+fn finding_of_line(line: &str) -> Option<Finding> {
+    let (board, rest) = match line.split_once(": ") {
+        Some((board, rest)) if rest.starts_with("warning: ") || rest.starts_with("note: ") => {
+            (Some(board.to_string()), rest)
+        }
+        _ => (None, line),
+    };
+    let (severity, code, message) = match rest.strip_prefix("warning: ") {
+        Some(m) => (Severity::Warning, "fab", m),
+        None => (Severity::Note, "note.other", rest.strip_prefix("note: ")?),
+    };
+    Some(Finding {
+        board,
+        ..Finding::plain(severity, code, message)
+    })
 }
 
 /// What `board3d` and `render` do first: the one board `file` and `--board` pick, built and
@@ -867,22 +1178,27 @@ fn with_placed_board<T>(
 
 /// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file
 /// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
-/// stdout with `--json`, the scene as a `.glb` file with `--glb` (and no summary), a summary with
-/// neither. Exit 0 when the report is printed (and the file written), 1 when the board does not
+/// stdout with `--json`, the scene as a `.glb` file with `--glb` and as a STEP file with
+/// `--step` (and no summary), a summary with none of them. Exit 0 when the report is printed (and the file written), 1 when the board does not
 /// build or place, 2 when the command cannot start or the file cannot be written.
 fn run_board3d(
     file: Option<&str>,
     board: Option<&str>,
     json: bool,
     glb: Option<&Path>,
+    step: Option<&Path>,
 ) -> ExitCode {
     let made = with_placed_board(file, board, |placed| placed.run());
     let (report, scene) = match made {
         Ok(made) => made,
         Err(code) => return code,
     };
-    if let Some(out) = glb {
-        let bytes = netsmith_pcb::gltf::glb(&scene, &report.board.name);
+    let label = &report.board.name;
+    let files = [
+        glb.map(|out| (out, netsmith_pcb::gltf::glb(&scene, label))),
+        step.map(|out| (out, netsmith_pcb::step::step(&scene, label).into_bytes())),
+    ];
+    for (out, bytes) in files.into_iter().flatten() {
         if let Err(e) = fs::write(out, bytes) {
             eprintln!("error: {}: {e}", out.display());
             return ExitCode::from(2);
@@ -890,7 +1206,7 @@ fn run_board3d(
     }
     if json {
         print!("{}", report.json());
-    } else if glb.is_none() {
+    } else if glb.is_none() && step.is_none() {
         print!("{}", report.summary());
     }
     ExitCode::SUCCESS
@@ -1052,9 +1368,17 @@ fn run_order(
 
 /// Exit 0 when the designs match, 1 when they differ, 2 when they could not be compared or
 /// the comparison could not be decided.
-fn run_compare(request: &Request) -> ExitCode {
+fn run_compare(request: &Request, format: Format) -> ExitCode {
     let kicad = KicadCliExe::locate();
     match compare_files(request, kicad.as_ref().map(|k| k as &dyn KicadCli)) {
+        Ok(done) if format == Format::Json => {
+            print!("{}", done.json);
+            match done.verdict {
+                Verdict::Match => ExitCode::SUCCESS,
+                Verdict::Different => ExitCode::FAILURE,
+                Verdict::Undecided => ExitCode::from(2),
+            }
+        }
         Ok(done) => match done.verdict {
             Verdict::Match => {
                 print!("{}", done.text);
@@ -1073,6 +1397,62 @@ fn run_compare(request: &Request) -> ExitCode {
             eprintln!("error: {}", e.trim_end());
             ExitCode::from(2)
         }
+    }
+}
+
+/// `netsmith parity`: compare a board that `fab` wrote with the board of a port's original
+/// (#455; it was the example `parity`). The table and the map default to those of the project's
+/// `reference/` folder, or of the current folder's when there is no project. The report goes to
+/// stdout; the exit code is 1 when a must-match item fails, 0 when none does, 2 when a file
+/// cannot be read.
+fn run_parity(
+    board: &Path,
+    table: Option<&Path>,
+    map: Option<&Path>,
+    svg: Option<&Path>,
+    format: Format,
+) -> ExitCode {
+    use netsmith::parity::{DesignatorMap, Tolerances, check_text};
+    let reference = Target::resolve(None)
+        .ok()
+        .and_then(|t| t.project.map(|p| p.root))
+        .unwrap_or_else(|| Path::new(".").to_path_buf())
+        .join("reference");
+    let read =
+        |path: &Path| fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
+    let run = || -> Result<netsmith::parity::ParityReport, String> {
+        let table_path = table.map_or_else(|| reference.join("placements.toml"), Path::to_path_buf);
+        let map_path = map.map_or_else(|| reference.join("designators.toml"), Path::to_path_buf);
+        let map = DesignatorMap::parse(&read(&map_path)?)
+            .map_err(|e| format!("{}: {e}", map_path.display()))?;
+        check_text(
+            &read(&table_path)?,
+            &read(board)?,
+            &map,
+            &Tolerances::default(),
+        )
+    };
+    let report = match run() {
+        Ok(report) => report,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    match format {
+        Format::Json => print!("{}", report.json()),
+        Format::Text => print!("{}", report.text()),
+    }
+    if let Some(svg) = svg
+        && let Err(e) = fs::write(svg, report.overlay_svg())
+    {
+        eprintln!("error: {}: {e}", svg.display());
+        return ExitCode::from(2);
+    }
+    if report.passed() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
 

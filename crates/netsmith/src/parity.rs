@@ -265,6 +265,46 @@ impl ParityReport {
         self.items.iter().filter(|i| i.verdict == Verdict::Fail)
     }
 
+    /// The report as one JSON document, for `netsmith parity --format json` (#455): whether it
+    /// passed, the counts of the must-match items, each item with its figures, and the warnings.
+    pub fn json(&self) -> String {
+        let items: Vec<serde_json::Value> = self
+            .items
+            .iter()
+            .map(|i| {
+                serde_json::json!({
+                    "id": i.id,
+                    "field": i.field,
+                    "subject": i.subject,
+                    "must_match": i.must_match,
+                    "verdict": match i.verdict {
+                        Verdict::Ok => "ok",
+                        Verdict::Fail => "fail",
+                        Verdict::Info => "info",
+                    },
+                    "dx": i.dx,
+                    "dy": i.dy,
+                    "drotation": i.drotation,
+                    "dsize": i.dsize.map(|(w, h)| [w, h]),
+                    "dvalue": i.dvalue,
+                    "tolerance": i.tolerance,
+                    "note": i.note,
+                })
+            })
+            .collect();
+        let (ok, failed) = self.must_match_counts();
+        let doc = serde_json::json!({
+            "command": "parity",
+            "passed": self.passed(),
+            "must_match": { "ok": ok, "failed": failed },
+            "items": items,
+            "warnings": self.warnings,
+        });
+        let mut text = serde_json::to_string_pretty(&doc).expect("plain data");
+        text.push('\n');
+        text
+    }
+
     /// One line per item (outline, holes, parts by reference, then what the board has extra),
     /// the warnings, and the summary line `must-match: N ok, M failed`.
     pub fn text(&self) -> String {

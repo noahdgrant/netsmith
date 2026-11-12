@@ -12,14 +12,16 @@ netsmith board3d examples/led.nsm                 # a short summary
 netsmith board3d examples/led.nsm --json          # the report below, on stdout
 netsmith board3d examples/two_boards.nsm --board TwoBoards/led --json
 netsmith board3d examples/led.nsm --glb led.glb   # the scene as glTF 2.0 binary (below)
+netsmith board3d examples/led.nsm --step led.step # the board and its parts as STEP, for CAD (below)
 ```
 
 - The board is placed exactly as `fab` places it: the pick lock beside the source holds the
   picks, the physical file's requirements and the layout file (`<stem>.pcb.toml`) are read, and
   the layout file's positions are put on the board. Nothing is routed, so the copper has pads,
   planes and pours, and no tracks or vias.
-- Nothing is written but the `--glb` file: not the pick lock, not the pin file, not the layout
-  file. With `--glb` alone nothing is printed; with `--json` too the report is printed as well.
+- Nothing is written but the `--glb` and `--step` files: not the pick lock, not the pin file,
+  not the layout file. With `--glb` or `--step` alone nothing is printed; with `--json` too the
+  report is printed as well.
 - No KiCad is needed (ADR 0097); the `no-kicad` job runs it with KiCad hidden.
 - The same source gives the same bytes: every list is in a fixed order and every length is
   rounded to a nanometre.
@@ -189,6 +191,47 @@ needs no KiCad (ADR 0097), and `fab --order` writes it for each board of the ord
   which file was not written. Building the scene has no error of its own: a copper shape that
   cannot be drawn leaves its copper groups out of the file, as above.
 
+## The STEP file
+
+`board3d --step <file.step>` writes the board and its parts as a STEP file (ISO 10303-21, AP214
+`AUTOMOTIVE_DESIGN`; `crates/netsmith-pcb/src/step/`, ADR 0107), for a mechanical engineer who
+fits a case to the board in FreeCAD, Fusion, SolidWorks or KiCad's own reader. It is written from
+the same scene as the `.glb`, by netsmith's own writer: no KiCad, no CAD kernel, and the same
+scene gives the same bytes (the header's time stamp is fixed at `1970-01-01T00:00:00`).
+
+```sh
+netsmith board3d examples/four_layer.nsm --step four_layer.step
+netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
+```
+
+- **Millimetres, Z up, the frame above**: the outline's bottom-left corner on the top face is
+  the origin. Every solid is where the scene puts it; no part has a transform of its own.
+- **An assembly.** The root product is named by the board's label. Its children are `board` and
+  one product per part with a body, by path: the product's id is the part's path, its name the
+  designator (the name the CAD tool's tree shows), its description the part's kind and where its
+  height came from (`Resistor; height catalog`, _Height provenance_).
+- **Exact solids**: planes and cylinders, so a hole's diameter can be measured and its centre
+  snapped to. The board runs through its chosen thickness (`board.thickness`, from `-thickness`
+  to 0) with its rounded outline, its cutouts and every drilled hole, round or a slot. A part is
+  its _Package shape_, one solid per piece named `body`, `metal` or `mark`, or else its body box
+  from its face to its far end (`body`); pins that stand out of the far face by a stated length
+  are a box named `pins`. A BGA's balls are the one shape made of flat faces: the 3D view's
+  polygons of an ellipsoid, which STEP has no exact surface for. A body box that a mark sits
+  level with ends 0.02 mm short of it, as the 3D view draws it; the part's top is still its
+  height.
+- **A part of unknown height has no solid**: its body's outline is a closed polyline on its face,
+  and its description says `height unknown: outline only`. Never a guessed height (ADR 0094).
+- **Colours** are the 3D view's light palette: the board the top mask's green (the laminate's
+  colour on a board with no mask), a body dark grey, metal light grey, a mark white, an unknown
+  part's outline orange.
+- **Left out**: the copper, the mask and silkscreen, a hole's plating and the height limits. They
+  are in the `.glb`.
+- **Size**: about a fifth of the `.glb`, or less, since the copper is left out: `led` 23 kB,
+  `four_layer` 88 kB, `rp2350_minimal` 372 kB, `orbit` 776 kB.
+
+`fab` does not write it yet: whether it should, as it writes the `.glb`, is an open question
+(ADR 0107).
+
 ## The editor's 3D view
 
 The PCB section of the editor (`netsmith editor`) shows the board in 3D: `3D` in the toolbar's
@@ -287,13 +330,16 @@ What it is not:
   time): SOT-343 (SC-70-4), SC-70-8, the DPAK of four or five lead pads (TO-252-4, -5), the
   D2PAK of four to nine (TO-263-4 to -9) and SOT-89-5, and the mechanical items (holes,
   fiducials, test points). SOT-223 is drawn with its three pins and its wide tab (dimensions and
-  sources in `crates/netsmith-pcb/src/generate/sot.rs`), and SOT-89-3 with its three short leads
-  and the wide tab of pin 2 that runs under the body and out of the other side, and the DPAK and
-  D2PAK of two or three lead pads with their two outer leads and the tab out of the other side
-  and flat under the body (a three-pad package's centre lead is a cut stub in every outline read,
-  so it is not drawn); both in `crates/netsmith-pcb/src/generate/tab.rs`. SC-70 with three, five
-  or six leads (SOT-323, SOT-353, SOT-363) has the gull-wing leads of the makers' drawings (in
-  `crates/netsmith-pcb/src/generate/sot.rs`).
+  sources in
+  `crates/netsmith-pcb/src/generate/sot.rs`), and SOT-89-3 with its three short leads and the
+  wide tab of pin 2 that runs under the body and out of the other side, and the DPAK and D2PAK
+  of two or three lead pads with their two outer leads and the tab out of the other side and flat
+  under the body (a three-pad package's centre lead is a cut stub in every outline read, so it
+  is not drawn); both in `crates/netsmith-pcb/src/generate/tab.rs`. SC-70 with three, five or six
+  leads (SOT-323, SOT-353, SOT-363) has the gull-wing leads of the makers' drawings (in
+  `crates/netsmith-pcb/src/generate/sot.rs`). The molded diodes are drawn with two terminals and
+  a cathode band: gull-wing for SOD-123 and SOD-323, J-bend and folded under the body for SMA,
+  SMB and SMC (dimensions and sources in `crates/netsmith-pcb/src/generate/diode.rs`).
 - **Not a check.** The tools measure the file's numbers and change nothing: a measurement, a
   section or the layers apart are the picture only, and no report or file reads them. The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.

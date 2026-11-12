@@ -592,6 +592,82 @@ fn an_unknown_height_is_flat_in_the_glb_and_the_limit_it_breaks_is_marked() {
     assert_eq!(codes, ["too_tall", "height_unchecked"]);
 }
 
+#[test]
+fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() {
+    let examples = repo().join("examples");
+    let out = netsmith_kicad::testlib::TempDir::new("board3d-step");
+    let (a, b) = (out.join("a.step"), out.join("b.step"));
+    for file in [&a, &b] {
+        let run = board3d(
+            &examples,
+            &["four_layer.nsm", "--step", file.to_str().unwrap()],
+        );
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert!(run.stdout.is_empty());
+    }
+    let step = std::fs::read_to_string(&a).unwrap();
+    assert_eq!(
+        step,
+        std::fs::read_to_string(&b).unwrap(),
+        "the same bytes each time"
+    );
+    assert!(step.starts_with("ISO-10303-21;"));
+    assert!(step.contains("FILE_NAME('FourLayerExample','1970-01-01T00:00:00'"));
+    // The board, and each part a product named by its designator, with its path as its id.
+    assert!(step.contains("PRODUCT('board','board',"));
+    assert!(step.contains("PRODUCT('power_in','J1','"));
+    assert!(step.contains("MANIFOLD_SOLID_BREP('board',"));
+    // The board's four holes are cylinders through its 1.6 mm.
+    assert!(step.contains("CYLINDRICAL_SURFACE("));
+    assert!(step.contains(",-1.6))"));
+
+    // With `--glb` and `--json` too, all three are written, the same as alone.
+    let (c, g) = (out.join("c.step"), out.join("c.glb"));
+    let (report, _) = json(
+        &examples,
+        &[
+            "four_layer.nsm",
+            "--json",
+            "--glb",
+            g.to_str().unwrap(),
+            "--step",
+            c.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(report["board"]["name"], "FourLayerExample");
+    assert_eq!(std::fs::read_to_string(&c).unwrap(), step);
+    assert!(g.exists());
+
+    let run = board3d(&examples, &["four_layer.nsm", "--step"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("--step needs a file"));
+}
+
+#[test]
+fn an_unknown_height_is_an_outline_in_the_step_and_never_a_solid() {
+    let out = netsmith_kicad::testlib::TempDir::new("board3d-step-lid");
+    let file = out.join("lid.step");
+    let run = board3d(
+        &fixtures(),
+        &["height_limits.nsm", "--step", file.to_str().unwrap()],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let step = std::fs::read_to_string(&file).unwrap();
+    assert!(step.contains("PRODUCT('bare','J3','"));
+    assert!(step.contains("; height unknown: outline only'"));
+    assert!(step.contains("GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION('J3',"));
+    assert!(!step.contains("ADVANCED_BREP_SHAPE_REPRESENTATION('J3',"));
+    assert!(step.contains("ADVANCED_BREP_SHAPE_REPRESENTATION('J1',"));
+}
+
 /// A GET over a socket: the status, the head (lower case) and the body's bytes.
 fn http_bytes(port: u16, target: &str) -> (u16, String, Vec<u8>) {
     use std::io::{Read, Write};

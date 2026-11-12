@@ -553,7 +553,7 @@ physical sample. The ERC test ran only where `kicad-cli` was found.
 
 ## Parity
 
-`cargo run -p netsmith --example parity -- <board.kicad_pcb> --table reference/placements.toml
+`netsmith parity <board.kicad_pcb> --table reference/placements.toml
 --map reference/designators.toml [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith
 fab` writes (in `fab/Orbit/`) with their board, as `reference/placements.toml` states it. What it
 compares, the tolerances (outline and holes 0.05 mm, positions of parts 0.1 mm, rotation exact,
@@ -590,7 +590,7 @@ theirs in blue and netsmith's in orange, a failing must-match item in red with i
 it again, from this folder, after `netsmith fab --locked`, from the repository's root:
 
 ```sh
-cargo run -p netsmith --example parity -- examples/orbit/fab/Orbit/Orbit.kicad_pcb \
+netsmith parity examples/orbit/fab/Orbit/Orbit.kicad_pcb \
     --table examples/orbit/reference/placements.toml \
     --map examples/orbit/reference/designators.toml \
     --svg examples/orbit/reference/parity-overlay.svg

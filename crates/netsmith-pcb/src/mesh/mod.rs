@@ -30,7 +30,7 @@
 //! maths library).
 
 pub mod boolean;
-mod package;
+pub(crate) mod package;
 mod scene;
 mod section;
 mod triangulate;

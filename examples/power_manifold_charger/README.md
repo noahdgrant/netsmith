@@ -149,7 +149,7 @@ it; the gate runs `fab` with a 20 s timeout and allows `INCOMPLETE`.
 
 ```sh
 netsmith fab --locked          # from this folder; writes fab/PowerManifoldCharger/
-cargo run -p netsmith --example parity -- fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
+netsmith parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
     --table reference/placements.toml --map reference/designators.toml \
     --svg reference/parity-overlay.svg
 ```
