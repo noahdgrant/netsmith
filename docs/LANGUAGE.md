@@ -8353,6 +8353,7 @@ netsmith compare <a> <b> [options]     # are two designs the same circuit?
 netsmith kicad-libs import <sym-lib-table> [fp-lib-table]  # the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021)
 netsmith catalog refresh [path...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]
 netsmith catalog age [path...] [--days <n>] [--only <catalog>]  # rows whose date is older than n days (default 90)
+netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]  # a row from LCSC's record: lcsc, mpn, package and source; the rest is left to fill
 netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]  # an enclosure's outline, cutouts and holes as source to paste
 ```
 

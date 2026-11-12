@@ -112,6 +112,12 @@ fn main() -> ExitCode {
         Ok(Command::View(request)) => run_view(&request),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
+        Ok(Command::CatalogAdd {
+            lcsc,
+            to,
+            offline,
+            no_cache,
+        }) => run_catalog_add(&lcsc, to.as_deref(), offline, no_cache),
         Ok(Command::DxfImport {
             file,
             layers,
@@ -202,6 +208,34 @@ fn run_dxf_import(
 
 /// `netsmith catalog refresh`: the exit code is 1 if a row is a CONFLICT or MISSING, and 2 if
 /// the run had to stop (an endpoint refused, a file could not be read) and wrote nothing.
+/// `netsmith catalog add` (#454): exit 0 when the row is written (or the record printed), 1
+/// when LCSC has no record or the file already has the number, 2 when the run could not be made.
+fn run_catalog_add(lcsc: &str, to: Option<&Path>, offline: bool, no_cache: bool) -> ExitCode {
+    use netsmith::refresh::{self, AddError, Network};
+    let mut network = Network {
+        offline,
+        ..Network::default()
+    };
+    if no_cache {
+        network.cache_dir = None;
+    }
+    let shown = to.map(|p| p.display().to_string());
+    match refresh::add(lcsc, to.zip(shown.as_deref()), network) {
+        Ok(added) => {
+            print!("{}", refresh::render_added(&added));
+            ExitCode::SUCCESS
+        }
+        Err(AddError::Refused(why)) => {
+            eprintln!("error: {why}");
+            ExitCode::FAILURE
+        }
+        Err(AddError::Stopped(why)) => {
+            eprintln!("error: {why}");
+            ExitCode::from(2)
+        }
+    }
+}
+
 fn run_catalog_refresh(request: &RefreshRequest) -> ExitCode {
     use netsmith::refresh::{self, Network};
     let fail = |e: String| {
