@@ -676,6 +676,7 @@ dependencies = [
 name = "netsmith-pcb"
 version = "0.1.0"
 dependencies = [
+ "i_overlay",
  "netsmith",
  "netsmith-check",
  "netsmith-core",

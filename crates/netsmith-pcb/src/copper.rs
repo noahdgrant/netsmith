@@ -1,7 +1,8 @@
 //! The board's copper as geometry data: for each copper layer the pads, tracks, pours and
 //! planes and copper drawings as polygons, and for the board the vias, the drilled holes and
-//! the solder mask openings of each face. It is what the 3D view's scene draws the copper
-//! from (ADR 0105), and what a 2D view can draw it from instead of the server's SVG.
+//! the solder mask openings and the silkscreen of each face. It is what the 3D view's scene
+//! draws the copper from (ADR 0105), and what a 2D view can draw it from instead of the
+//! server's SVG.
 //!
 //! **The same copper as the Gerbers.** The board is read into the plotting model of
 //! `netsmith-fab` ([`netsmith_fab::artwork::Artwork`]) from the tree of the `.kicad_pcb` that
@@ -89,6 +90,8 @@ pub struct Copper {
     pub holes: Vec<Hole>,
     /// The openings of the solder mask on the front (`F.Mask`) and then on the back (`B.Mask`).
     pub mask: Vec<MaskOpenings>,
+    /// The silkscreen of the front (`F.SilkS`) and then of the back (`B.SilkS`).
+    pub silk: Vec<SilkInk>,
 }
 
 /// The copper of one layer.
@@ -214,6 +217,17 @@ pub struct Pour {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaskOpenings {
     /// `F.Mask` or `B.Mask`.
+    pub layer: String,
+    pub areas: Vec<Area>,
+}
+
+/// The silkscreen of a face: the ink of its legend Gerber, drawn by the same code (the
+/// footprints' lines, arcs, circles and polygons with their widths, and their text in fab's
+/// stroke font). Nothing is clipped: the Gerber is not either, and the board house takes the ink
+/// off the pads.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SilkInk {
+    /// `F.SilkS` or `B.SilkS`.
     pub layer: String,
     pub areas: Vec<Area>,
 }
@@ -382,11 +396,22 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         });
     }
 
+    let mut silk = Vec::new();
+    for layer in ["F.SilkS", "B.SilkS"] {
+        let mut pen = Polygons::new();
+        plot::drawings(&mut pen, &art, layer, None, &mut notes);
+        silk.push(SilkInk {
+            layer: layer.to_string(),
+            areas: areas(&pen),
+        });
+    }
+
     Ok(Copper {
         layers,
         vias,
         holes,
         mask,
+        silk,
     })
 }
 

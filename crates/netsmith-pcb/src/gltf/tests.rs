@@ -87,6 +87,7 @@ fn scene() -> Scene {
             layers: Vec::new(),
             vias: Vec::new(),
             mask: Vec::new(),
+            silk: Vec::new(),
         }),
         bodies: vec![
             body("j1", "J1", plan(20.0, 5.0), plan(24.0, 9.0), None),

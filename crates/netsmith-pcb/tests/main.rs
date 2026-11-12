@@ -19,6 +19,7 @@ mod mixed;
 mod protrusion;
 mod routing;
 mod scene3d;
+mod scene_meshes;
 mod synthetic;
 mod tight;
 mod tight_limits;
