@@ -1099,13 +1099,24 @@ fn crossing_with_keepout(at: Pt, size: (f64, f64), what: &str) -> (Board, Rect) 
 fn the_router_keeps_tracks_out_of_a_keepout_that_forbids_them() {
     // Across the track of net A, which runs along y = 5 from x = 6.5 to 12.9.
     let (b, area) = crossing_with_keepout(Pt::new(6.0, 1.5), (1.0, 1.8), "tracks");
+    // Every point of each track, grown by half its width, is outside the area (sampled each
+    // 0.01 mm: a diagonal track's box is no measure of where its copper is).
+    let grown = area.expanded(0.0);
     for t in &b.tracks {
-        let r = Rect::new(
-            Pt::new(t.from.x.min(t.to.x), t.from.y.min(t.to.y)),
-            Pt::new(t.from.x.max(t.to.x), t.from.y.max(t.to.y)),
-        )
-        .expanded(t.width / 2.0);
-        assert!(!r.overlaps(&area), "{t:?} in {area:?}");
+        let steps = ((t.from.distance(t.to) / 0.01).ceil() as usize).max(1);
+        for k in 0..=steps {
+            let f = k as f64 / steps as f64;
+            let p = Pt::new(
+                t.from.x + (t.to.x - t.from.x) * f,
+                t.from.y + (t.to.y - t.from.y) * f,
+            );
+            let dx = (grown.min.x - p.x).max(p.x - grown.max.x).max(0.0);
+            let dy = (grown.min.y - p.y).max(p.y - grown.max.y).max(0.0);
+            assert!(
+                dx.hypot(dy) >= t.width / 2.0 - 1e-9,
+                "{t:?} reaches into {area:?} at {p:?}"
+            );
+        }
     }
     let Some(report) = check("keep-tracks", &b) else {
         return;

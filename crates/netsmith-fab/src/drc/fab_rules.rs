@@ -36,6 +36,9 @@ pub(crate) fn run(out: &mut Out<'_>) {
     track_angle(out);
 }
 
+/// A place where tracks end: the net, the layer, and the place to the micrometre.
+type Joint = (String, String, (i64, i64));
+
 /// Where exactly two straight tracks of a net meet on a layer outside the net's pads, the
 /// bend: more than 45 degrees (a right angle, or sharper) is a finding; where three or more
 /// meet, an acute angle between any two is.
@@ -48,10 +51,7 @@ fn track_angle(out: &mut Out<'_>) {
     }
     let key = |p: crate::geom::Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
     // The directions out of each place where tracks end, by net and layer, with an item.
-    let mut ends: HashMap<
-        (String, String, (i64, i64)),
-        (crate::geom::Pt, Vec<crate::geom::Pt>, usize),
-    > = HashMap::new();
+    let mut ends: HashMap<Joint, (crate::geom::Pt, Vec<crate::geom::Pt>, usize)> = HashMap::new();
     for (k, c) in m.items.iter().enumerate() {
         let Kind::Track(i) = c.kind else { continue };
         let t = &m.art.tracks[i];
@@ -74,7 +74,7 @@ fn track_angle(out: &mut Out<'_>) {
         let n = (u.x.hypot(u.y) * v.x.hypot(v.y)).max(1e-18);
         (dot / n).clamp(-1.0, 1.0).acos().to_degrees()
     };
-    let mut found: Vec<((String, String, (i64, i64)), f64)> = Vec::new();
+    let mut found: Vec<(Joint, f64)> = Vec::new();
     for (place, (at, out_dirs, _)) in &ends {
         if out_dirs.len() < 2 {
             continue;

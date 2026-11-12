@@ -513,7 +513,9 @@ fn the_mixed_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_t
 }
 
 /// The aim of issue #3 for this board: every connection routed, on every seed (the first four
-/// are run here; `measured` prints the others).
+/// are run here; `measured` prints the others). The time limit is `fab`'s: routing time is
+/// watched, not a gate (owner, 2026-11-11, issue #431); seeds 1 to 3 take 140 to 160 s since
+/// the router bends by 45 degrees only (issue #415).
 #[test]
 fn the_mixed_board_is_routed_completely() {
     for seed in 0..4 {
@@ -521,7 +523,7 @@ fn the_mixed_board_is_routed_completely() {
         let routing = route_with(
             &mut board,
             RouteOptions {
-                time_limit: Some(Duration::from_secs(120)),
+                time_limit: Some(Duration::from_secs(300)),
                 ..RouteOptions::default()
             },
         );

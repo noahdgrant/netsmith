@@ -8,21 +8,31 @@
 //! the clearance round it, stays off every pad, track and via of other nets and off the
 //! board edge. Every size and space comes from the board's [`Rules`].
 //!
-//! A path moves in eight directions and bends by 45 degrees only (issue #415): a search state
-//! remembers the direction it came in, a turn of 45 degrees costs [`TURN`], and a right angle,
-//! an acute angle or a step back is not a move at all, so no 90 degree corner is ever drawn,
-//! not by a clean-up afterwards but because the search has none to offer; a line that has no
-//! way without one is routed again or left, never drawn with the corner. A diagonal step costs
+//! No track bends by more than 45 degrees (issue #415). The first pass of each try, which gives
+//! most lines the copper they keep, searches in eight directions: a state remembers the
+//! direction it came in, a turn of 45 degrees costs [`TURN`] and a right angle [`TURN_RIGHT`],
+//! dearer than two bends, and an acute angle or a step back is no move. A diagonal step costs
 //! [`DIAGONAL`] against [`STEP`] (14 against 10, the length), passes between the two cells
-//! beside it, which must both be open, and the heuristic is the octile distance. Two
-//! exceptions, each where the copper shows no corner: inside a pad of the line's own net (the
-//! square a round pad of that size holds) a path may turn by up to 135 degrees, since the
-//! corner is in the pad's copper; and the short stub from a pad's centre to its cell, and from
-//! a via in a pad, turns inside that copper. A via is a state of its own, from which the path
-//! may not take a via back at once, so two vias at one place cannot hide a corner. The design
-//! rules check's `track_angle` (netsmith's own) refuses a corner of more than 45 degrees outside
-//! a pad or a via of the net. Before this the search moved in four directions, and the three
-//! example boards had 250 to 430 right angles each.
+//! beside it, which must both be open, and the heuristic is the octile distance. The repairs
+//! after it (rip-ups, negotiation, the chain) make four fifths of the searches on a dense board
+//! and search in four directions, as the router did before. The exact pass over the copper
+//! ([`Router::settled`]) then cuts every right angle into two bends of 45 degrees, a diagonal
+//! from 0.3 mm down to 0.05 mm from the corner ([`CHAMFERS`]), the farthest that keeps the
+//! rules' space; where none does, the line is searched for again in eight directions with
+//! right angles that are cut, and last in eight with no right angle at all, and a line that
+//! still has none is left, never drawn with the corner. Two places turn more sharply, where
+//! the copper shows no corner: inside a pad of the line's own net (the square a round pad of
+//! that size holds; also where corners are not cut), and the short stub from a pad's centre to
+//! its cell. A via is a state of its own, from which the path may not take a via back at once,
+//! so two vias at one place cannot hide a corner. The search queue breaks ties of cost toward
+//! the state that has come farthest. The design rules check's `track_angle` (netsmith's own)
+//! refuses a corner of more than 45 degrees outside a pad or a via of the net.
+//!
+//! Measured (2026-11-11): eight directions in every search left RP2350's 61 thousand searches
+//! popping 3 billion states, against 853 million in four, and hit the route timeout; with eight
+//! in the first pass only, RP2350 routes in 92 s, Orbit in 11 s and the Easyduino in 5 s, all
+//! completely, with no right angle (they had 270, 171 and 154), and 1.49, 1.28 and 1.15 times
+//! their spanning length against 1.55, 1.41 and 1.45 before.
 //!
 //! Lines are routed shortest first, except that a line that ends on a pad deep in a
 //! fine-pitch grid of pads, which has the fewest ways out, comes before the others (see
@@ -189,34 +199,6 @@ use std::time::{Duration, Instant};
 use crate::board::{Board, CopperLayer, Track, Via};
 use crate::geometry::{Pt, Rect};
 use crate::ratsnest::{Ratline, Ratsnest};
-
-pub(crate) mod prof {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    pub static T: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
-    pub static N: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
-    pub fn add(k: usize, t: std::time::Instant) {
-        T[k].fetch_add(t.elapsed().as_micros() as u64, Ordering::Relaxed);
-        N[k].fetch_add(1, Ordering::Relaxed);
-    }
-    pub fn dump() {
-        let names = [
-            "search right",
-            "search strict",
-            "corner fail",
-            "pops",
-            "masks",
-            "link",
-        ];
-        for k in 0..6 {
-            eprintln!(
-                "PROF {:14} {:8.2} s in {} calls",
-                names[k],
-                T[k].load(Ordering::Relaxed) as f64 / 1e6,
-                N[k].load(Ordering::Relaxed)
-            );
-        }
-    }
-}
 
 /// The distance between the cells' centres, in mm.
 const PITCH: f64 = 0.1;
@@ -1042,7 +1024,6 @@ fn search(
     let mut taken = 0u32;
     while let Some(Reverse((_, _, _, s))) = queue.pop() {
         taken += 1;
-        prof::N[3].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if taken.is_multiple_of(CLOCK_EVERY) && stop() {
             return Err(Miss::Stopped);
         }
@@ -1506,6 +1487,8 @@ struct Router<'a> {
     /// negotiation has learnt.
     negotiate: bool,
     history: RefCell<[Vec<u8>; 2]>,
+    /// Whether the router is in the first pass of a try, which searches in eight directions.
+    fine: Cell<bool>,
     /// When to stop, if there is a limit.
     deadline: Option<Instant>,
     /// Whether the deadline has passed; once it has, every search gives up at once.
@@ -1579,6 +1562,7 @@ impl<'a> Router<'a> {
             depth,
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
+            fine: Cell::new(true),
             deadline: options.time_limit.map(|t| Instant::now() + t),
             stopped: Cell::new(false),
             progress: options.progress,
@@ -1975,16 +1959,24 @@ impl<'a> Router<'a> {
             // where a cut would come too near other copper, the line is searched for again with
             // no right angle at all (issue #415).
             let mut give_up = false;
-            for right_angles in [true, false] {
+            // A repair searches first in four directions, then (where a cut does not fit) in
+            // eight, both with right angles that are cut; and last in eight with none. The first
+            // pass starts at eight.
+            let modes: &[(bool, bool)] = if soft {
+                &[(true, true)]
+            } else if self.fine.get() {
+                &[(true, false), (false, false)]
+            } else {
+                &[(true, true), (true, false), (false, false)]
+            };
+            for (n, &(right_angles, coarse)) in modes.iter().enumerate() {
+                let last = n + 1 == modes.len();
                 let extras = Extras {
                     right_angles,
-                    coarse: soft,
+                    coarse,
                     ..extras
                 };
-                let t0 = Instant::now();
-                let found = search(&masks, from, goal, extras, &|| self.out_of_time());
-                prof::add(if right_angles { 0 } else { 1 }, t0);
-                match found {
+                match search(&masks, from, goal, extras, &|| self.out_of_time()) {
                     Ok(path) => {
                         let start = in_from.filter(|p| path.first() == Some(&p.spot));
                         let end = in_to.filter(|p| path.last() == Some(&p.spot));
@@ -1996,10 +1988,7 @@ impl<'a> Router<'a> {
                         // corners are not cut.
                         match self.settled(routed, net, &obstacles, !soft) {
                             Ok(routed) => return Some((routed, path)),
-                            Err(Unsettled::Corner) if right_angles => {
-                                prof::add(2, Instant::now());
-                                continue;
-                            }
+                            Err(Unsettled::Corner) if !last => continue,
                             Err(_) => {
                                 give_up = true;
                                 break;
@@ -2351,6 +2340,10 @@ impl<'a> Router<'a> {
     /// runs out, the lines not yet tried count as failed.
     fn run(&self, order: &[usize], rip_up: bool, attempt: usize, attempts: usize) -> State {
         let mut state = State::default();
+        // The first pass, which gives most lines the copper they keep, searches in eight
+        // directions; the repairs after it search in four, with every right angle cut, which is
+        // a fifth of the work (issue #415).
+        self.fine.set(true);
         for (k, &line) in order.iter().enumerate() {
             if self.out_of_time() {
                 state.failed.extend_from_slice(&order[k..]);
@@ -2368,6 +2361,7 @@ impl<'a> Router<'a> {
                 None => state.failed.push(line),
             }
         }
+        self.fine.set(false);
         if !rip_up {
             return state;
         }
@@ -2879,7 +2873,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         board.tracks.extend(r.tracks);
         board.vias.extend(r.vias);
     }
-    prof::dump();
     // A via that does not carry its net's current gets others beside it (issue #431).
     crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
@@ -3287,9 +3280,9 @@ mod tests {
             tracks: vec![track],
             vias: Vec::new(),
         };
-        let settled = router.settled(routed, net, &pad_only);
+        let settled = router.settled(routed, net, &pad_only, true);
         (
-            settled.map(|r| r.tracks[0].clone()),
+            settled.ok().map(|r| r.tracks[0].clone()),
             board.rules.min_track_width,
         )
     }
@@ -3438,7 +3431,11 @@ mod tests {
         // crosses the wall.
         soft_wall(&grid, &mut masks, 15, 9..10);
         let path = find(&masks, &[(0, 1, FRONT)], Goal::Spots(&[(30, 1, FRONT)])).unwrap();
-        assert!(path.contains(&(15, 1, FRONT)), "{path:?}");
+        // It crosses the wall (column 15) below the gap, whichever row its diagonals take it to.
+        assert!(
+            path.iter().any(|&(i, j, l)| i == 15 && j < 9 && l == FRONT),
+            "{path:?}"
+        );
     }
 
     #[test]

@@ -237,7 +237,8 @@ fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pa
         track_angle: true,
         ..Extras::default()
     };
-    let count = |segments: &[((f64, f64), (f64, f64))]| {
+    type Segment = ((f64, f64), (f64, f64));
+    let count = |segments: &[Segment]| {
         let mut b = Pcb::new(2);
         b.stub("A", 10.0, 10.0);
         b.stub("A", 20.0, 16.0);
