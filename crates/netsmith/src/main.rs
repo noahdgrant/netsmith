@@ -1108,12 +1108,9 @@ fn finding_of_line(line: &str) -> Option<Finding> {
         }
         _ => (None, line),
     };
-    let (severity, code, message) = if let Some(m) = rest.strip_prefix("warning: ") {
-        (Severity::Warning, "fab", m)
-    } else if let Some(m) = rest.strip_prefix("note: ") {
-        (Severity::Note, "note.other", m)
-    } else {
-        return None;
+    let (severity, code, message) = match rest.strip_prefix("warning: ") {
+        Some(m) => (Severity::Warning, "fab", m),
+        None => (Severity::Note, "note.other", rest.strip_prefix("note: ")?),
     };
     Some(Finding {
         board,
