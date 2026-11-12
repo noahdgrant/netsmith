@@ -7,7 +7,7 @@
 //! converter whose efficiency it did not settle.
 
 use netsmith_kicad::testlib::TempDir;
-use std::{fs, path::Path, process::Command};
+use std::fs;
 
 use netsmith::editor::Workspace;
 use netsmith::project::Target;
@@ -312,53 +312,6 @@ fn project(name: &str, src: &str) -> TempDir {
     fs::write(root.join("netsmith.toml"), "[project]\nname = \"bench\"\n").unwrap();
     fs::write(root.join("src/main.nsm"), src).unwrap();
     root
-}
-
-fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(args)
-        .current_dir(cwd)
-        .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
-        .env(
-            "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
-        )
-        .output()
-        .unwrap()
-}
-
-#[test]
-fn build_fails_on_an_overdrawn_supply_and_says_where_and_how_much() {
-    let root = project("over", &supplied("Loose", "0mA..200mA", SETTLED));
-    for args in [&["build"][..], &["build", "--strict"][..]] {
-        let run = netsmith(&root, args);
-        let said = String::from_utf8_lossy(&run.stderr);
-        assert!(!run.status.success(), "{args:?}: {said}");
-        assert!(
-            said.contains(
-                "error: Bench: V5 can draw up to 200 mA, more than the 100 mA its supply can give"
-            ) && said.contains("--> src/main.nsm:"),
-            "{said}"
-        );
-    }
-}
-
-#[test]
-fn build_prints_the_notes_and_still_succeeds_even_with_strict() {
-    let root = project("note", &orphan());
-    for args in [&["build"][..], &["build", "--strict"][..]] {
-        let run = netsmith(&root, args);
-        let said = String::from_utf8_lossy(&run.stderr);
-        assert!(run.status.success(), "{args:?}: {said}");
-        assert!(
-            said.contains("note: Bench: V5 has no source: nothing supplies it"),
-            "{said}"
-        );
-    }
 }
 
 // ---- the analysis the editor serves ------------------------------------------------------

@@ -17,7 +17,7 @@
 # NETSMITH_EXAMPLES_DIR names that folder (default: examples/ of the repository).
 #
 # Usage: scripts/check-example-locks.sh [path/to/netsmith]
-# Without an argument it builds the debug binary with `cargo build -p netsmith` first. Nothing is
+# Without an argument it builds the debug binary with `cargo build -p netsmith-cli` first. Nothing is
 # written: `lock --check` never writes.
 set -euo pipefail
 
@@ -26,7 +26,7 @@ repo="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "$#" -ge 1 ]; then
     bin="$(realpath "$1")"
 else
-    (cd "$repo" && cargo build --quiet -p netsmith)
+    (cd "$repo" && cargo build --quiet -p netsmith-cli)
     bin="$repo/target/debug/netsmith"
 fi
 [ -x "$bin" ] || { echo "error: $bin is not an executable (build it, or name the binary)" >&2; exit 2; }

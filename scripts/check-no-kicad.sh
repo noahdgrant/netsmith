@@ -30,7 +30,7 @@
 # one of the two, as the proof that KiCad really was hidden from it.
 #
 # Usage: scripts/check-no-kicad.sh [path/to/netsmith]
-# Without an argument it builds the debug binary with `cargo build -p netsmith` first. The examples
+# Without an argument it builds the debug binary with `cargo build -p netsmith-cli` first. The examples
 # are copied to a temporary folder: a run writes the pick lock beside the sources.
 set -euo pipefail
 
@@ -52,7 +52,7 @@ skipped=(
 if [ "$#" -ge 1 ]; then
     bin="$(realpath "$1")"
 else
-    (cd "$repo" && cargo build --quiet -p netsmith)
+    (cd "$repo" && cargo build --quiet -p netsmith-cli)
     bin="$repo/target/debug/netsmith"
 fi
 [ -x "$bin" ] || { echo "error: $bin is not an executable (build it, or name the binary)" >&2; exit 2; }

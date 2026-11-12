@@ -84,9 +84,9 @@ impl Drop for Fake {
     }
 }
 
-/// `tests/fixtures/catalog-refresh/`.
+/// `crates/netsmith/tests/fixtures/catalog-refresh/`, from this crate's tests or the binary's.
 pub fn fixtures_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/catalog-refresh")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../netsmith/tests/fixtures/catalog-refresh")
 }
 
 /// The saved responses, and for a number with none the answer for "no such part".

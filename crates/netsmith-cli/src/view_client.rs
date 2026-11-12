@@ -141,7 +141,7 @@ impl Editor {
             format!(
                 "no editor is listening on 127.0.0.1:{port}: start one with `netsmith editor` (it prints its address; `--port <n>` says which to drive, {default} unless told otherwise) and open the page it prints",
                 port = self.port,
-                default = crate::cli::DEFAULT_PORT
+                default = crate::commands::common::DEFAULT_PORT
             )
         } else {
             format!(

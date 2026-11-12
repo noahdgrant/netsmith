@@ -19,7 +19,7 @@ mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 build() { (cd "$repo" && flock "${NETSMITH_LOCK:-/tmp/netsmith-heavy.lock}" env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-3}" cargo "$@"); }
 
-build build --quiet --release -p netsmith --bin netsmith
+build build --quiet --release -p netsmith-cli --bin netsmith
 build build --quiet --release -p netsmith-fab --example route_score
 bin="$repo/target/release/netsmith"
 score="$repo/target/release/examples/route_score"

@@ -50,6 +50,7 @@ pure='use netsmith_kicad::testlib::TempDir;
 use netsmith::{Libraries, build_with};
 fn t() { build_with(name, text, &loader, &catalogs, &Libraries::with_mapping(m, s, f)); }'
 file crates/netsmith/tests/pure.rs "$pure"
+file crates/netsmith-cli/tests/pure.rs "$pure"
 file crates/netsmith-fab/tests/pure.rs "$pure"
 file crates/netsmith-pcb/tests/pure.rs "$pure"
 file crates/netsmith-design/tests/pure.rs "$pure"
@@ -142,7 +143,9 @@ row "1 1 1 1 1" crates/netsmith/src/lib.rs
 row "1 1 1 1 1" crates/netsmith/src/fab.rs crates/netsmith/src/order.rs crates/netsmith/src/compare.rs
 row "1 1 1 1 1" crates/netsmith/src/editor/analysis.rs
 row "1 1 1 1 1" crates/netsmith/src/supply/mod.rs
-row "1 1 1 1 1" crates/netsmith/src/main.rs
+row "1 1 1 1 1" crates/netsmith-cli/src/main.rs
+row "1 1 1 1 1" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/src/commands/mod.rs
+row "1 1 1 1 1" crates/netsmith-cli/Cargo.toml
 row "1 1 1 1 1" crates/netsmith/Cargo.toml
 row "1 1 1 1 1" crates/netsmith-kicad/src/symbols.rs
 row "1 1 1 1 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
@@ -168,6 +171,8 @@ for n in $(seq 1 "$i"); do
 done
 row "1 1 0 0 0" crates/netsmith/tests/common/mod.rs
 row "1 1 0 0 0" crates/netsmith/tests/main.rs
+row "1 0 0 0 0" crates/netsmith-cli/tests/pure.rs
+row "1 1 0 0 0" crates/netsmith-cli/tests/main.rs crates/netsmith-cli/tests/common/mod.rs
 row "1 1 0 0 0" crates/netsmith/tests/fixtures/board.nsm
 row "1 1 0 0 0" crates/netsmith/tests/deleted.rs
 row "1 1 0 0 0" crates/netsmith-core/tests/deleted.rs
@@ -199,6 +204,7 @@ crates_row "netsmith-view" crates/netsmith-view/src/layout.rs
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs crates/netsmith-view/tests/layout.rs
 crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs crates/netsmith-solve/src/solve.rs
 crates_row "netsmith" crates/netsmith/tests/pure.rs
+crates_row "netsmith-cli" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/tests/pure.rs
 crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
 crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
 crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml

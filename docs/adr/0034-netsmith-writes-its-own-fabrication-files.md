@@ -4,7 +4,7 @@ status: accepted
 
 # netsmith writes its own fabrication files
 
-Meets tests 1 and 3: every board goes out in this package (hard to reverse), and `kicad-cli` as the writer is the obvious alternative. The owner accepted the design on 2026-11-04 and kept the status `accepted` on 2026-11-11, although no package has been through JLCPCB's order preview yet (see the last paragraph). The text before the cut is `git show 0eaf326:docs/adr/0034-netsmith-writes-its-own-fabrication-files.md`. What the writers do, the rules found by the cross-check and the limits are in the headers of `crates/netsmith-fab/src/lib.rs`, `plot.rs`, `fill.rs`, `artwork.rs` and `crosscheck.rs`; the user's view is `docs/LANGUAGE.md` ("Commands").
+Meets tests 1 and 3: every board goes out in this package (hard to reverse), and `kicad-cli` as the writer is the obvious alternative. The owner accepted the design on 2026-11-04 and kept the status `accepted` on 2026-11-11, although no package has been through JLCPCB's order preview yet (see the last paragraph). The text before the cut is `git show 0eaf326:docs/adr/0034-netsmith-writes-its-own-fabrication-files.md`. What the writers do, the rules found by the cross-check and the limits are in the headers of `crates/netsmith-fab/src/lib.rs`, `plot.rs`, `fill.rs`, `artwork.rs` and `crosscheck.rs`; the user's view is `netsmith fab --help`.
 
 ADR 0021's direction says netsmith must not need KiCad installed, and a person with the `netsmith` binary alone must be able to make the files a board house takes. Until then `kicad-cli` plotted the Gerbers, drilled the Excellon files and wrote the position file.
 

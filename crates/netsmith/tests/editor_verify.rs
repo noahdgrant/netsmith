@@ -21,31 +21,6 @@ fn have_node() -> bool {
 }
 
 #[test]
-fn doctor_reports_what_is_installed_without_a_browser() {
-    if !have_node() {
-        eprintln!("skipped: no Node 20 or newer");
-        return;
-    }
-    let out = Command::new(script())
-        .args(["doctor", "--no-browser"])
-        .env("NETSMITH_BIN", env!("CARGO_BIN_EXE_netsmith"))
-        .output()
-        .expect("the script runs");
-    let said = String::from_utf8_lossy(&out.stdout);
-    let web = Path::new(env!("CARGO_MANIFEST_DIR")).join("../netsmith-editor/web-dist/index.html");
-    for line in ["ok   node: v", "ok   netsmith binary: "] {
-        assert!(said.contains(line), "{line}: {said}");
-    }
-    assert!(
-        !said.contains("chromium") && !said.contains("playwright"),
-        "{said}"
-    );
-    // The page is the committed bundle (`web-dist`), so a checkout has it; doctor says so either way.
-    assert_eq!(said.contains("ok   web bundle"), web.is_file(), "{said}");
-    assert_eq!(out.status.success(), web.is_file(), "{said}");
-}
-
-#[test]
 fn an_unknown_command_prints_the_usage_and_exits_2() {
     if !have_node() {
         return;

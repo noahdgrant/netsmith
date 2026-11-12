@@ -21,7 +21,7 @@ standard IC row can be solved, and what the standard parts could not give).
   project's folder (the stage lines are printed to stderr; `docs/PIPELINE.md` names the stages).
 - Profiles: `debug` is the `dev` profile of `Cargo.toml` (with `netsmith-solve`, `-check`, `-core`,
   `-quantity` and `-view` at `opt-level = 2`, so not a plain unoptimised build); `release` is
-  `cargo build --release -p netsmith`.
+  `cargo build --release -p netsmith-cli`.
 - `libraries` is small here only because KiCad is hidden (`NETSMITH_NO_KICAD=1`): with a KiCad
   install `build` reads its libraries, about 0.3 s (`docs/research/solved-design-and-lock.md`,
   section 4).

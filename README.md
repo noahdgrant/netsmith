@@ -116,7 +116,7 @@ netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 
 Without a project, `netsmith build examples/led.nsm --out out` works on one file. `netsmith
---help` lists every command and flag, and `docs/LANGUAGE.md` ("Projects and netsmith.toml")
+--help` and `netsmith <command> --help` document every command and flag, and `docs/LANGUAGE.md` ("Projects and netsmith.toml")
 describes the project folder.
 
 The first `build` or `fab` also writes `src/main.lock.toml` beside each source file: the catalog
