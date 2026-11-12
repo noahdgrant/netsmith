@@ -1093,7 +1093,7 @@ mod tests {
         let e = parse(&["catalog", "age", "--dry-run"]).unwrap_err();
         assert!(e.contains("`catalog age` has no option `--dry-run`"), "{e}");
         let e = parse(&["catalog"]).unwrap_err();
-        assert!(e.contains("`catalog` takes `refresh` or `age`"), "{e}");
+        assert!(e.contains("`catalog` takes `refresh`, `age` or `add`"), "{e}");
         let e = parse(&["catalog", "prices"]).unwrap_err();
         assert!(e.contains("not `prices`"), "{e}");
     }
