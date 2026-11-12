@@ -2,7 +2,9 @@
 
 use crate::common;
 
-use netsmith_pcb::{Board, Pt, Ratsnest, Rect, RouteOptions, route, route_with};
+use netsmith_pcb::{
+    Board, Costs, Pt, Ratsnest, Rect, RouteOptions, SnapshotStage, Stage, route, route_with,
+};
 
 use common::{edge_gap, hard_boards};
 
@@ -13,6 +15,8 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    costs: Costs::DEFAULT,
+    snapshots: false,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -21,6 +25,8 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    costs: Costs::DEFAULT,
+    snapshots: false,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -29,6 +35,8 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    costs: Costs::DEFAULT,
+    snapshots: false,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -38,6 +46,8 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     time_limit: None,
     progress: None,
     cancel: None,
+    costs: Costs::DEFAULT,
+    snapshots: false,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {
@@ -127,8 +137,9 @@ fn routed_hard_boards_keep_all_copper_off_the_edge() {
     }
 }
 
-#[test]
-fn a_board_that_cannot_be_routed_is_returned_with_what_is_left() {
+/// Three resistors in a row on an outline too thin to pass between them and the edge, and too
+/// thin for a via. The first and last are on one net; the middle one's pad is in the way.
+fn stranded_board() -> Board {
     // Three resistors in a row on an outline too thin to pass between them and the edge,
     // and too thin for a via. The first and last are on one net; the middle one's pad is in
     // the way.
@@ -155,9 +166,137 @@ fn a_board_that_cannot_be_routed_is_returned_with_what_is_left() {
         p.rotation = 0.0;
     }
     board.outline = Rect::new(Pt::new(2.0, 4.2), Pt::new(13.0, 5.8));
+    board
+}
+
+#[test]
+fn a_board_that_cannot_be_routed_is_returned_with_what_is_left() {
+    let mut board = stranded_board();
     let rest = route(&mut board);
     assert_eq!(rest.len(), 1, "{:?}", rest.lines);
     assert_eq!(rest.lines[0].net, "A");
+}
+
+#[test]
+fn each_line_left_says_the_stage_it_failed_in_and_the_nets_in_its_way() {
+    let mut board = stranded_board();
+    let routing = route_with(&mut board, RouteOptions::default());
+    assert_eq!(routing.why.len(), 1, "{:?}", routing.why);
+    let why = &routing.why[0];
+    assert_eq!(why.line.net, "A");
+    // Every stage tried it; the last is the chain of rip-ups. The pads and the edge alone wall
+    // it in, so no net's copper is in its way.
+    assert_eq!(why.stage, Stage::Chain);
+    assert!(why.blockers.is_empty(), "{why:?}");
+    let json = serde_json::to_value(&routing.why).unwrap();
+    assert_eq!(json[0]["stage"], "chain");
+    assert_eq!(json[0]["line"]["from"]["refdes"], "R1");
+    // Hard board 44 with only the first pass leaves a line that a rip-up routes: another net's
+    // copper is in its way, and it failed in the first pass.
+    let mut board = hard_boards(45).remove(44);
+    let first = route_with(&mut board, FIRST_ONLY);
+    assert_eq!(first.why.len(), 1, "{:?}", first.why);
+    assert_eq!(first.why[0].stage, Stage::FirstPass);
+    assert!(!first.why[0].blockers.is_empty(), "{:?}", first.why);
+    assert!(
+        first.why[0]
+            .blockers
+            .iter()
+            .all(|b| b != &first.why[0].line.net && board.nets.iter().any(|n| &n.name == b)),
+        "{:?}",
+        first.why
+    );
+    // Out of time from the start: every line is out of time, and nothing is searched for.
+    let none = route_with(
+        &mut stranded_board(),
+        RouteOptions {
+            time_limit: Some(std::time::Duration::ZERO),
+            ..RouteOptions::default()
+        },
+    );
+    assert!(!none.why.is_empty());
+    assert!(none.why.iter().all(|w| w.stage == Stage::OutOfTime));
+    // A board that routes completely leaves nothing to explain.
+    let mut done = hard_boards(1).remove(0);
+    assert!(
+        route_with(&mut done, RouteOptions::default())
+            .why
+            .is_empty()
+    );
+}
+
+#[test]
+fn the_crowding_map_counts_where_soft_paths_went_and_covers_the_board() {
+    let boards = hard_boards(45);
+    // Board 44 needs a rip-up, which looks for the nets in a line's way by a soft path.
+    let mut board = boards[44].clone();
+    let routing = route_with(&mut board, RouteOptions::default());
+    let crowding = &routing.crowding;
+    assert_eq!(crowding.cell, 1.0);
+    assert_eq!(crowding.origin, board.outline.min);
+    assert_eq!(crowding.counts.len(), crowding.nx * crowding.ny);
+    assert!(crowding.nx as f64 >= board.outline.width());
+    assert!(crowding.ny as f64 >= board.outline.height());
+    assert!(crowding.counts.iter().any(|&c| c > 0), "{crowding:?}");
+    // The first pass alone searches for no nets in the way.
+    let first = route_with(&mut boards[44].clone(), FIRST_ONLY);
+    assert!(first.crowding.counts.iter().all(|&c| c == 0));
+}
+
+#[test]
+fn snapshots_keep_each_stage_of_the_try_that_won_and_change_no_copper() {
+    let boards = hard_boards(45);
+    let (mut plain, mut kept) = (boards[44].clone(), boards[44].clone());
+    let without = route_with(&mut plain, RouteOptions::default());
+    assert!(without.stages.is_empty());
+    let with = route_with(
+        &mut kept,
+        RouteOptions {
+            snapshots: true,
+            ..RouteOptions::default()
+        },
+    );
+    assert_eq!(plain, kept, "snapshots changed the copper");
+    let stages: Vec<SnapshotStage> = with.stages.iter().map(|s| s.after).collect();
+    assert_eq!(
+        stages,
+        [
+            SnapshotStage::FirstPass,
+            SnapshotStage::RipUp,
+            SnapshotStage::Final
+        ]
+    );
+    // The first pass left a line (the board needs a rip-up), the end none, and the end's copper
+    // is the board's.
+    assert_eq!(with.stages[0].left.len(), 1);
+    assert!(with.stages[2].left.is_empty());
+    assert_eq!(with.stages[2].tracks, kept.tracks);
+}
+
+#[test]
+fn the_default_costs_are_the_routers_own_and_another_turn_cost_is_used() {
+    assert_eq!(Costs::default(), Costs::DEFAULT);
+    assert_eq!(Costs::DEFAULT.turn, 25);
+    let board = hard_boards(1).remove(0);
+    let (mut a, mut b, mut c) = (board.clone(), board.clone(), board);
+    route(&mut a);
+    route_with(
+        &mut b,
+        RouteOptions {
+            costs: Costs { turn: 25 },
+            ..RouteOptions::default()
+        },
+    );
+    assert_eq!(a, b);
+    // Bends dearer than a pair of vias: the board is routed with other copper.
+    route_with(
+        &mut c,
+        RouteOptions {
+            costs: Costs { turn: 1000 },
+            ..RouteOptions::default()
+        },
+    );
+    assert_ne!(a.tracks, c.tracks);
 }
 
 #[test]

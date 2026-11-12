@@ -506,7 +506,7 @@ impl Placed {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize)]
 pub struct PadRef {
     pub refdes: String,
     /// The pad number its footprint uses. Every pad of the footprint with this number is
@@ -1035,7 +1035,7 @@ impl std::fmt::Display for PlacementProblem {
 }
 
 /// An outer copper layer, the two a track can be on. Inner layers are planes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum CopperLayer {
     Front,
     Back,
@@ -1143,7 +1143,7 @@ pub struct BoardCutout {
 }
 
 /// A straight run of copper.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Track {
     pub net: String,
     pub layer: CopperLayer,
@@ -1153,7 +1153,7 @@ pub struct Track {
 }
 
 /// A plated hole that joins the two copper layers.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Via {
     pub net: String,
     pub at: Pt,

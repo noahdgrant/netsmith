@@ -2,7 +2,7 @@
 
 /// A point. Angles anywhere in this crate follow KiCad: degrees, and a positive angle turns
 /// counterclockwise as seen on screen.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 pub struct Pt {
     pub x: f64,
     pub y: f64,

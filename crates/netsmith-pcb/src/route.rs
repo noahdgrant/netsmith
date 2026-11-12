@@ -10,7 +10,8 @@
 //!
 //! No track bends by more than 45 degrees (issue #415). The first pass of each try, which gives
 //! most lines the copper they keep, searches in eight directions: a state remembers the
-//! direction it came in, a turn of 45 degrees costs [`TURN`] and a right angle [`TURN_RIGHT`],
+//! direction it came in, a turn of 45 degrees costs [`TURN`] (or [`Costs::turn`] of the options)
+//! and a right angle [`TURN_RIGHT`],
 //! dearer than two bends, and an acute angle or a step back is no move. A diagonal step costs
 //! [`DIAGONAL`] against [`STEP`] (14 against 10, the length), passes between the two cells
 //! beside it, which must both be open, and the heuristic is the octile distance. The repairs
@@ -124,6 +125,32 @@
 //!   line at its head and one `ERROR: not routed` line for each connection, and
 //!   `routing-failure.txt` (each connection with its net, its two pads and their places, and
 //!   the parts most of them end on). The exit status is an error as before.
+//!
+//! # What the router says about a board it leaves (issue #431, S3b)
+//!
+//! An agent cannot fix what it cannot see, so [`Routing`] says why each line is left and where
+//! the board was fought over. None of it changes the routing: the same board gives the same
+//! copper with or without it.
+//!
+//! - **Why** ([`Routing::why`], a [`LineReport`] for each line the best state leaves). The stage
+//!   it last failed in ([`Stage`]) is recorded wherever a search for copper, not a soft one,
+//!   fails for a line ([`Router::try_line_locked`]), on the try that gave the result; a search
+//!   the time limit stops, and a line never tried before it, is out of time. A line ripped up
+//!   and not routed again in a rip-up that is put back also counts: it was tried and failed
+//!   there. The nets in its way are those of [`Router::contested`] on the final state at
+//!   [`ROOM_TIGHT`], one soft search for each line left and nothing more; after the time limit
+//!   that search stops at once and names none.
+//! - **Crowding** ([`Routing::crowding`], [`Crowding`]): squares of 1 mm (ten cells), counting
+//!   each soft path (every search for the nets in a line's way: rip-up, negotiation, whose
+//!   `learn` is of the same path and is not counted again, and the chain) once in each square it
+//!   passes through, over all tries of a run. A counter a path cell; the searches for `why`
+//!   are not counted.
+//! - **Snapshots** ([`RouteOptions::snapshots`], off by default): the copper and the lines left
+//!   after the first pass, the rip-ups, the negotiation and at the end of the try that gave the
+//!   result, for pictures of each stage. A clone of the copper per stage, so only on request.
+//! - **Costs** ([`RouteOptions::costs`], [`Costs`]): the turn cost the search uses, the
+//!   router's own by default, so that a tool can route with it moved by one unit and see how
+//!   much a result depends on luck.
 //!
 //! The boards. `tight_board` (`tests/common/mod.rs`): 99 parts (80 0402 resistors and
 //! capacitors, 18 SOT-23 regulators, half of each on the back) round one module of 80 pads,
@@ -254,6 +281,7 @@ const MOST_TRIES: usize = 5;
 /// What a move costs, in tenths of a millimetre of track, straight and diagonal.
 const STEP: i64 = 10;
 const DIAGONAL: i64 = 14;
+/// What a bend of 45 degrees costs by default ([`Costs::turn`]).
 const TURN: i64 = 25;
 /// What a right-angle turn costs, which the router cuts into two bends of 45 degrees after the
 /// search: dearer than two of them, so that a path bends by 45 degrees where it can.
@@ -551,6 +579,8 @@ struct Masks {
     /// Cells that other nets' routed copper keeps tracks and vias from, which a search for
     /// the nets least in the way may cross at a price.
     soft: Option<Soft>,
+    /// What a bend of 45 degrees costs ([`Costs::turn`]).
+    turn: i64,
 }
 
 struct Soft {
@@ -571,6 +601,7 @@ impl Masks {
             free_turn: [Vec::new(), Vec::new()],
             history: [Vec::new(), Vec::new()],
             soft: None,
+            turn: TURN,
         }
     }
 
@@ -1109,8 +1140,8 @@ fn search(
             let next = (ni as usize, nj as usize, layer);
             let turn = match bend {
                 0 => 0,
-                _ if extras.coarse || free => TURN,
-                1 => TURN,
+                _ if extras.coarse || free => masks.turn,
+                1 => masks.turn,
                 _ => TURN_RIGHT,
             };
             let neck = if masks.necked(layer, next.0, next.1) {
@@ -1496,6 +1527,17 @@ struct Router<'a> {
     progress: Option<fn(&str)>,
     cancel: Option<&'static AtomicBool>,
     last_report: Cell<Instant>,
+    /// What the search's moves cost.
+    costs: Costs,
+    /// The stage the router is in, and for each line the stage of this try it last failed in.
+    stage: Cell<Stage>,
+    failed_in: RefCell<Vec<Stage>>,
+    /// How many soft paths have passed through each cell of the crowding map, over the whole
+    /// run, and whether they are being counted (not while the report is made).
+    crowding: RefCell<Crowding>,
+    counting: Cell<bool>,
+    /// What each stage of this try routed, if it is asked for.
+    snapshots: Option<RefCell<Vec<Snapshot>>>,
 }
 
 impl<'a> Router<'a> {
@@ -1549,6 +1591,7 @@ impl<'a> Router<'a> {
                 fixed_by_net[n].push(k);
             }
         }
+        let crowding = Crowding::over(&grid);
         Router {
             board,
             fixed,
@@ -1568,6 +1611,12 @@ impl<'a> Router<'a> {
             progress: options.progress,
             cancel: options.cancel,
             last_report: Cell::new(Instant::now()),
+            costs: options.costs,
+            stage: Cell::new(Stage::FirstPass),
+            failed_in: RefCell::new(Vec::new()),
+            crowding: RefCell::new(crowding),
+            counting: Cell::new(true),
+            snapshots: options.snapshots.then(|| RefCell::new(Vec::new())),
         }
     }
 
@@ -1596,6 +1645,7 @@ impl<'a> Router<'a> {
         let mut m = masks_for(
             &self.grid, window, self.board, &base, &own, routed, keepouts, net, reach,
         );
+        m.turn = self.costs.turn;
         if !soft.is_empty() || !soft_keepouts.is_empty() {
             // The cells only the soft copper keeps tracks and vias from.
             let mut counts = Counts::new(window);
@@ -1825,8 +1875,33 @@ impl<'a> Router<'a> {
     }
 
     /// [`Self::try_line`], where the lines in `locked` keep their copper hard even in a soft
-    /// search: they are not to be ripped up.
+    /// search: they are not to be ripped up. A line that a search for copper (not a soft one)
+    /// fails to route is marked as failed in the stage the router is in, or out of time.
     fn try_line_locked(
+        &self,
+        line: usize,
+        state: &State,
+        ignore: &[usize],
+        room: f64,
+        soft: bool,
+        locked: &[usize],
+    ) -> Option<(Routed, Vec<Spot>)> {
+        let found = self.search_line(line, state, ignore, room, soft, locked);
+        if found.is_none() && !soft {
+            let stage = if self.stopped.get() {
+                Stage::OutOfTime
+            } else {
+                self.stage.get()
+            };
+            if let Some(s) = self.failed_in.borrow_mut().get_mut(line) {
+                *s = stage;
+            }
+        }
+        found
+    }
+
+    /// The search of [`Self::try_line_locked`].
+    fn search_line(
         &self,
         line: usize,
         state: &State,
@@ -2426,7 +2501,19 @@ impl<'a> Router<'a> {
     /// `attempts` say which try of the board this is, for the progress messages. If the time
     /// runs out, the lines not yet tried count as failed.
     fn run(&self, order: &[usize], rip_up: bool, attempt: usize, attempts: usize) -> State {
+        *self.failed_in.borrow_mut() = vec![Stage::FirstPass; self.lines.len()];
+        if let Some(snapshots) = &self.snapshots {
+            snapshots.borrow_mut().clear();
+        }
+        let state = self.run_stages(order, rip_up, attempt, attempts);
+        self.snapshot(SnapshotStage::Final, &state);
+        state
+    }
+
+    /// The stages of [`Self::run`].
+    fn run_stages(&self, order: &[usize], rip_up: bool, attempt: usize, attempts: usize) -> State {
         let mut state = State::default();
+        self.stage.set(Stage::FirstPass);
         // The first pass, which gives most lines the copper they keep, searches in eight
         // directions; the repairs after it search in four, with every right angle cut, which is
         // a fifth of the work (issue #415).
@@ -2434,6 +2521,10 @@ impl<'a> Router<'a> {
         for (k, &line) in order.iter().enumerate() {
             if self.out_of_time() {
                 state.failed.extend_from_slice(&order[k..]);
+                let mut failed_in = self.failed_in.borrow_mut();
+                for &line in &order[k..] {
+                    failed_in[line] = Stage::OutOfTime;
+                }
                 return state;
             }
             self.report(false, || {
@@ -2449,6 +2540,7 @@ impl<'a> Router<'a> {
             }
         }
         self.fine.set(false);
+        self.snapshot(SnapshotStage::FirstPass, &state);
         if !rip_up {
             return state;
         }
@@ -2456,6 +2548,7 @@ impl<'a> Router<'a> {
         // least room that is safe, which opens the gaps between fine-pitch pads.
         for room in [ROOM_LOOSE, ROOM_TIGHT] {
             if room == ROOM_TIGHT {
+                self.stage.set(Stage::LessRoom);
                 for line in state.failed.clone() {
                     if self.out_of_time() {
                         return state;
@@ -2473,6 +2566,7 @@ impl<'a> Router<'a> {
                     }
                 }
             }
+            self.stage.set(Stage::RipUp);
             for pass in 1..=RIP_UP_PASSES {
                 let before = state.failed.len();
                 for line in state.failed.clone() {
@@ -2495,13 +2589,77 @@ impl<'a> Router<'a> {
                 break;
             }
         }
+        self.snapshot(SnapshotStage::RipUp, &state);
         if self.negotiate && !state.failed.is_empty() {
+            self.stage.set(Stage::Negotiation);
             self.negotiate(&mut state, ROOM_TIGHT, attempt, attempts);
+            self.snapshot(SnapshotStage::Negotiation, &state);
             if !state.failed.is_empty() {
+                self.stage.set(Stage::Chain);
                 self.finish(&mut state, ROOM_TIGHT, attempt, attempts);
             }
         }
         state
+    }
+
+    /// Keep what a stage of this try routed, if snapshots are asked for.
+    fn snapshot(&self, after: SnapshotStage, state: &State) {
+        let Some(snapshots) = &self.snapshots else {
+            return;
+        };
+        let mut routed: Vec<&Routed> = state.routed.iter().collect();
+        routed.sort_by_key(|r| r.line);
+        let mut failed = state.failed.clone();
+        failed.sort_unstable();
+        snapshots.borrow_mut().push(Snapshot {
+            after,
+            tracks: routed
+                .iter()
+                .flat_map(|r| r.tracks.iter().cloned())
+                .collect(),
+            vias: routed.iter().flat_map(|r| r.vias.iter().cloned()).collect(),
+            left: failed.iter().map(|&l| self.lines[l].clone()).collect(),
+        });
+    }
+
+    /// Count a soft path in the crowding map: once for each map cell it passes through.
+    fn count_crowding(&self, path: &[Spot]) {
+        if !self.counting.get() {
+            return;
+        }
+        let mut crowding = self.crowding.borrow_mut();
+        let mut cells: Vec<usize> = path
+            .iter()
+            .map(|&(i, j, _)| crowding.index_of(i, j))
+            .collect();
+        cells.sort_unstable();
+        cells.dedup();
+        for c in cells {
+            crowding.counts[c] = crowding.counts[c].saturating_add(1);
+        }
+    }
+
+    /// Why each line left in `state` is left: the stage it last failed in (`failed_in`, of the
+    /// try that gave the state), and the nets whose copper stands in its way, from one soft
+    /// search on the state at the least room. After the time limit that search gives up at once
+    /// and names no nets.
+    fn why(&self, state: &State, failed_in: &[Stage]) -> Vec<LineReport> {
+        self.counting.set(false);
+        let mut failed = state.failed.clone();
+        failed.sort_unstable();
+        failed.dedup();
+        failed
+            .into_iter()
+            .map(|line| LineReport {
+                line: self.lines[line].clone(),
+                stage: failed_in.get(line).copied().unwrap_or(Stage::FirstPass),
+                blockers: self
+                    .blockers(line, state, ROOM_TIGHT)
+                    .into_iter()
+                    .map(|n| self.board.nets[n].name.clone())
+                    .collect(),
+            })
+            .collect()
     }
 
     /// Where a line would go if the copper of other nets could be crossed, at a price per
@@ -2510,6 +2668,7 @@ impl<'a> Router<'a> {
     fn contested(&self, line: usize, state: &State, room: f64) -> Option<(Vec<Spot>, Vec<usize>)> {
         let net = self.nets[line];
         let (_, path) = self.try_line(line, state, &[], room, true)?;
+        self.count_crowding(&path);
         let rules = &self.board.rules;
         let reach = rules.clearance + MARGIN + self.width_of(line) + PITCH;
         let mut found = Vec::new();
@@ -2545,6 +2704,7 @@ impl<'a> Router<'a> {
     ) -> Option<Vec<(usize, f64)>> {
         let net = self.nets[line];
         let (_, path) = self.try_line_locked(line, state, &[], room, true, locked)?;
+        self.count_crowding(&path);
         let rules = &self.board.rules;
         // The cells the masks keep a track, or a via, from, for copper of this width.
         let track_reach = rules.clearance + MARGIN + self.width_of(line) / 2.0 + room;
@@ -2890,6 +3050,12 @@ pub struct RouteOptions {
     pub progress: Option<fn(&str)>,
     /// Stop as at the time limit when this is set, from another thread.
     pub cancel: Option<&'static AtomicBool>,
+    /// What the search's moves cost. The default is the router's own; another is for measuring
+    /// how much a result depends on them.
+    pub costs: Costs,
+    /// Keep the copper and the lines left after each stage of the try that gives the result
+    /// ([`Routing::stages`]).
+    pub snapshots: bool,
 }
 
 impl Default for RouteOptions {
@@ -2901,8 +3067,142 @@ impl Default for RouteOptions {
             time_limit: None,
             progress: None,
             cancel: None,
+            costs: Costs::DEFAULT,
+            snapshots: false,
         }
     }
+}
+
+/// What the router's search pays for a move, beyond its length, in tenths of a millimetre of
+/// track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Costs {
+    /// A bend of 45 degrees.
+    pub turn: i64,
+}
+
+impl Costs {
+    /// The costs the router routes with.
+    pub const DEFAULT: Costs = Costs { turn: TURN };
+}
+
+impl Default for Costs {
+    fn default() -> Self {
+        Costs::DEFAULT
+    }
+}
+
+/// A stage of a try of the board, the one a line last failed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Stage {
+    /// The first pass, in eight directions with the room the masks usually keep.
+    FirstPass,
+    /// The line alone again with the least room that is safe ([`ROOM_TIGHT`]).
+    LessRoom,
+    /// Ripping up the nets in its way ([`Router::rip_up_for`]).
+    RipUp,
+    /// The negotiation ([`Router::negotiate`]).
+    Negotiation,
+    /// The chain of rip-ups of single lines ([`Router::rip_up_chain`]).
+    Chain,
+    /// The time limit passed, or the router was told to stop, before or while it was tried.
+    OutOfTime,
+}
+
+impl std::fmt::Display for Stage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Stage::FirstPass => "failed in the first pass",
+            Stage::LessRoom => "failed in the try with less room",
+            Stage::RipUp => "failed while ripping up the nets in its way",
+            Stage::Negotiation => "failed in the negotiation",
+            Stage::Chain => "failed in the chain of rip-ups",
+            Stage::OutOfTime => "not finished, the time ran out",
+        })
+    }
+}
+
+/// Why a line is left: the ratsnest line as the router had it, the stage it last failed in,
+/// and the nets whose copper stands in its way (those the cheapest path that may cross other
+/// nets' copper comes near, [`Router::contested`]), by name. No nets when even that path does
+/// not exist (the pads and the edge alone wall it in) or the time was up.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct LineReport {
+    pub line: Ratline,
+    pub stage: Stage,
+    pub blockers: Vec<String>,
+}
+
+/// The crowding map: how often, over a whole run of the router, the paths that may cross other
+/// nets' copper (each search for the nets in a line's way, in rip-up, negotiation and the chain)
+/// passed through each square of the board, a path counted once in a square.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Crowding {
+    /// The board corner of the first square, in mm (the outline's least x and y).
+    pub origin: Pt,
+    /// The side of a square, in mm.
+    pub cell: f64,
+    pub nx: usize,
+    pub ny: usize,
+    /// Row by row, x fastest: square (a, b) is `counts[b * nx + a]`.
+    pub counts: Vec<u32>,
+}
+
+impl Crowding {
+    /// The side of a square, in grid cells.
+    const CELLS: usize = 10;
+
+    fn over(grid: &Grid) -> Crowding {
+        let (nx, ny) = (grid.nx.div_ceil(Self::CELLS), grid.ny.div_ceil(Self::CELLS));
+        Crowding {
+            origin: grid.origin,
+            cell: PITCH * Self::CELLS as f64,
+            nx,
+            ny,
+            counts: vec![0; nx * ny],
+        }
+    }
+
+    fn index_of(&self, i: usize, j: usize) -> usize {
+        let (a, b) = (
+            (i / Self::CELLS).min(self.nx - 1),
+            (j / Self::CELLS).min(self.ny - 1),
+        );
+        b * self.nx + a
+    }
+
+    /// How often paths passed through the square at a board point.
+    pub fn at(&self, p: Pt) -> u32 {
+        let a = ((p.x - self.origin.x) / self.cell).floor();
+        let b = ((p.y - self.origin.y) / self.cell).floor();
+        if a < 0.0 || b < 0.0 || a as usize >= self.nx || b as usize >= self.ny {
+            return 0;
+        }
+        self.counts[b as usize * self.nx + a as usize]
+    }
+}
+
+/// The stage a [`Snapshot`] is taken after.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SnapshotStage {
+    FirstPass,
+    /// The tries with less room and the rip-ups.
+    RipUp,
+    Negotiation,
+    /// The end of the try, after the chain of rip-ups.
+    Final,
+}
+
+/// What a try of the board had routed after a stage: its copper (before the vias beside vias
+/// and the stitching of pours) and the lines left.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Snapshot {
+    pub after: SnapshotStage,
+    pub tracks: Vec<Track>,
+    pub vias: Vec<Via>,
+    pub left: Vec<Ratline>,
 }
 
 /// What the router did.
@@ -2914,6 +3214,15 @@ pub struct Routing {
     pub stopped: bool,
     /// How many times the whole board was routed, each with the lines in another order.
     pub tries: usize,
+    /// Why each line of the result the router left is left, in the router's order of lines.
+    /// These are the router's own lines; `left` is the ratsnest of the finished board, which
+    /// can join the same pads by other pairs.
+    pub why: Vec<LineReport>,
+    /// Where the board was fought over.
+    pub crowding: Crowding,
+    /// With [`RouteOptions::snapshots`], what the try that gave the result had routed after
+    /// each stage it ran, in order, the last [`SnapshotStage::Final`]; empty otherwise.
+    pub stages: Vec<Snapshot>,
 }
 
 /// Route as much of the ratsnest as the router can, adding tracks and vias to the board.
@@ -2924,7 +3233,7 @@ pub fn route(board: &mut Board) -> Ratsnest {
 
 /// [`route`], with a choice of how hard to try.
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
-    let (best, stopped, tries) = {
+    let (best, stopped, tries, why, crowding, stages) = {
         let router = Router::new(board, &options);
         let orders = router.orders(options.retry_orders);
         router.report(true, || {
@@ -2935,7 +3244,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
                 board.outline.height()
             )
         });
-        let mut best: Option<State> = None;
+        // The best state, with the stage each line last failed in on its try and its snapshots.
+        let mut best: Option<(State, Vec<Stage>, Vec<Snapshot>)> = None;
         let mut tries = 0;
         for order in &orders {
             tries += 1;
@@ -2943,16 +3253,25 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             let done = state.failed.is_empty();
             if best
                 .as_ref()
-                .is_none_or(|b| state.failed.len() < b.failed.len())
+                .is_none_or(|b| state.failed.len() < b.0.failed.len())
             {
-                best = Some(state);
+                let failed_in = router.failed_in.take();
+                let snapshots = router
+                    .snapshots
+                    .as_ref()
+                    .map(|s| s.take())
+                    .unwrap_or_default();
+                best = Some((state, failed_in, snapshots));
             }
             if done || router.out_of_time() {
                 break;
             }
         }
         let stopped = router.out_of_time();
-        (best.unwrap_or_default(), stopped, tries)
+        let (best, failed_in, stages) = best.unwrap_or_default();
+        let why = router.why(&best, &failed_in);
+        let crowding = router.crowding.into_inner();
+        (best, stopped, tries, why, crowding, stages)
     };
     let mut routed = best.routed;
     routed.sort_by_key(|r| r.line);
@@ -2968,6 +3287,9 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         left: Ratsnest::of(board),
         stopped,
         tries,
+        why,
+        crowding,
+        stages,
     }
 }
 
@@ -3081,6 +3403,35 @@ mod tests {
         let path = find(&masks, &[(0, 0, FRONT)], Goal::Spots(&[(20, 8, FRONT)])).unwrap();
         let cells: Vec<_> = path.iter().map(|s| (s.0, s.1)).collect();
         assert_eq!(runs(&grid, &cells).len(), 2);
+    }
+
+    #[test]
+    fn the_turn_cost_of_the_masks_is_what_a_bend_costs() {
+        // A wall on the front with a gap at its top: round it takes four bends, through the
+        // back two vias.
+        let (_, mut masks) = open_grid();
+        for j in 0..9 {
+            let at = masks.at(15, j);
+            masks.track[FRONT][at] = true;
+        }
+        let ends = ([(0, 4, FRONT)], [(30, 4, FRONT)]);
+        let layers = |masks: &Masks| -> Vec<usize> {
+            find(masks, &ends.0, Goal::Spots(&ends.1))
+                .unwrap()
+                .iter()
+                .map(|s| s.2)
+                .collect()
+        };
+        assert_eq!(masks.turn, TURN);
+        assert!(
+            !layers(&masks).contains(&BACK),
+            "bends are cheaper than vias"
+        );
+        masks.turn = 1000;
+        assert!(
+            layers(&masks).contains(&BACK),
+            "vias are cheaper than bends"
+        );
     }
 
     #[test]
