@@ -22,7 +22,7 @@
 //!   in order:
 //!   - `board` (the root): `{kind: "board", schema, board, thickness_mm, stack_thickness_mm,
 //!     width_mm, height_mm, layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}],
-//!     coverage: {known, total}, findings: [{code, message, parts: [path...], limit?}]}`.
+//!     coverage: {known, total, standard}, findings: [{code, message, parts: [path...], limit?}]}`.
 //!     `board` is the board's label (`system/member` for a board of a system). `layers` is the
 //!     stackup from the top face down, as `board3d --json` has it in `board.layers` (`kind` is
 //!     `mask`, `copper`, `core` or `prepreg`), for a viewer that draws the stackup (a section,
@@ -38,10 +38,14 @@
 //!     the mesh, and last `silk:top` and `silk:bottom` (`{kind: "silk", face}`, material
 //!     `mark`), the silkscreen off the mask's openings, when the copper can be drawn.
 //!   - one node per part with a body, by path, named by its designator: `{kind: "part", path,
-//!     refdes, side: "top" | "bottom", provenance: "stated" | "catalog" | "unknown",
-//!     height_mm, z_bottom_mm, z_top_mm, part_kind, category, margin_mm, margin_limit}`. A
-//!     known height is a solid (material `body`); an unknown one is the body's flat outline
-//!     (material `body-unknown`) and `height_mm` is `null`, as is the far end of the body
+//!     refdes, side: "top" | "bottom", provenance: "stated" | "catalog" | "standard" |
+//!     "unknown", standard, height_mm, z_bottom_mm, z_top_mm, part_kind, category, margin_mm,
+//!     margin_limit}`. A `standard` height is the package standard's maximum (ADR 0106), and
+//!     `standard` names the standard and the drawing (`JEDEC MS-012, drawing TI D0008A`; `null`
+//!     for the other provenances). Both were added without a new schema: a field and a word were
+//!     added and none changed meaning. The root's `coverage.standard` counts those heights, which
+//!     `known` includes. A known height is a solid (material `body`); an unknown one is the
+//!     body's flat outline (material `body-unknown`) and `height_mm` is `null`, as is the far end of the body
 //!     (`z_top_mm` on the top face, `z_bottom_mm` on the bottom): never a guessed height (ADR
 //!     0094). `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`);
 //!     `category` is what sort of part it is ([`crate::scene3d::PartCategory`]: `resistor`,
@@ -417,7 +421,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                 "z_top_mm": l.z_top,
                 "z_bottom_mm": l.z_bottom,
             })).collect::<Vec<_>>(),
-            "coverage": { "known": coverage.known, "total": coverage.total },
+            "coverage": { "known": coverage.known, "total": coverage.total, "standard": coverage.standard },
             "findings": findings(scene),
         }),
     );
@@ -437,6 +441,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                 "refdes": body.refdes,
                 "side": face(body.side),
                 "provenance": body.provenance.word(),
+                "standard": body.standard.map(|s| s.cited()),
                 "height_mm": body.height,
                 "z_bottom_mm": z_bottom,
                 "z_top_mm": z_top,

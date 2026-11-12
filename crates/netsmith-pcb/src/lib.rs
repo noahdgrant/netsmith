@@ -52,6 +52,7 @@ pub mod rules;
 pub mod scene3d;
 pub mod shape;
 pub mod stackup;
+pub mod standard_height;
 mod stitch;
 pub mod svg;
 pub mod validate;
@@ -60,7 +61,7 @@ pub use anneal::{Ended, OutsideAt, OverlapAt};
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, Hang,
     HeightUnchecked, HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane,
-    ReferenceSide, Side, Track, Trim, Via,
+    ReferenceSide, Side, StandardPass, Track, Trim, Via,
 };
 pub use explain::{Fault, Precheck, RequirementReport};
 pub use export::{kicad_pcb, kicad_pro};
