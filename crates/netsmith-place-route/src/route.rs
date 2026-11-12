@@ -301,6 +301,9 @@ const REPORT_EVERY: Duration = Duration::from_secs(2);
 /// How many rounds of negotiation the lines left over get, and what a cell the lines fought
 /// over costs for each time they did, and the most it counts.
 const NEGOTIATION_ROUNDS: usize = 6;
+/// The negotiation stops after this many rounds in a row that leave no fewer lines than the
+/// best state it has seen.
+const NEGOTIATION_PATIENCE: usize = 1;
 
 const HISTORY_COST: i64 = 40;
 const HISTORY_MOST: u8 = 25;
@@ -3549,6 +3552,8 @@ impl<'a> Router<'a> {
         let cells = self.grid.nx * self.grid.ny;
         *self.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
         let mut best = state.clone();
+        // Rounds in a row that left no fewer lines than the best state.
+        let mut idle = 0;
         for round in 1..=NEGOTIATION_ROUNDS {
             if state.failed.is_empty() || self.out_of_time() {
                 break;
@@ -3596,6 +3601,12 @@ impl<'a> Router<'a> {
             }
             if state.failed.len() < best.failed.len() {
                 best = state.clone();
+                idle = 0;
+            } else {
+                idle += 1;
+                if idle >= NEGOTIATION_PATIENCE {
+                    break;
+                }
             }
         }
         *state = best;
