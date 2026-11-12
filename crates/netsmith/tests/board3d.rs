@@ -356,6 +356,38 @@ fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
     }
     let triangles: usize = meshes.iter().map(Mesh::triangle_count).sum();
     assert!(triangles < 300_000, "{triangles} triangles");
+    // The pictures are drawn by the shape test below.
+}
+
+#[test]
+fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    let scene = scene_of("examples/four_layer.nsm");
+    let meshes = of_scene(&scene);
+    let shaped: Vec<_> = scene.bodies.iter().filter(|b| b.shape.is_some()).collect();
+    assert!(!shaped.is_empty(), "no part of four_layer is shaped");
+    for b in &shaped {
+        // Shaped only with a known height, and the shape reaches it exactly.
+        let h = b.height.unwrap();
+        // The part's meshes but its plated barrels, which share its id.
+        let mine: Vec<_> = meshes
+            .iter()
+            .filter(|m| m.id == b.path && m.material != Material::Copper)
+            .cloned()
+            .collect();
+        assert!(
+            mine.iter().any(|m| m.material == Material::Metal),
+            "{}",
+            b.path
+        );
+        let bb = netsmith_pcb::mesh::bounds_of(&mine).unwrap();
+        let (lo, hi) = b.z_range();
+        assert!(
+            (bb.min[2] - lo.unwrap()).abs() < 1e-9 && (bb.max[2] - hi.unwrap()).abs() < 1e-9,
+            "{} ({h} mm): {bb:?}",
+            b.path
+        );
+    }
     let dir = netsmith_kicad::testlib::TempDir::new("render-four-layer");
     let a = render(&scene, "four_layer", dir.path());
     assert_eq!(
