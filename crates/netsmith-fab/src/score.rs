@@ -80,6 +80,17 @@ pub struct Bends {
     pub other: usize,
 }
 
+/// A bend that is not 45 degrees, for a person to look at: the net, the layer, where, and the
+/// angle between the two tracks (180 is straight on).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Corner {
+    pub net: String,
+    pub layer: String,
+    pub x: f64,
+    pub y: f64,
+    pub angle: f64,
+}
+
 /// One pour's numbers.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct PourScore {
@@ -128,6 +139,8 @@ pub struct Scorecard {
     pub spanning_length: f64,
     pub vias: usize,
     pub bends: Bends,
+    /// Where the bends are that are 90 degrees, acute or another angle.
+    pub corners: Vec<Corner>,
     pub off_angle: usize,
     /// The track widths drawn, in mm, each once.
     pub widths: Vec<f64>,
@@ -189,6 +202,13 @@ impl Scorecard {
             "bends               45: {}, 90: {}, acute: {}, other: {} (straight joins {})",
             b.deg45, b.deg90, b.acute, b.other, b.straight
         );
+        for c in &self.corners {
+            let _ = writeln!(
+                s,
+                "  corner of {:.0} degrees: net {} on {} at ({:.3}, {:.3})",
+                c.angle, c.net, c.layer, c.x, c.y
+            );
+        }
         let _ = writeln!(s, "off-angle tracks    {}", self.off_angle);
         let widths: Vec<String> = self.widths.iter().map(|w| format!("{w}")).collect();
         let _ = writeln!(s, "widths              {}", widths.join(", "));
@@ -357,16 +377,20 @@ fn score(
         .iter()
         .map(|p| (p.net.as_deref(), p, drc::outline_shapes(&pads::outline(p))))
         .collect();
+    // Inside the copper of a pad or a via of the net: a joint there is no corner.
     let in_pad = |p: Pt, net: &str, layer: &str| {
         let dot = shape::Shape::disc(p, 0.0);
-        pad_shapes.iter().any(|(n, pad, shapes)| {
-            *n == Some(net)
-                && pad.layers.iter().any(|l| l == layer || l == "*.Cu")
-                && shapes.iter().any(|s| shape::gap(&dot, s).d == 0.0)
-        })
+        art.vias
+            .iter()
+            .any(|v| v.net.as_deref() == Some(net) && v.at.dist(p) <= v.diameter / 2.0)
+            || pad_shapes.iter().any(|(n, pad, shapes)| {
+                *n == Some(net)
+                    && pad.layers.iter().any(|l| l == layer || l == "*.Cu")
+                    && shapes.iter().any(|s| shape::gap(&dot, s).d == 0.0)
+            })
     };
 
-    let bends = bends(&tracks, &in_pad);
+    let (bends, corners) = bends(&tracks, &in_pad);
     let spanning_length = spanning(art, &poured);
     let pours = pours(art, rules, &tracks);
     let decoupling = decoupling(art, &tracks, &poured, &pad_shapes);
@@ -380,6 +404,7 @@ fn score(
         spanning_length,
         vias: art.vias.len(),
         bends,
+        corners,
         off_angle,
         widths,
         narrow,
@@ -396,7 +421,7 @@ fn angle(u: Pt, v: Pt) -> f64 {
     (dot / n).clamp(-1.0, 1.0).acos().to_degrees()
 }
 
-fn bends(tracks: &[Seg], in_pad: &dyn Fn(Pt, &str, &str) -> bool) -> Bends {
+fn bends(tracks: &[Seg], in_pad: &dyn Fn(Pt, &str, &str) -> bool) -> (Bends, Vec<Corner>) {
     // The directions out of each joint, by net and layer.
     let mut joints: Joints = HashMap::new();
     for (net, layer, a, b, _) in tracks {
@@ -412,7 +437,28 @@ fn bends(tracks: &[Seg], in_pad: &dyn Fn(Pt, &str, &str) -> bool) -> Bends {
         }
     }
     let mut bends = Bends::default();
+    let mut corners = Vec::new();
+    let mut corner = |net: &str, layer: &str, at: Pt, angle: f64| {
+        corners.push(Corner {
+            net: net.to_string(),
+            layer: layer.to_string(),
+            x: at.x,
+            y: at.y,
+            angle,
+        })
+    };
     for ((net, layer, _), (at, out)) in &joints {
+        // Tracks of the net that run out the same way overlap: one direction, not a bend.
+        let unit = |p: &Pt| {
+            let n = p.x.hypot(p.y).max(1e-18);
+            (
+                (p.x / n * 1e4).round() as i64,
+                (p.y / n * 1e4).round() as i64,
+            )
+        };
+        let mut out = out.clone();
+        out.sort_by_key(unit);
+        out.dedup_by_key(|p| unit(p));
         if out.len() < 2 || in_pad(*at, net, layer) {
             continue;
         }
@@ -424,10 +470,13 @@ fn bends(tracks: &[Seg], in_pad: &dyn Fn(Pt, &str, &str) -> bool) -> Bends {
                 bends.deg45 += 1;
             } else if (89.0..=91.0).contains(&a) {
                 bends.deg90 += 1;
+                corner(net, layer, *at, a);
             } else if a < 89.0 {
                 bends.acute += 1;
+                corner(net, layer, *at, a);
             } else {
                 bends.other += 1;
+                corner(net, layer, *at, a);
             }
         } else {
             let least = (0..out.len())
@@ -436,10 +485,16 @@ fn bends(tracks: &[Seg], in_pad: &dyn Fn(Pt, &str, &str) -> bool) -> Bends {
                 .fold(180.0, f64::min);
             if least < 89.0 {
                 bends.acute += 1;
+                corner(net, layer, *at, least);
             }
         }
     }
-    bends
+    corners.sort_by(|a, b| {
+        (&a.net, &a.layer)
+            .cmp(&(&b.net, &b.layer))
+            .then(a.x.total_cmp(&b.x))
+    });
+    (bends, corners)
 }
 
 /// The shortest tree of straight lines between the centres of each unpoured net's pads.

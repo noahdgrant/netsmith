@@ -33,6 +33,104 @@ pub(crate) fn run(out: &mut Out<'_>) {
     pad_hole_to_hole(out);
     track_current(out);
     via_current(out);
+    track_angle(out);
+}
+
+/// Where exactly two straight tracks of a net meet on a layer outside the net's pads, the
+/// bend: more than 45 degrees (a right angle, or sharper) is a finding; where three or more
+/// meet, an acute angle between any two is.
+fn track_angle(out: &mut Out<'_>) {
+    use crate::artwork::TrackShape;
+    use std::collections::HashMap;
+    let m = out.m;
+    if !m.extras.track_angle {
+        return;
+    }
+    let key = |p: crate::geom::Pt| ((p.x * 1000.0).round() as i64, (p.y * 1000.0).round() as i64);
+    // The directions out of each place where tracks end, by net and layer, with an item.
+    let mut ends: HashMap<
+        (String, String, (i64, i64)),
+        (crate::geom::Pt, Vec<crate::geom::Pt>, usize),
+    > = HashMap::new();
+    for (k, c) in m.items.iter().enumerate() {
+        let Kind::Track(i) = c.kind else { continue };
+        let t = &m.art.tracks[i];
+        let TrackShape::Line(a, b) = t.shape else {
+            continue;
+        };
+        if a.dist(b) < 1e-6 {
+            continue;
+        }
+        let net = t.net.clone().unwrap_or_default();
+        for (at, to) in [(a, b), (b, a)] {
+            ends.entry((net.clone(), t.layer.clone(), key(at)))
+                .or_insert((at, Vec::new(), k))
+                .1
+                .push(to - at);
+        }
+    }
+    let angle = |u: crate::geom::Pt, v: crate::geom::Pt| {
+        let dot = u.x * v.x + u.y * v.y;
+        let n = (u.x.hypot(u.y) * v.x.hypot(v.y)).max(1e-18);
+        (dot / n).clamp(-1.0, 1.0).acos().to_degrees()
+    };
+    let mut found: Vec<((String, String, (i64, i64)), f64)> = Vec::new();
+    for (place, (at, out_dirs, _)) in &ends {
+        if out_dirs.len() < 2 {
+            continue;
+        }
+        let (net, layer, _) = place;
+        // Two tracks of the net that run out the same way overlap: one direction, not a corner.
+        let mut out_dirs: Vec<crate::geom::Pt> = out_dirs.clone();
+        let unit = |p: &crate::geom::Pt| {
+            let n = p.x.hypot(p.y).max(1e-18);
+            (
+                (p.x / n * 1e4).round() as i64,
+                (p.y / n * 1e4).round() as i64,
+            )
+        };
+        out_dirs.sort_by_key(unit);
+        out_dirs.dedup_by_key(|p| unit(p));
+        if out_dirs.len() < 2 {
+            continue;
+        }
+        let dot = Shape::disc(*at, 0.0);
+        // Inside the copper of a pad or a via of the net, a joint is no corner.
+        let in_pad = m.items.iter().any(|c| {
+            matches!(c.kind, Kind::Pad(_) | Kind::Via(_))
+                && c.net.as_deref() == Some(net.as_str())
+                && c.layers.iter().any(|&l| m.layer_name(l) == layer)
+                && c.shapes.iter().any(|s| gap(&dot, s).d == 0.0)
+        });
+        if in_pad {
+            continue;
+        }
+        let least = (0..out_dirs.len())
+            .flat_map(|i| (i + 1..out_dirs.len()).map(move |j| (i, j)))
+            .map(|(i, j)| angle(out_dirs[i], out_dirs[j]))
+            .fold(180.0, f64::min);
+        // Two tracks meet at 135 degrees at a 45 degree bend; three may meet at right angles (a
+        // tee), but never at an acute angle.
+        let limit = if out_dirs.len() == 2 { 134.0 } else { 89.0 };
+        if least < limit {
+            found.push((place.clone(), least));
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    for (place, least) in found {
+        let (at, _, k) = &ends[&place];
+        let item = m.items[*k].item.clone();
+        out.push(
+            Rule::TrackAngle,
+            format!(
+                "two tracks of net {} meet at {least:.0} degrees on {}; a track bends by 45 degrees at most, and never to a right or an acute angle",
+                place.0, place.1
+            ),
+            *at,
+            Some(&place.1),
+            vec![item],
+        );
+    }
 }
 
 /// A via of a net that needs more than one where it changes layer, in a cluster of touching

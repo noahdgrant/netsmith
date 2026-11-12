@@ -6714,6 +6714,10 @@ error: `physical for Left` names no board of the source it is paired with; its b
   |              ^^^^
 ```
 
+### How tracks bend
+
+netsmith's router bends a track by 45 degrees only: it searches in eight directions, a 45 degree turn costs a little, and a right angle or an acute one is never a move (issue #415). A line with no way that keeps to that is routed again with the other lines in another order, or left unrouted, never drawn with the corner. Only where a corner falls inside the copper of a pad or a via of its own net (the stub from a pad's centre to its first step) does a track turn more sharply, since no corner shows there. `fab` asks the design rules check for its rule `track_angle`, which refuses a corner of more than 45 degrees outside a pad or a via of the net, so a board netsmith routed has none. The check of a board file alone (the `drc` example, a port read from KiCad) leaves the rule out.
+
 ### Track widths by rail
 
 A rail's `.min_track` is the narrowest track its nets are drawn with. It is a lower bound, written as a range like a process rule, and the bottom of what is left is the width. Both pins of the rail get it. A net takes the widest `.min_track` of the rails on it, so `GND` below is 0.8 mm without anyone saying so. `~` between rails equates the width too, so a module's rail carries it.

@@ -1723,6 +1723,7 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
         least_widths: board.least_widths(),
         neck_reach: netsmith_pcb::route::NECK_REACH,
         via_counts: board.via_counts(),
+        track_angle: true,
     }
 }
 
