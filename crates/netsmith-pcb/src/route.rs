@@ -1948,6 +1948,11 @@ impl<'a> Router<'a> {
             }
             self.room_for_vias(line, &mut masks);
             self.mark_own_pads(net, &mut masks);
+            let own: Vec<&Routed> = others
+                .iter()
+                .copied()
+                .filter(|r| r.line != line && self.nets[r.line] == net)
+                .collect();
             self.add_history(&mut masks);
             match link(&masks, from, goal, extras) {
                 Link::Joined => {}
@@ -1986,7 +1991,10 @@ impl<'a> Router<'a> {
                         // even at the narrowest track, is not routed.
                         // A path that only finds the nets in the way is never drawn, so its
                         // corners are not cut.
-                        match self.settled(routed, net, &obstacles, !soft) {
+                        match self
+                            .settled(routed, net, &obstacles, !soft)
+                            .and_then(|r| self.joins_cleanly(r, &own, !soft))
+                        {
                             Ok(routed) => return Some((routed, path)),
                             Err(Unsettled::Corner) if !last => continue,
                             Err(_) => {
@@ -2094,6 +2102,85 @@ impl<'a> Router<'a> {
         }
         if cut {
             self.cut_corners(&mut routed, net, &others, &apart)?;
+        }
+        Ok(routed)
+    }
+
+    /// `routed` if every place where its tracks end meets the other tracks of its net there as
+    /// `fab`'s `track_angle` check asks: two directions bend by 45 degrees at most, and three or
+    /// more meet at right angles or wider, except inside a pad or a via of the net.
+    /// `Err(Unsettled::Corner)` otherwise, for the line to be searched for again in the next way
+    /// (issue #476): lines of one net may run over each other and cross at 45 degrees.
+    fn joins_cleanly(
+        &self,
+        routed: Routed,
+        own: &[&Routed],
+        check: bool,
+    ) -> Result<Routed, Unsettled> {
+        if !check || own.is_empty() {
+            return Ok(routed);
+        }
+        let net = self.nets[routed.line];
+        let pads = self.own_pad_squares(net);
+        let vias: Vec<&Via> = own
+            .iter()
+            .flat_map(|r| r.vias.iter())
+            .chain(routed.vias.iter())
+            .collect();
+        let tracks: Vec<&Track> = own.iter().flat_map(|r| r.tracks.iter()).collect();
+        let same = |p: Pt, q: Pt| p.distance(q) < 1e-3;
+        for t in &routed.tracks {
+            let layer = usize::from(t.layer == CopperLayer::Back);
+            for at in [t.from, t.to] {
+                if pads
+                    .iter()
+                    .any(|(r, layers)| layers[layer] && r.contains(&Rect::new(at, at)))
+                    || vias.iter().any(|v| v.at.distance(at) <= v.diameter / 2.0)
+                {
+                    continue;
+                }
+                // The directions out of `at` of every track of the net that ends there.
+                let mut dirs: Vec<(f64, f64)> = Vec::new();
+                let mut met = false;
+                for (s, theirs) in routed
+                    .tracks
+                    .iter()
+                    .map(|s| (s, false))
+                    .chain(tracks.iter().map(|s| (*s, true)))
+                {
+                    if s.layer != t.layer {
+                        continue;
+                    }
+                    for (end, far) in [(s.from, s.to), (s.to, s.from)] {
+                        let d = far - end;
+                        let n = d.x.hypot(d.y);
+                        if same(end, at) && n > 1e-6 {
+                            met |= theirs;
+                            let u = (d.x / n, d.y / n);
+                            if !dirs
+                                .iter()
+                                .any(|v| (v.0 - u.0).abs() < 1e-3 && (v.1 - u.1).abs() < 1e-3)
+                            {
+                                dirs.push(u);
+                            }
+                        }
+                    }
+                }
+                if !met || dirs.len() < 2 {
+                    continue;
+                }
+                let least = (0..dirs.len())
+                    .flat_map(|i| (i + 1..dirs.len()).map(move |j| (i, j)))
+                    .map(|(i, j)| {
+                        let dot = dirs[i].0 * dirs[j].0 + dirs[i].1 * dirs[j].1;
+                        dot.clamp(-1.0, 1.0).acos().to_degrees()
+                    })
+                    .fold(180.0, f64::min);
+                let limit = if dirs.len() == 2 { 134.0 } else { 89.0 };
+                if least < limit {
+                    return Err(Unsettled::Corner);
+                }
+            }
         }
         Ok(routed)
     }
@@ -3294,6 +3381,82 @@ mod tests {
             settled.ok().map(|r| r.tracks[0].clone()),
             board.rules.min_track_width,
         )
+    }
+
+    /// Whether a line with `mine` joins cleanly a line of its net with `theirs`, all on the
+    /// front, away from the net's pads.
+    fn joins(mine: &[(Pt, Pt)], theirs: &[(Pt, Pt)]) -> bool {
+        let board = Board::from_design(
+            &four_layer_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let router = Router::new(&board, &RouteOptions::default());
+        let net = board.nets[router.nets[0]].name.clone();
+        let routed = |tracks: &[(Pt, Pt)]| Routed {
+            line: 0,
+            tracks: tracks
+                .iter()
+                .map(|&(from, to)| Track {
+                    net: net.clone(),
+                    layer: CopperLayer::Front,
+                    from,
+                    to,
+                    width: 0.1,
+                })
+                .collect(),
+            vias: Vec::new(),
+        };
+        let other = routed(theirs);
+        router.joins_cleanly(routed(mine), &[&other], true).is_ok()
+    }
+
+    /// A point far off the board, where no pad of any net is.
+    fn off(x: f64, y: f64) -> Pt {
+        Pt::new(-50.0 + x, -50.0 + y)
+    }
+
+    #[test]
+    fn a_line_that_meets_another_of_its_net_at_45_degrees_is_refused() {
+        // Issue #476: the other line ends at the point coming along x; this one ends there
+        // coming along the diagonal, on the same side, which leaves an acute pocket.
+        let theirs = [(off(1.0, 0.0), off(0.0, 0.0))];
+        let mine = [(off(1.0, 1.0), off(0.0, 0.0))];
+        assert!(!joins(&mine, &theirs));
+        // A crossing at the point: both lines run on through it.
+        let theirs = [
+            (off(-1.0, 0.0), off(0.0, 0.0)),
+            (off(0.0, 0.0), off(1.0, 0.0)),
+        ];
+        let mine = [
+            (off(-1.0, -1.0), off(0.0, 0.0)),
+            (off(0.0, 0.0), off(1.0, 1.0)),
+        ];
+        assert!(!joins(&mine, &theirs));
+    }
+
+    #[test]
+    fn a_line_that_goes_on_from_another_by_a_bend_of_45_degrees_or_meets_it_square_is_kept() {
+        // On from the other line's end by a bend of 45 degrees.
+        let theirs = [(off(-1.0, 0.0), off(0.0, 0.0))];
+        let mine = [(off(0.0, 0.0), off(1.0, 1.0))];
+        assert!(joins(&mine, &theirs));
+        // A tee: square into a line that runs on through the point.
+        let theirs = [
+            (off(-1.0, 0.0), off(0.0, 0.0)),
+            (off(0.0, 0.0), off(1.0, 0.0)),
+        ];
+        let mine = [(off(0.0, 1.0), off(0.0, 0.0))];
+        assert!(joins(&mine, &theirs));
+        // Over the other line the same way: one direction, not a corner.
+        let theirs = [(off(0.0, 0.0), off(1.0, 0.0))];
+        let mine = [(off(0.0, 0.0), off(2.0, 0.0))];
+        assert!(joins(&mine, &theirs));
+        // Lines that do not meet at an end.
+        let theirs = [(off(0.0, 0.0), off(1.0, 0.0))];
+        let mine = [(off(0.0, 1.0), off(1.0, 2.0))];
+        assert!(joins(&mine, &theirs));
     }
 
     #[test]
