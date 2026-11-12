@@ -42,7 +42,9 @@
 //! for, and then each is given a bounded chain of rip-ups of single lines, each of which may
 //! rip up the lines in its own way ([`Router::rip_up_chain`]). If lines are still left, the
 //! whole board is routed again with the lines in another order (shortest first, longest
-//! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all. The first
+//! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all; on a board with a
+//! fine-pitch part, the second try is the first order again with **escape lanes** reserved
+//! softly round the part's pads, and every later try has them too (see "Escape lanes"). The first
 //! complete result is kept, or failing that the one that leaves fewest lines. There is no
 //! push-and-shove, so a board can still end partly routed, and what is left is returned.
 //!
@@ -94,8 +96,8 @@
 //! the invented tight board below it was worse, so it was not kept: 89 lines left over 11
 //! placed seeds against 41 with no stage, and 53 for the inner ring only.
 //! Each fixed escape is a choice the router no longer makes: the nearest cell for a via is not
-//! the end that suits the line. Not tried: an escape chosen with the line it serves, a
-//! reservation the negotiation may take back, and push and shove.
+//! the end that suits the line. A reservation the negotiation may take back is the escape lanes
+//! below; push and shove is not tried.
 //!
 //! What came after, each measured on invented boards (nothing here is a real design):
 //!
@@ -125,6 +127,49 @@
 //!   line at its head and one `ERROR: not routed` line for each connection, and
 //!   `routing-failure.txt` (each connection with its net, its two pads and their places, and
 //!   the parts most of them end on). The exit status is an error as before.
+//!
+//! # Escape lanes (issue #431, step 3)
+//!
+//! RP2350 (`examples/rp2350_minimal`) leaves lines only at U1, a 0.4 mm QFN-60 ringed by
+//! decoupling capacitors, whose lines dropped vias against its pins and closed each other's
+//! way out; most of the board is empty. Main routed it completely at its own turn cost, 25, and
+//! one try left 2, 0, 2 and 2 lines at 24, 25, 26 and 27: completion was luck.
+//!
+//! **What is built** ([`Lanes`]). Each pad of a part with at least 16 surface-mount pads, two
+//! of them 0.55 mm apart or nearer, facing at least three sides (not a connector's row), has a
+//! lane: the cells straight out from the pad's edge, away from the part, on the pad's layer,
+//! as wide as the pad and [`LANE_LENGTH`] 1.5 mm long, past the ring of capacitors. A track of
+//! another net pays [`LANE_TRACK`] 10 a step in it (a step is 10); a via of any net, the part's
+//! own included, pays [`LANE_VIA`] 300 (two vias) where its copper and space would close a lane
+//! (within half a via, the clearance and half the least track of it), except the lane's own
+//! net at the lane's end, where its line leaves the ring. The two nets of a diff pair use each
+//! other's lanes as their own. A cost, not a wall: a line with no other way crosses a lane.
+//! **When**: not on the first try, whose copper is that of main byte for byte, but on the second,
+//! which routes the first order again with the lanes, and on every try after it (so a board
+//! with lanes may have six tries). A board that routes on its first try is unchanged.
+//!
+//! **Measured** (2026-11-12, main at ec7d165's placements, `netsmith route --margin 1 --tries N
+//! --route-timeout 0 --turn T`; lines left at T = 24 / 25 / 26 / 27):
+//!
+//! | | RP2350, one try | RP2350, two tries | Orbit (one try) | EasyDuino (one try) |
+//! |---|---|---|---|---|
+//! | main | 2 / 0 / 2 / 2 | 0 / 0 / 2 / 2 | 1.25x, 87 vias | 1.18x, 118 vias, pair 79 % |
+//! | lanes on every try, the part's own vias pay | 0 / 1 / 0 / 0 | | 0/0/0/0, 1.27-1.31x, 90-96 vias | 1.26x, 119 vias, pair 38 % |
+//! | the same, own vias free | 1 / 2 / 2 / 2 | | 1.25x, 87 vias | 1.18x, 118 vias, pair 79 % |
+//! | own vias pay 50, 100, 150 | | | 1.27-1.33x | 1.19-1.21x, 125 vias, pair 10 % |
+//! | the same, lanes 1.0 mm | 1 / 1 / 1 / 2 | | 1.27x | 1.17x, 119 vias, pair 22-70 % |
+//! | lanes on every part (a connector's row, a 1.27 mm module) | 1 / 3 / 3 / 3 | | 1.24x | 1.24x, 135 vias |
+//! | lanes from the second try, orders as before | = main | 1 / 0 / 1 / 0 | | |
+//! | **the first order again with lanes (built)** | = main | **0 / 0 / 0 / 0** | | |
+//!
+//! Orbit leaves 1 line at 26 and 27 after one try; with two tries main still leaves it and the
+//! built form routes it (1.31x, 96 vias). Orbit and EasyDuino route on their first try at the
+//! default turn cost, so their scorecard and their robustness are main's. The parts' own vias are
+//! what RP2350 needs charged (free, it leaves more than main) and what EasyDuino's CP2102N
+//! needs free (any cost moves its USB pair off its partner); no cost of one try served both,
+//! which is why the lanes are the second try's. A try of RP2350 takes 4 to 10 minutes, so under
+//! `fab`'s 300 s the second try runs only on a smaller or faster board: the lanes make the
+//! board's later tries finish, not its first.
 //!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
@@ -275,7 +320,7 @@ const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
 /// A board that routes on the first order is routed once; the fifth order (reverse net order)
 /// was dropped while there were four, and it finishes the invented mixed board on seed 2 since
 /// the via became 0.2 in 0.45 mm (issue #431), so it costs time only on a board that the other
-/// four leave unfinished.
+/// four leave unfinished. A board with escape lanes has one try more ([`route_with`]).
 const MOST_TRIES: usize = 5;
 
 /// What a move costs, in tenths of a millimetre of track, straight and diagonal.
@@ -295,6 +340,14 @@ const VIA_IN_PAD: i64 = 600;
 /// few cells of another track, so crossing one costs several times this.
 const SOFT: i64 = 100;
 const SOFT_VIA: i64 = 300;
+/// What a step of a track, and a via, of another net costs beyond its length in a pad's
+/// escape lane ([`Lanes`]): enough that a track goes round another pin's lane where the way
+/// round is short, and a via stands off it, but not a wall.
+const LANE_TRACK: i64 = 10;
+const LANE_VIA: i64 = 300;
+/// How far a pad's escape lane runs out from the pad's edge, in mm: past the ring of
+/// decoupling capacitors round a fine-pitch part.
+const LANE_LENGTH: f64 = 1.5;
 /// A step through a cell where the track has to be narrower costs this much more: a necked
 /// down track carries less and is harder to make, so it is kept short.
 const NECK: i64 = 30;
@@ -580,6 +633,9 @@ struct Masks {
     soft: Option<Soft>,
     /// What a bend of 45 degrees costs ([`Costs::turn`]).
     turn: i64,
+    /// The cells of other nets' escape lanes, which a track or a via of this line pays
+    /// [`LANE_TRACK`] or [`LANE_VIA`] to use. `None` when there are none.
+    lane: Option<LaneCost>,
 }
 
 struct Soft {
@@ -601,6 +657,7 @@ impl Masks {
             history: [Vec::new(), Vec::new()],
             soft: None,
             turn: TURN,
+            lane: None,
         }
     }
 
@@ -645,6 +702,22 @@ impl Masks {
     fn soft_via_cost(&self, i: usize, j: usize) -> i64 {
         match &self.soft {
             Some(soft) if soft.via[self.at(i, j)] => SOFT_VIA,
+            _ => 0,
+        }
+    }
+
+    /// What it costs, beyond a step, to put a track on a cell of another net's escape lane.
+    fn lane_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
+        match &self.lane {
+            Some(lane) if lane.track[layer][self.at(i, j)] => LANE_TRACK,
+            _ => 0,
+        }
+    }
+
+    /// The same for a via.
+    fn lane_via_cost(&self, i: usize, j: usize) -> i64 {
+        match &self.lane {
+            Some(lane) if lane.via[self.at(i, j)] => LANE_VIA,
             _ => 0,
         }
     }
@@ -1155,13 +1228,18 @@ fn search(
                     + turn
                     + neck
                     + masks.history_cost(layer, next.0, next.1)
-                    + masks.soft_cost(layer, next.0, next.1),
+                    + masks.soft_cost(layer, next.0, next.1)
+                    + masks.lane_cost(layer, next.0, next.1),
             );
         }
         let other = 1 - layer;
         let at = masks.at(i, j);
         if dir != AFTER_VIA && !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
-            relax((i, j, other), AFTER_VIA, VIA + masks.soft_via_cost(i, j));
+            relax(
+                (i, j, other),
+                AFTER_VIA,
+                VIA + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
+            );
         }
     }
     Err(Miss::Blocked)
@@ -1323,6 +1401,259 @@ fn pad_depth(board: &Board, pad: &netsmith_pcb::board::PadRef, at: Pt) -> f64 {
         .min(at.y - span.min.y)
         .min(span.max.y - at.y);
     (inside / nearest.1).round().max(0.0)
+}
+
+/// The escape lanes of the pads of fine-pitch parts (issue #431, see the module's header): for
+/// each pad on the outside of such a part, the cells straight out from its edge, away from the
+/// part, on the pad's layer, [`LANE_LENGTH`] long and as wide as the pad. A track of another
+/// net pays [`LANE_TRACK`] a step to use one. A via of any net pays [`LANE_VIA`] to stand where
+/// its copper would close a lane, except a via of the lane's own net at the lane's end, where
+/// its line leaves the part's ring. A net uses the lanes of the other net of its diff pair as
+/// its own. It is a cost, not a wall: a line that has no other way crosses a lane, and the
+/// negotiation and rip-ups can take one back.
+struct Lanes {
+    nx: usize,
+    /// For each layer and cell of the whole grid, the nets whose lanes take it, as a net's
+    /// index plus one, 0 for none. A cell counts [`LANE_SLOTS`] nets at most; another's lane
+    /// does not take it.
+    track: [Vec<[u32; LANE_SLOTS]>; 2],
+    /// The cells where a via would close a lane.
+    via_block: Vec<bool>,
+    /// The cells at the end of a lane where its own net's via is free, by net as `track`.
+    via_end: Vec<[u32; LANE_SLOTS]>,
+    /// The other net of each net's diff pair ([`diff_pair_partners`]).
+    partner: Vec<Option<usize>>,
+}
+
+/// How many nets' lanes one cell counts.
+const LANE_SLOTS: usize = 4;
+
+/// The cells of a window that a line's track, or via, pays to use: [`Lanes::charged`].
+struct LaneCost {
+    track: [Vec<bool>; 2],
+    via: Vec<bool>,
+}
+
+impl Lanes {
+    fn over(grid: &Grid, nets: usize) -> Lanes {
+        let cells = grid.nx * grid.ny;
+        Lanes {
+            nx: grid.nx,
+            track: [vec![[0; LANE_SLOTS]; cells], vec![[0; LANE_SLOTS]; cells]],
+            via_block: vec![false; cells],
+            via_end: vec![[0; LANE_SLOTS]; cells],
+            partner: vec![None; nets],
+        }
+    }
+
+    fn take(slot: &mut [u32; LANE_SLOTS], net: usize) {
+        let mark = net as u32 + 1;
+        if slot.contains(&mark) {
+            return;
+        }
+        if let Some(free) = slot.iter_mut().find(|s| **s == 0) {
+            *free = mark;
+        }
+    }
+
+    /// The lane of a pad of `net`: the cells whose centres are in `track`, on the layers in
+    /// `layers`; for a via, the cells within `via_block` of it, and the cells within `via_end`
+    /// of `end`, where its own net's via is free.
+    #[allow(clippy::too_many_arguments)]
+    fn claim(
+        &mut self,
+        grid: &Grid,
+        net: usize,
+        layers: [bool; 2],
+        track: &Rect,
+        end: Pt,
+        via_block: f64,
+        via_end: f64,
+    ) {
+        let whole = Window::full(grid);
+        for (i, j) in grid.cells_near(&whole, track, via_block) {
+            let p = grid.centre(i, j);
+            let at = j * self.nx + i;
+            if track.contains(&Rect::new(p, p)) {
+                for layer in [FRONT, BACK] {
+                    if layers[layer] {
+                        Self::take(&mut self.track[layer][at], net);
+                    }
+                }
+            }
+            if Form::Rect(*track).distance(p) <= via_block + 1e-9 {
+                self.via_block[at] = true;
+            }
+        }
+        for (i, j) in grid.cells_near(&whole, &Rect::new(end, end), via_end) {
+            if grid.centre(i, j).distance(end) <= via_end + 1e-9 {
+                Self::take(&mut self.via_end[j * self.nx + i], net);
+            }
+        }
+    }
+
+    /// The cells of `window` that a line of `net` pays to use. `None` when the window has none.
+    fn charged(&self, window: Window, net: usize) -> Option<LaneCost> {
+        let marks = [Some(net), self.partner.get(net).copied().flatten()];
+        let own = |slot: &[u32; LANE_SLOTS]| {
+            marks
+                .iter()
+                .flatten()
+                .any(|&n| slot.contains(&(n as u32 + 1)))
+        };
+        let mut any = false;
+        let mut track = [Vec::new(), Vec::new()];
+        let mut via = Vec::with_capacity(window.cells());
+        for j in window.j0..window.j0 + window.ny {
+            for i in window.i0..window.i0 + window.nx {
+                let at = j * self.nx + i;
+                for layer in [FRONT, BACK] {
+                    let slot = &self.track[layer][at];
+                    let charged = slot[0] != 0 && !own(slot);
+                    any |= charged;
+                    track[layer].push(charged);
+                }
+                let end = &self.via_end[at];
+                let charged = !own(end) && (self.via_block[at] || end[0] != 0);
+                any |= charged;
+                via.push(charged);
+            }
+        }
+        any.then_some(LaneCost { track, via })
+    }
+}
+
+/// Whether a part gets escape lanes ([`Lanes`]): at least 16 surface-mount pads, two of them
+/// 0.55 mm apart or nearer (pads at one centre, the pieces of an exposed pad, are not counted
+/// apart), facing at least three sides. A connector's single row is not ringed by other parts.
+fn fine_pitch(part: &netsmith_pcb::board::Placed, faces: usize) -> bool {
+    let pads: Vec<&netsmith_pcb::footprint::Pad> = part
+        .footprint
+        .pads
+        .iter()
+        .filter(|p| p.drill.is_none())
+        .collect();
+    pads.len() >= 16
+        && faces >= 3
+        && pads.iter().enumerate().any(|(a, p)| {
+            pads.iter().skip(a + 1).any(|q| {
+                let d = part.pad_centre(p).distance(part.pad_centre(q));
+                d > 1e-6 && d <= 0.55 + 1e-9
+            })
+        })
+}
+
+/// The escape lanes of every fine-pitch part of the board ([`Lanes`]), `None` if it has none.
+fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
+    let net_of: HashMap<(&str, &str), usize> = board
+        .nets
+        .iter()
+        .enumerate()
+        .flat_map(|(n, net)| {
+            net.pads
+                .iter()
+                .map(move |p| ((p.refdes.as_str(), p.number.as_str()), n))
+        })
+        .collect();
+    let rules = &board.rules;
+    let mut lanes = Lanes::over(grid, board.nets.len());
+    lanes.partner = diff_pair_partners(board);
+    // A via closes a lane where its copper and the rules' space come within half the least
+    // track of the lane's middle.
+    let via_block = rules.via_diameter / 2.0 + rules.clearance + rules.min_track_width / 2.0;
+    let reach = LANE_LENGTH;
+    let mut any = false;
+    for part in &board.parts {
+        let pads: Vec<&netsmith_pcb::footprint::Pad> = part
+            .footprint
+            .pads
+            .iter()
+            .filter(|p| p.drill.is_none())
+            .collect();
+        let Some(span) = pads.iter().map(|p| part.pad_bounds(p)).reduce(|a, b| {
+            Rect::new(
+                Pt::new(a.min.x.min(b.min.x), a.min.y.min(b.min.y)),
+                Pt::new(a.max.x.max(b.max.x), a.max.y.max(b.max.y)),
+            )
+        }) else {
+            continue;
+        };
+        let mut claims = Vec::new();
+        for pad in pads {
+            let Some(&net) = net_of.get(&(part.refdes.as_str(), pad.number.as_str())) else {
+                continue;
+            };
+            let b = part.pad_bounds(pad);
+            let c = b.centre();
+            // The sides of the part's pads that this pad is on; a pad on none (an exposed pad,
+            // an inner row) has no lane. Of two, the one that points away from the part's
+            // origin.
+            let sides = [
+                ((-1.0, 0.0), b.min.x - span.min.x),
+                ((1.0, 0.0), span.max.x - b.max.x),
+                ((0.0, -1.0), b.min.y - span.min.y),
+                ((0.0, 1.0), span.max.y - b.max.y),
+            ];
+            let away = |(dx, dy): (f64, f64)| dx * (c.x - part.at.x) + dy * (c.y - part.at.y);
+            let Some(&((dx, dy), _)) = sides
+                .iter()
+                .filter(|(_, gap)| *gap <= 1e-6)
+                .max_by(|a, b| away(a.0).total_cmp(&away(b.0)))
+            else {
+                continue;
+            };
+            let (track, end) = if dx < 0.0 {
+                let r = Rect::new(Pt::new(b.min.x - reach, b.min.y), Pt::new(b.min.x, b.max.y));
+                (r, Pt::new(r.min.x, c.y))
+            } else if dx > 0.0 {
+                let r = Rect::new(Pt::new(b.max.x, b.min.y), Pt::new(b.max.x + reach, b.max.y));
+                (r, Pt::new(r.max.x, c.y))
+            } else if dy < 0.0 {
+                let r = Rect::new(Pt::new(b.min.x, b.min.y - reach), Pt::new(b.max.x, b.min.y));
+                (r, Pt::new(c.x, r.min.y))
+            } else {
+                let r = Rect::new(Pt::new(b.min.x, b.max.y), Pt::new(b.max.x, b.max.y + reach));
+                (r, Pt::new(c.x, r.max.y))
+            };
+            let (front, back) = part.pad_layers(pad);
+            claims.push(((dx as i8, dy as i8), net, [front, back], track, end));
+        }
+        let mut faces: Vec<(i8, i8)> = claims.iter().map(|c| c.0).collect();
+        faces.sort_unstable();
+        faces.dedup();
+        if !fine_pitch(part, faces.len()) {
+            continue;
+        }
+        for (_, net, layers, track, end) in claims {
+            let via_end = rules.via_diameter / 2.0;
+            lanes.claim(grid, net, layers, &track, end, via_block, via_end);
+            any = true;
+        }
+    }
+    any.then_some(lanes)
+}
+
+/// For each net, the other net of its diff pair, if it has one: two nets whose names differ only
+/// in a suffix pair the route scorecard knows (`netsmith_fab::score::PAIR_SUFFIXES`).
+fn diff_pair_partners(board: &Board) -> Vec<Option<usize>> {
+    let index: HashMap<&str, usize> = board
+        .nets
+        .iter()
+        .enumerate()
+        .map(|(n, net)| (net.name.as_str(), n))
+        .collect();
+    let mut partner = vec![None; board.nets.len()];
+    for (n, net) in board.nets.iter().enumerate() {
+        for (p, m) in netsmith_fab::score::PAIR_SUFFIXES {
+            if let Some(stem) = net.name.strip_suffix(p)
+                && let Some(&other) = index.get(format!("{stem}{m}").as_str())
+            {
+                partner[n] = Some(other);
+                partner[other] = Some(n);
+            }
+        }
+    }
+    partner
 }
 
 fn initial_obstacles(board: &Board) -> Obstacles {
@@ -1540,6 +1871,10 @@ struct Router<'a> {
     counting: Cell<bool>,
     /// What each stage of this try routed, if it is asked for.
     snapshots: Option<RefCell<Vec<Snapshot>>>,
+    /// The escape lanes of the fine-pitch parts' pads ([`Lanes`]), if the board has any.
+    lanes: Option<Lanes>,
+    /// Whether this try's searches pay for the lanes: from the second try on.
+    escaping: Cell<bool>,
 }
 
 impl<'a> Router<'a> {
@@ -1594,6 +1929,7 @@ impl<'a> Router<'a> {
             }
         }
         let crowding = Crowding::over(&grid);
+        let lanes = escape_lanes(board, &grid);
         Router {
             board,
             fixed,
@@ -1619,6 +1955,8 @@ impl<'a> Router<'a> {
             crowding: RefCell::new(crowding),
             counting: Cell::new(true),
             snapshots: options.snapshots.then(|| RefCell::new(Vec::new())),
+            lanes,
+            escaping: Cell::new(false),
         }
     }
 
@@ -2025,6 +2363,9 @@ impl<'a> Router<'a> {
             }
             self.room_for_vias(line, &mut masks);
             self.mark_own_pads(net, &mut masks);
+            if self.escaping.get() {
+                masks.lane = self.lanes.as_ref().and_then(|l| l.charged(window, net));
+            }
             let own: Vec<&Routed> = others
                 .iter()
                 .copied()
@@ -2503,6 +2844,7 @@ impl<'a> Router<'a> {
     /// `attempts` say which try of the board this is, for the progress messages. If the time
     /// runs out, the lines not yet tried count as failed.
     fn run(&self, order: &[usize], rip_up: bool, attempt: usize, attempts: usize) -> State {
+        self.escaping.set(attempt > 1);
         *self.failed_in.borrow_mut() = vec![Stage::FirstPass; self.lines.len()];
         if let Some(snapshots) = &self.snapshots {
             snapshots.borrow_mut().clear();
@@ -3242,6 +3584,11 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     let (best, stopped, tries, why, crowding, stages) = {
         let router = Router::new(board, &options);
         let mut orders = router.orders(options.retry_orders);
+        // On a board with escape lanes, the second try is the first order again with the lanes
+        // (see the module's header), and every try after it has them too.
+        if router.lanes.is_some() && options.retry_orders {
+            orders.insert(1, orders[0].clone());
+        }
         if let Some(most) = options.most_tries {
             orders.truncate(most.max(1));
         }
@@ -3441,6 +3788,84 @@ mod tests {
             layers(&masks).contains(&BACK),
             "vias are cheaper than bends"
         );
+    }
+
+    /// A grid of 3 mm by 1 mm with one escape lane on the front, of net 7: the cells of row 5
+    /// from column 10 to 20, and a via's place at its end.
+    fn one_lane() -> (Grid, Lanes) {
+        let grid = Grid::over(&Rect::new(Pt::new(0.0, 0.0), Pt::new(3.0, 1.0)));
+        let mut lanes = Lanes::over(&grid, 8);
+        let track = Rect::new(Pt::new(1.0, 0.5), Pt::new(2.0, 0.5));
+        lanes.claim(&grid, 7, [true, false], &track, Pt::new(2.0, 0.5), 0.2, 0.2);
+        (grid, lanes)
+    }
+
+    #[test]
+    fn an_escape_lane_is_free_for_its_own_net_and_dear_for_another() {
+        let (grid, lanes) = one_lane();
+        let window = Window::full(&grid);
+        let straight = |net: usize| {
+            let mut masks = Masks::open(window);
+            masks.lane = lanes.charged(window, net);
+            let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+            path.iter().all(|&(_, j, layer)| j == 5 && layer == FRONT)
+        };
+        assert!(straight(7), "the lane's own net goes straight through it");
+        assert!(!straight(3), "another net goes round the lane");
+        // A via of another net at the lane's end costs more than one off the lane.
+        let mut masks = Masks::open(window);
+        masks.lane = lanes.charged(window, 3);
+        assert!(masks.lane_via_cost(20, 5) > 0);
+        assert!(masks.lane_cost(FRONT, 15, 5) > 0);
+        assert_eq!(
+            masks.lane_cost(BACK, 15, 5),
+            0,
+            "the lane is on the pad's layer only"
+        );
+        assert_eq!(masks.lane_via_cost(20, 9), 0);
+        // The lane's own net puts its via at the lane's end for nothing, but pays as any other
+        // for one that closes the lane before its end.
+        masks.lane = lanes.charged(window, 7);
+        assert_eq!(masks.lane_via_cost(20, 5), 0);
+        assert!(masks.lane_via_cost(14, 5) > 0);
+        assert!(
+            masks.lane_via_cost(14, 7) > 0,
+            "beside the lane, its copper would close it"
+        );
+    }
+
+    #[test]
+    fn the_other_net_of_a_diff_pair_uses_the_lane_as_its_own() {
+        let (grid, mut lanes) = one_lane();
+        lanes.partner[7] = Some(3);
+        lanes.partner[3] = Some(7);
+        let window = Window::full(&grid);
+        let mut masks = Masks::open(window);
+        masks.lane = lanes.charged(window, 3);
+        assert_eq!(masks.lane_cost(FRONT, 15, 5), 0);
+        masks.lane = lanes.charged(window, 2);
+        assert!(masks.lane_cost(FRONT, 15, 5) > 0);
+    }
+
+    #[test]
+    fn another_net_still_crosses_a_lane_when_nothing_else_is_free() {
+        let (grid, lanes) = one_lane();
+        let window = Window::full(&grid);
+        let mut masks = Masks::open(window);
+        masks.lane = lanes.charged(window, 3);
+        // Everything but row 5 is walled, and no via may stand anywhere.
+        for j in 0..grid.ny {
+            for i in 0..grid.nx {
+                let at = masks.at(i, j);
+                masks.via[at] = true;
+                masks.track[BACK][at] = true;
+                if j != 5 {
+                    masks.track[FRONT][at] = true;
+                }
+            }
+        }
+        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)]));
+        assert_eq!(path.map(|p| p.len()), Some(31), "a cost, not a wall");
     }
 
     #[test]
