@@ -601,7 +601,12 @@ export function View3d({ board }: { board: string }) {
           <Overlay3d viewer={viewer.current} measures={measures} pending={pending} hover={snapAt} readout={readout} exploded={exploded} cut={cut} measuring={measuring} />
         )}
         {tip && !measuring && (
-          <div class="pcb-tip v3-tip" style={{ left: tip.x, top: tip.y }} data-testid="tip-3d">
+          <div
+            class="pcb-tip v3-tip"
+            // In the right part of the view the tip opens to the left of the pointer, so a long line is not cut at the edge.
+            style={{ left: tip.x, top: tip.y, transform: tip.x > (host.current?.clientWidth ?? Infinity) * 0.6 ? 'translateX(calc(-100% - 28px))' : undefined }}
+            data-testid="tip-3d"
+          >
             <b>{tip.title}</b>
             {tip.lines.map((l) => (
               <div key={l}>{l}</div>
@@ -779,6 +784,10 @@ export function View3d({ board }: { board: string }) {
                 <span>
                   <i class="v3-sw v3-sw-catalog" aria-hidden="true" />
                   Catalog {counts.catalog}
+                </span>
+                <span>
+                  <i class="v3-sw v3-sw-standard" aria-hidden="true" />
+                  Package standard {counts.standard}
                 </span>
                 <span>
                   <i class="v3-sw v3-sw-unknown" aria-hidden="true" />

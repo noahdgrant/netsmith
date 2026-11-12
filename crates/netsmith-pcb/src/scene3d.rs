@@ -27,7 +27,9 @@
 //! - One [`Body`] per part with a body (a label has none): the body box (the footprint's
 //!   `F.Fab` drawing, else its courtyard, as a placement requirement and the height check measure
 //!   it, ADR 0045) turned and mirrored with the part, from its face to its height. A part whose
-//!   height is unknown has none: it is never given zero or a guess (ADR 0094, ADR 0105).
+//!   height is unknown has none: it is never given zero or a guess (ADR 0094, ADR 0105). A
+//!   part with no height of its own whose footprint has a _Standard height_ stands to the
+//!   package standard's maximum, labelled `standard` (ADR 0106).
 //!   Where the footprint has a package record and the height is known, the body also carries
 //!   its _Package shape_ ([`PlacedShape`]): the solids of [`crate::body3d::package_shape`] in the
 //!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
@@ -76,16 +78,20 @@ pub enum HeightProvenance {
     Stated,
     /// The `height` cell of the catalog row the part was picked as (ADR 0094).
     Catalog,
-    /// Neither: the part has no height.
+    /// Neither, and the footprint has a _Standard height_: the greatest its package standard
+    /// allows (ADR 0106, [`crate::standard_height`]), not a figure of the part.
+    Standard,
+    /// None of these: the part has no height.
     Unknown,
 }
 
 impl HeightProvenance {
-    /// `stated`, `catalog` or `unknown`.
+    /// `stated`, `catalog`, `standard` or `unknown`.
     pub fn word(self) -> &'static str {
         match self {
             HeightProvenance::Stated => "stated",
             HeightProvenance::Catalog => "catalog",
+            HeightProvenance::Standard => "standard",
             HeightProvenance::Unknown => "unknown",
         }
     }
@@ -287,6 +293,8 @@ pub struct Body {
     pub z_far: Option<f64>,
     pub height: Option<f64>,
     pub provenance: HeightProvenance,
+    /// The package standard the height is from, for a `standard` height (ADR 0106).
+    pub standard: Option<crate::standard_height::StandardHeight>,
     pub pins: Pins,
     /// The package shape, drawn in place of the box. `None` when the footprint has no package
     /// record (a footprint read from a file, ADR 0105) or the height is unknown: the box, or the
@@ -430,10 +438,13 @@ pub struct Findings {
 /// How many bodies have a known height (the glossary's _Height coverage_).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Coverage {
+    /// Every known height: stated, catalog and standard.
     pub known: usize,
     pub total: usize,
     pub stated: usize,
     pub catalog: usize,
+    /// The heights that are a package standard's, counted as known and named apart (ADR 0106).
+    pub standard: usize,
 }
 
 /// A polygon with holes in the plan of the scene. `outer` runs counterclockwise and each hole
@@ -661,15 +672,17 @@ impl Scene {
     /// How many bodies have a known height, and where it came from.
     pub fn coverage(&self) -> Coverage {
         let count = |p| self.bodies.iter().filter(|b| b.provenance == p).count();
-        let (stated, catalog) = (
+        let (stated, catalog, standard) = (
             count(HeightProvenance::Stated),
             count(HeightProvenance::Catalog),
+            count(HeightProvenance::Standard),
         );
         Coverage {
-            known: stated + catalog,
+            known: stated + catalog + standard,
             total: self.bodies.len(),
             stated,
             catalog,
+            standard,
         }
     }
 
@@ -964,9 +977,14 @@ fn body(
         Pt::new(local.min.x, local.max.y),
     ]
     .map(|c| frame.point(p.to_board(c)));
-    let provenance = match p.height {
-        None => HeightProvenance::Unknown,
-        Some(_) => match provenance.get(&p.path) {
+    // The part's own height wins; a standard height only stands in where there is none (ADR
+    // 0106).
+    let standard = p.standard_height().copied();
+    let height = p.height.or(standard.map(|s| s.max));
+    let provenance = match (p.height, standard) {
+        (None, None) => HeightProvenance::Unknown,
+        (None, Some(_)) => HeightProvenance::Standard,
+        (Some(_), _) => match provenance.get(&p.path) {
             Some(HeightProvenance::Catalog) => HeightProvenance::Catalog,
             _ => HeightProvenance::Stated,
         },
@@ -1006,8 +1024,8 @@ fn body(
             }
         }
     };
-    let shape = (p.footprint.package.is_some() && p.height.is_some())
-        .then(|| crate::body3d::package_shape(&p.footprint, p.height))
+    let shape = (p.footprint.package.is_some() && height.is_some())
+        .then(|| crate::body3d::package_shape(&p.footprint, height))
         .filter(|s| s.shaped && !s.solids.is_empty())
         .map(|s| PlacedShape {
             solids: s.solids,
@@ -1025,9 +1043,10 @@ fn body(
         bounds: frame.rect(p.body()),
         body_is_courtyard: p.footprint.body_is_courtyard,
         z_face,
-        z_far: p.height.map(|h| clean(z_face + out * h)),
-        height: p.height,
+        z_far: height.map(|h| clean(z_face + out * h)),
+        height,
         provenance,
+        standard,
         pins,
         shape,
     }

@@ -87,7 +87,7 @@ fn the_lidded_board_reports_the_part_too_tall_the_unknown_one_and_the_margin() {
     // The same count as the coverage line of fab-notes.txt.
     assert_eq!(
         r["coverage"],
-        serde_json::json!({"known": 2, "total": 3, "stated": 2, "catalog": 0})
+        serde_json::json!({"known": 2, "total": 3, "stated": 2, "catalog": 0, "standard": 0})
     );
     assert_eq!(r["tallest"]["top"]["path"], "tall");
     assert!(r["tallest"]["bottom"].is_null());

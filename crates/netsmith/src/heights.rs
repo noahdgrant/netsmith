@@ -1,10 +1,20 @@
-//! Where a part's height comes from (ADR 0045 section 11, ADR 0094).
+//! Where a part's height comes from (ADR 0045 section 11, ADR 0094, ADR 0106).
 //!
-//! Three sources, the strongest first: the design states `.height` (the source or the physical
+//! Four sources, the strongest first: the design states `.height` (the source or the physical
 //! file), else the `height` cell of the catalog row the part was picked as (a datasheet figure
-//! with its source), else the part has no height and a limit reports it unchecked. The design stage
-//! lists only the first; this module adds the second, once the generic parts have their rows,
-//! and keeps what it added so that a report can say where each number came from.
+//! with its source), else the _Standard height_ of its footprint (the package standard's
+//! maximum, `netsmith_pcb::standard_height`), else the part has no height and a limit reports it
+//! unchecked. The design stage lists only the first; this module adds the second, once the
+//! generic parts have their rows, and keeps what it added so that a report can say where each
+//! number came from. The third is never written into the design: the board reads it from the
+//! footprint where a part has no height of its own (`Placed::standard_height`), so a check can
+//! say that a pass rests on a standard and not on the part.
+//!
+//! **A standard height under a limit** (ADR 0106). Where the standard's maximum fits the limit,
+//! the part passes, and `fab`, `fab-notes.txt` and `board3d` say that the pass is the
+//! standard's (`Board::standard_passes`). Where it does not, the part is unchecked, as a part of
+//! unknown height is, with the standard's figure in the message: a part in that package may be
+//! lower. It is never `TooTall`, and the placer does not read it.
 //!
 //! **The rule of a height limit** (ADR 0045 section 11; the guide's "Height limits" has the
 //! examples).
@@ -72,7 +82,9 @@ use std::collections::BTreeMap;
 
 use netsmith_core::{Design, PartHeight};
 use netsmith_design::Sourced;
+use netsmith_pcb::Board;
 use netsmith_pcb::scene3d::HeightProvenance;
+use netsmith_pcb::standard_height::StandardHeight;
 use netsmith_solve::Catalogs;
 
 use crate::resolve::resolve_generics;
@@ -137,10 +149,11 @@ pub(crate) fn from_catalog_rows(
     found
 }
 
-/// Where each part's height came from (the glossary's _Height provenance_), by path: `catalog`
-/// for a part of `catalog`, else `stated` for a part the design states a height for, else
-/// `unknown`. [`Coverage`] counts by the same rule, and the 3D scene reads it
-/// (`netsmith_pcb::scene3d`).
+/// Where each part's height came from in the design (the glossary's _Height provenance_), by
+/// path: `catalog` for a part of `catalog`, else `stated` for a part the design states a height
+/// for, else `unknown`. The design does not know footprints, so a part this calls `unknown` may
+/// have a standard height on the board: [`Coverage`] and the 3D scene (`netsmith_pcb::scene3d`)
+/// read that from the board, after this.
 pub fn provenance(
     design: &Design,
     catalog: &[CatalogHeight],
@@ -162,16 +175,19 @@ pub fn provenance(
 }
 
 /// How many parts of a board have a known height, for the notes of a board that has a height
-/// limit: the parts counted are those that have a body (a label has none).
+/// limit: the parts counted are those that have a body (a label has none). A standard height
+/// counts as known and is counted apart (ADR 0106).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Coverage {
     pub parts: usize,
     pub stated: usize,
     pub catalog: usize,
+    pub standard: usize,
 }
 
 impl Coverage {
-    pub fn of(design: &Design, catalog: &[CatalogHeight]) -> Option<Self> {
+    /// The coverage of `design` placed as `board`, which says which parts have a standard height.
+    pub fn of(design: &Design, catalog: &[CatalogHeight], board: &Board) -> Option<Self> {
         if !design
             .features
             .keepouts
@@ -188,28 +204,46 @@ impl Coverage {
                 .filter(|p| p.kind != "Label" && from[&p.path] == want)
                 .count()
         };
+        let standard = design
+            .parts
+            .iter()
+            .filter(|p| p.kind != "Label" && from[&p.path] == HeightProvenance::Unknown)
+            .filter(|p| standard_of(board, &p.path).is_some())
+            .count();
         Some(Self {
             parts: design.parts.iter().filter(|p| p.kind != "Label").count(),
             stated: count(HeightProvenance::Stated),
             catalog: count(HeightProvenance::Catalog),
+            standard,
         })
     }
 
     /// The line for `fab-notes.txt`.
     pub fn line(&self) -> String {
-        let known = self.stated + self.catalog;
+        let known = self.stated + self.catalog + self.standard;
         format!(
-            "note: {known} of {} parts have a known height ({} stated in the design, {} from catalog rows); a part under a height limit with none is reported unchecked, never as a pass",
-            self.parts, self.stated, self.catalog
+            "note: {known} of {} parts have a known height ({} stated in the design, {} from catalog rows, {} the package standard's maximum); a part under a height limit with none is reported unchecked, never as a pass",
+            self.parts, self.stated, self.catalog, self.standard
         )
     }
 }
 
+/// The standard height of the part at `path` on `board`, if it has no height of its own.
+fn standard_of(board: &Board, path: &str) -> Option<&'static StandardHeight> {
+    board
+        .parts
+        .iter()
+        .find(|p| p.path == path)
+        .and_then(|p| p.standard_height())
+}
+
 /// What `fab-notes.txt` says about heights, for a board that has a height limit: how many
-/// parts have a known height, and each height that is a catalog row's, with the row, so that a
-/// person can look the figure up. Nothing for a board with no limit (ADR 0045 section 11).
-pub fn notes(design: &Design, catalog: &[CatalogHeight]) -> Vec<String> {
-    let Some(coverage) = Coverage::of(design, catalog) else {
+/// parts have a known height, each height that is a catalog row's, with the row, so that a
+/// person can look the figure up, each that is a package standard's, with the standard, and
+/// each pass under a limit that rests on a standard height. Nothing for a board with no limit
+/// (ADR 0045 section 11).
+pub fn notes(design: &Design, catalog: &[CatalogHeight], board: &Board) -> Vec<String> {
+    let Some(coverage) = Coverage::of(design, catalog, board) else {
         return Vec::new();
     };
     let mut lines = vec![coverage.line()];
@@ -219,5 +253,22 @@ pub fn notes(design: &Design, catalog: &[CatalogHeight]) -> Vec<String> {
             c.refdes, c.path, c.height, c.row()
         )
     }));
+    let mut standard: Vec<&netsmith_pcb::Placed> = board
+        .parts
+        .iter()
+        .filter(|p| p.standard_height().is_some())
+        .collect();
+    standard.sort_by(|a, b| a.path.cmp(&b.path));
+    lines.extend(standard.iter().filter_map(|p| {
+        let s = p.standard_height()?;
+        Some(format!(
+            "note: height of {} (`{}`) is {:.2} mm, the greatest its package standard allows ({}), not a figure of the part: the design states none and its catalog row has none",
+            p.refdes,
+            p.path,
+            s.max,
+            s.cited()
+        ))
+    }));
+    lines.extend(board.standard_passes().iter().map(|p| format!("note: {p}")));
     lines
 }

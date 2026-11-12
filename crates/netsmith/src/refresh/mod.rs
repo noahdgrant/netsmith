@@ -134,6 +134,7 @@
 //! touches the network is a fact of the code and not a rule in `docs/DESIGN-RULES.md`; it is not
 //! planned as one until a board needs it.
 
+mod add;
 mod csvfile;
 mod date;
 mod http;
@@ -142,6 +143,7 @@ mod targets;
 
 use std::{fs, path::Path};
 
+pub use add::{AddError, Added, add, render_added, source_of};
 pub use date::{age_days, date_of, days_of, now_secs};
 pub use http::{
     Endpoints, Fetcher, LCSC_URL_VAR, Network, USER_AGENT, cache_base, check_endpoint,

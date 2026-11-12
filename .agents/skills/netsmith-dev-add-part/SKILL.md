@@ -23,6 +23,10 @@ One file for each catalog, named by it (`resistor.csv`, `capacitor.csv`, `led.cs
 - A part you looked at and decided against goes in `data/jlcpcb/considered.csv` with its reason, not in a catalog.
 - A catalog keyed by a column (`catalog mcu by .mpn`) has one row per orderable part, and the design names it with `.mpn`.
 
+## Starting a row
+
+`netsmith catalog add --lcsc C123 --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day it was read. It leaves every other cell empty and prints the columns to fill: the ratings and curves from the datasheet (add `datasheet:<url>` to `source`) and `library` from JLCPCB's page. A row with an empty cell a part reads is never offered, so the row does nothing until you fill it. Check the `package` against `std/kicad.toml`; LCSC spells some packages its own way. Without `--to` it prints the record and writes nothing.
+
 ## Refreshing the numbers
 
 `netsmith catalog refresh --dry-run --lcsc C5446` (or `--only resistor`) checks a row's `mpn` and `package` against LCSC's product record (never JLCPCB's) and prints what it would write: only the day in the `checked` column, for a row that agrees. It never writes `price`, `stock`, `price_breaks`, `library` or `date`: those are JLCPCB's numbers, which you read from its parts page by hand, and LCSC's differ. A new row leaves `checked` empty. A `CONFLICT` (LCSC names another `mpn` or package) or `MISSING` (the number is gone) row is left as it was: look at it, then fix or move it to `considered.csv`. When it notes that LCSC lists stock 0, read JLCPCB's stock on its page; if that is 0 too, the solver does not offer the row and the std tests want stock above 0, so move it to `considered.csv`. `netsmith catalog age` lists rows whose `date` is older than 90 days. Do not run it over a whole catalog without being asked: it makes one request for each row to an unofficial endpoint whose terms of use are unread (ADR 0039). For a project, the same command checks the files its `netsmith.toml` lists.

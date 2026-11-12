@@ -249,6 +249,17 @@ pub struct Placed {
 }
 
 impl Placed {
+    /// The _Standard height_ of the part's footprint (ADR 0106,
+    /// [`crate::standard_height`]), when the part has no height of its own: `None` when the
+    /// design or the catalog row gives one, which always wins, and for a footprint the table has
+    /// no row for.
+    pub fn standard_height(&self) -> Option<&'static crate::standard_height::StandardHeight> {
+        if self.height.is_some() || self.kind == "Label" {
+            return None;
+        }
+        crate::standard_height::of(&self.library_id)
+    }
+
     /// The height of the reference text on the board, in mm: what the library draws, or the
     /// process's smallest if that is more.
     pub(crate) fn text_height(&self, rules: &Rules) -> f64 {
@@ -661,21 +672,76 @@ pub struct HeightUnchecked {
     /// The limit, in mm.
     pub limit: f64,
     pub side: Side,
+    /// The package standard's height, where the footprint has one and it is over the limit
+    /// (ADR 0106): the part in the package may be lower, so whether it fits is still unknown.
+    pub standard: Option<crate::standard_height::StandardHeight>,
 }
 
 impl std::fmt::Display for HeightUnchecked {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.standard {
+            None => write!(
+                f,
+                "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
+                self.refdes,
+                self.path,
+                self.keepout,
+                self.side.word(),
+                self.limit,
+                self.path
+            ),
+            Some(s) => write!(
+                f,
+                "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
+                self.refdes,
+                self.path,
+                self.keepout,
+                self.side.word(),
+                self.limit,
+                s.standard,
+                s.max,
+                self.path
+            ),
+        }
+    }
+}
+
+/// A part under a height limit that fits it only by its package standard's height (ADR
+/// 0106): a pass, but on the standard's maximum and not on a figure of the part.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StandardPass {
+    pub refdes: String,
+    pub path: String,
+    pub keepout: String,
+    /// The limit, in mm.
+    pub limit: f64,
+    pub side: Side,
+    pub standard: crate::standard_height::StandardHeight,
+}
+
+impl std::fmt::Display for StandardPass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
+            "{} (`{}`) fits the {:.2} mm the keepout `{}` allows on the {} face by its package standard ({}, at most {:.2} mm), not by a height of its own: the design states none and its catalog row has none",
             self.refdes,
             self.path,
+            self.limit,
             self.keepout,
             self.side.word(),
-            self.limit,
-            self.path
+            self.standard.cited(),
+            self.standard.max
         )
     }
+}
+
+/// A part under a height limit, for [`Board::heights_unchecked`] and
+/// [`Board::standard_passes`].
+struct UnderLimit {
+    refdes: String,
+    path: String,
+    keepout: String,
+    side: Side,
 }
 
 /// The pins of a through-hole part whose protrusion the design states, to be cut short after
@@ -2007,7 +2073,55 @@ impl Board {
     /// The parts that stand under a height limit and state no height, so that whether they
     /// fit is not known (ADR 0045, "Height limits"). Not a pass: each is named,
     /// with the keepout and its limit. A label has no body and is left out.
+    ///
+    /// A part whose footprint has a _Standard height_ (ADR 0106) is unchecked only where the
+    /// standard's maximum is over the limit; where it is not, the part is a [`StandardPass`]
+    /// ([`Board::standard_passes`]).
     pub fn heights_unchecked(&self) -> Vec<HeightUnchecked> {
+        self.under_limits_without_height()
+            .into_iter()
+            .filter(|(_, limit, standard)| {
+                standard.is_none_or(|s| s.max > limit + HEIGHT_TOLERANCE)
+            })
+            .map(|(u, limit, standard)| HeightUnchecked {
+                refdes: u.refdes.clone(),
+                path: u.path.clone(),
+                keepout: u.keepout.clone(),
+                limit,
+                side: u.side,
+                standard: standard.copied(),
+            })
+            .collect()
+    }
+
+    /// The parts under a height limit that state no height and fit it by their package
+    /// standard's maximum (ADR 0106). Each is a pass to be reported as one, not a silent pass.
+    pub fn standard_passes(&self) -> Vec<StandardPass> {
+        self.under_limits_without_height()
+            .into_iter()
+            .filter_map(|(u, limit, standard)| {
+                let s = standard.filter(|s| s.max <= limit + HEIGHT_TOLERANCE)?;
+                Some(StandardPass {
+                    refdes: u.refdes.clone(),
+                    path: u.path.clone(),
+                    keepout: u.keepout.clone(),
+                    limit,
+                    side: u.side,
+                    standard: *s,
+                })
+            })
+            .collect()
+    }
+
+    /// Each pair of a part with no height of its own and a height limit over its body on its
+    /// face, with the limit and the part's standard height, if any. A label is left out.
+    fn under_limits_without_height(
+        &self,
+    ) -> Vec<(
+        UnderLimit,
+        f64,
+        Option<&'static crate::standard_height::StandardHeight>,
+    )> {
         let keepouts = self.keepout_areas();
         let mut found = Vec::new();
         for a in self
@@ -2024,13 +2138,16 @@ impl Board {
                     && k.limits_height_on(a.side)
                     && body.overlaps(&k.rect)
                 {
-                    found.push(HeightUnchecked {
-                        refdes: a.refdes.clone(),
-                        path: a.path.clone(),
-                        keepout: k.name.clone(),
+                    found.push((
+                        UnderLimit {
+                            refdes: a.refdes.clone(),
+                            path: a.path.clone(),
+                            keepout: k.name.clone(),
+                            side: a.side,
+                        },
                         limit,
-                        side: a.side,
-                    });
+                        a.standard_height(),
+                    ));
                 }
             }
         }

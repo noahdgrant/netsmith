@@ -52,6 +52,7 @@ pub struct Report {
     pub too_tall: Vec<TooTallReport>,
     pub overlaps: Vec<OverlapReport>,
     pub unknown_heights: Vec<UnknownReport>,
+    pub standard_passes: Vec<StandardPassReport>,
     pub coverage: CoverageReport,
     pub tallest: TallestReport,
 }
@@ -166,6 +167,10 @@ pub struct PartReport {
     /// The catalog row the height is from, for a `catalog` height.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub catalog_row: Option<String>,
+    /// The package standard and the drawing the height is from, for a `standard` height (ADR
+    /// 0106): `JEDEC MS-012, drawing TI D0008A`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub standard: Option<String>,
     /// The pins below the far face, for a part with plated holes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pins: Option<PinsReport>,
@@ -270,6 +275,23 @@ pub struct CoverageReport {
     pub total: usize,
     pub stated: usize,
     pub catalog: usize,
+    /// The known heights that are a package standard's maximum (ADR 0106), counted in `known`.
+    pub standard: usize,
+}
+
+/// A part that fits a height limit only by its package standard's height (ADR 0106): a pass,
+/// but not on a figure of the part.
+#[derive(Debug, Serialize)]
+pub struct StandardPassReport {
+    pub path: String,
+    pub refdes: String,
+    pub limit_name: String,
+    pub face: &'static str,
+    /// The standard's maximum, in mm.
+    pub height: f64,
+    pub limit: f64,
+    /// `JEDEC MS-012, drawing TI D0008A`.
+    pub standard: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -447,6 +469,7 @@ pub fn report(
                 catalog_row: (b.provenance == HeightProvenance::Catalog)
                     .then(|| catalog.get(b.path.as_str()).cloned())
                     .flatten(),
+                standard: b.standard.map(|s| s.cited()),
                 pins,
             }
         })
@@ -510,6 +533,32 @@ pub fn report(
             }
         })
         .collect();
+    // A part of standard height under a limit that its maximum fits: a pass to name as one. One
+    // over the limit is in `findings.unchecked`, as the board's check reports it.
+    let mut standard_passes = Vec::new();
+    for l in &scene.limits {
+        for f in &l.faces {
+            for b in scene
+                .bodies
+                .iter()
+                .filter(|b| f.under.contains(&b.path) && b.provenance == HeightProvenance::Standard)
+            {
+                if let (Some(h), Some(s)) = (b.height, b.standard)
+                    && h <= l.max_height + 0.0005
+                {
+                    standard_passes.push(StandardPassReport {
+                        path: b.path.clone(),
+                        refdes: b.refdes.clone(),
+                        limit_name: l.name.clone(),
+                        face: face(f.side),
+                        height: h,
+                        limit: l.max_height,
+                        standard: s.cited(),
+                    });
+                }
+            }
+        }
+    }
     let coverage = scene.coverage();
     Ok(Report {
         schema: SCHEMA,
@@ -545,11 +594,13 @@ pub fn report(
             })
             .collect(),
         unknown_heights,
+        standard_passes,
         coverage: CoverageReport {
             known: coverage.known,
             total: coverage.total,
             stated: coverage.stated,
             catalog: coverage.catalog,
+            standard: coverage.standard,
         },
         tallest: TallestReport {
             top: tallest(scene.tallest(Side::Front), None),
@@ -640,8 +691,8 @@ impl Report {
         );
         let c = &self.coverage;
         text += &format!(
-            "heights: {} of {} parts known ({} stated, {} from catalog rows)\n",
-            c.known, c.total, c.stated, c.catalog
+            "heights: {} of {} parts known ({} stated, {} from catalog rows, {} the package standard's maximum)\n",
+            c.known, c.total, c.stated, c.catalog, c.standard
         );
         for (word, t) in [("top", &self.tallest.top), ("bottom", &self.tallest.bottom)] {
             if let Some(t) = t {
@@ -685,6 +736,12 @@ impl Report {
             text += &format!(
                 "overlap: {} and {} share space on the {} face, z {:.2} to {:.2} mm\n",
                 o.a_refdes, o.b_refdes, o.face, o.z_bottom, o.z_top
+            );
+        }
+        for p in &self.standard_passes {
+            text += &format!(
+                "fits by its package standard: {} (`{}`) at most {:.2} mm ({}) under `{}`, which allows {:.2} mm on the {} face\n",
+                p.refdes, p.path, p.height, p.standard, p.limit_name, p.limit, p.face
             );
         }
         for u in &self.unknown_heights {

@@ -250,8 +250,8 @@ and says so.
 
 ## Parity
 
-`cargo run -p netsmith --example parity -- <board.kicad_pcb> [--table <placements.toml>]
-[--map <designators.toml>] [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith fab`
+`netsmith parity <board.kicad_pcb> [--table <placements.toml>]
+[--map <designators.toml>] [--svg <overlay.svg>]`, run in this folder, compares the `.kicad_pcb` that `netsmith fab`
 writes (in `fab/<Board>/`) with Raspberry Pi's board, as `reference/placements.toml` states it.
 It prints one line per item and `must-match: N ok, M failed`, writes the overlay (both boards at
 one scale: Raspberry Pi's in blue, netsmith's in orange, a failing must-match item in red with
@@ -335,9 +335,9 @@ the run is the same. Then the parity check, from the repository's root, and the 
 writes:
 
 ```sh
-cargo run -p netsmith --example parity -- \
-    examples/rp2350_minimal/fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
-    --svg examples/rp2350_minimal/reference/parity-overlay.svg
+cd examples/rp2350_minimal
+netsmith parity fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
+    --svg reference/parity-overlay.svg
 ```
 
 `reference/parity-overlay.svg` is the picture of the last such run, and the test above checks
