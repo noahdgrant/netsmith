@@ -41,6 +41,12 @@ struct Pitch {
     /// socket makers' drawings: 0.64 mm at 2.54 mm, 0.5 mm at 2.0 mm). Only the 3D view
     /// reads it.
     pin: f64,
+    /// The height of a header's plastic above the board, nominal, in mm: the same for one row
+    /// and two, from a maker's drawing of each (`data/jlcpcb/README.md`, "Pin headers", has
+    /// the documents). Only the 3D view reads it, through [`Package::Header`]; a socket's
+    /// plastic is its whole height, so a socket does not read it. It is not the part's height:
+    /// that is the pin's tip above the plastic, a part's stated `.height` or its catalog row's.
+    plastic: f64,
 }
 
 const PITCHES: [Pitch; 2] = [
@@ -50,6 +56,9 @@ const PITCHES: [Pitch; 2] = [
         pad: 1.7,
         drill: 1.0,
         pin: 0.64,
+        // 2.50 mm (general tolerance +/-0.20): JXTCONN PH2.54-1XnP-H25 (one row) and
+        // A254M01-0BxP51-H25A60 (two rows), Hanxia HX PZ2.54-1x8P ZZ (one row).
+        plastic: 2.5,
     },
     Pitch {
         text: "2.00",
@@ -57,6 +66,8 @@ const PITCHES: [Pitch; 2] = [
         pad: 1.35,
         drill: 0.8,
         pin: 0.5,
+        // 2.00 mm (+/-0.20): JXTCONN PZ2.0V-11nP-H20 (one row), XFCN PZ200V-12-XX-0870 (two).
+        plastic: 2.0,
     },
 ];
 
@@ -262,6 +273,7 @@ fn header(
             body: Rect::new(Pt::new(x0, y0), Pt::new(x1, y1)),
             pitch: pitch.mm,
             pin: pitch.pin,
+            plastic: pitch.plastic,
             pins,
             socket: part == Part::Socket,
         },

@@ -207,7 +207,12 @@ What it is:
   by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
   (_Height coverage_); it lists the others, and a click on one selects it. A hover names a part's
-  designator, its height and where the height came from.
+  designator, its height and where the height came from. A package shape is built to that
+  height and adds none: its highest point is the part's height. A pin header is the one shape
+  with a height of its own below that: its plastic, 2.5 mm at 2.54 mm pitch and 2.0 mm at
+  2.0 mm, from the makers' drawings that `data/jlcpcb/README.md` names; the pins go on up to the
+  part's height, which for a header is the tip of its pins (8.9 mm for the catalog's 2.54 mm
+  headers). A header shorter than its plastic is drawn as tall as its height.
 - **One selection with the rest of the editor.** A click selects a part in every view (the 2D
   board, the schematic, the tree, the bill of materials), and a selection made in any of them is
   lit here; the hover is shared the same way. A double click opens the part's declaration in the
