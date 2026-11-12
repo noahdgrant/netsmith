@@ -166,6 +166,27 @@ A node whose shape has no area has no mesh, and is still there.
   laminate) and fills the outer copper's thickness where there is no copper, so no two surfaces
   that show share a plane.
 
+### In the fab package
+
+`netsmith fab` writes the scene of each board it makes as `<board>.glb` into the board's folder in
+the package (`fab/<Board>/<Board>.glb`), beside `fab-notes.txt`, the `.kicad_pcb` and the pin map.
+It is not inside the Gerber zip, which holds what the board house takes and nothing else. It
+needs no KiCad (ADR 0097), and `fab --order` writes it for each board of the order.
+
+- **Which board.** The board `fab` made: placed as `board3d` places it, then routed, so the copper
+  holds the routed tracks and vias (the editor's `GET /api/pcb/3d` draws the board it has routed
+  the same way). The file is `board3d --glb` of the same board with the routing added. A board
+  with nothing to route, or `board3d --glb` on a board `fab` has not routed, has the same bytes in
+  both. A board `fab` writes as INCOMPLETE has the scene of its routed part.
+- **Off.** `fab --no-glb` leaves it out for one run, and `glb = false` under `[project]` in
+  `netsmith.toml` leaves it out for the project; the flag wins where both are given (the flag
+  only turns it off: remove the key to turn it back on). A run that leaves it out removes the
+  `<board>.glb` of an earlier run, so that the folder never holds the scene of another layout.
+- **If it cannot be written** (the folder is not writable, say) `fab` goes on: the package is
+  complete without it, and a `warning:` line in the run's output and in `fab-notes.txt` says
+  which file was not written. Building the scene has no error of its own: a copper shape that
+  cannot be drawn leaves its copper groups out of the file, as above.
+
 ## The editor's 3D view
 
 The PCB section of the editor (`netsmith editor`) shows the board in 3D: `3D` in the toolbar's

@@ -156,6 +156,13 @@ pub struct FabOptions {
     /// routed again at the least, so the margin is kept where it fits and given up where it does
     /// not (issue #431). 1 is the least.
     pub track_margin: f64,
+    /// Write the board's 3D scene as `<board>.glb` into the board's package folder, beside the
+    /// pin map and `fab-notes.txt` and outside the Gerber zip: the scene of the board as routed,
+    /// as `board3d --glb` writes it (docs/BOARD3D.md). The default is `true`; the command line
+    /// gives `false` for `--no-glb` or `glb = false` in `netsmith.toml`. When it is `false`, a
+    /// `<board>.glb` that an earlier run left in the folder is removed, as the pin map's files
+    /// are, so that the folder never holds a scene of another layout.
+    pub glb: bool,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -253,6 +260,7 @@ impl Default for FabOptions {
             pins: None,
             pin_map_source: None,
             track_margin: DEFAULT_TRACK_MARGIN,
+            glb: true,
         }
     }
 }
@@ -755,6 +763,13 @@ fn fab_board(
         let pin_files = crate::pin_export::write(&dir, name, pin_map.as_ref())
             .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
 
+        // The board's 3D scene, beside the other files that are not for the board house. A failure
+        // to write it is a note, never a failed fab: the package does not need it.
+        let (glb_file, glb_note) = write_glb(&dir, name, built, &board, options.glb);
+        if let Some(note) = &glb_note {
+            say(format!("{}: warning: {note}", built.label()));
+        }
+
         // The project's own libraries and the standard library's own files that the board
         // uses, so KiCad finds the footprints.
         libraries
@@ -766,6 +781,7 @@ fn fab_board(
         // they are in `fab-notes.txt`.
         let mut extras = board.process_extras();
         extras.splice(0..0, pin_notes.iter().cloned());
+        extras.extend(glb_note.map(|n| format!("warning: {n}")));
         extras.extend(crate::no_supplier::note(&sourcing));
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
@@ -833,6 +849,7 @@ fn fab_board(
         .map_err(|e| fail(e.to_string()))?;
         let mut files = vec![pcb_path.clone()];
         files.extend(pin_files);
+        files.extend(glb_file);
         files.extend(
             timings::stage("fab.write", &label, || pkg.write(&dir))
                 .map_err(|e| fail(e.to_string()))?,
@@ -887,6 +904,42 @@ fn fab_board(
             entries,
             pcb: pcb_path,
         })
+    }
+}
+
+/// The board's 3D scene as `<name>.glb` in `dir` (or, with `write` false, the removal of one an
+/// earlier run left): the bytes `board3d --glb` writes for `board`, which is the board as fab
+/// placed and routed it, with its copper (the editor's `/api/pcb/3d` draws the same). Returns the
+/// file written and a note for the person ordering when it could not be written.
+fn write_glb(
+    dir: &Path,
+    name: &str,
+    built: &Built,
+    board: &Board,
+    write: bool,
+) -> (Option<PathBuf>, Option<String>) {
+    let file = dir.join(format!("{name}.glb"));
+    if !write {
+        return match fs::remove_file(&file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => (
+                None,
+                Some(format!(
+                    "{}: {e}; an earlier run's 3D scene stays in the package",
+                    file.display()
+                )),
+            ),
+            _ => (None, None),
+        };
+    }
+    match fs::write(&file, crate::board3d::glb(built, board)) {
+        Ok(()) => (Some(file), None),
+        Err(e) => (
+            None,
+            Some(format!(
+                "the 3D scene {} was not written ({e}); the package is complete without it",
+                file.display()
+            )),
+        ),
     }
 }
 
