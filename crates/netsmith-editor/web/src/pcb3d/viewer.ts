@@ -10,6 +10,7 @@
 
 import {
   BufferAttribute,
+  BufferGeometry,
   CanvasTexture,
   Color,
   DirectionalLight,
@@ -42,7 +43,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-import { type BoardInfo, type Info, type LimitInfo, type PartInfo3d, readInfo } from './model';
+import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, marginColour, xrayOpacity } from './inspect';
+import type { ColourBy } from './inspectMode';
+import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type PartInfo3d, readInfo } from './model';
 import { LOOKS, type Role, lit, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
 
@@ -52,10 +55,31 @@ const MOVE_MS = 180;
 /** The hatch's period on the board, in mm. */
 const HATCH_MM = 0.9;
 
-export type Hit = { kind: 'part'; info: PartInfo3d } | { kind: 'limit'; info: LimitInfo };
+export type Hit = { kind: 'part'; info: PartInfo3d } | { kind: 'limit'; info: LimitInfo } | { kind: 'copper'; info: CopperInfo };
 
-/** The colours the view is drawn in, as CSS colours: one per role and the four of `TOKENS`. */
-export type Colours = Record<Role, string> & { background: string; edge: string; select: string; hover: string };
+/** The colours the view is drawn in, as CSS colours: one per role, the four of `TOKENS`, and those of colour by kind, the height map and the preview (inspect.ts). */
+export type Colours = Record<Role, string> & {
+  background: string;
+  edge: string;
+  select: string;
+  hover: string;
+  kinds: Record<KindSwatch, string>;
+  margin: Record<MarginBand, string>;
+  preview: string;
+};
+
+/** How the scene is looked at (inspectMode.ts): none of it is data. */
+export interface Look {
+  xray: boolean;
+  colourBy: ColourBy;
+  /** The nets lit, and how; the rest of the copper is dimmed while any is. */
+  nets: Map<string, NetState>;
+  /** The height preview's height in mm, or null when it is off. */
+  previewMm: number | null;
+}
+
+/** How long a finding's limit pulses, once. */
+const PULSE_MS = 900;
 
 interface PartEntry {
   info: PartInfo3d;
@@ -64,6 +88,14 @@ interface PartEntry {
 }
 
 type State = 'rest' | 'hover' | 'select';
+
+/** What changes a surface's material besides its role and state. */
+interface Touch {
+  xray?: boolean;
+  dim?: boolean;
+  /** A colour in place of the role's (a body coloured by kind or by margin). */
+  tint?: string | null;
+}
 
 /** A canvas-made stripe, white on nothing: the material's colour tints it. */
 function hatchTexture(): CanvasTexture {
@@ -137,6 +169,12 @@ export class Viewer {
   private selected = new Set<string>();
   private hovered = new Set<string>();
   private ray = new Raycaster();
+  private copper: { mesh: Mesh; info: CopperInfo; exposed: boolean }[] = [];
+  private previews: Mesh[] = [];
+  private previewEdges: LineSegments[] = [];
+  private focusedLimits = new Set<string>();
+  private pulseAnim = 0;
+  private look: Look = { xray: false, colourBy: 'provenance', nets: new Map(), previewMm: null };
   board: BoardInfo | null = null;
   /** Whether camera moves are instant (reduced motion). */
   still = false;
@@ -253,6 +291,7 @@ export class Viewer {
     this.model = root;
     this.scene.add(root);
     this.index(gltf.scene);
+    this.buildPreview();
     this.restyle();
     const box = new Box3().setFromObject(root);
     if (!box.isEmpty()) {
@@ -283,6 +322,9 @@ export class Viewer {
     this.pickable = [];
     this.infoOf.clear();
     this.board = null;
+    this.copper = [];
+    this.clearPreview();
+    this.focusedLimits.clear();
   }
 
   /** Find the nodes the contract names, by their extras, and give the meshes their roles and edge lines. */
@@ -332,8 +374,16 @@ export class Viewer {
         this.limits.push({ info: info as LimitInfo, mesh: o, lines });
         this.pickable.push(o);
         this.infoOf.set(o, info);
+      } else if (info?.kind === 'copper' || info?.kind === 'hole') {
+        this.copper.push({ mesh: o, info: info as CopperInfo, exposed: role === 'finish' });
+        this.infoOf.set(o, info);
       }
     });
+  }
+
+  /** The nets that have copper or a barrel in the scene, by name. */
+  netList(): string[] {
+    return [...new Set(this.copper.map((c) => c.info.net).filter((n): n is string => n !== null))].sort();
   }
 
   /** The parts of the scene, in the file's order. */
@@ -362,11 +412,14 @@ export class Viewer {
     return m;
   }
 
-  private surface(role: Role, state: State): Material {
+  private surface(role: Role, state: State, touch: Touch = {}): Material {
     const c = this.colours!;
-    return this.material(`${role}:${state}`, () => {
+    const see = touch.xray ? xrayOpacity(role) : null;
+    const key = `${role}:${state}:${see ?? ''}:${touch.dim ? 'dim' : ''}:${touch.tint ?? ''}`;
+    return this.material(key, () => {
       const look = LOOKS[role];
-      const base = new Color(c[role]);
+      let base = new Color(touch.tint ?? c[role]);
+      if (touch.dim && state === 'rest') base = base.lerp(new Color(c.background), DIM.toward);
       const colour = state === 'select' ? new Color(c.select) : state === 'hover' ? litColour(base, new Color(c.hover)) : base;
       const translucent = look.opacity < 1;
       const m = new MeshStandardMaterial({
@@ -388,6 +441,22 @@ export class Viewer {
         m.polygonOffsetUnits = -4;
       }
       if (state === 'select') m.emissive = new Color(c.select).multiplyScalar(0.18);
+      if (see !== null && state === 'rest') {
+        m.transparent = true;
+        m.opacity = Math.min(m.opacity, see);
+        m.depthWrite = false;
+      } else if (see !== null) {
+        // A picked or hovered body stays readable in x-ray, a little see-through.
+        m.transparent = true;
+        m.opacity = Math.min(m.opacity, 0.6);
+        m.depthWrite = false;
+      }
+      if (touch.dim && state === 'rest') {
+        m.transparent = true;
+        m.opacity = Math.min(m.opacity, DIM.opacity);
+        m.depthWrite = false;
+      }
+      if ((role === 'copper' || role === 'finish') && state !== 'rest') m.emissive = new Color(state === 'select' ? c.select : c.hover).multiplyScalar(0.35);
       if (role === 'limit' || role === 'limit-violated') {
         // The volume's floor is the board's face: it stays behind the mask instead of flickering through it.
         m.polygonOffset = true;
@@ -412,6 +481,9 @@ export class Viewer {
                 ? c['body-unknown']
                 : c.edge;
       const opacity = state !== 'rest' ? 1 : role === 'edge' ? 0.55 : role === 'edge-unknown' ? 0.95 : 0.7;
+      if (role === 'edge-preview') {
+        return new LineDashedMaterial({ color: new Color(c.preview), dashSize: 0.0006, gapSize: 0.0004, transparent: true, opacity: 0.95 });
+      }
       if (role === 'edge-unknown' && state === 'rest') {
         return new LineDashedMaterial({ color: new Color(colour), dashSize: 0.0007, gapSize: 0.0005, transparent: true, opacity });
       }
@@ -423,22 +495,212 @@ export class Viewer {
     return this.selected.has(path) ? 'select' : this.hovered.has(path) ? 'hover' : 'rest';
   }
 
+  /** A body's colour when the bodies are coloured by kind or by margin; null for the role's own. */
+  private tintOf(part: PartInfo3d, role: Role): string | null {
+    if (role !== 'body' && role !== 'body-catalog') return null;
+    const c = this.colours!;
+    if (this.look.colourBy === 'kind') return c.kinds[kindSwatch(part.category)];
+    if (this.look.colourBy === 'margin') return marginColour(part.marginMm, c.margin);
+    return null;
+  }
+
   /** Give every mesh and line the material of its role and state. */
   private restyle() {
     if (!this.colours || !this.model) return;
+    const nets = this.look.nets;
+    const netsOn = nets.size > 0;
+    // While a net is lit, the board and the bodies are see-through, as in x-ray, so its copper shows on every layer.
+    const xray = this.look.xray || netsOn;
     this.model.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       const role = o.userData.role as Role | null;
       if (!role) return;
-      const part = this.infoOf.get(o);
-      const state = part?.kind === 'part' ? this.stateOf((part as PartInfo3d).path) : 'rest';
-      o.material = this.surface(role, state);
+      const info = this.infoOf.get(o);
+      if (info?.kind === 'part') {
+        const part = info as PartInfo3d;
+        const state = this.stateOf(part.path);
+        o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest', tint: this.tintOf(part, role) });
+      } else if (info?.kind === 'copper' || info?.kind === 'hole') {
+        const net = (info as CopperInfo).net;
+        const state: State = (net !== null && nets.get(net)) || 'rest';
+        o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest' });
+      } else if (info?.kind === 'height_limit') {
+        const l = info as LimitInfo;
+        o.material = this.focusedLimits.has(`${l.name}:${l.face}`) ? this.limitFocus(role) : this.surface(role, 'rest');
+      } else {
+        o.material = this.surface(role, 'rest', { xray, dim: netsOn });
+      }
     });
+    for (const m of this.previews) m.material = this.previewMaterial();
     for (const l of this.edges.children as LineSegments[]) l.material = this.line(l.userData.edgeRole, 'rest');
     for (const [path, p] of this.parts) {
       const state = this.stateOf(path);
       if (state !== 'rest') for (const l of p.lines) l.material = this.line(l.userData.edgeRole, state);
     }
+  }
+
+  /** Change how the scene is looked at: x-ray, the colouring, the lit nets, the height preview. */
+  setLook(look: Partial<Look>) {
+    const was = this.look.previewMm;
+    this.look = { ...this.look, ...look };
+    if (this.look.previewMm !== was) this.buildPreview();
+    this.restyle();
+    this.request();
+  }
+
+  // ---- the height preview (ADR 0105): the parts of unknown height stood up at N mm, in the picture only ----
+
+  private clearPreview() {
+    for (const m of this.previews) {
+      m.removeFromParent();
+      m.geometry.dispose();
+      this.infoOf.delete(m);
+    }
+    for (const l of this.previewEdges) {
+      l.removeFromParent();
+      l.geometry.dispose();
+    }
+    this.pickable = this.pickable.filter((m) => !m.userData.preview);
+    this.previews = [];
+    this.previewEdges = [];
+  }
+
+  /** Solids for the parts of unknown height, each its flat outline stood up from its face, drawn striped and see-through in the preview colour. They are added beside the outline and read by nothing but the picture. */
+  private buildPreview() {
+    this.clearPreview();
+    const mm = this.look.previewMm;
+    if (mm === null || !this.model) return;
+    const t = (this.board?.thicknessMm ?? 1.6) * 0.001;
+    for (const p of this.parts.values()) {
+      if (p.info.provenance !== 'unknown') continue;
+      for (const flat of p.meshes) {
+        if (flat.userData.role !== 'body-unknown' || !flat.parent) continue;
+        const pos = flat.geometry.getAttribute('position');
+        const index = flat.geometry.getIndex();
+        const [y0, y1] = p.info.side === 'bottom' ? [-t, -t - mm * 0.001] : [0, mm * 0.001];
+        const solid = extrudeFlat(pos.array, index ? index.array : null, y0, y1);
+        const geo = new BufferGeometry();
+        geo.setAttribute('position', new BufferAttribute(solid, 3));
+        geo.computeVertexNormals();
+        const uv = new Float32Array((solid.length / 3) * 2);
+        for (let i = 0; i < solid.length / 3; i++) {
+          const [x, y, z] = [solid[i * 3], solid[i * 3 + 1], solid[i * 3 + 2]];
+          uv[i * 2] = ((x + y) * 1000) / HATCH_MM;
+          uv[i * 2 + 1] = ((z - y) * 1000) / HATCH_MM;
+        }
+        geo.setAttribute('uv', new BufferAttribute(uv, 2));
+        const mesh = new Mesh(geo);
+        mesh.userData.preview = true;
+        mesh.renderOrder = 3;
+        flat.parent.add(mesh);
+        mesh.updateMatrixWorld(true);
+        this.previews.push(mesh);
+        this.pickable.push(mesh);
+        this.infoOf.set(mesh, p.info);
+        const line = new LineSegments(new EdgesGeometry(geo, 28));
+        line.matrixAutoUpdate = false;
+        line.matrix.copy(mesh.matrixWorld);
+        line.userData.edgeRole = 'edge-preview';
+        line.computeLineDistances();
+        line.renderOrder = 4;
+        this.edges.add(line);
+        this.previewEdges.push(line);
+      }
+    }
+  }
+
+  private previewMaterial(): Material {
+    const c = this.colours!;
+    return this.material('preview', () => {
+      const m = new MeshStandardMaterial({
+        name: 'preview',
+        color: new Color(c.preview),
+        metalness: 0,
+        roughness: 0.9,
+        transparent: true,
+        opacity: 0.62,
+        depthWrite: false,
+        side: DoubleSide,
+        map: this.hatch,
+        alphaTest: 0.05,
+      });
+      m.emissive = new Color(c.preview).multiplyScalar(0.12);
+      return m;
+    });
+  }
+
+  /** How many parts the preview stands up (for the label and the recipes). */
+  previewCount(): number {
+    return new Set(this.previews.map((m) => (this.infoOf.get(m) as PartInfo3d).path)).size;
+  }
+
+  // ---- a finding of the problems dock, shown in 3D ----
+
+  /** A limit lit for a finding: its volume brighter, pulsed once when it is first lit. */
+  private limitFocus(role: Role): Material {
+    const c = this.colours!;
+    return this.material(`focus:${role}`, () => {
+      const m = new MeshStandardMaterial({
+        name: `${role}-focus`,
+        color: new Color(c[role]),
+        metalness: 0,
+        roughness: 1,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        side: DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 2,
+        polygonOffsetUnits: 4,
+      });
+      m.emissive = new Color(c[role]).multiplyScalar(0.3);
+      return m;
+    });
+  }
+
+  /** Fly to a finding's parts and limits and light them: the parts through the selection (the dock picks them), the limits here. The violated limit's volume pulses once; with reduced motion it does not. */
+  focusFinding(paths: string[], limitKeys: string[]) {
+    this.focusedLimits = new Set(limitKeys);
+    this.restyle();
+    const box = new Box3();
+    // The parts, where it names some (a limit's volume may be half the board); else the limit.
+    for (const path of paths) for (const m of this.parts.get(path)?.meshes ?? []) box.expandByObject(m);
+    if (box.isEmpty()) for (const l of this.limits) if (this.focusedLimits.has(`${l.info.name}:${l.info.face}`)) box.expandByObject(l.mesh);
+    if (!box.isEmpty()) {
+      box.expandByScalar(Math.max(0, 10 - box.getSize(new Vector3()).length() / 4));
+      const dir = this.direction();
+      const f = this.framing(box, dir);
+      this.moveTo(f.target, dir, f.dist, f.zoom, true);
+    }
+    cancelAnimationFrame(this.pulseAnim);
+    const violated = this.limits.some((l) => l.info.violated && this.focusedLimits.has(`${l.info.name}:${l.info.face}`));
+    if (!violated || this.still) {
+      this.request();
+      return;
+    }
+    const mats = [this.limitFocus('limit-violated')] as MeshStandardMaterial[];
+    const start = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / PULSE_MS);
+      const swell = Math.sin(Math.PI * k);
+      for (const m of mats) m.opacity = 0.42 + 0.4 * swell;
+      this.request();
+      if (k < 1) this.pulseAnim = requestAnimationFrame(step);
+    };
+    this.pulseAnim = requestAnimationFrame(step);
+  }
+
+  /** The limits a finding lit, as `name:face`. */
+  focusedList(): string[] {
+    return [...this.focusedLimits];
+  }
+
+  clearFocus() {
+    if (!this.focusedLimits.size) return;
+    cancelAnimationFrame(this.pulseAnim);
+    this.focusedLimits.clear();
+    this.restyle();
+    this.request();
   }
 
   /** The parts picked (lit in the page's selection colour) and the parts the shared hover lights. */
@@ -455,11 +717,15 @@ export class Viewer {
     if (!this.model || r.width === 0) return null;
     const at = new Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(at, this.camera());
-    const hits = this.ray.intersectObjects(this.pickable, false);
+    // The copper is picked where it is bare (a pad, the gold), and anywhere while it is seen through the board.
+    const seeThrough = this.look.xray || this.look.nets.size > 0;
+    const copper = this.copper.filter((c) => c.info.net !== null && (c.exposed || seeThrough)).map((c) => c.mesh);
+    const hits = this.ray.intersectObjects([...this.pickable, ...copper], false);
     let limit: LimitInfo | null = null;
     for (const h of hits) {
       const info = this.infoOf.get(h.object);
       if (info?.kind === 'part') return { kind: 'part', info: info as PartInfo3d };
+      if ((info?.kind === 'copper' || info?.kind === 'hole') && (info as CopperInfo).net !== null) return { kind: 'copper', info: info as CopperInfo };
       if (info?.kind === 'height_limit' && !limit) limit = info as LimitInfo;
     }
     return limit ? { kind: 'limit', info: limit } : null;
@@ -685,6 +951,7 @@ export class Viewer {
   dispose() {
     cancelAnimationFrame(this.frame);
     cancelAnimationFrame(this.anim);
+    cancelAnimationFrame(this.pulseAnim);
     this.controls.dispose();
     this.clearModel();
     for (const m of this.materials.values()) m.dispose();

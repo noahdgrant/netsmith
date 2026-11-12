@@ -52,6 +52,8 @@ const FIXTURES = {
   constrained: 'scripts/editor-verify-js/fixtures/constrained.nsm',
   // Three headers under a lid that allows 3 mm, one too tall, one with no height, one that fits (ADR 0045 section 11).
   height_limits: 'scripts/editor-verify-js/fixtures/height_limits.nsm',
+  // Seven parts of several kinds, under and beside a 3 mm lid: one too tall, one with little to spare, two of unknown height. For the 3D view's tools.
+  inspect_3d: 'scripts/editor-verify-js/fixtures/inspect_3d.nsm',
   // A board whose rail is drawn too thin for its current: two guideline warnings, and it builds. For the warning markers.
   warn_bench: 'scripts/editor-verify-js/fixtures/warn_bench.nsm',
   // An invented microcontroller with three pin requests, a pin file and a stale pick lock beside it: the pin map and the lock panel.
@@ -423,7 +425,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|inspect_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

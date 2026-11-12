@@ -1,0 +1,232 @@
+/* The 3D view's ways of looking (InspectBar.tsx): x-ray, colour by, the height preview, their
+   legends and the preview's label. Loaded with the view's own chunk. */
+
+.v3-inspect {
+  position: absolute;
+  left: 0.875rem;
+  bottom: 2.375rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.375rem 0.1875rem 0.1875rem;
+  border-radius: var(--r-md);
+  background: var(--pop);
+  border: 1px solid var(--pop-border);
+  box-shadow: var(--elev-2);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  animation: v3-in 150ms ease-out;
+}
+.v3-inspect .tb-sep {
+  height: 1.125rem;
+}
+.v3-tog {
+  gap: 0.375rem;
+}
+.v3-tog.on {
+  color: var(--text);
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.v3-colour {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+}
+.v3-colour select {
+  height: var(--h-sm, 1.625rem);
+  padding: 0 0.375rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.v3-colour select:focus-visible,
+.v3-mm:focus-visible,
+.v3-switch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* The preview's switch: a track and a knob, in the preview's colour when on. */
+.v3-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  height: 1.625rem;
+  padding: 0 0.375rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.v3-switch:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.v3-track {
+  position: relative;
+  width: 1.75rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: background-color 120ms ease-out;
+}
+.v3-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 120ms ease-out;
+}
+.v3-switch.on {
+  color: var(--text);
+}
+.v3-switch.on .v3-track {
+  background: var(--pcb3d-preview);
+  box-shadow: none;
+}
+.v3-switch.on .v3-track::after {
+  transform: translateX(0.75rem);
+  background: var(--pcb3d-bg);
+}
+.v3-mm {
+  width: 3.25rem;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+.v3-mm.bad {
+  border-color: var(--danger);
+}
+.v3-unit {
+  margin-left: -0.125rem;
+}
+
+/* Over the picture while the preview is on: striped in the preview's colour, as the parts are. */
+.v3-preview-tag {
+  position: absolute;
+  left: 50%;
+  top: 3.75rem;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100% - 2rem);
+  padding: 0.3125rem 0.75rem 0.3125rem 0.3125rem;
+  border-radius: var(--r-pill, 999px);
+  background: var(--pop);
+  border: 1.5px solid var(--pcb3d-preview);
+  box-shadow: var(--elev-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  pointer-events: none;
+  animation: v3-in 150ms ease-out;
+}
+.v3-preview-tag b {
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--r-pill, 999px);
+  background: repeating-linear-gradient(135deg, var(--pcb3d-preview) 0 5px, color-mix(in srgb, var(--pcb3d-preview) 70%, var(--pcb3d-bg)) 5px 10px);
+  color: var(--pcb3d-bg);
+  font-weight: var(--fw-bold, 700);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: var(--fs-xs);
+}
+.v3-preview-tag span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The legends of colour by kind and of the height map. */
+.v3-legend-wrap {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 0.25rem;
+  max-width: 26rem;
+}
+.v3-legend.v3-legend-col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.375rem;
+}
+.v3-legend-col .v3-legend-wrap {
+  display: flex;
+  gap: 0.75rem;
+}
+.v3-ramp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.v3-ramp {
+  flex: 1 1 auto;
+  min-width: 6rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--pcb3d-margin-over) 0 18%, var(--pcb3d-margin-tight) 18%, var(--pcb3d-margin-easy) 100%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pcb3d-edge) 50%, transparent);
+}
+.v3-ramp-end {
+  white-space: nowrap;
+}
+.v3-sw-m-over {
+  background: var(--pcb3d-margin-over);
+}
+.v3-sw-m-tight {
+  background: linear-gradient(90deg, var(--pcb3d-margin-tight), color-mix(in srgb, var(--pcb3d-margin-tight) 50%, var(--pcb3d-margin-easy)));
+}
+.v3-sw-m-easy {
+  background: var(--pcb3d-margin-easy);
+}
+.v3-sw-m-none {
+  background: var(--pcb3d-margin-none);
+}
+
+@container v3 (max-width: 44rem) {
+  .v3-inspect {
+    flex-wrap: wrap;
+    right: 0.875rem;
+    bottom: 3rem;
+  }
+  .v3-preview-tag {
+    top: auto;
+    bottom: 6.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v3-inspect,
+  .v3-preview-tag {
+    animation: none;
+  }
+  .v3-track,
+  .v3-track::after {
+    transition: none;
+  }
+}
+:root[data-motion='reduce'] .v3-inspect,
+:root[data-motion='reduce'] .v3-preview-tag {
+  animation: none;
+}
+:root[data-motion='reduce'] .v3-track,
+:root[data-motion='reduce'] .v3-track::after {
+  transition: none;
+}

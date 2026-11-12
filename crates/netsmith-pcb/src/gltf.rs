@@ -32,13 +32,22 @@
 //!     or `{kind: "hole", net}`), its barrel as the mesh.
 //!   - one node per part with a body, by path, named by its designator: `{kind: "part", path,
 //!     refdes, side: "top" | "bottom", provenance: "stated" | "catalog" | "unknown",
-//!     height_mm, z_bottom_mm, z_top_mm}`. A known height is a solid (material `body`); an
-//!     unknown one is the body's flat outline (material `body-unknown`) and `height_mm` is
-//!     `null`, as is the far end of the body (`z_top_mm` on the top face, `z_bottom_mm` on the
-//!     bottom): never a guessed height (ADR 0094).
+//!     height_mm, z_bottom_mm, z_top_mm, part_kind, category, margin_mm, margin_limit}`. A
+//!     known height is a solid (material `body`); an unknown one is the body's flat outline
+//!     (material `body-unknown`) and `height_mm` is `null`, as is the far end of the body
+//!     (`z_top_mm` on the top face, `z_bottom_mm` on the bottom): never a guessed height (ADR
+//!     0094). `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`);
+//!     `category` is what sort of part it is ([`crate::scene3d::PartCategory`]: `resistor`,
+//!     `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`,
+//!     `mechanical` or `other`). `margin_mm` is the least margin of the part to a height limit
+//!     over it on its face (the limit less the part's height, negative when too tall) and
+//!     `margin_limit` names that limit; both are `null` when no limit is over the part or its
+//!     height is unknown. (These four were added in schema 1.)
 //!   - `limits`: one child per face of each height limit, `limit:<name>:<face>`:
 //!     `{kind: "height_limit", name, face, max_height_mm, tallest: path | null, margin_mm:
-//!     number | null, violated, unknown: [path...]}`, its volume as the mesh.
+//!     number | null, violated, unknown: [path...], under: [path...]}`, its volume as the
+//!     mesh; `under` is every part under it on that face, known height or not (added in
+//!     schema 1).
 //!   - `protrusions`: one child per part whose pins stand out of the far face by a stated
 //!     length, `pins:<refdes>`: `{kind: "protrusion", path, length_mm}`.
 //!   - Reserved for the copper (#430): group nodes `copper:<layer>` with children
@@ -321,6 +330,22 @@ fn findings(scene: &Scene) -> Vec<Value> {
     out
 }
 
+/// The least margin of a part of known height to the height limits over it on its face, and the
+/// limit's name: `None` when no limit is over it or its height is unknown.
+fn margin_of<'a>(scene: &'a Scene, body: &crate::scene3d::Body) -> Option<(f64, &'a str)> {
+    let height = body.height?;
+    scene
+        .limits
+        .iter()
+        .flat_map(|l| l.faces.iter().map(move |f| (l, f)))
+        .filter(|(_, f)| f.side == body.side && f.under.contains(&body.path))
+        .map(|(l, _)| {
+            let m = l.max_height - height;
+            ((m * 1e6).round() / 1e6, l.name.as_str())
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+}
+
 /// The scene as a `.glb` file, for the board labelled `board` (its name, or `system/member`).
 pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
     let pieces = pieces(scene);
@@ -379,6 +404,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
     for (i, body) in scene.bodies.iter().enumerate() {
         let piece = pieces.bodies.get(i).unwrap_or(&empty);
         let (z_bottom, z_top) = body.z_range();
+        let margin = margin_of(scene, body);
         let mut node = Node::new(
             &body.refdes,
             json!({
@@ -390,6 +416,10 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                 "height_mm": body.height,
                 "z_bottom_mm": z_bottom,
                 "z_top_mm": z_top,
+                "part_kind": body.kind,
+                "category": body.category.word(),
+                "margin_mm": margin.map(|(m, _)| m),
+                "margin_limit": margin.map(|(_, name)| name),
             }),
         );
         node.mesh = b.mesh(&body.refdes, &piece.body.iter().collect::<Vec<_>>());
@@ -417,6 +447,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                     "margin_mm": f.margin,
                     "violated": violated,
                     "unknown": f.unknown,
+                    "under": f.under,
                 }),
             );
             node.mesh = pieces

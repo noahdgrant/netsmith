@@ -26,6 +26,7 @@ import { canBack, canForward } from './source/navhistory';
 import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
+import { inspectCommands } from './pcb3d/inspectMode';
 import { PRESETS, pcbMode, togglePcbMode, view3d } from './pcb3d/mode';
 import { THEMES, isDark, theme } from './theme';
 import { chooseTheme } from './themeUi';
@@ -837,6 +838,7 @@ export function registerAppCommands() {
       run: () => void api.cancelRoute(),
     },
     ...pcb3dCommands(),
+    ...inspectCommands(in3d, pcbHere),
     ...THEMES.map<Command>((t) => ({
       id: `theme.${t.id}`,
       title: `Theme: ${t.label}`,
@@ -991,6 +993,7 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
       ['Click · double-click', 'select the part · show it in the source'],
       ['Arrow keys', 'orbit (Shift to pan)'],
       ['F or 0; + −', 'fit the board; zoom'],
+      ['Click a pad (or copper in x-ray)', 'light its net on every layer'],
       ['Esc', 'clear the selection'],
     ],
   },

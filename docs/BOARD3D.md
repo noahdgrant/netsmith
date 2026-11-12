@@ -144,8 +144,8 @@ raises `schema`, a field added does not):
 |---|---|
 | `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
 | `substrate` | `kind: "substrate"`: the laminate. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`) and one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel |
-| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height |
-| `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it); its volume is the mesh |
+| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`, `part_kind`, `category`, `margin_mm`, `margin_limit`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height. `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`). `category` is what sort of part it is, from the standard generic it provides (`Connector`, `Resistor`, `NMosfet`...), else from the designator letters its kind states (`R`, `U`...; never `J`: a connector is one by its generic only): `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`, `mechanical` or `other`. `margin_mm` is the part's least margin to a height limit over it on its face (the limit less its height, negative when too tall), and `margin_limit` names that limit; both `null` when no limit is over it or its height is unknown |
+| `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it), `under` (the paths of every part under it on that face); its volume is the mesh |
 | `protrusions` | one child per part whose pins stand out of the far face by a stated length, `pins:<refdes>`: `kind: "protrusion"`, `path`, `length_mm` |
 | `copper:<layer>` | reserved for the copper (#430), with children `kind: "copper"`, `layer`, `net` |
 
@@ -183,6 +183,25 @@ What it is:
   pointer; top, bottom, front, back, left, right and isometric views (`T`, `B`, `I` and the bar),
   a flip to the other face (`Shift+F`), fit (`F` or `0`), and perspective or orthographic (`P`).
   The colours follow the editor's theme. With reduced motion the camera jumps instead of moving.
+- **Ways of looking**, in the bar at the bottom left (and the palette), none of them data:
+  - **X-ray** (`X`): the board, the mask and the bodies see-through, so the inner copper, the
+    vias and the pads under parts show.
+  - **Lit nets.** A net hovered or picked in the nets list, the problems dock or the schematic,
+    or a pad clicked here (any copper while in x-ray), is lit on every layer with its vias'
+    barrels, and the rest is dimmed and seen through. It is the page's one net selection.
+  - **Colour by** (`C` steps through them): _height provenance_ (the default, above), _kind_
+    (each body by the part's `category` in the file: IC, connector, resistor, capacitor and the
+    rest) or _height margin_, a height map: each body by its `margin_mm` to the height limit over
+    it, red when too tall, amber at no margin blending to green at 1 mm or more, grey where no limit
+    is over it. Each has its legend. A part of unknown height stays hatched in all three.
+  - **Height preview** (`H`), labelled "preview at N mm" (N from 0.1 to 50 mm, 1 mm unless
+    changed): stands the parts of unknown height up at N mm, striped and see-through in a colour of
+    its own, under a "Preview" label that says how many parts it stands up and that it is not a
+    height (ADR 0105). Nothing else reads it: not the coverage chip, a check, a finding, a report
+    or a written file. It is off at every start.
+- **Findings in 3D.** A finding picked in the problems dock or the board's findings list flies
+  the camera to its parts (or to its limit, when it names no part) and lights them; the limit it is
+  about is lit too, and a broken limit's volume pulses once (not with reduced motion).
 
 What it is not:
 

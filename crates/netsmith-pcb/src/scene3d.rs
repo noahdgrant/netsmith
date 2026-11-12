@@ -91,6 +91,82 @@ impl HeightProvenance {
     }
 }
 
+/// What sort of part a body is, for the 3D view's colouring by kind: from the standard generic
+/// the part provides (ADR 0068), else from the designator letters its kind states (ADR 0046).
+/// A connector is one only by the generic `Connector`, never by its letters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PartCategory {
+    Resistor,
+    Capacitor,
+    Inductor,
+    Diode,
+    Transistor,
+    Crystal,
+    Fuse,
+    Ic,
+    Connector,
+    Mechanical,
+    Other,
+}
+
+impl PartCategory {
+    /// `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`,
+    /// `connector`, `mechanical` or `other`.
+    pub fn word(self) -> &'static str {
+        match self {
+            PartCategory::Resistor => "resistor",
+            PartCategory::Capacitor => "capacitor",
+            PartCategory::Inductor => "inductor",
+            PartCategory::Diode => "diode",
+            PartCategory::Transistor => "transistor",
+            PartCategory::Crystal => "crystal",
+            PartCategory::Fuse => "fuse",
+            PartCategory::Ic => "ic",
+            PartCategory::Connector => "connector",
+            PartCategory::Mechanical => "mechanical",
+            PartCategory::Other => "other",
+        }
+    }
+
+    /// The category of a part of kind `kind` that provides `provides`, designated `refdes`.
+    pub fn of(kind: &str, provides: &[String], refdes: &str) -> PartCategory {
+        let is = |g: &str| kind == g || provides.iter().any(|p| p == g);
+        let by_generic = [
+            ("Connector", PartCategory::Connector),
+            ("Resistor", PartCategory::Resistor),
+            ("Capacitor", PartCategory::Capacitor),
+            ("Inductor", PartCategory::Inductor),
+            ("FerriteBead", PartCategory::Inductor),
+            ("Led", PartCategory::Diode),
+            ("Schottky", PartCategory::Diode),
+            ("Zener", PartCategory::Diode),
+            ("Tvs", PartCategory::Diode),
+            ("TvsBidirectional", PartCategory::Diode),
+            ("NMosfet", PartCategory::Transistor),
+            ("PMosfet", PartCategory::Transistor),
+            ("Crystal", PartCategory::Crystal),
+            ("Fuse", PartCategory::Fuse),
+            ("LinearRegulator", PartCategory::Ic),
+            ("LevelTranslator", PartCategory::Ic),
+        ];
+        if let Some((_, c)) = by_generic.iter().find(|(g, _)| is(g)) {
+            return *c;
+        }
+        match refdes.trim_end_matches(|c: char| c.is_ascii_digit()) {
+            "R" | "RN" => PartCategory::Resistor,
+            "C" => PartCategory::Capacitor,
+            "L" | "FB" => PartCategory::Inductor,
+            "D" | "LED" => PartCategory::Diode,
+            "Q" => PartCategory::Transistor,
+            "Y" | "X" => PartCategory::Crystal,
+            "F" => PartCategory::Fuse,
+            "U" | "IC" => PartCategory::Ic,
+            "H" | "MH" | "FID" | "TP" => PartCategory::Mechanical,
+            _ => PartCategory::Other,
+        }
+    }
+}
+
 /// A point in the plan of the scene: x right, y up, in mm from the outline's bottom-left corner.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Plan {
@@ -191,6 +267,8 @@ pub struct Body {
     pub path: String,
     pub refdes: String,
     pub kind: String,
+    /// What sort of part it is, for colouring by kind.
+    pub category: PartCategory,
     pub side: Side,
     /// The footprint's origin and turn as the layout file writes them (from the outline's
     /// top-left corner, y down), to find the part in it.
@@ -288,6 +366,9 @@ pub struct LimitFace {
     pub margin: Option<f64>,
     /// The paths of the parts under it on this face whose height is unknown.
     pub unknown: Vec<String>,
+    /// The paths of every part under it on this face, known height or not, in the order of the
+    /// scene's bodies.
+    pub under: Vec<String>,
 }
 
 /// A keepout with a height limit, as a volume over each face it limits.
@@ -895,6 +976,7 @@ fn body(
         path: p.path.clone(),
         refdes: p.refdes.clone(),
         kind: p.kind.clone(),
+        category: PartCategory::of(&p.kind, &p.provides, &p.refdes),
         side: p.side,
         layout_at: (clean(p.at.x - frame.left), clean(p.at.y - frame.top)),
         rotation: p.rotation,
@@ -966,6 +1048,7 @@ fn limits(board: &Board, frame: &Frame, thickness: f64, bodies: &[Body]) -> Vec<
                             .filter(|b| b.height.is_none())
                             .map(|b| b.path.clone())
                             .collect(),
+                        under: under.iter().map(|b| b.path.clone()).collect(),
                     }
                 })
                 .collect();

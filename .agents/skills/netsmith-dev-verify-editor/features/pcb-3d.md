@@ -18,6 +18,20 @@ The section "PCB", then `3D` in the toolbar's `2D | 3D` switch (`[data-testid=pc
 6. A theme change repaints the view in the theme's `--pcb3d-*` tokens (themes.css; dark, light and both high contrast).
 7. `2D` brings the editing canvas back; the 3D view keeps nothing that the 2D view needs.
 
+## Tools (recipe `pcb-3d-inspect`, fixture `inspect_3d`)
+
+`scripts/editor-verify launch --fixture inspect_3d`, then `drive pcb-3d-inspect`. The fixture has seven parts of several kinds: under the lid (3 mm, the left half) a header too tall (`power_in`, 9 mm), an LED with 0.6 mm to spare (`led`), a capacitor with plenty (`input_cap`), a resistor and a 2x3 header of unknown height (`r1`, `bare`); outside it the regulator and its output capacitor.
+
+The bar at the bottom left (`.v3-inspect`):
+
+1. `X-ray` (`[data-testid=view-xray]`, key `X`, `aria-pressed`): the laminate, the mask (and the mask over copper), the bodies, the leads and the silkscreen see-through; the copper, the gold, the hatched unknowns and the limits as they were.
+2. A net row of the side panel's `Nets` tab, hovered or clicked, lights that net's copper on every layer and its via barrels (`copper:<layer>:<net>` and `via:<net>` nodes, from PR 449 on) in the hover or selection colour, and dims the rest and sees through the board. A click on a pad (the gold), or on any copper in x-ray, picks its net; the tooltip names it. Until the file has copper groups, a lit net only dims the board.
+3. `Colour by` (`[data-testid=colour-by]`, a select; key `C` steps): `Height provenance` (the legend `height-legend`), `Kind` (`kind-legend`: a swatch and a count per kind on the board, from the part's `category` extra) or `Height margin` (`margin-legend`: a ramp red, amber, green and the counts `Over`, `Under 1 mm`, `1 mm+`, `No limit over it`). The colours are the `--pcb3d-kind-*` and `--pcb3d-margin-*` tokens of each theme.
+4. `Preview at` (`[data-testid=height-preview]`, `role=switch`, key `H`) and its height (`[data-testid=preview-mm]`, Enter to set, 0.1 to 50 mm): the parts of unknown height stand up, striped in `--pcb3d-preview`, and the label `[data-testid=preview-label]` says `PREVIEW · N parts of unknown height drawn X mm tall · not a height, not checked`. The coverage chip does not change. Off after a reload.
+5. Problems dock (`Ctrl+J`): a click on the `too tall` row flies the camera to the part, selects it, and lights the limit `lid` (it pulses once). The board's own findings list does the same.
+
+The handle also has `nets()` (the nets with copper in the scene), `previewCount()` and `focused()` (the limits a finding lit, `name:face`).
+
 For a recipe the host carries a handle: `document.querySelector('[data-testid=pcb-3d]').view3d` with `project(path)` (a point of the window where a pick finds the part, found by raycasting over its bounds: a package shape has leads and a lower body, not a box; null when it is hidden), `sample()` (the share of the canvas that is not the background, and how many colours), `colourAt(x, y)`, `parts()`, `preset()` and `ortho()`.
 
 ## Gotchas

@@ -4,6 +4,7 @@
 import type { PcbBox, PcbFinding, PcbScene } from '../api';
 import { EmptyState } from '../components/ui';
 import { checking, findings, pickedFinding, select } from '../pcbstore';
+import { askFocus3d } from '../pcb3d/inspectMode';
 import { project } from '../store';
 import { KICAD_NOT_FOUND, kicadLine } from './kicad';
 
@@ -21,6 +22,7 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
     if (pickedFinding.value === null) return;
     select(sc.parts.filter((p) => item.parts.includes(p.refdes)).map((p) => p.path));
     props.onFocus(item.area);
+    askFocus3d(item.parts, item.keepout);
   };
   return (
     <div class="findings" data-testid="findings">

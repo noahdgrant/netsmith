@@ -2,7 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { coverageLine, heightLine, limitTip, partTip, provenanceCounts, readInfo, unknownParts, type PartInfo3d } from './model';
 
-const part = (path: string, refdes: string, provenance: 'stated' | 'catalog' | 'unknown', heightMm: number | null): PartInfo3d => ({ kind: 'part', path, refdes, side: 'top', provenance, heightMm });
+const part = (path: string, refdes: string, provenance: 'stated' | 'catalog' | 'unknown', heightMm: number | null): PartInfo3d => ({
+  kind: 'part',
+  path,
+  refdes,
+  side: 'top',
+  provenance,
+  heightMm,
+  partKind: '',
+  category: null,
+  marginMm: null,
+  marginLimit: null,
+});
 
 describe('readInfo: the extras of the scene file (schema 1)', () => {
   it('reads the board: its size, its coverage and its findings', () => {
@@ -34,6 +45,16 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
     const bare = readInfo({ netsmith: { kind: 'part', path: 'bare', refdes: 'J3', side: 'bottom', provenance: 'unknown', height_mm: null, z_bottom_mm: null, z_top_mm: -1.6 } });
     expect(bare).toEqual({ ...part('bare', 'J3', 'unknown', null), side: 'bottom' });
   });
+  it('reads the kind of a part and its margin, where the file has them', () => {
+    const r = readInfo({ netsmith: { kind: 'part', path: 'r', refdes: 'R1', provenance: 'stated', height_mm: 0.5, part_kind: 'Resistor', category: 'resistor', margin_mm: 2.5, margin_limit: 'lid' } });
+    expect(r).toMatchObject({ partKind: 'Resistor', category: 'resistor', marginMm: 2.5, marginLimit: 'lid' });
+    expect(partTip(r as PartInfo3d, []).lines).toEqual(['0.5 mm tall, stated in the design', 'On the top face · Resistor', '2.5 mm under the limit lid']);
+  });
+  it('reads a net of copper and a via', () => {
+    expect(readInfo({ netsmith: { kind: 'copper', layer: 'F.Cu', net: 'GND' } })).toEqual({ kind: 'copper', layer: 'F.Cu', net: 'GND' });
+    expect(readInfo({ netsmith: { kind: 'copper', layer: 'F.Cu', net: null } })).toEqual({ kind: 'copper', layer: 'F.Cu', net: null });
+    expect(readInfo({ netsmith: { kind: 'hole', net: 'VCC' } })).toEqual({ kind: 'hole', layer: null, net: 'VCC' });
+  });
   it('a provenance it does not know is unknown, not a height source', () => {
     expect((readInfo({ netsmith: { kind: 'part', path: 'a', refdes: 'R1', provenance: 'nominal', height_mm: 1 } }) as PartInfo3d).provenance).toBe('unknown');
   });
@@ -47,10 +68,11 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
       marginMm: -6,
       tallest: 'tall',
       unknown: ['bare'],
+      under: [],
     });
   });
-  it('keeps the kind of a node it does not know (copper, later shapes) and nothing else', () => {
-    expect(readInfo({ netsmith: { kind: 'copper', layer: 'F.Cu', net: 'GND' } })).toEqual({ kind: 'copper' });
+  it('keeps the kind of a node it does not know (later shapes) and nothing else', () => {
+    expect(readInfo({ netsmith: { kind: 'silk', face: 'top' } })).toEqual({ kind: 'silk' });
   });
   it('a node with no extras of its own is null', () => {
     expect(readInfo({})).toBeNull();
@@ -85,7 +107,7 @@ describe('the words of the view', () => {
     expect(partTip(part('bare', 'J3', 'unknown', null), findings).lines).toContain('Under the limit lid, which is not checked over it');
   });
   it('the tooltip of a limit says what it allows and how it stands', () => {
-    const l = { kind: 'height_limit' as const, name: 'lid', face: 'top' as const, maxHeightMm: 3, violated: true, marginMm: -6, tallest: 'tall', unknown: ['bare'] };
+    const l = { kind: 'height_limit' as const, name: 'lid', face: 'top' as const, maxHeightMm: 3, violated: true, marginMm: -6, tallest: 'tall', unknown: ['bare'], under: ['tall', 'bare'] };
     expect(limitTip(l)).toEqual({ title: 'Height limit lid', lines: ['Parts at most 3 mm tall on the top face', 'A part is 6 mm too tall', '1 part of unknown height under it, not checked'] });
     expect(limitTip({ ...l, violated: false, marginMm: 1.5, unknown: [] }).lines).toEqual(['Parts at most 3 mm tall on the top face', '1.5 mm to spare over the tallest part']);
   });

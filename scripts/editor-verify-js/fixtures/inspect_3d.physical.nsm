@@ -1,0 +1,25 @@
+import std::pcb::{Keepout, Outline}
+
+physical for Inspected {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+    }
+
+    // Datasheet heights, above the face of the board.
+    .power_in.height &= 9mm
+    .led.height &= 2.4mm
+    .regulator.height &= 1.1mm
+
+    // Case drawing: the lid's ribs allow 3 mm over the left half, on the top face.
+    .lid: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 20mm
+        .height &= 24mm
+        .layers &= "top"
+        .max_height &= 3mm
+    }
+}
