@@ -28,12 +28,24 @@
 //! (`EN`, `IANA`, `I2C_ADD`, `SDA`, `SCL` and `FLGn` 1.7 V to 3.6 V; `CC1c`, `CC2c`, `VBUSc`,
 //! `Isense` and `SRC` 0 V to 22 V).
 //!
+//! Three numbers of the datasheet are stated, for the board to relate to its own parts (the
+//! part has no model of its function and no `dc` statement):
+//!
+//! - the supply current, Table 5 "Electrical characteristics - Power supply" (printed page 6):
+//!   `ICC_VCONN` 2.7 mA at most in normal mode and 1 uA at most in low power mode, so the
+//!   current into `.vcc` is 0 A to 2.7 mA;
+//! - the gate driver's gate-to-source voltage, Table 6 "Electrical characteristics for VBUS
+//!   (OCP, gate driver, current monitoring)" (printed page 6): `VGS` 4.5 V minimum, 5 V typical
+//!   and 5.5 V maximum, with VBUSc 5 V to 20 V (`.gate_drive`);
+//! - the VBUS overcurrent threshold across the sense resistor, the same table: `VTH_OCP_VBUS`
+//!   35 mV minimum, 42 mV typical and 45 mV maximum (`.ocp_threshold`); the trip current is it
+//!   over the board's sense resistor (section 7.5, printed page 13, "0.042 V across Rs").
+//!
 //! What is deliberately left out: the rest of Table 4, the absolute maximum ratings (Table 2:
-//! `VCC_VCONN` 7 V, `VBUSc`, `Isense` and `SRC` 24 V, `CC1c` and `CC2c` 24 V), the overcurrent and
-//! overvoltage thresholds, the supply current, every register of the I2C interface (the address
-//! is set by `I2C_ADD`), and the function of the part (no std generic is a USB-C protection IC,
-//! so the part provides none and has no `dc` statement).
-
+//! `VCC_VCONN` 7 V, `VBUSc`, `Isense` and `SRC` 24 V, `CC1c` and `CC2c` 24 V), the overvoltage
+//! thresholds, the current-sense gain, every register of the I2C interface (the address is set
+//! by `I2C_ADD`), and the function of the part (no std generic is a USB-C protection IC, so the
+//! part provides none and has no `dc` statement).
 import std::sources::Rail
 
 /// The TCPP02-M18 in QFN-18 with an exposed pad: a USB Type-C protection IC for a source, with
@@ -48,6 +60,20 @@ part Tcpp02M18 {
     // Table 4, Recommended operating condition (printed page 5): VCC_VCONN 2.7 V to 5.5 V.
     .vcc.voltage >= 2.7V
     .vcc.voltage <= 5.5V
+    // Table 5 (printed page 6): ICC_VCONN 2.7 mA at most in normal mode, 1 uA in low power mode.
+    .vcc.current &= 0A..2.7mA
+
+    /// The gate driver's voltage from `GATE` to `SRC`: 4.5 V to 5.5 V, 5 V typical (Table 6,
+    /// printed page 6, VBUSc 5 V to 20 V). A board relates it to its switches'
+    /// `.gate_source_voltage`.
+    .gate_drive: Voltage
+    .gate_drive &= 4.5V..5.5V
+
+    /// The VBUS overcurrent threshold across the sense resistor between `VBUSc` and `Isense`:
+    /// 35 mV to 45 mV, 42 mV typical (Table 6, printed page 6). The trip current is this over
+    /// the board's sense resistor.
+    .ocp_threshold: Voltage
+    .ocp_threshold &= 35mV..45mV
 
     pins "QFN-18 (3.5x3.5)" {
         //  pin       kind           name         pads

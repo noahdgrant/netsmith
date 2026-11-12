@@ -230,24 +230,56 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
 - **Checked:** the microcontroller's supply window (1.7 V to 3.6 V) and the comparator's (1.6 V to
   6.5 V) against the 3.3 V rail the LP2985 makes, the protector's (2.7 V to 5.5 V) against the slot's
   5 V rail, the LP2985's input (from the slot's 5 V) and the tolerance of every rail the board states.
+  The port switch (#473): the protector's gate drive, 4.5 V to 5.5 V (TCPP02-M18, DS13787 Rev 4,
+  Table 6, p.6), is Q3's and Q4's `gate_source_voltage`, so their gate checks hold; and its OCP
+  threshold, 35 mV to 45 mV over the 7 mohm R27, is a trip current of 4.95 A to 6.49 A
+  (`.port_trip_current`), checked against both MOSFETs' 17 A and the shunt's 1 W.
   The 24 V input is stated as 20.4 V to 28.8 V (24 V, +20 %/-15 %: the design's architecture notes),
-  and the converter's output as the 5 V to 21 V of a USB-PD contract, an **ideal source of the
-  board's own statement**, since no part models the converter.
-- **Not evaluated (74 notes):** `usb.vbus.current >= 0A`, since the port's current is not stated; the TPS55288 is a part with no `dc` statement and the language has
-  no buck-boost generic (only `Buck`), so its input window (`converter.vin.voltage >= 2.7V`), the
-  current of the input, the output and the shunts, the fuse, the inductors and the capacitors
-  that hang on those rails are listed as not evaluated; the MOSFETs' gate drive (`q_*.gate_source_voltage
-  >= q_*.gate_threshold`: the gates are driven by pins that state no level); the LP2985's dropout and
-  power (nothing states what the 3.3 V rail draws: the microcontroller states no current); the
-  divider resistors; and every capacitor's bias on the rails behind the converter. The test
-  `the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed` pins a few of
-  them: when a part states what is missing, it fails and this paragraph is to be rewritten.
+  and the converter's output as the 5 V to 21 V of a USB-PD contract.
+- **Models (#473).** The TPS55288 is a switching regulator at DC (`dc switching_regulator`): its
+  output `.vout` is a rail, the board's 5 V to 21 V an ideal source of it, with the datasheet's
+  windows (VIN 2.7 V to 36 V, VOUT 0.8 V to 22 V), its quiescent current (860 uA at most) and an
+  efficiency of 0.80 to 0.98 read off its Figures 6-1 to 6-10 (`src/tps55288.nsm` says how). The
+  thermistors TH1 and TH2 provide the standard `NtcThermistor`: at DC a resistor over the maker's
+  table, 0.532 kohm to 197.39 kohm. The generic's letters are IEEE 315's `RT`, so the port numbers
+  them RT1 and RT2; `reference/parts.toml` pairs them with the original's TH1 and TH2. Neither clears a note on this board, for the reasons below.
+- **Not evaluated (69 notes, 74 before #473):**
+  - _Converter input (12):_ `converter.vin.voltage >= 2.7V` and `<= 36V`, the converter's input
+    current, the bias of the five capacitors on `EMI_VIN`, and the drop and current of L1 and F1.
+    The model is there, but the analysis has no input to give it: the slot's 24 V is a rail of the
+    board that no part sources (the edge connector states no `dc source`), Q1's drain on `EMI_VIN`
+    is not modelled (the input power runs through Q1, not the `VIN` pin), and what the converter
+    supplies is not known (below). A trial build that stated `.emi_vin.voltage` and the converter's
+    output current cleared eight of these (the window, the input current and the five biases)
+    and nine notes of the converter's pins, and left L1 and F1; the board states neither, since
+    neither is a number of the design.
+  - _Converter power stage (12):_ L2's drop and current, and the five checks of each of Q1 and Q2,
+    the external half bridge on `DR1H` and `DR1L`. They switch at fSW, and a `dc nmos` is a static
+    switch; they need a decision of their own.
+  - _Converter pins (10):_ the ferrite bead FB1 on `VCC`, and R11, R23, R14 and R21 on `FSW`,
+    `ILIM`, `DR1H` and `DR1L` (two each): the pins state no level.
+  - _Open-drain and I2C pins (4):_ R10 on `FB/INT` and R5 on `USB_SDA` (two each, #460).
+  - _Output and VBUS path (23):_ the shunts R28 and R27 (two each), the drain-source voltage and
+    the current of Q3 and Q4 (two each), `usb.vbus.current >= 0A` (the port's current is not
+    stated), the TVS D2 (five), the bias of C38, and the two dividers R17/R18 and R19/R20 (four
+    each). `VOUT` holds Q3's drain, which the analysis does not conduct through, so the
+    converter's load is not known.
+  - _Not these models (8):_ the LP2985's three (nothing states what the 3.3 V rail draws: the
+    microcontroller states no current), the LED and its resistor (three), and the fuse's
+    `supply_peak` (two: the slot's rail states no `.peak`).
+
+  The test `the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed` pins
+  the count and a few of the notes: when a part states what is missing, it fails and this
+  paragraph is to be rewritten. The thermistor dividers (R12 with TH1, R16 with TH2) are on the
+  3.3 V rail, which is not solved for the LP2985's reason, so they are not judged here either;
+  their 0.31 mA "at 25 C" permissible current is data of the part, not a check.
 - **Gaps this port found (for the owner):**
-  - there is no generic for a buck-boost (boost) converter or for a USB-C port protection IC, so
-    the board's most interesting circuit (the feedback and compensation network, the inductor
-    and the output capacitors of the TPS55288) is wired and proved equal but **not analysed**;
-  - there is no NTC thermistor model (the dividers' currents are not seen), and the `Fuse` and
-    `Capacitor` generics have no column for the fuse's I2t or the electrolytic's ESR;
+  - there is no std generic for a buck-boost converter or for a USB-C port protection IC (the
+    TPS55288 and the TCPP02-M18 state their numbers as parts, #473), so the feedback and
+    compensation network, the inductor and the output capacitors of the TPS55288 are wired and
+    proved equal but **not analysed**;
+  - the `Fuse` and `Capacitor` generics have no column for the fuse's I2t or the electrolytic's
+    ESR;
   - a pin's own recommended window (EN, CC1c, VBAT) can only be stated through a `Rail`.
 
 ## Survey
@@ -263,7 +295,7 @@ sub-sheets. Reference designators are theirs.
 | Integrated circuits | U1 STM32G071C8T6 (LQFP-48, C529341), U3 TPS55288RPMR (VQFN-HR-26, C2864583), U5 TCPP02-M18 (QFN-18, C3662929), U4 TLV7022DDFR (SOT-23-8, C2862588), U2 LP2985-3.3 (SOT-23-5, C89826), U6 USBLC6-2SC6 (SOT-23-6, C2687116) | the four footprints named `Local Library:` (LQFP-48, VQFN-HR-26, QFN-18, SOT-23-8) are the author's own; the solver models none of these chips yet |
 | Power stage | Q1 (high side, `/EMI_VIN` to `/SW1`) and Q2 (low side, `/SW1` to ground) BSC059N04LS6 (TDSON-8, C534356), the external half bridge that U3's DR1H and DR1L drive; Q3 and Q4 the same part, back to back with their gates on `/VBUS_GATE`: the port's VBUS switch, L1 1 uH (C112125), L2 5.6 uH (C17700183), F1 8 A fuse (C142876), R27 R007 and R28 R010 (the 1206 shunts), FB1 ferrite bead (C85833) | a MOSFET with a drain, a source, a gate and a thermal tab of five pads |
 | Protection | D2 ESDA25P35-1U1M (C1974707), U6, D1 green LED (C965804) | |
-| Sensing | TH1 (`/NTC_CONV`) and TH2 (`/NTC_PLUG`) NTC thermistors (C52155402), each against a 10 k resistor (R12, R16) from 3.3 V | no thermistor kind in the standard library |
+| Sensing | TH1 (`/NTC_CONV`) and TH2 (`/NTC_PLUG`) NTC thermistors (C52155402), each against a 10 k resistor (R12, R16) from 3.3 V | no thermistor kind in the standard library at the survey (`NtcThermistor` since #473) |
 | Resistors | 27 (R1 to R28, no R15; R27 and R28 are the shunts above) | 100 k, 10 k, 4.7 k, 1 k, 49.9 k, 47 k, 75 k, 45.3 k, 56.2 k, 57.6 k, 1 ohm |
 | Capacitors | 38 (C1 to C39, no C17) | 0402 to 1206 ceramics, one 100 uF and one 220 uF electrolytic (C6, C39) |
 | Connectors | J3 PCIe x1 edge connector (36 pads, back face), J4 USB-C GT-USB-7004 (C2686968), J2 Tag-Connect TC2030-IDC-NL (9 pads), J1, J5, J6 test pads (TX, GND, RX) | the edge connector and the TC2030 have no LCSC number |
@@ -416,7 +448,7 @@ STD KINDS, PROJECT ROWS (all Extended, JLCPCB page; price/stock not recorded; LC
 - Tvs (D2) C1974707 ST ESDA25P35-1U1M: DocID029556 Rev 2 (July 2017) p.2: VRM 22 V, VBR min 23.3 V, VCL 41 V at IPP 35 A (8/20us), Tj -55..150; p.1 Fig.1 pin 1 = cathode, 2 = anode (standard Tvs K=1, A=2); p.4 h 0.60. Footprint = ST Fig.10 land pattern (p.5): 0.55x0.80 at +-0.625 (reference: 0.6x0.9 at +-0.52, 0.105 mm off).
 
 PARTS WITH PIN TABLES (kind kinds: P=passive)
-- NtcThermistor TH1/TH2: `Antc1608Ntc` (APV ANTC1608-103F3380FB, C52155402, keyed catalog antc1608_ntc, designator TH): .a "1" .b "2" (P). Row: 10k +/-1% at 25 C, B25/50 3380 K +/-1%, B25/85 3435 K, 100 mW, 0.31 mA, h 0.95, -40..125; APV sheet rev 2026-06-21 p.1, p.2, p.4. No dc statement (boundary). Footprint = generator 0603.
+- NtcThermistor TH1/TH2: `Antc1608Ntc` (APV ANTC1608-103F3380FB, C52155402, keyed catalog antc1608_ntc, designator TH at the port's start, RT since #473): .a "1" .b "2" (P). Row: 10k +/-1% at 25 C, B25/50 3380 K +/-1%, B25/85 3435 K, 100 mW, 0.31 mA, h 0.95, -40..125; APV sheet rev 2026-06-21 p.1, p.2, p.4. No dc statement (boundary). Footprint = generator 0603.
 - Q1-Q4 `Bsc059n04ls6 provides NMosfet` (Infineon, C534356, TDSON-8FL): G "4" input; S "1" "2" "3"; D "5" (P; pins 5-8 fused, as the reference footprint). Row: 40 V, 17 A (TA 25 C, RthJA 50; 59 A is TC 25 C), VGS +/-20, Vth 1.3..2.3 V, RDS(on) 8.4 mohm max at 4.5 V (5.9 mohm at 10 V), Tj -55..175; Rev 2.0 2018-07-31 p.3, p.4, board pads p.11. Footprint: reference pads 1-5 + 4 paste apertures (not the unnumbered lead pads). Height not read.
 - U2 `Lp2985 provides LinearRegulator` (TI LP2985A-33DBVR, C89826): VIN "1" power, GND "2" power, ON/OFF "3" input, BYPASS "4" P, VOUT "5" power. SLVS522O (rev Jan 2015): 3.3 V +/-3.5% (A grade, 1-150 mA, -40..125), dropout 0.575 V at 150 mA, 0.15 A, quiescent 0..125 uA unloaded, TJ -40..125. No max_power (datasheet gives only RthJA 206 and a formula). **BOM name is LP2985-3.3; C89826 is the A grade.** Generator SOT-23-5.
 - U6 `Usblc62sc6` (C2687116): .io1 "1" "6"; .gnd "2"; .io2 "3" "4"; .vbus "5" (all P). **LCSC/JLCPCB sell UMW's USBLC6-2SC6, not ST's**; UMW datasheet Nov.2024 p.1 pin figure, p.2 TJ -55..125. Generator SOT-23-6.

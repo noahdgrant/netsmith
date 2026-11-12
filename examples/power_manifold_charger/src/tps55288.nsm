@@ -36,21 +36,44 @@
 //! pin of its own: the datasheet calls it the signal ground and does not say the two grounds are one net (the
 //! reference board joins them), so the part does not join them.
 //!
-//! What is deliberately left out: the output range (0.8 V to 22 V, section 6.3), the absolute
-//! maximum ratings (Section 6.1: VIN and SW1 40 V; VOUT, SW2, ISP and ISN 25 V; EN 20 V; the
-//! signal pins 6 V), the inductance and capacitance ranges, the current limit, the reference
-//! voltage, the internal switches' resistance and every register of the I2C interface. No std
-//! generic is a buck-boost converter, so the part provides none and has no `dc` statement: the
-//! analysis of a rail stops at it, and the checks that need a number are listed as not
-//! evaluated.
-
+//! The output is a rail too, `.vout`: `.vout.pos` is `VOUT` (pads 11 and 26) and `.vout.neg` is
+//! `PGND`, joined to the input's inside the part (the datasheet's one power ground), with the
+//! recommended output voltage of section 6.3 (printed page 5): 0.8 V minimum and 22 V maximum.
+//!
+//! At DC the part is a switching regulator (`dc switching_regulator`, ADR 0076, amendment 3):
+//! its output rail is an ideal source over the board's output voltage and its input draws
+//! `Pout / (efficiency * Vin)` and its quiescent current. The statement assumes no topology (a
+//! power balance), so it is right for a buck-boost as for a buck. Its numbers:
+//!
+//! - The efficiency has no figure in any table of the datasheet; it is read by eye off the
+//!   curves of section 6.7, Typical Characteristics, Figures 6-1 to 6-10 "Efficiency vs Output
+//!   Current" (printed pages 10 and 11: VOUT 5 V, 9 V, 12 V, 15 V and 20 V, each in FPWM and in
+//!   PFM, each with VIN 5 V, 9 V, 12 V and 20 V, at TA 25 C and fSW 400 kHz, the frequency this
+//!   board's 49.9 kohm sets). Over output currents from 0.5 A to 10 A every curve lies between
+//!   about 81 % (Figure 6-5, VOUT 12 V, VIN 5 V, FPWM, at 10 A) and about 98 % (Figures 6-3 and
+//!   6-5 near 2 A), so the default is `0.80..0.98`, rounded outward. Below 0.5 A the efficiency
+//!   falls (to about 30 % at 10 mA in FPWM, Figure 6-1): a board that runs there, or at another
+//!   frequency, states its own from the figures.
+//! - The quiescent current into VIN is 860 uA at most, 760 uA typical (section 6.5, Electrical
+//!   Characteristics, printed page 6: IC enabled, no load, no switching, VIN 3 V to 24 V, TJ up
+//!   to 125 C). The default is `0A..860uA`: a maximum and no minimum. Above 24 V the datasheet
+//!   gives no figure, so a board that runs its input there states its own.
+//!
+//! What is deliberately left out: the absolute maximum ratings (Section 6.1: VIN and SW1 40 V;
+//! VOUT, SW2, ISP and ISN 25 V; EN 20 V; the signal pins 6 V), the inductance and capacitance
+//! ranges, the current limit, the reference voltage, the internal switches' resistance and every
+//! register of the I2C interface. No std generic is a buck-boost converter (`Buck`'s doc in
+//! `std/parts/regulator.nsm` says why), so the part provides none. The external half bridge on
+//! `DR1H` and `DR1L` (the board's Q1 and Q2) carries the input power on this board, and is not
+//! part of this model.
 import std::sources::Rail
 
 /// The TPS55288 in the 26-pin VQFN-HR package: a synchronous four-switch buck-boost converter
 /// with an I2C interface, 2.7 V to 36 V in and 0.8 V to 22 V out. The pin names are the
 /// datasheet's (Table 5-1's `DR1H`, which section 6.1 writes `DRH1`)
 /// and the pad numbers its pin numbers. `.vin` is the input rail: `.vin.pos` the `VIN` pad and
-/// `.vin.neg` the `PGND` pads.
+/// `.vin.neg` the `PGND` pads; `.vout` the output rail, `.vout.pos` the `VOUT` pads, with the
+/// same ground. At DC it is a switching regulator (see the file's doc for its numbers).
 part Tps55288 {
     .designator &= "U"
 
@@ -58,6 +81,29 @@ part Tps55288 {
     // Section 6.3, Recommended Operating Conditions (printed page 5): VIN 2.7 V to 36 V.
     .vin.voltage >= 2.7V
     .vin.voltage <= 36V
+
+    .vout: Rail
+    .vout.neg ~ .vin.neg
+    // Section 6.3, Recommended Operating Conditions (printed page 5): VOUT 0.8 V to 22 V.
+    .vout.voltage >= 0.8V
+    .vout.voltage <= 22V
+
+    /// The efficiency, a fraction: read off Figures 6-1 to 6-10 (section 6.7, printed pages 10
+    /// and 11) over output currents from 0.5 A to 10 A, the lowest point Figure 6-5 (VOUT 12 V,
+    /// VIN 5 V, FPWM, 10 A, about 81 %), rounded outward. A board that runs at a lighter load or
+    /// another frequency states its own from the figures.
+    .efficiency: Number
+    .efficiency ?= 0.80..0.98
+
+    /// The current the IC draws into VIN for itself: 860 uA at most (section 6.5, Electrical
+    /// Characteristics, printed page 6, "Quiescent current into the VIN pin", IC enabled, no
+    /// load, no switching, VIN 3 V to 24 V, TJ up to 125 C). A maximum and no minimum.
+    .quiescent_current: Current
+    .quiescent_current ?= 0A..860uA
+
+    // What the input draws: what the output supplies over the efficiency, and the IC's own.
+    .vin.current == -.vout.current * .vout.voltage / (.vin.voltage * .efficiency) + .quiescent_current
+    dc switching_regulator .vin .vout .efficiency .quiescent_current
 
     pins "VQFN-26-HR(3.5x4)" {
         //  pin       kind           name         pads
@@ -71,7 +117,7 @@ part Tps55288 {
         .fsw      output         "FSW"        "8"
         .vin.neg  power          "PGND"       "9" "24"
         .agnd     power          "AGND"       "10"
-        .vout     power          "VOUT"       "11" "26"
+        .vout.pos power          "VOUT"       "11" "26"
         .isp      input          "ISP"        "12"
         .isn      input          "ISN"        "13"
         .fb       bidirectional  "FB/INT"     "14"

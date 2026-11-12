@@ -90,7 +90,7 @@ board IcsFixture {
     .u3.isp ~ .conv.p7
     .u3.isn ~ .conv.p8
     .out: Header1x4
-    .u3.vout ~ .out.p1
+    .u3.vout.pos ~ .out.p1
     .u3.sw1 ~ .out.p2
     .u3.sw2 ~ .out.p3
     .u3.boot1 ~ .out.p4

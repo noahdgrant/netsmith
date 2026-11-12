@@ -981,11 +981,11 @@
 <rect x="24.52" y="15.63" width="0.54" height="0.64" rx="0.27" transform="rotate(0 24.79 15.95)"/>
 <rect x="25.54" y="15.63" width="0.54" height="0.64" rx="0.27" transform="rotate(0 25.81 15.95)"/>
 </g>
-<g class="part" data-ref="TH1">
+<g class="part" data-ref="RT1">
 <rect x="60.675" y="14.525" width="0.8" height="0.95" rx="0.4" transform="rotate(-180 61.075 15)"/>
 <rect x="59.025" y="14.525" width="0.8" height="0.95" rx="0.4" transform="rotate(-180 59.425 15)"/>
 </g>
-<g class="part" data-ref="TH2">
+<g class="part" data-ref="RT2">
 <rect x="86.075" y="12.975" width="0.8" height="0.95" rx="0.4" transform="rotate(0 86.475 13.45)"/>
 <rect x="87.725" y="12.975" width="0.8" height="0.95" rx="0.4" transform="rotate(0 88.125 13.45)"/>
 </g>
