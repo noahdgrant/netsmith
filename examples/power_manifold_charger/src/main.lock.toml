@@ -6,21 +6,21 @@ version = 1
 
 [PowerManifoldCharger.parts."boot1_cap"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."boot2_cap"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."cbias_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."cc1_330p"]
 catalog = "capacitor"
@@ -72,9 +72,9 @@ mpn = "CL05B103KB5NNNC"
 
 [PowerManifoldCharger.parts."emi_vin_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."emi_vin_100u"]
 catalog = "capacitor"
@@ -96,9 +96,9 @@ mpn = "CL31B106KBHNNNE"
 
 [PowerManifoldCharger.parts."emi_vin_1u"]
 catalog = "capacitor"
-row = "1uF 10% 50V X5R 0603 C15849"
-lcsc = "C15849"
-mpn = "CL10A105KB8NNNC"
+row = "1uF 10% 50V X7R 0603 C5199872"
+lcsc = "C5199872"
+mpn = "CL10B105KB8NQNC"
 
 [PowerManifoldCharger.parts."en_pulldown"]
 catalog = "resistor"
@@ -210,9 +210,9 @@ mpn = "ANTC1608-103F3380FB"
 
 [PowerManifoldCharger.parts."ntc_converter_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."ntc_converter_pullup"]
 catalog = "resistor"
@@ -228,9 +228,9 @@ mpn = "ANTC1608-103F3380FB"
 
 [PowerManifoldCharger.parts."ntc_plug_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."ntc_plug_pullup"]
 catalog = "resistor"
@@ -312,9 +312,9 @@ mpn = "BSC059N04LS6"
 
 [PowerManifoldCharger.parts."reset_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."scl_pullup"]
 catalog = "resistor"
@@ -366,27 +366,27 @@ mpn = "0402WGF4701TCE"
 
 [PowerManifoldCharger.parts."v3v3_100n_a"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."v3v3_100n_b"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."v3v3_100n_c"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."v3v3_100n_d"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."v3v3_10u"]
 catalog = "capacitor"
@@ -396,33 +396,33 @@ mpn = "CL21B106KOQNNNE"
 
 [PowerManifoldCharger.parts."v3v3_4u7"]
 catalog = "capacitor"
-row = "4.7uF 10% 16V X5R 0603 C19666"
-lcsc = "C19666"
-mpn = "CL10A475KO8NNNC"
+row = "4.7uF 10% 10V X7R 0603 C108342"
+lcsc = "C108342"
+mpn = "0603B475K100NT"
 
 [PowerManifoldCharger.parts."v5_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."v5_1u"]
 catalog = "capacitor"
-row = "1uF 10% 50V X5R 0603 C15849"
-lcsc = "C15849"
-mpn = "CL10A105KB8NNNC"
+row = "1uF 10% 50V X7R 0603 C5199872"
+lcsc = "C5199872"
+mpn = "CL10B105KB8NQNC"
 
 [PowerManifoldCharger.parts."v5_4u7"]
 catalog = "capacitor"
-row = "4.7uF 10% 16V X5R 0603 C19666"
-lcsc = "C19666"
-mpn = "CL10A475KO8NNNC"
+row = "4.7uF 10% 10V X7R 0603 C108342"
+lcsc = "C108342"
+mpn = "0603B475K100NT"
 
 [PowerManifoldCharger.parts."vbus_2u2"]
 catalog = "capacitor"
-row = "2.2uF 10% 100V X7R 1206 C170101"
-lcsc = "C170101"
-mpn = "CL31B225KCHSNNE"
+row = "2.2uF 10% 50V X7R 1206 C50254"
+lcsc = "C50254"
+mpn = "CL31B225KBHNNNE"
 
 [PowerManifoldCharger.parts."vbus_divider_bottom"]
 catalog = "resistor"
@@ -444,15 +444,15 @@ mpn = "CL05B103KB5NNNC"
 
 [PowerManifoldCharger.parts."vcc_100n"]
 catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
+row = "100nF 10% 50V X7R 0402 C307331"
+lcsc = "C307331"
+mpn = "CL05B104KB54PNC"
 
 [PowerManifoldCharger.parts."vcc_10u"]
 catalog = "capacitor"
-row = "10uF 10% 16V X7R 0805 C95841"
-lcsc = "C95841"
-mpn = "CL21B106KOQNNNE"
+row = "10uF 10% 16V X5R 0805 C1713"
+lcsc = "C1713"
+mpn = "CL21A106KOQNNNE"
 
 [PowerManifoldCharger.parts."vcc_bead"]
 catalog = "ferrite_bead"

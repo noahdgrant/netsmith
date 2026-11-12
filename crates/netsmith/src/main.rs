@@ -428,6 +428,25 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
                 found.reported.trim_end()
             );
         }
+        // The entries of the picks file whose part is gone (#462): the file is a person's, so a
+        // refresh leaves it alone, and `--check` fails on them.
+        if !found.stale.is_empty() {
+            let picks = netsmith::picks::picks_path(&source.path);
+            let lines: String = found.stale.iter().map(|l| format!("  {l}\n")).collect();
+            match mode {
+                LockMode::Update => eprint!(
+                    "note: {} names parts the design no longer picks a row for; remove their entries:\n{lines}",
+                    picks.display()
+                ),
+                LockMode::Check => {
+                    eprint!(
+                        "error: {} names parts the design no longer picks a row for; remove their entries:\n{lines}",
+                        picks.display()
+                    );
+                    stale = true;
+                }
+            }
+        }
         match mode {
             LockMode::Update => {
                 if let Err(e) = found.write() {

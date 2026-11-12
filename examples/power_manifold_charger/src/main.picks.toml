@@ -1,0 +1,81 @@
+# The catalog row of each part that the design's bill of materials names and the solver would
+# not pick (#462): the LCSC number of the part in the charger module's board file
+# (reference/charger-module.kicad_pcb). The rest of the parts are picked as the solver picks
+# them, and every one has the board's number then.
+version = 1
+
+[PowerManifoldCharger.parts."boot1_cap"]  # C20
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."boot2_cap"]  # C21
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."cbias_100n"]  # C27
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."emi_vin_100n"]  # C10
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."emi_vin_1u"]  # C15
+catalog = "capacitor"
+lcsc = "C5199872"
+
+[PowerManifoldCharger.parts."ntc_converter_100n"]  # C14
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."ntc_plug_100n"]  # C16
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."reset_100n"]  # C5
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."v3v3_100n_a"]  # C2
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."v3v3_100n_b"]  # C3
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."v3v3_100n_c"]  # C4
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."v3v3_100n_d"]  # C30
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."v3v3_4u7"]  # C1
+catalog = "capacitor"
+lcsc = "C108342"
+
+[PowerManifoldCharger.parts."v5_100n"]  # C35
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."v5_1u"]  # C34
+catalog = "capacitor"
+lcsc = "C5199872"
+
+[PowerManifoldCharger.parts."v5_4u7"]  # C7
+catalog = "capacitor"
+lcsc = "C108342"
+
+[PowerManifoldCharger.parts."vbus_2u2"]  # C38
+catalog = "capacitor"
+lcsc = "C50254"
+
+[PowerManifoldCharger.parts."vcc_100n"]  # C28
+catalog = "capacitor"
+lcsc = "C307331"
+
+[PowerManifoldCharger.parts."vcc_10u"]  # C23
+catalog = "capacitor"
+lcsc = "C1713"
