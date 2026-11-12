@@ -9,6 +9,7 @@ mod alternatives;
 mod bank;
 mod board3d;
 mod build;
+mod catalog_add;
 mod catalog_height;
 mod cli_help;
 mod compare;

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `render` places a board the same way and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera; the cut faces are filled as a section of the stackup, each layer at its true thickness in its own colour, unless `--no-caps` leaves them open), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`; `view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, Driving a running editor) with the names of `render`, so that an agent changes the verb to switch between the two: `--port` (default 8787, the editor's), `--board`, `--view`, `--section` (or `none`), `--highlight` and `--select` (a part, `net:<name>` or `limit:<name>`, comma-separated or repeated; `none` lights or selects nothing; the editor's selection holds parts or one net, so `--select` takes no limit, and the two are not given together), `--xray` or `--no-xray`, `--ortho` or `--perspective`, and the editor's own tools: `--colour-by` (what the bodies are coloured by), `--height-preview` (a height in mm from 0.1 to 50, `on` or `off`) and `--layers-apart` or `--no-layers-apart` (the stackup pulled apart); with none of them it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results; `--picture <file.png>` saves what the page's canvas shows after the change (and opens the 3D view if it is not on screen); the page driven is the one focused last; a change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open; `--theme` is refused, since the theme is the person's own setting for the whole editor (the state reports it); nothing changes the design or a file; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `render` places a board the same way and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera; the cut faces are filled as a section of the stackup, each layer at its true thickness in its own colour, unless `--no-caps` leaves them open), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`; `view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, Driving a running editor) with the names of `render`, so that an agent changes the verb to switch between the two: `--port` (default 8787, the editor's), `--board`, `--view`, `--section` (or `none`), `--highlight` and `--select` (a part, `net:<name>` or `limit:<name>`, comma-separated or repeated; `none` lights or selects nothing; the editor's selection holds parts or one net, so `--select` takes no limit, and the two are not given together), `--xray` or `--no-xray`, `--ortho` or `--perspective`, and the editor's own tools: `--colour-by` (what the bodies are coloured by), `--height-preview` (a height in mm from 0.1 to 50, `on` or `off`) and `--layers-apart` or `--no-layers-apart` (the stackup pulled apart); with none of them it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results; `--picture <file.png>` saves what the page's canvas shows after the change (and opens the 3D view if it is not on screen); the page driven is the one focused last; a change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open; `--theme` is refused, since the theme is the person's own setting for the whole editor (the state reports it); nothing changes the design or a file; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command; `catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -38,7 +38,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "catalog",
-        "check catalog rows against LCSC's record (`refresh`) or list the old ones (`age`)",
+        "check catalog rows against LCSC's record (`refresh`), list the old ones (`age`) or add a row from it (`add`)",
     ),
     (
         "dxf",
@@ -182,6 +182,14 @@ pub enum Command {
     /// Check catalog rows against LCSC's record and record the day in `checked` (ADR 0039).
     /// JLCPCB is not asked, and no price or stock is written.
     CatalogRefresh(RefreshRequest),
+    /// Append a row made from LCSC's record of `lcsc` to the catalog file `to`, or print the
+    /// record when there is none (#454).
+    CatalogAdd {
+        lcsc: String,
+        to: Option<PathBuf>,
+        offline: bool,
+        no_cache: bool,
+    },
     /// List the catalog rows whose date is older than `days` days.
     CatalogAge {
         paths: Vec<PathBuf>,
@@ -727,10 +735,13 @@ fn parse_catalog(args: Vec<String>) -> Result<Command, String> {
     let mut args = args.into_iter();
     let sub = args
         .next()
-        .ok_or_else(|| format!("`catalog` takes `refresh` or `age`\n{USAGE}"))?;
+        .ok_or_else(|| format!("`catalog` takes `refresh`, `age` or `add`\n{USAGE}"))?;
+    if sub == "add" {
+        return parse_catalog_add(args.collect());
+    }
     if sub != "refresh" && sub != "age" {
         return Err(format!(
-            "`catalog` takes `refresh` or `age`, not `{sub}`\n{USAGE}"
+            "`catalog` takes `refresh`, `age` or `add`, not `{sub}`\n{USAGE}"
         ));
     }
     let mut request = RefreshRequest::default();
@@ -787,12 +798,89 @@ fn parse_catalog(args: Vec<String>) -> Result<Command, String> {
     Ok(Command::CatalogRefresh(request))
 }
 
+/// `catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]`.
+fn parse_catalog_add(args: Vec<String>) -> Result<Command, String> {
+    let (mut lcsc, mut to, mut offline, mut no_cache) = (None, None, false, false);
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--lcsc" => {
+                lcsc = Some(
+                    args.next()
+                        .ok_or("--lcsc needs an LCSC number like C25104")?,
+                );
+            }
+            "--to" => {
+                to = Some(PathBuf::from(
+                    args.next().ok_or("--to needs a catalog file")?,
+                ))
+            }
+            "--offline" => offline = true,
+            "--no-cache" => no_cache = true,
+            other => {
+                return Err(format!(
+                    "`catalog add` takes `--lcsc <C123>`, `--to <catalog.csv>`, `--offline` and `--no-cache`, not `{other}`\n{USAGE}"
+                ));
+            }
+        }
+    }
+    let lcsc = lcsc.ok_or_else(|| {
+        format!("`catalog add` needs `--lcsc <C123>`, the number to add\n{USAGE}")
+    })?;
+    Ok(Command::CatalogAdd {
+        lcsc,
+        to,
+        offline,
+        no_cache,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Result<Command, String> {
         parse_args(args.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn catalog_add_takes_a_number_and_a_file() {
+        assert_eq!(
+            parse(&[
+                "catalog",
+                "add",
+                "--lcsc",
+                "C2286",
+                "--to",
+                "catalogs/led.csv"
+            ]),
+            Ok(Command::CatalogAdd {
+                lcsc: "C2286".into(),
+                to: Some(PathBuf::from("catalogs/led.csv")),
+                offline: false,
+                no_cache: false,
+            })
+        );
+        assert!(matches!(
+            parse(&[
+                "catalog",
+                "add",
+                "--lcsc",
+                "C2286",
+                "--offline",
+                "--no-cache"
+            ]),
+            Ok(Command::CatalogAdd {
+                to: None,
+                offline: true,
+                no_cache: true,
+                ..
+            })
+        ));
+        let e = parse(&["catalog", "add", "--to", "x.csv"]).unwrap_err();
+        assert!(e.contains("`catalog add` needs `--lcsc <C123>`"), "{e}");
+        let e = parse(&["catalog", "add", "--lcsc", "C1", "--dry-run"]).unwrap_err();
+        assert!(e.contains("not `--dry-run`"), "{e}");
     }
 
     #[test]
@@ -1005,7 +1093,10 @@ mod tests {
         let e = parse(&["catalog", "age", "--dry-run"]).unwrap_err();
         assert!(e.contains("`catalog age` has no option `--dry-run`"), "{e}");
         let e = parse(&["catalog"]).unwrap_err();
-        assert!(e.contains("`catalog` takes `refresh` or `age`"), "{e}");
+        assert!(
+            e.contains("`catalog` takes `refresh`, `age` or `add`"),
+            "{e}"
+        );
         let e = parse(&["catalog", "prices"]).unwrap_err();
         assert!(e.contains("not `prices`"), "{e}");
     }
