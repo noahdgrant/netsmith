@@ -2,6 +2,10 @@
 //! a 10-pin microcontroller whose pins all offer `GPIO` (no std part states `fn`), a 10-pin
 //! connector joined to it in mirror order, every part held in place by the physical file, and
 //! the back of the board closed to copper so that crossing lines cannot be resolved with vias.
+//! The front is closed too, except for the strip between the rows and the pads' own reach: the
+//! ends of the rows and the sides above and below them are keepouts that forbid tracks, so no
+//! line can go round a row. That was needed once the router searched in eight directions and
+//! routed even the first assignment round the ends of the rows (issue #415).
 //! Only the pin map differs between runs. With the pins the first assignment gives (request `gK`
 //! on `p0(K-1)`) the 10 nets cross each other 45 times; mirrored they cross none.
 
@@ -160,6 +164,43 @@ physical for Swaps {{
         .copper &= \"forbid\"
         .parts &= \"allow\"
     }}
+    // The front is closed round the rows (ends, above and below): no track goes round them.
+    .left_end: Keepout {{
+        .x &= 0mm
+        .y &= 0mm
+        .width &= {end}mm
+        .height &= {height}mm
+        .layers &= \"top\"
+        .tracks &= \"forbid\"
+        .parts &= \"allow\"
+    }}
+    .right_end: Keepout {{
+        .x &= {right}mm
+        .y &= 0mm
+        .width &= {end}mm
+        .height &= {height}mm
+        .layers &= \"top\"
+        .tracks &= \"forbid\"
+        .parts &= \"allow\"
+    }}
+    .above: Keepout {{
+        .x &= 0mm
+        .y &= {above}mm
+        .width &= {width}mm
+        .height &= {above_h}mm
+        .layers &= \"top\"
+        .tracks &= \"forbid\"
+        .parts &= \"allow\"
+    }}
+    .below: Keepout {{
+        .x &= 0mm
+        .y &= 0mm
+        .width &= {width}mm
+        .height &= 2.8mm
+        .layers &= \"top\"
+        .tracks &= \"forbid\"
+        .parts &= \"allow\"
+    }}
     .j.place.side &= \"top\"
     .j.place.rotation &= 0
     .j.place.x &= {cx}mm +/- 0.1mm
@@ -170,7 +211,11 @@ physical for Swaps {{
     .u.place.y &= {mcu_y}mm +/- 0.1mm
 }}
 ",
-        cx = width / 2.0
+        cx = width / 2.0,
+        above = mcu_y + 0.8,
+        above_h = (height - mcu_y - 0.8).min(2.7),
+        end = width / 2.0 - 12.7,
+        right = width / 2.0 + 12.7
     )
 }
 
@@ -273,12 +318,12 @@ fn swapping_pins_changes_the_crossings_and_what_the_router_leaves() {
     let identity: Vec<usize> = (0..10).collect();
     let mirrored: Vec<usize> = (0..10).rev().collect();
     // The measurement of the pull request: with the pins the first assignment gives, 45 pairs of
-    // lines cross and the router leaves a connection; mirrored, none cross and it routes.
+    // lines cross and the router leaves 9 of the 10 connections; mirrored, none cross and it routes.
     assert_eq!(
         measure(&libs, &mirror(), &locked_pins(&identity)),
         Measured {
             crossings: 45,
-            left: 1
+            left: 9
         }
     );
     assert_eq!(
@@ -352,7 +397,7 @@ fn a_board_that_does_not_route_routes_after_a_swap_and_the_file_says_so() {
     let e = plain
         .result
         .expect_err("the first assignment does not route");
-    assert!(e.contains("1 connections could not be routed"), "{e}");
+    assert!(e.contains("9 connections could not be routed"), "{e}");
     assert!(!plain.pin_file.exists());
 
     let run = fab("auto", &libs, &mirror(), None, Some(PinsMode::Auto));
@@ -431,7 +476,7 @@ fn locked_moves_no_pin_writes_the_proposal_and_fails_as_before() {
     let libs = libraries(dir.path());
     let run = fab("locked", &libs, &mirror(), None, Some(PinsMode::Locked));
     let e = run.result.expect_err("no pin moves, so it does not route");
-    assert!(e.contains("1 connections could not be routed"), "{e}");
+    assert!(e.contains("9 connections could not be routed"), "{e}");
     assert!(e.contains("--pins locked, so no pin moves"), "{e}");
     assert!(e.contains("or run without --pins locked"), "{e}");
     assert!(!run.pin_file.exists(), "--pins locked writes no pin file");
@@ -772,7 +817,7 @@ fn the_search_time_is_taken_from_the_budget_before_a_round_routes() {
         },
     );
     let e = result.expect_err("the first pass does not route and no round was made");
-    assert!(e.contains("1 connections could not be routed"), "{e}");
+    assert!(e.contains("9 connections could not be routed"), "{e}");
     let lines = progress_of(&PROGRESS);
     let passes = lines
         .iter()
@@ -864,7 +909,7 @@ fn fab_locked_never_rewrites_the_pin_file_of_a_board_that_does_not_route() {
     let run = netsmith(root.path(), &["fab", "--allow-drc-violations", "--locked"]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success(), "{err}");
-    assert!(err.contains("1 connections could not be routed"), "{err}");
+    assert!(err.contains("9 connections could not be routed"), "{err}");
     // The person gave `--locked`, so the message says `--locked` and never advises dropping a
     // flag that was not passed.
     assert!(err.contains("--locked, so no pin moves"), "{err}");

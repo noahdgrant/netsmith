@@ -54,20 +54,19 @@ fn every_hard_board_is_placed_validly() {
 
 #[test]
 fn the_first_pass_alone_strands_lines_that_the_full_router_routes() {
-    let boards = hard_boards(40);
-    // Board 11 needs rip-up, board 8 needs either, and board 32 needs both.
-    assert_eq!(left(&boards[11], FIRST_ONLY), 1);
-    assert_eq!(left(&boards[11], RETRY_ONLY), 1);
-    assert_eq!(left(&boards[11], RIP_UP_ONLY), 0);
+    let boards = hard_boards(45);
+    // Board 44 needs rip-up and board 8 needs either. (Boards 11 and 32 needed rip-up, and
+    // 32 needed both, until the first pass searched in eight directions, issue #415: it routes
+    // them alone now, and no board of the first 300 needs both.)
+    assert_eq!(left(&boards[44], FIRST_ONLY), 1);
+    assert_eq!(left(&boards[44], RETRY_ONLY), 1);
+    assert_eq!(left(&boards[44], RIP_UP_ONLY), 0);
     assert_eq!(left(&boards[8], FIRST_ONLY), 1);
     assert_eq!(
         left(&boards[8], RETRY_ONLY) + left(&boards[8], RIP_UP_ONLY),
         0
     );
-    assert_eq!(left(&boards[32], FIRST_ONLY), 1);
-    assert_eq!(left(&boards[32], RETRY_ONLY), 1);
-    assert_eq!(left(&boards[32], RIP_UP_ONLY), 1);
-    for n in [11, 8, 32] {
+    for n in [44, 8] {
         assert_eq!(left(&boards[n], RouteOptions::default()), 0, "board {n}");
     }
 }
@@ -75,16 +74,22 @@ fn the_first_pass_alone_strands_lines_that_the_full_router_routes() {
 #[test]
 fn negotiating_for_the_lines_left_resolves_nets_that_block_each_other() {
     let boards = hard_boards(40);
-    // Ripping up the nets in the way of the last line, one try, strands it; negotiating
-    // for it, with the cells the lines fought over made dearer, routes everything, in the
-    // first order, and the copper keeps the rules.
-    assert_eq!(left(&boards[32], RIP_UP_ONLY), 1);
-    let mut board = boards[32].clone();
-    let routing = route_with(&mut board, NEGOTIATE_ONLY);
-    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
-    assert_eq!(routing.tries, 1);
-    assert!(Ratsnest::of(&board).is_empty());
-    assert!(edge_gap(&board) >= board.rules.copper_to_edge - 1e-9);
+    // Every hard board routes completely in the first order with negotiation, and the copper
+    // keeps the rules. (Board 32 was one that ripping up alone stranded until the first pass
+    // searched in eight directions, issue #415; a board that ripping up strands and negotiation
+    // finishes is `mixed::lines_ripped_up_for_lines_ripped_up_finish_a_board...`, seed 7.)
+    for (n, board) in boards.iter().enumerate() {
+        let mut board = board.clone();
+        let routing = route_with(&mut board, NEGOTIATE_ONLY);
+        assert!(
+            routing.left.is_empty(),
+            "board {n}: {:?}",
+            routing.left.lines
+        );
+        assert_eq!(routing.tries, 1);
+        assert!(Ratsnest::of(&board).is_empty());
+        assert!(edge_gap(&board) >= board.rules.copper_to_edge - 1e-9);
+    }
     // It never makes a board worse than ripping up alone does.
     for (n, board) in boards.iter().enumerate() {
         assert!(

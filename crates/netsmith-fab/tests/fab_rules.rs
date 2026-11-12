@@ -179,6 +179,8 @@ fn the_fabricators_rules_are_netsmiths_and_not_compared_with_kicad() {
         Rule::NpthDrill,
         Rule::PlatedRing,
         Rule::TrackCurrent,
+        Rule::ViaCurrent,
+        Rule::TrackAngle,
     ] {
         assert!(rule.is_netsmiths(), "{rule:?}");
         assert_eq!(Rule::from_id(rule.id()), Some(rule));
@@ -226,5 +228,60 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
         none.count(Rule::TrackCurrent),
         0,
         "not checked when no current is known"
+    );
+}
+
+#[test]
+fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pad() {
+    let angles = Extras {
+        track_angle: true,
+        ..Extras::default()
+    };
+    type Segment = ((f64, f64), (f64, f64));
+    let count = |segments: &[Segment]| {
+        let mut b = Pcb::new(2);
+        b.stub("A", 10.0, 10.0);
+        b.stub("A", 20.0, 16.0);
+        for &(a, c) in segments {
+            b.track("A", "F.Cu", a, c, 0.2);
+        }
+        let r = check(&mut b, &angles);
+        let none = check(&mut b, &Extras::default());
+        assert_eq!(none.count(Rule::TrackAngle), 0, "not checked unless asked");
+        r.count(Rule::TrackAngle)
+    };
+    // Right 4, diagonal 6 by 6 (two 45 degree bends): passes.
+    assert_eq!(
+        count(&[((10.0, 10.0), (14.0, 10.0)), ((14.0, 10.0), (20.0, 16.0))]),
+        0
+    );
+    // Right 10, then down 6: one right angle.
+    assert_eq!(
+        count(&[((10.0, 10.0), (20.0, 10.0)), ((20.0, 10.0), (20.0, 16.0))]),
+        1
+    );
+    // Out to (24, 10) and back to the pad at (20, 16): acute.
+    assert_eq!(
+        count(&[((10.0, 10.0), (24.0, 10.0)), ((24.0, 10.0), (20.0, 16.0))]),
+        1
+    );
+    // A right angle whose corner is inside the second pad is the pad's copper, not a corner.
+    assert_eq!(
+        count(&[
+            ((10.0, 10.0), (14.0, 10.0)),
+            ((14.0, 10.0), (19.9, 15.9)),
+            ((19.9, 15.9), (20.1, 15.9)),
+            ((20.1, 15.9), (20.1, 16.1)),
+        ]),
+        0
+    );
+    // Two tracks of the net over one another are copper twice, not a corner.
+    assert_eq!(
+        count(&[
+            ((10.0, 10.0), (14.0, 10.0)),
+            ((14.0, 10.0), (20.0, 16.0)),
+            ((12.0, 10.0), (14.0, 10.0)),
+        ]),
+        0
     );
 }

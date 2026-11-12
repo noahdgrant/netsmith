@@ -248,10 +248,13 @@ pub enum Rule {
     TrackCurrent,
     /// Fewer vias side by side than a net's current needs (netsmith's, issue #431).
     ViaCurrent,
+    /// A corner of 90 degrees or sharper where two tracks of a net meet outside a pad
+    /// (netsmith's, issue #415).
+    TrackAngle,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 35] = [
+    pub const ALL: [Rule; 36] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -287,6 +290,7 @@ impl Rule {
         Rule::PlatedRing,
         Rule::TrackCurrent,
         Rule::ViaCurrent,
+        Rule::TrackAngle,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -327,6 +331,7 @@ impl Rule {
             Rule::PlatedRing => "plated_ring",
             Rule::TrackCurrent => "track_current",
             Rule::ViaCurrent => "via_current",
+            Rule::TrackAngle => "track_angle",
         }
     }
 
@@ -347,6 +352,7 @@ impl Rule {
                 | Rule::PlatedRing
                 | Rule::TrackCurrent
                 | Rule::ViaCurrent
+                | Rule::TrackAngle
         )
     }
 
@@ -550,6 +556,9 @@ pub struct Extras {
     /// How many vias side by side, their copper touching, each net needs where it changes layer,
     /// for the nets that need more than one.
     pub via_counts: Vec<(String, usize)>,
+    /// Whether a corner of 90 degrees or sharper between two tracks is refused (issue #415):
+    /// set by `fab` for the boards netsmith routes, which bend by 45 degrees only.
+    pub track_angle: bool,
 }
 
 #[derive(Debug, PartialEq)]
