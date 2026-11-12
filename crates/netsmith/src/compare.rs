@@ -2,7 +2,9 @@
 //!
 //! Each side is a `.kicad_sch` (exported to a netlist by `kicad-cli`), a `.kicad_pcb`, the
 //! XML of a KiCad netlist, or a `.nsm` file, whose board is built as `netsmith build`
-//! does. The comparison itself is in `netsmith-netlist`.
+//! does. The comparison itself is in `netsmith-netlist`, whose module docs say where it
+//! departs from ADR 0017 (#67): a two-pad part without polarity may have its pads swapped,
+//! which a match lists (`swapped` in the JSON), and the search bound grows with the board.
 
 use std::fs;
 use std::path::Path;
@@ -104,10 +106,20 @@ fn outcome_json(outcome: &Outcome, a: serde_json::Value, b: serde_json::Value) -
             doc["components"] = json!(c.components);
             doc["nets"] = json!(c.nets);
             doc["interchangeable"] = json!(c.interchangeable);
+            doc["swapped"] = json!(c.swapped);
         }
-        Outcome::Undecided(why) => {
+        Outcome::Undecided(stop) => {
             doc["verdict"] = json!("undecided");
-            doc["why"] = json!(why);
+            doc["why"] = json!(stop.to_string());
+            doc["refinements"] = json!(stop.refinements);
+            doc["limit"] = json!(stop.limit);
+            doc["ambiguous"] = json!(
+                stop.ambiguous
+                    .iter()
+                    .map(|g| json!({ "value": g.value, "footprint": g.footprint, "a": g.a, "b": g.b }))
+                    .collect::<Vec<_>>()
+            );
+            doc["ambiguous_nets"] = json!(stop.ambiguous_nets);
         }
         Outcome::Different(differences) => {
             doc["verdict"] = json!("different");

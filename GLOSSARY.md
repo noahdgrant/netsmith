@@ -805,5 +805,5 @@ The view of a board's rails as cards: the voltage of each net a rail draws from,
 _Avoid_: Power diagram, rail map
 
 **Netlist comparison**:
-Deciding whether two designs are the same circuit by connectivity (`netsmith compare`, ADR 0017). Components are matched by value and footprint and by how their pins are wired, so net names and, unless told otherwise, designators may differ. It succeeds with the pairing of components and nets, or fails with the nets and pins that differ.
+Deciding whether two designs are the same circuit by connectivity (`netsmith compare`, ADR 0017). Components are matched by value and footprint and by how their pins are wired, so net names and, unless told otherwise, designators may differ; a two-pad part without polarity may have its pads either way round (#67). It succeeds with the pairing of components and nets, or fails with the nets and pins that differ.
 _Avoid_: Netlist diff (a diff compares names)

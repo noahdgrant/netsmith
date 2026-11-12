@@ -10,7 +10,20 @@
 //! parallel, the rows of an LED array) a colour has several nodes on each side; one node
 //! of A is then given a colour of its own together with each candidate of B in turn and
 //! the colouring is refined again, which is individualization, up to a bound on the
-//! refinements.
+//! refinements. The bound grows with the board: [`Options::refinement_bound`] is a floor
+//! (20 000, the fixed bound ADR 0017 states) or a number per component of the two netlists,
+//! whichever is more (#67), and a search that passes it says how many refinements ran and
+//! which components and nets were still alike ([`Undecided`]).
+//!
+//! A pin number is identity, as ADR 0017 says, except on a two-pad part with no polarity
+//! (#67): a resistor, a capacitor, an inductor or ferrite bead, a fuse, whose two pads may be
+//! the other way round on the other side and it is still the same circuit. Such a part has
+//! both pads on nets and a footprint of one of KiCad's families without a polarity mark
+//! (`R_`, `C_`, `L_`, `Fuse_`, after the library): a polarised capacitor (`CP_`), a diode
+//! (`D_`), an LED (`LED_`), any other footprint and none at all keep their pin numbers.
+//! Refinement labels the edges of such a part with one label for both pads, and the pairing
+//! accepts it either way round and lists the ones that are turned
+//! ([`Correspondence::swapped`]).
 //!
 //! When the netlists differ, a second pass finds what differs: it matches what the first
 //! pass could still tell apart and spreads that match over the nets, so a single
@@ -42,9 +55,14 @@ pub struct Options {
     pub ignore_unconnected: bool,
     /// Compare values as numbers where they read as numbers (`4k7` is `4.7k`).
     pub loose_values: bool,
-    /// How many refinements the search for an assignment of interchangeable parts may use
-    /// before it gives up.
-    pub max_refinements: usize,
+    /// The least number of refinements the search for an assignment of interchangeable
+    /// parts may use before it gives up, whatever the size of the board.
+    pub min_refinements: usize,
+    /// The refinements the search may use per component of the two netlists, when that is
+    /// more than `min_refinements`.
+    pub refinements_per_component: usize,
+    /// Match a two-pad part with no polarity whose pads are the other way round (#67).
+    pub two_pad_swaps: bool,
 }
 
 impl Default for Options {
@@ -53,8 +71,19 @@ impl Default for Options {
             identity: Identity::Free,
             ignore_unconnected: false,
             loose_values: false,
-            max_refinements: 20_000,
+            min_refinements: 20_000,
+            refinements_per_component: 20,
+            two_pad_swaps: true,
         }
+    }
+}
+
+impl Options {
+    /// How many refinements the search may use on netlists of `components` components
+    /// together.
+    pub fn refinement_bound(&self, components: usize) -> usize {
+        self.min_refinements
+            .max(self.refinements_per_component.saturating_mul(components))
     }
 }
 
@@ -97,6 +126,86 @@ pub struct Correspondence {
     /// How many times a choice was made between interchangeable parts. Those parts could be
     /// paired the other way round just as well.
     pub interchangeable: usize,
+    /// `(designator in A, designator in B)` of the two-pad parts without polarity whose pads
+    /// are the other way round in B, in A's order.
+    pub swapped: Vec<(String, String)>,
+    /// How many refinements the search ran.
+    pub refinements: usize,
+}
+
+/// Where a search that passed its bound stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Undecided {
+    /// How many refinements ran.
+    pub refinements: usize,
+    /// The bound they passed.
+    pub limit: usize,
+    /// The groups of components that were still alike by connectivity.
+    pub ambiguous: Vec<Ambiguous>,
+    /// The groups of nets that were still alike: `(in A, in B)`.
+    pub ambiguous_nets: Vec<(Vec<String>, Vec<String>)>,
+}
+
+/// Components of one class that the search could not yet tell apart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ambiguous {
+    pub value: String,
+    pub footprint: String,
+    /// Their designators in A and in B.
+    pub a: Vec<String>,
+    pub b: Vec<String>,
+}
+
+impl std::fmt::Display for Undecided {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names = |g: &[String]| {
+            const SHOWN: usize = 10;
+            let mut out = g
+                .iter()
+                .take(SHOWN)
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if g.len() > SHOWN {
+                out.push_str(&format!(" and {} more", g.len() - SHOWN));
+            }
+            out
+        };
+        write!(
+            f,
+            "could not decide whether the netlists match: the search for a pairing of interchangeable parts stopped after {} refinement{}, past its limit of {} refinements (which grows with the number of components)",
+            self.refinements,
+            if self.refinements == 1 { "" } else { "s" },
+            self.limit
+        )?;
+        let mut groups: Vec<String> = self
+            .ambiguous
+            .iter()
+            .map(|g| {
+                format!(
+                    "{} components of {} ({}) (A: {}; B: {})",
+                    g.a.len(),
+                    if g.value.is_empty() {
+                        "no value"
+                    } else {
+                        &g.value
+                    },
+                    g.footprint,
+                    names(&g.a),
+                    names(&g.b)
+                )
+            })
+            .collect();
+        groups.extend(
+            self.ambiguous_nets
+                .iter()
+                .map(|(a, b)| format!("{} nets (A: {}; B: {})", a.len(), names(a), names(b))),
+        );
+        if !groups.is_empty() {
+            write!(f, "; still alike by connectivity: {}", groups.join("; "))?;
+        }
+        Ok(())
+    }
 }
 
 /// One way the netlists differ.
@@ -139,7 +248,7 @@ pub enum Outcome {
     Match(Correspondence),
     Different(Vec<Difference>),
     /// The search for an assignment of interchangeable parts passed its bound. Says where.
-    Undecided(String),
+    Undecided(Undecided),
 }
 
 /// What a component is compared by: its value and footprint, without the footprint's
@@ -148,6 +257,20 @@ fn class(c: &Component, loose: bool) -> (String, String) {
     let footprint = c.footprint.rsplit(':').next().unwrap_or(&c.footprint);
     (normalize_value(&c.value, loose), footprint.to_string())
 }
+
+/// Whether a component is a two-pad part with no polarity, whose pads may be the other way
+/// round (#67): both pads on nets, and a footprint of a family that KiCad draws without a
+/// polarity mark. The footprint is what the netlist knows of polarity: a polarised capacitor
+/// is `CP_`, a diode `D_`, an LED `LED_`, and a footprint of another library's naming, or
+/// none, says nothing, so it keeps its pin numbers.
+fn without_polarity(c: &Component) -> bool {
+    const FAMILIES: [&str; 4] = ["R_", "C_", "L_", "Fuse_"];
+    let footprint = c.footprint.rsplit(':').next().unwrap_or(&c.footprint);
+    c.pins.len() == 2 && FAMILIES.iter().any(|f| footprint.starts_with(f))
+}
+
+/// The edge label of both pads of a part whose pads may be swapped.
+const EITHER_PAD: u32 = u32::MAX;
 
 #[derive(Hash, PartialEq, Eq)]
 enum Init {
@@ -173,6 +296,9 @@ struct Joint<'n> {
     /// Whether a component may be paired by wiring: not when it is fixed, or when the
     /// identity says it has no counterpart.
     free: Vec<bool>,
+    /// Whether a component's two pads may be the other way round on its counterpart. A pair
+    /// fixed by the identity has it only when both have it.
+    swappable: Vec<bool>,
 }
 
 impl<'n> Joint<'n> {
@@ -263,6 +389,21 @@ impl<'n> Joint<'n> {
             init.push(*interner.entry(key).or_insert(next));
             free.push(is_free);
         }
+        let mut swappable: Vec<bool> = (0..total)
+            .map(|g| {
+                let c = if g < ca {
+                    &a.components[g]
+                } else {
+                    &b.components[g - ca]
+                };
+                options.two_pad_swaps && without_polarity(c)
+            })
+            .collect();
+        for &(x, y) in &fixed {
+            let both = swappable[x] && swappable[y];
+            swappable[x] = both;
+            swappable[y] = both;
+        }
         Ok(Joint {
             nl: [a, b],
             ca,
@@ -272,7 +413,33 @@ impl<'n> Joint<'n> {
             init,
             fixed,
             free,
+            swappable,
         })
+    }
+
+    /// The label of an edge in refinement: the pin, or one label for both pads of a part
+    /// whose pads may be swapped.
+    fn label(&self, g: usize, pin: u32) -> u32 {
+        if self.swappable[g] { EITHER_PAD } else { pin }
+    }
+
+    /// The pin of `g`'s counterpart that `pin` of `g` corresponds to: the same, or the other
+    /// pad when the pair is turned.
+    fn counterpart_pin(&self, g: usize, pin: u32, turned: &[bool]) -> u32 {
+        if turned[g] {
+            self.other_pad(g, pin)
+        } else {
+            pin
+        }
+    }
+
+    /// The other pad of a two-pad part.
+    fn other_pad(&self, g: usize, pin: u32) -> u32 {
+        self.comp_pins[g]
+            .iter()
+            .map(|&(p, _)| p)
+            .find(|&p| p != pin)
+            .unwrap_or(pin)
     }
 
     fn total_comps(&self) -> usize {
@@ -315,7 +482,7 @@ impl<'n> Joint<'n> {
                 .map(|g| {
                     let mut sig: Vec<(u32, u32)> = self.comp_pins[g]
                         .iter()
-                        .map(|&(p, n)| (p, net[n]))
+                        .map(|&(p, n)| (self.label(g, p), net[n]))
                         .collect();
                     sig.sort_unstable();
                     let next = comp_ids.len() as u32;
@@ -326,7 +493,7 @@ impl<'n> Joint<'n> {
                 .map(|g| {
                     let mut sig: Vec<(u32, u32)> = self.net_pins[g]
                         .iter()
-                        .map(|&(c, p)| (p, comp[c]))
+                        .map(|&(c, p)| (self.label(c, p), comp[c]))
                         .collect();
                     sig.sort_unstable();
                     let next = net_ids.len() as u32;
@@ -358,112 +525,200 @@ impl<'n> Joint<'n> {
 
     /// Components grouped by colour: `(in A, in B)`.
     fn cells(&self, comp: &[u32]) -> BTreeMap<u32, (Vec<usize>, Vec<usize>)> {
-        let mut cells: BTreeMap<u32, (Vec<usize>, Vec<usize>)> = BTreeMap::new();
-        for (g, &c) in comp.iter().enumerate() {
-            let cell = cells.entry(c).or_default();
-            if g < self.ca {
-                cell.0.push(g);
-            } else {
-                cell.1.push(g);
-            }
-        }
-        cells
+        cells_split(comp, self.ca)
     }
 
-    /// Search for a pairing of the components that is an isomorphism, individualizing where
-    /// refinement leaves a choice.
+    /// Nets grouped by colour: `(in A, in B)`.
+    fn net_cells(&self, net: &[u32]) -> BTreeMap<u32, (Vec<usize>, Vec<usize>)> {
+        cells_split(net, self.na)
+    }
+
+    /// Search for a pairing of the components and nets that is an isomorphism,
+    /// individualizing where refinement leaves a choice: among components first, then among
+    /// nets (which only the pads of a part that may be turned leave alike).
     fn search(
         &self,
         mut comp: Vec<u32>,
         mut net: Vec<u32>,
         budget: &mut Budget,
-    ) -> Result<Option<Pairing>, String> {
+    ) -> Result<Option<Pairing>, Undecided> {
         budget.used += 1;
         self.refine(&mut comp, &mut net, |_| {});
         if !self.balanced(&comp, &net) {
             return Ok(None);
         }
         let cells = self.cells(&comp);
-        let choice = cells
-            .values()
-            .filter(|(a, _)| a.len() > 1)
-            .min_by_key(|(a, _)| a.len());
-        let Some((cell_a, cell_b)) = choice else {
-            return Ok(self.read_pairing(&cells));
+        let net_cells = self.net_cells(&net);
+        let smallest = |cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>| {
+            cells
+                .values()
+                .filter(|(a, _)| a.len() > 1)
+                .min_by_key(|(a, _)| a.len())
+                .cloned()
+        };
+        let (is_net, (cell_a, cell_b)) = match smallest(&cells) {
+            Some(cell) => (false, cell),
+            None => match smallest(&net_cells) {
+                Some(cell) => (true, cell),
+                None => return Ok(self.read_pairing(&cells, &net_cells)),
+            },
         };
         if budget.used > budget.max {
-            let class = self.component(cell_a[0]);
-            let names = |g: &[usize]| {
-                g.iter()
-                    .map(|&g| self.component(g).refdes.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            return Err(format!(
-                "could not decide whether the netlists match: {} components of {} ({}) are interchangeable by connectivity (A: {}; B: {}), and trying the ways to pair them passed the limit of {} refinements",
-                cell_a.len(),
-                if class.value.is_empty() {
-                    "no value"
-                } else {
-                    &class.value
-                },
-                class.footprint,
-                names(cell_a),
-                names(cell_b),
-                budget.max
-            ));
+            return Err(self.stopped(&cells, &net_cells, budget));
         }
-        let fresh = comp.iter().max().map_or(0, |m| m + 1);
         let x = cell_a[0];
-        for &y in cell_b {
-            let mut trial = comp.clone();
-            trial[x] = fresh;
-            trial[y] = fresh;
-            if let Some(mut pairing) = self.search(trial, net.clone(), budget)? {
-                pairing.interchangeable += 1;
+        for &y in &cell_b {
+            let (mut c, mut n) = (comp.clone(), net.clone());
+            let colors = if is_net { &mut n } else { &mut c };
+            let fresh = colors.iter().max().map_or(0, |m| m + 1);
+            colors[x] = fresh;
+            colors[y] = fresh;
+            if let Some(mut pairing) = self.search(c, n, budget)? {
+                pairing.interchangeable += usize::from(!is_net);
                 return Ok(Some(pairing));
             }
         }
         Ok(None)
     }
 
-    /// The pairing a discrete colouring gives, if it is an isomorphism.
-    fn read_pairing(&self, cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>) -> Option<Pairing> {
-        let mut partner = vec![None; self.total_comps()];
-        for (a, b) in cells.values() {
-            if let ([x], [y]) = (a.as_slice(), b.as_slice()) {
-                partner[*x] = Some(*y);
-                partner[*y] = Some(*x);
-            }
-        }
-        let nets = self.net_correspondence(&partner);
-        let wired = (0..self.ca).all(|a| {
-            partner[a].is_some_and(|b| {
-                let (pa, pb) = (&self.comp_pins[a], &self.comp_pins[b]);
-                pa.len() == pb.len()
-                    && pa
-                        .iter()
-                        .zip(pb)
-                        .all(|(x, y)| x.0 == y.0 && nets[x.1] == Some(y.1))
+    /// Where a search stopped: the groups of components and nets still alike.
+    fn stopped(
+        &self,
+        cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>,
+        net_cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>,
+        budget: &Budget,
+    ) -> Undecided {
+        let open = |c: &&(Vec<usize>, Vec<usize>)| c.0.len() > 1;
+        let names = |g: &[usize]| -> Vec<String> {
+            g.iter()
+                .map(|&g| self.component(g).refdes.clone())
+                .collect()
+        };
+        let net_names = |g: &[usize]| -> Vec<String> {
+            g.iter().map(|&g| self.net_name(g).to_string()).collect()
+        };
+        let mut ambiguous: Vec<Ambiguous> = cells
+            .values()
+            .filter(open)
+            .map(|(a, b)| {
+                let first = self.component(a[0]);
+                Ambiguous {
+                    value: first.value.clone(),
+                    footprint: first.footprint.clone(),
+                    a: names(a),
+                    b: names(b),
+                }
             })
-        });
-        let all_nets = (0..self.na).all(|n| nets[n].is_some());
-        (wired && all_nets).then_some(Pairing {
+            .collect();
+        ambiguous.sort_by(|x, y| x.a.len().cmp(&y.a.len()).then_with(|| x.a.cmp(&y.a)));
+        let mut ambiguous_nets: Vec<(Vec<String>, Vec<String>)> = net_cells
+            .values()
+            .filter(open)
+            .map(|(a, b)| (net_names(a), net_names(b)))
+            .collect();
+        ambiguous_nets.sort_by(|x, y| x.0.len().cmp(&y.0.len()).then_with(|| x.0.cmp(&y.0)));
+        Undecided {
+            refinements: budget.used,
+            limit: budget.max,
+            ambiguous,
+            ambiguous_nets,
+        }
+    }
+
+    /// The pairing a discrete colouring gives, if it is an isomorphism: every pin of a
+    /// component of A is on the net that corresponds to its counterpart's pin, the same pin
+    /// or, on a part whose pads may be swapped, the other pad.
+    fn read_pairing(
+        &self,
+        cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>,
+        net_cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>,
+    ) -> Option<Pairing> {
+        let one_to_one = |cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>, total: usize| {
+            let mut partner = vec![None; total];
+            for (a, b) in cells.values() {
+                if let ([x], [y]) = (a.as_slice(), b.as_slice()) {
+                    partner[*x] = Some(*y);
+                    partner[*y] = Some(*x);
+                }
+            }
+            partner
+        };
+        let partner = one_to_one(cells, self.total_comps());
+        let nets = one_to_one(net_cells, self.total_nets());
+        if (0..self.na).any(|n| nets[n].is_none()) {
+            return None;
+        }
+        let mut turned = vec![false; self.total_comps()];
+        for a in 0..self.ca {
+            let b = partner[a]?;
+            let (pa, pb) = (&self.comp_pins[a], &self.comp_pins[b]);
+            if pa.len() != pb.len() || pa.iter().zip(pb).any(|(x, y)| x.0 != y.0) {
+                return None;
+            }
+            let straight = pa.iter().zip(pb).all(|(x, y)| nets[x.1] == Some(y.1));
+            if straight {
+                continue;
+            }
+            let crossed = self.swappable[a]
+                && self.swappable[b]
+                && nets[pa[0].1] == Some(pb[1].1)
+                && nets[pa[1].1] == Some(pb[0].1);
+            if !crossed {
+                return None;
+            }
+            turned[a] = true;
+            turned[b] = true;
+        }
+        Some(Pairing {
             partner,
             nets,
+            turned,
             interchangeable: 0,
         })
     }
 
     /// Which net corresponds to which, from the components that are paired: a net of A
     /// corresponds to the net of B that holds the counterparts of its pins, most pins first.
-    /// Indexed by global net number, both ways.
-    fn net_correspondence(&self, partner: &[Option<usize>]) -> Vec<Option<usize>> {
+    /// Indexed by global net number, both ways. With it, which pairs of parts whose pads may
+    /// be swapped are turned: the pins of the other parts decide the nets first, and a pair is
+    /// turned when more of its pads land on corresponding nets that way round.
+    fn net_correspondence(&self, partner: &[Option<usize>]) -> (Vec<Option<usize>>, Vec<bool>) {
+        let mut turned = vec![false; self.total_comps()];
+        let first = self.vote(partner, &turned, false);
+        for (a, &b) in partner.iter().enumerate().take(self.ca) {
+            let Some(b) = b else { continue };
+            if !(self.swappable[a] && self.swappable[b]) {
+                continue;
+            }
+            let agree = |turn: bool| {
+                self.comp_pins[a]
+                    .iter()
+                    .filter(|&&(pin, na)| {
+                        let other = if turn { self.other_pad(a, pin) } else { pin };
+                        first[na].is_some() && first[na] == self.net_at(b, other)
+                    })
+                    .count()
+            };
+            if agree(true) > agree(false) {
+                turned[a] = true;
+                turned[b] = true;
+            }
+        }
+        (self.vote(partner, &turned, true), turned)
+    }
+
+    /// Nets paired by the votes of the paired components' pins, each pin voting for the net
+    /// of its counterpart's pin (the other pad on a pair that is `turned`). Parts whose pads
+    /// may be swapped vote only when `all`.
+    fn vote(&self, partner: &[Option<usize>], turned: &[bool], all: bool) -> Vec<Option<usize>> {
         let mut votes: HashMap<(usize, usize), usize> = HashMap::new();
         for (a, &b) in partner.iter().enumerate().take(self.ca) {
             let Some(b) = b else { continue };
+            if !all && self.swappable[a] && self.swappable[b] {
+                continue;
+            }
             for &(pin, na) in &self.comp_pins[a] {
-                if let Some(&(_, nb)) = self.comp_pins[b].iter().find(|(p, _)| *p == pin) {
+                if let Some(nb) = self.net_at(b, self.counterpart_pin(a, pin, turned)) {
                     *votes.entry((na, nb)).or_default() += 1;
                 }
             }
@@ -489,6 +744,20 @@ impl<'n> Joint<'n> {
     }
 }
 
+/// Nodes grouped by colour: `(in A, in B)`, A's being those below `split`.
+fn cells_split(colors: &[u32], split: usize) -> BTreeMap<u32, (Vec<usize>, Vec<usize>)> {
+    let mut cells: BTreeMap<u32, (Vec<usize>, Vec<usize>)> = BTreeMap::new();
+    for (g, &c) in colors.iter().enumerate() {
+        let cell = cells.entry(c).or_default();
+        if g < split {
+            cell.0.push(g);
+        } else {
+            cell.1.push(g);
+        }
+    }
+    cells
+}
+
 fn distinct(colors: &[u32]) -> usize {
     colors.iter().collect::<BTreeSet<_>>().len()
 }
@@ -502,6 +771,8 @@ struct Pairing {
     /// Global component to global component, both ways.
     partner: Vec<Option<usize>>,
     nets: Vec<Option<usize>>,
+    /// Which components are paired with their pads the other way round, both ways.
+    turned: Vec<bool>,
     interchangeable: usize,
 }
 
@@ -517,16 +788,16 @@ pub fn compare(a: &Netlist, b: &Netlist, options: &Options) -> Result<Outcome, S
     let joint = Joint::new(&a, &b, options)?;
     let mut budget = Budget {
         used: 0,
-        max: options.max_refinements,
+        max: options.refinement_bound(joint.total_comps()),
     };
     let comp = joint.init.clone();
     let net = vec![0; joint.total_nets()];
     match joint.search(comp, net, &mut budget) {
-        Err(message) => Ok(Outcome::Undecided(message)),
+        Err(stop) => Ok(Outcome::Undecided(stop)),
         Ok(Some(pairing)) => {
             let mut differences = class_differences(&joint, &pairing.partner, options);
             if differences.is_empty() {
-                Ok(Outcome::Match(joint.correspondence(&pairing)))
+                Ok(Outcome::Match(joint.correspondence(&pairing, budget.used)))
             } else {
                 sort_differences(&mut differences);
                 Ok(Outcome::Different(differences))
@@ -578,14 +849,19 @@ fn sort_differences(d: &mut [Difference]) {
 }
 
 impl Joint<'_> {
-    fn correspondence(&self, p: &Pairing) -> Correspondence {
+    fn correspondence(&self, p: &Pairing, refinements: usize) -> Correspondence {
         let mut components = Vec::new();
+        let mut swapped = Vec::new();
         for (a, partner) in p.partner.iter().enumerate().take(self.ca) {
             if let Some(b) = *partner {
-                components.push((
+                let pair = (
                     self.component(a).refdes.clone(),
                     self.component(b).refdes.clone(),
-                ));
+                );
+                if p.turned[a] {
+                    swapped.push(pair.clone());
+                }
+                components.push(pair);
             }
         }
         let mut nets = Vec::new();
@@ -598,6 +874,8 @@ impl Joint<'_> {
             components,
             nets,
             interchangeable: p.interchangeable,
+            swapped,
+            refinements,
         }
     }
 
@@ -676,7 +954,7 @@ impl Joint<'_> {
     /// Pair unpaired components with the unpaired component of the other side whose pins are
     /// on the most nets that correspond. Whether any were paired.
     fn spread(&self, partner: &mut [Option<usize>], options: &Options) -> bool {
-        let nets = self.net_correspondence(partner);
+        let (nets, _) = self.net_correspondence(partner);
         let wired = |g: usize| self.comp_pins[g].len();
         let mut candidates = Vec::new();
         for a in (0..self.ca).filter(|&a| partner[a].is_none() && self.free[a]) {
@@ -684,7 +962,8 @@ impl Joint<'_> {
             for &(pin, na) in &self.comp_pins[a] {
                 let Some(nb) = nets[na] else { continue };
                 for &(c, p) in &self.net_pins[nb] {
-                    if p == pin && c >= self.ca && partner[c].is_none() && self.free[c] {
+                    let same_pin = p == pin || (self.swappable[a] && self.swappable[c]);
+                    if same_pin && c >= self.ca && partner[c].is_none() && self.free[c] {
                         *scores.entry(c).or_default() += 1;
                     }
                 }
@@ -719,7 +998,7 @@ impl Joint<'_> {
     /// The differences between two netlists whose components are paired as `partner` says.
     fn describe(&self, partner: &[Option<usize>], options: &Options) -> Vec<Difference> {
         let mut out = class_differences(self, partner, options);
-        let nets = self.net_correspondence(partner);
+        let (nets, turned) = self.net_correspondence(partner);
         let pin_name = |g: usize, pin: u32| -> String {
             let (c, p) = (self.component(g), self.pin_text(g, pin));
             format!("{}.{p}", c.refdes)
@@ -747,6 +1026,7 @@ impl Joint<'_> {
             let Some(h) = partner[g] else {
                 return String::new();
             };
+            let pin = self.counterpart_pin(g, pin, &turned);
             match self.net_at(h, pin) {
                 Some(n) => format!(
                     "in {other}, {} is on net `{}`",
@@ -762,14 +1042,14 @@ impl Joint<'_> {
             let mut only_a = Vec::new();
             for &(c, pin) in &self.net_pins[na] {
                 let Some(h) = partner[c] else { continue };
-                if self.net_at(h, pin) != Some(nb) {
+                if self.net_at(h, self.counterpart_pin(c, pin, &turned)) != Some(nb) {
                     only_a.push((self.pin_of(c, pin), elsewhere(c, pin, Side::B)));
                 }
             }
             let mut only_b = Vec::new();
             for &(c, pin) in &self.net_pins[nb] {
                 let Some(h) = partner[c] else { continue };
-                if self.net_at(h, pin) != Some(na) {
+                if self.net_at(h, self.counterpart_pin(c, pin, &turned)) != Some(na) {
                     only_b.push((self.pin_of(c, pin), elsewhere(c, pin, Side::A)));
                 }
             }
