@@ -1,4 +1,8 @@
 /target
+# Build and fab output, at the root and in any example's folder (#464). Kept
+# out of crates so that a source folder named `fab` or `out` is never ignored.
 /out
 /fab
+/examples/**/out/
+/examples/**/fab/
 /dist-release
