@@ -15,6 +15,10 @@
 //! datasheet; a part without a row is unrated, and the check of the current through a mate
 //! lists it as not evaluated. Only the single-row parts have rows (`data/jlcpcb/README.md`).
 //!
+//! `.seat` is how far above its board's face the partner rests (ADR 0110), also only through a
+//! `header` row (an `optional` column: a project's row may leave it empty). Two mated seats add
+//! up to the mate's mated height, the distance between the two boards' faces.
+//!
 //! There is one definition for each size of header (ADR 0023): the language has no parameter for a
 //! count, and a part's pin rows are written out. The sizes are single-row 2, 4, 8 and 10, the same
 //! sockets, and 2x3, 2x5 and 2x10; other sizes are added when a design needs one. Pins are `pN` on
@@ -46,6 +50,14 @@ interface Mating {
     .positions: Number
     /// The rated current of one contact. A catalog column; unset means unrated.
     .pin_current: Current
+    /// How far above the face of its board this connector's partner rests when the two are
+    /// mated (ADR 0110): a header's plastic top, a socket's body top. It is a fact of the
+    /// part, whatever it mates with, so a mate's mated height is the two seats added, with
+    /// both tolerances. It depends on the maker's drawing, so a part states it only through a
+    /// `header` catalog row, whose `source` names the drawing; unset means unknown, and a
+    /// mate with an unknown seat has no mated height. Never a default and never the part's
+    /// `.height` (a maximum, not a seat).
+    .seat: Length
     /// `"none"`, or what keys the housing so that it goes in one way (`"shrouded"`,
     /// `"polarised"`). Unset is the same as `"none"`. A mate whose pinout would also work turned
     /// end for end warns unless a connector is keyed.
@@ -81,7 +93,7 @@ part Header1x2 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row header with 4 pins, `p1` to `p4`, pin N on pad N.
@@ -102,7 +114,7 @@ part Header1x4 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row header with 8 pins, `p1` to `p8`, pin N on pad N.
@@ -127,7 +139,7 @@ part Header1x8 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row header with 10 pins, `p1` to `p10`, pin N on pad N.
@@ -154,7 +166,7 @@ part Header1x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row socket with 2 positions, `p1` to `p2`, position N on pad N. It is the
@@ -174,7 +186,7 @@ part Socket1x2 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row socket with 4 positions, `p1` to `p4`, position N on pad N. It is the
@@ -196,7 +208,7 @@ part Socket1x4 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row socket with 8 positions, `p1` to `p8`, position N on pad N. It is the
@@ -222,7 +234,7 @@ part Socket1x8 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A single-row socket with 10 positions, `p1` to `p10`, position N on pad N. It is the
@@ -250,7 +262,7 @@ part Socket1x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current }
+    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
 }
 
 /// A two-row header with 6 pins, `p1` to `p6`, pin N on pad N. Which pins are in which

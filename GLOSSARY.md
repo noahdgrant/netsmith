@@ -24,6 +24,14 @@ _Avoid_: host port, device port (for the power direction), DRP
 Two connectors that a system joins with `~` between their `.mating`: contact N of one meets contact N of the other (`.carrier.slot.mating ~ .card.j1.mating`, ADR 0040). The checker reads what each board has behind each contact (ground, power, a signal, or open), refuses what cannot meet (a header with a header, two outputs, ground against power, a count or pitch that differs), and joins the ports the contacts carry, so the same fact is not said twice with a port join.
 _Avoid_: Connection, link, plug
 
+**Seat**:
+How far above the face of its board a connector's partner rests when the two are mated, `.mating.seat` (ADR 0110): a header's plastic top, a socket's body top. It is a fact of one part, true whatever it mates with, a range with the maker's tolerance, and comes from the `header` catalog's `mating.seat` column with the drawing in the row's `source` (2.50 +/- 0.20 mm for the std 2.54 mm headers, 8.50 +/- 0.15 mm for the sockets). Unset means unknown, never a default, and never the part's height, which is its tallest point.
+_Avoid_: Stack height (that is the _Mated height_), seating plane, insertion depth
+
+**Mated height**:
+The distance between the faces of the two boards of a _Mate_: the two connectors' _Seats_ added, with both tolerances (ADR 0110), so the std 2.54 mm header in the std socket gives 10.65 mm to 11.35 mm. The design stage gives it for each mate of a system (`netsmith_design::system_mates`); a mate with an unknown seat has none.
+_Avoid_: Stack height, board spacing, standoff height (a standoff is another part)
+
 **Ground group**:
 The ground nets of boards that mated ground contacts join, as the system view shows them (`carrier.GND + sensor.GND`). Each board keeps its own ground net; the system never merges them, it reports which ones are one ground. A mate that carries power or a signal must carry a ground contact.
 _Avoid_: Common ground, ground plane

@@ -125,6 +125,7 @@ fn columns(name: &str) -> Vec<(String, FieldKind)> {
             q("mating.rows", Dimension::NONE),
             q("mating.positions", Dimension::NONE),
             q("mating.pin_current", Dimension::CURRENT),
+            q("mating.seat", Dimension::LENGTH),
         ],
         other => panic!("no columns for {other}"),
     }
@@ -143,6 +144,7 @@ fn catalog(name: &str) -> Catalog {
         .map(String::from)
         .to_vec(),
         "n_mosfet" => vec!["on_resistance_vgs".to_string()],
+        "header" => vec!["mating.seat".to_string()],
         _ => Vec::new(),
     };
     Catalogs::jlcpcb()
@@ -1287,4 +1289,42 @@ fn every_header_and_socket_row_states_the_contact_rating_from_its_datasheet() {
     let c = row_of("header", "C42431810");
     assert_eq!(value(&c, "mating.pin_current"), quantity(3.0, "A"));
     assert_eq!(c.label, "Conn_01x10");
+}
+
+#[test]
+fn every_header_and_socket_row_states_its_seat_from_the_makers_drawing() {
+    // The seat (ADR 0110): how far above its board a mated connector's partner rests. A
+    // header's is the top of its plastic, 2.50 +/- 0.20 mm, and a socket's the top of its body,
+    // 8.50 +/- 0.15 mm, each from the drawing its `source` names, so the std pair mates at
+    // 10.65 mm to 11.35 mm.
+    for row in &records("jlcpcb/catalog/header.csv") {
+        let lcsc = &row["lcsc"];
+        let (cell, figure) = match row["mating.gender"].as_str() {
+            "header" => ("2.5mm +/- 0.2mm", "mating.seat: 2.50 +/- 0.20 mm"),
+            "socket" => ("8.5mm +/- 0.15mm", "mating.seat: 8.50 +/- 0.15 mm"),
+            other => panic!("{lcsc}: gender {other}"),
+        };
+        assert_eq!(row["mating.seat"], cell, "{lcsc}");
+        let entry = row["source"]
+            .split(" ; ")
+            .find(|e| e.starts_with("mating.seat:"))
+            .unwrap_or_else(|| panic!("{lcsc} has no `mating.seat:` source"));
+        assert!(
+            entry.starts_with(figure) && entry.contains("drawing") && entry.contains("side view"),
+            "{lcsc}: {entry}"
+        );
+    }
+    let header = value(&row_of("header", "C42431798"), "mating.seat");
+    let socket = value(&row_of("header", "C42431841"), "mating.seat");
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    assert!(
+        near(header.lo(), 2.3e-3) && near(header.hi(), 2.7e-3),
+        "{header}"
+    );
+    assert!(
+        near(socket.lo(), 8.35e-3) && near(socket.hi(), 8.65e-3),
+        "{socket}"
+    );
+    assert!(near(header.lo() + socket.lo(), 10.65e-3));
+    assert!(near(header.hi() + socket.hi(), 11.35e-3));
 }
