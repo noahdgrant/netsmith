@@ -2,7 +2,125 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]\n       netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--quiet] [--format text|json] [--notes all|summary|none]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>] [--step <file.step>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]\n       netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]";
+/// The usage lines of each command, in the order of [`COMMANDS`]: one entry for each command,
+/// with a line for each way to call it (`netsmith catalog` has three). [`USAGE`] and
+/// `netsmith --help` are made from this table, so a command adds its own lines here and
+/// touches no other command's.
+pub const USAGES: &[(&str, &[&str])] = &[
+    ("init", &["netsmith init [--name <name>]"]),
+    (
+        "build",
+        &[
+            "netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]",
+        ],
+    ),
+    (
+        "check",
+        &["netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]"],
+    ),
+    (
+        "fab",
+        &[
+            "netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--quiet] [--format text|json] [--notes all|summary|none]",
+        ],
+    ),
+    ("lock", &["netsmith lock (--update | --check) [<file.nsm>]"]),
+    ("editor", &["netsmith editor [<file.nsm>] [--port <n>]"]),
+    (
+        "board3d",
+        &[
+            "netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>] [--step <file.step>]",
+        ],
+    ),
+    (
+        "render",
+        &[
+            "netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]",
+        ],
+    ),
+    (
+        "view",
+        &[
+            "netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]",
+        ],
+    ),
+    (
+        "compare",
+        &[
+            "netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]",
+        ],
+    ),
+    (
+        "parity",
+        &[
+            "netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]",
+        ],
+    ),
+    (
+        "kicad-libs",
+        &["netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]"],
+    ),
+    (
+        "catalog",
+        &[
+            "netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]",
+            "netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]",
+            "netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]",
+        ],
+    ),
+    (
+        "dxf",
+        &[
+            "netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]",
+        ],
+    ),
+];
+
+/// The line of usage for `netsmith --version`, which is no entry of [`COMMANDS`].
+const VERSION_USAGE: &str = "netsmith --version";
+
+/// Every command's usage lines, made once from [`USAGES`] (`usage: ` and the lines of the
+/// commands, in the order of [`COMMANDS`], a line each, the second and the following indented).
+/// It reads as a `&str` and prints with `{USAGE}`.
+pub static USAGE: Usage = Usage(std::sync::LazyLock::new(usage_text));
+
+/// The type of [`USAGE`]: a text made at first use.
+pub struct Usage(std::sync::LazyLock<String>);
+
+impl std::ops::Deref for Usage {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// The usage lines of `command`, from [`USAGES`]; none for a name the table does not have.
+pub fn usage_lines(command: &str) -> &'static [&'static str] {
+    USAGES
+        .iter()
+        .find(|(name, _)| *name == command)
+        .map_or(&[], |(_, lines)| *lines)
+}
+
+fn usage_text() -> String {
+    let lines = std::iter::once(VERSION_USAGE).chain(
+        COMMANDS
+            .iter()
+            .flat_map(|(name, _)| usage_lines(name).iter().copied()),
+    );
+    let mut text = String::new();
+    for (i, line) in lines.enumerate() {
+        text.push_str(if i == 0 { "usage: " } else { "\n       " });
+        text.push_str(line);
+    }
+    text
+}
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -120,7 +238,7 @@ pub fn help() -> String {
     }
     text.push_str("  help        print this list (also --help, -h; `<command> --help` too)\n");
     text.push_str("  --version   print the version (also -V, version)\n\n");
-    text.push_str(USAGE);
+    text.push_str(&USAGE);
     text.push_str("\n\n`netsmith <command> --help` says what the flags of a command do.\n");
     text
 }
@@ -133,14 +251,7 @@ pub fn command_help(command: &str) -> String {
         .find(|(name, _)| *name == command)
         .map_or("", |(_, what)| *what);
     let mut text = format!("netsmith {command}: {what}\n\n");
-    let lines: Vec<&str> = USAGE
-        .trim_start_matches("usage: ")
-        .split('\n')
-        .map(str::trim)
-        .filter(|l| {
-            l.starts_with(&format!("netsmith {command} ")) || *l == format!("netsmith {command}")
-        })
-        .collect();
+    let lines = usage_lines(command);
     for (i, line) in lines.iter().enumerate() {
         text.push_str(if i == 0 { "usage: " } else { "       " });
         text.push_str(line);
@@ -1894,6 +2005,31 @@ mod tests {
             let e = parse(&line).unwrap_err();
             assert!(e.contains(says), "{args:?}: {e}");
         }
+    }
+
+    #[test]
+    fn every_command_has_its_usage_lines_and_the_usage_text_is_made_from_them() {
+        let names: Vec<&str> = COMMANDS.iter().map(|(name, _)| *name).collect();
+        let usage_names: Vec<&str> = USAGES.iter().map(|(name, _)| *name).collect();
+        assert_eq!(
+            names, usage_names,
+            "USAGES has one entry for each command, in order"
+        );
+        let mut expected = String::from("usage: netsmith --version");
+        for (name, lines) in USAGES {
+            assert!(!lines.is_empty(), "`{name}` has no usage line");
+            for line in *lines {
+                assert!(
+                    *line == format!("netsmith {name}")
+                        || line.starts_with(&format!("netsmith {name} ")),
+                    "`{name}`: {line}"
+                );
+                expected.push_str("\n       ");
+                expected.push_str(line);
+            }
+        }
+        assert_eq!(&*USAGE, expected);
+        assert_eq!(USAGE.to_string(), expected);
     }
 
     #[test]
