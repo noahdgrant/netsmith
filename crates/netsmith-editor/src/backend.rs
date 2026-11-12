@@ -123,6 +123,15 @@ pub struct Attachment {
     pub bytes: Vec<u8>,
 }
 
+/// The board's 3D scene as a `.glb` file (ADR 0105), and the layout stamp of the placement it
+/// was drawn from: the same as [`crate::api::PcbScene::layout_stamp`] for the same board, so the
+/// page can tell whether the 2D and the 3D view show one layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pcb3d {
+    pub glb: Vec<u8>,
+    pub layout_stamp: String,
+}
+
 /// How a long job tells the page what it is doing: one line at a time, as the command line
 /// prints them. It may be called from any thread.
 pub type Say = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
@@ -276,6 +285,13 @@ pub trait Backend: Send + Sync + 'static {
     /// The board as placed (and routed, if it was routed since the files were last read), with
     /// the drawing and what the canvas needs to find things in it.
     fn pcb_scene(&self, board: &str) -> Result<PcbScene, ApiError>;
+    /// The board placed (and routed) as [`Backend::pcb_scene`] has it, as glTF 2.0 binary:
+    /// the file `netsmith board3d --glb` writes for the same placement (ADR 0105).
+    fn pcb_3d(&self, board: &str) -> Result<Pcb3d, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no 3D scene of `{board}`"
+        )))
+    }
     /// What is wrong with the board as it is placed (and routed) now, with where: netsmith's
     /// own checks, and KiCad's if it was run on this layout.
     fn pcb_findings(&self, board: &str) -> Result<PcbFindings, ApiError>;

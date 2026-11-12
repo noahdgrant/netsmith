@@ -17,6 +17,7 @@ use super::draw::PadSpec;
 use super::ipc::{self, GULL_WING, Inside, Size};
 use super::outline::{Body, two_columns, two_columns_in};
 use super::params::Params;
+use crate::body3d::Package;
 use crate::footprint::Footprint;
 use crate::geometry::Pt;
 
@@ -183,7 +184,15 @@ fn sot23(s: &Sot23, library: &str, name: &str) -> Footprint {
             )
         })
         .collect();
-    two_columns(
+    let package = Package::GullWing {
+        body: s.body,
+        span: (s.overall.nominal(), s.body.1),
+        lead_width: s.lead_width.nominal(),
+        lead_length: s.lead_length.nominal(),
+        leads: super::leads_of(&pads, s.body),
+        exposed: None,
+    };
+    let footprint = two_columns(
         library,
         name,
         &format!(
@@ -197,7 +206,8 @@ fn sot23(s: &Sot23, library: &str, name: &str) -> Footprint {
             length: s.body.1,
         },
         GULL_WING.courtyard,
-    )
+    );
+    super::shaped(footprint, package)
 }
 
 /// Three 2.0 x 1.5 mm pads 2.3 mm apart on the left; the tab, 2.0 x 3.8 mm, on the right.

@@ -293,6 +293,15 @@ impl Backend for Fake {
         }
         Err(ApiError::not_found(board))
     }
+    fn pcb_3d(&self, board: &str) -> Result<netsmith_editor::Pcb3d, ApiError> {
+        if board != "Led" {
+            return Err(ApiError::not_found(format!("there is no board `{board}`")));
+        }
+        Ok(netsmith_editor::Pcb3d {
+            glb: b"glTF-of-Led".to_vec(),
+            layout_stamp: "1731340000-42".into(),
+        })
+    }
     fn pcb_findings(&self, board: &str) -> Result<netsmith_editor::api::PcbFindings, ApiError> {
         Err(ApiError::not_found(board))
     }
@@ -642,6 +651,26 @@ fn a_svg_is_served_as_svg_and_a_download_as_an_attachment() {
         r.headers
     );
     assert_eq!(r.body, "a,b\n");
+}
+
+#[test]
+fn the_3d_scene_is_served_as_gltf_binary_with_the_layout_stamp_of_its_placement() {
+    let s = start();
+    let r = s.get("/api/pcb/3d?board=Led");
+    assert_eq!(r.status, 200);
+    assert!(
+        r.headers.contains("content-type: model/gltf-binary"),
+        "{}",
+        r.headers
+    );
+    assert!(
+        r.headers.contains("x-netsmith-layout-stamp: 1731340000-42"),
+        "{}",
+        r.headers
+    );
+    assert_eq!(r.body, "glTF-of-Led");
+    assert_eq!(s.get("/api/pcb/3d?board=Nope").status, 404);
+    assert_eq!(s.get("/api/pcb/3d").status, 400, "the board is needed");
 }
 
 #[test]

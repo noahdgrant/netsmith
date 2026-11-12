@@ -647,14 +647,22 @@ fn no_lead(p: &Package, library: &str, name: &str) -> Footprint {
     exposed_pad(&mut drawing, leads + 1, p.exposed, p.paste);
 
     let body = (p.body.0.nominal(), p.body.1.nominal());
-    quad_frame(
+    let package = crate::body3d::Package::NoLead {
+        body,
+        lead_width: p.lead_width.nominal(),
+        lead_length: p.lead_length.nominal(),
+        leads: super::leads_of(&pads, body),
+        exposed: Some(p.exposed),
+    };
+    let footprint = quad_frame(
         drawing,
         &pads,
         n_down,
         n_across,
         body,
         FLAT_NO_LEAD.courtyard,
-    )
+    );
+    super::shaped(footprint, package)
 }
 
 /// The exposed pad at the centre, numbered `number`, with the paste on it cut into

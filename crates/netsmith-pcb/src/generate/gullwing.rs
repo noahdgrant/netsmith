@@ -464,7 +464,15 @@ fn gull_wing(p: &Package, library: &str, name: &str) -> Footprint {
         p.lead_width,
     );
     let pads = dual_pads(p.pins / 2, p.pitch, &land);
-    two_columns(
+    let package = crate::body3d::Package::GullWing {
+        body: p.body,
+        span: (p.overall.nominal(), p.body.1),
+        lead_width: p.lead_width.nominal(),
+        lead_length: p.lead_length.nominal(),
+        leads: super::leads_of(&pads, p.body),
+        exposed: None,
+    };
+    let footprint = two_columns(
         library,
         name,
         &format!(
@@ -478,5 +486,6 @@ fn gull_wing(p: &Package, library: &str, name: &str) -> Footprint {
             length: p.body.1,
         },
         class.courtyard,
-    )
+    );
+    super::shaped(footprint, package)
 }
