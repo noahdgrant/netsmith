@@ -27,27 +27,50 @@ pub struct Args {
     /// drawn at where there is room.
     #[arg(long, value_name = "X", value_parser = parse_margin)]
     pub margin: Option<f64>,
+    /// What a 45 degree bend costs the search, in tenths of a mm of track (the router's own is 25).
+    ///
+    /// For experiments on the router: a change that is only luck moves the result when the turn
+    /// cost moves by one. The scorecard's robustness line routes at 24, 25, 26 and 27.
+    #[arg(long, value_name = "N", value_parser = parse_turn)]
+    pub turn: Option<i64>,
+    /// Try at most this many orders of the lines, at least 1; each try routes the whole board.
+    ///
+    /// With `--route-timeout 0` and `--tries 1` a run is one try to its end, which is what the
+    /// scorecard's robustness line measures.
+    #[arg(long, value_name = "N", value_parser = parse_tries)]
+    pub tries: Option<usize>,
+    /// Draw the try that gave the result as PNG pictures an agent can open.
+    ///
+    /// `stage-1-first-pass.png`, `stage-2-rip-up.png`, `stage-3-negotiation.png` (when it ran) and
+    /// `stage-4-final.png`: each the copper that stage left (front red, back blue), the pads and
+    /// vias, and the lines still left bright magenta on top; and `crowding.png`, the crowding map
+    /// over the board, yellow to red where the searches fought most. Pictures of an earlier run
+    /// that this one does not draw are removed.
+    #[arg(long)]
+    pub stages: bool,
 }
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
 pub fn run(args: Args) -> ExitCode {
-    run_route(
-        &args.file,
-        args.out.as_deref(),
-        args.route_timeout,
-        args.margin,
-    )
+    let request = netsmith::placed::RouteRequest {
+        route_timeout: match args.route_timeout {
+            Some(0) => None,
+            Some(secs) => Some(Duration::from_secs(secs)),
+            None => FabOptions::default().route_timeout,
+        },
+        margin: args.margin,
+        progress: Some(|message| eprintln!("{message}")),
+        turn: args.turn,
+        tries: args.tries,
+        stages: args.stages,
+    };
+    run_route(&args.file, args.out.as_deref(), request)
 }
 
 /// `netsmith route`: route the placed board that `fab --save-placed` wrote, alone, and write
 /// its board files into `out` (`out/` when `None`). Exits 1 when connections are left, 2 when
 /// the file cannot be read or the files cannot be written.
-fn run_route(
-    file: &Path,
-    out: Option<&Path>,
-    route_timeout: Option<u64>,
-    margin: Option<f64>,
-) -> ExitCode {
+fn run_route(file: &Path, out: Option<&Path>, request: netsmith::placed::RouteRequest) -> ExitCode {
     let placed = match fs::read_to_string(file)
         .map_err(|e| e.to_string())
         .and_then(|text| netsmith::placed::from_json(&text))
@@ -57,15 +80,6 @@ fn run_route(
             eprintln!("error: {}: {e}", file.display());
             return ExitCode::from(2);
         }
-    };
-    let request = netsmith::placed::RouteRequest {
-        route_timeout: match route_timeout {
-            Some(0) => None,
-            Some(secs) => Some(Duration::from_secs(secs)),
-            None => FabOptions::default().route_timeout,
-        },
-        margin,
-        progress: Some(|message| eprintln!("{message}")),
     };
     let out = out.unwrap_or(Path::new("out"));
     let routed = match netsmith::placed::route(placed, out, &request, &|m| eprintln!("{m}")) {
@@ -102,6 +116,26 @@ fn run_route(
     }
 }
 
+fn parse_turn(given: &str) -> Result<i64, String> {
+    given
+        .parse::<i64>()
+        .ok()
+        .filter(|t| (0..=10_000).contains(t))
+        .ok_or_else(|| {
+            format!(
+                "takes a whole number from 0 to 10000 (tenths of a mm of track; the router's own is 25), not `{given}`"
+            )
+        })
+}
+
+fn parse_tries(given: &str) -> Result<usize, String> {
+    given
+        .parse::<usize>()
+        .ok()
+        .filter(|&n| n >= 1)
+        .ok_or_else(|| format!("takes a whole number of at least 1, not `{given}`"))
+}
+
 fn parse_margin(given: &str) -> Result<f64, String> {
     given
         .parse::<f64>()
@@ -136,6 +170,9 @@ mod tests {
                 out: Some("o".into()),
                 route_timeout: Some(0),
                 margin: Some(2.5),
+                turn: None,
+                tries: None,
+                stages: false,
             }))
         );
         assert_eq!(kind(&["route"]), ErrorKind::MissingRequiredArgument);
@@ -143,6 +180,46 @@ mod tests {
             let e = parse(&["route", "b.json", "--margin", bad]).unwrap_err();
             assert!(
                 e.contains("1 (the process's least track) to 4"),
+                "{bad}: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn route_takes_a_turn_cost_a_number_of_tries_and_stages_for_experiments() {
+        assert_eq!(
+            parse(&[
+                "route",
+                "b.placed.json",
+                "--turn",
+                "27",
+                "--tries",
+                "1",
+                "--stages",
+                "--route-timeout",
+                "0",
+            ]),
+            Ok(Command::Route(route::Args {
+                file: "b.placed.json".into(),
+                out: None,
+                route_timeout: Some(0),
+                margin: None,
+                turn: Some(27),
+                tries: Some(1),
+                stages: true,
+            }))
+        );
+        for bad in ["-1", "2.5", "steep", "10001"] {
+            let e = parse(&["route", "b.placed.json", "--turn", bad]).unwrap_err();
+            assert!(
+                e.contains("takes a whole number from 0 to 10000"),
+                "{bad}: {e}"
+            );
+        }
+        for bad in ["0", "-1", "many"] {
+            let e = parse(&["route", "b.placed.json", "--tries", bad]).unwrap_err();
+            assert!(
+                e.contains("takes a whole number of at least 1"),
                 "{bad}: {e}"
             );
         }

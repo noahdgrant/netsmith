@@ -761,7 +761,10 @@ fn fab_board(
             route_with_margin(
                 &mut board,
                 options.route_timeout,
-                options.progress,
+                RouteOptions {
+                    progress: options.progress,
+                    ..RouteOptions::default()
+                },
                 options.track_margin,
                 say,
             )
@@ -1876,11 +1879,13 @@ fn designator_key(designator: &str) -> (String, u32) {
 /// time, and a board it leaves unfinished is routed again from the same placement at the
 /// process's least track, in what is left. The short trial keeps a board that has no room for
 /// the margin from spending most of its time on it first.
-/// `netsmith route` routes a saved placed board with it too, so the two route alike.
+/// `netsmith route` routes a saved placed board with it too, so the two route alike. `base`
+/// gives the router's other options (`fab` gives the defaults, `route` may set the costs, the
+/// tries and the snapshots); its time limit and retries are set here.
 pub fn route_with_margin(
     board: &mut Board,
     route_timeout: Option<Duration>,
-    progress: Option<fn(&str)>,
+    base: RouteOptions,
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_place_route::Routing {
@@ -1890,8 +1895,7 @@ pub fn route_with_margin(
             RouteOptions {
                 retry_orders: full,
                 time_limit: time,
-                progress,
-                ..RouteOptions::default()
+                ..base
             },
         )
     };

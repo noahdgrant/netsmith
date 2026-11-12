@@ -137,3 +137,118 @@ fn route_refuses_a_file_it_cannot_read_with_exit_code_two() {
     assert_eq!(run.status.code(), Some(2));
     assert!(!dir.join("out").exists(), "nothing is written");
 }
+
+/// The width and height a PNG's header gives, after checking its signature.
+fn png_size(bytes: &[u8]) -> (u32, u32) {
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n", "not a PNG");
+    assert_eq!(&bytes[12..16], b"IHDR");
+    let be = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+    (be(16), be(20))
+}
+
+#[test]
+fn route_with_stages_draws_a_png_of_each_stage_and_the_crowding_the_same_each_run() {
+    let examples = repo().join("examples");
+    let dir = TempDir::new("route-stages");
+    let saved = dir.join("saved");
+    ok(&netsmith(
+        &examples,
+        &[
+            "fab",
+            "led.nsm",
+            "--out",
+            saved.to_str().unwrap(),
+            "--locked",
+            "--save-placed",
+        ],
+    ));
+    let placed = saved.join("LedExample/LedExample.placed.json");
+    let route = |out: &Path, more: &[&str]| {
+        let mut args = vec![
+            "route",
+            placed.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ];
+        args.extend_from_slice(more);
+        let run = netsmith(&examples, &args);
+        ok(&run);
+        String::from_utf8_lossy(&run.stdout).into_owned()
+    };
+    let (plain, a, b) = (dir.join("plain"), dir.join("a"), dir.join("b"));
+    route(&plain, &[]);
+    let said = route(&a, &["--stages"]);
+    route(&b, &["--stages"]);
+    // No picture without the flag.
+    assert!(!plain.join("crowding.png").exists(), "{:?}", names(&plain));
+    // The pictures change no copper.
+    let pcb = |d: &Path| std::fs::read_to_string(d.join("LedExample.kicad_pcb")).unwrap();
+    assert_eq!(pcb(&a), pcb(&plain));
+    let pictures: Vec<String> = names(&a)
+        .into_iter()
+        .filter(|n| n.ends_with(".png"))
+        .collect();
+    assert!(
+        pictures.contains(&"stage-1-first-pass.png".to_string())
+            && pictures.contains(&"stage-4-final.png".to_string())
+            && pictures.contains(&"crowding.png".to_string()),
+        "{pictures:?}"
+    );
+    for name in &pictures {
+        assert!(said.contains(name.as_str()), "{name} not in {said}");
+        let bytes = std::fs::read(a.join(name)).unwrap();
+        let (w, h) = png_size(&bytes);
+        assert_eq!(w.max(h), 1600, "{name}: {w} x {h}");
+        assert!(w.min(h) > 100, "{name}: {w} x {h}");
+        assert_eq!(
+            bytes,
+            std::fs::read(b.join(name)).unwrap(),
+            "{name} differs"
+        );
+    }
+    // A later run without the flag takes the pictures away.
+    route(&a, &[]);
+    assert!(
+        !names(&a).iter().any(|n| n.ends_with(".png")),
+        "{:?}",
+        names(&a)
+    );
+}
+
+#[test]
+fn route_with_one_try_makes_one_and_takes_a_turn_cost() {
+    let examples = repo().join("examples");
+    let dir = TempDir::new("route-tries");
+    let saved = dir.join("saved");
+    ok(&netsmith(
+        &examples,
+        &[
+            "fab",
+            "led.nsm",
+            "--out",
+            saved.to_str().unwrap(),
+            "--locked",
+            "--save-placed",
+        ],
+    ));
+    let placed = saved.join("LedExample/LedExample.placed.json");
+    let out = dir.join("one");
+    let run = netsmith(
+        &examples,
+        &[
+            "route",
+            placed.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+            "--tries",
+            "1",
+            "--route-timeout",
+            "0",
+            "--turn",
+            "26",
+        ],
+    );
+    ok(&run);
+    let said = String::from_utf8_lossy(&run.stdout);
+    assert!(said.contains("(1 tries)"), "{said}");
+}
