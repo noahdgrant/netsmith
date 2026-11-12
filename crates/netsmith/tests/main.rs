@@ -53,6 +53,7 @@ mod orbit;
 mod orbit_parity;
 mod order;
 mod order_lock;
+mod output;
 mod overhang;
 mod own_part;
 mod panel;

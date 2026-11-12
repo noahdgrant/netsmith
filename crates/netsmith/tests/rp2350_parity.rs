@@ -1253,8 +1253,8 @@ fn rp2350_minimal_pcb_matches_raspberry_pi() {
         parts: 43,
         min_ok: 225,
         route_seconds: ROUTE_SECONDS,
-        regenerate: "from examples/rp2350_minimal run `netsmith fab --locked`, then\n  cargo run -p \
-                     netsmith --example parity -- fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
+        regenerate: "from examples/rp2350_minimal run `netsmith fab --locked`, then\n  netsmith \
+                     parity fab/Rp2350Minimal/Rp2350Minimal.kicad_pcb \
                      --svg reference/parity-overlay.svg",
         known_failures: &[],
     });
