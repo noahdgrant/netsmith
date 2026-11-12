@@ -251,7 +251,8 @@ impl Painter {
             .map(|v| disc(pt(v.at), v.drill / 2.0))
             .collect();
         c.fill(&drills, BACKGROUND, 255);
-        let lines: Vec<&netsmith_pcb::Ratline> = stage.left.iter().filter(|l| !l.to_plane).collect();
+        let lines: Vec<&netsmith_pcb::Ratline> =
+            stage.left.iter().filter(|l| !l.to_plane).collect();
         let paths: Vec<Vec<Point>> = lines
             .iter()
             .map(|l| vec![pt(l.from_at), pt(l.to_at)])

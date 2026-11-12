@@ -9,12 +9,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use netsmith_pcb::{Board, Costs, RouteOptions, kicad_pcb, kicad_pro, picture, svg};
+use netsmith_pcb::{Board, kicad_pcb, kicad_pro, svg};
+use netsmith_place_route::{Costs, RouteOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::fab::{
     ROUTING_FAILURE, ROUTING_REPORT, route_with_margin, routing_failure, routing_report,
 };
+use crate::picture;
 
 /// The version of the file's layout. A file of another version is refused, since the board's
 /// fields change with netsmith: save the board again with the `fab` of this build.
