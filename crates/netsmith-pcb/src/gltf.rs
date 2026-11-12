@@ -392,7 +392,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                 "z_top_mm": z_top,
             }),
         );
-        node.mesh = piece.body.as_ref().and_then(|m| b.mesh(&body.refdes, &[m]));
+        node.mesh = b.mesh(&body.refdes, &piece.body.iter().collect::<Vec<_>>());
         root.children.push(node);
     }
 

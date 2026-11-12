@@ -295,7 +295,7 @@ fn the_rules_come_from_the_source_and_reach_the_router_and_the_project_file() {
         board
             .vias
             .iter()
-            .all(|v| v.drill == 0.15 && v.diameter == 0.51)
+            .all(|v| v.drill == 0.2 && v.diameter == 0.45)
     );
     let pro = netsmith_pcb::kicad_pro(&board);
     assert!(pro.contains(r#""min_track_width": 0.1"#), "{pro}");
@@ -308,10 +308,18 @@ fn narrowing_a_rule_in_the_source_changes_the_tracks_and_the_project_file() {
         ".min_track &= 0.3mm..1m",
         ".min_clearance &= 0.25mm..1m",
         ".min_drill &= 0.4mm..1m",
+        // A hole that big needs a via of its own: the process's offer is 0.2 in 0.45 mm.
+        ".via_drill &= 0.4mm",
+        ".via_diameter &= 0.8mm",
     ]);
     assert!(route(&mut board).is_empty());
     assert!(board.tracks.iter().all(|t| t.width == 0.3));
-    assert!(board.vias.iter().all(|v| v.drill == 0.4));
+    assert!(
+        board
+            .vias
+            .iter()
+            .all(|v| v.drill == 0.4 && v.diameter == 0.8)
+    );
     let pro = netsmith_pcb::kicad_pro(&board);
     for line in [
         r#""min_track_width": 0.3"#,

@@ -29,6 +29,7 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
             HeightProvenance::Unknown
         },
         pins: Pins::None,
+        shape: None,
     }
 }
 
@@ -80,6 +81,12 @@ fn scene() -> Scene {
                 plated: true,
             }],
         },
+        // The glTF has no copper yet.
+        copper: Ok(crate::scene3d::SceneCopper {
+            layers: Vec::new(),
+            vias: Vec::new(),
+            mask: Vec::new(),
+        }),
         bodies: vec![
             body("j1", "J1", plan(20.0, 5.0), plan(24.0, 9.0), None),
             tall,

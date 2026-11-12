@@ -217,10 +217,13 @@ const CHAIN_SEARCHES: usize = 600;
 const CHAIN_TOTAL: usize = 3000;
 const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
 
-/// The most times the whole board is routed, each with the lines in another order. Putting
-/// the lines of a fine-pitch grid first is one more order, so the last of the others is
-/// dropped for it: a board is routed at most as many times as before.
-const MOST_TRIES: usize = 4;
+/// The most times the whole board is routed, each with the lines in another order: the lines
+/// of a fine-pitch grid first, shortest first, longest first, by net and in reverse net order.
+/// A board that routes on the first order is routed once; the fifth order (reverse net order)
+/// was dropped while there were four, and it finishes the invented mixed board on seed 2 since
+/// the via became 0.2 in 0.45 mm (issue #431), so it costs time only on a board that the other
+/// four leave unfinished.
+const MOST_TRIES: usize = 5;
 
 /// What a move costs, in tenths of a millimetre of track.
 const STEP: i64 = 10;
@@ -237,6 +240,12 @@ const SOFT_VIA: i64 = 300;
 /// A step through a cell where the track has to be narrower costs this much more: a necked
 /// down track carries less and is harder to make, so it is kept short.
 const NECK: i64 = 30;
+/// How far from the pads of a part that one of a line's ends is on, in mm (from the box round
+/// the centres of the part's pads), a track may be necked down to the process's least width
+/// whatever its current: the escape from a fine-pitch part, whose pads are no wider than the
+/// neck and carry the same current into it. Elsewhere a track is no narrower than its net's
+/// current needs (issue #431).
+pub const NECK_REACH: f64 = 1.0;
 
 const FRONT: usize = 0;
 const BACK: usize = 1;
@@ -479,6 +488,13 @@ struct Masks {
     /// track the process makes: a track through a cell of this is necked down there. `None`
     /// when `track` is for the full width.
     wide: Option<[Vec<bool>; 2]>,
+    /// Of the necked cells, those near the line's own pads where only the process's least track
+    /// fits: elsewhere a necked track is the width its current needs. `None` when the two are
+    /// one width.
+    pinch: Option<[Vec<bool>; 2]>,
+    /// Where a via could stand before [`Router::room_for_vias`] kept only the cells with room
+    /// for a cluster: where the others of a cluster stand. `None` when it did not run.
+    via_alone: Option<Vec<bool>>,
     /// How often lines have fought over each cell while the router negotiated, which makes
     /// a track through it dearer. Empty when it is not negotiating.
     history: [Vec<u8>; 2],
@@ -500,6 +516,8 @@ impl Masks {
             track: [vec![false; window.cells()], vec![false; window.cells()]],
             via: vec![false; window.cells()],
             wide: None,
+            pinch: None,
+            via_alone: None,
             history: [Vec::new(), Vec::new()],
             soft: None,
         }
@@ -512,6 +530,16 @@ impl Masks {
     /// Whether a track on the cell has to be necked down.
     fn necked(&self, layer: usize, i: usize, j: usize) -> bool {
         self.wide.as_ref().is_some_and(|w| w[layer][self.at(i, j)])
+    }
+
+    /// How narrow a track on the cell is: 0 at full width, 1 necked to the width its current
+    /// needs, 2 pinched to the process's least.
+    fn neck(&self, layer: usize, i: usize, j: usize) -> u8 {
+        if self.pinch.as_ref().is_some_and(|p| p[layer][self.at(i, j)]) {
+            2
+        } else {
+            u8::from(self.necked(layer, i, j))
+        }
     }
 
     /// What it costs, beyond a step, to put a track on a cell that other nets' routed copper
@@ -997,19 +1025,19 @@ fn search(
 /// Straight runs through a list of cells on one layer; a single cell has none.
 #[cfg(test)]
 fn runs(grid: &Grid, cells: &[(usize, usize)]) -> Vec<(Pt, Pt)> {
-    let none = vec![false; cells.len()];
+    let none = vec![0u8; cells.len()];
     runs_with(grid, cells, &none)
         .into_iter()
         .map(|(a, b, _)| (a, b))
         .collect()
 }
 
-/// [`runs`], where a step to or from a cell in `neck` is a run of its own, marked as
-/// necked down, so that the track is drawn narrow there and wide elsewhere.
-fn runs_with(grid: &Grid, cells: &[(usize, usize)], neck: &[bool]) -> Vec<(Pt, Pt, bool)> {
+/// [`runs`], where a step to or from a cell of `neck` above 0 is a run of its own, marked with
+/// the narrower of its two cells, so that the track is drawn narrow there and wide elsewhere.
+fn runs_with(grid: &Grid, cells: &[(usize, usize)], neck: &[u8]) -> Vec<(Pt, Pt, u8)> {
     let mut out = Vec::new();
     let mut start = 0;
-    let narrow = |a: usize, b: usize| neck[a] || neck[b];
+    let narrow = |a: usize, b: usize| neck[a].max(neck[b]);
     for k in 1..cells.len() {
         let step = |a: usize, b: usize| {
             (
@@ -1170,11 +1198,12 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                 // A hole with no copper (a mounting hole, a pogo-pin pad) still keeps
                 // copper and other holes away from its edge.
                 if let Some((a, b, radius)) = part.hole(pad) {
+                    // The page's "NPTH to track" (issue #431).
                     list.push(Obstacle {
                         net: None,
                         layers: [true, true],
                         form: Form::Segment(a, b, radius),
-                        clearance: rules.clearance + MARGIN,
+                        clearance: rules.clearance.max(rules.hole_clearance) + MARGIN,
                     });
                     // A via's hole keeps `hole_to_hole` from this hole's edge.
                     via_keepouts.push((
@@ -1185,10 +1214,27 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                 continue;
             }
             let bounds = part.pad_bounds(pad);
+            let pad_net = net_of
+                .get(&(part.refdes.as_str(), pad.number.as_str()))
+                .copied();
+            // A track keeps the page's "PTH to track" from a plated pad's hole, and "NPTH to
+            // track" from a hole with copper round it that is not plated (issue #431); the pad's
+            // copper and its clearance usually keep more.
+            if let Some((a, b, radius)) = part.hole(pad) {
+                let keep = if pad.kind == crate::footprint::PadKind::NpThruHole {
+                    rules.hole_clearance
+                } else {
+                    rules.plated_hole_clearance
+                };
+                list.push(Obstacle {
+                    net: pad_net,
+                    layers: [true, true],
+                    form: Form::Segment(a, b, radius),
+                    clearance: keep + MARGIN,
+                });
+            }
             list.push(Obstacle {
-                net: net_of
-                    .get(&(part.refdes.as_str(), pad.number.as_str()))
-                    .copied(),
+                net: pad_net,
                 layers: [front, back],
                 form: Form::Rect(bounds),
                 // The larger of the board's clearance and the pad's own, as the design
@@ -1422,6 +1468,111 @@ impl<'a> Router<'a> {
         self.board.track_width(&self.lines[line].net)
     }
 
+    /// The narrowest a line's track may be necked down to away from its pads: the width its
+    /// net's current needs (issue #431), and no wider than the track itself.
+    fn neck_width(&self, line: usize) -> f64 {
+        self.board
+            .least_width(&self.lines[line].net)
+            .min(self.width_of(line))
+    }
+
+    /// For a net whose current one via does not carry, leave a cell open for a via only where
+    /// the others fit beside it (issue #431, [`crate::parallel`]): enough cells a cluster's step
+    /// away, on the four straight or the four diagonal directions, open for a via too.
+    fn room_for_vias(&self, line: usize, masks: &mut Masks) {
+        if self.vias_needed(line) <= 1 {
+            return;
+        }
+        let w = masks.window;
+        let keep: Vec<bool> = (0..w.cells())
+            .map(|c| {
+                masks.via[c]
+                    || self
+                        .cluster_cells(line, masks, w.i0 + c % w.nx, w.j0 + c / w.nx)
+                        .is_none()
+            })
+            .collect();
+        masks.via_alone = Some(std::mem::replace(&mut masks.via, keep));
+    }
+
+    /// How many vias side by side the line's net needs where it changes layer.
+    fn vias_needed(&self, line: usize) -> usize {
+        let net = &self.lines[line].net;
+        self.board
+            .net_currents
+            .iter()
+            .find(|c| &c.net == net)
+            .map_or(1, |c| c.vias)
+    }
+
+    /// Where the other vias of the line's cluster stand round a via at cell (i, j): a cluster's
+    /// step from its centre (their copper overlaps, their holes keep the via-to-via space), on
+    /// the four straight directions or else the four diagonal ones, the first whose nearest
+    /// cells the masks leave open for a via, in that order. `None` if too few are open.
+    fn cluster_cells(&self, line: usize, masks: &Masks, i: usize, j: usize) -> Option<Vec<Pt>> {
+        let want = self.vias_needed(line).saturating_sub(1).min(4);
+        let rules = &self.board.rules;
+        let step = rules.via_hole_to_hole + rules.via_drill + crate::parallel::MARGIN;
+        let w = masks.window;
+        let centre = self.grid.centre(i, j);
+        let open = |p: Pt| {
+            let (a, b) = (
+                ((p.x - self.grid.origin.x) / PITCH).round(),
+                ((p.y - self.grid.origin.y) / PITCH).round(),
+            );
+            if a >= 0.0 && b >= 0.0 && w.contains(a as usize, b as usize) {
+                let alone = masks.via_alone.as_ref().unwrap_or(&masks.via);
+                !alone[w.index(a as usize, b as usize)]
+            } else {
+                false
+            }
+        };
+        let r = std::f64::consts::FRAC_1_SQRT_2;
+        for set in [
+            [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)],
+            [(r, r), (-r, r), (-r, -r), (r, -r)],
+        ] {
+            let found: Vec<Pt> = set
+                .iter()
+                .map(|(a, b)| Pt::new(centre.x + a * step, centre.y + b * step))
+                .filter(|&p| open(p))
+                .take(want)
+                .collect();
+            if found.len() >= want {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Whether a point is within `reach` of the pads of a part an end of the line is on.
+    fn near_end_by(&self, line: usize, p: Pt, reach: f64) -> bool {
+        let l = &self.lines[line];
+        let near = |refdes: &str| {
+            self.board
+                .neck_box(refdes)
+                .is_some_and(|b| b.expanded(reach).contains(&Rect::new(p, p)))
+        };
+        near(&l.from.refdes) || (!l.to_plane && near(&l.to.refdes))
+    }
+
+    /// Whether a point is within [`NECK_REACH`] of the pads of a part an end of the line is on.
+    fn near_end(&self, line: usize, p: Pt) -> bool {
+        self.near_end_by(line, p, NECK_REACH)
+    }
+
+    /// For each cell of the window, whether it is within [`NECK_REACH`] of the line's pads.
+    fn near_ends(&self, line: usize, window: Window) -> Vec<bool> {
+        (0..window.cells())
+            .map(|c| {
+                let (i, j) = (window.i0 + c % window.nx, window.j0 + c / window.nx);
+                // A cell a step inside the reach, so that the step out of the last pinched cell,
+                // which is drawn at the pinched width, stays within it.
+                self.near_end_by(line, self.grid.centre(i, j), NECK_REACH - PITCH * 1.5)
+            })
+            .collect()
+    }
+
     /// Whether the time limit has passed, or the caller asked for the router to stop.
     fn out_of_time(&self) -> bool {
         // A job that was cancelled (`fab`) ends here; the flag below stops the router and
@@ -1473,7 +1624,7 @@ impl<'a> Router<'a> {
                 // Another via's hole keeps its distance, whatever the net.
                 keepouts.push((
                     Form::Circle(v.at, 0.0),
-                    rules.hole_to_hole + rules.via_drill + MARGIN,
+                    rules.via_hole_to_hole + rules.via_drill + MARGIN,
                 ));
             }
         }
@@ -1573,20 +1724,50 @@ impl<'a> Router<'a> {
                 },
             );
             // With the least room, a track that cannot pass between two pads at its full
-            // width may pass at the narrowest the process makes.
+            // width may pass necked down: to the width its current needs anywhere, and to the
+            // narrowest the process makes within `NECK_REACH` of the line's own pads.
+            let floor = self.neck_width(line);
             if room == ROOM_TIGHT && track_width > rules.min_track_width + 1e-9 {
-                let narrow = self.masks(
-                    window,
-                    net,
-                    (hard, hard_keepouts),
-                    (soft_list, soft_keepouts),
-                    Reach {
-                        room,
-                        width: rules.min_track_width,
-                    },
-                );
-                masks.wide = Some(std::mem::replace(&mut masks.track, narrow.track));
+                let reach = |width| Reach { room, width };
+                let mut narrow = self
+                    .masks(
+                        window,
+                        net,
+                        (hard, hard_keepouts),
+                        (soft_list, soft_keepouts),
+                        reach(floor),
+                    )
+                    .track;
+                if floor > rules.min_track_width + 1e-9 {
+                    let thin = self
+                        .masks(
+                            window,
+                            net,
+                            (hard, hard_keepouts),
+                            (soft_list, soft_keepouts),
+                            reach(rules.min_track_width),
+                        )
+                        .track;
+                    let near = self.near_ends(line, window);
+                    let pinch = [FRONT, BACK].map(|l| {
+                        (0..window.cells())
+                            .map(|c| narrow[l][c] && !thin[l][c] && near[c])
+                            .collect::<Vec<bool>>()
+                    });
+                    for l in [FRONT, BACK] {
+                        for c in 0..window.cells() {
+                            if pinch[l][c] {
+                                narrow[l][c] = false;
+                            }
+                        }
+                    }
+                    masks.pinch = Some(pinch);
+                }
+                if floor < track_width - 1e-9 || masks.pinch.is_some() {
+                    masks.wide = Some(std::mem::replace(&mut masks.track, narrow));
+                }
             }
+            self.room_for_vias(line, &mut masks);
             self.add_history(&mut masks);
             match link(&masks, from, goal, extras) {
                 Link::Joined => {}
@@ -1644,7 +1825,8 @@ impl<'a> Router<'a> {
     /// "routed" mean that netsmith's own design rules check finds the copper clear.
     fn settled(&self, mut routed: Routed, net: usize, obstacles: &[&Obstacle]) -> Option<Routed> {
         let rules = &self.board.rules;
-        let narrowest = rules.min_track_width;
+        let floor = self.neck_width(routed.line);
+        let line = routed.line;
         let others: Vec<&&Obstacle> = obstacles.iter().filter(|o| o.net != Some(net)).collect();
         // The space the rules ask for: an obstacle's clearance has the router's margin on it.
         let apart = |o: &Obstacle| o.clearance - MARGIN - EXACT_SLACK;
@@ -1662,10 +1844,22 @@ impl<'a> Router<'a> {
                 })
             };
             if !clear(track.width) {
-                if track.width <= narrowest + 1e-9 || !clear(narrowest) {
-                    return None;
-                }
-                track.width = narrowest;
+                // Narrower, but not below what the current needs, except near the line's pads.
+                let steps = ((track.from.distance(track.to) / 0.05).ceil() as usize).max(1);
+                let near = (0..=steps).all(|k| {
+                    let t = k as f64 / steps as f64;
+                    let p = Pt::new(
+                        track.from.x + (track.to.x - track.from.x) * t,
+                        track.from.y + (track.to.y - track.from.y) * t,
+                    );
+                    self.near_end(line, p)
+                });
+                let narrowest = if near { rules.min_track_width } else { floor };
+                let width = [floor, narrowest]
+                    .into_iter()
+                    .filter(|&w| w < track.width - 1e-9)
+                    .find(|&w| clear(w))?;
+                track.width = width;
             }
         }
         for via in &routed.vias {
@@ -1713,15 +1907,14 @@ impl<'a> Router<'a> {
         masks: &Masks,
     ) -> Routed {
         let rules = &self.board.rules;
-        // A track through a cell that is too tight for the full width is the narrowest.
-        let width_of = |necked: bool| {
-            if necked {
-                rules.min_track_width
-            } else {
-                self.width_of(line)
-            }
+        // A track through a cell that is too tight for the full width is necked down: to the
+        // width its current needs, or near its pads to the narrowest.
+        let width_of = |neck: u8| match neck {
+            0 => self.width_of(line),
+            1 => self.neck_width(line),
+            _ => rules.min_track_width,
         };
-        let necked = |&(i, j, layer): &Spot| masks.necked(layer, i, j);
+        let necked = |&(i, j, layer): &Spot| masks.neck(layer, i, j);
         let l = &self.lines[line];
         let mut tracks: Vec<Track> = Vec::new();
         let mut vias: Vec<Via> = Vec::new();
@@ -1732,7 +1925,7 @@ impl<'a> Router<'a> {
             }
             let layer = path[start].2;
             let cells: Vec<(usize, usize)> = path[start..k].iter().map(|s| (s.0, s.1)).collect();
-            let neck: Vec<bool> = path[start..k].iter().map(necked).collect();
+            let neck: Vec<u8> = path[start..k].iter().map(necked).collect();
             for (a, b, narrow) in runs_with(&self.grid, &cells, &neck) {
                 tracks.push(Track {
                     net: l.net.clone(),
@@ -1749,6 +1942,18 @@ impl<'a> Router<'a> {
                     diameter: rules.via_diameter,
                     drill: rules.via_drill,
                 });
+                // The others of its cluster, where the masks left room (issue #431).
+                for at in self
+                    .cluster_cells(line, masks, path[k].0, path[k].1)
+                    .unwrap_or_default()
+                {
+                    vias.push(Via {
+                        net: l.net.clone(),
+                        at,
+                        diameter: rules.via_diameter,
+                        drill: rules.via_drill,
+                    });
+                }
             }
             start = k;
         }
@@ -2322,6 +2527,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         board.tracks.extend(r.tracks);
         board.vias.extend(r.vias);
     }
+    // A via that does not carry its net's current gets others beside it (issue #431).
+    crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);
     Routing {
@@ -2411,14 +2618,14 @@ mod tests {
     fn a_run_through_cells_that_need_a_narrow_track_is_a_run_of_its_own() {
         let (grid, _) = open_grid();
         let cells: Vec<(usize, usize)> = (0..10).map(|i| (i, 5)).collect();
-        let mut neck = vec![false; 10];
+        let mut neck = vec![0u8; 10];
         for n in &mut neck[4..7] {
-            *n = true;
+            *n = 1;
         }
         let runs = runs_with(&grid, &cells, &neck);
         // Wide up to the first necked cell, narrow through it, wide again after.
-        let widths: Vec<bool> = runs.iter().map(|r| r.2).collect();
-        assert_eq!(widths, [false, true, false], "{runs:?}");
+        let widths: Vec<u8> = runs.iter().map(|r| r.2).collect();
+        assert_eq!(widths, [0, 1, 0], "{runs:?}");
         assert_eq!(runs[0].1, runs[1].0);
         assert_eq!(runs[1].1, runs[2].0);
         assert_eq!(runs[0].0, Pt::new(0.0, 0.5));

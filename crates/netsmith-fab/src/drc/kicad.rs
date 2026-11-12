@@ -190,7 +190,7 @@ pub fn compare(ours: &Report, kicad: &[Reported], tolerance: f64) -> Comparison 
     let mut c = Comparison::default();
     let mut taken = vec![false; kicad.len()];
     for f in &ours.findings {
-        if matches!(f.rule, Rule::HoleToEdge | Rule::ViaInPad | Rule::Constraint) {
+        if Rule::is_netsmiths(f.rule) {
             c.netsmith_only_rules += 1;
             continue;
         }

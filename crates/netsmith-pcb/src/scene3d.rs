@@ -28,6 +28,11 @@
 //!   `F.Fab` drawing, else its courtyard, as a placement requirement and the height check measure
 //!   it, ADR 0045) turned and mirrored with the part, from its face to its height. A part whose
 //!   height is unknown has none: it is never given zero or a guess (ADR 0094, ADR 0105).
+//!   Where the footprint has a package record and the height is known, the body also carries
+//!   its _Package shape_ ([`PlacedShape`]): the solids of [`crate::body3d::package_shape`] in the
+//!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
+//!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
+//!   every report measure the body box.
 //! - The pins of a through-hole part below the far face, where the design states their
 //!   protrusion (ADR 0045 section 15); unknown otherwise.
 //! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, per face it
@@ -37,17 +42,30 @@
 //!   `heights_unchecked`), and bodies that overlap in 3D (two bodies on one face whose turned
 //!   boxes share area in plan and whose heights both start at the face).
 //!
-//! Copper (pads, tracks, vias as rings and barrels, planes and pours, each with its net) is
-//! added by the next phase of #430 as a field of [`Scene`] beside `board`; the ids it will carry
-//! are the net names of [`Board::nets`].
+//! - The copper ([`SceneCopper`]): per copper layer, at that layer's Z of the stackup, the pads,
+//!   the tracks (each a straight piece with round ends), the planes and the pours as polygons
+//!   with holes; the vias as barrels from the top copper to the bottom copper; and the
+//!   openings of the solder mask of each face. It is the output of [`crate::copper`], the
+//!   copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
+//!   names of [`Board::nets`], and a pad also has its part's path and number. A board whose
+//!   copper cannot be drawn (its board file would not plot either) has the reason in place of
+//!   the copper, and the rest of the scene is as it is.
+//!
+//! **Rings.** A polygon's outer ring runs counterclockwise seen from above (a positive
+//! shoelace sum in x and y up) and each of its holes clockwise. The copper's own rings run the
+//! other way in the board's y-down frame; [`Frame::ring`] turns them with the flip.
 //!
 //! Everything is in a fixed order: bodies by part path, holes by part path then pad order then
-//! vias in the board's order, limits by name, findings by path.
+//! vias in the board's order, limits by name, findings by path; copper layers from the top
+//! face down, a layer's pads by part path then the footprint's pad order, and its tracks,
+//! pours and the vias in the order of [`crate::copper`] (the board's).
 
 use std::collections::BTreeMap;
 
 use crate::board::{Board, PlacementProblem, Side};
-use crate::footprint::PadKind;
+use crate::body3d::Solid;
+use crate::copper::{self, CopperError};
+use crate::footprint::{Drill, PadKind};
 use crate::geometry::{Pt, Rect};
 use crate::stackup::{LayerKind, StackLayer};
 
@@ -192,6 +210,51 @@ pub struct Body {
     pub height: Option<f64>,
     pub provenance: HeightProvenance,
     pub pins: Pins,
+    /// The package shape, drawn in place of the box. `None` when the footprint has no package
+    /// record (a footprint read from a file, ADR 0105) or the height is unknown: the box, or the
+    /// flat outline, is drawn instead.
+    pub shape: Option<PlacedShape>,
+}
+
+/// A part's _Package shape_ where it is on the board: its solids in the footprint's own frame
+/// ([`crate::body3d`]: y down, z up from the face the part is on) and the map to the scene's.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlacedShape {
+    pub solids: Vec<Solid>,
+    pub place: Placement,
+}
+
+/// The map from a footprint's frame to the scene's: the footprint's `(x, y, z)` is
+/// `origin + x * ex + y * ey` in plan and `z_face + out * z` up. `ex` and `ey` are unit vectors
+/// that hold the part's turn, the flip of y and the mirror of a bottom part; `out` is 1 for a
+/// part on the top face and -1 for one on the bottom, which hangs down from it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Placement {
+    pub origin: Plan,
+    pub ex: Plan,
+    pub ey: Plan,
+    pub z_face: f64,
+    pub out: f64,
+}
+
+impl Placement {
+    /// A point of the footprint's frame in the scene's.
+    pub fn point(&self, p: [f64; 3]) -> [f64; 3] {
+        [
+            self.origin.x + p[0] * self.ex.x + p[1] * self.ey.x,
+            self.origin.y + p[0] * self.ex.y + p[1] * self.ey.y,
+            self.z_face + self.out * p[2],
+        ]
+    }
+
+    /// The linear part of the map, by rows: what a direction (a normal) is turned by.
+    pub fn linear(&self) -> [[f64; 3]; 3] {
+        [
+            [self.ex.x, self.ey.x, 0.0],
+            [self.ex.y, self.ey.y, 0.0],
+            [0.0, 0.0, self.out],
+        ]
+    }
 }
 
 impl Body {
@@ -292,11 +355,168 @@ pub struct Coverage {
     pub catalog: usize,
 }
 
+/// A polygon with holes in the plan of the scene. `outer` runs counterclockwise and each hole
+/// clockwise, seen from above.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanArea {
+    pub outer: Vec<Plan>,
+    pub holes: Vec<Vec<Plan>>,
+}
+
+impl PlanArea {
+    /// The area in mm², the holes taken away.
+    pub fn size(&self) -> f64 {
+        let ring = |r: &[Plan]| {
+            let sum: f64 = (0..r.len())
+                .map(|i| {
+                    let (a, b) = (r[i], r[(i + 1) % r.len()]);
+                    a.x * b.y - b.x * a.y
+                })
+                .sum();
+            sum.abs() / 2.0
+        };
+        ring(&self.outer) - self.holes.iter().map(|h| ring(h)).sum::<f64>()
+    }
+}
+
+/// The copper of the board in the scene.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SceneCopper {
+    /// From the top face down: the front copper, the inner layers, the back copper.
+    pub layers: Vec<CopperLayer>,
+    /// In the board's order.
+    pub vias: Vec<Via>,
+    /// The front's mask openings, then the back's.
+    pub mask: Vec<MaskFace>,
+}
+
+/// The copper of one layer, between that layer's `z_top` and `z_bottom` of the stackup.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopperLayer {
+    /// `F.Cu`, `In1.Cu`, ..., `B.Cu`.
+    pub name: String,
+    pub thickness: f64,
+    pub z_top: f64,
+    pub z_bottom: f64,
+    pub pads: Vec<CopperPad>,
+    pub tracks: Vec<CopperTrack>,
+    /// The pours (outer layers) and planes (inner layers) as filled for the Gerbers, with the
+    /// clearances round other nets' copper cut out of them.
+    pub pours: Vec<CopperPour>,
+    /// What footprints draw on the layer that is not a pad (no net).
+    pub drawings: Vec<PlanArea>,
+}
+
+impl CopperLayer {
+    /// How much copper the net has on the layer in mm²: its pads, tracks and pours added up,
+    /// each polygon by itself (a pad on a pour of its net is in both) and with no drill taken
+    /// away. A via's ring is not in it. `None` is the copper with no net.
+    pub fn area_of(&self, net: Option<&str>) -> f64 {
+        let size = |areas: &[PlanArea]| areas.iter().map(PlanArea::size).sum::<f64>();
+        let pads: f64 = self
+            .pads
+            .iter()
+            .filter(|p| p.net.as_deref() == net)
+            .map(|p| size(&p.areas))
+            .sum();
+        let tracks: f64 = self
+            .tracks
+            .iter()
+            .filter(|t| t.net.as_deref() == net)
+            .map(|t| t.area.size())
+            .sum();
+        let pours: f64 = self
+            .pours
+            .iter()
+            .filter(|p| p.net.as_deref() == net)
+            .map(|p| p.area.size())
+            .sum();
+        pads + tracks + pours
+    }
+
+    /// The nets that have copper on the layer, in order, the copper with no net first.
+    pub fn nets(&self) -> Vec<Option<&str>> {
+        let mut nets: Vec<Option<&str>> = self
+            .pads
+            .iter()
+            .map(|p| p.net.as_deref())
+            .chain(self.tracks.iter().map(|t| t.net.as_deref()))
+            .chain(self.pours.iter().map(|p| p.net.as_deref()))
+            .collect();
+        nets.sort();
+        nets.dedup();
+        nets
+    }
+}
+
+/// A pad's copper on a layer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopperPad {
+    /// The part's path, designator and the pad's number: the pad's id.
+    pub part: String,
+    pub refdes: String,
+    pub number: String,
+    pub net: Option<String>,
+    pub kind: PadKind,
+    /// The pad's centre.
+    pub at: Plan,
+    /// The pad's turn, in degrees, counterclockwise seen from above, as the board file has it.
+    pub angle: f64,
+    /// The pad's size before its turn.
+    pub size: (f64, f64),
+    pub drill: Option<Drill>,
+    /// The copper's shape: one polygon for most pads.
+    pub areas: Vec<PlanArea>,
+}
+
+/// A straight piece of track.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopperTrack {
+    pub net: Option<String>,
+    pub from: Plan,
+    pub to: Plan,
+    pub width: f64,
+    /// The copper: the piece with round ends.
+    pub area: PlanArea,
+}
+
+/// The pour or plane of one net: one piece of its copper.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopperPour {
+    pub net: Option<String>,
+    pub area: PlanArea,
+}
+
+/// A via: a plated barrel through the board, with a ring of copper on every copper layer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Via {
+    pub net: Option<String>,
+    pub at: Plan,
+    /// The ring's outer diameter.
+    pub diameter: f64,
+    pub drill: f64,
+    /// The barrel runs from the top of the front copper to the bottom of the back copper.
+    pub z_top: f64,
+    pub z_bottom: f64,
+}
+
+/// Where the solder mask of a face is open.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaskFace {
+    pub side: Side,
+    /// `F.Mask` or `B.Mask`, with the layer's own Z.
+    pub layer: String,
+    pub z_top: f64,
+    pub z_bottom: f64,
+    pub areas: Vec<PlanArea>,
+}
+
 /// The scene of one placed board.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scene {
     pub board: BoardSolid,
-    // Copper goes here (P3 of #430): pads, tracks, vias and pours, each with its net.
+    /// The copper, or why it cannot be drawn.
+    pub copper: Result<SceneCopper, CopperError>,
     /// By path.
     pub bodies: Vec<Body>,
     /// By name.
@@ -320,6 +540,7 @@ impl Scene {
             .chosen_thickness()
             .expect("a board is only made once its thickness is chosen");
         let solid = solid(board, &frame, thickness);
+        let copper = copper::copper(board).and_then(|c| scene_copper(&c, &solid.layers, &frame));
         let mut parts: Vec<&crate::board::Placed> =
             board.parts.iter().filter(|p| p.kind != "Label").collect();
         parts.sort_by(|a, b| a.path.cmp(&b.path));
@@ -331,6 +552,7 @@ impl Scene {
         let findings = findings(board, &bodies);
         Scene {
             board: solid,
+            copper,
             bodies,
             limits,
             findings,
@@ -399,6 +621,23 @@ impl Frame {
             x: clean(p.x - self.left),
             y: clean(self.bottom - p.y),
         }
+    }
+
+    /// A ring of the board's frame in the scene's: y flips, so the ring is turned round to keep
+    /// the outer rings counterclockwise and the holes clockwise seen from above.
+    fn ring(&self, ring: &[Pt]) -> Vec<Plan> {
+        ring.iter().rev().map(|p| self.point(*p)).collect()
+    }
+
+    fn area(&self, a: &copper::Area) -> PlanArea {
+        PlanArea {
+            outer: self.ring(&a.outer),
+            holes: a.holes.iter().map(|h| self.ring(h)).collect(),
+        }
+    }
+
+    fn areas(&self, areas: &[copper::Area]) -> Vec<PlanArea> {
+        areas.iter().map(|a| self.area(a)).collect()
     }
 
     fn rect(&self, r: Rect) -> PlanBox {
@@ -490,6 +729,105 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
     }
 }
 
+/// The copper of `c` in the scene: each layer at its Z of the stackup `layers`.
+fn scene_copper(
+    c: &copper::Copper,
+    layers: &[SceneLayer],
+    frame: &Frame,
+) -> Result<SceneCopper, CopperError> {
+    let z_of = |name: &str| {
+        layers
+            .iter()
+            .find(|l| l.name == name)
+            .ok_or_else(|| CopperError(format!("the stackup has no layer `{name}`")))
+    };
+    let mut out = Vec::new();
+    for l in &c.layers {
+        let z = z_of(&l.layer)?;
+        let mut pads: Vec<CopperPad> = l
+            .pads
+            .iter()
+            .map(|p| CopperPad {
+                part: p.part.clone(),
+                refdes: p.refdes.clone(),
+                number: p.number.clone(),
+                net: p.net.clone(),
+                kind: p.kind,
+                at: frame.point(p.at),
+                angle: p.angle,
+                size: p.size,
+                drill: p.drill,
+                areas: frame.areas(&p.areas),
+            })
+            .collect();
+        pads.sort_by(|a, b| a.part.cmp(&b.part));
+        let tracks = l
+            .tracks
+            .iter()
+            .map(|t| CopperTrack {
+                net: t.net.clone(),
+                from: frame.point(t.from),
+                to: frame.point(t.to),
+                width: t.width,
+                area: frame.area(&t.outline()),
+            })
+            .collect();
+        out.push(CopperLayer {
+            name: l.layer.clone(),
+            thickness: z.thickness,
+            z_top: z.z_top,
+            z_bottom: z.z_bottom,
+            pads,
+            tracks,
+            pours: l
+                .pours
+                .iter()
+                .map(|p| CopperPour {
+                    net: p.net.clone(),
+                    area: frame.area(&p.area),
+                })
+                .collect(),
+            drawings: frame.areas(&l.drawings),
+        });
+    }
+    let (top, bottom) = match (out.first(), out.last()) {
+        (Some(t), Some(b)) => (t.z_top, b.z_bottom),
+        _ => (0.0, 0.0),
+    };
+    let vias = c
+        .vias
+        .iter()
+        .map(|v| Via {
+            net: v.net.clone(),
+            at: frame.point(v.at),
+            diameter: v.diameter,
+            drill: v.drill,
+            z_top: top,
+            z_bottom: bottom,
+        })
+        .collect();
+    let mut mask = Vec::new();
+    for m in &c.mask {
+        let z = z_of(&m.layer)?;
+        mask.push(MaskFace {
+            side: if m.layer == "B.Mask" {
+                Side::Back
+            } else {
+                Side::Front
+            },
+            layer: m.layer.clone(),
+            z_top: z.z_top,
+            z_bottom: z.z_bottom,
+            areas: frame.areas(&m.areas),
+        });
+    }
+    Ok(SceneCopper {
+        layers: out,
+        vias,
+        mask,
+    })
+}
+
 fn body(
     p: &crate::board::Placed,
     frame: &Frame,
@@ -546,6 +884,13 @@ fn body(
             }
         }
     };
+    let shape = (p.footprint.package.is_some() && p.height.is_some())
+        .then(|| crate::body3d::package_shape(&p.footprint, p.height))
+        .filter(|s| s.shaped && !s.solids.is_empty())
+        .map(|s| PlacedShape {
+            solids: s.solids,
+            place: placement(p, frame, z_face, out),
+        });
     Body {
         path: p.path.clone(),
         refdes: p.refdes.clone(),
@@ -561,6 +906,29 @@ fn body(
         height: p.height,
         provenance,
         pins,
+        shape,
+    }
+}
+
+/// Where the footprint's frame of `p` is in the scene: its origin, and its axes as
+/// [`crate::board::Placed::to_board`] turns and mirrors them, with the sheet's y flipped.
+fn placement(p: &crate::board::Placed, frame: &Frame, z_face: f64, out: f64) -> Placement {
+    // `to_board` less the move, without the rounding of adding and taking away `p.at`.
+    let axis = |local: Pt| {
+        let local = if p.mirrored() {
+            Pt::new(-local.x, local.y)
+        } else {
+            local
+        };
+        let d = local.rotate(p.rotation);
+        Plan { x: d.x, y: -d.y }
+    };
+    Placement {
+        origin: frame.point(p.at),
+        ex: axis(Pt::new(1.0, 0.0)),
+        ey: axis(Pt::new(0.0, 1.0)),
+        z_face,
+        out,
     }
 }
 

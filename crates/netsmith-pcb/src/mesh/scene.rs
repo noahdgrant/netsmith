@@ -10,10 +10,15 @@
 //!    (round, or a slot) as real holes. Without mask layers the substrate is the whole thickness.
 //! 2. The plated barrels (`copper`, open walls through the board): a via's id is its net, a
 //!    pad's the part's path.
-//! 3. Per part, by path, id the part's path: a body of known height as its turned body box
-//!    from the face out to its far end (`body`; a bottom part hangs down); a body of unknown
-//!    height as its outline flat at [`UNKNOWN_LIFT`] mm off its face (`body-unknown`), never a
-//!    box (ADR 0105); the pins below the far face where their protrusion is known (`metal`).
+//! 3. Per part, by path, id the part's path (every mesh of a part has it): a body of known
+//!    height whose footprint has a package record as its _Package shape_ (the solids of
+//!    [`crate::body3d`], each `body`, `metal` or `mark`, a solder ball `metal`, put where the
+//!    part is: turned, mirrored and hanging down for a bottom part; see `package.rs`); any other
+//!    body of known height as its turned body box from the face out to its far end (`body`); a
+//!    body of unknown height as its outline flat at [`UNKNOWN_LIFT`] mm off its face
+//!    (`body-unknown`), never a box or a shape (ADR 0105); the pins below the far face where
+//!    their protrusion is known (`metal`). Only the picture is shaped: the height limits, the
+//!    overlaps and every report measure the body box.
 //! 4. Per height limit, by name, id `limit:<name>`: a volume over each face it limits, `limit`,
 //!    or `limit-violated` where a part on that face is too tall for it.
 //!
@@ -91,9 +96,9 @@ pub struct Pieces {
 /// The meshes of one part.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BodyPieces {
-    /// The body (a box of known height, or the flat outline of an unknown one); `None` when its
-    /// outline has no area.
-    pub body: Option<Mesh>,
+    /// The body: its package shape (several meshes, one per solid), a box of known height, or the
+    /// flat outline of an unknown one; empty when its outline has no area.
+    pub body: Vec<Mesh>,
     /// The pins below the far face, where their protrusion is known.
     pub pins: Option<Mesh>,
 }
@@ -216,24 +221,26 @@ pub fn pieces(scene: &Scene) -> Pieces {
 fn body(b: &Body) -> BodyPieces {
     let ring = Polygon::new(b.corners.iter().map(|&p| xy(p)).collect());
     let down = b.side == Side::Back;
-    let body = match b.z_far {
-        Some(far) => {
+    let mut body = Vec::new();
+    match (b.z_far, &b.shape) {
+        (Some(_), Some(shape)) => super::package::meshes(&b.path, shape, &mut body),
+        (Some(far), None) => {
             let (z0, z1) = if far < b.z_face {
                 (far, b.z_face)
             } else {
                 (b.z_face, far)
             };
-            Mesh::prism(b.path.clone(), Material::Body, &ring, z0, z1).ok()
+            body.extend(Mesh::prism(b.path.clone(), Material::Body, &ring, z0, z1).ok());
         }
-        None => {
+        (None, _) => {
             let z = if down {
                 b.z_face - UNKNOWN_LIFT
             } else {
                 b.z_face + UNKNOWN_LIFT
             };
-            Mesh::flat(b.path.clone(), Material::BodyUnknown, &ring, z, !down).ok()
+            body.extend(Mesh::flat(b.path.clone(), Material::BodyUnknown, &ring, z, !down).ok());
         }
-    };
+    }
     let pins = match &b.pins {
         Pins::Known {
             at,

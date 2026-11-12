@@ -132,7 +132,7 @@ impl<'a> Free<'a> {
         }
         vias.iter().all(|v| {
             let centres = p.distance(v.at);
-            let holes = rules.hole_to_hole + rules.via_drill + MARGIN;
+            let holes = rules.via_hole_to_hole + rules.via_drill + MARGIN;
             let copper = if v.net == self.net {
                 rules.via_diameter
             } else {
