@@ -46,7 +46,8 @@ use netsmith_check::{
 use netsmith_core::{Cause, Design, PanelSpec, timings};
 use netsmith_design::guidelines::Guideline;
 use netsmith_design::{
-    Assembly, Designed, Sourced, design_board, design_panel, design_system_board,
+    Assembly, Designed, Sourced, SystemMate, design_board, design_panel, design_system_board,
+    system_mates,
 };
 use netsmith_kicad::{Mapping, Pinout, emit_schematic, project_file};
 use netsmith_lang::{ParseError, Span};
@@ -129,6 +130,9 @@ pub struct SolvedSystem {
     pub sources: Sources,
     /// The members: `(name in the system, board definition, instance)`.
     pub boards: Vec<(String, String, InstId)>,
+    /// The mates, with each connector's seat and the mated height they give (ADR 0110), for
+    /// the system scene.
+    pub mates: Vec<SystemMate>,
 }
 
 /// Everything one source file builds.
@@ -595,6 +599,10 @@ pub fn outcome_observed(
             .map_or(&checked.sources, |p| &p.checked.sources);
         lock.set(&system.name, pick_lock::rows_of(solution));
         observe(step(Stage::Design));
+        // The seats of the mates and the mated heights they give (ADR 0110), for the system
+        // scene; a seat below its board is refused before any board is made.
+        let mates = system_mates(system, solution)
+            .map_err(|errors| design_problems(None, &system.name, &errors))?;
         // The issues of the whole system: a rail that a port of another board supplies has a
         // source here, which the board alone does not show.
         let power_issues = timings::stage("power", &system.name, || {
@@ -670,6 +678,7 @@ pub fn outcome_observed(
             built.push(one);
         }
         solved.push(SolvedSystem {
+            mates,
             name: system.name.clone(),
             model: solution.model.clone(),
             sources: sources.clone(),

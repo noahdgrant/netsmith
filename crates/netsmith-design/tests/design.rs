@@ -2,7 +2,7 @@
 
 use netsmith_check::{Loader, check};
 use netsmith_core::{Design, PartPin, PinKind, PowerFlow};
-use netsmith_design::{Assembly, Designed, design_board, design_system_board};
+use netsmith_design::{Assembly, Designed, design_board, design_system_board, system_mates};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Candidate, Catalog, Catalogs, Library, Value, solve, solve_system};
 
@@ -1807,5 +1807,132 @@ board B {
         errors[0].contains("the catalog row ZZC-1 states `temp_max`"),
         "{}",
         errors[0]
+    );
+}
+
+// ---- the seat and the mated height (ADR 0110) ----------------------------------------
+
+#[test]
+fn a_mate_of_the_std_header_and_socket_has_a_mated_height_of_the_two_seats() {
+    let src = include_str!("../../../examples/two_boards.nsm");
+    let c = check("t.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let system = c.system("TwoBoards").unwrap();
+    let s = solve_system(system, &Catalogs::jlcpcb());
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    let mates = system_mates(system, &s).unwrap();
+    let [mate] = &mates[..] else {
+        panic!("one mate: {mates:?}")
+    };
+    assert_eq!(
+        (mate.a.as_str(), mate.b.as_str()),
+        ("power.power_out", "led.power_in")
+    );
+    assert_eq!(
+        (mate.a_board.as_deref(), mate.b_board.as_deref()),
+        (Some("power"), Some("led"))
+    );
+    // The header's plastic top and the socket's body top, from the rows they were picked as.
+    assert_eq!(mate.a_seat, Some((2.3, 2.7)));
+    assert_eq!(mate.b_seat, Some((8.35, 8.65)));
+    assert_eq!(mate.mated_height(), Some((10.65, 11.35)));
+    assert_eq!(mate.unknown(), None);
+}
+
+/// Two boards that each have one connector of a project's own, with no catalog, mated. The
+/// header states `HEADER_SEAT` (empty states nothing) and the socket nothing.
+fn own_connectors(header_seat: &str) -> String {
+    format!(
+        r#"
+import std::parts::connector::{{Connector, Mating}}
+
+part OwnHeader provides Connector {{
+    pins {{
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }}
+    .mating: Mating {{
+        .kind &= "pin_header"
+        .gender &= "header"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+        {header_seat}
+    }}
+}}
+
+part OwnSocket provides Connector {{
+    pins {{
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }}
+    .mating: Mating {{
+        .kind &= "pin_header"
+        .gender &= "socket"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+    }}
+}}
+
+board Top {{
+    .j: OwnHeader
+}}
+
+board Bottom {{
+    .j: OwnSocket
+}}
+
+system Stack {{
+    .top: Top
+    .bottom: Bottom
+    .top.j.mating ~ .bottom.j.mating
+}}
+"#
+    )
+}
+
+fn mates_of(src: &str) -> Result<Vec<netsmith_design::SystemMate>, Vec<String>> {
+    let c = check("t.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let system = c.system("Stack").unwrap();
+    let s = solve_system(system, &Catalogs::jlcpcb());
+    system_mates(system, &s)
+}
+
+#[test]
+fn a_mate_with_a_seat_nothing_states_has_no_mated_height_and_says_which() {
+    let mates = mates_of(&own_connectors(".seat &= 3mm")).unwrap();
+    let [mate] = &mates[..] else {
+        panic!("one mate: {mates:?}")
+    };
+    assert_eq!(mate.a_seat, Some((3.0, 3.0)));
+    assert_eq!(mate.b_seat, None);
+    // Never a default: no mated height until both seats are known.
+    assert_eq!(mate.mated_height(), None);
+    assert_eq!(
+        mate.unknown().as_deref(),
+        Some(
+            "the mate of `top.j` and `bottom.j` has no mated height: nothing states `bottom.j.mating.seat`"
+        )
+    );
+    let mates = mates_of(&own_connectors("")).unwrap();
+    assert!(
+        mates[0]
+            .unknown()
+            .unwrap()
+            .ends_with("nothing states `top.j.mating.seat` or `bottom.j.mating.seat`"),
+        "{mates:?}"
+    );
+}
+
+#[test]
+fn a_seat_below_the_board_is_refused_with_its_number() {
+    let errors = mates_of(&own_connectors(".seat &= -1mm")).unwrap_err();
+    assert_eq!(
+        errors,
+        [
+            "`top.j.mating.seat` is -1mm, and a connector's partner does not rest below its board's face"
+        ],
     );
 }

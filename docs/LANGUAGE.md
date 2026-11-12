@@ -5097,7 +5097,7 @@ error: a system joins two ports of the same kind; a pin is not a port
 
 ### Connectors that mate
 
-Boards that plug into each other do it through connectors, and a system says which. `~` between the `.mating` of two connectors says they are mated, contact N to contact N (ADR 0040). Every pin header and socket of the standard library states its `.mating` (`std::parts::connector::Mating`): its `kind`, `gender`, `pitch`, `rows` and `positions`, and, when its datasheet rates it, the current of one contact, `pin_current`. A system can reach a connector's `.mating` and nothing else of it.
+Boards that plug into each other do it through connectors, and a system says which. `~` between the `.mating` of two connectors says they are mated, contact N to contact N (ADR 0040). Every pin header and socket of the standard library states its `.mating` (`std::parts::connector::Mating`): its `kind`, `gender`, `pitch`, `rows` and `positions`, and, when its datasheet rates it, the current of one contact, `pin_current`, and when its drawing gives it, its `seat` (below). A system can reach a connector's `.mating` and nothing else of it.
 
 The system names no pin and no net. After the nets of the boards are known, the checker reads what each board has behind each contact, a role: ground (the net is the `neg` of a rail), power (the `pos` of a rail), a signal (a part's `input`, `output` or `bidirectional` pin is on it) or open. Then:
 
@@ -5626,6 +5626,86 @@ system Kit {
 
 ```text
 Kit/carrier: mating guideline: the pinout of the mate of `.carrier.slot` and `.card.j1` also works with one connector turned end for end, and neither is keyed: contact 2 (RAIL_A on `.carrier.slot`, RAIL_A on `.card.j1`) and contact 3 (RAIL_B on `.carrier.slot`, RAIL_B on `.card.j1`) would swap places and every contact would still be accepted; only a keyed connector (`.mating.keyed`) goes in one way
+```
+
+#### The seat and the mated height
+
+A connector states its seat, `.mating.seat`: how far above the face of its board its partner rests when the two are mated (ADR 0110). A header's seat is the top of its plastic, a socket's the top of its body. It is a fact of the part, whatever it mates with, so a mate's mated height, the distance between the faces of the two boards, is the two seats added, with both tolerances. The std 2.54 mm headers and sockets state it through their `header` catalog row, from the maker's drawing the row's `source` names: 2.50 +/- 0.20 mm for a header and 8.50 +/- 0.15 mm for a socket, so the header of `examples/two_boards.nsm` in its socket gives a mated height of 10.65 mm to 11.35 mm. The column is `optional`: a project's `header` row may leave it empty. The system scene places the boards by the mated height; a mate whose seat nothing states has none, and is never given a default or one from a part's `.height`, which is the tallest point of the part and not where its partner rests.
+
+A project's own connector states its seat as its drawing gives it:
+
+```nsm
+import std::parts::connector::{Connector, Mating, Socket1x2}
+
+/// A low-profile 2-pin header of a project's own. Its maker's drawing gives the plastic
+/// 1.50 +/- 0.10 mm above the board.
+part LowHeader provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+    .mating: Mating {
+        .kind &= "pin_header"
+        .gender &= "header"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+        .seat &= 1.5mm +/- 0.1mm
+    }
+}
+
+board Card {
+    .j1: LowHeader
+}
+
+board Carrier {
+    .slot: Socket1x2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+A seat is at or above the face of its board, and one below it is refused with its number:
+
+```nsm fails
+import std::parts::connector::{Connector, Mating, Socket1x2}
+
+part SunkHeader provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+    .mating: Mating {
+        .kind &= "pin_header"
+        .gender &= "header"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+        .seat &= -1mm
+    }
+}
+
+board Card {
+    .j1: SunkHeader
+}
+
+board Carrier {
+    .slot: Socket1x2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+error: Kit: `card.j1.mating.seat` is -1mm, and a connector's partner does not rest below its board's face
 ```
 
 ## Panels
@@ -13161,7 +13241,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::bus::I2c` | Pins `sda` and `scl`, a `.role` (`I2cRole`), a `.frequency` and the optional `.capacitance` of the part's own pin and `.sink_current`, the current its driver sinks at its `levels.vol` (neither is equated between two parts). A pull-up on each line. |
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
-| `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
+| `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated), `.seat` (how far above its board its partner rests, from the `header` catalog, an `optional` column; unset is unknown, ADR 0110) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
 | `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the prepreg and core. |
 | `std::mfg::stackup::Plane` | An inner layer that is one sheet of copper on a net. The board names the net. |
 | `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
