@@ -60,10 +60,53 @@ term() {
     esac
 }
 
+# The helpers of a crate's tests that can ask for KiCad: the functions, in any file of tests/,
+# whose body names a token or calls such a helper (to a fixed point). A test that calls one asks
+# as well, so the calls join that crate's tokens: `erc::erc(` for a function of tests/erc.rs, and
+# `common::<name>(` or a bare `<name>(` for one of the shared tests/common.
+helpers() {
+    local dir="$1" found="" before pattern
+    [ -d "${dir}tests" ] || return 0
+    pattern="$tokens"
+    while :; do
+        before="$found"
+        # Each line as "module<TAB>function<TAB>line" (awk only splits; grep matches, so the
+        # tokens are read as grep -E reads them everywhere else).
+        found="$(find "${dir}tests" -name '*.rs' ! -name main.rs -print0 | xargs -0 awk -v root="${dir}tests/" '
+            FNR == 1 {
+                module = substr(FILENAME, length(root) + 1); sub(/\/.*$/, "", module); sub(/\.rs$/, "", module)
+                name = ""
+            }
+            /^[[:space:]]*(pub(\([a-z]+\))?[[:space:]]+)?fn[[:space:]]+[A-Za-z_]/ {
+                name = $0; sub(/^.*fn[[:space:]]+/, "", name); sub(/[^A-Za-z0-9_].*$/, "", name)
+            }
+            name != "" { print module "\t" name "\t" $0 }' |
+            { grep -E -- "$pattern" || true; } | cut -f1,2 | sort -u | tr '\t\n' ': ')"
+        [ -n "$found" ] && [ "$found" != "$before" ] || break
+        pattern="$tokens|$(calls "$found")"
+    done
+    [ -z "$found" ] || calls "$found"
+}
+
+# The calls of the helpers "module:function ..." as one grep -E alternative.
+calls() {
+    local item module name out=()
+    for item in $1; do
+        module="${item%%:*}" name="${item#*:}"
+        if [ "$module" = common ]; then out+=("(common::|\b)$name\("); else out+=("\b$module::$name\("); fi
+    done
+    local IFS='|'
+    echo "${out[*]}"
+}
+
 filterset() {
-    local terms=() dir crate file rel
+    local terms=() dir crate file rel tokens_of_crate names
+    local tokens_all="$tokens"
     for dir in crates/*/; do
         crate="$(basename "$dir")"
+        names="$(helpers "$dir")"
+        local tokens="$tokens_all"
+        if [ -n "$names" ]; then tokens="$tokens_all|$names"; fi
         # The integration test modules (tests/common and fixtures are not modules of tests).
         for file in "$dir"tests/*.rs "$dir"tests/*/mod.rs; do
             [ -f "$file" ] || continue
