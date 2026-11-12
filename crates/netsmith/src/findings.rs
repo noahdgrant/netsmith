@@ -20,7 +20,7 @@ use serde::Serialize;
 use crate::{Built, Problem, Stage};
 
 /// How a command prints the notes of a board.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum NotesMode {
     /// Every note, one line each.
     #[default]
@@ -31,35 +31,14 @@ pub enum NotesMode {
     None,
 }
 
-impl NotesMode {
-    pub fn parse(word: &str) -> Option<NotesMode> {
-        match word {
-            "all" => Some(NotesMode::All),
-            "summary" => Some(NotesMode::Summary),
-            "none" => Some(NotesMode::None),
-            _ => None,
-        }
-    }
-}
-
 /// How a command prints what it found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum Format {
     /// For a person: the lines it has always printed.
     #[default]
     Text,
     /// One JSON document on standard output, and nothing else there.
     Json,
-}
-
-impl Format {
-    pub fn parse(word: &str) -> Option<Format> {
-        match word {
-            "text" => Some(Format::Text),
-            "json" => Some(Format::Json),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

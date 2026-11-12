@@ -1,7 +1,11 @@
-//! `netsmith --help` lists the commands on stdout and exits 0; an unknown command exits 2 with
-//! the error on stderr and a pointer to `--help`; `--version` still works.
+//! `netsmith --help` lists the commands on stdout and exits 0, and each command's `--help` lists
+//! every flag of clap's model of it (#514); a mistake exits 2 with the error on stderr;
+//! `--version` still works.
 
 use std::process::Command;
+
+use clap::CommandFactory;
+use netsmith::cli::Cli;
 
 fn netsmith(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
@@ -10,74 +14,138 @@ fn netsmith(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 
+/// Every command of the model as the words that name it (`["catalog", "refresh"]`), with its
+/// model, nested commands included.
+fn commands() -> Vec<(Vec<String>, clap::Command)> {
+    fn walk(path: &[String], command: &clap::Command, all: &mut Vec<(Vec<String>, clap::Command)>) {
+        for sub in command.get_subcommands().filter(|s| s.get_name() != "help") {
+            let mut path = path.to_vec();
+            path.push(sub.get_name().to_string());
+            all.push((path.clone(), sub.clone()));
+            walk(&path, sub, all);
+        }
+    }
+    let mut all = Vec::new();
+    walk(&[], &Cli::command(), &mut all);
+    all
+}
+
 #[test]
-fn help_lists_the_commands_on_stdout_and_exits_zero() {
+fn help_lists_every_command_on_stdout_and_exits_zero() {
     for args in [&["--help"][..], &["-h"], &["help"]] {
         let out = netsmith(args);
         assert!(out.status.success(), "{args:?}: {:?}", out.status);
         assert!(out.stderr.is_empty(), "{args:?}");
         let text = String::from_utf8_lossy(&out.stdout);
-        for (name, _) in netsmith::cli::COMMANDS {
-            assert!(text.contains(name), "{args:?}: no `{name}` in {text}");
-        }
-        assert!(text.contains("--cross-check"), "{args:?}: {text}");
-        // What the flags do is in each command's own help (#455): no line of prose is long.
-        for line in text
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("netsmith ") && !l.starts_with("usage: "))
-        {
-            assert!(line.len() < 200, "{args:?}: a long line in --help: {line}");
+        for sub in Cli::command().get_subcommands() {
+            let name = sub.get_name();
+            assert!(
+                text.contains(&format!("  {name} ")),
+                "{args:?}: no `{name}` in {text}"
+            );
         }
         assert!(text.contains("`netsmith <command> --help`"), "{text}");
     }
 }
 
 #[test]
-fn a_commands_help_has_its_usage_and_what_its_flags_do() {
-    for (name, _) in netsmith::cli::COMMANDS {
-        for args in [[*name, "--help"], ["help", *name]] {
-            let out = netsmith(&args);
-            assert!(out.status.success(), "{args:?}");
-            let text = String::from_utf8_lossy(&out.stdout);
-            assert!(
-                text.starts_with(&format!("netsmith {name}: ")),
-                "{args:?}: {text}"
-            );
-            assert!(
-                text.contains(&format!("netsmith {name} ")),
-                "{args:?}: no usage in {text}"
-            );
+fn a_commands_help_lists_its_usage_and_every_flag_it_takes() {
+    let all = commands();
+    for name in [
+        "build",
+        "fab",
+        "route",
+        "catalog refresh",
+        "dxf import",
+        "kicad-libs import",
+    ] {
+        assert!(all.iter().any(|(path, _)| path.join(" ") == name), "{name}");
+    }
+    for (path, model) in all {
+        let mut args: Vec<&str> = path.iter().map(String::as_str).collect();
+        args.push("--help");
+        let out = netsmith(&args);
+        assert!(out.status.success(), "{args:?}");
+        let text = String::from_utf8_lossy(&out.stdout);
+        let name = path.join(" ");
+        assert!(
+            text.contains(&format!("netsmith {name}")),
+            "{args:?}: no usage in {text}"
+        );
+        for arg in model.get_arguments().filter(|a| !a.is_hide_set()) {
+            if let Some(long) = arg.get_long() {
+                assert!(
+                    text.contains(&format!("--{long}")),
+                    "{name}: no --{long} in {text}"
+                );
+            }
+            for value in arg
+                .get_possible_values()
+                .iter()
+                .filter(|v| arg.get_action().takes_values() && !v.is_hide_set())
+            {
+                assert!(
+                    text.contains(value.get_name()),
+                    "{name} --{:?}: no {}",
+                    arg.get_long(),
+                    value.get_name()
+                );
+            }
         }
     }
     let fab = String::from_utf8_lossy(&netsmith(&["fab", "--help"]).stdout).to_string();
     for word in [
         "--cross-check",
-        "--pins auto|locked",
-        "--quiet",
-        "--format json",
-        "--notes",
+        "--pins <PINS>",
+        "--save-placed",
+        "INCOMPLETE",
+        "routing-failure.txt",
     ] {
         assert!(fab.contains(word), "{word}: {fab}");
     }
-    assert!(!fab.contains("netsmith render "), "{fab}");
+    let build = String::from_utf8_lossy(&netsmith(&["build", "--help"]).stdout).to_string();
+    for word in [
+        "note.not_stated",
+        "summary",
+        "[default: all]",
+        "[default: text]",
+    ] {
+        assert!(build.contains(word), "{word}: {build}");
+    }
 }
 
 #[test]
-fn an_unknown_command_exits_two_with_the_error_on_stderr() {
-    let out = netsmith(&["frobnicate"]);
-    assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty());
-    let text = String::from_utf8_lossy(&out.stderr);
-    assert!(text.contains("unknown command `frobnicate`"), "{text}");
-    assert!(text.contains("netsmith --help"), "{text}");
+fn a_mistake_exits_two_with_the_error_on_stderr() {
+    for args in [
+        &["frobnicate"][..],
+        &[],
+        &["build", "--bogus"],
+        &["build", "a.nsm", "b.nsm"],
+        &["lock"],
+        &["lock", "--update", "--check"],
+        &["render", "--ortho", "--perspective"],
+        &["view", "--theme", "dark"],
+    ] {
+        let out = netsmith(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?}");
+        assert!(!out.stderr.is_empty(), "{args:?}");
+    }
+    let text = String::from_utf8_lossy(&netsmith(&["frobnicate"]).stderr).to_string();
+    assert!(
+        text.contains("frobnicate") && text.contains("--help"),
+        "{text}"
+    );
 }
 
 #[test]
 fn the_version_still_prints() {
-    let out = netsmith(&["--version"]);
-    assert!(out.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout),
-        format!("netsmith {}\n", env!("CARGO_PKG_VERSION"))
-    );
+    for args in [&["--version"][..], &["-V"], &["version"]] {
+        let out = netsmith(args);
+        assert!(out.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            format!("netsmith {}\n", env!("CARGO_PKG_VERSION"))
+        );
+    }
 }

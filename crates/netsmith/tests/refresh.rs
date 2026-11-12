@@ -1156,19 +1156,19 @@ fn the_standard_catalogs_ship_no_price_so_without_a_provider_every_row_is_unknow
 }
 
 #[test]
-fn the_guides_commands_section_and_the_usage_name_every_option_and_status_of_the_catalog_commands()
-{
-    let guide =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/LANGUAGE.md"))
-            .unwrap();
-    let commands = guide
-        .split("\n## Commands\n")
-        .nth(1)
-        .and_then(|rest| rest.split("\n## ").next())
-        .expect("a Commands section");
+fn the_help_of_the_catalog_commands_names_every_option_and_status() {
+    use clap::CommandFactory;
+    let mut cli = netsmith::cli::Cli::command();
+    let catalog = cli.find_subcommand_mut("catalog").expect("catalog");
+    let mut help = |name: &str| {
+        catalog
+            .find_subcommand_mut(name)
+            .expect(name)
+            .render_long_help()
+            .to_string()
+    };
+    let (refresh, age) = (help("refresh"), help("age"));
     for word in [
-        "netsmith catalog refresh",
-        "netsmith catalog age",
         "--dry-run",
         "--offline",
         "--only",
@@ -1176,30 +1176,17 @@ fn the_guides_commands_section_and_the_usage_name_every_option_and_status_of_the
         "--delay",
         "--cache-ttl",
         "--no-cache",
-        "--days",
         "CONFLICT",
         "MISSING",
         "SKIPPED",
         "ADR 0039",
     ] {
         assert!(
-            commands.contains(word),
-            "the Commands section lacks `{word}`"
+            refresh.contains(word),
+            "`catalog refresh --help` lacks `{word}`"
         );
     }
-    for flag in [
-        "--dry-run",
-        "--offline",
-        "--only",
-        "--lcsc",
-        "--delay",
-        "--cache-ttl",
-        "--no-cache",
-        "--days",
-    ] {
-        assert!(
-            netsmith::cli::USAGE.contains(flag),
-            "the usage lacks `{flag}`"
-        );
+    for word in ["--days", "--only", "[default: 90]"] {
+        assert!(age.contains(word), "`catalog age --help` lacks `{word}`");
     }
 }

@@ -555,7 +555,7 @@ fn glb_writes_the_scene_as_gltf_and_prints_nothing_else() {
 
     let run = board3d(&examples, &["four_layer.nsm", "--glb"]);
     assert_eq!(run.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&run.stderr).contains("--glb needs a file"));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("--glb <FILE.GLB>"));
 }
 
 #[test]
@@ -644,7 +644,7 @@ fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() 
 
     let run = board3d(&examples, &["four_layer.nsm", "--step"]);
     assert_eq!(run.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&run.stderr).contains("--step needs a file"));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("--step <FILE.STEP>"));
 }
 
 #[test]

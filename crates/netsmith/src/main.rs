@@ -9,7 +9,11 @@ use std::{
     time::Duration,
 };
 
-use netsmith::cli::{Command, LockMode, OrderRequest, RefreshRequest, parse_args};
+use netsmith::cli::{
+    Board3dArgs, BuildArgs, CatalogAddArgs, CatalogAgeArgs, CatalogCommand, CheckArgs, Command,
+    CompareArgs, DxfCommand, DxfImportArgs, EditorArgs, FabArgs, InitArgs, KicadLibsCommand,
+    KicadLibsImportArgs, LockMode, OrderRequest, ParityArgs, RefreshRequest, RouteArgs, parse_args,
+};
 use netsmith::compare::{Request, Verdict, compare_files};
 use netsmith::editor::Workspace;
 use netsmith::fab::{FabOptions, fab_detailed};
@@ -25,24 +29,15 @@ use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_solve::Catalogs;
 
 fn main() -> ExitCode {
-    match parse_args(env::args().skip(1)) {
-        Err(message) => {
-            eprintln!("{message}");
-            ExitCode::from(2)
-        }
-        Ok(Command::Version) => {
+    // A mistake exits 2, netsmith's "cannot run"; help and the version exit 0.
+    let command = parse_args(env::args_os().skip(1)).unwrap_or_else(|e| e.exit());
+    match command {
+        Command::Version => {
             println!("netsmith {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
-        Ok(Command::Help(command)) => {
-            match command {
-                Some(command) => print!("{}", netsmith::cli::command_help(&command)),
-                None => print!("{}", netsmith::cli::help()),
-            }
-            ExitCode::SUCCESS
-        }
-        Ok(Command::Init { name }) => run_init(name.as_deref()),
-        Ok(Command::Build {
+        Command::Init(InitArgs { name }) => run_init(name.as_deref()),
+        Command::Build(BuildArgs {
             file,
             out,
             strict,
@@ -67,7 +62,7 @@ fn main() -> ExitCode {
         }),
         // `check` writes nothing, not even the pin file: a request without a pin is given one in
         // memory, as the editor does.
-        Ok(Command::Check {
+        Command::Check(CheckArgs {
             file,
             strict,
             format,
@@ -81,7 +76,7 @@ fn main() -> ExitCode {
             notes,
             write: false,
         }),
-        Ok(Command::Parity {
+        Command::Parity(ParityArgs {
             board,
             table,
             map,
@@ -94,23 +89,24 @@ fn main() -> ExitCode {
             svg.as_deref(),
             format,
         ),
-        Ok(Command::Fab {
-            file,
-            out,
-            route_timeout,
-            allow_drc_violations,
-            cross_check,
-            strict,
-            locked,
-            constraints_warn,
-            pins_locked,
-            no_glb,
-            save_placed,
-            order,
-            quiet,
-            format,
-            notes,
-        }) => {
+        Command::Fab(args) => {
+            let (constraints_warn, pins_locked, order) =
+                (args.constraints_warn(), args.pins_locked(), args.order());
+            let FabArgs {
+                file,
+                out,
+                route_timeout,
+                allow_drc_violations,
+                cross_check,
+                strict,
+                locked,
+                no_glb,
+                save_placed,
+                quiet,
+                format,
+                notes,
+                ..
+            } = args;
             if order.is_some() && format == Format::Json {
                 eprintln!(
                     "error: `fab --order` prints text only; `--format json` is for `fab` of a file or of the project's boards"
@@ -154,15 +150,15 @@ fn main() -> ExitCode {
                 }),
             }
         }
-        Ok(Command::Route {
+        Command::Route(RouteArgs {
             file,
             out,
             route_timeout,
             margin,
         }) => run_route(&file, out.as_deref(), route_timeout, margin),
-        Ok(Command::Lock { file, mode }) => run_lock(file.as_deref(), mode),
-        Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
-        Ok(Command::Board3d {
+        Command::Lock(args) => run_lock(args.file.as_deref(), args.mode()),
+        Command::Editor(EditorArgs { file, port }) => run_editor(file.as_deref(), port),
+        Command::Board3d(Board3dArgs {
             file,
             board,
             json,
@@ -175,29 +171,37 @@ fn main() -> ExitCode {
             glb.as_deref(),
             step.as_deref(),
         ),
-        Ok(Command::Render {
-            file,
-            board,
-            out,
-            request,
-        }) => run_render(file.as_deref(), board.as_deref(), out.as_deref(), &request),
-        Ok(Command::View(request)) => run_view(&request),
-        Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
-        Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
-        Ok(Command::CatalogAdd {
+        Command::Render(args) => run_render(
+            args.file.as_deref(),
+            args.board.as_deref(),
+            args.out.as_deref(),
+            &args.request(),
+        ),
+        Command::View(args) => match args.request() {
+            Ok(request) => run_view(&request),
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::from(2)
+            }
+        },
+        Command::Catalog(CatalogCommand::Refresh(request)) => run_catalog_refresh(&request),
+        Command::Catalog(CatalogCommand::Age(CatalogAgeArgs { paths, only, days })) => {
+            run_catalog_age(&paths, &only, days)
+        }
+        Command::Catalog(CatalogCommand::Add(CatalogAddArgs {
             lcsc,
             to,
             offline,
             no_cache,
-        }) => run_catalog_add(&lcsc, to.as_deref(), offline, no_cache),
-        Ok(Command::DxfImport {
+        })) => run_catalog_add(&lcsc, to.as_deref(), offline, no_cache),
+        Command::Dxf(DxfCommand::Import(DxfImportArgs {
             file,
             layers,
             holes_layers,
             units,
             board,
             write,
-        }) => run_dxf_import(
+        })) => run_dxf_import(
             &file,
             &netsmith::dxf::Request {
                 layers,
@@ -207,11 +211,11 @@ fn main() -> ExitCode {
             board.as_deref(),
             write.as_deref(),
         ),
-        Ok(Command::KicadLibsImport {
+        Command::KicadLibs(KicadLibsCommand::Import(KicadLibsImportArgs {
             sym_lib_table,
             fp_lib_table,
-        }) => run_kicad_libs_import(&sym_lib_table, fp_lib_table.as_deref()),
-        Ok(Command::Compare {
+        })) => run_kicad_libs_import(&sym_lib_table, fp_lib_table.as_deref()),
+        Command::Compare(CompareArgs {
             a,
             b,
             board,

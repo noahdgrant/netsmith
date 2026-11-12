@@ -464,13 +464,10 @@ fn a_lock_that_is_not_a_lock_or_a_design_that_does_not_build_is_exit_two() {
 fn lock_needs_exactly_one_of_update_and_check() {
     let root = led_project("lock-flags", LED);
     for (args, said) in [
-        (vec!["lock"], "`lock` needs `--update`"),
-        (vec!["lock", "--update", "--check"], "not both"),
-        (vec!["lock", "--locked"], "`lock` has no option `--locked`"),
-        (
-            vec!["build", "--update"],
-            "`build` has no option `--update`",
-        ),
+        (vec!["lock"], "<--update|--check>"),
+        (vec!["lock", "--update", "--check"], "cannot be used with"),
+        (vec!["lock", "--locked"], "unexpected argument '--locked'"),
+        (vec!["build", "--update"], "unexpected argument '--update'"),
     ] {
         let run = netsmith(&root, &args);
         assert_eq!(run.status.code(), Some(2), "{args:?}");
@@ -485,7 +482,7 @@ fn lock_needs_exactly_one_of_update_and_check() {
     );
     let help = stdout(&netsmith(&root, &["lock", "--help"]));
     assert!(
-        help.contains("netsmith lock (--update | --check) [<file.nsm>]")
+        help.contains("netsmith lock <--update|--check> [FILE.NSM]")
             && help.contains("lock --update"),
         "{help}"
     );
