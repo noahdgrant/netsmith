@@ -689,7 +689,7 @@ The one three-dimensional description of a board that the Rust side builds and w
 _Avoid_: Model, mesh (a mesh is one piece of it), 3D export
 
 **STEP file**:
-The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). netsmith reads no STEP file.
+The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_ and `netsmith fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). netsmith reads no STEP file.
 _Avoid_: STEP model (a maker's or KiCad's file of one part), 3D export, MCAD export
 
 **Package shape**:

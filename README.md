@@ -107,7 +107,7 @@ mkdir blink && cd blink
 netsmith init       # netsmith.toml, src/main.nsm (a working LED board), agent files
 netsmith build      # a KiCad schematic in out/
 netsmith editor     # the source and the board in a browser, at 127.0.0.1:8787
-netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the board's 3D scene as `<board>.glb` (`--no-glb` or `glb = false` in netsmith.toml leaves it out), and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
+netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the board's 3D scene as `<board>.glb` (`--no-glb` or `glb = false` in netsmith.toml leaves it out), the board as STEP for mechanical CAD as `<board>.step` (`--no-step` or `step = false` leaves it out), and for a board with pin requests its pin map for firmware from the final layout (`.pins.h`, `.pins.json`)
 netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, overlaps (docs/BOARD3D.md)
 netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
 netsmith render --view iso --out board.png   # the board drawn in 3D to a PNG by netsmith's own rasterizer, no GPU or KiCad (docs/BOARD3D.md)

@@ -35,7 +35,7 @@ Two more keys are optional, and orders (below) are tables beside `[project]`. `c
 
 Every file in `top_level` can hold boards, a `system`, or both. `netsmith build` and `netsmith fab` with no file argument build all of them, and each board comes out in its own folder:
 
-- a `board Name` writes `out/Name/` and `fab/Name/` (schematic, PCB, SVG, `bom.csv`, `cpl.csv`, `fab-notes.txt`, `Name-gerbers.zip`, `Name.glb` (the board's 3D scene; `glb = false` in `netsmith.toml` leaves it out), and `Name.pins.h` and `Name.pins.json` when the board has pin requests);
+- a `board Name` writes `out/Name/` and `fab/Name/` (schematic, PCB, SVG, `bom.csv`, `cpl.csv`, `fab-notes.txt`, `Name-gerbers.zip`, `Name.glb` (the board's 3D scene; `glb = false` in `netsmith.toml` leaves it out), `Name.step` (the board as STEP; `step = false` leaves it out), and `Name.pins.h` and `Name.pins.json` when the board has pin requests);
 - a board placed in a `system Sys` as `.member: Name` writes `out/Sys/member/` and `fab/Sys/member/`, so two instances of one board design do not collide.
 
 Naming one file builds only that file's boards: `netsmith fab src/unit/unit.nsm`. To choose boards and quantities across files, use an order (below). The editor lists every board and system of the project in its tree.

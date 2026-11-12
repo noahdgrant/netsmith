@@ -40,6 +40,12 @@ pub fn glb(built: &Built, board: &Board) -> Vec<u8> {
     netsmith_3d::gltf::glb(&scene(built, board), &built.label())
 }
 
+/// A placed board as a STEP file (`netsmith_pcb::step`), labelled as the report
+/// labels it: what `board3d --step` writes.
+pub fn step(built: &Built, board: &Board) -> Vec<u8> {
+    netsmith_3d::step::step(&scene(built, board), &built.label()).into_bytes()
+}
+
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub schema: u32,

@@ -166,6 +166,12 @@ pub struct FabOptions {
     /// board's output folder (`fab --save-placed`), for `netsmith route` to route again with no
     /// placing. The default is `false`.
     pub save_placed: bool,
+    /// Write the board as STEP, `<board>.step`, into the board's package folder beside the
+    /// `.glb` and outside the Gerber zip, as `board3d --step` writes it (ADR 0107,
+    /// docs/BOARD3D.md). The default is `true`; the command line gives `false` for `--no-step` or
+    /// `step = false` in `netsmith.toml`. When it is `false`, a `<board>.step` that an earlier run
+    /// left in the folder is removed, as the `.glb` is.
+    pub step: bool,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -265,6 +271,7 @@ impl Default for FabOptions {
             track_margin: DEFAULT_TRACK_MARGIN,
             glb: true,
             save_placed: false,
+            step: true,
         }
     }
 }
@@ -848,6 +855,12 @@ fn fab_board(
             say(format!("{}: warning: {note}", built.label()));
         }
 
+        // The board as STEP, the same way: a failure is a note, never a failed fab.
+        let (step_file, step_note) = write_step(&dir, name, built, &board, options.step);
+        if let Some(note) = &step_note {
+            say(format!("{}: warning: {note}", built.label()));
+        }
+
         // The project's own libraries and the standard library's own files that the board
         // uses, so KiCad finds the footprints.
         libraries
@@ -860,6 +873,7 @@ fn fab_board(
         let mut extras = board.process_extras();
         extras.splice(0..0, pin_notes.iter().cloned());
         extras.extend(glb_note.map(|n| format!("warning: {n}")));
+        extras.extend(step_note.map(|n| format!("warning: {n}")));
         extras.extend(crate::no_supplier::note(&sourcing));
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
@@ -932,6 +946,7 @@ fn fab_board(
         let mut files = vec![pcb_path.clone()];
         files.extend(pin_files);
         files.extend(glb_file);
+        files.extend(step_file);
         files.extend(
             timings::stage("fab.write", &label, || pkg.write(&dir))
                 .map_err(|e| fail(e.to_string()))?,
@@ -1019,6 +1034,42 @@ fn write_glb(
             None,
             Some(format!(
                 "the 3D scene {} was not written ({e}); the package is complete without it",
+                file.display()
+            )),
+        ),
+    }
+}
+
+/// The board as `<name>.step` in `dir` (or, with `write` false, the removal of one an earlier
+/// run left): the bytes `board3d --step` writes for `board`, the board as fab placed and routed
+/// it; the STEP holds no copper, so they are those of `board3d --step` for the same placement.
+/// Returns the file written and a note for the person ordering when it could not be written.
+fn write_step(
+    dir: &Path,
+    name: &str,
+    built: &Built,
+    board: &Board,
+    write: bool,
+) -> (Option<PathBuf>, Option<String>) {
+    let file = dir.join(format!("{name}.step"));
+    if !write {
+        return match fs::remove_file(&file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => (
+                None,
+                Some(format!(
+                    "{}: {e}; an earlier run's STEP file stays in the package",
+                    file.display()
+                )),
+            ),
+            _ => (None, None),
+        };
+    }
+    match fs::write(&file, crate::board3d::step(built, board)) {
+        Ok(()) => (Some(file), None),
+        Err(e) => (
+            None,
+            Some(format!(
+                "the STEP file {} was not written ({e}); the package is complete without it",
                 file.display()
             )),
         ),
