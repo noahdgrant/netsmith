@@ -152,8 +152,9 @@ raises `schema`, a field added does not):
 A node whose shape has no area has no mesh, and is still there.
 
 - **Materials**, by name, metallic-roughness: `substrate`, `mask-top`, `mask-bottom`, `copper`,
-  `body`, `body-unknown`, `metal`, `mark`, `limit` and `limit-violated` (the last two see-through,
-  `alphaMode: BLEND`). All ten are always written, in this order. Their colours are the
+  `body`, `body-unknown`, `metal`, `mark`, `limit`, `limit-violated` (those two see-through,
+  `alphaMode: BLEND`) and `prepreg` (the second laminate tone of a section picture: no mesh of
+  the file uses it). All eleven are always written, in this order. Their colours are the
   rasterizer's light palette in linear light. No glTF extension is used.
 
 ## Pictures for agents: `netsmith render`
@@ -173,6 +174,8 @@ netsmith render examples/led.nsm --view top --out top.png     # straight down at
 netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
 netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
 netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
+netsmith render examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
+netsmith render examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
 netsmith render examples/two_boards.nsm --board TwoBoards/led --view iso-bottom --theme dark
 ```
 
@@ -184,7 +187,8 @@ open it): a picture to look at, with the numbers from `board3d --json` to quote.
 | `--view` | `top`, `bottom`, `front`, `back`, `left`, `right`, `iso` (the default) or `iso-bottom`. See the table below. |
 | `--out <file.png>` | Where to write; default `<board>-<view>.png` in the current folder (a board of a system, `System/member`, is `System-member`). The folder must exist. |
 | `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
-| `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are open (no caps). |
+| `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are filled (caps, below). |
+| `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
 | `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>` and `limit:<name>` (a height limit, as `board3d` names it). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets and limits the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
 | `--theme light\|dark` | The palette; default `light`. |
@@ -208,6 +212,22 @@ face, y up toward the outline's top edge):
 `--section` is in the same frame: `z=0` is the top face and `z=-1.6` the bottom face of a 1.6 mm
 board, `x=7` is 7 mm in from the outline's left edge, and `y=3.5` is 3.5 mm up from its bottom
 edge. A layout-file point (from the top-left corner, y down) is `(x, outline height - y)`.
+
+**A section is a drawing of the stackup.** Where the plane cuts a closed solid, the cut face is
+filled (a cap, flat in the plane, in the solid's colour), so the cut reads as a real
+cross-section. The board is drawn for it as the stackup `board3d --json` lists (`board.layers`):
+a slab per layer at its own Z and true thickness, the **solder mask** in green, the **core** and
+the **prepreg** in two laminate tones, and the **copper** of each layer in copper colour where
+the plane crosses it (the pads, tracks, pours and via rings the scene has, less the drilled
+holes; where a layer has no copper at the cut, the insulator it is embedded in: the mask for
+an outer layer, the prepreg for an inner one). A plated barrel is a ring of copper 25 µm thick
+(a picture's figure, not the fab's), so a cut through a hole shows two strips of copper either
+side of it. A part's body, its pins and a height limit's volume are cut solid. No line is drawn
+between the bands. The layers are to scale: at the default size a whole board's 10 µm mask and
+35 µm copper are a fraction of a pixel, so to read the bands, look at a narrow board or use a
+camera framed on the edge (the library's `Camera`, with `netsmith_pcb::mesh::of_scene_section`
+for the meshes); the picture is a view of the scene, and a copper layer's polygons are not
+checked against the Gerbers here.
 
 What is drawn is what the scene has: the board (laminate with the green solder mask, with its
 outline, cutouts and drilled holes), the plated barrels, each part's body as a dark box from its

@@ -23,6 +23,14 @@
 //!   ambient light, all fixed to the camera, diffuse only. [`Shading::Smooth`] interpolates the
 //!   light of the corners (Gouraud) from the meshes' normals; [`Shading::Flat`] lights each
 //!   triangle by its own normal.
+//! - **Caps.** With a section, the face where the plane cuts a closed mesh is filled
+//!   (`cap.rs`): the loops of the plane's cut of the mesh, triangulated and drawn flat in the
+//!   plane in the mesh's colour, lit as a face turned to the camera; a mesh whose cut does not
+//!   close up is left open and drawn from inside as before. Anything lying in the plane (the
+//!   caps, a flat piece the scene puts there) is drawn after the rest, in mesh order, each over
+//!   the last where they are at one depth; no line is drawn between two caps, so the bands of a
+//!   stackup read by their colours. [`crate::mesh::of_scene_section`] gives the meshes of a
+//!   board as its stackup for this.
 //! - **See-through.** The limits' materials ([`Material::is_translucent`]) are drawn after
 //!   everything opaque, their triangles sorted far to near, blended over what is behind,
 //!   without writing depth. X-ray ([`RenderOptions::xray`]) draws every mesh that way.
@@ -50,11 +58,14 @@
 //! outline for a part of unknown height, light grey metal, white marks, a blue see-through limit,
 //! a red see-through broken limit), the highlight colour and the outline colour.
 
+mod cap;
 mod draw;
 #[cfg(test)]
 mod tests;
 
 use crate::mesh::{Aabb, Material, Mesh, bounds_of, trig};
+
+pub use crate::mesh::Axis;
 
 /// Two faces of one mesh that meet at more than this many degrees get an outline between them.
 pub const CREASE_DEG: f64 = 40.0;
@@ -286,7 +297,7 @@ pub struct Palette {
     pub background: Rgba,
     /// One per material, in the order of [`Material::ALL`]; the alpha of a see-through one is
     /// its opacity.
-    pub materials: [Rgba; 10],
+    pub materials: [Rgba; 11],
     pub highlight: Rgba,
     pub outline: Rgba,
 }
@@ -322,6 +333,7 @@ impl Theme {
                     [250, 250, 250, 255], // mark
                     [60, 130, 240, 64],   // limit
                     [230, 60, 50, 96],    // limit-violated
+                    [226, 208, 150, 255], // prepreg
                 ],
                 highlight: [255, 190, 0, 255],
                 outline: [24, 26, 30, 255],
@@ -339,6 +351,7 @@ impl Theme {
                     [232, 232, 232, 255],
                     [90, 150, 255, 64],
                     [255, 80, 70, 96],
+                    [196, 178, 128, 255],
                 ],
                 highlight: [255, 200, 40, 255],
                 outline: [8, 9, 11, 255],
@@ -358,16 +371,8 @@ pub enum Shading {
     Smooth,
 }
 
-/// An axis of the scene's frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Axis {
-    X,
-    Y,
-    Z,
-}
-
-/// A cut through the scene at right angles to an axis: what is on one side is not drawn. The
-/// cut faces are left open (no caps).
+/// A cut through the scene at right angles to an axis: what is on one side is not drawn. The cut
+/// faces of closed meshes are filled with caps ([`RenderOptions::caps`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Section {
     pub axis: Axis,
@@ -394,6 +399,9 @@ pub struct RenderOptions {
     /// Every mesh see-through.
     pub xray: bool,
     pub section: Option<Section>,
+    /// With a section: fill the cut faces of closed meshes, in the colour of the mesh's
+    /// material, so that the cut reads as a solid section; false leaves them open.
+    pub caps: bool,
 }
 
 impl Default for RenderOptions {
@@ -408,6 +416,7 @@ impl Default for RenderOptions {
             highlight: Vec::new(),
             xray: false,
             section: None,
+            caps: true,
         }
     }
 }

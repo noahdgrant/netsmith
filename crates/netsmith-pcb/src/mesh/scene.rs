@@ -27,7 +27,7 @@
 
 use crate::board::Side;
 use crate::mesh::{Material, Mesh, Polygon, circle, rounded_rect};
-use crate::scene3d::{Body, HoleOwner, Pins, Plan, PlanBox, Scene};
+use crate::scene3d::{BoardSolid, Body, HoleOwner, Pins, Plan, PlanBox, Scene};
 use crate::stackup::LayerKind;
 
 /// How far off its face the flat outline of a part of unknown height is drawn, in mm.
@@ -127,25 +127,7 @@ pub fn of_scene(scene: &Scene) -> Vec<Mesh> {
 pub fn pieces(scene: &Scene) -> Pieces {
     let mut out = Pieces::default();
     let solid = &scene.board;
-    let mut outline = Polygon::new(rounded_rect(
-        [0.0, 0.0],
-        [solid.width, solid.height],
-        solid.corner_radius,
-        8,
-    ));
-    for c in &solid.cutouts {
-        outline
-            .holes
-            .push(rounded_rect(xy(c.at.min), xy(c.at.max), c.radius, 6));
-    }
-    for h in &solid.holes {
-        outline.holes.push(slot(
-            xy(h.from),
-            xy(h.to),
-            h.diameter,
-            hole_segments(h.diameter),
-        ));
-    }
+    let outline = board_outline(solid);
     let bottom = -solid.thickness;
     let mask = |top: bool| {
         solid
@@ -216,6 +198,30 @@ pub fn pieces(scene: &Scene) -> Pieces {
         out.limits.push(faces);
     }
     out
+}
+
+/// The board's outline with its cutouts and every drilled hole (round, or a slot) as holes.
+pub(super) fn board_outline(solid: &BoardSolid) -> Polygon {
+    let mut outline = Polygon::new(rounded_rect(
+        [0.0, 0.0],
+        [solid.width, solid.height],
+        solid.corner_radius,
+        8,
+    ));
+    for c in &solid.cutouts {
+        outline
+            .holes
+            .push(rounded_rect(xy(c.at.min), xy(c.at.max), c.radius, 6));
+    }
+    for h in &solid.holes {
+        outline.holes.push(slot(
+            xy(h.from),
+            xy(h.to),
+            h.diameter,
+            hole_segments(h.diameter),
+        ));
+    }
+    outline
 }
 
 fn body(b: &Body) -> BodyPieces {
