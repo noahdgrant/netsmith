@@ -12,7 +12,9 @@ use std::time::{Duration, Instant};
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro, svg};
 use serde::{Deserialize, Serialize};
 
-use crate::fab::{ROUTING_FAILURE, route_with_margin, routing_failure};
+use crate::fab::{
+    ROUTING_FAILURE, ROUTING_REPORT, route_with_margin, routing_failure, routing_report,
+};
 
 /// The version of the file's layout. A file of another version is refused, since the board's
 /// fields change with netsmith: save the board again with the `fab` of this build.
@@ -116,8 +118,8 @@ pub struct Routed {
 
 /// Route the placed board of `file` the way `fab` does (its track margin first where there is
 /// room, then the least track) and write its `.kicad_pcb`, `.kicad_pro` and `.svg` into `out`,
-/// and `routing-failure.txt` when connections are left (one of an earlier run is removed when
-/// none are).
+/// and `routing-failure.txt` and `routing-report.json` when connections are left (those of an
+/// earlier run are removed when none are).
 pub fn route(
     file: PlacedFile,
     out: &Path,
@@ -147,14 +149,26 @@ pub fn route(
         written.push(path);
     }
     let failure = out.join(ROUTING_FAILURE);
+    let json = out.join(ROUTING_REPORT);
     if routing.left.is_empty() {
-        if failure.exists() {
-            fs::remove_file(&failure).map_err(|e| format!("{}: {e}", failure.display()))?;
+        for stale in [&failure, &json] {
+            if stale.exists() {
+                fs::remove_file(stale).map_err(|e| format!("{}: {e}", stale.display()))?;
+            }
         }
     } else {
-        let report = routing_failure(name, board.outline.min, &routing.left, routing.tries);
+        let report = routing_failure(
+            name,
+            board.outline.min,
+            &routing.left,
+            routing.tries,
+            &routing.why,
+        );
         fs::write(&failure, report).map_err(|e| format!("{}: {e}", failure.display()))?;
         written.push(failure);
+        fs::write(&json, routing_report(&routing.why, &routing.crowding))
+            .map_err(|e| format!("{}: {e}", json.display()))?;
+        written.push(json);
     }
     Ok(Routed {
         left: routing.left.lines.iter().map(ToString::to_string).collect(),

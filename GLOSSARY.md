@@ -570,6 +570,10 @@ _Avoid_: Sub-part, section, gate (a unit may be a gate, an amplifier or a supply
 **Ratsnest**:
 The connections a board still needs, drawn as straight lines between pads, before any track is routed.
 
+**Crowding map**:
+The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, negotiation and the chain of rip-ups) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left). A high count is where lines fought over the room.
+_Avoid_: congestion map, heat map
+
 **Fabrication package**:
 The files a board house needs: Gerbers and drill files, a bill of materials, and a placement file. netsmith writes them itself from the board file (ADR 0034).
 
