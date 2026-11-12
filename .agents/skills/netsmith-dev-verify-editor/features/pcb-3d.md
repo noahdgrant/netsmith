@@ -37,4 +37,5 @@ For a recipe the host carries a handle: `document.querySelector('[data-testid=pc
 - The first frame is slow in headless Chromium (SwiftShader): wait on `data-ready`, not a time.
 - Pixels are read in the same task as a fresh draw (`sample`, `colourAt`): the canvas keeps no buffer, so a screenshot is the way to see it (`canvas.toDataURL` may come back blank).
 - A recipe never hard-codes a designator: take the part from the 2D scene (`/api/pcb/scene`) by its path and ask `project(path)` where it is.
-- The view draws only the file's nodes: copper and package shapes arrive in the same file (#430) and are drawn by their material's name; a node of a kind the view does not know is drawn and not picked.
+- The view draws only the file's nodes: the copper per net (`copper:<layer>:<net>`), the mask with its openings, the finish, the silkscreen and the package shapes are drawn by their material's name (`--pcb3d-finish`, `--pcb3d-mask-copper` for the two added with the copper); a node of a kind the view does not know is drawn and not picked.
+- A pad's snap point is on its outer copper's surface (`z = -0.01` on a board with a 0.01 mm mask), under the mask's opening.

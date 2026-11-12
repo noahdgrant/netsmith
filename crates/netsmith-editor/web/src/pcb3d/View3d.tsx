@@ -243,10 +243,13 @@ export function View3d({ board }: { board: string }) {
   /** The pads' centres in the scene's frame, from the 2D scene (a sheet point is from the outline's top-left corner, y down). */
   const padsOf = (): PadPoint[] => {
     const s = scene2d.peek();
-    const t = viewer.current?.board?.thicknessMm ?? 0;
-    if (!s || s.board !== board) return [];
+    const b = viewer.current?.board;
+    if (!s || s.board !== board || !b) return [];
     const o = s.outline;
-    return s.parts.flatMap((p) => p.pads.map((pad) => ({ at: [pad.x - o.x, o.y + o.height - pad.y, faceZ(p.side, t)] as [number, number, number], refdes: p.refdes, pad: pad.number, side: p.side })));
+    // A pad's centre is on its copper's outer surface (under the mask's opening), else on the face.
+    const coppers = b.layers.filter((l) => l.kind === 'copper');
+    const padZ = (side: 'top' | 'bottom') => (side === 'top' ? (coppers[0]?.zTopMm ?? 0) : (coppers[coppers.length - 1]?.zBottomMm ?? faceZ('bottom', b.thicknessMm)));
+    return s.parts.flatMap((p) => p.pads.map((pad) => ({ at: [pad.x - o.x, o.y + o.height - pad.y, padZ(p.side)] as [number, number, number], refdes: p.refdes, pad: pad.number, side: p.side })));
   };
   const lastCut = useRef<{ axis: Axis; at: number } | null>(null);
   const startCut = (axis: Axis) => {

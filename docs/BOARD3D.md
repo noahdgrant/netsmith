@@ -177,8 +177,10 @@ What it is:
 - **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
   body to its known height (its package shape where the footprint generator made the footprint,
   else a box), the height limits as see-through volumes (in the error colour when a part breaks
-  one) and the pins out of the far face where their length is stated. The copper comes into the
-  same file later (#430), and the view draws each mesh by its material's name.
+  one) and the pins out of the far face where their length is stated. The copper of each net,
+  the solder mask with its openings (a second green over copper), the gold finish of the bare
+  copper and the silkscreen are in the same file, and the view draws each mesh by its
+  material's name in the theme's colours.
 - **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
   by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height

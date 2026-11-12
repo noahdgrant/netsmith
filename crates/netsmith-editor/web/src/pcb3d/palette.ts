@@ -6,10 +6,11 @@
 // three.js: the view reads the table and the tokens, and a test holds the tokens to their contrast.
 
 /** What the view draws: a material of the file, or a body by its height's provenance. */
-export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated';
+export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper';
 
-/** The ten material names of the file's contract (schema 1), in its order. */
-export const FILE_MATERIALS = ['substrate', 'mask-top', 'mask-bottom', 'copper', 'body', 'body-unknown', 'metal', 'mark', 'limit', 'limit-violated'] as const;
+/** The material names of the file's contract (schema 1), in its order: the ten of the first file,
+ * then `finish` and `mask-over-copper` (added with the copper). */
+export const FILE_MATERIALS = ['substrate', 'mask-top', 'mask-bottom', 'copper', 'body', 'body-unknown', 'metal', 'mark', 'limit', 'limit-violated', 'finish', 'mask-over-copper'] as const;
 
 export interface Look {
   /** The theme token of its colour. */
@@ -36,6 +37,8 @@ export const LOOKS: Record<Role, Look> = {
   mark: { token: '--pcb3d-mark', metalness: 0, roughness: 0.8, opacity: 1 },
   limit: { token: '--pcb3d-limit', metalness: 0, roughness: 1, opacity: 0.14 },
   'limit-violated': { token: '--pcb3d-limit-violated', metalness: 0, roughness: 1, opacity: 0.24 },
+  finish: { token: '--pcb3d-finish', metalness: 0.7, roughness: 0.3, opacity: 1 },
+  'mask-over-copper': { token: '--pcb3d-mask-copper', metalness: 0, roughness: 0.5, opacity: 1 },
 };
 
 /** The tokens the view reads besides the materials'. */

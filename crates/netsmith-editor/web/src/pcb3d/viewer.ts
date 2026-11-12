@@ -69,7 +69,7 @@ const HATCH_MM = 0.9;
 /** How long the stackup takes to come apart or back together. */
 const EXPLODE_MS = 420;
 /** The roles whose cut is filled first: the board's layers, then the copper, then the parts. */
-const CAP_ORDER = ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'copper', 'metal', 'body', 'body-catalog', 'mark'];
+const CAP_ORDER = ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'mask-over-copper', 'copper', 'finish', 'metal', 'body', 'body-catalog', 'mark'];
 
 /** The scene's frame (mm, z up) from the view's (mm, Y up, +Z toward the board's bottom edge). */
 const sceneOf = (v: Vector3): P3 => [v.x, -v.z, v.y];
@@ -769,7 +769,12 @@ export class Viewer {
     const out: PadPoint[] = [];
     for (const p of pads) {
       out.push(p);
-      if (this.holeKeys.has(`${p.refdes}.${p.pad}`)) out.push({ ...p, side: p.side === 'top' ? 'bottom' : 'top', at: [p.at[0], p.at[1], p.side === 'top' ? -t : 0] });
+      if (this.holeKeys.has(`${p.refdes}.${p.pad}`)) {
+        const other = pads.find((q) => q.side !== p.side)?.at[2];
+        const coppers = (this.board?.layers ?? []).filter((l) => l.kind === 'copper');
+        const z = p.side === 'top' ? (coppers[coppers.length - 1]?.zBottomMm ?? other ?? -t) : (coppers[0]?.zTopMm ?? other ?? 0);
+        out.push({ ...p, side: p.side === 'top' ? 'bottom' : 'top', at: [p.at[0], p.at[1], z] });
+      }
     }
     this.pads = out;
   }

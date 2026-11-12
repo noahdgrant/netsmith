@@ -67,6 +67,11 @@ describe('the 3D palette', () => {
           expect(contrast(c(token), c('--pcb3d-bg'))!, `${token} on the background in ${theme}`).toBeGreaterThanOrEqual(3);
         }
       });
+      it('the mask over copper is a second green of the mask, and the finish of bare copper stands out on it', () => {
+        expect(c('--pcb3d-mask-copper')).not.toBe(c('--pcb3d-mask'));
+        expect(contrast(c('--pcb3d-mask-copper'), c('--pcb3d-mask'))!, `mask over copper in ${theme}`).toBeGreaterThanOrEqual(1.15);
+        expect(contrast(c('--pcb3d-finish'), c('--pcb3d-mask'))!, `finish on the mask in ${theme}`).toBeGreaterThanOrEqual(2);
+      });
       it('the hover lights a body visibly, and not in the colour of a pick', () => {
         for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-unknown']) {
           const base = parseHex(c(token))!;
