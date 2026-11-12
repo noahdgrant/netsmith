@@ -288,6 +288,7 @@ fn the_same_bytes_give_the_same_triangles() {
     for text in [
         crate::step::step(&crate::step::tests::scene(), "Demo"),
         fixtures::rational_quarter(),
+        fixtures::patch(),
         fixtures::cone(1.0, 2.0),
     ] {
         let (a, b) = (read_ok(&text), read_ok(&text));
@@ -369,7 +370,9 @@ fn malformed_input_is_an_error_and_never_a_panic() {
 /// Reads every `.step` file of the folder `NETSMITH_STEP_CORPUS` (models whose licence keeps
 /// them out of the repository) and prints the time, faces and triangles of each. Run it in
 /// release: `NETSMITH_STEP_CORPUS=<dir> cargo test --release -p netsmith-3d --lib
-/// local_corpus -- --ignored --nocapture`.
+/// local_corpus -- --ignored --nocapture`. `NETSMITH_STEP_REPS=<n>` times the least of n reads,
+/// `NETSMITH_STEP_SLOW=1` lists each file's slowest faces, and the `bits` hash tells whether two
+/// builds draw a file alike.
 #[test]
 #[ignore = "reads models from NETSMITH_STEP_CORPUS"]
 fn local_corpus() {
@@ -386,12 +389,37 @@ fn local_corpus() {
     for path in files {
         let bytes = std::fs::read(&path).unwrap();
         let start = std::time::Instant::now();
-        let parsed = part21::parse(&bytes).unwrap();
-        let parse_ms = start.elapsed().as_secs_f64() * 1e3;
-        let model = model::model(&parsed).unwrap();
-        let mesh = mesh(&model);
-        let total_ms = start.elapsed().as_secs_f64() * 1e3;
         let name = path.file_name().unwrap().to_string_lossy();
+        let parsed = match part21::parse(&bytes) {
+            Ok(p) => p,
+            Err(e) => {
+                println!("{name}: {}", StepError::from(e));
+                continue;
+            }
+        };
+        let parse_ms = start.elapsed().as_secs_f64() * 1e3;
+        let model = match model::model(&parsed) {
+            Ok(m) => m,
+            Err(e) => {
+                println!("{name}: {e}");
+                continue;
+            }
+        };
+        let mesh = mesh(&model);
+        let mut total_ms = start.elapsed().as_secs_f64() * 1e3;
+        // On a busy machine, the least of several runs.
+        let reps: usize = std::env::var("NETSMITH_STEP_REPS")
+            .ok()
+            .and_then(|r| r.parse().ok())
+            .unwrap_or(1);
+        for _ in 1..reps {
+            let start = std::time::Instant::now();
+            let _ = read(&bytes);
+            total_ms = total_ms.min(start.elapsed().as_secs_f64() * 1e3);
+        }
+        if std::env::var_os("NETSMITH_STEP_SLOW").is_some() {
+            slowest_faces(&model);
+        }
         match mesh {
             Ok(m) => {
                 let again = read(&bytes).unwrap();
@@ -426,7 +454,7 @@ fn local_corpus() {
                         .join(" ")
                 );
                 println!(
-                    "{name}: {:.0} kB, {} faces, {} solids, parse {parse_ms:.1} ms, total {total_ms:.1} ms, {} triangles, {} pieces, {open} solids not closed, box {:?} .. {:?}, same twice {}",
+                    "{name}: {:.0} kB, {} faces, {} solids, parse {parse_ms:.1} ms, total {total_ms:.1} ms, {} triangles, {} pieces, {open} solids not closed, box {:?} .. {:?}, same twice {}, bits {:016x}",
                     bytes.len() as f64 / 1024.0,
                     model.faces.len(),
                     model.placed.len(),
@@ -434,10 +462,43 @@ fn local_corpus() {
                     m.pieces.len(),
                     b.min,
                     b.max,
-                    bits(&m) == bits(&again)
+                    bits(&m) == bits(&again),
+                    // FNV-1a over the bits, to compare runs of two builds.
+                    bits(&m).iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &x| {
+                        (h ^ x).wrapping_mul(0x0100_0000_01b3)
+                    })
                 );
             }
             Err(e) => println!("{name}: {e}"),
         }
+    }
+}
+
+/// Prints the five faces of `model` that take longest to cut into triangles.
+fn slowest_faces(model: &Model) {
+    let tol = CHORD_TOLERANCE / model.solids.first().map_or(1.0, |s| s.mm);
+    let edges: Vec<Vec<geometry::P3>> = model
+        .edges
+        .iter()
+        .map(|e| tessellate::edge_points(e, tol).unwrap_or_default())
+        .collect();
+    let mut times: Vec<(f64, u64, usize)> = model
+        .faces
+        .iter()
+        .map(|f| {
+            let start = std::time::Instant::now();
+            let n = tessellate::face(f, &edges, false, tol).map_or(0, |m| m.indices.len());
+            (start.elapsed().as_secs_f64() * 1e3, f.id, n)
+        })
+        .collect();
+    times.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (ms, id, n) in times.iter().take(5) {
+        let kind = match &model.faces.iter().find(|f| f.id == *id).unwrap().surface {
+            geometry::Surface::BSpline(b) => {
+                format!("B-spline {}x{}", b.points.len(), b.points[0].len())
+            }
+            s => format!("{:?}", std::mem::discriminant(s)),
+        };
+        println!("    face #{id}: {ms:.1} ms, {n} triangles, {kind}");
     }
 }

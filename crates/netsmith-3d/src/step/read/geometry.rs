@@ -152,54 +152,69 @@ impl Knots {
     }
 
     /// The span of `t` and the `degree + 1` basis functions that are not zero there with their
-    /// first derivatives (The NURBS Book, A2.3, to the first derivative).
-    pub fn basis(&self, t: f64) -> (usize, Vec<f64>, Vec<f64>) {
+    /// first derivatives (The NURBS Book, A2.2, the derivatives from the functions of one degree
+    /// lower). It works in arrays on the stack: a surface is evaluated millions of times.
+    pub fn basis(&self, t: f64) -> Basis {
         let p = self.degree;
         let s = self.span(t);
         let k = &self.knots;
-        let mut ndu = vec![vec![0.0; p + 1]; p + 1];
-        let mut left = vec![0.0; p + 1];
-        let mut right = vec![0.0; p + 1];
-        ndu[0][0] = 1.0;
+        let mut out = Basis {
+            span: s,
+            value: [0.0; MAX_ORDER],
+            deriv: [0.0; MAX_ORDER],
+        };
+        let n = &mut out.value;
+        let mut left = [0.0; MAX_ORDER];
+        let mut right = [0.0; MAX_ORDER];
+        // The functions of degree p - 1, and the knot differences of the last step.
+        let mut lower = [0.0; MAX_ORDER];
+        let mut den = [0.0; MAX_ORDER];
+        n[0] = 1.0;
         for j in 1..=p {
+            if j == p {
+                lower[..p].copy_from_slice(&n[..p]);
+            }
             left[j] = t - k[s + 1 - j];
             right[j] = k[s + j] - t;
             let mut saved = 0.0;
             for r in 0..j {
-                // The lower triangle holds the knot differences.
-                ndu[j][r] = right[r + 1] + left[j - r];
-                let temp = if ndu[j][r] == 0.0 {
-                    0.0
-                } else {
-                    ndu[r][j - 1] / ndu[j][r]
-                };
-                ndu[r][j] = saved + right[r + 1] * temp;
+                let d = right[r + 1] + left[j - r];
+                if j == p {
+                    den[r] = d;
+                }
+                let temp = if d == 0.0 { 0.0 } else { n[r] / d };
+                n[r] = saved + right[r + 1] * temp;
                 saved = left[j - r] * temp;
             }
-            ndu[j][j] = saved;
+            n[j] = saved;
         }
-        let value: Vec<f64> = (0..=p).map(|j| ndu[j][p]).collect();
-        let mut deriv = vec![0.0; p + 1];
         if p > 0 {
-            for (r, d) in deriv.iter_mut().enumerate() {
+            for r in 0..=p {
                 let mut v = 0.0;
-                if r >= 1 {
-                    let den = ndu[p][r - 1];
-                    if den != 0.0 {
-                        v += ndu[r - 1][p - 1] / den;
-                    }
+                if r >= 1 && den[r - 1] != 0.0 {
+                    v += lower[r - 1] / den[r - 1];
                 }
-                if r < p {
-                    let den = ndu[p][r];
-                    if den != 0.0 {
-                        v -= ndu[r][p - 1] / den;
-                    }
+                if r < p && den[r] != 0.0 {
+                    v -= lower[r] / den[r];
                 }
-                *d = v * p as f64;
+                out.deriv[r] = v * p as f64;
             }
         }
-        (s, value, deriv)
+        out
     }
+}
+
+/// The most control points a B-spline's piece depends on: a degree up to 25, as the reader
+/// takes them.
+pub const MAX_ORDER: usize = 26;
+
+/// The basis functions of a B-spline at a parameter: `value[j]` and `deriv[j]` for the control
+/// point `span - degree + j`.
+#[derive(Debug, Clone, Copy)]
+pub struct Basis {
+    pub span: usize,
+    pub value: [f64; MAX_ORDER],
+    pub deriv: [f64; MAX_ORDER],
 }
 
 /// A B-spline curve, rational when it has weights.
@@ -213,7 +228,11 @@ pub struct BSplineCurve {
 impl BSplineCurve {
     /// The point and the derivative at `t`.
     pub fn eval(&self, t: f64) -> (P3, P3) {
-        let (s, n, dn) = self.knots.basis(t);
+        let Basis {
+            span: s,
+            value: n,
+            deriv: dn,
+        } = self.knots.basis(t);
         let p = self.knots.degree;
         let (mut a, mut da, mut w, mut dw) = ([0.0; 3], [0.0; 3], 0.0, 0.0);
         for j in 0..=p {
@@ -242,11 +261,28 @@ pub struct BSplineSurface {
     pub weights: Option<Vec<Vec<f64>>>,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread has evaluated a B-spline surface: the tests bound the work a
+    /// face takes by it, which a clock on a busy machine cannot.
+    pub static EVALS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 impl BSplineSurface {
     /// The point and the derivatives along u and v at `(u, v)`.
     pub fn eval(&self, u: f64, v: f64) -> (P3, P3, P3) {
-        let (su, nu, dnu) = self.u.basis(u);
-        let (sv, nv, dnv) = self.v.basis(v);
+        #[cfg(test)]
+        EVALS.with(|n| n.set(n.get() + 1));
+        let Basis {
+            span: su,
+            value: nu,
+            deriv: dnu,
+        } = self.u.basis(u);
+        let Basis {
+            span: sv,
+            value: nv,
+            deriv: dnv,
+        } = self.v.basis(v);
         let (p, q) = (self.u.degree, self.v.degree);
         let (mut a, mut au, mut av) = ([0.0; 3], [0.0; 3], [0.0; 3]);
         let (mut w, mut wu, mut wv) = (0.0, 0.0, 0.0);
@@ -548,12 +584,87 @@ fn bspline_surface_param(
     p: P3,
     hint: Option<[f64; 2]>,
 ) -> ([f64; 2], Option<usize>) {
-    let (u0, u1) = b.u.domain();
-    let (v0, v1) = b.v.domain();
-    let newton = |mut uv: [f64; 2]| {
+    Inverse::new(b).param(p, hint)
+}
+
+/// The search for the parameters of points on one B-spline surface: its size, and its grid of
+/// samples, made the first time a point needs it and kept for the face's other points.
+pub struct Inverse<'a> {
+    b: &'a BSplineSurface,
+    size: f64,
+    seeds: std::cell::OnceCell<Vec<([f64; 2], P3)>>,
+}
+
+impl<'a> Inverse<'a> {
+    pub fn new(b: &'a BSplineSurface) -> Inverse<'a> {
+        let mut lo = [f64::INFINITY; 3];
+        let mut hi = [f64::NEG_INFINITY; 3];
+        for row in &b.points {
+            for q in row {
+                for c in 0..3 {
+                    lo[c] = lo[c].min(q[c]);
+                    hi[c] = hi[c].max(q[c]);
+                }
+            }
+        }
+        Inverse {
+            b,
+            size: dist(lo, hi).max(1e-9),
+            seeds: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// The samples: each way, eight a control point over the knot spans with length, and at
+    /// least `2 (degree + 1)` in each span, so every piece of the surface has some whatever its
+    /// knots' spacing.
+    fn seeds(&self) -> &[([f64; 2], P3)] {
+        self.seeds.get_or_init(|| {
+            let steps = |k: &Knots| -> Vec<f64> {
+                let (t0, t1) = k.domain();
+                let mut out = vec![t0];
+                let spans = k.knots.windows(2).filter(|w| w[1] > w[0]).count().max(1);
+                let n = (2 * (k.degree + 1)).max((8 * k.count()).div_ceil(spans));
+                for w in k.knots.windows(2) {
+                    let (a, z) = (w[0].max(t0), w[1].min(t1));
+                    if z <= a {
+                        continue;
+                    }
+                    for j in 1..=n {
+                        out.push(if j == n {
+                            z
+                        } else {
+                            a + (z - a) * j as f64 / n as f64
+                        });
+                    }
+                }
+                out
+            };
+            let (us, vs) = (steps(&self.b.u), steps(&self.b.v));
+            let mut out = Vec::with_capacity(us.len() * vs.len());
+            for &u in &us {
+                for &v in &vs {
+                    out.push(([u, v], self.b.point_at([u, v])));
+                }
+            }
+            out
+        })
+    }
+
+    /// Newton's steps on the distance from `uv`, kept in the domain: the nearest of the
+    /// parameters reached (a step held at the domain's edge can lead away) and its distance
+    /// from `p`.
+    fn newton(&self, p: P3, mut uv: [f64; 2]) -> ([f64; 2], f64) {
+        let b = self.b;
+        let (u0, u1) = b.u.domain();
+        let (v0, v1) = b.v.domain();
+        let mut best = (uv, f64::INFINITY);
         for _ in 0..30 {
             let (q, su, sv) = b.eval(uv[0], uv[1]);
             let e = sub(q, p);
+            let d = norm(e);
+            if d < best.1 {
+                best = (uv, d);
+            }
             // The normal equations of the linearised distance.
             let (a, bb, c) = (dot(su, su), dot(su, sv), dot(sv, sv));
             let (r0, r1) = (dot(e, su), dot(e, sv));
@@ -570,69 +681,58 @@ fn bspline_surface_param(
                 break;
             }
         }
-        (uv, dist(b.point_at(uv), p))
-    };
-    let size = {
-        let mut lo = [f64::INFINITY; 3];
-        let mut hi = [f64::NEG_INFINITY; 3];
-        for row in &b.points {
-            for q in row {
-                for c in 0..3 {
-                    lo[c] = lo[c].min(q[c]);
-                    hi[c] = hi[c].max(q[c]);
+        let d = dist(b.point_at(uv), p);
+        if d <= best.1 { (uv, d) } else { best }
+    }
+
+    /// The parameters of `p` and the one undefined there, as [`Surface::param`] gives them.
+    pub fn param(&self, p: P3, hint: Option<[f64; 2]>) -> ([f64; 2], Option<usize>) {
+        let b = self.b;
+        let (u0, u1) = b.u.domain();
+        let (v0, v1) = b.v.domain();
+        let close = 1e-7 * self.size;
+        let from_hint = hint.map(|h| self.newton(p, h));
+        let (uv, _) = match from_hint {
+            Some(r) if r.1 <= close => r,
+            _ => {
+                // The nearest sample, then Newton's steps. A point a little off the surface (an
+                // edge's, within the file's own tolerance) misses `close` from the hint too, and
+                // on a surface closed on itself its seam has two parameters as near: the hint's
+                // is kept when it is about as near, so a loop runs on without jumping the seam.
+                let mut seed = ([u0, v0], f64::INFINITY);
+                for &(uv, q) in self.seeds() {
+                    let d = dist(q, p);
+                    if d < seed.1 {
+                        seed = (uv, d);
+                    }
+                }
+                let r = self.newton(p, seed.0);
+                match from_hint {
+                    Some(h) if h.1 <= 2.0 * r.1 + close => h,
+                    _ => r,
                 }
             }
-        }
-        dist(lo, hi).max(1e-9)
-    };
-    let close = 1e-7 * size;
-    let mut best = None;
-    if let Some(h) = hint {
-        let r = newton(h);
-        if r.1 <= close {
-            best = Some(r);
-        }
-    }
-    let (uv, _) = best.unwrap_or_else(|| {
-        let n = 8 * b
-            .points
-            .len()
-            .max(b.points.first().map_or(0, Vec::len))
-            .max(2);
-        let mut seed = ([u0, v0], f64::INFINITY);
-        for i in 0..=n {
-            for j in 0..=n {
-                let uv = [
-                    u0 + (u1 - u0) * i as f64 / n as f64,
-                    v0 + (v1 - v0) * j as f64 / n as f64,
-                ];
-                let d = dist(b.point_at(uv), p);
-                if d < seed.1 {
-                    seed = (uv, d);
-                }
+        };
+        // On the domain's edge when within a hair of it, as a B-spline's own edges are.
+        let mut uv = uv;
+        for (x, (a, z)) in uv.iter_mut().zip([(u0, u1), (v0, v1)]) {
+            let hair = 1e-10 * (z - a);
+            if (*x - a).abs() <= hair {
+                *x = a;
+            } else if (*x - z).abs() <= hair {
+                *x = z;
             }
         }
-        newton(seed.0)
-    });
-    // On the domain's edge when within a hair of it, as a B-spline's own edges are.
-    let mut uv = uv;
-    for (x, (a, z)) in uv.iter_mut().zip([(u0, u1), (v0, v1)]) {
-        let hair = 1e-10 * (z - a);
-        if (*x - a).abs() <= hair {
-            *x = a;
-        } else if (*x - z).abs() <= hair {
-            *x = z;
-        }
+        let (_, su, sv) = b.eval(uv[0], uv[1]);
+        let undefined = if norm(su) <= POLE * self.size {
+            Some(0)
+        } else if norm(sv) <= POLE * self.size {
+            Some(1)
+        } else {
+            None
+        };
+        (uv, undefined)
     }
-    let (_, su, sv) = b.eval(uv[0], uv[1]);
-    let undefined = if norm(su) <= POLE * size {
-        Some(0)
-    } else if norm(sv) <= POLE * size {
-        Some(1)
-    } else {
-        None
-    };
-    (uv, undefined)
 }
 
 impl BSplineSurface {
