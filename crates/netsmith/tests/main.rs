@@ -65,6 +65,7 @@ mod pin_swaps;
 mod pinout;
 mod pins;
 mod placed;
+mod port_skeleton;
 mod power_issues;
 mod power_manifold;
 mod power_manifold_ics;
