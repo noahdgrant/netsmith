@@ -17,9 +17,6 @@ netsmith-kicad = { path = "../netsmith-kicad" }
 # The pour filler and the drawing code of the Gerbers, which the copper as data reuses
 # (`copper`, ADR 0105). netsmith-fab depends on no other netsmith crate but netsmith-kicad.
 netsmith-fab = { path = "../netsmith-fab" }
-# Polygon booleans for the 3D meshes (the copper of a net joined, the mask with its openings cut
-# out): the same library and version the Gerbers' pen uses (netsmith-fab).
-i_overlay = "9.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
 # `float_roundtrip`: a board read back from JSON (a placed board, `netsmith route`) has the very
 # numbers it was written with, so it routes to the same copper.

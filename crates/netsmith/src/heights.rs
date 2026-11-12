@@ -80,10 +80,10 @@
 
 use std::collections::BTreeMap;
 
+use netsmith_3d::scene3d::HeightProvenance;
 use netsmith_core::{Design, PartHeight};
 use netsmith_design::Sourced;
 use netsmith_pcb::Board;
-use netsmith_pcb::scene3d::HeightProvenance;
 use netsmith_pcb::standard_height::StandardHeight;
 use netsmith_solve::Catalogs;
 
@@ -152,7 +152,7 @@ pub(crate) fn from_catalog_rows(
 /// Where each part's height came from in the design (the glossary's _Height provenance_), by
 /// path: `catalog` for a part of `catalog`, else `stated` for a part the design states a height
 /// for, else `unknown`. The design does not know footprints, so a part this calls `unknown` may
-/// have a standard height on the board: [`Coverage`] and the 3D scene (`netsmith_pcb::scene3d`)
+/// have a standard height on the board: [`Coverage`] and the 3D scene (`netsmith_3d::scene3d`)
 /// read that from the board, after this.
 pub fn provenance(
     design: &Design,

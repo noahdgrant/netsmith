@@ -1,0 +1,26 @@
+[package]
+name = "netsmith-3d"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[dependencies]
+netsmith-core = { path = "../netsmith-core" }
+netsmith-pcb = { path = "../netsmith-pcb" }
+# Polygon booleans for the 3D meshes (the copper of a net joined, the mask with its openings cut
+# out): the same library and version the Gerbers' pen uses (netsmith-fab).
+i_overlay = "9.1.0"
+serde_json = "1.0.154"
+
+[dev-dependencies]
+netsmith = { path = "../netsmith" }
+netsmith-check = { path = "../netsmith-check" }
+netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-solve = { path = "../netsmith-solve" }

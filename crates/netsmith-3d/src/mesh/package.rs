@@ -1,4 +1,4 @@
-//! A part's _Package shape_ as meshes: each solid of [`crate::body3d`] triangulated in the
+//! A part's _Package shape_ as meshes: each solid of [`netsmith_pcb::body3d`] triangulated in the
 //! footprint's frame, then put where the part is by its [`Placement`].
 //!
 //! The solids of a package touch and sit in one another (a mark in the top of the body, a pin
@@ -8,9 +8,9 @@
 //! The part's highest point is still its height. This is drawing only: the height limits, the
 //! overlaps and every report measure the scene's body box, never these meshes.
 
-use crate::body3d::{Axis, Material as Made, Primitive, Solid};
 use crate::mesh::{Material, Mesh, Polygon, circle};
 use crate::scene3d::PlacedShape;
+use netsmith_pcb::body3d::{Axis, Material as Made, Primitive, Solid};
 
 /// Drawing only: how far below a level mark or pin a body's top is drawn at most, in mm.
 pub const TOP_GAP: f64 = 0.02;
@@ -133,7 +133,7 @@ fn local(id: &str, material: Material, p: &Primitive) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::Pt;
+    use netsmith_pcb::geometry::Pt;
 
     #[test]
     fn a_body_is_drawn_under_a_level_mark_and_a_lead_across_x_keeps_its_box() {

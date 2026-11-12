@@ -22,6 +22,7 @@ netsmith-lang = { path = "../netsmith-lang" }
 netsmith-design = { path = "../netsmith-design" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-3d = { path = "../netsmith-3d" }
 netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-solve = { path = "../netsmith-solve" }
 netsmith-view = { path = "../netsmith-view" }

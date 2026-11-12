@@ -1,5 +1,6 @@
 //! The board: footprints from a tool-independent `Design`, placement, a ratsnest, routing,
-//! and export to KiCad and SVG.
+//! and export to KiCad and SVG. The 3D scene and its glTF, STEP and PNG writers are in
+//! `netsmith-3d`, which depends on this crate.
 //!
 //! ```text
 //! Design --Board::from_design--> Board --route--> Board (with tracks and vias)
@@ -37,23 +38,18 @@ mod fit;
 pub mod footprint;
 pub mod generate;
 pub mod geometry;
-pub mod gltf;
 pub mod layout;
-pub mod mesh;
 pub mod overhang;
 pub mod parallel;
 mod place;
 pub mod protrusion;
 pub mod quality;
-pub mod raster3d;
 pub mod ratsnest;
 pub mod route;
 pub mod rules;
-pub mod scene3d;
 pub mod shape;
 pub mod stackup;
 pub mod standard_height;
-pub mod step;
 mod stitch;
 pub mod svg;
 pub mod validate;

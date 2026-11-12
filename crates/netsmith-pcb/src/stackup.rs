@@ -64,7 +64,7 @@ pub struct StackLayer {
 }
 
 /// A length rounded to a nanometre, so sums of millimetre values print as written.
-pub(crate) fn round(mm: f64) -> f64 {
+pub fn round(mm: f64) -> f64 {
     (mm * 1e6).round() / 1e6
 }
 

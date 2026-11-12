@@ -22,7 +22,7 @@
 //! # What it holds
 //!
 //! - The board solid: the rounded outline, the cutouts, every drilled hole (pads and vias,
-//!   plated or not) and the layers of [`crate::stackup::layers`], the list the KiCad board file's
+//!   plated or not) and the layers of [`netsmith_pcb::stackup::layers`], the list the KiCad board file's
 //!   stackup is written from, each at its Z.
 //! - One [`Body`] per part with a body (a label has none): the body box (the footprint's
 //!   `F.Fab` drawing, else its courtyard, as a placement requirement and the height check measure
@@ -31,7 +31,7 @@
 //!   part with no height of its own whose footprint has a _Standard height_ stands to the
 //!   package standard's maximum, labelled `standard` (ADR 0106).
 //!   Where the footprint has a package record and the height is known, the body also carries
-//!   its _Package shape_ ([`PlacedShape`]): the solids of [`crate::body3d::package_shape`] in the
+//!   its _Package shape_ ([`PlacedShape`]): the solids of [`netsmith_pcb::body3d::package_shape`] in the
 //!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
 //!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
 //!   every report measure the body box.
@@ -48,7 +48,7 @@
 //!   the tracks (each a straight piece with round ends), the planes and the pours as polygons
 //!   with holes; the vias as barrels from the top copper to the bottom copper; and the
 //!   openings of the solder mask and the silkscreen of each face. It is the output of
-//!   [`crate::copper`], the copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
+//!   [`netsmith_pcb::copper`], the copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
 //!   names of [`Board::nets`], and a pad also has its part's path and number. A board whose
 //!   copper cannot be drawn (its board file would not plot either) has the reason in place of
 //!   the copper, and the rest of the scene is as it is.
@@ -60,16 +60,16 @@
 //! Everything is in a fixed order: bodies by part path, holes by part path then pad order then
 //! vias in the board's order, limits by name, findings by path; copper layers from the top
 //! face down, a layer's pads by part path then the footprint's pad order, and its tracks,
-//! pours and the vias in the order of [`crate::copper`] (the board's).
+//! pours and the vias in the order of [`netsmith_pcb::copper`] (the board's).
 
 use std::collections::BTreeMap;
 
-use crate::board::{Board, PlacementProblem, Side};
-use crate::body3d::Solid;
-use crate::copper::{self, CopperError};
-use crate::footprint::{Drill, PadKind};
-use crate::geometry::{Pt, Rect};
-use crate::stackup::{LayerKind, StackLayer};
+use netsmith_pcb::board::{Board, PlacementProblem, Side};
+use netsmith_pcb::body3d::Solid;
+use netsmith_pcb::copper::{self, CopperError};
+use netsmith_pcb::footprint::{Drill, PadKind};
+use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::stackup::{LayerKind, StackLayer};
 
 /// Where a part's height came from (the glossary's _Height provenance_), strongest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -79,7 +79,7 @@ pub enum HeightProvenance {
     /// The `height` cell of the catalog row the part was picked as (ADR 0094).
     Catalog,
     /// Neither, and the footprint has a _Standard height_: the greatest its package standard
-    /// allows (ADR 0106, [`crate::standard_height`]), not a figure of the part.
+    /// allows (ADR 0106, [`netsmith_pcb::standard_height`]), not a figure of the part.
     Standard,
     /// None of these: the part has no height.
     Unknown,
@@ -294,7 +294,7 @@ pub struct Body {
     pub height: Option<f64>,
     pub provenance: HeightProvenance,
     /// The package standard the height is from, for a `standard` height (ADR 0106).
-    pub standard: Option<crate::standard_height::StandardHeight>,
+    pub standard: Option<netsmith_pcb::standard_height::StandardHeight>,
     pub pins: Pins,
     /// The package shape, drawn in place of the box. `None` when the footprint has no package
     /// record (a footprint read from a file, ADR 0105) or the height is unknown: the box, or the
@@ -303,7 +303,7 @@ pub struct Body {
 }
 
 /// A part's _Package shape_ where it is on the board: its solids in the footprint's own frame
-/// ([`crate::body3d`]: y down, z up from the face the part is on) and the map to the scene's.
+/// ([`netsmith_pcb::body3d`]: y down, z up from the face the part is on) and the map to the scene's.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedShape {
     pub solids: Vec<Solid>,
@@ -605,7 +605,7 @@ pub struct MaskFace {
     pub areas: Vec<PlanArea>,
 }
 
-/// The silkscreen of a face: the ink of its legend Gerber ([`crate::copper::SilkInk`]), as
+/// The silkscreen of a face: the ink of its legend Gerber ([`netsmith_pcb::copper::SilkInk`]), as
 /// printed on the outside of the face's mask (`z`, the mask layer's outer side of the stackup;
 /// the outer copper's where the stackup has no mask).
 #[derive(Debug, Clone, PartialEq)]
@@ -647,7 +647,7 @@ impl Scene {
             .expect("a board is only made once its thickness is chosen");
         let solid = solid(board, &frame, thickness);
         let copper = copper::copper(board).and_then(|c| scene_copper(&c, &solid.layers, &frame));
-        let mut parts: Vec<&crate::board::Placed> =
+        let mut parts: Vec<&netsmith_pcb::board::Placed> =
             board.parts.iter().filter(|p| p.kind != "Label").collect();
         parts.sort_by(|a, b| a.path.cmp(&b.path));
         let bodies: Vec<Body> = parts
@@ -766,12 +766,12 @@ impl Frame {
 /// A length to a nanometre, with no negative zero, so a report prints the same bytes on every
 /// machine.
 fn clean(v: f64) -> f64 {
-    let r = crate::stackup::round(v);
+    let r = netsmith_pcb::stackup::round(v);
     if r == 0.0 { 0.0 } else { r }
 }
 
 fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
-    let stack: Vec<StackLayer> = crate::stackup::layers(board);
+    let stack: Vec<StackLayer> = netsmith_pcb::stackup::layers(board);
     let mut z = 0.0;
     let layers = stack
         .into_iter()
@@ -796,7 +796,7 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
             radius: c.radius,
         })
         .collect::<Vec<_>>();
-    let mut parts: Vec<&crate::board::Placed> = board.parts.iter().collect();
+    let mut parts: Vec<&netsmith_pcb::board::Placed> = board.parts.iter().collect();
     parts.sort_by(|a, b| a.path.cmp(&b.path));
     let mut holes = Vec::new();
     for p in parts {
@@ -964,7 +964,7 @@ fn scene_copper(
 }
 
 fn body(
-    p: &crate::board::Placed,
+    p: &netsmith_pcb::board::Placed,
     frame: &Frame,
     thickness: f64,
     provenance: &BTreeMap<String, HeightProvenance>,
@@ -1025,7 +1025,7 @@ fn body(
         }
     };
     let shape = (p.footprint.package.is_some() && height.is_some())
-        .then(|| crate::body3d::package_shape(&p.footprint, height))
+        .then(|| netsmith_pcb::body3d::package_shape(&p.footprint, height))
         .filter(|s| s.shaped && !s.solids.is_empty())
         .map(|s| PlacedShape {
             solids: s.solids,
@@ -1053,8 +1053,8 @@ fn body(
 }
 
 /// Where the footprint's frame of `p` is in the scene: its origin, and its axes as
-/// [`crate::board::Placed::to_board`] turns and mirrors them, with the sheet's y flipped.
-fn placement(p: &crate::board::Placed, frame: &Frame, z_face: f64, out: f64) -> Placement {
+/// [`netsmith_pcb::board::Placed::to_board`] turns and mirrors them, with the sheet's y flipped.
+fn placement(p: &netsmith_pcb::board::Placed, frame: &Frame, z_face: f64, out: f64) -> Placement {
     // `to_board` less the move, without the rounding of adding and taking away `p.at`.
     let axis = |local: Pt| {
         let local = if p.mirrored() {
@@ -1075,7 +1075,7 @@ fn placement(p: &crate::board::Placed, frame: &Frame, z_face: f64, out: f64) -> 
 }
 
 fn limits(board: &Board, frame: &Frame, thickness: f64, bodies: &[Body]) -> Vec<HeightLimit> {
-    let parts: BTreeMap<&str, &crate::board::Placed> =
+    let parts: BTreeMap<&str, &netsmith_pcb::board::Placed> =
         board.parts.iter().map(|p| (p.path.as_str(), p)).collect();
     let mut limits: Vec<HeightLimit> = board
         .keepout_areas()

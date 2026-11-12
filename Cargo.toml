@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-design", "crates/netsmith", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf"]
+members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-design", "crates/netsmith", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf"]
 
 [workspace.package]
 version = "0.1.0"
@@ -20,6 +20,12 @@ debug = "line-tables-only"
 # rest of the workspace is quick to build and to step through, and this crate is optimised so
 # that its tests (a board of seventy parts is placed and routed) take seconds, not minutes.
 [profile.dev.package.netsmith-pcb]
+opt-level = 2
+
+# The 3D scene, its meshes and the rasterizer were optimised with netsmith-pcb before they were
+# a crate of their own (issue #518), and stay so: their tests take about 2.8 s optimised and
+# 10.6 s not, and `netsmith board3d` and `netsmith render` in a debug build keep their speed.
+[profile.dev.package.netsmith-3d]
 opt-level = 2
 
 # The solver searches thousands of candidate combinations on a real board: a real 12 V automotive board (about 60 parts, two buck stages) takes

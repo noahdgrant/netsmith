@@ -23,7 +23,7 @@
 use super::scene::{board_outline, hole_segments, slot};
 use super::{Axis, Material, Mesh, Polygon, pieces};
 use crate::scene3d::{CopperLayer, Hole, HoleOwner, Plan, PlanArea, Scene};
-use crate::stackup::LayerKind;
+use netsmith_pcb::stackup::LayerKind;
 
 /// The thickness of the copper plating on the wall of a drilled hole, in mm. A picture's figure:
 /// the fabricator's own varies (IPC-6012 asks at least 20 µm on average for class 2), and the
