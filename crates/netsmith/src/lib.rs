@@ -25,6 +25,7 @@ pub mod project;
 pub mod providers;
 pub mod reference_table;
 pub mod refresh;
+pub mod render;
 pub mod resolve;
 mod stock;
 pub mod supply;
