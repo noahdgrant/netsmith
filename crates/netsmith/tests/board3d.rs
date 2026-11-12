@@ -324,6 +324,47 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
     assert_eq!(of_scene(&scene), of_scene(&scene_of("examples/led.nsm")));
 }
 
+/// A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std: a body
+/// of 0 mm is a statement, so each counts as known in the coverage, is `stated`, is no unknown
+/// height, and is not drawn as the flat outline of an unknown body.
+#[test]
+fn a_fiducial_a_mounting_hole_and_a_test_point_are_stated_flat_and_not_unknown() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    use netsmith_pcb::scene3d::HeightProvenance;
+    for (source, kinds) in [
+        (
+            "examples/outline_and_pours.nsm",
+            ["Fiducial", "MountingHole"],
+        ),
+        ("examples/two_buck/two_buck.nsm", ["TestPoint", "TestPoint"]),
+    ] {
+        let scene = scene_of(source);
+        let meshes = of_scene(&scene);
+        let flat: Vec<_> = scene
+            .bodies
+            .iter()
+            .filter(|b| kinds.contains(&b.kind.as_str()))
+            .collect();
+        assert!(
+            !flat.is_empty(),
+            "{source}: no fiducial, hole or test point"
+        );
+        for b in &flat {
+            assert_eq!(b.height, Some(0.0), "{source}: {}", b.path);
+            assert_eq!(b.provenance, HeightProvenance::Stated, "{}", b.path);
+            assert!(
+                !meshes
+                    .iter()
+                    .any(|m| m.id == b.path && m.material == Material::BodyUnknown),
+                "{}: drawn as an unknown height",
+                b.path
+            );
+        }
+        let known = scene.bodies.iter().filter(|b| b.height.is_some()).count();
+        assert_eq!(scene.coverage().known, known, "{source}");
+    }
+}
+
 #[test]
 fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
     use netsmith_pcb::mesh::{Material, Mesh, of_scene};
