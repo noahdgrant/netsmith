@@ -395,11 +395,15 @@ fn run_fab(
                         report.boards.push(BoardOut {
                             board: b.board.clone(),
                             dir: Some(b.dir.display().to_string()),
+                            parts: b.origins.clone(),
                         });
                         continue;
                     }
                     print!("{}", b.summary);
                     println!("wrote {}", b.dir.display());
+                    if !b.origins.is_empty() {
+                        print!("{}", netsmith_pcb::origins_text(&b.origins));
+                    }
                     match output.notes {
                         NotesMode::All if !lines.is_empty() => {
                             eprintln!("\nbefore you order ({}):\n{}", b.board, b.notes.trim_end());

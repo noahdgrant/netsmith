@@ -657,7 +657,7 @@ y 70 in their file), y down, and the comment above each line says which of their
 
 The ground pour on the back (`.bottom.net &= "GND"` in the process in `src/main.nsm`, as in their
 board, whose `GND` zone is on both layers) came with the schematic. The layout file
-`src/main.pcb.toml` has only `seed = 7`, a placer seed (it keeps a solution and never a
+`src/main.pcb.toml` has only `seed = 1`, a placer seed (it keeps a solution and never a
 requirement; it locks no part). The seed does not move the physical file's parts.
 
 ## The result
@@ -684,6 +684,11 @@ to 11 each leave one connection of the same pair (`J1.2` to `U4.5` or `J1.3` to 
 to 38 s; **seed 7 routes everything, on the first try**. No design rule was weakened (the process
 is JLCPCB's TwoLayer, unchanged), no keepout was needed, and the physical file's parts are the
 same under every seed. The must-match items passed on every one of those boards.
+
+**Seed 1, since #457.** The placer began to measure a part that the requirements pin where it
+is, and not at the nearest point of its 0.05 mm grid, which changed every seed's arrangement:
+seed 7 no longer finished, and seed 1 routes everything (`fab --locked` in 57 s, a debug build on
+a machine running other builds; seeds 5 and 8 route too). The table above is seed 7's run.
 
 The parity checker on that board, `must-match: 129 ok, 0 failed` (the lines are in the pull
 request that added this):

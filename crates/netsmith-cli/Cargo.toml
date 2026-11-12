@@ -23,6 +23,7 @@ netsmith-dxf = { path = "../netsmith-dxf" }
 netsmith-editor = { path = "../netsmith-editor" }
 netsmith-fab = { path = "../netsmith-fab" }
 netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-3d = { path = "../netsmith-3d" }
 netsmith-solve = { path = "../netsmith-solve" }
 clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
@@ -31,7 +32,6 @@ ureq = "3"
 
 [dev-dependencies]
 netsmith-lang = { path = "../netsmith-lang" }
-netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tungstenite = "0.30.0"

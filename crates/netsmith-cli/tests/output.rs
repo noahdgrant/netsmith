@@ -391,3 +391,59 @@ fn parity_is_a_command_with_a_json_report() {
         stderr(&original)
     );
 }
+
+/// `fab` lists where each part's footprint origin is and how far it is from the body's centre
+/// that `.place.x` and `.place.y` measure (#457), in its text and in `--format json`, so that a
+/// requirement that puts the origin somewhere can be written once from it.
+#[test]
+fn fab_lists_each_footprints_origin_and_its_offset_from_the_body() {
+    let root = led("output-fab-origins");
+    fs::write(
+        root.join("src/main.physical.nsm"),
+        "physical for LedExample {\n    .power_in.place.x &= 12mm\n    .power_in.place.y &= 9mm\n    .power_in.place.rotation &= 90\n}\n",
+    )
+    .unwrap();
+    let run = netsmith(&root, &["fab", "--quiet"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let out = String::from_utf8_lossy(&run.stdout).to_string();
+    assert!(
+        out.contains(&format!("{}:\n", netsmith_pcb::ORIGINS_HEAD)),
+        "{out}"
+    );
+    let doc = json(&netsmith(&root, &["fab", "--format", "json"]));
+    let parts = doc["boards"][0]["parts"].as_array().unwrap();
+    assert_eq!(parts.len(), 3, "{doc:#}");
+    for p in parts {
+        let at = |key: &str, i: usize| p[key][i].as_f64().unwrap();
+        for i in 0..2 {
+            assert!(
+                (at("origin", i) - at("body_centre", i) - at("offset", i)).abs() < 1e-9,
+                "{p:#}"
+            );
+        }
+        // The text has the same line.
+        let line = format!(
+            "  {} (`{}`) {}, turned {}: origin ({}, {}), body centre ({}, {}), dx {} dy {}\n",
+            p["refdes"].as_str().unwrap(),
+            p["path"].as_str().unwrap(),
+            p["side"].as_str().unwrap(),
+            p["rotation"].as_f64().unwrap(),
+            at("origin", 0),
+            at("origin", 1),
+            at("body_centre", 0),
+            at("body_centre", 1),
+            at("offset", 0),
+            at("offset", 1),
+        );
+        assert!(out.contains(&line), "{line}\n---\n{out}");
+    }
+    // The body's centre is what the requirement measures.
+    let header = parts.iter().find(|p| p["path"] == "power_in").unwrap();
+    assert_eq!(
+        header["body_centre"],
+        serde_json::json!([12.0, 9.0]),
+        "{header:#}"
+    );
+    assert_eq!(header["side"], "top");
+    assert_eq!(header["rotation"], 90.0);
+}

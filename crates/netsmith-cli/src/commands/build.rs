@@ -288,6 +288,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             report.boards.push(BoardOut {
                 board: b.label(),
                 dir: written.map(|d| d.display().to_string()),
+                parts: Vec::new(),
             });
         }
     }

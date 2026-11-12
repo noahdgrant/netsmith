@@ -7640,7 +7640,16 @@ The lines are in the board's physical file (ADR 0048), in the unit `physical for
 | `.rotation` | degrees counterclockwise on screen, as in the layout file; a plain number, a multiple of 90 |
 | `.side` | `"top"` or `"bottom"`; on a module it is a requirement on every part of it |
 
-Positions are lengths in the board's frame (the outline's top left corner is the origin, x right, y down), and they are measured from the **body**: the outline the footprint draws on its fabrication layer (`F.Fab`), else its courtyard. The case states the shell of a connector, not the origin the footprint's author chose, so a requirement survives a change of package. The layout file's `at` stays the footprint's origin; the check converts, and every finding says which drawing it used. A field the board leaves alone is unconstrained.
+Positions are lengths in the board's frame (the outline's top left corner is the origin, x right, y down), and they are measured from the **body**: the outline the footprint draws on its fabrication layer (`F.Fab`), else its courtyard, else its pads and 0.25 mm (the courtyard the placer gives a footprint that draws none; a courtyard takes in every hole that reaches past it). The box is found in the footprint's own frame and turned with the part, and the placer and the check measure the same one. The case states the shell of a connector, not the origin the footprint's author chose, so a requirement survives a change of package. The layout file's `at` stays the footprint's origin; the check converts, and every finding says which drawing it used. A field the board leaves alone is unconstrained.
+
+**Putting a footprint's origin somewhere.** A port must put a footprint's origin where the original's is, and a requirement measures the body. The two are a fixed distance apart for a part on one face and turned one way. `fab` prints it for every part after the line `wrote ...`, and `fab --format json` gives it in the `parts` of each board (`origin`, `body_centre` and `offset`, in mm from the outline's top left corner):
+
+```text
+where each footprint's origin is, in mm from the outline's top left corner (y down), and how far it is from the centre of the body that `.place.x` and `.place.y` measure: to put the origin at (x, y) with the part on that face and turned so, write `.place.x &= x - dx` and `.place.y &= y - dy`:
+  J1 (`power_in`) top, turned 90: origin (10.73, 9), body centre (12, 9), dx -1.27 dy 0
+```
+
+Set the face and the turn first, run `fab` once, and write `.place.x` and `.place.y` from the line: for the origin at (10, 9), `.power_in.place.x &= 11.27mm` and `.power_in.place.y &= 9mm`. `netsmith parity` writes the two lines out for each part that must match, in an `origin` line of its report (and in `origins` with `--format json`), with the figures of the original's origin.
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -8398,6 +8407,8 @@ footprint = "own:Sensor"
 ```
 
 The file is `libs/own.pretty/Sensor.kicad_mod`. `build` and `fab` write the library name into the `fp-lib-table` beside the board, so KiCad finds the footprint.
+
+**A footprint on the bottom face.** Draw every footprint as seen from the top, as KiCad's libraries do. A part on the bottom (`.place.side &= "bottom"`, or `side = "bottom"` in the layout file) is written mirrored, as KiCad flips a footprint: `fab` negates every x of the footprint's frame (pads, drawings, courtyard) and puts every layer on the other face (`F.Cu` becomes `B.Cu`, `F.CrtYd` becomes `B.CrtYd`). A board file stores a footprint on the back already flipped, and so does a port's `placements.toml`, which is read from it: to draw a footprint from those figures, negate each x and each pad's angle in the footprint, and put each layer on the other face. A footprint drawn from them as they stand comes out flipped twice: its pads mirrored and on the wrong face.
 
 **A footprint netsmith generates.** When one of netsmith's generators makes the package, the row asks for it by the generator's name and parameters, in place of `Library:Name` (ADR 0104). There is no file and no library:
 

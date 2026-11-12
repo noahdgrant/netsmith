@@ -4,7 +4,9 @@
 //! A requirement names the footprints it is about (by reference designator; a module's lists
 //! all of its parts) and a field of the body's box. The body is the box of the footprint's
 //! drawing on the fabrication layer (`F.Fab`, or `B.Fab` on the back), or its courtyard if
-//! it draws none, or its pads if it has neither; a finding says which was used. Positions
+//! it draws none, or its pads and [`BARE_COURTYARD_MARGIN`] if it has neither, found in the
+//! footprint's own frame and turned with it, as the placer finds it; a finding says which was
+//! used. Positions
 //! are in the frame of the layout file: the origin is the top left corner of the box round
 //! `Edge.Cuts`, x grows to the right and y downward. `rotation` is the footprint's angle in
 //! degrees, counterclockwise on screen, and `side` is the face it is on.
@@ -167,8 +169,23 @@ pub fn range_text(lo: f64, hi: f64, unit: &str) -> String {
     }
 }
 
-/// The box of a footprint's body and the layer it is drawn on.
-fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)> {
+/// How far the courtyard of a footprint that draws none goes past its pads, in mm: the
+/// placer's courtyard for it (`netsmith_pcb::Footprint::courtyard`) and the body the check
+/// measures are its pads and this margin (#457).
+pub const BARE_COURTYARD_MARGIN: f64 = 0.25;
+
+/// The box of a footprint's body and what it is made from: the drawing on the fabrication
+/// layer, else on the courtyard layer, else the pads and [`BARE_COURTYARD_MARGIN`]; a box
+/// made from a courtyard takes in every hole that reaches past it. It is found in the
+/// footprint's own frame and then turned onto the board, as the placer finds it
+/// (`netsmith_pcb::Placed::body`), so that the two measure one box (#457).
+pub fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)> {
+    let (at, angle) = art
+        .footprints
+        .iter()
+        .find(|f| f.part == part)
+        .map_or((Pt::default(), 0.0), |f| (f.at, f.angle));
+    let local = |p: Pt| (p - at).rotate(-angle);
     let draws = |layer: &str| -> Option<Bounds> {
         let mut points: Vec<Pt> = Vec::new();
         for g in art
@@ -186,7 +203,30 @@ fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)> {
                 Shape::Poly(p) => points.extend(p.iter().copied()),
             }
         }
-        Bounds::of(points)
+        Bounds::of(points.into_iter().map(local))
+    };
+    let pads: Vec<&crate::artwork::Pad> = art.pads.iter().filter(|p| p.part == part).collect();
+    let on_board = |b: Bounds| {
+        Bounds::of(
+            [
+                b.min,
+                Pt::new(b.max.x, b.min.y),
+                b.max,
+                Pt::new(b.min.x, b.max.y),
+            ]
+            .map(|c| at + c.rotate(angle)),
+        )
+        .expect("a box has corners")
+    };
+    let with_holes = |mut b: Bounds| {
+        for p in &pads {
+            if let Some(d) = &p.drill {
+                let (c, reach) = (local(p.at), d.width.max(d.length) / 2.0);
+                b.add(Pt::new(c.x - reach, c.y - reach));
+                b.add(Pt::new(c.x + reach, c.y + reach));
+            }
+        }
+        b
     };
     let (fab, yard) = if back {
         ("B.Fab", "B.CrtYd")
@@ -194,18 +234,33 @@ fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)> {
         ("F.Fab", "F.CrtYd")
     };
     if let Some(b) = draws(fab) {
-        return Some((b, fab.to_string()));
+        return Some((on_board(b), fab.to_string()));
     }
     if let Some(b) = draws(yard) {
-        return Some((b, yard.to_string()));
+        return Some((on_board(with_holes(b)), yard.to_string()));
     }
-    let pads = art.pads.iter().filter(|p| p.part == part).flat_map(|p| {
-        [
-            Pt::new(p.at.x - p.size.0 / 2.0, p.at.y - p.size.1 / 2.0),
-            Pt::new(p.at.x + p.size.0 / 2.0, p.at.y + p.size.1 / 2.0),
-        ]
+    let boxes = pads.iter().flat_map(|p| {
+        let mut turned = (*p).clone();
+        turned.at = local(p.at);
+        turned.angle = p.angle - angle;
+        let b = crate::pads::outline(&turned).bounds();
+        [b.min, b.max]
     });
-    Bounds::of(pads).map(|b| (b, "pads".to_string()))
+    let b = Bounds::of(boxes)?;
+    let grown = Bounds {
+        min: Pt::new(
+            b.min.x - BARE_COURTYARD_MARGIN,
+            b.min.y - BARE_COURTYARD_MARGIN,
+        ),
+        max: Pt::new(
+            b.max.x + BARE_COURTYARD_MARGIN,
+            b.max.y + BARE_COURTYARD_MARGIN,
+        ),
+    };
+    Some((
+        on_board(with_holes(grown)),
+        format!("pads and {BARE_COURTYARD_MARGIN} mm"),
+    ))
 }
 
 /// The box round `Edge.Cuts`: the frame the requirements are measured in.
