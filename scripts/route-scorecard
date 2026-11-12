@@ -5,6 +5,18 @@
 # NETSMITH_SEEDS (default 0..1), and prints the scorecard (`netsmith_fab::score`) of every
 # board beside the hand-routed reference of each ported one.
 #
+# Robustness: one lucky run says little, since moving any cost of the search re-rolls where the
+# tracks go. The first fab run of each ported board saves its placed board (`--save-placed`),
+# and `netsmith route <placed> --tries 1 --route-timeout 0 --turn T` routes it again for each
+# turn cost T in NETSMITH_TURNS (default "24 25 26 27": the router's own, 25, and one unit
+# either way and two up), side by side (each is single-threaded and CPU-bound): one try of the
+# whole board to its end, no time limit. The scorecard prints, for each board, the connections
+# each T left and the time it took, and `scorecard.json` has them under `robustness`. A change
+# that routes the board at 25 only is luck; one that routes it at all four is robust. Set
+# NETSMITH_SKIP_ROBUSTNESS=1 to leave it out, and NETSMITH_EXAMPLES (default "rp2350_minimal orbit
+# easyduino_esp32s3") to score fewer of the ported boards. The routed copies are in
+# `<out>/robustness/<example>-T/`.
+#
 # Usage: scripts/route-scorecard [out-dir]
 # The out-dir (default: a new temporary folder, kept) holds the fab packages, the board files of
 # the invented boards, `times.txt` and `scorecard.json`. It builds release binaries; set
@@ -25,13 +37,16 @@ bin="$repo/target/release/netsmith"
 score="$repo/target/release/examples/route_score"
 
 : > "$out/times.txt"
+read -r -a examples <<< "${NETSMITH_EXAMPLES:-rp2350_minimal orbit easyduino_esp32s3}"
 boards=()
-for example in rp2350_minimal orbit easyduino_esp32s3; do
+for example in "${examples[@]}"; do
     for run in 1 2; do
         dir="$out/$example-$run"
         rm -rf "$dir"
         start=$(date +%s.%N)
-        (cd "$repo/examples/$example" && "$bin" fab src/main.nsm --out "$dir" > "$dir.log" 2>&1) \
+        save=()
+        [ "$run" = 1 ] && save=(--save-placed)
+        (cd "$repo/examples/$example" && "$bin" fab src/main.nsm --out "$dir" "${save[@]}" > "$dir.log" 2>&1) \
             || echo "warning: fab of $example (run $run) failed, see $dir.log" >&2
         end=$(date +%s.%N)
         printf '%s run %s: %.1f s\n' "$example" "$run" "$(echo "$end - $start" | bc)" >> "$out/times.txt"
@@ -57,7 +72,55 @@ if [ -z "${NETSMITH_SKIP_INVENTED:-}" ]; then
     while IFS= read -r f; do boards+=("$f"); done < <(find "$out/invented" -name '*.kicad_pcb' | sort)
 fi
 
+# One try at each turn cost, side by side, for each ported board (see the header).
+robust_text=""
+robust_json=""
+if [ -z "${NETSMITH_SKIP_ROBUSTNESS:-}" ]; then
+    read -r -a turns <<< "${NETSMITH_TURNS:-24 25 26 27}"
+    for example in "${examples[@]}"; do
+        placed=$(find "$out/$example-1" -name '*.placed.json' | head -1)
+        if [ -z "$placed" ]; then
+            echo "warning: $example has no placed board, no robustness line" >&2
+            continue
+        fi
+        for turn in "${turns[@]}"; do
+            dir="$out/robustness/$example-$turn"
+            rm -rf "$dir"
+            mkdir -p "$dir"
+            ("$bin" route "$placed" --out "$dir" --tries 1 --route-timeout 0 --turn "$turn" \
+                > "$dir.log" 2>&1 || true) &
+        done
+        wait
+        line="robustness $example (one try, no time limit), connections left by turn cost:"
+        entries=""
+        for turn in "${turns[@]}"; do
+            log="$out/robustness/$example-$turn.log"
+            # `<board>: N connections left, ... routed in S s (...)`
+            summary=$(grep -E ': [0-9]+ connections left, ' "$log" | tail -1 || true)
+            left=$(sed -E 's/.*: ([0-9]+) connections left.*/\1/' <<< "$summary")
+            secs=$(sed -E 's/.* routed in ([0-9.]+) s.*/\1/' <<< "$summary")
+            if [ -z "$summary" ]; then
+                echo "warning: route of $example at turn $turn failed, see $log" >&2
+                left=null secs=null
+                line+=" $turn: failed;"
+            else
+                line+=" $turn: $left ($secs s);"
+            fi
+            entries+="${entries:+,}\"$turn\":{\"left\":$left,\"seconds\":$secs}"
+        done
+        robust_text+="${line%;}"$'\n'
+        robust_json+="${robust_json:+,}\"$example\":{\"tries\":1,\"turns\":{$entries}}"
+    done
+fi
+
 cat "$out/times.txt"
 "$score" "${boards[@]}"
-"$score" --json "${boards[@]}" > "$out/scorecard.json"
+printf '%s' "$robust_text"
+card=$("$score" --json "${boards[@]}")
+if [ -n "$robust_json" ]; then
+    rest="${card%\}}"
+    [ "$rest" = "{" ] || rest+=","
+    card="$rest\"robustness\":{$robust_json}}"
+fi
+printf '%s\n' "$card" > "$out/scorecard.json"
 echo "written to $out"

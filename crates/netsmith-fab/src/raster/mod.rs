@@ -8,10 +8,12 @@
 //! - [`parse_excellon`] reads a drill file into [`Hole`]s.
 //! - [`compare`], [`compare_tolerant`] and [`diff_image`] compare two [`Image`]s drawn
 //!   on the same grid; [`Image::to_png`] writes one for a person to look at.
+//! - [`Canvas`] draws colour pictures of a board by the same fill, for an agent to open.
 //!
 //! Nothing here depends on a crate outside `std` but `netsmith-core`, whose PNG writer
 //! ([`netsmith_core::png`]) writes the debug pictures.
 
+mod canvas;
 mod excellon;
 mod geom;
 mod gerber;
@@ -19,6 +21,7 @@ mod macros;
 
 use netsmith_core::png;
 
+pub use canvas::{Canvas, Point, capsule, disc};
 pub use excellon::{Hole, parse_excellon};
 pub use gerber::{gerber_extent, render_gerber};
 

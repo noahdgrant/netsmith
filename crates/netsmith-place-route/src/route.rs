@@ -3058,6 +3058,9 @@ pub struct RouteOptions {
     /// Keep the copper and the lines left after each stage of the try that gives the result
     /// ([`Routing::stages`]).
     pub snapshots: bool,
+    /// Try at most this many orders of the lines (at least one); `None` is the router's own
+    /// number. For measuring how a result depends on one try.
+    pub most_tries: Option<usize>,
 }
 
 impl Default for RouteOptions {
@@ -3071,6 +3074,7 @@ impl Default for RouteOptions {
             cancel: None,
             costs: Costs::DEFAULT,
             snapshots: false,
+            most_tries: None,
         }
     }
 }
@@ -3237,7 +3241,10 @@ pub fn route(board: &mut Board) -> Ratsnest {
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     let (best, stopped, tries, why, crowding, stages) = {
         let router = Router::new(board, &options);
-        let orders = router.orders(options.retry_orders);
+        let mut orders = router.orders(options.retry_orders);
+        if let Some(most) = options.most_tries {
+            orders.truncate(most.max(1));
+        }
         router.report(true, || {
             format!(
                 "routing {} connections on a {} by {} mm board",

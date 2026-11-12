@@ -16,6 +16,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     cancel: None,
     costs: Costs::DEFAULT,
     snapshots: false,
+    most_tries: None,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -26,6 +27,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     cancel: None,
     costs: Costs::DEFAULT,
     snapshots: false,
+    most_tries: None,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -36,6 +38,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     cancel: None,
     costs: Costs::DEFAULT,
     snapshots: false,
+    most_tries: None,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -47,6 +50,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     cancel: None,
     costs: Costs::DEFAULT,
     snapshots: false,
+    most_tries: None,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {
@@ -326,4 +330,27 @@ fn a_cancel_flag_stops_the_router_like_the_time_limit() {
     assert!(stopped.stopped);
     assert!(stopped.left.len() >= free.left.len());
     assert!(stopped_board.tracks.is_empty());
+}
+
+#[test]
+fn most_tries_stops_the_router_after_that_many_orders() {
+    // Without rip-up the hard boards need more than one order; find one the router tries again.
+    let board = hard_boards(45)
+        .into_iter()
+        .find(|b| route_with(&mut b.clone(), RETRY_ONLY).tries > 1)
+        .expect("a hard board that ripping up alone does not finish in one order");
+    let once = |most| {
+        route_with(
+            &mut board.clone(),
+            RouteOptions {
+                most_tries: Some(most),
+                ..RETRY_ONLY
+            },
+        )
+        .tries
+    };
+    assert_eq!(once(1), 1);
+    // None is at least one.
+    assert_eq!(once(0), 1);
+    assert!(once(2) <= 2);
 }

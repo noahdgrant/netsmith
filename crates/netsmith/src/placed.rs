@@ -10,11 +10,13 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro, svg};
+use netsmith_place_route::{Costs, RouteOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::fab::{
     ROUTING_FAILURE, ROUTING_REPORT, route_with_margin, routing_failure, routing_report,
 };
+use crate::picture;
 
 /// The version of the file's layout. A file of another version is refused, since the board's
 /// fields change with netsmith: save the board again with the `fab` of this build.
@@ -100,6 +102,12 @@ pub struct RouteRequest {
     pub margin: Option<f64>,
     /// Told how far the router has got.
     pub progress: Option<fn(&str)>,
+    /// The search's cost of a 45 degree bend over the router's own ([`Costs::turn`]).
+    pub turn: Option<i64>,
+    /// Try at most this many orders of the lines ([`RouteOptions::most_tries`]).
+    pub tries: Option<usize>,
+    /// Draw each stage of the try that gave the result, and the crowding map, as PNGs.
+    pub stages: bool,
 }
 
 /// What `route` made of a placed board.
@@ -120,6 +128,8 @@ pub struct Routed {
 /// room, then the least track) and write its `.kicad_pcb`, `.kicad_pro` and `.svg` into `out`,
 /// and `routing-failure.txt` and `routing-report.json` when connections are left (those of an
 /// earlier run are removed when none are).
+/// With [`RouteRequest::stages`] it also writes a PNG of each stage ([`picture::stage_file`])
+/// and `crowding.png`; without it, those of an earlier run are removed.
 pub fn route(
     file: PlacedFile,
     out: &Path,
@@ -129,13 +139,22 @@ pub fn route(
     let mut board = file.board;
     let margin = request.margin.unwrap_or(file.track_margin);
     let started = Instant::now();
-    let routing = route_with_margin(
-        &mut board,
-        request.route_timeout,
-        request.progress,
-        margin,
-        say,
-    );
+    // The pads are drawn from the board as placed, before any copper.
+    let painter = if request.stages {
+        Some(picture::Painter::new(&board).map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+    let base = RouteOptions {
+        progress: request.progress,
+        costs: Costs {
+            turn: request.turn.unwrap_or(Costs::DEFAULT.turn),
+        },
+        most_tries: request.tries,
+        snapshots: request.stages,
+        ..RouteOptions::default()
+    };
+    let routing = route_with_margin(&mut board, request.route_timeout, base, margin, say);
     let elapsed = started.elapsed();
     fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
     let name = &board.name;
@@ -147,6 +166,26 @@ pub fn route(
     ] {
         fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;
         written.push(path);
+    }
+    let mut pictures: Vec<(&str, Vec<u8>)> = Vec::new();
+    if let Some(painter) = &painter {
+        for stage in &routing.stages {
+            pictures.push((picture::stage_file(stage.after), painter.stage(stage)));
+        }
+        pictures.push((picture::CROWDING_FILE, painter.crowding(&routing.crowding)));
+    }
+    for file in picture::FILES {
+        let path = out.join(file);
+        match pictures.iter().find(|(f, _)| *f == file) {
+            Some((_, png)) => {
+                fs::write(&path, png).map_err(|e| format!("{}: {e}", path.display()))?;
+                written.push(path);
+            }
+            None if path.exists() => {
+                fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            }
+            None => {}
+        }
     }
     let failure = out.join(ROUTING_FAILURE);
     let json = out.join(ROUTING_REPORT);
