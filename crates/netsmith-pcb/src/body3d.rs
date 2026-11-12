@@ -43,12 +43,14 @@
 //! terminals are not in the data, so none is drawn), SOT-23 (-3, -5, -6), SOT-223 (three
 //! pins and the wide tab, from the sourced dimensions in `generate/sot.rs`), SOT-89-3 (three
 //! short leads on one side and the wide tab of pin 2 under the body and out of the other, from
-//! the sourced dimensions in `generate/tab.rs`), SOIC, SSOP, TSSOP and
+//! the sourced dimensions in `generate/tab.rs`), SC-70 with three, five or six leads (SOT-323,
+//! SOT-353, SOT-363: the same gull-wing leads as SOT-23, from the sourced dimensions in
+//! `generate/sot.rs`), SOIC, SSOP, TSSOP and
 //! MSOP (gull-wing leads on two edges), LQFP, TQFP and VQFP (gull-wing leads on four edges, and the
 //! exposed pad), QFN and DFN (terminals and the exposed pad under the body), BGA (a ball under
 //! every pad), pin headers and sockets, and SMD crystals (ceramic base and metal lid). **Left as
-//! the box:** SC-70, DPAK, D2PAK and SOT-89-5, whose pads are recorded and whose lead widths and
-//! spans the data does not hold, and the mechanical items (holes, fiducials, test points).
+//! the box:** SOT-343 (SC-70-4) and SC-70-8, DPAK, D2PAK and SOT-89-5, whose pads are recorded
+//! and whose lead widths and spans the data does not hold, and the mechanical items (holes, fiducials, test points).
 
 use crate::footprint::Footprint;
 use crate::geometry::{Pt, Rect};
@@ -952,6 +954,90 @@ mod tests {
     }
 
     #[test]
+    fn an_sc_70_has_gull_wing_leads_to_its_sourced_dimensions() {
+        // onsemi 419AB, 419AC, 419AD and 419B-02 (JEDEC MO-203), checked against Nexperia's
+        // SOT323, SOT353-1 and SOT363.
+        for (id, pins, width, right) in [
+            ("SOT-323_SC-70", 3, 0.30, 1),
+            ("SOT-323_SC-70_Handsoldering", 3, 0.30, 1),
+            ("SOT-353_SC-70-5", 5, 0.20, 2),
+            ("SOT-353_SC-70-5_Handsoldering", 5, 0.20, 2),
+            ("SOT-363_SC-70-6", 6, 0.20, 3),
+            ("SOT-363_SC-70-6_Handsoldering", 6, 0.20, 3),
+        ] {
+            let id = format!("Package_TO_SOT_SMD:{id}");
+            let fp = made(&id);
+            let shape = fits(&id, &fp, 0.95);
+            assert!(shape.shaped, "{id} is not a box");
+            assert_eq!(count(&shape, Material::Metal), pins, "{id}");
+            assert_eq!(count(&shape, Material::Mark), 1, "{id}");
+            // The body is 1.25 x 2.0 mm.
+            let body = body_solid(&shape);
+            assert!((body.max[0] - 0.625).abs() < EPS && (body.min[0] + 0.625).abs() < EPS);
+            assert!((body.max[1] - 1.0).abs() < EPS && (body.min[1] + 1.0).abs() < EPS);
+            let metal: Vec<Bounds> = shape
+                .solids
+                .iter()
+                .filter(|s| s.material == Material::Metal)
+                .map(Solid::bounds)
+                .collect();
+            let (left, right_side): (Vec<&Bounds>, Vec<&Bounds>) =
+                metal.iter().partition(|b| b.max[0] < 0.0);
+            assert_eq!(right_side.len(), right, "{id}");
+            assert_eq!(left.len(), pins - right, "{id}");
+            for b in &metal {
+                // Tip to tip 2.10 mm: the tips are 1.05 mm from the middle, on the board.
+                assert!(
+                    (b.min[0].abs().max(b.max[0].abs()) - 1.05).abs() < EPS,
+                    "{id}: {b:?}"
+                );
+                assert!(b.min[2].abs() < EPS);
+                assert!(
+                    (b.max[1] - b.min[1] - width).abs() < EPS,
+                    "{id}: width {b:?}"
+                );
+                // The foot is 0.36 mm long, the lead 0.425 mm out of the body.
+                let (near, far) = if b.max[0] < 0.0 {
+                    (b.max[0], b.min[0])
+                } else {
+                    (b.min[0], b.max[0])
+                };
+                assert!((near.abs() - 0.625).abs() < EPS, "{id}: {b:?}");
+                assert!((far.abs() - near.abs() - 0.425).abs() < EPS, "{id}: {b:?}");
+            }
+            // The pins are 0.65 mm apart in a column (the three-lead package: 1.3 mm).
+            let mut ys: Vec<f64> = left.iter().map(|b| (b.min[1] + b.max[1]) / 2.0).collect();
+            ys.sort_by(f64::total_cmp);
+            let pitch = if pins == 3 { 1.3 } else { 0.65 };
+            for w in ys.windows(2) {
+                assert!((w[1] - w[0] - pitch).abs() < EPS, "{id}: {ys:?}");
+            }
+            // Pin 1's dot is on the first pin's side, top left.
+            let mark = shape
+                .solids
+                .iter()
+                .find(|s| s.material == Material::Mark)
+                .unwrap()
+                .bounds();
+            assert!(mark.max[0] < 0.0 && mark.max[1] < 0.0, "{mark:?}");
+        }
+    }
+
+    #[test]
+    fn a_sot_343_and_an_sc_70_8_are_still_boxes() {
+        for id in [
+            "Package_TO_SOT_SMD:SOT-343_SC-70-4",
+            "Package_TO_SOT_SMD:SOT-343_SC-70-4_Handsoldering",
+            "Package_TO_SOT_SMD:SC-70-8",
+            "Package_TO_SOT_SMD:SC-70-8_Handsoldering",
+        ] {
+            let fp = made(id);
+            assert!(fp.package.is_none(), "{id}");
+            assert!(!package_shape(&fp, Some(0.95)).shaped, "{id}");
+        }
+    }
+
+    #[test]
     fn a_sot_89_5_is_still_the_box() {
         let fp = made("Package_TO_SOT_SMD:SOT-89-5");
         assert!(fp.package.is_none());
@@ -1119,7 +1205,7 @@ mod tests {
 
     #[test]
     fn a_footprint_no_generator_shapes_is_its_body_box() {
-        let fp = made("Package_TO_SOT_SMD:SC-70-8");
+        let fp = made("Package_TO_SOT_SMD:TO-252-5_TabPin3");
         assert!(fp.package.is_none());
         let shape = package_shape(&fp, Some(1.8));
         assert!(!shape.shaped);
