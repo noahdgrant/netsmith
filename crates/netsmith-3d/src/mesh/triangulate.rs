@@ -25,6 +25,8 @@ struct Node {
 struct Ring {
     nodes: Vec<Node>,
     grid: Grid,
+    /// Whether a point on a straight run stays a corner (`triangulate_keeping`).
+    keep_straight: bool,
 }
 
 /// Twice the signed area of the triangle `p q r`: positive when it turns left (counterclockwise).
@@ -179,7 +181,9 @@ impl Ring {
             if next == p {
                 return None;
             }
-            if equals(&self.nodes[p], &self.nodes[next]) || self.o(prev, p, next) == 0.0 {
+            if equals(&self.nodes[p], &self.nodes[next])
+                || (!self.keep_straight && self.o(prev, p, next) == 0.0)
+            {
                 self.remove(p);
                 p = prev;
                 end = prev;
@@ -372,7 +376,11 @@ impl Ring {
                         }
                     }
                     let Node { prev, next, .. } = self.nodes[best];
-                    out.push([self.nodes[prev].i, self.nodes[best].i, self.nodes[next].i]);
+                    // A corner on a straight run would be a triangle with no area: it is
+                    // dropped instead.
+                    if best_o > 0.0 || !self.keep_straight {
+                        out.push([self.nodes[prev].i, self.nodes[best].i, self.nodes[next].i]);
+                    }
                     self.remove(best);
                     ear = next;
                     stop = ear;
@@ -387,6 +395,17 @@ impl Ring {
 /// followed by those of each hole in turn, each triangle counterclockwise (seen from +z). The
 /// rings may turn either way and need not repeat their first point.
 pub fn triangulate(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3]> {
+    cut(outer, holes, false)
+}
+
+/// As [`triangulate`], but every point stays a corner of some triangle, also one on a straight
+/// run between its neighbours: a side shared with another face keeps all its points, so the two
+/// meet with no crack. Only a point that repeats its neighbour is dropped.
+pub fn triangulate_keeping(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3]> {
+    cut(outer, holes, true)
+}
+
+fn cut(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>], keep_straight: bool) -> Vec<[usize; 3]> {
     let mut points: Vec<(f64, f64)> = outer.iter().map(|p| (p[0], p[1])).collect();
     let mut ranges = Vec::with_capacity(1 + holes.len());
     ranges.push(0..outer.len());
@@ -398,6 +417,7 @@ pub fn triangulate(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3
     let mut ring = Ring {
         nodes: Vec::with_capacity(points.len() * 3 / 2),
         grid: Grid::new(&points),
+        keep_straight,
     };
     let mut out = Vec::new();
     let Some(mut start) = ring.link(&points, ranges[0].clone(), true) else {
@@ -463,6 +483,49 @@ mod tests {
             v.extend_from_slice(h);
         }
         v
+    }
+
+    #[test]
+    fn keeping_leaves_every_point_of_a_straight_run_a_corner() {
+        // A rectangle with three more points along its bottom and one in a hole's side.
+        let outer = [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [4.0, 0.0],
+            [4.0, 2.0],
+            [0.0, 2.0],
+        ];
+        let hole = vec![[1.0, 0.5], [1.0, 1.0], [1.0, 1.5], [3.0, 1.5], [3.0, 0.5]];
+        let pts = all(&outer, std::slice::from_ref(&hole));
+        let dropped = triangulate(&outer, std::slice::from_ref(&hole));
+        let kept = triangulate_keeping(&outer, std::slice::from_ref(&hole));
+        let used = |t: &[[usize; 3]]| {
+            let mut u: Vec<usize> = t.iter().flatten().copied().collect();
+            u.sort_unstable();
+            u.dedup();
+            u.len()
+        };
+        assert!(used(&dropped) < pts.len());
+        assert_eq!(used(&kept), pts.len());
+        assert!((area(&pts, &kept) - (8.0 - 2.0)).abs() < 1e-12);
+        // Each side of the rings is a side of one triangle, so a neighbour meets it whole.
+        for (ring, start) in [(&outer[..], 0), (&hole[..], outer.len())] {
+            for k in 0..ring.len() {
+                let (a, b) = (start + k, start + (k + 1) % ring.len());
+                let n = kept
+                    .iter()
+                    .filter(|t| {
+                        (0..3).any(|j| {
+                            let (p, q) = (t[j], t[(j + 1) % 3]);
+                            (p, q) == (a, b) || (p, q) == (b, a)
+                        })
+                    })
+                    .count();
+                assert_eq!(n, 1, "side {a}-{b}");
+            }
+        }
     }
 
     #[test]
