@@ -191,6 +191,10 @@ _Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benc
 The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::score`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length and the skew of diff pairs. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
 _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placement), benchmark
 
+**Escape lane**:
+The way out the router keeps in front of a pad of a fine-pitch part: the cells straight out from the pad's edge, away from the part, on its layer, 1.5 mm long. Other nets' tracks pay to use it and any via that would close it pays more, except the pad's own via at its end; the two nets of a diff pair share their lanes. A cost and not a wall, used from the router's second try of a board (`Lanes` in `netsmith_place_route::route`, issue #431).
+_Avoid_: Fan-out (a fixed track and via for each pad, which the router does not draw), reservation, keepout (a wall)
+
 **Route robustness**:
 Whether a board routes for more than one lucky set of the router's costs: its placed board routed again in one try with no time limit at the turn costs 24, 25 (the router's own), 26 and 27, and the connections each leaves (`netsmith route --tries 1 --route-timeout 0 --turn T`). `scripts/route-scorecard` prints it for each ported board beside the route scorecard, and a change to the router is judged by all four, since one unit of a cost re-rolls where the tracks go (issue #431, S3b).
 _Avoid_: Stability (the placer's), determinism (the same input always gives the same copper; that is a separate property), variance
