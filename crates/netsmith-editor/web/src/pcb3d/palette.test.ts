@@ -32,6 +32,7 @@ describe('the 3D palette', () => {
     for (const m of FILE_MATERIALS) expect(roleOf(m, null), m).not.toBeNull();
     expect(roleOf('body', 'stated')).toBe('body');
     expect(roleOf('body', 'catalog')).toBe('body-catalog');
+    expect(roleOf('body', 'standard')).toBe('body-standard');
     expect(roleOf('body', 'unknown')).toBe('body-unknown');
     expect(roleOf('body-unknown', 'unknown')).toBe('body-unknown');
     expect(roleOf('chrome', null)).toBeNull();
@@ -47,7 +48,7 @@ describe('the 3D palette', () => {
       });
       const c = (token: string) => colour(t, token);
       it('a body, an unknown outline and a picked part stand out from the board (3:1)', () => {
-        for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-unknown', '--sel']) {
+        for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-body-standard', '--pcb3d-unknown', '--sel']) {
           expect(contrast(c(token), c('--pcb3d-mask'))!, `${token} on the mask in ${theme}`).toBeGreaterThanOrEqual(3);
         }
       });
@@ -55,9 +56,10 @@ describe('the 3D palette', () => {
         expect(contrast(c('--pcb3d-mask'), c('--pcb3d-bg'))!, `the mask on the background in ${theme}`).toBeGreaterThanOrEqual(1.4);
         expect(contrast(c('--pcb3d-substrate'), c('--pcb3d-bg'))!, `the laminate on the background in ${theme}`).toBeGreaterThanOrEqual(1.8);
       });
-      it('a limit and a broken limit are two colours, and a stated and a catalog height are two', () => {
+      it('a limit and a broken limit are two colours, and a stated, a catalog and a standard height are three', () => {
         expect(c('--pcb3d-limit')).not.toBe(c('--pcb3d-limit-violated'));
         expect(c('--pcb3d-body')).not.toBe(c('--pcb3d-body-catalog'));
+        expect(new Set([c('--pcb3d-body'), c('--pcb3d-body-catalog'), c('--pcb3d-body-standard'), c('--sel')]).size).toBe(4);
         expect(c('--pcb3d-body')).not.toBe(c('--sel'));
       });
       it('the two laminate tones of a section are two, and the measure lines and the cut stand out on the mask', () => {
@@ -76,7 +78,7 @@ describe('the 3D palette', () => {
         expect(contrast(c('--pcb3d-finish'), c('--pcb3d-mask'))!, `finish on the mask in ${theme}`).toBeGreaterThanOrEqual(2);
       });
       it('the hover lights a body visibly, and not in the colour of a pick', () => {
-        for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-unknown']) {
+        for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-body-standard', '--pcb3d-unknown']) {
           const base = parseHex(c(token))!;
           const on = lit(base, parseHex(c('--hover-lit'))!);
           const hex = `#${on.map((v) => v.toString(16).padStart(2, '0')).join('')}`;

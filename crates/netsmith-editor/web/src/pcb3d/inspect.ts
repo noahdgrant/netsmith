@@ -90,6 +90,7 @@ export function xrayOpacity(role: Role): number | null {
       return 0.14;
     case 'body':
     case 'body-catalog':
+    case 'body-standard':
       return 0.26;
     case 'metal':
       return 0.32;

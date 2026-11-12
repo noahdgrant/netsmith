@@ -11,7 +11,8 @@ physical for Inspected {
     // Datasheet heights, above the face of the board.
     .power_in.height &= 9mm
     .led.height &= 2.4mm
-    .regulator.height &= 1.1mm
+    // The regulator states none: its SOT-23 takes the package standard's maximum, 1.12 mm
+    // (JEDEC TO-236, ADR 0106), and the 3D view colours it as a standard height.
 
     // Case drawing: the lid's ribs allow 3 mm over the left half, on the top face.
     .lid: Keepout {

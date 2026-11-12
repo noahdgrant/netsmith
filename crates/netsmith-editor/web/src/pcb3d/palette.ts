@@ -2,11 +2,11 @@
 // docs/BOARD3D.md) and carries the rasterizer's light colours; the page draws each name in the
 // theme's own colour instead, from the `--pcb3d-*` tokens of themes.css, so the view follows the
 // four themes and changes with them. A part's body takes its tone from where its height came from
-// (stated, catalog), and a part of unknown height is a hatched outline. Nothing here touches
+// (stated, catalog, a package standard's maximum), and a part of unknown height is a hatched outline. Nothing here touches
 // three.js: the view reads the table and the tokens, and a test holds the tokens to their contrast.
 
 /** What the view draws: a material of the file, or a body by its height's provenance. */
-export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper' | 'silk';
+export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-standard' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper' | 'silk';
 
 /** The material names of the file's contract (schema 1), in its order: the ten of the first file,
  * then `finish` and `mask-over-copper` (added with the copper). */
@@ -32,6 +32,8 @@ export const LOOKS: Record<Role, Look> = {
   copper: { token: '--pcb3d-copper', metalness: 0.6, roughness: 0.4, opacity: 1 },
   body: { token: '--pcb3d-body', metalness: 0, roughness: 0.6, opacity: 1 },
   'body-catalog': { token: '--pcb3d-body-catalog', metalness: 0, roughness: 0.6, opacity: 1 },
+  // A package standard's maximum height (ADR 0106): known, but not the part's own figure.
+  'body-standard': { token: '--pcb3d-body-standard', metalness: 0, roughness: 0.6, opacity: 1 },
   'body-unknown': { token: '--pcb3d-unknown', metalness: 0, roughness: 0.9, opacity: 0.9, hatch: true },
   metal: { token: '--pcb3d-metal', metalness: 0.7, roughness: 0.35, opacity: 1 },
   mark: { token: '--pcb3d-mark', metalness: 0, roughness: 0.8, opacity: 1 },
@@ -52,12 +54,16 @@ export const TOKENS = {
   cut: '--pcb3d-cut',
 } as const;
 
-export type Provenance = 'stated' | 'catalog' | 'unknown';
+export type Provenance = 'stated' | 'catalog' | 'standard' | 'unknown';
 
 /** The role a mesh is drawn in, from its material's name and, for a part's body, where the part's
  * height came from. A name the page does not know (a later file's) is null: it keeps the file's colour. */
 export function roleOf(material: string, provenance: Provenance | null): Role | null {
-  if (material === 'body') return provenance === 'catalog' ? 'body-catalog' : provenance === 'unknown' ? 'body-unknown' : 'body';
+  if (material === 'body') {
+    if (provenance === 'catalog') return 'body-catalog';
+    if (provenance === 'standard') return 'body-standard';
+    return provenance === 'unknown' ? 'body-unknown' : 'body';
+  }
   return (FILE_MATERIALS as readonly string[]).includes(material) ? (material as Role) : null;
 }
 

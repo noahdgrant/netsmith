@@ -240,6 +240,7 @@
   --pcb3d-copper: var(--pcb-front);
   --pcb3d-body: #9ba4b3;
   --pcb3d-body-catalog: #86a0c8;
+  --pcb3d-body-standard: #c8b08a;
   --pcb3d-unknown: #c3cad6;
   --pcb3d-metal: #c7ccd4;
   --pcb3d-mark: #d8d4c6;
@@ -456,6 +457,7 @@
   --pcb3d-copper: var(--pcb-front);
   --pcb3d-body: #3e4451;
   --pcb3d-body-catalog: #34507c;
+  --pcb3d-body-standard: #6b4a1f;
   --pcb3d-unknown: #2f3540;
   --pcb3d-metal: #8e949c;
   --pcb3d-mark: #f4f1e6;
@@ -669,6 +671,7 @@
   --pcb3d-copper: var(--pcb-front);
   --pcb3d-body: #e6ebf2;
   --pcb3d-body-catalog: #a9c7ff;
+  --pcb3d-body-standard: #ffd27a;
   --pcb3d-unknown: #ffffff;
   --pcb3d-metal: #d6d6d6;
   --pcb3d-mark: #ffffff;
@@ -882,6 +885,7 @@
   --pcb3d-copper: var(--pcb-front);
   --pcb3d-body: #1a1a1a;
   --pcb3d-body-catalog: #0b3d91;
+  --pcb3d-body-standard: #6b3a00;
   --pcb3d-unknown: #000000;
   --pcb3d-metal: #6b6b6b;
   --pcb3d-mark: #ffffff;
