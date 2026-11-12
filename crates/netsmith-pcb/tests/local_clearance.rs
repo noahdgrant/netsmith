@@ -170,6 +170,9 @@ fn check(board: &Board) -> drc::Report {
         npth_slot: Some(board.rules.npth_slot),
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
+        least_widths: board.least_widths(),
+        neck_reach: netsmith_pcb::route::NECK_REACH,
+        via_counts: board.via_counts(),
     };
     drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras).unwrap()
 }

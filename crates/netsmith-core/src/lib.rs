@@ -205,6 +205,11 @@ pub struct Process {
     /// (`.process.max_temperature_rise`). `None` is the IPC-2221 check's default
     /// (ADR 0036).
     pub max_temperature_rise: Option<f64>,
+    /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
+    /// track width check sizes for the narrowest.
+    pub track_width_tolerance: f64,
+    /// The copper plated on a hole's wall, in mm, which carries a via's current.
+    pub hole_plating: f64,
     pub stackup: Stackup,
 }
 
@@ -513,6 +518,19 @@ impl Offset {
     }
 }
 
+/// The current a net carries, and the least track that carries it (issue #431).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetCurrent {
+    pub net: String,
+    /// The worst case, in amperes: every load on at once (ADR 0036). A lower bound where a
+    /// current on the net is not known.
+    pub current: f64,
+    /// The narrowest track that carries it, in mm, before the process's least track.
+    pub least_width: f64,
+    /// How many of the process's vias, side by side, carry it where a track changes layer.
+    pub vias: usize,
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -523,6 +541,11 @@ pub struct Features {
     /// of the rail is in `std/sources.nsm`). The nets no rail gives a width are sized from
     /// their current (ADR 0036, see `netsmith_design::guidelines`) and put here too.
     pub net_widths: Vec<(String, f64)>,
+    /// The current each net carries, where it is known, and the least width that carries it
+    /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
+    /// the net below, away from its pads, and what the design rules check holds the routed
+    /// copper to (issue #431). Sorted by net name.
+    pub net_currents: Vec<NetCurrent>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,

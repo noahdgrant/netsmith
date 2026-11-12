@@ -1124,6 +1124,9 @@ pub struct Board {
     /// The narrowest track of the nets whose rails ask for one (ADR 0020), by net name.
     /// Every other net is routed at the rules' track width.
     pub net_widths: Vec<(String, f64)>,
+    /// The current each net carries where it is known, and the least width that carries it
+    /// (issue #431): no track of the net is narrower, away from its pads.
+    pub net_currents: Vec<netsmith_core::NetCurrent>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.
@@ -1532,6 +1535,7 @@ impl Board {
             tracks: Vec::new(),
             vias: Vec::new(),
             net_widths: design.features.net_widths.clone(),
+            net_currents: design.features.net_currents.clone(),
             overhang,
         })
     }
@@ -1545,6 +1549,50 @@ impl Board {
             .map_or(self.rules.track_width, |(_, w)| {
                 w.max(self.rules.track_width)
             })
+    }
+
+    /// The narrowest a track of `net` may be away from its pads: the least width its current
+    /// needs, and never less than the process's least track (issue #431).
+    pub fn least_width(&self, net: &str) -> f64 {
+        self.net_currents
+            .iter()
+            .find(|c| c.net == net)
+            .map_or(0.0, |c| c.least_width)
+            .max(self.rules.min_track_width)
+    }
+
+    /// The box round the centres of a part's pads, which a track of a net that carries current
+    /// may be necked down near (issue #431).
+    pub fn neck_box(&self, refdes: &str) -> Option<Rect> {
+        let part = self.part(refdes)?;
+        let mut pts = part.footprint.pads.iter().map(|p| part.pad_centre(p));
+        let first = pts.next()?;
+        Some(pts.fold(Rect::new(first, first), |r, p| {
+            Rect::new(
+                Pt::new(r.min.x.min(p.x), r.min.y.min(p.y)),
+                Pt::new(r.max.x.max(p.x), r.max.y.max(p.y)),
+            )
+        }))
+    }
+
+    /// The nets that need more than one via side by side where they change layer, and how
+    /// many (issue #431).
+    pub fn via_counts(&self) -> Vec<(String, usize)> {
+        self.net_currents
+            .iter()
+            .filter(|c| c.vias > 1)
+            .map(|c| (c.net.clone(), c.vias))
+            .collect()
+    }
+
+    /// The nets whose current needs more than the process's least track, with the least width
+    /// it needs: what the design rules check holds their routed copper to (issue #431).
+    pub fn least_widths(&self) -> Vec<(String, f64)> {
+        self.net_currents
+            .iter()
+            .filter(|c| c.least_width > self.rules.min_track_width + 1e-9)
+            .map(|c| (c.net.clone(), c.least_width))
+            .collect()
     }
 
     /// The nets that are routed wider than the rules' track width, grouped by width, from

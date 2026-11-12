@@ -164,6 +164,16 @@ interface TwoLayer {
     /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
     /// allows 20 K.
     .max_temperature_rise: Temperature
+    /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
+    /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
+    /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
+    /// tolerance allows (issue #431).
+    .track_width_tolerance: Number
+    .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
 
     .stackup: Stackup
     .stackup.layers       &= 2
@@ -324,6 +334,16 @@ interface FourLayer {
     /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
     /// allows 20 K.
     .max_temperature_rise: Temperature
+    /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
+    /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
+    /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
+    /// tolerance allows (issue #431).
+    .track_width_tolerance: Number
+    .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
 
     .stackup: Stackup
     .stackup.layers          &= 4
