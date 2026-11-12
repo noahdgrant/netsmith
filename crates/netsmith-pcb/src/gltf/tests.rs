@@ -37,7 +37,8 @@ fn layer(name: &str, kind: LayerKind, z_top: f64, z_bottom: f64) -> SceneLayer {
     SceneLayer {
         name: name.into(),
         kind,
-        thickness: z_top - z_bottom,
+        // Rounded to a nanometre, as the scene rounds its lengths.
+        thickness: ((z_top - z_bottom) * 1e6).round() / 1e6,
         z_top,
         z_bottom,
     }
@@ -202,6 +203,20 @@ fn the_nodes_carry_the_ids_of_the_contract() {
     assert_eq!(root["board"], "Demo");
     assert_eq!(root["thickness_mm"], 1.6);
     assert_eq!(root["width_mm"], 40.0);
+    // The stackup, top face down, as the scene has it.
+    let layers = root["layers"].as_array().unwrap();
+    let want = &scene().board.layers;
+    assert_eq!(layers.len(), want.len());
+    for (got, l) in layers.iter().zip(want) {
+        assert_eq!(
+            *got,
+            json!({
+                "name": l.name, "kind": l.kind.word(), "thickness_mm": l.thickness,
+                "z_top_mm": l.z_top, "z_bottom_mm": l.z_bottom,
+            })
+        );
+    }
+    assert_eq!(layers[0]["kind"], "mask");
     assert_eq!(root["coverage"], json!({ "known": 1, "total": 2 }));
     assert_eq!(root["findings"][0]["code"], "too_tall");
     assert_eq!(root["findings"][0]["parts"], json!(["u1"]));

@@ -214,11 +214,307 @@ button.chip.v3-cov:hover:not(.ok) {
   text-shadow: 0 0 4px var(--pcb3d-bg);
 }
 
-/* A narrow view: the chip and the legend go under the bar instead of beside it. */
+/* The tools (Tools3d.tsx): their bar under the camera's, their panels, and the overlay over the canvas. */
+.v3-tools,
+.v3-panel {
+  background: var(--pop);
+  border: 1px solid var(--pop-border);
+  box-shadow: var(--elev-2);
+  border-radius: var(--r-md);
+  animation: v3-in 150ms ease-out;
+}
+.v3-tools {
+  position: absolute;
+  left: 0.875rem;
+  top: 3.625rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem;
+}
+.v3-tools .tool {
+  gap: 0.375rem;
+}
+.v3-tools .tool.on {
+  color: var(--text);
+  background: var(--surface-3);
+  box-shadow: inset 0 -2px 0 var(--pcb3d-measure);
+}
+.v3-tools .tb-sep {
+  height: 1.125rem;
+}
+.v3-more .popover {
+  width: min(36rem, calc(100vw - 4rem));
+}
+.v3-cmd {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  font-size: var(--fs-sm);
+}
+.v3-cmd-head {
+  font-weight: var(--fw-semibold);
+}
+.v3-cmd p {
+  margin: 0;
+  color: var(--text-muted);
+}
+.v3-cmd .cli code {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.v3-panel {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.v3-panel-title {
+  font-weight: var(--fw-semibold);
+}
+.v3-panel-hint {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+}
+.v3-panel .seg {
+  border: 0;
+}
+.v3-section {
+  left: 0.875rem;
+  top: 6.375rem;
+}
+.v3-handle {
+  width: 11rem;
+  accent-color: var(--pcb3d-cut);
+}
+.v3-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+}
+.v3-at input {
+  width: 5.5rem;
+  padding: 0.1875rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-1, var(--pop));
+  color: var(--text);
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+.v3-at input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+.v3-measure {
+  left: 0.875rem;
+  bottom: 0.875rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.375rem;
+  min-width: 22rem;
+  max-width: min(36rem, calc(100% - 9rem));
+  padding: 0.5rem 0.625rem;
+}
+.v3-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.v3-panel-head .v3-panel-hint {
+  flex: 1;
+}
+.v3-measures {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  max-height: 10rem;
+  overflow: auto;
+}
+.v3-measures li {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.v3-parts,
+.v3-ends {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.v3-ends {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v3-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.v3-readout b {
+  color: var(--text);
+}
+.v3-clear {
+  align-self: flex-start;
+}
+.v3m-n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  margin-right: 0.375rem;
+  border-radius: 999px;
+  background: var(--pcb3d-measure);
+  color: var(--pcb3d-bg);
+  font-size: 0.6875rem;
+  font-weight: var(--fw-semibold);
+}
+
+/* The overlay: lines in the window's pixels, labels in the page's font. */
+.v3m {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.v3m-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.v3m-measure line,
+.v3m-measure path {
+  stroke: var(--pcb3d-measure);
+  stroke-width: 1.5;
+  fill: none;
+}
+.v3m-measure line.v3m-halo {
+  stroke: var(--pcb3d-bg);
+  stroke-width: 4;
+  stroke-opacity: 0.7;
+}
+.v3m-measure circle,
+.v3m-pending {
+  fill: var(--pcb3d-measure);
+  stroke: var(--pcb3d-bg);
+  stroke-width: 1.5;
+}
+.v3m-rubber {
+  stroke: var(--pcb3d-measure);
+  stroke-width: 1.25;
+  stroke-dasharray: 5 4;
+}
+.v3m-snap {
+  fill: none;
+  stroke: var(--pcb3d-measure);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 1.5px var(--pcb3d-bg));
+}
+.v3m-dot {
+  fill: var(--pcb3d-measure);
+}
+.v3m-limit {
+  stroke: var(--pcb3d-limit);
+  stroke-width: 2;
+}
+.v3m-limit.over {
+  stroke: var(--pcb3d-limit-violated);
+}
+.v3m-cut {
+  fill: color-mix(in srgb, var(--pcb3d-cut) 8%, transparent);
+  stroke: var(--pcb3d-cut);
+  stroke-width: 1.25;
+  stroke-dasharray: 6 4;
+}
+.v3m-leader {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+.v3m-label,
+.v3m-snapword,
+.v3m-layer {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 0.1875rem 0.4375rem;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--pop) 92%, transparent);
+  border: 1px solid var(--pop-border);
+  box-shadow: var(--elev-1, none);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.v3m-label {
+  transform: translate(-50%, -50%);
+  border-color: color-mix(in srgb, var(--pcb3d-measure) 55%, var(--pop-border));
+}
+.v3m-label b {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+}
+.v3m-label span,
+.v3m-snapword span,
+.v3m-layer span {
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+.v3m-label.v3m-live {
+  border-style: dashed;
+}
+.v3m-label.v3m-side {
+  transform: translate(0, -50%);
+}
+.v3m-label.v3m-lim {
+  transform: translate(-100%, -50%);
+  border-color: var(--pcb3d-limit);
+}
+.v3m-label.v3m-lim.over {
+  border-color: var(--pcb3d-limit-violated);
+}
+.v3m-snapword {
+  font-weight: var(--fw-medium);
+}
+.v3m-layer {
+  flex-direction: row;
+  gap: 0.5rem;
+  padding: 0.125rem 0.4375rem;
+  transform: translate(0, -50%);
+}
+.v3m-layer b {
+  font-weight: var(--fw-semibold);
+}
+
+/* A narrow view: the chip and the legend go under the bars instead of beside them. */
 .v3-wrap { container: v3 / inline-size; }
 @container v3 (max-width: 60rem) {
-  .v3-info { top: 3.5rem; left: 0.875rem; right: auto; align-items: flex-start; }
+  .v3-info { top: 6.375rem; left: 0.875rem; right: auto; align-items: flex-start; }
   .v3-cov-wrap { align-items: flex-start; }
+  .v3-section { top: 9.25rem; }
 }
 
 @keyframes v3-in {
@@ -242,6 +538,8 @@ button.chip.v3-cov:hover:not(.ok) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .v3-tools,
+  .v3-panel,
   .v3-bar,
   .v3-info,
   .v3-loading,
@@ -252,6 +550,8 @@ button.chip.v3-cov:hover:not(.ok) {
     transition: none;
   }
 }
+:root[data-motion='reduce'] .v3-tools,
+:root[data-motion='reduce'] .v3-panel,
 :root[data-motion='reduce'] .v3-bar,
 :root[data-motion='reduce'] .v3-info,
 :root[data-motion='reduce'] .v3-loading,

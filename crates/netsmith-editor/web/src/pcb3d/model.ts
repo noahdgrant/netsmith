@@ -16,6 +16,16 @@ export interface Finding3d {
   face?: Face;
 }
 
+/** A layer of the board's stackup, from the root's `layers` (top face down; added to schema 1, so
+ * an older file has none). */
+export interface StackLayer {
+  name: string;
+  kind: 'mask' | 'copper' | 'core' | 'prepreg';
+  thicknessMm: number;
+  zTopMm: number;
+  zBottomMm: number;
+}
+
 export interface BoardInfo {
   kind: 'board';
   schema: number;
@@ -23,6 +33,7 @@ export interface BoardInfo {
   widthMm: number;
   heightMm: number;
   thicknessMm: number;
+  layers: StackLayer[];
   coverage: { known: number; total: number };
   findings: Finding3d[];
 }
@@ -70,6 +81,11 @@ export function readInfo(userData: unknown): Info | null {
         widthMm: num(n.width_mm),
         heightMm: num(n.height_mm),
         thicknessMm: num(n.thickness_mm),
+        layers: (Array.isArray(n.layers) ? n.layers : []).flatMap((l: Record<string, unknown>) => {
+          const kind = l.kind;
+          if (kind !== 'mask' && kind !== 'copper' && kind !== 'core' && kind !== 'prepreg') return [];
+          return [{ name: str(l.name), kind, thicknessMm: num(l.thickness_mm), zTopMm: num(l.z_top_mm), zBottomMm: num(l.z_bottom_mm) }];
+        }),
         coverage: { known: num(c.known), total: num(c.total) },
         findings: (Array.isArray(n.findings) ? n.findings : []).map((f: Record<string, unknown>) => ({
           code: str(f.code),

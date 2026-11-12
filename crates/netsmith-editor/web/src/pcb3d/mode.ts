@@ -27,12 +27,26 @@ export function togglePcbMode() {
   pcbMode.value = pcbMode.peek() === '3d' ? '2d' : '3d';
 }
 
+/** An axis of the scene's frame, for the section plane. */
+export type CutAxis = 'x' | 'y' | 'z';
+
 /** What the 3D view does for a command or a button. */
 export interface View3dActions {
   preset(p: Preset): void;
   flip(): void;
   toggleProjection(): void;
   fit(): void;
+  /** The measure tool on or off (the key M, which the view handles: the schematic's M mirrors). */
+  toggleMeasure(): void;
+  clearMeasures(): void;
+  /** The section plane on or off, keeping its axis and place. */
+  toggleSection(): void;
+  /** The section plane across an axis. */
+  section(axis: CutAxis): void;
+  /** The stackup pulled apart, or put back. */
+  toggleExplode(): void;
+  /** Copy the `netsmith render` command that draws the view. */
+  copyCommand(): void;
 }
 
 /** The actions of the 3D view while it is mounted, else null. */

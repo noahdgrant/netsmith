@@ -21,11 +21,15 @@
 //! - **Nodes**, each with `extras.netsmith.kind`. The scene's one root is `board`; its children,
 //!   in order:
 //!   - `board` (the root): `{kind: "board", schema, board, thickness_mm, stack_thickness_mm,
-//!     width_mm, height_mm, coverage: {known, total}, findings: [{code, message, parts:
-//!     [path...], limit?}]}`. `board` is the board's label (`system/member` for a board of a
-//!     system). A finding's `code` is `too_tall` (a part over a height limit; `limit` names it),
-//!     `height_unchecked` (a part of unknown height under one) or `body_overlap` (two bodies
-//!     that fill the same space); `face` says on which face.
+//!     width_mm, height_mm, layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}],
+//!     coverage: {known, total}, findings: [{code, message, parts: [path...], limit?}]}`.
+//!     `board` is the board's label (`system/member` for a board of a system). `layers` is the
+//!     stackup from the top face down, as `board3d --json` has it in `board.layers` (`kind` is
+//!     `mask`, `copper`, `core` or `prepreg`), for a viewer that draws the stackup (a section,
+//!     the layers pulled apart); added in schema 1. A finding's `code` is `too_tall` (a part
+//!     over a height limit; `limit` names it), `height_unchecked` (a part of unknown height
+//!     under one) or `body_overlap` (two bodies that fill the same space); `face` says on which
+//!     face.
 //!   - `substrate`: `{kind: "substrate"}`, the laminate as its mesh, with children `mask:top`
 //!     and `mask:bottom` (`{kind: "mask", face}`, where the stackup has them: the mask with its
 //!     openings cut out, material `mask-top` or `mask-bottom` over laminate and
@@ -381,6 +385,13 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
             "stack_thickness_mm": solid.stack_thickness,
             "width_mm": solid.width,
             "height_mm": solid.height,
+            "layers": solid.layers.iter().map(|l| json!({
+                "name": l.name,
+                "kind": l.kind.word(),
+                "thickness_mm": l.thickness,
+                "z_top_mm": l.z_top,
+                "z_bottom_mm": l.z_bottom,
+            })).collect::<Vec<_>>(),
             "coverage": { "known": coverage.known, "total": coverage.total },
             "findings": findings(scene),
         }),

@@ -8,18 +8,22 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { focusedSection } from '../commandset';
-import { EmptyState, Segmented, Spinner } from '../components/ui';
+import { CopyButton, EmptyState, Popover, Segmented, Spinner, copyText } from '../components/ui';
+import { notify } from '../feedback/state';
+import { theme as pageTheme } from '../theme';
 import { Icon } from '../components/Icons';
 import { hover as sharedHover, hoverEnter, hoverLeave, resolveHover } from '../hover';
 import { scene as scene2d, select, selection as pcbSelection } from '../pcbstore';
 import { partPathsOf, revealRequest } from '../selection';
 import { reducedMotion, settings } from '../settings';
 import { analysis, detail, pcbStamp, pickPart } from '../store';
+import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
+import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
 import { type LimitInfo, type PartInfo3d, coverageLine, limitTip, partTip, provenanceCounts, unknownParts } from './model';
 import { view3d } from './mode';
 import { LOOKS, type Role, TOKENS } from './palette';
 import { PRESETS, type Preset } from './presets';
-import { type Colours, type Hit, Viewer } from './viewer';
+import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
 import './view3d.css';
 
 /** A token's colour as `#rrggbb`, whatever CSS it is written in (a `var()`, a `color-mix()`). */
@@ -77,6 +81,19 @@ export function View3d({ board }: { board: string }) {
   const [ortho, setOrtho] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const pointed = useRef<string | null>(null);
+  // The tools (tools.ts): the measure tool and its measurements, the section plane, the stackup apart.
+  const [measuring, setMeasuring] = useState(false);
+  const [measures, setMeasures] = useState<Measurement[]>([]);
+  const [pending, setPending] = useState<Snap | null>(null);
+  const [snapAt, setSnapAt] = useState<Snap | null>(null);
+  const [cut, setCut] = useState<{ axis: Axis; at: number } | null>(null);
+  const [exploded, setExploded] = useState(false);
+  const [canExplode, setCanExplode] = useState(false);
+  const nextId = useRef(1);
+  const boardRef = useRef(board);
+  boardRef.current = board;
+  const tools = useRef({ measuring, pending, cut });
+  tools.current = { measuring, pending, cut };
 
   const stamp = scene2d.value?.board === board ? scene2d.value.layoutStamp : null;
   const routed = pcbStamp.value;
@@ -116,6 +133,16 @@ export function View3d({ board }: { board: string }) {
     (el as unknown as { view3d: unknown }).view3d = {
       project: (path: string) => v.project(path),
       sample: () => v.sample(),
+      toScreen: (p: [number, number, number]) => {
+        const s = v.toScreen(p);
+        const r = v.canvas.getBoundingClientRect();
+        return { x: Math.round(r.left + s.x), y: Math.round(r.top + s.y), front: s.front };
+      },
+      snap: (x: number, y: number) => v.snap(x, y),
+      slots: () => v.slots(),
+      exploded: () => v.isExploded(),
+      command: () => commandText(),
+      board: () => v.board,
       colourAt: (x: number, y: number) => v.colourAt(x, y),
       parts: () => v.partList(),
       preset: () => v.currentPreset(),
@@ -129,6 +156,21 @@ export function View3d({ board }: { board: string }) {
         setOrtho(v.isOrtho());
       },
       fit: () => v.fit(),
+      toggleMeasure: () => toggleMeasure(),
+      clearMeasures: () => {
+        setMeasures([]);
+        setPending(null);
+      },
+      toggleSection: () => changeCut(tools.current.cut ? null : (lastCut.current ?? startCut('x'))),
+      section: (axis) => changeCut(tools.current.cut?.axis === axis ? { axis, at: tools.current.cut.at } : startCut(axis)),
+      toggleExplode: () => {
+        if (!v.canExplode()) return;
+        const on = !v.isExploded();
+        v.setExploded(on);
+        setExploded(on);
+        if (on) setPending(null);
+      },
+      copyCommand: () => void copyCommand(),
     };
     return () => {
       view3d.current = null;
@@ -155,6 +197,8 @@ export function View3d({ board }: { board: string }) {
         setParts(v.partList());
         setLimits(v.limitList());
         setCoverage(v.board?.coverage ?? null);
+        setCanExplode(v.canExplode());
+        v.setPads(padsOf());
         v.highlight(pcbSelection.peek(), []);
         if (host.current) host.current.dataset.stamp = r.headers.get('X-Netsmith-Layout-Stamp') ?? '';
       } catch (e) {
@@ -194,6 +238,64 @@ export function View3d({ board }: { board: string }) {
     if (paths.length) viewer.current?.frameParts(paths);
   }, [ask?.nonce]);
 
+  // ---- the tools ----
+
+  /** The pads' centres in the scene's frame, from the 2D scene (a sheet point is from the outline's top-left corner, y down). */
+  const padsOf = (): PadPoint[] => {
+    const s = scene2d.peek();
+    const b = viewer.current?.board;
+    if (!s || s.board !== board || !b) return [];
+    const o = s.outline;
+    // A pad's centre is on its copper's outer surface (under the mask's opening), else on the face.
+    const coppers = b.layers.filter((l) => l.kind === 'copper');
+    const padZ = (side: 'top' | 'bottom') => (side === 'top' ? (coppers[0]?.zTopMm ?? 0) : (coppers[coppers.length - 1]?.zBottomMm ?? faceZ('bottom', b.thicknessMm)));
+    return s.parts.flatMap((p) => p.pads.map((pad) => ({ at: [pad.x - o.x, o.y + o.height - pad.y, padZ(p.side)] as [number, number, number], refdes: p.refdes, pad: pad.number, side: p.side })));
+  };
+  const lastCut = useRef<{ axis: Axis; at: number } | null>(null);
+  const startCut = (axis: Axis) => {
+    const b = viewer.current?.board;
+    return { axis, at: b ? defaultCut(axis, b) : 0 };
+  };
+  const changeCut = (c: { axis: Axis; at: number } | null) => {
+    if (c) lastCut.current = c;
+    setCut(c);
+    viewer.current?.setSection(c);
+  };
+  const toggleMeasure = () => {
+    const on = !tools.current.measuring;
+    setMeasuring(on);
+    setPending(null);
+    setSnapAt(null);
+    if (on) setTip(null);
+  };
+  const commandText = () => {
+    const v = viewer.current;
+    if (!v) return '';
+    const name = boardRef.current;
+    const file = analysis.peek()?.boards.find((b) => b.name === name)?.file ?? '<file.nsm>';
+    const refs = pcbSelection.peek().flatMap((path) => v.partList().find((p) => p.path === path)?.refdes ?? []);
+    const t = pageTheme.peek();
+    return renderCommand({
+      file,
+      board: name,
+      view: nearestView(v.towardEye()).view,
+      section: tools.current.cut,
+      highlight: refs,
+      dark: t === 'dark' || t === 'hc-dark',
+      perspective: !v.isOrtho(),
+    });
+  };
+  const copyCommand = async () => {
+    const text = commandText();
+    if (await copyText(text)) notify({ kind: 'ok', title: 'Copied the netsmith render command', detail: text });
+    else notify({ kind: 'bad', title: 'Could not copy the command', detail: text });
+  };
+
+  // The pads follow the 2D scene (a part moved in 2D moves its pads).
+  useEffect(() => {
+    viewer.current?.setPads(padsOf());
+  }, [scene2d.value, parts]);
+
   // The keys of the drawing (the commands of mode.ts have the presets, the flip and the projection).
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -220,8 +322,15 @@ export function View3d({ board }: { board: string }) {
         const dy = k === 'ArrowUp' ? -1 : k === 'ArrowDown' ? 1 : 0;
         if (e.shiftKey) v.panBy(-dx * 0.1, -dy * 0.1);
         else v.orbitBy(-dx * step, dy * step);
+      } else if ((k === 'm' || k === 'M') && !e.shiftKey) {
+        used();
+        toggleMeasure();
       } else if (k === 'Escape') {
-        if (pcbSelection.peek().length) {
+        if (tools.current.measuring) {
+          used();
+          if (tools.current.pending) setPending(null);
+          else toggleMeasure();
+        } else if (pcbSelection.peek().length) {
           used();
           select([]);
         }
@@ -251,6 +360,12 @@ export function View3d({ board }: { board: string }) {
         setTip(null);
         return;
       }
+      if (tools.current.measuring && !v.isExploded()) {
+        const s = v.snap(at.x, at.y);
+        setSnapAt(s);
+        el.style.cursor = s ? 'crosshair' : '';
+        return;
+      }
       const hit = v.pick(at.x, at.y);
       const path = hit?.kind === 'part' ? hit.info.path : null;
       if (path !== pointed.current) {
@@ -265,10 +380,24 @@ export function View3d({ board }: { board: string }) {
   };
   const onLeave = () => {
     cancelAnimationFrame(moveFrame.current);
+    setSnapAt(null);
     if (pointed.current) hoverLeave(hoverOf(pointed.current));
     pointed.current = null;
     setTip(null);
   };
+
+  // The picked part's height and margin, when the measure tool is on and one part is picked.
+  let readout: Readout | null = null;
+  const v0 = viewer.current;
+  if (measuring && v0 && picked.length === 1) {
+    const part = parts.find((p) => p.path === picked[0]);
+    const box = part ? v0.partBox(part.path) : null;
+    if (part && box) {
+      const z = faceZ(part.side, v0.board?.thicknessMm ?? 0);
+      readout = { part, words: partReadout(part, { min: [box.min[0], box.min[1]], max: [box.max[0], box.max[1]] }, v0.limitPlans()), foot: [box.max[0], box.min[1], z] };
+    }
+  }
+  const range = cut && v0 ? axisRange(cut.axis, v0.sceneBox()) : ([0, 1] as [number, number]);
 
   const unknown = unknownParts(parts);
   const counts = provenanceCounts(parts);
@@ -295,11 +424,25 @@ export function View3d({ board }: { board: string }) {
           const was = down.current;
           down.current = null;
           if (!was || was.button !== 0 || Math.hypot(e.clientX - was.x, e.clientY - was.y) > 4) return;
-          const hit = viewer.current?.pick(e.clientX, e.clientY);
+          const v = viewer.current;
+          if (measuring && v && !e.shiftKey) {
+            if (v.isExploded()) return;
+            const s = v.snap(e.clientX, e.clientY);
+            if (!s) return;
+            if (!pending) setPending(s);
+            else {
+              const a = pending;
+              setMeasures((ms) => [...ms, { id: nextId.current++, a, b: s }]);
+              setPending(null);
+            }
+            return;
+          }
+          const hit = v?.pick(e.clientX, e.clientY);
           if (hit?.kind === 'part') select(e.shiftKey ? [...new Set([...pcbSelection.peek(), hit.info.path])] : [hit.info.path]);
           else if (!e.shiftKey) select([]);
         }}
         onDblClick={(e) => {
+          if (measuring) return;
           const hit = viewer.current?.pick(e.clientX, e.clientY);
           if (hit?.kind === 'part') pickPart(hit.info.refdes, true);
           else viewer.current?.fit();
@@ -308,7 +451,10 @@ export function View3d({ board }: { board: string }) {
         onPointerLeave={onLeave}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {tip && (
+        {status.state === 'ready' && viewer.current && (
+          <Overlay3d viewer={viewer.current} measures={measures} pending={pending} hover={snapAt} readout={readout} exploded={exploded} cut={cut} measuring={measuring} />
+        )}
+        {tip && !measuring && (
           <div class="pcb-tip v3-tip" style={{ left: tip.x, top: tip.y }} data-testid="tip-3d">
             <b>{tip.title}</b>
             {tip.lines.map((l) => (
@@ -368,6 +514,77 @@ export function View3d({ board }: { board: string }) {
               {ortho ? 'Orthographic' : 'Perspective'}
             </button>
           </div>
+          <div class="v3-tools no-pan" role="toolbar" aria-label="3D tools" data-toast-clear>
+            <button
+              class={`tool ${measuring ? 'on' : ''}`}
+              aria-pressed={measuring}
+              data-tip="Measure: click two points. Snaps to pad centres, corners, the board's edge and faces"
+              data-tip-keys="M"
+              data-testid="tool-measure"
+              onClick={() => toggleMeasure()}
+            >
+              <Icon name="ruler" size={14} />
+              Measure
+            </button>
+            <button
+              class={`tool ${cut ? 'on' : ''}`}
+              aria-pressed={!!cut}
+              data-tip="Section plane: cut the board across X, Y or Z to see the stackup"
+              data-tip-keys="S"
+              data-testid="tool-section"
+              onClick={() => view3d.current?.toggleSection()}
+            >
+              <Icon name="columns" size={14} />
+              Section
+            </button>
+            <button
+              class={`tool ${exploded ? 'on' : ''}`}
+              aria-pressed={exploded}
+              disabled={!canExplode}
+              data-tip={canExplode ? 'Pull the stackup apart: each layer with its thickness' : 'The scene file has no stackup to pull apart'}
+              data-tip-keys="E"
+              data-testid="tool-explode"
+              onClick={() => view3d.current?.toggleExplode()}
+            >
+              <Icon name="layers" size={14} />
+              Layers apart
+            </button>
+            <span class="tb-sep" aria-hidden="true" />
+            <Popover icon="more" tip="More: draw this view with netsmith render" class="v3-more">
+              {() => {
+                const text = commandText();
+                const nearest = viewer.current ? nearestView(viewer.current.towardEye()) : null;
+                return (
+                  <div class="v3-cmd" data-testid="render-command">
+                    <div class="v3-cmd-head">Copy as command</div>
+                    <p>
+                      The picture of this view from <code>netsmith render</code>: no browser, no GPU.
+                      {nearest && !nearest.exact && ` The camera is turned from the command's views; the nearest is ${nearest.view}.`}
+                    </p>
+                    <div class="cli">
+                      <Icon name="terminal" size={13} class="cli-icon" />
+                      <code data-testid="render-command-text">{text}</code>
+                      <CopyButton text={text} label="Copy the command" />
+                    </div>
+                  </div>
+                );
+              }}
+            </Popover>
+          </div>
+          {cut && <SectionPanel cut={cut} range={range} onChange={changeCut} onClose={() => changeCut(null)} />}
+          {measuring && (
+            <MeasurePanel
+              measures={measures}
+              readout={readout}
+              exploded={exploded}
+              onRemove={(id) => setMeasures((ms) => ms.filter((m) => m.id !== id))}
+              onClear={() => {
+                setMeasures([]);
+                setPending(null);
+              }}
+              onClose={() => toggleMeasure()}
+            />
+          )}
           <div class="v3-info no-pan" data-toast-clear>
             {coverage && (
               <div class="v3-cov-wrap">
@@ -432,9 +649,11 @@ export function View3d({ board }: { board: string }) {
               )}
             </div>
           </div>
-          <div class="v3-note" aria-hidden="true">
-            Read-only: move parts in 2D · drag to orbit, right-drag to pan, scroll to zoom
-          </div>
+          {!measuring && (
+            <div class="v3-note" aria-hidden="true">
+              Read-only: move parts in 2D · drag to orbit, right-drag to pan, scroll to zoom
+            </div>
+          )}
           <div class="zoombar no-pan" role="toolbar" aria-label="Zoom" data-toast-clear>
             <button title="Zoom out (-)" aria-label="Zoom out" onClick={() => viewer.current?.zoomBy(0.8)}>
               −

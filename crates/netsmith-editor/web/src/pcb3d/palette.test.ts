@@ -60,6 +60,18 @@ describe('the 3D palette', () => {
         expect(c('--pcb3d-body')).not.toBe(c('--pcb3d-body-catalog'));
         expect(c('--pcb3d-body')).not.toBe(c('--sel'));
       });
+      it('the two laminate tones of a section are two, and the measure lines and the cut stand out on the mask', () => {
+        expect(contrast(c('--pcb3d-prepreg'), c('--pcb3d-substrate'))!, `prepreg on core in ${theme}`).toBeGreaterThanOrEqual(1.25);
+        for (const token of ['--pcb3d-measure', '--pcb3d-cut']) {
+          expect(contrast(c(token), c('--pcb3d-mask'))!, `${token} on the mask in ${theme}`).toBeGreaterThanOrEqual(3);
+          expect(contrast(c(token), c('--pcb3d-bg'))!, `${token} on the background in ${theme}`).toBeGreaterThanOrEqual(3);
+        }
+      });
+      it('the mask over copper is a second green of the mask, and the finish of bare copper stands out on it', () => {
+        expect(c('--pcb3d-mask-copper')).not.toBe(c('--pcb3d-mask'));
+        expect(contrast(c('--pcb3d-mask-copper'), c('--pcb3d-mask'))!, `mask over copper in ${theme}`).toBeGreaterThanOrEqual(1.15);
+        expect(contrast(c('--pcb3d-finish'), c('--pcb3d-mask'))!, `finish on the mask in ${theme}`).toBeGreaterThanOrEqual(2);
+      });
       it('the hover lights a body visibly, and not in the colour of a pick', () => {
         for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-unknown']) {
           const base = parseHex(c(token))!;

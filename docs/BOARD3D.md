@@ -142,7 +142,7 @@ raises `schema`, a field added does not):
 
 | Node | `extras.netsmith` |
 |---|---|
-| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
+| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}]` (the stackup top face down, as `board.layers` of the report; `kind` is `mask`, `copper`, `core` or `prepreg`; added in schema 1), `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
 | `substrate` | `kind: "substrate"`: the laminate, between the outer copper layers. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`: the mask with its openings cut out, two primitives: material `mask-top` or `mask-bottom` over bare laminate and `mask-over-copper` where copper is under it), one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel, and last `silk:top`, `silk:bottom` (`kind: "silk"`, `face`): the silkscreen (the legend Gerber's ink, kept off the mask's openings and the holes), flat 0.015 mm off the mask, material `mark` |
 | one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height |
 | `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it); its volume is the mesh |
@@ -178,8 +178,10 @@ What it is:
 - **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
   body to its known height (its package shape where the footprint generator made the footprint,
   else a box), the height limits as see-through volumes (in the error colour when a part breaks
-  one) and the pins out of the far face where their length is stated. The copper comes into the
-  same file later (#430), and the view draws each mesh by its material's name.
+  one) and the pins out of the far face where their length is stated. The copper of each net,
+  the solder mask with its openings (a second green over copper), the gold finish of the bare
+  copper and the silkscreen are in the same file, and the view draws each mesh by its
+  material's name in the theme's colours.
 - **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
   by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
@@ -194,6 +196,36 @@ What it is:
   a flip to the other face (`Shift+F`), fit (`F` or `0`), and perspective or orthographic (`P`).
   The colours follow the editor's theme. With reduced motion the camera jumps instead of moving.
 
+Its tools, in the bar under the camera's (each also a command of the palette):
+
+- **Measure** (`M`; `Esc` leaves it). A click sets a point and a second click measures from it:
+  the distance and its parts along x, y and z (`dx`, `dy`, `dz`, in mm with two or three
+  decimals), drawn as a line and a label that stay when the camera moves, listed in the tool's
+  panel, removed one by one or all at once (Clear all, or the command "3D view: Clear the
+  measurements"). A point snaps, in this order, to a pad's centre (from the 2D scene; a pad under
+  a body is hidden by it and is not snapped to), a corner (of a body, or of the board's outline),
+  the board's edge, the top of a body (its exact height) and the board's top or bottom face; the
+  target and its coordinates show while the pointer is over it. With one part picked
+  (Shift+click picks while measuring) the panel and two upright lines give its height above its
+  face and its margin to the height limit above it (the least, where several are), from the
+  file's numbers; a part of unknown height has neither.
+- **Section** (`S` on or off; `X`, `Y`, `Z` across that axis). The scene is cut at a place in mm
+  of [the frame](#the-frame), dragged with the handle or typed; the side nearer the camera is not
+  drawn, as `netsmith render --section` decides. The cut of every closed solid is filled in its
+  colour, and the board's laminate is drawn as its layers, so the cut shows the stackup as bands
+  at their true thickness: the mask, the copper where the file has it, the core and the prepreg
+  in two laminate tones (a copper layer's band is the insulator round its copper, as the render
+  draws it).
+- **Layers apart** (`E`). The stackup pulled apart along z, eased (at once with reduced motion):
+  each layer of `layers` (and each face's silkscreen, where the file has it) as a sheet of the
+  board's outline, with its name, its kind and its thickness beside it. A copper layer is a
+  see-through sheet with its copper, where the file has it; the parts and the height limits lift
+  with the face they stand on. `E` again puts them back. The measure tool waits until they are.
+- **Copy as command** (the `…` menu, or "3D view: Copy as a netsmith render command"). The
+  `netsmith render` command that draws the view: its view (the nearest of the command's, said
+  when the camera is turned from it), its section, the parts picked as `--highlight`, the dark
+  theme and the lens.
+
 What it is not:
 
 - **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
@@ -201,7 +233,8 @@ What it is not:
 - **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
   maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
   generator's own numbers.
-- **Not a check.** The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
+- **Not a check.** The tools measure the file's numbers and change nothing: a measurement, a
+  section or the layers apart are the picture only, and no report or file reads them. The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.
 - **Not on the network.** three.js is in the editor's binary, in a chunk of its own that the page
   loads the first time 3D opens (at most 250 kB gzipped, held by a test in
