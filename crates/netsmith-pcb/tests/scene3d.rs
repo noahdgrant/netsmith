@@ -729,3 +729,112 @@ fn a_shaped_footprint_of_unknown_height_is_still_its_flat_outline() {
         assert!(!mine[0].closed);
     }
 }
+
+/// The board of [`board`] with `row` (no height of its own) on a SOT-23, whose package standard
+/// allows 1.12 mm (JEDEC TO-236, ADR 0106), and `a` (stated) and `b` (catalog) on a SOIC-8, whose
+/// standard they do not take.
+fn board_with_standard_heights() -> Board {
+    let mut board = board();
+    for (path, id) in [
+        ("a", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"),
+        ("b", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"),
+        ("row", "Package_TO_SOT_SMD:SOT-23"),
+    ] {
+        board
+            .parts
+            .iter_mut()
+            .find(|p| p.path == path)
+            .unwrap()
+            .library_id = id.into();
+    }
+    // `under` keeps its box footprint and loses its height: it is unknown.
+    board
+        .parts
+        .iter_mut()
+        .find(|p| p.path == "under")
+        .unwrap()
+        .height = None;
+    board
+}
+
+#[test]
+fn stated_beats_catalog_beats_standard_beats_unknown() {
+    let board = board_with_standard_heights();
+    let s = scene(&board);
+    let a = s.body("a").unwrap();
+    assert_eq!(
+        (a.provenance, a.height, a.standard),
+        (HeightProvenance::Stated, Some(2.0), None)
+    );
+    let b = s.body("b").unwrap();
+    assert_eq!(
+        (b.provenance, b.height, b.standard),
+        (HeightProvenance::Catalog, Some(3.0), None)
+    );
+    let row = s.body("row").unwrap();
+    assert_eq!(
+        (row.provenance, row.height),
+        (HeightProvenance::Standard, Some(1.12))
+    );
+    assert_eq!(row.z_range(), (Some(0.0), Some(1.12)));
+    assert_eq!(
+        row.standard.map(|s| s.cited()).as_deref(),
+        Some("JEDEC TO-236, drawing TI DBZ0003A")
+    );
+    let under = s.body("under").unwrap();
+    assert_eq!(
+        (under.provenance, under.height),
+        (HeightProvenance::Unknown, None)
+    );
+    let c = s.coverage();
+    assert_eq!(
+        (c.known, c.total, c.stated, c.catalog, c.standard),
+        (3, 4, 1, 1, 1)
+    );
+    assert!(HeightProvenance::Stated < HeightProvenance::Catalog);
+    assert!(HeightProvenance::Catalog < HeightProvenance::Standard);
+    assert!(HeightProvenance::Standard < HeightProvenance::Unknown);
+    assert_eq!(HeightProvenance::Standard.word(), "standard");
+}
+
+#[test]
+fn a_standard_height_that_fits_a_limit_is_a_pass_said_to_be_the_standards() {
+    let mut board = board_with_standard_heights();
+    board.keepouts = vec![limit("lid", (20.0, 8.0), (10.0, 10.0), &["top"], 1.5)];
+    assert_eq!(board.heights_unchecked(), []);
+    let passes = board.standard_passes();
+    assert_eq!(passes.len(), 1, "{passes:?}");
+    assert_eq!(
+        passes[0].to_string(),
+        "J1 (`row`) fits the 1.50 mm the keepout `lid` allows on the top face by its package standard (JEDEC TO-236, drawing TI DBZ0003A, at most 1.12 mm), not by a height of its own: the design states none and its catalog row has none"
+    );
+    assert!(
+        !board
+            .check_placement()
+            .iter()
+            .any(|p| matches!(p, netsmith_pcb::PlacementProblem::TooTall { .. }))
+    );
+}
+
+#[test]
+fn a_standard_height_over_a_limit_leaves_the_part_unchecked_and_never_too_tall() {
+    let mut board = board_with_standard_heights();
+    board.keepouts = vec![limit("lid", (20.0, 8.0), (10.0, 10.0), &["top"], 1.0)];
+    assert_eq!(board.standard_passes(), []);
+    let unchecked = board.heights_unchecked();
+    assert_eq!(unchecked.len(), 1, "{unchecked:?}");
+    assert_eq!(
+        unchecked[0].to_string(),
+        "height of J1 (`row`) is unchecked: the keepout `lid` limits parts on the top face to 1.00 mm, the part states no height, and its package standard (JEDEC TO-236) allows up to 1.12 mm, so a part in that package may or may not fit (say `.row.height &= 1mm`, with the real number from its datasheet)"
+    );
+    assert!(
+        !board
+            .check_placement()
+            .iter()
+            .any(|p| matches!(p, netsmith_pcb::PlacementProblem::TooTall { .. }))
+    );
+    // The scene names it as the board's check does.
+    let s = scene(&board);
+    assert_eq!(s.findings.unchecked.len(), 1);
+    assert!(s.findings.too_tall.is_empty());
+}

@@ -129,17 +129,22 @@ fn a_part_has_the_height_of_its_row_and_one_with_no_cell_has_none() {
     assert_eq!(b.catalog_heights[0].row(), "ACME-R316");
 }
 
-#[test]
-fn the_placed_board_knows_the_height_of_a_part_from_a_row_and_not_of_the_other() {
-    let b = built("");
+/// The board of `b`, placed.
+fn placed(b: &netsmith::Built) -> Board {
     let libraries = Libraries::sample();
-    let board = Board::from_design_placed(
+    Board::from_design_placed(
         &b.design,
         &libraries.mapping,
         &libraries.footprints,
         &place_options(&b.design, None),
     )
-    .unwrap_or_else(|e| panic!("{e}"));
+    .unwrap_or_else(|e| panic!("{e}"))
+}
+
+#[test]
+fn the_placed_board_knows_the_height_of_a_part_from_a_row_and_not_of_the_other() {
+    let b = built("");
+    let board = placed(&b);
     assert_eq!(board.part("R1").unwrap().height, Some(0.55));
     assert_eq!(board.part("R2").unwrap().height, None);
     assert_eq!(board.part("R3").unwrap().height, Some(2.0));
@@ -158,18 +163,20 @@ fn a_height_the_design_states_wins_over_the_row_and_is_not_a_catalog_height() {
 #[test]
 fn a_board_with_a_limit_says_how_many_parts_have_a_height_and_from_where() {
     let b = built("    .r3.height &= 4mm\n");
-    let coverage = Coverage::of(&b.design, &b.catalog_heights).expect("the lid is a limit");
+    let coverage =
+        Coverage::of(&b.design, &b.catalog_heights, &placed(&b)).expect("the lid is a limit");
     assert_eq!(
         coverage,
         Coverage {
             parts: 3,
             stated: 1,
-            catalog: 1
+            catalog: 1,
+            standard: 0,
         }
     );
     assert_eq!(
         coverage.line(),
-        "note: 2 of 3 parts have a known height (1 stated in the design, 1 from catalog rows); a part under a height limit with none is reported unchecked, never as a pass"
+        "note: 2 of 3 parts have a known height (1 stated in the design, 1 from catalog rows, 0 the package standard's maximum); a part under a height limit with none is reported unchecked, never as a pass"
     );
 }
 
@@ -201,13 +208,16 @@ physical for Widget {
     .remove(0);
     // The heights are known all the same; nothing limits them, so nothing is said.
     assert_eq!(b.catalog_heights.len(), 2);
-    assert_eq!(Coverage::of(&b.design, &b.catalog_heights), None);
+    assert_eq!(
+        Coverage::of(&b.design, &b.catalog_heights, &placed(&b)),
+        None
+    );
 }
 
 #[test]
 fn the_notes_of_fab_name_each_row_a_height_was_read_from() {
     let b = built("");
-    let lines = notes(&b.design, &b.catalog_heights);
+    let lines = notes(&b.design, &b.catalog_heights, &placed(&b));
     assert_eq!(lines.len(), 3, "{lines:#?}");
     assert!(lines[0].starts_with("note: 2 of 3 parts have a known height (0 stated"));
     assert_eq!(
@@ -215,4 +225,143 @@ fn the_notes_of_fab_name_each_row_a_height_was_read_from() {
         "note: height of R1 (`r1`) is 0.55 mm, from the `height` of catalog row ACME-R316 (the row's `source` cell says which document and page); the design states none"
     );
     assert!(lines[2].contains("R3 (`r3`) is 2.00 mm"), "{}", lines[2]);
+}
+
+/// `r2`, which has no height of its own, as if its footprint were a SOIC-8 (JEDEC MS-012, at most
+/// 1.75 mm, ADR 0106); `r1` (catalog) and `r3` (stated) on the same footprint keep their own.
+fn on_soic(b: &netsmith::Built) -> Board {
+    let mut board = placed(b);
+    for p in &mut board.parts {
+        p.library_id = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm".into();
+    }
+    board
+}
+
+#[test]
+fn a_standard_height_is_counted_as_known_and_apart_and_named_in_the_notes() {
+    let b = built("    .r3.height &= 4mm\n");
+    let board = on_soic(&b);
+    assert_eq!(board.part("R1").unwrap().standard_height(), None);
+    assert_eq!(board.part("R3").unwrap().standard_height(), None);
+    assert_eq!(
+        board.part("R2").unwrap().standard_height().map(|s| s.max),
+        Some(1.75)
+    );
+    let coverage = Coverage::of(&b.design, &b.catalog_heights, &board).unwrap();
+    assert_eq!(
+        coverage,
+        Coverage {
+            parts: 3,
+            stated: 1,
+            catalog: 1,
+            standard: 1,
+        }
+    );
+    assert!(
+        coverage
+            .line()
+            .starts_with("note: 3 of 3 parts have a known height (1 stated in the design, 1 from catalog rows, 1 the package standard's maximum)"),
+        "{}",
+        coverage.line()
+    );
+    let lines = notes(&b.design, &b.catalog_heights, &board);
+    assert!(
+        lines.contains(&"note: height of R2 (`r2`) is 1.75 mm, the greatest its package standard allows (JEDEC MS-012, drawing TI D0008A), not a figure of the part: the design states none and its catalog row has none".to_string()),
+        "{lines:#?}"
+    );
+    // Under the 3 mm lid, 1.75 mm fits: a pass said to be the standard's.
+    let mut board = board;
+    let origin = board.outline.min;
+    board
+        .parts
+        .iter_mut()
+        .find(|p| p.refdes == "R2")
+        .unwrap()
+        .at = origin + netsmith_pcb::Pt::new(20.0, 5.0);
+    let passes = board.standard_passes();
+    assert_eq!(passes.len(), 1, "{passes:?}");
+    assert!(passes[0]
+        .to_string()
+        .starts_with("R2 (`r2`) fits the 3.00 mm the keepout `lid` allows on the top face by its package standard (JEDEC MS-012"));
+    assert!(board.heights_unchecked().is_empty());
+    let lines = notes(&b.design, &b.catalog_heights, &board);
+    assert!(
+        lines.contains(&format!("note: {}", passes[0])),
+        "{lines:#?}"
+    );
+}
+
+#[test]
+fn the_board3d_report_and_the_glb_label_a_standard_height_and_count_it_apart() {
+    let b = built("    .r3.height &= 4mm\n");
+    let mut board = on_soic(&b);
+    let origin = board.outline.min;
+    board
+        .parts
+        .iter_mut()
+        .find(|p| p.refdes == "R2")
+        .unwrap()
+        .at = origin + netsmith_pcb::Pt::new(20.0, 5.0);
+    let scene = netsmith::board3d::scene(&b, &board);
+    let report = netsmith::board3d::report(&b, &scene, &b.sourcing).unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let r2 = json["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["path"] == "r2")
+        .unwrap();
+    assert_eq!(r2["provenance"], "standard");
+    assert_eq!(r2["height"], 1.75);
+    assert_eq!(r2["standard"], "JEDEC MS-012, drawing TI D0008A");
+    let r1 = json["parts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["path"] == "r1")
+        .unwrap();
+    assert_eq!(r1["provenance"], "catalog");
+    assert!(r1.get("standard").is_none(), "{r1}");
+    assert_eq!(
+        json["coverage"],
+        serde_json::json!({ "known": 3, "total": 3, "stated": 1, "catalog": 1, "standard": 1 })
+    );
+    assert_eq!(json["standard_passes"].as_array().unwrap().len(), 1);
+    assert_eq!(json["standard_passes"][0]["path"], "r2");
+    assert_eq!(json["standard_passes"][0]["limit_name"], "lid");
+    assert_eq!(json["standard_passes"][0]["height"], 1.75);
+    assert!(json["unknown_heights"].as_array().unwrap().is_empty());
+
+    let glb = netsmith::board3d::glb(&b, &board);
+    let doc = netsmith_pcb::gltf::json_chunk(&glb).unwrap();
+    let node = |name: &str| {
+        doc["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["name"] == name)
+            .unwrap_or_else(|| panic!("no node `{name}`"))
+            .clone()
+    };
+    let r2 = node("R2");
+    assert_eq!(r2["extras"]["netsmith"]["provenance"], "standard");
+    assert_eq!(
+        r2["extras"]["netsmith"]["standard"],
+        "JEDEC MS-012, drawing TI D0008A"
+    );
+    assert_eq!(r2["extras"]["netsmith"]["height_mm"], 1.75);
+    assert_eq!(
+        node("R1")["extras"]["netsmith"]["standard"],
+        serde_json::Value::Null
+    );
+    let root = doc["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["extras"]["netsmith"]["kind"] == "board")
+        .unwrap();
+    assert_eq!(
+        root["extras"]["netsmith"]["coverage"],
+        serde_json::json!({ "known": 3, "total": 3, "standard": 1 })
+    );
 }

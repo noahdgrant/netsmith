@@ -10,10 +10,10 @@
 //! generated families listed below as not shaped get the box of their _Body_ ([`Footprint::body`]).
 //!
 //! **The height is never taken from here (ADR 0094).** The caller gives the part's known height,
-//! stated or from the catalog, and the shape is built to it: the highest point of every shape is
-//! that height. With no known height the shape is the flat outline of the body and no solid
-//! ([`BodyShape::solids`] is empty); the scene draws it hatched. No package standard's nominal
-//! height is used (that is an open decision of ADR 0105).
+//! stated, from the catalog or its package standard's maximum ([`crate::standard_height`], ADR
+//! 0106), and the shape is built to it: the highest point of every shape is that height. With no
+//! known height the shape is the flat outline of the body and no solid ([`BodyShape::solids`] is
+//! empty); the scene draws it hatched.
 //!
 //! **The frame** is the footprint's own: millimetres, the origin at the footprint's origin, x and
 //! y as the footprint file has them (y grows downward, as in KiCad), and z up from the face of the
