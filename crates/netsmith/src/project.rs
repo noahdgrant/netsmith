@@ -90,6 +90,11 @@ pub struct Manifest {
     /// either with `--pins`. A team sets `"locked"` once firmware is built on the pin map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pins: Option<String>,
+    /// Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package
+    /// (`glb = false` leaves it out; the default, `true`, writes it). A run can leave it out
+    /// with `--no-glb`, which wins over this key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glb: Option<bool>,
     /// How many times the process's least track a signal is drawn at, where there is room
     /// (`track_margin = 1.5`, the default; 1 is the least). A board the router cannot finish
     /// at that width is routed at the least (issue #431).
@@ -212,6 +217,7 @@ impl Manifest {
             catalog_dirs: default_catalog_dirs(),
             catalogs: Vec::new(),
             assembly: None,
+            glb: None,
             track_margin: None,
             environment: None,
             guidelines: None,

@@ -54,6 +54,50 @@ part OpenDrain {
     }
 }
 
+/// A pin of the kind `open_drain` that states a high as well (#460): the kind says that the
+/// pull-up sets the high, so the stated `voh` is not what is judged.
+part DeclaredOpenDrain {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.voh &= 3.0V
+    .status.vol &= 0.2V
+    pins {
+        .vbat.pos     power      "VBAT"   "1"
+        .vbat.neg     power      "GND"    "2"
+        .status.line  open_drain "STATUS" "3"
+    }
+}
+
+/// An open-drain output that survives at most 1.5 V on its pin.
+part FragileOpenDrain {
+    .vbat: Rail
+    .status: Logic
+    .status.reference ~ .vbat
+    .status.vol &= 0.2V
+    .status.line.abs_max &= 1.5V
+    pins {
+        .vbat.pos     power      "VBAT"   "1"
+        .vbat.neg     power      "GND"    "2"
+        .status.line  open_drain "STATUS" "3"
+    }
+}
+
+/// Reads a high from 1.2 V and survives at most 2 V on its input.
+part Fragile {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 1.2V
+    .in.vil &= 0.4V
+    .in.line.abs_max &= 2V
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .in.line  input "IN"  "3"
+    }
+}
+
 /// A module that states no swing and no level.
 part Mute {
     .vbat: Rail
@@ -212,4 +256,63 @@ fn an_open_drain_line_still_takes_its_high_from_its_pull_up() {
         f.iter().all(|m| !m.contains("the top of its swing")),
         "{f:#?}"
     );
+}
+
+#[test]
+fn an_open_drain_pin_takes_its_high_from_its_pull_up_whatever_it_states() {
+    // The pin states a high of 3.0 V, which `Demanding` would read; its kind says that the
+    // pull-up to 1.8 V sets the high, and 1.71 V is below the 1.9 V it needs (#460).
+    let c = check(
+        "test.nsm",
+        &format!(
+            "{PARTS}\nboard B {{\n    .battery: Rail {{\n        .voltage &= 3.8V +/- 5%\n        .pos.net &= \"VBAT\"\n        .neg.net &= \"GND\"\n    }}\n    .io: Rail {{\n        .voltage &= 1.8V +/- 5%\n        .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n    }}\n    .m: DeclaredOpenDrain\n    .s: Demanding\n    .r: Resistor {{ .resistance &= 4.7kohm +/- 5% }}\n    .battery ~ .m.vbat\n    .io ~ .s.vdd\n    .io.pos ~> .r ~> .m.status.line\n    .m.status.line ~ .s.in.line\n}}\n"
+        ),
+        &Loader::std(),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    let f = faults(&s);
+    assert!(
+        f.iter()
+            .any(|m| m.contains("(an `open_drain` pin leaves the high to")
+                && m.contains("1.71V")
+                && m.contains("`s.in.vih` needs 1.9V")),
+        "{f:#?}"
+    );
+    assert!(f.iter().all(|m| !m.contains("is 3V")), "{f:#?}");
+}
+
+/// The board of the open-drain tests: `driver` on the 3.8 V battery, pulled up to 1.8 V, read
+/// by `receiver` on 1.8 V.
+fn pulled_up(driver: &str, receiver: &str) -> Solution {
+    let c = check(
+        "test.nsm",
+        &format!(
+            "{PARTS}\nboard B {{\n    .battery: Rail {{\n        .voltage &= 3.8V +/- 5%\n        .pos.net &= \"VBAT\"\n        .neg.net &= \"GND\"\n    }}\n    .io: Rail {{\n        .voltage &= 1.8V +/- 5%\n        .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n    }}\n    .m: {driver}\n    .s: {receiver}\n    .r: Resistor {{ .resistance &= 4.7kohm +/- 5% }}\n    .battery ~ .m.vbat\n    .io ~ .s.vdd\n    .io.pos ~> .r ~> .m.status.line\n    .m.status.line ~ .s.in.line\n}}\n"
+        ),
+        &Loader::std(),
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    solve(&c.boards[0], &Catalogs::jlcpcb())
+}
+
+#[test]
+fn the_high_of_an_open_drain_line_must_stay_below_the_pins_absolute_maximum() {
+    // The pull-up holds the line at up to 1.89 V, and the open-drain pin survives 1.5 V (#460).
+    let s = pulled_up("FragileOpenDrain", "Sensor");
+    let f = faults(&s);
+    assert!(
+        f.iter()
+            .any(|m| m.contains("reaches 1.89V") && m.contains("`m.status.line.abs_max` is 1.5V")),
+        "{f:#?}"
+    );
+}
+
+#[test]
+fn an_open_drain_pin_does_not_take_its_line_to_its_own_supply() {
+    // The driver is on the 3.8 V battery, but an open-drain pin only pulls low: the line goes
+    // no higher than the 1.8 V pull-up, which the 2 V receiver survives.
+    let s = pulled_up("DeclaredOpenDrain", "Fragile");
+    let f = faults(&s);
+    assert!(f.iter().all(|m| !m.contains("abs_max")), "{f:#?}");
 }

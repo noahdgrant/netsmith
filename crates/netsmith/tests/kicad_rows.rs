@@ -59,6 +59,7 @@ pub(crate) fn pinout_of(kind: &str, package: &str) -> Pinout {
                         LangKind::Passive => PinKind::Passive,
                         LangKind::NoConnect => PinKind::NoConnect,
                         LangKind::TriState => PinKind::TriState,
+                        LangKind::OpenDrain => PinKind::OpenDrain,
                     },
                     pads: r.pads.clone(),
                     function: None,

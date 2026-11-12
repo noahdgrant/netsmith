@@ -96,7 +96,7 @@ pub fn side_of(pin: &PartPin, part_gives: bool) -> Side {
         PinKind::Power if part_gives && pin.power_flow == Some(PowerFlow::Takes) => Side::Left,
         PinKind::Power => Side::Top,
         PinKind::Input | PinKind::Passive => Side::Left,
-        PinKind::Output | PinKind::TriState => Side::Right,
+        PinKind::Output | PinKind::TriState | PinKind::OpenDrain => Side::Right,
         PinKind::Bidirectional => Side::Either,
         PinKind::NoConnect => Side::NoConnect,
     }
@@ -117,6 +117,8 @@ pub fn pin_type(pin: &PartPin) -> PinType {
         PinKind::Passive => PinType::Passive,
         PinKind::NoConnect => PinType::NoConnect,
         PinKind::TriState => PinType::TriState,
+        // KiCad has one type for an open collector and an open drain.
+        PinKind::OpenDrain => PinType::OpenCollector,
     }
 }
 
@@ -694,6 +696,7 @@ mod tests {
             (PinKind::Passive, "passive"),
             (PinKind::NoConnect, "no_connect"),
             (PinKind::TriState, "tri_state"),
+            (PinKind::OpenDrain, "open_collector"),
         ] {
             assert_eq!(pin_type(&pin("p", "P", kind, &["1"])).name(), word);
         }

@@ -125,7 +125,7 @@ fn an_unknown_pin_kind_lists_the_kinds() {
     let (msg, line, col) = row_error(".a tristate \"A\" \"1\"");
     assert_eq!(
         msg,
-        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state"
+        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect, tri_state and open_drain"
     );
     assert_eq!((line, col), (3, 12));
 }
@@ -134,7 +134,7 @@ fn an_unknown_pin_kind_lists_the_kinds() {
 fn a_row_that_stops_early_says_what_is_missing() {
     let (msg, ..) = row_error(".a");
     assert!(
-        msg.starts_with("expected a pin kind (power, input, output, bidirectional, passive, no_connect and tri_state) after `.a`, found end of line"),
+        msg.starts_with("expected a pin kind (power, input, output, bidirectional, passive, no_connect, tri_state and open_drain) after `.a`, found end of line"),
         "{msg}"
     );
     let (msg, ..) = row_error(".a passive");
@@ -350,12 +350,12 @@ fn the_kind_of_a_function_must_be_a_kind_and_touch_its_name() {
     let (msg, line, col) = row_error(".a bidirectional \"A\" \"1\" fn GPIO:tristate");
     assert_eq!(
         msg,
-        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state"
+        "unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect, tri_state and open_drain"
     );
     assert_eq!((line, col), (3, 42));
     let (msg, ..) = row_error(".a bidirectional \"A\" \"1\" fn GPIO:");
     assert!(
-        msg.contains("a pin kind (power, input, output, bidirectional, passive, no_connect and tri_state) right after `GPIO:`"),
+        msg.contains("a pin kind (power, input, output, bidirectional, passive, no_connect, tri_state and open_drain) right after `GPIO:`"),
         "{msg}"
     );
     let (msg, ..) = row_error(".a bidirectional \"A\" \"1\" fn GPIO :output");
@@ -389,7 +389,23 @@ fn tri_state_is_a_kind_of_a_row_and_of_a_function() {
 }
 
 #[test]
-fn the_seven_kinds_are_the_words_of_the_unknown_kind_message() {
+fn open_drain_is_a_kind_of_a_row_and_of_a_function_and_prints_back() {
+    let src = row(
+        ".int open_drain \"INT\" \"2\"\n        .io bidirectional \"IO\" \"3\" fn GPIO FLAG:open_drain",
+    );
+    let file = parse(&src).unwrap_or_else(|e| panic!("{e:?}"));
+    let printed = file.to_source();
+    assert!(
+        printed.contains(".int open_drain \"INT\" \"2\""),
+        "{printed}"
+    );
+    assert!(printed.contains("fn GPIO FLAG:open_drain"), "{printed}");
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+    assert_eq!(PinKind::from_word("open_drain"), Some(PinKind::OpenDrain));
+}
+
+#[test]
+fn the_eight_kinds_are_the_words_of_the_unknown_kind_message() {
     let words: Vec<&str> = PinKind::ALL.iter().map(|k| k.word()).collect();
     assert_eq!(
         words,
@@ -400,7 +416,8 @@ fn the_seven_kinds_are_the_words_of_the_unknown_kind_message() {
             "bidirectional",
             "passive",
             "no_connect",
-            "tri_state"
+            "tri_state",
+            "open_drain"
         ]
     );
 }

@@ -51,10 +51,11 @@
 //! pull-up and not reported as missing, where the note was the only sign that the model is
 //! incomplete. The rule needs `vol`, a pull-up, and a rail with a voltage.
 //!
-//! Decided by the owner, 2026-11-11: the inference stays. A pin kind, or a marker on the
-//! interface's `lines`, for open drain is added only when a real part breaks the inference; the
-//! rule's test for a driver then changes and nothing else, and a part that states `vol` alone
-//! would be a note again for a declared pin.
+//! Decided by the owner, 2026-11-11: the inference stays. The TLV7022's two outputs on one net
+//! then broke the net rules, and the kind `open_drain` was added (#460, the owner's decision of
+//! 2026-11-12): an `open_drain` pin always takes its high from its pull-up, whatever it states,
+//! and the inference stays for the other kinds, so the I2C pins of std (`bidirectional`) keep
+//! their checks. In `net_range` an `open_drain` pin only pulls its net to its ground.
 //!
 //! Not built from ADR 0046: more parts with datasheet levels (issue #64), and levels across a
 //! level shifter or a series resistor (issue #63; the voltage of a net is followed only through
@@ -175,8 +176,18 @@ pub(crate) struct Run<'a> {
 fn is_driver(kind: PinKind) -> bool {
     matches!(
         kind,
-        PinKind::Output | PinKind::TriState | PinKind::Bidirectional
+        PinKind::Output | PinKind::TriState | PinKind::OpenDrain | PinKind::Bidirectional
     )
+}
+
+/// Why a driver leaves the high of its line to the circuit around it, for the messages: its
+/// kind says so (#460), or it states a low and no high (ADR 0075).
+fn open_drain_why(d: &Line) -> &'static str {
+    if d.kind == PinKind::OpenDrain {
+        "an `open_drain` pin"
+    } else {
+        "a driver that states `vol` and no `voh`"
+    }
 }
 
 fn is_receiver(kind: PinKind) -> bool {
@@ -392,10 +403,12 @@ impl Run<'_> {
             return;
         }
         // A high must be read as a high: the output's lowest high against the input's
-        // highest threshold. An output that states a low and no high is open-drain: its high
-        // is the one its pull-up gives the line (ADR 0075).
+        // highest threshold. An `open_drain` pin, or an output that states a low and no high,
+        // is open drain: its high is the one its pull-up gives the line (ADR 0075, #460).
         let voh = self.output_level(d.logic, "voh");
-        if self.value(d.logic, "voh").is_none() && self.value(d.logic, "vol").is_some() {
+        if d.kind == PinKind::OpenDrain
+            || (self.value(d.logic, "voh").is_none() && self.value(d.logic, "vol").is_some())
+        {
             // The DC analysis solved the line's circuit: its voltage with every open-drain
             // driver let go is the high, whatever sits between the rail and the line.
             if let Some(&(ground, lo, hi)) = self
@@ -502,8 +515,9 @@ impl Run<'_> {
             self.fault(
                 r.part,
                 format!(
-                    "net `{}`: the DC analysis holds the line at {high} with every driver of it high impedance (a driver that states `vol` and no `voh` leaves the high to its circuit) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+                    "net `{}`: the DC analysis holds the line at {high} with every driver of it high impedance ({} leaves the high to its circuit) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
                     net.name,
+                    open_drain_why(d),
                     model.path_of_field(fi),
                     volts(lo),
                     volts(vih.hi()),
@@ -547,10 +561,11 @@ impl Run<'_> {
             self.fault(
                 r.part,
                 format!(
-                    "net `{}`: the pull-up `{}` to rail `{}` holds the line at {high} (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
+                    "net `{}`: the pull-up `{}` to rail `{}` holds the line at {high} ({} leaves the high to the pull-up) but `{}` needs {vih}: a high of {} is not always read as a high, which takes {}",
                     net.name,
                     low.resistor,
                     low.rail,
+                    open_drain_why(d),
                     model.path_of_field(fi),
                     volts(lo),
                     volts(vih.hi()),
@@ -1017,6 +1032,16 @@ impl Run<'_> {
                 continue;
             }
             let path = model.path_of(t);
+            // An open-drain pin only pulls the line to its ground; its high is the pull-up's,
+            // which the resistors above add (#460).
+            if kind == PinKind::OpenDrain {
+                swing.add(
+                    0.0,
+                    0.0,
+                    &format!("`{path}`, an open_drain pin, which only pulls the line low"),
+                );
+                continue;
+            }
             let Some(logic) = self.logic_of(t) else {
                 return Err(format!(
                     "`{path}` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so how far it swings is not known"

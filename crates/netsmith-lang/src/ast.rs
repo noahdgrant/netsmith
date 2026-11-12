@@ -206,6 +206,9 @@ pub enum PinKind {
     /// An output that drives only while its part is selected and is high impedance
     /// otherwise: it may share a net with other drivers (ADR 0064).
     TriState,
+    /// An output that only pulls its line low, or lets it go (open drain, or open collector):
+    /// the line's high comes from a pull-up, and several may share a net (#460).
+    OpenDrain,
 }
 
 impl PinRow {
@@ -216,7 +219,7 @@ impl PinRow {
 }
 
 impl PinKind {
-    pub const ALL: [PinKind; 7] = [
+    pub const ALL: [PinKind; 8] = [
         Self::Power,
         Self::Input,
         Self::Output,
@@ -224,6 +227,7 @@ impl PinKind {
         Self::Passive,
         Self::NoConnect,
         Self::TriState,
+        Self::OpenDrain,
     ];
 
     /// The word for it in source and in messages.
@@ -236,6 +240,7 @@ impl PinKind {
             Self::Passive => "passive",
             Self::NoConnect => "no_connect",
             Self::TriState => "tri_state",
+            Self::OpenDrain => "open_drain",
         }
     }
 

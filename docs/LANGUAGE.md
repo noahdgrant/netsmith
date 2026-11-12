@@ -2167,6 +2167,7 @@ A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [
 | `passive` | A pin with no direction, such as a resistor's. | No, unless `required` |
 | `no_connect` | A pin that must stay open. | Never connected |
 | `tri_state` | An output that drives only while its part is selected, and is high impedance otherwise. | No, unless `required` |
+| `open_drain` | An output that only pulls its line low, or lets it go (open drain, or open collector). A pull-up sets the high. | No, unless `required` |
 
 "Connected" means that another pin is on its net: a pin of another part, or a rail the board declares, which is supplied from outside. A net made only of the part's own pins does not count.
 
@@ -3624,6 +3625,81 @@ error: net `net-a.do` has 2 drivers and `b.do` is not `tri_state`: `a.do` (`Zrom
    |     ^^^^^^^^
 ```
 
+### Open-drain outputs
+
+An open-drain output, or an open-collector one, only pulls its line low or lets it go: a comparator's output, a fault flag, an interrupt line. The kind for it is `open_drain` (#460). Any number of `open_drain` pins may share a line, since none of them drives it high, and a `bidirectional` pin beside them is accepted. Two rules apply to the net:
+
+- A pin that drives the line high, an `output` or a `tri_state` output, is refused on it: it would drive the line high while an open-drain pin pulls it low.
+- The line needs a pull-up: a resistor from the net to a net that holds a rail's `pos`, or a pin that can drive it high (`output`, `tri_state` or `bidirectional`, such as a GPIO behind a series resistor). A resistor to the ground is a pull-down, not a pull-up.
+
+The pull-up sets the high of the line. The levels check (see _An open-drain line_) takes the high of an `open_drain` pin from its pull-up, whatever the pin states, and the absolute-maximum check holds the pin to the voltage of that pull-up, not to its own supply. A part writes `open_drain` when its datasheet says the output is open drain or open collector, with the page in a comment.
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Zcmp, an invented comparator.
+part Zcmp {
+    pins {
+        // Page 4: OUT is an open-drain output.
+        .out open_drain "OUT" "1"
+    }
+}
+
+/// Zreader, an invented part that reads the line.
+part Zreader {
+    pins {
+        .din input "DIN" "1"
+    }
+}
+
+board WiredOr {
+    .v3: Rail
+    .a: Zcmp
+    .b: Zcmp
+    .r: Resistor
+    .s: Zreader
+    .a.out ~ .b.out
+    .a.out ~ .s.din
+    .v3.pos ~> .r ~> .a.out
+}
+```
+
+The same line with no resistor to the rail, and with a push-pull output on it:
+
+```nsm fails
+part Zcmp {
+    pins {
+        .out open_drain "OUT" "1"
+    }
+}
+
+part Zdrv {
+    pins {
+        .out output "OUT" "1"
+    }
+}
+
+board Fight {
+    .a: Zcmp
+    .d: Zdrv
+    .a.out ~ .d.out
+}
+```
+
+```text
+error: net `net-a.out` has an open_drain output (`a.out`) and a push-pull driver: `d.out` (`Zdrv`, an output); it drives the line high while an open_drain pin pulls it low; give `d.out` a net of its own, or write `open_drain` for it if the datasheet says the pin is open drain
+   --> main.nsm:14:5
+   |
+14 |     .a: Zcmp
+   |     ^^^^^^^^
+error: net `net-a.out` has an open_drain output (`a.out`) and no pull-up: nothing takes the line high when it lets go of it; join a resistor from the net to a rail's `pos`, or to a pin that drives the line high
+   --> main.nsm:14:5
+   |
+14 |     .a: Zcmp
+   |     ^^^^^^^^
+```
+
 ### Pads
 
 Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:
@@ -3738,7 +3814,7 @@ part UnknownKind {
 ```
 
 ```text
-error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state
+error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect, tri_state and open_drain
   --> main.nsm:3:12
   |
 3 |         .a tristate "A" "1"
@@ -6493,7 +6569,6 @@ error: the `schottky` catalog has nothing for `d`, which needs max_reverse_volta
    |
 15 |     .d: Schottky {
    |     ^^^^^^^^^^^^
-
 ```
 
 What it proves. The check says what the datasheet of the ordering code says and nothing about the board: a part qualified to AEC-Q200 is not shown to have passed any other test, and the sentence of a datasheet is not a certificate. The `Qualification` of a stricter standard is not a stronger claim: there is one variant, `Aec`, so a board cannot ask for AEC-Q100 Grade 0 by this member (the temperature range of the part says what a grade says).
@@ -8079,6 +8154,7 @@ Only `name` is required.
 | `environment` | Optional. The environment every board has when it declares none: `"std::env::Environment"` or a definition of the project's own, `"src/vehicle.nsm::Automotive"`. See The environment of a board. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current. |
 | `track_margin` | Optional. How many times the process's least track a signal is drawn at where there is room: 1.5 by default, so JLCPCB's 0.1 mm least is drawn as 0.15 mm; 1 is the least, and it may be up to 4 (issue #431). The router tries the margin first, in half the route time; a board it cannot finish at that width is routed again from the same placement at the least track, and `fab` says so. A net its current makes wider keeps that width. |
+| `glb` | Optional. Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package: `true`, the default, writes it; `glb = false` leaves it out, and removes the one of an earlier run. `fab --no-glb` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 
 ### Orders
 
@@ -8246,7 +8322,7 @@ netsmith init [--name <name>]          # a project in the current directory
 netsmith build [file.nsm] [--out dir] [--strict] [--locked] # check, solve, write a KiCad schematic
 netsmith lock --update|--check [file.nsm] # refresh the pick lock and print what changed, or fail if it is not current (see _The pick lock_)
 netsmith editor [file.nsm] [--port n]  # edit and view in a browser (default port 8787)
-netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] # files for a board house (boards and panels), after a design rules check
+netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] # files for a board house (boards and panels), after a design rules check
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
 netsmith board3d [file.nsm] [--board <name>] [--json] # the board's 3D scene: heights, limits, overlaps (docs/BOARD3D.md)
 netsmith render [file.nsm] [--board <name>] [--view iso] [--out board.png] [--size 1600x1000] [--section x=12.5] [--highlight J1,net:GND,limit:lid] [--xray] [--theme light|dark] [--ortho|--perspective] # the board in 3D as a PNG (docs/BOARD3D.md)
@@ -8268,7 +8344,7 @@ In the schematic, a part can be dragged on the grid, nudged with the arrow keys,
 
 The power model's findings come from `netsmith`, not from the editor's page: `build`, the editor's analysis (its `power` stage, the Problems dock's `Power` group) and the power tree it draws all carry the same ones. A rail that can draw more than the supply that states what it can give (`max_current`) is an error that stops the build, where the solver had no relation to check it against; `--strict` is not needed. The notes do not stop it, with or without `--strict`: a rail nothing supplies (`V5 has no source: nothing supplies it`), a rail with loads whose current the solver has not settled, and a converter whose efficiency it has not settled. The Problems dock lists the notes of a board grouped by their cause, with a count for each (the server says it for every note: `not_stated`, `part_model`, `unjudged`, `circular`, `supply`, `pick`, `track`, `other`), so a long list of notes reads as the few things to do about them: a rail nothing supplies and a load not settled are `supply`, a level or an input current a part's definition leaves out is `part_model`, a value nothing states is `not_stated`.
 
-`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless you pass `--allow-drc-violations` (which never waives a `[constraint]` finding: a requirement on where a part goes is relaxed only by `constraints = "warn"` or `--constraints warn`), and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. `--cross-check` compares the files and the findings with KiCad's own plot and design rules check of the same board (it needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` on `PATH`, then Windows KiCad 9 under WSL). It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, and an `.svg`. Read `fab-notes.txt` before you order.
+`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless you pass `--allow-drc-violations` (which never waives a `[constraint]` finding: a requirement on where a part goes is relaxed only by `constraints = "warn"` or `--constraints warn`), and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. `--cross-check` compares the files and the findings with KiCad's own plot and design rules check of the same board (it needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` on `PATH`, then Windows KiCad 9 under WSL). It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (not for the board house; `--no-glb` or `glb = false` in `netsmith.toml` leaves it out; `docs/BOARD3D.md`, "In the fab package"). Read `fab-notes.txt` before you order.
 
 `board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything and without KiCad: with `--json` a report an agent reads, with each part's body box, its Z range and where its height came from (`stated`, `catalog` or `unknown`, never a guessed height), each height limit with the tallest part under it and the margin, the parts too tall, bodies that overlap in 3D, the parts of unknown height with the reason, and the height coverage; without it a short summary. `docs/BOARD3D.md` has the frame and every field.
 
@@ -11573,9 +11649,9 @@ A single-supply buffer used as a translator (`LevelTranslator`) states plain pin
 
 #### An open-drain line
 
-An open-drain line, such as the `sda` of an `I2c` bus, is never driven high: a device only pulls it low or lets go, and a resistor to a rail holds it high. A datasheet states its `VOL` and no `VOH`, because the part does not set the high. The levels check reads such a part as it is, without a new word in the language (ADR 0075, provisional): a driver that states `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail (`I2cPullups`, `PullUp` or a plain `Resistor`), has as its high the rail's voltage range, and the receivers' `vih` is judged against that. A finding names the pull-up resistor, its rail and the receiver's `vih`, and the driver's `vol` is judged against each receiver's `vil` as before. The rule is narrow:
+An open-drain line, such as the `sda` of an `I2c` bus, is never driven high: a device only pulls it low or lets go, and a resistor to a rail holds it high. A datasheet states its `VOL` and no `VOH`, because the part does not set the high. The levels check reads such a part as it is (ADR 0075, provisional): a pin of the kind `open_drain` (see _Open-drain outputs_), or a driver of another kind that states `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail (`I2cPullups`, `PullUp` or a plain `Resistor`), has as its high the rail's voltage range, and the receivers' `vih` is judged against that. A finding names the pull-up resistor, its rail and the receiver's `vih`, and the driver's `vol` is judged against each receiver's `vil` as before. The rule is narrow:
 
-- A driver that states `voh` is judged by it, whatever else is on the net: the datasheet says what the part does.
+- A driver that states `voh` is judged by it, whatever else is on the net: the datasheet says what the part does. An `open_drain` pin is the exception: its kind says the pull-up sets the high.
 - A driver that states no `vol` either says nothing about its output, and gets the notes for its high and its low, as before.
 - A net with a resistor to its ground as well is a divider, and this rule does not apply. When the DC analysis solves the line (below) its voltage is the high. When it does not, the note says the high has no value.
 - A rail on another ground than the receiver's, or a rail with no voltage, is a note that names it, not a pass.

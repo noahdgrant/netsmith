@@ -244,9 +244,6 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
   - there is no generic for a buck-boost (boost) converter or for a USB-C port protection IC, so
     the board's most interesting circuit (the feedback and compensation network, the inductor
     and the output capacitors of the TPS55288) is wired and proved equal but **not analysed**;
-  - there is no open-drain output kind (the comparator's two outputs and the microcontroller's
-    pin share the protector's enable line: two `output` pins on one net are refused, so the
-    TLV7022's outputs are `tri_state`, with no levels);
   - there is no NTC thermistor model (the dividers' currents are not seen), and the `Fuse` and
     `Capacitor` generics have no column for the fuse's I2t or the electrolytic's ESR;
   - a pin's own recommended window (EN, CC1c, VBAT) can only be stated through a `Rail`.
@@ -421,7 +418,7 @@ PARTS WITH PIN TABLES (kind kinds: P=passive)
 - Q1-Q4 `Bsc059n04ls6 provides NMosfet` (Infineon, C534356, TDSON-8FL): G "4" input; S "1" "2" "3"; D "5" (P; pins 5-8 fused, as the reference footprint). Row: 40 V, 17 A (TA 25 C, RthJA 50; 59 A is TC 25 C), VGS +/-20, Vth 1.3..2.3 V, RDS(on) 8.4 mohm max at 4.5 V (5.9 mohm at 10 V), Tj -55..175; Rev 2.0 2018-07-31 p.3, p.4, board pads p.11. Footprint: reference pads 1-5 + 4 paste apertures (not the unnumbered lead pads). Height not read.
 - U2 `Lp2985 provides LinearRegulator` (TI LP2985A-33DBVR, C89826): VIN "1" power, GND "2" power, ON/OFF "3" input, BYPASS "4" P, VOUT "5" power. SLVS522O (rev Jan 2015): 3.3 V +/-3.5% (A grade, 1-150 mA, -40..125), dropout 0.575 V at 150 mA, 0.15 A, quiescent 0..125 uA unloaded, TJ -40..125. No max_power (datasheet gives only RthJA 206 and a formula). **BOM name is LP2985-3.3; C89826 is the A grade.** Generator SOT-23-5.
 - U6 `Usblc62sc6` (C2687116): .io1 "1" "6"; .gnd "2"; .io2 "3" "4"; .vbus "5" (all P). **LCSC/JLCPCB sell UMW's USBLC6-2SC6, not ST's**; UMW datasheet Nov.2024 p.1 pin figure, p.2 TJ -55..125. Generator SOT-23-6.
-- U4 `Tlv7022` (TI TLV7022DDFR, C2862588): OUTA "1" tri_state, INA- "2", INA+ "3", VEE "4" (supply.neg), INB+ "5", INB- "6" (inputs), OUTB "7" tri_state, VCC "8" (supply.pos). Supply 1.6..6.5 V (Table 6.5); datasheet read is the Chinese edition ZHCSGK4E (11/2019); the pin table is the DGK one (no DDF pinout printed; reference nets agree). No reference inside the part. Footprint: TI DDF0008A example layout, reference frame (pad 1 lower right).
+- U4 `Tlv7022` (TI TLV7022DDFR, C2862588): OUTA "1" open_drain, INA- "2", INA+ "3", VEE "4" (supply.neg), INB+ "5", INB- "6" (inputs), OUTB "7" open_drain, VCC "8" (supply.pos). Supply 1.6..6.5 V (Table 6.5); datasheet read is the Chinese edition ZHCSGK4E (11/2019); the pin table is the DGK one (no DDF pinout printed; reference nets agree). No reference inside the part. Footprint: TI DDF0008A example layout, reference frame (pad 1 lower right).
 - J4 `GtUsb7004 provides UsbCSinkReceptacle, Connector` (G-Switch GT-USB-7004, C2686968, keyed catalog gt_usb_7004): same 9 pins as Easyduino's Shouhan (VBUS A4 A9 B4 B9, GND A1 A12 B1 B12, CC1 A5, CC2 B5, D+ A6 B6, D- A7 B7, SBU1 A8, SBU2 B8, SHELL S1); drawing REV A1 2024.11.14 agrees with the reference pads; footprint libs/power_manifold_must_match.pretty/USB_C_Receptacle_GT-USB-7004 equals the reference (0.05 mm). Use it directly, not UsbCSink (CC goes to U5).
 - J3 `PcieX1EdgeFingers provides Connector`: 36 passive pins .a1-.a18/.b1-.b18, pads A1..B18 (comments carry the reference's pin functions; CEM spec not read), AssemblyMode::None, no catalog. Footprint PCIe_x1_Edge_Fingers equals the reference pads (A on F.Cu, B on B.Cu as stored; no Edge.Cuts; test enforces for both libraries).
 - J2: std ProgrammingPads6 (TC2030-NL): its std footprint equals the reference pads (tested, 0.05 mm). J1/J5/J6: std TestPoint "D1.5mm", equals reference (tested). HOT_SURFACE_SMALL marker (REF**): graphic only, skipped.
@@ -429,9 +426,8 @@ PARTS WITH PIN TABLES (kind kinds: P=passive)
 FOOTPRINT BLOCKS in kicad.toml: Tvs DFN1610-2, Fuse 2410, Inductor x2, Capacitor "SMD,D8xL9mm" (reference pads of KiCad CP_Elec_8x10 though the part is 8x9) and "SMD,D6.3xL7.7mm", Resistor 1206, plus one block per part above.
 
 FOR THE OWNER / GAPS
-1. Open-drain output has no pin kind: two `output` pins on /TCPP_EN are refused ("net has two outputs"); TLV7022 outputs are `tri_state`, no levels.
-2. No NTC model: the divider current of TH1/TH2 is not seen.
-3. Reference quirks, ported as drawn: U6 pad 6 (I/O1) unconnected while the part joins pads 1 and 6 (pad 6 lands on /USB_DATA); I/O2 and VBUS open; J4 D+/D- and both contacts all on /USB_DATA; J2 pad 6 open; C39 footprint 8x10 vs 8x9 part.
-4. Fuse has no I2t/blow-time column; Capacitor none for ESR/ripple; tempco and rms_current left empty on purpose.
-5. Rows to check: LCSC stock 0 for C108342 and C1713 (JLCPCB shows no stock); C50254 library type; the two Sunlord numbers (no LCSC record). Never fetched, so not added: none.
+1. No NTC model: the divider current of TH1/TH2 is not seen.
+2. Reference quirks, ported as drawn: U6 pad 6 (I/O1) unconnected while the part joins pads 1 and 6 (pad 6 lands on /USB_DATA); I/O2 and VBUS open; J4 D+/D- and both contacts all on /USB_DATA; J2 pad 6 open; C39 footprint 8x10 vs 8x9 part.
+3. Fuse has no I2t/blow-time column; Capacitor none for ESR/ripple; tempco and rms_current left empty on purpose.
+4. Rows to check: LCSC stock 0 for C108342 and C1713 (JLCPCB shows no stock); C50254 library type; the two Sunlord numbers (no LCSC record). Never fetched, so not added: none.
 

@@ -25,6 +25,7 @@ mod lines;
 mod loads;
 mod mate;
 mod nets;
+mod open_drain;
 mod optional;
 mod physical;
 mod pin_edit;

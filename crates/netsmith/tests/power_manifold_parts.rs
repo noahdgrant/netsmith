@@ -101,8 +101,10 @@ board PartsFixture {
     .u2.on_off ~ .bus.pos
     .u2.vout ~ .rail
 
-    // U4: the comparator, its outputs on one line.
+    // U4: the comparator, its open-drain outputs on one line with a pull-up.
     .u4: Tlv7022 { .mpn &= "TLV7022DDFR" }
+    .cmp_pullup: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .rail.pos ~> .cmp_pullup ~> .u4.out_a
     .rail ~ .u4.supply
     .cmp: Header1x8
     .u4.in_a_neg ~ .cmp.p1

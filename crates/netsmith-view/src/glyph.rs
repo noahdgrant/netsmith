@@ -1073,7 +1073,8 @@ impl Entry {
             flow: match pin.kind {
                 PinKind::Power if pin.gives_power() => Flow::Out,
                 PinKind::Input | PinKind::Power => Flow::In,
-                PinKind::Output => Flow::Out,
+                // As KiCad's `open_collector` reads (`Flow::of`).
+                PinKind::Output | PinKind::OpenDrain => Flow::Out,
                 PinKind::TriState => Flow::TriState,
                 PinKind::Bidirectional => Flow::Bidirectional,
                 PinKind::Passive | PinKind::NoConnect => Flow::Unspecified,
@@ -1086,6 +1087,7 @@ impl Entry {
                 PinKind::Passive => "passive",
                 PinKind::NoConnect => "no_connect",
                 PinKind::TriState => "tri_state",
+                PinKind::OpenDrain => "open_drain",
             },
         }
     }
