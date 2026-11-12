@@ -1125,10 +1125,16 @@ fn search(
     let mut finished = vec![false; states];
     let end_of = |s: usize| s - states;
     let mut taken = 0u32;
-    while let Some(Reverse((_, _, _, s))) = queue.pop() {
+    while let Some(Reverse((_, g, _, s))) = queue.pop() {
         taken += 1;
         if taken.is_multiple_of(CLOCK_EVERY) && stop() {
             return Err(Miss::Stopped);
+        }
+        // A state queued again when a cheaper way to it was found is taken from the queue first
+        // at that cost (its estimate is the same, the cost lower); the dearer entries left are
+        // stale, and taking them again would relax nothing.
+        if s < states && -g > cost[s] {
+            continue;
         }
         if s >= states {
             let mut path = Vec::new();
@@ -1163,8 +1169,7 @@ fn search(
             return Ok(path);
         }
         let here = cost[s];
-        let (i, j, layer) = spot;
-        let mut relax = |next: Spot, next_dir: usize, step: i64| {
+        moves(masks, &open, extras, spot, dir, |next, next_dir, step| {
             let n = state(next, next_dir);
             if here + step < cost[n] {
                 cost[n] = here + step;
@@ -1172,77 +1177,148 @@ fn search(
                 queue.push(Reverse((cost[n] + heuristic(next), -cost[n], sequence, n)));
                 sequence += 1;
             }
-        };
-        let passable = |(ci, cj): (isize, isize)| {
-            ci >= 0
-                && cj >= 0
-                && window.contains(ci as usize, cj as usize)
-                && (!masks.track[layer][masks.at(ci as usize, cj as usize)]
-                    || open((ci as usize, cj as usize, layer)))
-        };
-        for (d, (di, dj)) in MOVES8.iter().enumerate() {
-            if extras.coarse && d % 2 == 1 {
-                continue;
-            }
-            // No bend sharper than 45 degrees: a right angle, an acute one, or back.
-            let bend = if dir < 8 {
-                let k = (d + 8 - dir) % 8;
-                k.min(8 - k)
-            } else {
-                0
-            };
-            // Inside a pad of the net the corner is in the pad's copper, and any turn but back
-            // is free.
-            let free = bend < 4 && masks.turns_freely(layer, i, j);
-            if bend > 1 && !free && !(bend == 2 && (extras.right_angles || extras.coarse)) {
-                continue;
-            }
-            let (ni, nj) = (i as isize + di, j as isize + dj);
-            if !passable((ni, nj)) {
-                continue;
-            }
-            // A diagonal step passes between the two cells beside it, which must be open too.
-            let diagonal = *di != 0 && *dj != 0;
-            if diagonal
-                && !(passable((i as isize + di, j as isize))
-                    && passable((i as isize, j as isize + dj)))
-            {
-                continue;
-            }
-            let next = (ni as usize, nj as usize, layer);
-            let turn = match bend {
-                0 => 0,
-                _ if extras.coarse || free => masks.turn,
-                1 => masks.turn,
-                _ => TURN_RIGHT,
-            };
-            let neck = if masks.necked(layer, next.0, next.1) {
-                NECK
-            } else {
-                0
-            };
-            relax(
-                next,
-                d,
-                if diagonal { DIAGONAL } else { STEP }
-                    + turn
-                    + neck
-                    + masks.history_cost(layer, next.0, next.1)
-                    + masks.soft_cost(layer, next.0, next.1)
-                    + masks.lane_cost(layer, next.0, next.1),
-            );
-        }
-        let other = 1 - layer;
-        let at = masks.at(i, j);
-        if dir != AFTER_VIA && !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
-            relax(
-                (i, j, other),
-                AFTER_VIA,
-                VIA + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
-            );
-        }
+        });
     }
     Err(Miss::Blocked)
+}
+
+/// The moves of the search from a state, in the order the search queues them: each legal next
+/// state of `spot`, come in by direction `dir`, with what the move costs, given to `relax`.
+/// [`search`] and [`reachable`] share it, so they agree on which states can be reached.
+fn moves(
+    masks: &Masks,
+    open: &impl Fn(Spot) -> bool,
+    extras: Extras,
+    spot: Spot,
+    dir: usize,
+    mut relax: impl FnMut(Spot, usize, i64),
+) {
+    let window = masks.window;
+    let (i, j, layer) = spot;
+    let passable = |(ci, cj): (isize, isize)| {
+        ci >= 0
+            && cj >= 0
+            && window.contains(ci as usize, cj as usize)
+            && (!masks.track[layer][masks.at(ci as usize, cj as usize)]
+                || open((ci as usize, cj as usize, layer)))
+    };
+    for (d, (di, dj)) in MOVES8.iter().enumerate() {
+        if extras.coarse && d % 2 == 1 {
+            continue;
+        }
+        // No bend sharper than 45 degrees: a right angle, an acute one, or back.
+        let bend = if dir < 8 {
+            let k = (d + 8 - dir) % 8;
+            k.min(8 - k)
+        } else {
+            0
+        };
+        // Inside a pad of the net the corner is in the pad's copper, and any turn but back
+        // is free.
+        let free = bend < 4 && masks.turns_freely(layer, i, j);
+        if bend > 1 && !free && !(bend == 2 && (extras.right_angles || extras.coarse)) {
+            continue;
+        }
+        let (ni, nj) = (i as isize + di, j as isize + dj);
+        if !passable((ni, nj)) {
+            continue;
+        }
+        // A diagonal step passes between the two cells beside it, which must be open too.
+        let diagonal = *di != 0 && *dj != 0;
+        if diagonal
+            && !(passable((i as isize + di, j as isize)) && passable((i as isize, j as isize + dj)))
+        {
+            continue;
+        }
+        let next = (ni as usize, nj as usize, layer);
+        let turn = match bend {
+            0 => 0,
+            _ if extras.coarse || free => masks.turn,
+            1 => masks.turn,
+            _ => TURN_RIGHT,
+        };
+        let neck = if masks.necked(layer, next.0, next.1) {
+            NECK
+        } else {
+            0
+        };
+        relax(
+            next,
+            d,
+            if diagonal { DIAGONAL } else { STEP }
+                + turn
+                + neck
+                + masks.history_cost(layer, next.0, next.1)
+                + masks.soft_cost(layer, next.0, next.1)
+                + masks.lane_cost(layer, next.0, next.1),
+        );
+    }
+    let other = 1 - layer;
+    let at = masks.at(i, j);
+    if dir != AFTER_VIA && !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
+        relax(
+            (i, j, other),
+            AFTER_VIA,
+            VIA + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
+        );
+    }
+}
+
+/// Whether a search with these masks, ends and moves can reach the goal at all: a flood over
+/// the search's states (cell, layer and the direction come in by) with [`moves`], which costs
+/// far less than a search that runs out of states, and says the same.
+fn reachable(
+    masks: &Masks,
+    from: &[Spot],
+    goal: Goal,
+    extras: Extras,
+    stop: &dyn Fn() -> bool,
+) -> Result<bool, Miss> {
+    let window = masks.window;
+    let cells = window.cells();
+    let state =
+        |(i, j, layer): Spot, dir: usize| (layer * cells + window.index(i, j)) * DIRECTIONS + dir;
+    let open = |spot: Spot| {
+        from.contains(&spot)
+            || extras.from.contains(&spot)
+            || extras.to.contains(&spot)
+            || matches!(goal, Goal::Spots(to) if to.contains(&spot))
+    };
+    let done = |spot: Spot| match goal {
+        Goal::Spots(to) => to.contains(&spot) || extras.to.contains(&spot),
+        Goal::Via => !masks.via[masks.at(spot.0, spot.1)],
+    };
+    let mut seen = vec![false; cells * 2 * DIRECTIONS];
+    let mut stack: Vec<(Spot, usize)> = Vec::new();
+    for &spot in from
+        .iter()
+        .chain(extras.from)
+        .filter(|s| window.contains(s.0, s.1))
+    {
+        let s = state(spot, NO_DIRECTION);
+        if !seen[s] {
+            seen[s] = true;
+            stack.push((spot, NO_DIRECTION));
+        }
+    }
+    let mut taken = 0u32;
+    while let Some((spot, dir)) = stack.pop() {
+        taken += 1;
+        if taken.is_multiple_of(CLOCK_EVERY) && stop() {
+            return Err(Miss::Stopped);
+        }
+        if done(spot) {
+            return Ok(true);
+        }
+        moves(masks, &open, extras, spot, dir, |next, next_dir, _| {
+            let n = state(next, next_dir);
+            if !seen[n] {
+                seen[n] = true;
+                stack.push((next, next_dir));
+            }
+        });
+    }
+    Ok(false)
 }
 
 /// Straight runs through a list of cells on one layer; a single cell has none.
@@ -2412,7 +2488,18 @@ impl<'a> Router<'a> {
                     coarse,
                     ..extras
                 };
-                match search(&masks, from, goal, extras, &|| self.out_of_time()) {
+                let stop = || self.out_of_time();
+                // Where no right angle is allowed, a line often has no path: a pad that is
+                // reached only round a corner. A flood says so for much less than a search that
+                // runs out of states.
+                let flood = (!extras.right_angles && !extras.coarse)
+                    .then(|| reachable(&masks, from, goal, extras, &stop));
+                let searched = match flood {
+                    Some(Err(miss)) => Err(miss),
+                    Some(Ok(false)) => Err(Miss::Blocked),
+                    _ => search(&masks, from, goal, extras, &stop),
+                };
+                match searched {
                     Ok(path) => {
                         let start = in_from.filter(|p| path.first() == Some(&p.spot));
                         let end = in_to.filter(|p| path.last() == Some(&p.spot));
@@ -3711,6 +3798,56 @@ mod tests {
         assert!(path.iter().any(|s| s.2 == BACK));
         let changes = path.windows(2).filter(|w| w[0].2 != w[1].2).count();
         assert_eq!(changes, 2, "down to the back and up again");
+    }
+
+    /// Masks of the 3 by 1 mm grid with cells closed at random (a fixed sequence), about one
+    /// in `one_in` for tracks on each layer and for vias.
+    fn random_masks(seed: u64, one_in: u64) -> (Grid, Masks) {
+        let (grid, mut masks) = open_grid();
+        let mut x = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let mut next = || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 33).is_multiple_of(one_in)
+        };
+        for c in 0..masks.window.cells() {
+            masks.track[FRONT][c] = next();
+            masks.track[BACK][c] = next();
+            masks.via[c] = next();
+        }
+        (grid, masks)
+    }
+
+    #[test]
+    fn the_flood_finds_a_way_exactly_when_the_search_finds_a_path() {
+        let modes = [(true, true), (true, false), (false, false)];
+        let (mut joined, mut apart) = (0, 0);
+        for seed in 0..120 {
+            let (_, masks) = random_masks(seed, 2 + seed % 3);
+            let from = [(0, (seed % 10) as usize, FRONT)];
+            let to = [(29, ((seed * 7) % 10) as usize, (seed % 2) as usize)];
+            for goal in [Goal::Spots(&to), Goal::Via] {
+                for (right_angles, coarse) in modes {
+                    let extras = Extras {
+                        right_angles,
+                        coarse,
+                        ..Extras::default()
+                    };
+                    let found = search(&masks, &from, goal, extras, &|| false).is_ok();
+                    let flood = reachable(&masks, &from, goal, extras, &|| false);
+                    assert_eq!(flood, Ok(found), "seed {seed}, {right_angles} {coarse}");
+                    if found {
+                        joined += 1;
+                    } else {
+                        apart += 1;
+                    }
+                }
+            }
+        }
+        assert!(joined > 50 && apart > 50, "{joined} joined, {apart} apart");
     }
 
     #[test]
