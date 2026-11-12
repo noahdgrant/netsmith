@@ -85,7 +85,8 @@ export async function run(tools) {
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'iso', HOST);
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.exploded(), HOST);
-  await page.waitForTimeout(700);
+  // Apart in full: each layer at its place plus its offset (the ease's last frame), not after a fixed time.
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - ((s.zTop + s.zBottom) / 2 + s.offset)) < 1e-6), HOST, { timeout: 15000 });
   await page.keyboard.press('f');
   await page.waitForTimeout(400);
   const labels = await page.locator('[data-testid=stack-label]').allInnerTexts();
@@ -106,7 +107,9 @@ export async function run(tools) {
   step('E again puts the layers back');
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => !document.querySelector(sel).view3d.exploded(), HOST);
-  await page.waitForTimeout(700);
+  // The layers ease back over 420 ms of frames; after a theme change the first frames compile the
+  // shaders again and come late (SwiftShader in CI), so wait for the layers, not for a time.
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), HOST, { timeout: 15000 });
   expect((await page.locator('[data-testid=stack-label]').count()) === 0, 'no labels once the layers are back');
   const back = await ask(page, 'slots');
   expect(back.every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), 'every layer is back in its place');

@@ -160,11 +160,12 @@ export async function run(tools) {
   await page.keyboard.press('i');
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.exploded(), HOST);
-  await page.waitForTimeout(700);
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().some((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) > 1), HOST, { timeout: 15000 });
   expect((await ask(page, 'litReport')).layers.length === 2, 'the net stays lit with the layers apart');
   await shot('xray-exploded');
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => !document.querySelector(sel).view3d.exploded(), HOST);
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), HOST, { timeout: 15000 });
   await page.keyboard.press('v');
   await page.locator('.net-row', { hasText: 'VIN' }).first().click();
   await page.mouse.move(5, 5);
