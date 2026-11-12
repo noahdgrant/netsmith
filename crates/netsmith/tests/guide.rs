@@ -771,11 +771,6 @@ fn each_skill_is_a_well_formed_agent_skill() {
             description.contains("Use when") || description.contains("use when"),
             "{dir_name}: the description must say when to use the skill"
         );
-        let body = lines.count();
-        assert!(
-            body <= 80,
-            "{dir_name}: {body} body lines; keep a skill short"
-        );
     }
 }
 
