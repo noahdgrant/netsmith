@@ -1,0 +1,81 @@
+//! What the router's unit tests build boards from: the same as `netsmith-pcb`'s own fixtures
+//! (`board::tests` and `rules` there), which are compiled only into that crate's tests.
+
+use netsmith_core::{Design, Net, Part, PinRef, Process};
+use netsmith_pcb::FootprintLibrary;
+
+pub fn fixtures() -> FootprintLibrary {
+    FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+}
+
+fn part(refdes: &str, kind: &str, value: &str, package: Option<&str>) -> Part {
+    Part {
+        // What the design stage records for a standard connector (ADR 0068).
+        provides: if kind.starts_with("Header") || kind.starts_with("Socket") {
+            vec![netsmith_core::CONNECTOR_GENERIC.to_string()]
+        } else {
+            Vec::new()
+        },
+        refdes: refdes.into(),
+        kind: kind.into(),
+        value: value.into(),
+        package: package.map(str::to_string),
+        path: String::new(),
+        pins: Vec::new(),
+    }
+}
+
+fn net(name: &str, pins: &[(&str, &str)]) -> Net {
+    Net {
+        name: name.into(),
+        pins: pins
+            .iter()
+            .map(|(r, p)| PinRef {
+                refdes: (*r).into(),
+                pin: (*p).into(),
+            })
+            .collect(),
+    }
+}
+
+/// The LED board of `examples/led.nsm` on four layers: ground and 3.3 V planes, and the supply
+/// net called `3V3`.
+pub fn four_layer_design() -> Design {
+    Design {
+        name: "LedExample".into(),
+        process: Some(four_layer_process()),
+        features: Default::default(),
+        interfaces: Vec::new(),
+        notes: Vec::new(),
+        parts: vec![
+            part("D1", "Led", "LED", None),
+            part("J1", "Header1x2", "Conn_01x02", None),
+            part("R1", "Resistor", "300", Some("0402")),
+        ],
+        nets: vec![
+            net("GND", &[("D1", "1"), ("J1", "2")]),
+            net("3V3", &[("J1", "1"), ("R1", "1")]),
+            net("net-led.anode", &[("D1", "2"), ("R1", "2")]),
+        ],
+    }
+}
+
+/// `FourLayer` after the board has made GND the first plane and 3V3 the second, as the check,
+/// the solver and the design stage resolve it.
+fn four_layer_process() -> Process {
+    let source = "import std::mfg::jlcpcb::FourLayer\nimport std::parts::passive::Resistor\nboard T {\n    .process: FourLayer {\n        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n    }\n    .r: Resistor {\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }\n}\n";
+    let checked = netsmith_check::check("t.nsm", source, &netsmith_check::Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
+    let board = &checked.boards[0];
+    let solution = netsmith_solve::solve(board, &netsmith_solve::Catalogs::jlcpcb());
+    assert!(
+        solution.diagnostics.is_empty(),
+        "{:?}",
+        solution.diagnostics
+    );
+    netsmith_design::design_board(board, &solution)
+        .unwrap_or_else(|e| panic!("{e:?}"))
+        .design
+        .process
+        .expect("the board has a process")
+}

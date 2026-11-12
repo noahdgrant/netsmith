@@ -22,7 +22,8 @@ use netsmith::Libraries;
 use netsmith_check::Loader;
 use netsmith_kicad::testlib::{TempDir, sample_footprints, sample_symbols};
 use netsmith_kicad::{Mapping, SymbolLib};
-use netsmith_pcb::{Board, FootprintLibrary, Quality, RouteOptions, place_options, route_with};
+use netsmith_pcb::{Board, FootprintLibrary, Quality, place_options};
+use netsmith_place_route::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
 pub const KICAD_TOML: &str = "\

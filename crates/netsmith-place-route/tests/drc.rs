@@ -8,7 +8,8 @@ use std::time::Instant;
 
 use netsmith_fab::drc::{self, Extras, Report, kicad};
 use netsmith_fab::{KicadCli, KicadCliExe};
-use netsmith_pcb::{Board, Ratsnest, RouteOptions, kicad_pcb, kicad_pro, route, route_with};
+use netsmith_pcb::{Board, Ratsnest, kicad_pcb, kicad_pro};
+use netsmith_place_route::{RouteOptions, route, route_with};
 
 use crate::common;
 
@@ -30,7 +31,7 @@ fn ours(board: &Board) -> Report {
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
-        neck_reach: netsmith_pcb::route::NECK_REACH,
+        neck_reach: netsmith_place_route::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
     };

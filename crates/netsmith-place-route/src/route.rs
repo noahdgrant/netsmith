@@ -223,9 +223,9 @@ use std::collections::{BinaryHeap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::board::{Board, CopperLayer, Track, Via};
-use crate::geometry::{Pt, Rect};
-use crate::ratsnest::{Ratline, Ratsnest};
+use netsmith_pcb::board::{Board, CopperLayer, Track, Via};
+use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::ratsnest::{Ratline, Ratsnest};
 
 /// The distance between the cells' centres, in mm.
 const PITCH: f64 = 0.1;
@@ -481,8 +481,8 @@ impl Grid {
         bounds: &Rect,
         reach: f64,
     ) -> impl Iterator<Item = (usize, usize)> + use<> {
-        let (i0, j0) = self.cell(bounds.min.add_scalar(-reach));
-        let (i1, j1) = self.cell(bounds.max.add_scalar(reach));
+        let (i0, j0) = self.cell(add_scalar(bounds.min, -reach));
+        let (i1, j1) = self.cell(add_scalar(bounds.max, reach));
         let (i0, j0) = (i0.max(window.i0), j0.max(window.j0));
         let (i1, j1) = (
             i1.min(window.i0 + window.nx - 1),
@@ -548,10 +548,9 @@ impl Window {
     }
 }
 
-impl Pt {
-    fn add_scalar(self, by: f64) -> Pt {
-        Pt::new(self.x + by, self.y + by)
-    }
+/// `p` moved by `by` along both axes.
+fn add_scalar(p: Pt, by: f64) -> Pt {
+    Pt::new(p.x + by, p.y + by)
 }
 
 /// Which cells of a window a track, or a via, of one net may not use.
@@ -697,7 +696,7 @@ impl Counts {
     fn stamp(
         &mut self,
         grid: &Grid,
-        rules: &crate::rules::Rules,
+        rules: &netsmith_pcb::rules::Rules,
         o: &Obstacle,
         reach: Reach,
         up: bool,
@@ -1208,9 +1207,12 @@ fn runs_with(grid: &Grid, cells: &[(usize, usize)], neck: &[u8]) -> Vec<(Pt, Pt,
 /// The pad a ratsnest line ends on, and the part it is of.
 fn pad_of<'a>(
     board: &'a Board,
-    pad: &'a crate::board::PadRef,
+    pad: &'a netsmith_pcb::board::PadRef,
     at: Pt,
-) -> (&'a crate::board::Placed, &'a crate::footprint::Pad) {
+) -> (
+    &'a netsmith_pcb::board::Placed,
+    &'a netsmith_pcb::footprint::Pad,
+) {
     let part = board
         .part(&pad.refdes)
         .expect("a ratsnest line names a part");
@@ -1223,7 +1225,7 @@ fn pad_of<'a>(
 }
 
 /// The copper layers a pad of this footprint has, and its centre.
-fn pad_spots(board: &Board, pad: &crate::board::PadRef, at: Pt, grid: &Grid) -> Vec<Spot> {
+fn pad_spots(board: &Board, pad: &netsmith_pcb::board::PadRef, at: Pt, grid: &Grid) -> Vec<Spot> {
     let (part, found) = pad_of(board, pad, at);
     let (front, back) = part.pad_layers(found);
     let (i, j) = grid.cell(at);
@@ -1246,7 +1248,7 @@ struct InPad {
     spot: Spot,
 }
 
-fn in_pad(board: &Board, pad: &crate::board::PadRef, at: Pt, grid: &Grid) -> Option<InPad> {
+fn in_pad(board: &Board, pad: &netsmith_pcb::board::PadRef, at: Pt, grid: &Grid) -> Option<InPad> {
     let rules = &board.rules;
     if !rules.via_in_pad {
         return None;
@@ -1272,15 +1274,15 @@ fn in_pad(board: &Board, pad: &crate::board::PadRef, at: Pt, grid: &Grid) -> Opt
 /// fine-pitch grid (fewer than eight surface-mount pads, or none within the room a via and the
 /// rules' spaces need between pads). Such a pad can leave only through the gaps between its
 /// neighbours, and the deeper it is the fewer ways out it has.
-fn pad_depth(board: &Board, pad: &crate::board::PadRef, at: Pt) -> f64 {
+fn pad_depth(board: &Board, pad: &netsmith_pcb::board::PadRef, at: Pt) -> f64 {
     let rules = &board.rules;
     let (part, found) = pad_of(board, pad, at);
     let (front, back) = part.pad_layers(found);
-    let on_face = |p: &crate::footprint::Pad| {
+    let on_face = |p: &netsmith_pcb::footprint::Pad| {
         let (f, b) = part.pad_layers(p);
         (front && f) || (back && b)
     };
-    let pads: Vec<&crate::footprint::Pad> = part
+    let pads: Vec<&netsmith_pcb::footprint::Pad> = part
         .footprint
         .pads
         .iter()
@@ -1362,7 +1364,7 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                 let mask = mask_sides(part, pad);
                 if mask != [false, false] && pad.width > 0.0 && pad.height > 0.0 {
                     let form = match pad.shape {
-                        crate::footprint::PadShape::Circle => {
+                        netsmith_pcb::footprint::PadShape::Circle => {
                             Form::Circle(part.pad_centre(pad), pad.width.min(pad.height) / 2.0)
                         }
                         _ => Form::Rect(part.pad_bounds(pad)),
@@ -1384,7 +1386,7 @@ fn initial_obstacles(board: &Board) -> Obstacles {
             // track" from a hole with copper round it that is not plated (issue #431); the pad's
             // copper and its clearance usually keep more.
             if let Some((a, b, radius)) = part.hole(pad) {
-                let keep = if pad.kind == crate::footprint::PadKind::NpThruHole {
+                let keep = if pad.kind == netsmith_pcb::footprint::PadKind::NpThruHole {
                     rules.hole_clearance
                 } else {
                     rules.plated_hole_clearance
@@ -1472,7 +1474,7 @@ enum Unsettled {
 const CHAMFERS: [f64; 4] = [0.3, 0.2, 0.1, 0.05];
 
 /// The faces whose solder mask a pad opens, on the board: front first.
-fn mask_sides(part: &crate::board::Placed, pad: &crate::footprint::Pad) -> [bool; 2] {
+fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint::Pad) -> [bool; 2] {
     let has = |name: &str| pad.layers.iter().any(|l| l == name || l == "*.Mask");
     let (front, back) = (has("F.Mask"), has("B.Mask"));
     if part.mirrored() {
@@ -3295,7 +3297,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
 
 #[cfg(test)]
 mod tests {
-    use crate::board::tests::{fixtures, four_layer_design};
+    use crate::testlib::{fixtures, four_layer_design};
 
     use super::*;
 

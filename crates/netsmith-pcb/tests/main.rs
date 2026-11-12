@@ -3,23 +3,15 @@
 //! Run one file's tests with `cargo test -p netsmith-pcb --test main <file>::`, or with
 //! `cargo nextest run -p netsmith-pcb <file>::`.
 
-mod cancel;
 mod common;
 mod cutout_pads;
-mod drc;
 mod edge_wall;
 mod generated_vs_kicad;
 mod hole_faces;
-mod local_clearance;
 mod maker_vs_kicad;
-mod mixed;
 mod protrusion;
-mod routing;
-mod synthetic;
-mod tight;
 mod tight_limits;
 mod turn_to_fit;
-mod wide_tracks;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
 /// never run, and nothing else would say so.

@@ -6,8 +6,9 @@
 #   rust     clippy and the tests: anything a build or a test reads.
 #   kicad    the `kicad` job: the same tests with KiCad 9 installed, so the ones that skip
 #            themselves in `test` run. A change needs it when it can change what those tests see:
-#            the crates that call kicad-cli or read KiCad's libraries (netsmith-kicad, -fab, -pcb
-#            the netsmith crate and the netsmith-cli crate, the binary and the tests that start it),
+#            the crates that call kicad-cli or read KiCad's libraries (netsmith-kicad, -fab, -pcb,
+#            -place-route, whose tests check the routed boards with kicad-cli, the netsmith crate
+#            and the netsmith-cli crate, the binary and the tests that start it),
 #            the crates that make the files those tests check
 #            (netsmith-core, -design, -netlist), and the data the tests read: std/ (kicad.toml maps
 #            kinds to KiCad's footprints), examples/ (the boards they build) and data/.
@@ -122,7 +123,7 @@ while IFS= read -r path; do
         .agents/*) ;;
 
         crates/netsmith/src/refresh/*) rust=true recipes=true ;;
-        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/* | crates/netsmith-place-route/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith-netlist/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.

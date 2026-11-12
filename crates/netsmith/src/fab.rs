@@ -21,9 +21,8 @@ use netsmith_design::{Assembly, Sourced};
 use netsmith_fab::panel::{CellFacts, CellInput, Spec};
 use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
-use netsmith_pcb::{
-    Board, RouteOptions, Trim, kicad_pcb, kicad_pro, place_options, route_with, svg,
-};
+use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, svg};
+use netsmith_place_route::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
 use crate::order::{BoardFacts, PanelFacts};
@@ -1530,10 +1529,10 @@ impl Incomplete {
 }
 
 /// The text of [`ROUTING_REPORT`]: why each line is left and the crowding map (see
-/// [`netsmith_pcb::Routing`]), in the board's own coordinates.
+/// [`netsmith_place_route::Routing`]), in the board's own coordinates.
 pub fn routing_report(
-    why: &[netsmith_pcb::LineReport],
-    crowding: &netsmith_pcb::Crowding,
+    why: &[netsmith_place_route::LineReport],
+    crowding: &netsmith_place_route::Crowding,
 ) -> String {
     let report = serde_json::json!({
         "why": why,
@@ -1550,7 +1549,7 @@ pub fn routing_failure(
     origin: netsmith_pcb::Pt,
     left: &netsmith_pcb::Ratsnest,
     tries: usize,
-    why: &[netsmith_pcb::LineReport],
+    why: &[netsmith_place_route::LineReport],
 ) -> String {
     let at = |p: netsmith_pcb::Pt| (p.x - origin.x, p.y - origin.y);
     let mut text = format!(
@@ -1884,7 +1883,7 @@ pub fn route_with_margin(
     progress: Option<fn(&str)>,
     track_margin: f64,
     say: &dyn Fn(String),
-) -> netsmith_pcb::Routing {
+) -> netsmith_place_route::Routing {
     let route = |board: &mut Board, time: Option<Duration>, full: bool| {
         route_with(
             board,
@@ -1937,7 +1936,7 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
-        neck_reach: netsmith_pcb::route::NECK_REACH,
+        neck_reach: netsmith_place_route::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
     }
@@ -2258,14 +2257,14 @@ mod tests {
             ],
         };
         let why = vec![
-            netsmith_pcb::LineReport {
+            netsmith_place_route::LineReport {
                 line: left.lines[0].clone(),
-                stage: netsmith_pcb::Stage::Chain,
+                stage: netsmith_place_route::Stage::Chain,
                 blockers: vec!["GND".into(), "SIG_C".into()],
             },
-            netsmith_pcb::LineReport {
+            netsmith_place_route::LineReport {
                 line: left.lines[1].clone(),
-                stage: netsmith_pcb::Stage::OutOfTime,
+                stage: netsmith_place_route::Stage::OutOfTime,
                 blockers: vec![],
             },
         ];

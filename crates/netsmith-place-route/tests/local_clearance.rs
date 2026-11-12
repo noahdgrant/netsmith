@@ -7,7 +7,8 @@ use crate::common;
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
 use netsmith_fab::drc::{self, Extras};
 use netsmith_kicad::testlib::TempDir;
-use netsmith_pcb::{Board, FootprintLibrary, Pt, Rect, kicad_pcb, kicad_pro, route};
+use netsmith_pcb::{Board, FootprintLibrary, Pt, Rect, kicad_pcb, kicad_pro};
+use netsmith_place_route::route;
 
 use common::process;
 
@@ -171,7 +172,7 @@ fn check(board: &Board) -> drc::Report {
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
-        neck_reach: netsmith_pcb::route::NECK_REACH,
+        neck_reach: netsmith_place_route::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
     };

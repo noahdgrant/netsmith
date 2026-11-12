@@ -9,7 +9,8 @@ use std::{env, fs, path::PathBuf, process::ExitCode, time::Instant};
 
 use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
-use netsmith_pcb::{Board, Quality, RouteOptions, apply_layout, kicad_pcb, kicad_pro, route_with};
+use netsmith_pcb::{Board, Quality, apply_layout, kicad_pcb, kicad_pro};
+use netsmith_place_route::{RouteOptions, route_with};
 
 fn main() -> ExitCode {
     let mut file: Option<String> = None;

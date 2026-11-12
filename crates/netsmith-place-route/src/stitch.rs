@@ -15,8 +15,8 @@
 //! pad is an optimisation to take only with KiCad's unconnected-item check as the gate (ADR
 //! 0020, decided by the owner on 2026-11-02).
 
-use crate::board::{Board, CopperLayer, Via};
-use crate::geometry::{Pt, Rect};
+use netsmith_pcb::board::{Board, CopperLayer, Via};
+use netsmith_pcb::geometry::{Pt, Rect};
 
 /// The grid the vias are put on, in mm.
 const STEP: f64 = 0.05;

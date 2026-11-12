@@ -885,7 +885,8 @@ mod tests {
 
     #[test]
     fn our_design_rules_check_of_a_routed_board_has_places_parts_and_numbers() {
-        use netsmith_pcb::{CopperLayer, Track, route};
+        use netsmith_pcb::{CopperLayer, Track};
+        use netsmith_place_route::route;
         let mut board = placed("led");
         assert!(route(&mut board).is_empty());
         let clean = drc_findings(&board);

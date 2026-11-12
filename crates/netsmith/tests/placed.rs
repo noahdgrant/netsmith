@@ -1,7 +1,8 @@
 //! A placed board written to JSON and read back is the same board, and routes to the same
 //! copper (`netsmith fab --save-placed` and `netsmith route`).
 
-use netsmith_pcb::{Board, FootprintLibrary, kicad_pcb, route};
+use netsmith_pcb::{Board, FootprintLibrary, kicad_pcb};
+use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
 use crate::boards as common;

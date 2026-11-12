@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # The route scorecard (issue #431, step S0): routes the three ported boards with `netsmith fab`
 # twice each (the time of each run, and whether the two board files are byte for byte the same),
-# routes the invented `tight_board` and `mixed_board` of netsmith-pcb's tests for the seeds in
+# routes the invented `tight_board` and `mixed_board` of netsmith-place-route's tests for the seeds in
 # NETSMITH_SEEDS (default 0..1), and prints the scorecard (`netsmith_fab::score`) of every
 # board beside the hand-routed reference of each ported one.
 #
 # Usage: scripts/route-scorecard [out-dir]
 # The out-dir (default: a new temporary folder, kept) holds the fab packages, the board files of
 # the invented boards, `times.txt` and `scorecard.json`. It builds release binaries; set
-# NETSMITH_SKIP_INVENTED=1 to leave out the invented boards (their tests build netsmith-pcb's
+# NETSMITH_SKIP_INVENTED=1 to leave out the invented boards (their tests build netsmith-place-route's
 # test executable). Builds take turns through the lock file NETSMITH_LOCK (default
 # /tmp/netsmith-heavy.lock). Nothing in the repository is written.
 set -euo pipefail
@@ -51,7 +51,7 @@ done
 if [ -z "${NETSMITH_SKIP_INVENTED:-}" ]; then
     for test in tight::measured mixed::measured; do
         NETSMITH_SEEDS="${NETSMITH_SEEDS:-0..1}" NETSMITH_BOARD_OUT="$out/invented" \
-            build test --quiet --release -p netsmith-pcb --test main "$test" -- --ignored --nocapture \
+            build test --quiet --release -p netsmith-place-route --test main "$test" -- --ignored --nocapture \
             2>> "$out/times.txt" || echo "warning: $test failed" >&2
     done
     while IFS= read -r f; do boards+=("$f"); done < <(find "$out/invented" -name '*.kicad_pcb' | sort)

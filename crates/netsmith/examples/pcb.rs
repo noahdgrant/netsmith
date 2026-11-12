@@ -4,7 +4,8 @@
 
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
-use netsmith_pcb::{Board, FootprintLibrary, Ratsnest, kicad_pcb, kicad_pro, route, svg};
+use netsmith_pcb::{Board, FootprintLibrary, Ratsnest, kicad_pcb, kicad_pro, svg};
+use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
 const USAGE: &str = "usage: pcb <file.nsm> [--out <dir>] [--route]";

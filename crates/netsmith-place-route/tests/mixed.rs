@@ -4,7 +4,7 @@
 //!
 //! Nothing here is any design's data: the footprints are written below (no KiCad library is
 //! read), and the nets come from a small generator, so the same seed is the same board on every
-//! machine. `NETSMITH_SEEDS=0..12 cargo test --release -p netsmith-pcb --test main
+//! machine. `NETSMITH_SEEDS=0..12 cargo test --release -p netsmith-place-route --test main
 //! mixed::measured -- --ignored --nocapture` prints, for each seed, how the router ended.
 
 use crate::common;
@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use netsmith_core::{Design, Features, Keepout, Net, Outline, Part, PartHeight, PinRef};
 use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, FootprintLibrary, PlaceOptions, Side};
-use netsmith_pcb::{RouteOptions, route_with};
+use netsmith_place_route::{RouteOptions, route_with};
 
 use common::four_layer_process;
 
