@@ -1,3 +1,36 @@
+use std::fs;
+use std::process::ExitCode;
+
+use clap::{Args as ClapArgs, Subcommand};
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct Args {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Debug, PartialEq, Subcommand)]
+pub enum Command {
+    /// Print the [[library]] stanzas for kicad.toml from a KiCad project's library tables (ADR 0021).
+    Import(ImportArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct ImportArgs {
+    /// The project's symbol library table.
+    #[arg(value_name = "SYM-LIB-TABLE")]
+    pub sym_lib_table: String,
+    /// The project's footprint library table.
+    #[arg(value_name = "FP-LIB-TABLE")]
+    pub fp_lib_table: Option<String>,
+}
+
+pub fn run(args: Args) -> ExitCode {
+    match args.command {
+        Command::Import(a) => run_kicad_libs_import(&a.sym_lib_table, a.fp_lib_table.as_deref()),
+    }
+}
+
 fn run_kicad_libs_import(sym: &str, fp: Option<&str>) -> ExitCode {
     let read = |path: &str| fs::read_to_string(path).map_err(|e| format!("{path}: {e}"));
     let stanzas = read(sym).and_then(|sym_text| {
@@ -14,20 +47,4 @@ fn run_kicad_libs_import(sym: &str, fp: Option<&str>) -> ExitCode {
             ExitCode::from(2)
         }
     }
-}
-
-#[derive(Debug, PartialEq, Subcommand)]
-pub enum KicadLibsCommand {
-    Import(KicadLibsImportArgs),
-}
-
-/// Print the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021).
-#[derive(Debug, PartialEq, Args)]
-pub struct KicadLibsImportArgs {
-    /// The project's symbol library table.
-    #[arg(value_name = "SYM-LIB-TABLE")]
-    pub sym_lib_table: String,
-    /// The project's footprint library table.
-    #[arg(value_name = "FP-LIB-TABLE")]
-    pub fp_lib_table: Option<String>,
 }

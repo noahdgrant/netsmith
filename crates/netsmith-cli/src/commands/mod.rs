@@ -1,100 +1,105 @@
-//! The command line, as clap's derive reads it (#514). Each command is a struct of its own, and
-//! its doc comments are its help: the first paragraph of a command's or a flag's comment is what
-//! `-h` and `netsmith --help` show, the whole comment what `<command> --help` shows. A usage
-//! mistake is clap's error, with exit status 2, netsmith's "cannot run".
+//! One file per command. A command's file holds its arguments and its `run`; its doc comments
+//! are its help.
 
-use std::ffi::OsString;
-use std::path::PathBuf;
+mod board3d;
+mod build;
+mod catalog;
+mod check;
+pub(crate) mod common;
+mod compare;
+mod dxf;
+mod editor;
+mod fab;
+mod init;
+mod kicad_libs;
+mod lock;
+mod parity;
+mod render;
+mod route;
+mod view;
 
-use clap::error::ErrorKind;
-use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use std::process::ExitCode;
 
-use crate::findings::{Format, NotesMode};
+use clap::Subcommand;
 
-/// The port `netsmith editor` listens on unless told otherwise.
-pub const DEFAULT_PORT: u16 = 8787;
-
-/// netsmith: electronics as code.
-#[derive(Debug, Parser)]
-#[command(
-    name = "netsmith",
-    version,
-    about = "electronics as code",
-    arg_required_else_help = true,
-    max_term_width = 100,
-    after_help = "`netsmith <command> --help` says what the flags of a command do.",
-    after_long_help = "`netsmith <command> --help` says what the flags of a command do.\n\n\
-        `NETSMITH_TIMINGS=1` in the environment of any command prints one line for each stage \
-        of the run to stderr (`timing: solve LedExample 12.3 ms`); nothing is printed without it."
-)]
-pub struct Cli {
-    #[command(subcommand)]
-    pub command: Command,
-}
-
+/// The exit code of every command is 0 when it did what it was asked, 1 when what it checked
+/// failed, and 2 when it could not run (a usage mistake included).
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum Command {
-    Init(InitArgs),
-    Build(BuildArgs),
-    Check(CheckArgs),
-    Fab(FabArgs),
-    Route(RouteArgs),
-    Lock(LockArgs),
-    Editor(EditorArgs),
+    /// Scaffold a project in the current folder.
+    Init(init::Args),
+    /// Check, solve and write a KiCad schematic of the boards.
+    Build(build::Args),
+    /// Check and solve the boards, write nothing, and print the findings.
+    Check(check::Args),
+    /// Make the fab package of the boards (Gerbers, drill, BOM, CPL, notes, 3D scene), or an order.
+    Fab(fab::Args),
+    /// Route a placed board that `fab --save-placed` wrote, alone.
+    Route(route::Args),
+    /// Refresh the pick lock, or check that it is current.
+    Lock(lock::Args),
+    /// Edit the source and see the boards in a browser.
+    Editor(editor::Args),
+    /// Print a board's 3D scene: heights, limits and overlaps.
     #[command(name = "board3d")]
-    Board3d(Board3dArgs),
-    Render(RenderArgs),
-    View(ViewArgs),
-    Compare(CompareArgs),
-    Parity(ParityArgs),
-    /// Print the [[library]] stanzas for KiCad's library tables.
-    #[command(name = "kicad-libs", subcommand)]
-    KicadLibs(KicadLibsCommand),
-    /// Check catalog rows against LCSC's record (`refresh`), list the old ones (`age`) or add a
-    /// row from it (`add`).
-    #[command(subcommand)]
-    Catalog(CatalogCommand),
-    /// Print an enclosure's outline, cutouts and holes as source to paste (`import`).
-    #[command(subcommand)]
-    Dxf(DxfCommand),
-    /// Print the version (also --version and -V).
-    Version,
+    Board3d(board3d::Args),
+    /// Draw a board in 3D to a PNG.
+    Render(render::Args),
+    /// Drive the 3D view of a running editor with `render`'s flags, and save its picture.
+    View(view::Args),
+    /// Say whether two designs are the same circuit.
+    Compare(compare::Args),
+    /// Compare a fab board with the board of a port's original, part by part.
+    Parity(parity::Args),
+    /// Import KiCad library tables.
+    #[command(name = "kicad-libs")]
+    KicadLibs(kicad_libs::Args),
+    /// Check, list or add catalog rows against LCSC's record.
+    Catalog(catalog::Args),
+    /// Import an enclosure's DXF drawing.
+    Dxf(dxf::Args),
 }
 
-impl Command {
-    /// The mistakes the parser cannot see, with the name of the command they belong to.
-    fn check(&self) -> Result<(), (&'static str, String)> {
-        match self {
-            Command::View(args) => args.check().map_err(|e| ("view", e)),
-            _ => Ok(()),
-        }
+pub fn run(command: Command) -> ExitCode {
+    match command {
+        Command::Init(args) => init::run(args),
+        Command::Build(args) => build::run(args),
+        Command::Check(args) => check::run(args),
+        Command::Fab(args) => fab::run(args),
+        Command::Route(args) => route::run(args),
+        Command::Lock(args) => lock::run(args),
+        Command::Editor(args) => editor::run(args),
+        Command::Board3d(args) => board3d::run(args),
+        Command::Render(args) => render::run(args),
+        Command::View(args) => view::run(args),
+        Command::Compare(args) => compare::run(args),
+        Command::Parity(args) => parity::run(args),
+        Command::KicadLibs(args) => kicad_libs::run(args),
+        Command::Catalog(args) => catalog::run(args),
+        Command::Dxf(args) => dxf::run(args),
     }
-}
-
-/// Read the arguments after the program name. A request for help or the version is an error of
-/// its kind, which prints them; [`clap::Error::exit`] prints any of them and exits (0 for help
-/// and the version, 2 for a mistake).
-pub fn parse_args<I, T>(args: I) -> Result<Command, clap::Error>
-where
-    I: IntoIterator<Item = T>,
-    T: Into<OsString>,
-{
-    let line = std::iter::once(OsString::from("netsmith")).chain(args.into_iter().map(Into::into));
-    let cli = Cli::try_parse_from(line)?;
-    if let Err((name, message)) = cli.command.check() {
-        let mut command = Cli::command();
-        command.build();
-        let command = command
-            .find_subcommand_mut(name)
-            .expect("a command of the enum");
-        return Err(command.error(ErrorKind::ValueValidation, message));
-    }
-    Ok(cli.command)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use clap::error::ErrorKind;
+    use clap::{CommandFactory, Parser};
+
     use super::*;
+
+    /// The command line as main.rs has it.
+    #[derive(Debug, Parser)]
+    #[command(name = "netsmith", version)]
+    struct Cli {
+        #[command(subcommand)]
+        command: Command,
+    }
+
+    fn parse_args(args: &[&str]) -> Result<Command, clap::Error> {
+        Cli::try_parse_from(std::iter::once(&"netsmith").chain(args)).map(|cli| cli.command)
+    }
 
     fn parse(args: &[&str]) -> Result<Command, String> {
         parse_args(args).map_err(|e| e.to_string())
@@ -104,23 +109,38 @@ mod tests {
         parse_args(args).unwrap_err().kind()
     }
 
+    fn output() -> common::Output {
+        common::Output {
+            format: common::Format::Text,
+            notes: common::Notes::All,
+        }
+    }
+
+    /// The error of a `view` line: clap's, or the one its request gives.
+    fn view_err(line: &[&str]) -> String {
+        match parse(line) {
+            Err(e) => e,
+            Ok(Command::View(v)) => v.request().unwrap_err(),
+            Ok(other) => panic!("{other:?}"),
+        }
+    }
+
     #[test]
     fn the_model_is_sound() {
         Cli::command().debug_assert();
     }
 
-    fn build(file: Option<&str>) -> BuildArgs {
-        BuildArgs {
+    fn build(file: Option<&str>) -> build::Args {
+        build::Args {
             file: file.map(str::to_string),
             out: None,
             strict: false,
             locked: false,
-            format: Format::Text,
-            notes: NotesMode::All,
+            output: output(),
         }
     }
 
-    fn fab(args: &[&str]) -> FabArgs {
+    fn fab(args: &[&str]) -> fab::Args {
         let mut line = vec!["fab"];
         line.extend_from_slice(args);
         match parse(&line) {
@@ -140,12 +160,14 @@ mod tests {
                 "--to",
                 "catalogs/led.csv"
             ]),
-            Ok(Command::Catalog(CatalogCommand::Add(CatalogAddArgs {
-                lcsc: "C2286".into(),
-                to: Some(PathBuf::from("catalogs/led.csv")),
-                offline: false,
-                no_cache: false,
-            })))
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Add(catalog::AddArgs {
+                    lcsc: "C2286".into(),
+                    to: Some(PathBuf::from("catalogs/led.csv")),
+                    offline: false,
+                    no_cache: false,
+                })
+            }))
         );
         assert!(matches!(
             parse(&[
@@ -156,12 +178,14 @@ mod tests {
                 "--offline",
                 "--no-cache"
             ]),
-            Ok(Command::Catalog(CatalogCommand::Add(CatalogAddArgs {
-                to: None,
-                offline: true,
-                no_cache: true,
-                ..
-            })))
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Add(catalog::AddArgs {
+                    to: None,
+                    offline: true,
+                    no_cache: true,
+                    ..
+                })
+            }))
         ));
         let e = parse(&["catalog", "add", "--to", "x.csv"]).unwrap_err();
         assert!(e.contains("--lcsc <C123>"), "{e}");
@@ -172,11 +196,9 @@ mod tests {
     }
 
     #[test]
-    fn the_version_is_asked_for_three_ways() {
+    fn the_version_is_clap_s_flag() {
         assert_eq!(kind(&["--version"]), ErrorKind::DisplayVersion);
         assert_eq!(kind(&["-V"]), ErrorKind::DisplayVersion);
-        assert_eq!(parse(&["version"]), Ok(Command::Version));
-        assert!(parse(&["version", "build"]).is_err());
     }
 
     #[test]
@@ -227,14 +249,16 @@ mod tests {
                 "--write",
                 "case.nsm"
             ]),
-            Ok(Command::Dxf(DxfCommand::Import(DxfImportArgs {
-                file: "case.dxf".into(),
-                layers: vec!["EDGE".into(), "RIM".into()],
-                holes_layers: vec!["HOLES".into()],
-                units: Some(netsmith_dxf::Units::Inches),
-                board: Some("Case".into()),
-                write: Some("case.nsm".into()),
-            })))
+            Ok(Command::Dxf(dxf::Args {
+                command: dxf::Command::Import(dxf::ImportArgs {
+                    file: "case.dxf".into(),
+                    layers: vec!["EDGE".into(), "RIM".into()],
+                    holes_layers: vec!["HOLES".into()],
+                    units: Some(netsmith_dxf::Units::Inches),
+                    board: Some("Case".into()),
+                    write: Some("case.nsm".into()),
+                })
+            }))
         );
         assert_eq!(kind(&["dxf", "import"]), ErrorKind::MissingRequiredArgument);
         let e = parse(&["dxf", "import", "a.dxf", "--units", "furlongs"]).unwrap_err();
@@ -247,21 +271,21 @@ mod tests {
     fn kicad_libs_import_takes_one_or_two_library_tables() {
         assert_eq!(
             parse(&["kicad-libs", "import", "sym-lib-table"]),
-            Ok(Command::KicadLibs(KicadLibsCommand::Import(
-                KicadLibsImportArgs {
+            Ok(Command::KicadLibs(kicad_libs::Args {
+                command: kicad_libs::Command::Import(kicad_libs::ImportArgs {
                     sym_lib_table: "sym-lib-table".into(),
                     fp_lib_table: None
-                }
-            )))
+                })
+            }))
         );
         assert_eq!(
             parse(&["kicad-libs", "import", "s", "f"]),
-            Ok(Command::KicadLibs(KicadLibsCommand::Import(
-                KicadLibsImportArgs {
+            Ok(Command::KicadLibs(kicad_libs::Args {
+                command: kicad_libs::Command::Import(kicad_libs::ImportArgs {
                     sym_lib_table: "s".into(),
                     fp_lib_table: Some("f".into())
-                }
-            )))
+                })
+            }))
         );
         assert!(parse(&["kicad-libs"]).is_err());
         assert!(parse(&["kicad-libs", "export", "s"]).is_err());
@@ -272,9 +296,9 @@ mod tests {
     fn catalog_refresh_takes_paths_and_the_flags_of_a_polite_opt_in_run() {
         assert_eq!(
             parse(&["catalog", "refresh"]),
-            Ok(Command::Catalog(CatalogCommand::Refresh(
-                RefreshRequest::default()
-            )))
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Refresh(catalog::RefreshArgs::default())
+            }))
         );
         assert_eq!(
             parse(&[
@@ -295,19 +319,22 @@ mod tests {
                 "6",
                 "--no-cache"
             ]),
-            Ok(Command::Catalog(CatalogCommand::Refresh(RefreshRequest {
-                paths: vec!["catalogs/a.csv".into(), "data".into()],
-                dry_run: true,
-                offline: false,
-                only: vec!["ldo".into(), "led".into()],
-                lcsc: vec!["C5446".into()],
-                delay_ms: Some(1500),
-                cache_ttl_hours: Some(6),
-                no_cache: true,
-            })))
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Refresh(catalog::RefreshArgs {
+                    paths: vec!["catalogs/a.csv".into(), "data".into()],
+                    dry_run: true,
+                    offline: false,
+                    only: vec!["ldo".into(), "led".into()],
+                    lcsc: vec!["C5446".into()],
+                    delay_ms: Some(1500),
+                    cache_ttl_hours: Some(6),
+                    no_cache: true,
+                })
+            }))
         );
-        let Ok(Command::Catalog(CatalogCommand::Refresh(r))) =
-            parse(&["catalog", "refresh", "--offline"])
+        let Ok(Command::Catalog(catalog::Args {
+            command: catalog::Command::Refresh(r),
+        })) = parse(&["catalog", "refresh", "--offline"])
         else {
             panic!()
         };
@@ -332,19 +359,23 @@ mod tests {
     fn catalog_age_takes_paths_a_catalog_and_the_days_with_90_as_the_default() {
         assert_eq!(
             parse(&["catalog", "age"]),
-            Ok(Command::Catalog(CatalogCommand::Age(CatalogAgeArgs {
-                paths: vec![],
-                only: vec![],
-                days: 90
-            })))
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Age(catalog::AgeArgs {
+                    paths: vec![],
+                    only: vec![],
+                    days: 90
+                })
+            }))
         );
         assert_eq!(
             parse(&["catalog", "age", "x.csv", "--days", "30", "--only", "ldo"]),
-            Ok(Command::Catalog(CatalogCommand::Age(CatalogAgeArgs {
-                paths: vec!["x.csv".into()],
-                only: vec!["ldo".into()],
-                days: 30
-            })))
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Age(catalog::AgeArgs {
+                    paths: vec!["x.csv".into()],
+                    only: vec!["ldo".into()],
+                    days: 30
+                })
+            }))
         );
         assert_eq!(
             kind(&["catalog", "age", "--dry-run"]),
@@ -358,7 +389,7 @@ mod tests {
     fn fab_has_its_defaults_and_takes_a_file_and_an_out_directory() {
         assert_eq!(
             fab(&["a.nsm", "--out", "x"]),
-            FabArgs {
+            fab::Args {
                 file: Some("a.nsm".into()),
                 out: Some("x".into()),
                 route_timeout: None,
@@ -372,8 +403,7 @@ mod tests {
                 save_placed: false,
                 order: None,
                 quiet: false,
-                format: Format::Text,
-                notes: NotesMode::All,
+                output: output(),
             }
         );
         assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
@@ -401,18 +431,18 @@ mod tests {
     fn fab_order_takes_a_name_or_lists_the_orders_and_no_file() {
         assert_eq!(
             fab(&["--order", "devkit"]).order(),
-            Some(OrderRequest::Make("devkit".into()))
+            Some(fab::OrderRequest::Make("devkit".into()))
         );
-        assert_eq!(fab(&["--order"]).order(), Some(OrderRequest::List));
+        assert_eq!(fab(&["--order"]).order(), Some(fab::OrderRequest::List));
         assert_eq!(fab(&[]).order(), None);
         // A flag after `--order` is not its name.
         let f = fab(&["--order", "--out", "x"]);
         assert_eq!(
             (f.order(), f.out),
-            (Some(OrderRequest::List), Some("x".into()))
+            (Some(fab::OrderRequest::List), Some("x".into()))
         );
         let f = fab(&["--out", "x", "--order", "d", "--route-timeout", "9"]);
-        assert_eq!(f.order(), Some(OrderRequest::Make("d".into())));
+        assert_eq!(f.order(), Some(fab::OrderRequest::Make("d".into())));
         assert_eq!(f.route_timeout, Some(9));
         assert_eq!(
             kind(&["fab", "a.nsm", "--order", "d"]),
@@ -474,11 +504,17 @@ mod tests {
         else {
             panic!()
         };
-        assert_eq!((c.format, c.notes), (Format::Json, NotesMode::Summary));
+        assert_eq!(
+            (c.output.format, c.output.notes),
+            (common::Format::Json, common::Notes::Summary)
+        );
         let Ok(Command::Check(c)) = parse(&["check"]) else {
             panic!()
         };
-        assert_eq!((c.format, c.notes), (Format::Text, NotesMode::All));
+        assert_eq!(
+            (c.output.format, c.output.notes),
+            (common::Format::Text, common::Notes::All)
+        );
         assert_eq!(kind(&["build", "--format", "xml"]), ErrorKind::InvalidValue);
         assert_eq!(kind(&["build", "--notes", "some"]), ErrorKind::InvalidValue);
         assert!(parse(&["editor", "--format", "json"]).is_err());
@@ -491,7 +527,7 @@ mod tests {
             parse(&["build", "a.nsm"]),
             Ok(Command::Build(build(Some("a.nsm"))))
         );
-        let expected = Ok(Command::Build(BuildArgs {
+        let expected = Ok(Command::Build(build::Args {
             out: Some("x".into()),
             ..build(Some("a.nsm"))
         }));
@@ -513,7 +549,7 @@ mod tests {
         let Ok(Command::Lock(l)) = parse(&["lock", "--check", "--check"]) else {
             panic!()
         };
-        assert_eq!(l.mode(), LockMode::Check);
+        assert_eq!(l.mode(), lock::LockMode::Check);
     }
 
     #[test]
@@ -522,10 +558,10 @@ mod tests {
             Ok(Command::Lock(l)) => (l.mode(), l.file),
             other => panic!("{args:?}: {other:?}"),
         };
-        assert_eq!(mode(&["lock", "--update"]), (LockMode::Update, None));
+        assert_eq!(mode(&["lock", "--update"]), (lock::LockMode::Update, None));
         assert_eq!(
             mode(&["lock", "--check", "a.nsm"]),
-            (LockMode::Check, Some("a.nsm".into()))
+            (lock::LockMode::Check, Some("a.nsm".into()))
         );
         assert_eq!(kind(&["lock"]), ErrorKind::MissingRequiredArgument);
         assert_eq!(
@@ -566,7 +602,7 @@ mod tests {
                 "--margin",
                 "2.5"
             ]),
-            Ok(Command::Route(RouteArgs {
+            Ok(Command::Route(route::Args {
                 file: "b.placed.json".into(),
                 out: Some("o".into()),
                 route_timeout: Some(0),
@@ -597,7 +633,7 @@ mod tests {
                 "--ignore-unconnected",
                 "--loose-values"
             ]),
-            Ok(Command::Compare(CompareArgs {
+            Ok(Command::Compare(compare::Args {
                 a: "a.xml".into(),
                 b: "b.xml".into(),
                 board: Some("Led".into()),
@@ -605,7 +641,7 @@ mod tests {
                 by_refdes: false,
                 ignore_unconnected: true,
                 loose_values: true,
-                format: Format::Text,
+                format: common::Format::Text,
             }))
         );
         assert_eq!(
@@ -628,11 +664,11 @@ mod tests {
     fn parity_takes_the_board_and_its_files() {
         assert!(matches!(
             parse(&["parity", "b.kicad_pcb", "--format", "json"]),
-            Ok(Command::Parity(ParityArgs {
+            Ok(Command::Parity(parity::Args {
                 table: None,
                 map: None,
                 svg: None,
-                format: Format::Json,
+                format: common::Format::Json,
                 ..
             }))
         ));
@@ -641,10 +677,13 @@ mod tests {
 
     #[test]
     fn init_takes_only_a_name() {
-        assert_eq!(parse(&["init"]), Ok(Command::Init(InitArgs { name: None })));
+        assert_eq!(
+            parse(&["init"]),
+            Ok(Command::Init(init::Args { name: None }))
+        );
         assert_eq!(
             parse(&["init", "--name", "demo"]),
-            Ok(Command::Init(InitArgs {
+            Ok(Command::Init(init::Args {
                 name: Some("demo".into())
             }))
         );
@@ -652,7 +691,7 @@ mod tests {
         assert!(parse(&["init", "--name"]).is_err());
     }
 
-    fn render(args: &[&str]) -> crate::render::Request {
+    fn render(args: &[&str]) -> netsmith::render::Request {
         let mut line = vec!["render"];
         line.extend_from_slice(args);
         match parse(&line) {
@@ -663,7 +702,7 @@ mod tests {
 
     #[test]
     fn render_has_the_defaults_of_a_request_and_takes_its_flags() {
-        assert_eq!(render(&[]), crate::render::Request::default());
+        assert_eq!(render(&[]), netsmith::render::Request::default());
         let r = render(&[
             "--view",
             "top",
@@ -709,7 +748,7 @@ mod tests {
     #[test]
     fn view_with_no_flag_reads_the_state_of_the_editor_on_the_default_port() {
         let request = view_request(&[]);
-        assert_eq!(request.port, DEFAULT_PORT);
+        assert_eq!(request.port, common::DEFAULT_PORT);
         assert!(!request.changes() && !request.json && request.picture.is_none());
         assert_eq!(request.change, netsmith_editor::api::ViewChange::default());
     }
@@ -807,7 +846,7 @@ mod tests {
             &["view", "--highlight", "none", "--highlight", "J1"],
             &["view", "--select", "J1", "--select", "none"],
         ] {
-            let e = parse(args).unwrap_err();
+            let e = view_err(args);
             assert!(e.contains("clears it"), "{args:?}: {e}");
         }
     }
@@ -846,12 +885,8 @@ mod tests {
         ] {
             let mut line = vec!["view"];
             line.extend_from_slice(args);
-            let e = parse(&line).unwrap_err();
+            let e = view_err(&line);
             assert!(e.contains(says), "{args:?}: {e}");
         }
-        // The mistakes clap cannot see are usage errors too, with the command's usage.
-        let e = parse_args(["view", "--theme", "dark"]).unwrap_err();
-        assert_eq!(e.kind(), ErrorKind::ValueValidation);
-        assert!(e.to_string().contains("netsmith view"), "{e}");
     }
 }

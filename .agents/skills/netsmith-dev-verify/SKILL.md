@@ -20,7 +20,7 @@ cargo test --workspace
 Then run the fab gate. It runs netsmith's own design rules check (no KiCad needed) and must end with `design rules check: passed`. Add `--cross-check` (needs KiCad, below) to compare the files and the findings with KiCad's.
 
 ```sh
-cargo run -p netsmith -- fab examples/linear_regulator.nsm --out /tmp/fab-<branch>
+cargo run -p netsmith-cli -- fab examples/linear_regulator.nsm --out /tmp/fab-<branch>
 ```
 
 The examples in `examples/*.nsm` must still build, except `examples/carrier_and_cards.nsm`, whose invented parts have no KiCad symbol: it is checked and solved (`cargo run -p netsmith-solve --example solve -- examples/carrier_and_cards.nsm`) and its tests are in `crates/netsmith-check/tests/mate.rs` and `crates/netsmith-solve/tests/mate.rs`.

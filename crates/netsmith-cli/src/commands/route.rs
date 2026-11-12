@@ -1,3 +1,41 @@
+use netsmith::fab::FabOptions;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::time::Duration;
+
+use clap::Args as ClapArgs;
+
+#[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "A router tool: no checks, no fab package. The exit code is 0 when every connection is routed, 1 when connections are left, and 2 when the file cannot be read (a file saved by another version of netsmith is refused: save it again with `fab --save-placed`)."
+)]
+#[command(args_override_self = true)]
+pub struct Args {
+    /// The placed board that `fab --save-placed` wrote.
+    #[arg(value_name = "BOARD.PLACED.JSON")]
+    pub file: PathBuf,
+    /// The folder to write the board files into (default `out/`).
+    #[arg(long, value_name = "DIR")]
+    pub out: Option<PathBuf>,
+    /// Seconds the router may take; 0 is no limit.
+    #[arg(long, value_name = "SECS")]
+    pub route_timeout: Option<u64>,
+    /// The track margin, from 1 (the process's least track) to 4, over the file's.
+    #[arg(long, value_name = "X", value_parser = parse_margin)]
+    pub margin: Option<f64>,
+}
+
+/// Routes the saved board again, alone, the way `fab` does, and writes its board files.
+pub fn run(args: Args) -> ExitCode {
+    run_route(
+        &args.file,
+        args.out.as_deref(),
+        args.route_timeout,
+        args.margin,
+    )
+}
+
 /// `netsmith route`: route the placed board that `fab --save-placed` wrote, alone, and write
 /// its board files into `out` (`out/` when `None`). Exits 1 when connections are left, 2 when
 /// the file cannot be read or the files cannot be written.
@@ -59,40 +97,6 @@ fn run_route(
     } else {
         ExitCode::FAILURE
     }
-}
-
-/// Route a placed board that `fab --save-placed` wrote, alone (no checks; a router tool).
-///
-/// `route` routes the board that `fab --save-placed` saved again, alone, the way `fab` does
-/// (signals at the track margin first where there is room, then at the process's least track),
-/// with no checking, solving or placing, so an experiment on the router (a change to its code, a
-/// time limit, a track margin) takes the time of the routing and nothing else. It writes
-/// `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left,
-/// `routing-failure.txt` and `routing-report.json` into `--out`, as `fab` does; it prints the
-/// connections left, the tracks, the vias and the time. It is a router tool and not a fab
-/// package: it runs no design rules check and writes no Gerbers.
-///
-/// The exit code is 0 when every connection is routed, 1 when connections are left, and 2 when
-/// the file cannot be read: the file's layout changes with netsmith, so a file saved by another
-/// version is refused and is saved again with `fab --save-placed`.
-#[derive(Debug, PartialEq, Args)]
-#[command(args_override_self = true)]
-pub struct RouteArgs {
-    /// The placed board that `fab --save-placed` wrote.
-    #[arg(value_name = "BOARD.PLACED.JSON")]
-    pub file: PathBuf,
-    /// The folder to write into; the default is `out/`.
-    #[arg(long, value_name = "DIR")]
-    pub out: Option<PathBuf>,
-    /// Seconds the router may take (0 for no limit), as with `fab`.
-    #[arg(long, value_name = "SECS")]
-    pub route_timeout: Option<u64>,
-    /// The track margin, from 1 (the process's least track) to 4.
-    ///
-    /// It replaces the margin the file was saved with: how many times the least track a signal
-    /// is drawn at where there is room.
-    #[arg(long, value_name = "X", value_parser = parse_margin)]
-    pub margin: Option<f64>,
 }
 
 fn parse_margin(given: &str) -> Result<f64, String> {

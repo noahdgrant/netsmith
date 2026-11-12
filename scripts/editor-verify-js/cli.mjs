@@ -117,7 +117,7 @@ async function doctor() {
   line(major >= 20, 'node', `v${process.versions.node}${major >= 20 ? '' : ' (20 or newer is needed; `source ~/.nvm/nvm.sh && nvm use 22`)'}`);
 
   const bin = netsmithBin();
-  line(fs.existsSync(bin), 'netsmith binary', fs.existsSync(bin) ? bin : `${bin} is missing: run cargo build -p netsmith (set CARGO_TARGET_DIR or NETSMITH_BIN if it is elsewhere)`);
+  line(fs.existsSync(bin), 'netsmith binary', fs.existsSync(bin) ? bin : `${bin} is missing: run cargo build -p netsmith-cli (set CARGO_TARGET_DIR or NETSMITH_BIN if it is elsewhere)`);
 
   // The committed bundle the binary embeds when `web/` has not changed (`web/dist` is only a
   // build directory of a changed `web/`, which needs Node 20+).
@@ -158,7 +158,7 @@ async function launch() {
   fs.mkdirSync(evidenceDir, { recursive: true });
   const bin = netsmithBin();
   if (!fs.existsSync(bin)) {
-    console.error(`${bin} is missing: run cargo build -p netsmith`);
+    console.error(`${bin} is missing: run cargo build -p netsmith-cli`);
     process.exit(2);
   }
   // A scratch project, so a recipe that types into the editor changes nothing in the repo.

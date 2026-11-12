@@ -1,7 +1,83 @@
+//! What several commands share: `--format` and `--notes`, the names of `--view` and
+//! `--highlight`, and the steps that find and build what a command acts on.
+
+use std::fs;
+use std::process::ExitCode;
+
+use clap::{Args as ClapArgs, ValueEnum};
+use netsmith::Libraries;
+use netsmith::project::Target;
+use netsmith_check::Loader;
+use netsmith_core::timings;
+use netsmith_solve::Catalogs;
+
+/// The port `netsmith editor` listens on unless told otherwise.
+pub const DEFAULT_PORT: u16 = 8787;
+
+/// `--format` and `--notes`, of `build`, `check` and `fab`.
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct Output {
+    /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` prints one JSON document on stdout and nothing else there: `command`, `ok`, the
+    /// `boards` with the folders written, the `findings`, and the count of the `notes` for each
+    /// cause. Each finding has a `severity` (`error`, `warning` or `note`), a `code`, and the
+    /// `board`, the member `path`, the `file`, `line`, `column` and `message` it has. The code is
+    /// the stage that found an error or a warning (`syntax`, `check`, `solve`, `design`,
+    /// `guideline`, `power`, `lock`, `place`, `fab`), or `note.` and the cause of a note
+    /// (`note.not_stated`, `note.part_model`, `note.unjudged`, `note.circular`, `note.supply`,
+    /// `note.pick`, `note.track`, `note.other`). With `--notes summary` or `none` the notes are
+    /// left out of the findings; their counts are always there.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: Format,
+    /// Print each note, a count of the notes for each cause, or none.
+    #[arg(long, value_enum, default_value = "all")]
+    pub notes: Notes,
+}
+
+/// `--format`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Format {
+    /// For a person.
+    Text,
+    /// One JSON document on stdout.
+    Json,
+}
+
+impl From<Format> for netsmith::findings::Format {
+    fn from(format: Format) -> Self {
+        match format {
+            Format::Text => netsmith::findings::Format::Text,
+            Format::Json => netsmith::findings::Format::Json,
+        }
+    }
+}
+
+/// `--notes`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Notes {
+    /// Each note.
+    All,
+    /// A count for each cause.
+    Summary,
+    /// No note.
+    None,
+}
+
+impl From<Notes> for netsmith::findings::NotesMode {
+    fn from(notes: Notes) -> Self {
+        match notes {
+            Notes::All => netsmith::findings::NotesMode::All,
+            Notes::Summary => netsmith::findings::NotesMode::Summary,
+            Notes::None => netsmith::findings::NotesMode::None,
+        }
+    }
+}
+
 /// Write the pin file beside each source that has pin requests, when a run changes it (ADR 0101),
 /// and say what was written and what is stale. `--locked` writes nothing and stops instead. The
 /// exit code of the command when it stops, `None` to go on.
-fn sync_pins(file: Option<&str>, locked: bool) -> Option<ExitCode> {
+pub(super) fn sync_pins(file: Option<&str>, locked: bool) -> Option<ExitCode> {
     // Only what the check needs: the catalogs are loaded, and timed, by the command itself.
     let Ok(target) = Target::resolve(file) else {
         // The command says it again.
@@ -32,7 +108,10 @@ fn sync_pins(file: Option<&str>, locked: bool) -> Option<ExitCode> {
 /// What a command acts on: the named file or the project's top-level files, what their
 /// imports can reach, and the catalogs to pick parts from. A problem is printed and is the
 /// exit code.
-fn target(file: Option<&str>, strict: bool) -> Result<(Target, Loader, Catalogs), ExitCode> {
+pub(super) fn target(
+    file: Option<&str>,
+    strict: bool,
+) -> Result<(Target, Loader, Catalogs), ExitCode> {
     let fail = |e: String| {
         eprintln!("{e}");
         ExitCode::from(2)
@@ -50,7 +129,7 @@ fn target(file: Option<&str>, strict: bool) -> Result<(Target, Loader, Catalogs)
 
 /// The KiCad libraries of the target's project (ADR 0021). A mistake in `kicad.toml` is
 /// printed and is the exit code.
-fn libraries(target: &Target) -> Result<Libraries, ExitCode> {
+pub(super) fn libraries(target: &Target) -> Result<Libraries, ExitCode> {
     let root = target.project.as_ref().map(|p| p.root.as_path());
     Libraries::for_project(root).map_err(|e| {
         eprintln!("{e}");
@@ -60,7 +139,7 @@ fn libraries(target: &Target) -> Result<Libraries, ExitCode> {
 
 /// Whether a project with no file to act on was found, which it says. A library-only
 /// project lists no `top_level` file (ADR 0011).
-fn no_boards(target: &Target) -> bool {
+pub(super) fn no_boards(target: &Target) -> bool {
     let empty = target.files.is_empty();
     if empty {
         eprintln!(
@@ -75,7 +154,7 @@ fn no_boards(target: &Target) -> bool {
 /// nothing is written), and `then` of it. A project of several top-level files takes the first
 /// that has the board `--board` names. The error is printed and is the exit code: 1 when no file
 /// builds the board or places it, 2 when the command cannot start.
-fn with_placed_board<T>(
+pub(super) fn with_placed_board<T>(
     file: Option<&str>,
     board: Option<&str>,
     then: impl Fn(&netsmith::board3d::Placed) -> Result<T, String>,
@@ -143,7 +222,7 @@ pub enum ViewName {
 }
 
 impl ViewName {
-    fn raster(self) -> netsmith_pcb::raster3d::View {
+    pub(super) fn raster(self) -> netsmith_pcb::raster3d::View {
         use netsmith_pcb::raster3d::View;
         match self {
             ViewName::Top => View::Top,
@@ -157,7 +236,7 @@ impl ViewName {
         }
     }
 
-    fn editor(self) -> netsmith_editor::api::RenderView {
+    pub(super) fn editor(self) -> netsmith_editor::api::RenderView {
         use netsmith_editor::api::RenderView;
         match self {
             ViewName::Top => RenderView::Top,
@@ -176,7 +255,7 @@ impl ViewName {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ids(pub Vec<String>);
 
-fn parse_ids(given: &str) -> Result<Ids, String> {
+pub(super) fn parse_ids(given: &str) -> Result<Ids, String> {
     let ids: Vec<String> = given
         .split(',')
         .map(str::trim)

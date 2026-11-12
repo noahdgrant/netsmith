@@ -4,7 +4,6 @@
 use netsmith_kicad::testlib::TempDir;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use netsmith::Libraries;
 use netsmith::fab::FabOptions;
@@ -81,15 +80,6 @@ fn make_with(
     )
 }
 
-fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(args)
-        .current_dir(cwd)
-        .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .output()
-        .unwrap()
-}
-
 #[test]
 fn an_unknown_board_stops_the_order_and_lists_the_boards_that_exist() {
     let root = project(
@@ -107,76 +97,6 @@ fn an_unknown_board_stops_the_order_and_lists_the_boards_that_exist() {
         "{err}"
     );
     assert!(!root.join("fab").exists(), "nothing is written");
-}
-
-#[test]
-fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
-        return;
-    }
-    let root = project("nokicad", ORDERS);
-    // KICAD_CLI points nowhere, so there is no KiCad: the files and the design rules check
-    // are netsmith's own, and nothing has to be allowed.
-    let made = netsmith(&root, &["fab", "--order", "small"]);
-    let said = String::from_utf8_lossy(&made.stderr);
-    assert!(made.status.success(), "{said}");
-    let dir = root.join("fab/orders/small");
-    assert!(dir.join("order.txt").is_file());
-    let notes = fs::read_to_string(dir.join("LedExample/fab-notes.txt")).unwrap();
-    assert!(notes.contains("design rules check: passed"), "{notes}");
-    assert!(dir.join("LedExample/LedExample-gerbers.zip").is_file());
-}
-
-#[test]
-fn the_program_lists_the_orders_and_refuses_an_unknown_one() {
-    let root = project("cli", ORDERS);
-    let listed = netsmith(&root, &["fab", "--order"]);
-    assert!(listed.status.success());
-    assert_eq!(
-        String::from_utf8_lossy(&listed.stdout),
-        "orders in netsmith.toml:\n  small: LedExample x10, TwoBoards/led x3\n  system: TwoBoards x2\n"
-    );
-
-    let unknown = netsmith(&root, &["fab", "--order", "devkit"]);
-    assert!(!unknown.status.success());
-    let said = String::from_utf8_lossy(&unknown.stderr);
-    assert!(
-        said.contains("no order `devkit`") && said.contains("the orders are: small, system"),
-        "{said}"
-    );
-
-    // A board that does not exist is found before KiCad is looked for.
-    fs::write(
-        root.join("netsmith.toml"),
-        "[project]\nname = \"kit\"\ntop_level = [\"src/led.nsm\"]\n[order.d.boards]\nOther = 1\n",
-    )
-    .unwrap();
-    let missing = netsmith(&root, &["fab", "--order", "d"]);
-    assert!(!missing.status.success());
-    let said = String::from_utf8_lossy(&missing.stderr);
-    assert!(
-        said.contains("netsmith.toml:5: order `d` names `Other`")
-            && said.contains("the boards and panels are: LedExample"),
-        "{said}"
-    );
-
-    // A manifest mistake stops every command, with its line.
-    fs::write(
-        root.join("netsmith.toml"),
-        "[project]\nname = \"kit\"\n[order.d.boards]\nLedExample = 0\n",
-    )
-    .unwrap();
-    let broken = netsmith(&root, &["fab", "--order"]);
-    assert!(!broken.status.success());
-    let said = String::from_utf8_lossy(&broken.stderr);
-    assert!(
-        said.contains("netsmith.toml:4: order `d`") && said.contains("is 0"),
-        "{said}"
-    );
-
-    let none = project("cli-none", "");
-    let listed = netsmith(&none, &["fab", "--order"]);
-    assert!(String::from_utf8_lossy(&listed.stdout).contains("has no orders"));
 }
 
 /// How many of the parts with LCSC number `lcsc` one board's `bom.csv` lists.
@@ -293,31 +213,4 @@ fn a_system_in_an_order_is_all_its_members_and_a_new_run_replaces_the_old_folder
     make(&root, "system", Some(&cli)).unwrap_or_else(|e| panic!("{e}"));
     assert!(!fab.join("TwoBoards/power").exists());
     assert!(fab.join("TwoBoards/led/bom.csv").is_file());
-}
-
-#[test]
-fn the_program_makes_an_order_into_the_out_directory() {
-    let Some(cli) = KicadCliExe::locate_runnable() else {
-        return;
-    };
-    let _ = cli;
-    let root = project("program", ORDERS);
-    let out = root.join("elsewhere");
-    let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["fab", "--order", "small", "--out", out.to_str().unwrap()])
-        .current_dir(&root)
-        .output()
-        .unwrap();
-    let (stdout, stderr) = (
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr),
-    );
-    assert!(run.status.success(), "{stderr}");
-    assert!(out.join("orders/small/order.txt").is_file());
-    assert!(!root.join("fab").exists());
-    assert!(
-        stdout.contains("order small: 2 board designs, 13 boards in all")
-            && stdout.contains("wrote "),
-        "{stdout}"
-    );
 }

@@ -1,3 +1,43 @@
+use std::fs;
+use std::process::ExitCode;
+
+use clap::{ArgGroup, Args as ClapArgs};
+
+use super::common::{no_boards, target};
+
+#[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "`--update` writes the rows the solver picks now and prints each part that changed. `--check` writes nothing and exits 1 when the lock is not current or does not exist, or when the picks file names a part that is gone. Both exit 2 when they cannot tell."
+)]
+#[command(args_override_self = true)]
+#[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
+pub struct Args {
+    /// The source file; with none, the project's boards.
+    #[arg(value_name = "FILE.NSM")]
+    pub file: Option<String>,
+    /// Write the rows the solver picks now.
+    #[arg(long)]
+    pub update: bool,
+    /// Write nothing; fail when the lock is not current.
+    #[arg(long)]
+    pub check: bool,
+}
+
+impl Args {
+    pub fn mode(&self) -> LockMode {
+        if self.update {
+            LockMode::Update
+        } else {
+            LockMode::Check
+        }
+    }
+}
+
+/// Refreshes or checks the pick lock of each source file (ADR 0100).
+pub fn run(args: Args) -> ExitCode {
+    run_lock(args.file.as_deref(), args.mode())
+}
+
 /// `netsmith lock --update` and `--check`: the pick lock of each source file, solved again with
 /// no holding. The diff goes to stdout; what the lock held that no longer passes, the reason a
 /// check fails and every error go to stderr. Exit 0 when nothing is wrong (a lock was written,
@@ -98,40 +138,6 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
-    }
-}
-
-/// Refresh the pick lock (`--update`) or say whether it is current (`--check`).
-///
-/// `lock --update` solves each board without the pick lock's holding (the picks file still
-/// holds its parts) and writes the lock with the rows the solver picks now, printing for each
-/// part that changed the old row and the new one (nothing when nothing changed). `lock --check`
-/// does the same without writing, prints the same and exits 1 when the lock is not current or
-/// does not exist, or when the picks file names a part that is gone (for CI). Both exit 2 when
-/// they cannot tell: the lock or the picks file is not readable, or the design does not build.
-/// With no file it acts on the project's boards.
-#[derive(Debug, PartialEq, Args)]
-#[command(args_override_self = true)]
-#[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
-pub struct LockArgs {
-    /// The source file; with none, the project's boards.
-    #[arg(value_name = "FILE.NSM")]
-    pub file: Option<String>,
-    /// Write the rows the solver picks now.
-    #[arg(long)]
-    pub update: bool,
-    /// Write nothing; fail when the lock is not current.
-    #[arg(long)]
-    pub check: bool,
-}
-
-impl LockArgs {
-    pub fn mode(&self) -> LockMode {
-        if self.update {
-            LockMode::Update
-        } else {
-            LockMode::Check
-        }
     }
 }
 

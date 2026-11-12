@@ -2,7 +2,6 @@
 
 pub mod board3d;
 mod bus_roles;
-pub mod cli;
 pub mod compare;
 pub mod constraints;
 pub mod dxf;
@@ -34,7 +33,6 @@ mod stock;
 pub mod supply;
 pub mod symbol_gallery;
 mod values;
-pub mod view_client;
 
 use std::path::{Path, PathBuf};
 

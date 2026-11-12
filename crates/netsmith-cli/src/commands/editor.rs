@@ -1,3 +1,30 @@
+use std::net::{Ipv4Addr, TcpListener};
+use std::process::ExitCode;
+use std::sync::Arc;
+
+use clap::Args as ClapArgs;
+use netsmith::editor::Workspace;
+use netsmith::project::Target;
+
+use super::common::DEFAULT_PORT;
+
+#[derive(Debug, PartialEq, ClapArgs)]
+#[command(after_long_help = "The editor serves on 127.0.0.1 and prints the address to open.")]
+#[command(args_override_self = true)]
+pub struct Args {
+    /// The source file; with none, the project's boards.
+    #[arg(value_name = "FILE.NSM")]
+    pub file: Option<String>,
+    /// The port to listen on.
+    #[arg(long, default_value_t = DEFAULT_PORT)]
+    pub port: u16,
+}
+
+/// Serves the editor until it is stopped.
+pub fn run(args: Args) -> ExitCode {
+    run_editor(args.file.as_deref(), args.port)
+}
+
 fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
     if !netsmith_editor::bundle_is_present() {
         eprintln!("{}", netsmith_editor::missing_bundle_message());
@@ -44,19 +71,4 @@ fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
             ExitCode::from(2)
         }
     }
-}
-
-/// The source and the board in a browser.
-///
-/// With no file, `editor` acts on the project's boards (see netsmith.toml). It serves on
-/// 127.0.0.1 and prints the address to open.
-#[derive(Debug, PartialEq, Args)]
-#[command(args_override_self = true)]
-pub struct EditorArgs {
-    /// The source file; with none, the project's boards.
-    #[arg(value_name = "FILE.NSM")]
-    pub file: Option<String>,
-    /// The port to listen on.
-    #[arg(long, default_value_t = DEFAULT_PORT)]
-    pub port: u16,
 }

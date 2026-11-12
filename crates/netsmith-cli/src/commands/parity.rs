@@ -1,3 +1,47 @@
+use netsmith::project::Target;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use clap::Args as ClapArgs;
+use netsmith::findings::Format;
+
+use super::common;
+
+#[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "For a port: the place, rotation, face and pads of each part the table names. The exit code is 1 when a part the table marks `must_match` fails, 0 when none does, and 2 when a file cannot be read."
+)]
+#[command(args_override_self = true)]
+pub struct Args {
+    /// The board `fab` wrote.
+    #[arg(value_name = "BOARD.KICAD_PCB")]
+    pub board: PathBuf,
+    /// The table of the original's parts (default `reference/placements.toml`).
+    #[arg(long, value_name = "PLACEMENTS.TOML")]
+    pub table: Option<PathBuf>,
+    /// The original's designators to the fab board's (default `reference/designators.toml`).
+    #[arg(long, value_name = "DESIGNATORS.TOML")]
+    pub map: Option<PathBuf>,
+    /// Write an overlay of the two boards.
+    #[arg(long, value_name = "OVERLAY.SVG")]
+    pub svg: Option<PathBuf>,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+/// Compares the board part by part with the original's.
+pub fn run(args: Args) -> ExitCode {
+    run_parity(
+        &args.board,
+        args.table.as_deref(),
+        args.map.as_deref(),
+        args.svg.as_deref(),
+        args.format.into(),
+    )
+}
+
 /// `netsmith parity`: compare a board that `fab` wrote with the board of a port's original
 /// (#455; it was the example `parity`). The table and the map default to those of the project's
 /// `reference/` folder, or of the current folder's when there is no project. The report goes to
@@ -52,34 +96,4 @@ fn run_parity(
     } else {
         ExitCode::FAILURE
     }
-}
-
-/// Compare a fab board with the board of a port's original, part by part.
-///
-/// `parity` compares a board that `fab` wrote with the original of a port (see the skill
-/// `netsmith-port-a-kicad-board`), part by part: the place, the rotation, the face and the pads
-/// of each part the table names.
-///
-/// The exit code is 1 when a part the table marks `must_match` fails, 0 when none does and 2
-/// when a file cannot be read.
-#[derive(Debug, PartialEq, Args)]
-#[command(args_override_self = true)]
-pub struct ParityArgs {
-    /// The board `fab` wrote.
-    #[arg(value_name = "BOARD.KICAD_PCB")]
-    pub board: PathBuf,
-    /// The table of the original's parts; the default is `reference/placements.toml`.
-    #[arg(long, value_name = "PLACEMENTS.TOML")]
-    pub table: Option<PathBuf>,
-    /// The original's designators to the fab board's; the default is `reference/designators.toml`.
-    #[arg(long, value_name = "DESIGNATORS.TOML")]
-    pub map: Option<PathBuf>,
-    /// Write an overlay of the two boards.
-    #[arg(long, value_name = "OVERLAY.SVG")]
-    pub svg: Option<PathBuf>,
-    /// Text for a person, or one JSON document on stdout.
-    ///
-    /// `json` holds each item with its figures.
-    #[arg(long, value_enum, default_value = "text")]
-    pub format: Format,
 }

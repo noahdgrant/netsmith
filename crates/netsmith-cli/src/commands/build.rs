@@ -1,13 +1,64 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use clap::Args as ClapArgs;
+use netsmith::findings::{BoardOut, Finding, Format, NotesMode, Report, Severity};
+use netsmith::{outcome_with, render_problems};
+use netsmith_core::timings;
+
+use super::common::{self, libraries, no_boards, sync_pins, target};
+
+#[derive(Debug, PartialEq, ClapArgs)]
+#[command(args_override_self = true)]
+pub struct Args {
+    /// The source file; with none, the project's boards (see netsmith.toml).
+    #[arg(value_name = "FILE.NSM")]
+    pub file: Option<String>,
+    /// The folder to write into.
+    #[arg(long, value_name = "DIR")]
+    pub out: Option<PathBuf>,
+    /// Make a guideline finding an error for this run.
+    #[arg(long)]
+    pub strict: bool,
+    /// Stop, before anything is written, when the pick lock, the pin file or the picks file
+    /// would change.
+    #[arg(long)]
+    pub locked: bool,
+    #[command(flatten)]
+    pub output: common::Output,
+}
+
+/// Writes the pin file, then checks and solves each board and writes its schematic.
+pub fn run(args: Args) -> ExitCode {
+    timings::stage("build.total", "", || {
+        // The pin file first: a request must have its pin before anything is built, and
+        // `--locked` stops here before the pick lock or any file is written.
+        if let Some(code) = sync_pins(args.file.as_deref(), args.locked) {
+            return code;
+        }
+        run_build(&BuildRun {
+            file: args.file.as_deref(),
+            out: args.out.as_deref(),
+            strict: args.strict,
+            locked: args.locked,
+            format: args.output.format.into(),
+            notes: args.output.notes.into(),
+            write: true,
+        })
+    })
+}
+
 /// What `build` and `check` are asked to do: `check` is `build` that writes nothing (#455).
-struct BuildRun<'a> {
-    file: Option<&'a str>,
-    out: Option<&'a Path>,
-    strict: bool,
-    locked: bool,
-    format: Format,
-    notes: NotesMode,
+pub(super) struct BuildRun<'a> {
+    pub(super) file: Option<&'a str>,
+    pub(super) out: Option<&'a Path>,
+    pub(super) strict: bool,
+    pub(super) locked: bool,
+    pub(super) format: Format,
+    pub(super) notes: NotesMode,
     /// `build` writes the schematic, the lock and the libraries' tables; `check` writes nothing.
-    write: bool,
+    pub(super) write: bool,
 }
 
 /// What a board said that did not stop it: printed as text, or kept for the JSON report.
@@ -35,7 +86,7 @@ fn tell_built(b: &netsmith::Built, run: &BuildRun, report: &mut Report) {
     }
 }
 
-fn run_build(run: &BuildRun) -> ExitCode {
+pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let json = run.format == Format::Json;
     let mut report = Report::new(if run.write { "build" } else { "check" });
     let (target, loader, catalogs) = match target(run.file, run.strict) {
@@ -233,53 +284,4 @@ fn run_build(run: &BuildRun) -> ExitCode {
         print!("{}", report.to_json());
     }
     code
-}
-
-/// Check, solve and write a KiCad schematic of the boards.
-///
-/// With no file, `build` acts on the project's boards (see netsmith.toml).
-#[derive(Debug, PartialEq, Args)]
-#[command(args_override_self = true)]
-pub struct BuildArgs {
-    /// The source file; with none, the project's boards.
-    #[arg(value_name = "FILE.NSM")]
-    pub file: Option<String>,
-    /// The folder to write into; the default is the target's.
-    #[arg(long, value_name = "DIR")]
-    pub out: Option<PathBuf>,
-    /// Make a guideline finding an error for this run.
-    ///
-    /// Like `guidelines = "error"` in netsmith.toml (ADR 0036); without it a finding against a
-    /// guideline is a warning.
-    #[arg(long)]
-    pub strict: bool,
-    /// Neither the pick lock nor the pin file may change.
-    ///
-    /// The run ends with an error, before anything is written, when the parts it picks differ
-    /// from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, when
-    /// the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`,
-    /// ADR 0101), or when the picks file beside it (`<file>.picks.toml`, #462) names a part that
-    /// is gone (see _The pick lock_ in docs/LANGUAGE.md).
-    #[arg(long)]
-    pub locked: bool,
-    /// Text for a person, or one JSON document on stdout.
-    ///
-    /// `json` prints one JSON document on stdout and nothing else there. It holds `command`,
-    /// `ok`, the `boards` with the folders written, the `findings`, and the count of the `notes`
-    /// for each cause. Each finding has a `severity` (`error`, `warning` or `note`), a `code`,
-    /// and the `board`, the member `path`, the `file`, `line` and `column` and the `message` it
-    /// has. The code is the stage that found an error or a warning (`syntax`, `check`, `solve`,
-    /// `design`, `guideline`, `power`, `lock`, `place`, `fab`), or `note.` and the cause of a
-    /// note (`note.not_stated`, `note.part_model`, `note.unjudged`, `note.circular`,
-    /// `note.supply`, `note.pick`, `note.track`, `note.other`): there are no codes for each rule.
-    #[arg(long, value_enum, default_value = "text")]
-    pub format: Format,
-    /// Each note, a count for each cause, or none.
-    ///
-    /// `summary` prints a board's notes as one line with a count for each cause
-    /// (`note: TwoBuck: 7 notes: 6 not_stated, 1 unjudged`), `none` leaves them out, and `all`,
-    /// the default, prints each. With `--format json` the notes are findings only with `all`;
-    /// their counts are always there.
-    #[arg(long, value_enum, default_value = "all")]
-    pub notes: NotesMode,
 }

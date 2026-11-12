@@ -16,7 +16,7 @@ To run an example, save it and use `netsmith build`:
 netsmith build main.nsm --out out
 ```
 
-`build` checks the file, solves it, and writes a KiCad schematic. In the netsmith source repository, `cargo run -p netsmith -- build main.nsm` does the same, and `cargo run -p netsmith-check --example check -- main.nsm` and `cargo run -p netsmith-solve --example solve -- main.nsm` print what the checker and the solver worked out.
+`build` checks the file, solves it, and writes a KiCad schematic. In the netsmith source repository, `cargo run -p netsmith-cli -- build main.nsm` does the same, and `cargo run -p netsmith-check --example check -- main.nsm` and `cargo run -p netsmith-solve --example solve -- main.nsm` print what the checker and the solver worked out.
 
 ## Quick start
 

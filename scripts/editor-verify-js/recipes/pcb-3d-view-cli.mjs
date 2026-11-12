@@ -64,7 +64,7 @@ export async function run(tools) {
 
   step('the editor-only tools, and --highlight none and --section none, are read back');
   r = await view('--colour-by', 'margin', '--height-preview', '3', '--highlight', 'none', '--select', tall.refdes);
-  expect(r.code === 2 && /give one/.test(r.err), `--highlight and --select together are refused before the page is asked: ${r.err.trim()}`);
+  expect(r.code === 2 && /cannot be used with/.test(r.err), `--highlight and --select together are refused before the page is asked: ${r.err.trim()}`);
   r = await view('--colour-by', 'margin', '--height-preview', '3', '--highlight', 'none', '--section', 'none', '--ortho');
   expect(r.code === 0 && r.out.includes('colour by: margin') && r.out.includes('height preview: 3 mm') && r.out.includes('highlight: none') && r.out.includes('orthographic'), `read back:\n${r.out}`);
   expect((await page.getByTestId('colour-by').inputValue()) === 'margin', 'the page colours by margin');

@@ -7,7 +7,7 @@
 # Steps, each of which stops the script with its reason when it fails:
 #   1. the workspace version, the committed editor page (no Node is used or needed: the page in
 #      crates/netsmith-editor/web-dist must be of the sources in web/, see scripts/web-bundle);
-#   2. `cargo build --release --locked -p netsmith`, which must print no warning;
+#   2. `cargo build --release --locked -p netsmith-cli`, which must print no warning;
 #   3. `netsmith --version` must print the workspace version;
 #   4. a smoke test in a scratch directory: `netsmith init`, `build` and `fab` (which must end
 #      with `design rules check: passed`) on the starter board, and `netsmith editor` must serve
@@ -57,7 +57,7 @@ sha256() {
 step "building $name"
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
-if ! cargo build --release --locked -p netsmith --color never 2>&1 | tee "$log" >&2; then
+if ! cargo build --release --locked -p netsmith-cli --color never 2>&1 | tee "$log" >&2; then
     fail "cargo build failed"
 fi
 if grep -q "^warning" "$log"; then

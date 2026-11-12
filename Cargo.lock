@@ -700,7 +700,6 @@ dependencies = [
 name = "netsmith"
 version = "0.1.0"
 dependencies = [
- "clap",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
@@ -730,6 +729,27 @@ dependencies = [
  "netsmith-lang",
  "netsmith-quantity",
  "toml",
+]
+
+[[package]]
+name = "netsmith-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "netsmith",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-dxf",
+ "netsmith-editor",
+ "netsmith-fab",
+ "netsmith-kicad",
+ "netsmith-netlist",
+ "netsmith-pcb",
+ "netsmith-solve",
+ "serde_json",
+ "tungstenite 0.30.0",
+ "ureq",
+ "zip",
 ]
 
 [[package]]

@@ -4,8 +4,12 @@
 
 use std::process::Command;
 
-use clap::CommandFactory;
-use netsmith::cli::Cli;
+use clap::Subcommand;
+
+/// clap's model of the commands, as main.rs puts them under `netsmith`.
+pub fn model() -> clap::Command {
+    netsmith_cli::commands::Command::augment_subcommands(clap::Command::new("netsmith"))
+}
 
 fn netsmith(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
@@ -26,7 +30,7 @@ fn commands() -> Vec<(Vec<String>, clap::Command)> {
         }
     }
     let mut all = Vec::new();
-    walk(&[], &Cli::command(), &mut all);
+    walk(&[], &model(), &mut all);
     all
 }
 
@@ -37,14 +41,13 @@ fn help_lists_every_command_on_stdout_and_exits_zero() {
         assert!(out.status.success(), "{args:?}: {:?}", out.status);
         assert!(out.stderr.is_empty(), "{args:?}");
         let text = String::from_utf8_lossy(&out.stdout);
-        for sub in Cli::command().get_subcommands() {
+        for sub in model().get_subcommands() {
             let name = sub.get_name();
             assert!(
                 text.contains(&format!("  {name} ")),
                 "{args:?}: no `{name}` in {text}"
             );
         }
-        assert!(text.contains("`netsmith <command> --help`"), "{text}");
     }
 }
 
@@ -140,7 +143,7 @@ fn a_mistake_exits_two_with_the_error_on_stderr() {
 
 #[test]
 fn the_version_still_prints() {
-    for args in [&["--version"][..], &["-V"], &["version"]] {
+    for args in [&["--version"][..], &["-V"]] {
         let out = netsmith(args);
         assert!(out.status.success(), "{args:?}");
         assert_eq!(

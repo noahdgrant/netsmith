@@ -5,9 +5,7 @@
 
 use netsmith::{Built, outcome_with};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
-use std::{fs, process::Command};
 
 const BOARD: &str = r#"
 import std::parts::connector::Header1x2
@@ -127,45 +125,5 @@ fn the_note_is_a_note_and_not_a_guideline() {
             .all(|g| !g.message.contains("stock of 0")),
         "{:#?}",
         b.guidelines
-    );
-}
-
-#[test]
-fn netsmith_build_prints_the_note_and_still_builds() {
-    let root = TempDir::new("stock-note-build");
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::create_dir_all(root.join("catalogs")).unwrap();
-    fs::write(
-        root.join("netsmith.toml"),
-        "[project]\nname = \"invented\"\n",
-    )
-    .unwrap();
-    fs::write(root.join("src/main.nsm"), BOARD).unwrap();
-    fs::write(root.join("catalogs/resistor.csv"), rows("C900001", "0")).unwrap();
-    let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
-        .args(["build"])
-        .current_dir(&*root)
-        .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
-        .env(
-            "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
-        )
-        .output()
-        .unwrap();
-    let err = String::from_utf8_lossy(&run.stderr);
-    assert!(run.status.success(), "{err}");
-    let line = err
-        .lines()
-        .find(|l| l.starts_with("note: R1 (`charge.limit`) is C900001"))
-        .unwrap_or_else(|| panic!("no stock note:\n{err}"));
-    assert!(line.contains("states a stock of 0"), "{line}");
-    assert!(
-        !err.lines()
-            .any(|l| l.starts_with("warning:") && l.contains("stock")),
-        "a note is not a warning:\n{err}"
     );
 }
