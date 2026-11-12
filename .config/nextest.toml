@@ -3,3 +3,10 @@
 # it: a test should take under about two minutes on CI (AGENTS.md, Tests).
 [profile.default]
 slow-timeout = { period = "60s" }
+
+# The mixed board's seeds route against a time limit (300 s, `fab`'s), and take 140 to 160 s on a
+# runner to themselves. Sharing a four-core runner with the other tests of a slice, seed 3 ran out
+# of time on main (316 s, 2026-11-12). Each takes the whole runner, so its time is the router's.
+[[profile.default.overrides]]
+filter = 'test(/^mixed::the_mixed_board_is_routed_completely_seed_/)'
+threads-required = "num-cpus"
