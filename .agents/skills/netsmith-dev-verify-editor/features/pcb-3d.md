@@ -54,6 +54,10 @@ For a recipe the host carries a handle: `document.querySelector('[data-testid=pc
 5. `section`, `ortho`, `camera` (`position`, `target`), `colourBy`, `heightPreview`, `select` (a part, or one `net:<name>`) and `exploded` are set and read back; the page shows each (the section panel, the colour select, the preview label).
 6. Refusals change nothing: an unknown id is `400` with render's list of parts, nets and limits; a board the project has not is `404`; `theme` is `400`; no guard header is `403`.
 
+## Driven from the command line (recipe `pcb-3d-view-cli`, fixture `height_limits`)
+
+`netsmith view` (docs/BOARD3D.md, "Driving a running editor") is the same routes as a command with the flags of `render`. The recipe runs the binary against the page it has open: `view` alone prints the summary (`3D view: not on screen` on the 2D view), `--json` the route's JSON; `view --view top --highlight <tall's designator> --xray --picture <file>` changes the page (it looks from the top, x-ray pressed) and saves its canvas as `pcb-3d-view-cli-top.png` beside the screenshots (a PNG of the canvas's size: look at it); `--colour-by margin --height-preview 3 --highlight none --section none --ortho` is read back; an unknown id, a board the project has not and `--theme` exit 2 with their reasons and change nothing; a port with nothing on it exits 2 and says to start `netsmith editor`.
+
 ## Gotchas
 
 - The digits are the sections' keys: the presets and the tools use letters.

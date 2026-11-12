@@ -32,6 +32,7 @@ mod stock;
 pub mod supply;
 pub mod symbol_gallery;
 mod values;
+pub mod view_client;
 
 use std::path::{Path, PathBuf};
 

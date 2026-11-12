@@ -98,6 +98,7 @@ mod two_buck;
 mod unused;
 mod usb_c_sink;
 mod values;
+mod view;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
 /// never run, and nothing else would say so.
