@@ -12,6 +12,7 @@ Entry point: the project's `AGENTS.md`. The language guide (`docs/netsmith/LANGU
 1. List the sheets, and for each: part count, distinct part kinds, nets, connectors.
 2. Note each sheet's nets and connectors from its schematic or from `kicad-cli sch export netlist --format kicadxml -o sheet.xml sheet.kicad_sch`.
 3. Sort parts into three groups: kinds the netsmith standard library has (resistor, capacitor, LED, linear regulator, header), kinds it lacks, and values the catalog lacks.
+   For an IC the library lacks, draft its part file from the original's own symbol: `netsmith part from-symbol original.kicad_sch <symbol>` (or a `.kicad_sym`) prints the pin table with names, pads and the kinds the symbol's types give, and `TODO_KIND` where they do not. It is a draft: check every row against the datasheet's pin table, with the page.
 4. Write the survey in the project (for example `docs/PORT.md`) before writing any `.nsm`.
 
 ## Start from the skeleton

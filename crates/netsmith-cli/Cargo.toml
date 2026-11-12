@@ -30,6 +30,7 @@ serde_json = "1.0.154"
 ureq = "3"
 
 [dev-dependencies]
+netsmith-lang = { path = "../netsmith-lang" }
 netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }

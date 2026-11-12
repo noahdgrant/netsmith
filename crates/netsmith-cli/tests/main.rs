@@ -20,6 +20,7 @@ mod order_lock;
 mod output;
 mod own_part;
 mod panel;
+mod part_from_symbol;
 mod pick_lock;
 mod picks;
 mod pin_export;
