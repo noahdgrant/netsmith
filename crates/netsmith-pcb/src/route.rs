@@ -2902,6 +2902,15 @@ mod tests {
         search(masks, from, goal, Extras::default(), &|| false).ok()
     }
 
+    /// A search for the nets in a line's way, as the router makes one: in four directions.
+    fn find_soft(masks: &Masks, from: &[Spot], goal: Goal) -> Option<Vec<Spot>> {
+        let extras = Extras {
+            coarse: true,
+            ..Extras::default()
+        };
+        search(masks, from, goal, extras, &|| false).ok()
+    }
+
     #[test]
     fn a_straight_path_stays_on_its_layer() {
         let (grid, masks) = open_grid();
@@ -3408,7 +3417,7 @@ mod tests {
         soft_wall(&grid, &mut masks, 15, 0..0);
         // Hard masks do not see the wall; the soft ones price it, and the path goes through
         // because no way round exists.
-        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+        let path = find_soft(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
         assert_eq!(path.len(), 31);
         assert!(path.contains(&(15, 5, FRONT)));
     }
@@ -3419,7 +3428,7 @@ mod tests {
         // The wall is open at rows 8 and 9, three rows from the line: the detour costs 160
         // (six steps and four turns), crossing the wall's two cells 200 (SOFT, 100 each).
         soft_wall(&grid, &mut masks, 15, 8..10);
-        let path = find(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
+        let path = find_soft(&masks, &[(0, 5, FRONT)], Goal::Spots(&[(30, 5, FRONT)])).unwrap();
         assert!(path.contains(&(15, 8, FRONT)), "{path:?}");
         assert!(!path.contains(&(15, 5, FRONT)));
     }
@@ -3430,12 +3439,8 @@ mod tests {
         // Open only at row 9, eight rows from the line, whose detour costs 260: the path
         // crosses the wall.
         soft_wall(&grid, &mut masks, 15, 9..10);
-        let path = find(&masks, &[(0, 1, FRONT)], Goal::Spots(&[(30, 1, FRONT)])).unwrap();
-        // It crosses the wall (column 15) below the gap, whichever row its diagonals take it to.
-        assert!(
-            path.iter().any(|&(i, j, l)| i == 15 && j < 9 && l == FRONT),
-            "{path:?}"
-        );
+        let path = find_soft(&masks, &[(0, 1, FRONT)], Goal::Spots(&[(30, 1, FRONT)])).unwrap();
+        assert!(path.contains(&(15, 1, FRONT)), "{path:?}");
     }
 
     #[test]
