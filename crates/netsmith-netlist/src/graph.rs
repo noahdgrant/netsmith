@@ -580,8 +580,8 @@ fn sort_differences(d: &mut [Difference]) {
 impl Joint<'_> {
     fn correspondence(&self, p: &Pairing) -> Correspondence {
         let mut components = Vec::new();
-        for a in 0..self.ca {
-            if let Some(b) = p.partner[a] {
+        for (a, partner) in p.partner.iter().enumerate().take(self.ca) {
+            if let Some(b) = *partner {
                 components.push((
                     self.component(a).refdes.clone(),
                     self.component(b).refdes.clone(),
@@ -589,8 +589,8 @@ impl Joint<'_> {
             }
         }
         let mut nets = Vec::new();
-        for a in 0..self.na {
-            if let Some(b) = p.nets[a] {
+        for (a, net) in p.nets.iter().enumerate().take(self.na) {
+            if let Some(b) = *net {
                 nets.push((self.net_name(a).to_string(), self.net_name(b).to_string()));
             }
         }
