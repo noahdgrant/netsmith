@@ -29,6 +29,10 @@ pub const SOURCE_DIR: &str = "src";
 /// The one KiCad version netsmith writes files for.
 pub const KICAD_VERSION: i64 = 9;
 
+/// The most seeds `place_seeds` may ask the placer to try for a board (owner, issue #458): each
+/// is a whole placement, so a board no seed places costs this many times as long.
+pub const MAX_PLACE_SEEDS: u32 = 32;
+
 /// What `netsmith.toml` says, the `[project]` table. Only `name` is required; the rest
 /// are what `netsmith init` writes out. A key that is not one of these is refused.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -105,6 +109,11 @@ pub struct Manifest {
     /// at that width is routed at the least (issue #431).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub track_margin: Option<f64>,
+    /// How many seeds the placer tries for a board before it gives up (`place_seeds = 8`, the
+    /// default; 1 tries only the layout file's, and [`MAX_PLACE_SEEDS`] is the most): the layout
+    /// file's seed, or 0, then the ones after it. The seed that places the board is written to the layout file (issue #458).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place_seeds: Option<u32>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
     /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047). `"none"` offers
     /// only the catalog's rows.
@@ -225,6 +234,7 @@ impl Manifest {
             glb: None,
             step: None,
             track_margin: None,
+            place_seeds: None,
             environment: None,
             guidelines: None,
             constraints: None,
@@ -305,6 +315,13 @@ impl Manifest {
         {
             return Err(format!(
                 "{MANIFEST}: track_margin = {m} must be from 1 (the process's least track) to 4"
+            ));
+        }
+        if let Some(n) = self.place_seeds
+            && !(1..=MAX_PLACE_SEEDS).contains(&n)
+        {
+            return Err(format!(
+                "{MANIFEST}: place_seeds = {n} must be from 1 (the layout file's seed only) to {MAX_PLACE_SEEDS}"
             ));
         }
         if let Some(word) = &self.series
@@ -1110,6 +1127,27 @@ mod tests {
         assert_eq!(parse(&m.render()), Ok(m));
         let e = parse("[project]\nname = \"a\"\ntrack_margin = 0.5\n").unwrap_err();
         assert!(e.contains("track_margin = 0.5 must be from 1"), "{e}");
+    }
+
+    #[test]
+    fn place_seeds_is_read_and_is_from_one_to_thirty_two() {
+        let m = parse("[project]\nname = \"a\"\nplace_seeds = 12\n").unwrap();
+        assert_eq!(m.place_seeds, Some(12));
+        assert_eq!(parse(&m.render()), Ok(m));
+        assert_eq!(
+            parse("[project]\nname = \"a\"\nplace_seeds = 32\n")
+                .unwrap()
+                .place_seeds,
+            Some(32)
+        );
+        for n in [0, 33] {
+            assert_eq!(
+                parse(&format!("[project]\nname = \"a\"\nplace_seeds = {n}\n")).unwrap_err(),
+                format!(
+                    "netsmith.toml: place_seeds = {n} must be from 1 (the layout file's seed only) to 32"
+                )
+            );
+        }
     }
 
     #[test]

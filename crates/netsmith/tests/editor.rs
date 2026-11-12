@@ -2257,10 +2257,8 @@ fn a_drawn_keepout_that_forbids_parts_is_a_problem_for_a_part_in_it() {
     let (say, _) = listener();
     let report = editor.route(POURS_BOARD, &say).unwrap();
     assert!(
-        report
-            .placement_problems
-            .iter()
-            .any(|p| p.contains("C2 overlaps the keepout `box`, which forbids parts")),
+        report.placement_problems.iter().any(|p| p
+            .contains("`stage.output_cap` (C2) overlaps the keepout `box`, which forbids parts")),
         "{:?}",
         report.placement_problems
     );
@@ -2300,8 +2298,12 @@ fn a_placement_problem_is_a_finding_with_the_box_it_is_about() {
     assert_eq!(overlap.source, FindingSource::Placement);
     assert_eq!(overlap.severity, netsmith_editor::api::Severity::Error);
     assert!(
-        overlap.message.contains("courtyards of D1 and R1 overlap")
-            || overlap.message.contains("courtyards of R1 and D1 overlap"),
+        overlap
+            .message
+            .contains("the courtyards of `led` (D1) and `r1` (R1) overlap")
+            || overlap
+                .message
+                .contains("the courtyards of `r1` (R1) and `led` (D1) overlap"),
         "{}",
         overlap.message
     );

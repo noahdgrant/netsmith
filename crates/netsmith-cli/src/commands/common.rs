@@ -195,6 +195,7 @@ pub(super) fn with_placed_board<T>(
             libraries: &libraries,
             layout: netsmith::layout::layout_path(&source.path),
             board,
+            seeds: netsmith::layout::place_seeds(target.project.as_ref()),
         };
         match then(&placed) {
             Ok(done) => return Ok(done),

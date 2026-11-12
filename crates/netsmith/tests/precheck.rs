@@ -228,7 +228,7 @@ fn a_courtyard_past_two_edges_nobody_stated_is_refused_naming_the_edges() {
     assert_eq!(found.faults.len(), 1, "{found:?}");
     let text = &found.faults[0].text;
     for want in [
-        "J1 is not wholly inside the board outline: its courtyard is ",
+        "`h1` (J1) is not wholly inside the board outline: its courtyard is ",
         " mm past the left edge and ",
         " mm past the right edge, and the design does not say it may hang over an edge",
         "widget.physical.nsm:",
@@ -251,7 +251,7 @@ fn fab_refuses_the_courtyard_past_an_edge_without_placing() {
     let error = made.expect_err("the header is past both edges");
     assert!(
         error.starts_with(
-            "error: Widget: J1 is not wholly inside the board outline: its courtyard is "
+            "error: Widget: `h1` (J1) is not wholly inside the board outline: its courtyard is "
         ),
         "{error}"
     );
@@ -298,7 +298,7 @@ fn a_window_that_has_no_place_inside_the_outline_is_refused_once() {
     assert_eq!(found.faults.len(), 1, "{found:?}");
     let text = &found.faults[0].text;
     for want in [
-        "R1 is not wholly inside the board outline: its courtyard is at least ",
+        "`r1` (R1) is not wholly inside the board outline: its courtyard is at least ",
         " mm past the right edge wherever its requirements put it",
         "for example `.r1.place.right >= outline.width`",
         "widget.physical.nsm:10 `.r1.place.x >= 39.8mm`",
@@ -367,8 +367,8 @@ fn a_part_bigger_than_the_outline_in_every_turn_is_refused_before_placing() {
     assert_eq!(found.faults.len(), 1, "{found:?}");
     let text = &found.faults[0].text;
     for want in [
-        "the outline is 12.0 x 12.0 mm, which leaves 11.2 x 11.2 mm for a courtyard inside its 0.4 mm margin, and a part is bigger in every turn it may take: J1 (Header1x4)",
-        "J1 (Header1x4) has a courtyard of ",
+        "the outline is 12.0 x 12.0 mm, which leaves 11.2 x 11.2 mm for a courtyard inside its 0.4 mm margin, and a part is bigger in every turn it may take: `h1` (J1) (Header1x4)",
+        "`h1` (J1) (Header1x4) has a courtyard of ",
         "turned 90 degrees",
     ] {
         assert!(text.contains(want), "{want:?} is not in {text}");

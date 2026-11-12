@@ -773,6 +773,30 @@ pub fn run(
     layout: Option<&std::path::Path>,
     board: Option<&str>,
 ) -> Result<(Report, Scene), String> {
+    run_with(
+        name,
+        text,
+        loader,
+        catalogs,
+        libraries,
+        layout,
+        board,
+        crate::layout::DEFAULT_PLACE_SEEDS,
+    )
+}
+
+/// [`run`] with the number of seeds the placer tries (`place_seeds` in `netsmith.toml`).
+#[allow(clippy::too_many_arguments)]
+fn run_with(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+    seeds: u32,
+) -> Result<(Report, Scene), String> {
     placed(
         name,
         text,
@@ -781,6 +805,7 @@ pub fn run(
         libraries,
         layout,
         board,
+        seeds,
         |built, board| {
             let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
             let scene = scene(built, board);
@@ -826,6 +851,7 @@ pub fn scene_and_label(
         libraries,
         layout,
         board,
+        crate::layout::DEFAULT_PLACE_SEEDS,
         |built, board| (scene(built, board), built.label()),
     )
 }
@@ -843,12 +869,14 @@ pub struct Placed<'a> {
     pub layout: std::path::PathBuf,
     /// The board to pick, by name or label.
     pub board: Option<&'a str>,
+    /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`).
+    pub seeds: u32,
 }
 
 impl Placed<'_> {
     /// [`run`]: the report and the scene.
     pub fn run(&self) -> Result<(Report, Scene), String> {
-        run(
+        run_with(
             self.name,
             self.text,
             self.loader,
@@ -856,12 +884,13 @@ impl Placed<'_> {
             self.libraries,
             Some(&self.layout),
             self.board,
+            self.seeds,
         )
     }
 
     /// [`scene_and_label`]: the scene and the board's label.
     pub fn scene_and_label(&self) -> Result<(Scene, String), String> {
-        scene_and_label(
+        placed(
             self.name,
             self.text,
             self.loader,
@@ -869,6 +898,8 @@ impl Placed<'_> {
             self.libraries,
             Some(&self.layout),
             self.board,
+            self.seeds,
+            |built, board| (scene(built, board), built.label()),
         )
     }
 }
@@ -883,6 +914,7 @@ fn placed<T>(
     libraries: &crate::Libraries,
     layout: Option<&std::path::Path>,
     board: Option<&str>,
+    seeds: u32,
     then: impl FnOnce(&Built, &Board) -> T,
 ) -> Result<T, String> {
     let outcome = crate::outcome_with(name, text, loader, catalogs, Some(libraries))
@@ -921,15 +953,14 @@ fn placed<T>(
         Some(file) => crate::layout::read(file, &names).map_err(fail)?,
         None => None,
     };
-    let (board, _) = crate::layout::place(
+    let board = crate::layout::place(
         &built.design,
         layout.as_ref(),
         libraries,
         catalogs.constraints_warn(),
+        seeds,
     )
-    .map_err(|e| match e {
-        crate::layout::PlaceFailure::Board(e) => fail(e.to_string()),
-        crate::layout::PlaceFailure::Layout(e) => fail(e),
-    })?;
+    .map_err(|e| fail(e.message()))?
+    .board;
     Ok(then(built, &board))
 }

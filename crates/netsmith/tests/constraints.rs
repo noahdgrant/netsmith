@@ -208,7 +208,7 @@ fn a_part_locked_in_the_layout_file_against_a_requirement_is_refused_before_plac
     let e = made.expect_err("the lock breaks the requirement");
     assert!(
         e.contains("the requirements on where parts go cannot all be met")
-            && e.contains("J1 (`power_in`) is locked in the layout file at (30, 5) mm")
+            && e.contains("`power_in` (J1) is locked in the layout file at (30, 5) mm")
             && e.contains("allows 1.4 to 1.6 mm, and its left is 28.73 mm")
             && e.contains("allows 90 degrees, and it is turned 0")
             && e.contains("unlock it and let the placer move it, or change the requirement"),
@@ -229,7 +229,7 @@ fn requirements_that_cannot_be_met_together_say_which_and_with_what() {
     let (_dir, made) = fab("squeezed", &physical, "", &Catalogs::jlcpcb());
     let e = made.expect_err("the LED cannot fit between 10 and 10.5 mm");
     assert!(
-        e.contains("D1 (`led`) cannot meet its requirements")
+        e.contains("`led` (D1) cannot meet its requirements")
             && e.contains("led.place.left")
             && e.contains("at least 10 mm")
             && e.contains("at most 10.5 mm"),

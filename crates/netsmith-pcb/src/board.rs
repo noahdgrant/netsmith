@@ -316,6 +316,55 @@ impl Placed {
         })
     }
 
+    /// The largest area two parts share on one face, in mm2, with their rooms as
+    /// [`Self::rooms_overlap`] counts them (the courtyards as they lie; the pads grown by
+    /// `clearance` where a footprint draws its courtyard on one face only): what the
+    /// placement check gives with an overlap, for its size.
+    pub fn shared_area(
+        &self,
+        other: &Placed,
+        clearance: f64,
+        zones: &[crate::placement::HeightZone],
+    ) -> f64 {
+        let (court_a, court_b) = (self.courtyard(), other.courtyard());
+        let excused = crate::protrusion::excused(self, other, zones);
+        let share = |a: &Rect, b: &Rect| {
+            (a.max.x.min(b.max.x) - a.min.x.max(b.min.x)).max(0.0)
+                * (a.max.y.min(b.max.y) - a.min.y.max(b.min.y)).max(0.0)
+        };
+        [Side::Front, Side::Back]
+            .into_iter()
+            .map(|face| {
+                let plain = || {
+                    (
+                        self.room_on(face, clearance, court_a),
+                        other.room_on(face, clearance, court_b),
+                    )
+                };
+                let (mine, theirs) = match excused {
+                    Some(pins_first) => {
+                        let (protrusion, cover) = if pins_first {
+                            (self, other)
+                        } else {
+                            (other, self)
+                        };
+                        if face == cover.side {
+                            let (t, c) =
+                                crate::protrusion::excused_rooms(protrusion, cover, clearance);
+                            if pins_first { (t, c) } else { (c, t) }
+                        } else {
+                            plain()
+                        }
+                    }
+                    None => plain(),
+                };
+                mine.iter()
+                    .flat_map(|a| theirs.iter().map(move |b| share(a, b)))
+                    .fold(0.0, f64::max)
+            })
+            .fold(0.0, f64::max)
+    }
+
     /// Whether the part is surface mount or through hole.
     pub fn mount(&self) -> Mount {
         self.footprint.mount
@@ -502,6 +551,14 @@ pub enum PlacementProblem {
     Overlap {
         a: String,
         b: String,
+        /// The members' paths in the design (empty for a part that has none), which the
+        /// message names them by, with the designator beside.
+        a_path: String,
+        b_path: String,
+        /// The largest area the two share on one face, in mm2 (their rooms as the check
+        /// counts them: the courtyards, or the pads where a footprint draws its courtyard on
+        /// one face only). Zero where they only touch within the clearance.
+        area: f64,
         pins: Option<String>,
     },
     /// A part lies over the pins of a through-hole part that the design states are cut
@@ -531,19 +588,36 @@ pub enum PlacementProblem {
     },
     /// A pad is nearer the board edge than the rules allow, or outside it (a negative
     /// distance).
-    PadNearEdge { refdes: String, distance: f64 },
+    PadNearEdge {
+        refdes: String,
+        path: String,
+        distance: f64,
+    },
     /// A part's courtyard overlaps a cutout.
-    InCutout { refdes: String, cutout: String },
+    InCutout {
+        refdes: String,
+        path: String,
+        cutout: String,
+    },
     /// A pad is nearer the edge of a cutout than the rules allow.
     PadNearCutout {
         refdes: String,
+        path: String,
         cutout: String,
         distance: f64,
     },
     /// A part's courtyard overlaps a keepout that forbids parts.
-    InKeepout { refdes: String, keepout: String },
+    InKeepout {
+        refdes: String,
+        path: String,
+        keepout: String,
+    },
     /// A pad is inside a keepout that forbids tracks, so no track can reach it.
-    PadInKeepout { refdes: String, keepout: String },
+    PadInKeepout {
+        refdes: String,
+        path: String,
+        keepout: String,
+    },
     /// A part is taller than the height limit of a keepout it stands under (ADR 0045,
     /// "Height limits").
     TooTall {
@@ -567,6 +641,9 @@ pub enum PlacementProblem {
     /// process allows (`least`, for copper its clearance and for a hole its hole to hole).
     HoleTooNear {
         refdes: String,
+        /// The paths of the two parts in the design.
+        path: String,
+        other_path: String,
         /// The number of the pad whose hole it is, and of the pad of `other` it is near.
         pad: String,
         other: String,
@@ -578,12 +655,46 @@ pub enum PlacementProblem {
 }
 
 impl PlacementProblem {
+    /// The designators of the parts the problem is about (none for a cutout or keepout of
+    /// its own).
+    pub fn parts(&self) -> Vec<&str> {
+        match self {
+            Self::Overlap { a, b, .. } => vec![a, b],
+            Self::OverPins { holder, cover, .. } => vec![holder, cover],
+            Self::HoleTooNear { refdes, other, .. } => vec![refdes, other],
+            Self::OutsideOutline { refdes, .. }
+            | Self::PadNearEdge { refdes, .. }
+            | Self::InCutout { refdes, .. }
+            | Self::PadNearCutout { refdes, .. }
+            | Self::InKeepout { refdes, .. }
+            | Self::PadInKeepout { refdes, .. }
+            | Self::TooTall { refdes, .. } => vec![refdes],
+            Self::CutoutOutsideOutline { .. } | Self::NoPosition { .. } => Vec::new(),
+        }
+    }
+
+    /// By how much, where the problem has one measure to compare tries by: the area two
+    /// courtyards share, how far a courtyard is past an edge, how much too tall a part is.
+    /// Zero otherwise.
+    pub fn amount(&self) -> f64 {
+        match self {
+            Self::Overlap { area, .. } => *area,
+            Self::OutsideOutline { past, .. } => past.iter().map(|(_, by)| *by).sum(),
+            Self::TooTall { height, limit, .. } => height - limit,
+            Self::HoleTooNear {
+                distance, least, ..
+            } => (least - distance).max(0.0),
+            _ => 0.0,
+        }
+    }
+
     /// The finding for two parts whose rooms overlap: the plain overlap, with a hint when
     /// the pins of a through-hole part come out under the other and are not stated as cut
     /// short, or, when they are, why the trim does not excuse it (ADR 0045 section 15).
     pub(crate) fn overlap_of(
         a: &Placed,
         b: &Placed,
+        clearance: f64,
         zones: &[crate::placement::HeightZone],
     ) -> PlacementProblem {
         match crate::protrusion::relation(a, b, zones) {
@@ -611,9 +722,22 @@ impl PlacementProblem {
             _ => PlacementProblem::Overlap {
                 a: a.refdes.clone(),
                 b: b.refdes.clone(),
+                a_path: a.path.clone(),
+                b_path: b.path.clone(),
+                area: a.shared_area(b, clearance, zones),
                 pins: crate::protrusion::unstated_under(a, b).map(|p| p.path.clone()),
             },
         }
+    }
+}
+
+/// A member of the design as a message names it: its path, with the reference designator
+/// beside it (`` `stage.c37` (C37) ``), or the designator alone for a part with no path.
+pub fn member(path: &str, refdes: &str) -> String {
+    if path.is_empty() || path == refdes {
+        refdes.to_string()
+    } else {
+        format!("`{path}` ({refdes})")
     }
 }
 
@@ -650,9 +774,8 @@ impl std::fmt::Display for HeightUnchecked {
         match &self.standard {
             None => write!(
                 f,
-                "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
-                self.refdes,
-                self.path,
+                "height of {} is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm and the part states no height (say `.{}.height &= 8mm`, with the real number)",
+                member(&self.path, &self.refdes),
                 self.keepout,
                 self.side.word(),
                 self.limit,
@@ -660,9 +783,8 @@ impl std::fmt::Display for HeightUnchecked {
             ),
             Some(s) => write!(
                 f,
-                "height of {} (`{}`) is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
-                self.refdes,
-                self.path,
+                "height of {} is unchecked: the keepout `{}` limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
+                member(&self.path, &self.refdes),
                 self.keepout,
                 self.side.word(),
                 self.limit,
@@ -691,9 +813,8 @@ impl std::fmt::Display for StandardPass {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} (`{}`) fits the {:.2} mm the keepout `{}` allows on the {} face by its package standard ({}, at most {:.2} mm), not by a height of its own: the design states none and its catalog row has none",
-            self.refdes,
-            self.path,
+            "{} fits the {:.2} mm the keepout `{}` allows on the {} face by its package standard ({}, at most {:.2} mm), not by a height of its own: the design states none and its catalog row has none",
+            member(&self.path, &self.refdes),
             self.limit,
             self.keepout,
             self.side.word(),
@@ -769,10 +890,10 @@ impl Trim {
             .iter()
             .map(|(r, p)| {
                 format!(
-                    "no height limit covers {r} (`{p}`) on the {} face where it lies over the pins of {} (`{}`) that protrude {} mm, so the stack of that protrusion and its height was compared with none",
+                    "no height limit covers {} on the {} face where it lies over the pins of {} that protrude {} mm, so the stack of that protrusion and its height was compared with none",
+                    member(p, r),
                     self.face.word(),
-                    self.refdes,
-                    self.path,
+                    member(&self.path, &self.refdes),
                     crate::protrusion::mm(self.length)
                 )
             })
@@ -784,6 +905,8 @@ impl Trim {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hang {
     pub refdes: String,
+    /// The part's path in the design.
+    pub path: String,
     pub edge: Edge,
     /// How far the courtyard is past the edge, in mm.
     pub by: f64,
@@ -796,7 +919,7 @@ impl std::fmt::Display for Hang {
         write!(
             f,
             "{} hangs over the {} edge: its courtyard is {:.2} mm past it ({})",
-            self.refdes,
+            member(&self.path, &self.refdes),
             self.edge.word(),
             self.by,
             self.stated
@@ -827,7 +950,10 @@ pub(crate) fn outside_text(
     inexact: &[Edge],
     body_inside: bool,
 ) -> String {
-    let mut out = format!("{refdes} is not wholly inside the board outline");
+    let mut out = format!(
+        "{} is not wholly inside the board outline",
+        member(path, refdes)
+    );
     let Some(&(edge, _)) = past.first() else {
         return format!(
             "{out}: a corner of its courtyard is outside a rounded corner of the outline"
@@ -878,8 +1004,23 @@ pub(crate) fn outside_text(
 impl std::fmt::Display for PlacementProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Overlap { a, b, pins } => {
-                write!(f, "the courtyards of {a} and {b} overlap")?;
+            Self::Overlap {
+                a,
+                b,
+                a_path,
+                b_path,
+                area,
+                pins,
+            } => {
+                write!(
+                    f,
+                    "the courtyards of {} and {} overlap",
+                    member(a_path, a),
+                    member(b_path, b)
+                )?;
+                if *area > 0.005 {
+                    write!(f, " by {area:.2} mm2")?;
+                }
                 match pins {
                     Some(path) => write!(
                         f,
@@ -899,7 +1040,9 @@ impl std::fmt::Display for PlacementProblem {
                 why,
             } => write!(
                 f,
-                "{cover} (`{cover_path}`) lies over the pins of {holder} (`{pin_path}`), whose pins protrude {} mm{}, and that is not allowed: {}",
+                "{} lies over the pins of {}, whose pins protrude {} mm{}, and that is not allowed: {}",
+                member(cover_path, cover),
+                member(pin_path, holder),
                 crate::protrusion::mm(*length),
                 if source.is_empty() {
                     String::new()
@@ -919,9 +1062,14 @@ impl std::fmt::Display for PlacementProblem {
                 "{}",
                 outside_text(refdes, path, past, stated, by, &[], false)
             ),
-            Self::InKeepout { refdes, keepout } => write!(
+            Self::InKeepout {
+                refdes,
+                path,
+                keepout,
+            } => write!(
                 f,
-                "{refdes} overlaps the keepout `{keepout}`, which forbids parts"
+                "{} overlaps the keepout `{keepout}`, which forbids parts",
+                member(path, refdes)
             ),
             Self::TooTall {
                 refdes,
@@ -933,26 +1081,38 @@ impl std::fmt::Display for PlacementProblem {
                 at,
             } => write!(
                 f,
-                "{refdes} (`{path}`) stands {height:.2} mm tall on the {} face, and the keepout `{keepout}` allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
+                "{} stands {height:.2} mm tall on the {} face, and the keepout `{keepout}` allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
+                member(path, refdes),
                 side.word(),
                 height - limit,
                 at.0,
                 at.1
             ),
-            Self::PadInKeepout { refdes, keepout } => write!(
+            Self::PadInKeepout {
+                refdes,
+                path,
+                keepout,
+            } => write!(
                 f,
-                "a pad of {refdes} is inside the keepout `{keepout}`, which forbids tracks, so none can reach it"
+                "a pad of {} is inside the keepout `{keepout}`, which forbids tracks, so none can reach it",
+                member(path, refdes)
             ),
-            Self::InCutout { refdes, cutout } => {
-                write!(f, "{refdes} overlaps the cutout `{cutout}`")
+            Self::InCutout {
+                refdes,
+                path,
+                cutout,
+            } => {
+                write!(f, "{} overlaps the cutout `{cutout}`", member(path, refdes))
             }
             Self::PadNearCutout {
                 refdes,
+                path,
                 cutout,
                 distance,
             } => write!(
                 f,
-                "a pad of {refdes} is {distance:.2} mm from the edge of the cutout `{cutout}`"
+                "a pad of {} is {distance:.2} mm from the edge of the cutout `{cutout}`",
+                member(path, refdes)
             ),
             Self::CutoutOutsideOutline { cutout } => {
                 write!(
@@ -964,21 +1124,33 @@ impl std::fmt::Display for PlacementProblem {
                 f,
                 "the {what} `{name}` has no position: say `.x` and `.y` in the design, or give it one in the layout file"
             ),
-            Self::PadNearEdge { refdes, distance } if *distance < 0.0 => {
+            Self::PadNearEdge {
+                refdes,
+                path,
+                distance,
+            } if *distance < 0.0 => {
                 write!(
                     f,
-                    "a pad of {refdes} is {:.2} mm outside the board edge",
+                    "a pad of {} is {:.2} mm outside the board edge",
+                    member(path, refdes),
                     -distance
                 )
             }
-            Self::PadNearEdge { refdes, distance } => {
+            Self::PadNearEdge {
+                refdes,
+                path,
+                distance,
+            } => {
                 write!(
                     f,
-                    "a pad of {refdes} is {distance:.2} mm from the board edge"
+                    "a pad of {} is {distance:.2} mm from the board edge",
+                    member(path, refdes)
                 )
             }
             Self::HoleTooNear {
                 refdes,
+                path,
+                other_path,
                 pad,
                 other,
                 other_pad,
@@ -992,9 +1164,11 @@ impl std::fmt::Display for PlacementProblem {
                 };
                 write!(
                     f,
-                    "a hole of {refdes}{} is {distance:.2} mm from {what} of {other}{}, under the \
+                    "a hole of {}{} is {distance:.2} mm from {what} of {}{}, under the \
                      process's {rule} of {least} mm",
+                    member(path, refdes),
                     pad_text(pad),
+                    member(other_path, other),
                     pad_text(other_pad)
                 )
             }
@@ -1165,6 +1339,9 @@ pub struct Board {
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.
     pub overhang: BTreeMap<String, Overhang>,
+    /// The parts whose place the design's requirements pin, by reference designator (ADR
+    /// 0045): the placer did not move them, whatever its seed.
+    pub pinned: std::collections::BTreeSet<String>,
 }
 
 impl Board {
@@ -1374,6 +1551,7 @@ impl Board {
         let mut overhang = placement.overhang.clone();
         overhang.extend(plan.overhang);
         placement.overhang = overhang.clone();
+        let pinned: std::collections::BTreeSet<String> = plan.fixed.keys().cloned().collect();
         placement.fixed.extend(plan.fixed);
         placement.wants = plan.wants;
         placement.offsets = plan.offsets;
@@ -1447,6 +1625,7 @@ impl Board {
             nets,
             planes,
             overhang,
+            pinned,
         })
     }
 
@@ -1767,6 +1946,8 @@ impl Board {
                 if distance < least - 1e-9 {
                     problems.push(PlacementProblem::HoleTooNear {
                         refdes: a.refdes.clone(),
+                        path: a.path.clone(),
+                        other_path: b.path.clone(),
                         pad: pad.number.clone(),
                         other: b.refdes.clone(),
                         other_pad: other_pad.to_string(),
@@ -1826,6 +2007,7 @@ impl Board {
                 if may.has(edge) {
                     found.push(Hang {
                         refdes: part.refdes.clone(),
+                        path: part.path.clone(),
                         edge,
                         by,
                         stated: stated.by(),
@@ -2088,6 +2270,7 @@ impl Board {
                 if k.parts && rooms[i].overlaps(&k.rect) {
                     problems.push(PlacementProblem::InKeepout {
                         refdes: a.refdes.clone(),
+                        path: a.path.clone(),
                         keepout: k.name.clone(),
                     });
                 }
@@ -2100,6 +2283,7 @@ impl Board {
                 if trapped {
                     problems.push(PlacementProblem::PadInKeepout {
                         refdes: a.refdes.clone(),
+                        path: a.path.clone(),
                         keepout: k.name.clone(),
                     });
                 }
@@ -2134,6 +2318,7 @@ impl Board {
                 if rooms[i].overlaps(&hole.rect) {
                     problems.push(PlacementProblem::InCutout {
                         refdes: a.refdes.clone(),
+                        path: a.path.clone(),
                         cutout: cutout.name.clone(),
                     });
                 }
@@ -2147,6 +2332,7 @@ impl Board {
                 if nearest < self.rules.copper_to_edge - 1e-9 && !rooms[i].overlaps(&hole.rect) {
                     problems.push(PlacementProblem::PadNearCutout {
                         refdes: a.refdes.clone(),
+                        path: a.path.clone(),
                         cutout: cutout.name.clone(),
                         distance: nearest,
                     });
@@ -2162,6 +2348,7 @@ impl Board {
             if nearest < self.rules.copper_to_edge - 1e-9 {
                 problems.push(PlacementProblem::PadNearEdge {
                     refdes: a.refdes.clone(),
+                    path: a.path.clone(),
                     distance: nearest,
                 });
             }
@@ -2169,7 +2356,12 @@ impl Board {
                 // Parts on opposite faces may share the board's area, unless one has a hole
                 // through the board that takes room there (`Placed::room_on`).
                 if a.rooms_overlap(rooms[i], b, rooms[j], self.rules.clearance, &zones) {
-                    problems.push(PlacementProblem::overlap_of(a, b, &zones));
+                    problems.push(PlacementProblem::overlap_of(
+                        a,
+                        b,
+                        self.rules.clearance,
+                        &zones,
+                    ));
                 }
                 self.check_holes(a, b, true, &mut problems);
                 self.check_holes(b, a, false, &mut problems);
@@ -2197,6 +2389,8 @@ pub struct Unplaced {
     pub planes: Vec<Plane>,
     /// The parts that may hang over an edge, as [`Board::overhang`].
     pub overhang: BTreeMap<String, Overhang>,
+    /// The parts the requirements pin, as [`Board::pinned`].
+    pub pinned: std::collections::BTreeSet<String>,
 }
 
 impl Unplaced {
@@ -2209,6 +2403,7 @@ impl Unplaced {
             nets,
             planes,
             overhang,
+            pinned,
             ..
         } = self;
         let cutouts = design
@@ -2270,6 +2465,7 @@ impl Unplaced {
             net_widths: design.features.net_widths.clone(),
             net_currents: design.features.net_currents.clone(),
             overhang,
+            pinned,
         }
     }
 }
@@ -2573,15 +2769,10 @@ pub(crate) mod tests {
             .find(|p| p.refdes == "R1")
             .unwrap()
             .side = Side::Front;
-        assert!(
-            board
-                .check_placement()
-                .contains(&PlacementProblem::Overlap {
-                    a: "D1".into(),
-                    b: "R1".into(),
-                    pins: None,
-                })
-        );
+        assert!(board.check_placement().iter().any(|p| matches!(
+            p,
+            PlacementProblem::Overlap { a, b, pins: None, .. } if a == "D1" && b == "R1"
+        )));
         // A header has holes through the board, so a part on the other face under it clashes.
         let j1 = board.part("J1").unwrap().at;
         let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
@@ -2593,6 +2784,156 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn an_overlap_names_both_members_by_path_with_the_designator_and_by_how_much() {
+        let mut board = placed(&led_design());
+        for p in &mut board.parts {
+            p.path = match p.refdes.as_str() {
+                "D1" => "status.led".into(),
+                "R1" => "status.limit".into(),
+                _ => String::new(),
+            };
+        }
+        let r1 = board.part("R1").unwrap().at;
+        let d1 = board.parts.iter_mut().find(|p| p.refdes == "D1").unwrap();
+        d1.at = r1;
+        let (a, b) = (board.part("D1").unwrap(), board.part("R1").unwrap());
+        let (ca, cb) = (a.courtyard(), b.courtyard());
+        let shared = (ca.max.x.min(cb.max.x) - ca.min.x.max(cb.min.x))
+            * (ca.max.y.min(cb.max.y) - ca.min.y.max(cb.min.y));
+        let text: Vec<String> = board
+            .check_placement()
+            .iter()
+            .filter(|p| matches!(p, PlacementProblem::Overlap { .. }))
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(
+            text,
+            vec![format!(
+                "the courtyards of `status.led` (D1) and `status.limit` (R1) overlap by {shared:.2} mm2"
+            )]
+        );
+        // A part with no path is named by its designator alone.
+        assert_eq!(member("", "J1"), "J1");
+        assert_eq!(member("conn", "J1"), "`conn` (J1)");
+    }
+
+    #[test]
+    fn every_placement_check_message_names_the_member_by_path_with_the_designator() {
+        let text = |p: PlacementProblem| p.to_string();
+        let (r, path) = (|| "R3".to_string(), || "stage.r3".to_string());
+        assert_eq!(
+            text(PlacementProblem::InKeepout {
+                refdes: r(),
+                path: path(),
+                keepout: "lid".into()
+            }),
+            "`stage.r3` (R3) overlaps the keepout `lid`, which forbids parts"
+        );
+        assert_eq!(
+            text(PlacementProblem::PadInKeepout {
+                refdes: r(),
+                path: path(),
+                keepout: "lid".into()
+            }),
+            "a pad of `stage.r3` (R3) is inside the keepout `lid`, which forbids tracks, so none can reach it"
+        );
+        assert_eq!(
+            text(PlacementProblem::InCutout {
+                refdes: r(),
+                path: path(),
+                cutout: "slot".into()
+            }),
+            "`stage.r3` (R3) overlaps the cutout `slot`"
+        );
+        assert_eq!(
+            text(PlacementProblem::PadNearCutout {
+                refdes: r(),
+                path: path(),
+                cutout: "slot".into(),
+                distance: 0.12
+            }),
+            "a pad of `stage.r3` (R3) is 0.12 mm from the edge of the cutout `slot`"
+        );
+        assert_eq!(
+            text(PlacementProblem::PadNearEdge {
+                refdes: r(),
+                path: path(),
+                distance: 0.12
+            }),
+            "a pad of `stage.r3` (R3) is 0.12 mm from the board edge"
+        );
+        assert_eq!(
+            text(PlacementProblem::PadNearEdge {
+                refdes: r(),
+                path: path(),
+                distance: -0.5
+            }),
+            "a pad of `stage.r3` (R3) is 0.50 mm outside the board edge"
+        );
+        assert_eq!(
+            text(PlacementProblem::HoleTooNear {
+                refdes: "J1".into(),
+                path: "conn".into(),
+                other_path: path(),
+                pad: "1".into(),
+                other: r(),
+                other_pad: "2".into(),
+                to: HoleNeighbour::Copper,
+                distance: 0.1,
+                least: 0.2
+            }),
+            "a hole of `conn` (J1) (pad 1) is 0.10 mm from the copper of `stage.r3` (R3) (pad 2), under the process's clearance of 0.2 mm"
+        );
+        assert_eq!(
+            text(PlacementProblem::TooTall {
+                refdes: r(),
+                path: path(),
+                keepout: "lid".into(),
+                height: 3.0,
+                limit: 2.0,
+                side: Side::Front,
+                at: (1.0, 2.0)
+            }),
+            "`stage.r3` (R3) stands 3.00 mm tall on the top face, and the keepout `lid` allows 2.00 mm there (1.00 mm too tall), where its body is, around (1.0, 2.0) mm from the board's top left corner"
+        );
+        assert!(
+            text(PlacementProblem::OutsideOutline {
+                refdes: r(),
+                path: path(),
+                past: vec![(Edge::Left, 0.5)],
+                stated: Vec::new(),
+                by: String::new()
+            })
+            .starts_with("`stage.r3` (R3) is not wholly inside the board outline: its courtyard is 0.50 mm past the left edge")
+        );
+        assert_eq!(
+            HeightUnchecked {
+                refdes: r(),
+                path: path(),
+                keepout: "lid".into(),
+                limit: 2.0,
+                side: Side::Front,
+                standard: None,
+            }
+            .to_string(),
+            "height of `stage.r3` (R3) is unchecked: the keepout `lid` limits parts on the top face to 2.00 mm and the part states no height (say `.stage.r3.height &= 8mm`, with the real number)"
+        );
+        assert!(
+            Hang {
+                refdes: r(),
+                path: path(),
+                edge: Edge::Left,
+                by: 0.5,
+                stated: "the requirement".into()
+            }
+            .to_string()
+            .starts_with(
+                "`stage.r3` (R3) hangs over the left edge: its courtyard is 0.50 mm past it"
+            )
+        );
+    }
+
+    #[test]
     fn the_check_finds_overlaps_and_parts_off_the_board() {
         let mut board = placed(&led_design());
         let r1 = board.part("R1").unwrap().at;
@@ -2601,11 +2942,10 @@ pub(crate) mod tests {
         let j1 = board.parts.iter_mut().find(|p| p.refdes == "J1").unwrap();
         j1.at = Pt::new(1000.0, 0.0);
         let problems = board.check_placement();
-        assert!(problems.contains(&PlacementProblem::Overlap {
-            a: "D1".into(),
-            b: "R1".into(),
-            pins: None,
-        }));
+        assert!(problems.iter().any(|p| matches!(
+            p,
+            PlacementProblem::Overlap { a, b, pins: None, .. } if a == "D1" && b == "R1"
+        )));
         assert!(problems.iter().any(|p| matches!(
             p,
             PlacementProblem::OutsideOutline { refdes, .. } if refdes == "J1"
@@ -2760,7 +3100,9 @@ pub(crate) mod tests {
         let mut found = false;
         for problem in &problems {
             match problem {
-                PlacementProblem::PadNearEdge { refdes, distance } => {
+                PlacementProblem::PadNearEdge {
+                    refdes, distance, ..
+                } => {
                     assert!(
                         (distance - 0.1).abs() < 1e-9,
                         "{refdes} is {distance} mm off"

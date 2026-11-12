@@ -244,11 +244,10 @@ fn without_a_protrusion_the_same_board_is_refused_as_before_and_the_hint_names_t
         Err(e) => vec![e.to_string()],
     };
     let text = found.join("\n");
-    assert!(
-        text.contains("the courtyards of J1 and U1 overlap") || text.contains("put on top"),
-        "{text}"
-    );
-    if text.contains("the courtyards of J1 and U1 overlap") {
+    let overlap =
+        text.contains("the courtyards of `row` (J1) and ") && text.contains("(U1) overlap");
+    assert!(overlap || text.contains("put on top"), "{text}");
+    if overlap {
         assert!(
             text.contains("`.row.pin_protrusion &= 0.2mm`"),
             "the hint names the member: {text}"
@@ -324,7 +323,7 @@ fn f6_with_no_height_limit_there_the_overlap_is_excused_and_the_note_says_nothin
     assert_eq!(findings(&board), Vec::<String>::new());
     let unchecked = board.trims()[0].unchecked();
     assert_eq!(unchecked.len(), 1, "{unchecked:?}");
-    assert!(unchecked[0].contains("no height limit covers U1"));
+    assert!(unchecked[0].contains("no height limit covers `cell` (U1)"));
 }
 
 #[test]

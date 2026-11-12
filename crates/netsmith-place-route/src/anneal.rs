@@ -2161,7 +2161,7 @@ impl<'a> Engine<'a> {
 
     /// Which hard rules the parts break as they are now, counted for the message of a run
     /// that found no arrangement that breaks none.
-    fn ended(&self, names: &[String]) -> Ended {
+    fn ended(&self, names: &[String], shown: &[String]) -> Ended {
         let mut ended = Ended::default();
         for i in 0..self.models.len() {
             if !self.models[i].fixed && self.single(i).hard > HARD_EPS {
@@ -2204,15 +2204,15 @@ impl<'a> Engine<'a> {
                 }
             }
         }
-        self.name_carried(names, &mut ended);
+        self.name_carried(names, shown, &mut ended);
         for (k, l) in self.links.iter().enumerate() {
             let miss = self.link_miss(k);
             if miss > LINK_EPS {
                 ended.relations.push(format!(
                     "{}: {} minus {} is {} mm along {}, and it allows {} ({} mm over)",
                     l.label,
-                    names[l.b],
-                    names[l.a],
+                    shown[l.b],
+                    shown[l.a],
                     mm(self.link_value(k)),
                     if l.axis == 0 { "x" } else { "y" },
                     window_text(l.lo, l.hi),
@@ -2233,7 +2233,9 @@ impl<'a> Engine<'a> {
 
     /// The parts that stand in a keepout another part carries, added to the parts that are
     /// outside, each with the keepout, its carrier and where it is.
-    fn name_carried(&self, names: &[String], ended: &mut Ended) {
+    // The indices name the models, the designators and the names shown together.
+    #[allow(clippy::needless_range_loop)]
+    fn name_carried(&self, names: &[String], shown: &[String], ended: &mut Ended) {
         for c in 0..self.models.len() {
             for j in 0..self.models.len() {
                 if self.models[c].fixed && self.models[j].fixed {
@@ -2248,7 +2250,7 @@ impl<'a> Engine<'a> {
                     let why = format!(
                         "{} mm into the keepout `{zone}` that {} carries, at ({:.1}, {:.1})",
                         short(depth),
-                        names[c],
+                        shown[c],
                         at.x - region.min.x,
                         at.y - region.min.y
                     );
@@ -2643,6 +2645,10 @@ impl<'a> Engine<'a> {
 /// the result into `parts` (`at` and `rotation`). `effort` scales the number of moves tried.
 pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome {
     let names: Vec<String> = parts.iter().map(|part| part.refdes.clone()).collect();
+    let shown: Vec<String> = parts
+        .iter()
+        .map(|part| netsmith_pcb::board::member(&part.path, &part.refdes))
+        .collect();
     let mut e = Engine::new(parts, p);
     let mut rng = Rng::new(p.seed);
     let all = e.all();
@@ -2778,7 +2784,12 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
     let ended = if feasible {
         Ended::default()
     } else {
-        e.ended(&names)
+        let mut ended = e.ended(&names, &shown);
+        ended.paths = parts
+            .iter()
+            .map(|part| (part.refdes.clone(), part.path.clone()))
+            .collect();
+        ended
     };
     // Write the poses back.
     for (i, part) in parts.iter_mut().enumerate() {

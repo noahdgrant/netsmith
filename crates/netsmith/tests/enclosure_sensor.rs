@@ -86,7 +86,7 @@ fn the_enclosure_sensor_example_meets_every_requirement_and_passes_the_design_ru
     }
     // The plug's overhang is stated, so it is a warning and not an error.
     assert!(
-        notes.contains("J2 hangs over the left edge"),
+        notes.contains("`plug` (J2) hangs over the left edge"),
         "the stated overhang of the sensor plug: {notes}"
     );
     // The parts of the board: about fifty, with the plug and its twelve test pads among them.

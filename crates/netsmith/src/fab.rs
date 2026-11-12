@@ -179,6 +179,26 @@ pub struct FabOptions {
     /// (ADR 0108): a path outside the project stops `fab`, a file that is not there is a
     /// warning. `None` finds none, and every part is drawn with its generated shape.
     pub models: Option<crate::models::Places>,
+    /// How many seeds the placer tries for a board, from the layout file's (`place_seeds` in
+    /// `netsmith.toml`, issue #458; [`crate::layout::DEFAULT_PLACE_SEEDS`] when it does not
+    /// say).
+    pub place_seeds: u32,
+    /// Whether a seed that places the board and is not the layout file's may be written to the
+    /// file (issue #458): `fab` writes it; an order and the editor's release never change a
+    /// choice by themselves, and stop instead.
+    pub seed_writes: SeedWrites,
+}
+
+/// What a run may do with a seed that places the board and is not the layout file's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SeedWrites {
+    /// Write it to the layout file (`fab`).
+    #[default]
+    Write,
+    /// Stop with an error that says the seed: an order (`fab --order`) is a release.
+    Order,
+    /// Stop with an error that says the seed: the editor's release is a release.
+    EditorRelease,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -280,6 +300,8 @@ impl Default for FabOptions {
             save_placed: false,
             step: true,
             models: None,
+            place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
+            seed_writes: SeedWrites::Write,
         }
     }
 }
@@ -568,7 +590,7 @@ fn requirement_failure(
     for p in &board.parts {
         text.push_str(&format!(
             "{} ({}) {} at ({:.2}, {:.2}) turned {}\n",
-            p.refdes,
+            netsmith_pcb::board::member(&p.path, &p.refdes),
             p.kind,
             p.side.word(),
             p.at.x - board.outline.min.x,
@@ -591,6 +613,59 @@ fn requirement_failure(
             "{report}\n  (the list could not be written to {}: {err})",
             file.display()
         ),
+    }
+}
+
+/// What a seed after the layout file's that placed the board does (issue #458): it is said,
+/// with the seed it replaces (stale, if the file states it) and what blocked each seed tried,
+/// and written to the layout file as the board's seed, so that the next run starts from it.
+/// With `--locked` nothing may be written, so a seed that changed is an error, as a pick lock
+/// that differs is. A run with no layout file to name (`FabOptions::layout`) only says it.
+fn settle_seed(
+    (label, board): (&str, &str),
+    seeds: &crate::layout::Seeds,
+    layout: &LayoutFile,
+    options: &FabOptions,
+    say: &dyn Fn(String),
+) -> Result<(), String> {
+    let fail = |what: String| format!("error: {label}: {what}\n");
+    let file = options
+        .layout
+        .as_ref()
+        .map(|f| f.display().to_string())
+        .or_else(|| layout.as_ref().map(|(_, name)| name.clone()));
+    let name = file
+        .clone()
+        .unwrap_or_else(|| "the layout file".to_string());
+    let Some(note) = seeds.note(&name) else {
+        return Ok(());
+    };
+    let locked = options.lock.as_ref().is_some_and(|l| l.locked);
+    let release = match options.seed_writes {
+        SeedWrites::Write => None,
+        SeedWrites::Order => Some("an order"),
+        SeedWrites::EditorRelease => Some("a release from the editor"),
+    };
+    if let (Some(what), Some(_)) = (release, &options.layout) {
+        return Err(fail(format!(
+            "{note}, and {what} is a release, which never changes a choice by itself: run `netsmith fab` on the source to write `seed = {}` to {name}, review it and commit it, then make the release again",
+            seeds.used
+        )));
+    }
+    match (&options.layout, locked) {
+        (Some(_), true) => Err(fail(format!(
+            "{note}, and --locked says {name} must not be written: run without --locked to write `seed = {}` to it, and commit it",
+            seeds.used
+        ))),
+        (Some(path), false) => {
+            crate::layout::write_seed(path, board, seeds.used).map_err(fail)?;
+            say(format!("{label}: note: {note}, and is written to {name}"));
+            Ok(())
+        }
+        (None, _) => {
+            say(format!("{label}: note: {note}"));
+            Ok(())
+        }
     }
 }
 
@@ -688,21 +763,39 @@ fn fab_board(
             built.label(),
             built.design.parts.len()
         ));
-        let (mut board, placement) = timings::stage("fab.place", &label, || {
+        let placing = timings::stage("fab.place", &label, || {
             crate::layout::place(
                 &built.design,
                 layout.as_ref(),
                 libraries,
                 catalogs.constraints_warn(),
+                options.place_seeds,
             )
         })
         .map_err(|e| match e {
             crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::DoesNotFit(e)) => {
                 fail(placement_failure(&e, out))
             }
+            crate::layout::PlaceFailure::Unplaced { error, seeds } => fail(format!(
+                "{}\n{}",
+                seeds.report(),
+                placement_failure(&error, out)
+            )),
             crate::layout::PlaceFailure::Board(e) => fail(e.to_string()),
             crate::layout::PlaceFailure::Layout(e) => fail(e),
         })?;
+        let crate::layout::Placing {
+            mut board,
+            options: placement,
+            seeds,
+        } = placing;
+        settle_seed(
+            (label.as_str(), name.as_str()),
+            &seeds,
+            layout,
+            options,
+            say,
+        )?;
         let problems: Vec<String> = board
             .check_placement()
             .iter()
@@ -712,8 +805,11 @@ fn fab_board(
         // above are its symptoms: say first which lines are not met and which cannot all hold,
         // and keep the same list in `placement-failure.txt` (ADR 0045).
         let unmet = board.explain_requirements(&built.design, &placement);
+        // No seed placed the board: say so first, with what blocks the closest try, which is
+        // the board whose faults follow (issue #458).
+        let no_seed = (!seeds.placed).then(|| fail(seeds.report()));
         if !problems.is_empty() {
-            let mut errors = String::new();
+            let mut errors = no_seed.clone().unwrap_or_default();
             if let Some(report) = &unmet {
                 errors.push_str(&fail(requirement_failure(report, &problems, &board, out)));
             }
@@ -728,7 +824,9 @@ fn fab_board(
             && let Some(report) = unmet.filter(|r| !r.unmet.is_empty())
             && !catalogs.constraints_warn()
         {
-            return Err(fail(requirement_failure(&report, &[], &board, out)));
+            return Err(
+                no_seed.unwrap_or_default() + &fail(requirement_failure(&report, &[], &board, out))
+            );
         }
         for hang in board.hangs() {
             say(format!("{}: warning: {hang}", built.label()));
@@ -766,10 +864,11 @@ fn fab_board(
             }
         }
         say(format!(
-            "{}: placed on a {} by {} mm board",
+            "{}: placed on a {} by {} mm board with seed {}",
             built.label(),
             board.outline.width(),
-            board.outline.height()
+            board.outline.height(),
+            seeds.used
         ));
         // The board as placed, for the pin optimizer if the router leaves connections.
         let placed = options.pins.is_some().then(|| board.clone());
@@ -2026,6 +2125,118 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
 
 #[cfg(test)]
 mod tests {
+
+    fn moved_seed(stated: bool) -> crate::layout::Seeds {
+        crate::layout::Seeds {
+            first: 3,
+            stated,
+            limit: 8,
+            used: 4,
+            placed: true,
+            missed: vec![(
+                3,
+                "the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2".into(),
+            )],
+            blockers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_seed_that_moved_is_written_to_the_layout_file_and_said() {
+        let dir = netsmith_kicad::testlib::TempDir::new("settle-seed");
+        let file = dir.path().join("main.pcb.toml");
+        std::fs::write(&file, "version = 1\n\n[Board]\nseed = 3\n").unwrap();
+        let options = FabOptions {
+            layout: Some(file.clone()),
+            ..FabOptions::default()
+        };
+        let said = std::cell::RefCell::new(Vec::new());
+        settle_seed(
+            ("Board", "Board"),
+            &moved_seed(true),
+            &None,
+            &options,
+            &|m| said.borrow_mut().push(m),
+        )
+        .unwrap();
+        let name = file.display();
+        assert_eq!(
+            said.into_inner(),
+            vec![format!(
+                "Board: note: the seed 3 that {name} states no longer places the board, so it is stale: the placer tried seed 3 (the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2); seed 4 places it, and is written to {name}"
+            )]
+        );
+        let layout =
+            netsmith_pcb::Layout::parse(&std::fs::read_to_string(&file).unwrap(), "f").unwrap();
+        assert_eq!(layout.boards["Board"].seed, Some(4));
+    }
+
+    #[test]
+    fn an_order_or_the_editors_release_stops_on_a_seed_that_moved_and_writes_nothing() {
+        let dir = netsmith_kicad::testlib::TempDir::new("settle-seed-order");
+        let file = dir.path().join("main.pcb.toml");
+        std::fs::write(&file, "version = 1\n\n[Board]\nseed = 3\n").unwrap();
+        let name = file.display();
+        for (writes, what) in [
+            (SeedWrites::Order, "an order"),
+            (SeedWrites::EditorRelease, "a release from the editor"),
+        ] {
+            let options = FabOptions {
+                layout: Some(file.clone()),
+                seed_writes: writes,
+                ..FabOptions::default()
+            };
+            let e = settle_seed(
+                ("Board", "Board"),
+                &moved_seed(true),
+                &None,
+                &options,
+                &|_| {},
+            )
+            .unwrap_err();
+            assert_eq!(
+                e,
+                format!(
+                    "error: Board: the seed 3 that {name} states no longer places the board, so it is stale: the placer tried seed 3 (the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2); seed 4 places it, and {what} is a release, which never changes a choice by itself: run `netsmith fab` on the source to write `seed = 4` to {name}, review it and commit it, then make the release again\n"
+                )
+            );
+            assert_eq!(
+                std::fs::read_to_string(&file).unwrap(),
+                "version = 1\n\n[Board]\nseed = 3\n"
+            );
+        }
+    }
+
+    #[test]
+    fn with_locked_a_seed_that_moved_is_an_error_and_nothing_is_written() {
+        let dir = netsmith_kicad::testlib::TempDir::new("settle-seed-locked");
+        let file = dir.path().join("main.pcb.toml");
+        let options = FabOptions {
+            layout: Some(file.clone()),
+            lock: Some(crate::pick_lock::Use {
+                file: dir.path().join("main.lock.toml"),
+                locked: true,
+                picks: None,
+            }),
+            ..FabOptions::default()
+        };
+        let e = settle_seed(
+            ("Board", "Board"),
+            &moved_seed(false),
+            &None,
+            &options,
+            &|_| {},
+        )
+        .unwrap_err();
+        let name = file.display();
+        assert_eq!(
+            e,
+            format!(
+                "error: Board: seed 3 (the default: {name} states no seed) does not place the board: the placer tried seed 3 (the courtyards of `usb` (J2) and `c37` (C37) overlap by 0.42 mm2); seed 4 places it, and --locked says {name} must not be written: run without --locked to write `seed = 4` to it, and commit it\n"
+            )
+        );
+        assert!(!file.exists());
+    }
 
     #[test]
     fn the_remake_gets_what_is_left_of_the_budget_or_a_stated_floor() {

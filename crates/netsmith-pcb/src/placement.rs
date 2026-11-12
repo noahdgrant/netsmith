@@ -192,6 +192,8 @@ pub struct DoesNotFit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartState {
     pub part: String,
+    /// The member's path in the design (empty for a part that has none).
+    pub path: String,
     pub kind: String,
     pub side: Side,
     /// The footprint's origin in mm from the outline's top left corner, y down.
@@ -210,6 +212,8 @@ pub struct PartState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Oversize {
     pub part: String,
+    /// The part's path in the design.
+    pub path: String,
     pub kind: String,
     /// Each turn tried, in degrees, with the courtyard's width and height in that turn.
     pub tried: Vec<(f64, (f64, f64))>,
@@ -228,7 +232,7 @@ impl std::fmt::Display for Oversize {
         write!(
             f,
             "{} ({}) has a courtyard of {}",
-            self.part,
+            crate::board::member(&self.path, &self.part),
             self.kind,
             sizes.join(", ")
         )?;
@@ -342,6 +346,67 @@ impl DoesNotFit {
         Ok(())
     }
 
+    /// What blocks the placement where the placer ended, one sentence each with the members by
+    /// path (the designator beside) and by how much: the courtyards that overlap with the area
+    /// they share, the parts outside what is kept clear with the distance, the relations not
+    /// held and the requirements not met. For a board that no seed places (issue #458).
+    pub fn blockers(&self) -> Vec<String> {
+        let name = |refdes: &str| {
+            let path = self
+                .parts
+                .iter()
+                .find(|p| p.part == refdes)
+                .map_or("", |p| p.path.as_str());
+            crate::board::member(path, refdes)
+        };
+        let mut lines = Vec::new();
+        for o in &self.oversize {
+            lines.push(format!(
+                "{} is bigger than the outline in every turn it may take",
+                name(&o.part)
+            ));
+        }
+        if let Some(e) = &self.ended {
+            for o in &e.overlapping {
+                lines.push(format!(
+                    "the courtyards of {} and {} overlap by {:.2} mm2",
+                    name(&o.a),
+                    name(&o.b),
+                    o.area
+                ));
+            }
+            for o in &e.outside_parts {
+                if o.why.is_empty() {
+                    lines.push(format!("{} is outside what is kept clear", name(&o.part)));
+                } else {
+                    lines.push(format!("{}: {}", name(&o.part), o.why.join("; ")));
+                }
+            }
+            lines.extend(e.relations.iter().cloned());
+        }
+        if let Some(report) = &self.requirements {
+            lines.extend(report.unmet.iter().cloned());
+        }
+        lines
+    }
+
+    /// How badly the placer missed, for choosing the closest of several tries: the number of
+    /// parts and relations that break a rule, then the sum of the distances and areas by which
+    /// they do. A refusal the placer did not try to place has the worst.
+    pub fn badness(&self) -> (usize, f64) {
+        match &self.ended {
+            Some(e) if self.oversize.is_empty() => e.badness(),
+            _ => (usize::MAX, f64::INFINITY),
+        }
+    }
+
+    /// Whether another seed could place the parts: the placer tried the outline and no part
+    /// is bigger than it in every turn (the courtyards' area alone is no certain answer, since
+    /// the faces may be shared).
+    pub fn seed_may_help(&self) -> bool {
+        self.ended.is_some() && self.oversize.is_empty() && self.area.0 <= self.area.1 + 1e-9
+    }
+
     /// Every part's final place and state, for the file `fab` writes beside the board's
     /// output when the parts do not fit (`placement-failure.txt`).
     pub fn full_report(&self) -> String {
@@ -357,7 +422,7 @@ impl DoesNotFit {
             };
             text.push_str(&format!(
                 "{} ({}) {} at ({:.2}, {:.2}) turned {} courtyard {:.2} x {:.2} mm{}: {}\n",
-                p.part,
+                crate::board::member(&p.path, &p.part),
                 p.kind,
                 if p.side == Side::Back {
                     "bottom"
@@ -430,8 +495,8 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
             write!(
                 f,
                 "\n    {} and {}: {} mm2 ({:.2} x {:.2} mm) at ({:.1}, {:.1}), {:.1} mm from the {} edge",
-                o.a,
-                o.b,
+                e.member(&o.a),
+                e.member(&o.b),
                 short(o.area),
                 o.size.0,
                 o.size.1,
@@ -444,7 +509,7 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
         if e.overlapping.len() > DESCRIBED {
             let rest: Vec<String> = e.overlapping[DESCRIBED..]
                 .iter()
-                .map(|o| format!("{}/{}", o.a, o.b))
+                .map(|o| format!("{} and {}", e.member(&o.a), e.member(&o.b)))
                 .collect();
             write!(f, "\n    and {} more: {}", rest.len(), rest.join(", "))?;
         }
@@ -458,12 +523,12 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
             "\n  parts outside the outline or inside its margin (the furthest first):"
         )?;
         for o in e.outside_parts.iter().take(DESCRIBED) {
-            write!(f, "\n    {}: {}", o.part, o.why.join("; "))?;
+            write!(f, "\n    {}: {}", e.member(&o.part), o.why.join("; "))?;
         }
         if e.outside_parts.len() > DESCRIBED {
-            let rest: Vec<&str> = e.outside_parts[DESCRIBED..]
+            let rest: Vec<String> = e.outside_parts[DESCRIBED..]
                 .iter()
-                .map(|o| o.part.as_str())
+                .map(|o| e.member(&o.part))
                 .collect();
             write!(f, "\n    and {} more: {}", rest.len(), rest.join(", "))?;
         }
@@ -540,6 +605,7 @@ pub fn oversize(
         {
             found.push(Oversize {
                 part: part.refdes.clone(),
+                path: part.path.clone(),
                 kind: part.kind.clone(),
                 tried,
                 free: turn_is_free(part, fixed[i], options),
@@ -597,6 +663,9 @@ pub struct Ended {
     /// same start with a large part put in a corner first and with seeds derived from the
     /// given one (B2 and B5, PROVISIONAL). The rest of this is the closest run's.
     pub tries: usize,
+    /// The path in the design of each part named here, by reference designator, for the
+    /// messages: a member is named by its path with the designator beside.
+    pub paths: std::collections::BTreeMap<String, String>,
 }
 
 impl Ended {
@@ -607,6 +676,12 @@ impl Ended {
         let amount = self.outside_parts.iter().map(|o| o.worst).sum::<f64>()
             + self.overlapping.iter().map(|o| o.area).sum::<f64>();
         (count, amount)
+    }
+
+    /// A part named here as a message names it: `` `stage.c1` (C1) ``, or the designator alone
+    /// when its path is not known.
+    pub fn member(&self, refdes: &str) -> String {
+        crate::board::member(self.paths.get(refdes).map_or("", String::as_str), refdes)
     }
 
     /// The parts that break a rule when the run ended: those outside first, the furthest
@@ -633,7 +708,8 @@ impl Ended {
     /// Every part that is out, with how far, and every overlapping pair with its area, in
     /// two lists on one line, the worst first: `outside the outline or inside its margin, by
     /// mm past what is kept clear (the margin from the edge, a keepout, a pad's distance):
-    /// R21 0.85, R3 0.80; courtyards overlapping, by mm2: R1/R2 10.00`.
+    /// R21 0.85, R3 0.80; courtyards overlapping, by mm2: R1 and R2 10.00` (each part by its
+    /// path, with the designator beside, when the path is known).
     pub fn compact(&self) -> String {
         let mut lists = Vec::new();
         if !self.outside_parts.is_empty() {
@@ -642,10 +718,10 @@ impl Ended {
                 .iter()
                 .map(|o| {
                     if o.worst > 1e-6 {
-                        format!("{} {}", o.part, short(o.worst))
+                        format!("{} {}", self.member(&o.part), short(o.worst))
                     } else {
                         // Nothing past a line: the reference text, or a requirement.
-                        format!("{} (text or a requirement)", o.part)
+                        format!("{} (text or a requirement)", self.member(&o.part))
                     }
                 })
                 .collect();
@@ -658,7 +734,14 @@ impl Ended {
             let items: Vec<String> = self
                 .overlapping
                 .iter()
-                .map(|o| format!("{}/{} {}", o.a, o.b, short(o.area)))
+                .map(|o| {
+                    format!(
+                        "{} and {} {}",
+                        self.member(&o.a),
+                        self.member(&o.b),
+                        short(o.area)
+                    )
+                })
                 .collect();
             lists.push(format!(
                 "courtyards overlapping, by mm2: {}",

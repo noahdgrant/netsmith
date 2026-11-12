@@ -111,7 +111,8 @@ their file). There is no layout file: the placer's first answer (seed 0) places 
 and routes about 240 of the 257 connections in the gate's 20 s (the gate allows an INCOMPLETE board: the
 parts' places do not depend on the router). The board is dense (89 parts on 101.2 x 24 mm); seeds 3 to 14, which once stopped with the
 courtyards of the receptacle (`usb`) and the capacitor `vbus_2u2` 0.005 mm in each other (the
-placer measured the receptacle, pinned at x 97.405 mm, on its 0.05 mm grid), place too (#457). `netsmith fab` writes a four-layer JLCPCB
+placer measured the receptacle, pinned at x 97.405 mm, on its 0.05 mm grid), place too (#457); when a seed does not place a board, the placer tries the next ones, 8 by default, and
+`fab` writes the one that places it to `src/main.pcb.toml` (#458). `netsmith fab` writes a four-layer JLCPCB
 board (`.top.net`, `.bottom.net` and `.inner1.net` ground, `.inner2.net` +5 V).
 **The router does not finish this board**: with its default effort (4 tries, 5 min in a debug
 build) 4 of the 256 connections are left, so `fab` exits 1 with `INCOMPLETE`, writes the board

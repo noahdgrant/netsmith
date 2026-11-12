@@ -228,7 +228,7 @@ A two-pad capacitor whose pads are on two different nets that one same other par
 _Avoid_: Bypass capacitor (a bypass capacitor is the datasheet's word for the same part, but only a pair the placer finds is meant here)
 
 **Seed**:
-A whole number in the layout file (`seed = 3` in a board's table) that picks which arrangement the placer finds: the same seed always gives the same board, another seed another one (ADR 0033).
+A whole number in the layout file (`seed = 3` in a board's table) that picks which arrangement the placer finds: the same seed always gives the same board, another seed another one (ADR 0033). When it does not place the board, the placer tries the seeds after it, up to `place_seeds` in `netsmith.toml` (8 by default), and `fab` writes the seed that places it to the file; a seed the file states that no longer places the board is stale, and is told as a stale pick lock is (#458).
 
 **Feedback divider**:
 The two resistors that set the output of an adjustable regulator, `std::parts::regulator::FeedbackDivider`: the output is `vref * (1 + rtop / rbottom)` and the solver picks resistors that keep it inside the range the board asks for, with the tolerance of the reference and of both resistors.

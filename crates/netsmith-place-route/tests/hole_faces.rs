@@ -220,7 +220,7 @@ fn a_footprint_that_draws_both_courtyards_does_not_fit_there() {
     // the pair (not the rows' size, which is not a certain shortfall).
     assert!(
         error.contains("2 part(s) do not fit the outline of 14.0 x 22.0 mm")
-            && error.contains("J1/U1 "),
+            && error.contains("J1 and U1 "),
         "{error}"
     );
 }

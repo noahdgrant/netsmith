@@ -80,6 +80,8 @@ pub struct BoardData {
     /// Whether a requirement on where a part goes that is not met is a warning, as the
     /// manifest's `constraints = "warn"` makes it (ADR 0045), and not an error.
     pub constraints_warn: bool,
+    /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`, issue #458).
+    pub place_seeds: u32,
     /// The schematic layout file of the source file (ADR 0061) and what is not used of it for
     /// this board.
     pub hints: super::hints::Hints,
@@ -687,6 +689,7 @@ impl Workspace {
                                 libraries: libraries.clone(),
                                 layout: layout.clone(),
                                 constraints_warn: catalogs.constraints_warn(),
+                                place_seeds: crate::layout::place_seeds(target.project.as_ref()),
                                 hints: hints::Hints {
                                     path: hints_path.clone(),
                                     name: hints_name.clone(),

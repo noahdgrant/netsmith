@@ -810,7 +810,7 @@ fn a_standard_height_that_fits_a_limit_is_a_pass_said_to_be_the_standards() {
     assert_eq!(passes.len(), 1, "{passes:?}");
     assert_eq!(
         passes[0].to_string(),
-        "J1 (`row`) fits the 1.50 mm the keepout `lid` allows on the top face by its package standard (JEDEC TO-236, drawing TI DBZ0003A, at most 1.12 mm), not by a height of its own: the design states none and its catalog row has none"
+        "`row` (J1) fits the 1.50 mm the keepout `lid` allows on the top face by its package standard (JEDEC TO-236, drawing TI DBZ0003A, at most 1.12 mm), not by a height of its own: the design states none and its catalog row has none"
     );
     assert!(
         !board
@@ -829,7 +829,7 @@ fn a_standard_height_over_a_limit_leaves_the_part_unchecked_and_never_too_tall()
     assert_eq!(unchecked.len(), 1, "{unchecked:?}");
     assert_eq!(
         unchecked[0].to_string(),
-        "height of J1 (`row`) is unchecked: the keepout `lid` limits parts on the top face to 1.00 mm, the part states no height, and its package standard (JEDEC TO-236) allows up to 1.12 mm, so a part in that package may or may not fit (say `.row.height &= 1mm`, with the real number from its datasheet)"
+        "height of `row` (J1) is unchecked: the keepout `lid` limits parts on the top face to 1.00 mm, the part states no height, and its package standard (JEDEC TO-236) allows up to 1.12 mm, so a part in that package may or may not fit (say `.row.height &= 1mm`, with the real number from its datasheet)"
     );
     assert!(
         !board

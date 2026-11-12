@@ -126,7 +126,7 @@ fn a_relation_the_windows_of_its_parts_cannot_meet_is_named_with_the_three_lines
         PITCH,
         R1_LOW,
         R2_HIGH,
-        "the centre of the body of R2 (`r2`) minus the centre of the body of R1 (`r1`) must be 29.9 to 30.1 mm along x",
+        "the centre of the body of `r2` (R2) minus the centre of the body of `r1` (R1) must be 29.9 to 30.1 mm along x",
         "make it at most 5 mm (24.9 mm out)",
     ] {
         assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
@@ -136,7 +136,7 @@ fn a_relation_the_windows_of_its_parts_cannot_meet_is_named_with_the_three_lines
     let unmet = &report.unmet[0];
     for want in [
         PITCH,
-        "of the body of R2 (`r2`) minus the centre of the body of R1 (`r1`) is ",
+        "of the body of `r2` (R2) minus the centre of the body of `r1` (R1) is ",
         "mm along x, and it allows 29.9 to 30.1 mm (",
         "mm out)",
     ] {
@@ -160,7 +160,7 @@ fn two_relations_between_the_same_parts_that_no_value_meets_are_named() {
     let conflict = &report.conflicts[0];
     for want in [
         "widget.physical.nsm:10 `.r2.place.x - .r1.place.x >= 20mm`; widget.physical.nsm:11 `.r2.place.x - .r1.place.x <= 18mm`",
-        "the centre of the body of R2 (`r2`) minus the centre of the body of R1 (`r1`) to be at least 20 mm and at most 18 mm, and no value is in both (2 mm apart)",
+        "the centre of the body of `r2` (R2) minus the centre of the body of `r1` (R1) to be at least 20 mm and at most 18 mm, and no value is in both (2 mm apart)",
     ] {
         assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
     }
@@ -197,7 +197,7 @@ fn a_part_the_lines_pin_inside_a_keepout_is_named_with_the_keepout() {
     for want in [
         "widget.physical.nsm:10 `.r1.place.x &= 20mm`",
         "widget.physical.nsm:11 `.r1.place.y &= 10mm`",
-        "the courtyard of R1 (`r1`) within x 19.07 to 20.93, y 9.07 to 10.93 mm",
+        "the courtyard of `r1` (R1) within x 19.07 to 20.93, y 9.07 to 10.93 mm",
         "the keepout `blocked` (x 15 to 25, y 5 to 15 mm, which forbids parts)",
         "by at least 0.94 x 0.94 mm wherever it is put",
     ] {
@@ -226,8 +226,8 @@ fn two_parts_whose_windows_leave_their_courtyards_over_each_other_are_named() {
     for want in [
         "widget.physical.nsm:10 `.r1.place.x &= 10mm +/- 0.1mm`",
         "widget.physical.nsm:13 `.r2.place.y &= 10mm +/- 0.1mm`",
-        "the courtyard of R1 (`r1`) within x 8.97 to 11.03, y 8.97 to 11.03 mm",
-        "that of R2 (`r2`) within x 9.27 to 11.33, y 8.97 to 11.03 mm",
+        "the courtyard of `r1` (R1) within x 8.97 to 11.03, y 8.97 to 11.03 mm",
+        "that of `r2` (R2) within x 9.27 to 11.33, y 8.97 to 11.03 mm",
         "the two overlap by at least 0.44 x 0.74 mm wherever they are put",
     ] {
         assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
@@ -252,7 +252,7 @@ fn a_face_and_a_height_limit_on_that_face_are_named() {
     let conflict = &report.conflicts[0];
     for want in [
         "widget.physical.nsm:11 `.r1.place.side &= \"top\"`",
-        "they keep R1 (`r1`) on the top face",
+        "they keep `r1` (R1) on the top face",
         "under the keepout `lid` (x 0 to 40, y 0 to 30 mm) wherever it is put",
         "that keepout allows 3 mm on the top face while R1 stands 9 mm tall",
         // The lines leave R1 anywhere, and it is the outline that puts it under the lid.
@@ -307,7 +307,7 @@ fn an_unmet_line_is_listed_without_a_cause_when_no_conflict_is_proved() {
     assert_eq!(report.conflicts, Vec::<String>::new());
     assert_eq!(report.unmet.len(), 1, "{report}");
     let unmet = &report.unmet[0];
-    let want = "widget.physical.nsm:10 `.r1.place.x >= 20mm` and widget.physical.nsm:11 `.r1.place.x <= 30mm`: the centre of the body of R1 (`r1`, F.Fab) is 5 mm, and it allows 20 to 30 mm (15 mm out)";
+    let want = "widget.physical.nsm:10 `.r1.place.x >= 20mm` and widget.physical.nsm:11 `.r1.place.x <= 30mm`: the centre of the body of `r1` (R1) (F.Fab) is 5 mm, and it allows 20 to 30 mm (15 mm out)";
     assert!(unmet.contains(want), "{want:?} is not in {unmet:?}");
     let text = report.to_string();
     assert!(
@@ -350,7 +350,7 @@ fn a_refusal_that_the_parts_do_not_fit_carries_the_lines_that_conflict() {
         "\n  no placement meets every requirement of the physical file:\n    these lines cannot both hold: ",
         "widget.physical.nsm:10 `.h1.place.x &= 7mm +/- 0.1mm`",
         "widget.physical.nsm:13 `.h2.place.y &= 4.3mm +/- 0.1mm`",
-        "the courtyard of J1 (`h1`) within x 1.285 to 12.715, y -1.715 to 9.715 mm and that of J2 (`h2`) within",
+        "the courtyard of `h1` (J1) within x 1.285 to 12.715, y -1.715 to 9.715 mm and that of `h2` (J2) within",
         "the two overlap by at least 3.4 x 3.1 mm wherever they are put",
     ] {
         assert!(text.contains(want), "{want:?} is not in {text}");
@@ -376,8 +376,8 @@ fn a_part_too_big_for_the_outline_is_the_outlines_fault_and_not_a_line_s() {
     assert_eq!(found.faults.len(), 2, "{found:?}");
     let text = &found.faults[0].text;
     assert!(
-        text.contains("a part is bigger in every turn it may take: J1 (Header1x4)")
-            && text.contains("J1 (Header1x4) has a courtyard of"),
+        text.contains("a part is bigger in every turn it may take: `h1` (J1) (Header1x4)")
+            && text.contains("`h1` (J1) (Header1x4) has a courtyard of"),
         "{text}"
     );
 }
@@ -402,7 +402,7 @@ fn a_line_that_puts_a_part_off_the_board_is_named_with_the_outline() {
     let conflict = &report.conflicts[0];
     for want in [
         "widget.physical.nsm:10 `.h1.place.x &= 7mm +/- 0.1mm`; widget.physical.nsm:11 `.h1.place.y &= 4mm +/- 0.1mm`",
-        "no place meets them and keeps the courtyard of J1 (`h1`) inside the outline of 16 x 6 mm and 0.4 mm from its edge",
+        "no place meets them and keeps the courtyard of `h1` (J1) inside the outline of 16 x 6 mm and 0.4 mm from its edge",
         "turned 90 degrees the lines leave the origin of its footprint in x 3.085 to 3.285, y 3.9 to 4.1 mm and the outline leaves it in x 2.2 to 6.17, y 2.2 to 3.8 mm",
     ] {
         assert!(conflict.contains(want), "{want:?} is not in {conflict:?}");
@@ -442,13 +442,17 @@ fn each_pair_of_holes_and_each_pair_of_courtyards_is_reported_once() {
         .collect();
     assert!(!to_hole.is_empty(), "{lines:#?}");
     assert!(
-        to_hole.iter().all(|l| l.starts_with("a hole of J1 (pad ")),
+        to_hole
+            .iter()
+            .all(|l| l.starts_with("a hole of `h1` (J1) (pad ")),
         "{to_hole:#?}"
     );
     // Each hole is named by its pad, so two pairs with the same numbers are told apart.
     assert!(
-        lines.iter().any(|l| l.starts_with("a hole of J1 (pad 1) is ")
-            && l.contains("hole of J2 (pad 1),")),
+        lines
+            .iter()
+            .any(|l| l.starts_with("a hole of `h1` (J1) (pad 1) is ")
+                && l.contains("hole of `h2` (J2) (pad 1),")),
         "{lines:#?}"
     );
     // The distance from a hole to the other part's copper is not the same both ways: it is
@@ -456,12 +460,14 @@ fn each_pair_of_holes_and_each_pair_of_courtyards_is_reported_once() {
     assert!(
         lines
             .iter()
-            .any(|l| l.starts_with("a hole of J1 ") && l.contains("copper of J2 (pad "))
+            .any(|l| l.starts_with("a hole of `h1` (J1) ")
+                && l.contains("copper of `h2` (J2) (pad "))
     );
     assert!(
         lines
             .iter()
-            .any(|l| l.starts_with("a hole of J2 ") && l.contains("copper of J1 (pad "))
+            .any(|l| l.starts_with("a hole of `h2` (J2) ")
+                && l.contains("copper of `h1` (J1) (pad "))
     );
 }
 
