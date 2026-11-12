@@ -1707,17 +1707,20 @@ fn designator_key(designator: &str) -> (String, u32) {
 }
 
 /// Route `board` with signals at the project's track margin where there is room (issue #431):
-/// the router tries the margin first, in half the route time, and a board it leaves unfinished
-/// is routed again from the same placement at the process's least track, in what is left.
+/// the router tries the margin first, in one order of the lines and a quarter of the route
+/// time, and a board it leaves unfinished is routed again from the same placement at the
+/// process's least track, in what is left. The short trial keeps a board that has no room for
+/// the margin from spending most of its time on it first.
 fn route_with_margin(
     board: &mut Board,
     options: &FabOptions,
     say: &dyn Fn(String),
 ) -> netsmith_pcb::Routing {
-    let route = |board: &mut Board, time: Option<Duration>| {
+    let route = |board: &mut Board, time: Option<Duration>, full: bool| {
         route_with(
             board,
             RouteOptions {
+                retry_orders: full,
                 time_limit: time,
                 progress: options.progress,
                 ..RouteOptions::default()
@@ -1727,12 +1730,12 @@ fn route_with_margin(
     let least = board.rules.min_track_width;
     let wide = (least * options.track_margin * 100.0).round() / 100.0;
     if wide <= board.rules.track_width + 1e-9 {
-        return route(board, options.route_timeout);
+        return route(board, options.route_timeout, true);
     }
     let started = std::time::Instant::now();
     let mut trial = board.clone();
     trial.rules.track_width = wide;
-    let routing = route(&mut trial, options.route_timeout.map(|t| t / 2));
+    let routing = route(&mut trial, options.route_timeout.map(|t| t / 4), false);
     if routing.left.is_empty() {
         *board = trial;
         return routing;
@@ -1745,7 +1748,7 @@ fn route_with_margin(
     let left = options
         .route_timeout
         .map(|t| t.saturating_sub(started.elapsed()));
-    route(board, left)
+    route(board, left, true)
 }
 
 /// What the design rules check needs that the board file does not say: the process's mask
