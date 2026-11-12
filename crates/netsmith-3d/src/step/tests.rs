@@ -81,7 +81,7 @@ fn package() -> Vec<Made3d> {
 
 /// A 40 x 20 mm board with rounded corners, a cutout, a round hole and a slot; a box `U1`, a
 /// shaped part `Q1` on the bottom (turned and mirrored), and `J1` of unknown height.
-fn scene() -> Scene {
+pub(crate) fn scene() -> Scene {
     let mut u1 = body("u1", "U1", plan(10.0, 5.0), plan(14.0, 8.0), Some(2.0));
     u1.pins = Pins::Known {
         at: PlanBox {

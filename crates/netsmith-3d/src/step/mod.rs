@@ -1,7 +1,8 @@
 //! The board's _Scene_ as a STEP file (ISO 10303-21, AP214 `AUTOMOTIVE_DESIGN`, ADR 0107): the
 //! board and its parts as solids for a mechanical CAD tool. [`step`] writes it from the same
 //! [`Scene`] the `.glb` is written from (`crate::gltf`); `docs/BOARD3D.md` describes the file
-//! for a reader of it.
+//! for a reader of it. [`read`] goes the other way: netsmith's own reader of a STEP model a
+//! project names for a part (ADR 0108).
 //!
 //! # The contract
 //!
@@ -30,6 +31,7 @@
 //!   `1970-01-01T00:00:00`, the entities are numbered in the order they are made, a point or
 //!   a direction is written once, and a real is written to ten places.
 
+pub mod read;
 mod writer;
 
 #[cfg(test)]
