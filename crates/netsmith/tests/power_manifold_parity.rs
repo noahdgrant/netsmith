@@ -30,8 +30,8 @@ fn power_manifold_pcb_matches_the_original_where_it_can() {
         parts: 89,
         min_ok: 144,
         route_seconds: ROUTE_SECONDS,
-        regenerate: "from examples/power_manifold_charger run `netsmith fab --locked`, then\n  cargo run \
-                     -p netsmith --example parity -- fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
+        regenerate: "from examples/power_manifold_charger run `netsmith fab --locked`, then\n  netsmith \
+                     parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
                      --table reference/placements.toml --map reference/designators.toml --svg \
                      reference/parity-overlay.svg",
         known_failures: &["outline corner radius", "outline elements"],

@@ -120,6 +120,11 @@ impl CsvFile {
         self.records.len()
     }
 
+    /// The text as read, with no edit applied.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }

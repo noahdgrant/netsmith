@@ -40,6 +40,8 @@ pub enum Verdict {
 pub struct Compared {
     pub verdict: Verdict,
     pub text: String,
+    /// The same, as one JSON document for `--format json` (#455).
+    pub json: String,
 }
 
 /// Read both sides and compare them. `kicad` is needed only for a `.kicad_sch`. The error
@@ -80,7 +82,76 @@ pub fn compare_files(request: &Request, kicad: Option<&dyn KicadCli>) -> Result<
         Outcome::Different(_) => Verdict::Different,
         Outcome::Undecided(_) => Verdict::Undecided,
     };
-    Ok(Compared { verdict, text })
+    let side = |path: &str, n: &Netlist| serde_json::json!({ "path": path, "components": n.components.len(), "nets": n.nets.len() });
+    let json = outcome_json(&outcome, side(request.a, &a), side(request.b, &b));
+    Ok(Compared {
+        verdict,
+        text,
+        json,
+    })
+}
+
+/// The JSON document of a comparison: the two sides, the verdict, and the pairs of a match or
+/// each difference, by kind.
+fn outcome_json(outcome: &Outcome, a: serde_json::Value, b: serde_json::Value) -> String {
+    use netsmith_netlist::Difference;
+    use serde_json::json;
+    let pin = |p: &netsmith_netlist::Pin| format!("{}.{}", p.refdes, p.pin);
+    let mut doc = json!({ "command": "compare", "a": a, "b": b });
+    match outcome {
+        Outcome::Match(c) => {
+            doc["verdict"] = json!("match");
+            doc["components"] = json!(c.components);
+            doc["nets"] = json!(c.nets);
+            doc["interchangeable"] = json!(c.interchangeable);
+        }
+        Outcome::Undecided(why) => {
+            doc["verdict"] = json!("undecided");
+            doc["why"] = json!(why);
+        }
+        Outcome::Different(differences) => {
+            doc["verdict"] = json!("different");
+            let list: Vec<serde_json::Value> = differences
+                .iter()
+                .map(|d| match d {
+                    Difference::ComponentOnly {
+                        side,
+                        refdes,
+                        value,
+                        footprint,
+                        pins,
+                    } => json!({
+                        "kind": "component_only", "side": side.to_string(), "refdes": refdes,
+                        "value": value, "footprint": footprint, "pins": pins,
+                    }),
+                    Difference::ComponentClass { a, b } => json!({
+                        "kind": "component_class",
+                        "a": { "refdes": a.0, "value": a.1, "footprint": a.2 },
+                        "b": { "refdes": b.0, "value": b.1, "footprint": b.2 },
+                    }),
+                    Difference::NetPins {
+                        a,
+                        b,
+                        only_a,
+                        only_b,
+                    } => json!({
+                        "kind": "net_pins", "a": a, "b": b,
+                        "only_a": only_a.iter().map(|(p, w)| json!([pin(p), w])).collect::<Vec<_>>(),
+                        "only_b": only_b.iter().map(|(p, w)| json!([pin(p), w])).collect::<Vec<_>>(),
+                    }),
+                    Difference::NetOnly { side, name, pins } => json!({
+                        "kind": "net_only", "side": side.to_string(), "name": name,
+                        "pins": pins.iter().map(pin).collect::<Vec<_>>(),
+                    }),
+                    Difference::Unlocated(why) => json!({ "kind": "unlocated", "why": why }),
+                })
+                .collect();
+            doc["differences"] = json!(list);
+        }
+    }
+    let mut text = serde_json::to_string_pretty(&doc).expect("plain data");
+    text.push('\n');
+    text
 }
 
 /// The netlist of one argument, by its extension.

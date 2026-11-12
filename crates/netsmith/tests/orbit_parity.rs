@@ -32,8 +32,8 @@ fn orbit_pcb_matches_the_original() {
         parts: 48,
         min_ok: 129,
         route_seconds: ROUTE_SECONDS,
-        regenerate: "from examples/orbit run `netsmith fab --locked`, then\n  cargo run -p \
-                     netsmith --example parity -- fab/Orbit/Orbit.kicad_pcb --table \
+        regenerate: "from examples/orbit run `netsmith fab --locked`, then\n  netsmith \
+                     parity fab/Orbit/Orbit.kicad_pcb --table \
                      reference/placements.toml --map reference/designators.toml --svg \
                      reference/parity-overlay.svg",
         known_failures: &[],

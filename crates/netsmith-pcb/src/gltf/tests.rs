@@ -29,6 +29,7 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         } else {
             HeightProvenance::Unknown
         },
+        standard: None,
         pins: Pins::None,
         shape: None,
     }
@@ -219,7 +220,10 @@ fn the_nodes_carry_the_ids_of_the_contract() {
         );
     }
     assert_eq!(layers[0]["kind"], "mask");
-    assert_eq!(root["coverage"], json!({ "known": 1, "total": 2 }));
+    assert_eq!(
+        root["coverage"],
+        json!({ "known": 1, "total": 2, "standard": 0 })
+    );
     assert_eq!(root["findings"][0]["code"], "too_tall");
     assert_eq!(root["findings"][0]["parts"], json!(["u1"]));
     assert_eq!(root["findings"][0]["limit"], "lid");
@@ -240,6 +244,7 @@ fn the_nodes_carry_the_ids_of_the_contract() {
         *u1,
         json!({
             "kind": "part", "path": "u1", "refdes": "U1", "side": "top", "provenance": "stated",
+            "standard": null,
             "height_mm": 2.0, "z_bottom_mm": 0.0, "z_top_mm": 2.0,
             "part_kind": "Thing", "category": "ic", "margin_mm": -1.0, "margin_limit": "lid",
         })

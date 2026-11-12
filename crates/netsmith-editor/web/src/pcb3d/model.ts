@@ -34,7 +34,8 @@ export interface BoardInfo {
   heightMm: number;
   thicknessMm: number;
   layers: StackLayer[];
-  coverage: { known: number; total: number };
+  /** `standard`: how many of the known heights are a package standard's maximum (ADR 0106); 0 in a file that has none. */
+  coverage: { known: number; total: number; standard: number };
   findings: Finding3d[];
 }
 
@@ -46,6 +47,8 @@ export interface PartInfo3d {
   provenance: Provenance;
   /** Null when no height is known: never zero, never a guess. */
   heightMm: number | null;
+  /** For a `standard` height, the standard and the drawing it was read from (`JEDEC MS-012, drawing TI D0008A`); absent for the others. */
+  standard?: string | null;
   /** The part's kind as the design names it (`Resistor`), and what sort of part it is (`resistor`, `ic`...); empty and null in a file that has none. */
   partKind: string;
   category: string | null;
@@ -104,7 +107,7 @@ export function readInfo(userData: unknown): Info | null {
           if (kind !== 'mask' && kind !== 'copper' && kind !== 'core' && kind !== 'prepreg') return [];
           return [{ name: str(l.name), kind, thicknessMm: num(l.thickness_mm), zTopMm: num(l.z_top_mm), zBottomMm: num(l.z_bottom_mm) }];
         }),
-        coverage: { known: num(c.known), total: num(c.total) },
+        coverage: { known: num(c.known), total: num(c.total), standard: num(c.standard) },
         findings: (Array.isArray(n.findings) ? n.findings : []).map((f: Record<string, unknown>) => ({
           code: str(f.code),
           message: str(f.message),
@@ -121,8 +124,9 @@ export function readInfo(userData: unknown): Info | null {
         path: str(n.path),
         refdes: str(n.refdes),
         side: face(n.side),
-        provenance: p === 'stated' || p === 'catalog' ? p : 'unknown',
+        provenance: p === 'stated' || p === 'catalog' || p === 'standard' ? p : 'unknown',
         heightMm: numOrNull(n.height_mm),
+        ...(typeof n.standard === 'string' ? { standard: n.standard } : {}),
         partKind: str(n.part_kind),
         category: typeof n.category === 'string' ? n.category : null,
         marginMm: numOrNull(n.margin_mm),
@@ -159,24 +163,27 @@ export const mm = (v: number): string => `${Number(v.toFixed(2))} mm`;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** The coverage chip: how many of the parts have a known height. */
-export function coverageLine(c: { known: number; total: number }): string {
+/** The coverage chip: how many of the parts have a known height, and how many of those are a package standard's (ADR 0106). */
+export function coverageLine(c: { known: number; total: number; standard?: number }): string {
   if (c.total === 0) return 'No parts with a body';
-  if (c.known === c.total) return c.total === 1 ? 'The part has a known height' : `All ${c.total} parts have a known height`;
-  return `${c.known} of ${plural(c.total, 'part')} ${c.known === 1 ? 'has' : 'have'} a known height`;
+  const standard = c.standard ? ` (${c.standard} from the package standard)` : '';
+  if (c.known === c.total) return (c.total === 1 ? 'The part has a known height' : `All ${c.total} parts have a known height`) + standard;
+  return `${c.known} of ${plural(c.total, 'part')} ${c.known === 1 ? 'has' : 'have'} a known height${standard}`;
 }
 
 /** Where a height came from, in words. */
 export const PROVENANCE_WORDS: Record<Provenance, string> = {
   stated: 'stated in the design',
   catalog: 'from the catalog row',
+  standard: "the package standard's maximum",
   unknown: 'not known',
 };
 
 /** The height of a part and where it came from, in one line. */
-export function heightLine(p: Pick<PartInfo3d, 'heightMm' | 'provenance'>): string {
+export function heightLine(p: Pick<PartInfo3d, 'heightMm' | 'provenance' | 'standard'>): string {
   if (p.heightMm === null || p.provenance === 'unknown') return 'Height not known: drawn flat and hatched, not guessed';
-  return `${mm(p.heightMm)} tall, ${PROVENANCE_WORDS[p.provenance]}`;
+  const standard = p.provenance === 'standard' && p.standard ? ` (${p.standard.split(',')[0]})` : '';
+  return `${mm(p.heightMm)} tall, ${PROVENANCE_WORDS[p.provenance]}${standard}`;
 }
 
 /** What the hover tooltip says of a part: its designator (and value), its height and its source, its face, and the 3D findings about it. */
@@ -209,7 +216,7 @@ export function unknownParts(parts: PartInfo3d[]): PartInfo3d[] {
 
 /** How many parts' heights came from each source. */
 export function provenanceCounts(parts: PartInfo3d[]): Record<Provenance, number> {
-  const out: Record<Provenance, number> = { stated: 0, catalog: 0, unknown: 0 };
+  const out: Record<Provenance, number> = { stated: 0, catalog: 0, standard: 0, unknown: 0 };
   for (const p of parts) out[p.provenance]++;
   return out;
 }

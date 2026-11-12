@@ -145,7 +145,7 @@ and one recorded part, below). `netsmith fab` writes the board as a four-layer J
 
 ```sh
 netsmith fab --locked          # from this folder; writes fab/EasyduinoEsp32s3/
-cargo run -p netsmith --example parity -- fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
+netsmith parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
     --table reference/placements.toml --map reference/designators.toml \
     --svg reference/parity-overlay.svg
 ```

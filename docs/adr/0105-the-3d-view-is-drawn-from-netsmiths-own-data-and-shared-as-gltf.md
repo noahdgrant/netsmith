@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0106
 ---
 
 # The 3D view is drawn from netsmith's own data and shared as glTF

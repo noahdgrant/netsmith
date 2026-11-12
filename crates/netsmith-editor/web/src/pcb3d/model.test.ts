@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { coverageLine, heightLine, limitTip, partTip, provenanceCounts, readInfo, unknownParts, type PartInfo3d } from './model';
 
-const part = (path: string, refdes: string, provenance: 'stated' | 'catalog' | 'unknown', heightMm: number | null): PartInfo3d => ({
+const part = (path: string, refdes: string, provenance: 'stated' | 'catalog' | 'standard' | 'unknown', heightMm: number | null): PartInfo3d => ({
   kind: 'part',
   path,
   refdes,
@@ -42,9 +42,21 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
       thicknessMm: 1.6,
       // A kind it does not know is left out.
       layers: [{ name: 'F.Mask', kind: 'mask', thicknessMm: 0.01, zTopMm: 0, zBottomMm: -0.01 }],
-      coverage: { known: 2, total: 3 },
+      // A file before the package standard's heights has no `standard` count: none.
+      coverage: { known: 2, total: 3, standard: 0 },
       findings: [{ code: 'too_tall', message: 'J1 stands 9 mm tall', parts: ['tall'], limit: 'lid', face: 'top' }],
     });
+  });
+  it("reads a package standard's height and its count, apart from the others (ADR 0106)", () => {
+    const board = readInfo({ netsmith: { kind: 'board', coverage: { known: 3, total: 4, standard: 1 } } });
+    expect(board).toMatchObject({ coverage: { known: 3, total: 4, standard: 1 } });
+    const u = readInfo({ netsmith: { kind: 'part', path: 'u1', refdes: 'U1', side: 'top', provenance: 'standard', standard: 'JEDEC MS-012, drawing TI D0008A', height_mm: 1.75 } });
+    expect(u).toMatchObject({ provenance: 'standard', standard: 'JEDEC MS-012, drawing TI D0008A', heightMm: 1.75 });
+    expect(heightLine(u as PartInfo3d)).toBe("1.75 mm tall, the package standard's maximum (JEDEC MS-012)");
+    // A word the page does not know is not a height it can name.
+    expect(readInfo({ netsmith: { kind: 'part', path: 'x', provenance: 'nominal', height_mm: 1 } })).toMatchObject({ provenance: 'unknown' });
+    expect(coverageLine({ known: 3, total: 4, standard: 1 })).toBe('3 of 4 parts have a known height (1 from the package standard)');
+    expect(coverageLine({ known: 2, total: 2, standard: 2 })).toBe('All 2 parts have a known height (2 from the package standard)');
   });
   it('reads a part, and an unknown height stays null: never zero', () => {
     expect(readInfo({ netsmith: { kind: 'part', path: 'tall', refdes: 'J1', side: 'top', provenance: 'stated', height_mm: 9, z_bottom_mm: 0, z_top_mm: 9 } })).toEqual(part('tall', 'J1', 'stated', 9));
@@ -119,8 +131,8 @@ describe('the words of the view', () => {
     expect(limitTip({ ...l, violated: false, marginMm: 1.5, unknown: [] }).lines).toEqual(['Parts at most 3 mm tall on the top face', '1.5 mm to spare over the tallest part']);
   });
   it('lists the parts of unknown height by designator, and counts each source', () => {
-    const parts = [part('a', 'J10', 'unknown', null), part('b', 'J2', 'unknown', null), part('c', 'R1', 'catalog', 0.5), part('d', 'J1', 'stated', 9)];
+    const parts = [part('a', 'J10', 'unknown', null), part('b', 'J2', 'unknown', null), part('c', 'R1', 'catalog', 0.5), part('d', 'J1', 'stated', 9), part('e', 'U1', 'standard', 1.75)];
     expect(unknownParts(parts).map((p) => p.refdes)).toEqual(['J2', 'J10']);
-    expect(provenanceCounts(parts)).toEqual({ stated: 1, catalog: 1, unknown: 2 });
+    expect(provenanceCounts(parts)).toEqual({ stated: 1, catalog: 1, standard: 1, unknown: 2 });
   });
 });

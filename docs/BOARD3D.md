@@ -89,7 +89,8 @@ from `z = -thickness` down to `z = -thickness - height`.
   "too_tall": [ { "path": "tall", "refdes": "J1", "limit_name": "lid", "face": "top", "height": 9.0, "limit": 3.0 } ],
   "overlaps": [],
   "unknown_heights": [ { "path": "bare", "refdes": "J3", "reason": "the design states no `.height` and the part has no catalog row to take one from (...)", "under_limits": ["lid"] } ],
-  "coverage": { "known": 2, "total": 3, "stated": 2, "catalog": 0 },
+  "standard_passes": [],
+  "coverage": { "known": 2, "total": 3, "stated": 2, "catalog": 0, "standard": 0 },
   "tallest": { "top": { "path": "tall", "refdes": "J1", "height": 9.0 }, "bottom": null }
 }
 ```
@@ -107,13 +108,14 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `parts` | One per part with a body (a label has none), by path. |
 | `parts[].body` | The body box: the footprint's fabrication outline (`from: "fab"`), else its courtyard (`"courtyard"`), as a placement requirement and the height check measure it. `corners` are turned with the part; `min` and `max` hold them. |
 | `parts[].z_bottom`, `z_top` | The body's Z range. The end at the board face is always known; the far end is `null` when the height is unknown. |
-| `parts[].height`, `provenance` | The height and where it came from (_Height provenance_): `stated` (the source or the physical file), `catalog` (the picked row's `height` cell; `catalog_row` names the row) or `unknown`. An unknown height is `null`: never zero and never a guess (ADR 0094). |
+| `parts[].height`, `provenance` | The height and where it came from (_Height provenance_): `stated` (the source or the physical file), `catalog` (the picked row's `height` cell; `catalog_row` names the row), `standard` (the _Standard height_ of the footprint, the greatest its package standard allows; `standard` names the standard and the drawing, `JEDEC MS-012, drawing TI D0008A`; ADR 0106) or `unknown`. An unknown height is `null`: never zero and never a guess (ADR 0094). |
 | `parts[].pins` | For a part with plated holes: the box of its pads, and its _Pin protrusion_ below the far face where the design states one (`protrusion`, `source`, `z_top`, `z_bottom`); `null` lengths where it states none, which is unknown and not zero. |
 | `height_limits` | Each placed keepout with `.max_height`, by name: its box, the faces it limits, and for each face the volume (`z_bottom` to `z_top`), the tallest part of known height whose body is under it, the `margin` (the limit less that height; negative when too tall) and the parts of unknown height under it. `tallest` and `margin` at the top are the face with the least margin. A limit a part carries names it as `carrier`. |
 | `too_tall` | The parts over a limit: the placement check's own finding, which stops `fab`. |
 | `overlaps` | Two bodies on one face, both of known height, whose turned boxes share area: they fill the same space from the face up to the shorter one (`z_bottom` to `z_top`). New in 3D: the placement check compares courtyards in plan. |
+| `standard_passes` | Each part under a limit that fits it only by its _Standard height_, with the limit, the face, the standard's figure (`height`) and `standard`: a pass, but on the standard and not on the part (ADR 0106). A part whose standard height is over a limit is not `too_tall`; the board's check reports it unchecked (a `height_unchecked` finding in the `.glb`), because a part in that package may be lower. |
 | `unknown_heights` | Each part of unknown height, with the reason (no `.height` and no catalog row, or a row whose `height` cell is empty) and the limits it stands under, whose check it leaves unchecked. |
-| `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated and from catalog rows. The same count as the coverage line of `fab-notes.txt`. A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std, so they count as stated (`stated`, 0 mm, nothing drawn for the body) and not as unknown. |
+| `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated, from catalog rows and package standards (`standard`, counted in `known`). The same count as the coverage line of `fab-notes.txt`. A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std, so they count as stated (`stated`, 0 mm, nothing drawn for the body) and not as unknown. |
 | `tallest` | The tallest part of known height on each face. |
 
 Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
@@ -142,9 +144,9 @@ raises `schema`, a field added does not):
 
 | Node | `extras.netsmith` |
 |---|---|
-| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}]` (the stackup top face down, as `board.layers` of the report; `kind` is `mask`, `copper`, `core` or `prepreg`; added in schema 1), `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
+| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}]` (the stackup top face down, as `board.layers` of the report; `kind` is `mask`, `copper`, `core` or `prepreg`; added in schema 1), `coverage: {known, total, standard}` (`standard`, the known heights that are a package standard's, added without a new schema), `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
 | `substrate` | `kind: "substrate"`: the laminate, between the outer copper layers. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`: the mask with its openings cut out, two primitives: material `mask-top` or `mask-bottom` over bare laminate and `mask-over-copper` where copper is under it), one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel, and last `silk:top`, `silk:bottom` (`kind: "silk"`, `face`): the silkscreen (the legend Gerber's ink, kept off the mask's openings and the holes), flat 0.015 mm off the mask, material `mark` |
-| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`, `part_kind`, `category`, `margin_mm`, `margin_limit`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height. `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`). `category` is what sort of part it is, from the standard generic it provides (`Connector`, `Resistor`, `NMosfet`...), else from the designator letters its kind states (`R`, `U`...; never `J`: a connector is one by its generic only): `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`, `mechanical` or `other`. `margin_mm` is the part's least margin to a height limit over it on its face (the limit less its height, negative when too tall), and `margin_limit` names that limit; both `null` when no limit is over it or its height is unknown |
+| one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog`, `standard` or `unknown`), `standard` (for a `standard` height, the standard and the drawing; else `null`; added without a new schema, like the word `standard`, because no field changed meaning), `height_mm`, `z_bottom_mm`, `z_top_mm`, `part_kind`, `category`, `margin_mm`, `margin_limit`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height. `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`). `category` is what sort of part it is, from the standard generic it provides (`Connector`, `Resistor`, `NMosfet`...), else from the designator letters its kind states (`R`, `U`...; never `J`: a connector is one by its generic only): `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`, `mechanical` or `other`. `margin_mm` is the part's least margin to a height limit over it on its face (the limit less its height, negative when too tall), and `margin_limit` names that limit; both `null` when no limit is over it or its height is unknown |
 | `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it), `under` (the paths of every part under it on that face); its volume is the mesh |
 | `protrusions` | one child per part whose pins stand out of the far face by a stated length, `pins:<refdes>`: `kind: "protrusion"`, `path`, `length_mm` |
 | `copper:<layer>` | one per copper layer, top face down, after `protrusions`: `kind: "copper_layer"`, `layer`, `z_top_mm`, `z_bottom_mm`. One child per net with copper on the layer, `copper:<layer>:<net>` (`copper:<layer>:(no net)` for the copper with no net, first): `kind: "copper"`, `layer`, `net` (`null` for no net). Its mesh is the net's pads, tracks, pours or plane and via rings joined, the drills open, through the layer's thickness: material `copper` under the mask (and on inner layers), `finish` where the mask is open. No copper groups when the copper cannot be drawn |
@@ -204,9 +206,11 @@ What it is:
   copper and the silkscreen are in the same file, and the view draws each mesh by its
   material's name in the theme's colours.
 - **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
-  by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
+  by where its height came from: stated in the design, from the catalog row, or the package
+  standard's maximum (a colour of its own, ADR 0106). A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
-  (_Height coverage_); it lists the others, and a click on one selects it. A hover names a part's
+  (_Height coverage_), and how many of those are a package standard's ("3 of 4 parts have a known
+  height (1 from the package standard)"); it lists the parts with none, and a click on one selects it. A hover names a part's
   designator, its height and where the height came from. A package shape is built to that
   height and adds none: its highest point is the part's height. A pin header is the one shape
   with a height of its own below that: its plastic, 2.5 mm at 2.54 mm pitch and 2.0 mm at
@@ -280,15 +284,19 @@ What it is not:
   maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
   generator's own numbers. Still boxes, because the data
   does not hold their lead span and width yet (each family is added with a sourced row, one at a
-  time): SC-70, the DPAK of four or five lead pads (TO-252-4, -5), the D2PAK of four to nine
-  (TO-263-4 to -9) and SOT-89-5, and the mechanical items (holes, fiducials, test points). SOT-223 is drawn with its three pins and its wide tab (dimensions and sources in
+  time): SOT-343 (SC-70-4), SC-70-8, the DPAK of four or five lead pads (TO-252-4, -5), the
+  D2PAK of four to nine (TO-263-4 to -9) and SOT-89-5, and the mechanical items (holes,
+  fiducials, test points). SOT-223 is drawn with its three pins and its wide tab (dimensions and
+  sources in
   `crates/netsmith-pcb/src/generate/sot.rs`), and SOT-89-3 with its three short leads and the
   wide tab of pin 2 that runs under the body and out of the other side, and the DPAK and D2PAK
   of two or three lead pads with their two outer leads and the tab out of the other side and flat
   under the body (a three-pad package's centre lead is a cut stub in every outline read, so it
-  is not drawn); both in `crates/netsmith-pcb/src/generate/tab.rs`. The molded diodes are drawn with two
-  terminals and a cathode band: gull-wing for SOD-123 and SOD-323, J-bend and folded under the
-  body for SMA, SMB and SMC (dimensions and sources in `crates/netsmith-pcb/src/generate/diode.rs`).
+  is not drawn); both in `crates/netsmith-pcb/src/generate/tab.rs`. SC-70 with three, five or six
+  leads (SOT-323, SOT-353, SOT-363) has the gull-wing leads of the makers' drawings (in
+  `crates/netsmith-pcb/src/generate/sot.rs`). The molded diodes are drawn with two terminals and
+  a cathode band: gull-wing for SOD-123 and SOD-323, J-bend and folded under the body for SMA,
+  SMB and SMC (dimensions and sources in `crates/netsmith-pcb/src/generate/diode.rs`).
 - **Not a check.** The tools measure the file's numbers and change nothing: a measurement, a
   section or the layers apart are the picture only, and no report or file reads them. The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.

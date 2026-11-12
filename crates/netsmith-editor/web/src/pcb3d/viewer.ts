@@ -71,7 +71,7 @@ const HATCH_MM = 0.9;
 /** How long the stackup takes to come apart or back together. */
 const EXPLODE_MS = 420;
 /** The roles whose cut is filled first: the board's layers, then the copper, then the parts. */
-const CAP_ORDER = ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'mask-over-copper', 'copper', 'finish', 'metal', 'body', 'body-catalog', 'mark'];
+const CAP_ORDER = ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'mask-over-copper', 'copper', 'finish', 'metal', 'body', 'body-catalog', 'body-standard', 'mark'];
 
 /** The scene's frame (mm, z up) from the view's (mm, Y up, +Z toward the board's bottom edge). */
 const sceneOf = (v: Vector3): P3 => [v.x, -v.z, v.y];
@@ -1065,7 +1065,7 @@ export class Viewer {
 
   /** A body's colour when the bodies are coloured by kind or by margin; null for the role's own. */
   private tintOf(part: PartInfo3d, role: Role): string | null {
-    if (role !== 'body' && role !== 'body-catalog') return null;
+    if (role !== 'body' && role !== 'body-catalog' && role !== 'body-standard') return null;
     const c = this.colours!;
     if (this.look.colourBy === 'kind') return c.kinds[kindSwatch(part.category)];
     if (this.look.colourBy === 'margin') return marginColour(part.marginMm, c.margin);
