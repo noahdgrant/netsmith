@@ -6,10 +6,10 @@ use super::build::{BuildRun, run_build};
 use super::common;
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "The exit code is 0 when every board builds, 1 when one does not, and 2 when the command cannot run (a file that cannot be read, no boards)."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`check` checks and solves the boards as `build` does and writes nothing: no schematic, no pick lock, no pin file. It prints the findings only (errors, warnings and notes, as `--notes` says), not the bill of materials. With no file it acts on the project's boards.\n\nThe exit code is 0 when every board builds, 1 when one does not, and 2 when the command cannot run (a file that cannot be read, no boards)."
+)]
 pub struct Args {
     /// The source file; with none, the project's boards.
     #[arg(value_name = "FILE.NSM")]

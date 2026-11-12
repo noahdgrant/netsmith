@@ -5,6 +5,9 @@ use clap::Args as ClapArgs;
 use netsmith::init::init;
 
 #[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "`init` writes `netsmith.toml`, `src/main.nsm` (a working LED board) and the agent files."
+)]
 #[command(args_override_self = true)]
 pub struct Args {
     /// The project's name; the default is the folder's.

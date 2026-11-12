@@ -23,10 +23,10 @@ pub enum Command {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, ClapArgs)]
-#[command(
-    after_long_help = "The one command that uses the network (ADR 0039). JLCPCB is not asked, and no price or stock is written. A row is VERIFIED, CONFLICT (the number or package is not the row's), MISSING (LCSC no longer lists it) or, with --offline, SKIPPED. The exit code is 0, 1 if any row is CONFLICT or MISSING, and 2 when the run had to stop."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`catalog refresh` is the one command that uses the network, and it is opt-in (ADR 0039): nothing else, and never the solver, asks anyone anything. JLCPCB data is not fetched: the command asks LCSC only. For each row with an `lcsc` number it reads LCSC's record of that part and checks the manufacturer's number and the package against the row. A row that agrees is `VERIFIED`, and if the file has a `checked` column it gets the day there: that is the only cell the command ever writes. It never writes `price`, `stock`, `price_breaks`, `library` or `date`: the board is assembled from JLCPCB's parts library, those cells are JLCPCB's numbers entered by hand, and LCSC's price (often at a first break above one piece) and stock differ from them. It may say, as a note and not a finding, that LCSC lists stock 0 where the row has some (or the reverse), so you read JLCPCB's parts page by hand; the age of a row's own numbers is still its `date`, so a refresh never makes a stale row fresh. It keeps the order, quoting and line endings of the file, so the result is a small diff.\n\nWith no path it acts on the project's catalog files (the `*.csv` of its `catalog_dirs` folders and the files under `catalogs`) and, in the netsmith repository, on `data/jlcpcb/catalog/`; a path is a catalog file or a directory of them (the standard catalogs inside the binary cannot be written, so they are checked in the repository and arrive with a release). A row is reported, not changed, when the records disagree with it: `CONFLICT` if the manufacturer's number or the package is not the row's, `MISSING` if LCSC no longer lists the number (a row is never deleted); `SKIPPED` is a row `--offline` has no kept answer for.\n\nLCSC's endpoint is unofficial and LCSC's terms of use have not been read: a person must read them before the command is advertised, and official APIs (JLCAPI, the LCSC API; they need an account) are future work. Meanwhile the command is polite: one request at a time, `--delay` apart, a User-Agent that says what it is, answers kept for `--cache-ttl` and retried with a growing wait.\n\nThe exit code is 0, 1 if any row is `CONFLICT` or `MISSING`, and 2 when the run had to stop (the endpoint refused, or answered in another shape: nothing is written then)."
+)]
 pub struct RefreshArgs {
     /// Catalog files or folders of them; none is the project's catalogs.
     #[arg(value_name = "CATALOG.CSV|DIR")]
@@ -55,6 +55,9 @@ pub struct RefreshArgs {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing."
+)]
 #[command(args_override_self = true)]
 pub struct AddArgs {
     /// The LCSC number to add, such as C25104.
@@ -72,6 +75,9 @@ pub struct AddArgs {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "`catalog age` prints the rows whose price and stock were read more than `--days` days ago (the supply provider's answer, else the row's `date`) and, apart, the rows whose price and stock are unknown because no provider has them and the row has no `date` (unknown is not old and not 0); it reads the `[supply]` table of the project that contains the directory."
+)]
 #[command(args_override_self = true)]
 pub struct AgeArgs {
     /// Catalog files or folders of them, as for `refresh`.

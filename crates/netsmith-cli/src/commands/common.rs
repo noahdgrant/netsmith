@@ -31,6 +31,11 @@ pub struct Output {
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
     /// Print each note, a count of the notes for each cause, or none.
+    ///
+    /// `summary` prints a board's notes as one line with a count for each cause (`note: TwoBuck:
+    /// 7 notes: 6 not_stated, 1 unjudged`), `none` leaves them out, and `all`, the default,
+    /// prints each. With `--format json` the notes are findings only with `all`; their counts are
+    /// always there.
     #[arg(long, value_enum, default_value = "all")]
     pub notes: Notes,
 }

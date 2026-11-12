@@ -7,10 +7,10 @@ use clap::Args as ClapArgs;
 use super::common::with_placed_board;
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "The board is placed as `fab` places it; nothing is routed or written but the `--glb` and `--step` files, and no KiCad is needed (ADR 0105, docs/BOARD3D.md)."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`board3d` places a board as `fab` does, with the layout file and the physical file, and prints its 3D scene (ADR 0105) without routing or writing anything but the `--glb` and `--step` files, and without KiCad. With neither `--json`, `--glb` nor `--step` it prints a short summary. A file of several boards needs `--board`. docs/BOARD3D.md has the frame and every field."
+)]
 pub struct Args {
     /// The source file; with none, the project's boards.
     #[arg(value_name = "FILE.NSM")]
@@ -19,12 +19,23 @@ pub struct Args {
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Print the report an agent reads: bodies, heights and where they came from, limits, overlaps.
+    ///
+    /// Each part's body box, its Z range and where its height came from (`stated`, `catalog` or
+    /// `unknown`, never a guessed height), each height limit with the tallest part under it and the
+    /// margin, the parts too tall, bodies that overlap in 3D, the parts of unknown height with the
+    /// reason, and the height coverage. With `--glb` as well it does both.
     #[arg(long)]
     pub json: bool,
     /// Write the scene as glTF 2.0 binary, in place of the summary.
+    ///
+    /// It is the file the editor's 3D view shows (docs/BOARD3D.md).
     #[arg(long, value_name = "FILE.GLB")]
     pub glb: Option<PathBuf>,
     /// Write the board and its parts as a STEP file (AP214), in place of the summary.
+    ///
+    /// For mechanical CAD: the board through its thickness with its cutouts and holes, each part a
+    /// product named by its designator, as exact solids; a part of unknown height is its outline
+    /// only, never a guessed solid (ADR 0107; docs/BOARD3D.md).
     #[arg(long, value_name = "FILE.STEP")]
     pub step: Option<PathBuf>,
 }

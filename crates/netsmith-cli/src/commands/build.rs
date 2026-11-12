@@ -10,6 +10,9 @@ use netsmith_core::timings;
 use super::common::{self, libraries, no_boards, sync_pins, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
+#[command(
+    after_long_help = "With no file, `build` acts on the project's boards (see netsmith.toml)."
+)]
 #[command(args_override_self = true)]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -19,10 +22,19 @@ pub struct Args {
     #[arg(long, value_name = "DIR")]
     pub out: Option<PathBuf>,
     /// Make a guideline finding an error for this run.
+    ///
+    /// Like `guidelines = "error"` in netsmith.toml (ADR 0036); without it a finding against a
+    /// guideline is a warning.
     #[arg(long)]
     pub strict: bool,
     /// Stop, before anything is written, when the pick lock, the pin file or the picks file
     /// would change.
+    ///
+    /// The run ends with an error, before anything is written, when the parts it picks differ from
+    /// the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, when the
+    /// pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR
+    /// 0101), or when the picks file beside it (`<file>.picks.toml`, #462) names a part that is
+    /// gone (see _The pick lock_ in docs/LANGUAGE.md).
     #[arg(long)]
     pub locked: bool,
     #[command(flatten)]

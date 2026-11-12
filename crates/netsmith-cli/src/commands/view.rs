@@ -6,10 +6,10 @@ use clap::{Args as ClapArgs, ValueEnum};
 use super::common::{DEFAULT_PORT, Ids, ViewName, parse_ids};
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "Start `netsmith editor` and open its page first (docs/BOARD3D.md, \"Driving a running editor\"). With no flag that changes the page it prints the page's state; with any, it changes the page and prints the state that results. A change the page refuses, or no editor or page, exits 2. Nothing changes the design or a file."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, \"Driving a running editor\") with the names of `render`, so that an agent changes the verb to switch between the two. With no flag that changes the page it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results. The page driven is the one focused last.\n\nA change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open. There is no `--theme`: the theme is the person's own setting for the whole editor (the state reports it). Nothing changes the design or a file."
+)]
 pub struct Args {
     /// The editor's port.
     #[arg(long, default_value_t = DEFAULT_PORT, value_parser = clap::value_parser!(u16).range(1..))]
@@ -27,6 +27,8 @@ pub struct Args {
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_ids, conflicts_with = "select")]
     pub highlight: Vec<Ids>,
     /// Select parts or one `net:<name>`, as a click does (comma-separated or repeated); `none` clears it.
+    ///
+    /// The editor's selection holds parts or one net, so `--select` takes no limit.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_select)]
     pub select: Vec<Ids>,
     /// Draw everything see-through.
@@ -57,6 +59,8 @@ pub struct Args {
     #[arg(long)]
     pub json: bool,
     /// Save what the page's canvas shows after the change.
+    ///
+    /// It opens the 3D view if it is not on screen.
     #[arg(long, value_name = "FILE.PNG")]
     pub picture: Option<PathBuf>,
     /// Refused with the reason: the theme is the person's own setting.

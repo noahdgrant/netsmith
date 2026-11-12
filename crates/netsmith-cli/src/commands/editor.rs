@@ -9,7 +9,9 @@ use netsmith::project::Target;
 use super::common::DEFAULT_PORT;
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(after_long_help = "The editor serves on 127.0.0.1 and prints the address to open.")]
+#[command(
+    after_long_help = "With no file, `editor` acts on the project's boards (see netsmith.toml). It serves on 127.0.0.1 and prints the address to open."
+)]
 #[command(args_override_self = true)]
 pub struct Args {
     /// The source file; with none, the project's boards.

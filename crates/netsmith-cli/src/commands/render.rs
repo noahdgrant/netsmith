@@ -7,10 +7,10 @@ use clap::{Args as ClapArgs, ValueEnum};
 use super::common::{Ids, ViewName, parse_ids, with_placed_board};
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "The same source and flags give the same bytes, with no GPU, browser or KiCad (ADR 0105; docs/BOARD3D.md, \"Pictures for agents\")."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`render` places a board as `board3d` does and draws it to a PNG with netsmith's own software rasterizer (ADR 0105): the same source and options give the same bytes, with no GPU, no browser and no KiCad. docs/BOARD3D.md, \"Pictures for agents\", has the frame and what is drawn."
+)]
 pub struct Args {
     /// The source file; with none, the project's boards.
     #[arg(value_name = "FILE.NSM")]
@@ -22,15 +22,24 @@ pub struct Args {
     #[arg(long, value_enum, default_value = "iso")]
     pub view: ViewName,
     /// The PNG to write (default `<board>-<view>.png`).
+    ///
+    /// The path written is printed.
     #[arg(long, value_name = "FILE.PNG")]
     pub out: Option<PathBuf>,
     /// The picture's size in pixels, 64 to 8192 a side.
     #[arg(long, value_name = "WxH", default_value = "1600x1000", value_parser = netsmith::render::parse_size)]
     pub size: (usize, usize),
     /// Cut the scene at a position in mm, such as `x=12.5`, and keep the far side.
+    ///
+    /// The position is in the scene's frame: y up from the outline's bottom-left corner, z up from
+    /// the board's top face. The cut faces are filled as a section of the stackup, each layer at
+    /// its true thickness in its own colour, unless `--no-caps` leaves them open.
     #[arg(long, value_name = "AXIS=MM", value_parser = netsmith::render::parse_section)]
     pub section: Option<(netsmith_pcb::mesh::Axis, f64)>,
     /// Light a part, `net:<name>` or `limit:<name>` and dim the rest (comma-separated or repeated).
+    ///
+    /// A part is named by its designator or its path. An id the board does not have is an error
+    /// that lists the ones it has.
     #[arg(long, value_name = "ID[,ID...]", value_parser = parse_ids)]
     pub highlight: Vec<Ids>,
     /// Draw everything see-through.

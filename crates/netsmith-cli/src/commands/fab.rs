@@ -14,10 +14,10 @@ use netsmith_fab::{KicadCli, KicadCliExe};
 use super::common::{self, libraries, no_boards, sync_pins, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "`fab` places, routes and checks each board with netsmith's own design rules check (ADR 0037), and needs no KiCad. A board the router cannot finish is still written, marked INCOMPLETE, with `routing-failure.txt` and `routing-report.json` beside it, and the run fails. Read `fab-notes.txt` before you order."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`."
+)]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
     #[arg(value_name = "FILE.NSM")]
@@ -26,33 +26,59 @@ pub struct Args {
     #[arg(long, value_name = "DIR")]
     pub out: Option<PathBuf>,
     /// Seconds the router may take for a board; 0 is no limit (default 300).
+    ///
+    /// When the time is spent, `fab` stops and lists the connections left. The default is 300.
     #[arg(long, value_name = "SECS")]
     pub route_timeout: Option<u64>,
     /// Package a board that fails the design rules check (never an unmet `[constraint]`).
+    ///
+    /// `fab-notes.txt` then says the board is not clean. It never waives a `[constraint]` finding:
+    /// a requirement on where a part goes is relaxed only by `constraints = "warn"` in
+    /// netsmith.toml or `--constraints warn`.
     #[arg(long)]
     pub allow_drc_violations: bool,
     /// Compare the files and the findings with KiCad's own plot and check (needs kicad-cli).
+    ///
+    /// It needs KiCad's command-line tool: `$KICAD_CLI`, then `kicad-cli` on `PATH`, then Windows
+    /// KiCad 9 under WSL.
     #[arg(long)]
     pub cross_check: bool,
     /// Make a guideline finding an error for this run.
     #[arg(long)]
     pub strict: bool,
     /// Stop when the pick lock or the pin file would change; implies `--pins locked`.
+    ///
+    /// With `fab` it also means `--pins locked`, so a board that does not route never has its pin
+    /// file rewritten (`--locked` wins over `--pins auto`). With `--order <name>` it applies to
+    /// each source file that builds a board of the order.
     #[arg(long)]
     pub locked: bool,
     /// Whether an unmet requirement on where a part goes stops `fab`, over netsmith.toml.
+    ///
+    /// It wins over `constraints` in netsmith.toml for this run.
     #[arg(long, value_enum)]
     pub constraints: Option<Constraints>,
     /// What a board that does not route may do with its pins, over netsmith.toml (ADR 0101).
+    ///
+    /// `pins` in netsmith.toml sets it for a project; the default is `auto`.
     #[arg(long, value_enum)]
     pub pins: Option<Pins>,
     /// Leave the board's 3D scene (`<board>.glb`) out of the package.
+    ///
+    /// `glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier
+    /// run is removed.
     #[arg(long)]
     pub no_glb: bool,
     /// Also write `<board>.placed.json`, the board before routing, for `netsmith route`.
+    ///
+    /// The file goes into the board's output folder, with the track margin `fab` routes with.
+    /// Nothing else of the package changes, and a run without it removes the file an earlier run
+    /// saved. `--order` does not take it.
     #[arg(long, conflicts_with = "order")]
     pub save_placed: bool,
     /// Make one of the project's orders, or list them with no name (ADR 0035).
+    ///
+    /// An order names its boards in netsmith.toml, so `--order` takes no file. It prints text only.
     #[arg(long, value_name = "NAME", num_args = 0..=1, conflicts_with = "file")]
     pub order: Option<Option<String>>,
     /// Print the result of each board and the findings, not the stages.

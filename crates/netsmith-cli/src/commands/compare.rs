@@ -9,10 +9,10 @@ use netsmith::findings::Format;
 use super::common;
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "Each design is a `.kicad_sch`, a `.kicad_pcb`, a KiCad netlist (XML) or a `.nsm` file, which is built as `build` does; parts are matched by value, footprint and wiring (ADR 0017). The exit code is 0 for a match, 1 for a difference and 2 for a mistake or a comparison that could not be decided."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`compare` checks a design against another by connectivity (ADR 0017), for example a port against the KiCad design it came from. Each of `<A>` and `<B>` is a `.kicad_sch`, a `.kicad_pcb`, a KiCad netlist (the XML of `kicad-cli sch export netlist --format kicadxml`) or a `.nsm` file, which is built as `build` does. Net names and, by default, designators may differ between the two; components are matched by value, footprint (without its library) and how their pins are wired. It prints `match` with the designators and net names that correspond, or each difference: a component with no counterpart, a pair that differs in value or footprint, a net whose pins differ (each pin in its own side's designators), a net with no counterpart.\n\nPower ports and flags (`#PWR`, `#FLG`) are not parts. A pin joined to nothing is on no net, so it differs only from a pin that is joined to something. Reading a `.kicad_sch` needs KiCad's command-line tool, found as for `fab --cross-check`.\n\nThe exit code is 0 for a match, 1 for a difference and 2 for a mistake or a comparison that could not be decided (many interchangeable parts and a search past its bound)."
+)]
 pub struct Args {
     /// The first design.
     #[arg(value_name = "A")]
@@ -24,6 +24,8 @@ pub struct Args {
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// A file of `A_ref B_ref` lines that fix pairs of designators.
+    ///
+    /// The rest are matched by wiring. Blank lines and `#` comments are ignored.
     #[arg(long, value_name = "FILE", conflicts_with = "by_refdes")]
     pub map: Option<PathBuf>,
     /// Match a part only with the part of the same designator.
@@ -36,6 +38,8 @@ pub struct Args {
     #[arg(long)]
     pub loose_values: bool,
     /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` holds the `verdict` and the pairs of a match or each difference.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
 }

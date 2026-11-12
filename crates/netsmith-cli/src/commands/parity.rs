@@ -9,10 +9,10 @@ use netsmith::findings::Format;
 use super::common;
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(
-    after_long_help = "For a port: the place, rotation, face and pads of each part the table names. The exit code is 1 when a part the table marks `must_match` fails, 0 when none does, and 2 when a file cannot be read."
-)]
 #[command(args_override_self = true)]
+#[command(
+    after_long_help = "`parity` compares a board that `fab` wrote with the original of a port (see the skill `netsmith-port-a-kicad-board`), part by part: the place, the rotation, the face and the pads of each part the table names.\n\nThe exit code is 1 when a part the table marks `must_match` fails, 0 when none does and 2 when a file cannot be read."
+)]
 pub struct Args {
     /// The board `fab` wrote.
     #[arg(value_name = "BOARD.KICAD_PCB")]
@@ -27,6 +27,8 @@ pub struct Args {
     #[arg(long, value_name = "OVERLAY.SVG")]
     pub svg: Option<PathBuf>,
     /// Text for a person, or one JSON document on stdout.
+    ///
+    /// `json` holds each item with its figures.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
 }
