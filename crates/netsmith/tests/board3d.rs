@@ -1077,3 +1077,30 @@ fn render_is_listed_in_the_help() {
         assert!(text.contains(word), "{word}");
     }
 }
+
+/// The layers of every board's stackup add up to within the fabricator's tolerance of the
+/// thickness it chose (1.6 mm nominal; JLCPCB's four-layer stack is 1.6062 mm with the mask).
+#[test]
+fn the_stackup_adds_up_to_the_nominal_thickness_within_the_fabricators_tolerance() {
+    let examples = repo().join("examples");
+    for file in ["led.nsm", "four_layer.nsm"] {
+        let (report, _) = json(&examples, &[file, "--json"]);
+        let board = &report["board"];
+        let nominal = board["thickness"].as_f64().unwrap();
+        let sum: f64 = board["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l["thickness"].as_f64().unwrap())
+            .sum();
+        assert!(
+            (board["stack_thickness"].as_f64().unwrap() - sum).abs() < 1e-9,
+            "{file}: stack_thickness is the sum of the layers"
+        );
+        let tolerance = netsmith_pcb::stackup::thickness_tolerance(nominal);
+        assert!(
+            (sum - nominal).abs() <= tolerance,
+            "{file}: the layers add up to {sum} mm, more than {tolerance} mm from {nominal} mm"
+        );
+    }
+}
