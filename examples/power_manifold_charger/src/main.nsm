@@ -1,0 +1,614 @@
+//! The Power Manifold charger module: the circuit of the open design (CERN-OHL-P-2.0; see
+//! `README.md` and `LICENSE`), written in netsmith. The circuit only: the outline and the places
+//! of the edge connector, the receptacle and the programming pads are for the physical file, a
+//! later item.
+//!
+//! A USB-C Power Delivery "charger blade" for the Power Manifold backplane (a PCIe x1 card-edge
+//! connector, J3): an STM32G071 (U1) runs ST's USB-PD stack over a TPS55288 buck-boost
+//! converter (U3, with the external half bridge Q1 and Q2 on its DR1H and DR1L) and a TCPP02-M18
+//! port protector (U5); the port's VBUS goes through two back-to-back MOSFETs (Q3, Q4) and a
+//! shunt (R27) to the receptacle (J4); a TLV7022 dual comparator (U4) pulls the protector's
+//! enable low above a DAC-set or fixed voltage whatever the firmware does; a LP2985-3.3 (U2)
+//! makes the MCU's 3.3 V from the slot's 5 V. The blade is read and configured over I2C through
+//! the card edge.
+//!
+//! Its nets are the design's, and the proof is the test `board` of
+//! `crates/netsmith/tests/power_manifold.rs` (`README.md`, "Same nets"). Every pin of the edge
+//! connector and of the microcontroller is joined to the pin the design joins it to: the
+//! board states no request that the pin optimizer (ADR 0101) could move.
+
+import src::antc1608_ntc::Antc1608Ntc
+import src::bsc059n04ls6::Bsc059n04ls6
+import src::gt_usb_7004::GtUsb7004
+import src::lp2985::Lp2985
+import src::pcie_x1_edge_fingers::PcieX1EdgeFingers
+import src::stm32g071c8::Stm32G071C8
+import src::tcpp02_m18::Tcpp02M18
+import src::tlv7022::Tlv7022
+import src::tps55288::Tps55288
+import src::usblc6_2sc6::Usblc62sc6
+import std::mfg::jlcpcb::FourLayer
+import std::parts::connector::ProgrammingPads6
+import std::parts::diode::Tvs
+import std::parts::mechanical::TestPoint
+import std::parts::passive::{Capacitor, FerriteBead, Fuse, Inductor, Led, Resistor}
+import std::sources::Rail
+
+board PowerManifoldCharger {
+    .process: FourLayer {
+        .stackup.thickness &= 1.6mm
+        // The pours of the design: ground on both outer layers and the first inner layer (its
+        // L2 is a solid, unbroken ground plane), the 5 V on the second inner layer.
+        .top.net &= "GND"
+        .bottom.net &= "GND"
+        .inner1.net &= "GND"
+        .inner2.net &= "+5V"
+    }
+
+    // ---- The chips ----
+
+    /// U1: STM32G071C8T6
+    .mcu: Stm32G071C8 { .mpn &= "STM32G071C8T6" }
+    /// U3: TPS55288RPMR
+    .converter: Tps55288 { .mpn &= "TPS55288RPMR" }
+    /// U5: TCPP02-M18
+    .protector: Tcpp02M18 { .mpn &= "TCPP02-M18" }
+    /// U4: TLV7022DDFR
+    .comparator: Tlv7022 { .mpn &= "TLV7022DDFR" }
+    /// U2: LP2985-3.3
+    .ldo: Lp2985 { .mpn &= "LP2985A-33DBVR" }
+    /// U6: USBLC6-2SC6
+    .usb_esd: Usblc62sc6 { .mpn &= "USBLC6-2SC6" }
+
+    // ---- The power stage ----
+
+    /// Q1: BSC059N04LS6
+    .q_high: Bsc059n04ls6 { .mpn &= "BSC059N04LS6" }
+    /// Q2: BSC059N04LS6
+    .q_low: Bsc059n04ls6 { .mpn &= "BSC059N04LS6" }
+    /// L2: 5.6uH
+    .power_inductor: Inductor { .inductance &= 5.6uH +/- 20%; .package &= "SMD,11.5x10mm" }
+    /// L1: 1uH
+    .input_inductor: Inductor { .inductance &= 1uH +/- 20%; .package &= "SMD,7x6.6mm" }
+    /// F1: 8A
+    .fuse: Fuse { .rated_current &= 8A; .package &= "2410" }
+    /// FB1: BLM18KG601SN1D
+    .vcc_bead: FerriteBead { .impedance &= 600ohm +/- 25%; .impedance_frequency &= 100MHz; .package &= "0603" }
+    /// R28: R010
+    .output_shunt: Resistor { .resistance &= 10mohm +/- 1%; .package &= "1206" }
+    /// R27: R007
+    .port_shunt: Resistor { .resistance &= 7mohm +/- 1%; .package &= "1206" }
+    /// Q3: BSC059N04LS6
+    .q_port_a: Bsc059n04ls6 { .mpn &= "BSC059N04LS6" }
+    /// Q4: BSC059N04LS6
+    .q_port_b: Bsc059n04ls6 { .mpn &= "BSC059N04LS6" }
+
+    // ---- The connectors ----
+
+    /// J3: Bus_PCI_Express_x1
+    .slot: PcieX1EdgeFingers
+    /// J4: USB_C_Receptacle_USB2.0_14P
+    .usb: GtUsb7004 { .mpn &= "GT-USB-7004" }
+    /// J2: TC2030
+    .swd: ProgrammingPads6 { .package &= "TC2030-NL-connect" }
+    /// J1: TX
+    .tp_tx: TestPoint { .package &= "D1.5mm" }
+    /// J5: GND
+    .tp_gnd: TestPoint { .package &= "D1.5mm" }
+    /// J6: RX
+    .tp_rx: TestPoint { .package &= "D1.5mm" }
+
+    // ---- Protection, the indicator and the sensors ----
+
+    /// D2: ESDA25P35-1U1M
+    .port_tvs: Tvs { .package &= "DFN1610-2" }
+    /// D1: GREEN
+    .led: Led { .color &= "GREEN"; .package &= "0603" }
+    /// TH1: NTC_CONV
+    .ntc_converter: Antc1608Ntc { .mpn &= "ANTC1608-103F3380FB" }
+    /// TH2: NTC_PLUG
+    .ntc_plug: Antc1608Ntc { .mpn &= "ANTC1608-103F3380FB" }
+
+    // ---- The resistors ----
+
+    /// R1
+    .en_pulldown: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    /// R2
+    .ovp_ref_pulldown: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    /// R3
+    .sda_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    /// R4
+    .scl_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    /// R5
+    .usb_sda_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    /// R6
+    .usb_scl_pullup: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    /// R7
+    .led_resistor: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
+    /// R8
+    .tcpp_en_series: Resistor { .resistance &= 4.7kohm +/- 1%; .package &= "0402" }
+    /// R9
+    .tcpp_en_pulldown: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    /// R10
+    .fault_pullup: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    /// R11
+    .fsw_resistor: Resistor { .resistance &= 49.9kohm +/- 1%; .package &= "0402" }
+    /// R12
+    .ntc_converter_pullup: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    /// R13
+    .flag_pullup: Resistor { .resistance &= 47kohm +/- 1%; .package &= "0402" }
+    /// R14
+    .gate_high_resistor: Resistor { .resistance &= 1ohm +/- 1%; .package &= "0402" }
+    /// R16
+    .ntc_plug_pullup: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    /// R17
+    .vout_divider_top: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    /// R18
+    .vout_divider_bottom: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    /// R19
+    .vbus_divider_top: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+    /// R20
+    .vbus_divider_bottom: Resistor { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    /// R21
+    .gate_low_resistor: Resistor { .resistance &= 1ohm +/- 1%; .package &= "0402" }
+    /// R22
+    .mode_resistor: Resistor { .resistance &= 75kohm +/- 1%; .package &= "0402" }
+    /// R23
+    .ilim_resistor: Resistor { .resistance &= 45.3kohm +/- 1%; .package &= "0402" }
+    /// R24
+    .comp_resistor: Resistor { .resistance &= 56.2kohm +/- 1%; .package &= "0402" }
+    /// R25
+    .ovp_ceil_top: Resistor { .resistance &= 57.6kohm +/- 1%; .package &= "0402" }
+    /// R26
+    .ovp_ceil_bottom: Resistor { .resistance &= 100kohm +/- 1%; .package &= "0402" }
+
+    // ---- The capacitors ----
+
+    /// C1
+    .v3v3_4u7: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    /// C2
+    .v3v3_100n_a: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C3
+    .v3v3_100n_b: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C4
+    .v3v3_100n_c: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C5
+    .reset_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C6
+    .emi_vin_100u: Capacitor { .capacitance &= 100uF +/- 20%; .package &= "SMD,D6.3xL7.7mm" }
+    /// C7
+    .v5_4u7: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
+    /// C8
+    .emi_vin_10u_a: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
+    /// C9
+    .emi_vin_10u_b: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
+    /// C10
+    .emi_vin_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C11
+    .ldo_bypass: Capacitor { .capacitance &= 10nF +/- 10%; .package &= "0402" }
+    /// C12
+    .v3v3_10u: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
+    /// C13
+    .dither_10n: Capacitor { .capacitance &= 10nF +/- 10%; .package &= "0402" }
+    /// C14
+    .ntc_converter_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C15
+    .emi_vin_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603" }
+    /// C16
+    .ntc_plug_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C18
+    .vout_sense_1n: Capacitor { .capacitance &= 1nF +/- 10%; .package &= "0402" }
+    /// C19
+    .vbus_sense_10n: Capacitor { .capacitance &= 10nF +/- 10%; .package &= "0402" }
+    /// C20
+    .boot1_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C21
+    .boot2_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C22
+    .cc1_330p: Capacitor { .capacitance &= 330pF +/- 10%; .package &= "0402" }
+    /// C23
+    .vcc_10u: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
+    /// C24
+    .cc2_330p: Capacitor { .capacitance &= 330pF +/- 10%; .package &= "0402" }
+    /// C25
+    .comp_cap_series: Capacitor { .capacitance &= 4.7nF +/- 10%; .package &= "0402" }
+    /// C26
+    .iana_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C27
+    .cbias_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C28
+    .vcc_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C29
+    .comp_cap: Capacitor { .capacitance &= 100pF +/- 10%; .package &= "0402" }
+    /// C30
+    .v3v3_100n_d: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C31
+    .gate_47p: Capacitor { .capacitance &= 47pF +/- 10%; .package &= "0402" }
+    /// C32
+    .vout_conv_10u_a: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
+    /// C33
+    .vout_conv_10u_b: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
+    /// C34
+    .v5_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603" }
+    /// C35
+    .v5_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    /// C36
+    .vout_conv_10u_c: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
+    /// C37
+    .vout_conv_10u_d: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
+    /// C38
+    .vbus_2u2: Capacitor { .capacitance &= 2.2uF +/- 10%; .package &= "1206" }
+    /// C39
+    .vout_conv_220u: Capacitor { .capacitance &= 220uF +/- 20%; .package &= "SMD,D8xL9mm" }
+
+    // ---- The rails ----
+
+    /// The slot's main DC input (A2 to A7): 24 V nominal, +20 %/-15 % (the design's architecture
+    /// notes, section 3), ahead of the fuse.
+    .slot_vin: Rail {
+        .voltage &= 20.4V..28.8V
+        .pos.net &= "VIN_PREFUSE"
+        .neg.net &= "GND"
+    }
+    /// The slot's 5 V logic supply (A12, B12), from the backplane's buck.
+    .v5: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "+5V"
+        .neg.net &= "GND"
+    }
+    /// The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.
+    .v3v3: Rail {
+        .pos.net &= "+3.3V"
+        .neg.net &= "GND"
+    }
+    /// Behind the fuse.
+    .vin: Rail {
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    /// Behind the input inductor: the converter's input.
+    .emi_vin: Rail {
+        .pos.net &= "EMI_VIN"
+        .neg.net &= "GND"
+    }
+    /// The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V;
+    /// the blade is offered 5 V to 21 V by its firmware).
+    .vout_conv: Rail {
+        .voltage &= 5V..21V
+        .pos.net &= "VOUT_CONV"
+        .neg.net &= "GND"
+    }
+    /// Behind the output shunt R28.
+    .vout: Rail {
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+    }
+    /// The two back-to-back MOSFETs' common source.
+    .vbus_src: Rail {
+        .pos.net &= "VBUS_SRC"
+        .neg.net &= "GND"
+    }
+    /// Behind the shunt R27, ahead of the MOSFET Q4.
+    .vbus_f: Rail {
+        .pos.net &= "VBUSf"
+        .neg.net &= "GND"
+    }
+    /// The port's VBUS, on the receptacle.
+    .vbus: Rail {
+        .pos.net &= "VBUS"
+        .neg.net &= "GND"
+    }
+
+    .slot_vin.neg ~ .v5.neg
+    .v3v3.neg ~ .v5.neg
+    .vin.neg ~ .v5.neg
+    .emi_vin.neg ~ .v5.neg
+    .vout_conv.neg ~ .v5.neg
+    .vout.neg ~ .v5.neg
+    .vbus_src.neg ~ .v5.neg
+    .vbus_f.neg ~ .v5.neg
+    .vbus.neg ~ .v5.neg
+
+    // Series parts between rails: the fuse F1, the input inductor L1, the output shunt R28 and the
+    // port shunt R27.
+    .slot_vin.pos ~> .fuse ~> .vin.pos
+    .vin.pos ~> .input_inductor ~> .emi_vin.pos
+    .vout_conv.pos ~> .output_shunt ~> .vout.pos
+    .vbus.pos ~> .port_shunt ~> .vbus_f.pos
+
+    // The supply pins of the chips.
+    .mcu.vdd ~ .v3v3
+    .mcu.vbat ~ .v3v3.pos
+    .mcu.vrefp ~ .v3v3.pos
+    .converter.vin ~ .emi_vin
+    .converter.vout ~ .vout_conv.pos
+    .converter.isp ~ .vout_conv.pos
+    .protector.vcc ~ .v5
+    .comparator.supply ~ .v3v3
+    .ldo.vin ~ .v5
+    .ldo.on_off ~ .v5.pos
+    .ldo.vout ~ .v3v3
+    .usb.vbus ~ .vbus
+
+    // ---- The nets ----
+    // Each net is joined to one pin, in the order of the design's own net list (the net
+    // names of KiCad's file are in the comments; the board's are generated where it states none).
+    // GND
+    .v5.neg ~ .v3v3_4u7.b
+    .v5.neg ~ .v3v3_100n_a.b
+    .v5.neg ~ .v3v3_100n_b.b
+    .v5.neg ~ .v3v3_100n_c.b
+    .v5.neg ~ .reset_100n.b
+    .v5.neg ~ .emi_vin_100u.b
+    .v5.neg ~ .v5_4u7.b
+    .v5.neg ~ .emi_vin_10u_a.b
+    .v5.neg ~ .emi_vin_10u_b.b
+    .v5.neg ~ .emi_vin_100n.b
+    .v5.neg ~ .ldo_bypass.b
+    .v5.neg ~ .v3v3_10u.b
+    .v5.neg ~ .dither_10n.b
+    .v5.neg ~ .ntc_converter_100n.b
+    .v5.neg ~ .emi_vin_1u.b
+    .v5.neg ~ .ntc_plug_100n.b
+    .v5.neg ~ .vout_sense_1n.b
+    .v5.neg ~ .vbus_sense_10n.b
+    .v5.neg ~ .cc1_330p.b
+    .v5.neg ~ .vcc_10u.b
+    .v5.neg ~ .cc2_330p.b
+    .v5.neg ~ .comp_cap_series.b
+    .v5.neg ~ .iana_100n.b
+    .v5.neg ~ .cbias_100n.b
+    .v5.neg ~ .vcc_100n.b
+    .v5.neg ~ .comp_cap.b
+    .v5.neg ~ .v3v3_100n_d.b
+    .v5.neg ~ .vout_conv_10u_a.b
+    .v5.neg ~ .vout_conv_10u_b.b
+    .v5.neg ~ .v5_1u.b
+    .v5.neg ~ .v5_100n.b
+    .v5.neg ~ .vout_conv_10u_c.b
+    .v5.neg ~ .vout_conv_10u_d.b
+    .v5.neg ~ .vbus_2u2.b
+    .v5.neg ~ .vout_conv_220u.b
+    .v5.neg ~ .port_tvs.anode
+    .v5.neg ~ .swd.p5
+    .v5.neg ~ .slot.a10
+    .v5.neg ~ .slot.a11
+    .v5.neg ~ .slot.a13
+    .v5.neg ~ .slot.a15
+    .v5.neg ~ .slot.a16
+    .v5.neg ~ .slot.a17
+    .v5.neg ~ .slot.a18
+    .v5.neg ~ .slot.a8
+    .v5.neg ~ .slot.a9
+    .v5.neg ~ .slot.b1
+    .v5.neg ~ .slot.b10
+    .v5.neg ~ .slot.b11
+    .v5.neg ~ .slot.b13
+    .v5.neg ~ .slot.b18
+    .v5.neg ~ .slot.b2
+    .v5.neg ~ .slot.b3
+    .v5.neg ~ .slot.b4
+    .v5.neg ~ .slot.b5
+    .v5.neg ~ .slot.b6
+    .v5.neg ~ .slot.b7
+    .v5.neg ~ .slot.b8
+    .v5.neg ~ .slot.b9
+    .v5.neg ~ .usb.shell
+    .v5.neg ~ .tp_gnd.p1
+    .v5.neg ~ .q_low.source
+    .v5.neg ~ .en_pulldown.b
+    .v5.neg ~ .ovp_ref_pulldown.b
+    .v5.neg ~ .tcpp_en_pulldown.b
+    .v5.neg ~ .fsw_resistor.a
+    .v5.neg ~ .vout_divider_bottom.b
+    .v5.neg ~ .vbus_divider_bottom.b
+    .v5.neg ~ .mode_resistor.b
+    .v5.neg ~ .ilim_resistor.b
+    .v5.neg ~ .ovp_ceil_bottom.b
+    .v5.neg ~ .ntc_converter.b
+    .v5.neg ~ .ntc_plug.b
+    .v5.neg ~ .mcu.pa9
+    .v5.neg ~ .mcu.pa10
+    .v5.neg ~ .converter.agnd
+    .v5.neg ~ .protector.i2c_add
+    .v5.neg ~ .usb_esd.gnd
+    // +5V
+    .v5.pos ~ .v5_4u7.a
+    .v5.pos ~ .v5_1u.a
+    .v5.pos ~ .v5_100n.a
+    .v5.pos ~ .led.anode
+    .v5.pos ~ .vcc_bead.b
+    .v5.pos ~ .slot.a12
+    .v5.pos ~ .slot.b12
+    // +3.3V
+    .v3v3.pos ~ .v3v3_4u7.a
+    .v3v3.pos ~ .v3v3_100n_a.a
+    .v3v3.pos ~ .v3v3_100n_b.a
+    .v3v3.pos ~ .v3v3_100n_c.a
+    .v3v3.pos ~ .v3v3_10u.a
+    .v3v3.pos ~ .v3v3_100n_d.a
+    .v3v3.pos ~ .swd.p1
+    .v3v3.pos ~ .sda_pullup.a
+    .v3v3.pos ~ .scl_pullup.a
+    .v3v3.pos ~ .usb_sda_pullup.a
+    .v3v3.pos ~ .usb_scl_pullup.a
+    .v3v3.pos ~ .fault_pullup.a
+    .v3v3.pos ~ .ntc_converter_pullup.a
+    .v3v3.pos ~ .flag_pullup.a
+    .v3v3.pos ~ .ntc_plug_pullup.a
+    .v3v3.pos ~ .ovp_ceil_top.a
+    // /VIN_PREFUSE
+    .slot_vin.pos ~ .slot.a2
+    .slot_vin.pos ~ .slot.a3
+    .slot_vin.pos ~ .slot.a4
+    .slot_vin.pos ~ .slot.a5
+    .slot_vin.pos ~ .slot.a6
+    .slot_vin.pos ~ .slot.a7
+    // /EMI_VIN
+    .emi_vin.pos ~ .emi_vin_100u.a
+    .emi_vin.pos ~ .emi_vin_10u_a.a
+    .emi_vin.pos ~ .emi_vin_10u_b.a
+    .emi_vin.pos ~ .emi_vin_100n.a
+    .emi_vin.pos ~ .emi_vin_1u.a
+    .emi_vin.pos ~ .q_high.drain
+    // /VOUT_CONV
+    .vout_conv.pos ~ .vout_conv_10u_a.a
+    .vout_conv.pos ~ .vout_conv_10u_b.a
+    .vout_conv.pos ~ .vout_conv_10u_c.a
+    .vout_conv.pos ~ .vout_conv_10u_d.a
+    .vout_conv.pos ~ .vout_conv_220u.a
+    .vout_conv.pos ~ .converter.isp
+    // /VOUT
+    .vout.pos ~ .gate_47p.a
+    .vout.pos ~ .q_port_a.drain
+    .vout.pos ~ .vout_divider_top.a
+    .vout.pos ~ .converter.isn
+    // /VBUS_SRC
+    .vbus_src.pos ~ .q_port_a.source
+    .vbus_src.pos ~ .q_port_b.source
+    .vbus_src.pos ~ .protector.src
+    // /VBUSf
+    .vbus_f.pos ~ .q_port_b.drain
+    .vbus_f.pos ~ .protector.isense
+    // /VBUS
+    .vbus.pos ~ .vbus_2u2.a
+    .vbus.pos ~ .port_tvs.cathode
+    .vbus.pos ~ .vbus_divider_top.a
+    .vbus.pos ~ .protector.vbusc
+    // /CC1
+    .usb.cc1 ~ .cc1_330p.a
+    .usb.cc1 ~ .protector.cc1c
+    // /CC2
+    .usb.cc2 ~ .cc2_330p.a
+    .usb.cc2 ~ .protector.cc2c
+    // /CONVERTER_FLT
+    .mcu.pb12 ~ .fault_pullup.b
+    .mcu.pb12 ~ .converter.fb
+    // /DR1H
+    .converter.dr1h ~ .gate_high_resistor.b
+    // /DR1L
+    .converter.dr1l ~ .gate_low_resistor.b
+    // /EN
+    .slot.b16 ~ .en_pulldown.a
+    .slot.b16 ~ .mcu.pb8
+    .slot.b16 ~ .converter.en
+    // /IANA
+    .mcu.pa1 ~ .iana_100n.a
+    .mcu.pa1 ~ .protector.iana
+    // /NTC_CONV
+    .mcu.pb0 ~ .ntc_converter_100n.a
+    .mcu.pb0 ~ .ntc_converter_pullup.b
+    .mcu.pb0 ~ .ntc_converter.a
+    // /NTC_PLUG
+    .mcu.pb2 ~ .ntc_plug_100n.a
+    .mcu.pb2 ~ .ntc_plug_pullup.b
+    .mcu.pb2 ~ .ntc_plug.a
+    // /OVP_CEIL
+    .comparator.in_b_pos ~ .ovp_ceil_top.b
+    .comparator.in_b_pos ~ .ovp_ceil_bottom.a
+    // /OVP_REF
+    .mcu.pa4 ~ .ovp_ref_pulldown.a
+    .mcu.pa4 ~ .comparator.in_a_pos
+    // /SCL
+    .slot.a14 ~ .scl_pullup.b
+    .slot.a14 ~ .mcu.pb6
+    // /SDA
+    .slot.b14 ~ .sda_pullup.b
+    .slot.b14 ~ .mcu.pb7
+    // /SW1
+    .q_high.source ~ .boot1_cap.a
+    .q_high.source ~ .power_inductor.a
+    .q_high.source ~ .q_low.drain
+    .q_high.source ~ .converter.sw1
+    // /SW2
+    .converter.sw2 ~ .boot2_cap.a
+    .converter.sw2 ~ .power_inductor.b
+    // /SWCLK
+    .swd.p4 ~ .mcu.pa14
+    // /SWDIO
+    .swd.p2 ~ .mcu.pa13
+    // /TCPP_EN
+    .mcu.pb4 ~ .tcpp_en_series.b
+    .mcu.pb4 ~ .tcpp_en_pulldown.a
+    .mcu.pb4 ~ .comparator.out_a
+    .mcu.pb4 ~ .comparator.out_b
+    .mcu.pb4 ~ .protector.en
+    // /UCPD_CC1
+    .mcu.pa8 ~ .protector.cc1
+    // /UCPD_CC2
+    .mcu.pb15 ~ .protector.cc2
+    // /USART_RX
+    .tp_rx.p1 ~ .mcu.pa3
+    // /USART_TX
+    .tp_tx.p1 ~ .mcu.pa2
+    // /USB_DATA
+    .usb.dp ~ .usb.dm
+    .usb.dp ~ .usb_esd.io1
+    // /USB_SCL
+    .mcu.pb10 ~ .usb_scl_pullup.b
+    .mcu.pb10 ~ .converter.scl
+    .mcu.pb10 ~ .protector.scl
+    // /USB_SDA
+    .mcu.pb11 ~ .usb_sda_pullup.b
+    .mcu.pb11 ~ .converter.sda
+    .mcu.pb11 ~ .protector.sda
+    // /VBUS_GATE
+    .q_port_a.gate ~ .gate_47p.b
+    .q_port_a.gate ~ .q_port_b.gate
+    .q_port_a.gate ~ .protector.gate
+    // /VBUS_SENSE
+    .mcu.pa0 ~ .vbus_sense_10n.a
+    .mcu.pa0 ~ .vbus_divider_top.b
+    .mcu.pa0 ~ .vbus_divider_bottom.a
+    // /VOUT_SENSE
+    .mcu.pb1 ~ .vout_sense_1n.a
+    .mcu.pb1 ~ .vout_divider_top.b
+    .mcu.pb1 ~ .vout_divider_bottom.a
+    .mcu.pb1 ~ .comparator.in_a_neg
+    .mcu.pb1 ~ .comparator.in_b_neg
+    // /~{ALERT}
+    .slot.b15 ~ .mcu.pb5
+    // /~{FLG}
+    .mcu.pb13 ~ .flag_pullup.b
+    .mcu.pb13 ~ .protector.flgn
+    // /~{RST}
+    .swd.p3 ~ .reset_100n.a
+    .swd.p3 ~ .mcu.pf2
+    // (generated name Net-(C25-Pad1))
+    .comp_cap_series.a ~ .comp_resistor.b
+    // (generated name Net-(D1-K))
+    .led.cathode ~ .led_resistor.a
+    // (generated name Net-(J3-~{PRSNT1}))
+    .slot.a1 ~ .slot.b17
+    // (generated name Net-(Q1-G))
+    .q_high.gate ~ .gate_high_resistor.a
+    // (generated name Net-(Q2-G))
+    .q_low.gate ~ .gate_low_resistor.a
+    // (generated name Net-(U1-PA15))
+    .mcu.pa15 ~ .tcpp_en_series.a
+    // (generated name Net-(U1-PB3))
+    .mcu.pb3 ~ .led_resistor.b
+    // (generated name Net-(U2-BP))
+    .ldo.bypass ~ .ldo_bypass.a
+    // (generated name Net-(U3-BOOT1))
+    .converter.boot1 ~ .boot1_cap.b
+    // (generated name Net-(U3-BOOT2))
+    .converter.boot2 ~ .boot2_cap.b
+    // (generated name Net-(U3-COMP))
+    .converter.comp ~ .comp_cap.a
+    .converter.comp ~ .comp_resistor.a
+    // (generated name Net-(U3-DITH{slash}SYNC))
+    .converter.dith ~ .dither_10n.a
+    // (generated name Net-(U3-FSW))
+    .converter.fsw ~ .fsw_resistor.b
+    // (generated name Net-(U3-ILIM))
+    .converter.ilim ~ .ilim_resistor.a
+    // (generated name Net-(U3-MODE))
+    .converter.mode ~ .mode_resistor.a
+    // (generated name Net-(U3-VCC))
+    .converter.vcc ~ .vcc_10u.a
+    .converter.vcc ~ .vcc_100n.a
+    .converter.vcc ~ .vcc_bead.a
+    // (generated name Net-(U5-CBIAS))
+    .protector.cbias ~ .cbias_100n.a
+}

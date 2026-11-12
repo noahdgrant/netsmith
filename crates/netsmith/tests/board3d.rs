@@ -45,7 +45,7 @@ fn part<'a>(report: &'a serde_json::Value, path: &str) -> &'a serde_json::Value 
 #[test]
 fn the_lidded_board_reports_the_part_too_tall_the_unknown_one_and_the_margin() {
     let (r, _) = json(&fixtures(), &["height_limits.nsm", "--json"]);
-    assert_eq!(r["schema"], 1);
+    assert_eq!(r["schema"], 2);
     assert_eq!(r["units"], "mm");
     assert_eq!(r["board"]["name"], "Lidded");
     assert_eq!(r["board"]["thickness"], 1.6);
@@ -169,6 +169,79 @@ fn a_file_of_several_boards_needs_board_and_names_them() {
     assert_eq!(out.status.code(), Some(1));
 }
 
+fn copper_layer<'a>(report: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+    report["copper"]["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["name"] == name)
+        .unwrap_or_else(|| panic!("no copper layer `{name}`"))
+}
+
+fn net_area(layer: &serde_json::Value, net: &str) -> f64 {
+    layer["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["net"] == net)
+        .unwrap_or_else(|| panic!("no copper of `{net}` on {}", layer["name"]))["area"]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn the_four_layer_example_has_copper_on_four_layers_with_the_planes_inside() {
+    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
+    let copper = &r["copper"];
+    let layers = copper["layers"].as_array().unwrap();
+    let names: Vec<&str> = layers.iter().map(|l| l["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]);
+    // Each copper layer is at the height of its entry in the stackup.
+    for l in layers {
+        let stack = r["board"]["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|k| k["name"] == l["name"])
+            .unwrap();
+        for key in ["z_top", "z_bottom", "thickness"] {
+            assert_eq!(l[key], stack[key], "{} {key}", l["name"]);
+        }
+    }
+    // The inner layers are planes, each of one net; the outer layer has the pads.
+    let (gnd, v3) = (copper_layer(&r, "In1.Cu"), copper_layer(&r, "In2.Cu"));
+    for (plane, net) in [(gnd, "GND"), (v3, "3V3")] {
+        assert!(plane["pours"].as_u64().unwrap() >= 1, "{plane}");
+        assert!(net_area(plane, net) > 100.0, "{plane}");
+    }
+    assert!(copper_layer(&r, "F.Cu")["pads"].as_u64().unwrap() > 0);
+    // Nothing is routed by this command, so there are no tracks or vias.
+    assert_eq!(copper["vias"], 0);
+    assert_eq!(copper_layer(&r, "F.Cu")["tracks"], 0);
+    assert!(copper["mask_openings"]["top"].as_u64().unwrap() > 0);
+    // Areas are rounded to 1e-4 mm2, so they print with at most four decimals.
+    for n in layers.iter().flat_map(|l| l["nets"].as_array().unwrap()) {
+        let a = n["area"].as_f64().unwrap();
+        assert_eq!((a * 1e4).round() / 1e4, a);
+    }
+}
+
+#[test]
+fn a_two_layer_board_has_two_copper_layers_and_the_same_bytes_every_run() {
+    let examples = repo().join("examples");
+    let (r, first) = json(&examples, &["led.nsm", "--json"]);
+    let names: Vec<&str> = r["copper"]["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["F.Cu", "B.Cu"]);
+    assert!(copper_layer(&r, "F.Cu")["pads"].as_u64().unwrap() > 0);
+    let (_, second) = json(&examples, &["led.nsm", "--json"]);
+    assert_eq!(first, second);
+}
+
 /// The scene of the board in `source` (a path from the repository), built and placed as
 /// `board3d` does (the same target, loader and catalogs, its pick lock held, its physical and
 /// layout files read), with no KiCad.
@@ -249,6 +322,47 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
     let b = render(&scene_of("examples/led.nsm"), "led", dir.path());
     assert_eq!(a, b);
     assert_eq!(of_scene(&scene), of_scene(&scene_of("examples/led.nsm")));
+}
+
+#[test]
+fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    let scene = scene_of("examples/four_layer.nsm");
+    let meshes = of_scene(&scene);
+    let shaped: Vec<_> = scene.bodies.iter().filter(|b| b.shape.is_some()).collect();
+    assert!(!shaped.is_empty(), "no part of four_layer is shaped");
+    for b in &shaped {
+        // Shaped only with a known height, and the shape reaches it exactly.
+        let h = b.height.unwrap();
+        // The part's meshes but its plated barrels, which share its id.
+        let mine: Vec<_> = meshes
+            .iter()
+            .filter(|m| m.id == b.path && m.material != Material::Copper)
+            .cloned()
+            .collect();
+        assert!(
+            mine.iter().any(|m| m.material == Material::Metal),
+            "{}",
+            b.path
+        );
+        let bb = netsmith_pcb::mesh::bounds_of(&mine).unwrap();
+        let (lo, hi) = b.z_range();
+        assert!(
+            (bb.min[2] - lo.unwrap()).abs() < 1e-9 && (bb.max[2] - hi.unwrap()).abs() < 1e-9,
+            "{} ({h} mm): {bb:?}",
+            b.path
+        );
+    }
+    let dir = netsmith_kicad::testlib::TempDir::new("render-four-layer");
+    let a = render(&scene, "four_layer", dir.path());
+    assert_eq!(
+        a,
+        render(
+            &scene_of("examples/four_layer.nsm"),
+            "four_layer",
+            dir.path()
+        )
+    );
 }
 
 #[test]
@@ -440,4 +554,295 @@ fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() 
     assert!(served == written, "the editor's file is the command's");
     let (status, _, _) = http_bytes(port, "/api/pcb/3d?board=Nope");
     assert_eq!(status, 404);
+}
+
+// ---- `netsmith render`: the scene drawn to a PNG (ADR 0105) --------------------------------
+
+/// `netsmith render <args>` in `dir`, with KiCad switched off: the command needs none.
+fn render_cmd(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .arg("render")
+        .args(args)
+        .current_dir(dir)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("KICAD_CLI")
+        .output()
+        .unwrap()
+}
+
+/// The bytes of the PNG `netsmith render <source> <args> --out <out>` writes into `out`.
+fn picture(source: &Path, out: &Path, args: &[&str]) -> Vec<u8> {
+    let result = render_cmd(
+        source.parent().unwrap(),
+        &[
+            &[source.file_name().unwrap().to_str().unwrap()][..],
+            args,
+            &["--out", out.to_str().unwrap()],
+        ]
+        .concat(),
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(result.status.success(), "{args:?}: {stderr}");
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        out.to_str().unwrap(),
+        "the command prints the path it wrote"
+    );
+    std::fs::read(out).unwrap()
+}
+
+/// A PNG's width and height from its header.
+fn png_size(png: &[u8]) -> (u32, u32) {
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    assert_eq!(&png[12..16], b"IHDR");
+    let at = |i: usize| u32::from_be_bytes(png[i..i + 4].try_into().unwrap());
+    (at(16), at(20))
+}
+
+fn led() -> PathBuf {
+    repo().join("examples/led.nsm")
+}
+
+#[test]
+fn render_gives_the_same_bytes_twice_and_names_its_file_after_board_and_view() {
+    let cwd = netsmith_kicad::testlib::TempDir::new("render-default-name");
+    let run = || render_cmd(cwd.path(), &[led().to_str().unwrap(), "--size", "320x200"]);
+    let first = run();
+    assert!(first.status.success(), "{:?}", first.stderr);
+    // The default file is `<board>-<view>.png` (the default view is iso), here in the current
+    // folder, and the command prints it.
+    assert_eq!(
+        String::from_utf8_lossy(&first.stdout).trim(),
+        "LedExample-iso.png"
+    );
+    let bytes = std::fs::read(cwd.path().join("LedExample-iso.png")).unwrap();
+    assert_eq!(png_size(&bytes), (320, 200));
+    std::fs::remove_file(cwd.path().join("LedExample-iso.png")).unwrap();
+    assert!(run().status.success());
+    assert_eq!(
+        bytes,
+        std::fs::read(cwd.path().join("LedExample-iso.png")).unwrap()
+    );
+    // It draws the board as the scene says: the same bytes as the rasterizer gives the scene.
+    let scene = scene_of("examples/led.nsm");
+    let options = netsmith_pcb::raster3d::RenderOptions {
+        width: 320,
+        height: 200,
+        ..Default::default()
+    };
+    let direct = netsmith_pcb::raster3d::render_view(
+        &netsmith_pcb::mesh::of_scene(&scene),
+        netsmith_pcb::raster3d::View::Iso,
+        &options,
+    )
+    .to_png();
+    assert_eq!(bytes, direct);
+    // Nothing else is written beside the source.
+    assert!(!repo().join("examples/LedExample-iso.png").exists());
+}
+
+#[test]
+fn every_view_writes_a_png_of_the_size_asked_for_and_they_differ() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-views");
+    let mut seen: Vec<Vec<u8>> = Vec::new();
+    for view in netsmith_pcb::raster3d::View::ALL {
+        let out = dir.path().join(format!("{}.png", view.name()));
+        let png = picture(&led(), &out, &["--view", view.name(), "--size", "256x160"]);
+        assert_eq!(png_size(&png), (256, 160), "{}", view.name());
+        assert!(!seen.contains(&png), "{} repeats a view", view.name());
+        seen.push(png);
+    }
+    // The lenses, the themes and x-ray each change the picture.
+    let base = picture(&led(), &dir.path().join("b.png"), &["--size", "256x160"]);
+    for flags in [
+        &["--perspective"][..],
+        &["--theme", "dark"],
+        &["--xray"],
+        &["--ortho"],
+    ] {
+        let args = [&["--size", "256x160"][..], flags].concat();
+        let png = picture(&led(), &dir.path().join("f.png"), &args);
+        assert_eq!(png_size(&png), (256, 160));
+        assert_eq!(png == base, *flags == ["--ortho"], "{flags:?}");
+    }
+}
+
+#[test]
+fn a_highlight_by_designator_or_path_lights_that_part_and_an_unknown_id_is_an_error() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-highlight");
+    let (size, out) = (["--size", "256x160"], dir.path().join("h.png"));
+    let plain = picture(&led(), &out, &size);
+    let by_refdes = picture(&led(), &out, &[&size[..], &["--highlight", "J1"]].concat());
+    let by_path = picture(
+        &led(),
+        &out,
+        &[&size[..], &["--highlight", "power_in"]].concat(),
+    );
+    assert_ne!(plain, by_refdes);
+    assert_eq!(by_refdes, by_path);
+    // Several ids, repeated or comma-separated, are the same request.
+    let comma = picture(
+        &led(),
+        &out,
+        &[&size[..], &["--highlight", "J1,net:GND"]].concat(),
+    );
+    let twice = picture(
+        &led(),
+        &out,
+        &[&size[..], &["--highlight", "J1", "--highlight", "net:GND"]].concat(),
+    );
+    assert_eq!(comma, twice);
+
+    let gone = dir.path().join("none.png");
+    let bad = render_cmd(
+        dir.path(),
+        &[
+            led().to_str().unwrap(),
+            "--highlight",
+            "J1,Q9,net:nope,limit:lid",
+            "--out",
+            gone.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(bad.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    for id in ["`Q9`", "`net:nope`", "`limit:lid`"] {
+        assert!(stderr.contains(id), "{stderr}");
+    }
+    assert!(stderr.contains("power_in"), "{stderr}");
+    assert!(
+        bad.stdout.is_empty() && !gone.exists(),
+        "an error writes nothing"
+    );
+}
+
+#[test]
+fn a_limit_and_a_net_can_be_highlighted() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-highlight-limit");
+    let lidded = fixtures().join("height_limits.nsm");
+    let out = dir.path().join("l.png");
+    let args = ["--size", "256x160"];
+    let plain = picture(&lidded, &out, &args);
+    let limit = picture(
+        &lidded,
+        &out,
+        &[&args[..], &["--highlight", "limit:lid"]].concat(),
+    );
+    assert_ne!(plain, limit);
+    let net = picture(
+        &led(),
+        &out,
+        &[&args[..], &["--highlight", "net:VCC"]].concat(),
+    );
+    assert_eq!(png_size(&net), (256, 160));
+}
+
+#[test]
+fn a_section_cuts_the_picture_and_is_checked() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-section");
+    let out = dir.path().join("s.png");
+    let args = ["--size", "256x160", "--view", "iso"];
+    let whole = picture(&led(), &out, &args);
+    // The LED board is 14 mm long: a cut at x = 7 leaves half of it.
+    let cut = picture(&led(), &out, &[&args[..], &["--section", "x=7"]].concat());
+    assert_ne!(whole, cut);
+    assert_eq!(png_size(&cut), (256, 160));
+    // The same cut, as a number with a sign and a fraction, on each axis.
+    for section in ["y=3.5", "z=-0.8", "z=2.5"] {
+        let png = picture(&led(), &out, &[&args[..], &["--section", section]].concat());
+        assert_ne!(png, whole, "{section}");
+    }
+    for bad in ["x", "w=3", "x=", "x=abc", "x=1,y=2", "x=NaN"] {
+        let result = render_cmd(
+            dir.path(),
+            &[led().to_str().unwrap(), "--section", bad, "--out", "no.png"],
+        );
+        assert_eq!(result.status.code(), Some(2), "{bad}");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.contains("--section"), "{bad}: {stderr}");
+    }
+    assert!(!dir.path().join("no.png").exists());
+}
+
+#[test]
+fn a_size_out_of_bounds_or_a_wrong_view_is_a_usage_error() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-usage");
+    for (args, word) in [
+        (&["--size", "63x200"][..], "--size"),
+        (&["--size", "9000x200"], "--size"),
+        (&["--size", "8192x8192"], "--size"),
+        (&["--size", "800"], "--size"),
+        (&["--size", "axb"], "--size"),
+        (&["--view", "sideways"], "iso-bottom"),
+        (&["--theme", "blue"], "--theme"),
+        (&["--ortho", "--perspective"], "--ortho"),
+        (&["--glb", "x"], "--glb"),
+    ] {
+        let result = render_cmd(dir.path(), &[&[led().to_str().unwrap()][..], args].concat());
+        assert_eq!(result.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.contains(word), "{args:?}: {stderr}");
+    }
+    // The smallest and a large picture are fine.
+    let small = picture(&led(), &dir.path().join("a.png"), &["--size", "64x64"]);
+    assert_eq!(png_size(&small), (64, 64));
+}
+
+#[test]
+fn a_file_of_several_boards_needs_board_and_a_board_that_does_not_build_is_exit_one() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-boards");
+    let two = repo().join("examples/two_boards.nsm");
+    let result = render_cmd(dir.path(), &[two.to_str().unwrap(), "--out", "x.png"]);
+    assert_eq!(result.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("--board"), "{stderr}");
+    assert!(stderr.contains("TwoBoards/led"), "{stderr}");
+    let out = dir.path().join("one.png");
+    let png = picture(
+        &two,
+        &out,
+        &["--board", "TwoBoards/led", "--size", "128x80"],
+    );
+    assert_eq!(png_size(&png), (128, 80));
+    // The default file of a board of a system has no slash in it.
+    let named = render_cmd(
+        dir.path(),
+        &[
+            two.to_str().unwrap(),
+            "--board",
+            "TwoBoards/led",
+            "--view",
+            "top",
+            "--size",
+            "64x64",
+        ],
+    );
+    assert!(named.status.success(), "{:?}", named.stderr);
+    assert_eq!(
+        String::from_utf8_lossy(&named.stdout).trim(),
+        "TwoBoards-led-top.png"
+    );
+    assert!(dir.path().join("TwoBoards-led-top.png").exists());
+
+    let missing = render_cmd(dir.path(), &["no_such_file.nsm"]);
+    assert_eq!(missing.status.code(), Some(2));
+}
+
+#[test]
+fn render_is_listed_in_the_help() {
+    let out = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(["render", "--help"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    for word in [
+        "netsmith render",
+        "--highlight",
+        "--section",
+        "--xray",
+        "--perspective",
+    ] {
+        assert!(text.contains(word), "{word}");
+    }
 }

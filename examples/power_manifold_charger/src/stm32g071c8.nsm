@@ -1,0 +1,111 @@
+//! The STM32G071C8 microcontroller, STMicroelectronics, in the 48-pin LQFP package (7 x 7 mm,
+//! 0.5 mm pitch), order code STM32G071C8T6: the U1 of the Power Manifold charger module (the
+//! board's footprint is `Local Library:LQFP-48_L7.0-W7.0-P0.50-LS9.0-BL` and the LCSC number it
+//! carries, C529341, is the STM32G071C8T6).
+//!
+//! The pin table was WRITTEN BY HAND from ST's datasheet "STM32G071x8/xB: Arm Cortex-M0+ 32-bit
+//! MCU, 128 KB Flash, 36 KB RAM, 4x USART, timers, ADC, DAC, comm. I/Fs, 1.7-3.6V" (DS12232
+//! Rev 3, March 2020, 133 pages, the copy that LCSC links for C529341, fetched on 2026-11-11 from
+//! <https://datasheet.lcsc.com/datasheet/pdf/84935701d33b161d7905a9a630bec350.pdf>, SHA-256
+//! `96d7e9ca1500`; ST's own server did not answer, and a later revision may exist: compare the
+//! table before a board is ordered): Figure 5 "STM32G071CxT LQFP48 pinout" (printed page 37) for
+//! the pad numbers and names, and Table 12 "Pin assignment and description" (printed pages 41 to
+//! 47, the LQFP48 column, with the pin type) for what each pin is. The datasheet is copyrighted
+//! (STMicroelectronics): only facts are taken here (numbers, names, kinds).
+//!
+//! The kinds follow Table 12's pin type: `S` (supply) is `power` (the four supply pads `VBAT`,
+//! `VREF+`, `VDD/VDDA` and `VSS/VSSA`; the LQFP48 has no other), `I/O` is `bidirectional`
+//! (every port pin, and `PF2-NRST`, whose I/O structure `RST` is "bidirectional reset pin with
+//! embedded weak pull-up", Table 11). No pin is of type `I` in this package. `PA14-BOOT0` is
+//! the port pin PA14 that is also the boot pin (it is `bidirectional` as the table says).
+//! The names are the datasheet's, including `PA11 [PA9]` and `PA12 [PA10]` (Figure 5; note 4 of
+//! Table 12: PA9 and PA10 can be remapped in place of PA11 and PA12, the default mapping).
+//!
+//! The supply is a rail, `.vdd`: its `.vdd.pos` is the `VDD/VDDA` pad (6) and its `.vdd.neg` the
+//! `VSS/VSSA` pad (7), with the datasheet's standard operating voltage: Table 21 "General
+//! operating conditions" (printed page 55) VDD 1.7 V minimum and 3.6 V maximum (note 1: when
+//! RESET is released functionality is guaranteed down to VPDR min), so the DC analysis checks a
+//! regulator's output against it. `VBAT` (4) and `VREF+` (5) are plain `power` pins and not
+//! part of the rail: the datasheet gives VBAT its own window (1.55 V to 3.6 V, Table 21) and
+//! says `VREF+` must equal VDDA below 2 V and lie between 2 V and VDDA above it, and "can be
+//! grounded when the analog peripherals using VREF+ are not active" (section 3.7.1 "Power
+//! supply schemes", printed page 17); neither is stated here. A board joins them to its supply as it chooses
+//! (the reference board joins pads 4, 5 and 6 to its 3.3 V rail).
+//!
+//! What is deliberately left out: the alternate and additional functions of the pins (Table 12's
+//! last columns and Tables 13 to 15: UCPD, USART, I2C, SWD, the ADC inputs, the timers), so the
+//! board chooses none and no bus rule runs on the part; the absolute maximum ratings (Table 18:
+//! VDD 4.0 V, FT pins VDD + 4.0 V, FT_c pins 5.5 V), every level and timing, the current of the
+//! part, and the other packages (the UFQFPN48 has an exposed pad and the same pin numbers; the
+//! LQFP32, LQFP64, UFBGA64, UFQFPN28/32 and WLCSP25 number the pads differently).
+
+import std::sources::Rail
+
+/// The STM32G071C8: an Arm Cortex-M0+ microcontroller with 64 KB of flash and 36 KB of RAM, in
+/// the 48-pin LQFP package. The pin names are the datasheet's and the pad numbers its LQFP48
+/// pin numbers. `.vdd` is the supply, `.vdd.pos` the `VDD/VDDA` pad and `.vdd.neg` the
+/// `VSS/VSSA` pad.
+part Stm32G071C8 {
+    .designator &= "U"
+
+    .vdd: Rail
+    // Table 21, General operating conditions (printed page 55): VDD 1.7 V to 3.6 V.
+    .vdd.voltage >= 1.7V
+    .vdd.voltage <= 3.6V
+
+    pins "LQFP-48(7x7)" {
+        //  pin      kind           name              pads
+        .pc13    bidirectional  "PC13"            "1"
+        .pc14    bidirectional  "PC14-OSC32_IN"   "2"
+        .pc15    bidirectional  "PC15-OSC32_OUT"  "3"
+        .vbat    power          "VBAT"            "4"
+        .vrefp   power          "VREF+"           "5"
+        .vdd.pos power          "VDD/VDDA"        "6"
+        .vdd.neg power          "VSS/VSSA"        "7"
+        .pf0     bidirectional  "PF0-OSC_IN"      "8"
+        .pf1     bidirectional  "PF1-OSC_OUT"     "9"
+        .pf2     bidirectional  "PF2-NRST"        "10"
+        .pa0     bidirectional  "PA0"             "11"
+        .pa1     bidirectional  "PA1"             "12"
+        .pa2     bidirectional  "PA2"             "13"
+        .pa3     bidirectional  "PA3"             "14"
+        .pa4     bidirectional  "PA4"             "15"
+        .pa5     bidirectional  "PA5"             "16"
+        .pa6     bidirectional  "PA6"             "17"
+        .pa7     bidirectional  "PA7"             "18"
+        .pb0     bidirectional  "PB0"             "19"
+        .pb1     bidirectional  "PB1"             "20"
+        .pb2     bidirectional  "PB2"             "21"
+        .pb10    bidirectional  "PB10"            "22"
+        .pb11    bidirectional  "PB11"            "23"
+        .pb12    bidirectional  "PB12"            "24"
+        .pb13    bidirectional  "PB13"            "25"
+        .pb14    bidirectional  "PB14"            "26"
+        .pb15    bidirectional  "PB15"            "27"
+        .pa8     bidirectional  "PA8"             "28"
+        .pa9     bidirectional  "PA9"             "29"
+        .pc6     bidirectional  "PC6"             "30"
+        .pc7     bidirectional  "PC7"             "31"
+        .pa10    bidirectional  "PA10"            "32"
+        .pa11    bidirectional  "PA11 [PA9]"      "33"
+        .pa12    bidirectional  "PA12 [PA10]"     "34"
+        .pa13    bidirectional  "PA13"            "35"
+        .pa14    bidirectional  "PA14-BOOT0"      "36"
+        .pa15    bidirectional  "PA15"            "37"
+        .pd0     bidirectional  "PD0"             "38"
+        .pd1     bidirectional  "PD1"             "39"
+        .pd2     bidirectional  "PD2"             "40"
+        .pd3     bidirectional  "PD3"             "41"
+        .pb3     bidirectional  "PB3"             "42"
+        .pb4     bidirectional  "PB4"             "43"
+        .pb5     bidirectional  "PB5"             "44"
+        .pb6     bidirectional  "PB6"             "45"
+        .pb7     bidirectional  "PB7"             "46"
+        .pb8     bidirectional  "PB8"             "47"
+        .pb9     bidirectional  "PB9"             "48"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog stm32g071c8 by .mpn { .mpn, .package }
+}

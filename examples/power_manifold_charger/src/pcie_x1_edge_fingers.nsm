@@ -1,0 +1,70 @@
+//! The PCI Express x1 card edge of the Power Manifold charger module, as the one part, 36 gold
+//! fingers, that the board's footprint `Local Library:BUS_PCIexpress_x1` (its J3) is: the
+//! module's connector to its backplane. The fingers are copper of the board itself: the part is
+//! made by nobody, so it has no catalog and no LCSC number and is fitted by nobody (`AssemblyMode::None`,
+//! as the standard `ProgrammingPads6` is).
+//!
+//! The pins are the fingers, named as the footprint numbers them: `.a1` to `.a18` on pads `A1` to
+//! `A18` (side A, on the board's front face) and `.b1` to `.b18` on pads `B1` to `B18` (side B,
+//! on the back face). Every pin is `passive`: a card edge says nothing about a direction. The
+//! comment after each row is the pin function the reference board's schematic gives that
+//! finger (the `pinfunction` of its pads in `reference/charger-module.kicad_pcb`: `VIN_A2`, `PGND_A8`, `+5V_A12`, `SCL_A14`,
+//! `~{PRSNT1}_A1` and so on), which is the backplane's own assignment and is not read from the
+//! PCI Express card electromechanical specification (which was not read): the board connects
+//! each finger as its nets say. Several fingers carry one net (six `VIN` fingers, ground).
+//!
+//! The footprint (`libs/power_manifold_must_match.pretty/PCIe_x1_Edge_Fingers.kicad_mod`) is
+//! written from the reference board's pads (README, Parts) and **does not draw the board's
+//! outline**: the reference's J3 draws the tab and the key slot of the card in `Edge.Cuts`, which
+//! the board's physical file draws instead.
+
+import std::parts::connector::Connector
+
+/// The 36 gold fingers of a PCI Express x1 card edge, `A1` to `A18` and `B1` to `B18`.
+part PcieX1EdgeFingers provides Connector {
+    pins "PCIe-x1-edge" {
+        //  pin     kind     name  pad   reference's function
+        .a1 passive "A1" "A1"  // ~PRSNT1
+        .a2 passive "A2" "A2"  // VIN
+        .a3 passive "A3" "A3"  // VIN
+        .a4 passive "A4" "A4"  // VIN
+        .a5 passive "A5" "A5"  // VIN
+        .a6 passive "A6" "A6"  // VIN
+        .a7 passive "A7" "A7"  // VIN
+        .a8 passive "A8" "A8"  // PGND
+        .a9 passive "A9" "A9"  // PGND
+        .a10 passive "A10" "A10" // PGND
+        .a11 passive "A11" "A11" // GND
+        .a12 passive "A12" "A12" // +5V
+        .a13 passive "A13" "A13" // GND
+        .a14 passive "A14" "A14" // SCL
+        .a15 passive "A15" "A15" // GND
+        .a16 passive "A16" "A16" // GND
+        .a17 passive "A17" "A17" // GND
+        .a18 passive "A18" "A18" // GND
+        .b1 passive "B1" "B1"  // PGND
+        .b2 passive "B2" "B2"  // PGND
+        .b3 passive "B3" "B3"  // PGND
+        .b4 passive "B4" "B4"  // PGND
+        .b5 passive "B5" "B5"  // PGND
+        .b6 passive "B6" "B6"  // PGND
+        .b7 passive "B7" "B7"  // PGND
+        .b8 passive "B8" "B8"  // PGND
+        .b9 passive "B9" "B9"  // PGND
+        .b10 passive "B10" "B10" // GND
+        .b11 passive "B11" "B11" // GND
+        .b12 passive "B12" "B12" // +5V
+        .b13 passive "B13" "B13" // GND
+        .b14 passive "B14" "B14" // SDA
+        .b15 passive "B15" "B15" // ~ALERT
+        .b16 passive "B16" "B16" // EN
+        .b17 passive "B17" "B17" // ~PRSNT2
+        .b18 passive "B18" "B18" // GND
+    }
+
+    .assembly &= AssemblyMode::None
+
+    /// The only package: the fingers, which are the board's own copper.
+    .package: Package
+    .package &= "PCIe-x1-edge"
+}

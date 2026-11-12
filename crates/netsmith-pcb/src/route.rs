@@ -1345,6 +1345,23 @@ fn initial_obstacles(board: &Board) -> Obstacles {
                         rules.hole_to_hole + rules.via_drill / 2.0 + MARGIN,
                     ));
                 }
+                // Its opening in the solder mask, which may be wider than the hole, exposes
+                // copper: a track keeps the process's space from it (issue #431).
+                let mask = mask_sides(part, pad);
+                if mask != [false, false] && pad.width > 0.0 && pad.height > 0.0 {
+                    let form = match pad.shape {
+                        crate::footprint::PadShape::Circle => {
+                            Form::Circle(part.pad_centre(pad), pad.width.min(pad.height) / 2.0)
+                        }
+                        _ => Form::Rect(part.pad_bounds(pad)),
+                    };
+                    list.push(Obstacle {
+                        net: None,
+                        layers: mask,
+                        form,
+                        clearance: rules.mask_to_track + MARGIN,
+                    });
+                }
                 continue;
             }
             let bounds = part.pad_bounds(pad);
@@ -1441,6 +1458,17 @@ enum Unsettled {
 
 /// How far from a right angle, in mm, the clean-up tries to cut it, the farthest first.
 const CHAMFERS: [f64; 4] = [0.3, 0.2, 0.1, 0.05];
+
+/// The faces whose solder mask a pad opens, on the board: front first.
+fn mask_sides(part: &crate::board::Placed, pad: &crate::footprint::Pad) -> [bool; 2] {
+    let has = |name: &str| pad.layers.iter().any(|l| l == name || l == "*.Mask");
+    let (front, back) = (has("F.Mask"), has("B.Mask"));
+    if part.mirrored() {
+        [back, front]
+    } else {
+        [front, back]
+    }
+}
 
 /// What one ratsnest line became.
 #[derive(Clone)]

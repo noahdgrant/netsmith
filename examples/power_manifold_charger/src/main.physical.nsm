@@ -1,0 +1,33 @@
+//! The physical file of the Power Manifold charger module: what must be where for a board made
+//! from this design to fit the backplane and the cable: the card-edge connector J3 (the
+//! fingers, on the back face), the USB-C receptacle J4 and the Tag-Connect pads J2 (CERN-OHL-P-2.0;
+//! see `README.md` and `LICENSE`). Every number is read from their board file
+//! (`reference/charger-module.kicad_pcb`, tabulated in `reference/placements.toml`) and is
+//! written here from the board's own corner, the upper-left corner of the outline's bounding box
+//! (x 54.8, y 26 in their file), with y growing downward.
+
+import std::pcb::Outline
+
+physical for PowerManifoldCharger {
+    case {
+        .outline: Outline {
+            .width &= 101.2mm
+            .height &= 24mm
+        }
+    }
+
+    .slot.place.x &= 3.45mm
+    .slot.place.y &= 10.15mm
+    .slot.place.rotation &= 90
+    .slot.place.side &= "bottom"
+
+    .usb.place.x &= 97.405mm
+    .usb.place.y &= 12mm
+    .usb.place.rotation &= 90
+    .usb.place.side &= "top"
+
+    .swd.place.x &= 82.5mm
+    .swd.place.y &= 21.3mm
+    .swd.place.rotation &= 0
+    .swd.place.side &= "top"
+}

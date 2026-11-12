@@ -1,8 +1,9 @@
-# `netsmith board3d`: the board in 3D, as data and as glTF
+# `netsmith board3d` and `netsmith render`: the board in 3D, as data, as glTF and as a picture
 
 `netsmith board3d` places a board as `fab` and the editor place it and prints its _Scene_
-(ADR 0105): the board as its stackup makes it, each part's body box from its face to its height,
-each height limit as a volume with the tallest part under it, and what is unknown. It is for an
+(ADR 0105): the board as its stackup makes it, a summary of its copper, each part's body box from
+its face to its height, each height limit as a volume with the tallest part under it, and what is
+unknown. It is for an
 agent, a script or a person who wants the 3D facts of a board as numbers, with no GPU, no browser
 and no KiCad.
 
@@ -15,7 +16,8 @@ netsmith board3d examples/led.nsm --glb led.glb   # the scene as glTF 2.0 binary
 
 - The board is placed exactly as `fab` places it: the pick lock beside the source holds the
   picks, the physical file's requirements and the layout file (`<stem>.pcb.toml`) are read, and
-  the layout file's positions are put on the board. Nothing is routed, so there are no vias yet.
+  the layout file's positions are put on the board. Nothing is routed, so the copper has pads,
+  planes and pours, and no tracks or vias.
 - Nothing is written but the `--glb` file: not the pick lock, not the pin file, not the layout
   file. With `--glb` alone nothing is printed; with `--json` too the report is printed as well.
 - No KiCad is needed (ADR 0097); the `no-kicad` job runs it with KiCad hidden.
@@ -47,7 +49,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "units": "mm",
   "frame": "millimetres, right-handed, z up; ...",
   "board": {
@@ -58,6 +60,15 @@ from `z = -thickness` down to `z = -thickness - height`.
     "layers": [ { "name": "F.Mask", "kind": "mask", "thickness": 0.01, "z_top": 0.0, "z_bottom": -0.01 }, "..." ],
     "cutouts": [],
     "holes": [ { "kind": "pad", "path": "bare", "refdes": "J3", "pad": "1", "from": [17.0, 12.0], "to": [17.0, 12.0], "diameter": 1.0, "plated": true } ]
+  },
+  "copper": {
+    "layers": [
+      { "name": "F.Cu", "z_top": -0.01, "z_bottom": -0.045, "thickness": 0.035, "pads": 8, "tracks": 0, "vias": 0, "pours": 0,
+        "nets": [ { "net": "GND", "area": 4.6 }, { "net": null, "area": 1.2 } ] },
+      "..."
+    ],
+    "vias": 0,
+    "mask_openings": { "top": 8, "bottom": 2 }
   },
   "parts": [
     {
@@ -92,6 +103,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `board.stack_thickness` | The sum of the layers below, the process's own figures. On a four-layer JLCPCB board it is 1.6062 mm against 1.6 mm: the bottom layers then reach a little past `-thickness`. |
 | `board.layers` | Top to bottom: mask, copper, dielectrics (`core`, `prepreg`), copper, mask, each with its `z_top` and `z_bottom`. The same list the KiCad board file's stackup is written from (`crates/netsmith-pcb/src/stackup.rs`). |
 | `board.cutouts`, `board.holes` | The holes through the board: cutouts as boxes with a corner radius; drilled holes by part `path`, `refdes` and `pad` (or by `net` for a via), a slot from `from` to `to`, `plated` or not. |
+| `copper` | A summary of the board's copper, with no polygons (they are in the scene, `netsmith_pcb::scene3d::SceneCopper`, for the 3D view). One entry per copper layer, top to bottom (`F.Cu`, the inner layers, `B.Cu`): `z_top`, `z_bottom` and `thickness` (the same as the layer's entry in `board.layers`), and how many `pads`, `tracks` (straight pieces) and `vias` it has, and how many polygons of `pours` (a pour on an outer layer, a plane on an inner one). `nets` is the copper of each net on the layer in mm², to 1e-4 mm², by net name with the copper that has no net (`null`) first. It adds up each net's pad, track and pour polygons, each by itself: a pad that stands in a pour of its own net is in the number twice, and drill holes and via rings are not taken away or added. `vias` at the top is the count of the board, each a barrel through it with a ring on every layer; `mask_openings` counts the openings of the solder mask on each face. The copper is the copper of the Gerbers (`crates/netsmith-pcb/src/copper.rs`), so the pours have the clearances and thermal reliefs `fab` writes. |
 | `parts` | One per part with a body (a label has none), by path. |
 | `parts[].body` | The body box: the footprint's fabrication outline (`from: "fab"`), else its courtyard (`"courtyard"`), as a placement requirement and the height check measure it. `corners` are turned with the part; `min` and `max` hold them. |
 | `parts[].z_bottom`, `z_top` | The body's Z range. The end at the board face is always known; the far end is `null` when the height is unknown. |
@@ -104,8 +116,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated and from catalog rows. The same count as the coverage line of `fab-notes.txt`. |
 | `tallest` | The tallest part of known height on each face. |
 
-Copper (pads, tracks, vias, planes and pours, with their nets) is not in the report yet; it comes
-with the copper of the 3D view (#430).
+Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file has no copper yet.
 
 ## The `.glb` file
 
@@ -144,3 +155,68 @@ A node whose shape has no area has no mesh, and is still there.
   `body`, `body-unknown`, `metal`, `mark`, `limit` and `limit-violated` (the last two see-through,
   `alphaMode: BLEND`). All ten are always written, in this order. Their colours are the
   rasterizer's light palette in linear light. No glTF extension is used.
+
+## Pictures for agents: `netsmith render`
+
+`netsmith render` places the board exactly as `board3d` does (the same code: the pick lock, the
+physical file and the layout file are read, nothing is routed, nothing is written but the
+picture), makes the scene's meshes (`netsmith_pcb::mesh`, the ones the `.glb` file is written
+from) and draws them to a PNG with netsmith's own software rasterizer
+(`netsmith_pcb::raster3d`, ADR 0105). It is for an agent that can read an image, a golden test
+and a person without a 3D viewer: **no GPU, no browser and no KiCad**, and the same source and
+options give the same bytes on every machine (all geometry is `f64` arithmetic in a fixed order,
+coverage is decided in integers, and there are no threads).
+
+```sh
+netsmith render examples/led.nsm                              # LedExample-iso.png, 1600x1000
+netsmith render examples/led.nsm --view top --out top.png     # straight down at the top face
+netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
+netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
+netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
+netsmith render examples/two_boards.nsm --board TwoBoards/led --view iso-bottom --theme dark
+```
+
+The command prints the path it wrote. Read the file with the image viewer of the agent (or
+open it): a picture to look at, with the numbers from `board3d --json` to quote.
+
+| Option | What it does |
+|---|---|
+| `--view` | `top`, `bottom`, `front`, `back`, `left`, `right`, `iso` (the default) or `iso-bottom`. See the table below. |
+| `--out <file.png>` | Where to write; default `<board>-<view>.png` in the current folder (a board of a system, `System/member`, is `System-member`). The folder must exist. |
+| `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
+| `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are open (no caps). |
+| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>` and `limit:<name>` (a height limit, as `board3d` names it). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets and limits the board has; nothing is written. |
+| `--xray` | Every mesh see-through, to look through the board and the bodies. |
+| `--theme light\|dark` | The palette; default `light`. |
+| `--ortho` \| `--perspective` | Parallel projection (the default, so lengths are comparable) or a pinhole with a 30° field of view. |
+
+The views look at the board's middle, framed to fit it with a margin, in the frame of this
+document (millimetres, right-handed, z up, origin at the outline's bottom-left corner on the top
+face, y up toward the outline's top edge):
+
+| View | Seen from | In the picture |
+|---|---|---|
+| `top` | above (+z) | x to the right, y up; the board as the editor's PCB view draws it |
+| `bottom` | below (-z) | x to the left, y up: the board turned over left to right |
+| `front` | -y | x to the right, z up |
+| `back` | +y | z up |
+| `left` | -x | z up |
+| `right` | +x | z up |
+| `iso` | the corner at +x, -y, +z | z up |
+| `iso-bottom` | the corner at +x, -y, -z | z up |
+
+`--section` is in the same frame: `z=0` is the top face and `z=-1.6` the bottom face of a 1.6 mm
+board, `x=7` is 7 mm in from the outline's left edge, and `y=3.5` is 3.5 mm up from its bottom
+edge. A layout-file point (from the top-left corner, y down) is `(x, outline height - y)`.
+
+What is drawn is what the scene has: the board (laminate with the green solder mask, with its
+outline, cutouts and drilled holes), the plated barrels, each part's body as a dark box from its
+face to its height, a part of **unknown height as a flat orange outline** on the board (never a
+box, ADR 0094), pins that stand out below the far face where the design states a protrusion, and
+each height limit as a see-through blue volume, red where a part is too tall for it. Other mesh
+ids, such as the copper's nets, pass through to `--highlight` as the scene gives them. A picture
+is a view of the scene and not a check: the numbers of `board3d --json` are.
+
+Exit 0 when the picture is written, 1 when the board does not build or cannot be placed (the
+error is `fab`'s), 2 when the command cannot start, an option is wrong (a view, a size, a section,
+a theme, an id of `--highlight` the board does not have) or the file cannot be written.

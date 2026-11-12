@@ -1,7 +1,9 @@
 //! `netsmith board3d`: the board's _Scene_ (ADR 0105, `netsmith_pcb::scene3d`) as numbers, for an
 //! agent or a person: the board's stackup, each part's body box with its Z and _Height
 //! provenance_, each height limit with the tallest part under it and the margin, bodies that
-//! overlap in 3D, the parts of unknown height with the reason, and the _Height coverage_.
+//! overlap in 3D, the parts of unknown height with the reason, and the _Height coverage_; and a
+//! summary of the copper (per layer its Z, its pads, tracks, vias and pours, and each net's area),
+//! not its polygons.
 //!
 //! The board is placed as `fab` and the editor place it ([`crate::layout::place`], the layout
 //! file respected); nothing is routed, written or asked of KiCad. The JSON report is the same
@@ -19,7 +21,7 @@ use crate::heights::CatalogHeight;
 
 /// The version of the JSON report's shape: a field removed or changed in meaning raises it; a
 /// field added does not.
-pub const SCHEMA: u32 = 1;
+pub const SCHEMA: u32 = 2;
 
 /// The frame, as the report states it for a reader that has not read this module.
 pub const FRAME: &str = "millimetres, right-handed, z up; the origin is the outline's bottom-left corner on the board's top face (z = 0), x right, y up toward the outline's top edge, the bottom face at z = -thickness; a layout-file point (x, y) (from the top-left corner, y down) is (x, outline height - y) here";
@@ -44,6 +46,7 @@ pub struct Report {
     pub units: &'static str,
     pub frame: &'static str,
     pub board: BoardReport,
+    pub copper: CopperReport,
     pub parts: Vec<PartReport>,
     pub height_limits: Vec<LimitReport>,
     pub too_tall: Vec<TooTallReport>,
@@ -63,6 +66,46 @@ pub struct BoardReport {
     pub layers: Vec<LayerReport>,
     pub cutouts: Vec<CutoutReport>,
     pub holes: Vec<HoleReport>,
+}
+
+/// The copper in numbers: no polygons.
+#[derive(Debug, Serialize)]
+pub struct CopperReport {
+    /// From the top face down.
+    pub layers: Vec<CopperLayerReport>,
+    /// The vias of the board: each is a barrel through it with a ring on every copper layer.
+    pub vias: usize,
+    /// How many openings of the solder mask each face has.
+    pub mask_openings: MaskReport,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MaskReport {
+    pub top: usize,
+    pub bottom: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CopperLayerReport {
+    pub name: String,
+    pub z_top: f64,
+    pub z_bottom: f64,
+    pub thickness: f64,
+    pub pads: usize,
+    pub tracks: usize,
+    /// The vias, which have a ring on every layer.
+    pub vias: usize,
+    /// The polygons of pours (outer layers) and planes (inner layers).
+    pub pours: usize,
+    /// The copper of each net on the layer in mm², to 1e-4 mm².
+    pub nets: Vec<NetArea>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NetArea {
+    /// `null` for copper that belongs to no net.
+    pub net: Option<String>,
+    pub area: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -269,7 +312,12 @@ fn reason(body: &Body, built: &Built, rows: &BTreeMap<&str, String>) -> String {
 
 /// The report of `scene`, the scene of `built`'s placed board. `sourcing` is the board's sourcing
 /// with its generic parts resolved to rows, as `fab` orders them, to name a row with no height.
-pub fn report(built: &Built, scene: &Scene, sourcing: &[netsmith_design::Sourced]) -> Report {
+pub fn report(
+    built: &Built,
+    scene: &Scene,
+    sourcing: &[netsmith_design::Sourced],
+) -> Result<Report, String> {
+    let copper = copper_report(scene)?;
     let rows: BTreeMap<&str, String> = built
         .design
         .parts
@@ -463,11 +511,12 @@ pub fn report(built: &Built, scene: &Scene, sourcing: &[netsmith_design::Sourced
         })
         .collect();
     let coverage = scene.coverage();
-    Report {
+    Ok(Report {
         schema: SCHEMA,
         units: "mm",
         frame: FRAME,
         board,
+        copper,
         parts,
         height_limits,
         too_tall: findings
@@ -506,7 +555,54 @@ pub fn report(built: &Built, scene: &Scene, sourcing: &[netsmith_design::Sourced
             top: tallest(scene.tallest(Side::Front), None),
             bottom: tallest(scene.tallest(Side::Back), None),
         },
-    }
+    })
+}
+
+/// An area to 1e-4 mm², with no negative zero.
+fn area(mm2: f64) -> f64 {
+    let r = (mm2 * 1e4).round() / 1e4;
+    if r == 0.0 { 0.0 } else { r }
+}
+
+fn copper_report(scene: &Scene) -> Result<CopperReport, String> {
+    let copper = scene.copper.as_ref().map_err(|e| e.to_string())?;
+    let openings = |side: Side| {
+        copper
+            .mask
+            .iter()
+            .filter(|m| m.side == side)
+            .map(|m| m.areas.len())
+            .sum()
+    };
+    Ok(CopperReport {
+        layers: copper
+            .layers
+            .iter()
+            .map(|l| CopperLayerReport {
+                name: l.name.clone(),
+                z_top: l.z_top,
+                z_bottom: l.z_bottom,
+                thickness: l.thickness,
+                pads: l.pads.len(),
+                tracks: l.tracks.len(),
+                vias: copper.vias.len(),
+                pours: l.pours.len(),
+                nets: l
+                    .nets()
+                    .into_iter()
+                    .map(|net| NetArea {
+                        net: net.map(str::to_string),
+                        area: area(l.area_of(net)),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        vias: copper.vias.len(),
+        mask_openings: MaskReport {
+            top: openings(Side::Front),
+            bottom: openings(Side::Back),
+        },
+    })
 }
 
 fn pins_report(
@@ -625,9 +721,13 @@ pub fn run(
         |built, board| {
             let (sourcing, _) = crate::resolve::resolve_generics(&built.sourcing, catalogs);
             let scene = scene(built, board);
-            (report(built, &scene, &sourcing), scene)
+            match report(built, &scene, &sourcing) {
+                Ok(report) => Ok((report, scene)),
+                Err(e) => Err(format!("error: {}: {e}\n", built.label())),
+            }
         },
     )
+    .and_then(|made| made)
 }
 
 /// The scene of one board, picked and placed as [`run`] does: what the rasterizer and the
@@ -641,9 +741,73 @@ pub fn scene_of(
     layout: Option<&std::path::Path>,
     board: Option<&str>,
 ) -> Result<Scene, String> {
+    scene_and_label(name, text, loader, catalogs, libraries, layout, board).map(|(scene, _)| scene)
+}
+
+/// [`scene_of`] with the board's label (its name, or `system/member`), which `render` names its
+/// file from.
+pub fn scene_and_label(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+) -> Result<(Scene, String), String> {
     placed(
-        name, text, loader, catalogs, libraries, layout, board, scene,
+        name,
+        text,
+        loader,
+        catalogs,
+        libraries,
+        layout,
+        board,
+        |built, board| (scene(built, board), built.label()),
     )
+}
+
+/// One source file and what builds and places its board: the arguments of [`run`] and
+/// [`scene_and_label`], held together so `board3d` and `render` pick, build and place the board
+/// by the one path.
+pub struct Placed<'a> {
+    pub name: &'a str,
+    pub text: &'a str,
+    pub loader: &'a netsmith_check::Loader,
+    pub catalogs: &'a netsmith_solve::Catalogs,
+    pub libraries: &'a crate::Libraries,
+    /// The layout file beside the source (read if it exists).
+    pub layout: std::path::PathBuf,
+    /// The board to pick, by name or label.
+    pub board: Option<&'a str>,
+}
+
+impl Placed<'_> {
+    /// [`run`]: the report and the scene.
+    pub fn run(&self) -> Result<(Report, Scene), String> {
+        run(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+        )
+    }
+
+    /// [`scene_and_label`]: the scene and the board's label.
+    pub fn scene_and_label(&self) -> Result<(Scene, String), String> {
+        scene_and_label(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+        )
+    }
 }
 
 /// `then` of the board [`run`] picks, built and placed.
