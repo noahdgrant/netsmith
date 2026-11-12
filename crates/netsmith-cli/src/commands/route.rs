@@ -209,18 +209,25 @@ mod tests {
                 stages: true,
             }))
         );
-        for bad in ["-1", "2.5", "steep", "10001"] {
+        for bad in ["2.5", "steep", "10001"] {
             let e = parse(&["route", "b.placed.json", "--turn", bad]).unwrap_err();
             assert!(
                 e.contains("takes a whole number from 0 to 10000"),
                 "{bad}: {e}"
             );
         }
-        for bad in ["0", "-1", "many"] {
+        for bad in ["0", "many"] {
             let e = parse(&["route", "b.placed.json", "--tries", bad]).unwrap_err();
             assert!(
                 e.contains("takes a whole number of at least 1"),
                 "{bad}: {e}"
+            );
+        }
+        // clap takes a negative number for a flag of its own and refuses it before the parser.
+        for flag in ["--turn", "--tries"] {
+            assert!(
+                parse(&["route", "b.placed.json", flag, "-1"]).is_err(),
+                "{flag} -1"
             );
         }
     }
