@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Which of CI's jobs a change needs. Reads the changed paths (one per line, from the repository's
-# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=` and `locks=` as `true` or `false`; the
+# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=` and `locks=` as `true` or `false`, and `crates=`; the
 # `changes` job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has
 # no flag.
 #   rust     clippy and the tests: anything a build or a test reads.
@@ -21,6 +21,13 @@
 #            so it follows what is linked into the binary (the crates' source and manifests,
 #            std/, examples/, data/) and the script itself; not a test file, a crate's examples
 #            folder, the catalog refresh, or prose.
+#   crates   the crates whose tests, and their dependents' tests, are all that `test` and `kicad`
+#            run (issue #511): the folder names under crates/ the change touches, space-separated,
+#            for a nextest filter of `rdeps(<crate>) | ...`. Empty means every test: a change with
+#            no Rust in it, or one with a path outside the crates that turns `rust` on (std/,
+#            data/, examples/, docs/LANGUAGE.md, a skill, the workspace manifest, Cargo.lock, the
+#            toolchain, scripts/, the workflows, a path nothing here knows). A push to main runs
+#            every test.
 #   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith lock --check` over every
 #            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
@@ -69,6 +76,8 @@ root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith::build\b|netsmith::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
 rust=false kicad=false recipes=false no_kicad=false locks=false
+# The crates the change touches, for `crates=`; `wide` once a path outside the crates turns `rust` on.
+crates="" wide=false
 all() { rust=true kicad=true recipes=true no_kicad=true locks=true; }
 
 # Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
@@ -97,6 +106,8 @@ while IFS= read -r path; do
     [ -n "$path" ] || continue
     # A Markdown file in the root (README.md, AGENTS.md, ...) is prose.
     case "$path" in */*) ;; *.md) continue ;; esac
+    # `rust` is worked out for this path alone, then added to what the others gave.
+    rust_before="$rust" rust=false
     case "$path" in
         .github/workflows/* | .github/actions/* | scripts/*) all ;;
 
@@ -123,10 +134,20 @@ while IFS= read -r path; do
 
         *) all ;;
     esac
+    if [ "$rust" = true ]; then
+        case "$path" in
+            crates/*/*) crate="${path#crates/}"; crate="${crate%%/*}"
+                case " $crates " in *" $crate "*) ;; *) crates="${crates:+$crates }$crate" ;; esac ;;
+            *) wide=true ;;
+        esac
+    fi
+    [ "$rust_before" = true ] && rust=true
 done
+[ "$wide" = false ] || crates=""
 
 echo "rust=$rust"
 echo "kicad=$kicad"
 echo "recipes=$recipes"
 echo "no_kicad=$no_kicad"
 echo "locks=$locks"
+echo "crates=$crates"

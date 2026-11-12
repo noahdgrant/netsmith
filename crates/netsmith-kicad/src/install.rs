@@ -87,6 +87,12 @@ pub const CLI_VARIABLE: &str = "KICAD_CLI";
 /// say. For tests and CI that prove a run needs no KiCad (`scripts/check-no-kicad.sh`).
 pub const NO_KICAD_VARIABLE: &str = "NETSMITH_NO_KICAD";
 
+/// For CI (issue #517): a file that [`Search::machine`] appends the nextest test that called it
+/// to, as `binary<TAB>test` (nextest's `NEXTEST_BINARY_ID` and `NEXTEST_TEST_NAME`, which a
+/// process the test starts inherits). The `test` job sets it, and `scripts/ci-kicad-tests --check`
+/// fails if a test that looked for KiCad is not one the `kicad` job runs. Unset, nothing is written.
+pub const PROBE_LOG_VARIABLE: &str = "NETSMITH_KICAD_PROBE_LOG";
+
 /// The KiCad versions looked for in the install places that carry one, the preferred first.
 pub const VERSIONS: [&str; 2] = ["9.0", "8.0"];
 
@@ -266,10 +272,34 @@ fn version_key(name: &str) -> Option<Vec<u32>> {
         .collect()
 }
 
+/// Appends this process's nextest test to the file at `log` (see [`PROBE_LOG_VARIABLE`]). A line
+/// is one short write to a file opened for appending, so the tests that run side by side do not
+/// tear each other's lines. A failure to write is ignored: the probe must not fail a test.
+fn probe(log: &std::ffi::OsStr) {
+    use std::io::Write;
+    let (Some(binary), Some(test)) = (
+        std::env::var_os("NEXTEST_BINARY_ID"),
+        std::env::var_os("NEXTEST_TEST_NAME"),
+    ) else {
+        return;
+    };
+    let line = format!("{}\t{}\n", binary.to_string_lossy(), test.to_string_lossy());
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
 impl Search {
     /// This process's environment and the real disk.
     pub fn machine() -> Self {
         let var = |name: &str| std::env::var_os(name);
+        if let Some(log) = var(PROBE_LOG_VARIABLE) {
+            probe(&log);
+        }
         let mut vars = HashMap::new();
         for name in [SYMBOLS_VARIABLE, FOOTPRINTS_VARIABLE, CLI_VARIABLE] {
             if let Some(value) = var(name) {

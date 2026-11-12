@@ -177,6 +177,42 @@ row "1 1 0 0 0" docs/LANGUAGE.md crates/netsmith/tests/asks1.rs
 # A path with a blank line between: blank lines are skipped.
 row "1 0 0 0 0" crates/netsmith/tests/pure.rs ""
 
+# --- crates=: the crates whose tests (and dependents' tests) run; empty is every test ---------
+crates_of() {
+    printf '%s\n' "$@" | CI_CHANGES_ROOT="$tree" "$script" | sed -n 's/^crates=//p'
+}
+crates_row() {
+    want="$1"
+    shift
+    got="$(crates_of "$@")"
+    if [ "$got" != "$want" ]; then
+        echo "FAIL: $* -> crates=$got, wanted crates=$want"
+        failed=1
+    fi
+}
+crates_row "netsmith-view" crates/netsmith-view/src/layout.rs
+crates_row "netsmith-view" crates/netsmith-view/src/layout.rs crates/netsmith-view/tests/layout.rs
+crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs crates/netsmith-solve/src/solve.rs
+crates_row "netsmith" crates/netsmith/tests/pure.rs
+crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
+crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml
+crates_row "netsmith-view" crates/netsmith-view/src/layout.rs README.md docs/DESIGN-RULES.md
+# A path outside the crates that turns the tests on: every test.
+crates_row "" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
+crates_row "" crates/netsmith-view/src/layout.rs std/kicad.toml
+crates_row "" crates/netsmith-view/src/layout.rs examples/led.nsm
+crates_row "" crates/netsmith-view/src/layout.rs data/jlcpcb/resistor.csv
+crates_row "" crates/netsmith-view/src/layout.rs Cargo.toml
+crates_row "" crates/netsmith-view/src/layout.rs Cargo.lock
+crates_row "" crates/netsmith-view/src/layout.rs rust-toolchain.toml
+crates_row "" crates/netsmith-view/src/layout.rs scripts/ci-changes
+crates_row "" crates/netsmith-view/src/layout.rs .github/workflows/ci.yml
+crates_row "" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
+crates_row "" crates/netsmith-view/src/layout.rs something/nothing/knows.txt
+# No Rust at all: empty (and `rust` is off, so no test runs).
+crates_row "" README.md
+crates_row ""
+
 # --- the real repository: a test file that can skip without KiCad turns `kicad` on ------------
 # Independent of the token list of the script: these are the spellings of the repository's own
 # helpers (netsmith_kicad::testlib, netsmith_fab::KicadCliExe).

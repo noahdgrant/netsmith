@@ -3,18 +3,24 @@
 # `--partition slice:K/N`, K = 1..N) between them run every test that `cargo test --workspace`
 # runs, each in exactly one slice. It lists the tests of the built workspace, so it needs no
 # build of its own beyond what the job did.
-# Both jobs deal the same list of tests out by the same partition, so one proof serves both; the
-# optional second argument is the job's name, for the messages.
+# The `kicad` job runs only the tests scripts/ci-kicad-tests selects: with `kicad` as the second
+# argument the proof is over that filter (each selected test in exactly one slice); otherwise it is
+# over every test, and also against the count of `cargo test`.
 #   scripts/ci-test-slices N [job]
 set -euo pipefail
 slices="${1:?usage: scripts/ci-test-slices N [job]}"
 job="${2:-test}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+filter=()
+if [ "$job" = kicad ]; then
+    expr="$(scripts/ci-kicad-tests)"
+    filter=(-E "$expr")
+fi
 
 # One line per test nextest would run (not the ignored ones), "binary test", sorted.
 tests() {
-    cargo nextest list --workspace --message-format json "$@" |
+    cargo nextest list --workspace --message-format json "${filter[@]}" "$@" |
         jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
                | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' |
         sort
@@ -38,6 +44,11 @@ if [ "$(uniq -d < "$work/union" | wc -l)" -ne 0 ]; then
 fi
 if ! cmp -s "$work/union" "$work/all"; then
     echo "::error::the slices do not add up to the whole run:"; diff "$work/union" "$work/all" || true; exit 1
+fi
+
+if [ "$job" = kicad ]; then
+    echo "ok ($job): $total selected tests, each in exactly one of $slices slices"
+    exit 0
 fi
 
 # The same count from libtest itself: what `cargo test --workspace` would run, less the ignored.
