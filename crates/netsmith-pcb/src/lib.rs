@@ -53,6 +53,7 @@ pub mod scene3d;
 pub mod shape;
 pub mod stackup;
 pub mod standard_height;
+pub mod step;
 mod stitch;
 pub mod svg;
 pub mod validate;

@@ -669,8 +669,12 @@ The editor's view of a board in three dimensions, in the PCB section: the board 
 _Avoid_: 3D viewer, 3D model (netsmith bundles none), render (a render is a picture of the scene)
 
 **Scene**:
-The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it and netsmith's own rasterizer draws PNG renders of it (ADR 0105).
+The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it, netsmith's own rasterizer draws PNG renders of it (ADR 0105), and it is written as a _STEP file_ for CAD (ADR 0107).
 _Avoid_: Model, mesh (a mesh is one piece of it), 3D export
+
+**STEP file**:
+The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). netsmith reads no STEP file.
+_Avoid_: STEP model (a maker's or KiCad's file of one part), 3D export, MCAD export
 
 **Package shape**:
 The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). Another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.
