@@ -69,7 +69,7 @@ pub fn place(
 ) -> Result<(netsmith_pcb::Board, netsmith_pcb::PlaceOptions), PlaceFailure> {
     let mut options = netsmith_pcb::place_options(design, layout.map(|l| &l.0));
     options.lines_warn = lines_warn;
-    let mut board = netsmith_pcb::Board::from_design_placed(
+    let mut board = netsmith_place_route::board_from_design_placed(
         design,
         &libraries.mapping,
         &libraries.footprints,

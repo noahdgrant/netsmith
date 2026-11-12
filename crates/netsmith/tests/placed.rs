@@ -18,7 +18,7 @@ fn example(name: &str, library: &FootprintLibrary) -> Board {
         &netsmith::Libraries::sample(),
     )
     .unwrap();
-    Board::from_design(
+    netsmith_place_route::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         library,

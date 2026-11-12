@@ -3,9 +3,9 @@
 //! file's tests with `cargo test -p netsmith-3d --test main <file>::`, or with
 //! `cargo nextest run -p netsmith-3d <file>::`.
 
-// The test processes are shared with netsmith-pcb's tests and live there, upstream, so that a
-// change to them selects both crates' tests (scripts/ci-changes).
-#[path = "../../netsmith-pcb/tests/common/mod.rs"]
+// The test processes are shared with netsmith-place-route's tests and live there, so that a
+// change to them selects this crate's tests too (it depends on that one, scripts/ci-changes).
+#[path = "../../netsmith-place-route/tests/common/mod.rs"]
 mod common;
 mod scene3d;
 mod scene_meshes;

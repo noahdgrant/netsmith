@@ -91,8 +91,13 @@ fn place(parts: usize, extra: &str, sides: &[(&str, Side)]) -> Board {
     for (refdes, side) in sides {
         options.sides.insert((*refdes).to_string(), *side);
     }
-    Board::from_design_placed(design, &libraries.mapping, &libraries.footprints, &options)
-        .unwrap_or_else(|e| panic!("{e}"))
+    netsmith_place_route::board_from_design_placed(
+        design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &options,
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// The tall part and the others: `r1` is 9 mm tall and `r2` to `r5` 1 mm.

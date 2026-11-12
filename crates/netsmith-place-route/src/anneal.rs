@@ -194,14 +194,15 @@
 //! are measured and kept, so the weights are tuned on something a reader can run. The `layout`
 //! block of the language (P3 of ADR 0030) is not built (issues #58 and #59).
 
-use crate::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
-use crate::constraints::{PlanOffset, Want, axis_of, offset, quarter};
 use netsmith_core::PlaceField;
+use netsmith_pcb::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
+use netsmith_pcb::constraints::{PlanOffset, Want, axis_of, offset, quarter};
 
-use crate::geometry::{Pt, Rect};
-use crate::overhang::Edges;
 use crate::quality::{DecouplingPair, decoupling_pairs};
-use crate::rules::Rules;
+use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::overhang::Edges;
+use netsmith_pcb::placement::{Ended, OutsideAt, OverlapAt, short};
+use netsmith_pcb::rules::Rules;
 
 /// The grid positions are on, in mm.
 const UNIT: f64 = 0.05;
@@ -317,10 +318,10 @@ pub(crate) struct Problem<'a> {
     pub outline: Rect,
     /// The areas that limit how tall a part may stand (ADR 0045, "Height limits"): a part
     /// with a stated height over a zone's limit, on a face the zone limits, is kept out of it.
-    pub zones: &'a [crate::place::HeightZone],
+    pub zones: &'a [netsmith_pcb::placement::HeightZone],
     /// The keepouts that parts carry: each moves and turns with its part, and keeps the other
     /// parts out as a keepout for parts (`parts`) and as a height zone (`limit`) do.
-    pub carried: &'a [crate::place::CarriedZone],
+    pub carried: &'a [netsmith_pcb::placement::CarriedZone],
 }
 
 /// What a run ended with.
@@ -330,126 +331,6 @@ pub(crate) struct Outcome {
     /// What the run ended with that breaks a hard rule, for the message when it is not
     /// feasible.
     pub ended: Ended,
-}
-
-/// How many hard rules the final state of a run breaks, and which parts break them.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Ended {
-    /// Pairs of parts, on the same copper, whose courtyards overlap.
-    pub overlaps: usize,
-    /// Parts that are outside the outline or nearer its edge than the margin, or in a keepout.
-    pub outside: usize,
-    /// Pairs of parts whose reference text or silkscreen lie over the other's pads.
-    pub silk: usize,
-    /// The overlapping pairs by name, the most overlapped first.
-    pub overlapping: Vec<OverlapAt>,
-    /// The parts that are outside, by name, the furthest first.
-    pub outside_parts: Vec<OutsideAt>,
-    /// The relations between two parts that do not hold, each as a sentence with the numbers
-    /// (ADR 0045, section 3).
-    pub relations: Vec<String>,
-    /// How many times the placer tried before it gave up: the first run, then runs from the
-    /// same start with a large part put in a corner first and with seeds derived from the
-    /// given one (B2 and B5, PROVISIONAL). The rest of this is the closest run's.
-    pub tries: usize,
-}
-
-impl Ended {
-    /// How badly the run missed, for choosing among several: the number of parts and
-    /// relations that break a rule, then the sum of the distances and areas by which they do.
-    pub(crate) fn badness(&self) -> (usize, f64) {
-        let count = self.names().len() + self.relations.len() + self.silk;
-        let amount = self.outside_parts.iter().map(|o| o.worst).sum::<f64>()
-            + self.overlapping.iter().map(|o| o.area).sum::<f64>();
-        (count, amount)
-    }
-
-    /// The parts that break a rule when the run ended: those outside first, the furthest
-    /// first, then those only in an overlapping pair; each once.
-    pub fn names(&self) -> Vec<String> {
-        let mut names: Vec<String> = Vec::new();
-        let others = self
-            .overlapping
-            .iter()
-            .flat_map(|o| [o.a.as_str(), o.b.as_str()]);
-        for name in self
-            .outside_parts
-            .iter()
-            .map(|o| o.part.as_str())
-            .chain(others)
-        {
-            if !names.iter().any(|n| n == name) {
-                names.push(name.to_string());
-            }
-        }
-        names
-    }
-
-    /// Every part that is out, with how far, and every overlapping pair with its area, in
-    /// two lists on one line, the worst first: `outside the outline or inside its margin, by
-    /// mm past what is kept clear (the margin from the edge, a keepout, a pad's distance):
-    /// R21 0.85, R3 0.80; courtyards overlapping, by mm2: R1/R2 10.00`.
-    pub fn compact(&self) -> String {
-        let mut lists = Vec::new();
-        if !self.outside_parts.is_empty() {
-            let items: Vec<String> = self
-                .outside_parts
-                .iter()
-                .map(|o| {
-                    if o.worst > 1e-6 {
-                        format!("{} {}", o.part, short(o.worst))
-                    } else {
-                        // Nothing past a line: the reference text, or a requirement.
-                        format!("{} (text or a requirement)", o.part)
-                    }
-                })
-                .collect();
-            lists.push(format!(
-                "outside the outline or inside its margin, by mm past what is kept clear: {}",
-                items.join(", ")
-            ));
-        }
-        if !self.overlapping.is_empty() {
-            let items: Vec<String> = self
-                .overlapping
-                .iter()
-                .map(|o| format!("{}/{} {}", o.a, o.b, short(o.area)))
-                .collect();
-            lists.push(format!(
-                "courtyards overlapping, by mm2: {}",
-                items.join(", ")
-            ));
-        }
-        if lists.is_empty() {
-            "a rule broken that no count names".to_string()
-        } else {
-            lists.join("; ")
-        }
-    }
-}
-
-/// Two courtyards that overlap when a run ended.
-#[derive(Debug, Clone, PartialEq)]
-pub struct OverlapAt {
-    pub a: String,
-    pub b: String,
-    /// The area they share, in mm2, and its size along x and along y.
-    pub area: f64,
-    pub size: (f64, f64),
-    /// Where the overlap is, in the outline's frame (its top left corner is 0, 0), and the
-    /// side of the outline it is nearest, with the distance to it.
-    pub at: (f64, f64),
-    pub nearest: (&'static str, f64),
-}
-
-/// A part that is outside the outline, inside its margin, or in a keepout when a run ended.
-#[derive(Debug, Clone, PartialEq)]
-pub struct OutsideAt {
-    pub part: String,
-    /// What is wrong with each direction, as a sentence: `0.80 mm outside the left edge`.
-    pub why: Vec<String>,
-    /// The worst of them in mm, for the order.
-    pub worst: f64,
 }
 
 /// The side of `region` a point is nearest to, and how far from it.
@@ -471,20 +352,6 @@ fn nearest_edge(region: &Rect, p: Pt) -> (&'static str, f64) {
 fn mm(v: f64) -> String {
     let r = (v * 1e4).round() / 1e4;
     format!("{}", if r == 0.0 { 0.0 } else { r })
-}
-
-/// A distance in mm as it is shown for a shortfall: two decimals, but more where two would
-/// round a real amount to `0.00` (a part 0.004 mm past a line is past it).
-pub(crate) fn short(v: f64) -> String {
-    if v >= 0.0095 {
-        format!("{v:.2}")
-    } else if v >= 0.00095 {
-        format!("{v:.3}")
-    } else if v >= 0.00005 {
-        format!("{v:.4}")
-    } else {
-        "<0.0001".to_string()
-    }
 }
 
 /// A window as a person says it.
@@ -636,7 +503,7 @@ struct Model {
     side: Side,
     hole: bool,
     /// How far its pins protrude out of the opposite face, and the facts a part
-    /// that stands over them is judged by (`crate::protrusion`).
+    /// that stands over them is judged by (`netsmith_pcb::protrusion`).
     protrusion: Option<f64>,
     height: Option<f64>,
     hand_fitted: bool,
@@ -870,15 +737,15 @@ fn shape_of(
         .footprint
         .graphics
         .iter()
-        .filter(|g| g.layer == crate::footprint::Layer::Silk)
+        .filter(|g| g.layer == netsmith_pcb::footprint::Layer::Silk)
         .flat_map(|g| {
             let pieces: Vec<Vec<Pt>> = match &g.shape {
-                crate::footprint::Shape::Line { a, b } => vec![vec![*a, *b]],
-                crate::footprint::Shape::Rect { a, b } => {
+                netsmith_pcb::footprint::Shape::Line { a, b } => vec![vec![*a, *b]],
+                netsmith_pcb::footprint::Shape::Rect { a, b } => {
                     let (c, d) = (Pt::new(b.x, a.y), Pt::new(a.x, b.y));
                     vec![vec![*a, c], vec![c, *b], vec![*b, d], vec![d, *a]]
                 }
-                crate::footprint::Shape::Poly { points } => {
+                netsmith_pcb::footprint::Shape::Poly { points } => {
                     points.windows(2).map(|w| vec![w[0], w[1]]).collect()
                 }
                 other => vec![other.extent_points()],
@@ -1021,7 +888,7 @@ impl<'a> Engine<'a> {
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector
-                    } else if crate::fit::is_mechanical(kind) {
+                    } else if netsmith_pcb::placement::is_mechanical(kind) {
                         Role::Mechanical
                     } else {
                         Role::Plain
@@ -1657,7 +1524,7 @@ impl<'a> Engine<'a> {
 
     /// The pairs of boxes in which parts `i` and `j` must not overlap, one for each face
     /// they both take room on, and whether either box is a part's pads. Where one stands
-    /// excused over the other's protruding pins (`crate::protrusion`), the pair on that face is the
+    /// excused over the other's protruding pins (`netsmith_pcb::protrusion`), the pair on that face is the
     /// pads of both.
     fn room_pairs(&self, i: usize, j: usize) -> Vec<(Rect, Rect, bool)> {
         let mut pairs: Vec<(Rect, Rect, bool)> = Vec::new();
@@ -1709,22 +1576,22 @@ impl<'a> Engine<'a> {
     }
 
     /// Whether part `c` stands excused over the protruding pins of part `t` where they are now
-    /// (`crate::protrusion::judge`): `Some(true)` for `t` first. Asked as `excused(t, c)`.
+    /// (`netsmith_pcb::protrusion::judge`): `Some(true)` for `t` first. Asked as `excused(t, c)`.
     fn excused(&self, t: usize, c: usize) -> Option<bool> {
         let (mt, mc) = (&self.models[t], &self.models[c]);
         let length = mt.protrusion?;
         if !mt.hole || mc.hole || mt.side == mc.side {
             return None;
         }
-        let cover = crate::protrusion::Cover {
+        let cover = netsmith_pcb::protrusion::Cover {
             height: mc.height,
             hand_fitted: mc.hand_fitted,
             body: self.zone_box(c),
             side: mc.side,
         };
         matches!(
-            crate::protrusion::judge(length, &cover, self.p.zones),
-            crate::protrusion::Verdict::Excused { .. }
+            netsmith_pcb::protrusion::judge(length, &cover, self.p.zones),
+            netsmith_pcb::protrusion::Verdict::Excused { .. }
         )
         .then_some(true)
     }
@@ -1753,7 +1620,7 @@ impl<'a> Engine<'a> {
     fn room(&self, i: usize) -> Rect {
         let court = self.court(i);
         if self.models[i].may.any() {
-            crate::overhang::clip(&court, &self.p.outline)
+            netsmith_pcb::overhang::clip(&court, &self.p.outline)
         } else {
             court
         }
@@ -2945,8 +2812,8 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
 mod tests {
     use netsmith_core::{Design, Net, Part, PinRef};
 
-    use crate::board::Board;
-    use crate::board::tests::fixtures;
+    use crate::testlib::fixtures;
+    use netsmith_pcb::board::Board;
 
     use super::*;
 
@@ -3000,7 +2867,7 @@ mod tests {
             .collect();
         let design = Design {
             name: "T".into(),
-            process: Some(crate::rules::test_process()),
+            process: Some(crate::testlib::test_process()),
             features: Default::default(),
             interfaces: Vec::new(),
             notes: Vec::new(),
@@ -3013,7 +2880,8 @@ mod tests {
                 }],
             }],
         };
-        Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures()).unwrap()
+        crate::board_from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
+            .unwrap()
     }
 
     #[test]
@@ -3106,7 +2974,7 @@ mod tests {
         let outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(20.0, 20.0));
         let fixed = [false; 2];
         let mut bottom = Edges::default();
-        bottom.set(crate::overhang::Edge::Bottom);
+        bottom.set(netsmith_pcb::overhang::Edge::Bottom);
         let run = |board: &mut Board, overhangs: &[Edges]| {
             let problem = Problem {
                 nets: &board.nets.clone(),
@@ -3177,7 +3045,7 @@ mod tests {
 
     fn run_beside_strip(
         board: &mut Board,
-        zones: &[crate::place::HeightZone],
+        zones: &[netsmith_pcb::placement::HeightZone],
         keepouts: &[Rect],
     ) -> bool {
         let fixed = [false; 4];
@@ -3202,8 +3070,8 @@ mod tests {
         anneal(&mut board.parts, &problem, 1.0).feasible
     }
 
-    fn lid(rect: Rect) -> crate::place::HeightZone {
-        crate::place::HeightZone {
+    fn lid(rect: Rect) -> netsmith_pcb::placement::HeightZone {
+        netsmith_pcb::placement::HeightZone {
             name: "lid".into(),
             rect,
             front: true,
@@ -3263,10 +3131,13 @@ mod tests {
     /// Four resistors on a 26 by 12 mm board, the first (`a`) carrying a keepout of
     /// 12 by 10 mm in its own frame, from 2 mm right of its origin; the others are named `b`,
     /// `c` and `d`. Returns the board and the zone, as the annealer is told.
-    fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, crate::place::CarriedZone) {
+    fn carrier_with_a_zone(
+        parts: bool,
+        limit: Option<f64>,
+    ) -> (Board, netsmith_pcb::placement::CarriedZone) {
         let mut board = resistors(&["a", "b", "c", "d"]);
         board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(26.0, 12.0));
-        let zone = crate::place::CarriedZone {
+        let zone = netsmith_pcb::placement::CarriedZone {
             name: "shadow".into(),
             part: "a".into(),
             local: Rect::new(Pt::new(2.0, -5.0), Pt::new(14.0, 5.0)),
@@ -3275,7 +3146,7 @@ mod tests {
             back: true,
             limit,
         };
-        board.keepouts.push(crate::board::BoardKeepout {
+        board.keepouts.push(netsmith_pcb::board::BoardKeepout {
             name: zone.name.clone(),
             part: Some("a".into()),
             at: Some(zone.local.min),
@@ -3291,7 +3162,10 @@ mod tests {
         (board, zone)
     }
 
-    fn run_with_carried(board: &mut Board, carried: &[crate::place::CarriedZone]) -> bool {
+    fn run_with_carried(
+        board: &mut Board,
+        carried: &[netsmith_pcb::placement::CarriedZone],
+    ) -> bool {
         let fixed = [false; 4];
         let problem = Problem {
             nets: &board.nets.clone(),
@@ -3325,7 +3199,7 @@ mod tests {
             blind
                 .check_placement()
                 .iter()
-                .any(|p| matches!(p, crate::board::PlacementProblem::InKeepout { .. })),
+                .any(|p| matches!(p, netsmith_pcb::board::PlacementProblem::InKeepout { .. })),
             "without the zone told to the placer a part stands in it, so the test says something"
         );
         let (mut board, zone) = carrier_with_a_zone(true, None);
@@ -3347,7 +3221,7 @@ mod tests {
             board
                 .check_placement()
                 .iter()
-                .any(|p| matches!(p, crate::board::PlacementProblem::TooTall { .. }))
+                .any(|p| matches!(p, netsmith_pcb::board::PlacementProblem::TooTall { .. }))
         };
         let (mut blind, _) = carrier_with_a_zone(false, Some(3.0));
         for part in &mut blind.parts[1..] {

@@ -593,7 +593,12 @@ mod tests {
             &libraries,
         )
         .unwrap();
-        Board::from_design(&built[0].design, &libraries.mapping, &libraries.footprints).unwrap()
+        netsmith_place_route::board_from_design(
+            &built[0].design,
+            &libraries.mapping,
+            &libraries.footprints,
+        )
+        .unwrap()
     }
 
     #[test]

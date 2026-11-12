@@ -28,7 +28,7 @@ fn board(example: &str, library: &FootprintLibrary) -> Board {
     )
     .unwrap();
     assert_eq!(built.len(), 1);
-    Board::from_design(
+    netsmith_place_route::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         library,
@@ -277,7 +277,7 @@ fn led_board_narrowed(lines: &[&str]) -> Board {
         &netsmith::Libraries::sample(),
     )
     .unwrap();
-    Board::from_design(
+    netsmith_place_route::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         &fixtures(),
@@ -357,7 +357,7 @@ fn a_board_with_no_process_cannot_become_a_pcb() {
         &netsmith::Libraries::sample(),
     )
     .unwrap();
-    let err = Board::from_design(
+    let err = netsmith_place_route::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         &fixtures(),

@@ -155,7 +155,7 @@ fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
 /// What `fab` would stop on after placing `design` on `libraries`, one line each, as it
 /// prints them: the placer's refusal, or the findings of the placement check.
 fn placement_findings(design: &netsmith_core::Design, libraries: &Libraries) -> Vec<String> {
-    let placed = netsmith_pcb::Board::from_design_placed(
+    let placed = netsmith_place_route::board_from_design_placed(
         design,
         &libraries.mapping,
         &libraries.footprints,

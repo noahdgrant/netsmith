@@ -6,22 +6,17 @@
 
 use netsmith_core::Outline;
 
-use crate::board::{BoardNet, Placed};
-use crate::geometry::{Pt, Rect};
-use crate::place::{self, Context, DoesNotFit, Fixed, ORIGIN, PlaceOptions};
-use crate::rules::Rules;
-use crate::shape::RoundRect;
+use crate::place::{self, Context};
+use netsmith_pcb::board::{BoardNet, Placed};
+use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::placement::{DoesNotFit, Fixed, ORIGIN, PlaceOptions, is_mechanical};
+use netsmith_pcb::rules::Rules;
+use netsmith_pcb::shape::RoundRect;
 
 /// The space between mechanical parts side by side in a corner.
 const GAP: f64 = 1.0;
 /// Space kept between silkscreen and the board edge, on top of the copper to edge space.
 const SILK_EDGE: f64 = 0.3;
-
-/// Whether a kind of part is a mechanical item that belongs in the corners of a fixed
-/// outline: a hole or a fiducial. A test point is on a net and is placed with the circuit.
-pub(crate) fn is_mechanical(kind: &str) -> bool {
-    matches!(kind, "MountingHole" | "PlatedHole" | "Fiducial")
-}
 
 /// Round up to a tenth of a millimetre.
 fn up(v: f64) -> f64 {

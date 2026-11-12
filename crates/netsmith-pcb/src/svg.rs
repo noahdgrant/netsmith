@@ -624,17 +624,12 @@ fn draw(board: &Board, with_key: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::board::tests::{fixtures, four_layer_design, led_design};
+    use crate::board::tests::{four_layer_design, led_design};
 
     use super::*;
 
     fn led() -> Board {
-        Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap()
+        crate::board::tests::placed(&led_design())
     }
 
     #[test]
@@ -682,12 +677,7 @@ mod tests {
 
     #[test]
     fn planes_are_dashed_borders_in_their_nets_colour_with_a_line_in_the_key() {
-        let board = Board::from_design(
-            &four_layer_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let board = crate::board::tests::placed(&four_layer_design());
         let svg = render(&board);
         assert_eq!(svg.matches("stroke-dasharray=\"1 0.6\"").count(), 2);
         assert!(svg.contains("In1.Cu: plane GND") && svg.contains("In2.Cu: plane 3V3"));

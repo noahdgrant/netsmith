@@ -6,7 +6,8 @@ use crate::common;
 use netsmith_kicad::testlib::TempDir;
 use std::time::{Duration, Instant};
 
-use netsmith_pcb::{PlaceOptions, Quality, Ratsnest};
+use netsmith_pcb::{PlaceOptions, Ratsnest};
+use netsmith_place_route::Quality;
 use netsmith_place_route::{RouteOptions, route_with};
 
 use common::{land_grid_board, land_grid_board_with, synthetic_board, synthetic_board_structured};

@@ -90,7 +90,7 @@ use netsmith_core::{Design, PlaceField, Placement};
 use crate::board::{Placed, Side};
 use crate::geometry::{Pt, Rect};
 use crate::overhang::{self, Edge, Edges, Overhang};
-use crate::place::{Fixed, ORIGIN, PlaceOptions};
+use crate::placement::{Fixed, ORIGIN, PlaceOptions};
 
 /// The grid the placer puts origins on, in mm.
 pub(crate) const GRID: f64 = 0.05;
@@ -157,7 +157,7 @@ impl Want {
 
 /// What [`plan`] decided.
 #[derive(Debug, Default)]
-pub(crate) struct Plan {
+pub struct Plan {
     /// Parts whose requirements leave one place and one turn: they stay there.
     pub fixed: BTreeMap<String, Fixed>,
     /// The other constrained parts, which the annealer keeps inside their wants.
@@ -345,7 +345,7 @@ pub(crate) fn measured(field: PlaceField, body: Rect) -> f64 {
     }
 }
 
-pub(crate) fn axis_of(field: PlaceField) -> Option<usize> {
+pub fn axis_of(field: PlaceField) -> Option<usize> {
     match field {
         PlaceField::X | PlaceField::Left | PlaceField::Right => Some(0),
         PlaceField::Y | PlaceField::Top | PlaceField::Bottom => Some(1),
@@ -354,7 +354,7 @@ pub(crate) fn axis_of(field: PlaceField) -> Option<usize> {
 }
 
 /// Where along `body`'s own box the field is measured, from the origin of the footprint.
-pub(crate) fn offset(field: PlaceField, body: Rect) -> f64 {
+pub fn offset(field: PlaceField, body: Rect) -> f64 {
     match field {
         PlaceField::X => body.centre().x,
         PlaceField::Y => body.centre().y,
@@ -473,7 +473,7 @@ fn outline_extent(design: &Design) -> (Option<f64>, Option<f64>) {
 
 /// Work out what the requirements of `design` leave to the placer, or why they cannot all
 /// be met. `parts` are the footprints as loaded, with the faces `options` gave them.
-pub(crate) fn plan(
+pub fn plan(
     design: &Design,
     parts: &[Placed],
     options: &PlaceOptions,

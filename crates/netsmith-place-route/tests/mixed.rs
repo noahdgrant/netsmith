@@ -429,7 +429,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
         seed,
         ..PlaceOptions::default()
     };
-    Board::from_design_placed(&design, &mapping, &library, &options)
+    netsmith_place_route::board_from_design_placed(&design, &mapping, &library, &options)
 }
 
 /// The design rules check's errors on a routed board.

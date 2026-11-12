@@ -33,7 +33,7 @@
 //! the check after routing). A hole to hole or hole to copper fault names the pad of each hole.
 //!
 //! **Before the placer starts** (ADR 0045 section 14, issue #99). [`before_placing`] runs on the parts as loaded, after `constraints::plan`
-//! and before any placing, in `Board::from_design_placed` (so `fab` and the editor's placement)
+//! and before any placing, in `netsmith_place_route::board_from_design_placed` (so `fab` and the editor's placement)
 //! and in `netsmith build`. It takes milliseconds (5 ms for 100 parts with windows in a debug
 //! build; a test asserts under 100 ms), is deterministic and starts no placer: the placer takes
 //! 40 to 70 seconds on a tight board. Only a proved conflict is an error.
@@ -77,7 +77,7 @@ use crate::constraints::{
 };
 use crate::geometry::{Pt, Rect};
 use crate::overhang::{Edge, Edges};
-use crate::place::{ORIGIN, PlaceOptions};
+use crate::placement::{ORIGIN, PlaceOptions};
 use crate::rules::Rules;
 
 /// The least overlap, in mm, on each axis, that counts as an overlap proved for a window
@@ -214,7 +214,7 @@ impl Precheck {
 /// what the layout file and the caller said, `plan` what the requirements decide, `outline`
 /// the board's box with `finite` false where the design leaves its far sides open and `limit`
 /// true where its size is a range (so `outline` is the most it allows).
-pub(crate) fn before_placing(
+pub fn before_placing(
     design: &Design,
     parts: &[Placed],
     base: &PlaceOptions,
@@ -365,7 +365,7 @@ impl Context<'_> {
         merged.fixed.extend(self.plan.fixed.clone());
         merged.wants = self.plan.wants.clone();
         let fit = (self.outline.width(), self.outline.height());
-        for o in crate::place::oversize_before_placing(self.parts, &merged, fit) {
+        for o in crate::placement::oversize_before_placing(self.parts, &merged, fit) {
             let Some(part) = self.parts.iter().find(|p| p.refdes == o.part) else {
                 continue;
             };
@@ -425,7 +425,7 @@ fn side_source(design: &Design, path: &str) -> Option<(String, String)> {
 /// what the layout file and the caller said (the locks, the faces) and `wall` the space the
 /// placer keeps between a courtyard and the edge. `None` if the design states no requirement
 /// or all are met.
-pub(crate) fn explain(
+pub fn explain(
     design: &Design,
     parts: &[Placed],
     outline: Rect,

@@ -133,9 +133,12 @@ pub fn hard_boards(count: usize) -> Vec<Board> {
                     })
                     .collect(),
             };
-            let mut board =
-                Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-                    .unwrap();
+            let mut board = netsmith_place_route::board_from_design(
+                &design,
+                &netsmith_kicad::Mapping::standard(),
+                &fixtures(),
+            )
+            .unwrap();
             for (k, p) in board.parts.iter_mut().enumerate() {
                 p.at = Pt::new(5.0 + (k % 4) as f64 * 2.6, 5.0 + (k / 4) as f64 * 2.0);
                 p.rotation = 0.0;
@@ -566,7 +569,7 @@ fn synthetic_board_with(
     )
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    Board::from_design_placed(
+    netsmith_place_route::board_from_design_placed(
         &design,
         &mapping,
         &fixtures().with_library("synth", folder.path()),
@@ -746,7 +749,7 @@ pub fn land_grid_board_sized(
     )
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let board = Board::from_design(
+    let board = netsmith_place_route::board_from_design(
         &design,
         &mapping,
         &fixtures().with_library("synth", folder.path()),

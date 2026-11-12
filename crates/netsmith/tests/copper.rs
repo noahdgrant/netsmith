@@ -36,8 +36,12 @@ fn routed(example: &str, process: &str) -> Board {
     let libraries = netsmith::Libraries::sample();
     let built =
         netsmith::build_with(&path, &text, &loader, &Catalogs::sample(), &libraries).unwrap();
-    let mut board =
-        Board::from_design(&built[0].design, &libraries.mapping, &libraries.footprints).unwrap();
+    let mut board = netsmith_place_route::board_from_design(
+        &built[0].design,
+        &libraries.mapping,
+        &libraries.footprints,
+    )
+    .unwrap();
     assert!(route(&mut board).is_empty(), "{example} routes");
     board
 }

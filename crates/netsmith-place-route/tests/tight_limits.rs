@@ -232,7 +232,7 @@ pub fn board(
         seed,
         ..options.clone()
     };
-    Board::from_design_placed(&design, &mapping, &library, &options)
+    netsmith_place_route::board_from_design_placed(&design, &mapping, &library, &options)
 }
 
 /// A keepout over a box of the board that limits the height on `layers`, or forbids parts.

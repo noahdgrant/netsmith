@@ -112,7 +112,7 @@ fn board(pad: &str, whole: &str) -> (Board, f64) {
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
         .with_library("t", folder.path());
-    let mut board = Board::from_design(&design, &mapping, &library).unwrap();
+    let mut board = netsmith_place_route::board_from_design(&design, &mapping, &library).unwrap();
     let at = [(4.0, 6.0), (10.0, 6.0), (16.0, 6.0), (10.0, 10.0)];
     for (p, (x, y)) in board.parts.iter_mut().zip(at) {
         p.at = Pt::new(x, y);

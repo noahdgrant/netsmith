@@ -8,9 +8,9 @@
 
 use std::collections::HashMap;
 
-use crate::board::{Board, BoardNet, Placed};
-use crate::geometry::Pt;
-use crate::ratsnest::{Ratline, Ratsnest};
+use netsmith_pcb::board::{Board, BoardNet, Placed};
+use netsmith_pcb::geometry::Pt;
+use netsmith_pcb::ratsnest::{Ratline, Ratsnest};
 
 /// One net of a decoupling pair: the capacitor's pad on it and the power pins it should be
 /// near.
@@ -159,11 +159,11 @@ impl Quality {
     pub fn of(board: &Board) -> Quality {
         let mut hpwl = 0.0;
         for net in &board.nets {
-            let points: Vec<Pt> = crate::ratsnest::nodes_of(&board.parts, net)
+            let points: Vec<Pt> = netsmith_pcb::ratsnest::nodes_of(&board.parts, net)
                 .iter()
                 .map(|n| n.centre)
                 .collect();
-            if let Some(b) = crate::geometry::Rect::around(points) {
+            if let Some(b) = netsmith_pcb::geometry::Rect::around(points) {
                 hpwl += b.width() + b.height();
             }
         }

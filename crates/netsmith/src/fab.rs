@@ -475,7 +475,7 @@ pub fn precheck_board(
     };
     let mut placement = place_options(&built.design, layout);
     placement.lines_warn = constraints_warn;
-    match Board::precheck(
+    match netsmith_place_route::precheck(
         &built.design,
         &libraries.mapping,
         &libraries.footprints,

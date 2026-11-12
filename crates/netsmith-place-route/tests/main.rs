@@ -3,17 +3,22 @@
 //! file's tests with `cargo test -p netsmith-place-route --test main <file>::`, or with
 //! `cargo nextest run -p netsmith-place-route <file>::`.
 
-// The synthetic boards are shared with netsmith-pcb's tests and live there, upstream, so that a
-// change to them selects both crates' tests (scripts/ci-changes).
+// `common` holds the synthetic boards and processes, which netsmith-3d's and the netsmith
+// crate's tests share (`#[path]` modules there).
 mod cancel;
-#[path = "../../netsmith-pcb/tests/common/mod.rs"]
 mod common;
+mod cutout_pads;
 mod drc;
+mod edge_wall;
+mod hole_faces;
 mod local_clearance;
 mod mixed;
+mod protrusion;
 mod routing;
 mod synthetic;
 mod tight;
+mod tight_limits;
+mod turn_to_fit;
 mod wide_tracks;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
