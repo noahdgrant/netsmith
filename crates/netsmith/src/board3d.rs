@@ -741,9 +741,73 @@ pub fn scene_of(
     layout: Option<&std::path::Path>,
     board: Option<&str>,
 ) -> Result<Scene, String> {
+    scene_and_label(name, text, loader, catalogs, libraries, layout, board).map(|(scene, _)| scene)
+}
+
+/// [`scene_of`] with the board's label (its name, or `system/member`), which `render` names its
+/// file from.
+pub fn scene_and_label(
+    name: &str,
+    text: &str,
+    loader: &netsmith_check::Loader,
+    catalogs: &netsmith_solve::Catalogs,
+    libraries: &crate::Libraries,
+    layout: Option<&std::path::Path>,
+    board: Option<&str>,
+) -> Result<(Scene, String), String> {
     placed(
-        name, text, loader, catalogs, libraries, layout, board, scene,
+        name,
+        text,
+        loader,
+        catalogs,
+        libraries,
+        layout,
+        board,
+        |built, board| (scene(built, board), built.label()),
     )
+}
+
+/// One source file and what builds and places its board: the arguments of [`run`] and
+/// [`scene_and_label`], held together so `board3d` and `render` pick, build and place the board
+/// by the one path.
+pub struct Placed<'a> {
+    pub name: &'a str,
+    pub text: &'a str,
+    pub loader: &'a netsmith_check::Loader,
+    pub catalogs: &'a netsmith_solve::Catalogs,
+    pub libraries: &'a crate::Libraries,
+    /// The layout file beside the source (read if it exists).
+    pub layout: std::path::PathBuf,
+    /// The board to pick, by name or label.
+    pub board: Option<&'a str>,
+}
+
+impl Placed<'_> {
+    /// [`run`]: the report and the scene.
+    pub fn run(&self) -> Result<(Report, Scene), String> {
+        run(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+        )
+    }
+
+    /// [`scene_and_label`]: the scene and the board's label.
+    pub fn scene_and_label(&self) -> Result<(Scene, String), String> {
+        scene_and_label(
+            self.name,
+            self.text,
+            self.loader,
+            self.catalogs,
+            self.libraries,
+            Some(&self.layout),
+            self.board,
+        )
+    }
 }
 
 /// `then` of the board [`run`] picks, built and placed.

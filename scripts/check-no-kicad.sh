@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves that `build`, `fab` and `board3d` (with `--json` and `--glb`) need no KiCad (ADR 0097, step 4): builds and fabs every example
+# Proves that `build`, `fab`, `board3d` (with `--json` and `--glb`) and `render` need no KiCad (ADR 0097, step 4): builds and fabs every example
 # that is meant to build, with KiCad's symbol and footprint libraries and `kicad-cli` hidden, and
 # fails if a run exits with an error or says that KiCad is missing.
 #
@@ -171,6 +171,9 @@ done
 # And the same scene as a `.glb` file (the one the editor's 3D view shows).
 step "board3d examples/four_layer.nsm --glb" "$work/examples" board3d four_layer.nsm --glb "$work/four_layer.glb"
 [ -s "$work/four_layer.glb" ] || { echo "FAIL  board3d --glb wrote no file"; failed=1; }
+# And the picture of it (`render`, netsmith's own rasterizer), with a part lit up.
+step "render examples/led.nsm" "$work/examples" render led.nsm --view iso --highlight J1 --out "$work/led-iso.png"
+[ -s "$work/led-iso.png" ] || { echo "FAIL  render wrote no file"; failed=1; }
 
 # The projects: run from their folder, as a person does.
 for dir in "$repo"/examples/*/; do

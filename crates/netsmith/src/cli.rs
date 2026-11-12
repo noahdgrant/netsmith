@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--theme light|dark] [--ortho | --perspective]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `render` places a board the same way and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -22,6 +22,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     (
         "board3d",
         "the board's 3D scene: heights, limits and overlaps (`--json` for agents)",
+    ),
+    (
+        "render",
+        "draw the board in 3D to a PNG (own rasterizer, no GPU, no KiCad)",
     ),
     ("compare", "are two designs the same circuit?"),
     (
@@ -93,7 +97,7 @@ pub enum OrderRequest {
     Make(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum Command {
     /// `--version`, `-V` or `version`: print the version this binary was built as.
     Version,
@@ -154,6 +158,14 @@ pub enum Command {
         board: Option<String>,
         json: bool,
         glb: Option<PathBuf>,
+    },
+    /// The 3D scene of one board of `file` drawn to a PNG written to `out` (`<board>-<view>.png`
+    /// when `None`), as `request` says (ADR 0105).
+    Render {
+        file: Option<String>,
+        board: Option<String>,
+        out: Option<PathBuf>,
+        request: crate::render::Request,
     },
     /// Compare two designs by connectivity. Each is a `.kicad_sch`, `.kicad_pcb`, KiCad
     /// netlist XML or `.nsm` file.
@@ -262,13 +274,66 @@ where
     let mut port = DEFAULT_PORT;
     let mut json = false;
     let mut glb: Option<PathBuf> = None;
+    let mut render = crate::render::Request::default();
+    let (mut ortho, mut perspective) = (false, false);
     while let Some(arg) = args.next() {
         match (command.as_str(), arg.as_str()) {
             ("init", "--name") => {
                 name = Some(args.next().ok_or("--name needs a project name")?);
             }
-            ("build" | "fab", "--out") => {
-                out = Some(PathBuf::from(args.next().ok_or("--out needs a directory")?));
+            ("render", "--view") => {
+                let given = args.next().ok_or("--view needs a view")?;
+                render.view = netsmith_pcb::raster3d::View::from_name(&given).ok_or_else(|| {
+                    let names: Vec<&str> = netsmith_pcb::raster3d::View::ALL
+                        .iter()
+                        .map(|v| v.name())
+                        .collect();
+                    format!("--view takes one of {}, not `{given}`", names.join(", "))
+                })?;
+            }
+            ("render", "--size") => {
+                let given = args.next().ok_or("--size needs <width>x<height>")?;
+                render.size = crate::render::parse_size(&given)?;
+            }
+            ("render", "--section") => {
+                let given = args
+                    .next()
+                    .ok_or("--section needs an axis and a position")?;
+                render.section = Some(crate::render::parse_section(&given)?);
+            }
+            ("render", "--highlight") => {
+                let given = args
+                    .next()
+                    .ok_or("--highlight needs a part, `net:<name>` or `limit:<name>`")?;
+                render.highlight.extend(
+                    given
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|id| !id.is_empty())
+                        .map(str::to_string),
+                );
+            }
+            ("render", "--xray") => render.xray = true,
+            ("render", "--theme") => match args.next().as_deref() {
+                Some("light") => render.dark = false,
+                Some("dark") => render.dark = true,
+                other => {
+                    return Err(format!(
+                        "--theme takes `light` or `dark`, not {}\n{USAGE}",
+                        other.map_or("nothing".to_string(), |w| format!("`{w}`"))
+                    ));
+                }
+            },
+            ("render", "--ortho") => ortho = true,
+            ("render", "--perspective") => perspective = true,
+            ("build" | "fab" | "render", "--out") => {
+                out = Some(PathBuf::from(args.next().ok_or(
+                    if command == "render" {
+                        "--out needs a file to write"
+                    } else {
+                        "--out needs a directory"
+                    },
+                )?));
             }
             ("fab", "--order") => {
                 order = Some(match args.next_if(|next| !next.starts_with("--")) {
@@ -333,7 +398,7 @@ where
                     args.next().ok_or("--glb needs a file to write")?,
                 ));
             }
-            ("compare" | "board3d", "--board") => {
+            ("compare" | "board3d" | "render", "--board") => {
                 board = Some(args.next().ok_or("--board needs a board name")?);
             }
             ("compare", "--map") => {
@@ -382,6 +447,20 @@ where
             )
         })?;
         return Ok(Command::Lock { file, mode });
+    }
+    if command == "render" {
+        if ortho && perspective {
+            return Err(format!(
+                "--ortho and --perspective both say how to project; give one\n{USAGE}"
+            ));
+        }
+        render.perspective = perspective;
+        return Ok(Command::Render {
+            file,
+            board,
+            out,
+            request: render,
+        });
     }
     Ok(match command.as_str() {
         "init" => Command::Init { name },

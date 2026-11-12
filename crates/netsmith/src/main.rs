@@ -1,4 +1,4 @@
-//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor`, `board3d` and `compare`.
+//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor`, `board3d`, `render` and `compare`.
 
 use std::{
     env, fs,
@@ -100,6 +100,12 @@ fn main() -> ExitCode {
             json,
             glb,
         }) => run_board3d(file.as_deref(), board.as_deref(), json, glb.as_deref()),
+        Ok(Command::Render {
+            file,
+            board,
+            out,
+            request,
+        }) => run_render(file.as_deref(), board.as_deref(), out.as_deref(), &request),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
         Ok(Command::DxfImport {
@@ -728,11 +734,61 @@ fn run_fab(
     code
 }
 
+/// What `board3d` and `render` do first: the one board `file` and `--board` pick, built and
+/// placed as `fab` places it (the pick lock and the layout file beside its source are read,
+/// nothing is written), and `then` of it. A project of several top-level files takes the first
+/// that has the board `--board` names. The error is printed and is the exit code: 1 when no file
+/// builds the board or places it, 2 when the command cannot start.
+fn with_placed_board<T>(
+    file: Option<&str>,
+    board: Option<&str>,
+    then: impl Fn(&netsmith::board3d::Placed) -> Result<T, String>,
+) -> Result<T, ExitCode> {
+    let (target, loader, catalogs) = target(file, false)?;
+    if no_boards(&target) {
+        return Err(ExitCode::from(2));
+    }
+    if target.files.len() > 1 && board.is_none() {
+        eprintln!(
+            "error: the project has {} top-level files; name one, or a board with `--board <name>`",
+            target.files.len()
+        );
+        return Err(ExitCode::from(2));
+    }
+    let libraries = timings::stage("libraries", "", || libraries(&target))?;
+    let mut errors = String::new();
+    for source in &target.files {
+        let text = fs::read_to_string(&source.path).map_err(|e| {
+            eprintln!("{}: {e}", source.name);
+            ExitCode::from(2)
+        })?;
+        // The pick lock holds the parts it names to their rows, as for `fab`; it is not written.
+        let (held, _) = netsmith::pick_lock::open(&source.path, &catalogs, false).map_err(|e| {
+            eprintln!("{e}");
+            ExitCode::from(2)
+        })?;
+        let placed = netsmith::board3d::Placed {
+            name: &source.name,
+            text: &text,
+            loader: &loader,
+            catalogs: held.as_ref().unwrap_or(&catalogs),
+            libraries: &libraries,
+            layout: netsmith::layout::layout_path(&source.path),
+            board,
+        };
+        match then(&placed) {
+            Ok(done) => return Ok(done),
+            Err(e) => errors.push_str(&e),
+        }
+    }
+    eprint!("{errors}");
+    Err(ExitCode::FAILURE)
+}
+
 /// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file
 /// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
 /// stdout with `--json`, the scene as a `.glb` file with `--glb` (and no summary), a summary with
-/// neither. A project of several top-level files takes the first that has the board `--board`
-/// names. Exit 0 when the report is printed (and the file written), 1 when the board does not
+/// neither. Exit 0 when the report is printed (and the file written), 1 when the board does not
 /// build or place, 2 when the command cannot start or the file cannot be written.
 fn run_board3d(
     file: Option<&str>,
@@ -740,70 +796,58 @@ fn run_board3d(
     json: bool,
     glb: Option<&Path>,
 ) -> ExitCode {
-    let (target, loader, catalogs) = match target(file, false) {
-        Ok(t) => t,
+    let made = with_placed_board(file, board, |placed| placed.run());
+    let (report, scene) = match made {
+        Ok(made) => made,
         Err(code) => return code,
     };
-    if no_boards(&target) {
-        return ExitCode::from(2);
-    }
-    if target.files.len() > 1 && board.is_none() {
-        eprintln!(
-            "error: the project has {} top-level files; name one, or a board with `--board <name>`",
-            target.files.len()
-        );
-        return ExitCode::from(2);
-    }
-    let libraries = match timings::stage("libraries", "", || libraries(&target)) {
-        Ok(l) => l,
-        Err(code) => return code,
-    };
-    let mut errors = String::new();
-    for source in &target.files {
-        let text = match fs::read_to_string(&source.path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("{}: {e}", source.name);
-                return ExitCode::from(2);
-            }
-        };
-        // The pick lock holds the parts it names to their rows, as for `fab`; it is not written.
-        let (held, _) = match netsmith::pick_lock::open(&source.path, &catalogs, false) {
-            Ok(opened) => opened,
-            Err(e) => {
-                eprintln!("{e}");
-                return ExitCode::from(2);
-            }
-        };
-        match netsmith::board3d::run(
-            &source.name,
-            &text,
-            &loader,
-            held.as_ref().unwrap_or(&catalogs),
-            &libraries,
-            Some(&netsmith::layout::layout_path(&source.path)),
-            board,
-        ) {
-            Ok((report, scene)) => {
-                if let Some(out) = glb {
-                    let bytes = netsmith_pcb::gltf::glb(&scene, &report.board.name);
-                    if let Err(e) = fs::write(out, bytes) {
-                        eprintln!("error: {}: {e}", out.display());
-                        return ExitCode::from(2);
-                    }
-                }
-                if json {
-                    print!("{}", report.json());
-                } else if glb.is_none() {
-                    print!("{}", report.summary());
-                }
-                return ExitCode::SUCCESS;
-            }
-            Err(e) => errors.push_str(&e),
+    if let Some(out) = glb {
+        let bytes = netsmith_pcb::gltf::glb(&scene, &report.board.name);
+        if let Err(e) = fs::write(out, bytes) {
+            eprintln!("error: {}: {e}", out.display());
+            return ExitCode::from(2);
         }
     }
-    eprint!("{errors}");
-    ExitCode::FAILURE
+    if json {
+        print!("{}", report.json());
+    } else if glb.is_none() {
+        print!("{}", report.summary());
+    }
+    ExitCode::SUCCESS
+}
+
+/// `netsmith render`: one board placed as `board3d` places it, drawn by netsmith's own
+/// rasterizer and written as a PNG (`<board>-<view>.png` unless `--out` says a file); the path
+/// written is printed. Exit 0 when the picture is written, 1 when the board does not build or
+/// place, 2 when the command cannot start, an id of `--highlight` is not the board's, or the file
+/// cannot be written.
+fn run_render(
+    file: Option<&str>,
+    board: Option<&str>,
+    out: Option<&Path>,
+    request: &netsmith::render::Request,
+) -> ExitCode {
+    let (scene, label) = match with_placed_board(file, board, |placed| placed.scene_and_label()) {
+        Ok(made) => made,
+        Err(code) => return code,
+    };
+    let png = match netsmith::render::draw(&scene, request) {
+        Ok(png) => png,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let out = out.map_or_else(
+        || netsmith::render::default_out(&label, request.view),
+        Path::to_path_buf,
+    );
+    if let Err(e) = fs::write(&out, png) {
+        eprintln!("error: {}: {e}", out.display());
+        return ExitCode::from(2);
+    }
+    println!("{}", out.display());
+    ExitCode::SUCCESS
 }
 
 /// `netsmith fab --order`: list the project's orders, or make one (ADR 0035).
