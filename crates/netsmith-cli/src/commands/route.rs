@@ -1,0 +1,106 @@
+/// `netsmith route`: route the placed board that `fab --save-placed` wrote, alone, and write
+/// its board files into `out` (`out/` when `None`). Exits 1 when connections are left, 2 when
+/// the file cannot be read or the files cannot be written.
+fn run_route(
+    file: &Path,
+    out: Option<&Path>,
+    route_timeout: Option<u64>,
+    margin: Option<f64>,
+) -> ExitCode {
+    let placed = match fs::read_to_string(file)
+        .map_err(|e| e.to_string())
+        .and_then(|text| netsmith::placed::from_json(&text))
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+    let request = netsmith::placed::RouteRequest {
+        route_timeout: match route_timeout {
+            Some(0) => None,
+            Some(secs) => Some(Duration::from_secs(secs)),
+            None => FabOptions::default().route_timeout,
+        },
+        margin,
+        progress: Some(|message| eprintln!("{message}")),
+    };
+    let out = out.unwrap_or(Path::new("out"));
+    let routed = match netsmith::placed::route(placed, out, &request, &|m| eprintln!("{m}")) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    for path in &routed.written {
+        println!("wrote {}", path.display());
+    }
+    for line in &routed.left {
+        println!("not routed: {line}");
+    }
+    println!(
+        "{}: {} connections left, {} tracks, {} vias, routed in {:.1} s ({} tries{})",
+        routed.board.name,
+        routed.left.len(),
+        routed.board.tracks.len(),
+        routed.board.vias.len(),
+        routed.elapsed.as_secs_f64(),
+        routed.tries,
+        if routed.stopped {
+            ", stopped at the route timeout"
+        } else {
+            ""
+        }
+    );
+    if routed.left.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// Route a placed board that `fab --save-placed` wrote, alone (no checks; a router tool).
+///
+/// `route` routes the board that `fab --save-placed` saved again, alone, the way `fab` does
+/// (signals at the track margin first where there is room, then at the process's least track),
+/// with no checking, solving or placing, so an experiment on the router (a change to its code, a
+/// time limit, a track margin) takes the time of the routing and nothing else. It writes
+/// `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left,
+/// `routing-failure.txt` and `routing-report.json` into `--out`, as `fab` does; it prints the
+/// connections left, the tracks, the vias and the time. It is a router tool and not a fab
+/// package: it runs no design rules check and writes no Gerbers.
+///
+/// The exit code is 0 when every connection is routed, 1 when connections are left, and 2 when
+/// the file cannot be read: the file's layout changes with netsmith, so a file saved by another
+/// version is refused and is saved again with `fab --save-placed`.
+#[derive(Debug, PartialEq, Args)]
+#[command(args_override_self = true)]
+pub struct RouteArgs {
+    /// The placed board that `fab --save-placed` wrote.
+    #[arg(value_name = "BOARD.PLACED.JSON")]
+    pub file: PathBuf,
+    /// The folder to write into; the default is `out/`.
+    #[arg(long, value_name = "DIR")]
+    pub out: Option<PathBuf>,
+    /// Seconds the router may take (0 for no limit), as with `fab`.
+    #[arg(long, value_name = "SECS")]
+    pub route_timeout: Option<u64>,
+    /// The track margin, from 1 (the process's least track) to 4.
+    ///
+    /// It replaces the margin the file was saved with: how many times the least track a signal
+    /// is drawn at where there is room.
+    #[arg(long, value_name = "X", value_parser = parse_margin)]
+    pub margin: Option<f64>,
+}
+
+fn parse_margin(given: &str) -> Result<f64, String> {
+    given
+        .parse::<f64>()
+        .ok()
+        .filter(|m| (1.0..=4.0).contains(m))
+        .ok_or_else(|| {
+            format!("takes a number from 1 (the process's least track) to 4, not `{given}`")
+        })
+}
