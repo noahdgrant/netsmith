@@ -2,7 +2,7 @@
 
 /// A point. Angles anywhere in this crate follow KiCad: degrees, and a positive angle turns
 /// counterclockwise as seen on screen.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Pt {
     pub x: f64,
     pub y: f64,
@@ -57,7 +57,7 @@ fn cos_sin(degrees: f64) -> (f64, f64) {
 }
 
 /// An axis-aligned rectangle with `min` at the top left.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rect {
     pub min: Pt,
     pub max: Pt,

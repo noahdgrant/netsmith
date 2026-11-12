@@ -170,7 +170,7 @@ impl From<DesignError> for BoardError {
 /// A part on the back is the front footprint seen in a mirror along its y axis (its x is
 /// negated) and then turned by its rotation, as KiCad flips a footprint to the other side:
 /// its pads are on `B.Cu` and its silkscreen and courtyard on the `B.` layers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum Side {
     #[default]
@@ -198,7 +198,7 @@ impl Side {
 
 /// Which side of a part its reference text is on, as the part lies on the board: the text is
 /// upright whatever the part's turn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum ReferenceSide {
     /// Where libraries put it.
@@ -214,7 +214,7 @@ impl ReferenceSide {
 }
 
 /// A footprint on the board.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Placed {
     pub refdes: String,
     /// The part's path in the design (`stage.output_cap`), which a layout file keys it by.
@@ -506,7 +506,9 @@ impl Placed {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct PadRef {
     pub refdes: String,
     /// The pad number its footprint uses. Every pad of the footprint with this number is
@@ -520,7 +522,7 @@ impl std::fmt::Display for PadRef {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BoardNet {
     pub name: String,
     pub pads: Vec<PadRef>,
@@ -1035,7 +1037,7 @@ impl std::fmt::Display for PlacementProblem {
 }
 
 /// An outer copper layer, the two a track can be on. Inner layers are planes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CopperLayer {
     Front,
     Back,
@@ -1052,7 +1054,7 @@ impl CopperLayer {
 }
 
 /// An inner copper layer poured as one sheet on a net.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Plane {
     /// KiCad's name for the layer: `In1.Cu`.
     pub layer: String,
@@ -1060,7 +1062,7 @@ pub struct Plane {
 }
 
 /// An outer copper layer poured on a net (ADR 0020).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoardPour {
     pub layer: CopperLayer,
     pub net: String,
@@ -1069,7 +1071,7 @@ pub struct BoardPour {
 }
 
 /// An area where tracks, vias, copper or parts are not allowed (ADR 0029).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoardKeepout {
     /// The member's path in the design.
     pub name: String,
@@ -1132,7 +1134,7 @@ impl KeepoutArea {
 }
 
 /// A rectangular hole cut through the board (ADR 0020).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoardCutout {
     pub name: String,
     /// Its corner nearest the board's origin, in the board's frame (the outline's top left),
@@ -1143,7 +1145,7 @@ pub struct BoardCutout {
 }
 
 /// A straight run of copper.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Track {
     pub net: String,
     pub layer: CopperLayer,
@@ -1153,7 +1155,7 @@ pub struct Track {
 }
 
 /// A plated hole that joins the two copper layers.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Via {
     pub net: String,
     pub at: Pt,
@@ -1161,7 +1163,7 @@ pub struct Via {
     pub drill: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Board {
     pub name: String,
     /// The board edge, in mm: a rectangle, with corners rounded by `corner_radius`.

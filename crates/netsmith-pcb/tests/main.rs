@@ -16,6 +16,7 @@ mod kicad_drc;
 mod local_clearance;
 mod maker_vs_kicad;
 mod mixed;
+mod placed;
 mod protrusion;
 mod routing;
 mod scene3d;

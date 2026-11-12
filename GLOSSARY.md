@@ -187,6 +187,10 @@ _Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benc
 The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::score`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length and the skew of diff pairs. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
 _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placement), benchmark
 
+**Placed board**:
+A board as `fab` placed it, just before routing, saved as `<board>.placed.json` in the board's output folder by `fab --save-placed` (the `netsmith_pcb::Board` with the track margin `fab` routes with; `crates/netsmith/src/placed.rs`). `netsmith route` routes it again alone, with no checking, solving or placing, for experiments on the router. A file of a working tool, not of the design: it is not committed, a `fab` without the flag removes it, and a file of another version of netsmith is refused.
+_Avoid_: Layout (the layout file holds positions a person or the editor keeps), snapshot, checkpoint
+
 **Derived placement**:
 The placer's way of choosing where parts go: from the circuit alone, with nothing written in the source. It keeps the parts of a module instance together, puts a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, turns parts by right angles, and keeps reference text clear of other parts, all by simulated annealing with a seeded random generator (ADR 0033).
 _Avoid_: Autoplace, autorouter placement

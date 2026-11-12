@@ -21,7 +21,9 @@ netsmith-fab = { path = "../netsmith-fab" }
 # out): the same library and version the Gerbers' pen uses (netsmith-fab).
 i_overlay = "9.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
+# `float_roundtrip`: a board read back from JSON (a placed board, `netsmith route`) has the very
+# numbers it was written with, so it routes to the same copper.
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 toml = "1.1.8"
 uuid = { version = "1", features = ["v5"] }
 

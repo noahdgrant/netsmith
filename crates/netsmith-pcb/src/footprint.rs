@@ -135,7 +135,7 @@ impl std::fmt::Display for FootprintError {
 
 impl std::error::Error for FootprintError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PadKind {
     Smd,
     ThruHole,
@@ -143,7 +143,7 @@ pub enum PadKind {
     NpThruHole,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PadShape {
     Rect,
     RoundRect,
@@ -152,13 +152,13 @@ pub enum PadShape {
 }
 
 /// A drilled hole: its diameter, or its two sides if it is a slot.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Drill {
     pub width: f64,
     pub height: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Pad {
     /// What a net's pin names: `1`, `A1`. Several pads of one footprint can share it.
     pub number: String,
@@ -185,7 +185,7 @@ pub struct Pad {
 }
 
 /// How a footprint is soldered to the board.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Mount {
     /// Surface mount: pads on the face of the board.
     Smd,
@@ -194,7 +194,7 @@ pub enum Mount {
 }
 
 /// The footprint layers netsmith draws.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Layer {
     Silk,
     Fab,
@@ -205,7 +205,7 @@ pub enum Layer {
     BackCourtyard,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Shape {
     Line {
         a: Pt,
@@ -230,7 +230,7 @@ pub enum Shape {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Graphic {
     pub layer: Layer,
     pub shape: Shape,
@@ -238,7 +238,7 @@ pub struct Graphic {
     pub filled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Footprint {
     /// `R_0402_1005Metric`, without its library.
     pub name: String,

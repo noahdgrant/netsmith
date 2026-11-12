@@ -12,7 +12,7 @@ use netsmith_core::Process;
 use netsmith_kicad::sexp::fmt_num;
 
 /// What a fabricator can make, and the sizes the router draws with. All in mm.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rules {
     /// The least space between copper of different nets.
     pub clearance: f64,
