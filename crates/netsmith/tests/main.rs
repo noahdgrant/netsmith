@@ -13,6 +13,7 @@ mod boards;
 mod alternatives;
 mod bank;
 mod build;
+mod case_model_files;
 mod catalog_add;
 mod catalog_height;
 mod compare;

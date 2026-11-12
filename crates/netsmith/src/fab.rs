@@ -176,8 +176,9 @@ pub struct FabOptions {
     /// left in the folder is removed, as the `.glb` is.
     pub step: bool,
     /// Where the files of the target are, to find the STEP models its parts are drawn from
-    /// (ADR 0108): a path outside the project stops `fab`, a file that is not there is a
-    /// warning. `None` finds none, and every part is drawn with its generated shape.
+    /// (ADR 0108) and its case models (ADR 0109): a path outside the project stops `fab`, a
+    /// file that is not there is a warning (a case model's, an error with `strict_heights`).
+    /// `None` finds none, and every part is drawn with its generated shape.
     pub models: Option<crate::models::Places>,
 }
 
@@ -381,7 +382,8 @@ pub fn fab_detailed(
     }
     let mut pin_state = PinState::new(&outcome.pins);
     let (mut built_boards, panels) = (outcome.boards, outcome.panels);
-    // The STEP models parts are drawn from, found on disk (ADR 0108).
+    // The STEP models parts are drawn from and the case models, found on disk (ADR 0108,
+    // ADR 0109).
     if let Some(places) = &options.models {
         let mut errors = String::new();
         for built in &mut built_boards {
@@ -392,6 +394,17 @@ pub fn fab_detailed(
             }
             for error in found.errors {
                 errors.push_str(&format!("error: {label}: {error}\n"));
+            }
+            // A case model that is not there leaves the fit unchecked (ADR 0109): an error
+            // when constraints are strict, as a part of unknown height under a limit is.
+            for unchecked in found.unchecked {
+                if options.strict_heights {
+                    errors.push_str(&format!(
+                        "error: {label}: {unchecked}; this is an error because constraints are strict (`--constraints error` or `constraints = \"error\"`), and `--allow-drc-violations` does not waive it: add the file, or run with `--constraints warn`\n"
+                    ));
+                } else {
+                    say(format!("warning: {label}: {unchecked}"));
+                }
             }
         }
         if !errors.is_empty() {

@@ -118,6 +118,22 @@ pub fn name_model_sources(design: &mut Design, sites: &[Vec<(SourceId, Span)>], 
     }
 }
 
+/// Say where the design states the file of each case model (`design.features.case_models`,
+/// in the order of `sites`): the lines, and the file of each statement.
+pub fn name_case_model_sources(
+    design: &mut Design,
+    sites: &[Vec<(SourceId, Span)>],
+    sources: &Sources,
+) {
+    for (model, spans) in design.features.case_models.iter_mut().zip(sites) {
+        model.source = lines_of(spans, sources);
+        model.stated_in = spans
+            .iter()
+            .map(|(source, _)| sources.get(*source).name.clone())
+            .collect();
+    }
+}
+
 fn measure(field: PlaceField) -> Measure {
     match field {
         PlaceField::X => Measure::X,

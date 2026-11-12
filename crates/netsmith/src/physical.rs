@@ -29,9 +29,10 @@
 //! `.place.side` on a module is a hard requirement on every part of it, and a module with an
 //! exception states its parts' faces one by one. The case is a nested `case { ... }` section
 //! that a shared `enclosure` definition (issue #46) could take unchanged, and the outline,
-//! cutouts, mounting holes, fiducials and labels of a board are declared in it. A part's
-//! `.height` is stated on the part definition and a board may narrow it. The `row` statement and
-//! the natural order of numbered paths are in `netsmith-check/src/row.rs`.
+//! cutouts, mounting holes, fiducials, labels and case models (ADR 0109) of a board are
+//! declared in it. A part's `.height` is stated on the part definition and a board may narrow
+//! it. The `row` statement and the natural order of numbered paths are in
+//! `netsmith-check/src/row.rs`.
 //!
 //! **What is built.** A board's `Outline`, `Cutout`, `MountingHole`, `Fiducial`, `Label`, a
 //! `Keepout` it draws and any `.place` in its circuit source are errors that name the unit and

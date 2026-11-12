@@ -889,6 +889,9 @@ pub struct Designed {
     pub protrusion_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
     /// Where the design states the file of each of `design.features.models`, in the same order.
     pub model_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
+    /// Where the design states the file of each of `design.features.case_models`, in the same
+    /// order.
+    pub case_model_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
 }
 
 /// A panel as the specification `fab` builds it from: the board it repeats, the grid and the
@@ -1224,6 +1227,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.protrusions = protrusions;
     let (models, mut model_sites) = features::models(model, &mut errors);
     features.models = models;
+    let (case_models, case_model_sites) = features::case_models(model, &mut errors);
+    features.case_models = case_models;
     let (mut constraint_sites, mut offset_sites) = (constraint_sites, offset_sites);
     let mut bank_notes: Vec<String> = Vec::new();
     features::expand_banks(
@@ -1285,6 +1290,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             offset_sites,
             protrusion_sites,
             model_sites,
+            case_model_sites,
         })
     } else {
         errors.sort();

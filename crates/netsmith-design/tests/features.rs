@@ -380,3 +380,101 @@ fn an_empty_model_file_is_refused() {
         "`r.model.file` is empty: name the STEP file, relative to the file that states it"
     );
 }
+
+/// The design of the four-layer board with a physical file of `case` in its `case { }`
+/// section, and `circuit` added to the board.
+fn cased(circuit: &str, case: &str) -> Result<Design, Vec<String>> {
+    let physical =
+        format!("import std::pcb::CaseModel\n\nphysical for B {{\n    case {{\n{case}    }}\n}}\n");
+    let loader = Loader::std().with_physical("t.nsm", "t.physical.nsm", &physical);
+    let c = check("t.nsm", &board(circuit), &loader);
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    design_board(&c.boards[0], &s).map(|l| l.design)
+}
+
+#[test]
+fn a_case_model_is_carried_with_its_offset_and_rotation() {
+    let d = cased(
+        "",
+        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n            .x &= -2mm\n            .z &= -1.6mm\n            .rx &= 180\n        }\n        .lid: CaseModel {\n            .file &= \"case/lid.step\"\n            .rz &= 90\n        }\n",
+    )
+    .unwrap();
+    assert_eq!(
+        d.features.case_models,
+        [
+            netsmith_core::CaseModel {
+                name: "lid".into(),
+                file: "case/lid.step".into(),
+                offset: [0.0, 0.0, 0.0],
+                rotation: [0.0, 0.0, 90.0],
+                source: String::new(),
+                stated_in: Vec::new(),
+                resolved: None,
+            },
+            netsmith_core::CaseModel {
+                name: "shell".into(),
+                file: "case/box.step".into(),
+                offset: [-2.0, 0.0, -1.6],
+                rotation: [180.0, 0.0, 0.0],
+                source: String::new(),
+                stated_in: Vec::new(),
+                resolved: None,
+            },
+        ]
+    );
+    // A case model is a drawing and a check: it gives the board no outline, hole or limit.
+    assert!(d.features.outline.is_none());
+    assert!(d.features.cutouts.is_empty() && d.features.keepouts.is_empty());
+}
+
+#[test]
+fn a_case_model_with_no_file_is_refused() {
+    assert_eq!(
+        cased(
+            "",
+            "        .shell: CaseModel {\n            .rx &= 180\n        }\n"
+        )
+        .unwrap_err()
+        .join("\n"),
+        "`shell` is a `CaseModel` and names no file, so there is no case to place: name it with `.file &= \"case/box.step\"`, relative to the physical file"
+    );
+    assert_eq!(
+        cased(
+            "",
+            "        .shell: CaseModel {\n            .file &= \" \"\n        }\n"
+        )
+        .unwrap_err()
+        .join("\n"),
+        "`shell.file` is empty: name the case's STEP file, relative to the physical file that states it"
+    );
+}
+
+#[test]
+fn a_rotation_or_an_offset_of_a_case_model_that_is_a_range_is_refused() {
+    let e = cased(
+        "",
+        "        .shell: CaseModel {\n            .file &= \"case/box.step\"\n            .rx &= 170..190\n            .z &= -2mm..-1mm\n        }\n",
+    )
+    .unwrap_err()
+    .join("\n");
+    assert!(
+        e.contains("`shell.rx` is") && e.contains("a rotation is one value in degrees"),
+        "{e}"
+    );
+    assert!(e.contains("shell.z"), "{e}");
+}
+
+#[test]
+fn a_case_model_of_a_module_is_refused() {
+    let src = "import std::mfg::jlcpcb::TwoLayer\nimport std::pcb::CaseModel\nmodule M {\n    .shell: CaseModel {\n        .file &= \"case/box.step\"\n    }\n}\nboard B {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .m: M\n}\n";
+    let c = check("t.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    let e = design_board(&c.boards[0], &s).unwrap_err().join("\n");
+    assert_eq!(
+        e,
+        "`m.shell` is a `CaseModel`, and a case is the board's: declare it in the `case { }` section of the board's physical file"
+    );
+}

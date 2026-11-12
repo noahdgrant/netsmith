@@ -1234,6 +1234,7 @@ fn export(
     constraints::name_offset_sources(&mut design, &designed.offset_sites, sources);
     constraints::name_protrusion_sources(&mut design, &designed.protrusion_sites, sources);
     constraints::name_model_sources(&mut design, &designed.model_sites, sources);
+    constraints::name_case_model_sources(&mut design, &designed.case_model_sites, sources);
     let mut sourcing = designed.sourcing;
     let (schematic, project) = match libraries {
         None => (String::new(), String::new()),

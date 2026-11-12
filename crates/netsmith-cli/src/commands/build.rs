@@ -219,14 +219,17 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
             }
         }
         let mut boards = outcome.boards;
-        // The STEP models parts are drawn from, found on disk (ADR 0108): a path outside the
-        // project stops the file, a file that is not there is a warning.
+        // The STEP models parts are drawn from and the case models, found on disk (ADR 0108,
+        // ADR 0109): a path outside the project stops the file, a file that is not there is a
+        // warning.
         let places = netsmith::models::Places::of(&target);
         let mut misplaced = false;
         for b in &mut boards {
             let label = b.label();
             let found = netsmith::models::locate(&mut b.design, &places);
-            for warning in &found.warnings {
+            // A case model that is not there leaves the fit unchecked (ADR 0109): a warning
+            // here, and an error from `fab` when constraints are strict.
+            for warning in found.warnings.iter().chain(&found.unchecked) {
                 if json {
                     report.findings.push(Finding {
                         board: Some(label.clone()),

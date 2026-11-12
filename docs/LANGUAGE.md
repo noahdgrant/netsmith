@@ -6793,7 +6793,7 @@ physical for Cased {
 }
 ```
 
-- **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board. It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These five belong in it; a keepout may be anywhere in the unit.
+- **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These six belong in it; a keepout may be anywhere in the unit.
 - **A path may cross a module boundary here and nowhere else.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source still cannot reach into a module (ADR 0004); the physical file can, to state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both.
@@ -6862,7 +6862,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= AssemblyMode::Hand
@@ -7658,6 +7658,81 @@ error: contradiction on `plug.model.file`: it is already "models/plug.step", whi
 ```
 
 An offset or a rotation with no file is refused, as there is nothing to place, and so is a rotation or an offset that is a range.
+
+### A case model
+
+**A board may name the STEP file of its case (ADR 0109).** A `CaseModel` (`std::pcb::CaseModel`) is declared in the `case { }` section of the board's physical file, one member for each file: a base and a lid are two members, or one file with two solids. `.file` names a STEP file of the project, relative to the physical file. It has the fields and the rotation order of a part's `StepModel` (_A part's STEP model_), and places the model in the 3D scene's frame (`docs/BOARD3D.md`: millimetres, z up, the origin at the outline's bottom-left corner on the top face): `.rx`, `.ry` and `.rz` turn it, in degrees about x, then y, then z, and `.x`, `.y` and `.z` then move it. Each is one value, and an unstated one is zero. The side up is a rotation and the gap an offset: a box drawn upside down in its CAD file that the board's bottom face rests in is turned half a turn about x and moved down by the board's thickness.
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Boxed {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .power: Header1x2
+}
+```
+
+```nsm-physical
+import std::pcb::{CaseModel, Outline}
+
+physical for Boxed {
+    case {
+        // Case drawing BX-2, sheet 1: the inside of the base.
+        .outline: Outline {
+            .width &= 40mm
+            .height &= 24mm
+        }
+        // The base, modelled opening down: turned over, and the board rests on its bosses.
+        .shell: CaseModel {
+            .file &= "case/base.step"
+            .rx &= 180
+            .z &= -1.6mm
+        }
+        .lid: CaseModel {
+            .file &= "case/lid.step"
+        }
+    }
+}
+```
+
+A case model is a drawing and a check, never a height, an outline or a hole: the outline, the cutouts, the mounting holes and the height limits stay statements of the `case { }` section (by hand or with `netsmith dxf import`), and the check is to say where they disagree with the model. Today the file is found and carried with the design; the fit check, which measures the parts' bodies and the board against the case's solids, and the drawing in the 3D view, `render` and the `.glb`, come later. The STEP export leaves the case out. netsmith never bundles a case model and never downloads one.
+
+The file is found as a part's model is: a path outside the project, an absolute path, or one stated in two folders that names two files is an error. A maker's license often keeps a case's file out of a public repository, so a file that is not there leaves the fit unchecked: a warning from `build`, `check` and `fab`, and an error that stops `fab` when constraints are strict (`constraints = "error"` in `netsmith.toml`, or `fab --constraints error`; `--allow-drc-violations` does not waive it), as a part of unknown height under a limit is:
+
+```text
+warning: Boxed: `shell.file` names `src/case/base.step` (src/boxed.physical.nsm:12), and there is no such file, so the board's fit in its case model `shell` is not checked; add the file, or leave it out on a machine that may not have it
+```
+
+A case model with no `.file`, or an empty one, is refused, as there is nothing to place, and so is a rotation or an offset that is a range. A case is the board's: a `CaseModel` belongs in the `case { }` section, and one in the circuit source, in a module or elsewhere in the unit is refused:
+
+```nsm fails
+import std::parts::connector::Header1x2
+
+board Loose {
+    .power: Header1x2
+}
+```
+
+```nsm-physical
+import std::pcb::CaseModel
+
+physical for Loose {
+    .shell: CaseModel {
+        .file &= "case/base.step"
+    }
+}
+```
+
+```text
+error: a case model belongs in the `case { }` section of `physical for Loose`: wrap `.shell: CaseModel` in `case { ... }`
+  --> main.physical.nsm:4:13
+  |
+4 |     .shell: CaseModel {
+  |             ^^^^^^^^^
+```
 
 ### Labels
 
@@ -13317,6 +13392,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
+| `std::pcb::CaseModel` | A STEP file of the board's case, in the `case { }` section of its physical file (ADR 0109): `.file`, relative to the physical file and inside the project, the offset `.x`, `.y`, `.z` and the rotation `.rx`, `.ry`, `.rz` in degrees, applied before the offset, in the 3D scene's frame. A drawing and a check, never a height, an outline or a hole. See A case model. |
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
 | `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`), and `.qualification`, the qualification it requires of every fitted part (`Qualification::Aec`). Every fitted part is checked against it (ADR 0099). |
 | `std::prelude::Qualification` (in scope everywhere, no import) | The family of qualification a part claims: `None` (its datasheet says the ordering code is not qualified) and `Aec` (AEC-Q100, Q101 or Q200). The type of the built-in `.qualification` of every part, of the catalog column `qualification` and of `.environment.qualification` (ADR 0099). See Qualification, under The environment of a board. |

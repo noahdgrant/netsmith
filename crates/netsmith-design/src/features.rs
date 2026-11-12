@@ -7,8 +7,8 @@
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PinProtrusion,
-    PlaceBound, PlaceField, Placement, Pour, StepModel,
+    CaseModel, Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight,
+    PinProtrusion, PlaceBound, PlaceField, Placement, Pour, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -278,26 +278,94 @@ pub(crate) fn models(
             ));
             continue;
         }
-        let mut offset = [0.0; 3];
-        for (slot, name) in offset.iter_mut().zip(["x", "y", "z"]) {
-            *slot = exact(model, m, name, errors).unwrap_or(0.0);
-        }
-        let mut rotation = [0.0; 3];
-        for (slot, name) in rotation.iter_mut().zip(["rx", "ry", "rz"]) {
-            *slot = match domain(model, m, name) {
-                Some(Domain::Quantity(q)) if (q.hi() - q.lo()).abs() < 1e-12 => q.lo(),
-                Some(Domain::Quantity(q)) => {
-                    errors.push(format!(
-                        "`{path}.model.{name}` is {q}, a range, and a rotation is one value in degrees: say it with `&= {}`",
-                        q.lo()
-                    ));
-                    0.0
-                }
-                _ => 0.0,
-            };
-        }
+        let (offset, rotation) = placement_of(model, m, &format!("{path}.model"), errors);
         found.push(StepModel {
             path,
+            file,
+            offset,
+            rotation,
+            source: String::new(),
+            stated_in: Vec::new(),
+            resolved: None,
+        });
+        sites.push(model.field(file_field).narrowed_at.clone());
+    }
+    (found, sites)
+}
+
+/// The offset in mm (`.x`, `.y`, `.z`) and the rotation in degrees (`.rx`, `.ry`, `.rz`) of a
+/// `StepModel` or a `CaseModel` (ADR 0108, ADR 0109): each one value, zero when unstated.
+/// `path` names the instance in a message.
+fn placement_of(
+    model: &Model,
+    inst: InstId,
+    path: &str,
+    errors: &mut Vec<String>,
+) -> ([f64; 3], [f64; 3]) {
+    let mut offset = [0.0; 3];
+    for (slot, name) in offset.iter_mut().zip(["x", "y", "z"]) {
+        *slot = exact(model, inst, name, errors).unwrap_or(0.0);
+    }
+    let mut rotation = [0.0; 3];
+    for (slot, name) in rotation.iter_mut().zip(["rx", "ry", "rz"]) {
+        *slot = match domain(model, inst, name) {
+            Some(Domain::Quantity(q)) if (q.hi() - q.lo()).abs() < 1e-12 => q.lo(),
+            Some(Domain::Quantity(q)) => {
+                errors.push(format!(
+                    "`{path}.{name}` is {q}, a range, and a rotation is one value in degrees: say it with `&= {}`",
+                    q.lo()
+                ));
+                0.0
+            }
+            _ => 0.0,
+        };
+    }
+    (offset, rotation)
+}
+
+/// The STEP files of the board's case (`CaseModel` members of the `case { }` section, ADR
+/// 0109), by name, and the statements that state each file. A case model is a member of the
+/// board; one that names no file, or an empty one, is an error, as there is nothing to place.
+pub(crate) fn case_models(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (Vec<CaseModel>, Vec<Vec<(SourceId, Span)>>) {
+    let mut cases: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Interface && i.type_name == "CaseModel")
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    cases.sort();
+    let (mut found, mut sites) = (Vec::new(), Vec::new());
+    for (path, id) in cases {
+        netsmith_core::job::checkpoint();
+        if model.instance(id).parent != Some(model.root) {
+            errors.push(format!(
+                "`{path}` is a `CaseModel`, and a case is the board's: declare it in the `case {{ }}` section of the board's physical file"
+            ));
+            continue;
+        }
+        let Some(Member::Field(file_field)) = model.member(id, "file") else {
+            continue;
+        };
+        let file = match &model.field(file_field).domain {
+            Domain::Text(file) if !file.trim().is_empty() => file.clone(),
+            Domain::Text(_) => {
+                errors.push(format!(
+                    "`{path}.file` is empty: name the case's STEP file, relative to the physical file that states it"
+                ));
+                continue;
+            }
+            _ => {
+                errors.push(format!(
+                    "`{path}` is a `CaseModel` and names no file, so there is no case to place: name it with `.file &= \"case/box.step\"`, relative to the physical file"
+                ));
+                continue;
+            }
+        };
+        let (offset, rotation) = placement_of(model, id, &path, errors);
+        found.push(CaseModel {
+            name: path,
             file,
             offset,
             rotation,

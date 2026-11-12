@@ -1630,7 +1630,8 @@ pub fn physical_file_name(source: &str) -> String {
 }
 
 /// The things a board's physical file declares (ADR 0048, "Syntax decisions" 7 and 8): the
-/// outline, cutouts, mounting holes, fiducials and labels belong in its `case` section;
+/// outline, cutouts, mounting holes, fiducials, labels and case models (ADR 0109) belong in
+/// its `case` section;
 /// the keepouts a board draws may stand anywhere in the file.
 struct PhysicalType {
     /// With the article: `an outline`.
@@ -1648,6 +1649,7 @@ impl Checker<'_> {
         let (noun, in_case) = match (def.kind, def.name.name.as_str()) {
             (DefKind::Interface, "Outline") => ("an outline", true),
             (DefKind::Interface, "Cutout") => ("a cutout", true),
+            (DefKind::Interface, "CaseModel") => ("a case model", true),
             (DefKind::Interface, "Keepout") => ("a keepout that a board draws", false),
             (DefKind::Part, "MountingHole") => ("a mounting hole", true),
             (DefKind::Part, "Fiducial") => ("a fiducial", true),
@@ -1687,7 +1689,7 @@ impl Checker<'_> {
                     self.error(
                         d.ty.segments[0].span,
                         format!(
-                            "a physical file declares the outline, cutouts, keepouts, mounting holes, fiducials and labels of a board; `{member}: {type_name}` is none of them, and a part or a module belongs in the circuit source"
+                            "a physical file declares the outline, cutouts, keepouts, mounting holes, fiducials, labels and case models of a board; `{member}: {type_name}` is none of them, and a part or a module belongs in the circuit source"
                         ),
                     );
                     false
@@ -1748,7 +1750,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source"
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
                         ),
                     );
                     return false;

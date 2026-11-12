@@ -6,6 +6,7 @@
 mod bias;
 mod bus_peripherals;
 mod cancel;
+mod case_model;
 mod catalog_optional;
 mod class_marker;
 mod classes;
