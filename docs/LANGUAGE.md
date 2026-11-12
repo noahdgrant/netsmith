@@ -7977,6 +7977,28 @@ Each case of the list above ends in a line of that diff:
 
 The editor does not hold the parts to the lock: it solves from the source, as before. It shows the lock of the selected board's source file and writes nothing: the schematic's inspector has a _Pick lock_ section that says whether the file exists and whether it is current, and lists the diff that `lock --check` would print (a source that does not build has none). It is read again when the lock file changes on disk, which the editor watches.
 
+### The picks file
+
+A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. `<stem>.picks.toml` beside the source (`board.nsm` has `board.picks.toml`) holds the rows a person chose (#462). netsmith never writes it.
+
+```toml
+version = 1
+
+[PowerManifoldCharger.parts."boot1_cap"]
+catalog = "capacitor"
+lcsc = "C307331"
+```
+
+It has the lock's shape: a table for each board or system, by its name, and an entry for each part, by its path. An entry names the catalog and the row's LCSC number, which is what a bill of materials gives. A project's own catalog with no LCSC column names the row by `mpn` in place of `lcsc`; an entry has exactly one of the two.
+
+The solver offers each part the file names only the row it names, before the lock, and judges that row by everything the design states and every relation, as it judges a locked row. The lock then records the chosen row as it records any pick, so `lock --update` keeps it. What happens next is told for each part:
+
+- **The row passes.** It is the pick.
+- **The row fails, or the catalog has no row with that number, or the part picks from another catalog.** The run stops with the reason, and says that the row is the picks file's and that no other row was tried (`` `r1` is picked as the row with lcsc C25879 of the `resistor` catalog by main.picks.toml, and no other row was tried for it ``). `lock --check` and `lock --update` cannot tell either, and exit 2 with the same reason.
+- **An entry belongs to a part the board no longer has** (it is stale). As for a stale lock entry, `build` and `fab` print a note and `--locked` makes it an error; `lock --check` lists it and exits 1, and `lock --update` lists it and leaves the file alone.
+
+The editor solves with the picks file too, and does not read the lock.
+
 ## Imports
 
 `import` brings definitions into a file. Paths start at `std` for the standard library or `src` for the files of your project.

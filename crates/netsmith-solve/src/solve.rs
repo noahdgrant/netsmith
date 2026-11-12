@@ -224,7 +224,7 @@ use netsmith_quantity::{Dimension, Quantity};
 use crate::catalog::{Candidate, Catalog, Catalogs, Derating, DeratingError, Library, Value};
 use crate::eval::{EvalError, Val, eval, fields_in, reads_end, reads_nominal, relation_reads_end};
 use crate::generic::{Need, Sense};
-use crate::lock::LockedRow;
+use crate::lock::{ChosenRow, LockedRow};
 
 /// The result of solving one board.
 #[derive(Debug)]
@@ -717,6 +717,16 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
                     .collect()
             })
             .unwrap_or_default(),
+        chosen: catalogs
+            .picks()
+            .map(|picks| {
+                picks
+                    .rows(unit)
+                    .iter()
+                    .map(|r| (r.path.clone(), r.clone()))
+                    .collect()
+            })
+            .unwrap_or_default(),
         diagnostics: Vec::new(),
         seen: HashSet::new(),
         picks: Vec::new(),
@@ -987,6 +997,9 @@ struct Solver<'a> {
     /// The rows a pick lock holds the parts of this board or system to, by path (see
     /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.
     locked: BTreeMap<String, LockedRow>,
+    /// The rows a picks file holds the parts of this board or system to, by path (#462). A
+    /// chosen row comes before the lock's for its part.
+    chosen: BTreeMap<String, ChosenRow>,
     diagnostics: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,
     picks: Vec<Pick>,
@@ -2418,6 +2431,9 @@ impl Solver<'_> {
         if self.catalogs.pinned(path).is_some() {
             return true;
         }
+        if let Some(chosen) = self.chosen.get(path).cloned() {
+            return self.hold_to_choice(part, path, &chosen, cat);
+        }
         let Some(locked) = self.locked.get(path).cloned() else {
             return true;
         };
@@ -2483,6 +2499,68 @@ impl Solver<'_> {
                 false
             }
         }
+    }
+
+    /// A part that a picks file names is offered only the row a person chose for it (#462), which
+    /// every statement of the design and every relation then judge, as for a locked row. Returns
+    /// `false` when the catalog has no such row, which it has reported.
+    fn hold_to_choice(
+        &mut self,
+        part: InstId,
+        path: &str,
+        chosen: &ChosenRow,
+        cat: &mut Catalog,
+    ) -> bool {
+        let file = self.picks_file();
+        let is_chosen = |c: &Candidate| match (&chosen.lcsc, &chosen.mpn) {
+            (Some(l), _) => c.lcsc.as_ref() == Some(l),
+            (None, Some(m)) => c.mpn.as_ref() == Some(m),
+            (None, None) => false,
+        };
+        let reason = if chosen.catalog != cat.name {
+            Some(format!(
+                "the part picks from the `{}` catalog, and {file} names `{}`",
+                cat.name, chosen.catalog
+            ))
+        } else if !cat.candidates.iter().any(is_chosen) {
+            Some(format!(
+                "the `{}` catalog has no row with {}",
+                cat.name,
+                chosen.number()
+            ))
+        } else {
+            None
+        };
+        match reason {
+            None => {
+                cat.candidates.retain(is_chosen);
+                true
+            }
+            Some(reason) => {
+                let (source, span) = self.model.instance(part).at();
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "`{path}` is picked as the row with {} of the `{}` catalog by {file}, and {reason}: no other row was tried for it; change the entry in {file}, or remove it to let the solver pick",
+                        chosen.number(),
+                        chosen.catalog
+                    ),
+                );
+                self.unresolved.push(Unresolved {
+                    part,
+                    reason: "the row its picks file chose is not in the catalog".into(),
+                });
+                false
+            }
+        }
+    }
+
+    /// What a message calls the picks file.
+    fn picks_file(&self) -> String {
+        self.catalogs
+            .picks()
+            .map_or_else(String::new, |p| p.file.clone())
     }
 
     /// What a message calls the file of the pick lock.
@@ -3632,6 +3710,21 @@ impl Solver<'_> {
         for &j in group {
             let job = &jobs[j];
             if self.catalogs.pinned(&job.path).is_some() {
+                continue;
+            }
+            if let Some(chosen) = self.chosen.get(&job.path).cloned() {
+                let (source, span) = self.model.instance(job.part).at();
+                let file = self.picks_file();
+                self.report(
+                    source,
+                    span,
+                    format!(
+                        "`{}` is picked as the row with {} of the `{}` catalog by {file}, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the entry in {file}",
+                        job.path,
+                        chosen.number(),
+                        chosen.catalog
+                    ),
+                );
                 continue;
             }
             if let Some(locked) = self.locked.get(&job.path).cloned() {

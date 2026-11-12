@@ -329,11 +329,14 @@ mod board {
     fn built() -> netsmith::Built {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
         let source = &target.files[0];
+        // The rows of the picks file are the design's, as for `netsmith build` (#462).
+        let catalogs = netsmith::picks::holding(&source.path, &target.catalogs().unwrap())
+            .unwrap_or_else(|e| panic!("{e}"));
         build_with(
             &source.name,
             &read("src/main.nsm"),
             &target.loader().unwrap(),
-            &target.catalogs().unwrap(),
+            &catalogs,
             &libraries(),
         )
         .map(|mut boards| boards.remove(0))
@@ -647,18 +650,13 @@ mod board {
         out
     }
 
-    /// The parts whose pick is another row than the board's LCSC number. The design states a
-    /// value, a package and what the rail needs, not a part number, and the solver picks the
-    /// first row that fits: for a 100 nF, 1 uF, 4.7 uF, 2.2 uF or 10 uF ceramic the board's
-    /// number is a higher-voltage or other-dielectric row than the one picked (README,
-    /// "Differences from the reference"). Every other part has the board's number.
-    const OTHER_ROW: &[&str] = &[
-        "C1", "C2", "C3", "C4", "C5", "C7", "C10", "C14", "C15", "C16", "C20", "C21", "C23", "C27",
-        "C28", "C30", "C34", "C35", "C38",
-    ];
+    /// The parts whose pick is another row than the board's LCSC number: none. The design states
+    /// a value, a package and what the rail needs, not a part number, and the solver picks the
+    /// first row that fits; for 19 ceramics that is another row than the board's, and
+    /// `src/main.picks.toml` holds them to the board's numbers (#462).
+    const OTHER_ROW: &[&str] = &[];
 
-    /// Every part of the board that has a number is sourced with that LCSC number, but the
-    /// ceramics of `OTHER_ROW`.
+    /// Every part of the board that has a number is sourced with that LCSC number.
     #[test]
     fn the_parts_have_the_lcsc_numbers_of_the_charger_boards_footprints() {
         let built = built();
