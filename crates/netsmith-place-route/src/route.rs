@@ -83,8 +83,10 @@
 //! 5. Lines still left are **negotiated** for (PathFinder in a small form): each is routed
 //!    where it would go if no other net were in the way, the nets it comes near are ripped up,
 //!    the cells they fought over cost more from then on, and what was ripped up is routed
-//!    again. Six rounds, and the best state is kept. The earlier rip-up put the nets back if
-//!    the line did not fit; this one lets lines fail for a round so the others can move.
+//!    again. At most six rounds, ending after a round that leaves no fewer lines than the
+//!    best state seen ([`NEGOTIATION_PATIENCE`]), and the best state is kept. The earlier
+//!    rip-up put the nets back if the line did not fit; this one lets lines fail for a round so
+//!    the others can move.
 //!
 //! There is no fan-out stage that puts a via beside each pad of a dense footprint before
 //! routing: the search already puts a via on any free cell next to a pad, and a pad with no
@@ -170,6 +172,48 @@
 //! which is why the lanes are the second try's. A try of RP2350 takes 4 to 10 minutes, so under
 //! `fab`'s 300 s the second try runs only on a smaller or faster board: the lanes make the
 //! board's later tries finish, not its first.
+//!
+//! # What a try costs (issue #431)
+//!
+//! A try of RP2350 (`examples/rp2350_minimal`) took 150 to 250 s on a dense two-layer board
+//! with a QFN-60, against `fab`'s route timeout of 300 s, so `fab` got one try after the
+//! margin trial, and whether the board routed was luck. Exact speed-ups of a single search
+//! had been measured to gain nothing (S3, 2026-11-11), so this is about how many searches a
+//! try makes and how much of each is wasted. Counted per stage (2026-11-12), at a turn cost of
+//! 25: the negotiation re-routed 9 900 lines for 118 negotiated, and never left fewer lines
+//! than it started with; at 24, 26 and 27 the chain spent two thirds of its states in searches
+//! with no right angle that had no path, each running out of states in each window in turn.
+//! Each change below leaves the copper of a board as it was, except the last, which leaves it
+//! on the boards measured:
+//!
+//! - **The neck boxes are kept** ([`Router::necks`]): asking [`Board::neck_box`] at every cell
+//!   made the margin trial (signals at 0.15 mm) spend 58 s on masks and checks.
+//! - **Stale entries of the search queue are skipped**: a state queued again at a lower cost
+//!   comes off the queue first, so its dearer entries relax nothing (12 to 17 % of states).
+//! - **A flood before a search with no right angle** ([`reachable`]), over the same states and
+//!   moves ([`moves`]): it says that there is no path for much less than a search that runs
+//!   out of states.
+//! - **A memo of searches** ([`Router::memo`], [`Router::print`]): a search in a window whose
+//!   print (the other nets' copper within reach, hard or soft, the net's own vias, the
+//!   negotiation's history of the cells) is unchanged finds what it found before. The joins
+//!   with the net's own tracks are checked each time. A quarter of the repairs' searches.
+//! - **The negotiation stops after a round that does not improve** ([`NEGOTIATION_PATIENCE`]):
+//!   on RP2350 and Orbit no round ever did. On the invented tight board two negotiations
+//!   improved after one that did not, and over 12 seeds it made no difference to what was left
+//!   (9 of 12 complete, 5 lines); on the mixed board, 11 of 12 and 1 line against 10 and 2.
+//!
+//! RP2350 routed alone from a saved placement (`netsmith route --margin 1 --route-timeout 0`),
+//! against main at 78d662b (escape lanes on the second try) on the same machine, back to back,
+//! the copper byte-identical in every run: one try (`--tries 1`) at turn costs 24, 25, 26 and
+//! 27 takes 140, 38, 71 and 76 s against 372, 145, 177 and 221 s, leaving 2, 0, 2 and 2 lines
+//! as before; two tries (the second with the lanes) take 263, 40, 133 and 154 s against 579,
+//! 103, 426 and 558 s and leave none. `netsmith route` with `fab`'s flow (the margin trial,
+//! then the tries, in 300 s) routes RP2350 in 116 s against 202, Orbit in 6.4 against 10.3, the
+//! Easyduino in 2.5 as before.
+//!
+//! Not done: a cache keyed on the whole board (searches repeat only where little changed),
+//! smaller first windows (a line found in 4 mm is cheap already), fewer soft searches (one a
+//! failed line a pass already), and incremental masks (12 % at most, S3).
 //!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
