@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]\n       netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--quiet] [--format text|json] [--notes all|summary|none]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]\n       netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]\n       netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--quiet] [--format text|json] [--notes all|summary|none]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>] [--step <file.step>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]\n       netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -79,7 +79,7 @@ pub const PROSE: &[(&str, &str)] = &[
     ),
     (
         "board3d",
-        "`board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both. A file of several boards needs `--board`.",
+        "`board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` and `--step` files, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both. `--step <file.step>` writes the board and its parts as a STEP file (AP214) for mechanical CAD, in place of the summary as `--glb` is: the board through its thickness with its cutouts and holes, each part a product named by its designator, as exact solids; a part of unknown height is its outline only, never a guessed solid (ADR 0107; docs/BOARD3D.md). A file of several boards needs `--board`.",
     ),
     (
         "render",
@@ -274,13 +274,15 @@ pub enum Command {
     /// The editor in a browser. `file` is `None` to act on the project's top-level files.
     Editor { file: Option<String>, port: u16 },
     /// The 3D scene of one board of `file` (or of the project's top-level files), as a JSON
-    /// report with `json`, as a `.glb` file written to `glb`, and as a summary with neither
+    /// report with `json`, as a `.glb` file written to `glb`, as a STEP file written to `step`,
+    /// and as a summary with none of them
     /// (ADR 0105).
     Board3d {
         file: Option<String>,
         board: Option<String>,
         json: bool,
         glb: Option<PathBuf>,
+        step: Option<PathBuf>,
     },
     /// The 3D scene of one board of `file` drawn to a PNG written to `out` (`<board>-<view>.png`
     /// when `None`), as `request` says (ADR 0105).
@@ -419,6 +421,7 @@ where
     let mut port = DEFAULT_PORT;
     let mut json = false;
     let mut glb: Option<PathBuf> = None;
+    let mut step: Option<PathBuf> = None;
     let mut render = crate::render::Request::default();
     let (mut ortho, mut perspective) = (false, false);
     let mut view = crate::view_client::Request {
@@ -649,6 +652,11 @@ where
                     args.next().ok_or("--glb needs a file to write")?,
                 ));
             }
+            ("board3d", "--step") => {
+                step = Some(PathBuf::from(
+                    args.next().ok_or("--step needs a file to write")?,
+                ));
+            }
             ("build" | "check" | "fab" | "compare" | "parity", "--format") => {
                 let given = args.next();
                 format = given
@@ -808,6 +816,7 @@ where
             board,
             json,
             glb,
+            step,
         },
         "fab" => Command::Fab {
             file,

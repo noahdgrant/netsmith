@@ -16,9 +16,9 @@ use crate::scene3d::PlacedShape;
 pub const TOP_GAP: f64 = 0.02;
 
 /// The corners round a pin 1 dot or a ball.
-const ROUND_SEGMENTS: usize = 16;
+pub(crate) const ROUND_SEGMENTS: usize = 16;
 /// The bands of a ball from pole to pole.
-const BALL_RINGS: usize = 6;
+pub(crate) const BALL_RINGS: usize = 6;
 
 /// How close two heights are to count as level, in mm.
 const LEVEL: f64 = 1e-9;
@@ -47,7 +47,7 @@ fn material(m: Made) -> Material {
 }
 
 /// Solid `k` as drawn: a body box lowered under whatever is level with its top and over it.
-fn settled(solids: &[Solid], k: usize) -> Primitive {
+pub(crate) fn settled(solids: &[Solid], k: usize) -> Primitive {
     let s = &solids[k];
     let Primitive::Box { min, max } = s.primitive else {
         return s.primitive.clone();

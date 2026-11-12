@@ -159,7 +159,14 @@ fn main() -> ExitCode {
             board,
             json,
             glb,
-        }) => run_board3d(file.as_deref(), board.as_deref(), json, glb.as_deref()),
+            step,
+        }) => run_board3d(
+            file.as_deref(),
+            board.as_deref(),
+            json,
+            glb.as_deref(),
+            step.as_deref(),
+        ),
         Ok(Command::Render {
             file,
             board,
@@ -1171,22 +1178,27 @@ fn with_placed_board<T>(
 
 /// `netsmith board3d`: one board placed as `fab` places it (the pick lock and the layout file
 /// beside its source are read, nothing is written) and its 3D scene printed: the JSON report on
-/// stdout with `--json`, the scene as a `.glb` file with `--glb` (and no summary), a summary with
-/// neither. Exit 0 when the report is printed (and the file written), 1 when the board does not
+/// stdout with `--json`, the scene as a `.glb` file with `--glb` and as a STEP file with
+/// `--step` (and no summary), a summary with none of them. Exit 0 when the report is printed (and the file written), 1 when the board does not
 /// build or place, 2 when the command cannot start or the file cannot be written.
 fn run_board3d(
     file: Option<&str>,
     board: Option<&str>,
     json: bool,
     glb: Option<&Path>,
+    step: Option<&Path>,
 ) -> ExitCode {
     let made = with_placed_board(file, board, |placed| placed.run());
     let (report, scene) = match made {
         Ok(made) => made,
         Err(code) => return code,
     };
-    if let Some(out) = glb {
-        let bytes = netsmith_pcb::gltf::glb(&scene, &report.board.name);
+    let label = &report.board.name;
+    let files = [
+        glb.map(|out| (out, netsmith_pcb::gltf::glb(&scene, label))),
+        step.map(|out| (out, netsmith_pcb::step::step(&scene, label).into_bytes())),
+    ];
+    for (out, bytes) in files.into_iter().flatten() {
         if let Err(e) = fs::write(out, bytes) {
             eprintln!("error: {}: {e}", out.display());
             return ExitCode::from(2);
@@ -1194,7 +1206,7 @@ fn run_board3d(
     }
     if json {
         print!("{}", report.json());
-    } else if glb.is_none() {
+    } else if glb.is_none() && step.is_none() {
         print!("{}", report.summary());
     }
     ExitCode::SUCCESS
