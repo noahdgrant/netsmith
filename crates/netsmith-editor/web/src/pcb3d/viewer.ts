@@ -465,18 +465,44 @@ export class Viewer {
     return limit ? { kind: 'limit', info: limit } : null;
   }
 
-  /** Where a part's body is in the window (its top's centre), for a recipe and for the coverage list. */
+  /** A point of the window where a pick finds the part (the one nearest the middle of its bounds), or null when none does (hidden or off screen); for a recipe. */
   project(path: string): { x: number; y: number } | null {
     const p = this.parts.get(path);
     if (!p) return null;
     const box = new Box3();
     for (const m of p.meshes) box.expandByObject(m);
     if (box.isEmpty()) return null;
-    const c = box.getCenter(new Vector3());
-    c.y = p.info.side === 'bottom' ? box.min.y : box.max.y;
-    c.project(this.camera());
+    // The window box of the part's bounds, then points over it from its middle outward until one
+    // that a pick says is the part: a package shape (thin leads, a body lower than its box) has
+    // nothing at its box's centre, and another part or a limit may be in front.
     const r = this.canvas.getBoundingClientRect();
-    return { x: r.left + ((c.x + 1) / 2) * r.width, y: r.top + ((1 - c.y) / 2) * r.height };
+    const cam = this.camera();
+    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const x of [box.min.x, box.max.x])
+      for (const y of [box.min.y, box.max.y])
+        for (const z of [box.min.z, box.max.z]) {
+          const v = new Vector3(x, y, z).project(cam);
+          const sx = r.left + ((v.x + 1) / 2) * r.width;
+          const sy = r.top + ((1 - v.y) / 2) * r.height;
+          [x0, y0, x1, y1] = [Math.min(x0, sx), Math.min(y0, sy), Math.max(x1, sx), Math.max(y1, sy)];
+        }
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const n = 12;
+    const points: { x: number; y: number; d: number }[] = [];
+    for (let i = 0; i <= n; i++)
+      for (let j = 0; j <= n; j++) {
+        const x = x0 + ((x1 - x0) * i) / n;
+        const y = y0 + ((y1 - y0) * j) / n;
+        points.push({ x, y, d: Math.hypot(x - cx, y - cy) });
+      }
+    points.sort((a, b) => a.d - b.d);
+    for (const q of points) {
+      if (q.x < r.left || q.y < r.top || q.x > r.right || q.y > r.bottom) continue;
+      const hit = this.pick(q.x, q.y);
+      if (hit?.kind === 'part' && hit.info.path === path) return { x: Math.round(q.x), y: Math.round(q.y) };
+    }
+    return null;
   }
 
   // ---- the camera ----

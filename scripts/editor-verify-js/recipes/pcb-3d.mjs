@@ -18,6 +18,13 @@ const HOST = '[data-testid=pcb-3d]';
 /** Ask the 3D view itself (the handle it puts on its host, for recipes). */
 const ask = (page, what, ...args) => page.evaluate(([sel, w, a]) => document.querySelector(sel).view3d[w](...a), [HOST, what, args]);
 
+/** A point of the window where the view picks the part at `path` (it raycasts over the part's bounds: a package shape has leads and a body, not a box). */
+async function placeOf(page, path) {
+  const at = await ask(page, 'project', path);
+  if (!at) throw new Error(`the 3D view finds no point of the window that picks the part ${path}`);
+  return at;
+}
+
 /** Choose a theme as a person does: the command palette. */
 async function theme(page, label, id) {
   await page.keyboard.press('Control+Shift+P');
@@ -62,7 +69,7 @@ export async function run(tools) {
 
   step('the hover names the part, its height and where the height came from, and lights it in the other views');
   const hoverOn = async (p) => {
-    const at = await ask(page, 'project', p.path);
+    const at = await placeOf(page, p.path);
     await page.mouse.move(at.x + 30, at.y + 30);
     await page.mouse.move(at.x, at.y);
     await page.waitForSelector('[data-testid=tip-3d]');
@@ -79,16 +86,16 @@ export async function run(tools) {
   await shot('hover-unknown');
 
   step('a click picks the part in the page: the inspector names it, and its body takes the selection colour');
-  const at = await ask(page, 'project', flat.path);
-  const before = await ask(page, 'colourAt', at.x, at.y + 2);
-  await page.mouse.move(at.x, at.y + 2);
-  await page.mouse.click(at.x, at.y + 2);
+  const at = await placeOf(page, flat.path);
+  const before = await ask(page, 'colourAt', at.x, at.y);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.click(at.x, at.y);
   await page.waitForSelector('[data-testid=part-inspector]');
   const title = await page.locator('[data-testid=part-inspector] h3').innerText();
   expect(title.startsWith(labelOf(flat)), `the inspector shows ${labelOf(flat)} (${title})`);
   await page.mouse.move(5, 5);
   await page.waitForTimeout(250);
-  const after = await ask(page, 'colourAt', at.x, at.y + 2);
+  const after = await ask(page, 'colourAt', at.x, at.y);
   expect(before !== after, `the picked body changed colour (${before} to ${after})`);
   await shot('picked');
 
@@ -96,9 +103,9 @@ export async function run(tools) {
   await page.locator('.part-row', { hasText: labelOf(tall) }).click();
   await page.waitForFunction((t) => document.querySelector('[data-testid=part-inspector] h3')?.innerText.startsWith(t), labelOf(tall));
   await page.waitForTimeout(250);
-  const tallAt = await ask(page, 'project', tall.path);
-  const lit = await ask(page, 'colourAt', tallAt.x, tallAt.y + 4);
-  const flatNow = await ask(page, 'colourAt', at.x, at.y + 2);
+  const tallAt = await placeOf(page, tall.path);
+  const lit = await ask(page, 'colourAt', tallAt.x, tallAt.y);
+  const flatNow = await ask(page, 'colourAt', at.x, at.y);
   expect(flatNow === before, `the part picked before is back to its own colour (${flatNow})`);
   expect(lit !== null && lit !== flatNow, `the part picked in the list is lit (${lit})`);
 

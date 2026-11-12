@@ -1,4 +1,4 @@
-# `netsmith board3d`: the board in 3D, as data and as glTF
+# `netsmith board3d` and `netsmith render`: the board in 3D, as data, as glTF and as a picture
 
 `netsmith board3d` places a board as `fab` and the editor place it and prints its _Scene_
 (ADR 0105): the board as its stackup makes it, a summary of its copper, each part's body box from
@@ -166,12 +166,12 @@ routed or built again it fetches the file again and keeps the camera.
 What it is:
 
 - **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
-  body box to its known height, the height limits as see-through volumes (in the error colour when
-  a part breaks one) and the pins out of the far face where their length is stated. The copper and
-  the package shapes come into the same file later (#430), and the view draws them by their
-  material's name.
-- **Honest about heights.** A part's body is tinted by where its height came from: stated in the
-  design, or from the catalog row. A part with no known height is a flat hatched outline on its
+  body to its known height (its package shape where the footprint generator made the footprint,
+  else a box), the height limits as see-through volumes (in the error colour when a part breaks
+  one) and the pins out of the far face where their length is stated. The copper comes into the
+  same file later (#430), and the view draws each mesh by its material's name.
+- **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
+  by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
   (_Height coverage_); it lists the others, and a click on one selects it. A hover names a part's
   designator, its height and where the height came from.
@@ -189,7 +189,7 @@ What it is not:
 - **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
   file (ADR 0032).
 - **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
-  maker's, not a STEP file (ADR 0105). A body is a box, or later a shape made from the footprint
+  maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
   generator's own numbers.
 - **Not a check.** The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.
@@ -197,3 +197,68 @@ What it is not:
   loads the first time 3D opens (at most 250 kB gzipped, held by a test in
   `crates/netsmith-editor/tests/bundle.rs`); nothing is fetched from elsewhere (ADR 0019). It
   needs WebGL 2; without it the view says so and the 2D view works as before.
+
+## Pictures for agents: `netsmith render`
+
+`netsmith render` places the board exactly as `board3d` does (the same code: the pick lock, the
+physical file and the layout file are read, nothing is routed, nothing is written but the
+picture), makes the scene's meshes (`netsmith_pcb::mesh`, the ones the `.glb` file is written
+from) and draws them to a PNG with netsmith's own software rasterizer
+(`netsmith_pcb::raster3d`, ADR 0105). It is for an agent that can read an image, a golden test
+and a person without a 3D viewer: **no GPU, no browser and no KiCad**, and the same source and
+options give the same bytes on every machine (all geometry is `f64` arithmetic in a fixed order,
+coverage is decided in integers, and there are no threads).
+
+```sh
+netsmith render examples/led.nsm                              # LedExample-iso.png, 1600x1000
+netsmith render examples/led.nsm --view top --out top.png     # straight down at the top face
+netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
+netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
+netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
+netsmith render examples/two_boards.nsm --board TwoBoards/led --view iso-bottom --theme dark
+```
+
+The command prints the path it wrote. Read the file with the image viewer of the agent (or
+open it): a picture to look at, with the numbers from `board3d --json` to quote.
+
+| Option | What it does |
+|---|---|
+| `--view` | `top`, `bottom`, `front`, `back`, `left`, `right`, `iso` (the default) or `iso-bottom`. See the table below. |
+| `--out <file.png>` | Where to write; default `<board>-<view>.png` in the current folder (a board of a system, `System/member`, is `System-member`). The folder must exist. |
+| `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
+| `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are open (no caps). |
+| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>` and `limit:<name>` (a height limit, as `board3d` names it). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets and limits the board has; nothing is written. |
+| `--xray` | Every mesh see-through, to look through the board and the bodies. |
+| `--theme light\|dark` | The palette; default `light`. |
+| `--ortho` \| `--perspective` | Parallel projection (the default, so lengths are comparable) or a pinhole with a 30° field of view. |
+
+The views look at the board's middle, framed to fit it with a margin, in the frame of this
+document (millimetres, right-handed, z up, origin at the outline's bottom-left corner on the top
+face, y up toward the outline's top edge):
+
+| View | Seen from | In the picture |
+|---|---|---|
+| `top` | above (+z) | x to the right, y up; the board as the editor's PCB view draws it |
+| `bottom` | below (-z) | x to the left, y up: the board turned over left to right |
+| `front` | -y | x to the right, z up |
+| `back` | +y | z up |
+| `left` | -x | z up |
+| `right` | +x | z up |
+| `iso` | the corner at +x, -y, +z | z up |
+| `iso-bottom` | the corner at +x, -y, -z | z up |
+
+`--section` is in the same frame: `z=0` is the top face and `z=-1.6` the bottom face of a 1.6 mm
+board, `x=7` is 7 mm in from the outline's left edge, and `y=3.5` is 3.5 mm up from its bottom
+edge. A layout-file point (from the top-left corner, y down) is `(x, outline height - y)`.
+
+What is drawn is what the scene has: the board (laminate with the green solder mask, with its
+outline, cutouts and drilled holes), the plated barrels, each part's body as a dark box from its
+face to its height, a part of **unknown height as a flat orange outline** on the board (never a
+box, ADR 0094), pins that stand out below the far face where the design states a protrusion, and
+each height limit as a see-through blue volume, red where a part is too tall for it. Other mesh
+ids, such as the copper's nets, pass through to `--highlight` as the scene gives them. A picture
+is a view of the scene and not a check: the numbers of `board3d --json` are.
+
+Exit 0 when the picture is written, 1 when the board does not build or cannot be placed (the
+error is `fab`'s), 2 when the command cannot start, an option is wrong (a view, a size, a section,
+a theme, an id of `--highlight` the board does not have) or the file cannot be written.
