@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# A placed board is saved as JSON (`netsmith fab --save-placed`), and it holds the process.
+serde = { version = "1.0.229", features = ["derive"] }
 
 [dev-dependencies]
 # An inflater that is not ours, to check the PNG writer's deflate.

@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Sexp {
     /// Bare token: keyword, number, `yes`/`no`.
     Atom(String),

@@ -1,8 +1,8 @@
-//! The command line: `netsmith init`, `build`, `fab`, `editor`, `view` and `compare`.
+//! The command line: `netsmith init`, `build`, `fab`, `route`, `editor`, `view` and `compare`.
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]\n       netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--quiet] [--format text|json] [--notes all|summary|none]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>] [--step <file.step>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]\n       netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]\n       netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--save-placed] [--quiet] [--format text|json] [--notes all|summary|none]\n       netsmith route <board.placed.json> [--out <dir>] [--route-timeout <secs>] [--margin <x>]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>] [--step <file.step>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]\n       netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -17,6 +17,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     (
         "fab",
         "make the fab package (Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the 3D scene as .glb) or an order",
+    ),
+    (
+        "route",
+        "route a placed board that `fab --save-placed` wrote, alone (no checks; a router tool)",
     ),
     (
         "lock",
@@ -67,7 +71,11 @@ pub const PROSE: &[(&str, &str)] = &[
     ),
     (
         "fab",
-        "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`--locked` is that of `build`, and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`).\n\n`--pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file; `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project).\n\n`fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed).\n\n`--order <name>` makes one of the project's orders, and `--order` alone lists them; `--order <name> --locked` applies `--locked` to each source file that builds a board of the order.\n\n`--quiet` prints the result of each board and the findings, not the stages and the router's passes.\n\n`--format` and `--notes` are those of `build`; with `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`.",
+        "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`--locked` is that of `build`, and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`).\n\n`--pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file; `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project).\n\n`fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed).\n\n`--order <name>` makes one of the project's orders, and `--order` alone lists them; `--order <name> --locked` applies `--locked` to each source file that builds a board of the order.\n\n`--quiet` prints the result of each board and the findings, not the stages and the router's passes.\n\n`--format` and `--notes` are those of `build`; with `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`.\n\n`--save-placed` also writes `<board>.placed.json` into the board's output folder: the board as placed just before it is routed, with the track margin `fab` routes with, for `netsmith route`. Nothing else of the package changes, and a run without it removes the file an earlier run saved. `--order` does not take it.",
+    ),
+    (
+        "route",
+        "`route <board.placed.json>` routes the board that `fab --save-placed` saved again, alone, the way `fab` does (signals at the track margin where there is room, then the least track), with no checking, solving or placing, and writes `<board>.kicad_pcb`, `.kicad_pro`, `.svg` and, when connections are left, `routing-failure.txt` and `routing-report.json` into `--out` (default `out/`); it prints the connections left, the tracks, the vias and the time. It is a router tool for experiments: it runs no design rules check and makes no fab package.\n\n`--route-timeout` is that of `fab` (0 for no limit). `--margin` (1 to 4) replaces the track margin the file was saved with.\n\nThe exit code is 0 when every connection is routed, 1 when connections are left, and 2 when the file cannot be read (a file saved by another version of netsmith is refused: save it again).",
     ),
     (
         "lock",
@@ -259,12 +267,25 @@ pub enum Command {
         /// `--no-glb`: leave the board's 3D scene (`<board>.glb`) out of the package for this
         /// run. `false` leaves it to the manifest's `glb`, whose default is to write it.
         no_glb: bool,
+        /// `--save-placed`: write `<board>.placed.json`, the board as placed before it is
+        /// routed, into each board's output folder, for `netsmith route`.
+        save_placed: bool,
         /// Make a named order of the project, or list them, instead of every board.
         order: Option<OrderRequest>,
         /// `--quiet`: the result of each board and the findings, not the stages (#455).
         quiet: bool,
         format: crate::findings::Format,
         notes: crate::findings::NotesMode,
+    },
+    /// Route the placed board that `fab --save-placed` wrote to `file`, alone, and write its
+    /// board files into `out` (`out/` when `None`).
+    Route {
+        file: PathBuf,
+        out: Option<PathBuf>,
+        /// Seconds the router may take; `Some(0)` is no limit, `None` the default of `fab`.
+        route_timeout: Option<u64>,
+        /// The track margin over the one the file was saved with, from 1 to 4.
+        margin: Option<f64>,
     },
     /// Refresh or check the pick lock of `file`, or of each top-level file of the project.
     Lock {
@@ -416,6 +437,8 @@ where
     let mut constraints_warn: Option<bool> = None;
     let mut pins_locked: Option<bool> = None;
     let mut no_glb = false;
+    let mut save_placed = false;
+    let mut margin: Option<f64> = None;
     let mut order: Option<OrderRequest> = None;
     let mut lock_mode: Option<LockMode> = None;
     let mut port = DEFAULT_PORT;
@@ -567,7 +590,7 @@ where
                     "`view` takes no file: it drives the editor's open project (`--board` says which board), not a source file; `netsmith render {file}` draws one without an editor\n{USAGE}"
                 ));
             }
-            ("build" | "fab" | "render", "--out") => {
+            ("build" | "fab" | "render" | "route", "--out") => {
                 out = Some(PathBuf::from(args.next().ok_or(
                     if command == "render" {
                         "--out needs a file to write"
@@ -582,7 +605,7 @@ where
                     None => OrderRequest::List,
                 });
             }
-            ("fab", "--route-timeout") => {
+            ("fab" | "route", "--route-timeout") => {
                 let given = args
                     .next()
                     .ok_or("--route-timeout needs a number of seconds")?;
@@ -593,6 +616,23 @@ where
             ("fab", "--allow-drc-violations") => allow_drc_violations = true,
             ("fab", "--cross-check") => cross_check = true,
             ("fab", "--no-glb") => no_glb = true,
+            ("fab", "--save-placed") => save_placed = true,
+            ("route", "--margin") => {
+                let given = args
+                    .next()
+                    .ok_or("--margin needs how many times the least track a signal is drawn at")?;
+                margin = Some(
+                    given
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|m| (1.0..=4.0).contains(m))
+                        .ok_or_else(|| {
+                            format!(
+                                "--margin takes a number from 1 (the process's least track) to 4, not `{given}`"
+                            )
+                        })?,
+                );
+            }
             ("build" | "check" | "fab", "--strict") => strict = true,
             ("build" | "fab", "--locked") => locked = true,
             ("lock", "--update" | "--check") => {
@@ -714,6 +754,22 @@ where
             "`fab --order` makes an order of the project and takes no file: an order names its boards in netsmith.toml\n{USAGE}"
         ));
     }
+    if order.is_some() && save_placed {
+        return Err(format!(
+            "`fab --order` makes a release and does not save placed boards: run `fab <file.nsm> --save-placed`\n{USAGE}"
+        ));
+    }
+    if command == "route" {
+        let file = file.ok_or_else(|| {
+            format!("`route` needs the placed board that `fab --save-placed` wrote\n{USAGE}")
+        })?;
+        return Ok(Command::Route {
+            file: PathBuf::from(file),
+            out,
+            route_timeout,
+            margin,
+        });
+    }
     if command == "compare" {
         let [a, b] = <[String; 2]>::try_from(files)
             .map_err(|_| format!("`compare` takes two files, A and B\n{USAGE}"))?;
@@ -829,6 +885,7 @@ where
             constraints_warn,
             pins_locked,
             no_glb,
+            save_placed,
             order,
             quiet,
             format,
@@ -1134,6 +1191,8 @@ mod tests {
             "--cross-check",
             "--constraints",
             "--pins",
+            "--save-placed",
+            "--margin",
             "--port",
             "--board",
             "--by-refdes",
@@ -1147,6 +1206,7 @@ mod tests {
             "init",
             "build",
             "fab",
+            "route",
             "editor",
             "compare",
             "kicad-libs",
@@ -1312,6 +1372,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: None,
                 quiet: false,
                 format: crate::findings::Format::Text,
@@ -1336,6 +1397,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: None,
                 quiet: false,
                 format: crate::findings::Format::Text,
@@ -1360,6 +1422,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: None,
                 quiet: false,
                 format: crate::findings::Format::Text,
@@ -1389,6 +1452,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: Some(order),
                 quiet: false,
                 format: crate::findings::Format::Text,
@@ -1413,6 +1477,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: Some(OrderRequest::List),
                 quiet: false,
                 format: crate::findings::Format::Text,
@@ -1441,6 +1506,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: Some(OrderRequest::Make("d".into())),
                 quiet: false,
                 format: crate::findings::Format::Text,
@@ -1504,6 +1570,70 @@ mod tests {
         );
         assert!(parse(&["build", "--no-glb"]).is_err());
         assert!(help().contains("--no-glb"));
+    }
+
+    #[test]
+    fn fab_takes_save_placed_to_write_the_board_before_routing() {
+        let save = |args: &[&str]| match parse(args) {
+            Ok(Command::Fab { save_placed, .. }) => save_placed,
+            other => panic!("{args:?}: {other:?}"),
+        };
+        assert!(save(&["fab", "a.nsm", "--save-placed"]));
+        assert!(!save(&["fab", "a.nsm"]), "not saved by default");
+        assert!(parse(&["build", "--save-placed"]).is_err());
+        let e = parse(&["fab", "--order", "devkit", "--save-placed"]).unwrap_err();
+        assert!(e.contains("--save-placed"), "{e}");
+        assert!(help().contains("--save-placed"));
+    }
+
+    #[test]
+    fn route_takes_a_placed_board_an_out_folder_a_timeout_and_a_margin() {
+        assert_eq!(
+            parse(&["route", "out/Led/Led.placed.json"]),
+            Ok(Command::Route {
+                file: "out/Led/Led.placed.json".into(),
+                out: None,
+                route_timeout: None,
+                margin: None,
+            })
+        );
+        assert_eq!(
+            parse(&[
+                "route",
+                "--out",
+                "x",
+                "b.placed.json",
+                "--route-timeout",
+                "30",
+                "--margin",
+                "1",
+            ]),
+            Ok(Command::Route {
+                file: "b.placed.json".into(),
+                out: Some("x".into()),
+                route_timeout: Some(30),
+                margin: Some(1.0),
+            })
+        );
+        let e = parse(&["route"]).unwrap_err();
+        assert!(e.contains("fab --save-placed"), "{e}");
+        for bad in ["0.5", "5", "wide"] {
+            let e = parse(&["route", "b.placed.json", "--margin", bad]).unwrap_err();
+            assert!(e.contains("--margin takes a number from 1"), "{bad}: {e}");
+        }
+        assert!(parse(&["route", "b.placed.json", "--margin"]).is_err());
+        assert!(parse(&["route", "b.placed.json", "--route-timeout", "soon"]).is_err());
+        assert!(parse(&["route", "a.json", "b.json"]).is_err());
+        assert!(parse(&["route", "b.placed.json", "--strict"]).is_err());
+        assert!(parse(&["fab", "a.nsm", "--margin", "2"]).is_err());
+        assert!(help().contains("netsmith route <board.placed.json>"));
+        let text = command_help("route");
+        assert!(
+            text.contains("usage: netsmith route <board.placed.json>"),
+            "{text}"
+        );
+        assert!(text.contains("no design rules check"), "{text}");
+        assert!(command_help("fab").contains("`--save-placed`"));
     }
 
     #[test]
@@ -1667,6 +1797,7 @@ mod tests {
                 constraints_warn: None,
                 pins_locked: None,
                 no_glb: false,
+                save_placed: false,
                 order: None,
                 quiet: false,
                 format: crate::findings::Format::Text,

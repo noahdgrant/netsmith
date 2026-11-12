@@ -83,7 +83,7 @@ pub const TOLERANCE: f64 = 0.0005;
 
 /// How far the pins of a through-hole part protrude out of the far side of the board, as
 /// the design states it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Protrusion {
     /// How far they protrude out of the face opposite the part, in mm.
     pub length: f64,

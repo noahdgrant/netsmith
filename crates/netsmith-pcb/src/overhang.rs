@@ -93,7 +93,7 @@ impl Edge {
 }
 
 /// A set of edges of the outline.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Edges {
     pub left: bool,
     pub right: bool,
@@ -138,7 +138,7 @@ impl Edges {
 }
 
 /// What the person stated about a part hanging over the edge.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Overhang {
     /// Requirements on the part's `.place` that put an edge of its body at or past the same
     /// edge of the outline.

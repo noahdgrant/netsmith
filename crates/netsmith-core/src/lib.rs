@@ -149,7 +149,7 @@ pub struct Net {
 /// resolved it: the least the process can make, after the board has narrowed it, and the
 /// stackup. Lengths are in millimetres. Nothing here is specific to one manufacturer; a
 /// different house is a different definition with the same fields.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Process {
     /// The definition it came from: `TwoLayer`.
     pub name: String,
@@ -261,7 +261,7 @@ pub struct PanelRules {
 pub const OUNCE_OF_COPPER: f64 = 0.035;
 
 /// What a board is built from.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stackup {
     /// Copper layers.
     pub layers: u32,
@@ -278,7 +278,7 @@ pub struct Stackup {
 /// built up round them. Lengths are in mm. From the top the board is outer copper, a
 /// prepreg, the first inner layer, the core, the last inner layer, a prepreg and outer
 /// copper; only that build of four layers is described so far.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InnerLayers {
     /// The net each inner layer is a plane of, from the top: `["GND", "3V3"]` makes `In1.Cu`
     /// a ground plane and `In2.Cu` a 3.3 V plane.
@@ -522,7 +522,7 @@ impl Offset {
 }
 
 /// The current a net carries, and the least track that carries it (issue #431).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NetCurrent {
     pub net: String,
     /// The worst case, in amperes: every load on at once (ADR 0036). A lower bound where a

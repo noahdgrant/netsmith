@@ -1,4 +1,4 @@
-//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor`, `board3d`, `render`, `view` and `compare`.
+//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `route`, `editor`, `board3d`, `render`, `view` and `compare`.
 
 use std::{
     env, fs,
@@ -105,6 +105,7 @@ fn main() -> ExitCode {
             constraints_warn,
             pins_locked,
             no_glb,
+            save_placed,
             order,
             quiet,
             format,
@@ -143,6 +144,7 @@ fn main() -> ExitCode {
                         constraints_warn,
                         pins_locked,
                         no_glb,
+                        save_placed,
                         FabOutput {
                             quiet,
                             format,
@@ -152,6 +154,12 @@ fn main() -> ExitCode {
                 }),
             }
         }
+        Ok(Command::Route {
+            file,
+            out,
+            route_timeout,
+            margin,
+        }) => run_route(&file, out.as_deref(), route_timeout, margin),
         Ok(Command::Lock { file, mode }) => run_lock(file.as_deref(), mode),
         Ok(Command::Editor { file, port }) => run_editor(file.as_deref(), port),
         Ok(Command::Board3d {
@@ -898,6 +906,7 @@ fn run_fab(
     constraints_warn: Option<bool>,
     pins_locked: Option<bool>,
     no_glb: bool,
+    save_placed: bool,
     output: FabOutput,
 ) -> ExitCode {
     let json = output.format == Format::Json;
@@ -960,6 +969,7 @@ fn run_fab(
         pin_map_source: None,
         track_margin: track_margin(&target),
         glb: glb_wanted(&target, no_glb),
+        save_placed,
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -1123,6 +1133,69 @@ fn finding_of_line(line: &str) -> Option<Finding> {
         board,
         ..Finding::plain(severity, code, message)
     })
+}
+
+/// `netsmith route`: route the placed board that `fab --save-placed` wrote, alone, and write
+/// its board files into `out` (`out/` when `None`). Exits 1 when connections are left, 2 when
+/// the file cannot be read or the files cannot be written.
+fn run_route(
+    file: &Path,
+    out: Option<&Path>,
+    route_timeout: Option<u64>,
+    margin: Option<f64>,
+) -> ExitCode {
+    let placed = match fs::read_to_string(file)
+        .map_err(|e| e.to_string())
+        .and_then(|text| netsmith::placed::from_json(&text))
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+    let request = netsmith::placed::RouteRequest {
+        route_timeout: match route_timeout {
+            Some(0) => None,
+            Some(secs) => Some(Duration::from_secs(secs)),
+            None => FabOptions::default().route_timeout,
+        },
+        margin,
+        progress: Some(|message| eprintln!("{message}")),
+    };
+    let out = out.unwrap_or(Path::new("out"));
+    let routed = match netsmith::placed::route(placed, out, &request, &|m| eprintln!("{m}")) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    for path in &routed.written {
+        println!("wrote {}", path.display());
+    }
+    for line in &routed.left {
+        println!("not routed: {line}");
+    }
+    println!(
+        "{}: {} connections left, {} tracks, {} vias, routed in {:.1} s ({} tries{})",
+        routed.board.name,
+        routed.left.len(),
+        routed.board.tracks.len(),
+        routed.board.vias.len(),
+        routed.elapsed.as_secs_f64(),
+        routed.tries,
+        if routed.stopped {
+            ", stopped at the route timeout"
+        } else {
+            ""
+        }
+    );
+    if routed.left.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 /// What `board3d` and `render` do first: the one board `file` and `--board` pick, built and
@@ -1331,6 +1404,7 @@ fn run_order(
         pin_map_source: None,
         track_margin: track_margin(&target),
         glb: glb_wanted(&target, no_glb),
+        save_placed: false,
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

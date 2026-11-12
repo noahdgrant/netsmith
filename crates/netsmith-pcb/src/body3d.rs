@@ -98,7 +98,7 @@ pub const CATHODE_BAND: f64 = 0.15;
 
 /// What a generator knows of a package's shape, kept on the footprint it made, in the
 /// footprint's frame. The first of `leads`, `balls` or `pins` is pin 1.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Package {
     /// A chip with a metal terminal over each end along x: the body (length along x, width), the
     /// length of a terminal, and whether pad 1 (at -x) is a cathode.
@@ -155,7 +155,7 @@ pub enum Package {
 
 /// The two terminals of a molded diode, one out of each end of the body along x, in the middle
 /// of its width.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Terminals {
     /// The span tip to tip along x, in mm.
     pub span: f64,
@@ -167,7 +167,7 @@ pub struct Terminals {
 }
 
 /// How a molded diode's terminal is bent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Bend {
     /// Out of the body's end, down, and the foot out away from the body (SOD).
     GullWing,
@@ -182,7 +182,7 @@ pub enum Bend {
 /// pins). A lead reaches as far as its package's `span` unless it states its own `reach` (the
 /// tab of a SOT-89 stops short of its pins). A lead that states `under` is flat metal on the
 /// board, from that far in under the body (a SOT-89's exposed tab) out to its tip.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Lead {
     pub edge: Edge,
     pub at: f64,
@@ -194,7 +194,7 @@ pub struct Lead {
 }
 
 /// An edge of a package's body: left is -x, top is -y (the footprint's y grows downward).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Edge {
     Left,
     Right,

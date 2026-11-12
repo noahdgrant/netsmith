@@ -163,6 +163,10 @@ pub struct FabOptions {
     /// `<board>.glb` that an earlier run left in the folder is removed, as the pin map's files
     /// are, so that the folder never holds a scene of another layout.
     pub glb: bool,
+    /// Write the board as placed, just before it is routed, as `<board>.placed.json` into the
+    /// board's output folder (`fab --save-placed`), for `netsmith route` to route again with no
+    /// placing. The default is `false`.
+    pub save_placed: bool,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -261,6 +265,7 @@ impl Default for FabOptions {
             pin_map_source: None,
             track_margin: DEFAULT_TRACK_MARGIN,
             glb: true,
+            save_placed: false,
         }
     }
 }
@@ -737,8 +742,30 @@ fn fab_board(
         ));
         // The board as placed, for the pin optimizer if the router leaves connections.
         let placed = options.pins.is_some().then(|| board.clone());
+        // `--save-placed`: the board as placed, for `netsmith route`; without it, one an earlier
+        // run left is removed, so the folder never holds a placed board of another layout.
+        if let Some(file) = crate::placed::save_or_remove(
+            &built.dir(out),
+            &board,
+            options.track_margin,
+            options.save_placed,
+        )
+        .map_err(fail)?
+        {
+            say(format!(
+                "{}: saved the placed board to {}",
+                built.label(),
+                file.display()
+            ));
+        }
         let routing = timings::stage("fab.route", &label, || {
-            route_with_margin(&mut board, options, say)
+            route_with_margin(
+                &mut board,
+                options.route_timeout,
+                options.progress,
+                options.track_margin,
+                say,
+            )
         });
         let unrouted = routing.left;
         if let (false, Some(placed)) = (unrouted.is_empty(), placed) {
@@ -1478,9 +1505,9 @@ fn finish_pins(state: &mut PinState, pins: &PinsUse, map: &PinFile, say: &dyn Fn
 }
 
 /// What is written for a board the router left connections of.
-const ROUTING_FAILURE: &str = "routing-failure.txt";
+pub const ROUTING_FAILURE: &str = "routing-failure.txt";
 /// Beside it, for a program: why each line is left and the crowding map, as JSON.
-const ROUTING_REPORT: &str = "routing-report.json";
+pub const ROUTING_REPORT: &str = "routing-report.json";
 
 /// A board with connections the router could not make: the message of the error `fab` ends
 /// in, the text of [`ROUTING_FAILURE`], and one line of the notes for each connection.
@@ -1504,7 +1531,10 @@ impl Incomplete {
 
 /// The text of [`ROUTING_REPORT`]: why each line is left and the crowding map (see
 /// [`netsmith_pcb::Routing`]), in the board's own coordinates.
-fn routing_report(why: &[netsmith_pcb::LineReport], crowding: &netsmith_pcb::Crowding) -> String {
+pub fn routing_report(
+    why: &[netsmith_pcb::LineReport],
+    crowding: &netsmith_pcb::Crowding,
+) -> String {
     let report = serde_json::json!({
         "why": why,
         "crowding": crowding,
@@ -1515,7 +1545,7 @@ fn routing_report(why: &[netsmith_pcb::LineReport], crowding: &netsmith_pcb::Cro
 /// The text of `routing-failure.txt`: every connection that has no copper, with its net and
 /// its two pads and where they are, the parts most of them end on, and for each line the
 /// router left the stage it last failed in and the nets in its way.
-fn routing_failure(
+pub fn routing_failure(
     label: &str,
     origin: netsmith_pcb::Pt,
     left: &netsmith_pcb::Ratsnest,
@@ -1847,9 +1877,12 @@ fn designator_key(designator: &str) -> (String, u32) {
 /// time, and a board it leaves unfinished is routed again from the same placement at the
 /// process's least track, in what is left. The short trial keeps a board that has no room for
 /// the margin from spending most of its time on it first.
-fn route_with_margin(
+/// `netsmith route` routes a saved placed board with it too, so the two route alike.
+pub fn route_with_margin(
     board: &mut Board,
-    options: &FabOptions,
+    route_timeout: Option<Duration>,
+    progress: Option<fn(&str)>,
+    track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_pcb::Routing {
     let route = |board: &mut Board, time: Option<Duration>, full: bool| {
@@ -1858,20 +1891,20 @@ fn route_with_margin(
             RouteOptions {
                 retry_orders: full,
                 time_limit: time,
-                progress: options.progress,
+                progress,
                 ..RouteOptions::default()
             },
         )
     };
     let least = board.rules.min_track_width;
-    let wide = (least * options.track_margin * 100.0).round() / 100.0;
+    let wide = (least * track_margin * 100.0).round() / 100.0;
     if wide <= board.rules.track_width + 1e-9 {
-        return route(board, options.route_timeout, true);
+        return route(board, route_timeout, true);
     }
     let started = std::time::Instant::now();
     let mut trial = board.clone();
     trial.rules.track_width = wide;
-    let routing = route(&mut trial, options.route_timeout.map(|t| t / 4), false);
+    let routing = route(&mut trial, route_timeout.map(|t| t / 4), false);
     if routing.left.is_empty() {
         *board = trial;
         return routing;
@@ -1881,9 +1914,7 @@ fn route_with_margin(
         board.name,
         routing.left.len()
     ));
-    let left = options
-        .route_timeout
-        .map(|t| t.saturating_sub(started.elapsed()));
+    let left = route_timeout.map(|t| t.saturating_sub(started.elapsed()));
     route(board, left, true)
 }
 

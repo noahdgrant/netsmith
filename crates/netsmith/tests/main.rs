@@ -80,6 +80,7 @@ mod pullup;
 mod refresh;
 mod relations;
 mod root_spelling;
+mod route;
 mod row;
 mod rp2350_minimal;
 mod rp2350_parity;
