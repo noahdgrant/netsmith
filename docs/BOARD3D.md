@@ -116,7 +116,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated and from catalog rows. The same count as the coverage line of `fab-notes.txt`. |
 | `tallest` | The tallest part of known height on each face. |
 
-Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file has no copper yet.
+Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
 
 ## The `.glb` file
 
@@ -143,15 +143,24 @@ raises `schema`, a field added does not):
 | Node | `extras.netsmith` |
 |---|---|
 | `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
-| `substrate` | `kind: "substrate"`: the laminate. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`) and one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel |
+| `substrate` | `kind: "substrate"`: the laminate, between the outer copper layers. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`: the mask with its openings cut out, two primitives: material `mask-top` or `mask-bottom` over bare laminate and `mask-over-copper` where copper is under it), one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel, and last `silk:top`, `silk:bottom` (`kind: "silk"`, `face`): the silkscreen (the legend Gerber's ink, kept off the mask's openings and the holes), flat 0.015 mm off the mask, material `mark` |
 | one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height |
 | `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it); its volume is the mesh |
 | `protrusions` | one child per part whose pins stand out of the far face by a stated length, `pins:<refdes>`: `kind: "protrusion"`, `path`, `length_mm` |
-| `copper:<layer>` | reserved for the copper (#430), with children `kind: "copper"`, `layer`, `net` |
+| `copper:<layer>` | one per copper layer, top face down, after `protrusions`: `kind: "copper_layer"`, `layer`, `z_top_mm`, `z_bottom_mm`. One child per net with copper on the layer, `copper:<layer>:<net>` (`copper:<layer>:(no net)` for the copper with no net, first): `kind: "copper"`, `layer`, `net` (`null` for no net). Its mesh is the net's pads, tracks, pours or plane and via rings joined, the drills open, through the layer's thickness: material `copper` under the mask (and on inner layers), `finish` where the mask is open. No copper groups when the copper cannot be drawn |
 
 A node whose shape has no area has no mesh, and is still there.
 
 - **Materials**, by name, metallic-roughness: `substrate`, `mask-top`, `mask-bottom`, `copper`,
-  `body`, `body-unknown`, `metal`, `mark`, `limit` and `limit-violated` (the last two see-through,
-  `alphaMode: BLEND`). All ten are always written, in this order. Their colours are the
+  `body`, `body-unknown`, `metal`, `mark`, `limit`, `limit-violated` (these two see-through,
+  `alphaMode: BLEND`), `finish` (the gold of copper the mask leaves bare) and `mask-over-copper`
+  (the lighter green of the mask over copper). All twelve are always written, in this order, so a
+  material's index does not move when one is added at the end. Their colours are the
   rasterizer's light palette in linear light. No glTF extension is used.
+- **Still schema 1.** The copper groups, the silk nodes, the mask's openings and the two
+  materials `finish` and `mask-over-copper` were added; nothing was removed or changed in meaning.
+- **Layers in Z.** From the top: the silkscreen 0.015 mm above the mask, the mask's outside at
+  `z = 0`, the outer copper under the mask's thickness, the substrate from the outer copper's
+  bottom; the bottom face mirrors it. The mask is opaque (two greens tell copper under it from
+  laminate) and fills the outer copper's thickness where there is no copper, so no two surfaces
+  that show share a plane.

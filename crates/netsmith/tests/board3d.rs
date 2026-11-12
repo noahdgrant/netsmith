@@ -325,6 +325,50 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
 }
 
 #[test]
+fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
+    use netsmith_pcb::mesh::{Material, Mesh, of_scene};
+    let scene = scene_of("examples/four_layer.nsm");
+    let meshes = of_scene(&scene);
+    let has = |m: Material| meshes.iter().any(|x| x.material == m);
+    for m in [
+        Material::Copper,
+        Material::Finish,
+        Material::MaskTop,
+        Material::Mark,
+    ] {
+        // Unrouted and with no outer pour, the example has no copper under its mask.
+        assert!(has(m), "no {m} mesh");
+    }
+    // Every copper mesh is named by a net of the board, or is the copper with no net.
+    let copper = scene.copper.as_ref().unwrap();
+    let nets: Vec<String> = copper
+        .layers
+        .iter()
+        .flat_map(|l| l.nets())
+        .map(|n| n.unwrap_or(netsmith_pcb::mesh::NO_NET).to_string())
+        .collect();
+    for m in meshes
+        .iter()
+        .filter(|m| matches!(m.material, Material::Copper | Material::Finish))
+        .filter(|m| m.closed)
+    {
+        assert!(nets.contains(&m.id), "{}", m.id);
+    }
+    let triangles: usize = meshes.iter().map(Mesh::triangle_count).sum();
+    assert!(triangles < 300_000, "{triangles} triangles");
+    let dir = netsmith_kicad::testlib::TempDir::new("render-four-layer");
+    let a = render(&scene, "four_layer", dir.path());
+    assert_eq!(
+        a,
+        render(
+            &scene_of("examples/four_layer.nsm"),
+            "four_layer",
+            dir.path()
+        )
+    );
+}
+
+#[test]
 fn a_limit_a_part_breaks_is_drawn_as_broken() {
     use netsmith_pcb::mesh::{Material, of_scene};
     let scene = scene_of("scripts/editor-verify-js/fixtures/height_limits.nsm");

@@ -40,8 +40,8 @@
 //! - The copper ([`SceneCopper`]): per copper layer, at that layer's Z of the stackup, the pads,
 //!   the tracks (each a straight piece with round ends), the planes and the pours as polygons
 //!   with holes; the vias as barrels from the top copper to the bottom copper; and the
-//!   openings of the solder mask of each face. It is the output of [`crate::copper`], the
-//!   copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
+//!   openings of the solder mask and the silkscreen of each face. It is the output of
+//!   [`crate::copper`], the copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
 //!   names of [`Board::nets`], and a pad also has its part's path and number. A board whose
 //!   copper cannot be drawn (its board file would not plot either) has the reason in place of
 //!   the copper, and the rest of the scene is as it is.
@@ -337,6 +337,8 @@ pub struct SceneCopper {
     pub vias: Vec<Via>,
     /// The front's mask openings, then the back's.
     pub mask: Vec<MaskFace>,
+    /// The front's silkscreen, then the back's.
+    pub silk: Vec<SilkFace>,
 }
 
 /// The copper of one layer, between that layer's `z_top` and `z_bottom` of the stackup.
@@ -457,6 +459,18 @@ pub struct MaskFace {
     pub layer: String,
     pub z_top: f64,
     pub z_bottom: f64,
+    pub areas: Vec<PlanArea>,
+}
+
+/// The silkscreen of a face: the ink of its legend Gerber ([`crate::copper::SilkInk`]), as
+/// printed on the outside of the face's mask (`z`, the mask layer's outer side of the stackup;
+/// the outer copper's where the stackup has no mask).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SilkFace {
+    pub side: Side,
+    /// `F.SilkS` or `B.SilkS`.
+    pub layer: String,
+    pub z: f64,
     pub areas: Vec<PlanArea>,
 }
 
@@ -770,10 +784,37 @@ fn scene_copper(
             areas: frame.areas(&m.areas),
         });
     }
+    let mut silk = Vec::new();
+    for ink in &c.silk {
+        let side = if ink.layer == "B.SilkS" {
+            Side::Back
+        } else {
+            Side::Front
+        };
+        let (mask, copper) = if side == Side::Back {
+            ("B.Mask", out.last())
+        } else {
+            ("F.Mask", out.first())
+        };
+        let z = match (layers.iter().find(|l| l.name == mask), copper) {
+            (Some(l), _) if side == Side::Back => l.z_bottom,
+            (Some(l), _) => l.z_top,
+            (None, Some(c)) if side == Side::Back => c.z_bottom,
+            (None, Some(c)) => c.z_top,
+            (None, None) => 0.0,
+        };
+        silk.push(SilkFace {
+            side,
+            layer: ink.layer.clone(),
+            z,
+            areas: frame.areas(&ink.areas),
+        });
+    }
     Ok(SceneCopper {
         layers: out,
         vias,
         mask,
+        silk,
     })
 }
 
