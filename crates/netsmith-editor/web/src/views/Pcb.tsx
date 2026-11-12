@@ -38,6 +38,8 @@ import {
 } from '../pcbstore';
 import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
 import { partPathsOf, revealRequest, sameSelection, selection } from '../selection';
+import { Board3d } from '../pcb3d/Lazy';
+import { pcbMode } from '../pcb3d/mode';
 import { seconds } from '../util';
 
 const LAYERS: { id: string; label: string }[] = [
@@ -136,6 +138,7 @@ export function Pcb() {
   const pick = (net: string | null) => pickNet(net === picked ? null : net);
   const h = history.value;
   const activeTool = tool.value;
+  const in3d = pcbMode.value === '3d';
   const defaults = keepoutDefaults.value;
   // The panels that repeat this board (ADR 0040), and the one being shown.
   const definition = analysis.value?.boards.find((b) => b.name === name)?.definition;
@@ -200,16 +203,27 @@ export function Pcb() {
         </div>
         <span class="spacer" />
         <div class="tb-group">
-          <Segmented<'select' | 'keepout'>
-            label="Tool"
-            value={activeTool === 'keepout' ? 'keepout' : 'select'}
-            onChange={(v) => (tool.value = v)}
+          <Segmented<'2d' | '3d'>
+            label="Drawing"
+            value={in3d ? '3d' : '2d'}
+            onChange={(v) => (pcbMode.value = v)}
             options={[
-              { value: 'select', label: 'Select', icon: 'cursor', tip: 'Select, move and box select', keys: 'Esc' },
-              { value: 'keepout', label: 'Keepout', icon: 'keepout', tip: 'Draw a keepout: drag a rectangle', keys: 'K', testid: 'tool-keepout' },
+              { value: '2d', label: '2D', tip: 'The board in 2D, where parts are placed and moved', keys: 'D', testid: 'pcb-2d' },
+              { value: '3d', label: '3D', icon: 'cube', tip: 'The board in 3D, with the heights netsmith knows (read-only)', keys: 'D', testid: 'pcb-3d-toggle' },
             ]}
           />
-          {activeTool === 'keepout' && (
+          {!in3d && (
+            <Segmented<'select' | 'keepout'>
+              label="Tool"
+              value={activeTool === 'keepout' ? 'keepout' : 'select'}
+              onChange={(v) => (tool.value = v)}
+              options={[
+                { value: 'select', label: 'Select', icon: 'cursor', tip: 'Select, move and box select', keys: 'Esc' },
+                { value: 'keepout', label: 'Keepout', icon: 'keepout', tip: 'Draw a keepout: drag a rectangle', keys: 'K', testid: 'tool-keepout' },
+              ]}
+            />
+          )}
+          {!in3d && activeTool === 'keepout' && (
             <span class="keepout-options" data-testid="keepout-options">
               <select
                 value={defaults.layers}
@@ -245,44 +259,48 @@ export function Pcb() {
           </button>
         </div>
         <div class="tb-group">
-          <span class="cursor-at mono" data-testid="cursor">
-            {cursor ? `${(Math.round(cursor.x * 100) / 100).toFixed(2)}, ${(Math.round(cursor.y * 100) / 100).toFixed(2)} mm` : ''}
-          </span>
-          <label class="grid-pick" title="Parts and keepouts snap to this grid while they move">
-            <Icon name="grid" size={14} />
-            <select value={grid.value} onChange={(e) => setGrid(Number((e.target as HTMLSelectElement).value))} data-testid="grid" aria-label="Grid">
-              {GRIDS.map((g) => (
-                <option key={g} value={g}>{mm(g)}</option>
-              ))}
-            </select>
-          </label>
-          <ChangesSwitch />
-          <details class="layers no-pan">
-            <summary>
-              <Icon name="layers" size={14} />
-              <span class="tb-label">Layers</span>
-              {hidden.length > 0 && <span class="pl pl-neutral">{LAYERS.length - hidden.length}/{LAYERS.length}</span>}
-            </summary>
-            <div class="layer-list">
-              <div class="layer-head">
-                <span>Layers</span>
-                <button type="button" class="link" onClick={() => setHidden([])}>
-                  Show all
-                </button>
-              </div>
-              {LAYERS.map((l) => (
-                <label key={l.id} class={hidden.includes(l.id) ? 'off' : ''}>
-                  <input
-                    type="checkbox"
-                    checked={!hidden.includes(l.id)}
-                    onChange={() => setHidden(hidden.includes(l.id) ? hidden.filter((x) => x !== l.id) : [...hidden, l.id])}
-                  />
-                  <i class={`lsw lsw-${l.id}`} aria-hidden="true" />
-                  {l.label}
-                </label>
-              ))}
-            </div>
-          </details>
+          {!in3d && (
+            <>
+              <span class="cursor-at mono" data-testid="cursor">
+                {cursor ? `${(Math.round(cursor.x * 100) / 100).toFixed(2)}, ${(Math.round(cursor.y * 100) / 100).toFixed(2)} mm` : ''}
+              </span>
+              <label class="grid-pick" title="Parts and keepouts snap to this grid while they move">
+                <Icon name="grid" size={14} />
+                <select value={grid.value} onChange={(e) => setGrid(Number((e.target as HTMLSelectElement).value))} data-testid="grid" aria-label="Grid">
+                  {GRIDS.map((g) => (
+                    <option key={g} value={g}>{mm(g)}</option>
+                  ))}
+                </select>
+              </label>
+              <ChangesSwitch />
+              <details class="layers no-pan">
+                <summary>
+                  <Icon name="layers" size={14} />
+                  <span class="tb-label">Layers</span>
+                  {hidden.length > 0 && <span class="pl pl-neutral">{LAYERS.length - hidden.length}/{LAYERS.length}</span>}
+                </summary>
+                <div class="layer-list">
+                  <div class="layer-head">
+                    <span>Layers</span>
+                    <button type="button" class="link" onClick={() => setHidden([])}>
+                      Show all
+                    </button>
+                  </div>
+                  {LAYERS.map((l) => (
+                    <label key={l.id} class={hidden.includes(l.id) ? 'off' : ''}>
+                      <input
+                        type="checkbox"
+                        checked={!hidden.includes(l.id)}
+                        onChange={() => setHidden(hidden.includes(l.id) ? hidden.filter((x) => x !== l.id) : [...hidden, l.id])}
+                      />
+                      <i class={`lsw lsw-${l.id}`} aria-hidden="true" />
+                      {l.label}
+                    </label>
+                  ))}
+                </div>
+              </details>
+            </>
+          )}
           <button class={`icon-btn ${panelOpen ? 'on' : ''}`} data-tip="Show or hide the side panel" aria-label="Panel" aria-pressed={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
             <Icon name="sidepanel" size={15} />
           </button>
@@ -326,26 +344,30 @@ export function Pcb() {
         <ViewLoading what="Placing the board" />
       ) : (
         <div class="pcb-main">
-          <Canvas
-            drawing={drawing}
-            scene={sc}
-            css={css}
-            litNet={hover ?? picked}
-            onHoverNet={setHover}
-            onPickNet={pick}
-            onTip={setTip}
-            onCursor={setCursor}
-            focus={focus}
-            onZoomPlane={(box) => setFocus({ box, seq: (focus?.seq ?? 0) + 1 })}
-            cmp={cmpMarks.value?.parts ?? null}
-            marks={(found?.findings ?? []).map((f) => ({
-              id: f.id,
-              box: f.area,
-              level: f.severity,
-              on: pickedFinding.value === f.id,
-            }))}
-          />
-          {tip && (
+          {in3d ? (
+            <Board3d board={name} />
+          ) : (
+            <Canvas
+              drawing={drawing}
+              scene={sc}
+              css={css}
+              litNet={hover ?? picked}
+              onHoverNet={setHover}
+              onPickNet={pick}
+              onTip={setTip}
+              onCursor={setCursor}
+              focus={focus}
+              onZoomPlane={(box) => setFocus({ box, seq: (focus?.seq ?? 0) + 1 })}
+              cmp={cmpMarks.value?.parts ?? null}
+              marks={(found?.findings ?? []).map((f) => ({
+                id: f.id,
+                box: f.area,
+                level: f.severity,
+                on: pickedFinding.value === f.id,
+              }))}
+            />
+          )}
+          {tip && !in3d && (
             <div class="pcb-tip" style={{ left: tip.x, top: tip.y }} data-testid="tip">
               <b>{tip.title}</b>
               {tip.lines.map((l) => (

@@ -33,6 +33,7 @@ Run `scripts/editor-verify doctor`, then `launch`, then the recipe named in each
 | PCB canvas: select, hover, move, rotate, flip, lock, undo | `pcb.md` | `pcb-select`, `pcb-edit` | `outline_and_pours` |
 | PCB keepouts: draw, move, resize, delete | `pcb.md` | `pcb-keepout` | `outline_and_pours` |
 | PCB plane labels with no room: the chip `+N` pinned to the canvas, a button with a list, keys, zoom to the plane, in four themes | `pcb.md` | `pcb-plane-more` | `four_layer` |
+| PCB in 3D: the toggle loads the chunk on demand, the coverage chip and its list, the legend, hover, click to select, a pick from the side panel, preset views, flip, orthographic, light theme | `pcb-3d.md` | `pcb-3d` | `height_limits` |
 | PCB findings: list, zoom to, re-check with KiCad | `pcb.md` | `pcb-findings` | `outline_and_pours` |
 | PCB constraint findings: the requirement's numbers, zoom, placer clears it | `pcb.md` | `pcb-constraints` | `constrained` |
 | Panel preview (V-cut grid of one board) | `pcb.md` | `panel` | `led_panel` |
