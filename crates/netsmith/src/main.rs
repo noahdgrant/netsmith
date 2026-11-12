@@ -61,6 +61,7 @@ fn main() -> ExitCode {
             locked,
             constraints_warn,
             pins_locked,
+            no_glb,
             order,
         }) => {
             if let Some(code) = sync_pins(file.as_deref(), locked) {
@@ -76,6 +77,7 @@ fn main() -> ExitCode {
                     strict,
                     locked,
                     constraints_warn,
+                    no_glb,
                 ),
                 None => timings::stage("fab.total", "", || {
                     run_fab(
@@ -88,6 +90,7 @@ fn main() -> ExitCode {
                         locked,
                         constraints_warn,
                         pins_locked,
+                        no_glb,
                     )
                 }),
             }
@@ -585,6 +588,17 @@ fn track_margin(target: &Target) -> f64 {
         .unwrap_or(netsmith::fab::DEFAULT_TRACK_MARGIN)
 }
 
+/// Whether `fab` writes the board's 3D scene: `--no-glb` for this run leaves it out, else `glb`
+/// in the manifest, else yes.
+fn glb_wanted(target: &Target, no_glb: bool) -> bool {
+    !no_glb
+        && target
+            .project
+            .as_ref()
+            .and_then(|p| p.manifest.glb)
+            .unwrap_or(true)
+}
+
 fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
     netsmith::fab::constraints_strict(
         target
@@ -634,6 +648,7 @@ fn run_fab(
     locked: bool,
     constraints_warn: Option<bool>,
     pins_locked: Option<bool>,
+    no_glb: bool,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target(file, strict) {
         Ok(t) => t,
@@ -688,6 +703,7 @@ fn run_fab(
         pins: None,
         pin_map_source: None,
         track_margin: track_margin(&target),
+        glb: glb_wanted(&target, no_glb),
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -871,6 +887,7 @@ fn run_order(
     strict: bool,
     locked: bool,
     constraints_warn: Option<bool>,
+    no_glb: bool,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target(None, strict) {
         Ok(t) => t,
@@ -928,6 +945,7 @@ fn run_order(
         pins: None,
         pin_map_source: None,
         track_margin: track_margin(&target),
+        glb: glb_wanted(&target, no_glb),
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

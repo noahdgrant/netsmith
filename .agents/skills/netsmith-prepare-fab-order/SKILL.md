@@ -16,6 +16,7 @@ For each board, in `fab/<Board>/`:
 - `cpl.csv`: placement: designator, position, side, rotation.
 - `fab-notes.txt`: what netsmith could not verify.
 - `<Board>.kicad_pcb`, `<Board>.kicad_pro`, `<Board>.svg`: the board for KiCad and a picture.
+- `<Board>.glb`: the board's 3D scene (glTF 2.0 binary, as routed) for a mechanical engineer or a viewer; not for the order form and not in the Gerber zip. It is absent when the run had `--no-glb` or `netsmith.toml` says `glb = false`; a `warning:` in `fab-notes.txt` says when it could not be written. Heights in it are `null` where unknown, never guessed.
 - `<Board>.pins.h` and `<Board>.pins.json`, only when the board has pin requests: the pin map for the firmware author, from the pins the board was routed with (not for the order form). If `fab-notes.txt` says the pin map changed by this run, or the board is INCOMPLETE, tell the user the firmware's pins are not final and the firmware author must take the files of the package that is ordered.
 
 For a system, each board has its own directory under `fab/<System>/`, and each is ordered on its own.

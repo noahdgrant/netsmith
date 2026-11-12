@@ -1078,6 +1078,178 @@ fn render_is_listed_in_the_help() {
     }
 }
 
+/// A board with one part and nothing to route, so that the copper `fab` draws is the copper
+/// `board3d` draws.
+const NOTHING_TO_ROUTE: &str = "import std::parts::connector::Header1x2\nimport std::mfg::jlcpcb::TwoLayer\n\nboard Lonely {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .h: Header1x2\n}\n";
+
+/// `netsmith fab <args>` in `dir`, with KiCad switched off: the package needs none (ADR 0097).
+fn fab(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .arg("fab")
+        .args(args)
+        .current_dir(dir)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("KICAD_CLI")
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn fab_writes_the_scene_as_a_glb_beside_the_notes_and_not_in_the_gerber_zip() {
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-default");
+    std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
+    let run = fab(&dir, &["a.nsm", "--out", "out"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let package = dir.join("out/Lonely");
+    let glb = std::fs::read(package.join("Lonely.glb")).expect("fab writes <board>.glb");
+    assert!(package.join("fab-notes.txt").is_file());
+
+    // The bytes are those of `board3d --glb` for the board, placed as fab placed it (this board
+    // has nothing to route, so routed and unrouted copper are the same).
+    let by_board3d = dir.join("b.glb");
+    let run = board3d(&dir, &["a.nsm", "--glb", by_board3d.to_str().unwrap()]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(glb, std::fs::read(&by_board3d).unwrap());
+
+    // It is not for the board house: the Gerber zip has no `.glb`.
+    let zip = std::fs::File::open(package.join("Lonely-gerbers.zip")).unwrap();
+    let archive = zip::ZipArchive::new(zip).unwrap();
+    assert!(
+        archive.file_names().all(|n| !n.ends_with(".glb")),
+        "{:?}",
+        archive.file_names().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn fab_draws_the_routed_copper_in_its_glb() {
+    let examples = repo().join("examples");
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-routed");
+    let run = fab(
+        &examples,
+        &["led.nsm", "--out", dir.to_str().unwrap(), "--locked"],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let routed = std::fs::read(dir.join("LedExample/LedExample.glb")).unwrap();
+    let unrouted = dir.join("unrouted.glb");
+    let run = board3d(&examples, &["led.nsm", "--glb", unrouted.to_str().unwrap()]);
+    assert!(run.status.success());
+    let unrouted = std::fs::read(&unrouted).unwrap();
+    assert_eq!(&routed[..4], b"glTF");
+    assert!(
+        routed.len() > unrouted.len(),
+        "the tracks are in the routed scene: {} bytes against {}",
+        routed.len(),
+        unrouted.len()
+    );
+    let (a, b) = (glb_json(&routed), glb_json(&unrouted));
+    assert_eq!(
+        glb_node(&a, "board")["extras"]["netsmith"]["board"],
+        glb_node(&b, "board")["extras"]["netsmith"]["board"]
+    );
+}
+
+#[test]
+fn no_glb_and_the_manifest_key_leave_the_scene_out_and_remove_an_old_one() {
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-off");
+    std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
+    let glb = dir.join("out/Lonely/Lonely.glb");
+    let ok = |run: Output| {
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    };
+    ok(fab(&dir, &["a.nsm", "--out", "out"]));
+    assert!(glb.is_file());
+
+    // `--no-glb` leaves it out, and the one of the earlier run is removed so that the folder
+    // never holds the scene of another layout.
+    ok(fab(&dir, &["a.nsm", "--out", "out", "--no-glb"]));
+    assert!(!glb.exists());
+    assert!(dir.join("out/Lonely/fab-notes.txt").is_file());
+
+    // `glb = false` in netsmith.toml does the same for the project, in `fab` and in an order.
+    std::fs::create_dir(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
+    std::fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"p\"\nglb = false\n\n[order.one.boards]\nLonely = 1\n",
+    )
+    .unwrap();
+    ok(fab(&dir, &["--out", "kept-out"]));
+    assert!(!dir.join("kept-out/Lonely/Lonely.glb").exists());
+    assert!(dir.join("kept-out/Lonely/Lonely.kicad_pcb").is_file());
+    ok(fab(&dir, &["--order", "one", "--out", "order-out"]));
+    let written: Vec<_> = walk(&dir.join("order-out"));
+    assert!(written.iter().any(|f| f.ends_with("Lonely.kicad_pcb")));
+    assert!(!written.iter().any(|f| f.ends_with(".glb")), "{written:?}");
+
+    // Without the key the order has it.
+    std::fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"p\"\n\n[order.one.boards]\nLonely = 1\n",
+    )
+    .unwrap();
+    ok(fab(&dir, &["--order", "one", "--out", "order-on"]));
+    assert!(
+        walk(&dir.join("order-on"))
+            .iter()
+            .any(|f| f.ends_with("Lonely.glb"))
+    );
+    ok(fab(
+        &dir,
+        &["--order", "one", "--out", "order-flag", "--no-glb"],
+    ));
+    assert!(
+        !walk(&dir.join("order-flag"))
+            .iter()
+            .any(|f| f.ends_with(".glb"))
+    );
+}
+
+/// Every file under `dir`, as paths.
+fn walk(dir: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            found.extend(walk(&path));
+        } else {
+            found.push(path.display().to_string());
+        }
+    }
+    found
+}
+
+#[test]
+fn a_manifest_glb_that_is_not_a_boolean_is_an_error() {
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-bad-key");
+    std::fs::create_dir(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
+    std::fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"p\"\nglb = \"no\"\n",
+    )
+    .unwrap();
+    let run = fab(&dir, &["--out", "out"]);
+    assert!(!run.status.success());
+    assert!(String::from_utf8_lossy(&run.stderr).contains("glb"));
+}
+
 /// The layers of every board's stackup add up to within the fabricator's tolerance of the
 /// thickness it chose (1.6 mm nominal; JLCPCB's four-layer stack is 1.6062 mm with the mask).
 #[test]
