@@ -246,6 +246,10 @@
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #06080b;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #b3a374;
+  --pcb3d-measure: #ffcc4d;
+  --pcb3d-cut: #5ad1e6;
   --net-0: #ff6b6b; --net-1: #4dd4ac; --net-2: #ffd166; --net-3: #6ea8fe; --net-4: #c792ea;
   --net-5: #ff9f43; --net-6: #7bed9f; --net-7: #f78fb3; --net-8: #74c0fc; --net-9: #d4e157;
 
@@ -440,6 +444,10 @@
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #16181c;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #e2d096;
+  --pcb3d-measure: #a34a00;
+  --pcb3d-cut: #0e7490;
   --net-0: #d2373f; --net-1: #0b7f65; --net-2: #a87800; --net-3: #2a67d8; --net-4: #8644c4;
   --net-5: #c85d0a; --net-6: #2a8a45; --net-7: #c43a74; --net-8: #1479b4; --net-9: #7a8a0a;
 
@@ -631,6 +639,10 @@
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #000000;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #d8c27e;
+  --pcb3d-measure: #ffd400;
+  --pcb3d-cut: #00e5ff;
   --net-0: #ff8585; --net-1: #5ff0c8; --net-2: #ffe08a; --net-3: #8fbcff; --net-4: #dcb0ff;
   --net-5: #ffb26b; --net-6: #96ffb4; --net-7: #ffa9c6; --net-8: #91d3ff; --net-9: #e6f26b;
 
@@ -822,6 +834,10 @@
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #000000;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #c9b26a;
+  --pcb3d-measure: #6b3500;
+  --pcb3d-cut: #005f73;
   --net-0: #b8222b; --net-1: #046650; --net-2: #8a6200; --net-3: #1d4fb8; --net-4: #6b2fa8;
   --net-5: #a84a00; --net-6: #1d6e36; --net-7: #a82c5c; --net-8: #0a5f94; --net-9: #5f6e00;
 
