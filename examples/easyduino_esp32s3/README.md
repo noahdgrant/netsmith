@@ -146,15 +146,16 @@ and one recorded part, below). `netsmith fab` writes the board as a four-layer J
 ```sh
 netsmith fab --locked          # from this folder; writes fab/EasyduinoEsp32s3/
 netsmith parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
-    --table reference/placements.toml --map reference/designators.toml \
+    --table reference/placements.toml --parts reference/parts.toml \
     --svg reference/parity-overlay.svg
 ```
 
 The checker (`netsmith::parity`, from the RP2350A Minimal's) reads both files from the upper-left
-corner of the outline and exits 1 when a must-match item fails. `reference/designators.toml` pairs
-all 35 of Easyduino's parts with the ones `fab` writes (the headers are J3 on our board, the bridge
-U2, the regulator U3: references follow declaration order); a test holds it against the design's
-own designators, and prints the map when it is stale. The gate is `crates/netsmith/tests/easyduino_parity.rs`
+corner of the outline and exits 1 when a must-match item fails. `reference/parts.toml` names
+Easyduino's designator of each of its 35 parts by the member path, and `fab` writes each
+footprint's member path on the board (`netsmith_path`), so the checker pairs every part with the
+one `fab` wrote whatever designator it got (the headers are J3 on our board, the bridge U2, the
+regulator U3: references follow declaration order). The nets proof reads the same file. The gate is `crates/netsmith/tests/easyduino_parity.rs`
 (`NETSMITH_NO_KICAD=1`, `fab --locked --route-timeout 20`, every must-match item `ok`, and the
 committed overlay equal to the one the board gives). `reference/parity-overlay.svg` is the
 checker's picture of the run: Easyduino's outline, holes, parts and pads in blue and the

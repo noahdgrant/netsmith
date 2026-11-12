@@ -20,9 +20,12 @@ pub struct Args {
     /// The table of the original's parts (default `reference/placements.toml`).
     #[arg(long, value_name = "PLACEMENTS.TOML")]
     pub table: Option<PathBuf>,
-    /// The original's designators to the fab board's (default `reference/designators.toml`).
-    #[arg(long, value_name = "DESIGNATORS.TOML")]
-    pub map: Option<PathBuf>,
+    /// The original's designator of each member path (default `reference/parts.toml`).
+    ///
+    /// Each part is paired with the footprint of the fab board that holds its member path
+    /// (`netsmith_path`, #456).
+    #[arg(long, value_name = "PARTS.TOML")]
+    pub parts: Option<PathBuf>,
     /// Write an overlay of the two boards.
     #[arg(long, value_name = "OVERLAY.SVG")]
     pub svg: Option<PathBuf>,
@@ -38,25 +41,26 @@ pub fn run(args: Args) -> ExitCode {
     run_parity(
         &args.board,
         args.table.as_deref(),
-        args.map.as_deref(),
+        args.parts.as_deref(),
         args.svg.as_deref(),
         args.format.into(),
     )
 }
 
 /// `netsmith parity`: compare a board that `fab` wrote with the board of a port's original
-/// (#455; it was the example `parity`). The table and the map default to those of the project's
+/// (#455; it was the example `parity`). The table and the parts default to those of the project's
 /// `reference/` folder, or of the current folder's when there is no project. The report goes to
 /// stdout; the exit code is 1 when a must-match item fails, 0 when none does, 2 when a file
 /// cannot be read.
 fn run_parity(
     board: &Path,
     table: Option<&Path>,
-    map: Option<&Path>,
+    parts: Option<&Path>,
     svg: Option<&Path>,
     format: Format,
 ) -> ExitCode {
     use netsmith::parity::{DesignatorMap, Tolerances, check_text};
+    use netsmith::port::PortParts;
     let reference = Target::resolve(None)
         .ok()
         .and_then(|t| t.project.map(|p| p.root))
@@ -66,15 +70,12 @@ fn run_parity(
         |path: &Path| fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
     let run = || -> Result<netsmith::parity::ParityReport, String> {
         let table_path = table.map_or_else(|| reference.join("placements.toml"), Path::to_path_buf);
-        let map_path = map.map_or_else(|| reference.join("designators.toml"), Path::to_path_buf);
-        let map = DesignatorMap::parse(&read(&map_path)?)
-            .map_err(|e| format!("{}: {e}", map_path.display()))?;
-        check_text(
-            &read(&table_path)?,
-            &read(board)?,
-            &map,
-            &Tolerances::default(),
-        )
+        let parts_path = parts.map_or_else(|| reference.join("parts.toml"), Path::to_path_buf);
+        let parts = PortParts::read(&parts_path)?;
+        let pcb = read(board)?;
+        let map = DesignatorMap::from_parts(&parts, &pcb)
+            .map_err(|e| format!("{}: {e}", board.display()))?;
+        check_text(&read(&table_path)?, &pcb, &map, &Tolerances::default())
     };
     let report = match run() {
         Ok(report) => report,
@@ -112,12 +113,21 @@ mod tests {
             parse(&["parity", "b.kicad_pcb", "--format", "json"]),
             Ok(Command::Parity(parity::Args {
                 table: None,
-                map: None,
+                parts: None,
                 svg: None,
                 format: common::Format::Json,
                 ..
             }))
         ));
         assert_eq!(kind(&["parity"]), ErrorKind::MissingRequiredArgument);
+        assert!(matches!(
+            parse(&["parity", "b.kicad_pcb", "--parts", "p.toml"]),
+            Ok(Command::Parity(parity::Args { parts: Some(_), .. }))
+        ));
+        // `--map` (the designators file) is gone with the file (#456).
+        assert_eq!(
+            kind(&["parity", "b.kicad_pcb", "--map", "d.toml"]),
+            ErrorKind::UnknownArgument
+        );
     }
 }

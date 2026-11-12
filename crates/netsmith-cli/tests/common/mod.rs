@@ -15,7 +15,7 @@ pub struct ParityGate<'a> {
     pub project: PathBuf,
     /// The name of the test's temporary folder.
     pub tag: &'a str,
-    /// The parts that `reference/designators.toml` pairs.
+    /// The parts that `reference/parts.toml` names, each of which the fab board must have.
     pub parts: usize,
     /// The number of must-match items the checker must judge `ok`, at least: the count the
     /// board's README states, so that a lost item is noticed (a gate may be raised, never lowered
@@ -32,22 +32,16 @@ pub struct ParityGate<'a> {
 }
 
 /// Builds the project with `netsmith fab --locked`, with no KiCad, and gates on the parity
-/// checker (`reference/placements.toml`, `reference/designators.toml`): every must-match item
+/// checker (`reference/placements.toml`, the original's parts paired with the fab board's by
+/// `reference/parts.toml` and each footprint's `netsmith_path`): every must-match item
 /// must be `ok` on the board `fab` writes, complete or INCOMPLETE (a run that the route timeout
 /// stopped fails with `INCOMPLETE:`, which is allowed; any other failure of `fab` fails). The
 /// committed `reference/parity-overlay.svg` must be the picture of that board: the placer is
 /// deterministic, and the router has no say in where the parts are.
 pub fn fab_matches_the_reference(gate: &ParityGate) {
     let reference = gate.project.join("reference");
-    let map =
-        DesignatorMap::parse(&fs::read_to_string(reference.join("designators.toml")).unwrap())
-            .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(
-        map.len(),
-        gate.parts,
-        "reference/designators.toml pairs every part of the reference board ({})",
-        gate.parts
-    );
+    let parts = netsmith::port::PortParts::read(&reference.join("parts.toml"))
+        .unwrap_or_else(|e| panic!("{e}"));
     let out = testlib::TempDir::unused(gate.tag);
     // `--locked` ends the run when the pick lock is not current and never writes it, so the test
     // leaves the project's folder as it was; it also means `--pins locked`.
@@ -78,14 +72,20 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     );
     let pcb = find_pcb(&out)
         .unwrap_or_else(|| panic!("fab wrote no .kicad_pcb in {}:\n{text}", out.display()));
+    let pcb = fs::read_to_string(&pcb).unwrap();
+    // The fab board's footprints hold their member paths (`netsmith_path`), and `parts.toml`
+    // names the original's part of each: every part of the original is paired.
+    let map = DesignatorMap::from_parts(&parts, &pcb).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        (parts.len(), map.len()),
+        (gate.parts, gate.parts),
+        "reference/parts.toml names every part of the reference board ({}), and the fab board \
+         has each of them",
+        gate.parts
+    );
     let table = fs::read_to_string(reference.join("placements.toml")).unwrap();
-    let report = check_text(
-        &table,
-        &fs::read_to_string(&pcb).unwrap(),
-        &map,
-        &Tolerances::default(),
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
+    let report =
+        check_text(&table, &pcb, &map, &Tolerances::default()).unwrap_or_else(|e| panic!("{e}"));
     let (ok, failed) = report.must_match_counts();
     let failing: Vec<&str> = report
         .failures()

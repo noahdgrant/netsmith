@@ -216,109 +216,27 @@ fn the_board_checks_and_solves() {
 mod board {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use netsmith::compare::netlist_of_design;
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::{Mapping, testlib};
-    use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, normalize_value, report};
+    use netsmith_kicad::testlib;
+    use netsmith_netlist::normalize_value;
+
+    use crate::common::port::{Pad, Port};
 
     use super::{REFERENCE, project, read};
 
-    /// Where each part of the charger module's board is in the netsmith board (the path of its
-    /// member), by the design's reference designator. The members are named by what the part
-    /// does, so each pair is one to one.
-    const PARTS: &[(&str, &str)] = &[
-        ("C1", "v3v3_4u7"),
-        ("C2", "v3v3_100n_a"),
-        ("C3", "v3v3_100n_b"),
-        ("C4", "v3v3_100n_c"),
-        ("C5", "reset_100n"),
-        ("C6", "emi_vin_100u"),
-        ("C7", "v5_4u7"),
-        ("C8", "emi_vin_10u_a"),
-        ("C9", "emi_vin_10u_b"),
-        ("C10", "emi_vin_100n"),
-        ("C11", "ldo_bypass"),
-        ("C12", "v3v3_10u"),
-        ("C13", "dither_10n"),
-        ("C14", "ntc_converter_100n"),
-        ("C15", "emi_vin_1u"),
-        ("C16", "ntc_plug_100n"),
-        ("C18", "vout_sense_1n"),
-        ("C19", "vbus_sense_10n"),
-        ("C20", "boot1_cap"),
-        ("C21", "boot2_cap"),
-        ("C22", "cc1_330p"),
-        ("C23", "vcc_10u"),
-        ("C24", "cc2_330p"),
-        ("C25", "comp_cap_series"),
-        ("C26", "iana_100n"),
-        ("C27", "cbias_100n"),
-        ("C28", "vcc_100n"),
-        ("C29", "comp_cap"),
-        ("C30", "v3v3_100n_d"),
-        ("C31", "gate_47p"),
-        ("C32", "vout_conv_10u_a"),
-        ("C33", "vout_conv_10u_b"),
-        ("C34", "v5_1u"),
-        ("C35", "v5_100n"),
-        ("C36", "vout_conv_10u_c"),
-        ("C37", "vout_conv_10u_d"),
-        ("C38", "vbus_2u2"),
-        ("C39", "vout_conv_220u"),
-        ("D1", "led"),
-        ("D2", "port_tvs"),
-        ("F1", "fuse"),
-        ("FB1", "vcc_bead"),
-        ("J1", "tp_tx"),
-        ("J2", "swd"),
-        ("J3", "slot"),
-        ("J4", "usb"),
-        ("J5", "tp_gnd"),
-        ("J6", "tp_rx"),
-        ("L1", "input_inductor"),
-        ("L2", "power_inductor"),
-        ("Q1", "q_high"),
-        ("Q2", "q_low"),
-        ("Q3", "q_port_a"),
-        ("Q4", "q_port_b"),
-        ("R1", "en_pulldown"),
-        ("R2", "ovp_ref_pulldown"),
-        ("R3", "sda_pullup"),
-        ("R4", "scl_pullup"),
-        ("R5", "usb_sda_pullup"),
-        ("R6", "usb_scl_pullup"),
-        ("R7", "led_resistor"),
-        ("R8", "tcpp_en_series"),
-        ("R9", "tcpp_en_pulldown"),
-        ("R10", "fault_pullup"),
-        ("R11", "fsw_resistor"),
-        ("R12", "ntc_converter_pullup"),
-        ("R13", "flag_pullup"),
-        ("R14", "gate_high_resistor"),
-        ("R16", "ntc_plug_pullup"),
-        ("R17", "vout_divider_top"),
-        ("R18", "vout_divider_bottom"),
-        ("R19", "vbus_divider_top"),
-        ("R20", "vbus_divider_bottom"),
-        ("R21", "gate_low_resistor"),
-        ("R22", "mode_resistor"),
-        ("R23", "ilim_resistor"),
-        ("R24", "comp_resistor"),
-        ("R25", "ovp_ceil_top"),
-        ("R26", "ovp_ceil_bottom"),
-        ("R27", "port_shunt"),
-        ("R28", "output_shunt"),
-        ("TH1", "ntc_converter"),
-        ("TH2", "ntc_plug"),
-        ("U1", "mcu"),
-        ("U2", "ldo"),
-        ("U3", "converter"),
-        ("U4", "comparator"),
-        ("U5", "protector"),
-        ("U6", "usb_esd"),
-    ];
+    /// The port: `reference/parts.toml` pairs each of the charger module's 89 parts with a member
+    /// of the board. The members are named by what the part does, so each pair is one to one.
+    const PORT: Port = Port {
+        folder: "power_manifold_charger",
+        board: REFERENCE,
+        original: "the charger board",
+        swapped: &[],
+        renumbered: &[],
+        no_nets: &[],
+        own: &[],
+    };
 
     fn libraries() -> Libraries {
         let nowhere = testlib::TempDir::new("power-manifold-board-no-kicad");
@@ -343,210 +261,42 @@ mod board {
         .unwrap_or_else(|e| panic!("{e:?}"))
     }
 
-    fn reference() -> Netlist {
-        Netlist::from_kicad_pcb(&read(&format!("reference/{REFERENCE}")))
-            .unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    /// The design's reference designator for each of the design's own, by designator.
-    fn designators(built: &netsmith::Built) -> BTreeMap<String, String> {
-        PARTS
-            .iter()
-            .map(|(reference, path)| {
-                let part = built
-                    .design
-                    .parts
-                    .iter()
-                    .find(|p| p.path == *path)
-                    .unwrap_or_else(|| panic!("{reference}: the board has no part `{path}`"));
-                (part.refdes.clone(), (*reference).to_string())
-            })
-            .collect()
-    }
-
-    type Pad = (String, String);
-
-    /// For each pad that is on a net with another pad: the other pads of the net, in the
-    /// design's designators (`to_reference` maps a designator of this netlist).
-    fn neighbours(
-        netlist: &Netlist,
-        to_reference: &BTreeMap<String, String>,
-    ) -> BTreeMap<Pad, BTreeSet<Pad>> {
-        let mut out = BTreeMap::new();
-        for net in &netlist.nets {
-            let pads: BTreeSet<Pad> = net
-                .pins
-                .iter()
-                .map(|(c, pin)| {
-                    let refdes = &netlist.components[*c].refdes;
-                    let refdes = to_reference.get(refdes).unwrap_or(refdes).clone();
-                    (refdes, pin.clone())
-                })
-                .collect();
-            let pads: Vec<Pad> = pads.into_iter().collect();
-            if pads.len() < 2 {
-                continue;
-            }
-            for pad in &pads {
-                let others = pads.iter().filter(|p| *p != pad).cloned().collect();
-                out.insert(pad.clone(), others);
-            }
-        }
-        out
-    }
-
-    /// The same netlist with the value and footprint of every component blanked: only the
-    /// wiring is left to compare.
-    fn wiring_only(netlist: &Netlist) -> Netlist {
-        let components = netlist
-            .components
-            .iter()
-            .map(|c| (c.refdes.clone(), String::new(), String::new()))
-            .collect();
-        let nets = netlist
-            .nets
-            .iter()
-            .map(|n| {
-                let pins = n
-                    .pins
-                    .iter()
-                    .map(|(c, pin)| (netlist.components[*c].refdes.clone(), pin.clone()))
-                    .collect();
-                (n.name.clone(), pins)
-            })
-            .collect();
-        Netlist::from_parts(components, nets).unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    fn design_netlist(built: &netsmith::Built) -> Netlist {
-        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
-        netlist_of_design(&built.design, &mapping).unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    /// What differs between two neighbour maps, one line per pad.
-    fn net_differences(
-        ours: &BTreeMap<Pad, BTreeSet<Pad>>,
-        theirs: &BTreeMap<Pad, BTreeSet<Pad>>,
-    ) -> Vec<String> {
-        let show = |s: &BTreeSet<Pad>| {
-            s.iter()
-                .map(|(r, p)| format!("{r}.{p}"))
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
-        let mut out = Vec::new();
-        for pad in ours.keys().chain(theirs.keys()).collect::<BTreeSet<_>>() {
-            match (ours.get(pad), theirs.get(pad)) {
-                (Some(a), Some(b)) if a == b => {}
-                (a, b) => out.push(format!(
-                    "{}.{}: board has [{}], the reference [{}]",
-                    pad.0,
-                    pad.1,
-                    a.map(show).unwrap_or_default(),
-                    b.map(show).unwrap_or_default()
-                )),
-            }
-        }
-        out
-    }
-
     #[test]
     fn the_board_builds_with_no_kicad_and_has_the_89_parts_of_the_charger_board() {
-        let built = built();
-        assert_eq!(designators(&built).len(), PARTS.len());
-        let own: Vec<&str> = built
-            .design
-            .parts
-            .iter()
-            .map(|p| p.path.as_str())
-            .filter(|path| !PARTS.iter().any(|(_, part)| part == path))
-            .collect();
-        assert_eq!(own, Vec::<&str>::new(), "a part that is not the charger's");
-        let reference = reference();
-        let theirs: BTreeSet<&str> = reference
-            .components
-            .iter()
-            .map(|c| c.refdes.as_str())
-            .collect();
-        let ours: BTreeSet<&str> = PARTS.iter().map(|(r, _)| *r).collect();
-        assert_eq!(theirs.len(), 89);
-        assert_eq!(theirs, ours);
-        assert!(built.schematic.starts_with("(kicad_sch"));
+        PORT.assert_has_the_parts(&built(), 89, 89);
     }
 
     /// Pads that share a number are one pin in both netlists.
     #[test]
     fn every_pad_has_the_same_pads_on_its_net_as_in_the_charger_board() {
-        let built = built();
-        let to_reference = designators(&built);
-        let ours = neighbours(&design_netlist(&built), &to_reference);
-        let theirs = neighbours(&reference(), &BTreeMap::new());
-        assert_eq!(net_differences(&ours, &theirs), Vec::<String>::new());
+        PORT.assert_same_pads_on_nets(&built(), 200);
     }
 
     #[test]
     fn netsmith_compare_says_the_nets_are_the_same() {
-        let built = built();
-        let to_reference = designators(&built);
-        let a = wiring_only(&design_netlist(&built));
-        let b = wiring_only(&reference());
-        let pairs = to_reference
-            .iter()
-            .map(|(ours, theirs)| (ours.clone(), theirs.clone()))
-            .collect();
-        let options = Options {
-            identity: Identity::Map(pairs),
-            ..Options::default()
-        };
-        let outcome = compare(&a, &b, &options).unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
+        PORT.assert_compare_matches(&built());
     }
 
     /// The comparison would see a wrong net: it is the comparison above that runs, on a board
-    /// whose U1 pad 13 (PA2, the USART's TX) is on another net, and its answer is the pad.
+    /// whose U1 pad 13 (PA2, the USART's TX) is said to be on the net of pad 14, and its answer
+    /// is the pad.
     #[test]
     fn the_comparison_sees_a_pad_on_the_wrong_net() {
-        let built = built();
-        let to_reference = designators(&built);
-        let mut ours = neighbours(&design_netlist(&built), &to_reference);
-        let theirs = neighbours(&reference(), &BTreeMap::new());
-        let key = ("U1".to_string(), "13".to_string());
-        let wrong = ours
-            .get(&("U1".to_string(), "14".to_string()))
-            .unwrap()
-            .clone();
-        assert_ne!(ours[&key], wrong, "the wrong net must be another one");
-        ours.insert(key, wrong);
-        let differences = net_differences(&ours, &theirs);
-        assert!(
-            differences
-                .iter()
-                .any(|d| d.starts_with("U1.13: board has")),
-            "{differences:?}"
-        );
-        // A pad that is on a net on one side only is a difference as well.
-        let mut ours = neighbours(&design_netlist(&built), &to_reference);
-        ours.remove(&("U1".to_string(), "14".to_string()));
-        let differences = net_differences(&ours, &theirs);
-        assert!(
-            differences
-                .iter()
-                .any(|d| d.starts_with("U1.14: board has []")),
-            "{differences:?}"
-        );
+        PORT.assert_sees_a_wrong_net(&built(), ("U1", "13"), ("U1", "14"));
     }
 
     #[test]
     fn the_resistors_and_capacitors_have_the_charger_boards_values_and_packages() {
         let built = built();
-        let reference = reference();
+        let reference = PORT.reference();
         let mut wrong = Vec::new();
         let mut checked = 0;
-        for (name, path) in PARTS
+        for (path, name) in PORT
+            .parts()
             .iter()
-            .filter(|(r, _)| r.starts_with('R') || r.starts_with('C'))
+            .filter(|(_, r)| r.starts_with('R') || r.starts_with('C'))
         {
-            let part = built.design.parts.iter().find(|p| p.path == *path).unwrap();
+            let part = built.design.parts.iter().find(|p| p.path == path).unwrap();
             let theirs = &reference.components[reference.find(name).unwrap()];
             // "1R" is 1 ohm, "R007" 7 milliohm and "R010" 10 milliohm in their value field.
             let value = match theirs.value.as_str() {
@@ -590,7 +340,7 @@ mod board {
     #[test]
     fn the_open_pins_are_the_ones_the_reference_leaves_open() {
         let built = built();
-        let to_reference = designators(&built);
+        let to_reference = PORT.designators(&built);
         let table = super::parsed(&read("reference/placements.toml"));
         let mut theirs: BTreeSet<Pad> = BTreeSet::new();
         for part in super::tables(&table, "part") {
@@ -660,7 +410,7 @@ mod board {
     #[test]
     fn the_parts_have_the_lcsc_numbers_of_the_charger_boards_footprints() {
         let built = built();
-        let to_reference = designators(&built);
+        let to_reference = PORT.designators(&built);
         let theirs = bom_numbers();
         assert_eq!(theirs.len(), 84, "84 parts carry an LCSC property");
         let mut other = Vec::new();
@@ -745,54 +495,5 @@ mod board {
         assert!(listed(
             "the balance on net `VOUT_CONV` is incomplete: `converter.vout` is not modelled"
         ));
-    }
-
-    /// `reference/designators.toml`, which the parity checker reads, pairs each of the design's
-    /// designators with the one `fab` writes for the same part, and so must say what the
-    /// design's own designators are (`PARTS` pairs the parts by what they are: the member
-    /// path). The design's designators come from the kind of the part and the order of its
-    /// declaration, so a part added to `src/main.nsm` ahead of another renumbers it, and this
-    /// fails until the map is written again; the message prints the map as it must be.
-    #[test]
-    fn the_parity_checkers_designator_map_is_the_designs_own() {
-        let built = built();
-        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
-            .unwrap_or_else(|e| panic!("{e}"));
-        let mut expected: Vec<(String, String)> = designators(&built)
-            .into_iter()
-            .map(|(refdes, reference)| (reference, refdes))
-            .collect();
-        let wrong: Vec<String> = expected
-            .iter()
-            .filter(|(reference, refdes)| map.get(reference) != Some(refdes.as_str()))
-            .map(|(reference, refdes)| {
-                format!(
-                    "{reference}: the map says {:?}, the design has {refdes}",
-                    map.get(reference)
-                )
-            })
-            .collect();
-        expected.sort_by_key(|(r, _)| {
-            let digits: String = r.chars().filter(char::is_ascii_digit).collect();
-            (
-                r.chars().filter(|c| c.is_alphabetic()).collect::<String>(),
-                digits.parse::<u32>().unwrap_or(0),
-            )
-        });
-        let lines: String = expected
-            .iter()
-            .map(|(reference, refdes)| format!("{reference} = \"{refdes}\"\n"))
-            .collect();
-        assert!(
-            wrong.is_empty(),
-            "{}\nthe map as it must be:\n{lines}",
-            wrong.join("\n")
-        );
-        // All 89 parts of the reference are paired, and the map has nothing else.
-        assert_eq!(map.len(), PARTS.len());
-        assert_eq!(map.len(), 89);
-        for reference in ["J2", "J3", "J4"] {
-            assert!(map.get(reference).is_some(), "{reference} is not mapped");
-        }
     }
 }

@@ -82,9 +82,10 @@ folder are netsmith's** (MIT, like the rest of the repository).
 - `reference/charger-module.kicad_pcb`, `charger-module.kicad_sch`, `CHANGELOG.md`: their board
   and schematic files and the module's changelog, unchanged (1.6 MB, 450 kB, 12 kB).
 - `reference/must_match.toml`: which footprints a copy must reproduce (J2, J3 and J4).
-- `reference/designators.toml`: pairs the original's 89 designators with the ones `fab` writes
-  (a test holds it against the design); `reference/parity-overlay.svg`: the checker's picture of
-  the gate's run.
+- `reference/parts.toml`: the parts file of the port, the original's designator of each of the
+  89 parts by its member path, which the nets proof and the parity check read (`fab` writes each
+  footprint's member path on the board, `netsmith_path`); `reference/parity-overlay.svg`: the
+  checker's picture of the gate's run.
 - `reference/placements.toml`: the facts the checker needs, read from the board file: the
   outline, the holes and, for every footprint, its place, rotation and pads. Regenerate it with
   `cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml reference/charger-module.kicad_pcb > reference/placements.toml`
@@ -150,7 +151,7 @@ it; the gate runs `fab` with a 20 s timeout and allows `INCOMPLETE`.
 ```sh
 netsmith fab --locked          # from this folder; writes fab/PowerManifoldCharger/
 netsmith parity fab/PowerManifoldCharger/PowerManifoldCharger.kicad_pcb \
-    --table reference/placements.toml --map reference/designators.toml \
+    --table reference/placements.toml --parts reference/parts.toml \
     --svg reference/parity-overlay.svg
 ```
 

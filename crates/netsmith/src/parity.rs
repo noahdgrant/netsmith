@@ -28,9 +28,10 @@
 //! against its edge does not. The corner of the two boxes, as the files state them, is reported
 //! as an `info` line.
 //!
-//! **Parts** are matched by reference through a map ([`DesignatorMap`], `designators.toml`):
-//! Raspberry Pi's reference to the reference of the part in the board `fab` wrote. A part of the
-//! table with no entry is `unmapped`: a failure when the table says it must match.
+//! **Parts** are matched by reference through a map ([`DesignatorMap`]): the original's reference
+//! to the reference of the part in the board `fab` wrote, made from the port's `parts.toml` and
+//! the member path that `fab` writes on each footprint ([`DesignatorMap::from_parts`], #456). A
+//! part of the table with no entry is `unmapped`: a failure when the table says it must match.
 //!
 //! **Nets** are compared pad by pad, by name (a leading `/` and the case are ignored) where both
 //! names are plain, and through the connectivity otherwise: the pads of the mapped parts that
@@ -109,8 +110,9 @@ pub const NOT_COMPARED: &str = "not compared: a rounded rectangle's corner ratio
 pub struct DesignatorMap(BTreeMap<String, String>);
 
 impl DesignatorMap {
-    /// `designators.toml`: one line per part, `J1 = "J1"` (Raspberry Pi's reference, then the
-    /// reference of the part in the `.kicad_pcb`).
+    /// A map as TOML: one line per part, `J1 = "J1"` (the original's reference, then the
+    /// reference of the part in the `.kicad_pcb`). The tests write one by hand; a port's map is
+    /// [`DesignatorMap::from_parts`].
     pub fn parse(text: &str) -> Result<DesignatorMap, String> {
         let table: toml::Table = text.parse().map_err(|e| format!("designators: {e}"))?;
         let mut map = BTreeMap::new();
@@ -119,6 +121,42 @@ impl DesignatorMap {
                 return Err(format!("designators: {key} must be a text (a reference)"));
             };
             map.insert(key, to.to_string());
+        }
+        Ok(DesignatorMap(map))
+    }
+
+    /// The original's parts paired with the board `fab` wrote through the port's `parts.toml`
+    /// (#456): each footprint of the board holds the member path of its part (`netsmith_path`),
+    /// and `parts` gives the original's designator of that path. A footprint whose path
+    /// `parts` does not name is left out (a part the original does not have); a part of `parts`
+    /// that the board does not have is unmapped, which the check reports. A board with no
+    /// `netsmith_path` on any footprint was written before the property existed, and is refused.
+    pub fn from_parts(parts: &crate::port::PortParts, pcb: &str) -> Result<DesignatorMap, String> {
+        let root = netsmith_kicad::sexp::Sexp::parse(pcb).map_err(|e| format!("the board: {e}"))?;
+        let mut map = BTreeMap::new();
+        let mut with_path = 0;
+        for footprint in root.find_all("footprint") {
+            let property = |name: &str| {
+                footprint
+                    .find_all("property")
+                    .find(|p| p.args().first().and_then(|a| a.text()) == Some(name))
+                    .and_then(|p| p.args().get(1).and_then(|a| a.text()).map(str::to_string))
+            };
+            let (Some(designator), Some(path)) =
+                (property("Reference"), property(netsmith_pcb::PATH_PROPERTY))
+            else {
+                continue;
+            };
+            with_path += 1;
+            if let Some(original) = parts.reference_of(&path) {
+                map.insert(original.to_string(), designator);
+            }
+        }
+        if with_path == 0 {
+            return Err(format!(
+                "the board's footprints have no `{}`: it was written by a netsmith that did not write the member path, so make it again with `netsmith fab`",
+                netsmith_pcb::PATH_PROPERTY
+            ));
         }
         Ok(DesignatorMap(map))
     }
@@ -1615,5 +1653,46 @@ mod tests {
             .filter(|id| id.starts_with("hole"))
             .collect();
         assert_eq!(ids, ["hole extra J2#1", "hole extra J2#2"]);
+    }
+
+    #[test]
+    fn a_ports_parts_are_paired_by_the_member_path_of_each_footprint() {
+        let parts = crate::port::PortParts::parse(
+            "[parts]\nmcu = \"U7\"\n\"stage.r1\" = \"R3\"\n",
+            "parts.toml",
+        )
+        .unwrap();
+        let footprint = |reference: &str, path: Option<&str>| {
+            let path = path.map_or(String::new(), |p| {
+                format!("(property \"netsmith_path\" \"{p}\" (hide yes))")
+            });
+            format!("(footprint \"X\" (property \"Reference\" \"{reference}\") {path})")
+        };
+        let pcb = format!(
+            "(kicad_pcb {} {} {})",
+            footprint("U1", Some("mcu")),
+            footprint("R1", Some("stage.r1")),
+            footprint("H1", Some("hole1")),
+        );
+        let map = DesignatorMap::from_parts(&parts, &pcb).unwrap();
+        assert_eq!(map.get("U7"), Some("U1"));
+        assert_eq!(map.get("R3"), Some("R1"));
+        // A footprint whose path `parts.toml` does not name is no part of the original.
+        assert_eq!(map.len(), 2);
+        // A part the board does not have is left unmapped, for the check to report.
+        let pcb = format!("(kicad_pcb {})", footprint("U1", Some("mcu")));
+        let map = DesignatorMap::from_parts(&parts, &pcb).unwrap();
+        assert_eq!((map.get("U7"), map.get("R3")), (Some("U1"), None));
+        // A board with no member path on any footprint was not written by this `fab`.
+        let pcb = format!(
+            "(kicad_pcb {} {})",
+            footprint("U1", None),
+            footprint("R1", None)
+        );
+        let refused = DesignatorMap::from_parts(&parts, &pcb).unwrap_err();
+        assert!(
+            refused.contains("no `netsmith_path`") && refused.contains("netsmith fab"),
+            "{refused}"
+        );
     }
 }

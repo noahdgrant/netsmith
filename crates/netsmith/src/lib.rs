@@ -23,6 +23,7 @@ pub mod pin_export;
 pub mod pin_swap;
 pub mod pins;
 pub mod placed;
+pub mod port;
 pub mod project;
 pub mod providers;
 pub mod reference_table;

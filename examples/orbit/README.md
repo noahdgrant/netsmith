@@ -46,7 +46,8 @@ not required. Which parts must match is `reference/must_match.toml` (see below).
   `src/main.pcb.toml`: the layout file, only the placer's seed (see "The physical file").
 - `libs/orbit_small_parts.pretty/MountingHole_2.5mm_M2.5_Pad.kicad_mod` and
   `MountingHole_2.2mm_M2_Pad.kicad_mod`: the plated hole footprints of the physical file.
-- `reference/designators.toml`: which part of the board `fab` writes is which of theirs (48 lines);
+- `reference/parts.toml`: the parts file of the port, ORBIT's designator of each of the 48 parts of
+  the circuit by its member path, which the nets proof and the parity check read;
   `reference/parity-overlay.svg`: the picture of the last parity run (a generated file, see
   "Parity").
 - `LICENSE`: their licence text.
@@ -554,13 +555,13 @@ physical sample. The ERC test ran only where `kicad-cli` was found.
 ## Parity
 
 `netsmith parity <board.kicad_pcb> --table reference/placements.toml
---map reference/designators.toml [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith
+--parts reference/parts.toml [--svg <overlay.svg>]` compares the `.kicad_pcb` that `netsmith
 fab` writes (in `fab/Orbit/`) with their board, as `reference/placements.toml` states it. What it
 compares, the tolerances (outline and holes 0.05 mm, positions of parts 0.1 mm, rotation exact,
 pad numbers and nets equal), the origin (the upper-left corner of the outline) and the meaning of
 the verdicts are those of the RP2350A Minimal's checker, described in
 `examples/rp2350_minimal/README.md` ("Parity"); the checker is `netsmith::parity`. Without
-`--table` and `--map` the program reads the RP2350A Minimal's files. The test
+`--table` and `--parts` the command reads those of the project's `reference/` folder. The test
 `orbit_pcb_matches_the_original` (`crates/netsmith/tests/orbit_parity.rs`) runs `netsmith fab
 --locked --route-timeout 20` with no KiCad, accepts a complete or an INCOMPLETE board (only a
 failure that says `INCOMPLETE:`), fails when a must-match item is not `ok`, and fails when
@@ -568,10 +569,10 @@ failure that says `INCOMPLETE:`), fails when a must-match item is not `ok`, and 
 the RP2350A Minimal's test (`crates/netsmith/tests/common/mod.rs`).
 
 **The map.** ORBIT's references and netsmith's differ (netsmith numbers a kind's parts in the
-order of declaration: ORBIT's USB1 is J1 here, its J1 is J3, its U10 is Y1), so
-`reference/designators.toml` has one line for each of the 48 parts of the circuit, paired by value,
-pad count and nets, and a test (`the_parity_checkers_designator_map_is_the_designs_own`) holds it
-against the design's own designators. H1 to H4 have no line: the checker judges a plated mounting
+order of declaration: ORBIT's USB1 is J1 here, its J1 is J3, its U10 is Y1), so the checker pairs
+them by the member path: `reference/parts.toml` has one line for each of the 48 parts of the
+circuit (paired by value, pad count and nets), and `fab` writes each footprint's member path on the
+board (`netsmith_path`), so a renumbered part stays paired. H1 to H4 have no line: the checker judges a plated mounting
 hole as a hole, by its place, drill, plating, pad size and net (next section), and the logo has no
 pad.
 
@@ -592,7 +593,7 @@ it again, from this folder, after `netsmith fab --locked`, from the repository's
 ```sh
 netsmith parity examples/orbit/fab/Orbit/Orbit.kicad_pcb \
     --table examples/orbit/reference/placements.toml \
-    --map examples/orbit/reference/designators.toml \
+    --parts examples/orbit/reference/parts.toml \
     --svg examples/orbit/reference/parity-overlay.svg
 ```
 
