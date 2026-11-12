@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest';
+
+import { type Ids, ViewRefusal, litIds, parseSection, planChange, resolveIds, sectionText } from './control';
+import { renderCommand } from './tools';
+
+const have: Ids = {
+  parts: [
+    { path: 'power_in', refdes: 'J1' },
+    { path: 'status.led', refdes: 'D1' },
+    { path: 'r1', refdes: 'R1' },
+  ],
+  nets: ['VBUS', 'GND', 'GND'],
+  limits: ['lid', 'lid'],
+};
+
+const refusal = (f: () => unknown): ViewRefusal => {
+  try {
+    f();
+  } catch (e) {
+    if (e instanceof ViewRefusal) return e;
+    throw e;
+  }
+  throw new Error('expected a refusal');
+};
+
+describe('the section, as render --section reads and writes it', () => {
+  it('reads an axis and a position, and none', () => {
+    expect(parseSection('x=13')).toEqual({ axis: 'x', at: 13 });
+    expect(parseSection(' z = -0.8 ')).toEqual({ axis: 'z', at: -0.8 });
+    expect(parseSection('none')).toBeNull();
+  });
+  it('refuses what is not one, saying what it wants', () => {
+    for (const bad of ['13', 'w=3', 'x=', 'x=abc', 'x=1,y=2']) expect(refusal(() => parseSection(bad)).message).toContain('such as x=12.5');
+  });
+  it('writes a cut the way it reads one', () => {
+    expect(sectionText({ axis: 'y', at: 3.8712345 })).toBe('y=3.871');
+    expect(sectionText(null)).toBeNull();
+    expect(parseSection(sectionText({ axis: 'x', at: 7 })!)).toEqual({ axis: 'x', at: 7 });
+  });
+});
+
+describe('the ids of --highlight', () => {
+  it('finds a part by designator or path, a net and a limit, each once, comma-separated or not', () => {
+    expect(resolveIds(['J1', 'status.led,net:GND', 'limit:lid', 'power_in'], have)).toEqual({ parts: ['power_in', 'status.led'], nets: ['GND'], limits: ['lid'] });
+  });
+  it('names the ids the board does not have and lists what it has, as render does', () => {
+    const e = refusal(() => resolveIds(['J9', 'net:NOPE', 'R1'], have));
+    expect(e.status).toBe(400);
+    expect(e.message).toBe(
+      'highlight names ids that the board does not have: `J9`, `net:NOPE`\n' +
+        'the parts are: J1 (power_in), D1 (status.led), R1 (r1)\n' +
+        'the nets: net:GND, net:VBUS\n' +
+        'the limits: limit:lid',
+    );
+    expect(refusal(() => resolveIds(['x'], { parts: [], nets: [], limits: [] })).message).toContain('an id that the board does not have: `x`\nthe parts are: (none)');
+  });
+});
+
+describe('a change, checked before anything is done', () => {
+  it('maps the names of render to what the view does', () => {
+    const p = planChange({ view: 'iso-bottom', section: 'x=13', highlight: ['J1', 'limit:lid'], xray: true, perspective: true, colourBy: 'margin', heightPreview: 2.345, exploded: true }, have, true);
+    expect(p.view).toBe('iso-bottom');
+    expect(p.towardEye![2]).toBeLessThan(0);
+    expect(p.section).toEqual({ axis: 'x', at: 13 });
+    expect(p.selection).toEqual({ parts: ['power_in'], net: null });
+    expect(p.limits).toEqual(['lid']);
+    expect(p).toMatchObject({ xray: true, ortho: false, colourBy: 'margin', preview: { on: true, mm: 2.35 }, exploded: true });
+  });
+  it('leaves alone what a change does not name', () => {
+    expect(planChange({}, have, true)).toEqual({});
+    expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [] });
+    expect(planChange({ heightPreview: false }, have, true).preview).toEqual({ on: false });
+  });
+  it('lights one net through the selection, and not with parts', () => {
+    expect(planChange({ select: ['net:GND'] }, have, true).selection).toEqual({ parts: [], net: 'GND' });
+    expect(refusal(() => planChange({ highlight: ['net:GND', 'net:VBUS'] }, have, true)).message).toContain('one net at a time');
+    expect(refusal(() => planChange({ select: ['J1', 'net:GND'] }, have, true)).message).toContain('parts or one net');
+    expect(refusal(() => planChange({ select: ['limit:lid'] }, have, true)).message).toContain('use highlight');
+  });
+  it('refuses a camera that is not a place, a preview out of range and a stackup the board has not', () => {
+    expect(refusal(() => planChange({ camera: { position: [1, 2, 3], target: [1, 2, 3] } }, have, true)).message).toContain('the same point');
+    expect(refusal(() => planChange({ camera: { position: [1, 2] as never, target: [0, 0, 0] } }, have, true)).message).toContain('three numbers');
+    expect(planChange({ camera: { position: [10, -20, 30], target: [5, 5, 0] } }, have, true).camera).toEqual({ position: [10, -20, 30], target: [5, 5, 0] });
+    expect(refusal(() => planChange({ heightPreview: 99 }, have, true)).message).toContain('0.1 to 50 mm');
+    const e = refusal(() => planChange({ exploded: true }, have, false));
+    expect(e.status).toBe(409);
+    expect(planChange({ exploded: false }, have, false).exploded).toBe(false);
+  });
+});
+
+describe('what is lit, as the state and the copied command name it', () => {
+  it('names the parts by designator, the net and the limits', () => {
+    expect(litIds(['power_in', 'r1'], null, ['lid', 'lid'], have.parts)).toEqual({ selection: ['J1', 'R1'], highlight: ['J1', 'R1', 'limit:lid'] });
+    expect(litIds([], 'GND', [], have.parts)).toEqual({ selection: ['net:GND'], highlight: ['net:GND'] });
+  });
+  it('gives the ids a change takes back: the copied command and a change agree', () => {
+    const lit = litIds(['status.led'], null, ['lid'], have.parts);
+    const cmd = renderCommand({ file: 'src/main.nsm', board: 'B', view: 'iso', highlight: lit.highlight });
+    expect(cmd).toContain("--highlight D1,limit:lid");
+    expect(planChange({ highlight: lit.highlight }, have, true)).toMatchObject({ selection: { parts: ['status.led'] }, limits: ['lid'] });
+  });
+});

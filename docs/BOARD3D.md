@@ -242,7 +242,8 @@ Its tools, in the bar under the camera's (each also a command of the palette):
   with the face they stand on. `E` again puts them back. The measure tool waits until they are.
 - **Copy as command** (the `…` menu, or "3D view: Copy as a netsmith render command"). The
   `netsmith render` command that draws the view: its view (the nearest of the command's, said
-  when the camera is turned from it), its section, the parts picked as `--highlight`, the dark
+  when the camera is turned from it), its section, what is lit as `--highlight` (the parts picked
+  by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`), the dark
   theme and the lens.
 
 What it is not:
@@ -259,6 +260,87 @@ What it is not:
   loads the first time 3D opens (at most 250 kB gzipped, held by a test in
   `crates/netsmith-editor/tests/bundle.rs`); nothing is fetched from elsewhere (ADR 0019). It
   needs WebGL 2; without it the view says so and the 2D view works as before.
+
+## Driving the editor's 3D view: `/api/view`
+
+An agent can do in a running editor what a person does in its 3D view, with the names of
+[`netsmith render`](#pictures-for-agents-netsmith-render), and read back what the page shows.
+Three routes of the editor's server, behind the same guard as every other route (the Host is
+`127.0.0.1:<port>` or `localhost:<port>`, an `Origin` must be the editor's own, and the `POST`
+carries `X-Netsmith: 1`):
+
+```sh
+port=8080   # the editor's, as `netsmith editor` prints it
+curl -s localhost:$port/api/view                                          # the state, as JSON
+curl -s -X POST -H 'X-Netsmith: 1' localhost:$port/api/view \
+  -d '{"board":"LedExample","view":"top","highlight":["J1"],"xray":true}' # change it
+curl -s localhost:$port/api/view/picture -o view.png                      # what the canvas shows
+```
+
+The page draws the view, so a page must be open: the server carries each ask to the page over
+its socket (`/api/events`) and answers when the page has. **The page driven is the one focused
+last**: the window that last got the focus, or the page opened last when none has said so since.
+The others are not told.
+
+**`GET /api/view`** answers what the page shows now:
+
+| Field | What it is |
+|---|---|
+| `board` | the board the PCB section is on (`BoardSummary.name`, `Demo/main` for a board of a system); null with none |
+| `shown` | the 3D view of that board is on screen and drawn; when false, the next five are absent |
+| `view` | the view of `render` the camera is at (`top`, `bottom`, `front`, `back`, `left`, `right`, `iso`, `iso-bottom`), within a few degrees; absent when it is turned from all of them |
+| `camera` | `position` (the eye), `target` and `up` (the screen's up), each `[x, y, z]` in mm of [the frame](#the-frame); for an orthographic camera the eye is where a perspective one would show the same at the target |
+| `ortho` | true for the parallel projection |
+| `section` | the cut as `--section` writes it (`x=13`), absent with none |
+| `exploded` | the stackup pulled apart |
+| `command` | the `netsmith render` command that draws the view, as "Copy as command" gives it |
+| `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>` |
+| `selection` | the page's selection: parts by designator, or one `net:<name>` |
+| `hover` | what the pointer (or a row of another view) lights: a designator or `net:<name>`; absent with nothing |
+| `xray`, `colourBy`, `heightPreview` | x-ray; `provenance`, `kind` or `margin`; the preview's height in mm while it is on, absent when off |
+| `theme` | `light` or `dark`, as `--theme` names the page's palette (read-only) |
+
+**`POST /api/view`** takes a JSON object with any of these, and answers with the state above once
+the page has made the change and drawn it (a camera move is eased as a person's is, at once with
+reduced motion or in a hidden tab). It opens the PCB section in 3D on `board`, or on the board the
+page is on (`{}` only opens it):
+
+| Field | What it does |
+|---|---|
+| `board` | the board to show; one the project does not have is `404` with the list |
+| `view` | a view of `render --view`: the camera looks at the board's middle from that side, framed to fit, as the view's bar and keys move it (`iso` is the key `I`'s view, a few degrees from render's corner; `iso-bottom`, which the bar does not have, is render's) |
+| `camera` | `{"position": [x, y, z], "target": [x, y, z]}` in mm of the frame (an `up` is not taken: the view keeps z up); not with `view` |
+| `section` | `x=13`, `y=8`, `z=-0.8` as `--section` reads it, or `none` |
+| `highlight` | `["J1", "net:GND", "limit:lid"]`, as `--highlight` reads it (an item may be comma-separated): the parts or the net become the page's selection, the limits are lit; it replaces what was lit, and `[]` lights nothing |
+| `select` | the page's selection alone, as a click makes it: parts, or one `net:<name>`; the limits lit stay; not with `highlight` |
+| `xray`, `exploded` | true or false |
+| `ortho` or `perspective` | the lens: `"ortho": true` is `"perspective": false` |
+| `colourBy` | `provenance`, `kind` or `margin` |
+| `heightPreview` | a height in mm (0.1 to 50) turns the preview on at it; true or false turns it on or off |
+
+The change is checked against the board's scene before any of it is made, and one that is
+refused changes nothing (only the PCB section has been opened). An id the board does not have is
+`400`, with the message `render` gives: it names the id and lists the parts, nets and limits the
+board has. The editor's selection holds parts or one net, so `highlight` with two nets, or with
+parts and a net, is refused, where `render --highlight` draws them all. `theme` is refused: the
+theme is the person's own setting for the whole editor, not a view of the board (`render --theme`
+draws either).
+
+**`GET /api/view/picture`** answers a PNG of the 3D canvas, drawn for the ask: what the person
+sees in the view, at the canvas's size in device pixels, without the overlays (the bars, the
+labels, the tooltip). `409` when the 3D view is not on screen.
+
+| Status | When |
+|---|---|
+| `400` | a change of the wrong shape (a field the server does not know, a view that is not one, `view` with `camera`, `ortho` with `perspective` saying the opposite) or one the page refuses (an id, a section, a preview height) |
+| `403` | the guard: another Host or Origin, or a `POST` without `X-Netsmith` |
+| `404` | a board the project does not have |
+| `409` | no page is open (the answer says which address to open), the page closed before it answered, the 3D view is not on screen (a picture), cannot draw (no WebGL 2), or the board has no stackup to pull apart |
+| `504` | the page did not answer in time: 10 s for a read or a picture, 45 s for a change (the first loads the 3D view and the board's scene); a page loaded from an older editor does not answer at all, so reload it |
+
+Nothing here changes the design or a file. The camera moves, the picture is cut, lit or seen
+through, and the selection picks parts, as a person's clicks would; a part is still moved only in
+the 2D view.
 
 ## Pictures for agents: `netsmith render`
 

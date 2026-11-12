@@ -7,6 +7,8 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 
+import type { ViewChange } from '../api';
+
 import { focusedSection } from '../commandset';
 import { CopyButton, EmptyState, Popover, Segmented, Spinner, copyText } from '../components/ui';
 import { notify } from '../feedback/state';
@@ -19,6 +21,7 @@ import { reducedMotion, settings } from '../settings';
 import { analysis, detail, pcbStamp, pickNet, pickPart } from '../store';
 import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
 import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
+import { type Ids, litIds, planChange, sectionText } from './control';
 import { colourBy, focus3d, heightPreview, xray } from './inspectMode';
 import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
@@ -28,6 +31,8 @@ import { LOOKS, type Role, TOKENS } from './palette';
 import { PRESETS, type Preset } from './presets';
 import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
 import './view3d.css';
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** A token's colour as `#rrggbb`, whatever CSS it is written in (a `var()`, a `color-mix()`). */
 function resolver(probe: HTMLElement): (token: string) => string {
@@ -102,6 +107,9 @@ export function View3d({ board }: { board: string }) {
   boardRef.current = board;
   const tools = useRef({ measuring, pending, cut });
   tools.current = { measuring, pending, cut };
+  // For `/api/view` (agent.ts): the board whose scene is drawn, and why the view cannot draw.
+  const loadedBoard = useRef<string | null>(null);
+  const failure = useRef<string | null>(null);
 
   const stamp = scene2d.value?.board === board ? scene2d.value.layoutStamp : null;
   const routed = pcbStamp.value;
@@ -122,7 +130,8 @@ export function View3d({ board }: { board: string }) {
         },
       });
     } catch (e) {
-      setStatus({ state: 'error', webgl: true, message: e instanceof Error ? e.message : String(e) });
+      failure.current = e instanceof Error ? e.message : String(e);
+      setStatus({ state: 'error', webgl: true, message: failure.current });
       return;
     }
     viewer.current = v;
@@ -134,6 +143,7 @@ export function View3d({ board }: { board: string }) {
     watch.observe(el);
     const lost = (e: Event) => {
       e.preventDefault();
+      failure.current = 'the graphics context was lost';
       setStatus({ state: 'error', webgl: true, message: 'The graphics context was lost' });
     };
     v.canvas.addEventListener('webglcontextlost', lost);
@@ -184,6 +194,25 @@ export function View3d({ board }: { board: string }) {
         if (on) setPending(null);
       },
       copyCommand: () => void copyCommand(),
+      agent: {
+        loaded: () => (v.board && el.dataset.ready ? loadedBoard.current : null),
+        failed: () => failure.current,
+        apply: (change) => applyChange(v, change),
+        state: () => {
+          // The page's own isometric view (the key I) is a few degrees from render's: it is `iso` too.
+          const near = nearestView(v.towardEye());
+          return {
+            view: near.exact ? near.view : v.currentPreset() === 'iso' ? 'iso' : undefined,
+            camera: v.cameraPlace(),
+            ortho: v.isOrtho(),
+            section: sectionText(tools.current.cut) ?? undefined,
+            exploded: v.isExploded(),
+            command: commandText(),
+            limits: litLimits(v),
+          };
+        },
+        picture: () => v.picture(),
+      },
     };
     return () => {
       view3d.current = null;
@@ -211,11 +240,16 @@ export function View3d({ board }: { board: string }) {
         setLimits(v.limitList());
         setCoverage(v.board?.coverage ?? null);
         setCanExplode(v.canExplode());
+        loadedBoard.current = board;
+        failure.current = null;
         v.setPads(padsOf());
         v.highlight(pcbSelection.peek(), []);
         if (host.current) host.current.dataset.stamp = r.headers.get('X-Netsmith-Layout-Stamp') ?? '';
       } catch (e) {
-        if (!ask.signal.aborted) setStatus({ state: 'error', message: e instanceof Error ? e.message : String(e) });
+        if (!ask.signal.aborted) {
+          failure.current = e instanceof Error ? e.message : String(e);
+          setStatus({ state: 'error', message: failure.current });
+        }
       }
     })();
     return () => ask.abort();
@@ -321,18 +355,68 @@ export function View3d({ board }: { board: string }) {
     if (!v) return '';
     const name = boardRef.current;
     const file = analysis.peek()?.boards.find((b) => b.name === name)?.file ?? '<file.nsm>';
-    const refs = pcbSelection.peek().flatMap((path) => v.partList().find((p) => p.path === path)?.refdes ?? []);
+    // What is lit, named as `/api/view` and `render --highlight` name it: the parts picked, the net picked, the limits lit.
+    const sel = sharedSelection.peek();
+    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList());
     const t = pageTheme.peek();
     return renderCommand({
       file,
       board: name,
       view: nearestView(v.towardEye()).view,
       section: tools.current.cut,
-      highlight: refs,
+      highlight: lit.highlight,
       dark: t === 'dark' || t === 'hc-dark',
       perspective: !v.isOrtho(),
     });
   };
+  /** The limits lit (by a finding, or by `/api/view`), by name. */
+  const litLimits = (v: Viewer) => [...new Set(v.focusedList().map((k) => k.slice(0, k.lastIndexOf(':'))))];
+
+  /** A change of `/api/view`: checked against the scene first (a refusal changes nothing), then
+   * made with what the keys and the palette run, and ended once the view has drawn it. A camera
+   * move is eased as a person's is, at once with reduced motion or in a window that draws no frames. */
+  const applyChange = async (v: Viewer, change: ViewChange) => {
+    const have: Ids = { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name) };
+    const plan = planChange(change, have, v.canExplode());
+    const still = v.still;
+    if (document.hidden) v.still = true;
+    try {
+      if (plan.ortho !== undefined && plan.ortho !== v.isOrtho()) view3d.current?.toggleProjection();
+      if (plan.view) {
+        // The views the page has a preset for are its presets, as the keys and the bar move to them (`iso` is the key I's); `iso-bottom` is render's direction.
+        const preset = PRESETS.find((p) => p.id === plan.view);
+        if (preset) v.preset(preset.id);
+        else v.lookFrom(plan.towardEye!);
+      }
+      if (plan.camera) v.place(plan.camera.position, plan.camera.target);
+      if (plan.section !== undefined) changeCut(plan.section);
+      if (plan.exploded !== undefined && plan.exploded !== v.isExploded()) view3d.current?.toggleExplode();
+      if (plan.selection) {
+        const { parts: paths, net } = plan.selection;
+        if (net) pickNet(net);
+        else {
+          // A net picked goes first, and the views follow it before the parts are picked.
+          if (sharedSelection.peek()?.kind === 'net') {
+            pickNet(null);
+            await sleep(150);
+          }
+          select(paths);
+        }
+      }
+      if (plan.limits) v.lightLimits(plan.limits);
+      if (plan.xray !== undefined) xray.value = plan.xray;
+      if (plan.colourBy !== undefined) colourBy.value = plan.colourBy;
+      if (plan.preview) heightPreview.value = { on: plan.preview.on, mm: plan.preview.mm ?? heightPreview.peek().mm };
+      // The page's effects run after a paint (or 100 ms); then the camera and the layers finish moving.
+      await sleep(160);
+      const end = performance.now() + 3000;
+      while (v.busy() && performance.now() < end) await sleep(30);
+      v.drawNow();
+    } finally {
+      v.still = still;
+    }
+  };
+
   const copyCommand = async () => {
     const text = commandText();
     if (await copyText(text)) notify({ kind: 'ok', title: 'Copied the netsmith render command', detail: text });

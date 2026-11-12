@@ -36,6 +36,7 @@
 pub mod api;
 mod assets;
 mod backend;
+mod pages;
 mod server;
 
 pub use assets::{
