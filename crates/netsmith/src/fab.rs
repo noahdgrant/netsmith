@@ -1722,6 +1722,7 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
         neck_reach: netsmith_pcb::route::NECK_REACH,
+        via_counts: board.via_counts(),
     }
 }
 
@@ -2068,7 +2069,11 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 11] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 12] = [
+        (
+            "hole_plating",
+            "the track width check rates a via for current by it (issue #431); the counts it gives are the router's",
+        ),
         (
             "track_width_tolerance",
             "the track width check sizes for the narrowest finished track (issue #431); the widths it gives are the router's",

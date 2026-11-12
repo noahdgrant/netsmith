@@ -41,6 +41,7 @@ pub mod gltf;
 pub mod layout;
 pub mod mesh;
 pub mod overhang;
+pub mod parallel;
 mod place;
 pub mod protrusion;
 pub mod quality;

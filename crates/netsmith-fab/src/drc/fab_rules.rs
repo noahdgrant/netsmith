@@ -32,6 +32,59 @@ pub(crate) fn run(out: &mut Out<'_>) {
     holes(out);
     pad_hole_to_hole(out);
     track_current(out);
+    via_current(out);
+}
+
+/// A via of a net that needs more than one where it changes layer, in a cluster of touching
+/// vias of the net smaller than that.
+fn via_current(out: &mut Out<'_>) {
+    let m = out.m;
+    if m.extras.via_counts.is_empty() {
+        return;
+    }
+    let vias = &m.art.vias;
+    let mut seen = vec![false; vias.len()];
+    for start in 0..vias.len() {
+        if seen[start] {
+            continue;
+        }
+        let Some(net) = vias[start].net.as_deref() else {
+            continue;
+        };
+        let Some(&(_, needs)) = m.extras.via_counts.iter().find(|(n, _)| n == net) else {
+            continue;
+        };
+        let mut cluster = vec![start];
+        seen[start] = true;
+        let mut k = 0;
+        while k < cluster.len() {
+            let v = &vias[cluster[k]];
+            for (j, w) in vias.iter().enumerate() {
+                if !seen[j]
+                    && w.net.as_deref() == Some(net)
+                    && w.at.dist(v.at) <= (w.diameter + v.diameter) / 2.0 + EPS
+                {
+                    seen[j] = true;
+                    cluster.push(j);
+                }
+            }
+            k += 1;
+        }
+        if cluster.len() < needs {
+            let item = m.items[m.via_item[start]].item.clone();
+            out.push(
+                Rule::ViaCurrent,
+                format!(
+                    "{} stands with {} via(s) of its net side by side; its net's current needs {needs}",
+                    item.what,
+                    cluster.len()
+                ),
+                vias[start].at,
+                None,
+                vec![item],
+            );
+        }
+    }
 }
 
 /// A track narrower than its net's current needs, unless it lies within the neck-down reach

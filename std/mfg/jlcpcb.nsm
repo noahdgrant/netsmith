@@ -170,6 +170,10 @@ interface TwoLayer {
     /// tolerance allows (issue #431).
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
 
     .stackup: Stackup
     .stackup.layers       &= 2
@@ -336,6 +340,10 @@ interface FourLayer {
     /// tolerance allows (issue #431).
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
 
     .stackup: Stackup
     .stackup.layers          &= 4

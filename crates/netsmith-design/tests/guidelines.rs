@@ -2,7 +2,7 @@
 
 use netsmith_check::{Loader, check};
 use netsmith_design::design_board;
-use netsmith_design::guidelines::{Guideline, Layer, ipc2221_current, ipc2221_width};
+use netsmith_design::guidelines::{Guideline, Layer, ipc2221_current, ipc2221_width, via_current};
 use netsmith_solve::{Catalogs, solve};
 
 fn findings_in(loader: &Loader, src: &str) -> Vec<Guideline> {
@@ -411,6 +411,33 @@ fn the_node_between_a_fuse_and_a_diode_is_drawn_at_the_width_its_current_needs()
     // The router and the check agree: nothing to warn about, nothing stated.
     assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
     assert!(l.notes.is_empty(), "{:?}", l.notes);
+}
+
+#[test]
+fn a_via_is_rated_by_its_plated_barrel_and_a_net_gets_as_many_as_its_current_needs() {
+    // The process's via: a 0.2 mm hole with 0.018 mm of plating round it is 0.01233 mm², 19.1
+    // square mils of copper; at the inner-layer constant and 10 K it carries 0.561 A.
+    let each = via_current(0.2, 0.018, 10.0);
+    assert!((each - 0.561).abs() < 0.002, "{each}");
+    assert!(
+        via_current(0.3, 0.018, 10.0) > each,
+        "a wider hole carries more"
+    );
+    assert_eq!(via_current(0.0, 0.018, 10.0), 0.0);
+    // So the 2 A node between the fuse and the diode needs four of them side by side.
+    let l = designed_of(&fuse_diode("        .current &= 1A..2A\n", "", ""));
+    let node = l
+        .design
+        .features
+        .net_currents
+        .iter()
+        .find(|c| c.net.contains("diode") || c.net.contains("fuse"))
+        .expect("the node carries a current");
+    assert!((node.current - 2.0).abs() < 1e-9, "{node:?}");
+    assert_eq!(node.vias, 4, "{node:?}");
+    assert!(
+        (node.least_width - ipc2221_width(2.0, 0.035, 10.0, Layer::External) / 0.8).abs() < 1e-9
+    );
 }
 
 #[test]

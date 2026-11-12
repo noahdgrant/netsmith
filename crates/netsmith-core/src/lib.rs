@@ -208,6 +208,8 @@ pub struct Process {
     /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
     /// track width check sizes for the narrowest.
     pub track_width_tolerance: f64,
+    /// The copper plated on a hole's wall, in mm, which carries a via's current.
+    pub hole_plating: f64,
     pub stackup: Stackup,
 }
 
@@ -525,6 +527,8 @@ pub struct NetCurrent {
     pub current: f64,
     /// The narrowest track that carries it, in mm, before the process's least track.
     pub least_width: f64,
+    /// How many of the process's vias, side by side, carry it where a track changes layer.
+    pub vias: usize,
 }
 
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
