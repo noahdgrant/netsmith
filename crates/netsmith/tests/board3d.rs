@@ -799,6 +799,161 @@ fn a_section_cuts_the_picture_and_is_checked() {
     assert!(!dir.path().join("no.png").exists());
 }
 
+/// The section of `scene` across y = `y` seen from the front through a camera `half_height` mm
+/// tall, centred on (`x`, `z`) in 800x500 pixels, caps on; written into
+/// `NETSMITH_RENDER3D_OUT` when it is set, to look at.
+fn section_picture(
+    scene: &netsmith_pcb::scene3d::Scene,
+    name: &str,
+    y: f64,
+    (x, z, half_height): (f64, f64, f64),
+) -> netsmith_pcb::raster3d::Image {
+    use netsmith_pcb::raster3d::{Axis, Camera, Lens, RenderOptions, Section, render};
+    let meshes = netsmith_pcb::mesh::of_scene_section(scene, Axis::Y, y);
+    let options = RenderOptions {
+        width: 800,
+        height: 500,
+        section: Some(Section {
+            axis: Axis::Y,
+            at: y,
+            keep_below: false,
+        }),
+        ..RenderOptions::default()
+    };
+    let camera = Camera {
+        eye: [x, -100.0, z],
+        target: [x, 0.0, z],
+        up: [0.0, 0.0, 1.0],
+        lens: Lens::Orthographic { half_height },
+    };
+    let image = render(&meshes, &camera, &options);
+    if let Some(out) = std::env::var_os("NETSMITH_RENDER3D_OUT") {
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(Path::new(&out).join(format!("{name}.png")), image.to_png()).unwrap();
+    }
+    image
+}
+
+#[test]
+fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_bottom() {
+    use netsmith_pcb::mesh::Material;
+    use netsmith_pcb::raster3d::{Rgba, Theme};
+    use netsmith_pcb::stackup::LayerKind;
+    let scene = scene_of("examples/four_layer.nsm");
+    // Across J1 (a header 8.9 mm tall; the layout file has it 3.25 mm from the top edge of the
+    // 7 mm board, so at y = 3.75 mm from the bottom edge): a section through a part.
+    let y = 3.75;
+    assert!(scene.bodies.iter().any(|b| b.refdes == "J1"
+        && (b.corners.iter().any(|c| c.y < y) && b.corners.iter().any(|c| c.y > y))));
+    // Near the board's left edge (x = 0), 0.9 mm either side of the middle of the stackup: the
+    // picture is 444 pixels to the mm, the thinnest layer (the mask, 10 um) four pixels.
+    let (x, z, half) = (1.2, -0.8, 0.9);
+    let image = section_picture(&scene, "four_layer-section-y", y, (x, z, half));
+    let again = section_picture(&scene, "four_layer-section-y-again", y, (x, z, half));
+    assert_eq!(image, again, "the same bytes every time");
+
+    let layers = &scene.board.layers;
+    let palette = Theme::Light.palette();
+    // Every cap is lit as the same face, so the colours of the bands are the palette's times one
+    // factor: take it from the middle of the core.
+    let row_of = |zz: f64| ((z + half - zz) / (2.0 * half) * 500.0).floor() as usize;
+    // Column 250 is x = 0.86 mm: both inner planes have copper there (they are poured, with
+    // clearance round the pad at the right of the picture).
+    let column = 250;
+    let core = layers.iter().find(|l| l.kind == LayerKind::Core).unwrap();
+    let probe = image.pixel(column, row_of(0.5 * (core.z_top + core.z_bottom)));
+    let want = palette.colour(Material::Substrate);
+    let factor = f64::from(probe[1]) / f64::from(want[1]);
+    let lit = |c: Rgba| [0, 1, 2].map(|k| (f64::from(c[k]) * factor).min(255.0));
+    let near = |p: Rgba, c: Rgba| {
+        let c = lit(c);
+        (0..3).all(|k| (f64::from(p[k]) - c[k]).abs() <= 8.0)
+    };
+    let mut seen: Vec<&str> = Vec::new();
+    for l in layers {
+        let p = image.pixel(column, row_of(0.5 * (l.z_top + l.z_bottom)));
+        let name = match l.kind {
+            LayerKind::Mask => {
+                assert!(
+                    near(p, palette.colour(Material::MaskTop))
+                        || near(p, palette.colour(Material::MaskBottom)),
+                    "{}: {p:?}",
+                    l.name
+                );
+                "mask"
+            }
+            LayerKind::Core => {
+                assert!(
+                    near(p, palette.colour(Material::Substrate)),
+                    "{}: {p:?}",
+                    l.name
+                );
+                "core"
+            }
+            LayerKind::Prepreg => {
+                assert!(
+                    near(p, palette.colour(Material::Prepreg)),
+                    "{}: {p:?}",
+                    l.name
+                );
+                "prepreg"
+            }
+            LayerKind::Copper => {
+                // Copper where the layer has copper at this cut, the insulator it is
+                // embedded in where it has none: the two inner planes are poured across.
+                assert!(
+                    near(p, palette.colour(Material::Copper))
+                        || near(p, palette.colour(Material::Prepreg))
+                        || near(p, palette.colour(Material::MaskTop))
+                        || near(p, palette.colour(Material::MaskBottom)),
+                    "{}: {p:?}",
+                    l.name
+                );
+                if l.name.starts_with("In") {
+                    assert!(
+                        near(p, palette.colour(Material::Copper)),
+                        "{}: {p:?}",
+                        l.name
+                    );
+                }
+                "copper"
+            }
+        };
+        seen.push(name);
+    }
+    assert_eq!(
+        seen,
+        [
+            "mask", "copper", "prepreg", "copper", "core", "copper", "prepreg", "copper", "mask"
+        ]
+    );
+    // Above the board's top face at this x there is nothing but background; the part's body is
+    // cut solid where the plane crosses it (the picture's middle column of the header).
+    assert_eq!(image.pixel(200, 10), palette.background);
+    let body = section_picture(&scene, "four_layer-section-body", y, (13.0, 1.0, 1.5));
+    let top = body.pixel(400, 40);
+    assert_ne!(top, palette.background, "a part's body is cut solid");
+}
+
+#[test]
+fn the_cli_fills_a_section_and_no_caps_leaves_it_open() {
+    let dir = netsmith_kicad::testlib::TempDir::new("render-caps");
+    let src = repo().join("examples/four_layer.nsm");
+    let args = ["--view", "right", "--section", "x=13", "--size", "400x300"];
+    let capped = picture(&src, &dir.path().join("a.png"), &args);
+    let open = picture(
+        &src,
+        &dir.path().join("b.png"),
+        &[&args[..], &["--no-caps"]].concat(),
+    );
+    assert_ne!(capped, open);
+    assert_eq!(
+        capped,
+        picture(&src, &dir.path().join("c.png"), &args),
+        "the same bytes twice"
+    );
+}
+
 #[test]
 fn a_size_out_of_bounds_or_a_wrong_view_is_a_usage_error() {
     let dir = netsmith_kicad::testlib::TempDir::new("render-usage");

@@ -59,14 +59,14 @@ describe('the height map', () => {
 
 describe('x-ray', () => {
   it('makes the board, the mask and the bodies see-through, and leaves the copper, the gold and the unknowns as they are', () => {
-    for (const r of ['substrate', 'mask-top', 'mask-bottom', 'mask-over-copper', 'body', 'body-catalog', 'metal', 'mark'] as Role[]) {
+    for (const r of ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'mask-over-copper', 'body', 'body-catalog', 'metal', 'mark', 'silk'] as Role[]) {
       const o = xrayOpacity(r);
       expect(o, r).not.toBeNull();
       expect(o!).toBeLessThan(0.5);
     }
     for (const r of ['copper', 'finish', 'body-unknown', 'limit', 'limit-violated'] as Role[]) expect(xrayOpacity(r), r).toBeNull();
     // Every role the view draws is one of the two lists above.
-    expect(Object.keys(LOOKS).length).toBe(13);
+    expect(Object.keys(LOOKS).length).toBe(15);
     expect(DIM.opacity).toBeLessThan(1);
   });
 });

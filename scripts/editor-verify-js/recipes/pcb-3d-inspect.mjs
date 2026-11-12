@@ -124,7 +124,8 @@ export async function run(tools) {
   await page.waitForSelector('[data-testid=preview-label]');
   const label = await page.getByTestId('preview-label').innerText();
   expect(/PREVIEW/i.test(label) && label.includes('2 parts of unknown height drawn 2.5 mm tall') && label.includes('not a height'), `the label: ${label.replace(/\n/g, ' ')}`);
-  expect((await ask(page, 'previewCount')) === 2, 'the two parts of unknown height are stood up');
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.previewCount() === 2, HOST);
+  expect(true, 'the two parts of unknown height are stood up');
   expect((await page.getByTestId('height-coverage').innerText()) === chipBefore, `the coverage chip is the same: ${chipBefore}`);
   const parts3d = await ask(page, 'parts');
   expect(parts3d.filter((p) => p.heightMm === null).length === 2, 'the parts of unknown height still have no height');
@@ -132,7 +133,78 @@ export async function run(tools) {
   await shot('preview');
   await page.keyboard.press('h');
   await page.waitForFunction(() => !document.querySelector('[data-testid=preview-label]'));
-  expect((await ask(page, 'previewCount')) === 0, 'the key H turns it off, and nothing is left standing');
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.previewCount() === 0, HOST);
+  expect(true, 'the key H turns it off, and nothing is left standing');
+
+  step('x-ray and a lit net with the section plane and with the layers apart: the caps still show, the net stays lit');
+  await page.locator('.side-tabs button', { hasText: /^Nets/ }).click();
+  await page.locator('.net-row', { hasText: 'VIN' }).first().click();
+  await page.mouse.move(5, 5);
+  await page.locator(HOST).focus();
+  await page.keyboard.press('v');
+  await page.keyboard.press('y');
+  await page.waitForSelector('[data-testid=section-panel]');
+  await page.getByTestId('section-at').fill('12');
+  await page.getByTestId('section-at').press('Enter');
+  await page.getByTestId('view-front').click();
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'front', HOST);
+  await settle(page);
+  const caps = await ask(page, 'caps');
+  expect(caps.includes('substrate') || caps.some((c) => /core|prepreg|substrate/.test(c)), `x-ray with a section keeps the laminate's caps: ${caps.join(', ')}`);
+  expect((await ask(page, 'litReport')).layers.length === 2, 'VIN is still lit on both layers through the cut');
+  const cutSample = await ask(page, 'sample');
+  expect(cutSample.drawn > 0.02, `the cut is drawn (${(cutSample.drawn * 100).toFixed(1)} % of the canvas)`);
+  await shot('xray-section');
+  await page.keyboard.press('s');
+  await page.waitForSelector('[data-testid=section-panel]', { state: 'detached' });
+  await page.keyboard.press('i');
+  await page.keyboard.press('e');
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.exploded(), HOST);
+  await page.waitForTimeout(700);
+  expect((await ask(page, 'litReport')).layers.length === 2, 'the net stays lit with the layers apart');
+  await shot('xray-exploded');
+  await page.keyboard.press('e');
+  await page.waitForFunction((sel) => !document.querySelector(sel).view3d.exploded(), HOST);
+  await page.keyboard.press('v');
+  await page.locator('.net-row', { hasText: 'VIN' }).first().click();
+  await page.mouse.move(5, 5);
+  await page.waitForFunction(() => !document.querySelector('.net-row.sel'));
+
+  step('at 1000 px wide, with measure, the section and the preview on, no two of the bars overlap');
+  const size = page.viewportSize();
+  await page.setViewportSize({ width: 1000, height: 760 });
+  await page.locator(HOST).focus();
+  await page.keyboard.press('m');
+  await page.waitForSelector('[data-testid=measure-panel]');
+  await page.keyboard.press('s');
+  await page.waitForSelector('[data-testid=section-panel]');
+  await page.keyboard.press('h');
+  await page.waitForSelector('[data-testid=preview-label]');
+  await settle(page);
+  const boxes = await page.evaluate(() =>
+    ['.v3-bar', '.v3-tools', '.v3-info', '[data-testid=section-panel]', '[data-testid=measure-panel]', '.v3-inspect', '.v3-wrap .zoombar', '.v3-preview-tag']
+      .map((sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { sel, x0: r.left, y0: r.top, x1: r.right, y1: r.bottom };
+      })
+      .filter(Boolean),
+  );
+  const hits = [];
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      if (a.x0 < b.x1 - 1 && b.x0 < a.x1 - 1 && a.y0 < b.y1 - 1 && b.y0 < a.y1 - 1) hits.push(`${a.sel} and ${b.sel}`);
+    }
+  expect(boxes.length === 8, `every bar is there (${boxes.map((b) => b.sel).join(', ')})`);
+  expect(hits.length === 0, `no overlap: ${hits.join('; ') || 'none'}`);
+  await shot('bars-1000');
+  await page.keyboard.press('h');
+  await page.keyboard.press('s');
+  await page.keyboard.press('Escape');
+  await page.setViewportSize(size);
+  await settle(page);
 
   step('a finding picked in the problems dock flies the camera to it and lights its limit');
   await page.keyboard.press('i');

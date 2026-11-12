@@ -82,6 +82,7 @@ export function marginColour(m: number | null, c: Record<MarginBand, string>): s
 export function xrayOpacity(role: Role): number | null {
   switch (role) {
     case 'substrate':
+    case 'prepreg':
       return 0.16;
     case 'mask-top':
     case 'mask-bottom':
@@ -93,6 +94,7 @@ export function xrayOpacity(role: Role): number | null {
     case 'metal':
       return 0.32;
     case 'mark':
+    case 'silk':
       return 0.25;
     default:
       return null;

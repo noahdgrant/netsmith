@@ -32,6 +32,7 @@
 pub mod boolean;
 mod package;
 mod scene;
+mod section;
 mod triangulate;
 pub mod trig;
 
@@ -39,6 +40,7 @@ pub use scene::{
     BodyPieces, LayerPieces, MaskPieces, NO_NET, NetPieces, Pieces, SILK_LIFT, SilkPieces,
     UNKNOWN_LIFT, hole_segments, of_scene, pieces, slot,
 };
+pub use section::{PLATING, of_scene_section};
 pub use triangulate::triangulate;
 
 use std::fmt;
@@ -72,12 +74,16 @@ pub enum Material {
     /// The solder mask where copper is under it, either face: lighter than over bare laminate,
     /// as tracks and pours show through a real board's mask.
     MaskOverCopper,
+    /// The board's prepreg, and the resin between the copper of an inner layer: drawn only in
+    /// a section ([`of_scene_section`]), where it is the second laminate tone next to the
+    /// core's ([`Material::Substrate`]).
+    Prepreg,
 }
 
 impl Material {
     /// Every material, in order. A new one goes at the end, so a file's material index of the
     /// older ones does not move.
-    pub const ALL: [Material; 12] = [
+    pub const ALL: [Material; 13] = [
         Material::Substrate,
         Material::MaskTop,
         Material::MaskBottom,
@@ -90,6 +96,7 @@ impl Material {
         Material::LimitViolated,
         Material::Finish,
         Material::MaskOverCopper,
+        Material::Prepreg,
     ];
 
     /// The material's name, as a file (a glTF material, a command's option) writes it.
@@ -107,6 +114,7 @@ impl Material {
             Material::LimitViolated => "limit-violated",
             Material::Finish => "finish",
             Material::MaskOverCopper => "mask-over-copper",
+            Material::Prepreg => "prepreg",
         }
     }
 
@@ -124,6 +132,25 @@ impl Material {
 impl fmt::Display for Material {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name())
+    }
+}
+
+/// An axis of the scene's frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
+}
+
+impl Axis {
+    /// 0, 1 or 2: the index of the axis in a position.
+    pub fn index(self) -> usize {
+        match self {
+            Axis::X => 0,
+            Axis::Y => 1,
+            Axis::Z => 2,
+        }
     }
 }
 

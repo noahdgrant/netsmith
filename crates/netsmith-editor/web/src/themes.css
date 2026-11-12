@@ -243,11 +243,16 @@
   --pcb3d-unknown: #c3cad6;
   --pcb3d-metal: #c7ccd4;
   --pcb3d-mark: #d8d4c6;
+  --pcb3d-silk: #d8d4c6;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #06080b;
-  --pcb3d-finish: #c9a64a;
-  --pcb3d-mask-copper: #2e4552;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #b3a374;
+  --pcb3d-measure: #ffcc4d;
+  --pcb3d-cut: #5ad1e6;
+  --pcb3d-finish: #d4a94a;
+  --pcb3d-mask-copper: #34505c;
   /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
   --pcb3d-kind-ic: #c6ccd8;
   --pcb3d-kind-connector: #f0a0d0;
@@ -454,11 +459,16 @@
   --pcb3d-unknown: #2f3540;
   --pcb3d-metal: #8e949c;
   --pcb3d-mark: #f4f1e6;
+  --pcb3d-silk: #1f2b25;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #16181c;
-  --pcb3d-finish: #a57f22;
-  --pcb3d-mask-copper: #cfdcd4;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #e2d096;
+  --pcb3d-measure: #a34a00;
+  --pcb3d-cut: #0e7490;
+  --pcb3d-finish: #8f6a12;
+  --pcb3d-mask-copper: #cddcd3;
   /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
   --pcb3d-kind-ic: #2b2f38;
   --pcb3d-kind-connector: #8a2a6a;
@@ -662,11 +672,16 @@
   --pcb3d-unknown: #ffffff;
   --pcb3d-metal: #d6d6d6;
   --pcb3d-mark: #ffffff;
+  --pcb3d-silk: #ffffff;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #000000;
-  --pcb3d-finish: #e0b850;
-  --pcb3d-mask-copper: #2a4c58;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #d8c27e;
+  --pcb3d-measure: #ffd400;
+  --pcb3d-cut: #00e5ff;
+  --pcb3d-finish: #ffcc33;
+  --pcb3d-mask-copper: #2f5664;
   /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
   --pcb3d-kind-ic: #ffffff;
   --pcb3d-kind-connector: #ffb0e0;
@@ -870,11 +885,16 @@
   --pcb3d-unknown: #000000;
   --pcb3d-metal: #6b6b6b;
   --pcb3d-mark: #ffffff;
+  --pcb3d-silk: #000000;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #000000;
-  --pcb3d-finish: #7a5c08;
-  --pcb3d-mask-copper: #cadad1;
+  /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
+  --pcb3d-prepreg: #c9b26a;
+  --pcb3d-measure: #6b3500;
+  --pcb3d-cut: #005f73;
+  --pcb3d-finish: #8a6500;
+  --pcb3d-mask-copper: #d2e3d9;
   /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
   --pcb3d-kind-ic: #000000;
   --pcb3d-kind-connector: #6b0f50;

@@ -123,7 +123,7 @@
 .v3-preview-tag {
   position: absolute;
   left: 50%;
-  top: 3.75rem;
+  bottom: 6.75rem;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -205,15 +205,15 @@
   background: var(--pcb3d-margin-none);
 }
 
+/* The measure tool's panel (Tools3d.tsx) is at the bottom left too: the bar goes up over it. */
+.v3-wrap:has(.v3-measure) .v3-inspect {
+  bottom: 3.875rem;
+}
+
 @container v3 (max-width: 44rem) {
   .v3-inspect {
     flex-wrap: wrap;
-    right: 0.875rem;
-    bottom: 3rem;
-  }
-  .v3-preview-tag {
-    top: auto;
-    bottom: 6.5rem;
+    max-width: calc(100% - 1.75rem);
   }
 }
 

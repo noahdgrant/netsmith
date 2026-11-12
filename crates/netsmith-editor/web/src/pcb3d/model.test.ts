@@ -25,6 +25,10 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
         thickness_mm: 1.6,
         width_mm: 40,
         height_mm: 24,
+        layers: [
+          { name: 'F.Mask', kind: 'mask', thickness_mm: 0.01, z_top_mm: 0, z_bottom_mm: -0.01 },
+          { name: 'silk', kind: 'ink', thickness_mm: 0, z_top_mm: 0, z_bottom_mm: 0 },
+        ],
         coverage: { known: 2, total: 3 },
         findings: [{ code: 'too_tall', message: 'J1 stands 9 mm tall', parts: ['tall'], limit: 'lid', face: 'top' }],
       },
@@ -36,6 +40,8 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
       widthMm: 40,
       heightMm: 24,
       thicknessMm: 1.6,
+      // A kind it does not know is left out.
+      layers: [{ name: 'F.Mask', kind: 'mask', thicknessMm: 0.01, zTopMm: 0, zBottomMm: -0.01 }],
       coverage: { known: 2, total: 3 },
       findings: [{ code: 'too_tall', message: 'J1 stands 9 mm tall', parts: ['tall'], limit: 'lid', face: 'top' }],
     });

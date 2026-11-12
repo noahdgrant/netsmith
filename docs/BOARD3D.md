@@ -142,7 +142,7 @@ raises `schema`, a field added does not):
 
 | Node | `extras.netsmith` |
 |---|---|
-| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
+| `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `layers: [{name, kind, thickness_mm, z_top_mm, z_bottom_mm}]` (the stackup top face down, as `board.layers` of the report; `kind` is `mask`, `copper`, `core` or `prepreg`; added in schema 1), `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
 | `substrate` | `kind: "substrate"`: the laminate, between the outer copper layers. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`: the mask with its openings cut out, two primitives: material `mask-top` or `mask-bottom` over bare laminate and `mask-over-copper` where copper is under it), one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel, and last `silk:top`, `silk:bottom` (`kind: "silk"`, `face`): the silkscreen (the legend Gerber's ink, kept off the mask's openings and the holes), flat 0.015 mm off the mask, material `mark` |
 | one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`, `part_kind`, `category`, `margin_mm`, `margin_limit`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height. `part_kind` is the part's kind as the design names it (`Resistor`, `Header1x2`). `category` is what sort of part it is, from the standard generic it provides (`Connector`, `Resistor`, `NMosfet`...), else from the designator letters its kind states (`R`, `U`...; never `J`: a connector is one by its generic only): `resistor`, `capacitor`, `inductor`, `diode`, `transistor`, `crystal`, `fuse`, `ic`, `connector`, `mechanical` or `other`. `margin_mm` is the part's least margin to a height limit over it on its face (the limit less its height, negative when too tall), and `margin_limit` names that limit; both `null` when no limit is over it or its height is unknown |
 | `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it), `under` (the paths of every part under it on that face); its volume is the mesh |
@@ -153,9 +153,10 @@ A node whose shape has no area has no mesh, and is still there.
 
 - **Materials**, by name, metallic-roughness: `substrate`, `mask-top`, `mask-bottom`, `copper`,
   `body`, `body-unknown`, `metal`, `mark`, `limit`, `limit-violated` (these two see-through,
-  `alphaMode: BLEND`), `finish` (the gold of copper the mask leaves bare) and `mask-over-copper`
-  (the lighter green of the mask over copper). All twelve are always written, in this order, so a
-  material's index does not move when one is added at the end. Their colours are the
+  `alphaMode: BLEND`), `finish` (the gold of copper the mask leaves bare), `mask-over-copper`
+  (the lighter green of the mask over copper) and `prepreg` (the second laminate tone of a
+  section picture: no mesh of the file uses it). All thirteen are always written, in this order,
+  so a material's index does not move when one is added at the end. Their colours are the
   rasterizer's light palette in linear light. No glTF extension is used.
 - **Still schema 1.** The copper groups, the silk nodes, the mask's openings and the two
   materials `finish` and `mask-over-copper` were added; nothing was removed or changed in meaning.
@@ -177,8 +178,10 @@ What it is:
 - **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
   body to its known height (its package shape where the footprint generator made the footprint,
   else a box), the height limits as see-through volumes (in the error colour when a part breaks
-  one) and the pins out of the far face where their length is stated. The copper comes into the
-  same file later (#430), and the view draws each mesh by its material's name.
+  one) and the pins out of the far face where their length is stated. The copper of each net,
+  the solder mask with its openings (a second green over copper), the gold finish of the bare
+  copper and the silkscreen are in the same file, and the view draws each mesh by its
+  material's name in the theme's colours.
 - **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
   by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
   face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
@@ -212,6 +215,36 @@ What it is:
   the camera to its parts (or to its limit, when it names no part) and lights them; the limit it is
   about is lit too, and a broken limit's volume pulses once (not with reduced motion).
 
+Its tools, in the bar under the camera's (each also a command of the palette):
+
+- **Measure** (`M`; `Esc` leaves it). A click sets a point and a second click measures from it:
+  the distance and its parts along x, y and z (`dx`, `dy`, `dz`, in mm with two or three
+  decimals), drawn as a line and a label that stay when the camera moves, listed in the tool's
+  panel, removed one by one or all at once (Clear all, or the command "3D view: Clear the
+  measurements"). A point snaps, in this order, to a pad's centre (from the 2D scene; a pad under
+  a body is hidden by it and is not snapped to), a corner (of a body, or of the board's outline),
+  the board's edge, the top of a body (its exact height) and the board's top or bottom face; the
+  target and its coordinates show while the pointer is over it. With one part picked
+  (Shift+click picks while measuring) the panel and two upright lines give its height above its
+  face and its margin to the height limit above it (the least, where several are), from the
+  file's numbers; a part of unknown height has neither.
+- **Section** (`S` on or off; `X`, `Y`, `Z` across that axis). The scene is cut at a place in mm
+  of [the frame](#the-frame), dragged with the handle or typed; the side nearer the camera is not
+  drawn, as `netsmith render --section` decides. The cut of every closed solid is filled in its
+  colour, and the board's laminate is drawn as its layers, so the cut shows the stackup as bands
+  at their true thickness: the mask, the copper where the file has it, the core and the prepreg
+  in two laminate tones (a copper layer's band is the insulator round its copper, as the render
+  draws it).
+- **Layers apart** (`E`). The stackup pulled apart along z, eased (at once with reduced motion):
+  each layer of `layers` (and each face's silkscreen, where the file has it) as a sheet of the
+  board's outline, with its name, its kind and its thickness beside it. A copper layer is a
+  see-through sheet with its copper, where the file has it; the parts and the height limits lift
+  with the face they stand on. `E` again puts them back. The measure tool waits until they are.
+- **Copy as command** (the `…` menu, or "3D view: Copy as a netsmith render command"). The
+  `netsmith render` command that draws the view: its view (the nearest of the command's, said
+  when the camera is turned from it), its section, the parts picked as `--highlight`, the dark
+  theme and the lens.
+
 What it is not:
 
 - **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
@@ -219,7 +252,8 @@ What it is not:
 - **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
   maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
   generator's own numbers.
-- **Not a check.** The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
+- **Not a check.** The tools measure the file's numbers and change nothing: a measurement, a
+  section or the layers apart are the picture only, and no report or file reads them. The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.
 - **Not on the network.** three.js is in the editor's binary, in a chunk of its own that the page
   loads the first time 3D opens (at most 250 kB gzipped, held by a test in
@@ -243,6 +277,8 @@ netsmith render examples/led.nsm --view top --out top.png     # straight down at
 netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
 netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
 netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
+netsmith render examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
+netsmith render examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
 netsmith render examples/two_boards.nsm --board TwoBoards/led --view iso-bottom --theme dark
 ```
 
@@ -254,7 +290,8 @@ open it): a picture to look at, with the numbers from `board3d --json` to quote.
 | `--view` | `top`, `bottom`, `front`, `back`, `left`, `right`, `iso` (the default) or `iso-bottom`. See the table below. |
 | `--out <file.png>` | Where to write; default `<board>-<view>.png` in the current folder (a board of a system, `System/member`, is `System-member`). The folder must exist. |
 | `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
-| `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are open (no caps). |
+| `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are filled (caps, below). |
+| `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
 | `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>` and `limit:<name>` (a height limit, as `board3d` names it). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets and limits the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
 | `--theme light\|dark` | The palette; default `light`. |
@@ -278,6 +315,22 @@ face, y up toward the outline's top edge):
 `--section` is in the same frame: `z=0` is the top face and `z=-1.6` the bottom face of a 1.6 mm
 board, `x=7` is 7 mm in from the outline's left edge, and `y=3.5` is 3.5 mm up from its bottom
 edge. A layout-file point (from the top-left corner, y down) is `(x, outline height - y)`.
+
+**A section is a drawing of the stackup.** Where the plane cuts a closed solid, the cut face is
+filled (a cap, flat in the plane, in the solid's colour), so the cut reads as a real
+cross-section. The board is drawn for it as the stackup `board3d --json` lists (`board.layers`):
+a slab per layer at its own Z and true thickness, the **solder mask** in green, the **core** and
+the **prepreg** in two laminate tones, and the **copper** of each layer in copper colour where
+the plane crosses it (the pads, tracks, pours and via rings the scene has, less the drilled
+holes; where a layer has no copper at the cut, the insulator it is embedded in: the mask for
+an outer layer, the prepreg for an inner one). A plated barrel is a ring of copper 25 µm thick
+(a picture's figure, not the fab's), so a cut through a hole shows two strips of copper either
+side of it. A part's body, its pins and a height limit's volume are cut solid. No line is drawn
+between the bands. The layers are to scale: at the default size a whole board's 10 µm mask and
+35 µm copper are a fraction of a pixel, so to read the bands, look at a narrow board or use a
+camera framed on the edge (the library's `Camera`, with `netsmith_pcb::mesh::of_scene_section`
+for the meshes); the picture is a view of the scene, and a copper layer's polygons are not
+checked against the Gerbers here.
 
 What is drawn is what the scene has: the board (laminate with its outline, cutouts and drilled
 holes), the solder mask with its openings (dark green over laminate, lighter green over copper),
