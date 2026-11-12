@@ -1,0 +1,5 @@
+# cargo nextest's settings, for the CI jobs that run it (.github/workflows/ci.yml).
+# A test that runs longer than a minute is named as SLOW in the log, once a minute. Nothing ends
+# it: a test should take under about two minutes on CI (AGENTS.md, Tests).
+[profile.default]
+slow-timeout = { period = "60s" }

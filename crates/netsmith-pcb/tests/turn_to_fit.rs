@@ -388,9 +388,16 @@ fn crowded(count: usize, size: (f64, f64)) -> netsmith_pcb::DoesNotFit {
     }
 }
 
+/// `crowded(120, (30.0, 40.0))`, refused once for the tests that read the refusal (when they
+/// run in one process, as `cargo test` runs them; nextest runs each test in a process of its own).
+fn crowded_120() -> &'static netsmith_pcb::DoesNotFit {
+    static ERROR: std::sync::OnceLock<netsmith_pcb::DoesNotFit> = std::sync::OnceLock::new();
+    ERROR.get_or_init(|| crowded(120, (30.0, 40.0)))
+}
+
 #[test]
 fn a_refusal_leads_with_every_part_that_does_not_fit_and_how_far_out() {
-    let error = crowded(120, (30.0, 40.0));
+    let error = crowded_120();
     let message = error.to_string();
     let first = message.lines().next().unwrap();
     // It leads with the parts that are wrong, and says how many.
@@ -449,7 +456,7 @@ fn crowded_both(count: usize, size: (f64, f64)) -> netsmith_pcb::DoesNotFit {
 
 #[test]
 fn the_full_list_has_every_part_with_its_place_and_state() {
-    let error = crowded(120, (30.0, 40.0));
+    let error = crowded_120();
     let report = error.full_report();
     assert_eq!(error.parts.len(), 121);
     // The message first, then one line for each of the 121 parts.
