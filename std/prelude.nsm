@@ -35,3 +35,30 @@ enum Qualification {
     /// The datasheet says the part is qualified to an AEC standard of its kind.
     Aec,
 }
+
+/// A STEP model of a part: a file of the project that `render`, the `.glb`, the editor's 3D
+/// view and the STEP export draw in place of the part's generated shape (ADR 0108). It is the
+/// type of the built-in `.model` of every part. A part's definition states it once for every
+/// use of the part, and a board or its physical file states it for one part:
+/// `.usb.model.file &= "models/usb4105.step"`.
+///
+/// The model is placed at the footprint's origin, on the part's face, turned with the part
+/// and mirrored on the bottom face. `.rx`, `.ry` and `.rz` turn it about x, then y, then z,
+/// and `.x`, `.y` and `.z` then move it, in the frame of the footprint, so that the numbers of
+/// a KiCad footprint's `(model ... (offset (xyz ...)) (rotate (xyz ...)))` line can be copied
+/// in. Each is one value, and an unstated one is zero.
+///
+/// A model is drawn, never measured: the part's `.height` does not come from it. A file that
+/// is not there is a warning, and the part is drawn with its generated shape.
+interface StepModel {
+    /// The STEP file, relative to the file that states it. It must be inside the project.
+    .file: String
+    /// The offset, in the footprint's frame.
+    .x: Length
+    .y: Length
+    .z: Length
+    /// The rotation in degrees about x, then y, then z, applied before the offset.
+    .rx: Number
+    .ry: Number
+    .rz: Number
+}

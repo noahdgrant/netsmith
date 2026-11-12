@@ -13,6 +13,7 @@ pub mod heights;
 pub mod init;
 pub mod layout;
 pub mod libraries;
+pub mod models;
 pub mod no_supplier;
 pub mod order;
 pub mod parity;
@@ -1232,6 +1233,7 @@ fn export(
     constraints::name_sources(&mut design, &designed.constraint_sites, sources);
     constraints::name_offset_sources(&mut design, &designed.offset_sites, sources);
     constraints::name_protrusion_sources(&mut design, &designed.protrusion_sites, sources);
+    constraints::name_model_sources(&mut design, &designed.model_sites, sources);
     let mut sourcing = designed.sourcing;
     let (schematic, project) = match libraries {
         None => (String::new(), String::new()),

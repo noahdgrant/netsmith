@@ -710,7 +710,11 @@ _Avoid_: Model, mesh (a mesh is one piece of it), 3D export
 
 **STEP file**:
 The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_ and `netsmith fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). netsmith reads no STEP file.
-_Avoid_: STEP model (a maker's or KiCad's file of one part), 3D export, MCAD export
+_Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D export, MCAD export
+
+**STEP model**:
+A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), to be drawn in the _Scene_ in place of its _Package shape_ (ADR 0108). It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape.
+_Avoid_: 3D model (KiCad's word, which also names VRML files), user model, CAD model
 
 **Package shape**:
 The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). Another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.

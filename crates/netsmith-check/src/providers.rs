@@ -57,7 +57,7 @@
 //! `.name: Generic { ... }` takes the same statements as any member's block, over the generic's
 //! members only. A path through a use to a member the generic does not declare is an error (the
 //! module rule of ADR 0004), which is what makes the board independent of the pick; the
-//! built-in members (`assembly`, `designator`, `height`, `pin_protrusion`, `place`) are exempt.
+//! built-in members (`assembly`, `designator`, `height`, `pin_protrusion`, `model`, `place`) are exempt.
 //! A module that wants its user to choose a provider declares a value and ties it to its use
 //! (`.connector_mpn: String`, `.connector.mpn == .connector_mpn`), as ADR 0042 does.
 //!
@@ -103,7 +103,7 @@ pub(crate) struct ProviderRef {
 
 /// The members every part has whatever its definition says, which a use of a generic may
 /// name too.
-const BUILT_IN: [&str; 8] = [
+const BUILT_IN: [&str; 9] = [
     "assembly",
     "designator",
     "height",
@@ -111,6 +111,7 @@ const BUILT_IN: [&str; 8] = [
     "temp_max",
     "qualification",
     "pin_protrusion",
+    "model",
     "place",
 ];
 

@@ -33,6 +33,7 @@ mod project;
 mod refresh;
 mod route;
 mod rp2350_parity;
+mod step_model;
 mod stock_note;
 mod timings;
 mod view;

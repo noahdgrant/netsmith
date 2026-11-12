@@ -331,3 +331,52 @@ fn a_label_with_no_text_or_text_too_small_is_refused_with_the_numbers() {
         "{text}"
     );
 }
+
+#[test]
+fn a_part_carries_its_step_model_with_its_offset_and_rotation() {
+    let d = designed(&board(
+        "    .r.model.file &= \"models/r.step\"\n    .r.model.z &= -0.2mm\n    .r.model.rx &= -90\n    .r.model.rz &= 90\n",
+    ))
+    .unwrap();
+    assert_eq!(
+        d.features.models,
+        [netsmith_core::StepModel {
+            path: "r".into(),
+            file: "models/r.step".into(),
+            offset: [0.0, 0.0, -0.2],
+            rotation: [-90.0, 0.0, 90.0],
+            source: String::new(),
+            stated_in: Vec::new(),
+            resolved: None,
+        }]
+    );
+    // The model is drawn, never measured: it gives the part no height.
+    assert!(d.features.heights.is_empty(), "{:?}", d.features.heights);
+}
+
+#[test]
+fn a_placement_of_a_model_with_no_file_is_refused() {
+    assert_eq!(
+        errors_of(&board("    .r.model.rz &= 90\n")),
+        "`r.model.rz` is stated, and `r.model.file` is not, so there is no STEP model to place: name the file with `.r.model.file &= \"models/part.step\"`, or remove the placement"
+    );
+}
+
+#[test]
+fn a_rotation_of_a_model_that_is_a_range_is_refused() {
+    let e = errors_of(&board(
+        "    .r.model.file &= \"models/r.step\"\n    .r.model.rz &= 80..100\n",
+    ));
+    assert!(
+        e.contains("`r.model.rz` is") && e.contains("a rotation is one value in degrees"),
+        "{e}"
+    );
+}
+
+#[test]
+fn an_empty_model_file_is_refused() {
+    assert_eq!(
+        errors_of(&board("    .r.model.file &= \"\"\n")),
+        "`r.model.file` is empty: name the STEP file, relative to the file that states it"
+    );
+}

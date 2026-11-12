@@ -387,6 +387,32 @@ pub struct PinProtrusion {
     pub source: String,
 }
 
+/// The STEP model a part is drawn from in place of its generated shape (`.model`, ADR 0108).
+/// It is drawn, never measured: the part's height does not come from it. A part the design
+/// names no model for is not here.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepModel {
+    /// The part's path in the design.
+    pub path: String,
+    /// The file as the design states it (`.model.file`), relative to the file that states it.
+    pub file: String,
+    /// The offset, in mm along x, y and z of the footprint's frame (`.model.x`, `.y`, `.z`).
+    pub offset: [f64; 3],
+    /// The rotation in degrees about x, then y, then z (`.model.rx`, `.ry`, `.rz`), applied
+    /// before the offset.
+    pub rotation: [f64; 3],
+    /// The lines that state the file (`widget.nsm:12`), separated by commas. Filled by the
+    /// caller that knows the source files; empty otherwise.
+    pub source: String,
+    /// The file of each statement of the file, as it was loaded (`src/usb.nsm`), for a caller
+    /// that finds the model relative to it. Filled by the same caller; empty otherwise.
+    pub stated_in: Vec<String>,
+    /// The file on disk, inside the project. Filled by the caller that knows where the files
+    /// that state it are; `None` otherwise, and when the file is not there, so that the part
+    /// is drawn with its generated shape.
+    pub resolved: Option<std::path::PathBuf>,
+}
+
 /// A line of silkscreen text: a `Label` part. The part's value is the text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
@@ -558,6 +584,8 @@ pub struct Features {
     /// How far the pins of through-hole parts protrude, as the design states it, by path
     /// (ADR 0045 section 15).
     pub protrusions: Vec<PinProtrusion>,
+    /// The STEP models parts are drawn from, by path (ADR 0108).
+    pub models: Vec<StepModel>,
     /// The paths of the parts the board house does not assemble (`.assembly` is `hand` or
     /// `none`), so fitted by hand or not at all. Filled by the caller that knows who
     /// assembles each part; empty otherwise, which counts every part as assembled by the

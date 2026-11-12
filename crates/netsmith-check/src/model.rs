@@ -1757,6 +1757,15 @@ impl Model {
         owner.kind == InstKind::Interface && owner.type_name == "Place" && owner.def.is_none()
     }
 
+    /// Whether an instance is the built-in `.model` of a part (ADR 0108): its `StepModel`.
+    pub fn is_step_model(&self, inst: InstId) -> bool {
+        let i = self.instance(inst);
+        i.name == "model"
+            && i.type_name == "StepModel"
+            && i.parent
+                .is_some_and(|p| self.instance(p).kind == InstKind::Part)
+    }
+
     /// The part, module or board that an interface belongs to, looking through any
     /// interfaces it is nested in.
     pub fn owner_of(&self, inst: InstId) -> Option<InstId> {

@@ -316,6 +316,7 @@ fn run_fab(
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         save_placed,
+        models: Some(netsmith::models::Places::of(&target)),
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -554,6 +555,7 @@ fn run_order(
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         save_placed: false,
+        models: Some(netsmith::models::Places::of(&target)),
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

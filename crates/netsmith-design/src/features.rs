@@ -8,7 +8,7 @@
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     Cutout, Features, Keepout, Label, Offset, OffsetEnd, Outline, PartHeight, PinProtrusion,
-    PlaceBound, PlaceField, Placement, Pour,
+    PlaceBound, PlaceField, Placement, Pour, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -226,6 +226,86 @@ pub(crate) fn protrusions(
             source: String::new(),
         });
         sites.push(w.sites);
+    }
+    (found, sites)
+}
+
+/// The STEP models the design's parts are drawn from (`.model`, ADR 0108), by path, and the
+/// statements that state each file. The offset and the rotation are each one value, zero when
+/// unstated. A part that states an offset or a rotation and no file is an error, as is an
+/// empty file name: there is nothing to place.
+pub(crate) fn models(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (Vec<StepModel>, Vec<Vec<(SourceId, Span)>>) {
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let (mut found, mut sites) = (Vec::new(), Vec::new());
+    for (path, id) in parts {
+        netsmith_core::job::checkpoint();
+        let Some(Member::Inst(m)) = model.member(id, "model") else {
+            continue;
+        };
+        let Some(Member::Field(file_field)) = model.member(m, "file") else {
+            continue;
+        };
+        const PLACEMENT: [&str; 6] = ["x", "y", "z", "rx", "ry", "rz"];
+        let file = match &model.field(file_field).domain {
+            Domain::Text(file) => file.clone(),
+            _ => {
+                let stated: Vec<String> = PLACEMENT
+                    .iter()
+                    .filter(|n| !matches!(domain(model, m, n), None | Some(Domain::Unset)))
+                    .map(|n| format!("`{path}.model.{n}`"))
+                    .collect();
+                if !stated.is_empty() {
+                    errors.push(format!(
+                        "{} {} stated, and `{path}.model.file` is not, so there is no STEP model to place: name the file with `.{path}.model.file &= \"models/part.step\"`, or remove the placement",
+                        stated.join(", "),
+                        if stated.len() == 1 { "is" } else { "are" }
+                    ));
+                }
+                continue;
+            }
+        };
+        if file.trim().is_empty() {
+            errors.push(format!(
+                "`{path}.model.file` is empty: name the STEP file, relative to the file that states it"
+            ));
+            continue;
+        }
+        let mut offset = [0.0; 3];
+        for (slot, name) in offset.iter_mut().zip(["x", "y", "z"]) {
+            *slot = exact(model, m, name, errors).unwrap_or(0.0);
+        }
+        let mut rotation = [0.0; 3];
+        for (slot, name) in rotation.iter_mut().zip(["rx", "ry", "rz"]) {
+            *slot = match domain(model, m, name) {
+                Some(Domain::Quantity(q)) if (q.hi() - q.lo()).abs() < 1e-12 => q.lo(),
+                Some(Domain::Quantity(q)) => {
+                    errors.push(format!(
+                        "`{path}.model.{name}` is {q}, a range, and a rotation is one value in degrees: say it with `&= {}`",
+                        q.lo()
+                    ));
+                    0.0
+                }
+                _ => 0.0,
+            };
+        }
+        found.push(StepModel {
+            path,
+            file,
+            offset,
+            rotation,
+            source: String::new(),
+            stated_in: Vec::new(),
+            resolved: None,
+        });
+        sites.push(model.field(file_field).narrowed_at.clone());
     }
     (found, sites)
 }
@@ -666,6 +746,7 @@ pub(crate) fn expand_banks(
     place_sites: &mut Sites,
     offset_sites: &mut Vec<(SourceId, Span)>,
     protrusion_sites: &mut Vec<Vec<(SourceId, Span)>>,
+    model_sites: &mut Vec<Vec<(SourceId, Span)>>,
     banks: &BTreeMap<String, usize>,
     notes: &mut Vec<String>,
 ) {
@@ -765,6 +846,16 @@ pub(crate) fn expand_banks(
                 .protrusions
                 .push(PinProtrusion { path, ..p.clone() });
             protrusion_sites.push(site.clone());
+        }
+    }
+    let (old, old_sites) = (
+        std::mem::take(&mut features.models),
+        std::mem::take(model_sites),
+    );
+    for (m, site) in old.into_iter().zip(old_sites) {
+        for path in members(&m.path, banks) {
+            features.models.push(StepModel { path, ..m.clone() });
+            model_sites.push(site.clone());
         }
     }
 }
