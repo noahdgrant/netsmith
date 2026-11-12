@@ -1845,6 +1845,10 @@ struct Router<'a> {
     ends: Vec<(Vec<Spot>, Vec<Spot>)>,
     /// The pads at each end of a line that a via may stand in.
     in_pads: Vec<(Option<InPad>, Option<InPad>)>,
+    /// The boxes round the pads of the parts at each end of a line, that a track may be necked
+    /// down near ([`Board::neck_box`]), the second `None` for a line to a plane. Asked for at
+    /// every cell of a window, so kept.
+    necks: Vec<[Option<Rect>; 2]>,
     /// How deep in a fine-pitch grid of pads the deeper end of each line is ([`pad_depth`]).
     depth: Vec<f64>,
     /// Whether lines left over are negotiated for and given a chain of rip-ups, and what the
@@ -1910,6 +1914,17 @@ impl<'a> Router<'a> {
                 (in_pad(board, &l.from, l.from_at, &grid), to)
             })
             .collect();
+        let necks = lines
+            .iter()
+            .map(|l| {
+                [
+                    board.neck_box(&l.from.refdes),
+                    (!l.to_plane)
+                        .then(|| board.neck_box(&l.to.refdes))
+                        .flatten(),
+                ]
+            })
+            .collect();
         let depth = lines
             .iter()
             .map(|l| {
@@ -1940,6 +1955,7 @@ impl<'a> Router<'a> {
             nets,
             ends,
             in_pads,
+            necks,
             depth,
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
@@ -2114,13 +2130,10 @@ impl<'a> Router<'a> {
 
     /// Whether a point is within `reach` of the pads of a part an end of the line is on.
     fn near_end_by(&self, line: usize, p: Pt, reach: f64) -> bool {
-        let l = &self.lines[line];
-        let near = |refdes: &str| {
-            self.board
-                .neck_box(refdes)
-                .is_some_and(|b| b.expanded(reach).contains(&Rect::new(p, p)))
-        };
-        near(&l.from.refdes) || (!l.to_plane && near(&l.to.refdes))
+        self.necks[line]
+            .iter()
+            .flatten()
+            .any(|b| b.expanded(reach).contains(&Rect::new(p, p)))
     }
 
     /// Whether a point is within [`NECK_REACH`] of the pads of a part an end of the line is on.
