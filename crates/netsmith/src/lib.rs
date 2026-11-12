@@ -9,6 +9,7 @@ pub mod dxf;
 pub mod editor;
 pub mod fab;
 mod fab_environment;
+pub mod findings;
 pub mod heights;
 pub mod init;
 pub mod layout;

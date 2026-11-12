@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `render` places a board the same way and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera; the cut faces are filled as a section of the stackup, each layer at its true thickness in its own colour, unless `--no-caps` leaves them open), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`; `view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, Driving a running editor) with the names of `render`, so that an agent changes the verb to switch between the two: `--port` (default 8787, the editor's), `--board`, `--view`, `--section` (or `none`), `--highlight` and `--select` (a part, `net:<name>` or `limit:<name>`, comma-separated or repeated; `none` lights or selects nothing; the editor's selection holds parts or one net, so `--select` takes no limit, and the two are not given together), `--xray` or `--no-xray`, `--ortho` or `--perspective`, and the editor's own tools: `--colour-by` (what the bodies are coloured by), `--height-preview` (a height in mm from 0.1 to 50, `on` or `off`) and `--layers-apart` or `--no-layers-apart` (the stackup pulled apart); with none of them it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results; `--picture <file.png>` saves what the page's canvas shows after the change (and opens the 3D view if it is not on screen); the page driven is the one focused last; a change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open; `--theme` is refused, since the theme is the person's own setting for the whole editor (the state reports it); nothing changes the design or a file; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command; `catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked] [--format text|json] [--notes all|summary|none]\n       netsmith check [<file.nsm>] [--strict] [--format text|json] [--notes all|summary|none]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb] [--quiet] [--format text|json] [--notes all|summary|none]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values] [--format text|json]\n       netsmith parity <board.kicad_pcb> [--table <placements.toml>] [--map <designators.toml>] [--svg <overlay.svg>] [--format text|json]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -10,6 +10,10 @@ pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name
 pub const COMMANDS: &[(&str, &str)] = &[
     ("init", "scaffold a project in the current directory"),
     ("build", "write a KiCad schematic of the boards"),
+    (
+        "check",
+        "check and solve the boards, write nothing, print the findings only",
+    ),
     (
         "fab",
         "make the fab package (Gerbers, drill, bom.csv, cpl.csv, fab-notes.txt, the 3D scene as .glb) or an order",
@@ -33,6 +37,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     ("compare", "are two designs the same circuit?"),
     (
+        "parity",
+        "compare a fab board with the board of a port's original, part by part",
+    ),
+    (
         "kicad-libs",
         "print the [[library]] stanzas for KiCad's library tables",
     ),
@@ -46,8 +54,62 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
 ];
 
+/// What `netsmith <command> --help` says after the command's usage lines: what each flag does
+/// (#455 moved this out of `netsmith --help`, which lists the commands and their flags).
+pub const PROSE: &[(&str, &str)] = &[
+    (
+        "build",
+        "With no file, `build` acts on the project's boards (see netsmith.toml).\n\n`--locked` ends the run with an error, before anything is written, when the parts it picks differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), or when the picks file beside it (`<file>.picks.toml`, #462) names a part that is gone.\n\n`--strict` makes a guideline finding an error for this run.\n\n`--format json` prints one JSON document on stdout and nothing else there: the boards and the folders written, and the findings, each with `severity` (`error`, `warning` or `note`), `code` (the stage that found it, or `note.<cause>`), `board`, `path` (the member path), `file`, `line`, `column` and `message`, and the count of the notes for each cause.\n\n`--notes summary` prints a count of a board's notes for each cause (`not_stated`, `part_model`, `unjudged`, `circular`, `supply`, `pick`, `track`, `other`) in place of each note, `--notes none` prints none, and `--notes all`, the default, prints each. With `--format json` the notes are findings only with `all`; their counts are always there.",
+    ),
+    (
+        "check",
+        "`check` checks and solves the boards as `build` does and writes nothing: no schematic, no pick lock, no pin file. It prints the findings only (errors, warnings and notes, as `--notes` says), not the bill of materials. The exit code is 0 when every board builds, 1 when one does not, and 2 when the command cannot run (a file that cannot be read, no boards). With no file it acts on the project's boards. `--strict`, `--format` and `--notes` are those of `build`.",
+    ),
+    (
+        "fab",
+        "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`--locked` is that of `build`, and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`).\n\n`--pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file; `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project).\n\n`fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed).\n\n`--order <name>` makes one of the project's orders, and `--order` alone lists them; `--order <name> --locked` applies `--locked` to each source file that builds a board of the order.\n\n`--quiet` prints the result of each board and the findings, not the stages and the router's passes.\n\n`--format` and `--notes` are those of `build`; with `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`.",
+    ),
+    (
+        "lock",
+        "`lock --update` solves each board without the pick lock's holding (the picks file still holds its parts) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist, or when the picks file names a part that is gone (for CI). Both exit 2 when they cannot tell: the lock or the picks file is not readable, or the design does not build.",
+    ),
+    (
+        "editor",
+        "With no file, `editor` acts on the project's boards (see netsmith.toml). It serves on 127.0.0.1 and prints the address to open.",
+    ),
+    (
+        "board3d",
+        "`board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both. A file of several boards needs `--board`.",
+    ),
+    (
+        "render",
+        "`render` places a board as `board3d` does and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera; the cut faces are filled as a section of the stackup, each layer at its true thickness in its own colour, unless `--no-caps` leaves them open), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`.",
+    ),
+    (
+        "view",
+        "`view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, Driving a running editor) with the names of `render`, so that an agent changes the verb to switch between the two: `--port` (default 8787, the editor's), `--board`, `--view`, `--section` (or `none`), `--highlight` and `--select` (a part, `net:<name>` or `limit:<name>`, comma-separated or repeated; `none` lights or selects nothing; the editor's selection holds parts or one net, so `--select` takes no limit, and the two are not given together), `--xray` or `--no-xray`, `--ortho` or `--perspective`, and the editor's own tools: `--colour-by` (what the bodies are coloured by), `--height-preview` (a height in mm from 0.1 to 50, `on` or `off`) and `--layers-apart` or `--no-layers-apart` (the stackup pulled apart); with none of them it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results; `--picture <file.png>` saves what the page's canvas shows after the change (and opens the 3D view if it is not on screen); the page driven is the one focused last; a change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open; `--theme` is refused, since the theme is the person's own setting for the whole editor (the state reports it); nothing changes the design or a file.",
+    ),
+    (
+        "compare",
+        "`compare` checks two designs against each other by connectivity (ADR 0017). Each of `<a>` and `<b>` is a `.kicad_sch`, a `.kicad_pcb`, a KiCad netlist (XML) or a `.nsm` file, which is built as `build` does; `--board` picks the board of a `.nsm` file that has several. `--map` fixes pairs of designators from a file, `--by-refdes` takes equal designators as the same part, `--ignore-unconnected` leaves out nets of one pin and `--loose-values` reads values as numbers. The exit code is 0 for a match, 1 for a difference and 2 for a mistake or a comparison that could not be decided. `--format json` prints the result as one JSON document: `match`, the pairs of designators and of net names, and each difference.",
+    ),
+    (
+        "parity",
+        "`parity` compares a board that `fab` wrote (`<board.kicad_pcb>`) with the original of a port, part by part: the place, the rotation, the face and the pads of each part the table names. `--table` is the table of the original's parts (default `reference/placements.toml` of the project), `--map` the map of the original's designators to the fab board's (default `reference/designators.toml`), and `--svg` writes an overlay of the two boards. The exit code is 1 when a part the table marks `must_match` fails, 0 when none does and 2 when a file cannot be read. `--format json` prints the report as one JSON document.",
+    ),
+    (
+        "dxf",
+        "`dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048).",
+    ),
+    (
+        "catalog",
+        "`catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command. `catalog age` lists the rows whose date is older than `--days` days. `catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing.",
+    ),
+];
+
 /// What `netsmith --help` prints: the commands, one line each, then every command with its
-/// flags. Printed to stdout; the exit status is 0.
+/// flags. Printed to stdout; the exit status is 0. What each flag does is in
+/// [`command_help`].
 pub fn help() -> String {
     let mut text = format!(
         "netsmith {}: electronics as code\n\ncommands:\n",
@@ -59,7 +121,37 @@ pub fn help() -> String {
     text.push_str("  help        print this list (also --help, -h; `<command> --help` too)\n");
     text.push_str("  --version   print the version (also -V, version)\n\n");
     text.push_str(USAGE);
-    text.push('\n');
+    text.push_str("\n\n`netsmith <command> --help` says what the flags of a command do.\n");
+    text
+}
+
+/// What `netsmith <command> --help` prints: the command's line of [`COMMANDS`], its usage lines
+/// and what its flags do ([`PROSE`]).
+pub fn command_help(command: &str) -> String {
+    let what = COMMANDS
+        .iter()
+        .find(|(name, _)| *name == command)
+        .map_or("", |(_, what)| *what);
+    let mut text = format!("netsmith {command}: {what}\n\n");
+    let lines: Vec<&str> = USAGE
+        .trim_start_matches("usage: ")
+        .split('\n')
+        .map(str::trim)
+        .filter(|l| {
+            l.starts_with(&format!("netsmith {command} ")) || *l == format!("netsmith {command}")
+        })
+        .collect();
+    for (i, line) in lines.iter().enumerate() {
+        text.push_str(if i == 0 { "usage: " } else { "       " });
+        text.push_str(line);
+        text.push('\n');
+    }
+    if let Some((_, prose)) = PROSE.iter().find(|(name, _)| *name == command) {
+        text.push('\n');
+        text.push_str(prose);
+        text.push('\n');
+    }
+    text.push_str("\n`netsmith --help` lists every command.\n");
     text
 }
 
@@ -105,8 +197,9 @@ pub enum OrderRequest {
 pub enum Command {
     /// `--version`, `-V` or `version`: print the version this binary was built as.
     Version,
-    /// `--help`, `-h`, `help` or `<command> --help`: print the commands and flags.
-    Help,
+    /// `--help`, `-h` or `help`: print the commands and their flags. `<command> --help` (or
+    /// `help <command>`) prints what the flags of that command do.
+    Help(Option<String>),
     /// Scaffold a project in the current directory, named `name` or after the directory.
     Init { name: Option<String> },
     /// `file` is `None` to act on the project's top-level files; `out` is `None` for the
@@ -119,6 +212,25 @@ pub enum Command {
         /// `--locked`: neither the pick lock nor the pin file (ADR 0101) may change; a run that
         /// would change either stops before it writes anything.
         locked: bool,
+        /// `--format`: text for a person, or one JSON document (#455).
+        format: crate::findings::Format,
+        /// `--notes`: each note, a count for each cause, or none (#455).
+        notes: crate::findings::NotesMode,
+    },
+    /// `check`: build without writing anything, and print the findings only (#455).
+    Check {
+        file: Option<String>,
+        strict: bool,
+        format: crate::findings::Format,
+        notes: crate::findings::NotesMode,
+    },
+    /// `parity`: compare a board `fab` wrote with the board of a port's original (#455).
+    Parity {
+        board: PathBuf,
+        table: Option<PathBuf>,
+        map: Option<PathBuf>,
+        svg: Option<PathBuf>,
+        format: crate::findings::Format,
     },
     Fab {
         file: Option<String>,
@@ -149,6 +261,10 @@ pub enum Command {
         no_glb: bool,
         /// Make a named order of the project, or list them, instead of every board.
         order: Option<OrderRequest>,
+        /// `--quiet`: the result of each board and the findings, not the stages (#455).
+        quiet: bool,
+        format: crate::findings::Format,
+        notes: crate::findings::NotesMode,
     },
     /// Refresh or check the pick lock of `file`, or of each top-level file of the project.
     Lock {
@@ -223,6 +339,7 @@ pub enum Command {
         by_refdes: bool,
         ignore_unconnected: bool,
         loose_values: bool,
+        format: crate::findings::Format,
     },
 }
 
@@ -234,10 +351,15 @@ where
     let args: Vec<String> = args.into_iter().collect();
     let command = args.first().ok_or_else(|| USAGE.to_string())?.clone();
     let known = COMMANDS.iter().any(|(name, _)| *name == command);
-    if ["--help", "-h", "help"].contains(&command.as_str())
-        || (known && args[1..].iter().any(|a| a == "--help" || a == "-h"))
-    {
-        return Ok(Command::Help);
+    let is_command = |name: &str| COMMANDS.iter().any(|(n, _)| *n == name);
+    if ["--help", "-h", "help"].contains(&command.as_str()) {
+        // `help <command>` is that command's help.
+        return Ok(Command::Help(
+            args.get(1).filter(|a| is_command(a)).cloned(),
+        ));
+    }
+    if known && args[1..].iter().any(|a| a == "--help" || a == "-h") {
+        return Ok(Command::Help(Some(command)));
     }
     let mut args = args.into_iter().skip(1).peekable();
     if ["--version", "-V", "version"].contains(&command.as_str()) {
@@ -277,6 +399,10 @@ where
     }
 
     let mut files: Vec<String> = Vec::new();
+    let mut format = crate::findings::Format::Text;
+    let mut notes = crate::findings::NotesMode::All;
+    let mut quiet = false;
+    let (mut table, mut svg): (Option<PathBuf>, Option<PathBuf>) = (None, None);
     let mut board: Option<String> = None;
     let mut map: Option<PathBuf> = None;
     let (mut by_refdes, mut ignore_unconnected, mut loose_values) = (false, false, false);
@@ -464,7 +590,7 @@ where
             ("fab", "--allow-drc-violations") => allow_drc_violations = true,
             ("fab", "--cross-check") => cross_check = true,
             ("fab", "--no-glb") => no_glb = true,
-            ("build" | "fab", "--strict") => strict = true,
+            ("build" | "check" | "fab", "--strict") => strict = true,
             ("build" | "fab", "--locked") => locked = true,
             ("lock", "--update" | "--check") => {
                 let asked = if arg == "--update" {
@@ -523,10 +649,43 @@ where
                     args.next().ok_or("--glb needs a file to write")?,
                 ));
             }
+            ("build" | "check" | "fab" | "compare" | "parity", "--format") => {
+                let given = args.next();
+                format = given
+                    .as_deref()
+                    .and_then(crate::findings::Format::parse)
+                    .ok_or_else(|| {
+                        format!(
+                            "--format takes `text` or `json`, not {}\n{USAGE}",
+                            given.map_or("nothing".to_string(), |w| format!("`{w}`"))
+                        )
+                    })?;
+            }
+            ("build" | "check" | "fab", "--notes") => {
+                let given = args.next();
+                notes = given
+                    .as_deref()
+                    .and_then(crate::findings::NotesMode::parse)
+                    .ok_or_else(|| {
+                        format!(
+                            "--notes takes `all` (each note), `summary` (a count for each cause) or `none`, not {}\n{USAGE}",
+                            given.map_or("nothing".to_string(), |w| format!("`{w}`"))
+                        )
+                    })?;
+            }
+            ("fab", "--quiet") => quiet = true,
+            ("parity", "--table") => {
+                table = Some(PathBuf::from(args.next().ok_or("--table needs a file")?));
+            }
+            ("parity", "--svg") => {
+                svg = Some(PathBuf::from(
+                    args.next().ok_or("--svg needs a file to write")?,
+                ));
+            }
             ("compare" | "board3d" | "render" | "view", "--board") => {
                 board = Some(args.next().ok_or("--board needs a board name")?);
             }
-            ("compare", "--map") => {
+            ("compare" | "parity", "--map") => {
                 map = Some(PathBuf::from(args.next().ok_or("--map needs a file")?));
             }
             ("compare", "--by-refdes") => by_refdes = true,
@@ -563,6 +722,19 @@ where
             by_refdes,
             ignore_unconnected,
             loose_values,
+            format,
+        });
+    }
+    if command == "parity" {
+        let board = file.map(PathBuf::from).ok_or_else(|| {
+            format!("`parity` takes the board `fab` wrote (<board.kicad_pcb>)\n{USAGE}")
+        })?;
+        return Ok(Command::Parity {
+            board,
+            table,
+            map,
+            svg,
+            format,
         });
     }
     if command == "lock" {
@@ -622,6 +794,14 @@ where
             out,
             strict,
             locked,
+            format,
+            notes,
+        },
+        "check" => Command::Check {
+            file,
+            strict,
+            format,
+            notes,
         },
         "board3d" => Command::Board3d {
             file,
@@ -641,6 +821,9 @@ where
             pins_locked,
             no_glb,
             order,
+            quiet,
+            format,
+            notes,
         },
         _ => Command::Editor { file, port },
     })
@@ -907,7 +1090,7 @@ mod tests {
             &["dxf", "-h"],
             &["kicad-libs", "--help"],
         ] {
-            assert_eq!(parse(args), Ok(Command::Help), "{args:?}");
+            assert!(matches!(parse(args), Ok(Command::Help(_))), "{args:?}");
         }
     }
 
@@ -925,7 +1108,11 @@ mod tests {
         for (name, _) in COMMANDS {
             assert!(text.contains(&format!("  {name} ")), "{name}: {text}");
             // The command is accepted, not rejected as unknown: its own `--help` is help.
-            assert_eq!(parse(&[name, "--help"]), Ok(Command::Help), "{name}");
+            assert_eq!(
+                parse(&[name, "--help"]),
+                Ok(Command::Help(Some(name.to_string()))),
+                "{name}"
+            );
         }
         for flag in [
             "--version",
@@ -1117,6 +1304,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: None,
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
@@ -1138,6 +1328,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: None,
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         assert!(parse(&["build", "--cross-check"]).is_err());
@@ -1159,6 +1352,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: None,
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         let e = parse(&["fab", "--route-timeout", "soon"]).unwrap_err();
@@ -1185,6 +1381,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: Some(order),
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         };
         assert_eq!(
@@ -1206,6 +1405,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: Some(OrderRequest::List),
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         assert_eq!(
@@ -1231,6 +1433,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: Some(OrderRequest::Make("d".into())),
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         let e = parse(&["fab", "a.nsm", "--order", "d"]).unwrap_err();
@@ -1247,6 +1452,8 @@ mod tests {
                 out: None,
                 strict: true,
                 locked: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         let Ok(Command::Fab { strict, .. }) = parse(&["fab", "a.nsm", "--strict"]) else {
@@ -1355,6 +1562,8 @@ mod tests {
                 out: None,
                 strict: false,
                 locked: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
     }
@@ -1366,6 +1575,8 @@ mod tests {
             out: Some("x".into()),
             strict: false,
             locked: false,
+            format: crate::findings::Format::Text,
+            notes: crate::findings::NotesMode::All,
         });
         assert_eq!(parse(&["build", "a.nsm", "--out", "x"]), expected);
         assert_eq!(parse(&["build", "--out", "x", "a.nsm"]), expected);
@@ -1430,6 +1641,8 @@ mod tests {
                 out: None,
                 strict: false,
                 locked: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         assert_eq!(
@@ -1446,6 +1659,9 @@ mod tests {
                 pins_locked: None,
                 no_glb: false,
                 order: None,
+                quiet: false,
+                format: crate::findings::Format::Text,
+                notes: crate::findings::NotesMode::All,
             })
         );
         assert_eq!(
@@ -1469,6 +1685,7 @@ mod tests {
                 by_refdes: false,
                 ignore_unconnected: false,
                 loose_values: false,
+                format: crate::findings::Format::Text,
             })
         );
         assert_eq!(
@@ -1491,6 +1708,7 @@ mod tests {
                 by_refdes: false,
                 ignore_unconnected: true,
                 loose_values: true,
+                format: crate::findings::Format::Text,
             })
         );
     }
@@ -1673,6 +1891,9 @@ mod tests {
     fn view_is_listed_and_has_help() {
         assert!(COMMANDS.iter().any(|(name, _)| *name == "view"));
         assert!(USAGE.contains("netsmith view [--port <n>]"));
-        assert_eq!(parse(&["view", "--help"]), Ok(Command::Help));
+        assert_eq!(
+            parse(&["view", "--help"]),
+            Ok(Command::Help(Some("view".to_string())))
+        );
     }
 }

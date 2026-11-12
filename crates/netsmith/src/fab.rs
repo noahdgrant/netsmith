@@ -304,14 +304,52 @@ pub fn fab_with_options(
     kicad: Option<&dyn KicadCli>,
     options: &FabOptions,
 ) -> Result<Vec<Fabricated>, String> {
+    fab_detailed(name, text, loader, out, catalogs, libraries, kicad, options).map_err(|f| f.text)
+}
+
+/// Why a fab run stopped: the text the command line prints, and the problems of the build when
+/// it was the build that stopped it (for `--format json`, #455). A failure of a later step (the
+/// placer, the router, the design rules check, a file) has the text alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FabFailure {
+    pub text: String,
+    pub problems: Vec<crate::Problem>,
+}
+
+impl From<String> for FabFailure {
+    fn from(text: String) -> Self {
+        FabFailure {
+            text,
+            problems: Vec::new(),
+        }
+    }
+}
+
+/// [`fab_with_options`], with the problems of a build that stops it kept as data.
+#[allow(clippy::too_many_arguments)]
+pub fn fab_detailed(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    out: &Path,
+    catalogs: &Catalogs,
+    libraries: &Libraries,
+    kicad: Option<&dyn KicadCli>,
+    options: &FabOptions,
+) -> Result<Vec<Fabricated>, FabFailure> {
     let say = |message: String| {
         if let Some(progress) = options.progress {
             progress(&message);
         }
     };
     let mut made = Vec::new();
-    let outcome = outcome_with(name, text, loader, catalogs, Some(libraries))
-        .map_err(|problems| render_problems(&problems))?;
+    let outcome =
+        outcome_with(name, text, loader, catalogs, Some(libraries)).map_err(|problems| {
+            FabFailure {
+                text: render_problems(&problems),
+                problems,
+            }
+        })?;
     if let Some(using) = &options.lock {
         let settled = crate::pick_lock::settle(using, catalogs.pick_lock(), &outcome.lock)
             .map_err(|e| format!("{e}\n"))?;
@@ -344,7 +382,7 @@ pub fn fab_with_options(
         }
     }
     if !collisions.is_empty() {
-        return Err(collisions);
+        return Err(collisions.into());
     }
     for built in &built_boards {
         if let Some(only) = &options.only
