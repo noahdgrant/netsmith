@@ -35,6 +35,8 @@ struct TabPackage {
     /// body's edges.
     body: (f64, f64),
     stub_inset: f64,
+    /// The sourced dimensions of the shape drawn in 3D.
+    shape: &'static TabShape,
 }
 
 /// DPAK (PG-TO252).
@@ -49,6 +51,7 @@ const TO252: TabPackage = TabPackage {
     paste: (3.05, 2.75),
     body: (6.22, 6.5),
     stub_inset: 0.55,
+    shape: &DPAK_SHAPE,
 };
 
 /// D2PAK (PG-TO263): the body is 9.25 mm along the leads and 10 mm across.
@@ -63,6 +66,7 @@ const TO263: TabPackage = TabPackage {
     paste: (4.55, 5.25),
     body: (9.25, 10.0),
     stub_inset: 0.0,
+    shape: &D2PAK_SHAPE,
 };
 
 /// A variant of a tab package: the leads in a column at the left as (number, y), the
@@ -374,6 +378,145 @@ fn sot89_3_package() -> Package {
     }
 }
 
+/// The package dimensions of DPAK (TO-252) and D2PAK (TO-263) with two or three lead pads, for the
+/// shape drawn in 3D, in mm. The 3D view reads these and not the land pattern above, whose
+/// lead pads are wider than the leads (ADR 0043). Each row's nominal is **Alpha & Omega's
+/// "TO252 PACKAGE OUTLINE" (PO-00009, version W) and "TO263(D2PAK) PACKAGE OUTLINE" (PO-00005,
+/// version N)**, the one maker whose table prints a nominal for each figure. Both refer to JEDEC
+/// TO-252 (AA) and TO-263 AB; JEDEC's own drawings were not read. Each is checked against the
+/// ranges of **onsemi's DPAK-3 case 369C, issue L (document 98AON10527D, 24 August 2026)** and
+/// **D2PAK-3 case 418AJ, issue F (98AON56370E, 11 March 2021)**, **Vishay's D-PAK (TO-252AA) "M"
+/// (document 95627, 24 June 2016)** and **D2PAK 2L (TO-263AB 2L)**, and **Diodes Incorporated's
+/// TO252-5 (Rev. 2017-04-04) and TO263AB (D2PAK) (2016-11-15)** package outlines. The symbols are
+/// AOS's, with the others' in brackets where they differ.
+///
+/// DPAK:
+///
+/// | Symbol | Meaning | AOS | onsemi range | Vishay range | Diodes range |
+/// |---|---|---|---|---|---|
+/// | D | body length, along the leads | 6.096 | 5.97 to 6.22 | 5.97 to 6.22 | 6.00 to 6.20 |
+/// | E | body width, across | 6.604 | 6.35 to 6.73 | 6.35 to 6.73 | 6.45 to 6.70 |
+/// | e | pitch of the leads | 2.286 | 2.29 | 2.29 | not given (1.27, TO252-5) |
+/// | b | width of a lead | 0.762 | 0.63 to 0.89 | 0.64 to 0.89 | 0.51 to 0.71 (TO252-5's finer leads) |
+/// | L1 | how far a lead reaches beyond the body (a reference figure) | 2.921 | 2.90 | 2.74 | 2.74 |
+/// | L | the foot of a lead | 1.520 | 1.40 to 1.78 | 1.40 to 1.78 | 1.40 to 1.78 |
+/// | H | overall, tab tip to lead tips | 10.033 | 9.40 to 10.41 | 9.40 to 10.41 | 9.40 to 10.41 |
+/// | L3 | how far the tab reaches beyond the body | 1.016 | 0.89 to 1.27 | 0.89 to 1.27 | 0.88 to 1.27 |
+/// | b2 (b3) | width of the tab beyond the body | 5.340 | 4.57 to 5.46 | 4.95 to 5.46 | 5.21 to 5.46 |
+/// | D1 | length of the exposed tab under the body | 5.249 | not given | at least 5.21 | at least 5.21 |
+/// | E1 | width of the exposed tab under the body | 4.826 | not given | at least 4.32 | at least 4.32 |
+///
+/// D2PAK:
+///
+/// | Symbol | Meaning | AOS | onsemi range | Vishay range | Diodes range |
+/// |---|---|---|---|---|---|
+/// | D | body length, along the leads | 9.14 | 8.38 to 9.65 | 8.51 to 9.65 | 8.39 to 9.65 |
+/// | E | body width, across | 10.03 | 9.65 to 10.67 | 9.65 to 10.67 | 9.66 to 10.66 |
+/// | e | pitch of the leads | 2.54 | 2.54 | 2.54 | 2.54 |
+/// | b | width of a lead | 0.81 | 0.51 to 0.99 | 0.51 to 0.99 | 0.51 to 0.99 |
+/// | L | the foot of a lead | 2.54 | 1.78 to 2.79 | 1.78 to 2.79 | 1.78 to 2.79 |
+/// | H | overall, tab tip to lead tips | 15.24 | 14.60 to 15.88 | 14.61 to 15.88 | 14.61 to 15.87 |
+/// | L1 | how far the tab reaches beyond the body | 1.27 | at most 1.68 | at most 1.65 | at most 1.67 |
+/// | L4 | how far a lead reaches beyond the body | not given | not given | 4.78 to 5.28 | not given |
+/// | E1 | width of the tab | 8.00 | at least 6.22 | 7.90 to 8.80 | 6.23 to 8.23 |
+/// | D1 | length of the exposed tab under the body | 8.00 | at least 6.60 | 6.86 to 8.00 | 6.55 to 6.95 |
+///
+/// Three figures are derived, not read. A D2PAK **lead's reach** beyond the body is H - D - L1 =
+/// 4.83 mm (inside Vishay's L4). The D2PAK's **exposed tab length D1** is 6.90 mm: AOS's 8.00 mm
+/// is outside Diodes' range, and 6.90 mm, the middle of 6.86 to 6.95 mm, is the one stretch
+/// that every maker's range holds. The DPAK's reach 2.921 mm is AOS's own reference figure, and
+/// is also H - D - L3.
+///
+/// What is not drawn: the **centre lead**. Every outline here shows pin 2 of a three-pad
+/// package as the tab and the lead as a cut stub with no dimension (the TO-252-3 and TO-263-3
+/// variants), so only the two outer leads are drawn; the TO-252-2 and TO-263-2 have two. The
+/// metal's thickness is the drawing-only constant of `body3d.rs` and not the makers' c; the
+/// chamfers of the tab, the tab's hole and the ears of the DPAK's tab are not drawn. The body
+/// across (y) is the footprint's own, 6.5 mm (DPAK) and 10.0 mm (D2PAK): both are inside every
+/// maker's range of E, while AOS's nominals would overhang the footprint's body outline by
+/// 0.10 and 0.03 mm. The pads are the recorded ones (ADR 0043) and not these dimensions.
+///
+/// **Variants with no source stay boxes**: the 4- and 5-lead DPAK (TO-252-4 and -5, whose pads
+/// are at a 1.14 mm pitch where Diodes' TO252-5 outline has 1.27 mm) and the 4- to 9-lead D2PAK
+/// (TO-263-4 to -9, whose pitches of 1.7, 1.27 and 0.97 mm no outline read here gives).
+struct TabShape {
+    /// Along the leads (x), then across (y).
+    body: (f64, f64),
+    pitch: f64,
+    lead_width: f64,
+    /// How far a lead reaches beyond the body, and the length of its foot.
+    lead_reach: f64,
+    lead_foot: f64,
+    /// The width of the tab beyond the body and how far it reaches.
+    tab_width: f64,
+    tab_reach: f64,
+    /// The exposed tab under the body: its width and how far in from the body's edge it runs.
+    under_width: f64,
+    under: f64,
+}
+
+const DPAK_SHAPE: TabShape = TabShape {
+    // Across: the footprint's own body, `TO252.body.1`.
+    body: (6.096, 6.5),
+    pitch: 2.286,
+    lead_width: 0.762,
+    lead_reach: 2.921,
+    lead_foot: 1.520,
+    tab_width: 5.340,
+    tab_reach: 1.016,
+    under_width: 4.826,
+    under: 5.249,
+};
+
+const D2PAK_SHAPE: TabShape = TabShape {
+    // Across: the footprint's own body, `TO263.body.1`.
+    body: (9.14, 10.0),
+    pitch: 2.54,
+    lead_width: 0.81,
+    // H - D - L1: 15.24 - 9.14 - 1.27.
+    lead_reach: 15.24 - 9.14 - 1.27,
+    lead_foot: 2.54,
+    tab_width: 8.00,
+    tab_reach: 1.27,
+    under_width: 8.00,
+    under: 6.90,
+};
+
+/// The shape of a DPAK or D2PAK: the two outer leads on the left, and the tab out of the right
+/// side and flat under the body.
+fn tab_package(s: &TabShape) -> Package {
+    let lead = |at: f64| Lead {
+        edge: Edge::Left,
+        at,
+        width: None,
+        reach: None,
+        under: None,
+    };
+    let tab = |width: f64, reach: f64, under: f64| Lead {
+        edge: Edge::Right,
+        at: 0.0,
+        width: Some(width),
+        reach: Some(reach),
+        under: Some(under),
+    };
+    let mut leads = vec![lead(-s.pitch), lead(s.pitch)];
+    if (s.tab_width - s.under_width).abs() < 1e-9 {
+        leads.push(tab(s.tab_width, s.tab_reach, s.under));
+    } else {
+        // The part beyond the body is wider than the exposed part under it.
+        leads.push(tab(s.tab_width, s.tab_reach, 0.0));
+        leads.push(tab(s.under_width, 0.0, s.under));
+    }
+    Package::GullWing {
+        body: s.body,
+        span: (s.body.0 + 2.0 * s.lead_reach, s.body.1),
+        lead_width: s.lead_width,
+        lead_length: s.lead_foot,
+        leads,
+        exposed: None,
+    }
+}
+
 /// Every `Library:Name` this module generates.
 pub fn names() -> Vec<String> {
     DPAK.iter()
@@ -481,7 +624,12 @@ fn dpak(d: &Dpak) -> Footprint {
     );
     let first = d.leads[0].1 - d.lead_height / 2.0 - SILK_TO_COPPER;
     marker(&mut drawing, Pt::new(pkg.lead_x, first));
-    drawing.finish(-(court_y + 0.7), court_y + 0.7)
+    let footprint = drawing.finish(-(court_y + 0.7), court_y + 0.7);
+    // Only the packages of two or three lead pads are shaped; the others stay boxes.
+    match (d.leads.len() <= 3).then_some(pkg.shape) {
+        Some(shape) => super::shaped(footprint, tab_package(shape)),
+        None => footprint,
+    }
 }
 
 /// A filled triangle whose apex is at `apex`, pointing down at pin 1.
