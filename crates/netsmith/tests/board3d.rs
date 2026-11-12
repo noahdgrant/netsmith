@@ -442,6 +442,40 @@ fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
 }
 
 #[test]
+fn a_pin_header_is_as_tall_as_its_catalog_row_and_its_plastic_is_the_sourced_height() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    // The four-layer example's headers are picked as JXTCONN PH2.54-1X2P-H25 (C42431798): the
+    // row's height is the pin's tip, 2.50 mm of plastic plus 6.00 +/-0.2 mm of pin.
+    let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
+    for path in ["power_in", "power_out"] {
+        let p = part(&r, path);
+        assert_eq!(p["provenance"], "catalog", "{p}");
+        assert!(
+            p["catalog_row"].as_str().unwrap().contains("C42431798"),
+            "{p}"
+        );
+        assert_eq!(p["height"], 8.9, "{p}");
+        assert_eq!(p["z_top"], 8.9, "{p}");
+    }
+    let scene = scene_of("examples/four_layer.nsm");
+    let meshes = of_scene(&scene);
+    for b in scene.bodies.iter().filter(|b| b.kind == "Header1x2") {
+        assert_eq!(b.height, Some(8.9), "{}", b.path);
+        let top = |m: Material| {
+            let mine: Vec<_> = meshes
+                .iter()
+                .filter(|x| x.id == b.path && x.material == m)
+                .cloned()
+                .collect();
+            netsmith_pcb::mesh::bounds_of(&mine).unwrap().max[2] - b.z_face
+        };
+        // The plastic is the 2.54 mm family's 2.50 mm and the pins go on to the row's height.
+        assert!((top(Material::Body) - 2.5).abs() < 1e-6, "{}", b.path);
+        assert!((top(Material::Metal) - 8.9).abs() < 1e-6, "{}", b.path);
+    }
+}
+
+#[test]
 fn a_limit_a_part_breaks_is_drawn_as_broken() {
     use netsmith_pcb::mesh::{Material, of_scene};
     let scene = scene_of("scripts/editor-verify-js/fixtures/height_limits.nsm");

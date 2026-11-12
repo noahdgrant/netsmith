@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::Loader;
-use netsmith_solve::{Catalogs, LockedRow, PickLock, Solution};
+use netsmith_solve::{Catalogs, LockedRow, PickLock, Picks, Solution};
 
 use crate::{outcome_with, render_problems};
 
@@ -34,6 +34,9 @@ pub struct Use {
     pub file: PathBuf,
     /// `--locked`: the lock must exist and must not change.
     pub locked: bool,
+    /// The picks file beside the source, if there is one (#462): its stale entries are told as
+    /// the lock's are.
+    pub picks: Option<Picks>,
 }
 
 /// The rows a solution picked, one for each pick, named by the part's path.
@@ -58,15 +61,39 @@ pub fn read(file: &Path) -> Result<Option<PickLock>, String> {
 }
 
 /// The catalogs to solve one source file with, and what to do with its lock afterwards: the
-/// catalogs hold the parts to the lock if the file exists.
+/// catalogs hold the parts to the rows of the picks file (#462) and of the lock, for each file
+/// that exists. `None` when neither does.
 pub fn open(
     source: &Path,
     catalogs: &Catalogs,
     locked: bool,
 ) -> Result<(Option<Catalogs>, Use), String> {
     let file = lock_path(source);
-    let held = read(&file)?.map(|lock| catalogs.clone().with_pick_lock(lock));
-    Ok((held, Use { file, locked }))
+    let picks = crate::picks::read(&crate::picks::picks_path(source))?;
+    let lock = read(&file)?;
+    let held = (picks.is_some() || lock.is_some()).then(|| {
+        let mut held = with_picks(catalogs, picks.as_ref());
+        if let Some(lock) = lock {
+            held = held.with_pick_lock(lock);
+        }
+        held
+    });
+    Ok((
+        held,
+        Use {
+            file,
+            locked,
+            picks,
+        },
+    ))
+}
+
+/// `catalogs` holding the parts to the rows of `picks`, when there are any.
+fn with_picks(catalogs: &Catalogs, picks: Option<&Picks>) -> Catalogs {
+    match picks {
+        Some(picks) => catalogs.clone().with_picks(picks.clone()),
+        None => catalogs.clone(),
+    }
 }
 
 fn parse(text: &str, name: &str) -> Result<PickLock, String> {
@@ -251,6 +278,9 @@ pub struct Refresh {
     /// that no longer pass or are no longer in a catalog, in its own words (the messages of a
     /// `build`, with the relation and its numbers). Empty when every locked row still holds.
     pub reported: String,
+    /// The entries of the picks file whose part is gone ([`crate::picks::stale`]). They are not
+    /// the lock's, so they leave [`Self::is_current`] alone; `lock --check` fails on them.
+    pub stale: Vec<String>,
 }
 
 impl Refresh {
@@ -285,9 +315,16 @@ pub fn refresh(
 ) -> Result<Refresh, String> {
     let file = lock_path(source);
     let old = read(&file)?;
+    // The rows a person chose are the design's, so a refresh keeps them (#462).
+    let picks = crate::picks::read(&crate::picks::picks_path(source))?;
+    let catalogs = &with_picks(catalogs, picks.as_ref());
     let outcome = outcome_with(name, text, loader, catalogs, None)
         .map_err(|problems| render_problems(&problems))?;
     let now = outcome.lock;
+    let stale = picks
+        .as_ref()
+        .map(|p| crate::picks::stale(p, &now))
+        .unwrap_or_default();
     let mut reported = String::new();
     if let Some(old) = &old {
         let held = catalogs.clone().with_pick_lock(old.clone());
@@ -305,6 +342,7 @@ pub fn refresh(
         now,
         diff,
         reported,
+        stale,
     })
 }
 
@@ -398,6 +436,27 @@ pub struct Settled {
 pub fn settle(using: &Use, old: Option<&PickLock>, new: &PickLock) -> Result<Settled, String> {
     let name = using.file.display().to_string();
     let mut settled = Settled::default();
+    // A stale entry of the picks file follows the rule of a stale lock entry (#462).
+    if let Some(picks) = &using.picks {
+        let stale = crate::picks::stale(picks, new);
+        if !stale.is_empty() {
+            let lines = stale
+                .iter()
+                .map(|l| format!("  {l}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if using.locked {
+                return Err(format!(
+                    "error: {} names parts the design no longer picks a row for, and --locked says nothing may be stale:\n{lines}",
+                    picks.file
+                ));
+            }
+            settled.notes.push(format!(
+                "{} names parts the design no longer picks a row for (remove their entries, or run with --locked to make this an error):\n{lines}",
+                picks.file
+            ));
+        }
+    }
     match old {
         None if new.is_empty() => {}
         None if using.locked => {

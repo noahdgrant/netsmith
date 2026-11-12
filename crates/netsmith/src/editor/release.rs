@@ -147,7 +147,11 @@ impl Workspace {
             &text,
             &loader,
             &target.fab_out,
-            &target.catalogs().map_err(ApiError::internal)?,
+            &crate::picks::holding(
+                &source.path,
+                &target.catalogs().map_err(ApiError::internal)?,
+            )
+            .map_err(ApiError::internal)?,
             &libraries,
             None,
             &FabOptions {

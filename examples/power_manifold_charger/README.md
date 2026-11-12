@@ -185,12 +185,13 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
 - `the_resistors_and_capacitors_have_the_charger_boards_values_and_packages`: all 27 resistors and
   38 capacitors have the value and the package of the reference's footprint.
 - `the_parts_have_the_lcsc_numbers_of_the_charger_boards_footprints`: 84 parts carry an `LCSC`
-  property in the board file; all but the ceramics of `OTHER_ROW` are picked as that number (below).
+  property in the board file; every one is picked as that number, 19 ceramics of them through the
+  picks file (below).
 - `the_open_pins_are_the_ones_the_reference_leaves_open`: the pads on the board's `unconnected-(...)`
   nets (26) are the pads that no net of the design names.
 - `the_optimizer_cannot_move_a_pin` (no request, no pin file entry) and
-  `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC: the two findings
-  below and no other; skipped where `kicad-cli` is not found).
+  `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC: no finding;
+  skipped where `kicad-cli` is not found).
 
 ### Differences from the reference (all of them)
 
@@ -199,17 +200,16 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
   one of the 26 open pads. The part is UMW's USBLC6-2SC6 (what LCSC and JLCPCB sell as C2687116),
   not ST's.
 - **`/USB_DATA` is one net of five pads**: J4's D+ (A6, B6) and D- (A7, B7) and U6 pin 1 are
-  joined, as the design has it (a dedicated charging port shorts D+ and D-). The receptacle's part
-  is therefore a plain `Connector` with `.dp` and `.dm` joined on the board, and **not** a provider
-  of the standard `UsbCSinkReceptacle`: that generic is a source of VBUS, and this port is driven
-  by the board's own converter.
-- **PA9 and PA10 are tied to ground** (U1 pads 29 and 32). The design types them "unspecified" in
-  its symbol; the port's are the datasheet's (bidirectional), and KiCad's rules refuse a
-  bidirectional pin on a net with a power flag: two `pin_to_pin` findings, asserted by name.
+  joined, as the design has it (a dedicated charging port shorts D+ and D-), with `.dp` and `.dm`
+  joined on the board. The receptacle's part provides `UsbCSourceReceptacle` (and `Connector`):
+  this port is a source that the board's own converter drives, so VBUS is what the device on the
+  cable draws (`.vbus.current >= 0A`), never a second source on the net. The design states no
+  limit for the port's current, so that bound is one of the notes below.
 - **Part numbers.** The design states no tolerance or voltage, and the solver picks the first
-  catalog row that fits the value, the package and the rail. For a 100 nF 0402 it picks
-  C1525 (16 V, Basic) and the board has C307331 (50 V), for 1 uF, 4.7 uF, 2.2 uF and 10 uF
-  parts the board's number is another row too: 19 ceramics (`OTHER_ROW`). The two Sunlord
+  catalog row that fits the value, the package and the rail. For a 100 nF 0402 it would pick
+  C1525 (16 V, Basic) where the board has C307331 (50 V), and for 1 uF, 4.7 uF, 2.2 uF and 10 uF
+  parts the board's number is another row too. `src/main.picks.toml` holds those 19 ceramics to
+  the board's numbers (#462), and the solver judges each by the design as it judges any row. The two Sunlord
   inductors, the shunts and every other part have the board's number. U2 is C89826, which is the
   LP2985**A**-33DBVR (1 % grade), where the board's value field says "LP2985-3.3"; C46550469
   (C39) is an 8 x 9 mm part on the 8 x 10 mm footprint the board draws.
@@ -231,7 +231,7 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
   The 24 V input is stated as 20.4 V to 28.8 V (24 V, +20 %/-15 %: the design's architecture notes),
   and the converter's output as the 5 V to 21 V of a USB-PD contract, an **ideal source of the
   board's own statement**, since no part models the converter.
-- **Not evaluated (73 notes):** the TPS55288 is a part with no `dc` statement and the language has
+- **Not evaluated (74 notes):** `usb.vbus.current >= 0A`, since the port's current is not stated; the TPS55288 is a part with no `dc` statement and the language has
   no buck-boost generic (only `Buck`), so its input window (`converter.vin.voltage >= 2.7V`), the
   current of the input, the output and the shunts, the fuse, the inductors and the capacitors
   that hang on those rails are listed as not evaluated; the MOSFETs' gate drive (`q_*.gate_source_voltage
@@ -419,7 +419,7 @@ PARTS WITH PIN TABLES (kind kinds: P=passive)
 - U2 `Lp2985 provides LinearRegulator` (TI LP2985A-33DBVR, C89826): VIN "1" power, GND "2" power, ON/OFF "3" input, BYPASS "4" P, VOUT "5" power. SLVS522O (rev Jan 2015): 3.3 V +/-3.5% (A grade, 1-150 mA, -40..125), dropout 0.575 V at 150 mA, 0.15 A, quiescent 0..125 uA unloaded, TJ -40..125. No max_power (datasheet gives only RthJA 206 and a formula). **BOM name is LP2985-3.3; C89826 is the A grade.** Generator SOT-23-5.
 - U6 `Usblc62sc6` (C2687116): .io1 "1" "6"; .gnd "2"; .io2 "3" "4"; .vbus "5" (all P). **LCSC/JLCPCB sell UMW's USBLC6-2SC6, not ST's**; UMW datasheet Nov.2024 p.1 pin figure, p.2 TJ -55..125. Generator SOT-23-6.
 - U4 `Tlv7022` (TI TLV7022DDFR, C2862588): OUTA "1" open_drain, INA- "2", INA+ "3", VEE "4" (supply.neg), INB+ "5", INB- "6" (inputs), OUTB "7" open_drain, VCC "8" (supply.pos). Supply 1.6..6.5 V (Table 6.5); datasheet read is the Chinese edition ZHCSGK4E (11/2019); the pin table is the DGK one (no DDF pinout printed; reference nets agree). No reference inside the part. Footprint: TI DDF0008A example layout, reference frame (pad 1 lower right).
-- J4 `GtUsb7004 provides UsbCSinkReceptacle, Connector` (G-Switch GT-USB-7004, C2686968, keyed catalog gt_usb_7004): same 9 pins as Easyduino's Shouhan (VBUS A4 A9 B4 B9, GND A1 A12 B1 B12, CC1 A5, CC2 B5, D+ A6 B6, D- A7 B7, SBU1 A8, SBU2 B8, SHELL S1); drawing REV A1 2024.11.14 agrees with the reference pads; footprint libs/power_manifold_must_match.pretty/USB_C_Receptacle_GT-USB-7004 equals the reference (0.05 mm). Use it directly, not UsbCSink (CC goes to U5).
+- J4 `GtUsb7004 provides UsbCSourceReceptacle, Connector` (G-Switch GT-USB-7004, C2686968, keyed catalog gt_usb_7004): same 9 pins as Easyduino's Shouhan (VBUS A4 A9 B4 B9, GND A1 A12 B1 B12, CC1 A5, CC2 B5, D+ A6 B6, D- A7 B7, SBU1 A8, SBU2 B8, SHELL S1); drawing REV A1 2024.11.14 agrees with the reference pads; footprint libs/power_manifold_must_match.pretty/USB_C_Receptacle_GT-USB-7004 equals the reference (0.05 mm). Use it directly, not UsbCSink (CC goes to U5).
 - J3 `PcieX1EdgeFingers provides Connector`: 36 passive pins .a1-.a18/.b1-.b18, pads A1..B18 (comments carry the reference's pin functions; CEM spec not read), AssemblyMode::None, no catalog. Footprint PCIe_x1_Edge_Fingers equals the reference pads (A on F.Cu, B on B.Cu as stored; no Edge.Cuts; test enforces for both libraries).
 - J2: std ProgrammingPads6 (TC2030-NL): its std footprint equals the reference pads (tested, 0.05 mm). J1/J5/J6: std TestPoint "D1.5mm", equals reference (tested). HOT_SURFACE_SMALL marker (REF**): graphic only, skipped.
 

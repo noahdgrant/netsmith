@@ -9,6 +9,7 @@ mod alternatives;
 mod bank;
 mod board3d;
 mod build;
+mod catalog_add;
 mod catalog_height;
 mod cli_help;
 mod compare;
@@ -57,6 +58,7 @@ mod own_part;
 mod panel;
 mod passives;
 mod pick_lock;
+mod picks;
 mod pin_export;
 mod pin_swaps;
 mod pinout;
@@ -97,6 +99,7 @@ mod two_buck;
 mod unused;
 mod usb_c_sink;
 mod values;
+mod view;
 
 /// A file in this folder without a `mod` line above is not part of the executable: its tests would
 /// never run, and nothing else would say so.

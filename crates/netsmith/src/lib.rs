@@ -18,6 +18,7 @@ pub mod order;
 pub mod parity;
 pub mod physical;
 pub mod pick_lock;
+pub mod picks;
 pub mod pin_export;
 pub mod pin_swap;
 pub mod pins;
@@ -31,6 +32,7 @@ mod stock;
 pub mod supply;
 pub mod symbol_gallery;
 mod values;
+pub mod view_client;
 
 use std::path::{Path, PathBuf};
 

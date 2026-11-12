@@ -16,6 +16,10 @@ _Avoid_: Assembly, backplane, harness
 A part that is a way in and out of a board: one that provides the standard generic `Connector` (`part MolexPicoBlade provides Connector { ... }`, ADR 0068; every standard header, socket, `Coax`, `UsbC*`, `Obd2M` and `ProgrammingPads6` does). The generic states the letters `J`. The schematic layout and the placer find connectors by it, so a project's own connector is one and an IC named `HeaderBuffer` is not (owner decision 2026-11-10, issue #166).
 _Avoid_: a connector by its name or its designator letters (`J`, `P`), a connector flag or kind list
 
+**Sink, source and dual-role receptacle**:
+The three generics of a USB Type-C receptacle in `std::parts::connector`, one for each way power goes through the port (#463). A **sink** receptacle (`UsbCSinkReceptacle`) takes power from the cable: its VBUS is a source of the board (`dc source .vbus`). A **source** receptacle (`UsbCSourceReceptacle`) gives power: the board drives VBUS and the device on the cable draws, so `.vbus.current >= 0A`. A **dual-role** receptacle (`UsbCDualRoleReceptacle`) does either, and the board states a signed range for `.vbus.current`. A receptacle that carries no power role is a `Connector` with a plain `Rail`.
+_Avoid_: host port, device port (for the power direction), DRP
+
 **Mate**:
 Two connectors that a system joins with `~` between their `.mating`: contact N of one meets contact N of the other (`.carrier.slot.mating ~ .card.j1.mating`, ADR 0040). The checker reads what each board has behind each contact (ground, power, a signal, or open), refuses what cannot meet (a header with a header, two outputs, ground against power, a count or pitch that differs), and joins the ports the contacts carry, so the same fact is not said twice with a port join.
 _Avoid_: Connection, link, plug
@@ -166,6 +170,10 @@ _Avoid_: Text, annotation, legend
 **Layout file**:
 `<stem>.pcb.toml` beside a source file: where parts (keyed by their path in the design), keepouts and cutouts are, when the source does not say, with rotation, side and a lock. Optional, written by an editor or a placer, never by the language (ADR 0032). It holds the solution; a requirement is in the physical file (_Placement requirement_, _Physical_).
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
+
+**Picks file**:
+`<stem>.picks.toml` beside a source file: the catalog rows a person chose for parts, by board and part path, each named by its catalog and its LCSC number (or its manufacturer part number in a catalog with no LCSC column) (#462). The solver holds each part it names to that row, before the _Pick lock_, and judges the row by everything the design says; a row that fails stops the run. The lock records the chosen row. netsmith never writes the file. An entry whose part is gone is stale, and is told as a stale lock entry is.
+_Avoid_: pin file (that is `<stem>.pins.toml`, for a part's pins), override
 
 **Pick lock**:
 `<stem>.lock.toml` beside a source file: the catalog row each part of each board of the file was picked as, by the part's path, with the row's LCSC and manufacturer numbers as a check against a renamed row. `build`, `fab` and `fab --order` (for each source file that builds a board of the order) write it when it does not exist and read it when it does: the solver offers a locked part only its locked row, judged by everything the design says, and does not fall back to another row if it fails (an error that names the row and the relation). A part with no entry, or an entry for a part that is gone, is told and is an error with `--locked`; an existing lock is never rewritten by `build`, `fab` or an order, only by `netsmith lock --update` (which solves again with no holding and prints the old row and the new one of each part that changed), and `netsmith lock --check` says whether it is current. It holds no stock, no price and no solved value, and it is not the solver's result: it records one choice among rows (ADR 0100). A committed file, so a change to a catalog or to the solver that would move a pick shows as a change to it. The editor shows whether it exists and whether it is current, read only: it never writes it.

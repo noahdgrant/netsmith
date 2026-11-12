@@ -412,7 +412,7 @@ fn an_output_with_no_load_that_can_be_said_leaves_the_input_alone() {
     ))
     .replace(
         "part Mcu {",
-        "part Sink {\n    pins {\n        .p output \"P\" \"1\"\n        .g output \"G\" \"2\"\n    }\n}\n\npart Mcu {",
+        "part Sink {\n    pins {\n        .p bidirectional \"P\" \"1\"\n        .g bidirectional \"G\" \"2\"\n    }\n}\n\npart Mcu {",
     );
     let s = solved(&src);
     assert_eq!(range(&s, "link.current"), None);

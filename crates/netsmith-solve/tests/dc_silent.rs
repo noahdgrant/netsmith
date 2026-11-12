@@ -212,7 +212,7 @@ fn a_regulator_with_no_known_load_names_the_island_it_leaves() {
     )
     .replace(
         "part Link {",
-        "part Sink {\n    pins {\n        .p output \"P\" \"1\"\n        .g output \"G\" \"2\"\n    }\n}\n\npart Link {",
+        "part Sink {\n    pins {\n        .p bidirectional \"P\" \"1\"\n        .g bidirectional \"G\" \"2\"\n    }\n}\n\npart Link {",
     );
     let s = solved(&src);
     assert_eq!(range(&s, "link.current"), None);

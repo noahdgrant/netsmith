@@ -3700,6 +3700,36 @@ error: net `net-a.out` has an open_drain output (`a.out`) and no pull-up: nothin
    |     ^^^^^^^^
 ```
 
+### A pin tied to a rail
+
+A pin may be tied to a rail: a GPIO strapped to ground, a configuration pin to the supply, a spare input to either. Any kind but `output` may be, with no statement for it. A push-pull `output` on the net of a rail, its positive or its negative pin, drives the rail to its other level whenever it drives, which is a short, and is refused (#461). An output that is itself a pin of a rail (the VBUS a hub's table writes as `output`) is a supply the part gives, and is not this case.
+
+```nsm fails
+import std::sources::Rail
+
+part Zdrv {
+    pins {
+        .out output "OUT" "1"
+    }
+}
+
+board Tied {
+    .gnd: Rail { .neg.net &= "GND" }
+    .d: Zdrv
+    .d.out ~ .gnd.neg
+}
+```
+
+```text
+error: `d.out` (`Zdrv`) is an output on net `GND`, the net of rail `gnd` (`gnd.neg`): a push-pull output drives the rail to its other level, which is a short; give it a net of its own, or, if its datasheet says the pin may be tied, write the kind it says (`bidirectional`, `open_drain` or `passive`)
+   --> main.nsm:11:5
+   |
+11 |     .d: Zdrv
+   |     ^^^^^^^^
+```
+
+The schematic's project file (`<board>.kicad_pro` beside the `.kicad_sch` that `build` writes) holds an ERC pin map that says the same as these rules: KiCad's default map, but a bidirectional or tri-state pin on a net with a power output, and a tri-state pin on a net with a power input, are not findings. So KiCad's electrical rules check of the exported schematic stays quiet about a GPIO tied to ground, where KiCad's own default reports `pin_to_pin` against the power flag on the ground net. The map is never stricter than KiCad's: what netsmith refuses, it reports itself.
+
 ### Pads
 
 Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:
@@ -7977,6 +8007,28 @@ Each case of the list above ends in a line of that diff:
 
 The editor does not hold the parts to the lock: it solves from the source, as before. It shows the lock of the selected board's source file and writes nothing: the schematic's inspector has a _Pick lock_ section that says whether the file exists and whether it is current, and lists the diff that `lock --check` would print (a source that does not build has none). It is read again when the lock file changes on disk, which the editor watches.
 
+### The picks file
+
+A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. `<stem>.picks.toml` beside the source (`board.nsm` has `board.picks.toml`) holds the rows a person chose (#462). netsmith never writes it.
+
+```toml
+version = 1
+
+[PowerManifoldCharger.parts."boot1_cap"]
+catalog = "capacitor"
+lcsc = "C307331"
+```
+
+It has the lock's shape: a table for each board or system, by its name, and an entry for each part, by its path. An entry names the catalog and the row's LCSC number, which is what a bill of materials gives. A project's own catalog with no LCSC column names the row by `mpn` in place of `lcsc`; an entry has exactly one of the two.
+
+The solver offers each part the file names only the row it names, before the lock, and judges that row by everything the design states and every relation, as it judges a locked row. The lock then records the chosen row as it records any pick, so `lock --update` keeps it. What happens next is told for each part:
+
+- **The row passes.** It is the pick.
+- **The row fails, or the catalog has no row with that number, or the part picks from another catalog.** The run stops with the reason, and says that the row is the picks file's and that no other row was tried (`` `r1` is picked as the row with lcsc C25879 of the `resistor` catalog by main.picks.toml, and no other row was tried for it ``). `lock --check` and `lock --update` cannot tell either, and exit 2 with the same reason.
+- **An entry belongs to a part the board no longer has** (it is stale). As for a stale lock entry, `build` and `fab` print a note and `--locked` makes it an error; `lock --check` lists it and exits 1, and `lock --update` lists it and leaves the file alone.
+
+The editor solves with the picks file too, and does not read the lock.
+
 ## Imports
 
 `import` brings definitions into a file. Paths start at `std` for the standard library or `src` for the files of your project.
@@ -8326,10 +8378,12 @@ netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violatio
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
 netsmith board3d [file.nsm] [--board <name>] [--json] # the board's 3D scene: heights, limits, overlaps (docs/BOARD3D.md)
 netsmith render [file.nsm] [--board <name>] [--view iso] [--out board.png] [--size 1600x1000] [--section x=12.5] [--highlight J1,net:GND,limit:lid] [--xray] [--theme light|dark] [--ortho|--perspective] # the board in 3D as a PNG (docs/BOARD3D.md)
+netsmith view [--port n] [--board <name>] [--view iso] [--section x=12.5|none] [--highlight J1,net:GND,limit:lid|none] [--select J1] [--xray|--no-xray] [--ortho|--perspective] [--colour-by kind] [--height-preview 2.5] [--layers-apart] [--json] [--picture view.png] # read or drive the 3D view of a running editor (docs/BOARD3D.md)
 netsmith compare <a> <b> [options]     # are two designs the same circuit?
 netsmith kicad-libs import <sym-lib-table> [fp-lib-table]  # the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021)
 netsmith catalog refresh [path...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]
 netsmith catalog age [path...] [--days <n>] [--only <catalog>]  # rows whose date is older than n days (default 90)
+netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]  # a row from LCSC's record: lcsc, mpn, package and source; the rest is left to fill
 netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]  # an enclosure's outline, cutouts and holes as source to paste
 ```
 
@@ -10117,7 +10171,7 @@ A capacitor across no rail has no bias to rate: state `.bias`, or place it betwe
 
 The connectors are `Header1x2`, `Header1x4`, `Header1x8`, `Header1x10`, the sockets `Socket1x2`, `Socket1x4`, `Socket1x8`, `Socket1x10`, and the two-row headers `Header2x3`, `Header2x5` and `Header2x10`. A pin is `pN`, on pad N, and contact N of a connector is its pin `pN`: a header and its socket number so that contact N meets contact N. There is one definition for each size because the language has no parameter for a count: a part with `N` pins has `N` rows in its table. The pitch is the package (`.package &= "2.54mm"`), which the export mapping reads. Each states its `.mating` (kind, gender, pitch, rows, positions), which a system uses to mate boards (see Systems and ports). The single-row ones are rated at 3 A a contact, from the datasheets of the `header` catalog; the two-row headers have no row, are unrated, and the check of the current through a mate lists them as not evaluated.
 
-`Coax` has `signal` and `shield`. `ProgrammingPads6` is six pads, `p1` to `p6`, for a spring-pin programming cable; the board decides what each carries. `UsbCPower` is a six-contact USB Type-C receptacle with power only: a `.vbus` rail (the receptacle supplies, so its current is negative and follows from the loads on the net), the two configuration pins `cc1` and `cc2`, and the `shell`. A device that takes power from a source needs a 5.1 kohm pull-down from each configuration pin to ground, written as a resistor in a chain. `UsbC2` is the sixteen-contact USB 2.0 receptacle: the same pins, the `Usb2` port, and the open sideband pins `sbu1` and `sbu2`. `UsbCSink` is the receptacle of a device that takes its power from a host (a sink): a module of a sixteen-contact receptacle (a provider of the generic `UsbCSinkReceptacle`, `UsbCReceptacle16P` by default) and the two Rd resistors of the Type-C specification, 5.1 kohm at 1 % from each of CC1 and CC2 to ground, so a board writes none. It has the `.vbus` rail (the host supplies: a source for the DC analysis over the `.voltage` the board states, with a current that is negative and follows from the loads), the data pair `.dp` and `.dm`, and nothing else; the shell is joined to ground inside and the sideband contacts are left open. The module does not provide `Connector` (a module cannot, since the generic has a `pins` table); its receptacle does, so the placer and the schematic treat it as a connector. `.package` is the receptacle's footprint (`"GCT_USB4105_16P"`, the default, or `"HRO_TYPE-C-31-M-12"`) and `.rd_package` the resistors' (`"0402"`). The receptacle is a use of the generic `UsbCSinkReceptacle`, so a project adds the receptacle of another maker, with its own pads, footprint and LCSC number, as a part that says `provides UsbCSinkReceptacle, Connector` (the generic gives it `.vbus`, `.package` and `.mpn`, the shell is the generic's `.shell`, and it has its own pin table named for its package and its own catalog), in a file that the board's file imports. The standard receptacle comes first in the order and has pin tables for its two footprints only, so the board takes the project's by stating its package and number: `.jack: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "ACME-USBC-16" }` (`.receptacle_mpn` is the generic's `.mpn`). A board that states neither keeps the standard receptacle, however many providers are in scope. `Obd2M` is the male OBD-II (SAE J1962) vehicle connector: a `.vbatt` rail (the vehicle supplies, so its current is negative and follows from the loads on the net; `pos` is battery power on pin 16 and `neg` chassis ground on pin 4), the optional `signal_gnd` (pin 5), and the bus pins `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos` and `j1850_bus`; the pins J1962 leaves to the manufacturer are `p1`, `p3`, `p8`, `p9`, `p11`, `p12` and `p13`. Its catalog `obd2_m` has no standard row yet: a project's own `catalogs/obd2_m.csv` lists the connector it buys.
+`Coax` has `signal` and `shield`. `ProgrammingPads6` is six pads, `p1` to `p6`, for a spring-pin programming cable; the board decides what each carries. `UsbCPower` is a six-contact USB Type-C receptacle with power only: a `.vbus` rail (the receptacle supplies, so its current is negative and follows from the loads on the net), the two configuration pins `cc1` and `cc2`, and the `shell`. A device that takes power from a source needs a 5.1 kohm pull-down from each configuration pin to ground, written as a resistor in a chain. `UsbC2` is the sixteen-contact USB 2.0 receptacle: the same pins, the `Usb2` port, and the open sideband pins `sbu1` and `sbu2`. `UsbCSink` is the receptacle of a device that takes its power from a host (a sink): a module of a sixteen-contact receptacle (a provider of the generic `UsbCSinkReceptacle`, `UsbCReceptacle16P` by default) and the two Rd resistors of the Type-C specification, 5.1 kohm at 1 % from each of CC1 and CC2 to ground, so a board writes none. It has the `.vbus` rail (the host supplies: a source for the DC analysis over the `.voltage` the board states, with a current that is negative and follows from the loads), the data pair `.dp` and `.dm`, and nothing else; the shell is joined to ground inside and the sideband contacts are left open. The module does not provide `Connector` (a module cannot, since the generic has a `pins` table); its receptacle does, so the placer and the schematic treat it as a connector. `.package` is the receptacle's footprint (`"GCT_USB4105_16P"`, the default, or `"HRO_TYPE-C-31-M-12"`) and `.rd_package` the resistors' (`"0402"`). The receptacle is a use of the generic `UsbCSinkReceptacle`, so a project adds the receptacle of another maker, with its own pads, footprint and LCSC number, as a part that says `provides UsbCSinkReceptacle, Connector` (the generic gives it `.vbus`, `.package` and `.mpn`, the shell is the generic's `.shell`, and it has its own pin table named for its package and its own catalog), in a file that the board's file imports. The standard receptacle comes first in the order and has pin tables for its two footprints only, so the board takes the project's by stating its package and number: `.jack: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "ACME-USBC-16" }` (`.receptacle_mpn` is the generic's `.mpn`). A board that states neither keeps the standard receptacle, however many providers are in scope. A port that gives power, a charger's or a host's downstream port, uses the generic `UsbCSourceReceptacle` (#463): the same sixteen contacts and no `dc` statement, since the board's own converter or switch drives VBUS, and `.vbus.current >= 0A`, since the device on the cable draws from the board. The board states the most the port allows (`.vbus.current &= 0A..3A`); a current that would supply the board is refused. A dual-role port, which takes power or gives it, uses `UsbCDualRoleReceptacle`, whose `.vbus.current` the board states as a signed range (`-3A..1.5A`). No standard part provides either, since `UsbCReceptacle16P` provides the sink generic and a provider takes its `dc source`: a project's receptacle says `provides UsbCSourceReceptacle, Connector`. A receptacle that carries no power role is a `Connector` with a plain `Rail`. `Obd2M` is the male OBD-II (SAE J1962) vehicle connector: a `.vbatt` rail (the vehicle supplies, so its current is negative and follows from the loads on the net; `pos` is battery power on pin 16 and `neg` chassis ground on pin 4), the optional `signal_gnd` (pin 5), and the bus pins `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos` and `j1850_bus`; the pins J1962 leaves to the manufacturer are `p1`, `p3`, `p8`, `p9`, `p11`, `p12` and `p13`. Its catalog `obd2_m` has no standard row yet: a project's own `catalogs/obd2_m.csv` lists the connector it buys.
 
 ```nsm evaluate
 import std::parts::connector::UsbCPower
@@ -13095,6 +13149,8 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::connector::UsbCPower` | A USB Type-C receptacle, power only: rail `vbus` (pos on VBUS, neg on GND), pins `cc1`, `cc2`, `shell`. |
 | `std::parts::connector::UsbCSink` | A module: a USB Type-C receptacle for a device (a sink) with a 5.1 kohm Rd from each of CC1 and CC2 to ground built in: rail `vbus` (pos on VBUS, neg on GND; a source for the DC analysis), pins `dp` and `dm`, `.package` (the receptacle's), `.receptacle_mpn` (its maker's number, to take a project's provider of `UsbCSinkReceptacle`) and `.rd_package`. Its receptacle provides `Connector`. |
 | `std::parts::connector::UsbCSinkReceptacle` | A generic: the receptacle that `UsbCSink` uses, with no resistors: rail `vbus` (a `dc source`), pins `cc1`, `cc2`, `dp`, `dm`, `sbu1`, `sbu2`, `shell`, `.package`, `.mpn`. A project adds a provider. |
+| `std::parts::connector::UsbCSourceReceptacle` | A generic: the receptacle of a port that gives power (a charger, a host's downstream port): rail `vbus` with no `dc` statement and `.vbus.current >= 0A`, pins `cc1`, `cc2`, `dp`, `dm`, `sbu1`, `sbu2`, `shell`, `.package`, `.mpn`. No standard provider. |
+| `std::parts::connector::UsbCDualRoleReceptacle` | A generic: the receptacle of a dual-role port: rail `vbus` with no `dc` statement and no sign on its current (the board states a signed range), and the pins of `UsbCSourceReceptacle`. No standard provider. |
 | `std::parts::connector::UsbCReceptacle16P` | The standard provider of `UsbCSinkReceptacle` and `Connector`: sixteen contacts in the footprint of the GCT USB4105 (`"GCT_USB4105_16P"`, the default) or of the HRO TYPE-C-31-M-12 (`"HRO_TYPE-C-31-M-12"`). |
 | `std::parts::connector::UsbC2` | A USB Type-C receptacle for USB 2.0: the pins `cc1`, `cc2`, `shell`, `sbu1`, `sbu2`, and the port `usb` (`Usb2`, role `UsbRole::Passthrough`). |
 | `std::parts::connector::Obd2M` | A male OBD-II (SAE J1962) 16-pin vehicle connector: rail `vbatt` (pos on pin 16, neg on pin 4), optional `signal_gnd`, `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos`, `j1850_bus` and `p1`, `p3`, `p8`, `p9`, `p11`, `p12`, `p13`. Catalog `obd2_m`, with no standard row. |

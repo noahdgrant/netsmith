@@ -532,6 +532,45 @@ fn the_connectors_that_give_a_supply_state_a_source() {
     }
 }
 
+/// A board with an invented receptacle that provides the generic `name`, declared as `.c` with
+/// `body` in its braces.
+fn receptacle(name: &str, body: &str) -> String {
+    format!(
+        "import std::parts::connector::{name}\nimport std::sources::Rail\npart R provides {name} {{\n    pins {{\n        .vbus.pos power \"VBUS\" \"A4\"\n        .vbus.neg power \"GND\" \"A1\"\n        .dp bidirectional \"D+\" \"A6\"\n        .dm bidirectional \"D-\" \"A7\"\n        .cc1 passive \"CC1\" \"A5\"\n        .cc2 passive \"CC2\" \"B5\"\n        .sbu1 passive \"SBU1\" \"A8\"\n        .sbu2 passive \"SBU2\" \"B8\"\n        .shell passive \"SHELL\" \"S1\"\n    }}\n}}\nboard B {{\n    .vbus: Rail\n    .c: {name} {{ {body} }}\n    .vbus ~ .c.vbus\n}}\n"
+    )
+}
+
+#[test]
+fn the_source_and_dual_role_receptacles_state_no_source() {
+    // A source port's VBUS is driven by the board, and a dual-role port's goes either way: neither
+    // is a supply of the board (#463).
+    for name in ["UsbCSourceReceptacle", "UsbCDualRoleReceptacle"] {
+        let c = run(&receptacle(name, ""));
+        assert!(c.is_ok(), "{}", c.render());
+        assert_eq!(element(&c, "c"), None, "{name}");
+    }
+}
+
+#[test]
+fn a_source_receptacle_takes_the_current_the_board_allows() {
+    let c = run(&receptacle(
+        "UsbCSourceReceptacle",
+        ".vbus.current &= 0A..3A",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    // A negative current, a port that would supply the board, is the solver's to refuse
+    // (`netsmith-solve`, `usb_receptacles.rs`).
+}
+
+#[test]
+fn a_dual_role_receptacle_takes_a_signed_current() {
+    let c = run(&receptacle(
+        "UsbCDualRoleReceptacle",
+        ".vbus.current &= -3A..1.5A",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+}
+
 #[test]
 fn a_source_operand_must_be_a_rail_of_the_part() {
     // A pin, and a field, are not a rail.

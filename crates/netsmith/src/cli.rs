@@ -1,8 +1,8 @@
-//! The command line: `netsmith init`, `build`, `fab`, `editor` and `compare`.
+//! The command line: `netsmith init`, `build`, `fab`, `editor`, `view` and `compare`.
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `render` places a board the same way and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera; the cut faces are filled as a section of the stackup, each layer at its true thickness in its own colour, unless `--no-caps` leaves them open), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked] [--no-glb]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith render [<file.nsm>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--out <file.png>] [--size <w>x<h>] [--section x=<mm>|y=<mm>|z=<mm>] [--highlight <id>[,<id>...]]... [--xray] [--no-caps] [--theme light|dark] [--ortho | --perspective]\n       netsmith view [--port <n>] [--board <name>] [--view top|bottom|front|back|left|right|iso|iso-bottom] [--section x=<mm>|y=<mm>|z=<mm>|none] [--highlight <id>[,<id>...]|none]... [--select <id>[,<id>...]|none]... [--xray | --no-xray] [--ortho | --perspective] [--colour-by provenance|kind|margin] [--height-preview <mm>|on|off] [--layers-apart | --no-layers-apart] [--json] [--picture <file.png>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `fab` also writes the board's 3D scene as `<board>.glb` beside `fab-notes.txt` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and `--no-glb` leaves it out for a run (`glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier run is removed); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `render` places a board the same way and draws it to a PNG with netsmith's own software rasterizer (deterministic bytes, no GPU, no browser, no KiCad; docs/BOARD3D.md, Pictures for agents): `--view` (default `iso`; `top` and `bottom` look straight at a face, `front`, `back`, `left` and `right` along the board's edges, `iso` and `iso-bottom` from a corner), `--out` (default `<board>-<view>.png` in the current folder; the path written is printed), `--size` (default 1600x1000; 64 to 8192 pixels a side, at most 16 million pixels), `--section x=12.5` (cut the scene at that position in mm of the scene's frame, y up from the outline's bottom-left corner, z up from the board's top face, and keep the side away from the camera; the cut faces are filled as a section of the stackup, each layer at its true thickness in its own colour, unless `--no-caps` leaves them open), `--highlight` (a part's path or designator, `net:<name>` or `limit:<name>`, comma-separated or repeated; they are drawn in the highlight colour and the rest is dimmed; an id the board does not have is an error), `--xray` (everything see-through), `--theme` (`light`, the default, or `dark`), and `--ortho` (the default) or `--perspective`; `view` drives the 3D view of a running editor (start `netsmith editor` and open its page; docs/BOARD3D.md, Driving a running editor) with the names of `render`, so that an agent changes the verb to switch between the two: `--port` (default 8787, the editor's), `--board`, `--view`, `--section` (or `none`), `--highlight` and `--select` (a part, `net:<name>` or `limit:<name>`, comma-separated or repeated; `none` lights or selects nothing; the editor's selection holds parts or one net, so `--select` takes no limit, and the two are not given together), `--xray` or `--no-xray`, `--ortho` or `--perspective`, and the editor's own tools: `--colour-by` (what the bodies are coloured by), `--height-preview` (a height in mm from 0.1 to 50, `on` or `off`) and `--layers-apart` or `--no-layers-apart` (the stackup pulled apart); with none of them it prints the state of the page (a short summary, or with `--json` the editor's JSON as it came); with any, it changes the page, which draws it, and prints the state that results; `--picture <file.png>` saves what the page's canvas shows after the change (and opens the 3D view if it is not on screen); the page driven is the one focused last; a change the page refuses (an id the board does not have, a section, a preview height) exits 2 with the editor's message, as does an editor that is not running or has no page open; `--theme` is refused, since the theme is the person's own setting for the whole editor (the state reports it); nothing changes the design or a file; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command; `catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -27,6 +27,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "render",
         "draw the board in 3D to a PNG (own rasterizer, no GPU, no KiCad)",
     ),
+    (
+        "view",
+        "drive the 3D view of a running editor, as `render` flags say, and save its picture",
+    ),
     ("compare", "are two designs the same circuit?"),
     (
         "kicad-libs",
@@ -34,7 +38,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "catalog",
-        "check catalog rows against LCSC's record (`refresh`) or list the old ones (`age`)",
+        "check catalog rows against LCSC's record (`refresh`), list the old ones (`age`) or add a row from it (`add`)",
     ),
     (
         "dxf",
@@ -170,11 +174,22 @@ pub enum Command {
         out: Option<PathBuf>,
         request: crate::render::Request,
     },
+    /// Read or change the 3D view of a running editor's page, and save its picture
+    /// (P8b of issue 430).
+    View(crate::view_client::Request),
     /// Compare two designs by connectivity. Each is a `.kicad_sch`, `.kicad_pcb`, KiCad
     /// netlist XML or `.nsm` file.
     /// Check catalog rows against LCSC's record and record the day in `checked` (ADR 0039).
     /// JLCPCB is not asked, and no price or stock is written.
     CatalogRefresh(RefreshRequest),
+    /// Append a row made from LCSC's record of `lcsc` to the catalog file `to`, or print the
+    /// record when there is none (#454).
+    CatalogAdd {
+        lcsc: String,
+        to: Option<PathBuf>,
+        offline: bool,
+        no_cache: bool,
+    },
     /// List the catalog rows whose date is older than `days` days.
     CatalogAge {
         paths: Vec<PathBuf>,
@@ -280,6 +295,12 @@ where
     let mut glb: Option<PathBuf> = None;
     let mut render = crate::render::Request::default();
     let (mut ortho, mut perspective) = (false, false);
+    let mut view = crate::view_client::Request {
+        port: DEFAULT_PORT,
+        change: netsmith_editor::api::ViewChange::default(),
+        json: false,
+        picture: None,
+    };
     while let Some(arg) = args.next() {
         match (command.as_str(), arg.as_str()) {
             ("init", "--name") => {
@@ -329,8 +350,94 @@ where
                     ));
                 }
             },
-            ("render", "--ortho") => ortho = true,
-            ("render", "--perspective") => perspective = true,
+            ("render" | "view", "--ortho") => ortho = true,
+            ("render" | "view", "--perspective") => perspective = true,
+            ("view", "--view") => {
+                let given = args.next().ok_or("--view needs a view")?;
+                view.change.view = Some(parse_view(&given)?);
+            }
+            ("view", "--section") => {
+                let given = args
+                    .next()
+                    .ok_or("--section needs an axis and a position, or `none`")?;
+                view.change.section = Some(if given.trim() == "none" {
+                    "none".to_string()
+                } else {
+                    crate::render::parse_section(&given)?;
+                    given.trim().to_string()
+                });
+            }
+            ("view", "--highlight") => {
+                let given = args
+                    .next()
+                    .ok_or("--highlight needs a part, `net:<name>`, `limit:<name>` or `none`")?;
+                add_ids(&mut view.change.highlight, "--highlight", &given)?;
+            }
+            ("view", "--select") => {
+                let given = args
+                    .next()
+                    .ok_or("--select needs a part, `net:<name>` or `none`")?;
+                add_ids(&mut view.change.select, "--select", &given)?;
+            }
+            ("view", "--xray") => view.change.xray = Some(true),
+            ("view", "--no-xray") => view.change.xray = Some(false),
+            ("view", "--layers-apart") => view.change.exploded = Some(true),
+            ("view", "--no-layers-apart") => view.change.exploded = Some(false),
+            ("view", "--colour-by" | "--color-by") => {
+                let given = args
+                    .next()
+                    .ok_or("--colour-by needs `provenance`, `kind` or `margin`")?;
+                view.change.colour_by = Some(match given.as_str() {
+                    "provenance" => netsmith_editor::api::ColourBy::Provenance,
+                    "kind" => netsmith_editor::api::ColourBy::Kind,
+                    "margin" => netsmith_editor::api::ColourBy::Margin,
+                    _ => {
+                        return Err(format!(
+                            "--colour-by takes `provenance` (where each height came from), `kind` (the part's kind) or `margin` (to the height limit over it), not `{given}`"
+                        ));
+                    }
+                });
+            }
+            ("view", "--height-preview") => {
+                let given = args
+                    .next()
+                    .ok_or("--height-preview needs a height in mm, `on` or `off`")?;
+                view.change.height_preview = Some(match given.as_str() {
+                    "on" => netsmith_editor::api::PreviewSetting::On(true),
+                    "off" => netsmith_editor::api::PreviewSetting::On(false),
+                    mm => match mm.parse::<f64>() {
+                        Ok(v) if (0.1..=50.0).contains(&v) => {
+                            netsmith_editor::api::PreviewSetting::Mm(v)
+                        }
+                        _ => {
+                            return Err(format!(
+                                "--height-preview takes a height in mm from 0.1 to 50, `on` or `off`, not `{given}`"
+                            ));
+                        }
+                    },
+                });
+            }
+            ("view", "--json") => view.json = true,
+            ("view", "--picture") => {
+                view.picture = Some(PathBuf::from(
+                    args.next().ok_or("--picture needs a .png file to write")?,
+                ));
+            }
+            ("view", "--theme") => {
+                return Err(format!(
+                    "`view` has no --theme: the theme is the person's own setting for the whole editor, not a view of the board (the state says which it is); `render --theme light|dark` draws a picture in either\n{USAGE}"
+                ));
+            }
+            ("view", "--out") => {
+                return Err(format!(
+                    "`view` saves the page's picture with --picture <file.png>, not --out\n{USAGE}"
+                ));
+            }
+            ("view", file) if !file.starts_with("--") => {
+                return Err(format!(
+                    "`view` takes no file: it drives the editor's open project (`--board` says which board), not a source file; `netsmith render {file}` draws one without an editor\n{USAGE}"
+                ));
+            }
             ("build" | "fab" | "render", "--out") => {
                 out = Some(PathBuf::from(args.next().ok_or(
                     if command == "render" {
@@ -398,13 +505,25 @@ where
                     .parse()
                     .map_err(|_| format!("--port needs a number from 0 to 65535, not `{given}`"))?;
             }
+            ("view", "--port") => {
+                let given = args.next().ok_or("--port needs a number")?;
+                view.port = given
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|p| *p != 0)
+                    .ok_or_else(|| {
+                        format!(
+                            "--port needs the editor's port, a number from 1 to 65535, not `{given}`"
+                        )
+                    })?;
+            }
             ("board3d", "--json") => json = true,
             ("board3d", "--glb") => {
                 glb = Some(PathBuf::from(
                     args.next().ok_or("--glb needs a file to write")?,
                 ));
             }
-            ("compare" | "board3d" | "render", "--board") => {
+            ("compare" | "board3d" | "render" | "view", "--board") => {
                 board = Some(args.next().ok_or("--board needs a board name")?);
             }
             ("compare", "--map") => {
@@ -454,6 +573,34 @@ where
         })?;
         return Ok(Command::Lock { file, mode });
     }
+    if command == "view" {
+        if ortho && perspective {
+            return Err(format!(
+                "--ortho and --perspective both say how to project; give one\n{USAGE}"
+            ));
+        }
+        if ortho || perspective {
+            view.change.ortho = Some(ortho);
+        }
+        if view.change.highlight.is_some() && view.change.select.is_some() {
+            return Err(format!(
+                "--highlight and --select both set the page's selection; give one (--highlight also lights limits)\n{USAGE}"
+            ));
+        }
+        if view
+            .change
+            .select
+            .iter()
+            .flatten()
+            .any(|id| id.starts_with("limit:"))
+        {
+            return Err(format!(
+                "--select takes parts or one net, as a click does; a `limit:` is lit with --highlight\n{USAGE}"
+            ));
+        }
+        view.change.board = board;
+        return Ok(Command::View(view));
+    }
     if command == "render" {
         if ortho && perspective {
             return Err(format!(
@@ -497,6 +644,39 @@ where
         },
         _ => Command::Editor { file, port },
     })
+}
+
+/// `--view`'s name as the editor's route has it, with the error `render --view` gives.
+fn parse_view(given: &str) -> Result<netsmith_editor::api::RenderView, String> {
+    let view = netsmith_pcb::raster3d::View::from_name(given).ok_or_else(|| {
+        let names: Vec<&str> = netsmith_pcb::raster3d::View::ALL
+            .iter()
+            .map(|v| v.name())
+            .collect();
+        format!("--view takes one of {}, not `{given}`", names.join(", "))
+    })?;
+    serde_json::from_value(serde_json::Value::String(view.name().to_string()))
+        .map_err(|e| format!("--view `{given}` is not a view of the editor: {e}"))
+}
+
+/// Ids of `--highlight` or `--select`, comma-separated or repeated, added to `slot`; `none`
+/// alone makes it an empty list (lights or selects nothing), which no id may join.
+fn add_ids(slot: &mut Option<Vec<String>>, flag: &str, given: &str) -> Result<(), String> {
+    let clash = || format!("{flag} `none` clears it, so no id goes with it");
+    for id in given.split(',').map(str::trim).filter(|id| !id.is_empty()) {
+        let cleared = slot.as_ref().is_some_and(Vec::is_empty);
+        if id == "none" {
+            if slot.is_some() && !cleared {
+                return Err(clash());
+            }
+            *slot = Some(Vec::new());
+        } else if cleared {
+            return Err(clash());
+        } else {
+            slot.get_or_insert_with(Vec::new).push(id.to_string());
+        }
+    }
+    Ok(())
 }
 
 /// `dxf import`.
@@ -555,10 +735,13 @@ fn parse_catalog(args: Vec<String>) -> Result<Command, String> {
     let mut args = args.into_iter();
     let sub = args
         .next()
-        .ok_or_else(|| format!("`catalog` takes `refresh` or `age`\n{USAGE}"))?;
+        .ok_or_else(|| format!("`catalog` takes `refresh`, `age` or `add`\n{USAGE}"))?;
+    if sub == "add" {
+        return parse_catalog_add(args.collect());
+    }
     if sub != "refresh" && sub != "age" {
         return Err(format!(
-            "`catalog` takes `refresh` or `age`, not `{sub}`\n{USAGE}"
+            "`catalog` takes `refresh`, `age` or `add`, not `{sub}`\n{USAGE}"
         ));
     }
     let mut request = RefreshRequest::default();
@@ -615,12 +798,89 @@ fn parse_catalog(args: Vec<String>) -> Result<Command, String> {
     Ok(Command::CatalogRefresh(request))
 }
 
+/// `catalog add --lcsc <C123> [--to <catalog.csv>] [--offline] [--no-cache]`.
+fn parse_catalog_add(args: Vec<String>) -> Result<Command, String> {
+    let (mut lcsc, mut to, mut offline, mut no_cache) = (None, None, false, false);
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--lcsc" => {
+                lcsc = Some(
+                    args.next()
+                        .ok_or("--lcsc needs an LCSC number like C25104")?,
+                );
+            }
+            "--to" => {
+                to = Some(PathBuf::from(
+                    args.next().ok_or("--to needs a catalog file")?,
+                ))
+            }
+            "--offline" => offline = true,
+            "--no-cache" => no_cache = true,
+            other => {
+                return Err(format!(
+                    "`catalog add` takes `--lcsc <C123>`, `--to <catalog.csv>`, `--offline` and `--no-cache`, not `{other}`\n{USAGE}"
+                ));
+            }
+        }
+    }
+    let lcsc = lcsc.ok_or_else(|| {
+        format!("`catalog add` needs `--lcsc <C123>`, the number to add\n{USAGE}")
+    })?;
+    Ok(Command::CatalogAdd {
+        lcsc,
+        to,
+        offline,
+        no_cache,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Result<Command, String> {
         parse_args(args.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn catalog_add_takes_a_number_and_a_file() {
+        assert_eq!(
+            parse(&[
+                "catalog",
+                "add",
+                "--lcsc",
+                "C2286",
+                "--to",
+                "catalogs/led.csv"
+            ]),
+            Ok(Command::CatalogAdd {
+                lcsc: "C2286".into(),
+                to: Some(PathBuf::from("catalogs/led.csv")),
+                offline: false,
+                no_cache: false,
+            })
+        );
+        assert!(matches!(
+            parse(&[
+                "catalog",
+                "add",
+                "--lcsc",
+                "C2286",
+                "--offline",
+                "--no-cache"
+            ]),
+            Ok(Command::CatalogAdd {
+                to: None,
+                offline: true,
+                no_cache: true,
+                ..
+            })
+        ));
+        let e = parse(&["catalog", "add", "--to", "x.csv"]).unwrap_err();
+        assert!(e.contains("`catalog add` needs `--lcsc <C123>`"), "{e}");
+        let e = parse(&["catalog", "add", "--lcsc", "C1", "--dry-run"]).unwrap_err();
+        assert!(e.contains("not `--dry-run`"), "{e}");
     }
 
     #[test]
@@ -833,7 +1093,10 @@ mod tests {
         let e = parse(&["catalog", "age", "--dry-run"]).unwrap_err();
         assert!(e.contains("`catalog age` has no option `--dry-run`"), "{e}");
         let e = parse(&["catalog"]).unwrap_err();
-        assert!(e.contains("`catalog` takes `refresh` or `age`"), "{e}");
+        assert!(
+            e.contains("`catalog` takes `refresh`, `age` or `add`"),
+            "{e}"
+        );
         let e = parse(&["catalog", "prices"]).unwrap_err();
         assert!(e.contains("not `prices`"), "{e}");
     }
@@ -1264,5 +1527,152 @@ mod tests {
         );
         assert!(parse(&["init", "a.nsm"]).unwrap_err().contains("`a.nsm`"));
         assert!(parse(&["init", "--name"]).is_err());
+    }
+
+    fn view_request(args: &[&str]) -> crate::view_client::Request {
+        let mut line = vec!["view"];
+        line.extend_from_slice(args);
+        match parse(&line) {
+            Ok(Command::View(request)) => request,
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn view_with_no_flag_reads_the_state_of_the_editor_on_the_default_port() {
+        let request = view_request(&[]);
+        assert_eq!(request.port, DEFAULT_PORT);
+        assert!(!request.changes() && !request.json && request.picture.is_none());
+        assert_eq!(request.change, netsmith_editor::api::ViewChange::default());
+    }
+
+    #[test]
+    fn view_takes_the_flags_of_render_and_the_editors_own() {
+        use netsmith_editor::api::{ColourBy, PreviewSetting, RenderView};
+        let request = view_request(&[
+            "--port",
+            "9001",
+            "--board",
+            "Demo/main",
+            "--view",
+            "iso-bottom",
+            "--section",
+            "x=12.5",
+            "--highlight",
+            "J1,net:GND",
+            "--highlight",
+            "limit:lid",
+            "--xray",
+            "--perspective",
+            "--colour-by",
+            "margin",
+            "--height-preview",
+            "2.5",
+            "--layers-apart",
+            "--json",
+            "--picture",
+            "j1.png",
+        ]);
+        let change = &request.change;
+        assert_eq!(request.port, 9001);
+        assert_eq!(change.board.as_deref(), Some("Demo/main"));
+        assert_eq!(change.view, Some(RenderView::IsoBottom));
+        assert_eq!(change.section.as_deref(), Some("x=12.5"));
+        assert_eq!(
+            change.highlight,
+            Some(vec!["J1".into(), "net:GND".into(), "limit:lid".into()])
+        );
+        assert_eq!(change.xray, Some(true));
+        assert_eq!(change.ortho, Some(false));
+        assert_eq!(change.colour_by, Some(ColourBy::Margin));
+        assert_eq!(change.height_preview, Some(PreviewSetting::Mm(2.5)));
+        assert_eq!(change.exploded, Some(true));
+        assert!(request.json && request.changes());
+        assert_eq!(request.picture, Some(PathBuf::from("j1.png")));
+        // The reverse of each switch, and the other spelling of colour.
+        let request = view_request(&[
+            "--no-xray",
+            "--ortho",
+            "--no-layers-apart",
+            "--color-by",
+            "kind",
+            "--height-preview",
+            "off",
+            "--section",
+            "none",
+            "--select",
+            "R1",
+        ]);
+        let change = &request.change;
+        assert_eq!(change.xray, Some(false));
+        assert_eq!(change.ortho, Some(true));
+        assert_eq!(change.exploded, Some(false));
+        assert_eq!(change.colour_by, Some(ColourBy::Kind));
+        assert_eq!(change.height_preview, Some(PreviewSetting::On(false)));
+        assert_eq!(change.section.as_deref(), Some("none"));
+        assert_eq!(change.select, Some(vec!["R1".into()]));
+    }
+
+    #[test]
+    fn view_says_none_to_light_or_select_nothing() {
+        assert_eq!(
+            view_request(&["--highlight", "none"]).change.highlight,
+            Some(Vec::new())
+        );
+        assert_eq!(
+            view_request(&["--select", "none"]).change.select,
+            Some(Vec::new())
+        );
+        for args in [
+            &["view", "--highlight", "none,J1"][..],
+            &["view", "--highlight", "none", "--highlight", "J1"],
+            &["view", "--select", "J1", "--select", "none"],
+        ] {
+            let e = parse(args).unwrap_err();
+            assert!(e.contains("clears it"), "{args:?}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_picture_alone_still_changes_the_page_so_that_the_view_is_open() {
+        let request = view_request(&["--picture", "a.png"]);
+        assert!(request.changes());
+        assert_eq!(request.change, netsmith_editor::api::ViewChange::default());
+    }
+
+    #[test]
+    fn view_mistakes_say_what_is_wrong() {
+        for (args, says) in [
+            (&["--theme", "dark"][..], "person's own setting"),
+            (&["--view", "sideways"], "--view takes one of top, bottom"),
+            (&["--view"], "--view needs"),
+            (&["--section", "w=1"], "--section needs"),
+            (&["--section", "x"], "--section needs"),
+            (&["--ortho", "--perspective"], "give one"),
+            (&["--highlight", "J1", "--select", "J1"], "give one"),
+            (&["--select", "limit:lid"], "--highlight"),
+            (&["--colour-by", "shade"], "`provenance`"),
+            (&["--height-preview", "0"], "0.1 to 50"),
+            (&["--height-preview", "51"], "0.1 to 50"),
+            (&["--height-preview", "tall"], "0.1 to 50"),
+            (&["--port", "0"], "1 to 65535"),
+            (&["--port", "http"], "1 to 65535"),
+            (&["--picture"], "--picture needs"),
+            (&["--out", "a.png"], "--picture"),
+            (&["--size", "100x100"], "no option `--size`"),
+            (&["examples/led.nsm"], "takes no file"),
+        ] {
+            let mut line = vec!["view"];
+            line.extend_from_slice(args);
+            let e = parse(&line).unwrap_err();
+            assert!(e.contains(says), "{args:?}: {e}");
+        }
+    }
+
+    #[test]
+    fn view_is_listed_and_has_help() {
+        assert!(COMMANDS.iter().any(|(name, _)| *name == "view"));
+        assert!(USAGE.contains("netsmith view [--port <n>]"));
+        assert_eq!(parse(&["view", "--help"]), Ok(Command::Help));
     }
 }
