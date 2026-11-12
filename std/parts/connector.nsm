@@ -419,11 +419,73 @@ part UsbC2 provides Connector {
 /// channel contacts, `.dp` and `.dm` the data pair, `.sbu1` and `.sbu2` the sideband contacts,
 /// left open, and `.shell` the shield. It carries no resistors: `UsbCSink` adds the Rd that tells
 /// the host the device wants power, and is what a board uses. `.mpn` is the maker's number, which
-/// a project's receptacle lists as a column of its catalog.
+/// a project's receptacle lists as a column of its catalog. A port that gives power is a
+/// `UsbCSourceReceptacle`, one that does both a `UsbCDualRoleReceptacle`, and a receptacle that
+/// is neither is a `Connector` with a plain `Rail`.
 generic UsbCSinkReceptacle {
     .designator &= "J"
     .vbus: Rail
     dc source .vbus
+
+    pins {
+        .vbus.pos power
+        .vbus.neg power
+        .dp       bidirectional
+        .dm       bidirectional
+        .cc1      passive
+        .cc2      passive
+        .sbu1     passive
+        .sbu2     passive
+        .shell    passive
+    }
+
+    .package: Package
+    .mpn: String
+}
+
+/// The receptacle of a port that gives power to a USB Type-C device: a charger, or a host's
+/// downstream port, whose VBUS the board drives (#463). It has the sixteen contacts of
+/// `UsbCSinkReceptacle`, and `.vbus` goes the other way: it is not a source (no `dc`
+/// statement), it is what the device on the cable draws from the board through `pos`, so
+/// `.vbus.current >= 0A`. The board states the most the port allows (`.vbus.current &=
+/// 0A..3A`), and its own converter or switch drives the rail. The CC contacts take the
+/// source's Rp, or a port controller; the generic carries no resistors. Use `Connector` with a
+/// plain `Rail` in place of it for a receptacle that is neither a sink nor a source port, such
+/// as one that only carries data. No std part provides it: a project's receptacle does
+/// (`part X provides UsbCSourceReceptacle, Connector`), since `UsbCReceptacle16P` provides the
+/// sink generic, whose `dc source` a provider would take too. `.mpn` is the maker's number.
+generic UsbCSourceReceptacle {
+    .designator &= "J"
+    .vbus: Rail
+    .vbus.current >= 0A
+
+    pins {
+        .vbus.pos power
+        .vbus.neg power
+        .dp       bidirectional
+        .dm       bidirectional
+        .cc1      passive
+        .cc2      passive
+        .sbu1     passive
+        .sbu2     passive
+        .shell    passive
+    }
+
+    .package: Package
+    .mpn: String
+}
+
+/// The receptacle of a dual-role USB Type-C port, which takes power from the cable or gives it,
+/// as the two ends agree (#463). It has the sixteen contacts of `UsbCSinkReceptacle`, and no
+/// `dc` statement: `.vbus.current` has no sign of its own, and the board states a signed
+/// range for it, negative while the port supplies the board and positive while it powers the
+/// device on the cable (`.vbus.current &= -3A..1.5A`). A port that only takes power is a
+/// `UsbCSinkReceptacle`, and one that only gives it a `UsbCSourceReceptacle`. No std part
+/// provides it: a project's receptacle does, as for `UsbCSourceReceptacle`. `.mpn` is the
+/// maker's number.
+generic UsbCDualRoleReceptacle {
+    .designator &= "J"
+    .vbus: Rail
 
     pins {
         .vbus.pos power

@@ -16,6 +16,10 @@ _Avoid_: Assembly, backplane, harness
 A part that is a way in and out of a board: one that provides the standard generic `Connector` (`part MolexPicoBlade provides Connector { ... }`, ADR 0068; every standard header, socket, `Coax`, `UsbC*`, `Obd2M` and `ProgrammingPads6` does). The generic states the letters `J`. The schematic layout and the placer find connectors by it, so a project's own connector is one and an IC named `HeaderBuffer` is not (owner decision 2026-11-10, issue #166).
 _Avoid_: a connector by its name or its designator letters (`J`, `P`), a connector flag or kind list
 
+**Sink, source and dual-role receptacle**:
+The three generics of a USB Type-C receptacle in `std::parts::connector`, one for each way power goes through the port (#463). A **sink** receptacle (`UsbCSinkReceptacle`) takes power from the cable: its VBUS is a source of the board (`dc source .vbus`). A **source** receptacle (`UsbCSourceReceptacle`) gives power: the board drives VBUS and the device on the cable draws, so `.vbus.current >= 0A`. A **dual-role** receptacle (`UsbCDualRoleReceptacle`) does either, and the board states a signed range for `.vbus.current`. A receptacle that carries no power role is a `Connector` with a plain `Rail`.
+_Avoid_: host port, device port (for the power direction), DRP
+
 **Mate**:
 Two connectors that a system joins with `~` between their `.mating`: contact N of one meets contact N of the other (`.carrier.slot.mating ~ .card.j1.mating`, ADR 0040). The checker reads what each board has behind each contact (ground, power, a signal, or open), refuses what cannot meet (a header with a header, two outputs, ground against power, a count or pitch that differs), and joins the ports the contacts carry, so the same fact is not said twice with a port join.
 _Avoid_: Connection, link, plug
