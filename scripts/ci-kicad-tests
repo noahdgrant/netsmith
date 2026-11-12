@@ -21,7 +21,8 @@
 #
 #   scripts/ci-kicad-tests                  print the nextest filterset (`cargo nextest run -E ...`)
 #   scripts/ci-kicad-tests --list           the selected tests, "binary test", sorted (needs a build)
-#   scripts/ci-kicad-tests --check LOG...   fail if a test in the probe logs is not selected
+#   scripts/ci-kicad-tests --check LOG...   fail if a test in the probe logs is not selected (the
+#                                           selection from KICAD_TESTS, a `--list` file, if set)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -110,7 +111,9 @@ case "${1:-}" in
         shift
         [ "$#" -gt 0 ] || { echo "usage: scripts/ci-kicad-tests --check LOG..." >&2; exit 2; }
         work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-        list > "$work/selected"
+        # KICAD_TESTS: the list `--list` wrote where the build is (CI's `build` job), so a runner
+        # with only the archive of the tests compiles nothing.
+        if [ -n "${KICAD_TESTS:-}" ]; then sort "$KICAD_TESTS" > "$work/selected"; else list > "$work/selected"; fi
         # A slice where no test looked for KiCad has no log.
         { cat "$@" 2> /dev/null || true; } | tr '\t' ' ' | sort -u > "$work/probed"
         echo "$(wc -l < "$work/probed") tests looked for KiCad; $(wc -l < "$work/selected") are selected for the kicad job"

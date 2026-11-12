@@ -24,8 +24,10 @@
 # bundle. `test` is four slices of cargo nextest that run side by side (one run of
 # `cargo test` took fourteen minutes, three of them compiling, and runs one test binary after
 # the other), and `kicad` is three slices of the same kind (a slice installs KiCad 9, about
-# twenty seconds, and restores the cache); scripts/ci-test-slices proves that the slices of each
-# run every test once.
+# twenty seconds); scripts/ci-test-slices proves that the slices of each run every test once.
+# The workspace is compiled once, by the `build` job (issue #510): the slices run its archive of
+# the tests, and `no-kicad`, `locks` and `recipes` its `netsmith` binary, so a pull request
+# compiles once and not once a job, and its jobs take fewer of the account's runners.
 #
 # KiCad 9 and Chromium's system libraries come from a cache of the .deb files, not from Ubuntu's
 # mirrors (.github/actions/apt-cache, scripts/ci-apt-cache): when the mirrors are down (they were
@@ -55,7 +57,7 @@
 # missing, that is, when a change to a catalog, `std/` or the solver would move a pick. The fix is
 # `netsmith lock --update` in the example and a review of the diff of the lock.
 #
-# The Rust cache (Swatinem/rust-cache) is saved by pushes to main only, and a pull request
+# The Rust cache (Swatinem/rust-cache, in `build` and `clippy`) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
 # a copy each.
 # The release pull request that release-please opens (`release-please--branches--main`: a version
@@ -156,13 +158,84 @@ jobs:
 
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # The one compile of the tests (issue #510): `cargo nextest archive` builds every test binary
+  # of the workspace into tests.tar.zst, and the `netsmith` binary (with KiCad's lookup example,
+  # for the `kicad` job's log) goes into bin.tar. The `test` and `kicad` slices run the archive and
+  # `no-kicad`, `locks` and `recipes` run the binary; none of them compiles. The proofs that need
+  # the build run here: the doc tests (nextest runs none; the workspace has none today), that the
+  # slices of `test` and of `kicad` each run their tests exactly once (scripts/ci-test-slices, with
+  # the slice counts of those two jobs' matrices: change both together), and the list of the tests
+  # the `kicad` job selects, for the `test` slices' check. The Rust cache is this job's only.
+  build:
+    needs: changes
+    if: >-
+      needs.changes.outputs.rust == 'true' || needs.changes.outputs.kicad == 'true' ||
+      needs.changes.outputs.no_kicad == 'true' || needs.changes.outputs.locks == 'true' ||
+      needs.changes.outputs.recipes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        # The version and components of rust-toolchain.toml.
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: nextest@0.9.151
+
+      - name: Build the tests into an archive
+        run: cargo nextest archive --workspace --archive-file tests.tar.zst
+
+      # target/debug/netsmith is the binary the archive's integration tests were built with.
+      - name: The netsmith binary and KiCad's lookup example
+        run: |
+          cargo build -p netsmith-kicad --example locate
+          tar -cf bin.tar target/debug/netsmith target/debug/examples/locate
+          ls -l tests.tar.zst bin.tar
+
+      - name: Doc tests
+        run: cargo test --workspace --doc --no-fail-fast
+
+      - name: Every test runs in exactly one slice of `test`
+        run: scripts/ci-test-slices 4
+
+      - name: Every selected test runs in exactly one slice of `kicad`
+        run: scripts/ci-test-slices 3 kicad
+
+      - name: The tests the kicad job runs
+        run: scripts/ci-kicad-tests --list > kicad-tests.txt
+
+      # Already compressed (zstd): no second compression.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests
+          path: |
+            tests.tar.zst
+            kicad-tests.txt
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin
+          path: bin.tar
+          retention-days: 1
+          if-no-files-found: error
+
   # --no-fail-fast: one run lists every failing test, not just the first test that fails.
   # nextest deals the tests of the whole workspace out to the slices one by one (so the slow
   # tests of one binary go to different slices) and runs the tests of a slice in parallel,
-  # across binaries. It does not run doc tests; `cargo test --doc` does, in the first slice (the
-  # workspace has none today).
+  # across binaries. It runs the archive of the `build` job, so it compiles nothing.
   test:
-    needs: changes
+    needs: [changes, build]
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -173,19 +246,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        # The version and components of rust-toolchain.toml.
-        run: rustup toolchain install
-
-      # Every slice builds the same binaries and shares one cache; the first saves it.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.slice == 1 }}
-
       - name: Install cargo-nextest
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: nextest@0.9.151
+
+      # What the `build` job built: the archive of the tests, and the netsmith binary at
+      # target/debug/netsmith, where the tests' `env!("CARGO_BIN_EXE_netsmith")` points (every
+      # runner checks out to the same folder). Nothing is compiled here.
+      - uses: actions/download-artifact@v4
+        with:
+          name: tests
+      - uses: actions/download-artifact@v4
+        with:
+          name: bin
+      - run: tar -xf bin.tar
 
       # NETSMITH_KICAD_PROBE_LOG: each test that looks for KiCad (Search::machine) writes its name
       # there, and the step after this one checks that the `kicad` job runs it.
@@ -203,23 +278,17 @@ jobs:
             echo "only the tests of: $expr"
             filter=(-E "$expr" --no-tests=pass)
           fi
-          cargo nextest run --workspace --no-fail-fast "${filter[@]}" --partition slice:${{ matrix.slice }}/${{ strategy.job-total }}
+          cargo-nextest nextest run --archive-file tests.tar.zst --workspace-remap "$GITHUB_WORKSPACE" --no-fail-fast "${filter[@]}" \
+            --partition slice:${{ matrix.slice }}/${{ strategy.job-total }}
 
       # Every test of this slice that looked for KiCad is one the `kicad` job selects
       # (scripts/ci-kicad-tests): a test that needs KiCad cannot be left out of it unseen.
       - name: The kicad job runs every test that looks for KiCad
         if: always()
+        env:
+          KICAD_TESTS: kicad-tests.txt
         run: scripts/ci-kicad-tests --check "$RUNNER_TEMP/kicad-probe.log"
 
-      - name: Doc tests
-        if: matrix.slice == 1
-        run: cargo test --workspace --doc --no-fail-fast
-
-      # The slices between them are the whole run, each test in one slice, and as many tests as
-      # `cargo test` lists.
-      - name: Every test runs in exactly one slice
-        if: matrix.slice == 1
-        run: scripts/ci-test-slices ${{ strategy.job-total }}
 
   # The tests that can ask for KiCad, with KiCad 9 installed, so the ones that skip themselves in `test` run.
   # The runner's own Ubuntu archive carries KiCad 9 (ubuntu-latest is 26.04: 9.0.8). The version
@@ -233,7 +302,7 @@ jobs:
   # scripts/ci-test-slices proves it). It starts after `test`, so a pull request whose tests fail
   # takes no KiCad runner; a push to main waits for `test` too, since `needs` cannot differ by event.
   kicad:
-    needs: [changes, test]
+    needs: [changes, build, test]
     if: needs.changes.outputs.kicad == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -244,19 +313,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        # The version and components of rust-toolchain.toml.
-        run: rustup toolchain install
-
-      # Every slice builds the same binaries and shares one cache; the first saves it.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.slice == 1 }}
-
       - name: Install cargo-nextest
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: nextest@0.9.151
+
+      # What the `build` job built: the archive of the tests, and the netsmith binary at
+      # target/debug/netsmith, where the tests' `env!("CARGO_BIN_EXE_netsmith")` points (every
+      # runner checks out to the same folder). Nothing is compiled here.
+      - uses: actions/download-artifact@v4
+        with:
+          name: tests
+      - uses: actions/download-artifact@v4
+        with:
+          name: bin
+      - run: tar -xf bin.tar
 
       # kicad-cli, and the stock symbol and footprint libraries (separate packages, only
       # recommended by `kicad`). The 3D models (kicad-packages3d, several GB) are not installed,
@@ -280,7 +351,7 @@ jobs:
       # What the lookup of netsmith_kicad::install finds on a real Linux install (issue #6): the
       # packages' own folders, with nothing set.
       - name: Show the KiCad library lookup
-        run: cargo run --quiet -p netsmith-kicad --example locate
+        run: target/debug/examples/locate
 
       # The tests were written against the libraries of KiCad 9.0.0 (the stock footprints they
       # compare with, the fiducial's clearance, the VQFP footprints), and the 9.0.x libraries
@@ -315,7 +386,7 @@ jobs:
           echo "NETSMITH_KICAD_FOOTPRINTS=$HOME/kicad-libs/footprints" >> "$GITHUB_ENV"
 
       - name: Show the KiCad library lookup with the variables
-        run: cargo run --quiet -p netsmith-kicad --example locate
+        run: target/debug/examples/locate
 
       # --success-output immediate shows the output of the tests that pass, so the "skipped: ..."
       # lines are in the log and the run can prove that no test skipped itself for want of KiCad
@@ -340,7 +411,7 @@ jobs:
             extra=(--no-tests=pass)
           fi
           status=0
-          cargo nextest run --workspace --no-fail-fast -E "$filter" "${extra[@]}" \
+          cargo-nextest nextest run --archive-file tests.tar.zst --workspace-remap "$GITHUB_WORKSPACE" --no-fail-fast -E "$filter" "${extra[@]}" \
             --success-output immediate --failure-output immediate \
             --partition slice:${{ matrix.slice }}/${{ strategy.job-total }} > test.log 2>&1 || status=$?
           cat test.log
@@ -350,34 +421,23 @@ jobs:
           fi
           exit $status
 
-      # nextest does not run doc tests (the workspace has none today).
-      - name: Doc tests
-        if: matrix.slice == 1
-        run: cargo test --workspace --doc --no-fail-fast
-
-      # The same partition as the `test` job, over the same tests: the proof is the same.
-      - name: Every test runs in exactly one slice
-        if: matrix.slice == 1
-        run: scripts/ci-test-slices ${{ strategy.job-total }} kicad
 
   # netsmith with no KiCad (ADR 0097, step 4): the runner installs none, and scripts/check-no-kicad.sh
   # hides what could still be found (the libraries, kicad-cli, the Windows KiCad of WSL) and builds
   # and fabs every example. It runs the debug binary the `recipes` job builds, so it shares the cache.
   no-kicad:
-    needs: changes
+    needs: [changes, build]
     if: needs.changes.outputs.no_kicad == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        # The version and components of rust-toolchain.toml.
-        run: rustup toolchain install
-
-      - uses: Swatinem/rust-cache@v2
+      # The netsmith binary the `build` job built, at target/debug/netsmith.
+      - uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          name: bin
+      - run: tar -xf bin.tar
 
       # The runner is a plain ubuntu-latest, and this job installs no KiCad. What it has is shown;
       # the script hides it all the same, and fails if `fab` still finds a kicad-cli.
@@ -386,8 +446,6 @@ jobs:
           command -v kicad-cli || echo "no kicad-cli on PATH"
           ls -d /usr/share/kicad 2> /dev/null || echo "no /usr/share/kicad"
 
-      - run: cargo build -p netsmith
-
       - name: Build and fab every example with KiCad hidden
         run: scripts/check-no-kicad.sh target/debug/netsmith
 
@@ -395,7 +453,7 @@ jobs:
   # over every example with no KiCad, and fails when a lock is stale or missing. It builds the same
   # debug binary as `no-kicad`, so it shares the cache.
   locks:
-    needs: changes
+    needs: [changes, build]
     if: needs.changes.outputs.locks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -406,15 +464,11 @@ jobs:
       - name: Test the script
         run: scripts/check-example-locks-test
 
-      - name: Rust toolchain
-        # The version and components of rust-toolchain.toml.
-        run: rustup toolchain install
-
-      - uses: Swatinem/rust-cache@v2
+      # The netsmith binary the `build` job built, at target/debug/netsmith.
+      - uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - run: cargo build -p netsmith
+          name: bin
+      - run: tar -xf bin.tar
 
       - name: Every example's pick lock is current
         run: scripts/check-example-locks.sh target/debug/netsmith
@@ -424,7 +478,7 @@ jobs:
   # A slice runs its share of the recipes, session by session, and lists each one that failed;
   # scripts/ci-recipe-slices says which recipes are the slice's, by their seconds.
   recipes:
-    needs: changes
+    needs: [changes, build]
     if: needs.changes.outputs.recipes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -435,16 +489,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        # The version and components of rust-toolchain.toml.
-        run: rustup toolchain install
-
-      # Every slice builds the same binary and shares one cache; the first saves it.
-      - uses: Swatinem/rust-cache@v2
+      # The netsmith binary the `build` job built, at target/debug/netsmith.
+      - uses: actions/download-artifact@v4
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' && matrix.slice == 1 }}
-
-      - run: cargo build -p netsmith
+          name: bin
+      - run: tar -xf bin.tar
 
       - uses: actions/setup-node@v4
         with:
@@ -544,7 +593,7 @@ jobs:
   # that does not run it.
   ci-ok:
     if: always() && github.head_ref != 'release-please--branches--main'
-    needs: [changes, fmt, clippy, test, kicad, no-kicad, locks, recipes]
+    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
