@@ -1,0 +1,54 @@
+//! The TLV7022, Texas Instruments, a dual low-power comparator with open-drain outputs, in the
+//! 8-lead SOT-23-THIN package (DDF): the U4 of the Power Manifold charger module (LCSC C2862588,
+//! `catalogs/tlv7022.csv`). It has no reference: the module's reference voltages are resistor
+//! dividers on its inputs.
+//!
+//! The pin table was WRITTEN BY HAND from "TLV7011, TLV7021, TLV7012, TLV7022" (the Chinese
+//! edition the PDF of LCSC's link is, ZHCSGK4E, September 2017, revised November 2019, 50
+//! pages), section 5 "Pin Configuration and Functions" (page 4), the table for the TLV7012/22:
+//! pin 1 `OUTA`, 2 `INA-`, 3 `INA+`, 4 `VEE`, 5 `INB+`, 6 `INB-`, 7 `OUTB`, 8 `VCC`. The table
+//! is drawn for the 8-pin VSSOP (DGK); the datasheet does not print a pinout for the DDF
+//! package, and its orderable addendum lists the TLV7022DDFR in the 8-lead SOT-23-THIN (DDF)
+//! with the same 8 pins (PDF page 27; the DDF0008A drawings are on PDF pages 34 to 36). The reference board numbers its DDF pads the same
+//! way (its nets are `/TCPP_EN` on 1 and 7, `/VOUT_SENSE` on 2 and 6, `+3.3V` on 8, `GND` on 4),
+//! which matches this table: the DDF numbering is taken to be the DGK's. **The supply is a rail
+//! `.supply`** (`.supply.pos` the `VCC` pad and `.supply.neg` the `VEE` pad) with the dual
+//! parts' Table 6.5 window (page 6), 1.6 V to 6.5 V. The inputs are `input` pins, the outputs
+//! `tri_state` pins: the TLV702x output is open drain ("can be pulled above VCC", Table 6.2
+//! limits it to 7 V), so it only pulls the line low or lets it go (high impedance), and the
+//! reference board's two outputs share one net, `/TCPP_EN`, which the kind `output` refuses
+//! (`net ... has two outputs`). The language has no open-drain kind of a pin; `tri_state` is the
+//! kind that lets several share a net, and no level is stated (see the README, gaps).
+//!
+//! What is deliberately left out: every level, rating and timing (input offset 8 mV, hysteresis
+//! 1.2 mV, propagation delay 260 ns, supply current 5 uA, the absolute maximum ratings of
+//! Table 6.2), so the checks that need a number are listed as not evaluated, and the open-drain
+//! levels of the outputs.
+
+import std::sources::Rail
+
+/// The TLV7022: two comparators, `A` and `B`, with open-drain outputs.
+part Tlv7022 {
+    .designator &= "U"
+
+    .supply: Rail
+    // Table 6.5, Recommended Operating Conditions (Dual), page 6: VS = VCC - VEE, 1.6 V to 6.5 V.
+    .supply.voltage >= 1.6V
+    .supply.voltage <= 6.5V
+
+    pins "SOT-23-THIN-8" {
+        //  pin          kind    name    pads
+        .out_a      tri_state "OUTA"  "1"
+        .in_a_neg   input  "INA-"  "2"
+        .in_a_pos   input  "INA+"  "3"
+        .supply.neg power  "VEE"   "4"
+        .in_b_pos   input  "INB+"  "5"
+        .in_b_neg   input  "INB-"  "6"
+        .out_b      tri_state "OUTB"  "7"
+        .supply.pos power  "VCC"   "8"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog tlv7022 by .mpn { .mpn, .package }
+}
