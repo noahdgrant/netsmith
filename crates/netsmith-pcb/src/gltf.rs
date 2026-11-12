@@ -27,9 +27,12 @@
 //!     `height_unchecked` (a part of unknown height under one) or `body_overlap` (two bodies
 //!     that fill the same space); `face` says on which face.
 //!   - `substrate`: `{kind: "substrate"}`, the laminate as its mesh, with children `mask:top`
-//!     and `mask:bottom` (`{kind: "mask", face}`, where the stackup has them) and one node per
-//!     plated hole, `hole:<refdes>.<pad>` or `via:<net>` (`{kind: "hole", path, refdes, pad}`
-//!     or `{kind: "hole", net}`), its barrel as the mesh.
+//!     and `mask:bottom` (`{kind: "mask", face}`, where the stackup has them: the mask with its
+//!     openings cut out, material `mask-top` or `mask-bottom` over laminate and
+//!     `mask-over-copper` over copper), one node per plated hole, `hole:<refdes>.<pad>` or
+//!     `via:<net>` (`{kind: "hole", path, refdes, pad}` or `{kind: "hole", net}`), its barrel as
+//!     the mesh, and last `silk:top` and `silk:bottom` (`{kind: "silk", face}`, material
+//!     `mark`), the silkscreen off the mask's openings, when the copper can be drawn.
 //!   - one node per part with a body, by path, named by its designator: `{kind: "part", path,
 //!     refdes, side: "top" | "bottom", provenance: "stated" | "catalog" | "unknown",
 //!     height_mm, z_bottom_mm, z_top_mm, part_kind, category, margin_mm, margin_limit}`. A
@@ -50,13 +53,17 @@
 //!     schema 1).
 //!   - `protrusions`: one child per part whose pins stand out of the far face by a stated
 //!     length, `pins:<refdes>`: `{kind: "protrusion", path, length_mm}`.
-//!   - Reserved for the copper (#430): group nodes `copper:<layer>` with children
-//!     `{kind: "copper", layer, net}`.
+//!   - One group per copper layer, top face down, `copper:<layer>`: `{kind: "copper_layer",
+//!     layer, z_top_mm, z_bottom_mm}`, with a child per net on it, `copper:<layer>:<net>`
+//!     (`copper:<layer>:(no net)` first, for the copper with no net): `{kind: "copper", layer,
+//!     net: name | null}`, the net's copper as the mesh (material `copper` under the mask,
+//!     `finish` where it is open). None when the copper cannot be drawn.
 //!
 //!   A node whose shape has no area has no mesh, and is still there.
 //! - **Materials**, by name, PBR metallic-roughness, in the order of [`Material::ALL`]:
 //!   `substrate`, `mask-top`, `mask-bottom`, `copper`, `body`, `body-unknown`, `metal`, `mark`,
-//!   `limit` and `limit-violated` (the last two `alphaMode: BLEND`). Their colours are the
+//!   `limit`, `limit-violated` (these two `alphaMode: BLEND`), `finish` and `mask-over-copper`
+//!   (added at the end in schema 1, so no index moved). Their colours are the
 //!   rasterizer's light palette ([`Theme::Light`]), turned into linear light as glTF wants
 //!   them. The materials of open surfaces (a barrel, a flat outline, a limit) are
 //!   double-sided.
@@ -65,7 +72,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::board::Side;
-use crate::mesh::{BodyPieces, Material, Mesh, pieces};
+use crate::mesh::{BodyPieces, Material, Mesh, NO_NET, pieces};
 use crate::raster3d::Theme;
 use crate::scene3d::{HoleOwner, Pins, Scene};
 
@@ -253,8 +260,9 @@ fn materials() -> Vec<Value> {
             let [r, g, b, a] = palette.colour(m);
             let (metallic, roughness) = match m {
                 Material::Copper => (1.0, 0.35),
+                Material::Finish => (1.0, 0.3),
                 Material::Metal => (1.0, 0.4),
-                Material::MaskTop | Material::MaskBottom => (0.0, 0.45),
+                Material::MaskTop | Material::MaskBottom | Material::MaskOverCopper => (0.0, 0.45),
                 _ => (0.0, 0.8),
             };
             let alpha = (f64::from(a) / 255.0 * 10_000.0).round() / 10_000.0;
@@ -355,16 +363,14 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
 
     // The substrate, its masks and its barrels.
     let mut substrate = Node::new("substrate", json!({ "kind": "substrate" }));
-    let of = |m: Material| pieces.board.iter().filter(move |x| x.material == m);
-    substrate.mesh = b.mesh("substrate", &of(Material::Substrate).collect::<Vec<_>>());
-    for (m, side) in [(Material::MaskTop, "top"), (Material::MaskBottom, "bottom")] {
-        let masks: Vec<&Mesh> = of(m).collect();
-        if masks.is_empty() {
-            continue;
-        }
+    let laminate: Vec<&Mesh> = pieces.board.iter().collect();
+    substrate.mesh = b.mesh("substrate", &laminate);
+    for m in &pieces.masks {
+        let side = face(m.side);
         let name = format!("mask:{side}");
         let mut node = Node::new(&name, json!({ "kind": "mask", "face": side }));
-        node.mesh = b.mesh(&name, &masks);
+        let parts: Vec<&Mesh> = m.bare.iter().chain(&m.over_copper).collect();
+        node.mesh = b.mesh(&name, &parts);
         substrate.children.push(node);
     }
     for (h, wall) in solid.holes.iter().zip(&pieces.walls) {
@@ -380,6 +386,13 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
         };
         let mut node = Node::new(&name, extras);
         node.mesh = wall.as_ref().and_then(|w| b.mesh(&name, &[w]));
+        substrate.children.push(node);
+    }
+    for s in &pieces.silk {
+        let side = face(s.side);
+        let name = format!("silk:{side}");
+        let mut node = Node::new(&name, json!({ "kind": "silk", "face": side }));
+        node.mesh = s.mesh.as_ref().and_then(|m| b.mesh(&name, &[m]));
         substrate.children.push(node);
     }
 
@@ -480,6 +493,34 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
         protrusions.children.push(node);
     }
     root.children.push(protrusions);
+
+    // The copper, a group per layer and a node per net on it.
+    if let Ok(copper) = &scene.copper {
+        for (l, layer) in copper.layers.iter().zip(&pieces.copper) {
+            let group_name = format!("copper:{}", l.name);
+            let mut group = Node::new(
+                &group_name,
+                json!({
+                    "kind": "copper_layer",
+                    "layer": l.name,
+                    "z_top_mm": l.z_top,
+                    "z_bottom_mm": l.z_bottom,
+                }),
+            );
+            for n in &layer.nets {
+                let label = n.net.as_deref().unwrap_or(NO_NET);
+                let name = format!("copper:{}:{label}", l.name);
+                let mut node = Node::new(
+                    &name,
+                    json!({ "kind": "copper", "layer": l.name, "net": n.net }),
+                );
+                let parts: Vec<&Mesh> = n.copper.iter().chain(&n.finish).collect();
+                node.mesh = b.mesh(&name, &parts);
+                group.children.push(node);
+            }
+            root.children.push(group);
+        }
+    }
 
     let root = b.node(root);
     let mut doc = json!({
