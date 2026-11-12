@@ -29,6 +29,7 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
             HeightProvenance::Unknown
         },
         pins: Pins::None,
+        shape: None,
     }
 }
 

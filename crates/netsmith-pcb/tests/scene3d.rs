@@ -582,3 +582,150 @@ fn a_four_layer_board_has_copper_on_four_layers_with_the_planes_inside() {
     let z: Vec<f64> = c.layers.iter().map(|l| l.z_top).collect();
     assert!(z.windows(2).all(|w| w[0] > w[1]), "{z:?}");
 }
+
+/// The volume a closed mesh holds: positive when its triangles face out.
+fn volume(m: &netsmith_pcb::mesh::Mesh) -> f64 {
+    m.indices
+        .chunks(3)
+        .map(|t| {
+            let [a, b, c] = [0, 1, 2].map(|k| m.positions[t[k] as usize]);
+            (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]))
+                / 6.0
+        })
+        .sum()
+}
+
+/// The board with `a` (on the top) and `under` (on the bottom) given the generated footprint
+/// `id`, turned a quarter, `height` mm tall.
+fn shaped(id: &str, height: Option<f64>) -> Board {
+    let mut board = board();
+    for path in ["a", "under"] {
+        let p = board.parts.iter_mut().find(|p| p.path == path).unwrap();
+        p.footprint = netsmith_pcb::generate::generate(id).unwrap();
+        p.rotation = 90.0;
+        p.height = height;
+    }
+    board
+}
+
+#[test]
+fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    for (id, h) in [
+        ("Resistor_SMD:R_0603_1608Metric", 0.5),
+        ("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", 1.75),
+    ] {
+        let board = shaped(id, Some(h));
+        let s = scene(&board);
+        let meshes = of_scene(&s);
+        let (left, bottom) = (board.outline.min.x, board.outline.max.y);
+        for path in ["a", "under"] {
+            let body = s.body(path).unwrap();
+            assert!(body.shape.is_some(), "{id} {path}");
+            let mine: Vec<_> = meshes.iter().filter(|m| m.id == path).collect();
+            assert!(mine.iter().any(|m| m.material == Material::Metal), "{id}");
+            for m in &mine {
+                assert!(
+                    volume(m) > 0.0,
+                    "{id} {path}: a {} mesh is inside out",
+                    m.material
+                );
+            }
+            let b = netsmith_pcb::mesh::bounds_of(
+                &mine.iter().map(|m| (*m).clone()).collect::<Vec<_>>(),
+            )
+            .unwrap();
+            // In plan: inside the body box and the pads, as the scene puts them.
+            let placed = board.parts.iter().find(|p| p.path == path).unwrap();
+            let mut env = body.bounds;
+            for pad in &placed.footprint.pads {
+                let r = placed.pad_bounds(pad);
+                env.min.x = env.min.x.min(r.min.x - left);
+                env.max.x = env.max.x.max(r.max.x - left);
+                env.min.y = env.min.y.min(bottom - r.max.y);
+                env.max.y = env.max.y.max(bottom - r.min.y);
+            }
+            let eps = 1e-6;
+            assert!(
+                b.min[0] >= env.min.x - eps
+                    && b.max[0] <= env.max.x + eps
+                    && b.min[1] >= env.min.y - eps
+                    && b.max[1] <= env.max.y + eps,
+                "{id} {path}: {b:?} outside {env:?}"
+            );
+            // The body box's middle is the shape's: nothing is turned the wrong way.
+            let mid = |lo: f64, hi: f64| 0.5 * (lo + hi);
+            assert!(
+                (mid(b.min[0], b.max[0]) - mid(body.bounds.min.x, body.bounds.max.x)).abs() < 1e-6
+            );
+            assert!(
+                (mid(b.min[1], b.max[1]) - mid(body.bounds.min.y, body.bounds.max.y)).abs() < 1e-6
+            );
+            // Turned a quarter, the part is longer along y than along x.
+            assert!(
+                b.max[1] - b.min[1] > b.max[0] - b.min[0],
+                "{id} {path}: {b:?}"
+            );
+            // In z: from the face out to the height, a bottom part hanging down.
+            let (lo, hi) = match body.side {
+                Side::Back => (-1.6 - h, -1.6),
+                _ => (0.0, h),
+            };
+            assert!(
+                (b.min[2] - lo).abs() < 1e-9 && (b.max[2] - hi).abs() < 1e-9,
+                "{id} {path}: {b:?}"
+            );
+            // The pin 1 dot is nearest pad 1, also mirrored on the bottom.
+            if let Some(dot) = mine.iter().find(|m| m.material == Material::Mark) {
+                let c = dot.bounds().unwrap().centre();
+                let near = placed
+                    .footprint
+                    .pads
+                    .iter()
+                    .min_by(|p, q| {
+                        let d = |pad: &netsmith_pcb::Pad| {
+                            let at = placed.pad_centre(pad);
+                            (at.x - left - c[0]).hypot(bottom - at.y - c[1])
+                        };
+                        d(p).total_cmp(&d(q))
+                    })
+                    .unwrap();
+                assert_eq!(near.number, "1", "{id} {path}");
+            }
+        }
+        // The file's footprint has no package record: still its box.
+        let box_ = meshes.iter().filter(|m| m.id == "b").collect::<Vec<_>>();
+        assert!(s.body("b").unwrap().shape.is_none());
+        assert_eq!(box_.len(), 1);
+        assert_eq!(box_[0].material, Material::Body);
+        assert_eq!(box_[0].triangle_count(), 12);
+        // The same board gives the same meshes.
+        assert_eq!(meshes, of_scene(&scene(&shaped(id, Some(h)))));
+        // To look at: `NETSMITH_RENDER3D_OUT=<folder>` writes the board from above and below.
+        if let Some(out) = std::env::var_os("NETSMITH_RENDER3D_OUT") {
+            use netsmith_pcb::raster3d::{RenderOptions, View, render_view};
+            std::fs::create_dir_all(&out).unwrap();
+            let stem = id.split(':').nth(1).unwrap_or(id);
+            for view in [View::Iso, View::IsoBottom] {
+                let png = render_view(&meshes, view, &RenderOptions::default()).to_png();
+                let file = format!("shaped-{stem}-{}.png", view.name());
+                std::fs::write(std::path::Path::new(&out).join(file), png).unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn a_shaped_footprint_of_unknown_height_is_still_its_flat_outline() {
+    use netsmith_pcb::mesh::{Material, of_scene};
+    let s = scene(&shaped("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", None));
+    let meshes = of_scene(&s);
+    for path in ["a", "under"] {
+        assert!(s.body(path).unwrap().shape.is_none());
+        let mine: Vec<_> = meshes.iter().filter(|m| m.id == path).collect();
+        assert_eq!(mine.len(), 1, "{path}");
+        assert_eq!(mine[0].material, Material::BodyUnknown);
+        assert!(!mine[0].closed);
+    }
+}

@@ -22,11 +22,14 @@
 //! [`Mesh::axis_box`], [`Mesh::prism`] (a [`Polygon`] with holes, extruded: the board with its
 //! cutouts and drilled holes, a body from its outline), [`Mesh::flat`] (a polygon at one height:
 //! mask, silkscreen, an unknown part's outline), [`Mesh::cylinder`] and [`Mesh::cylinder_wall`]
-//! (holes, vias, pins), [`Mesh::wall`] (a plated hole's barrel, round or a slot). [`circle`] and [`rounded_rect`] make outlines; a circle with `segments`
-//! corners stands for a round one. Every builder is deterministic: the same arguments give the
+//! (holes, vias, pins), [`Mesh::wall`] (a plated hole's barrel, round or a slot),
+//! [`Mesh::spheroid`] (a solder ball). [`Mesh::transform`] moves, turns and mirrors a mesh built
+//! in a footprint's frame into the scene's. [`circle`] and [`rounded_rect`] make outlines; a
+//! circle with `segments` corners stands for a round one. Every builder is deterministic: the same arguments give the
 //! same bits on every machine ([`trig`] computes the circles' points without the platform's
 //! maths library).
 
+mod package;
 mod scene;
 mod triangulate;
 pub mod trig;
@@ -307,6 +310,118 @@ impl Mesh {
         self.positions.extend_from_slice(&other.positions);
         self.indices.extend(other.indices.iter().map(|i| i + base));
         self.closed = self.closed && other.closed;
+    }
+
+    /// Maps every position `p` to `linear * p + offset` (`linear` by rows, invertible) and every
+    /// normal by the inverse transpose, so that a mesh built in one frame lands in another. A
+    /// map that mirrors (its determinant is negative) also turns every triangle over, so that
+    /// it still faces out.
+    pub fn transform(&mut self, linear: [[f64; 3]; 3], offset: [f64; 3]) {
+        let apply = |m: &[[f64; 3]; 3], v: [f64; 3]| {
+            [0, 1, 2].map(|r| m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2])
+        };
+        let l = linear;
+        // The cofactors: the determinant times the inverse transpose.
+        let cof = [
+            [
+                l[1][1] * l[2][2] - l[1][2] * l[2][1],
+                l[1][2] * l[2][0] - l[1][0] * l[2][2],
+                l[1][0] * l[2][1] - l[1][1] * l[2][0],
+            ],
+            [
+                l[0][2] * l[2][1] - l[0][1] * l[2][2],
+                l[0][0] * l[2][2] - l[0][2] * l[2][0],
+                l[0][1] * l[2][0] - l[0][0] * l[2][1],
+            ],
+            [
+                l[0][1] * l[1][2] - l[0][2] * l[1][1],
+                l[0][2] * l[1][0] - l[0][0] * l[1][2],
+                l[0][0] * l[1][1] - l[0][1] * l[1][0],
+            ],
+        ];
+        let det = l[0][0] * cof[0][0] + l[0][1] * cof[0][1] + l[0][2] * cof[0][2];
+        for p in &mut self.positions {
+            let q = apply(&l, *p);
+            *p = [0, 1, 2].map(|k| q[k] + offset[k]);
+        }
+        if let Some(ns) = &mut self.normals {
+            for n in ns {
+                let q = apply(&cof, *n).map(|c| c * det.signum());
+                *n = normalise(q);
+            }
+        }
+        if det < 0.0 {
+            for t in self.indices.as_chunks_mut::<3>().0 {
+                t.swap(1, 2);
+            }
+        }
+    }
+
+    /// An upright spheroid of `radius` in plan about `centre`, filling `z0` up to `z1`: a ball,
+    /// or a ball squashed or stretched along z. `(segments, rings)`: the corners round (at least
+    /// 3) and the bands from pole to pole (at least 2). Shaded smooth, closed.
+    pub fn spheroid(
+        id: impl Into<String>,
+        material: Material,
+        centre: [f64; 2],
+        radius: f64,
+        z0: f64,
+        z1: f64,
+        (segments, rings): (usize, usize),
+    ) -> Result<Mesh, MeshError> {
+        if ![centre[0], centre[1], radius, z0, z1]
+            .iter()
+            .all(|v| v.is_finite())
+        {
+            return Err(MeshError::NotFinite);
+        }
+        if z0 >= z1 {
+            return Err(MeshError::Height {
+                bottom: z0,
+                top: z1,
+            });
+        }
+        if radius <= 0.0 {
+            return Err(MeshError::Degenerate {
+                ring: 0,
+                corners: 0,
+            });
+        }
+        let (n, rings) = (segments.max(3), rings.max(2));
+        let (c, zc) = (0.5 * (z1 - z0), 0.5 * (z0 + z1));
+        let mut m = Mesh::new(id, material);
+        let top = m.vertex([centre[0], centre[1], z1], [0.0, 0.0, 1.0]);
+        // The rings between the poles, from the top down, each `n` corners counterclockwise.
+        let mut first = Vec::with_capacity(rings - 1);
+        for k in 1..rings {
+            let (st, ct) = trig::sin_cos_turns(k as f64 / (2 * rings) as f64);
+            first.push(m.positions.len() as u32);
+            for j in 0..n {
+                let (sp, cp) = trig::sin_cos_turns(j as f64 / n as f64);
+                let (ux, uy) = (st * cp, st * sp);
+                m.vertex(
+                    [
+                        centre[0] + radius * ux,
+                        centre[1] + radius * uy,
+                        zc + c * ct,
+                    ],
+                    normalise([ux / radius, uy / radius, ct / c]),
+                );
+            }
+        }
+        let bottom = m.vertex([centre[0], centre[1], z0], [0.0, 0.0, -1.0]);
+        let at = |ring: usize, j: usize| first[ring] + (j % n) as u32;
+        for j in 0..n {
+            m.indices.extend_from_slice(&[top, at(0, j), at(0, j + 1)]);
+            for r in 0..rings - 2 {
+                let (a, b, cc, d) = (at(r, j), at(r, j + 1), at(r + 1, j + 1), at(r + 1, j));
+                m.indices.extend_from_slice(&[a, d, cc, a, cc, b]);
+            }
+            let last = rings - 2;
+            m.indices
+                .extend_from_slice(&[at(last, j), bottom, at(last, j + 1)]);
+        }
+        Ok(m)
     }
 
     fn vertex(&mut self, p: [f64; 3], n: [f64; 3]) -> u32 {
@@ -796,6 +911,40 @@ mod tests {
             .to_string(),
             "hole 2 has no area (1 corners)"
         );
+    }
+
+    #[test]
+    fn a_spheroid_faces_out_and_has_its_volume() {
+        let s = Mesh::spheroid("U1", Material::Metal, [1.0, 2.0], 0.3, 0.0, 0.4, (48, 24)).unwrap();
+        let want = 4.0 / 3.0 * std::f64::consts::PI * 0.3 * 0.3 * 0.2;
+        assert!((volume(&s) - want).abs() / want < 0.01, "{}", volume(&s));
+        let b = s.bounds().unwrap();
+        assert_eq!((b.min[2], b.max[2]), (0.0, 0.4));
+        assert!((b.max[0] - 1.3).abs() < 1e-12 && (b.min[1] - 1.7).abs() < 0.01);
+        // Every normal points away from the middle.
+        for (p, n) in s.positions.iter().zip(s.normals.as_ref().unwrap()) {
+            let d = [p[0] - 1.0, p[1] - 2.0, p[2] - 0.2];
+            assert!(d[0] * n[0] + d[1] * n[1] + d[2] * n[2] > 0.0);
+        }
+        assert!(Mesh::spheroid("x", Material::Metal, [0.0; 2], 0.0, 0.0, 1.0, (8, 4)).is_err());
+        assert!(Mesh::spheroid("x", Material::Metal, [0.0; 2], 1.0, 1.0, 1.0, (8, 4)).is_err());
+    }
+
+    #[test]
+    fn a_mirroring_transform_keeps_a_mesh_facing_out() {
+        let mut b = Mesh::axis_box("R1", Material::Body, [0.0; 3], [2.0, 3.0, 4.0]);
+        // Turned a quarter and turned over (mirrored in z): still the same volume, facing out.
+        b.transform(
+            [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]],
+            [10.0, 0.0, -1.6],
+        );
+        assert!((volume(&b) - 24.0).abs() < 1e-12, "{}", volume(&b));
+        let bb = b.bounds().unwrap();
+        assert_eq!(bb.min, [7.0, 0.0, -5.6]);
+        assert_eq!(bb.max, [10.0, 2.0, -1.6]);
+        // The top face's normal now looks down.
+        let ns = b.normals.as_ref().unwrap();
+        assert_eq!(ns[0], [0.0, 0.0, -1.0]);
     }
 
     #[test]

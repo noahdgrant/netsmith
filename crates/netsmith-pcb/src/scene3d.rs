@@ -28,6 +28,11 @@
 //!   `F.Fab` drawing, else its courtyard, as a placement requirement and the height check measure
 //!   it, ADR 0045) turned and mirrored with the part, from its face to its height. A part whose
 //!   height is unknown has none: it is never given zero or a guess (ADR 0094, ADR 0105).
+//!   Where the footprint has a package record and the height is known, the body also carries
+//!   its _Package shape_ ([`PlacedShape`]): the solids of [`crate::body3d::package_shape`] in the
+//!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
+//!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
+//!   every report measure the body box.
 //! - The pins of a through-hole part below the far face, where the design states their
 //!   protrusion (ADR 0045 section 15); unknown otherwise.
 //! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, per face it
@@ -58,6 +63,7 @@
 use std::collections::BTreeMap;
 
 use crate::board::{Board, PlacementProblem, Side};
+use crate::body3d::Solid;
 use crate::copper::{self, CopperError};
 use crate::footprint::{Drill, PadKind};
 use crate::geometry::{Pt, Rect};
@@ -204,6 +210,51 @@ pub struct Body {
     pub height: Option<f64>,
     pub provenance: HeightProvenance,
     pub pins: Pins,
+    /// The package shape, drawn in place of the box. `None` when the footprint has no package
+    /// record (a footprint read from a file, ADR 0105) or the height is unknown: the box, or the
+    /// flat outline, is drawn instead.
+    pub shape: Option<PlacedShape>,
+}
+
+/// A part's _Package shape_ where it is on the board: its solids in the footprint's own frame
+/// ([`crate::body3d`]: y down, z up from the face the part is on) and the map to the scene's.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlacedShape {
+    pub solids: Vec<Solid>,
+    pub place: Placement,
+}
+
+/// The map from a footprint's frame to the scene's: the footprint's `(x, y, z)` is
+/// `origin + x * ex + y * ey` in plan and `z_face + out * z` up. `ex` and `ey` are unit vectors
+/// that hold the part's turn, the flip of y and the mirror of a bottom part; `out` is 1 for a
+/// part on the top face and -1 for one on the bottom, which hangs down from it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Placement {
+    pub origin: Plan,
+    pub ex: Plan,
+    pub ey: Plan,
+    pub z_face: f64,
+    pub out: f64,
+}
+
+impl Placement {
+    /// A point of the footprint's frame in the scene's.
+    pub fn point(&self, p: [f64; 3]) -> [f64; 3] {
+        [
+            self.origin.x + p[0] * self.ex.x + p[1] * self.ey.x,
+            self.origin.y + p[0] * self.ex.y + p[1] * self.ey.y,
+            self.z_face + self.out * p[2],
+        ]
+    }
+
+    /// The linear part of the map, by rows: what a direction (a normal) is turned by.
+    pub fn linear(&self) -> [[f64; 3]; 3] {
+        [
+            [self.ex.x, self.ey.x, 0.0],
+            [self.ex.y, self.ey.y, 0.0],
+            [0.0, 0.0, self.out],
+        ]
+    }
 }
 
 impl Body {
@@ -833,6 +884,13 @@ fn body(
             }
         }
     };
+    let shape = (p.footprint.package.is_some() && p.height.is_some())
+        .then(|| crate::body3d::package_shape(&p.footprint, p.height))
+        .filter(|s| s.shaped && !s.solids.is_empty())
+        .map(|s| PlacedShape {
+            solids: s.solids,
+            place: placement(p, frame, z_face, out),
+        });
     Body {
         path: p.path.clone(),
         refdes: p.refdes.clone(),
@@ -848,6 +906,29 @@ fn body(
         height: p.height,
         provenance,
         pins,
+        shape,
+    }
+}
+
+/// Where the footprint's frame of `p` is in the scene: its origin, and its axes as
+/// [`crate::board::Placed::to_board`] turns and mirrors them, with the sheet's y flipped.
+fn placement(p: &crate::board::Placed, frame: &Frame, z_face: f64, out: f64) -> Placement {
+    // `to_board` less the move, without the rounding of adding and taking away `p.at`.
+    let axis = |local: Pt| {
+        let local = if p.mirrored() {
+            Pt::new(-local.x, local.y)
+        } else {
+            local
+        };
+        let d = local.rotate(p.rotation);
+        Plan { x: d.x, y: -d.y }
+    };
+    Placement {
+        origin: frame.point(p.at),
+        ex: axis(Pt::new(1.0, 0.0)),
+        ey: axis(Pt::new(0.0, 1.0)),
+        z_face,
+        out,
     }
 }
 
