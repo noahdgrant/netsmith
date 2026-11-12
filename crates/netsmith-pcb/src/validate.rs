@@ -56,6 +56,8 @@ fn suits(kind: PinKind, symbol: PinType) -> bool {
         PinKind::Power => matches!(symbol, PowerIn | PowerOut),
         PinKind::Input => symbol == Input,
         PinKind::Output | PinKind::TriState => matches!(symbol, Output | TriState | OpenCollector),
+        // KiCad's stock symbols often type an open-drain output `output`.
+        PinKind::OpenDrain => matches!(symbol, OpenCollector | Output),
         PinKind::Bidirectional => !matches!(symbol, PowerIn | PowerOut),
         PinKind::NoConnect => symbol == NoConnect,
         // A passive pin neither takes nor gives, so a symbol that says more about it
@@ -471,6 +473,11 @@ mod tests {
                 TriState,
                 vec![T::TriState, T::Output, T::OpenCollector, T::Passive],
                 vec![T::Input, T::PowerOut],
+            ),
+            (
+                OpenDrain,
+                vec![T::OpenCollector, T::Output, T::Passive],
+                vec![T::Input, T::TriState, T::PowerOut],
             ),
             (NoConnect, vec![T::NoConnect, T::Passive], vec![T::Input]),
             (

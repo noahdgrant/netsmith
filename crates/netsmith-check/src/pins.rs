@@ -277,7 +277,11 @@ impl Checker<'_> {
                 )),
                 (
                     Requirement::Required,
-                    PinKind::Output | PinKind::TriState | PinKind::Bidirectional | PinKind::Passive,
+                    PinKind::Output
+                    | PinKind::TriState
+                    | PinKind::OpenDrain
+                    | PinKind::Bidirectional
+                    | PinKind::Passive,
                 ) => None,
                 (Requirement::Required, kind) => Some(format!(
                     "`required` is for an output, bidirectional or passive pin, which may float unless it says so; `{text}` is {} and must be connected already",
@@ -393,5 +397,6 @@ pub(crate) fn article(kind: PinKind) -> &'static str {
         PinKind::Passive => "a passive pin",
         PinKind::NoConnect => "a no_connect pin",
         PinKind::TriState => "a tri_state output",
+        PinKind::OpenDrain => "an open_drain output",
     }
 }

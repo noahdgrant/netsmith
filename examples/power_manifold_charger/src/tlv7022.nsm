@@ -14,11 +14,10 @@
 //! which matches this table: the DDF numbering is taken to be the DGK's. **The supply is a rail
 //! `.supply`** (`.supply.pos` the `VCC` pad and `.supply.neg` the `VEE` pad) with the dual
 //! parts' Table 6.5 window (page 6), 1.6 V to 6.5 V. The inputs are `input` pins, the outputs
-//! `tri_state` pins: the TLV702x output is open drain ("can be pulled above VCC", Table 6.2
+//! `open_drain` pins: the TLV702x output is open drain ("can be pulled above VCC", Table 6.2
 //! limits it to 7 V), so it only pulls the line low or lets it go (high impedance), and the
-//! reference board's two outputs share one net, `/TCPP_EN`, which the kind `output` refuses
-//! (`net ... has two outputs`). The language has no open-drain kind of a pin; `tri_state` is the
-//! kind that lets several share a net, and no level is stated (see the README, gaps).
+//! reference board's two outputs share one net, `/TCPP_EN`, which the microcontroller's PA15
+//! takes high through a 4.7 kohm resistor. No level is stated.
 //!
 //! What is deliberately left out: every level, rating and timing (input offset 8 mV, hysteresis
 //! 1.2 mV, propagation delay 260 ns, supply current 5 uA, the absolute maximum ratings of
@@ -38,13 +37,13 @@ part Tlv7022 {
 
     pins "SOT-23-THIN-8" {
         //  pin          kind    name    pads
-        .out_a      tri_state "OUTA"  "1"
+        .out_a      open_drain "OUTA" "1"
         .in_a_neg   input  "INA-"  "2"
         .in_a_pos   input  "INA+"  "3"
         .supply.neg power  "VEE"   "4"
         .in_b_pos   input  "INB+"  "5"
         .in_b_neg   input  "INB-"  "6"
-        .out_b      tri_state "OUTB"  "7"
+        .out_b      open_drain "OUTB" "7"
         .supply.pos power  "VCC"   "8"
     }
 

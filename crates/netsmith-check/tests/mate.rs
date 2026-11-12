@@ -307,6 +307,33 @@ fn an_output_on_one_board_and_a_tri_state_output_on_the_other_are_refused() {
 }
 
 #[test]
+fn an_open_drain_output_on_one_board_and_a_push_pull_output_on_the_other_are_refused() {
+    // The controller's `tx` is open drain, and the serial card's `tx` on contact 7 drives the
+    // line high (#460).
+    let src = changed(
+        "    .chip.uart.rx ~ .j1.p7\n    .chip.uart.tx ~ .j1.p8",
+        "    .chip.uart.tx ~ .j1.p7\n    .chip.uart.rx ~ .j1.p8",
+    );
+    let src = src.replacen(
+        ".uart.tx  output \"TX\"   \"3\"",
+        ".uart.tx  open_drain \"TX\" \"3\"",
+        1,
+    );
+    let c = run(&src);
+    let msgs = messages(&c);
+    let seven = msgs
+        .iter()
+        .find(|m| m.contains("contact 7"))
+        .unwrap_or_else(|| panic!("{msgs:#?}"));
+    assert!(
+        seven.contains("is a push-pull output on one board and an open_drain output on the other")
+            && seven.contains("(open_drain `carrier.mcu.uart.tx`)")
+            && seven.contains("(output `serial.chip.uart.tx`)"),
+        "{seven}"
+    );
+}
+
+#[test]
 fn ground_against_power_or_a_signal_is_a_short() {
     // Swap the ground and the supply on the sensor card's header: contact 1 is ground on the
     // carrier and power on the card.

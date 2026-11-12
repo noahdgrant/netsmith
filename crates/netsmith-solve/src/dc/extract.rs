@@ -1464,7 +1464,7 @@ fn driver_of(
     }
     let z = match model.pin_kind(pin)? {
         PinKind::Output => false,
-        PinKind::TriState | PinKind::Bidirectional => true,
+        PinKind::TriState | PinKind::Bidirectional | PinKind::OpenDrain => true,
         _ => return None,
     };
     let logic = reader.logic_of(pin)?;

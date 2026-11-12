@@ -626,6 +626,7 @@ impl<'a> Run<'a> {
                 continue;
             }
             self.outputs(net, &mine);
+            self.open_drains(net, &mine);
             self.floating_inputs(net);
         }
     }
@@ -717,6 +718,133 @@ impl<'a> Run<'a> {
                 plain_names.join(", "),
             ),
         );
+    }
+
+    /// The rules of a net with `open_drain` pins (#460, the owner's decisions of 2026-11-12).
+    /// Several of them share the line, since each only pulls it low or lets it go. An `output`
+    /// or a `tri_state` output on the same net drives it high while an open-drain pin pulls it
+    /// low, which is refused. And the line needs a pull-up: a resistor from the net to a net
+    /// that holds the positive pin of a rail, or a pin that can drive it high (`output`,
+    /// `tri_state` or `bidirectional`, such as a GPIO behind a series resistor). Pins joined
+    /// inside their part are one pin.
+    fn open_drains(&mut self, net: &Net, terminals: &[InstId]) {
+        let model = self.model;
+        let mut drains: Vec<InstId> = Vec::new();
+        let mut pushers: Vec<(InstId, PinKind)> = Vec::new();
+        for &t in terminals {
+            let kind = self.kind_here(t);
+            let into: &mut Vec<InstId> = match kind {
+                Some(PinKind::OpenDrain) => &mut drains,
+                Some(PinKind::Output | PinKind::TriState) => {
+                    let group = model.joined_inside(t);
+                    if !pushers.iter().any(|(p, _)| group.contains(p)) {
+                        pushers.push((t, kind.expect("matched")));
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
+            let group = model.joined_inside(t);
+            if !into.iter().any(|p| group.contains(p)) {
+                into.push(t);
+            }
+        }
+        if drains.is_empty() {
+            return;
+        }
+        let at = model
+            .instance(model.owner_of(drains[0]).expect("a terminal"))
+            .at();
+        let drain_names: Vec<String> = drains.iter().map(|&p| self.describe(p)).collect();
+        let (drain_word, lets) = if drains.len() == 1 {
+            ("an open_drain output", "it lets")
+        } else {
+            ("open_drain outputs", "they let")
+        };
+        if !pushers.is_empty() {
+            let pushed: Vec<String> = pushers
+                .iter()
+                .map(|&(p, kind)| {
+                    let ty = model
+                        .owner_of(p)
+                        .map_or(String::new(), |o| model.instance(o).type_name.clone());
+                    format!("`{}` (`{ty}`, {})", model.path_of(p), article(kind))
+                })
+                .collect();
+            let names: Vec<String> = pushers
+                .iter()
+                .map(|&(p, _)| format!("`{}`", model.path_of(p)))
+                .collect();
+            let (drives, them, own) = if pushers.len() == 1 {
+                ("it drives", "it", "its")
+            } else {
+                ("they drive", "them", "their")
+            };
+            self.report(
+                at,
+                format!(
+                    "net `{}` has {drain_word} ({}) and a push-pull driver: {}; {drives} the line high while an open_drain pin pulls it low; give {} a net of {own} own, or write `open_drain` for {them} if the datasheet says the pin is open drain",
+                    net.name,
+                    list_plain(&drain_names),
+                    pushed.join(" and "),
+                    names.join(", "),
+                ),
+            );
+        }
+        if !terminals.iter().any(|&t| self.pulls_up(net, t)) {
+            self.report(
+                at,
+                format!(
+                    "net `{}` has {drain_word} ({}) and no pull-up: nothing takes the line high when {lets} go of it; join a resistor from the net to a rail's `pos`, or to a pin that drives the line high",
+                    net.name,
+                    list_plain(&drain_names),
+                ),
+            );
+        }
+    }
+
+    /// Whether `pin` of `net` is one end of a resistor whose other end is on a net that holds
+    /// the positive pin of a rail or a pin that can drive high (`output`, `tri_state`,
+    /// `bidirectional`) of another part: a pull-up of the net (one step, as the levels check
+    /// reads a pull).
+    fn pulls_up(&self, net: &Net, pin: InstId) -> bool {
+        let model = self.model;
+        let Some(resistor) = model.owner_of(pin) else {
+            return false;
+        };
+        let Some((a, b)) = model.instance(resistor).bridge else {
+            return false;
+        };
+        let is_resistor = matches!(
+            model.member(resistor, "resistance"),
+            Some(crate::model::Member::Field(r))
+                if model.field(r).kind
+                    == crate::model::FieldKind::Quantity(netsmith_quantity::Dimension::RESISTANCE)
+        );
+        let far = match pin {
+            p if p == a => b,
+            p if p == b => a,
+            _ => return false,
+        };
+        if !is_resistor || net.pins.contains(&far) {
+            return false;
+        }
+        let Some(far_net) = model.nets().iter().find(|n| n.pins.contains(&far)) else {
+            return false;
+        };
+        far_net.pins.iter().any(|&p| {
+            let rail_pos = model
+                .instance(p)
+                .parent
+                .and_then(|i| model.rail_of(i))
+                .is_some_and(|(_, pos, _)| pos == p);
+            let drives = model.owner_of(p).is_some_and(|o| o != resistor)
+                && matches!(
+                    self.kind_here(p),
+                    Some(PinKind::Output | PinKind::TriState | PinKind::Bidirectional)
+                );
+            rail_pos || drives
+        })
     }
 
     /// A net whose pins are all inputs has nothing that drives it (a UART's `rx` wired to
