@@ -13,6 +13,7 @@ A language and tools for designing electronics as code. `README.md` says what it
 ## Tests
 
 - A test that needs a folder takes it from `netsmith_kicad::testlib::TempDir` (or `TempFile`), which removes it when the test ends, also on a panic. Bind the guard to a name, never to `_`. `NETSMITH_KEEP_TEST_DIRS=1` keeps the folders of a failing run.
+- A test should take under about 2 minutes on CI (nextest names a test past a minute as SLOW, `.config/nextest.toml`). A board that needs longer becomes several tests, one per seed or case, or a `measured` test that is `#[ignore]`d, as `mixed::measured` is.
 - `docs/LANGUAGE.md` is the language guide, and `crates/netsmith/tests/guide.rs` runs its examples. Change the guide with the language.
 
 ## Data

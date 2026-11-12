@@ -562,31 +562,53 @@ fn the_mixed_board_is_routed_completely_seed_3() {
 /// to the same copper.
 #[test]
 fn lines_ripped_up_for_lines_ripped_up_finish_a_board_and_the_same_board_gives_the_same_copper() {
-    let route = |negotiate: bool| {
-        let mut board = mixed_board(7, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
-        let routing = route_with(
-            &mut board,
-            RouteOptions {
-                retry_orders: false,
-                negotiate,
-                time_limit: Some(Duration::from_secs(120)),
-                ..RouteOptions::default()
-            },
-        );
-        assert!(!routing.stopped);
-        (board, routing.left)
-    };
-    let (_, without) = route(false);
-    assert!(!without.is_empty(), "the rip-up alone leaves lines");
-    let route = || {
-        let (board, left) = route(true);
-        assert!(left.is_empty(), "{:#?}", left.lines);
-        board
-    };
-    let (a, b) = (route(), route());
+    // The second routing runs beside the shared one, not after it.
+    let (a, b) = std::thread::scope(|s| {
+        let again = s.spawn(|| negotiated(route_seed_7(true)));
+        (route_seed_7_negotiated(), again.join().unwrap())
+    });
     assert_eq!(a.tracks, b.tracks);
     assert_eq!(a.vias, b.vias);
-    assert_eq!(drc_errors(&a), Vec::<String>::new());
+}
+
+/// Seed 7 routed with no other orders, with the negotiation or without it, and what it leaves.
+fn route_seed_7(negotiate: bool) -> (Board, netsmith_pcb::Ratsnest) {
+    let mut board = mixed_board(7, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
+    let routing = route_with(
+        &mut board,
+        RouteOptions {
+            retry_orders: false,
+            negotiate,
+            time_limit: Some(Duration::from_secs(120)),
+            ..RouteOptions::default()
+        },
+    );
+    assert!(!routing.stopped);
+    (board, routing.left)
+}
+
+/// The board of a negotiated routing, which must leave no line.
+fn negotiated((board, left): (Board, netsmith_pcb::Ratsnest)) -> Board {
+    assert!(left.is_empty(), "{:#?}", left.lines);
+    board
+}
+
+/// Seed 7 routed with the negotiation, once for the tests that check it (when they run in one
+/// process, as `cargo test` runs them; nextest runs each test in a process of its own).
+fn route_seed_7_negotiated() -> &'static Board {
+    static BOARD: std::sync::OnceLock<Board> = std::sync::OnceLock::new();
+    BOARD.get_or_init(|| negotiated(route_seed_7(true)))
+}
+
+#[test]
+fn the_rip_up_alone_leaves_lines_of_the_mixed_board_seed_7() {
+    let (_, without) = route_seed_7(false);
+    assert!(!without.is_empty(), "the rip-up alone leaves lines");
+}
+
+#[test]
+fn the_negotiation_finishes_the_mixed_board_seed_7_within_the_rules() {
+    assert_eq!(drc_errors(route_seed_7_negotiated()), Vec::<String>::new());
 }
 
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default), how the placer and the router

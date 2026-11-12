@@ -371,20 +371,29 @@ fn crowd(seed: u64, count: usize, turn: f64) -> Result<Board, BoardError> {
     )
 }
 
+/// The large part of [`crowd`] with 115 small ones, on `seed`, is placed inside, on the bottom
+/// face and turned as stated. Seeds 1 and 3 left the large part 4.85 and 0.55 mm outside before
+/// the retry that puts it in a corner first; each is a test of its own, so that a test run deals
+/// them out side by side.
+fn brings_the_large_part_inside(seed: u64) {
+    let result = crowd(seed, 115, 0.0);
+    let b = result
+        .as_ref()
+        .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+    assert_eq!(b.check_placement(), vec![], "seed {seed}");
+    let u = b.part("U1").unwrap();
+    assert_eq!(u.side, netsmith_pcb::Side::Back, "seed {seed}");
+    assert_eq!(u.rotation, 0.0, "seed {seed}");
+}
+
 #[test]
-fn a_large_part_with_a_stated_face_and_turn_is_brought_inside_among_a_crowd_of_small_ones() {
-    // Seeds 1 and 3 left the large part 4.85 and 0.55 mm outside before the retry that puts
-    // it in a corner first.
-    for seed in [1, 3] {
-        let result = crowd(seed, 115, 0.0);
-        let b = result
-            .as_ref()
-            .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-        assert_eq!(b.check_placement(), vec![], "seed {seed}");
-        let u = b.part("U1").unwrap();
-        assert_eq!(u.side, netsmith_pcb::Side::Back, "seed {seed}");
-        assert_eq!(u.rotation, 0.0, "seed {seed}");
-    }
+fn a_large_part_with_a_stated_face_and_turn_is_brought_inside_among_a_crowd_of_small_ones_seed_1() {
+    brings_the_large_part_inside(1);
+}
+
+#[test]
+fn a_large_part_with_a_stated_face_and_turn_is_brought_inside_among_a_crowd_of_small_ones_seed_3() {
+    brings_the_large_part_inside(3);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -409,29 +418,48 @@ fn packed(seed: u64, count: usize) -> Result<Board, BoardError> {
     )
 }
 
+/// The packed board placed, on `seed`, has no placement problem. Seeds 0 and 2 ended with one
+/// part 0.05 mm inside its margin, and with two overlapping by 1.9 mm2, before the retries and
+/// the last fine pass; each is a test of its own, so that a test run deals them out side by side.
+fn packs(seed: u64, result: &Result<Board, BoardError>) {
+    let b = result
+        .as_ref()
+        .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+    assert_eq!(b.check_placement(), vec![], "seed {seed}");
+}
+
+/// `packed(2, 160)`, placed once for the tests that check it (when they run in one process, as
+/// `cargo test` runs them; nextest runs each test in a process of its own).
+fn packed_seed_2() -> &'static Result<Board, BoardError> {
+    static BOARD: std::sync::OnceLock<Result<Board, BoardError>> = std::sync::OnceLock::new();
+    BOARD.get_or_init(|| packed(2, 160))
+}
+
 #[test]
-fn a_board_packed_at_the_limit_is_placed_by_a_retry_where_the_first_run_missed_by_a_hair() {
-    // Seeds 0 and 2 ended with one part 0.05 mm inside its margin, and with two overlapping
-    // by 1.9 mm2, before the retries and the last fine pass.
-    for seed in [0, 2] {
-        let result = packed(seed, 160);
-        let b = result
-            .as_ref()
-            .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-        assert_eq!(b.check_placement(), vec![], "seed {seed}");
-    }
+fn a_board_packed_at_the_limit_is_placed_by_a_retry_where_the_first_run_missed_by_a_hair_seed_0() {
+    packs(0, &packed(0, 160));
+}
+
+#[test]
+fn a_board_packed_at_the_limit_is_placed_by_a_retry_where_the_first_run_missed_by_a_hair_seed_2() {
+    packs(2, packed_seed_2());
 }
 
 #[test]
 fn the_same_input_gives_the_same_board_after_a_retry() {
-    let (a, b) = (packed(2, 160).unwrap(), packed(2, 160).unwrap());
+    // The second placing runs beside the shared one, not after it.
+    let (a, b) = std::thread::scope(|s| {
+        let again = s.spawn(|| packed(2, 160));
+        let a = packed_seed_2().as_ref().unwrap();
+        (a, again.join().unwrap().unwrap())
+    });
     let at = |b: &Board| -> Vec<_> {
         b.parts
             .iter()
             .map(|p| (p.at.x.to_bits(), p.at.y.to_bits(), p.rotation.to_bits()))
             .collect()
     };
-    assert_eq!(at(&a), at(&b));
+    assert_eq!(at(a), at(&b));
 }
 
 // ---------------------------------------------------------------------------------------
