@@ -9,8 +9,11 @@
 //! none is. The loops' own sides are never halved: they are already within the tolerance.
 
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
-use super::geometry::{Curve, P3, Surface, add, cross, dist, norm, scale, sub, unit};
+use super::geometry::{
+    Curve, Eval, Inverse, P3, Surface, add, cross, dist, norm, scale, sub, unit,
+};
 use super::model::{Edge, Face, Loop};
 use crate::mesh::triangulate_keeping;
 
@@ -221,13 +224,18 @@ fn nearest(x: f64, to: f64, period: f64) -> f64 {
     x + period * ((to - x) / period).round()
 }
 
-fn map_loop(s: &Surface, pts: &[P3]) -> Result<UvLoop, String> {
+/// A loop's points in the surface's parameters; `inv` is a B-spline surface's search, shared by
+/// the face's loops.
+fn map_loop(s: &Surface, inv: Option<&Inverse>, pts: &[P3]) -> Result<UvLoop, String> {
     let periods = s.periods();
     let mut uv = Vec::with_capacity(pts.len());
     let mut undefined = Vec::with_capacity(pts.len());
     let mut hint = None;
     for &p in pts {
-        let (q, u) = s.param(p, hint);
+        let (q, u) = match inv {
+            Some(inv) => inv.param(p, hint),
+            None => s.param(p, hint),
+        };
         hint = Some(q);
         uv.push(q);
         undefined.push(u);
@@ -326,13 +334,55 @@ struct Mesher<'a> {
     s: &'a Surface,
     uv: Vec<[f64; 2]>,
     xyz: Vec<P3>,
-    fixed: HashMap<(u32, u32), ()>,
+    /// The surface's derivatives at a point the halving made, from the evaluation that placed
+    /// it, for its normal.
+    derivs: Vec<Option<(P3, P3)>>,
+    fixed: SideMap<()>,
 }
+
+/// A triangle being refined: its corners, and for each side `k` (from corner `k` to the next)
+/// whether it is known to be within the tolerance or a loop's ([`KNOWN`]) and whether it is a
+/// loop's ([`FIXED`]).
+#[derive(Clone, Copy)]
+struct Tri {
+    v: [u32; 3],
+    sides: u8,
+    /// Every side and the middle are within the tolerance: no round measures it again.
+    done: bool,
+}
+
+const KNOWN: u8 = 0b001;
+const FIXED: u8 = 0b1000;
+
+impl Tri {
+    fn new(v: [u32; 3]) -> Tri {
+        Tri {
+            v,
+            sides: 0,
+            done: false,
+        }
+    }
+
+    /// A piece of `parent` whose side `to` is the parent's whole side `from`, which is within
+    /// the tolerance or a loop's.
+    fn piece(v: [u32; 3], parent: &Tri, from: usize, to: usize) -> Tri {
+        let fixed = (parent.sides >> from) & FIXED;
+        Tri {
+            v,
+            sides: (KNOWN << to) | (fixed << to),
+            done: false,
+        }
+    }
+}
+
+/// The mark of a side measured within the tolerance in this round, among the halved ones.
+const WITHIN: u32 = u32::MAX;
 
 impl Mesher<'_> {
     fn push(&mut self, uv: [f64; 2], xyz: P3) -> u32 {
         self.uv.push(uv);
         self.xyz.push(xyz);
+        self.derivs.push(None);
         (self.uv.len() - 1) as u32
     }
 
@@ -354,12 +404,25 @@ impl Mesher<'_> {
         [0.5 * (p[0] + q[0]), 0.5 * (p[1] + q[1])]
     }
 
-    /// How far the middle of the side `a b` is from the surface.
-    fn side_error(&self, a: u32, b: u32) -> f64 {
+    /// Adds the surface's point at the middle of the side `a b`.
+    fn push_mid(&mut self, a: u32, b: u32) -> u32 {
         let m = self.mid(a, b);
-        let on = self.s.point(m[0], m[1]);
+        let e = self.s.eval(m[0], m[1]);
+        self.push_eval(m, e)
+    }
+
+    fn push_eval(&mut self, uv: [f64; 2], (p, su, sv): Eval) -> u32 {
+        let id = self.push(uv, p);
+        self.derivs[id as usize] = Some((su, sv));
+        id
+    }
+
+    /// How far the middle of the side `a b` is from the surface, and the surface there.
+    fn side_error(&self, a: u32, b: u32) -> (f64, [f64; 2], Eval) {
+        let m = self.mid(a, b);
+        let e = self.s.eval(m[0], m[1]);
         let (p, q) = (self.xyz[a as usize], self.xyz[b as usize]);
-        dist(on, scale(add(p, q), 0.5))
+        (dist(e.0, scale(add(p, q), 0.5)), m, e)
     }
 
     fn centre_error(&self, t: [u32; 3]) -> f64 {
@@ -371,84 +434,188 @@ impl Mesher<'_> {
     }
 
     /// Halves the sides that stand off the surface by more than `tol`, round after round.
-    fn refine(&mut self, tris: &mut Vec<[u32; 3]>, tol: f64) -> Result<(), String> {
-        for _ in 0..MAX_ROUNDS {
-            let mut mids: HashMap<(u32, u32), u32> = HashMap::new();
-            let mut checked: HashMap<(u32, u32), ()> = HashMap::new();
-            let key = |a: u32, b: u32| (a.min(b), a.max(b));
-            for t in tris.iter() {
+    ///
+    /// A side's error depends only on its ends, so each is measured once: a triangle carries
+    /// which of its sides are known, and its pieces keep that for the parent's sides they keep
+    /// whole. A triangle a round leaves whole is final, as every side of it and its middle are
+    /// within `tol`, so each round measures only the pieces the last one cut. The halving is
+    /// the same, point for point, as measuring every side of every triangle each round.
+    fn refine(&mut self, out: &mut Vec<[u32; 3]>, tol: f64) -> Result<(), String> {
+        let key = |a: u32, b: u32| (a.min(b), a.max(b));
+        let mut tris: Vec<Tri> = out
+            .iter()
+            .map(|&v| {
+                let mut t = Tri::new(v);
                 for k in 0..3 {
-                    let (a, b) = (t[k], t[(k + 1) % 3]);
-                    let kk = key(a, b);
-                    if self.fixed.contains_key(&kk) || checked.insert(kk, ()).is_some() {
+                    if self.fixed.contains_key(&key(v[k], v[(k + 1) % 3])) {
+                        t.sides |= (KNOWN | FIXED) << k;
+                    }
+                }
+                t
+            })
+            .collect();
+        for _ in 0..MAX_ROUNDS {
+            // The sides measured this round: a halved one's middle, or WITHIN.
+            let mut round: SideMap<u32> = SideMap::default();
+            for t in tris.iter().filter(|t| !t.done) {
+                for k in 0..3 {
+                    if t.sides & (KNOWN << k) != 0 {
                         continue;
                     }
-                    if self.side_error(a, b) > tol {
-                        let m = self.mid(a, b);
-                        let p = self.s.point(m[0], m[1]);
-                        let id = self.push(m, p);
-                        mids.insert(kk, id);
+                    let (a, b) = (t.v[k], t.v[(k + 1) % 3]);
+                    let kk = key(a, b);
+                    if round.contains_key(&kk) {
+                        continue;
                     }
+                    let (err, m, e) = self.side_error(a, b);
+                    let id = if err > tol {
+                        self.push_eval(m, e)
+                    } else {
+                        WITHIN
+                    };
+                    round.insert(kk, id);
                 }
             }
+            let halved = |round: &SideMap<u32>, kk: &(u32, u32)| -> Option<u32> {
+                round.get(kk).copied().filter(|&id| id != WITHIN)
+            };
             // A triangle whose sides are all close but whose middle is not has its longest
             // free side halved.
-            for t in tris.iter() {
-                let sides = [0, 1, 2].map(|k| key(t[k], t[(k + 1) % 3]));
-                if sides.iter().any(|s| mids.contains_key(s)) || self.centre_error(*t) <= tol {
+            let mut any = round.values().any(|&id| id != WITHIN);
+            for t in tris.iter().filter(|t| !t.done) {
+                let sides = [0, 1, 2].map(|k| key(t.v[k], t.v[(k + 1) % 3]));
+                if sides.iter().any(|s| halved(&round, s).is_some())
+                    || self.centre_error(t.v) <= tol
+                {
                     continue;
                 }
-                let longest = sides
-                    .iter()
-                    .filter(|s| !self.fixed.contains_key(s))
+                let longest = (0..3)
+                    .filter(|&k| t.sides & (FIXED << k) == 0)
+                    .map(|k| sides[k])
                     .max_by(|a, b| {
                         let la = dist(self.xyz[a.0 as usize], self.xyz[a.1 as usize]);
                         let lb = dist(self.xyz[b.0 as usize], self.xyz[b.1 as usize]);
                         la.total_cmp(&lb)
-                    })
-                    .copied();
+                    });
                 if let Some(s) = longest {
-                    let m = self.mid(s.0, s.1);
-                    let p = self.s.point(m[0], m[1]);
-                    let id = self.push(m, p);
-                    mids.insert(s, id);
+                    let id = self.push_mid(s.0, s.1);
+                    round.insert(s, id);
+                    any = true;
                 }
             }
-            if mids.is_empty() {
-                return Ok(());
+            if !any {
+                break;
             }
             let mut next = Vec::with_capacity(tris.len() * 2);
-            for &[a, b, c] in tris.iter() {
-                let m = |p: u32, q: u32| mids.get(&key(p, q)).copied();
+            for t in &tris {
+                let [a, b, c] = t.v;
+                let m = |p: u32, q: u32| halved(&round, &key(p, q));
+                let piece = |v, from, to| Tri::piece(v, t, from, to);
                 match (m(a, b), m(b, c), m(c, a)) {
-                    (None, None, None) => next.push([a, b, c]),
-                    (Some(x), None, None) => next.extend([[a, x, c], [x, b, c]]),
-                    (None, Some(y), None) => next.extend([[b, y, a], [y, c, a]]),
-                    (None, None, Some(z)) => next.extend([[c, z, b], [z, a, b]]),
-                    (Some(x), Some(y), None) => next.extend([[x, b, y], [a, x, y], [a, y, c]]),
-                    (None, Some(y), Some(z)) => next.extend([[y, c, z], [b, y, z], [b, z, a]]),
-                    (Some(x), None, Some(z)) => next.extend([[z, a, x], [c, z, x], [c, x, b]]),
-                    (Some(x), Some(y), Some(z)) => {
-                        next.extend([[a, x, z], [x, b, y], [z, y, c], [x, y, z]]);
+                    // Left whole, it is final.
+                    (None, None, None) => next.push(Tri {
+                        sides: t.sides | 0b111,
+                        done: true,
+                        ..*t
+                    }),
+                    (Some(x), None, None) => {
+                        next.extend([piece([a, x, c], 2, 2), piece([x, b, c], 1, 1)]);
                     }
+                    (None, Some(y), None) => {
+                        next.extend([piece([b, y, a], 0, 2), piece([y, c, a], 2, 1)]);
+                    }
+                    (None, None, Some(z)) => {
+                        next.extend([piece([c, z, b], 1, 2), piece([z, a, b], 0, 1)]);
+                    }
+                    (Some(x), Some(y), None) => next.extend([
+                        Tri::new([x, b, y]),
+                        Tri::new([a, x, y]),
+                        piece([a, y, c], 2, 2),
+                    ]),
+                    (None, Some(y), Some(z)) => next.extend([
+                        Tri::new([y, c, z]),
+                        Tri::new([b, y, z]),
+                        piece([b, z, a], 0, 2),
+                    ]),
+                    (Some(x), None, Some(z)) => next.extend([
+                        Tri::new([z, a, x]),
+                        Tri::new([c, z, x]),
+                        piece([c, x, b], 1, 2),
+                    ]),
+                    (Some(x), Some(y), Some(z)) => next.extend([
+                        Tri::new([a, x, z]),
+                        Tri::new([x, b, y]),
+                        Tri::new([z, y, c]),
+                        Tri::new([x, y, z]),
+                    ]),
                 }
             }
-            *tris = next;
+            tris = next;
             if tris.len() > MAX_TRIANGLES {
                 return Err(format!(
                     "it needs more than {MAX_TRIANGLES} triangles to be within {CHORD_TOLERANCE} mm"
                 ));
             }
         }
+        *out = tris.into_iter().map(|t| t.v).collect();
         Ok(())
+    }
+}
+
+/// A map keyed by a side (its two point indices, the lower first), with a cheap hash: the maps
+/// are only looked in, never walked, so the hash has no effect on the triangles.
+type SideMap<V> = HashMap<(u32, u32), V, BuildHasherDefault<SideHash>>;
+
+#[derive(Default)]
+struct SideHash(u64);
+
+impl Hasher for SideHash {
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.write_u64(u64::from(b));
+        }
+    }
+
+    fn write_u32(&mut self, x: u32) {
+        self.write_u64(u64::from(x));
+    }
+
+    fn write_u64(&mut self, x: u64) {
+        // FxHash's step.
+        self.0 = (self.0.rotate_left(5) ^ x).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
     }
 }
 
 /// The triangles of `face` (turned over when `reversed`, for a reversed shell), from the points
 /// of the model's `edges`, within `tol` in the file's unit.
 pub fn face(face: &Face, edges: &[Vec<P3>], reversed: bool, tol: f64) -> Result<FaceMesh, String> {
+    let Some((mut m, mut tris, outward)) = cut(face, edges, reversed)? else {
+        return Ok(FaceMesh::default());
+    };
+    if !matches!(face.surface, Surface::Plane(_)) {
+        m.refine(&mut tris, tol)?;
+    }
+    Ok(finish(&m, tris, outward))
+}
+
+/// A face cut before any halving: its points, its triangles, and whether the surface's normal
+/// is its outside.
+type Cut<'a> = (Mesher<'a>, Vec<[u32; 3]>, bool);
+
+/// A face's loops in its surface's parameters, cut into triangles by ear clipping before any
+/// is halved, and whether the surface's normal is its outside; `None` for a face that holds no
+/// area.
+fn cut<'a>(face: &'a Face, edges: &[Vec<P3>], reversed: bool) -> Result<Option<Cut<'a>>, String> {
     let s = &face.surface;
     let outward = face.same_sense != reversed;
+    let inv = match s {
+        Surface::BSpline(b) => Some(Inverse::new(b)),
+        _ => None,
+    };
     let mut loops = Vec::new();
     let mut vertices = Vec::new();
     for (lp, forward) in &face.bounds {
@@ -460,7 +627,7 @@ pub fn face(face: &Face, edges: &[Vec<P3>], reversed: bool, tol: f64) -> Result<
         if pts.len() < 2 {
             continue;
         }
-        let mut l = map_loop(s, &pts)?;
+        let mut l = map_loop(s, inv.as_ref(), &pts)?;
         // With the region on the left of every loop, seen from the surface's normal.
         if !outward {
             l.xyz.reverse();
@@ -474,7 +641,8 @@ pub fn face(face: &Face, edges: &[Vec<P3>], reversed: bool, tol: f64) -> Result<
         s,
         uv: Vec::new(),
         xyz: Vec::new(),
-        fixed: HashMap::new(),
+        derivs: Vec::new(),
+        fixed: SideMap::default(),
     };
     let ring_of = |l: &UvLoop| -> Vec<([f64; 2], P3, bool)> {
         l.uv.iter()
@@ -626,7 +794,7 @@ pub fn face(face: &Face, edges: &[Vec<P3>], reversed: bool, tol: f64) -> Result<
         })
         .sum();
     if area(&ring).abs() <= 1e-9 * perimeter * perimeter {
-        return Ok(FaceMesh::default());
+        return Ok(None);
     }
     let outer_ids = m.ring(&outer);
     let hole_ids: Vec<Vec<u32>> = hole_rings.iter().map(|r| m.ring(r)).collect();
@@ -637,17 +805,14 @@ pub fn face(face: &Face, edges: &[Vec<P3>], reversed: bool, tol: f64) -> Result<
         .chain(hole_ids.iter().flatten())
         .copied()
         .collect();
-    let mut tris: Vec<[u32; 3]> = triangulate_keeping(&flat(&outer_ids, &m), &holes_uv)
+    let tris: Vec<[u32; 3]> = triangulate_keeping(&flat(&outer_ids, &m), &holes_uv)
         .into_iter()
         .map(|t| t.map(|i| all[i]))
         .collect();
     if tris.is_empty() {
         return Err("its loops hold no area".into());
     }
-    if !matches!(s, Surface::Plane(_)) {
-        m.refine(&mut tris, tol)?;
-    }
-    Ok(finish(&m, tris, outward))
+    Ok(Some((m, tris, outward)))
 }
 
 /// The ring of a loop that goes round in `d`: its points in the direction that goes up in `d`,
@@ -732,7 +897,10 @@ fn finish(m: &Mesher, tris: Vec<[u32; 3]>, outward: bool) -> FaceMesh {
     let mut normals: Vec<Option<P3>> = (0..n)
         .map(|k| {
             let [u, v] = m.uv[k];
-            let (_, su, sv) = m.s.eval(u, v);
+            let (su, sv) = m.derivs[k].unwrap_or_else(|| {
+                let (_, su, sv) = m.s.eval(u, v);
+                (su, sv)
+            });
             let c = cross(su, sv);
             let scale_ = norm(su) * norm(sv);
             if norm(c) <= 1e-12 * scale_ || scale_ == 0.0 {
@@ -786,4 +954,212 @@ fn finish(m: &Mesher, tris: Vec<[u32; 3]>, outward: bool) -> FaceMesh {
         out.indices.push(idx);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::geometry::{BSplineSurface, EVALS, Knots};
+    use super::super::model::{Face, Loop};
+    use super::super::{fixtures, read_model};
+    use super::*;
+
+    /// The halving as it was first written: every side and every middle of every triangle
+    /// measured each round, so `refine` can be held to it.
+    fn refine_every_round(m: &mut Mesher, tris: &mut Vec<[u32; 3]>, tol: f64) {
+        let key = |a: u32, b: u32| (a.min(b), a.max(b));
+        for _ in 0..MAX_ROUNDS {
+            let mut mids: HashMap<(u32, u32), u32> = HashMap::new();
+            let mut checked: HashMap<(u32, u32), ()> = HashMap::new();
+            for t in tris.iter() {
+                for k in 0..3 {
+                    let (a, b) = (t[k], t[(k + 1) % 3]);
+                    let kk = key(a, b);
+                    if m.fixed.contains_key(&kk) || checked.insert(kk, ()).is_some() {
+                        continue;
+                    }
+                    if m.side_error(a, b).0 > tol {
+                        let id = m.push_mid(a, b);
+                        mids.insert(kk, id);
+                    }
+                }
+            }
+            for t in tris.iter() {
+                let sides = [0, 1, 2].map(|k| key(t[k], t[(k + 1) % 3]));
+                if sides.iter().any(|s| mids.contains_key(s)) || m.centre_error(*t) <= tol {
+                    continue;
+                }
+                let longest = sides
+                    .iter()
+                    .filter(|s| !m.fixed.contains_key(s))
+                    .max_by(|a, b| {
+                        let la = dist(m.xyz[a.0 as usize], m.xyz[a.1 as usize]);
+                        let lb = dist(m.xyz[b.0 as usize], m.xyz[b.1 as usize]);
+                        la.total_cmp(&lb)
+                    })
+                    .copied();
+                if let Some(s) = longest {
+                    let id = m.push_mid(s.0, s.1);
+                    mids.insert(s, id);
+                }
+            }
+            if mids.is_empty() {
+                return;
+            }
+            let mut next = Vec::new();
+            for &[a, b, c] in tris.iter() {
+                let h = |p: u32, q: u32| mids.get(&key(p, q)).copied();
+                match (h(a, b), h(b, c), h(c, a)) {
+                    (None, None, None) => next.push([a, b, c]),
+                    (Some(x), None, None) => next.extend([[a, x, c], [x, b, c]]),
+                    (None, Some(y), None) => next.extend([[b, y, a], [y, c, a]]),
+                    (None, None, Some(z)) => next.extend([[c, z, b], [z, a, b]]),
+                    (Some(x), Some(y), None) => next.extend([[x, b, y], [a, x, y], [a, y, c]]),
+                    (None, Some(y), Some(z)) => next.extend([[y, c, z], [b, y, z], [b, z, a]]),
+                    (Some(x), None, Some(z)) => next.extend([[z, a, x], [c, z, x], [c, x, b]]),
+                    (Some(x), Some(y), Some(z)) => {
+                        next.extend([[a, x, z], [x, b, y], [z, y, c], [x, y, z]]);
+                    }
+                }
+            }
+            *tris = next;
+        }
+    }
+
+    /// A cubic wave 10 mm long and 4 mm wide, linear across, as part models' bent leads are:
+    /// 19 by 2 control points.
+    fn wave() -> BSplineSurface {
+        let mut knots = vec![0.0; 4];
+        knots.extend((1..16).map(|k| k as f64 / 16.0));
+        knots.extend([1.0; 4]);
+        BSplineSurface {
+            u: Knots { degree: 3, knots },
+            v: Knots {
+                degree: 1,
+                knots: vec![0.0, 0.0, 1.0, 1.0],
+            },
+            points: (0..19)
+                .map(|i| {
+                    let (x, z) = (10.0 * i as f64 / 18.0, 0.8 * (0.9 * i as f64).sin());
+                    vec![[x, 0.0, z], [x, 4.0, z]]
+                })
+                .collect(),
+            weights: None,
+        }
+    }
+
+    /// The wave bounded by its own edges, every point 0.1 µm off the surface as a file's
+    /// edges are within its tolerance: too far for a point's search to stop at its
+    /// neighbour's parameters.
+    fn wave_face() -> Face {
+        let b = wave();
+        let n = 60;
+        let mut pts = Vec::new();
+        for (v, run) in [(0.0, 0..=n), (1.0, 0..=n)] {
+            let mut us: Vec<f64> = run.map(|k| k as f64 / n as f64).collect();
+            if v == 1.0 {
+                us.reverse();
+            }
+            for u in us {
+                let (p, su, sv) = b.eval(u, v);
+                let normal = unit(cross(su, sv)).unwrap();
+                pts.push(add(p, scale(normal, 1e-4)));
+            }
+        }
+        Face {
+            id: 1,
+            line: 1,
+            surface: Surface::BSpline(b),
+            same_sense: true,
+            bounds: vec![(Loop::Poly(pts), true)],
+            colour: None,
+        }
+    }
+
+    #[test]
+    fn refine_halves_as_measuring_every_side_each_round_does() {
+        let mut faces = vec![wave_face()];
+        let mut edges = Vec::new();
+        for text in [
+            fixtures::patch(),
+            fixtures::rational_quarter(),
+            fixtures::sphere(),
+            fixtures::cylinder(),
+            fixtures::torus(),
+            fixtures::cone(1.0, 2.0),
+        ] {
+            let model = read_model(text.as_bytes()).unwrap();
+            let base = edges.len();
+            for e in &model.edges {
+                edges.push(edge_points(e, CHORD_TOLERANCE).unwrap());
+            }
+            for mut f in model.faces {
+                for (lp, _) in &mut f.bounds {
+                    if let Loop::Edges(uses) = lp {
+                        for u in uses {
+                            u.edge += base;
+                        }
+                    }
+                }
+                faces.push(f);
+            }
+        }
+        let mut halved = 0;
+        for f in &faces {
+            let Some((mut a, mut ta, _)) = cut(f, &edges, false).unwrap() else {
+                continue;
+            };
+            let (mut b, mut tb, _) = cut(f, &edges, false).unwrap().unwrap();
+            let before = a.uv.len();
+            a.refine(&mut ta, CHORD_TOLERANCE).unwrap();
+            refine_every_round(&mut b, &mut tb, CHORD_TOLERANCE);
+            assert_eq!(ta, tb, "face #{}", f.id);
+            let bits = |m: &Mesher| -> Vec<u64> {
+                m.uv.iter()
+                    .flat_map(|p| p.map(f64::to_bits))
+                    .chain(m.xyz.iter().flat_map(|p| p.map(f64::to_bits)))
+                    .collect()
+            };
+            assert_eq!(bits(&a), bits(&b), "face #{}", f.id);
+            halved += usize::from(a.uv.len() > before);
+        }
+        assert!(halved >= 8, "{halved} faces were halved");
+    }
+
+    #[test]
+    fn a_b_spline_face_takes_few_evaluations_of_its_surface() {
+        let f = wave_face();
+        EVALS.with(|n| n.set(0));
+        let m = face(&f, &[], false, CHORD_TOLERANCE).unwrap();
+        let evals = EVALS.with(|n| n.get());
+        let points = 2 * 61;
+        let triangles = m.indices.len() as u64;
+        assert!(triangles > 100, "{triangles} triangles");
+        // A grid of samples made once (161 by 17), Newton's steps for each loop point, and a
+        // few evaluations a triangle for the halving and the normals. A grid searched point by
+        // point, as the reader first did, took over 20,000 evaluations a point.
+        let bound = 161 * 17 + 70 * points + 6 * triangles;
+        assert!(
+            evals <= bound,
+            "{evals} evaluations for {triangles} triangles, against {bound}"
+        );
+        // Its points on the surface, and the same bits a second time.
+        let Surface::BSpline(b) = &f.surface else {
+            unreachable!()
+        };
+        let inv = Inverse::new(b);
+        for p in &m.positions {
+            let (uv, _) = inv.param(*p, None);
+            assert!(dist(b.eval(uv[0], uv[1]).0, *p) < 2e-4, "{p:?}");
+        }
+        let again = face(&f, &[], false, CHORD_TOLERANCE).unwrap();
+        assert_eq!(m, again);
+        let tbits = |m: &FaceMesh| -> Vec<u64> {
+            m.positions
+                .iter()
+                .chain(&m.normals)
+                .flat_map(|p| p.map(f64::to_bits))
+                .collect()
+        };
+        assert_eq!(tbits(&m), tbits(&again));
+    }
 }
