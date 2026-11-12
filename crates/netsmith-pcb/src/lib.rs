@@ -28,6 +28,7 @@
 
 mod anneal;
 pub mod board;
+pub mod body3d;
 pub mod constraints;
 pub mod copper;
 mod explain;
@@ -36,11 +37,14 @@ mod fit;
 pub mod footprint;
 pub mod generate;
 pub mod geometry;
+pub mod gltf;
 pub mod layout;
+pub mod mesh;
 pub mod overhang;
 mod place;
 pub mod protrusion;
 pub mod quality;
+pub mod raster3d;
 pub mod ratsnest;
 pub mod route;
 pub mod rules;

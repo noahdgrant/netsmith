@@ -13,6 +13,7 @@
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
 use super::ipc::round_to;
 use super::params::Params;
+use crate::body3d::Package;
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -214,16 +215,19 @@ fn grid(p: &Bga, library: &str, name: &str) -> Footprint {
         "BGA",
     );
     let span = |n: usize| (n as f64 - 1.0) / 2.0 * p.pitch;
+    let mut balls = Vec::with_capacity(p.rows * p.columns);
     for row in 0..p.rows {
         for column in 0..p.columns {
+            let at = Pt::new(
+                -span(p.columns) + column as f64 * p.pitch,
+                -span(p.rows) + row as f64 * p.pitch,
+            );
+            balls.push(at);
             drawing.pad(&PadSpec::new(
                 format!("{}{}", row_label(row), column + 1),
                 Kind::Smd,
                 Shape::Circle,
-                Pt::new(
-                    -span(p.columns) + column as f64 * p.pitch,
-                    -span(p.rows) + row as f64 * p.pitch,
-                ),
+                at,
                 (p.pad, p.pad),
             ));
         }
@@ -267,5 +271,12 @@ fn grid(p: &Bga, library: &str, name: &str) -> Footprint {
         Pt::new(-sx + notch, -sy),
         Pt::new(-sx, -sy + notch),
     );
-    drawing.finish(-(court.1 + 0.7), court.1 + 0.7)
+    super::shaped(
+        drawing.finish(-(court.1 + 0.7), court.1 + 0.7),
+        Package::Bga {
+            body: p.body,
+            pad: p.pad,
+            balls,
+        },
+    )
 }

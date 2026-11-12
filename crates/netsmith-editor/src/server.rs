@@ -24,6 +24,7 @@
 //! | `GET /api/git`, `GET /api/compare`, `GET /api/git/file` | what the project can be compared with, what changed in the circuit, a file at a ref (ADR 0059) |
 //! | `POST /api/pins/lock`, `POST /api/pins/move` | lock or unlock a pin request, and move it to another pin of its part: the `lock` and the `pin` and `source` lines of its entry in the pin file (ADR 0101), and no other line; `422` with the reason when the choice is refused |
 //! | `POST /api/pcb/route`, `cancel`, `edit`, `drc`; `GET /api/pcb/scene`, `findings` | place and route on demand; `cancel` stops the router and keeps what it routed |
+//! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
 //! | `POST /api/definition` | where the name under the cursor is defined |
@@ -328,6 +329,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/route", post(route_pcb))
         .route("/api/pcb/cancel", post(cancel_route))
         .route("/api/pcb/scene", get(pcb_scene))
+        .route("/api/pcb/3d", get(pcb_3d))
         .route("/api/pcb/edit", post(pcb_edit))
         .route("/api/pcb/findings", get(pcb_findings))
         .route("/api/pcb/drc", post(pcb_drc))
@@ -814,6 +816,21 @@ async fn pcb_scene(
 ) -> Result<Json<crate::api::PcbScene>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.pcb_scene(&board)).await
+}
+
+/// The header that carries the layout stamp of the placement a `.glb` was drawn from.
+pub const LAYOUT_STAMP_HEADER: &str = "x-netsmith-layout-stamp";
+
+/// The board's 3D scene as glTF 2.0 binary (ADR 0105), with the layout stamp of its placement
+/// in [`LAYOUT_STAMP_HEADER`].
+async fn pcb_3d(State(s): State<Shared>, Query(q): Query1) -> Result<Response, ApiError> {
+    let board = param(&q, "board")?;
+    let scene = blocking(move || s.backend.pcb_3d(&board)).await??;
+    let mut response = ([(header::CONTENT_TYPE, "model/gltf-binary")], scene.glb).into_response();
+    if let Ok(stamp) = HeaderValue::from_str(&scene.layout_stamp) {
+        response.headers_mut().insert(LAYOUT_STAMP_HEADER, stamp);
+    }
+    Ok(response)
 }
 
 async fn pcb_findings(

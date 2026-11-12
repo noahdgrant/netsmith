@@ -18,6 +18,7 @@ netsmith-kicad = { path = "../netsmith-kicad" }
 # (`copper`, ADR 0105). netsmith-fab depends on no other netsmith crate but netsmith-kicad.
 netsmith-fab = { path = "../netsmith-fab" }
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 toml = "1.1.8"
 uuid = { version = "1", features = ["v5"] }
 

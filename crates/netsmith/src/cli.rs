@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed or written, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; a file of several boards needs `--board`; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
+pub const USAGE: &str = "usage: netsmith --version\n       netsmith init [--name <name>]\n       netsmith build [<file.nsm>] [--out <dir>] [--strict] [--locked]\n       netsmith fab [<file.nsm> | --order [<name>]] [--out <dir>] [--route-timeout <secs>] [--allow-drc-violations] [--cross-check] [--strict] [--locked] [--constraints warn|error] [--pins auto|locked]\n       netsmith lock (--update | --check) [<file.nsm>]\n       netsmith editor [<file.nsm>] [--port <n>]\n       netsmith board3d [<file.nsm>] [--board <name>] [--json] [--glb <file.glb>]\n       netsmith compare <a> <b> [--board <name>] [--map <file> | --by-refdes] [--ignore-unconnected] [--loose-values]\n       netsmith kicad-libs import <sym-lib-table> [<fp-lib-table>]\n       netsmith catalog refresh [<catalog.csv | dir>...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]\n       netsmith catalog age [<catalog.csv | dir>...] [--days <n>] [--only <catalog>]\n       netsmith dxf import <file.dxf> [--layer <name>]... [--holes-layer <name>]... [--units mm|cm|m|inch] [--board <name>] [--write <file.nsm>]\nwith no file, build, fab and editor act on the project's boards (see netsmith.toml); `--locked` ends `build` and `fab` (and `fab --order`, for each file that builds a board of the order) with an error, before anything is written, when the parts they pick differ from the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, or when the pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR 0101), and with `fab` it also means `--pins locked`, so a board that does not route never has its pin file rewritten (`--locked` wins over `--pins auto`); `fab --pins auto|locked` says what a board that does not route may do with the pins that its requests got (ADR 0101): `auto`, the default, swaps interchangeable pins that are not locked, places and routes again (three rounds at most) and writes the pin file, `locked` moves none, writes the swaps that would help to `pins.proposed.toml` in the output folder and fails as before (`pins` in netsmith.toml sets it for a project); `lock --update` solves each board without the pick lock's holding and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed); `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI); both exit 2 when they cannot tell (the lock is not readable, or the design does not build); `fab --order <name>` makes one of its orders, and `fab --order` alone lists them; `dxf import` prints the board outline, cutouts and mounting holes of an enclosure's ASCII DXF as source to paste, and with `--write` puts them, with the places of the cutouts and holes, in the `case` section of the physical file beside the source it names (ADR 0045, ADR 0048); `board3d` places a board as `fab` does (the layout file respected, nothing routed, nothing written but the `--glb` file, no KiCad needed) and prints its 3D scene: with `--json` the report an agent reads (each part's body box, Z and where its height came from, each height limit's tallest part and margin, bodies that overlap, unknown heights with the reason, the height coverage; docs/BOARD3D.md), else a short summary; with `--glb <file.glb>` it writes the scene as glTF 2.0 binary instead of the summary (the file the editor's 3D view shows; docs/BOARD3D.md), and with `--json` as well it does both; a file of several boards needs `--board`; `catalog refresh` checks the manufacturer's number and package of the rows of the project's catalogs (or the standard ones, in the netsmith repository) against LCSC's record (never JLCPCB, so JLCPCB data is not fetched), writes only the day in a `checked` column, never a price or stock, and is never run by another command";
 
 /// Every command the dispatcher accepts after `--version`, with the line `--help` shows for
 /// it. [`parse_args`] takes its commands from here, so the help cannot list one it rejects
@@ -147,11 +147,13 @@ pub enum Command {
     /// The editor in a browser. `file` is `None` to act on the project's top-level files.
     Editor { file: Option<String>, port: u16 },
     /// The 3D scene of one board of `file` (or of the project's top-level files), as a JSON
-    /// report with `json` and a summary without (ADR 0105).
+    /// report with `json`, as a `.glb` file written to `glb`, and as a summary with neither
+    /// (ADR 0105).
     Board3d {
         file: Option<String>,
         board: Option<String>,
         json: bool,
+        glb: Option<PathBuf>,
     },
     /// Compare two designs by connectivity. Each is a `.kicad_sch`, `.kicad_pcb`, KiCad
     /// netlist XML or `.nsm` file.
@@ -259,6 +261,7 @@ where
     let mut lock_mode: Option<LockMode> = None;
     let mut port = DEFAULT_PORT;
     let mut json = false;
+    let mut glb: Option<PathBuf> = None;
     while let Some(arg) = args.next() {
         match (command.as_str(), arg.as_str()) {
             ("init", "--name") => {
@@ -325,6 +328,11 @@ where
                     .map_err(|_| format!("--port needs a number from 0 to 65535, not `{given}`"))?;
             }
             ("board3d", "--json") => json = true,
+            ("board3d", "--glb") => {
+                glb = Some(PathBuf::from(
+                    args.next().ok_or("--glb needs a file to write")?,
+                ));
+            }
             ("compare" | "board3d", "--board") => {
                 board = Some(args.next().ok_or("--board needs a board name")?);
             }
@@ -383,7 +391,12 @@ where
             strict,
             locked,
         },
-        "board3d" => Command::Board3d { file, board, json },
+        "board3d" => Command::Board3d {
+            file,
+            board,
+            json,
+            glb,
+        },
         "fab" => Command::Fab {
             file,
             out,

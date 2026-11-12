@@ -5,3 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+
+[dev-dependencies]
+# An inflater that is not ours, to check the PNG writer's deflate.
+flate2 = "1"

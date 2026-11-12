@@ -7,6 +7,7 @@
 
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
 use super::ipc::{self, CHIP, CHIP_SMALL, Inside, Size};
+use crate::body3d::Package;
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -293,6 +294,17 @@ fn chip(family: &Family, d: &Dimensions, name: &str) -> Footprint {
         drawing.line(Draw::Silk, Pt::new(-x, y), Pt::new(x, y));
     }
 
+    let terminal = match d.ends {
+        Inside::Length(t) => t.nominal(),
+        Inside::Span(s) => (d.length.nominal() - s.nominal()) / 2.0,
+    };
     let reference_y = -(court.1 + 0.7);
-    drawing.finish(reference_y, -reference_y)
+    super::shaped(
+        drawing.finish(reference_y, -reference_y),
+        Package::Chip {
+            body,
+            terminal,
+            polarised: family.polarised,
+        },
+    )
 }
