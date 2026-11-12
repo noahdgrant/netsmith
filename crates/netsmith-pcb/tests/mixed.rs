@@ -513,34 +513,52 @@ fn the_mixed_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_t
 }
 
 /// The aim of issue #3 for this board: every connection routed, on every seed (the first four
-/// are run here; `measured` prints the others). The time limit is `fab`'s: routing time is
-/// watched, not a gate (owner, 2026-11-11, issue #431); seeds 1 to 3 take 140 to 160 s since
-/// the router bends by 45 degrees only (issue #415).
+/// are run here, each a test of its own so that a test run deals them out side by side; `measured`
+/// prints the others). The time limit is `fab`'s: routing time is watched, not a gate (owner,
+/// 2026-11-11, issue #431); seeds 1 to 3 take 140 to 160 s since the router bends by 45 degrees
+/// only (issue #415).
+fn routes_completely(seed: u64) {
+    let mut board = mixed_board(seed, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
+    let routing = route_with(
+        &mut board,
+        RouteOptions {
+            time_limit: Some(Duration::from_secs(300)),
+            ..RouteOptions::default()
+        },
+    );
+    assert!(!routing.stopped);
+    assert!(
+        routing.left.is_empty(),
+        "seed {seed}, unrouted: {:#?}",
+        routing.left.lines
+    );
+    assert_eq!(drc_errors(&board), Vec::<String>::new(), "seed {seed}");
+}
+
 #[test]
-fn the_mixed_board_is_routed_completely() {
-    for seed in 0..4 {
-        let mut board = mixed_board(seed, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
-        let routing = route_with(
-            &mut board,
-            RouteOptions {
-                time_limit: Some(Duration::from_secs(300)),
-                ..RouteOptions::default()
-            },
-        );
-        assert!(!routing.stopped);
-        assert!(
-            routing.left.is_empty(),
-            "seed {seed}, unrouted: {:#?}",
-            routing.left.lines
-        );
-        assert_eq!(drc_errors(&board), Vec::<String>::new(), "seed {seed}");
-    }
+fn the_mixed_board_is_routed_completely_seed_0() {
+    routes_completely(0);
+}
+
+#[test]
+fn the_mixed_board_is_routed_completely_seed_1() {
+    routes_completely(1);
+}
+
+#[test]
+fn the_mixed_board_is_routed_completely_seed_2() {
+    routes_completely(2);
+}
+
+#[test]
+fn the_mixed_board_is_routed_completely_seed_3() {
+    routes_completely(3);
 }
 
 /// Seed 7 is one that ripping up the nets in a line's way leaves three lines of; the negotiation
 /// and the lines ripped up one for another finish it. (It was seed 2 until the via became
 /// JLCPCB's standard-price 0.2 in 0.45 mm, issue #431; seed 2 now needs the other orders of
-/// `the_mixed_board_is_routed_completely`.) Nothing in that is random: the same board is routed
+/// `the_mixed_board_is_routed_completely_seed_2`.) Nothing in that is random: the same board is routed
 /// to the same copper.
 #[test]
 fn lines_ripped_up_for_lines_ripped_up_finish_a_board_and_the_same_board_gives_the_same_copper() {
