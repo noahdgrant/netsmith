@@ -251,7 +251,11 @@ What it is not:
   file (ADR 0032).
 - **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
   maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
-  generator's own numbers.
+  generator's own numbers. Still boxes, because the data
+  does not hold their lead span and width yet (each family is added with a sourced row, one at a
+  time): SC-70, DPAK, D2PAK and SOT-89, and the mechanical items (holes, fiducials, test
+  points). SOT-223 is drawn with its three pins and its wide tab (dimensions and sources in
+  `crates/netsmith-pcb/src/generate/sot.rs`).
 - **Not a check.** The tools measure the file's numbers and change nothing: a measurement, a
   section or the layers apart are the picture only, and no report or file reads them. The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.
