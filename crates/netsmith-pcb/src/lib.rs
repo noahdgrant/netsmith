@@ -78,7 +78,10 @@ pub use place::{
 };
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use ratsnest::{Ratline, Ratsnest};
-pub use route::{RouteOptions, Routing, route, route_with};
+pub use route::{
+    Costs, Crowding, LineReport, RouteOptions, Routing, Snapshot, SnapshotStage, Stage, route,
+    route_with,
+};
 pub use rules::Rules;
 pub use stitch::stitch;
 pub use validate::{Subject, validate_pinout};

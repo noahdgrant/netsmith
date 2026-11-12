@@ -16,7 +16,7 @@ use crate::geometry::{Pt, Rect};
 const TOUCH: f64 = 1e-6;
 
 /// One line still to be routed.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Ratline {
     pub net: String,
     pub from: PadRef,

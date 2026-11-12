@@ -732,7 +732,14 @@ fn fab_board(
             }
             Incomplete {
                 message: msg,
-                report: routing_failure(&built.label(), board.outline.min, &unrouted, routing.tries),
+                report: routing_failure(
+                    &built.label(),
+                    board.outline.min,
+                    &unrouted,
+                    routing.tries,
+                    &routing.why,
+                ),
+                json: routing_report(&routing.why, &routing.crowding),
                 lines: unrouted
                     .lines
                     .iter()
@@ -1434,12 +1441,16 @@ fn finish_pins(state: &mut PinState, pins: &PinsUse, map: &PinFile, say: &dyn Fn
 
 /// What is written for a board the router left connections of.
 const ROUTING_FAILURE: &str = "routing-failure.txt";
+/// Beside it, for a program: why each line is left and the crowding map, as JSON.
+const ROUTING_REPORT: &str = "routing-report.json";
 
 /// A board with connections the router could not make: the message of the error `fab` ends
 /// in, the text of [`ROUTING_FAILURE`], and one line of the notes for each connection.
 struct Incomplete {
     message: String,
     report: String,
+    /// The text of [`ROUTING_REPORT`].
+    json: String,
     lines: Vec<String>,
 }
 
@@ -1453,13 +1464,25 @@ impl Incomplete {
     }
 }
 
+/// The text of [`ROUTING_REPORT`]: why each line is left and the crowding map (see
+/// [`netsmith_pcb::Routing`]), in the board's own coordinates.
+fn routing_report(why: &[netsmith_pcb::LineReport], crowding: &netsmith_pcb::Crowding) -> String {
+    let report = serde_json::json!({
+        "why": why,
+        "crowding": crowding,
+    });
+    serde_json::to_string_pretty(&report).unwrap_or_default() + "\n"
+}
+
 /// The text of `routing-failure.txt`: every connection that has no copper, with its net and
-/// its two pads and where they are, and the parts most of them end on.
+/// its two pads and where they are, the parts most of them end on, and for each line the
+/// router left the stage it last failed in and the nets in its way.
 fn routing_failure(
     label: &str,
     origin: netsmith_pcb::Pt,
     left: &netsmith_pcb::Ratsnest,
     tries: usize,
+    why: &[netsmith_pcb::LineReport],
 ) -> String {
     let at = |p: netsmith_pcb::Pt| (p.x - origin.x, p.y - origin.y);
     let mut text = format!(
@@ -1494,6 +1517,19 @@ fn routing_failure(
     for (part, n) in ends.iter().take(8) {
         text.push_str(&format!("  {part}: {n}\n"));
     }
+    if !why.is_empty() {
+        text.push_str(&format!(
+            "\nWhy each line is left, by the router's own lines (which can pair the same pads otherwise than above): the stage of the router it last failed in, and the nets whose copper stands in its way (the fewest that a path allowed to cross other nets' copper meets). {ROUTING_REPORT} has the same, and a map of where the board was fought over, in the board's coordinates:\n"
+        ));
+        for w in why {
+            let nets = if w.blockers.is_empty() {
+                "no net's copper (the pads, holes or edge alone, or no time to look)".to_string()
+            } else {
+                format!("net(s) {}", w.blockers.join(", "))
+            };
+            text.push_str(&format!("  {}: {}; in its way: {nets}\n", w.line, w.stage));
+        }
+    }
     text
 }
 
@@ -1507,7 +1543,8 @@ fn write_incomplete(
 ) -> String {
     let mut message = incomplete.message.clone();
     let file = dir.join(ROUTING_FAILURE);
-    let wrote = fs::write(&file, &incomplete.report);
+    let wrote = fs::write(&file, &incomplete.report)
+        .and_then(|()| fs::write(dir.join(ROUTING_REPORT), &incomplete.json));
     message.push_str(&format!(
         "\n  INCOMPLETE: the board file is in {}",
         dir.display()
@@ -2121,7 +2158,7 @@ mod tests {
                 line("SIG_B", ("U1", "C1", 16.1, 25.5), ("J1", "2", 30.0, 5.0)),
             ],
         };
-        let text = routing_failure("Demo", netsmith_pcb::Pt::new(10.0, 20.0), &left, 4);
+        let text = routing_failure("Demo", netsmith_pcb::Pt::new(10.0, 20.0), &left, 4, &[]);
         assert!(
             text.starts_with(
                 "INCOMPLETE: Demo is not fully routed. 2 connection(s) have no copper after 4 tries"
@@ -2140,6 +2177,48 @@ mod tests {
             text.contains("  U1: 2\n") && text.contains("  R1: 1\n"),
             "{text}"
         );
+        assert!(!text.contains("Why each line is left"), "{text}");
+    }
+
+    #[test]
+    fn the_routing_failure_says_where_each_line_failed_and_what_is_in_its_way() {
+        let left = netsmith_pcb::Ratsnest {
+            lines: vec![
+                line("SIG_A", ("U1", "A3", 15.0, 25.5), ("R1", "1", 12.0, 21.0)),
+                line("SIG_B", ("U1", "C1", 16.1, 25.5), ("J1", "2", 30.0, 5.0)),
+            ],
+        };
+        let why = vec![
+            netsmith_pcb::LineReport {
+                line: left.lines[0].clone(),
+                stage: netsmith_pcb::Stage::Chain,
+                blockers: vec!["GND".into(), "SIG_C".into()],
+            },
+            netsmith_pcb::LineReport {
+                line: left.lines[1].clone(),
+                stage: netsmith_pcb::Stage::OutOfTime,
+                blockers: vec![],
+            },
+        ];
+        let text = routing_failure("Demo", netsmith_pcb::Pt::new(10.0, 20.0), &left, 4, &why);
+        // What readers match comes first, as it was.
+        assert_eq!(
+            text,
+            routing_failure("Demo", netsmith_pcb::Pt::new(10.0, 20.0), &left, 4, &[])
+                + &text[text.find("\nWhy each line is left").unwrap()..],
+        );
+        assert_eq!(text.matches("\nnet ").count(), 2, "{text}");
+        assert!(
+            text.contains(
+                "  net SIG_A: U1.A3 to R1.1: failed in the chain of rip-ups; in its way: net(s) GND, SIG_C\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("  net SIG_B: U1.C1 to J1.2: not finished, the time ran out; in its way: no net's copper"),
+            "{text}"
+        );
+        assert!(text.contains("routing-report.json"), "{text}");
     }
 
     #[test]
@@ -2149,6 +2228,7 @@ mod tests {
             message: "1 connections could not be routed (after 4 tries):\n  net A: U1.1 to R1.1"
                 .into(),
             report: "INCOMPLETE: Demo\n".into(),
+            json: "{}\n".into(),
             lines: vec!["ERROR: not routed: net A: U1.1 to R1.1".into()],
         };
         // The package could not be made (for instance a requirement is unmet): the report is
@@ -2171,6 +2251,10 @@ mod tests {
         assert_eq!(
             fs::read_to_string(dir.join("routing-failure.txt")).unwrap(),
             "INCOMPLETE: Demo\n"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("routing-report.json")).unwrap(),
+            "{}\n"
         );
         assert_eq!(
             incomplete.headline(),

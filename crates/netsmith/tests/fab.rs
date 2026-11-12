@@ -739,6 +739,20 @@ fn a_route_timeout_stops_fab_but_writes_the_incomplete_board_and_lists_the_conne
         assert!(report.contains(line), "{line} is not in {report}");
     }
     assert_eq!(report.matches("\nnet ").count(), 3, "{report}");
+    // With no time, each line is left out of time, and the same is written for a program.
+    assert_eq!(
+        report
+            .matches(": not finished, the time ran out; in its way:")
+            .count(),
+        3,
+        "{report}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(board.join("routing-report.json")).unwrap())
+            .unwrap();
+    assert_eq!(json["why"].as_array().map(Vec::len), Some(3), "{json}");
+    assert_eq!(json["why"][0]["stage"], "out-of-time", "{json}");
+    assert!(json["crowding"]["counts"].is_array(), "{json}");
     let notes = fs::read_to_string(board.join("fab-notes.txt")).unwrap();
     assert!(
         notes.contains("ERROR: INCOMPLETE: 3 connection(s) have no copper")
