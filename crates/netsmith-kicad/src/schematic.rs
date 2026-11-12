@@ -417,10 +417,82 @@ pub fn emit_schematic(
     Ok(Sexp::node("kicad_sch", items).to_kicad_string())
 }
 
-/// A bare project file so KiCad opens the schematic as part of a project.
+/// The electrical types in the order of the rows and the columns of KiCad's ERC pin map.
+const PIN_MAP_TYPES: [PinType; 12] = [
+    PinType::Input,
+    PinType::Output,
+    PinType::Bidirectional,
+    PinType::TriState,
+    PinType::Passive,
+    PinType::Free,
+    PinType::Unspecified,
+    PinType::PowerIn,
+    PinType::PowerOut,
+    PinType::OpenCollector,
+    PinType::OpenEmitter,
+    PinType::NoConnect,
+];
+
+/// KiCad 9's default ERC pin map: 0 is no finding, 1 a warning, 2 an error, in the order of
+/// [`PIN_MAP_TYPES`] (the `erc.pin_map` of the projects KiCad 9 writes, such as its template
+/// `API_Series-500.kicad_pro`).
+const KICAD_PIN_MAP: [[u8; 12]; 12] = [
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+    [0, 2, 0, 1, 0, 0, 1, 0, 2, 2, 2, 2],
+    [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 2],
+    [0, 1, 0, 0, 0, 0, 1, 1, 2, 1, 1, 2],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+    [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 2],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 2],
+    [0, 2, 1, 2, 0, 0, 1, 0, 2, 2, 2, 2],
+    [0, 2, 0, 1, 0, 0, 1, 0, 2, 0, 0, 2],
+    [0, 2, 1, 1, 0, 0, 1, 0, 2, 0, 0, 2],
+    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+];
+
+/// The pairs of electrical types that netsmith's own pin rules accept and KiCad's default map
+/// reports (#461): a bidirectional or tri-state pin on a net with a power output (the power flag
+/// that [`emit_schematic`] puts on a net nothing on the board drives, or a regulator's output),
+/// and a tri-state pin on a net with a power input. netsmith's checker owns the pin rules (ADR
+/// 0016), so the exported project says the same: a GPIO tied to ground is an ordinary circuit.
+/// The map is never made stricter than KiCad's: what netsmith refuses, it reports itself.
+const ACCEPTED: [(PinType, PinType); 3] = [
+    (PinType::Bidirectional, PinType::PowerOut),
+    (PinType::TriState, PinType::PowerOut),
+    (PinType::TriState, PinType::PowerIn),
+];
+
+/// The ERC pin map of the exported project: KiCad's default with the pairs of [`ACCEPTED`]
+/// made 0, both ways round.
+pub fn erc_pin_map() -> [[u8; 12]; 12] {
+    let mut map = KICAD_PIN_MAP;
+    let index = |t: PinType| {
+        PIN_MAP_TYPES
+            .iter()
+            .position(|&p| p == t)
+            .expect("every type has a row")
+    };
+    for (a, b) in ACCEPTED {
+        map[index(a)][index(b)] = 0;
+        map[index(b)][index(a)] = 0;
+    }
+    map
+}
+
+/// The project file that goes beside the schematic, so KiCad opens the schematic as part of a
+/// project, with the ERC pin map of netsmith's pin rules ([`erc_pin_map`]).
 pub fn project_file(design_name: &str) -> String {
+    let rows: Vec<String> = erc_pin_map()
+        .iter()
+        .map(|row| {
+            let cells: Vec<String> = row.iter().map(u8::to_string).collect();
+            format!("      [{}]", cells.join(", "))
+        })
+        .collect();
     format!(
-        "{{\n  \"meta\": {{\n    \"filename\": \"{design_name}.kicad_pro\",\n    \"version\": 3\n  }}\n}}\n"
+        "{{\n  \"erc\": {{\n    \"meta\": {{\n      \"version\": 0\n    }},\n    \"pin_map\": [\n{}\n    ]\n  }},\n  \"meta\": {{\n    \"filename\": \"{design_name}.kicad_pro\",\n    \"version\": 3\n  }}\n}}\n",
+        rows.join(",\n")
     )
 }
 
@@ -635,6 +707,50 @@ mod tests {
     use super::*;
     use crate::testlib::{self, TempDir};
     use netsmith_core::{Net, Part, PartPin, PinKind, PinRef};
+
+    #[test]
+    fn the_erc_pin_map_is_kicads_but_for_the_pairs_netsmith_accepts() {
+        let map = erc_pin_map();
+        let index = |t: PinType| PIN_MAP_TYPES.iter().position(|&p| p == t).unwrap();
+        for (i, row) in map.iter().enumerate() {
+            for (j, &cell) in row.iter().enumerate() {
+                let accepted = ACCEPTED.iter().any(|&(a, b)| {
+                    (index(a), index(b)) == (i, j) || (index(b), index(a)) == (i, j)
+                });
+                let want = if accepted { 0 } else { KICAD_PIN_MAP[i][j] };
+                assert_eq!(
+                    cell, want,
+                    "{:?} with {:?}",
+                    PIN_MAP_TYPES[i], PIN_MAP_TYPES[j]
+                );
+                // The map is symmetric, as KiCad's is.
+                assert_eq!(cell, map[j][i]);
+            }
+        }
+        // The charger's case: a bidirectional pin with a power flag.
+        assert_eq!(
+            map[index(PinType::Bidirectional)][index(PinType::PowerOut)],
+            0
+        );
+        // An output against a power output stays an error.
+        assert_eq!(map[index(PinType::Output)][index(PinType::PowerOut)], 2);
+    }
+
+    #[test]
+    fn the_project_file_holds_the_pin_map_as_kicad_reads_it() {
+        let text = project_file("Demo");
+        assert!(text.contains("\"filename\": \"Demo.kicad_pro\""), "{text}");
+        let rows: Vec<&str> = text
+            .lines()
+            .filter(|l| l.trim_start().starts_with('['))
+            .collect();
+        assert_eq!(rows.len(), 12, "{text}");
+        assert_eq!(
+            rows[2].trim().trim_end_matches(','),
+            "[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 2]"
+        );
+        assert!(text.contains("\"pin_map\": ["), "{text}");
+    }
 
     /// The sample libraries of `testlib`, which hold what the standard mapping names.
     fn sample() -> SymbolLib {

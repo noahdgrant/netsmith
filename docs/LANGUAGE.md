@@ -3700,6 +3700,36 @@ error: net `net-a.out` has an open_drain output (`a.out`) and no pull-up: nothin
    |     ^^^^^^^^
 ```
 
+### A pin tied to a rail
+
+A pin may be tied to a rail: a GPIO strapped to ground, a configuration pin to the supply, a spare input to either. Any kind but `output` may be, with no statement for it. A push-pull `output` on the net of a rail, its positive or its negative pin, drives the rail to its other level whenever it drives, which is a short, and is refused (#461). An output that is itself a pin of a rail (the VBUS a hub's table writes as `output`) is a supply the part gives, and is not this case.
+
+```nsm fails
+import std::sources::Rail
+
+part Zdrv {
+    pins {
+        .out output "OUT" "1"
+    }
+}
+
+board Tied {
+    .gnd: Rail { .neg.net &= "GND" }
+    .d: Zdrv
+    .d.out ~ .gnd.neg
+}
+```
+
+```text
+error: `d.out` (`Zdrv`) is an output on net `GND`, the net of rail `gnd` (`gnd.neg`): a push-pull output drives the rail to its other level, which is a short; give it a net of its own, or, if its datasheet says the pin may be tied, write the kind it says (`bidirectional`, `open_drain` or `passive`)
+   --> main.nsm:11:5
+   |
+11 |     .d: Zdrv
+   |     ^^^^^^^^
+```
+
+The schematic's project file (`<board>.kicad_pro` beside the `.kicad_sch` that `build` writes) holds an ERC pin map that says the same as these rules: KiCad's default map, but a bidirectional or tri-state pin on a net with a power output, and a tri-state pin on a net with a power input, are not findings. So KiCad's electrical rules check of the exported schematic stays quiet about a GPIO tied to ground, where KiCad's own default reports `pin_to_pin` against the power flag on the ground net. The map is never stricter than KiCad's: what netsmith refuses, it reports itself.
+
 ### Pads
 
 Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:
