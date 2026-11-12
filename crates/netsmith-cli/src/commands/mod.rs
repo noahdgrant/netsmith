@@ -14,6 +14,7 @@ mod init;
 mod kicad_libs;
 mod lock;
 mod parity;
+mod part;
 mod port;
 mod render;
 mod route;
@@ -52,6 +53,8 @@ pub enum Command {
     Compare(compare::Args),
     /// Compare a fab board with the board of a port's original, part by part.
     Parity(parity::Args),
+    /// Draft a part file from a KiCad symbol's pins.
+    Part(part::Args),
     /// Import KiCad library tables.
     #[command(name = "kicad-libs")]
     KicadLibs(kicad_libs::Args),
@@ -77,6 +80,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::View(args) => view::run(args),
         Command::Compare(args) => compare::run(args),
         Command::Parity(args) => parity::run(args),
+        Command::Part(args) => part::run(args),
         Command::KicadLibs(args) => kicad_libs::run(args),
         Command::Catalog(args) => catalog::run(args),
         Command::Dxf(args) => dxf::run(args),

@@ -606,6 +606,88 @@ impl SymbolLib {
     }
 }
 
+/// The names of the symbols in the text of a symbol library (`.kicad_sym`) or of a schematic
+/// (`.kicad_sch`, its `lib_symbols`), in the file's order, for `netsmith part from-symbol`
+/// (#453). `file` is what a message calls the text.
+pub fn symbol_names_in(text: &str, file: &str) -> Result<Vec<String>, String> {
+    Ok(symbol_items(text, file)?
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect())
+}
+
+/// The symbol `name` of the text of a symbol library (`.kicad_sym`) or of a schematic
+/// (`.kicad_sch`, its `lib_symbols`), with its pins (#453). A schematic names its symbols
+/// `Library:Name`, and either spelling is found when it is the only one. A symbol that `extends`
+/// another of the same file has the other's pins.
+pub fn symbol_in(text: &str, file: &str, name: &str) -> Result<Symbol, String> {
+    let items = symbol_items(text, file)?;
+    let short = |full: &str| full.rsplit_once(':').map_or(full, |(_, n)| n).to_string();
+    let matching: Vec<&String> = items
+        .iter()
+        .map(|(n, _)| n)
+        .filter(|n| n.as_str() == name || short(n) == name)
+        .collect();
+    let full = match matching.as_slice() {
+        [one] => (*one).clone(),
+        [] => {
+            let names: Vec<&str> = items.iter().map(|(n, _)| n.as_str()).collect();
+            return Err(format!(
+                "{file} has no symbol `{name}`; it has {}",
+                if names.is_empty() {
+                    "none".to_string()
+                } else {
+                    names.join(", ")
+                }
+            ));
+        }
+        many => {
+            let names: Vec<&str> = many.iter().map(|n| n.as_str()).collect();
+            return Err(format!(
+                "{file} has several symbols named `{name}`: {}; give the whole name",
+                names.join(", ")
+            ));
+        }
+    };
+    let lib = Library {
+        path: PathBuf::from(file),
+        symbols: items.into_iter().collect(),
+    };
+    let flat = flatten(&lib, &full, 0).map_err(|e| format!("{file}: `{full}`: {e}"))?;
+    // A unit is named after the symbol without its library (`STM32G071C8T6_0_1`).
+    let lib_id = if full.contains(':') {
+        full.clone()
+    } else {
+        format!("file:{full}")
+    };
+    read_symbol(&lib_id, &short(&full), flat).map_err(|e| format!("{file}: `{full}`: {e}"))
+}
+
+/// The `(symbol ...)` items of a library's text, or of a schematic's `lib_symbols`, by name.
+fn symbol_items(text: &str, file: &str) -> Result<Vec<(String, Sexp)>, String> {
+    let root = Sexp::parse(text).map_err(|e| format!("{file}: {e}"))?;
+    let holder = match root.head() {
+        Some("kicad_symbol_lib") => root,
+        Some("kicad_sch") => root
+            .find("lib_symbols")
+            .cloned()
+            .ok_or_else(|| format!("{file}: the schematic has no `lib_symbols`"))?,
+        _ => {
+            return Err(format!(
+                "{file}: this is neither a symbol library (`kicad_symbol_lib`) nor a schematic (`kicad_sch`)"
+            ));
+        }
+    };
+    Ok(match holder {
+        Sexp::List(items) => items
+            .into_iter()
+            .filter(|i| i.head() == Some("symbol"))
+            .filter_map(|i| Some((i.args().first()?.text()?.to_string(), i)))
+            .collect(),
+        _ => Vec::new(),
+    })
+}
+
 /// The symbol `name` with its parents' contents merged in: the parent's drawing, pins and
 /// settings, with the child's properties on top. The units are renamed for the child,
 /// because KiCad wants a unit's name to start with its symbol's.

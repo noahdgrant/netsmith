@@ -16,6 +16,7 @@ pub mod libraries;
 pub mod no_supplier;
 pub mod order;
 pub mod parity;
+pub mod part_draft;
 pub mod physical;
 pub mod pick_lock;
 pub mod picks;
