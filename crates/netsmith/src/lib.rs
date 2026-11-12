@@ -17,6 +17,7 @@ pub mod no_supplier;
 pub mod order;
 pub mod parity;
 pub mod physical;
+pub mod picture;
 pub mod pick_lock;
 pub mod picks;
 pub mod pin_export;
