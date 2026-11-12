@@ -1532,7 +1532,7 @@ impl Parser {
     }
 }
 
-/// `power, input, output, bidirectional, passive, no_connect and tri_state`
+/// `power, input, output, bidirectional, passive, no_connect, tri_state and open_drain`
 fn kind_list() -> String {
     let words: Vec<&str> = PinKind::ALL.iter().map(|k| k.word()).collect();
     let (last, init) = words.split_last().expect("there are kinds");

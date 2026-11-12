@@ -230,7 +230,9 @@ impl Ranges<'_> {
                         };
                         add(l, h);
                     }
-                    PinKind::Input | PinKind::Power => returns = true,
+                    // An open-drain pin only pulls the line to its ground; its high is the
+                    // pull-up's, which the resistor above follows (#460).
+                    PinKind::Input | PinKind::Power | PinKind::OpenDrain => returns = true,
                     PinKind::NoConnect => {}
                     PinKind::Passive => {
                         // A part that passes nothing at DC (a capacitor, a test point) does

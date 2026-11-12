@@ -58,6 +58,8 @@ pub enum PinKind {
     Passive,
     NoConnect,
     TriState,
+    /// An output that only pulls its line low or lets it go; a pull-up sets its high (#460).
+    OpenDrain,
 }
 
 impl PinKind {
@@ -71,6 +73,7 @@ impl PinKind {
             Self::Passive => "passive",
             Self::NoConnect => "no_connect",
             Self::TriState => "tri_state",
+            Self::OpenDrain => "open_drain",
         }
     }
 }

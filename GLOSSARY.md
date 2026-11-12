@@ -282,7 +282,7 @@ The text identifier of a pin that its symbol and footprint share, such as `1`, `
 _Avoid_: Number, pin number
 
 **Pin kind**:
-What a pin is electrically, from a closed set: `power`, `input`, `output`, `bidirectional`, `passive`, `no_connect` and `tri_state` (ADR 0016, ADR 0064). The kind decides what the checker asks of the board: a `power` or `input` pin must be connected, a `no_connect` pin must not be, and two `output` pins may not share a net. A `tri_state` pin is an output that drives only while its part is selected: any number of them may share a net, and one `output` among them is refused. `optional` and `required` move a pin from its kind's default.
+What a pin is electrically, from a closed set: `power`, `input`, `output`, `bidirectional`, `passive`, `no_connect`, `tri_state` and `open_drain` (ADR 0016, ADR 0064, #460). The kind decides what the checker asks of the board: a `power` or `input` pin must be connected, a `no_connect` pin must not be, and two `output` pins may not share a net. A `tri_state` pin is an output that drives only while its part is selected: any number of them may share a net, and one `output` among them is refused. An `open_drain` pin only pulls its line low or lets it go (open drain or open collector): any number of them may share a net, an `output` or `tri_state` pin among them is refused, and the net needs a pull-up. `optional` and `required` move a pin from its kind's default.
 _Avoid_: Pin type, direction
 
 **Role**:

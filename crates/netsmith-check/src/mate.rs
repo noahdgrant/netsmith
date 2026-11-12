@@ -120,11 +120,20 @@ struct Side {
     inputs: Vec<InstId>,
     bidirectional: Vec<InstId>,
     tri_state: Vec<InstId>,
+    open_drain: Vec<InstId>,
 }
 
 impl Side {
     fn drives(&self) -> bool {
-        !self.outputs.is_empty() || !self.bidirectional.is_empty() || !self.tri_state.is_empty()
+        !self.outputs.is_empty()
+            || !self.bidirectional.is_empty()
+            || !self.tri_state.is_empty()
+            || !self.open_drain.is_empty()
+    }
+
+    /// Whether a pin on this side drives the line high and low (`output` or `tri_state`).
+    fn pushes(&self) -> bool {
+        !self.outputs.is_empty() || !self.tri_state.is_empty()
     }
 }
 
@@ -497,6 +506,7 @@ impl Checker<'_> {
             inputs: Vec::new(),
             bidirectional: Vec::new(),
             tri_state: Vec::new(),
+            open_drain: Vec::new(),
         };
         let Some(net) = self.model.net_of(pin).cloned() else {
             return side;
@@ -517,6 +527,7 @@ impl Checker<'_> {
                     Some(PinKind::Input) => side.inputs.push(p),
                     Some(PinKind::Bidirectional) => side.bidirectional.push(p),
                     Some(PinKind::TriState) => side.tri_state.push(p),
+                    Some(PinKind::OpenDrain) => side.open_drain.push(p),
                     _ => {}
                 }
             }
@@ -563,6 +574,13 @@ impl Checker<'_> {
                         "is an output on one board and a tri_state output on the other: a line that several parts drive needs every driver to be tri_state",
                     );
                 }
+                if (a.pushes() && !b.open_drain.is_empty())
+                    || (!a.open_drain.is_empty() && b.pushes())
+                {
+                    return refuse(
+                        "is a push-pull output on one board and an open_drain output on the other: the push-pull output drives the line high while the open_drain pin pulls it low",
+                    );
+                }
                 let driven = a.drives() || b.drives();
                 let listens = !a.inputs.is_empty() || !b.inputs.is_empty();
                 if listens && !driven {
@@ -603,9 +621,10 @@ impl Checker<'_> {
             };
             let detail = match s.role {
                 Role::Signal => format!(
-                    "{}{}{}{}",
+                    "{}{}{}{}{}",
                     pins(&s.outputs, "output"),
                     pins(&s.tri_state, "tri_state"),
+                    pins(&s.open_drain, "open_drain"),
                     pins(&s.inputs, "input"),
                     pins(&s.bidirectional, "bidirectional")
                 ),

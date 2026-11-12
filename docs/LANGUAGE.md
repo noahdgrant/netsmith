@@ -2167,6 +2167,7 @@ A row is `.path kind "NAME" "pad" ["pad" ...] [fn FUNCTION[:kind] [class] ...] [
 | `passive` | A pin with no direction, such as a resistor's. | No, unless `required` |
 | `no_connect` | A pin that must stay open. | Never connected |
 | `tri_state` | An output that drives only while its part is selected, and is high impedance otherwise. | No, unless `required` |
+| `open_drain` | An output that only pulls its line low, or lets it go (open drain, or open collector). A pull-up sets the high. | No, unless `required` |
 
 "Connected" means that another pin is on its net: a pin of another part, or a rail the board declares, which is supplied from outside. A net made only of the part's own pins does not count.
 
@@ -3624,6 +3625,81 @@ error: net `net-a.do` has 2 drivers and `b.do` is not `tri_state`: `a.do` (`Zrom
    |     ^^^^^^^^
 ```
 
+### Open-drain outputs
+
+An open-drain output, or an open-collector one, only pulls its line low or lets it go: a comparator's output, a fault flag, an interrupt line. The kind for it is `open_drain` (#460). Any number of `open_drain` pins may share a line, since none of them drives it high, and a `bidirectional` pin beside them is accepted. Two rules apply to the net:
+
+- A pin that drives the line high, an `output` or a `tri_state` output, is refused on it: it would drive the line high while an open-drain pin pulls it low.
+- The line needs a pull-up: a resistor from the net to a net that holds a rail's `pos`, or a pin that can drive it high (`output`, `tri_state` or `bidirectional`, such as a GPIO behind a series resistor). A resistor to the ground is a pull-down, not a pull-up.
+
+The pull-up sets the high of the line. The levels check (see _An open-drain line_) takes the high of an `open_drain` pin from its pull-up, whatever the pin states, and the absolute-maximum check holds the pin to the voltage of that pull-up, not to its own supply. A part writes `open_drain` when its datasheet says the output is open drain or open collector, with the page in a comment.
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Zcmp, an invented comparator.
+part Zcmp {
+    pins {
+        // Page 4: OUT is an open-drain output.
+        .out open_drain "OUT" "1"
+    }
+}
+
+/// Zreader, an invented part that reads the line.
+part Zreader {
+    pins {
+        .din input "DIN" "1"
+    }
+}
+
+board WiredOr {
+    .v3: Rail
+    .a: Zcmp
+    .b: Zcmp
+    .r: Resistor
+    .s: Zreader
+    .a.out ~ .b.out
+    .a.out ~ .s.din
+    .v3.pos ~> .r ~> .a.out
+}
+```
+
+The same line with no resistor to the rail, and with a push-pull output on it:
+
+```nsm fails
+part Zcmp {
+    pins {
+        .out open_drain "OUT" "1"
+    }
+}
+
+part Zdrv {
+    pins {
+        .out output "OUT" "1"
+    }
+}
+
+board Fight {
+    .a: Zcmp
+    .d: Zdrv
+    .a.out ~ .d.out
+}
+```
+
+```text
+error: net `net-a.out` has an open_drain output (`a.out`) and a push-pull driver: `d.out` (`Zdrv`, an output); it drives the line high while an open_drain pin pulls it low; give `d.out` a net of its own, or write `open_drain` for it if the datasheet says the pin is open drain
+   --> main.nsm:14:5
+   |
+14 |     .a: Zcmp
+   |     ^^^^^^^^
+error: net `net-a.out` has an open_drain output (`a.out`) and no pull-up: nothing takes the line high when it lets go of it; join a resistor from the net to a rail's `pos`, or to a pin that drives the line high
+   --> main.nsm:14:5
+   |
+14 |     .a: Zcmp
+   |     ^^^^^^^^
+```
+
 ### Pads
 
 Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:
@@ -3738,7 +3814,7 @@ part UnknownKind {
 ```
 
 ```text
-error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect and tri_state
+error: unknown pin kind `tristate`; the kinds are power, input, output, bidirectional, passive, no_connect, tri_state and open_drain
   --> main.nsm:3:12
   |
 3 |         .a tristate "A" "1"
@@ -6493,7 +6569,6 @@ error: the `schottky` catalog has nothing for `d`, which needs max_reverse_volta
    |
 15 |     .d: Schottky {
    |     ^^^^^^^^^^^^
-
 ```
 
 What it proves. The check says what the datasheet of the ordering code says and nothing about the board: a part qualified to AEC-Q200 is not shown to have passed any other test, and the sentence of a datasheet is not a certificate. The `Qualification` of a stricter standard is not a stronger claim: there is one variant, `Aec`, so a board cannot ask for AEC-Q100 Grade 0 by this member (the temperature range of the part says what a grade says).
@@ -11572,9 +11647,9 @@ A single-supply buffer used as a translator (`LevelTranslator`) states plain pin
 
 #### An open-drain line
 
-An open-drain line, such as the `sda` of an `I2c` bus, is never driven high: a device only pulls it low or lets go, and a resistor to a rail holds it high. A datasheet states its `VOL` and no `VOH`, because the part does not set the high. The levels check reads such a part as it is, without a new word in the language (ADR 0075, provisional): a driver that states `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail (`I2cPullups`, `PullUp` or a plain `Resistor`), has as its high the rail's voltage range, and the receivers' `vih` is judged against that. A finding names the pull-up resistor, its rail and the receiver's `vih`, and the driver's `vol` is judged against each receiver's `vil` as before. The rule is narrow:
+An open-drain line, such as the `sda` of an `I2c` bus, is never driven high: a device only pulls it low or lets go, and a resistor to a rail holds it high. A datasheet states its `VOL` and no `VOH`, because the part does not set the high. The levels check reads such a part as it is (ADR 0075, provisional): a pin of the kind `open_drain` (see _Open-drain outputs_), or a driver of another kind that states `vol` and no `voh`, on a net that a resistor joins to the positive pin of a rail (`I2cPullups`, `PullUp` or a plain `Resistor`), has as its high the rail's voltage range, and the receivers' `vih` is judged against that. A finding names the pull-up resistor, its rail and the receiver's `vih`, and the driver's `vol` is judged against each receiver's `vil` as before. The rule is narrow:
 
-- A driver that states `voh` is judged by it, whatever else is on the net: the datasheet says what the part does.
+- A driver that states `voh` is judged by it, whatever else is on the net: the datasheet says what the part does. An `open_drain` pin is the exception: its kind says the pull-up sets the high.
 - A driver that states no `vol` either says nothing about its output, and gets the notes for its high and its low, as before.
 - A net with a resistor to its ground as well is a divider, and this rule does not apply. When the DC analysis solves the line (below) its voltage is the high. When it does not, the note says the high has no value.
 - A rail on another ground than the receiver's, or a rail with no voltage, is a note that names it, not a pass.

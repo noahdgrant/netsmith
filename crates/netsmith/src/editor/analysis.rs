@@ -1033,6 +1033,7 @@ pub fn must_connect(built: &Built) -> netsmith_view::Marks {
                 PinKind::Passive => "a passive pin",
                 PinKind::NoConnect => "a no_connect pin",
                 PinKind::TriState => "a tri_state output",
+                PinKind::OpenDrain => "an open_drain output",
             };
             let pads = if row.pads.len() == 1 {
                 format!("pad {}", row.pads[0])
