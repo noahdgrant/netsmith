@@ -22,16 +22,18 @@
 //! **Where each dimension comes from.** Every size in plan is a number of the generator: the body,
 //! the span tip to tip of the leads, the lead width and the length of its foot (nominal, the middle
 //! of the range), the exposed pad, the ball pads and their grid, the header's pins (0.64 mm square
-//! at 2.54 mm pitch, 0.5 mm at 2.0 mm, as `generate/header.rs` records). A few details are only
-//! for the picture: no check, report or written file reads them, none is a height, and each is a
-//! constant below with a doc comment that says so:
+//! at 2.54 mm pitch, 0.5 mm at 2.0 mm, as `generate/header.rs` records). One height is the
+//! generator's too: a pin header's plastic (2.5 mm at 2.54 mm pitch, 2.0 mm at 2.0 mm, one row or
+//! two, each from a maker's drawing that `data/jlcpcb/README.md` names). It is a dimension of the
+//! shape, under the part's height and never in place of it: the pins go on up to the height. A
+//! few details are only for the picture: no check, report or written file reads them, none is a
+//! height, and each is a constant below with a doc comment that says so:
 //!
 //! - [`LEAD_THICKNESS`], [`LEAD_EXIT`] and [`GULL_WING_STANDOFF`]: the bend of a gull-wing lead.
 //! - [`NO_LEAD_TERMINAL_THICKNESS`], [`NO_LEAD_TERMINAL_EXPOSURE`] and [`NO_LEAD_STANDOFF`]: the
 //!   metal under a QFN or DFN.
 //! - [`BALL_PER_PAD`] and [`BALL_HEIGHT_PER_DIAMETER`]: a BGA's balls.
-//! - [`HEADER_INSULATOR_PER_PITCH`] and [`SOCKET_OPENING_DEPTH`]: a header's plastic and a
-//!   socket's openings.
+//! - [`SOCKET_OPENING_DEPTH`]: a socket's openings.
 //! - [`CRYSTAL_LID_THICKNESS`] and [`CRYSTAL_LID_INSET`]: a crystal's metal lid.
 //! - [`PIN1_MARK_RADIUS`], [`PIN1_MARK_DEPTH`] and [`CATHODE_BAND`]: the marks of pin 1 and of a
 //!   cathode.
@@ -68,8 +70,6 @@ pub const NO_LEAD_STANDOFF: f64 = 0.02;
 pub const BALL_PER_PAD: f64 = 1.25;
 /// Drawing only: a soldered ball's height over its diameter, at most half the part's height.
 pub const BALL_HEIGHT_PER_DIAMETER: f64 = 0.8;
-/// Drawing only: the height of a pin header's plastic over its pitch, at most the height.
-pub const HEADER_INSULATOR_PER_PITCH: f64 = 1.0;
 /// Drawing only: how deep a socket's opening is drawn below its top, in mm, at most half the
 /// height.
 pub const SOCKET_OPENING_DEPTH: f64 = 0.05;
@@ -126,11 +126,13 @@ pub enum Package {
         balls: Vec<Pt>,
     },
     /// A pin header or socket: the plastic's outline, the pitch, the side of a square pin, the
-    /// pins.
+    /// height of a header's plastic above the board (a maker's figure that the generator
+    /// records; a socket's plastic is its whole height, so a socket does not read it), the pins.
     Header {
         body: Rect,
         pitch: f64,
         pin: f64,
+        plastic: f64,
         pins: Vec<Pt>,
         socket: bool,
     },
@@ -399,11 +401,12 @@ fn shape(package: &Package, h: f64) -> Vec<Solid> {
         Package::Bga { body, pad, balls } => bga(*body, *pad, balls, h),
         Package::Header {
             body,
-            pitch,
             pin,
+            plastic,
             pins,
             socket,
-        } => header(*body, *pitch, *pin, pins, *socket, h),
+            ..
+        } => header(*body, *pin, *plastic, pins, *socket, h),
         Package::Crystal { body } => crystal(*body, h),
     }
 }
@@ -601,7 +604,7 @@ fn bga(body: (f64, f64), pad: f64, balls: &[Pt], h: f64) -> Vec<Solid> {
     out
 }
 
-fn header(body: Rect, pitch: f64, pin: f64, pins: &[Pt], socket: bool, h: f64) -> Vec<Solid> {
+fn header(body: Rect, pin: f64, plastic: f64, pins: &[Pt], socket: bool, h: f64) -> Vec<Solid> {
     let p = pin / 2.0;
     let mut out = Vec::new();
     if socket {
@@ -617,7 +620,8 @@ fn header(body: Rect, pitch: f64, pin: f64, pins: &[Pt], socket: bool, h: f64) -
             ));
         }
     } else {
-        let insulator = (HEADER_INSULATOR_PER_PITCH * pitch).min(h);
+        // The plastic, at most the part's height: the pins end at the height.
+        let insulator = plastic.min(h);
         out.push(solid(
             Material::Body,
             cuboid(
@@ -875,7 +879,7 @@ mod tests {
         let shape = fits(id, &made(id), 8.5);
         assert_eq!(count(&shape, Material::Metal), 10);
         let body = body_solid(&shape);
-        assert!((body.max[2] - 2.54).abs() < EPS, "{body:?}");
+        assert!((body.max[2] - 2.5).abs() < EPS, "{body:?}");
         let pin = shape
             .solids
             .iter()
@@ -891,6 +895,47 @@ mod tests {
         // A header lower than its plastic: everything ends at the height.
         let shape = fits(id, &made(id), 1.5);
         assert!((body_solid(&shape).max[2] - 1.5).abs() < EPS);
+    }
+
+    #[test]
+    fn a_pin_headers_plastic_is_its_familys_sourced_height() {
+        // The makers' drawings that `data/jlcpcb/README.md` names: 2.50 mm at 2.54 mm pitch and
+        // 2.00 mm at 2.0 mm, one row or two.
+        for (id, plastic) in [
+            (
+                "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+                2.5,
+            ),
+            (
+                "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+                2.5,
+            ),
+            (
+                "Connector_PinHeader_2.00mm:PinHeader_1x04_P2.00mm_Vertical",
+                2.0,
+            ),
+            (
+                "Connector_PinHeader_2.00mm:PinHeader_2x05_P2.00mm_Vertical",
+                2.0,
+            ),
+        ] {
+            let fp = made(id);
+            match &fp.package {
+                Some(Package::Header {
+                    plastic: p,
+                    socket: false,
+                    ..
+                }) => assert_eq!(*p, plastic, "{id}"),
+                other => panic!("{id}: {other:?}"),
+            }
+            // A catalog row's height is the pin's tip (8.9 mm for the 2.54 mm headers): the
+            // plastic stays at its own height and the pins reach the part's.
+            let shape = fits(id, &fp, 8.9);
+            assert!((body_solid(&shape).max[2] - plastic).abs() < EPS, "{id}");
+            assert!((shape.bounds().unwrap().max[2] - 8.9).abs() < EPS, "{id}");
+        }
+        let fp = spec("gen:PinHeader(rows=2, pins=3, pitch=2mm)");
+        assert!(matches!(fp.package, Some(Package::Header { plastic, .. }) if plastic == 2.0));
     }
 
     #[test]
