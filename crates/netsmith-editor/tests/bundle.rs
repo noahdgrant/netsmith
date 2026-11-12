@@ -76,3 +76,65 @@ fn the_committed_page_is_what_the_sources_build_to() {
         differences.join("\n  ")
     );
 }
+
+/// The most the 3D view's chunk (three.js and the view, ADR 0105) may weigh, gzipped.
+const CHUNK_3D_BUDGET: usize = 250_000;
+
+/// Text that is only in three.js or in the 3D view, never in the rest of the page.
+const ONLY_3D: [&str; 3] = ["WebGLRenderer", "PMREMGenerator", "Drawing the board in 3D"];
+
+fn gzipped(bytes: &[u8]) -> usize {
+    use std::io::Write;
+    let mut z = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    z.write_all(bytes).unwrap();
+    z.finish().unwrap().len()
+}
+
+/// The 3D view is a chunk of its own, loaded when it first opens (ADR 0105): it is at most
+/// 250 kB gzipped, and the page's main chunk (the script `index.html` loads) has none of
+/// three.js or of the view in it, only the dynamic import that fetches it.
+#[test]
+fn the_3d_view_is_a_chunk_of_its_own_within_its_budget() {
+    let (_, committed) = dirs();
+    let page = fs::read_to_string(committed.join("index.html")).unwrap();
+    let main = page
+        .split("src=\"/")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .find(|src| src.ends_with(".js"))
+        .unwrap_or_else(|| panic!("index.html loads no script: {page}"));
+    let main_js = fs::read_to_string(committed.join(main)).unwrap();
+    for marker in ONLY_3D {
+        assert!(
+            !main_js.contains(marker),
+            "the main chunk {main} has `{marker}` in it: three.js or the 3D view is no longer loaded on demand; import it only through `load3d` (src/pcb3d/mode.ts)"
+        );
+    }
+    let mut chunks: Vec<(String, usize)> = Vec::new();
+    for entry in fs::read_dir(committed.join("assets")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "js") {
+            let bytes = fs::read(&path).unwrap();
+            if String::from_utf8_lossy(&bytes).contains("WebGLRenderer") {
+                chunks.push((
+                    path.file_name().unwrap().to_string_lossy().into(),
+                    gzipped(&bytes),
+                ));
+            }
+        }
+    }
+    assert_eq!(
+        chunks.len(),
+        1,
+        "three.js should be in exactly one chunk: {chunks:?}"
+    );
+    let (name, size) = &chunks[0];
+    assert!(
+        main_js.contains(name.as_str()),
+        "the main chunk does not name {name}, the chunk it loads for the 3D view"
+    );
+    assert!(
+        *size <= CHUNK_3D_BUDGET,
+        "the 3D view's chunk {name} is {size} bytes gzipped, over its budget of {CHUNK_3D_BUDGET} (ADR 0105)"
+    );
+}

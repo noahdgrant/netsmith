@@ -5,7 +5,7 @@
 its face to its height, each height limit as a volume with the tallest part under it, and what is
 unknown. It is for an
 agent, a script or a person who wants the 3D facts of a board as numbers, with no GPU, no browser
-and no KiCad.
+and no KiCad. The editor's 3D view displays the same scene ([below](#the-editors-3d-view)).
 
 ```sh
 netsmith board3d examples/led.nsm                 # a short summary
@@ -155,6 +155,48 @@ A node whose shape has no area has no mesh, and is still there.
   `body`, `body-unknown`, `metal`, `mark`, `limit` and `limit-violated` (the last two see-through,
   `alphaMode: BLEND`). All ten are always written, in this order. Their colours are the
   rasterizer's light palette in linear light. No glTF extension is used.
+
+## The editor's 3D view
+
+The PCB section of the editor (`netsmith editor`) shows the board in 3D: `3D` in the toolbar's
+`2D | 3D` switch, or the key `D`. It displays the `.glb` file above, the one
+`board3d --glb` writes, for the board and placement the 2D view shows; when the board is edited,
+routed or built again it fetches the file again and keeps the camera.
+
+What it is:
+
+- **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
+  body to its known height (its package shape where the footprint generator made the footprint,
+  else a box), the height limits as see-through volumes (in the error colour when a part breaks
+  one) and the pins out of the far face where their length is stated. The copper comes into the
+  same file later (#430), and the view draws each mesh by its material's name.
+- **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
+  by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
+  face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
+  (_Height coverage_); it lists the others, and a click on one selects it. A hover names a part's
+  designator, its height and where the height came from.
+- **One selection with the rest of the editor.** A click selects a part in every view (the 2D
+  board, the schematic, the tree, the bill of materials), and a selection made in any of them is
+  lit here; the hover is shared the same way. A double click opens the part's declaration in the
+  source.
+- **A camera to look with.** Drag to orbit, right or middle drag to pan, the wheel to zoom at the
+  pointer; top, bottom, front, back, left, right and isometric views (`T`, `B`, `I` and the bar),
+  a flip to the other face (`Shift+F`), fit (`F` or `0`), and perspective or orthographic (`P`).
+  The colours follow the editor's theme. With reduced motion the camera jumps instead of moving.
+
+What it is not:
+
+- **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
+  file (ADR 0032).
+- **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
+  maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
+  generator's own numbers.
+- **Not a check.** The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
+  scene's, from the same numbers `fab` checks; the view decides nothing of its own.
+- **Not on the network.** three.js is in the editor's binary, in a chunk of its own that the page
+  loads the first time 3D opens (at most 250 kB gzipped, held by a test in
+  `crates/netsmith-editor/tests/bundle.rs`); nothing is fetched from elsewhere (ADR 0019). It
+  needs WebGL 2; without it the view says so and the 2D view works as before.
 
 ## Pictures for agents: `netsmith render`
 
