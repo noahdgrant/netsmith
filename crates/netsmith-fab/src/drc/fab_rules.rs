@@ -31,6 +31,66 @@ pub(crate) fn run(out: &mut Out<'_>) {
     mask_to_track(out);
     holes(out);
     pad_hole_to_hole(out);
+    track_current(out);
+}
+
+/// A track narrower than its net's current needs, unless it lies within the neck-down reach
+/// of one of the net's pads.
+fn track_current(out: &mut Out<'_>) {
+    let m = out.m;
+    let x = m.extras;
+    if x.least_widths.is_empty() {
+        return;
+    }
+    for c in &m.items {
+        let Kind::Track(i) = c.kind else { continue };
+        let t = &m.art.tracks[i];
+        let Some(net) = t.net.as_deref() else {
+            continue;
+        };
+        let Some(&(_, least)) = x.least_widths.iter().find(|(n, _)| n == net) else {
+            continue;
+        };
+        if t.width >= least - EPS / 100.0 {
+            continue;
+        }
+        // Near the pads of a part that has a pad on the net: within the reach of the box
+        // round the centres of that part's pads.
+        let parts: Vec<&str> = m
+            .art
+            .pads
+            .iter()
+            .filter(|p| p.net.as_deref() == Some(net))
+            .map(|p| p.part.as_str())
+            .collect();
+        let near_pad = |p: crate::geom::Pt| {
+            parts.iter().any(|&part| {
+                let Some(b) =
+                    Bounds::of(m.art.pads.iter().filter(|q| q.part == part).map(|q| q.at))
+                else {
+                    return false;
+                };
+                let b = b.expanded(x.neck_reach + EPS);
+                b.min.x <= p.x && p.x <= b.max.x && b.min.y <= p.y && p.y <= b.max.y
+            })
+        };
+        // Every point of the track near one of the net's pads: sampled each 0.05 mm.
+        let (a, b) = (c.anchors[0], c.anchors[c.anchors.len() - 1]);
+        let steps = ((a.dist(b) / 0.05).ceil() as usize).max(1);
+        if (0..=steps).all(|k| near_pad(a + (b - a) * (k as f64 / steps as f64))) {
+            continue;
+        }
+        out.push(
+            Rule::TrackCurrent,
+            format!(
+                "{} is {:.4} mm wide; its net's current needs {:.4} mm (IPC-2221 at the fabricator's width tolerance), and only within {:.2} mm of the pads of a part on the net may a track be narrower",
+                c.item.what, t.width, least, x.neck_reach
+            ),
+            c.item.at,
+            Some(&t.layer),
+            vec![c.item.clone()],
+        );
+    }
 }
 
 /// Two holes, at least one of them a pad's, nearer than the process allows between pad holes.

@@ -178,8 +178,53 @@ fn the_fabricators_rules_are_netsmiths_and_not_compared_with_kicad() {
         Rule::SlotWidth,
         Rule::NpthDrill,
         Rule::PlatedRing,
+        Rule::TrackCurrent,
     ] {
         assert!(rule.is_netsmiths(), "{rule:?}");
         assert_eq!(Rule::from_id(rule.id()), Some(rule));
     }
+}
+
+#[test]
+fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads() {
+    // A 1 A net that needs 0.4 mm: a 0.2 mm track 10 mm long between two pads, and a 0.2 mm
+    // neck of 0.5 mm out of a pad.
+    let extras = Extras {
+        least_widths: vec![("P".to_string(), 0.4)],
+        neck_reach: 1.0,
+        ..jlcpcb()
+    };
+    let mut b = Pcb::new(2);
+    b.stub("P", 10.0, 10.0);
+    b.stub("P", 20.0, 10.0);
+    b.track("P", "F.Cu", (10.0, 10.0), (10.5, 10.0), 0.2);
+    b.track("P", "F.Cu", (10.5, 10.0), (20.0, 10.0), 0.4);
+    let r = check(&mut b, &extras);
+    assert_eq!(
+        r.count(Rule::TrackCurrent),
+        0,
+        "a neck out of a pad passes\n{r}"
+    );
+    let mut b = Pcb::new(2);
+    b.stub("P", 10.0, 10.0);
+    b.stub("P", 20.0, 10.0);
+    b.track("P", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
+    let r = check(&mut b, &extras);
+    let found: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.rule == Rule::TrackCurrent)
+        .collect();
+    assert_eq!(found.len(), 1, "{r}");
+    assert!(
+        found[0].message.contains("0.2000 mm wide") && found[0].message.contains("0.4000 mm"),
+        "{}",
+        found[0].message
+    );
+    let none = check(&mut b, &jlcpcb());
+    assert_eq!(
+        none.count(Rule::TrackCurrent),
+        0,
+        "not checked when no current is known"
+    );
 }

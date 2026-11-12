@@ -64,7 +64,7 @@ _Avoid_: Grade (the temperature grades of AEC-Q100 are an _Environment_'s range,
 A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy and caps it with plating so that the solder stays on the pad; the process says up to what size it does that (`.via_in_pad`), and `fab-notes.txt` lists the pads that have one. The router uses one only when a pad cannot be reached any other way.
 
 **Neck-down**:
-A track drawn at the process's least width for a short run where the board's wider track does not fit, such as between two pads or for the first millimetre out of a fine-pitch pad. The router measures the finished copper of every line against the other nets' copper, and a line whose copper is too near at any width is not routed (ADR 0036).
+A track drawn narrower for a short run where the board's wider track does not fit, such as between two pads: no narrower than the width its net's current needs, except within 1 mm of the pads of a part the line ends on, where it may be the process's least width (issue #431). The router measures the finished copper of every line against the other nets' copper, and a line whose copper is too near at any width it may have is not routed (ADR 0036).
 
 **Side**:
 The face of the board a part is on, front or back. A part on the back is its footprint seen in a mirror, with its surface-mount pads on the back copper.

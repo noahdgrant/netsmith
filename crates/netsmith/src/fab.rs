@@ -1703,7 +1703,8 @@ fn designator_key(designator: &str) -> (String, u32) {
 }
 
 /// What the design rules check needs that the board file does not say: the process's mask
-/// web and widest filled via, the rules a project file cannot say (issue #431), and the
+/// web and widest filled via, the rules a project file cannot say and the least width of the
+/// nets that carry current (issue #431), and the
 /// courtyards a protruding pin excuses (ADR 0045 section 15).
 pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
     netsmith_fab::drc::Extras {
@@ -1719,6 +1720,8 @@ pub(crate) fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
         npth_slot: Some(board.rules.npth_slot),
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
+        least_widths: board.least_widths(),
+        neck_reach: netsmith_pcb::route::NECK_REACH,
     }
 }
 
@@ -2065,7 +2068,11 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 10] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 11] = [
+        (
+            "track_width_tolerance",
+            "the track width check sizes for the narrowest finished track (issue #431); the widths it gives are the router's",
+        ),
         (
             "min_plane_hole_clearance",
             "kept by the plane's fill, which the check does not judge (ADR 0037)",

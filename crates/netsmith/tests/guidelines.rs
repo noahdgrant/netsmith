@@ -97,7 +97,7 @@ fn a_guideline_finding_warns_and_the_board_builds() {
     assert!(
         warnings[0].starts_with("Heater: IPC-2221 guideline: net `5V` carries up to 2 A")
             && warnings[0].contains("0.2 mm wide")
-            && warnings[0].contains("IPC-2221 needs 0.79 mm"),
+            && warnings[0].contains("IPC-2221 needs 0.98 mm"),
         "{}",
         warnings[0]
     );
@@ -114,7 +114,7 @@ fn strict_guidelines_refuse_the_build_with_the_numbers_and_the_line() {
     };
     assert!(
         e.contains("error: Heater: IPC-2221 guideline: net `5V` carries up to 2 A")
-            && e.contains("that width carries 745 mA and IPC-2221 needs 0.79 mm")
+            && e.contains("that width carries 633 mA (at its narrowest, 20% under, the fabricator's tolerance) and IPC-2221 needs 0.98 mm")
             && e.contains("--> heater.nsm:"),
         "{e}"
     );
@@ -322,14 +322,15 @@ fn a_board_that_states_no_width_is_not_warned_and_is_routed_at_the_width_the_cur
     assert!(!findings.iter().any(|l| l.contains("guideline")), "{said}");
     let notes = fs::read_to_string(root.join("fab/Heater/fab-notes.txt")).unwrap();
     assert!(!notes.contains("IPC-2221"), "{notes}");
-    // The board file draws 5V and GND at 0.79 mm (2 A needs 0.7814 mm in 1 oz at 10 K).
+    // The board file draws 5V and GND at 0.98 mm (2 A needs 0.7814 mm in 1 oz at 10 K, and
+    // 0.9768 mm for the narrowest track JLCPCB's ±20 % tolerance makes of it).
     let pcb = fs::read_to_string(root.join("fab/Heater/Heater.kicad_pcb")).unwrap();
     assert!(
-        pcb.contains("(width 0.79)"),
-        "no track of 0.79 mm in the board"
+        pcb.contains("(width 0.98)"),
+        "no track of 0.98 mm in the board"
     );
     let pro = fs::read_to_string(root.join("fab/Heater/Heater.kicad_pro")).unwrap();
-    assert!(pro.contains("Track_0.79mm"), "a net class of 0.79 mm");
+    assert!(pro.contains("Track_0.98mm"), "a net class of 0.98 mm");
 }
 
 #[test]

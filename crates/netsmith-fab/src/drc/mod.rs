@@ -243,10 +243,13 @@ pub enum Rule {
     /// A plated pad with less copper round its hole than the process leaves (netsmith's; a
     /// via's ring is `annular_width`).
     PlatedRing,
+    /// A track narrower than its net's current needs, away from the net's pads (netsmith's,
+    /// issue #431).
+    TrackCurrent,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 33] = [
+    pub const ALL: [Rule; 34] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -280,6 +283,7 @@ impl Rule {
         Rule::SlotWidth,
         Rule::NpthDrill,
         Rule::PlatedRing,
+        Rule::TrackCurrent,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -318,6 +322,7 @@ impl Rule {
             Rule::SlotWidth => "slot_width",
             Rule::NpthDrill => "npth_drill",
             Rule::PlatedRing => "plated_ring",
+            Rule::TrackCurrent => "track_current",
         }
     }
 
@@ -336,6 +341,7 @@ impl Rule {
                 | Rule::SlotWidth
                 | Rule::NpthDrill
                 | Rule::PlatedRing
+                | Rule::TrackCurrent
         )
     }
 
@@ -531,6 +537,11 @@ pub struct Extras {
     pub npth_slot: Option<f64>,
     pub npth_drill: Option<f64>,
     pub pad_ring: Option<f64>,
+    /// The least width of the nets whose current needs more than the process's least track,
+    /// by net (issue #431), and how near one of the net's pads a track may be narrower (the
+    /// neck-down out of a fine-pitch pad). Empty when the currents are not known.
+    pub least_widths: Vec<(String, f64)>,
+    pub neck_reach: f64,
 }
 
 #[derive(Debug, PartialEq)]
