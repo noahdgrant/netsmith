@@ -46,6 +46,22 @@ export interface PartInfo3d {
   provenance: Provenance;
   /** Null when no height is known: never zero, never a guess. */
   heightMm: number | null;
+  /** The part's kind as the design names it (`Resistor`), and what sort of part it is (`resistor`, `ic`...); empty and null in a file that has none. */
+  partKind: string;
+  category: string | null;
+  /** The least margin to a height limit over the part, and that limit; null when none is over it or its height is unknown. */
+  marginMm: number | null;
+  marginLimit: string | null;
+}
+
+/** A net's copper on one layer (`copper:<layer>:<net>`), or a via's barrel (`via:<net>`). A net of null is the copper with none. */
+export interface CopperInfo {
+  kind: 'copper' | 'hole';
+  layer: string | null;
+  net: string | null;
+  /** A pad's barrel (`hole:<refdes>.<pad>`): its part's path and its pad; its net is the pad's, which the file does not say. */
+  path?: string;
+  pad?: string;
 }
 
 export interface LimitInfo {
@@ -57,9 +73,11 @@ export interface LimitInfo {
   marginMm: number | null;
   tallest: string | null;
   unknown: string[];
+  /** Every part under it on its face (an older file has none). */
+  under: string[];
 }
 
-export type Info = BoardInfo | PartInfo3d | LimitInfo | { kind: string };
+export type Info = BoardInfo | PartInfo3d | LimitInfo | CopperInfo | { kind: string };
 
 const num = (v: unknown, or = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : or);
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -105,8 +123,20 @@ export function readInfo(userData: unknown): Info | null {
         side: face(n.side),
         provenance: p === 'stated' || p === 'catalog' ? p : 'unknown',
         heightMm: numOrNull(n.height_mm),
+        partKind: str(n.part_kind),
+        category: typeof n.category === 'string' ? n.category : null,
+        marginMm: numOrNull(n.margin_mm),
+        marginLimit: typeof n.margin_limit === 'string' ? n.margin_limit : null,
       };
     }
+    case 'copper':
+    case 'hole':
+      return {
+        kind: n.kind,
+        layer: typeof n.layer === 'string' ? n.layer : null,
+        net: typeof n.net === 'string' ? n.net : null,
+        ...(typeof n.path === 'string' && typeof n.pad === 'string' ? { path: n.path, pad: n.pad } : {}),
+      };
     case 'height_limit':
       return {
         kind: 'height_limit',
@@ -117,6 +147,7 @@ export function readInfo(userData: unknown): Info | null {
         marginMm: numOrNull(n.margin_mm),
         tallest: typeof n.tallest === 'string' ? n.tallest : null,
         unknown: strings(n.unknown),
+        under: strings(n.under),
       };
     default:
       return { kind: n.kind };
@@ -150,7 +181,8 @@ export function heightLine(p: Pick<PartInfo3d, 'heightMm' | 'provenance'>): stri
 
 /** What the hover tooltip says of a part: its designator (and value), its height and its source, its face, and the 3D findings about it. */
 export function partTip(p: PartInfo3d, findings: Finding3d[], value = ''): { title: string; lines: string[] } {
-  const lines = [heightLine(p), `On the ${p.side} face`];
+  const lines = [heightLine(p), `On the ${p.side} face${p.partKind ? ` · ${p.partKind}` : ''}`];
+  if (p.marginMm !== null && p.marginMm >= 0 && p.marginLimit) lines.push(`${mm(p.marginMm)} under the limit ${p.marginLimit}`);
   for (const f of findings) {
     if (!f.parts.includes(p.path)) continue;
     const limit = f.limit ? `the limit ${f.limit}` : 'a height limit';

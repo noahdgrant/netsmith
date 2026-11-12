@@ -515,6 +515,9 @@ button.chip.v3-cov:hover:not(.ok) {
   .v3-info { top: 6.375rem; left: 0.875rem; right: auto; align-items: flex-start; }
   .v3-cov-wrap { align-items: flex-start; }
   .v3-section { top: 9.25rem; }
+  /* With a section open, the chip and the legend go under its panel instead. */
+  .v3-wrap:has(.v3-section) .v3-info { top: 9.25rem; }
+  .v3-wrap:has(.v3-section) .v3-section { top: 6.375rem; }
 }
 
 @keyframes v3-in {

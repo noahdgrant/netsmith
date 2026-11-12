@@ -243,6 +243,7 @@
   --pcb3d-unknown: #c3cad6;
   --pcb3d-metal: #c7ccd4;
   --pcb3d-mark: #d8d4c6;
+  --pcb3d-silk: #d8d4c6;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #06080b;
@@ -252,6 +253,21 @@
   --pcb3d-cut: #5ad1e6;
   --pcb3d-finish: #d4a94a;
   --pcb3d-mask-copper: #34505c;
+  /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
+  --pcb3d-kind-ic: #c6ccd8;
+  --pcb3d-kind-connector: #f0a0d0;
+  --pcb3d-kind-resistor: #e0a85c;
+  --pcb3d-kind-capacitor: #74b0e8;
+  --pcb3d-kind-inductor: #9ccf6a;
+  --pcb3d-kind-diode: #f08a78;
+  --pcb3d-kind-transistor: #5fd0b4;
+  --pcb3d-kind-crystal: #e3d168;
+  --pcb3d-kind-other: #9aa0a8;
+  --pcb3d-margin-easy: var(--success);
+  --pcb3d-margin-tight: var(--warning);
+  --pcb3d-margin-over: var(--danger);
+  --pcb3d-margin-none: #5d6570;
+  --pcb3d-preview: #c58cff;
   --net-0: #ff6b6b; --net-1: #4dd4ac; --net-2: #ffd166; --net-3: #6ea8fe; --net-4: #c792ea;
   --net-5: #ff9f43; --net-6: #7bed9f; --net-7: #f78fb3; --net-8: #74c0fc; --net-9: #d4e157;
 
@@ -443,6 +459,7 @@
   --pcb3d-unknown: #2f3540;
   --pcb3d-metal: #8e949c;
   --pcb3d-mark: #f4f1e6;
+  --pcb3d-silk: #1f2b25;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #16181c;
@@ -452,6 +469,21 @@
   --pcb3d-cut: #0e7490;
   --pcb3d-finish: #8f6a12;
   --pcb3d-mask-copper: #cddcd3;
+  /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
+  --pcb3d-kind-ic: #2b2f38;
+  --pcb3d-kind-connector: #8a2a6a;
+  --pcb3d-kind-resistor: #7a4e0e;
+  --pcb3d-kind-capacitor: #1f5f99;
+  --pcb3d-kind-inductor: #3f6b14;
+  --pcb3d-kind-diode: #a23b2a;
+  --pcb3d-kind-transistor: #11695a;
+  --pcb3d-kind-crystal: #5e5200;
+  --pcb3d-kind-other: #5a5f66;
+  --pcb3d-margin-easy: var(--success);
+  --pcb3d-margin-tight: var(--warning);
+  --pcb3d-margin-over: var(--danger);
+  --pcb3d-margin-none: #8e959c;
+  --pcb3d-preview: #7a2fc4;
   --net-0: #d2373f; --net-1: #0b7f65; --net-2: #a87800; --net-3: #2a67d8; --net-4: #8644c4;
   --net-5: #c85d0a; --net-6: #2a8a45; --net-7: #c43a74; --net-8: #1479b4; --net-9: #7a8a0a;
 
@@ -640,6 +672,7 @@
   --pcb3d-unknown: #ffffff;
   --pcb3d-metal: #d6d6d6;
   --pcb3d-mark: #ffffff;
+  --pcb3d-silk: #ffffff;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #000000;
@@ -649,6 +682,21 @@
   --pcb3d-cut: #00e5ff;
   --pcb3d-finish: #ffcc33;
   --pcb3d-mask-copper: #2f5664;
+  /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
+  --pcb3d-kind-ic: #ffffff;
+  --pcb3d-kind-connector: #ffb0e0;
+  --pcb3d-kind-resistor: #ffc070;
+  --pcb3d-kind-capacitor: #8cc8ff;
+  --pcb3d-kind-inductor: #b8f080;
+  --pcb3d-kind-diode: #ff9e8c;
+  --pcb3d-kind-transistor: #6ff0d0;
+  --pcb3d-kind-crystal: #fff07a;
+  --pcb3d-kind-other: #b8b8b8;
+  --pcb3d-margin-easy: var(--success);
+  --pcb3d-margin-tight: var(--warning);
+  --pcb3d-margin-over: var(--danger);
+  --pcb3d-margin-none: #7a7a7a;
+  --pcb3d-preview: #e0b0ff;
   --net-0: #ff8585; --net-1: #5ff0c8; --net-2: #ffe08a; --net-3: #8fbcff; --net-4: #dcb0ff;
   --net-5: #ffb26b; --net-6: #96ffb4; --net-7: #ffa9c6; --net-8: #91d3ff; --net-9: #e6f26b;
 
@@ -837,6 +885,7 @@
   --pcb3d-unknown: #000000;
   --pcb3d-metal: #6b6b6b;
   --pcb3d-mark: #ffffff;
+  --pcb3d-silk: #000000;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
   --pcb3d-edge: #000000;
@@ -846,6 +895,21 @@
   --pcb3d-cut: #005f73;
   --pcb3d-finish: #8a6500;
   --pcb3d-mask-copper: #d2e3d9;
+  /* colour by kind, the height map and the height preview (pcb3d/inspect.ts) */
+  --pcb3d-kind-ic: #000000;
+  --pcb3d-kind-connector: #6b0f50;
+  --pcb3d-kind-resistor: #5c3800;
+  --pcb3d-kind-capacitor: #003e7a;
+  --pcb3d-kind-inductor: #2c4d00;
+  --pcb3d-kind-diode: #8a1d0c;
+  --pcb3d-kind-transistor: #004d40;
+  --pcb3d-kind-crystal: #403800;
+  --pcb3d-kind-other: #3d3d3d;
+  --pcb3d-margin-easy: var(--success);
+  --pcb3d-margin-tight: var(--warning);
+  --pcb3d-margin-over: var(--danger);
+  --pcb3d-margin-none: #707070;
+  --pcb3d-preview: #5a0fa0;
   --net-0: #b8222b; --net-1: #046650; --net-2: #8a6200; --net-3: #1d4fb8; --net-4: #6b2fa8;
   --net-5: #a84a00; --net-6: #1d6e36; --net-7: #a82c5c; --net-8: #0a5f94; --net-9: #5f6e00;
 

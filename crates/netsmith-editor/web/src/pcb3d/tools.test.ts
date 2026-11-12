@@ -51,9 +51,9 @@ describe('the measure tool', () => {
     expect(bestSnap([])).toBeNull();
   });
   describe("a part's height and its margin to the limit above it", () => {
-    const part = (heightMm: number | null): PartInfo3d => ({ kind: 'part', path: 'u1', refdes: 'U1', side: 'top', provenance: heightMm === null ? 'unknown' : 'stated', heightMm });
+    const part = (heightMm: number | null): PartInfo3d => ({ kind: 'part', path: 'u1', refdes: 'U1', side: 'top', provenance: heightMm === null ? 'unknown' : 'stated', heightMm, partKind: '', category: null, marginMm: null, marginLimit: null });
     const limit = (name: string, maxHeightMm: number, min: [number, number], max: [number, number], face: 'top' | 'bottom' = 'top') => ({
-      info: { kind: 'height_limit', name, face, maxHeightMm, violated: false, marginMm: null, tallest: null, unknown: [] } as LimitInfo,
+      info: { kind: 'height_limit', name, face, maxHeightMm, violated: false, marginMm: null, tallest: null, unknown: [], under: [] } as LimitInfo,
       min,
       max,
     });

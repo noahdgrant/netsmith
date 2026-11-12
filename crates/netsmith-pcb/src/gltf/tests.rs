@@ -14,6 +14,7 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         path: path.into(),
         refdes: refdes.into(),
         kind: "Thing".into(),
+        category: crate::scene3d::PartCategory::of("Thing", &[], refdes),
         side: Side::Front,
         layout_at: (0.0, 0.0),
         rotation: 0.0,
@@ -112,6 +113,7 @@ fn scene() -> Scene {
                 }),
                 margin: Some(-1.0),
                 unknown: Vec::new(),
+                under: vec!["u1".into()],
             }],
         }],
         findings: Findings {
@@ -239,6 +241,7 @@ fn the_nodes_carry_the_ids_of_the_contract() {
         json!({
             "kind": "part", "path": "u1", "refdes": "U1", "side": "top", "provenance": "stated",
             "height_mm": 2.0, "z_bottom_mm": 0.0, "z_top_mm": 2.0,
+            "part_kind": "Thing", "category": "ic", "margin_mm": -1.0, "margin_limit": "lid",
         })
     );
     assert_eq!(material_of(&doc, "U1"), "body");
@@ -263,6 +266,47 @@ fn the_nodes_carry_the_ids_of_the_contract() {
     assert_eq!(doc["materials"][9]["alphaMode"], "BLEND");
     // The children are numbered after their parent.
     assert!(index_of(&doc, "U1") > index_of(&doc, "board"));
+}
+
+#[test]
+fn a_part_says_its_sort_and_its_margin_to_the_limit_over_it() {
+    let mut sc = scene();
+    // A resistor of 0.5 mm under the lid as well, and the lid's list of the parts under it.
+    let mut r = body("r1", "R1", plan(2.0, 2.0), plan(4.0, 3.0), Some(0.5));
+    r.kind = "Resistor".into();
+    r.category = crate::scene3d::PartCategory::of("Resistor", &[], "R1");
+    sc.bodies.push(r);
+    sc.limits[0].faces[0].under = vec!["u1".into(), "r1".into()];
+    let doc = json_chunk(&glb(&sc, "Demo")).unwrap();
+    let r1 = &node(&doc, "R1")["extras"]["netsmith"];
+    assert_eq!(r1["category"], "resistor");
+    assert_eq!(r1["part_kind"], "Resistor");
+    assert_eq!(r1["margin_mm"], 0.5);
+    assert_eq!(r1["margin_limit"], "lid");
+    // No limit over J1, and its height is unknown: no margin, never a guess.
+    let j1 = &node(&doc, "J1")["extras"]["netsmith"];
+    assert!(j1["margin_mm"].is_null() && j1["margin_limit"].is_null());
+    assert_eq!(
+        node(&doc, "limit:lid:top")["extras"]["netsmith"]["under"],
+        json!(["u1", "r1"])
+    );
+}
+
+#[test]
+fn a_part_is_sorted_by_the_generic_it_provides_before_its_letters() {
+    use crate::scene3d::PartCategory as C;
+    let provides = |g: &str| vec![g.to_string()];
+    assert_eq!(
+        C::of("Header1x2", &provides("Connector"), "J1"),
+        C::Connector
+    );
+    // A connector is one by its generic only: the letters J say nothing.
+    assert_eq!(C::of("Thing", &[], "J2"), C::Other);
+    assert_eq!(C::of("Esp32", &[], "U3"), C::Ic);
+    assert_eq!(C::of("Bss138", &provides("NMosfet"), "Q1"), C::Transistor);
+    assert_eq!(C::of("Led", &[], "D4"), C::Diode);
+    assert_eq!(C::of("Thing", &provides("Capacitor"), "X1"), C::Capacitor);
+    assert_eq!(C::of("Hole", &[], "H1"), C::Mechanical);
 }
 
 #[test]

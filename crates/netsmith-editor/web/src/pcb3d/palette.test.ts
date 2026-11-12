@@ -70,6 +70,9 @@ describe('the 3D palette', () => {
       it('the mask over copper is a second green of the mask, and the finish of bare copper stands out on it', () => {
         expect(c('--pcb3d-mask-copper')).not.toBe(c('--pcb3d-mask'));
         expect(contrast(c('--pcb3d-mask-copper'), c('--pcb3d-mask'))!, `mask over copper in ${theme}`).toBeGreaterThanOrEqual(1.15);
+        // The silkscreen reads on the mask, and on the mask over copper.
+        expect(contrast(c('--pcb3d-silk'), c('--pcb3d-mask'))!, `the silkscreen on the mask in ${theme}`).toBeGreaterThanOrEqual(3);
+        expect(contrast(c('--pcb3d-silk'), c('--pcb3d-mask-copper'))!, `the silkscreen on the mask over copper in ${theme}`).toBeGreaterThanOrEqual(3);
         expect(contrast(c('--pcb3d-finish'), c('--pcb3d-mask'))!, `finish on the mask in ${theme}`).toBeGreaterThanOrEqual(2);
       });
       it('the hover lights a body visibly, and not in the colour of a pick', () => {

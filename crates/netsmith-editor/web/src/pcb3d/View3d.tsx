@@ -12,11 +12,14 @@ import { CopyButton, EmptyState, Popover, Segmented, Spinner, copyText } from '.
 import { notify } from '../feedback/state';
 import { theme as pageTheme } from '../theme';
 import { Icon } from '../components/Icons';
-import { hover as sharedHover, hoverEnter, hoverLeave, resolveHover } from '../hover';
+import { type Hover, hover as sharedHover, hoverEnter, hoverLeave, resolveHover, sameHover } from '../hover';
 import { scene as scene2d, select, selection as pcbSelection } from '../pcbstore';
-import { partPathsOf, revealRequest } from '../selection';
+import { partPathsOf, revealRequest, selection as sharedSelection } from '../selection';
 import { reducedMotion, settings } from '../settings';
-import { analysis, detail, pcbStamp, pickPart } from '../store';
+import { analysis, detail, pcbStamp, pickNet, pickPart } from '../store';
+import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
+import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
+import { colourBy, focus3d, heightPreview, xray } from './inspectMode';
 import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
 import { type LimitInfo, type PartInfo3d, coverageLine, limitTip, partTip, provenanceCounts, unknownParts } from './model';
@@ -54,6 +57,9 @@ function readColours(): Colours {
   out.edge = get(TOKENS.edge);
   out.select = get(TOKENS.select);
   out.hover = get(TOKENS.hover);
+  out.kinds = Object.fromEntries(KINDS.map((k) => [k.id, get(k.token)])) as Colours['kinds'];
+  out.margin = { easy: get(MARGIN_TOKENS.easy), tight: get(MARGIN_TOKENS.tight), over: get(MARGIN_TOKENS.over), none: get(MARGIN_TOKENS.none) };
+  out.preview = get('--pcb3d-preview');
   probe.remove();
   return out as Colours;
 }
@@ -80,7 +86,9 @@ export function View3d({ board }: { board: string }) {
   const [preset, setPreset] = useState<Preset | null>('iso');
   const [ortho, setOrtho] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const pointed = useRef<string | null>(null);
+  const [previewed, setPreviewed] = useState(0);
+  const pointed = useRef<Hover | null>(null);
+  const focusSeen = useRef(focus3d.peek()?.nonce ?? 0);
   // The tools (tools.ts): the measure tool and its measurements, the section plane, the stackup apart.
   const [measuring, setMeasuring] = useState(false);
   const [measures, setMeasures] = useState<Measurement[]>([]);
@@ -147,6 +155,11 @@ export function View3d({ board }: { board: string }) {
       parts: () => v.partList(),
       preset: () => v.currentPreset(),
       ortho: () => v.isOrtho(),
+      nets: () => v.netList(),
+      previewCount: () => v.previewCount(),
+      focused: () => v.focusedList(),
+      litReport: () => v.litReport(),
+      caps: () => v.capList(),
     };
     view3d.current = {
       preset: (p) => v.preset(p),
@@ -221,14 +234,49 @@ export function View3d({ board }: { board: string }) {
     if (viewer.current) viewer.current.still = reducedMotion();
   }, [motion]);
 
-  // The selection and the shared hover, from every view.
+  // The selection and the shared hover, from every view: the parts, and the nets (a row of the
+  // nets list, a pad here) lit on every layer.
   const picked = pcbSelection.value;
   const h = sharedHover.value;
   const d = detail.value;
+  const shared = sharedSelection.value;
+  const pickedNet = shared?.kind === 'net' ? shared.key : null;
   useEffect(() => {
-    const lit = h ? [...resolveHover(d, h).paths] : [];
-    viewer.current?.highlight(picked, lit);
-  }, [picked, h, d, parts]);
+    const lit = h ? resolveHover(d, h) : null;
+    viewer.current?.highlight(picked, lit ? [...lit.paths] : []);
+    viewer.current?.setLook({ nets: litNets(pickedNet, lit ? lit.nets : []) });
+  }, [picked, h, d, parts, pickedNet]);
+
+  // The pads' nets, from the 2D scene: a pad's barrel lights with its net.
+  const sc2 = scene2d.value;
+  useEffect(() => {
+    if (!sc2 || sc2.board !== board) return;
+    const nets = new Map<string, string>();
+    for (const p of sc2.parts) for (const pad of p.pads) if (pad.net) nets.set(`${p.path}:${pad.number}`, pad.net);
+    viewer.current?.setPadNets(nets);
+  }, [sc2, board, parts]);
+
+  // X-ray, the colouring and the height preview (inspectMode.ts): the picture only.
+  const xr = xray.value;
+  const cb = colourBy.value;
+  const pv = heightPreview.value;
+  useEffect(() => {
+    const v = viewer.current;
+    if (!v) return;
+    v.setLook({ xray: xr, colourBy: cb, previewMm: pv.on ? pv.mm : null });
+    setPreviewed(v.previewCount());
+  }, [xr, cb, pv.on, pv.mm, parts]);
+
+  // A finding picked in the problems dock (or the findings list): fly to it and light it. One
+  // asked before this view opened is the 2D board's.
+  const asked = focus3d.value;
+  useEffect(() => {
+    const v = viewer.current;
+    if (!asked || !v || !parts.length || asked.nonce <= focusSeen.current) return;
+    focusSeen.current = asked.nonce;
+    const t = findingTargets(asked.refs, asked.keepout, v.partList(), v.limitList());
+    v.focusFinding(t.paths, t.limits);
+  }, [asked?.nonce, parts]);
 
   // Asked to show the selection (go to anything, a click on the status chip): frame its parts.
   const ask = revealRequest.value;
@@ -333,7 +381,11 @@ export function View3d({ board }: { board: string }) {
         } else if (pcbSelection.peek().length) {
           used();
           select([]);
+        } else if (sharedSelection.peek()?.kind === 'net') {
+          used();
+          pickNet(null);
         }
+        v.clearFocus();
       }
     };
     window.addEventListener('keydown', key);
@@ -343,9 +395,17 @@ export function View3d({ board }: { board: string }) {
   // The pointer: hover lights and names a part, a click picks it, a double click shows it in the source.
   const down = useRef<{ x: number; y: number; button: number } | null>(null);
   const moveFrame = useRef(0);
-  const hoverOf = (path: string) => ({ kind: 'part' as const, key: path });
+  const hoverOf = (path: string): Hover => ({ kind: 'part', key: path });
+  const hoverOfHit = (hit: Hit | null | undefined): Hover | null =>
+    hit?.kind === 'part' ? hoverOf(hit.info.path) : hit?.kind === 'copper' && hit.info.net ? { kind: 'net', key: hit.info.net } : null;
   const tipFor = (hit: Hit, x: number, y: number): Tip => {
+    if (hit.kind === 'copper') {
+      const net = hit.info.net ?? '';
+      const lit = sharedSelection.peek()?.kind === 'net' && sharedSelection.peek()?.key === net;
+      return { x, y, title: `Net ${net}`, lines: [hit.info.kind === 'hole' ? 'A plated barrel through the board' : `Copper on ${hit.info.layer ?? 'a layer'}`, lit ? 'Lit on every layer: click to clear' : 'Click to light it on every layer'] };
+    }
     const words = hit.kind === 'part' ? partTip(hit.info, viewer.current?.board?.findings ?? [], detail.peek()?.parts.find((p) => p.path === hit.info.path)?.value ?? '') : limitTip(hit.info);
+    if (hit.kind === 'part' && hit.info.provenance === 'unknown' && heightPreview.peek().on) words.lines.splice(1, 0, `Preview: drawn ${heightPreview.peek().mm} mm tall in the picture only, not a height`);
     return { x, y, ...words };
   };
   const onMove = (e: PointerEvent) => {
@@ -367,13 +427,13 @@ export function View3d({ board }: { board: string }) {
         return;
       }
       const hit = v.pick(at.x, at.y);
-      const path = hit?.kind === 'part' ? hit.info.path : null;
-      if (path !== pointed.current) {
-        if (pointed.current) hoverLeave(hoverOf(pointed.current));
-        if (path) hoverEnter(hoverOf(path));
-        pointed.current = path;
+      const now = hoverOfHit(hit);
+      if (!sameHover(now, pointed.current)) {
+        if (pointed.current) hoverLeave(pointed.current);
+        if (now) hoverEnter(now);
+        pointed.current = now;
       }
-      el.style.cursor = path ? 'pointer' : '';
+      el.style.cursor = now ? 'pointer' : '';
       const r = el.getBoundingClientRect();
       setTip(hit ? tipFor(hit, at.x - r.left + 14, at.y - r.top + 16) : null);
     });
@@ -381,7 +441,7 @@ export function View3d({ board }: { board: string }) {
   const onLeave = () => {
     cancelAnimationFrame(moveFrame.current);
     setSnapAt(null);
-    if (pointed.current) hoverLeave(hoverOf(pointed.current));
+    if (pointed.current) hoverLeave(pointed.current);
     pointed.current = null;
     setTip(null);
   };
@@ -438,7 +498,9 @@ export function View3d({ board }: { board: string }) {
             return;
           }
           const hit = v?.pick(e.clientX, e.clientY);
+          v?.clearFocus();
           if (hit?.kind === 'part') select(e.shiftKey ? [...new Set([...pcbSelection.peek(), hit.info.path])] : [hit.info.path]);
+          else if (hit?.kind === 'copper' && hit.info.net) pickNet(pickedNet === hit.info.net ? null : hit.info.net);
           else if (!e.shiftKey) select([]);
         }}
         onDblClick={(e) => {
@@ -622,33 +684,39 @@ export function View3d({ board }: { board: string }) {
                 )}
               </div>
             )}
-            <div class="v3-legend" aria-label="Where each height came from" data-testid="height-legend">
-              <span>
-                <i class="v3-sw v3-sw-stated" aria-hidden="true" />
-                Stated {counts.stated}
-              </span>
-              <span>
-                <i class="v3-sw v3-sw-catalog" aria-hidden="true" />
-                Catalog {counts.catalog}
-              </span>
-              <span>
-                <i class="v3-sw v3-sw-unknown" aria-hidden="true" />
-                Unknown {counts.unknown}
-              </span>
-              {limits.some((l) => !l.violated) && (
+            {cb !== 'provenance' ? (
+              <InspectLegend by={cb} parts={parts} limits={limits} />
+            ) : (
+              <div class="v3-legend" aria-label="Where each height came from" data-testid="height-legend">
                 <span>
-                  <i class="v3-sw v3-sw-limit" aria-hidden="true" />
-                  Height limit
+                  <i class="v3-sw v3-sw-stated" aria-hidden="true" />
+                  Stated {counts.stated}
                 </span>
-              )}
-              {over && (
                 <span>
-                  <i class="v3-sw v3-sw-over" aria-hidden="true" />
-                  Limit exceeded
+                  <i class="v3-sw v3-sw-catalog" aria-hidden="true" />
+                  Catalog {counts.catalog}
                 </span>
-              )}
-            </div>
+                <span>
+                  <i class="v3-sw v3-sw-unknown" aria-hidden="true" />
+                  Unknown {counts.unknown}
+                </span>
+                {limits.some((l) => !l.violated) && (
+                  <span>
+                    <i class="v3-sw v3-sw-limit" aria-hidden="true" />
+                    Height limit
+                  </span>
+                )}
+                {over && (
+                  <span>
+                    <i class="v3-sw v3-sw-over" aria-hidden="true" />
+                    Limit exceeded
+                  </span>
+                )}
+              </div>
+            )}
           </div>
+          {pv.on && <PreviewLabel mm={pv.mm} count={previewed} />}
+          <InspectBar />
           {!measuring && (
             <div class="v3-note" aria-hidden="true">
               Read-only: move parts in 2D · drag to orbit, right-drag to pan, scroll to zoom

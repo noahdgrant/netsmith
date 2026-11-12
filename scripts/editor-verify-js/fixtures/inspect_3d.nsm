@@ -1,0 +1,52 @@
+//! A small board for the recipe `pcb-3d-inspect` (the 3D view's x-ray, lit nets, colour by kind
+//! and by height margin, the height preview and findings in 3D). Its physical file,
+//! `inspect_3d.physical.nsm`, has a lid over the left half that allows 3 mm on the top face. The
+//! layout file beside it puts a header that is too tall, an LED with little to spare, passives
+//! with plenty and a header of unknown height under the lid, and the regulator and its output
+//! capacitor outside it, so the height map has every band and colour by kind several kinds.
+
+import std::parts::connector::{Header1x2, Header2x3}
+import std::parts::passive::{Capacitor, Led, Resistor}
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Inspected {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+
+    .regulator: LinearRegulator
+    .input_cap: Capacitor { .effective_capacitance >= 1uF }
+    .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
+    .input_cap.max_voltage >= .input.voltage * 1.5
+    .output_cap.max_voltage >= .output.voltage * 1.5
+    .input ~ .regulator.vin
+    .regulator.vout ~ .output
+    .input.pos ~> .input_cap ~> .input.neg
+    .output.pos ~> .output_cap ~> .output.neg
+
+    .led: Led { .current &= 2mA..5mA }
+    .r1: Resistor {}
+    .led.current == (.output.voltage - .led.forward_voltage) / .r1.resistance
+    .output.pos ~> .r1 ~> .led ~> .output.neg
+
+    .power_in: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+
+    // A 2x3 header has no catalog row, so it has no height (ADR 0094).
+    .bare: Header2x3
+}
