@@ -18,7 +18,8 @@
 # `test` has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or KiCad's
 # stock libraries skip themselves there (they print "skipped: ..."); the rest build with the
 # small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
-# same suite, so those tests really run. No Node either: the editor's page is the committed
+# tests that can ask for KiCad (scripts/ci-kicad-tests), so those tests really run; it starts once
+# `test` has passed. No Node either: the editor's page is the committed
 # bundle. `test` is four slices of cargo nextest that run side by side (one run of
 # `cargo test` took fourteen minutes, three of them compiling, and runs one test binary after
 # the other), and `kicad` is three slices of the same kind (a slice installs KiCad 9, about
@@ -34,8 +35,8 @@
 # `netsmith` binary and runs `scripts/editor-verify-all`, every recipe of
 # scripts/editor-verify-js/recipes against the fixture it declares. It installs KiCad 9 the way
 # the `kicad` job does: the build and order recipes write KiCad files, and the PCB recipes of the
-# `outline_and_pours` fixture draw its stock footprints. It is three slices, each driving a
-# third of the recipes by the seconds they took (scripts/editor-verify-weights);
+# `outline_and_pours` fixture draw its stock footprints. It is two slices, each driving
+# half of the recipes by the seconds they took (scripts/editor-verify-weights);
 # scripts/ci-recipe-slices deals them out and proves that every recipe runs in exactly one slice
 # (see there to rebalance). It is not a required check yet; the screenshots and the server log of
 # a failing sweep are the `recipes-evidence-<slice>` artifact of the run.
@@ -184,8 +185,18 @@ jobs:
         with:
           tool: nextest@0.9.151
 
+      # NETSMITH_KICAD_PROBE_LOG: each test that looks for KiCad (Search::machine) writes its name
+      # there, and the step after this one checks that the `kicad` job runs it.
       - name: Test, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
+        env:
+          NETSMITH_KICAD_PROBE_LOG: ${{ runner.temp }}/kicad-probe.log
         run: cargo nextest run --workspace --no-fail-fast --partition slice:${{ matrix.slice }}/${{ strategy.job-total }}
+
+      # Every test of this slice that looked for KiCad is one the `kicad` job selects
+      # (scripts/ci-kicad-tests): a test that needs KiCad cannot be left out of it unseen.
+      - name: The kicad job runs every test that looks for KiCad
+        if: always()
+        run: scripts/ci-kicad-tests --check "$RUNNER_TEMP/kicad-probe.log"
 
       - name: Doc tests
         if: matrix.slice == 1
@@ -197,15 +208,19 @@ jobs:
         if: matrix.slice == 1
         run: scripts/ci-test-slices ${{ strategy.job-total }}
 
-  # The whole suite with KiCad 9 installed, so the tests that skip themselves in `test` run.
+  # The tests that can ask for KiCad, with KiCad 9 installed, so the ones that skip themselves in `test` run.
   # The runner's own Ubuntu archive carries KiCad 9 (ubuntu-latest is 26.04: 9.0.8). The version
   # is pinned to the major by the check below: the cross-check's allowance applies only to
   # exactly 9.0.0 (ADR 0034), so a 9.0.x newer than that is what is wanted. If ubuntu-latest
   # moves to a release that ships another major, the step fails; add the KiCad team's PPA
   # (ppa:kicad/kicad-9.0-releases) for that release then.
-  # Sliced like `test` (cargo nextest, the same partition, so scripts/ci-test-slices proves it).
+  # Only the tests that can ask for KiCad run here (scripts/ci-kicad-tests says which, and the
+  # `test` job proves that no test looked for KiCad outside them); the rest gain nothing from a
+  # second run. Sliced like `test` (cargo nextest, the same partition over that filter, so
+  # scripts/ci-test-slices proves it). It starts after `test`, so a pull request whose tests fail
+  # takes no KiCad runner; a push to main waits for `test` too, since `needs` cannot differ by event.
   kicad:
-    needs: changes
+    needs: [changes, test]
     if: needs.changes.outputs.kicad == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -297,9 +312,12 @@ jobs:
       # had finished.
       - name: Test with KiCad, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
         timeout-minutes: 30
+        # The filter goes into a variable first: if it failed inside the argument list, the run
+        # would get none and run every test.
         run: |
+          filter="$(scripts/ci-kicad-tests)"
           status=0
-          cargo nextest run --workspace --no-fail-fast \
+          cargo nextest run --workspace --no-fail-fast -E "$filter" \
             --success-output immediate --failure-output immediate \
             --partition slice:${{ matrix.slice }}/${{ strategy.job-total }} > test.log 2>&1 || status=$?
           cat test.log
@@ -390,7 +408,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slice: [1, 2, 3]
+        slice: [1, 2]
     steps:
       - uses: actions/checkout@v4
 

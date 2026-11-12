@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# The tests the `kicad` job of .github/workflows/ci.yml runs: those that can ask for KiCad (issue
+# #517). The `test` job runs every test with no KiCad installed, and a test that needs kicad-cli or
+# KiCad's stock libraries skips itself there; only those tests gain from a second run with KiCad 9.
+#
+# Which tests can ask is read from the source, by the rule scripts/ci-changes uses to decide whether
+# a change to a test file needs `kicad`: a file that names one of its KICAD_TOKENS (kicad-cli, the
+# lookup of this machine, the stock libraries, a Workspace, the binary, any other process). Every
+# test of such a file is selected:
+#   - an integration test file, crates/<crate>/tests/<file>.rs (or tests/<dir>/, a module folder),
+#     by its module, `<file>::`, in the crate's test binary;
+#   - a source file with unit tests (`#[cfg(test)]`, or a `tests.rs`), by its module path, in the
+#     crate's library or binary. A crate's root file (lib.rs, main.rs) selects all of that target.
+# Nothing has to be marked by hand, so a new test that names a token is selected by itself.
+#
+# What the tokens miss is caught at run time: `netsmith_kicad::install::Search::machine()`, the one
+# way netsmith looks for KiCad on the machine, appends the nextest test that called it to the file
+# named by NETSMITH_KICAD_PROBE_LOG. The `test` job sets that variable, and `--check` fails if a
+# test that looked for KiCad is not selected here. The fix is a line in EXTRA below (or a token in
+# scripts/ci-changes, if the file should have matched).
+#
+#   scripts/ci-kicad-tests                  print the nextest filterset (`cargo nextest run -E ...`)
+#   scripts/ci-kicad-tests --list           the selected tests, "binary test", sorted (needs a build)
+#   scripts/ci-kicad-tests --check LOG...   fail if a test in the probe logs is not selected
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+# Tests that look for KiCad although their file names no token: "crate path", where path is a test
+# file (tests/<file>.rs) or a source file, as above. Keep it short; prefer a token that names why.
+EXTRA=(
+)
+
+tokens="$(sed -n "s/^KICAD_TOKENS='\(.*\)'$/\1/p" scripts/ci-changes)"
+[ -n "$tokens" ] || { echo "ci-kicad-tests: no KICAD_TOKENS in scripts/ci-changes" >&2; exit 2; }
+
+# The filter of one file of crate `$1`, at `$2` (from the crate's folder).
+term() {
+    local crate="$1" rel="$2" module
+    case "$rel" in
+        tests/*)
+            module="${rel#tests/}"; module="${module%%/*}"; module="${module%.rs}"
+            echo "(package($crate) & kind(test) & test(/^${module}::/))" ;;
+        src/lib.rs) echo "(package($crate) & kind(lib))" ;;
+        src/main.rs) echo "(package($crate) & kind(bin))" ;;
+        src/bin/*)
+            module="${rel#src/bin/}"; module="${module%%/*}"; module="${module%.rs}"
+            echo "(package($crate) & binary($module))" ;;
+        src/*)
+            module="${rel#src/}"; module="${module%.rs}"; module="${module%/mod}"
+            module="${module//\//::}"
+            # A module of the binary when the crate has no library of its own.
+            if [ -f "crates/$crate/src/lib.rs" ]; then
+                echo "(package($crate) & kind(lib) & test(/^${module}::/))"
+            else
+                echo "(package($crate) & kind(bin) & test(/^${module}::/))"
+            fi ;;
+        *) echo "ci-kicad-tests: $crate/$rel is no test file" >&2; exit 2 ;;
+    esac
+}
+
+filterset() {
+    local terms=() dir crate file rel
+    for dir in crates/*/; do
+        crate="$(basename "$dir")"
+        # The integration test modules (tests/common and fixtures are not modules of tests).
+        for file in "$dir"tests/*.rs "$dir"tests/*/mod.rs; do
+            [ -f "$file" ] || continue
+            rel="${file#"$dir"}"
+            case "$rel" in tests/main.rs | tests/common/*) continue ;; esac
+            if [[ "$rel" == */mod.rs ]]; then
+                grep -rqE "$tokens" "$(dirname "$file")" || continue
+            else
+                grep -qE "$tokens" "$file" || continue
+            fi
+            terms+=("$(term "$crate" "$rel")")
+        done
+        # The source files that hold unit tests.
+        while IFS= read -r file; do
+            rel="${file#"$dir"}"
+            case "$rel" in
+                */tests.rs | tests.rs) ;;
+                *) grep -q '#\[cfg(test)\]' "$file" || continue ;;
+            esac
+            grep -qE "$tokens" "$file" || continue
+            terms+=("$(term "$crate" "$rel")")
+        done < <(find "${dir}src" -name '*.rs' | sort)
+    done
+    local extra
+    for extra in "${EXTRA[@]}"; do
+        terms+=("$(term "${extra%% *}" "${extra#* }")")
+    done
+    [ "${#terms[@]}" -gt 0 ] || { echo "ci-kicad-tests: nothing selected" >&2; exit 2; }
+    local IFS='|'
+    echo "${terms[*]}" | sed 's/)|(/) | (/g'
+}
+
+# "binary test" for each test the filterset selects, sorted.
+list() {
+    cargo nextest list --workspace --message-format json -E "$(filterset)" "$@" |
+        jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
+               | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' |
+        sort
+}
+
+case "${1:-}" in
+    "") filterset ;;
+    --list) shift; list "$@" ;;
+    --check)
+        shift
+        [ "$#" -gt 0 ] || { echo "usage: scripts/ci-kicad-tests --check LOG..." >&2; exit 2; }
+        work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+        list > "$work/selected"
+        # A slice where no test looked for KiCad has no log.
+        { cat "$@" 2> /dev/null || true; } | tr '\t' ' ' | sort -u > "$work/probed"
+        echo "$(wc -l < "$work/probed") tests looked for KiCad; $(wc -l < "$work/selected") are selected for the kicad job"
+        missing="$(comm -23 "$work/probed" "$work/selected")"
+        if [ -n "$missing" ]; then
+            echo "::error::tests that look for KiCad but that the kicad job does not run (add their file to EXTRA in scripts/ci-kicad-tests):"
+            echo "$missing"
+            exit 1
+        fi
+        echo "ok: every test that looked for KiCad runs in the kicad job" ;;
+    *) echo "usage: scripts/ci-kicad-tests [--list | --check LOG...]" >&2; exit 2 ;;
+esac
