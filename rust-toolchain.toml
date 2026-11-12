@@ -1,0 +1,6 @@
+# The Rust that builds, lints and tests netsmith, here and in CI (issue #515). A new Rust release
+# changes nothing until a pull request raises this pin and fixes what the new clippy finds.
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
