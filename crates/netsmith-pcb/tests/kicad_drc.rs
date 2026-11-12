@@ -360,6 +360,11 @@ const HOLE: &str = r#"(footprint "Hole" (layer "F.Cu") (attr exclude_from_pos_fi
     (property "Reference" "REF**" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 1 1))))
     (pad "" np_thru_hole circle (at 0 0) (size 1 1) (drill 1) (layers "*.Cu" "*.Mask"))
     (fp_circle (center 0 0) (end 0.8 0) (stroke (width 0.05) (type solid)) (fill none) (layer "F.CrtYd")))"#;
+/// A mounting hole whose solder mask opening (1.6 mm) is wider than its hole (1 mm).
+const WIDE: &str = r#"(footprint "Wide" (layer "F.Cu") (attr exclude_from_pos_files)
+    (property "Reference" "REF**" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 1 1))))
+    (pad "" np_thru_hole circle (at 0 0) (size 1.6 1.6) (drill 1) (layers "*.Cu" "*.Mask"))
+    (fp_circle (center 0 0) (end 0.9 0) (stroke (width 0.05) (type solid)) (fill none) (layer "F.CrtYd")))"#;
 const SLOT: &str = r#"(footprint "Slot" (layer "F.Cu") (attr exclude_from_pos_files)
     (property "Reference" "REF**" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 1 1))))
     (pad "" np_thru_hole oval (at 0 0) (size 2.4 1) (drill oval 2.4 1) (layers "*.Cu" "*.Mask"))
@@ -384,6 +389,7 @@ fn tiny() -> (TempDir, Mapping, FootprintLibrary) {
     let mut rows = String::new();
     for (name, text) in [
         ("Hole", HOLE),
+        ("Wide", WIDE),
         ("Slot", SLOT),
         ("Plated", PLATED),
         ("Odd", ODD),
@@ -1807,4 +1813,59 @@ fn a_board_with_a_drawn_keepout_routes_around_it_and_passes_kicads_check() {
     );
     // KiCad has it as a rule area.
     assert!(kicad_pcb(&b).contains("(keepout"), "a rule area is written");
+}
+
+#[test]
+fn a_track_keeps_the_process_space_from_a_hole_s_solder_mask_opening() {
+    // One net straight across the board, R1 to R3, and the hole just beside that line, 0.8 mm
+    // from it: the hole's edge keeps the track out of it, but only the opening, 0.3 mm wider,
+    // keeps the track off the copper the opening exposes. The track may pass on either side.
+    let mut b = board_of(
+        &[
+            ("R1", "Resistor", 6.0, 7.0),
+            ("R3", "Resistor", 14.0, 7.0),
+            ("H1", "Wide", 10.0, 7.0 - 0.8),
+        ],
+        vec![net("A", &[("R1", "2"), ("R3", "1")])],
+    );
+    assert!(route(&mut b).is_empty());
+    let centre = Pt::new(10.0, 7.0 - 0.8);
+    let r = &b.rules;
+    let mut least = f64::MAX;
+    for t in &b.tracks {
+        let d = t.from - t.to;
+        let len2 = d.x * d.x + d.y * d.y;
+        let s = if len2 == 0.0 {
+            0.0
+        } else {
+            (((centre.x - t.to.x) * d.x + (centre.y - t.to.y) * d.y) / len2).clamp(0.0, 1.0)
+        };
+        let near = Pt::new(t.to.x + d.x * s, t.to.y + d.y * s);
+        let gap = centre.distance(near) - t.width / 2.0 - 0.8;
+        least = least.min(gap);
+        assert!(
+            gap >= r.mask_to_track - 1e-6,
+            "a track {gap:.3} mm from the mask opening, under {}: {t:?}",
+            r.mask_to_track
+        );
+    }
+    assert!(
+        least < 0.3,
+        "the track passes near the opening: {least:.3} mm"
+    );
+    let extras = netsmith_fab::drc::Extras {
+        mask_to_track: Some(r.mask_to_track),
+        ..Default::default()
+    };
+    let report = netsmith_fab::drc::check(
+        &netsmith_pcb::kicad_pcb(&b),
+        Some(&netsmith_pcb::kicad_pro(&b)),
+        &extras,
+    )
+    .unwrap();
+    assert_eq!(
+        report.count(netsmith_fab::drc::Rule::MaskToTrack),
+        0,
+        "{report}"
+    );
 }
