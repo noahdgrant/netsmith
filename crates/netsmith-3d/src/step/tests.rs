@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use crate::board::Side;
-use crate::body3d::{Material as Made, Solid as Made3d};
-use crate::geometry::Pt;
 use crate::scene3d::{
     Findings, HeightProvenance, Hole, HoleOwner, Placement, PlanBox, SceneCutout, SceneLayer,
 };
+use netsmith_pcb::board::Side;
+use netsmith_pcb::body3d::{Material as Made, Solid as Made3d};
+use netsmith_pcb::geometry::Pt;
 
 fn plan(x: f64, y: f64) -> Plan {
     Plan { x, y }

@@ -16,7 +16,7 @@
 //! - **Exact solids.** Each solid is a closed shell of planes and cylinders: the
 //!   board is its outline with its rounded corners, its cutouts and every drilled hole (round,
 //!   or a slot) through the board's chosen thickness. A part's _Package shape_ is its solids
-//!   ([`crate::body3d`]: boxes, prisms, cylinders), named `body`, `metal` or `mark`, each with
+//!   ([`netsmith_pcb::body3d`]: boxes, prisms, cylinders), named `body`, `metal` or `mark`, each with
 //!   the 3D view's colour; a part with no package record is its body box from its face to its
 //!   far end, named `body`. A BGA's balls are the only solids made of flat facets, the polygons
 //!   of the 3D view's balls. Pins that stand out of the far face by a stated length are a box
@@ -38,12 +38,12 @@ mod tests;
 pub use writer::{Extrusion, Loop, Polyhedron, Segment};
 use writer::{Id, Writer, cross, dot, list, polygon, real, string};
 
-use crate::body3d::{Axis, Material as Made, Primitive};
 use crate::mesh::package::{BALL_RINGS, ROUND_SEGMENTS, settled};
 use crate::mesh::trig::sin_cos_turns;
 use crate::raster3d::Theme;
 use crate::scene3d::{BoardSolid, Body, Pins, PlacedShape, Plan, Scene};
-use crate::stackup::LayerKind;
+use netsmith_pcb::body3d::{Axis, Material as Made, Primitive};
+use netsmith_pcb::stackup::LayerKind;
 
 /// What a solid of the file is coloured as: the 3D view's light palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -79,10 +79,10 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::board::Side;
 use crate::mesh::{BodyPieces, Material, Mesh, NO_NET, pieces};
 use crate::raster3d::Theme;
 use crate::scene3d::{HoleOwner, Pins, Scene};
+use netsmith_pcb::board::Side;
 
 /// The version of the file's contract (the module's header).
 pub const SCHEMA: u32 = 1;

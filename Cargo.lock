@@ -569,6 +569,7 @@ dependencies = [
 name = "netsmith"
 version = "0.1.0"
 dependencies = [
+ "netsmith-3d",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
@@ -588,6 +589,20 @@ dependencies = [
  "tungstenite 0.30.0",
  "ureq",
  "zip",
+]
+
+[[package]]
+name = "netsmith-3d"
+version = "0.1.0"
+dependencies = [
+ "i_overlay",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-kicad",
+ "netsmith-pcb",
+ "netsmith-solve",
+ "serde_json",
 ]
 
 [[package]]
@@ -677,10 +692,9 @@ dependencies = [
 name = "netsmith-pcb"
 version = "0.1.0"
 dependencies = [
- "i_overlay",
- "netsmith",
  "netsmith-check",
  "netsmith-core",
+ "netsmith-design",
  "netsmith-fab",
  "netsmith-kicad",
  "netsmith-solve",

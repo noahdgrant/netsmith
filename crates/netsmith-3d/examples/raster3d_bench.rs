@@ -2,12 +2,12 @@
 //! with rounded corners, a cutout and 400 drilled holes with plated barrels, 1000 bodies and a
 //! height limit, drawn at 1600 x 1000 pixels with 2 x 2 samples from the iso view.
 //!
-//! `cargo run --release -p netsmith-pcb --example raster3d_bench [-- <out.png>]`
+//! `cargo run --release -p netsmith-3d --example raster3d_bench [-- <out.png>]`
 
 use std::time::Instant;
 
-use netsmith_pcb::mesh::{Material, Mesh, Polygon, circle, rounded_rect};
-use netsmith_pcb::raster3d::{RenderOptions, View, render_view};
+use netsmith_3d::mesh::{Material, Mesh, Polygon, circle, rounded_rect};
+use netsmith_3d::raster3d::{RenderOptions, View, render_view};
 
 fn main() {
     let start = Instant::now();

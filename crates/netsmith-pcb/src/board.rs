@@ -171,7 +171,6 @@ impl From<DesignError> for BoardError {
 /// negated) and then turned by its rotation, as KiCad flips a footprint to the other side:
 /// its pads are on `B.Cu` and its silkscreen and courtyard on the `B.` layers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
 pub enum Side {
     #[default]
     Front,

@@ -1,6 +1,6 @@
 //! The rasterizer's tests, with the golden pictures' hashes in `golden.txt`.
 //!
-//! `NETSMITH_RENDER3D_BLESS=1 cargo test -p netsmith-pcb --lib raster3d::` rewrites
+//! `NETSMITH_RENDER3D_BLESS=1 cargo test -p netsmith-3d --lib raster3d::` rewrites
 //! `golden.txt` from what the code draws now; read the pictures before committing it.
 //! `NETSMITH_RENDER3D_OUT=<folder>` writes every golden picture there as a PNG to look at.
 
@@ -557,7 +557,7 @@ fn the_golden_pictures_have_not_changed() {
     if std::env::var_os("NETSMITH_RENDER3D_BLESS").is_some() {
         let mut text = String::from(
             "# FNV-1a 64 of the PNG bytes of each golden picture of raster3d's tests.\n\
-             # Rewrite with NETSMITH_RENDER3D_BLESS=1 cargo test -p netsmith-pcb --lib raster3d::\n\
+             # Rewrite with NETSMITH_RENDER3D_BLESS=1 cargo test -p netsmith-3d --lib raster3d::\n\
              # and look at the pictures first (NETSMITH_RENDER3D_OUT=<folder>).\n",
         );
         for line in &now {

@@ -460,8 +460,8 @@ where
             }
             ("render", "--view") => {
                 let given = args.next().ok_or("--view needs a view")?;
-                render.view = netsmith_pcb::raster3d::View::from_name(&given).ok_or_else(|| {
-                    let names: Vec<&str> = netsmith_pcb::raster3d::View::ALL
+                render.view = netsmith_3d::raster3d::View::from_name(&given).ok_or_else(|| {
+                    let names: Vec<&str> = netsmith_3d::raster3d::View::ALL
                         .iter()
                         .map(|v| v.name())
                         .collect();
@@ -897,8 +897,8 @@ where
 
 /// `--view`'s name as the editor's route has it, with the error `render --view` gives.
 fn parse_view(given: &str) -> Result<netsmith_editor::api::RenderView, String> {
-    let view = netsmith_pcb::raster3d::View::from_name(given).ok_or_else(|| {
-        let names: Vec<&str> = netsmith_pcb::raster3d::View::ALL
+    let view = netsmith_3d::raster3d::View::from_name(given).ok_or_else(|| {
+        let names: Vec<&str> = netsmith_3d::raster3d::View::ALL
             .iter()
             .map(|v| v.name())
             .collect();

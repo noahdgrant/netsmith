@@ -1,10 +1,10 @@
-//! The copper, solder mask and silkscreen of a scene as meshes (`netsmith_pcb::mesh::pieces`)
+//! The copper, solder mask and silkscreen of a scene as meshes (`netsmith_3d::mesh::pieces`)
 //! and in the `.glb` file: the board of `scene3d`'s tests, with a track, a via and a pour
 //! routed by hand (`board3d` places but does not route).
 
+use netsmith_3d::mesh::{Material, Mesh, NO_NET, Pieces, SILK_LIFT, of_scene, pieces};
+use netsmith_3d::scene3d::{Plan, PlanArea, Scene, SceneCopper};
 use netsmith_pcb::Side;
-use netsmith_pcb::mesh::{Material, Mesh, NO_NET, Pieces, SILK_LIFT, of_scene, pieces};
-use netsmith_pcb::scene3d::{Plan, PlanArea, Scene, SceneCopper};
 
 use crate::common;
 use crate::scene3d::{board_with, in_area, routed, scene};
@@ -297,8 +297,8 @@ fn a_four_layer_board_has_its_planes_inside_and_the_same_meshes_every_time() {
 fn the_glb_has_a_node_per_net_per_layer_and_the_silk_and_mask_of_each_face() {
     use serde_json::Value;
     let s = scene(&routed());
-    let glb = netsmith_pcb::gltf::glb(&s, "Scene");
-    let doc = netsmith_pcb::gltf::json_chunk(&glb).unwrap();
+    let glb = netsmith_3d::gltf::glb(&s, "Scene");
+    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
     let nodes = doc["nodes"].as_array().unwrap();
     let node = |name: &str| -> &Value {
         nodes
@@ -376,14 +376,14 @@ fn the_glb_has_a_node_per_net_per_layer_and_the_silk_and_mask_of_each_face() {
         &substrate[substrate.len() - 2..],
         ["silk:top", "silk:bottom"]
     );
-    assert_eq!(glb, netsmith_pcb::gltf::glb(&scene(&routed()), "Scene"));
+    assert_eq!(glb, netsmith_3d::gltf::glb(&scene(&routed()), "Scene"));
 }
 
 /// The routed board drawn from the top and the iso view, into `NETSMITH_RENDER3D_OUT` when it is
 /// set, to look at: the pour shows as the lighter green, the pads as gold.
 #[test]
 fn the_routed_board_draws_the_same_bytes_each_time() {
-    use netsmith_pcb::raster3d::{RenderOptions, View, render_view};
+    use netsmith_3d::raster3d::{RenderOptions, View, render_view};
     let meshes = of_scene(&scene(&routed()));
     let options = RenderOptions {
         width: 800,

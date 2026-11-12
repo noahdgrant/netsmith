@@ -3,7 +3,7 @@ use crate::scene3d::{
     BoardSolid, Body, Findings, HeightLimit, HeightProvenance, Hole, LimitFace, Plan, PlanBox,
     SceneLayer, Tallest, TooTall,
 };
-use crate::stackup::LayerKind;
+use netsmith_pcb::stackup::LayerKind;
 
 fn plan(x: f64, y: f64) -> Plan {
     Plan { x, y }

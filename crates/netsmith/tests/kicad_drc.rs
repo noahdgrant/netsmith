@@ -17,7 +17,7 @@ use netsmith_pcb::{
 };
 use netsmith_solve::Catalogs;
 
-use crate::common;
+use crate::boards as common;
 
 /// What a DRC run found: the type of each violation, and how many connections are missing.
 struct Report {

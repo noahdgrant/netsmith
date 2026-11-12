@@ -1,5 +1,5 @@
 //! `netsmith render`: the board's _Scene_ (ADR 0105) drawn to a PNG by netsmith's own
-//! rasterizer ([`netsmith_pcb::raster3d`]), for an agent that can read a picture, a golden test
+//! rasterizer ([`netsmith_3d::raster3d`]), for an agent that can read a picture, a golden test
 //! and a person with no 3D viewer. The board is placed as `board3d`, `fab` and the editor place
 //! it ([`crate::board3d::scene_and_label`]); nothing is routed, asked of KiCad or written but the
 //! PNG. The same source and options give the same bytes. `docs/BOARD3D.md`, "Pictures for
@@ -7,9 +7,9 @@
 
 use std::path::PathBuf;
 
-use netsmith_pcb::mesh::{self, Mesh};
-use netsmith_pcb::raster3d::{self, Axis, Lens, RenderOptions, Section, Theme, View};
-use netsmith_pcb::scene3d::Scene;
+use netsmith_3d::mesh::{self, Mesh};
+use netsmith_3d::raster3d::{self, Axis, Lens, RenderOptions, Section, Theme, View};
+use netsmith_3d::scene3d::Scene;
 
 /// The picture's size unless `--size` says one.
 pub const DEFAULT_SIZE: (usize, usize) = (1600, 1000);
@@ -120,7 +120,7 @@ pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<Stri
         nets.extend(copper.layers.iter().flat_map(|l| l.nets()).flatten());
     }
     nets.extend(scene.board.holes.iter().filter_map(|h| match &h.owner {
-        netsmith_pcb::scene3d::HoleOwner::Via { net } => Some(net.as_str()),
+        netsmith_3d::scene3d::HoleOwner::Via { net } => Some(net.as_str()),
         _ => None,
     }));
     nets.sort();

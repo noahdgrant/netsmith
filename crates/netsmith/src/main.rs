@@ -1268,8 +1268,8 @@ fn run_board3d(
     };
     let label = &report.board.name;
     let files = [
-        glb.map(|out| (out, netsmith_pcb::gltf::glb(&scene, label))),
-        step.map(|out| (out, netsmith_pcb::step::step(&scene, label).into_bytes())),
+        glb.map(|out| (out, netsmith_3d::gltf::glb(&scene, label))),
+        step.map(|out| (out, netsmith_3d::step::step(&scene, label).into_bytes())),
     ];
     for (out, bytes) in files.into_iter().flatten() {
         if let Err(e) = fs::write(out, bytes) {

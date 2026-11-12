@@ -1,4 +1,4 @@
-//! The 3D scene of a board (ADR 0105, `netsmith_pcb::scene3d`): an invented 30 x 20 mm board with
+//! The 3D scene of a board (ADR 0105, `netsmith_3d::scene3d`): an invented 30 x 20 mm board with
 //! a 4 x 2 mm box on each face, a second box on the top, and a two-pin through-hole row, each
 //! placed by hand. Heights are set on the placed parts, as the design would state them.
 
@@ -6,13 +6,13 @@ use std::collections::BTreeMap;
 
 use crate::common;
 
-use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
-use netsmith_kicad::testlib::TempDir;
-use netsmith_pcb::protrusion::Protrusion;
-use netsmith_pcb::scene3d::{
+use netsmith_3d::scene3d::{
     CopperLayer as CopperLayer3, CopperPad, HeightProvenance, Pins, Plan, PlanArea, Scene,
     SceneCopper,
 };
+use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
+use netsmith_kicad::testlib::TempDir;
+use netsmith_pcb::protrusion::Protrusion;
 use netsmith_pcb::{
     Board, BoardKeepout, BoardPour, CopperLayer, FootprintLibrary, PlaceOptions, Pt, Side, Track,
     Via,
@@ -584,7 +584,7 @@ fn a_four_layer_board_has_copper_on_four_layers_with_the_planes_inside() {
 }
 
 /// The volume a closed mesh holds: positive when its triangles face out.
-fn volume(m: &netsmith_pcb::mesh::Mesh) -> f64 {
+fn volume(m: &netsmith_3d::mesh::Mesh) -> f64 {
     m.indices
         .chunks(3)
         .map(|t| {
@@ -611,7 +611,7 @@ fn shaped(id: &str, height: Option<f64>) -> Board {
 
 #[test]
 fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
-    use netsmith_pcb::mesh::{Material, of_scene};
+    use netsmith_3d::mesh::{Material, of_scene};
     for (id, h) in [
         ("Resistor_SMD:R_0603_1608Metric", 0.5),
         ("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", 1.75),
@@ -632,7 +632,7 @@ fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
                     m.material
                 );
             }
-            let b = netsmith_pcb::mesh::bounds_of(
+            let b = netsmith_3d::mesh::bounds_of(
                 &mine.iter().map(|m| (*m).clone()).collect::<Vec<_>>(),
             )
             .unwrap();
@@ -704,7 +704,7 @@ fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
         assert_eq!(meshes, of_scene(&scene(&shaped(id, Some(h)))));
         // To look at: `NETSMITH_RENDER3D_OUT=<folder>` writes the board from above and below.
         if let Some(out) = std::env::var_os("NETSMITH_RENDER3D_OUT") {
-            use netsmith_pcb::raster3d::{RenderOptions, View, render_view};
+            use netsmith_3d::raster3d::{RenderOptions, View, render_view};
             std::fs::create_dir_all(&out).unwrap();
             let stem = id.split(':').nth(1).unwrap_or(id);
             for view in [View::Iso, View::IsoBottom] {
@@ -718,7 +718,7 @@ fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
 
 #[test]
 fn a_shaped_footprint_of_unknown_height_is_still_its_flat_outline() {
-    use netsmith_pcb::mesh::{Material, of_scene};
+    use netsmith_3d::mesh::{Material, of_scene};
     let s = scene(&shaped("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", None));
     let meshes = of_scene(&s);
     for path in ["a", "under"] {

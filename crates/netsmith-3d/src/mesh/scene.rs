@@ -27,7 +27,7 @@
 //!    mask (material `mark`).
 //! 6. Per part, by path, id the part's path (every mesh of a part has it): a body of known
 //!    height whose footprint has a package record as its _Package shape_ (the solids of
-//!    [`crate::body3d`], each `body`, `metal` or `mark`, a solder ball `metal`, put where the
+//!    [`netsmith_pcb::body3d`], each `body`, `metal` or `mark`, a solder ball `metal`, put where the
 //!    part is: turned, mirrored and hanging down for a bottom part; see `package.rs`); any other
 //!    body of known height as its turned body box from the face out to its far end (`body`); a
 //!    body of unknown height as its outline flat at [`UNKNOWN_LIFT`] mm off its face
@@ -48,13 +48,13 @@
 
 use std::collections::BTreeMap;
 
-use crate::board::Side;
 use crate::mesh::boolean::{difference, intersection};
 use crate::mesh::{Material, Mesh, Polygon, circle, rounded_rect};
 use crate::scene3d::{
     BoardSolid, Body, CopperLayer, HoleOwner, Pins, Plan, PlanArea, PlanBox, Scene,
 };
-use crate::stackup::LayerKind;
+use netsmith_pcb::board::Side;
+use netsmith_pcb::stackup::LayerKind;
 
 /// How far off its face the flat outline of a part of unknown height is drawn, in mm.
 pub const UNKNOWN_LIFT: f64 = 0.02;

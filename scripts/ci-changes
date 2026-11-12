@@ -123,8 +123,10 @@ while IFS= read -r path; do
         crates/netsmith/src/refresh/*) rust=true recipes=true ;;
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith-netlist/* | crates/netsmith/*) kicad_crate "${path#crates/*/}" "$path" ;;
-        crates/netsmith-editor/tests/* | crates/netsmith-view/tests/*) rust=true ;;
-        crates/netsmith-editor/* | crates/netsmith-view/*) rust=true recipes=true no_kicad=true locks=true ;;
+        # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
+        # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
+        crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;
+        crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/*) rust=true recipes=true no_kicad=true locks=true ;;
         crates/*/tests/*) rust=true ;;
         crates/*) rust=true no_kicad=true locks=true ;;
         Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;

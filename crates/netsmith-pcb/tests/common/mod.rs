@@ -42,18 +42,27 @@ pub fn process_with(narrowings: &[&str]) -> netsmith_core::Process {
     let source = format!(
         "import std::mfg::jlcpcb::TwoLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: TwoLayer {{\n{body}    }}\n    .r: Resistor\n}}\n"
     );
-    netsmith::build_with(
-        "t.nsm",
-        &source,
-        &netsmith_check::Loader::std(),
-        &netsmith_solve::Catalogs::jlcpcb(),
-        &netsmith::Libraries::sample(),
-    )
-    .unwrap_or_else(|e| panic!("{e}"))
-    .remove(0)
-    .design
-    .process
-    .expect("the board has a process")
+    process_of(&source)
+}
+
+/// The process of the one board of `source`, as the check, the solver and the design stage
+/// resolve it: what `netsmith::build_with` gives. These tests do not depend on the netsmith
+/// crate, so that they are not among the dependents of every crate it links (issue #518).
+fn process_of(source: &str) -> netsmith_core::Process {
+    let checked = netsmith_check::check("t.nsm", source, &netsmith_check::Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
+    let board = &checked.boards[0];
+    let solution = netsmith_solve::solve(board, &netsmith_solve::Catalogs::jlcpcb());
+    assert!(
+        solution.diagnostics.is_empty(),
+        "{:?}",
+        solution.diagnostics
+    );
+    netsmith_design::design_board(board, &solution)
+        .unwrap_or_else(|e| panic!("{e:?}"))
+        .design
+        .process
+        .expect("the board has a process")
 }
 
 /// The process the hard routing boards are made to: wide tracks and generous spaces, so a
@@ -152,18 +161,7 @@ pub fn four_layer_process_with(narrowings: &[&str]) -> netsmith_core::Process {
     let source = format!(
         "import std::mfg::jlcpcb::FourLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: FourLayer {{\n        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n        .stackup.thickness &= 1.6mm\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
     );
-    netsmith::build_with(
-        "t.nsm",
-        &source,
-        &netsmith_check::Loader::std(),
-        &netsmith_solve::Catalogs::jlcpcb(),
-        &netsmith::Libraries::sample(),
-    )
-    .unwrap_or_else(|e| panic!("{e}"))
-    .remove(0)
-    .design
-    .process
-    .expect("the board has a process")
+    process_of(&source)
 }
 
 /// A four-sided fine-pitch package: `per_side` pads on each side at 0.5 mm, numbered round

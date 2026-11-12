@@ -1,4 +1,4 @@
-//! `netsmith board3d`: the board's _Scene_ (ADR 0105, `netsmith_pcb::scene3d`) as numbers, for an
+//! `netsmith board3d`: the board's _Scene_ (ADR 0105, `netsmith_3d::scene3d`) as numbers, for an
 //! agent or a person: the board's stackup, each part's body box with its Z and _Height
 //! provenance_, each height limit with the tallest part under it and the margin, bodies that
 //! overlap in 3D, the parts of unknown height with the reason, and the _Height coverage_; and a
@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use netsmith_pcb::scene3d::{Body, HeightProvenance, HoleOwner, Pins, Plan, PlanBox, Scene};
+use netsmith_3d::scene3d::{Body, HeightProvenance, HoleOwner, Pins, Plan, PlanBox, Scene};
 use netsmith_pcb::{Board, Side};
 use serde::Serialize;
 
@@ -34,10 +34,10 @@ pub fn scene(built: &Built, board: &Board) -> Scene {
     )
 }
 
-/// The scene of a placed board as a `.glb` file (`netsmith_pcb::gltf`), labelled as the report
+/// The scene of a placed board as a `.glb` file (`netsmith_3d::gltf`), labelled as the report
 /// labels it: what `board3d --glb` writes and the editor's `GET /api/pcb/3d` serves.
 pub fn glb(built: &Built, board: &Board) -> Vec<u8> {
-    netsmith_pcb::gltf::glb(&scene(built, board), &built.label())
+    netsmith_3d::gltf::glb(&scene(built, board), &built.label())
 }
 
 #[derive(Debug, Serialize)]
@@ -308,7 +308,7 @@ fn face(side: Side) -> &'static str {
     side.word()
 }
 
-fn tallest(t: Option<netsmith_pcb::scene3d::Tallest>, side: Option<Side>) -> Option<TallestPart> {
+fn tallest(t: Option<netsmith_3d::scene3d::Tallest>, side: Option<Side>) -> Option<TallestPart> {
     t.map(|t| TallestPart {
         path: t.path,
         refdes: t.refdes,
