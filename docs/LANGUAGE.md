@@ -8250,6 +8250,7 @@ netsmith fab [file.nsm] [--out dir] [--route-timeout secs] [--allow-drc-violatio
 netsmith fab --order [name] [--out dir] # a named order of boards and quantities; no name lists the orders
 netsmith board3d [file.nsm] [--board <name>] [--json] # the board's 3D scene: heights, limits, overlaps (docs/BOARD3D.md)
 netsmith render [file.nsm] [--board <name>] [--view iso] [--out board.png] [--size 1600x1000] [--section x=12.5] [--highlight J1,net:GND,limit:lid] [--xray] [--theme light|dark] [--ortho|--perspective] # the board in 3D as a PNG (docs/BOARD3D.md)
+netsmith view [--port n] [--board <name>] [--view iso] [--section x=12.5|none] [--highlight J1,net:GND,limit:lid|none] [--select J1] [--xray|--no-xray] [--ortho|--perspective] [--colour-by kind] [--height-preview 2.5] [--layers-apart] [--json] [--picture view.png] # read or drive the 3D view of a running editor (docs/BOARD3D.md)
 netsmith compare <a> <b> [options]     # are two designs the same circuit?
 netsmith kicad-libs import <sym-lib-table> [fp-lib-table]  # the [[library]] stanzas for kicad.toml, from a KiCad project's library tables (ADR 0021)
 netsmith catalog refresh [path...] [--dry-run] [--offline] [--only <catalog>] [--lcsc <C123>] [--delay <ms>] [--cache-ttl <hours>] [--no-cache]

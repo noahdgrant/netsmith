@@ -342,6 +342,59 @@ Nothing here changes the design or a file. The camera moves, the picture is cut,
 through, and the selection picks parts, as a person's clicks would; a part is still moved only in
 the 2D view.
 
+## Driving a running editor: `netsmith view`
+
+`netsmith view` is the command for the routes above, with the flags of
+[`netsmith render`](#pictures-for-agents-netsmith-render) where they apply, so that an agent
+switches between the two by changing the verb. `render` draws a picture of the source on its own
+(no editor, no page, a theme of its choice, deterministic bytes). `view` shows what the editor's
+page shows, the view a person is looking at, and needs `netsmith editor` running with a page open.
+
+```sh
+netsmith view                                       # the state of the page: a short summary
+netsmith view --json                                # the route's JSON as it came (the table above)
+netsmith view --view top --highlight J1 --picture j1.png   # light J1, look from the top, save the page's picture
+netsmith view --board TwoBoards/led --section x=7 --xray   # another board, cut at x = 7 mm, seen through
+netsmith view --highlight none --section none       # nothing lit, no cut
+netsmith view --port 9001 --colour-by margin --height-preview 2.5 --layers-apart
+```
+
+`--port` is the editor's (8787 unless `netsmith editor --port` said another). With no flag that
+changes something, `view` reads the page and prints its state: the board, the view and lens, the
+camera, the section, what is lit and selected, x-ray, the colouring, the height preview, the
+theme and the `netsmith render` command that draws the same. `--json` prints the editor's JSON
+instead, as it came. With a flag that changes something, it makes the change, waits until the
+page has drawn it, and prints the state that results. The page driven is the one focused last.
+
+| Flag | The route's field | Notes |
+|---|---|---|
+| `--board <name>` | `board` | `System/member` for a board of a system |
+| `--view top\|bottom\|front\|back\|left\|right\|iso\|iso-bottom` | `view` | as `render --view`; the editor's `iso` is the key `I`'s view |
+| `--section x=<mm>\|y=<mm>\|z=<mm>\|none` | `section` | as `render --section` |
+| `--highlight <id>[,<id>...]`, repeatable | `highlight` | as `render --highlight`; `--highlight none` lights nothing |
+| `--xray` \| `--no-xray` | `xray` | |
+| `--ortho` \| `--perspective` | `ortho` | |
+| `--select <id>[,<id>...]`, repeatable | `select` | the page's selection alone, as a click makes it: parts or one `net:<name>`; `none` clears it; not with `--highlight` |
+| `--colour-by provenance\|kind\|margin` | `colourBy` | `--color-by` too |
+| `--height-preview <mm>\|on\|off` | `heightPreview` | 0.1 to 50 mm |
+| `--layers-apart` \| `--no-layers-apart` | `exploded` | the stackup pulled apart or together |
+| `--json` | | print the JSON of the state, not the summary |
+| `--picture <file.png>` | `GET /api/view/picture` | after the change, save what the canvas shows; with no other change flag it opens the 3D view first, as `POST {}` does |
+
+There is no `--theme`, `--size`, `--out` or `--no-caps`: the theme is the person's own setting for
+the whole editor (the state reports it; `view --theme` says so and exits 2), the picture has the
+canvas's size, and `--picture` is `--out`. A camera at a place (`camera`) is not a flag: use
+`--view`, or `curl` the route.
+
+Exit status: 0 when the page answered; **2** with the message on stderr when a change is refused
+(the page's message, as the route sends it: an id the board does not have comes with the parts,
+nets and limits it has), when no page is open (`no editor page is open; open
+http://127.0.0.1:<port>`), when the editor does not answer in time, and when nothing is listening
+on the port (the message says to start `netsmith editor`). Flags that cannot work (`--theme`,
+`--ortho` with `--perspective`, `--highlight` with `--select`, a view or colouring the editor does
+not have) are refused before anything is asked. A refused change changes nothing. Like the routes,
+the command never changes the design or a file; `--picture` writes only its PNG.
+
 ## Pictures for agents: `netsmith render`
 
 `netsmith render` places the board exactly as `board3d` does (the same code: the pick lock, the

@@ -111,6 +111,7 @@ netsmith fab        # a package for JLCPCB in fab/: Gerbers, drill, bom.csv, cpl
 netsmith board3d --json   # the board's 3D facts for an agent: heights, limits, overlaps (docs/BOARD3D.md)
 netsmith board3d --glb board.glb   # the same scene as glTF 2.0 binary, the file the editor's 3D view shows
 netsmith render --view iso --out board.png   # the board drawn in 3D to a PNG by netsmith's own rasterizer, no GPU or KiCad (docs/BOARD3D.md)
+netsmith view --view top --highlight J1 --picture j1.png   # drive the 3D view of the running editor with render's flags, and save its picture (docs/BOARD3D.md)
 netsmith compare a.kicad_sch b.nsm   # are two designs the same circuit?
 ```
 
@@ -140,7 +141,7 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 - `docs/LANGUAGE.md`: the language guide, with a quick start, every construct with a tested
   example and the real error you get when you misuse it, and the standard library.
 - `docs/PIPELINE.md`: the stages a design goes through, from source to a fab package, with diagrams.
-- `docs/BOARD3D.md`: `netsmith board3d`, the board's 3D scene as a JSON report and as a `.glb` file, and `netsmith render`, the same scene as a PNG.
+- `docs/BOARD3D.md`: `netsmith board3d`, the board's 3D scene as a JSON report and as a `.glb` file, and `netsmith render`, the same scene as a PNG, and `netsmith view`, which drives the 3D view of a running editor.
 - `docs/CONCEPTS.md`: how parts, modules, boards and systems combine.
   `docs/PROJECT-LAYOUT.md`: a repository with several boards.
 - `docs/symbol-gallery.html` (open it in a browser): every symbol netsmith draws, beside the KiCad

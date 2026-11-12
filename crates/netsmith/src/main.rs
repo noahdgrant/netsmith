@@ -1,4 +1,4 @@
-//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor`, `board3d`, `render` and `compare`.
+//! `netsmith --version`, `--help`, `init`, `build`, `fab`, `editor`, `board3d`, `render`, `view` and `compare`.
 
 use std::{
     env, fs,
@@ -106,6 +106,7 @@ fn main() -> ExitCode {
             out,
             request,
         }) => run_render(file.as_deref(), board.as_deref(), out.as_deref(), &request),
+        Ok(Command::View(request)) => run_view(&request),
         Ok(Command::CatalogRefresh(request)) => run_catalog_refresh(&request),
         Ok(Command::CatalogAge { paths, only, days }) => run_catalog_age(&paths, &only, days),
         Ok(Command::DxfImport {
@@ -858,6 +859,21 @@ fn run_render(
     }
     println!("{}", out.display());
     ExitCode::SUCCESS
+}
+
+/// `netsmith view`: read or change the 3D view of a running editor's page. A refusal (the
+/// editor's own message), no editor and no page open all exit 2.
+fn run_view(request: &netsmith::view_client::Request) -> ExitCode {
+    match netsmith::view_client::run(request) {
+        Ok(text) => {
+            print!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            ExitCode::from(2)
+        }
+    }
 }
 
 /// `netsmith fab --order`: list the project's orders, or make one (ADR 0035).
