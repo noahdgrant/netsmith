@@ -43,12 +43,15 @@
 //! terminals are not in the data, so none is drawn), SOT-23 (-3, -5, -6), SOT-223 (three
 //! pins and the wide tab, from the sourced dimensions in `generate/sot.rs`), SOT-89-3 (three
 //! short leads on one side and the wide tab of pin 2 under the body and out of the other, from
+//! the sourced dimensions in `generate/tab.rs`), DPAK and D2PAK of two or three lead pads (the two
+//! outer gull-wing leads on one side, and the tab out of the other and flat under the body, from
 //! the sourced dimensions in `generate/tab.rs`), SOIC, SSOP, TSSOP and
 //! MSOP (gull-wing leads on two edges), LQFP, TQFP and VQFP (gull-wing leads on four edges, and the
 //! exposed pad), QFN and DFN (terminals and the exposed pad under the body), BGA (a ball under
 //! every pad), pin headers and sockets, and SMD crystals (ceramic base and metal lid). **Left as
-//! the box:** SC-70, DPAK, D2PAK and SOT-89-5, whose pads are recorded and whose lead widths and
-//! spans the data does not hold, and the mechanical items (holes, fiducials, test points).
+//! the box:** SC-70, the DPAK of four or five lead pads (TO-252-4, -5), the D2PAK of four to nine
+//! (TO-263-4 to -9) and SOT-89-5, whose pads are recorded and whose lead widths and spans the data
+//! does not hold, and the mechanical items (holes, fiducials, test points).
 
 use crate::footprint::Footprint;
 use crate::geometry::{Pt, Rect};
@@ -742,6 +745,39 @@ mod tests {
         shape
     }
 
+    /// The metal solids of a shape, ordered along y.
+    fn metal_of(shape: &BodyShape) -> Vec<Bounds> {
+        let mut metal: Vec<Bounds> = shape
+            .solids
+            .iter()
+            .filter(|s| s.material == Material::Metal)
+            .map(Solid::bounds)
+            .collect();
+        metal.sort_by(|a, b| {
+            a.min[1]
+                .total_cmp(&b.min[1])
+                .then(b.max[1].total_cmp(&a.max[1]))
+        });
+        metal
+    }
+
+    fn mark_of(shape: &BodyShape) -> Bounds {
+        shape
+            .solids
+            .iter()
+            .find(|s| s.material == Material::Mark)
+            .unwrap()
+            .bounds()
+    }
+
+    fn centre(b: &Bounds) -> f64 {
+        (b.min[1] + b.max[1]) / 2.0
+    }
+
+    fn width(b: &Bounds) -> f64 {
+        b.max[1] - b.min[1]
+    }
+
     fn body_solid(shape: &BodyShape) -> Bounds {
         shape
             .solids
@@ -952,6 +988,119 @@ mod tests {
     }
 
     #[test]
+    fn a_dpak_has_two_leads_and_a_tab_to_its_sourced_dimensions() {
+        // Alpha & Omega PO-00009 (TO-252AA), checked against onsemi 369C, Vishay 95627, Diodes.
+        for id in [
+            "Package_TO_SOT_SMD:TO-252-2",
+            "Package_TO_SOT_SMD:TO-252-3_TabPin2",
+            "Package_TO_SOT_SMD:TO-252-3_TabPin4",
+        ] {
+            let fp = made(id);
+            let shape = fits(id, &fp, 2.3);
+            assert!(shape.shaped, "{id} is not a box");
+            // Two leads, the tab beyond the body and the exposed tab under it; pin 1's dot.
+            assert_eq!(count(&shape, Material::Metal), 4, "{id}");
+            assert_eq!(count(&shape, Material::Mark), 1, "{id}");
+            // The body is 6.096 mm along the leads and the footprint's 6.5 mm across.
+            let body = body_solid(&shape);
+            assert!((body.max[0] - 3.048).abs() < EPS && (body.min[0] + 3.048).abs() < EPS);
+            assert!((body.max[1] - 3.25).abs() < EPS && (body.min[1] + 3.25).abs() < EPS);
+            let metal = metal_of(&shape);
+            let (left, right): (Vec<&Bounds>, Vec<&Bounds>) =
+                metal.iter().partition(|b| b.max[0] < 0.0);
+            assert_eq!((left.len(), right.len()), (2, 2), "{id}");
+            // Leads 0.762 mm wide at 2.286 mm from the centre, reaching 2.921 mm beyond the body.
+            for (b, at) in left.iter().zip([-2.286, 2.286]) {
+                assert!((centre(b) - at).abs() < EPS, "{id}: {b:?}");
+                assert!((width(b) - 0.762).abs() < EPS, "{id}: {b:?}");
+                assert!((b.min[0] + 3.048 + 2.921).abs() < EPS, "{id}: {b:?}");
+                assert!((b.max[0] + 3.048).abs() < EPS, "{id}: {b:?}");
+            }
+            // The tab: 5.340 mm wide, 1.016 mm beyond the body; the exposed tab 4.826 mm wide,
+            // 5.249 mm in under the body from its edge.
+            let (wide, narrow) = (&right[0], &right[1]);
+            assert!((width(wide) - 5.340).abs() < EPS, "{id}: {wide:?}");
+            assert!((wide.max[0] - 3.048 - 1.016).abs() < EPS && (wide.min[0] - 3.048).abs() < EPS);
+            assert!((width(narrow) - 4.826).abs() < EPS, "{id}: {narrow:?}");
+            assert!(
+                (narrow.min[0] - (3.048 - 5.249)).abs() < EPS,
+                "{id}: {narrow:?}"
+            );
+            assert!((narrow.max[0] - 3.048).abs() < EPS, "{id}: {narrow:?}");
+            // Overall, tab tip to lead tips, is the sourced 10.033 mm.
+            assert!((wide.max[0] - left[0].min[0] - 10.033).abs() < EPS, "{id}");
+            assert!(metal.iter().all(|b| b.min[2].abs() < EPS));
+            // Pin 1's dot is on the leads' side.
+            let mark = mark_of(&shape);
+            assert!(mark.max[0] < 0.0 && mark.max[1] < 0.0, "{id}: {mark:?}");
+        }
+    }
+
+    #[test]
+    fn a_d2pak_has_two_leads_and_a_tab_to_its_sourced_dimensions() {
+        // Alpha & Omega PO-00005 (TO-263AB), checked against onsemi 418AJ, Vishay, Diodes.
+        for id in [
+            "Package_TO_SOT_SMD:TO-263-2",
+            "Package_TO_SOT_SMD:TO-263-3_TabPin2",
+            "Package_TO_SOT_SMD:TO-263-3_TabPin4",
+        ] {
+            let fp = made(id);
+            let shape = fits(id, &fp, 4.5);
+            assert!(shape.shaped, "{id} is not a box");
+            // Two leads and the tab (one piece: beyond the body and under it as wide).
+            assert_eq!(count(&shape, Material::Metal), 3, "{id}");
+            assert_eq!(count(&shape, Material::Mark), 1, "{id}");
+            let body = body_solid(&shape);
+            assert!((body.max[0] - 4.57).abs() < EPS && (body.min[0] + 4.57).abs() < EPS);
+            assert!((body.max[1] - 5.0).abs() < EPS && (body.min[1] + 5.0).abs() < EPS);
+            let metal = metal_of(&shape);
+            let (left, right): (Vec<&Bounds>, Vec<&Bounds>) =
+                metal.iter().partition(|b| b.max[0] < 0.0);
+            assert_eq!((left.len(), right.len()), (2, 1), "{id}");
+            // Leads 0.81 mm wide at 2.54 mm from the centre, reaching H - D - L1 = 4.83 mm.
+            for (b, at) in left.iter().zip([-2.54, 2.54]) {
+                assert!((centre(b) - at).abs() < EPS, "{id}: {b:?}");
+                assert!((width(b) - 0.81).abs() < EPS, "{id}: {b:?}");
+                assert!((b.min[0] + 4.57 + 4.83).abs() < EPS, "{id}: {b:?}");
+            }
+            // The tab: 8.00 mm wide, 1.27 mm beyond the body and 6.90 mm in under it.
+            let tab = &right[0];
+            assert!(
+                (width(tab) - 8.0).abs() < EPS && centre(tab).abs() < EPS,
+                "{id}"
+            );
+            assert!((tab.max[0] - 4.57 - 1.27).abs() < EPS, "{id}: {tab:?}");
+            assert!((tab.min[0] - (4.57 - 6.90)).abs() < EPS, "{id}: {tab:?}");
+            // Overall, tab tip to lead tips, is the sourced 15.24 mm.
+            assert!((tab.max[0] - left[0].min[0] - 15.24).abs() < EPS, "{id}");
+            assert!(metal.iter().all(|b| b.min[2].abs() < EPS));
+            let mark = mark_of(&shape);
+            assert!(mark.max[0] < 0.0 && mark.max[1] < 0.0, "{id}: {mark:?}");
+        }
+    }
+
+    #[test]
+    fn a_dpak_or_d2pak_with_more_leads_is_still_the_box() {
+        for id in [
+            "Package_TO_SOT_SMD:TO-252-4",
+            "Package_TO_SOT_SMD:TO-252-5_TabPin3",
+            "Package_TO_SOT_SMD:TO-252-5_TabPin6",
+            "Package_TO_SOT_SMD:TO-263-4",
+            "Package_TO_SOT_SMD:TO-263-5_TabPin3",
+            "Package_TO_SOT_SMD:TO-263-5_TabPin6",
+            "Package_TO_SOT_SMD:TO-263-6",
+            "Package_TO_SOT_SMD:TO-263-7_TabPin4",
+            "Package_TO_SOT_SMD:TO-263-7_TabPin8",
+            "Package_TO_SOT_SMD:TO-263-9_TabPin5",
+            "Package_TO_SOT_SMD:TO-263-9_TabPin10",
+        ] {
+            let fp = made(id);
+            assert!(fp.package.is_none(), "{id}");
+            assert!(!package_shape(&fp, Some(2.0)).shaped, "{id}");
+        }
+    }
+
+    #[test]
     fn a_sot_89_5_is_still_the_box() {
         let fp = made("Package_TO_SOT_SMD:SOT-89-5");
         assert!(fp.package.is_none());
@@ -1151,14 +1300,23 @@ mod tests {
                     let tab_as_pin = usize::from(
                         id.ends_with("_TabPin2") || id.starts_with("Package_TO_SOT_SMD:SOT-89-3"),
                     );
-                    assert_eq!(
-                        leads.len() + usize::from(exposed.is_some()),
-                        pins + tab_as_pin,
-                        "{id}"
-                    );
                     let on = |e: Edge| leads.iter().filter(|l| l.edge == e).count();
+                    if id.contains(":TO-252-") || id.contains(":TO-263-") {
+                        // A DPAK or D2PAK has its two outer leads on the left (the centre lead is
+                        // a cut stub, not drawn) and its tab, in one or two parts, on the right.
+                        assert_eq!(on(Edge::Left), 2, "{id}");
+                        assert!((1..=2).contains(&on(Edge::Right)), "{id}");
+                        assert!(exposed.is_none(), "{id}");
+                    } else {
+                        assert_eq!(
+                            leads.len() + usize::from(exposed.is_some()),
+                            pins + tab_as_pin,
+                            "{id}"
+                        );
+                    }
                     assert_eq!(on(Edge::Top), on(Edge::Bottom), "{id}");
-                    // SOT-223 and SOT-89 have three leads on one side and the tab on the other.
+                    // SOT-223 and SOT-89 have three leads on one side and the tab on the other (a DPAK's
+                    // tab is one or two parts).
                     let uneven = if id.contains("SOT-223") || id.contains("SOT-89-3") {
                         2
                     } else {

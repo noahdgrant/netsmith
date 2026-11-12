@@ -280,11 +280,13 @@ What it is not:
   maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
   generator's own numbers. Still boxes, because the data
   does not hold their lead span and width yet (each family is added with a sourced row, one at a
-  time): SC-70, DPAK, D2PAK and SOT-89-5, and the mechanical items (holes, fiducials, test
-  points). SOT-223 is drawn with its three pins and its wide tab (dimensions and sources in
+  time): SC-70, the DPAK of four or five lead pads (TO-252-4, -5), the D2PAK of four to nine
+  (TO-263-4 to -9) and SOT-89-5, and the mechanical items (holes, fiducials, test points). SOT-223 is drawn with its three pins and its wide tab (dimensions and sources in
   `crates/netsmith-pcb/src/generate/sot.rs`), and SOT-89-3 with its three short leads and the
-  wide tab of pin 2 that runs under the body and out of the other side (in
-  `crates/netsmith-pcb/src/generate/tab.rs`).
+  wide tab of pin 2 that runs under the body and out of the other side, and the DPAK and D2PAK
+  of two or three lead pads with their two outer leads and the tab out of the other side and flat
+  under the body (a three-pad package's centre lead is a cut stub in every outline read, so it
+  is not drawn); both in `crates/netsmith-pcb/src/generate/tab.rs`.
 - **Not a check.** The tools measure the file's numbers and change nothing: a measurement, a
   section or the layers apart are the picture only, and no report or file reads them. The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
   scene's, from the same numbers `fab` checks; the view decides nothing of its own.
