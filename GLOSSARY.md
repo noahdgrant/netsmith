@@ -183,6 +183,10 @@ _Avoid_: Lockfile (Cargo's word for a file of versions), solved-design file (a d
 `reference/parts.toml` of a ported board: the original's reference designator of each part of the design, by the part's member path (`[parts]`, `"usb_uart.receptacle" = "J1"`, #456). The nets proof of the port's tests names the design's parts as the original does by it, and `netsmith parity` pairs the original's parts with the board `fab` wrote by it and the member path `fab` writes on each footprint as a hidden property (`netsmith_path`). A member renamed in the source is renamed in the file; nothing else maps designators.
 _Avoid_: designator map, `designators.toml` (the map of the fab board's designators that it replaced, which went stale when a member was renamed or a part was added ahead of another)
 
+**Skeleton**:
+The first source of a port, which `netsmith port skeleton <original.kicad_pcb>` writes with the port's _Parts file_ (#452): one member for each footprint of the original, named by its designator, and one join for each net, with the original's net names. A footprint that is not a plain resistor, capacitor, inductor or LED is a **gap** (marked `GAP`) until the project has its part file, so the skeleton does not build until each has one.
+_Avoid_: scaffold (the word for `netsmith init`), template, stub
+
 **Stage timings**:
 One line on stderr for each stage of a run (`timing: solve LedExample 12.3 ms`), printed when the environment variable `NETSMITH_TIMINGS` is set to anything but empty or `0`, and nothing otherwise (`netsmith_core::timings`). A stage inside another (`solve.dc` in `solve`) is counted in the one around it. The numbers are wall time of one run, taken on whatever the machine was doing.
 _Avoid_: Profile, trace (a `Trace` is what a build knows about its source), benchmark

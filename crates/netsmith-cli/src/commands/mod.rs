@@ -14,6 +14,7 @@ mod init;
 mod kicad_libs;
 mod lock;
 mod parity;
+mod port;
 mod render;
 mod route;
 mod view;
@@ -58,6 +59,8 @@ pub enum Command {
     Catalog(catalog::Args),
     /// Import an enclosure's DXF drawing.
     Dxf(dxf::Args),
+    /// Start a port of a KiCad board: its first source and its parts file.
+    Port(port::Args),
 }
 
 pub fn run(command: Command) -> ExitCode {
@@ -77,6 +80,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::KicadLibs(args) => kicad_libs::run(args),
         Command::Catalog(args) => catalog::run(args),
         Command::Dxf(args) => dxf::run(args),
+        Command::Port(args) => port::run(args),
     }
 }
 
