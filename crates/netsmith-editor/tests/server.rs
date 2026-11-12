@@ -14,10 +14,11 @@ use std::{
 use netsmith_editor::{
     AnalysisEvent, ApiError, Attachment, Backend, Cancel, Observer, Work,
     api::{
-        Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, ClientMessage, Compare,
-        CompareHead, Definition, Download, FabReport, FileContent, GitCommit, GitInfo,
-        OrderBoardInfo, OrderInfo, OrderReport, PanelView, PcbReport, PowerTree, ProblemsDiff,
-        Project, Saved, SchematicHints, ServerMessage, SourceDiff, SystemView,
+        Analysis, BoardDetail, Bom, BuildReport, CameraPlace, CatalogRefresh, Changed,
+        ClientMessage, ColourBy, Compare, CompareHead, Definition, Download, FabReport,
+        FileContent, GitCommit, GitInfo, OrderBoardInfo, OrderInfo, OrderReport, PanelView,
+        PcbReport, PowerTree, PreviewSetting, ProblemsDiff, Project, RenderView, Saved,
+        SchematicHints, ServerMessage, SourceDiff, SystemView, ViewState,
     },
 };
 
@@ -2031,4 +2032,280 @@ fn the_page_says_whether_a_change_is_analysed_at_once() {
         None,
     );
     assert!(s.backend.auto.load(Ordering::SeqCst));
+}
+
+// ---- the 3D view of an open page, for agents (`/api/view`, P8a of issue 430) ---------------
+
+/// The next `view` or `view_picture` the server asks of this page, skipping the pushes.
+fn next_view_ask(socket: &mut Socket) -> ServerMessage {
+    loop {
+        let m = next_message(socket, "a `view` or `view_picture` ask");
+        if matches!(
+            m,
+            ServerMessage::View { .. } | ServerMessage::ViewPicture { .. }
+        ) {
+            return m;
+        }
+    }
+}
+
+fn view_state(board: &str) -> ViewState {
+    ViewState {
+        board: Some(board.into()),
+        shown: true,
+        view: Some(RenderView::Iso),
+        camera: Some(CameraPlace {
+            position: [40.0, -30.0, 40.0],
+            target: [10.0, 8.0, 0.0],
+            up: Some([0.0, 0.0, 1.0]),
+        }),
+        ortho: Some(false),
+        section: Some("x=13".into()),
+        exploded: Some(false),
+        highlight: vec!["J1".into(), "limit:lid".into()],
+        selection: vec!["J1".into()],
+        hover: None,
+        xray: false,
+        colour_by: ColourBy::Provenance,
+        height_preview: None,
+        theme: "dark".into(),
+        command: Some("netsmith render src/main.nsm --board B --view iso".into()),
+    }
+}
+
+fn say(socket: &mut Socket, m: &ClientMessage) {
+    socket
+        .send(tungstenite::Message::text(
+            serde_json::to_string(m).unwrap(),
+        ))
+        .unwrap();
+}
+
+/// A request to `/api/view` in a thread of its own: the test plays the page meanwhile.
+fn view_request(
+    s: &Server,
+    method: &'static str,
+    target: &'static str,
+    body: &'static str,
+) -> thread::JoinHandle<Reply> {
+    let port = s.port;
+    thread::spawn(move || {
+        Server {
+            port,
+            backend: Arc::new(Fake::new(1, false)),
+        }
+        .request(method, target, &[GUARD], body, None)
+    })
+}
+
+#[test]
+fn with_no_page_open_the_view_routes_say_so_and_where_to_open_one() {
+    let s = start();
+    for (method, target) in [
+        ("GET", "/api/view"),
+        ("POST", "/api/view"),
+        ("GET", "/api/view/picture"),
+    ] {
+        let r = s.request(method, target, &[GUARD], "{}", None);
+        assert_eq!(r.status, 409, "{method} {target}: {}", r.body);
+        assert!(r.body.contains("no editor page is open"), "{}", r.body);
+        assert!(
+            r.body.contains(&format!("http://127.0.0.1:{}", s.port)),
+            "{}",
+            r.body
+        );
+    }
+}
+
+#[test]
+fn the_view_routes_are_guarded_as_every_other_route() {
+    let s = start();
+    let _page = open_socket(s.port);
+    // Another origin may not read the view, nor take its picture.
+    for target in ["/api/view", "/api/view/picture"] {
+        let r = s.request(
+            "GET",
+            target,
+            &[("Origin", "https://evil.example")],
+            "",
+            None,
+        );
+        assert_eq!(r.status, 403, "{target}");
+    }
+    // A change needs the header a page of another origin cannot send.
+    let r = s.request("POST", "/api/view", &[], r#"{"view":"top"}"#, None);
+    assert_eq!(r.status, 403);
+    assert!(r.body.contains("X-Netsmith"));
+    // A rebinding page arrives with its own Host.
+    let r = s.request("GET", "/api/view", &[], "", Some("evil.example"));
+    assert_eq!(r.status, 403);
+}
+
+#[test]
+fn a_change_of_the_wrong_shape_is_refused_by_the_server_before_the_page_hears_of_it() {
+    let s = start();
+    let _page = open_socket(s.port);
+    for (body, says) in [
+        (r#"{"vew":"top"}"#, "unknown field `vew`"),
+        (r#"{"view":"sideways"}"#, "unknown variant `sideways`"),
+        (r#"{"theme":"dark"}"#, "the person's own setting"),
+        (r#"{"ortho":true,"perspective":true}"#, "opposite"),
+        (
+            r#"{"view":"top","camera":{"position":[0,0,9],"target":[0,0,0]}}"#,
+            "give one",
+        ),
+        (r#"{"highlight":["J1"],"select":["J1"]}"#, "give one"),
+        ("not json", "does not read"),
+    ] {
+        let r = s.request("POST", "/api/view", &[GUARD], body, None);
+        assert_eq!(r.status, 400, "{body}: {}", r.body);
+        assert!(r.body.contains(says), "{body}: {}", r.body);
+    }
+}
+
+#[test]
+fn the_page_answers_a_read_a_change_and_a_picture_and_the_route_answers_with_it() {
+    let s = start();
+    let mut page = open_socket(s.port);
+
+    // A read: `view` with no change, answered with the state.
+    let read = view_request(&s, "GET", "/api/view", "");
+    let ServerMessage::View { id, change: None } = next_view_ask(&mut page) else {
+        panic!("expected a `view` with no change");
+    };
+    say(
+        &mut page,
+        &ClientMessage::ViewState {
+            id,
+            state: Box::new(view_state("B")),
+        },
+    );
+    let r = read.join().unwrap();
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.headers.contains("application/json"));
+    let json: serde_json::Value = serde_json::from_str(&r.body).unwrap();
+    assert_eq!(json["view"], "iso");
+    assert_eq!(json["section"], "x=13");
+    assert_eq!(
+        json["camera"]["target"],
+        serde_json::json!([10.0, 8.0, 0.0])
+    );
+    assert_eq!(json["highlight"], serde_json::json!(["J1", "limit:lid"]));
+    assert_eq!(json["colourBy"], "provenance");
+
+    // A change reaches the page as it was sent, with render's names.
+    let change = view_request(
+        &s,
+        "POST",
+        "/api/view",
+        r#"{"board":"B","view":"iso-bottom","section":"y=4","highlight":["net:GND"],"xray":true,"heightPreview":2,"colourBy":"kind","exploded":true}"#,
+    );
+    let ServerMessage::View {
+        id,
+        change: Some(asked),
+    } = next_view_ask(&mut page)
+    else {
+        panic!("expected a `view` with a change");
+    };
+    assert_eq!(asked.board.as_deref(), Some("B"));
+    assert_eq!(asked.view, Some(RenderView::IsoBottom));
+    assert_eq!(asked.section.as_deref(), Some("y=4"));
+    assert_eq!(asked.highlight, Some(vec!["net:GND".to_string()]));
+    assert_eq!(asked.height_preview, Some(PreviewSetting::Mm(2.0)));
+    assert_eq!(asked.colour_by, Some(ColourBy::Kind));
+    let mut after = view_state("B");
+    after.view = Some(RenderView::IsoBottom);
+    say(
+        &mut page,
+        &ClientMessage::ViewState {
+            id,
+            state: Box::new(after),
+        },
+    );
+    let r = change.join().unwrap();
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(r.body.contains("\"view\":\"iso-bottom\""), "{}", r.body);
+
+    // A change the page refuses is answered with the page's status and words.
+    let refused = view_request(&s, "POST", "/api/view", r#"{"highlight":["J9"]}"#);
+    let ServerMessage::View { id, .. } = next_view_ask(&mut page) else {
+        panic!("expected a `view`");
+    };
+    say(
+        &mut page,
+        &ClientMessage::ViewError {
+            id,
+            message: "highlight names an id that the board does not have: `J9`".into(),
+            status: None,
+        },
+    );
+    let r = refused.join().unwrap();
+    assert_eq!(r.status, 400);
+    assert!(r.body.contains("`J9`"), "{}", r.body);
+
+    // A picture comes back as a binary frame: the ask's id, then the PNG.
+    let picture = view_request(&s, "GET", "/api/view/picture", "");
+    let ServerMessage::ViewPicture { id } = next_view_ask(&mut page) else {
+        panic!("expected a `view_picture`");
+    };
+    let mut frame = id.to_le_bytes().to_vec();
+    frame.extend_from_slice(b"\x89PNG\r\n\x1a\nrest of the picture");
+    page.send(tungstenite::Message::binary(frame)).unwrap();
+    let r = picture.join().unwrap();
+    assert_eq!(r.status, 200);
+    assert!(
+        r.headers.contains("content-type: image/png"),
+        "{}",
+        r.headers
+    );
+    assert!(
+        r.body.ends_with("PNG\r\n\u{1a}\nrest of the picture"),
+        "{:?}",
+        r.body
+    );
+}
+
+#[test]
+fn the_page_focused_last_is_the_one_driven() {
+    let s = start();
+    let mut first = open_socket(s.port);
+    let mut second = open_socket(s.port);
+    // The page opened last counts as focused when it connected.
+    let ask = |s: &Server, page: &mut Socket| {
+        let read = view_request(s, "GET", "/api/view", "");
+        let ServerMessage::View { id, .. } = next_view_ask(page) else {
+            panic!("expected a `view`");
+        };
+        say(
+            page,
+            &ClientMessage::ViewState {
+                id,
+                state: Box::new(view_state("B")),
+            },
+        );
+        assert_eq!(read.join().unwrap().status, 200);
+    };
+    ask(&s, &mut second);
+    // The first page gets the focus: it is driven now.
+    say(&mut first, &ClientMessage::Focus);
+    // The focus message and the next request race; a read answered by the second page would
+    // fail the test, so wait for the server to have read the focus.
+    thread::sleep(Duration::from_millis(500));
+    ask(&s, &mut first);
+    // A page that closes is passed over.
+    drop(first);
+    thread::sleep(Duration::from_millis(500));
+    ask(&s, &mut second);
+}
+
+#[test]
+fn a_page_that_closes_before_it_answers_ends_the_wait_with_the_reason() {
+    let s = start();
+    let mut page = open_socket(s.port);
+    let read = view_request(&s, "GET", "/api/view", "");
+    let _ = next_view_ask(&mut page);
+    drop(page);
+    let r = read.join().unwrap();
+    assert_eq!(r.status, 409, "{}", r.body);
+    assert!(r.body.contains("closed before it answered"), "{}", r.body);
 }

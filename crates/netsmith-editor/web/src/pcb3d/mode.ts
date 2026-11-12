@@ -4,6 +4,8 @@
 
 import { signal } from '@preact/signals';
 
+import type { ViewChange, ViewState } from '../api';
+
 export type PcbMode = '2d' | '3d';
 
 export type Preset = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso';
@@ -47,6 +49,33 @@ export interface View3dActions {
   toggleExplode(): void;
   /** Copy the `netsmith render` command that draws the view. */
   copyCommand(): void;
+  /** What `/api/view` drives (agent.ts). */
+  agent: View3dAgent;
+}
+
+/** The 3D view as an agent drives it over `/api/view` (agent.ts, control.ts). */
+export interface View3dAgent {
+  /** The board whose scene is drawn, once it is; null before. */
+  loaded(): string | null;
+  /** Why the view cannot draw (no WebGL 2, a scene that did not load), else null. */
+  failed(): string | null;
+  /** Check a change against the scene and make it, as the keys and the palette would; it ends
+   * once the view has drawn it. A change it refuses (a `ViewRefusal`) changes nothing. */
+  apply(change: ViewChange): Promise<void>;
+  /** The camera, the cut, the stackup and what is lit, as `/api/view` answers them. */
+  state(): Pick<ViewState, 'view' | 'camera' | 'ortho' | 'section' | 'exploded' | 'command'> & { limits: string[] };
+  /** A PNG of the canvas, drawn for it. */
+  picture(): Promise<Blob>;
+}
+
+/** A change or a question of `/api/view` the page refuses, with the HTTP status the route answers with. */
+export class ViewRefusal extends Error {
+  constructor(
+    message: string,
+    readonly status = 400,
+  ) {
+    super(message);
+  }
 }
 
 /** The actions of the 3D view while it is mounted, else null. */

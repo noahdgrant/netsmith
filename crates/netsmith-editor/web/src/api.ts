@@ -1541,6 +1541,96 @@ export type CancelAnswer = { cancelled: boolean, };
 
 export type AutoBuild = { auto: boolean, };
 
-export type ClientMessage = { "type": "check", id: number, path: string, text: string, };
+export type RenderView = "top" | "bottom" | "front" | "back" | "left" | "right" | "iso" | "iso-bottom";
 
-export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, unit?: string, unitDone?: number, unitTotal?: number, } | { "type": "cancelled", task: string, board: string, message: string, };
+export type ColourBy = "provenance" | "kind" | "margin";
+
+export type CameraPlace = { position: [number, number, number], target: [number, number, number], up?: [number, number, number], };
+
+export type PreviewSetting = boolean | number;
+
+export type ViewChange = { 
+/**
+ * The board, as `BoardSummary::name` has it (`Demo/main` for a board of a system).
+ */
+board?: string, 
+/**
+ * A view of `render`; with `camera` too, an error.
+ */
+view?: RenderView, 
+/**
+ * The camera put at a place (its `up` is not taken).
+ */
+camera?: CameraPlace, 
+/**
+ * `x=13`, `y=8` or `z=-0.8` as `render --section` reads it, or `none` for no cut.
+ */
+section?: string, 
+/**
+ * What is lit, as `render --highlight` names it (a designator, a path, `net:<name>`,
+ * `limit:<name>`; an item may be comma-separated): the parts and the net through the page's
+ * selection, the limits in the view. It replaces what was lit; `[]` lights nothing.
+ */
+highlight?: Array<string>, 
+/**
+ * The page's selection, as a click makes it: parts by designator or path, or one
+ * `net:<name>`. The limits lit stay as they are; `[]` clears it.
+ */
+select?: Array<string>, xray?: boolean, 
+/**
+ * `true` for the parallel projection; `perspective: true` is the same as `ortho: false`.
+ */
+ortho?: boolean, perspective?: boolean, colourBy?: ColourBy, heightPreview?: PreviewSetting, 
+/**
+ * The stackup pulled apart (`true`) or together.
+ */
+exploded?: boolean, };
+
+export type ViewState = { 
+/**
+ * The board the PCB section is on; none when the project has no board.
+ */
+board: string | null, 
+/**
+ * The 3D view of `board` is on screen and drawn. When false, `view`, `camera`, `section`,
+ * `exploded` and `ortho` are absent.
+ */
+shown: boolean, 
+/**
+ * The view of `render` the camera is at (within a few degrees), else none.
+ */
+view?: RenderView, camera?: CameraPlace, ortho?: boolean, 
+/**
+ * The cut as `render --section` writes it (`x=13`), or none.
+ */
+section?: string, exploded?: boolean, 
+/**
+ * What is lit, as `render --highlight` would name it: the parts picked by designator, the
+ * net picked as `net:<name>`, the limits lit as `limit:<name>`.
+ */
+highlight: Array<string>, 
+/**
+ * The page's selection: the parts by designator, or one `net:<name>`.
+ */
+selection: Array<string>, 
+/**
+ * What the pointer (or a row of another view) lights now: a designator or `net:<name>`.
+ */
+hover?: string, xray: boolean, colourBy: ColourBy, 
+/**
+ * The height preview's height in mm while it is on, else none.
+ */
+heightPreview?: number, 
+/**
+ * The page's palette, as `render --theme` names one: `light` or `dark`. Read-only.
+ */
+theme: string, 
+/**
+ * The `netsmith render` command that draws what the view shows, as "Copy as command" has
+ * it; absent when the view is not shown.
+ */
+command?: string, };
+
+export type ClientMessage = { "type": "check", id: number, path: string, text: string, } | { "type": "focus" } | { "type": "view_state", id: number, state: ViewState, } | { "type": "view_error", id: number, message: string, status?: number, };
+
+export type ServerMessage = { "type": "rebuilt", analysis: Analysis, elapsedMs?: number, } | { "type": "analysing", since: number, } | { "type": "checked", id: number, analysis: Analysis, } | { "type": "progress", task: string, board: string, message: string, stage?: string, done?: number, total?: number, unit?: string, unitDone?: number, unitTotal?: number, } | { "type": "cancelled", task: string, board: string, message: string, } | { "type": "view", id: number, change?: ViewChange, } | { "type": "view_picture", id: number, };

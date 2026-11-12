@@ -43,6 +43,17 @@ The handle also has `nets()` (the nets with copper in the scene), `previewCount(
 
 For a recipe the host carries a handle: `document.querySelector('[data-testid=pcb-3d]').view3d` with `project(path)` (a point of the window where a pick finds the part, found by raycasting over its bounds: a package shape has leads and a lower body, not a box; null when it is hidden), `sample()` (the share of the canvas that is not the background, and how many colours), `colourAt(x, y)`, `parts()`, `preset()`, `ortho()`, and for the tools `toScreen([x, y, z])` (a point of the scene's frame of docs/BOARD3D.md in the window), `snap(x, y)`, `slots()` (the stackup's layers and where each is now), `exploded()`, `command()` and `board()` (the root's extras).
 
+## Driven by an agent (recipe `pcb-3d-control`, fixture `height_limits`)
+
+`GET /api/view`, `POST /api/view` and `GET /api/view/picture` (docs/BOARD3D.md, "Driving the editor's 3D view") reach the page that had the focus last over its socket: the page must be open. `scripts/editor-verify launch --fixture height_limits`, then `drive pcb-3d-control`; it asks the routes over HTTP from the recipe (as an agent does, `X-Netsmith: 1` on the `POST`), not from the page.
+
+1. With the page on 2D, `GET /api/view` says `"board":"Lidded","shown":false`, and the picture is `409`.
+2. `POST {}` opens the PCB section in 3D and answers once it is drawn: `"shown":true,"view":"iso","ortho":false`, and `command` is what "Copy as command" gives.
+3. `{"view":"top","highlight":["<tall's designator>","limit:lid"],"xray":true}`: the view is from the top, the tall part selected (the inspector names it), the lid lit, x-ray on (its button pressed). `highlight` comes back as given, `selection` is the part.
+4. `GET /api/view/picture`: a PNG the size of the canvas in device pixels, of what the canvas shows (without the bars and labels). The recipe saves it beside the screenshots as `pcb-3d-control-picture-top.png`: look at it.
+5. `section`, `ortho`, `camera` (`position`, `target`), `colourBy`, `heightPreview`, `select` (a part, or one `net:<name>`) and `exploded` are set and read back; the page shows each (the section panel, the colour select, the preview label).
+6. Refusals change nothing: an unknown id is `400` with render's list of parts, nets and limits; a board the project has not is `404`; `theme` is `400`; no guard header is `403`.
+
 ## Gotchas
 
 - The digits are the sections' keys: the presets and the tools use letters.

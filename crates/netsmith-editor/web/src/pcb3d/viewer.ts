@@ -788,6 +788,7 @@ export class Viewer {
     this.applyStack();
     if (this.cut) this.rebuildCaps();
     cancelAnimationFrame(this.explodeAnim);
+    this.explodeAnim = 0;
     if (this.still) {
       this.setExplodeT(this.explodeTo);
       return;
@@ -797,7 +798,7 @@ export class Viewer {
     const step = (now: number) => {
       const k = Math.min(1, (now - start) / (EXPLODE_MS * Math.max(0.2, Math.abs(this.explodeTo - from))));
       this.setExplodeT(from + (this.explodeTo - from) * k);
-      if (k < 1) this.explodeAnim = requestAnimationFrame(step);
+      this.explodeAnim = k < 1 ? requestAnimationFrame(step) : 0;
     };
     this.explodeAnim = requestAnimationFrame(step);
   }
@@ -1371,6 +1372,7 @@ export class Viewer {
   /** Move the camera to look at `target` from `dir`, at `dist` (perspective) or `zoom` (orthographic). */
   private moveTo(target: Vector3, dir: Vec3, dist: number, zoom: number, animate: boolean) {
     cancelAnimationFrame(this.anim);
+    this.anim = 0;
     const t0 = this.controls.target.clone();
     const d0 = this.direction();
     const dist0 = this.persp.position.distanceTo(this.controls.target);
@@ -1399,7 +1401,7 @@ export class Viewer {
       const k = Math.min(1, (now - start) / MOVE_MS);
       put(easeOut(k));
       this.request();
-      if (k < 1) this.anim = requestAnimationFrame(step);
+      this.anim = k < 1 ? requestAnimationFrame(step) : 0;
     };
     this.anim = requestAnimationFrame(step);
   }
@@ -1490,6 +1492,74 @@ export class Viewer {
     this.clip();
     this.controls.update();
     this.request();
+  }
+
+  // ---- the camera as an agent sets and reads it (`/api/view`, docs/BOARD3D.md), in the scene's frame ----
+
+  /** Look at the whole board from a direction of the scene's frame (from the target to the eye), as
+   * `netsmith render --view` does. A view straight down or up keeps the board's top edge up. */
+  lookFrom(towardEye: P3, animate = true) {
+    const w = worldOf(towardEye);
+    let dir: Vec3 = [w.x, w.y, w.z];
+    const l = Math.hypot(...dir) || 1;
+    dir = [dir[0] / l, dir[1] / l, dir[2] / l];
+    if (Math.abs(dir[1]) > 0.9999) dir = presetDirection(dir[1] > 0 ? 'top' : 'bottom');
+    const f = this.framing(this.box, dir);
+    this.moveTo(f.target, dir, f.dist, f.zoom, animate);
+  }
+
+  /** Put the eye at `position` looking at `target` (scene frame, mm). An orthographic camera shows
+   * at the target what a perspective one there would. */
+  place(position: P3, target: P3, animate = true) {
+    const p = worldOf(position);
+    const t = worldOf(target);
+    const d = p.clone().sub(t);
+    const dist = Math.max(d.length(), 0.01);
+    d.normalize();
+    let dir: Vec3 = [d.x, d.y, d.z];
+    if (Math.abs(dir[1]) > 0.9999) dir = presetDirection(dir[1] > 0 ? 'top' : 'bottom');
+    this.moveTo(t, dir, dist, this.orthoBase / halfHeightAt(dist, FOV), animate);
+  }
+
+  /** Where the eye is, what it looks at and the screen's up, in the scene's frame. For an
+   * orthographic camera the eye is where a perspective one would show the same at the target. */
+  cameraPlace(): { position: P3; target: P3; up: P3 } {
+    const t = this.controls.target.clone();
+    const dist = this.orthoOn ? distanceFor(this.ortho.top / this.ortho.zoom, FOV) : this.persp.position.distanceTo(t);
+    const d = this.direction();
+    const eye = new Vector3(t.x + d[0] * dist, t.y + d[1] * dist, t.z + d[2] * dist);
+    const cam = this.camera();
+    cam.updateMatrixWorld();
+    const up = new Vector3().setFromMatrixColumn(cam.matrixWorld, 1).normalize();
+    const round = (v: P3): P3 => v.map((x) => Math.round(x * 1000) / 1000 + 0) as P3;
+    return { position: round(sceneOf(eye)), target: round(sceneOf(t)), up: round(sceneOf(up)) };
+  }
+
+  /** Light height limits by name (both faces of a name), with no camera move; none clears them. */
+  lightLimits(names: string[]) {
+    const want = new Set(names);
+    cancelAnimationFrame(this.pulseAnim);
+    this.focusedLimits = new Set(this.limits.filter((l) => want.has(l.info.name)).map((l) => `${l.info.name}:${l.info.face}`));
+    this.restyle();
+    this.request();
+  }
+
+  /** A camera move or the stackup moving is under way. */
+  busy(): boolean {
+    return this.anim !== 0 || this.explodeAnim !== 0;
+  }
+
+  /** Draw now, and what follows a frame (the overlays), whether or not the window is drawing frames. */
+  drawNow() {
+    cancelAnimationFrame(this.frame);
+    this.draw();
+  }
+
+  /** A PNG of the canvas as it is drawn now: drawn and copied in the same task, so the drawing
+   * buffer (which is not kept between frames) is still there. */
+  picture(): Promise<Blob> {
+    this.render();
+    return new Promise((done, fail) => this.canvas.toBlob((b) => (b ? done(b) : fail(new Error('the canvas gave no picture'))), 'image/png'));
   }
 
   /** Draw now and count what is on screen (for a recipe: the view is not blank). The pixels are
