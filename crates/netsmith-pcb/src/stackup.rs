@@ -5,7 +5,10 @@
 //! Two copper layers are the process's outer copper round one core, which makes up the rest of
 //! the thickness the board chose. Four are the outer copper, a prepreg, an inner layer, a core,
 //! an inner layer, a prepreg and the outer copper, each as the process states it; their sum is
-//! the process's own figures and may differ from the chosen thickness by its rounding. The
+//! the process's own figures, so it may differ from the chosen thickness, which is the nominal:
+//! JLCPCB's JLC04161H-7628 adds up to 1.5862 mm, 1.6062 mm with the mask, for a 1.6 mm board.
+//! The fabricator makes a board within [`thickness_tolerance`] of the nominal, and the sum is
+//! well within it. The
 //! solder mask is on both faces. The silkscreen and the paste have no thickness here.
 
 use netsmith_core::OUNCE_OF_COPPER;
@@ -14,6 +17,14 @@ use crate::board::Board;
 
 /// The thickness of a solder mask layer, in mm, which JLCPCB's page gives as at least this.
 pub const MASK: f64 = 0.01;
+
+/// How far a finished board may be from its nominal thickness, in mm: JLCPCB's capabilities page
+/// (jlcpcb.com/capabilities/pcb-capabilities, "Board Thickness Tolerance") gives ±10% for a
+/// board of 1.0 mm or more and ±0.1 mm below. A stackup's layers add up to within this of the
+/// thickness the board chose.
+pub fn thickness_tolerance(nominal: f64) -> f64 {
+    if nominal >= 1.0 { 0.1 * nominal } else { 0.1 }
+}
 
 /// What a layer of the stackup is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
