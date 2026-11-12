@@ -3,14 +3,22 @@
 
 use std::collections::BTreeSet;
 
+use super::cap::cap;
 use super::{
-    Axis, Basis, CREASE_DEG, Camera, Image, Lens, RenderOptions, Rgba, Shading, XRAY_ALPHA, cross,
-    dot, normalise, sub,
+    Basis, CREASE_DEG, Camera, Image, Lens, RenderOptions, Rgba, Shading, XRAY_ALPHA, cross, dot,
+    normalise, sub,
 };
 use crate::mesh::{Mesh, bounds_of, trig};
 
 /// Fixed-point steps per sample in the coverage test.
 const SUB: i64 = 256;
+
+/// A corner this close (mm) to the section plane is in it.
+const PLANE_EPSILON: f64 = 1e-9;
+
+/// How much deeper than what is drawn already (as a share of its depth key) a triangle in the
+/// section plane may be and still be drawn over it.
+const LEVEL_TOLERANCE: f32 = 2e-6;
 
 const AMBIENT: f64 = 0.35;
 const KEY: f64 = 0.55;
@@ -72,6 +80,8 @@ struct Buffers {
     /// The mesh nearest at each sample, plus one; 0 is the background.
     id: Vec<u32>,
     normal: Vec<[i8; 3]>,
+    /// Whether the nearest surface is a cap (or lies in the section plane).
+    cap: Vec<bool>,
 }
 
 fn quantise(c: f64) -> u8 {
@@ -278,6 +288,7 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
     let lit: BTreeSet<&str> = options.highlight.iter().map(String::as_str).collect();
 
     let mut opaque: Vec<Tri> = Vec::new();
+    let mut flat: Vec<Tri> = Vec::new();
     let mut clear: Vec<Tri> = Vec::new();
     let mut poly = Vec::with_capacity(8);
     let mut tmp = Vec::with_capacity(8);
@@ -298,7 +309,18 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
         if options.xray && !mesh.material.is_translucent() && !highlighted {
             alpha = XRAY_ALPHA;
         }
-        let cull = mesh.closed && options.section.is_none();
+        // The cap of a closed mesh; when the section does not close up the mesh is drawn open.
+        let section = options.section;
+        let axis = section.map(|s| s.axis.index());
+        let mut capped = false;
+        let mut cap_tris: Vec<[[f64; 3]; 3]> = Vec::new();
+        if let (Some(s), Some(k), true, true) = (section, axis, options.caps, mesh.closed)
+            && let Some(t) = cap(mesh, k, s.at)
+        {
+            capped = true;
+            cap_tris = t;
+        }
+        let cull = mesh.closed && (section.is_none() || capped);
         let normals = match options.shading {
             Shading::Smooth => mesh
                 .normals
@@ -306,12 +328,15 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                 .filter(|n| n.len() == mesh.positions.len()),
             Shading::Flat => None,
         };
-        for t in mesh.indices.as_chunks::<3>().0 {
+        let own = mesh.indices.as_chunks::<3>().0.iter().filter_map(|t| {
             let ix = [t[0] as usize, t[1] as usize, t[2] as usize];
             if ix.iter().any(|&i| i >= mesh.positions.len()) {
-                continue;
+                return None;
             }
-            let p = ix.map(|i| mesh.positions[i]);
+            Some((ix.map(|i| mesh.positions[i]), Some(ix), false))
+        });
+        let caps = cap_tris.iter().map(|&p| (p, None, true));
+        for (p, ix, is_cap) in own.chain(caps) {
             let face = cross(sub(p[1], p[0]), sub(p[2], p[0]));
             if dot(face, face) == 0.0 || !face.iter().all(|c| c.is_finite()) {
                 continue;
@@ -322,14 +347,19 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                 Lens::Perspective { .. } => sub(camera.eye, p[0]),
             };
             let front = dot(face, towards) > 0.0;
-            if !front && cull {
+            if !front && cull && !is_cap {
                 continue;
             }
             let sign = if front { 1.0 } else { -1.0 };
-            let corner_normal = |k: usize| match normals {
-                Some(ns) => ns[ix[k]].map(|c| c * sign),
-                None => face.map(|c| c * sign),
+            let corner_normal = |k: usize| match (normals, ix) {
+                (Some(ns), Some(ix)) => ns[ix[k]].map(|c| c * sign),
+                _ => face.map(|c| c * sign),
             };
+            // In the section plane: a cap, or a flat piece the scene lays in it.
+            let in_plane = is_cap
+                || section
+                    .zip(axis)
+                    .is_some_and(|(s, k)| p.iter().all(|c| (c[k] - s.at).abs() <= PLANE_EPSILON));
             poly.clear();
             for (k, &corner) in p.iter().enumerate() {
                 poly.push(V {
@@ -337,12 +367,7 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                     c: stage.light(corner_normal(k), base),
                 });
             }
-            if let Some(s) = options.section {
-                let k = match s.axis {
-                    Axis::X => 0,
-                    Axis::Y => 1,
-                    Axis::Z => 2,
-                };
+            if let (Some(s), Some(k)) = (section, axis) {
                 let keep = if s.keep_below { -1.0 } else { 1.0 };
                 clip(&poly, &mut tmp, |v| keep * (v.p[k] - s.at));
                 std::mem::swap(&mut poly, &mut tmp);
@@ -389,6 +414,8 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                 };
                 if see_through {
                     clear.push(tri);
+                } else if in_plane {
+                    flat.push(tri);
                 } else {
                     opaque.push(tri);
                 }
@@ -404,23 +431,30 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
         depth: vec![f32::INFINITY; n],
         id: vec![0; n],
         normal: vec![[0; 3]; n],
+        cap: vec![false; n],
     };
-    let draw_opaque = |buf: &mut Buffers, tris: &[Tri], write_colour: bool| {
+    // `level`: a triangle in the section plane wins a tie in depth with what is already drawn
+    // there (the one drawn later is on top).
+    let draw_opaque = |buf: &mut Buffers, tris: &[Tri], write_colour: bool, level: bool| {
         for t in tris {
             let Buffers {
                 colour,
                 depth,
                 id,
                 normal,
+                cap,
                 ..
             } = buf;
             cover(&t.v, w, h, |i, b| {
                 let (z, c) = at(&t.v, b);
                 let z = z as f32;
-                if z < depth[i] {
-                    depth[i] = z;
+                let near = z < depth[i]
+                    || (level && z <= depth[i] + LEVEL_TOLERANCE * depth[i].abs().max(1e-3));
+                if near {
+                    depth[i] = depth[i].min(z);
                     id[i] = t.mesh;
                     normal[i] = t.normal;
+                    cap[i] = level;
                     if write_colour {
                         colour[i] = c.map(quantise);
                     }
@@ -428,7 +462,8 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
             });
         }
     };
-    draw_opaque(&mut buf, &opaque, true);
+    draw_opaque(&mut buf, &opaque, true, false);
+    draw_opaque(&mut buf, &flat, true, true);
     let depth_jump = bounds_of(meshes)
         .map(|b| {
             let s = b.size();
@@ -450,8 +485,10 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                 depth: vec![f32::INFINITY; n],
                 id: vec![0; n],
                 normal: vec![[0; 3]; n],
+                cap: vec![false; n],
             };
-            draw_opaque(&mut g, &all, false);
+            draw_opaque(&mut g, &all, false, false);
+            draw_opaque(&mut g, &flat, false, true);
             lines = Some(outlines(&g, &stage, depth_jump, ss));
         } else {
             let mask = outlines(&buf, &stage, depth_jump, ss);
@@ -489,7 +526,8 @@ fn outlines(g: &Buffers, stage: &Stage, depth_jump: f64, ss: usize) -> Vec<bool>
     let crease = trig::sin_cos(trig::radians(CREASE_DEG)).1 * 127.0 * 127.0;
     let differs = |a: usize, b: usize| {
         if g.id[a] != g.id[b] {
-            return true;
+            // The bands of a section meet without a line, so thin layers stay readable.
+            return !(g.cap[a] && g.cap[b]);
         }
         if g.id[a] == 0 {
             return false;

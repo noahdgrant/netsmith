@@ -31,6 +31,8 @@ pub struct Request {
     /// As given: part paths, designators, `net:<name>` and `limit:<name>`.
     pub highlight: Vec<String>,
     pub xray: bool,
+    /// Fill the cut faces of a section ([`RenderOptions::caps`]); `--no-caps` leaves them open.
+    pub caps: bool,
     pub dark: bool,
     pub perspective: bool,
 }
@@ -43,6 +45,7 @@ impl Default for Request {
             section: None,
             highlight: Vec::new(),
             xray: false,
+            caps: true,
             dark: false,
             perspective: false,
         }
@@ -207,6 +210,7 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
         .palette(),
         highlight,
         xray: request.xray,
+        caps: request.caps,
         section: request.section.map(|(axis, at)| Section {
             axis,
             at,
@@ -219,7 +223,11 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
 /// The meshes of `scene` drawn as `request` says, as the bytes of a PNG.
 pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
     let highlight = resolve_highlight(scene, &request.highlight)?;
-    let meshes: Vec<Mesh> = mesh::of_scene(scene);
+    // A capped section draws the board as its stackup, a layer at a time.
+    let meshes: Vec<Mesh> = match request.section {
+        Some((axis, at)) if request.caps => mesh::of_scene_section(scene, axis, at),
+        _ => mesh::of_scene(scene),
+    };
     let options = options(request, highlight);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }

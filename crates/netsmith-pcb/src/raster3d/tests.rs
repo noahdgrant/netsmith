@@ -312,6 +312,97 @@ fn a_section_plane_cuts_away_one_side() {
 }
 
 #[test]
+fn a_section_fills_the_cut_of_a_closed_mesh_with_a_cap_and_caps_can_be_left_off() {
+    let o = plain(100, 100);
+    let body = Mesh::axis_box("U1", Material::Body, [-4.0, -4.0, 0.0], [4.0, 4.0, 1.0]);
+    let section = Some(Section {
+        axis: Axis::X,
+        at: 0.0,
+        keep_below: false,
+    });
+    // Seen from -x (the removed side is x < 0), so the cut at x = 0 faces the camera.
+    let cam = Camera {
+        eye: [-50.0, 0.0, 0.5],
+        target: [0.0, 0.0, 0.5],
+        up: [0.0, 0.0, 1.0],
+        lens: Lens::Orthographic { half_height: 5.0 },
+    };
+    let capped = RenderOptions {
+        section,
+        ..o.clone()
+    };
+    let open = RenderOptions {
+        caps: false,
+        ..capped.clone()
+    };
+    let with = render(std::slice::from_ref(&body), &cam, &capped);
+    let without = render(std::slice::from_ref(&body), &cam, &open);
+    // 10 pixels a mm: the cut is 8 mm wide and 1 mm high, centred.
+    let body_colour = o.palette.colour(Material::Body);
+    let lit = with.pixel(50, 50);
+    // The cap is the body's colour, lit: the same hue, not the background.
+    assert!(!is_bg(&with, &o, 50, 50));
+    assert!(
+        lit[0] > 0 && (lit[0] as i32 - lit[2] as i32).abs() < 12,
+        "{lit:?} {body_colour:?}"
+    );
+    assert!(with.pixel(50, 40) == o.palette.background || with.pixel(50, 40) != lit);
+    // The cap lies in the plane, in front of the box's far wall: a mesh a little behind the cut
+    // but in front of that wall is hidden by the cap and is not by an open cut.
+    let inside = Mesh::axis_box("in", Material::Metal, [1.0, -1.0, 0.2], [2.0, 1.0, 0.8]);
+    let hidden = render(&[body.clone(), inside.clone()], &cam, &capped);
+    assert_eq!(hidden.pixel(50, 50), with.pixel(50, 50));
+    let seen = render(&[body.clone(), inside], &cam, &open);
+    assert_ne!(seen.pixel(50, 50), without.pixel(50, 50));
+    let again = render(std::slice::from_ref(&body), &cam, &capped);
+    assert_eq!(with, again);
+}
+
+#[test]
+fn two_caps_in_one_plane_meet_with_the_later_over_the_earlier_and_no_line_between() {
+    let o = RenderOptions {
+        width: 100,
+        height: 100,
+        supersample: 1,
+        outlines: true,
+        section: Some(Section {
+            axis: Axis::X,
+            at: 0.0,
+            keep_below: false,
+        }),
+        ..RenderOptions::default()
+    };
+    let cam = Camera {
+        eye: [-50.0, 0.0, 0.0],
+        target: [0.0, 0.0, 0.0],
+        up: [0.0, 0.0, 1.0],
+        lens: Lens::Orthographic { half_height: 5.0 },
+    };
+    // A slab, and a thin one on top of it that shares its cut plane's face: two layers of a
+    // stack, side by side along z.
+    let a = Mesh::axis_box(
+        "board",
+        Material::Substrate,
+        [-3.0, -3.0, -2.0],
+        [3.0, 3.0, 0.0],
+    );
+    let b = Mesh::axis_box(
+        "board",
+        Material::Prepreg,
+        [-3.0, -3.0, 0.0],
+        [3.0, 3.0, 2.0],
+    );
+    let img = render(&[a, b], &cam, &o);
+    let (low, high) = (img.pixel(50, 60), img.pixel(50, 40));
+    assert_ne!(low, high);
+    // Every pixel down the column between the two bands is one of the two (no line).
+    for y in 42..58 {
+        let p = img.pixel(50, y);
+        assert!(p == low || p == high, "row {y}: {p:?}");
+    }
+}
+
+#[test]
 fn an_open_mesh_is_drawn_from_both_sides_and_flat_shading_works() {
     let o = plain(60, 60);
     let sq = Polygon::new(rounded_rect([-2.0, -2.0], [2.0, 2.0], 0.0, 0));
