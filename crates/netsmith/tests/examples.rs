@@ -8,7 +8,7 @@ use netsmith_pcb::{
 };
 use netsmith_solve::Catalogs;
 
-use crate::common;
+use crate::boards as common;
 
 use common::{edge_gap, fixtures};
 

@@ -4,7 +4,7 @@
 use netsmith_pcb::{Board, FootprintLibrary, kicad_pcb, route};
 use netsmith_solve::Catalogs;
 
-use crate::common;
+use crate::boards as common;
 
 fn example(name: &str, library: &FootprintLibrary) -> Board {
     let path = format!("{}/../../examples/{name}.nsm", env!("CARGO_MANIFEST_DIR"));

@@ -25,6 +25,9 @@ toml = "1.1.8"
 uuid = { version = "1", features = ["v5"] }
 
 [dev-dependencies]
+# The tests resolve their processes with the check, the solver and the design stage, never with
+# the netsmith crate: a crate the tests depend on makes them dependents of every crate it
+# depends on, and the netsmith crate depends on all of them (issue #518).
 netsmith-check = { path = "../netsmith-check" }
-netsmith = { path = "../netsmith" }
+netsmith-design = { path = "../netsmith-design" }
 netsmith-solve = { path = "../netsmith-solve" }

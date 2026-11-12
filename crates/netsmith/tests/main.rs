@@ -4,6 +4,11 @@
 //! `cargo nextest run -p netsmith <file>::`.
 
 mod common;
+// The synthetic boards and processes of netsmith-pcb's tests, for the tests below that place and
+// route the example boards (examples, copper, placed, kicad_drc). They live there, upstream, so
+// that a change to them selects both crates' tests (scripts/ci-changes).
+#[path = "../../netsmith-pcb/tests/common/mod.rs"]
+mod boards;
 
 mod alternatives;
 mod bank;
@@ -16,6 +21,7 @@ mod compare;
 mod conflicts;
 mod consigned;
 mod constraints;
+mod copper;
 mod defaults;
 mod dxf;
 mod easyduino;
@@ -35,6 +41,7 @@ mod editor_verify;
 mod enclosure_sensor;
 mod environment;
 mod erc;
+mod examples;
 mod fab;
 mod fab_environment;
 mod fab_no_part_number;
@@ -43,6 +50,7 @@ mod guide;
 mod guidelines;
 mod height;
 mod ic_symbols;
+mod kicad_drc;
 mod kicad_rows;
 mod lock_refresh;
 mod lt8641;
@@ -64,6 +72,7 @@ mod pin_export;
 mod pin_swaps;
 mod pinout;
 mod pins;
+mod placed;
 mod power_issues;
 mod power_manifold;
 mod power_manifold_ics;

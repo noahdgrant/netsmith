@@ -1,6 +1,6 @@
 //! Build every board in a `.nsm` file and write its `.kicad_pcb`.
 //!
-//! `cargo run -p netsmith-pcb --example pcb -- examples/led.nsm --out out`
+//! `cargo run -p netsmith --example pcb -- examples/led.nsm --out out`
 
 use std::{env, fs, path::PathBuf, process::ExitCode};
 

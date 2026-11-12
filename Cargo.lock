@@ -596,9 +596,9 @@ name = "netsmith-3d"
 version = "0.1.0"
 dependencies = [
  "i_overlay",
- "netsmith",
  "netsmith-check",
  "netsmith-core",
+ "netsmith-design",
  "netsmith-kicad",
  "netsmith-pcb",
  "netsmith-solve",
@@ -692,9 +692,9 @@ dependencies = [
 name = "netsmith-pcb"
 version = "0.1.0"
 dependencies = [
- "netsmith",
  "netsmith-check",
  "netsmith-core",
+ "netsmith-design",
  "netsmith-fab",
  "netsmith-kicad",
  "netsmith-solve",

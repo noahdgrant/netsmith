@@ -5,18 +5,14 @@
 
 mod cancel;
 mod common;
-mod copper;
 mod cutout_pads;
 mod drc;
 mod edge_wall;
-mod examples;
 mod generated_vs_kicad;
 mod hole_faces;
-mod kicad_drc;
 mod local_clearance;
 mod maker_vs_kicad;
 mod mixed;
-mod placed;
 mod protrusion;
 mod routing;
 mod synthetic;
