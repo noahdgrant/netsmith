@@ -8,6 +8,7 @@
 
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
 use super::outline::SILK_TO_COPPER;
+use crate::body3d::{Edge, Lead, Package};
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -290,6 +291,89 @@ const SOT89: &[Sot89] = &[
 /// SOT-89's body: 2.5 mm across, 4.5 mm along the pins.
 const SOT89_BODY: (f64, f64) = (2.5, 4.5);
 
+/// SOT-89-3's package dimensions (TO-243), for the shape drawn in 3D (`Package::GullWing`), in
+/// mm. Each is the nominal of the **Diodes Incorporated "SOT89 Package Information" drawing
+/// (Rev. 2026-01-16, page 1, Package Outline Dimensions, whose table prints a typical value for
+/// each)**, checked against **onsemi's SOT-89 3 lead case outline 528AG, issue O, 4 March 2014
+/// (document 98AON82692F)** and **Union Semiconductor's SOT89-3 outline drawing (Rev. 02,
+/// August 2015)**. onsemi's 528AH refers to JEDEC TO-243 variation AA; JEDEC's own drawing was
+/// not read. The symbols are the Diodes table's, with the others' in brackets.
+///
+/// | Symbol | Meaning | Diodes | onsemi range | Union range |
+/// |---|---|---|---|---|
+/// | D | body length, along the row of pins | 4.50 | 4.40 to 4.60 | 4.40 to 4.60 |
+/// | E | body width, across the row | 2.50 | 2.40 to 2.60 | 2.30 to 2.60 |
+/// | e | pitch of the pins | 1.50 | 1.50 | 1.50 |
+/// | B1 (b) | width of pins 1 and 3 outside the body | 0.48 | 0.38 to 0.47 | 0.32 to 0.54 |
+/// | B (b1) | width of pin 2 outside the body | 0.56 | 0.46 to 0.55 | 0.40 to 0.62 |
+/// | L | pin length outside the body (the pins lie flat on the board) | 1.05 | 0.89 to 1.20 | 0.89 to 1.20 |
+/// | D1 (D2, D1) | width of the tab | 1.733 | 1.60 to 1.90 | 1.50 to 1.83 |
+/// | H (H, E1) | overall length, pin tips to tab tip | 4.10 | 4.05 to 4.25 | 3.94 to 4.25 |
+/// | E2 | how far the wide part of the tab runs in under the body from the tab's side | 2.20 | not given | not given |
+///
+/// Diodes' B1 and B are 0.01 mm over onsemi's range (and inside Union's); every other figure is
+/// inside both ranges. Two figures are derived, not read: how far the **tab reaches beyond the
+/// body** is H - E - L = 0.55 mm (Diodes' own H1 - E2, 2.78 - 2.20 = 0.58 mm, agrees; the
+/// onsemi nominals give 0.60 mm), and the **centre lead** is joined to the wide part of the tab
+/// where it stops, E - E2 = 0.30 mm from the pins' edge, under the body. Diodes also gives the
+/// width of that wide part, D2 = 1.71 mm, 0.02 mm less than D1: the tab is drawn as wide as D1
+/// all along. The thickness of the metal is the drawing-only constant of `body3d.rs` and not the
+/// makers' c (0.35 to 0.44 mm). The fabrication outline of the footprint is the body; the pads
+/// are the recorded ones (the tab's pad is as wide as D1, the same figure).
+mod sot89_package {
+    /// Across the row of pins (x), then along it (y).
+    pub const BODY: (f64, f64) = super::SOT89_BODY;
+    /// Pin pitch.
+    pub const PITCH: f64 = 1.50;
+    pub const OUTER_PIN_WIDTH: f64 = 0.48;
+    pub const CENTRE_PIN_WIDTH: f64 = 0.56;
+    /// How far a pin reaches beyond the body (L), and the length of its foot: the same.
+    pub const PIN_LENGTH: f64 = 1.05;
+    pub const TAB_WIDTH: f64 = 1.733;
+    /// Overall, pin tips to tab tip (H).
+    pub const OVERALL: f64 = 4.10;
+    /// How far the wide part of the tab runs in under the body (E2).
+    pub const TAB_UNDER: f64 = 2.20;
+    /// How far the tab reaches beyond the body, derived: H - E - L.
+    pub const TAB_REACH: f64 = OVERALL - BODY.0 - PIN_LENGTH;
+    /// How far in under the body the centre lead runs to meet the tab: E - E2.
+    pub const CENTRE_UNDER: f64 = BODY.0 - TAB_UNDER;
+}
+
+/// The shape of SOT-89-3: pins 1 and 3 and the narrow end of pin 2 on the left, pin 2's tab
+/// under the body and out of the right.
+fn sot89_3_package() -> Package {
+    use sot89_package as dims;
+    let pin = |at: f64, width: Option<f64>, under: Option<f64>| Lead {
+        edge: Edge::Left,
+        at,
+        width,
+        reach: None,
+        under,
+    };
+    let leads = vec![
+        pin(-dims::PITCH, None, None),
+        pin(0.0, Some(dims::CENTRE_PIN_WIDTH), Some(dims::CENTRE_UNDER)),
+        pin(dims::PITCH, None, None),
+        Lead {
+            edge: Edge::Right,
+            at: 0.0,
+            width: Some(dims::TAB_WIDTH),
+            reach: Some(dims::TAB_REACH),
+            under: Some(dims::TAB_UNDER),
+        },
+    ];
+    Package::GullWing {
+        body: dims::BODY,
+        // The pins' tips; the tab states its own reach.
+        span: (dims::BODY.0 + 2.0 * dims::PIN_LENGTH, dims::BODY.1),
+        lead_width: dims::OUTER_PIN_WIDTH,
+        lead_length: dims::PIN_LENGTH,
+        leads,
+        exposed: None,
+    }
+}
+
 /// Every `Library:Name` this module generates.
 pub fn names() -> Vec<String> {
     DPAK.iter()
@@ -461,5 +545,11 @@ fn sot89(s: &Sot89) -> Footprint {
         &mut drawing,
         Pt::new(x, y - s.lead_size.1 / 2.0 - SILK_TO_COPPER),
     );
-    drawing.finish(-(court_y + 0.7), court_y + 0.7)
+    let footprint = drawing.finish(-(court_y + 0.7), court_y + 0.7);
+    // Only the three-pin package is shaped; SOT-89-5 stays a box.
+    if s.name.starts_with("SOT-89-3") {
+        super::shaped(footprint, sot89_3_package())
+    } else {
+        footprint
+    }
 }
