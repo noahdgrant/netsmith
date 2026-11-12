@@ -34,3 +34,32 @@ pub fn run(args: Args) -> ExitCode {
         write: false,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, common};
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn format_and_notes_have_defaults_and_a_set_of_values() {
+        let Ok(Command::Check(c)) = parse(&["check", "--format", "json", "--notes", "summary"])
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (c.output.format, c.output.notes),
+            (common::Format::Json, common::Notes::Summary)
+        );
+        let Ok(Command::Check(c)) = parse(&["check"]) else {
+            panic!()
+        };
+        assert_eq!(
+            (c.output.format, c.output.notes),
+            (common::Format::Text, common::Notes::All)
+        );
+        assert_eq!(kind(&["build", "--format", "xml"]), ErrorKind::InvalidValue);
+        assert_eq!(kind(&["build", "--notes", "some"]), ErrorKind::InvalidValue);
+        assert!(parse(&["editor", "--format", "json"]).is_err());
+    }
+}

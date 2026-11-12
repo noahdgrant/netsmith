@@ -32,3 +32,25 @@ fn run_init(name: Option<&str>) -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::parse;
+    use crate::commands::{Command, init};
+
+    #[test]
+    fn init_takes_only_a_name() {
+        assert_eq!(
+            parse(&["init"]),
+            Ok(Command::Init(init::Args { name: None }))
+        );
+        assert_eq!(
+            parse(&["init", "--name", "demo"]),
+            Ok(Command::Init(init::Args {
+                name: Some("demo".into())
+            }))
+        );
+        assert!(parse(&["init", "a.nsm"]).unwrap_err().contains("a.nsm"));
+        assert!(parse(&["init", "--name"]).is_err());
+    }
+}

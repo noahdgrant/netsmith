@@ -149,3 +149,28 @@ pub enum LockMode {
     /// `--check`: write nothing; fail when the lock is not current.
     Check,
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, lock};
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn lock_takes_update_or_check_and_not_both() {
+        let mode = |args: &[&str]| match parse(args) {
+            Ok(Command::Lock(l)) => (l.mode(), l.file),
+            other => panic!("{args:?}: {other:?}"),
+        };
+        assert_eq!(mode(&["lock", "--update"]), (lock::LockMode::Update, None));
+        assert_eq!(
+            mode(&["lock", "--check", "a.nsm"]),
+            (lock::LockMode::Check, Some("a.nsm".into()))
+        );
+        assert_eq!(kind(&["lock"]), ErrorKind::MissingRequiredArgument);
+        assert_eq!(
+            kind(&["lock", "--update", "--check"]),
+            ErrorKind::ArgumentConflict
+        );
+    }
+}

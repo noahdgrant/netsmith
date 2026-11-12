@@ -74,3 +74,28 @@ fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::Command;
+    use crate::commands::common::testing::parse;
+
+    #[test]
+    fn the_editor_takes_a_port_with_8787_as_the_default() {
+        let port = |args: &[&str]| match parse(args) {
+            Ok(Command::Editor(e)) => e.port,
+            other => panic!("{args:?}: {other:?}"),
+        };
+        assert_eq!(port(&["editor", "a.nsm"]), 8787);
+        assert_eq!(port(&["editor", "--port", "9000"]), 9000);
+        assert!(
+            parse(&["editor", "--port", "http"])
+                .unwrap_err()
+                .contains("http")
+        );
+        assert!(parse(&["editor", "--port", "70000"]).is_err());
+        assert!(parse(&["editor", "--port"]).is_err());
+        assert!(parse(&["editor", "--out", "x"]).is_err());
+        assert!(parse(&["build", "--port", "1"]).is_err());
+    }
+}

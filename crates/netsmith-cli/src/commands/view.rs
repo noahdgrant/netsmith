@@ -207,3 +207,173 @@ impl ColourByName {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::parse;
+    use crate::commands::{Command, common};
+    use std::path::PathBuf;
+
+    /// The error of a `view` line: clap's, or the one its request gives.
+    fn view_err(line: &[&str]) -> String {
+        match parse(line) {
+            Err(e) => e,
+            Ok(Command::View(v)) => v.request().unwrap_err(),
+            Ok(other) => panic!("{other:?}"),
+        }
+    }
+
+    fn view_request(args: &[&str]) -> crate::view_client::Request {
+        let mut line = vec!["view"];
+        line.extend_from_slice(args);
+        match parse(&line) {
+            Ok(Command::View(v)) => v.request().unwrap(),
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn view_with_no_flag_reads_the_state_of_the_editor_on_the_default_port() {
+        let request = view_request(&[]);
+        assert_eq!(request.port, common::DEFAULT_PORT);
+        assert!(!request.changes() && !request.json && request.picture.is_none());
+        assert_eq!(request.change, netsmith_editor::api::ViewChange::default());
+    }
+
+    #[test]
+    fn view_takes_the_flags_of_render_and_the_editors_own() {
+        use netsmith_editor::api::{ColourBy, PreviewSetting, RenderView};
+        let request = view_request(&[
+            "--port",
+            "9001",
+            "--board",
+            "Demo/main",
+            "--view",
+            "iso-bottom",
+            "--section",
+            "x=12.5",
+            "--highlight",
+            "J1,net:GND",
+            "--highlight",
+            "limit:lid",
+            "--xray",
+            "--perspective",
+            "--colour-by",
+            "margin",
+            "--height-preview",
+            "2.5",
+            "--layers-apart",
+            "--json",
+            "--picture",
+            "j1.png",
+        ]);
+        let change = &request.change;
+        assert_eq!(request.port, 9001);
+        assert_eq!(change.board.as_deref(), Some("Demo/main"));
+        assert_eq!(change.view, Some(RenderView::IsoBottom));
+        assert_eq!(change.section.as_deref(), Some("x=12.5"));
+        assert_eq!(
+            change.highlight,
+            Some(vec!["J1".into(), "net:GND".into(), "limit:lid".into()])
+        );
+        assert_eq!(change.xray, Some(true));
+        assert_eq!(change.ortho, Some(false));
+        assert_eq!(change.colour_by, Some(ColourBy::Margin));
+        assert_eq!(change.height_preview, Some(PreviewSetting::Mm(2.5)));
+        assert_eq!(change.exploded, Some(true));
+        assert!(request.json && request.changes());
+        assert_eq!(request.picture, Some(PathBuf::from("j1.png")));
+        // The reverse of each switch, and the other spelling of colour.
+        let request = view_request(&[
+            "--no-xray",
+            "--ortho",
+            "--no-layers-apart",
+            "--color-by",
+            "kind",
+            "--height-preview",
+            "off",
+            "--section",
+            "none",
+            "--select",
+            "R1",
+        ]);
+        let change = &request.change;
+        assert_eq!(change.xray, Some(false));
+        assert_eq!(change.ortho, Some(true));
+        assert_eq!(change.exploded, Some(false));
+        assert_eq!(change.colour_by, Some(ColourBy::Kind));
+        assert_eq!(change.height_preview, Some(PreviewSetting::On(false)));
+        assert_eq!(change.section.as_deref(), Some("none"));
+        assert_eq!(change.select, Some(vec!["R1".into()]));
+    }
+
+    #[test]
+    fn view_switches_and_their_reverses_are_the_last_one_given() {
+        let change =
+            view_request(&["--xray", "--no-xray", "--no-layers-apart", "--layers-apart"]).change;
+        assert_eq!((change.xray, change.exploded), (Some(false), Some(true)));
+        assert_eq!(
+            view_request(&["--no-xray", "--xray"]).change.xray,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn view_says_none_to_light_or_select_nothing() {
+        assert_eq!(
+            view_request(&["--highlight", "none"]).change.highlight,
+            Some(Vec::new())
+        );
+        assert_eq!(
+            view_request(&["--select", "none"]).change.select,
+            Some(Vec::new())
+        );
+        for args in [
+            &["view", "--highlight", "none,J1"][..],
+            &["view", "--highlight", "none", "--highlight", "J1"],
+            &["view", "--select", "J1", "--select", "none"],
+        ] {
+            let e = view_err(args);
+            assert!(e.contains("clears it"), "{args:?}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_picture_alone_still_changes_the_page_so_that_the_view_is_open() {
+        let request = view_request(&["--picture", "a.png"]);
+        assert!(request.changes());
+        assert_eq!(request.change, netsmith_editor::api::ViewChange::default());
+    }
+
+    #[test]
+    fn view_mistakes_say_what_is_wrong() {
+        for (args, says) in [
+            (&["--theme", "dark"][..], "person's own setting"),
+            (&["--view", "sideways"], "iso-bottom"),
+            (&["--view"], "--view"),
+            (&["--section", "w=1"], "--section needs"),
+            (&["--section", "x"], "--section needs"),
+            (&["--ortho", "--perspective"], "cannot be used with"),
+            (
+                &["--highlight", "J1", "--select", "J1"],
+                "cannot be used with",
+            ),
+            (&["--select", "limit:lid"], "--highlight"),
+            (&["--colour-by", "shade"], "provenance"),
+            (&["--height-preview", "0"], "0.1 to 50"),
+            (&["--height-preview", "51"], "0.1 to 50"),
+            (&["--height-preview", "tall"], "0.1 to 50"),
+            (&["--port", "0"], "1..=65535"),
+            (&["--port", "http"], "http"),
+            (&["--picture"], "--picture"),
+            (&["--out", "a.png"], "--picture"),
+            (&["--size", "100x100"], "--size"),
+            (&["examples/led.nsm"], "takes no file"),
+        ] {
+            let mut line = vec!["view"];
+            line.extend_from_slice(args);
+            let e = view_err(&line);
+            assert!(e.contains(says), "{args:?}: {e}");
+        }
+    }
+}

@@ -99,3 +99,25 @@ fn run_parity(
         ExitCode::FAILURE
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, common, parity};
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn parity_takes_the_board_and_its_files() {
+        assert!(matches!(
+            parse(&["parity", "b.kicad_pcb", "--format", "json"]),
+            Ok(Command::Parity(parity::Args {
+                table: None,
+                map: None,
+                svg: None,
+                format: common::Format::Json,
+                ..
+            }))
+        ));
+        assert_eq!(kind(&["parity"]), ErrorKind::MissingRequiredArgument);
+    }
+}

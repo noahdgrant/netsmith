@@ -594,3 +594,132 @@ pub enum OrderRequest {
     /// `--order <name>`: make that order.
     Make(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, output, parse};
+    use crate::commands::{Command, fab};
+    use clap::error::ErrorKind;
+
+    fn fab(args: &[&str]) -> fab::Args {
+        let mut line = vec!["fab"];
+        line.extend_from_slice(args);
+        match parse(&line) {
+            Ok(Command::Fab(fab)) => fab,
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fab_has_its_defaults_and_takes_a_file_and_an_out_directory() {
+        assert_eq!(
+            fab(&["a.nsm", "--out", "x"]),
+            fab::Args {
+                file: Some("a.nsm".into()),
+                out: Some("x".into()),
+                route_timeout: None,
+                allow_drc_violations: false,
+                cross_check: false,
+                strict: false,
+                locked: false,
+                constraints: None,
+                pins: None,
+                no_glb: false,
+                save_placed: false,
+                order: None,
+                quiet: false,
+                output: output(),
+            }
+        );
+        assert!(parse(&["fab", "a.nsm", "--port", "9"]).is_err());
+        let f = fab(&[
+            "--allow-drc-violations",
+            "--cross-check",
+            "--quiet",
+            "--no-glb",
+        ]);
+        assert!(f.allow_drc_violations && f.cross_check && f.quiet && f.no_glb);
+        assert!(parse(&["build", "--cross-check"]).is_err());
+        assert!(parse(&["build", "--no-glb"]).is_err());
+    }
+
+    #[test]
+    fn fab_takes_a_route_timeout_in_whole_seconds() {
+        assert_eq!(fab(&["--route-timeout", "30"]).route_timeout, Some(30));
+        let e = parse(&["fab", "--route-timeout", "soon"]).unwrap_err();
+        assert!(e.contains("--route-timeout") && e.contains("soon"), "{e}");
+        assert!(parse(&["fab", "--route-timeout"]).is_err());
+        assert!(parse(&["build", "--route-timeout", "3"]).is_err());
+    }
+
+    #[test]
+    fn fab_order_takes_a_name_or_lists_the_orders_and_no_file() {
+        assert_eq!(
+            fab(&["--order", "devkit"]).order(),
+            Some(fab::OrderRequest::Make("devkit".into()))
+        );
+        assert_eq!(fab(&["--order"]).order(), Some(fab::OrderRequest::List));
+        assert_eq!(fab(&[]).order(), None);
+        // A flag after `--order` is not its name.
+        let f = fab(&["--order", "--out", "x"]);
+        assert_eq!(
+            (f.order(), f.out),
+            (Some(fab::OrderRequest::List), Some("x".into()))
+        );
+        let f = fab(&["--out", "x", "--order", "d", "--route-timeout", "9"]);
+        assert_eq!(f.order(), Some(fab::OrderRequest::Make("d".into())));
+        assert_eq!(f.route_timeout, Some(9));
+        assert_eq!(
+            kind(&["fab", "a.nsm", "--order", "d"]),
+            ErrorKind::ArgumentConflict
+        );
+        assert_eq!(
+            kind(&["fab", "--order", "d", "--save-placed"]),
+            ErrorKind::ArgumentConflict
+        );
+        assert!(fab(&["a.nsm", "--save-placed"]).save_placed);
+        assert!(parse(&["build", "--order", "d"]).is_err());
+    }
+
+    #[test]
+    fn build_and_fab_take_strict_and_locked_and_nothing_else_does() {
+        let Ok(Command::Build(b)) = parse(&["build", "--strict", "--locked"]) else {
+            panic!()
+        };
+        assert!(b.strict && b.locked);
+        let f = fab(&["a.nsm", "--locked", "--strict"]);
+        assert!(f.locked && f.strict);
+        assert!(!fab(&[]).locked, "a run may change the lock by default");
+        assert!(parse(&["editor", "--strict"]).is_err());
+        assert!(parse(&["editor", "--locked"]).is_err());
+        assert!(parse(&["compare", "a", "b", "--locked"]).is_err());
+    }
+
+    #[test]
+    fn fab_takes_pins_and_constraints_for_one_run() {
+        assert_eq!(fab(&["--pins", "locked"]).pins_locked(), Some(true));
+        assert_eq!(fab(&["--pins", "auto"]).pins_locked(), Some(false));
+        assert_eq!(fab(&[]).pins_locked(), None, "the manifest decides");
+        assert_eq!(
+            fab(&["--constraints", "warn"]).constraints_warn(),
+            Some(true)
+        );
+        assert_eq!(
+            fab(&["--constraints", "error"]).constraints_warn(),
+            Some(false)
+        );
+        assert_eq!(fab(&[]).constraints_warn(), None, "the manifest decides");
+        let e = parse(&["fab", "--pins", "swap"]).unwrap_err();
+        assert!(
+            e.contains("swap") && e.contains("auto") && e.contains("locked"),
+            "{e}"
+        );
+        let e = parse(&["fab", "--constraints", "off"]).unwrap_err();
+        assert!(
+            e.contains("off") && e.contains("warn") && e.contains("error"),
+            "{e}"
+        );
+        assert!(parse(&["fab", "--pins"]).is_err());
+        assert!(parse(&["build", "--constraints", "warn"]).is_err());
+    }
+}

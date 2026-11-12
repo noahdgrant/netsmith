@@ -120,3 +120,48 @@ fn parse_units(given: &str) -> Result<netsmith_dxf::Units, String> {
     netsmith_dxf::Units::parse(given)
         .ok_or_else(|| format!("needs mm, cm, m or inch, not `{given}`"))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, dxf};
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn dxf_import_takes_a_file_layers_units_a_board_and_a_source_to_write() {
+        assert_eq!(
+            parse(&[
+                "dxf",
+                "import",
+                "case.dxf",
+                "--layer",
+                "EDGE",
+                "--layer",
+                "RIM",
+                "--holes-layer",
+                "HOLES",
+                "--units",
+                "inch",
+                "--board",
+                "Case",
+                "--write",
+                "case.nsm"
+            ]),
+            Ok(Command::Dxf(dxf::Args {
+                command: dxf::Command::Import(dxf::ImportArgs {
+                    file: "case.dxf".into(),
+                    layers: vec!["EDGE".into(), "RIM".into()],
+                    holes_layers: vec!["HOLES".into()],
+                    units: Some(netsmith_dxf::Units::Inches),
+                    board: Some("Case".into()),
+                    write: Some("case.nsm".into()),
+                })
+            }))
+        );
+        assert_eq!(kind(&["dxf", "import"]), ErrorKind::MissingRequiredArgument);
+        let e = parse(&["dxf", "import", "a.dxf", "--units", "furlongs"]).unwrap_err();
+        assert!(e.contains("not `furlongs`"), "{e}");
+        assert!(parse(&["dxf", "export", "a.dxf"]).is_err());
+        assert!(parse(&["dxf", "import", "a.dxf", "--bogus"]).is_err());
+    }
+}

@@ -207,3 +207,150 @@ fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> 
         Err(e) => fail(e),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, catalog};
+    use clap::error::ErrorKind;
+    use std::path::PathBuf;
+
+    #[test]
+    fn catalog_add_takes_a_number_and_a_file() {
+        assert_eq!(
+            parse(&[
+                "catalog",
+                "add",
+                "--lcsc",
+                "C2286",
+                "--to",
+                "catalogs/led.csv"
+            ]),
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Add(catalog::AddArgs {
+                    lcsc: "C2286".into(),
+                    to: Some(PathBuf::from("catalogs/led.csv")),
+                    offline: false,
+                    no_cache: false,
+                })
+            }))
+        );
+        assert!(matches!(
+            parse(&[
+                "catalog",
+                "add",
+                "--lcsc",
+                "C2286",
+                "--offline",
+                "--no-cache"
+            ]),
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Add(catalog::AddArgs {
+                    to: None,
+                    offline: true,
+                    no_cache: true,
+                    ..
+                })
+            }))
+        ));
+        let e = parse(&["catalog", "add", "--to", "x.csv"]).unwrap_err();
+        assert!(e.contains("--lcsc <C123>"), "{e}");
+        assert_eq!(
+            kind(&["catalog", "add", "--lcsc", "C1", "--dry-run"]),
+            ErrorKind::UnknownArgument
+        );
+    }
+
+    #[test]
+    fn catalog_refresh_takes_paths_and_the_flags_of_a_polite_opt_in_run() {
+        assert_eq!(
+            parse(&["catalog", "refresh"]),
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Refresh(catalog::RefreshArgs::default())
+            }))
+        );
+        assert_eq!(
+            parse(&[
+                "catalog",
+                "refresh",
+                "catalogs/a.csv",
+                "data",
+                "--dry-run",
+                "--only",
+                "ldo",
+                "--only",
+                "led",
+                "--lcsc",
+                "C5446",
+                "--delay",
+                "1500",
+                "--cache-ttl",
+                "6",
+                "--no-cache"
+            ]),
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Refresh(catalog::RefreshArgs {
+                    paths: vec!["catalogs/a.csv".into(), "data".into()],
+                    dry_run: true,
+                    offline: false,
+                    only: vec!["ldo".into(), "led".into()],
+                    lcsc: vec!["C5446".into()],
+                    delay_ms: Some(1500),
+                    cache_ttl_hours: Some(6),
+                    no_cache: true,
+                })
+            }))
+        );
+        let Ok(Command::Catalog(catalog::Args {
+            command: catalog::Command::Refresh(r),
+        })) = parse(&["catalog", "refresh", "--offline"])
+        else {
+            panic!()
+        };
+        assert!(r.offline);
+        let e = parse(&["catalog", "refresh", "--delay", "soon"]).unwrap_err();
+        assert!(e.contains("--delay") && e.contains("soon"), "{e}");
+        // --offline asks nothing, so the pace of the asking means nothing with it.
+        for pace in ["--delay", "--cache-ttl"] {
+            assert_eq!(
+                kind(&["catalog", "refresh", "--offline", pace, "9"]),
+                ErrorKind::ArgumentConflict
+            );
+        }
+        assert_eq!(
+            kind(&["catalog", "refresh", "--days", "3"]),
+            ErrorKind::UnknownArgument
+        );
+        assert!(parse(&["catalog", "refresh", "--lcsc"]).is_err());
+    }
+
+    #[test]
+    fn catalog_age_takes_paths_a_catalog_and_the_days_with_90_as_the_default() {
+        assert_eq!(
+            parse(&["catalog", "age"]),
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Age(catalog::AgeArgs {
+                    paths: vec![],
+                    only: vec![],
+                    days: 90
+                })
+            }))
+        );
+        assert_eq!(
+            parse(&["catalog", "age", "x.csv", "--days", "30", "--only", "ldo"]),
+            Ok(Command::Catalog(catalog::Args {
+                command: catalog::Command::Age(catalog::AgeArgs {
+                    paths: vec!["x.csv".into()],
+                    only: vec!["ldo".into()],
+                    days: 30
+                })
+            }))
+        );
+        assert_eq!(
+            kind(&["catalog", "age", "--dry-run"]),
+            ErrorKind::UnknownArgument
+        );
+        assert!(parse(&["catalog"]).is_err());
+        assert_eq!(kind(&["catalog", "prices"]), ErrorKind::InvalidSubcommand);
+    }
+}

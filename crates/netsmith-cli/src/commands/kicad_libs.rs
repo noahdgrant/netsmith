@@ -48,3 +48,34 @@ fn run_kicad_libs_import(sym: &str, fp: Option<&str>) -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::parse;
+    use crate::commands::{Command, kicad_libs};
+
+    #[test]
+    fn kicad_libs_import_takes_one_or_two_library_tables() {
+        assert_eq!(
+            parse(&["kicad-libs", "import", "sym-lib-table"]),
+            Ok(Command::KicadLibs(kicad_libs::Args {
+                command: kicad_libs::Command::Import(kicad_libs::ImportArgs {
+                    sym_lib_table: "sym-lib-table".into(),
+                    fp_lib_table: None
+                })
+            }))
+        );
+        assert_eq!(
+            parse(&["kicad-libs", "import", "s", "f"]),
+            Ok(Command::KicadLibs(kicad_libs::Args {
+                command: kicad_libs::Command::Import(kicad_libs::ImportArgs {
+                    sym_lib_table: "s".into(),
+                    fp_lib_table: Some("f".into())
+                })
+            }))
+        );
+        assert!(parse(&["kicad-libs"]).is_err());
+        assert!(parse(&["kicad-libs", "export", "s"]).is_err());
+        assert!(parse(&["kicad-libs", "import", "s", "f", "g"]).is_err());
+    }
+}

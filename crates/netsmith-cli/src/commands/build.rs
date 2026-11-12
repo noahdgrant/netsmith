@@ -297,3 +297,51 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     }
     code
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{output, parse};
+    use crate::commands::{Command, build, lock};
+
+    fn build(file: Option<&str>) -> build::Args {
+        build::Args {
+            file: file.map(str::to_string),
+            out: None,
+            strict: false,
+            locked: false,
+            output: output(),
+        }
+    }
+
+    #[test]
+    fn a_command_takes_one_nsm_file_before_or_after_its_flags() {
+        assert_eq!(parse(&["build"]), Ok(Command::Build(build(None))));
+        assert_eq!(
+            parse(&["build", "a.nsm"]),
+            Ok(Command::Build(build(Some("a.nsm"))))
+        );
+        let expected = Ok(Command::Build(build::Args {
+            out: Some("x".into()),
+            ..build(Some("a.nsm"))
+        }));
+        assert_eq!(parse(&["build", "a.nsm", "--out", "x"]), expected);
+        assert_eq!(parse(&["build", "--out", "x", "a.nsm"]), expected);
+        assert!(parse(&["editor", "a.nsm", "b.nsm"]).is_err());
+        assert!(parse(&["init", "dir"]).is_err());
+    }
+
+    #[test]
+    fn a_flag_given_twice_is_the_last_one() {
+        let Ok(Command::Build(b)) =
+            parse(&["build", "--out", "a", "--out", "b", "--strict", "--strict"])
+        else {
+            panic!()
+        };
+        assert_eq!(b.out, Some("b".into()));
+        assert!(b.strict);
+        let Ok(Command::Lock(l)) = parse(&["lock", "--check", "--check"]) else {
+            panic!()
+        };
+        assert_eq!(l.mode(), lock::LockMode::Check);
+    }
+}

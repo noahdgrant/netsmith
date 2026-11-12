@@ -227,8 +227,8 @@ pub enum ViewName {
 }
 
 impl ViewName {
-    pub(super) fn raster(self) -> netsmith_pcb::raster3d::View {
-        use netsmith_pcb::raster3d::View;
+    pub(super) fn raster(self) -> netsmith_3d::raster3d::View {
+        use netsmith_3d::raster3d::View;
         match self {
             ViewName::Top => View::Top,
             ViewName::Bottom => View::Bottom,
@@ -271,4 +271,40 @@ pub(super) fn parse_ids(given: &str) -> Result<Ids, String> {
         return Err("`none` clears it, so no id goes with it".to_string());
     }
     Ok(Ids(ids))
+}
+
+/// What the tests of every command share: the command line as main.rs has it.
+#[cfg(test)]
+pub(crate) mod testing {
+    use clap::Parser;
+    use clap::error::ErrorKind;
+
+    use crate::commands::{Command, common};
+
+    /// The command line as main.rs has it.
+    #[derive(Debug, Parser)]
+    #[command(name = "netsmith", version)]
+    pub(crate) struct Cli {
+        #[command(subcommand)]
+        command: Command,
+    }
+
+    pub(crate) fn parse_args(args: &[&str]) -> Result<Command, clap::Error> {
+        Cli::try_parse_from(std::iter::once(&"netsmith").chain(args)).map(|cli| cli.command)
+    }
+
+    pub(crate) fn parse(args: &[&str]) -> Result<Command, String> {
+        parse_args(args).map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn kind(args: &[&str]) -> ErrorKind {
+        parse_args(args).unwrap_err().kind()
+    }
+
+    pub(crate) fn output() -> common::Output {
+        common::Output {
+            format: common::Format::Text,
+            notes: common::Notes::All,
+        }
+    }
 }

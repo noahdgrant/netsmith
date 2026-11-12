@@ -111,3 +111,40 @@ fn parse_margin(given: &str) -> Result<f64, String> {
             format!("takes a number from 1 (the process's least track) to 4, not `{given}`")
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, route};
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn route_takes_a_placed_board_a_timeout_and_a_margin() {
+        assert_eq!(
+            parse(&[
+                "route",
+                "b.placed.json",
+                "--out",
+                "o",
+                "--route-timeout",
+                "0",
+                "--margin",
+                "2.5"
+            ]),
+            Ok(Command::Route(route::Args {
+                file: "b.placed.json".into(),
+                out: Some("o".into()),
+                route_timeout: Some(0),
+                margin: Some(2.5),
+            }))
+        );
+        assert_eq!(kind(&["route"]), ErrorKind::MissingRequiredArgument);
+        for bad in ["0.5", "5", "wide"] {
+            let e = parse(&["route", "b.json", "--margin", bad]).unwrap_err();
+            assert!(
+                e.contains("1 (the process's least track) to 4"),
+                "{bad}: {e}"
+            );
+        }
+    }
+}

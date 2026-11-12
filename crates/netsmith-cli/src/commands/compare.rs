@@ -93,3 +93,51 @@ fn run_compare(request: &Request, format: Format) -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::common::testing::{kind, parse};
+    use crate::commands::{Command, common, compare};
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn compare_takes_two_files_and_map_or_by_refdes() {
+        assert_eq!(
+            parse(&[
+                "compare",
+                "--board",
+                "Led",
+                "a.xml",
+                "--map",
+                "m.txt",
+                "b.xml",
+                "--ignore-unconnected",
+                "--loose-values"
+            ]),
+            Ok(Command::Compare(compare::Args {
+                a: "a.xml".into(),
+                b: "b.xml".into(),
+                board: Some("Led".into()),
+                map: Some("m.txt".into()),
+                by_refdes: false,
+                ignore_unconnected: true,
+                loose_values: true,
+                format: common::Format::Text,
+            }))
+        );
+        assert_eq!(
+            kind(&["compare", "a.nsm"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        assert_eq!(
+            kind(&["compare", "a", "b", "c"]),
+            ErrorKind::UnknownArgument
+        );
+        assert_eq!(
+            kind(&["compare", "a", "b", "--map", "m", "--by-refdes"]),
+            ErrorKind::ArgumentConflict
+        );
+        assert!(parse(&["compare", "a", "b", "--map"]).is_err());
+        assert!(parse(&["build", "a.nsm", "--loose-values"]).is_err());
+    }
+}

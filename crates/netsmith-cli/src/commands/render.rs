@@ -35,7 +35,7 @@ pub struct Args {
     /// the board's top face. The cut faces are filled as a section of the stackup, each layer at
     /// its true thickness in its own colour, unless `--no-caps` leaves them open.
     #[arg(long, value_name = "AXIS=MM", value_parser = netsmith::render::parse_section)]
-    pub section: Option<(netsmith_pcb::mesh::Axis, f64)>,
+    pub section: Option<(netsmith_3d::mesh::Axis, f64)>,
     /// Light a part, `net:<name>` or `limit:<name>` and dim the rest (comma-separated or repeated).
     ///
     /// A part is named by its designator or its path. An id the board does not have is an error
@@ -127,4 +127,56 @@ fn run_render(
 pub enum Theme {
     Light,
     Dark,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commands::Command;
+    use crate::commands::common::testing::{kind, parse};
+    use clap::error::ErrorKind;
+
+    fn render(args: &[&str]) -> netsmith::render::Request {
+        let mut line = vec!["render"];
+        line.extend_from_slice(args);
+        match parse(&line) {
+            Ok(Command::Render(r)) => r.request(),
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn render_has_the_defaults_of_a_request_and_takes_its_flags() {
+        assert_eq!(render(&[]), netsmith::render::Request::default());
+        let r = render(&[
+            "--view",
+            "top",
+            "--size",
+            "64x80",
+            "--section",
+            "z=-0.8",
+            "--highlight",
+            "J1,net:GND",
+            "--highlight",
+            "limit:lid",
+            "--xray",
+            "--no-caps",
+            "--theme",
+            "dark",
+            "--perspective",
+        ]);
+        assert_eq!(r.view, netsmith_3d::raster3d::View::Top);
+        assert_eq!(r.size, (64, 80));
+        assert_eq!(r.section, Some((netsmith_3d::mesh::Axis::Z, -0.8)));
+        assert_eq!(r.highlight, vec!["J1", "net:GND", "limit:lid"]);
+        assert!(r.xray && !r.caps && r.dark && r.perspective);
+        assert!(!render(&["--ortho"]).perspective);
+        assert_eq!(
+            kind(&["render", "--ortho", "--perspective"]),
+            ErrorKind::ArgumentConflict
+        );
+        let e = parse(&["render", "--view", "sideways"]).unwrap_err();
+        assert!(e.contains("iso-bottom"), "{e}");
+        let e = parse(&["render", "--size", "10x10"]).unwrap_err();
+        assert!(e.contains("--size"), "{e}");
+    }
 }
