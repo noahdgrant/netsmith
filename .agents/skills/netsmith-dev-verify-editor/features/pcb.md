@@ -13,6 +13,7 @@ The section "PCB" (key 6). The board is placed as soon as the tab opens (the phy
 3. Layers: untick "Silkscreen": the silk groups (`.l-silk`) are hidden.
 4. A four-layer board draws each plane as a translucent fill with a dashed border in the tone of its layer (`--pcb-plane-1` to `--pcb-plane-4`: the server's rectangle carries `data-layer="In1.Cu"`, `pcb/planes.ts` turns `In1.Cu` into tone 1, `In2.Cu` into 2, `In3.Cu` into 3 and the layers from the fourth in into 4, and `pcb/drawing.ts` writes `GND · In1.Cu` on the border as `text.plane-label[data-layer]`; a server with no layer attribute leaves the tone to the plane's place among the planes, as round 5 did) and lists it in the Nets tab (`plane In1.Cu`).
 5. The "DRC" chip shows the last `fab` result for the board: "run Fab to check" until the build panel has run it.
+6. `2D | 3D` in the toolbar (key `D`) switches to the board in 3D: `pcb-3d.md`.
 
 ### A big board: `drive big-pcb` after `launch --fixture big`
 
