@@ -29,13 +29,17 @@
 //! same bits on every machine ([`trig`] computes the circles' points without the platform's
 //! maths library).
 
+pub mod boolean;
 mod package;
 mod scene;
 mod section;
 mod triangulate;
 pub mod trig;
 
-pub use scene::{BodyPieces, Pieces, UNKNOWN_LIFT, hole_segments, of_scene, pieces, slot};
+pub use scene::{
+    BodyPieces, LayerPieces, MaskPieces, NO_NET, NetPieces, Pieces, SILK_LIFT, SilkPieces,
+    UNKNOWN_LIFT, hole_segments, of_scene, pieces, slot,
+};
 pub use section::{PLATING, of_scene_section};
 pub use triangulate::triangulate;
 
@@ -58,12 +62,18 @@ pub enum Material {
     BodyUnknown,
     /// Metal of a part: leads, shields, a connector's shell.
     Metal,
-    /// Silkscreen and other marks printed on the board.
+    /// Silkscreen and other marks printed on the board (the scene's silkscreen is drawn in it).
     Mark,
     /// A height limit's volume, see-through.
     Limit,
     /// A height limit that a part breaks, see-through.
     LimitViolated,
+    /// The finish of copper the mask leaves bare (ENIG, gold): pads and other openings on the
+    /// outer layers.
+    Finish,
+    /// The solder mask where copper is under it, either face: lighter than over bare laminate,
+    /// as tracks and pours show through a real board's mask.
+    MaskOverCopper,
     /// The board's prepreg, and the resin between the copper of an inner layer: drawn only in
     /// a section ([`of_scene_section`]), where it is the second laminate tone next to the
     /// core's ([`Material::Substrate`]).
@@ -71,8 +81,9 @@ pub enum Material {
 }
 
 impl Material {
-    /// Every material, in order.
-    pub const ALL: [Material; 11] = [
+    /// Every material, in order. A new one goes at the end, so a file's material index of the
+    /// older ones does not move.
+    pub const ALL: [Material; 13] = [
         Material::Substrate,
         Material::MaskTop,
         Material::MaskBottom,
@@ -83,6 +94,8 @@ impl Material {
         Material::Mark,
         Material::Limit,
         Material::LimitViolated,
+        Material::Finish,
+        Material::MaskOverCopper,
         Material::Prepreg,
     ];
 
@@ -99,6 +112,8 @@ impl Material {
             Material::Mark => "mark",
             Material::Limit => "limit",
             Material::LimitViolated => "limit-violated",
+            Material::Finish => "finish",
+            Material::MaskOverCopper => "mask-over-copper",
             Material::Prepreg => "prepreg",
         }
     }
@@ -230,7 +245,7 @@ impl Polygon {
 }
 
 /// The signed area of a ring: positive when it turns counterclockwise.
-fn ring_area(r: &[[f64; 2]]) -> f64 {
+pub(crate) fn ring_area(r: &[[f64; 2]]) -> f64 {
     let mut a = 0.0;
     for k in 0..r.len() {
         let (p, q) = (r[k], r[(k + 1) % r.len()]);

@@ -5,7 +5,7 @@
 its face to its height, each height limit as a volume with the tallest part under it, and what is
 unknown. It is for an
 agent, a script or a person who wants the 3D facts of a board as numbers, with no GPU, no browser
-and no KiCad.
+and no KiCad. The editor's 3D view displays the same scene ([below](#the-editors-3d-view)).
 
 ```sh
 netsmith board3d examples/led.nsm                 # a short summary
@@ -116,7 +116,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated and from catalog rows. The same count as the coverage line of `fab-notes.txt`. |
 | `tallest` | The tallest part of known height on each face. |
 
-Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file has no copper yet.
+Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
 
 ## The `.glb` file
 
@@ -143,19 +143,70 @@ raises `schema`, a field added does not):
 | Node | `extras.netsmith` |
 |---|---|
 | `board` (the root) | `kind: "board"`, `schema`, `board` (the label, `system/member` for a board of a system), `thickness_mm`, `stack_thickness_mm`, `width_mm`, `height_mm`, `coverage: {known, total}`, `findings: [{code, message, parts: [path...], limit?, face}]` with `code` `too_tall`, `height_unchecked` or `body_overlap` |
-| `substrate` | `kind: "substrate"`: the laminate. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`) and one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel |
+| `substrate` | `kind: "substrate"`: the laminate, between the outer copper layers. Children `mask:top`, `mask:bottom` (`kind: "mask"`, `face`: the mask with its openings cut out, two primitives: material `mask-top` or `mask-bottom` over bare laminate and `mask-over-copper` where copper is under it), one per plated hole, `hole:<refdes>.<pad>` (`kind: "hole"`, `path`, `refdes`, `pad`) or `via:<net>` (`kind: "hole"`, `net`), the barrel, and last `silk:top`, `silk:bottom` (`kind: "silk"`, `face`): the silkscreen (the legend Gerber's ink, kept off the mask's openings and the holes), flat 0.015 mm off the mask, material `mark` |
 | one per part, named by its designator | `kind: "part"`, `path`, `refdes`, `side` (`top` or `bottom`), `provenance` (`stated`, `catalog` or `unknown`), `height_mm`, `z_bottom_mm`, `z_top_mm`. A known height is a solid (material `body`); an unknown one is the body's flat outline (material `body-unknown`), and `height_mm` and the far end (`z_top_mm` on the top face, `z_bottom_mm` on the bottom) are `null`: never a guessed height |
 | `limits` | one child per face of each height limit, `limit:<name>:<face>`: `kind: "height_limit"`, `name`, `face`, `max_height_mm`, `tallest` (a path or `null`), `margin_mm` (or `null`), `violated`, `unknown` (the paths of parts of unknown height under it); its volume is the mesh |
 | `protrusions` | one child per part whose pins stand out of the far face by a stated length, `pins:<refdes>`: `kind: "protrusion"`, `path`, `length_mm` |
-| `copper:<layer>` | reserved for the copper (#430), with children `kind: "copper"`, `layer`, `net` |
+| `copper:<layer>` | one per copper layer, top face down, after `protrusions`: `kind: "copper_layer"`, `layer`, `z_top_mm`, `z_bottom_mm`. One child per net with copper on the layer, `copper:<layer>:<net>` (`copper:<layer>:(no net)` for the copper with no net, first): `kind: "copper"`, `layer`, `net` (`null` for no net). Its mesh is the net's pads, tracks, pours or plane and via rings joined, the drills open, through the layer's thickness: material `copper` under the mask (and on inner layers), `finish` where the mask is open. No copper groups when the copper cannot be drawn |
 
 A node whose shape has no area has no mesh, and is still there.
 
 - **Materials**, by name, metallic-roughness: `substrate`, `mask-top`, `mask-bottom`, `copper`,
-  `body`, `body-unknown`, `metal`, `mark`, `limit`, `limit-violated` (those two see-through,
-  `alphaMode: BLEND`) and `prepreg` (the second laminate tone of a section picture: no mesh of
-  the file uses it). All eleven are always written, in this order. Their colours are the
+  `body`, `body-unknown`, `metal`, `mark`, `limit`, `limit-violated` (these two see-through,
+  `alphaMode: BLEND`), `finish` (the gold of copper the mask leaves bare), `mask-over-copper`
+  (the lighter green of the mask over copper) and `prepreg` (the second laminate tone of a
+  section picture: no mesh of the file uses it). All thirteen are always written, in this order,
+  so a material's index does not move when one is added at the end. Their colours are the
   rasterizer's light palette in linear light. No glTF extension is used.
+- **Still schema 1.** The copper groups, the silk nodes, the mask's openings and the two
+  materials `finish` and `mask-over-copper` were added; nothing was removed or changed in meaning.
+- **Layers in Z.** From the top: the silkscreen 0.015 mm above the mask, the mask's outside at
+  `z = 0`, the outer copper under the mask's thickness, the substrate from the outer copper's
+  bottom; the bottom face mirrors it. The mask is opaque (two greens tell copper under it from
+  laminate) and fills the outer copper's thickness where there is no copper, so no two surfaces
+  that show share a plane.
+
+## The editor's 3D view
+
+The PCB section of the editor (`netsmith editor`) shows the board in 3D: `3D` in the toolbar's
+`2D | 3D` switch, or the key `D`. It displays the `.glb` file above, the one
+`board3d --glb` writes, for the board and placement the 2D view shows; when the board is edited,
+routed or built again it fetches the file again and keeps the camera.
+
+What it is:
+
+- **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
+  body to its known height (its package shape where the footprint generator made the footprint,
+  else a box), the height limits as see-through volumes (in the error colour when a part breaks
+  one) and the pins out of the far face where their length is stated. The copper comes into the
+  same file later (#430), and the view draws each mesh by its material's name.
+- **Honest about heights.** A part's body (its `body` material, not its leads or marks) is tinted
+  by where its height came from: stated in the design, or from the catalog row. A part with no known height is a flat hatched outline on its
+  face, never a box of a guessed height (ADR 0094). A chip says how many parts have a known height
+  (_Height coverage_); it lists the others, and a click on one selects it. A hover names a part's
+  designator, its height and where the height came from.
+- **One selection with the rest of the editor.** A click selects a part in every view (the 2D
+  board, the schematic, the tree, the bill of materials), and a selection made in any of them is
+  lit here; the hover is shared the same way. A double click opens the part's declaration in the
+  source.
+- **A camera to look with.** Drag to orbit, right or middle drag to pan, the wheel to zoom at the
+  pointer; top, bottom, front, back, left, right and isometric views (`T`, `B`, `I` and the bar),
+  a flip to the other face (`Shift+F`), fit (`F` or `0`), and perspective or orthographic (`P`).
+  The colours follow the editor's theme. With reduced motion the camera jumps instead of moving.
+
+What it is not:
+
+- **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
+  file (ADR 0032).
+- **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
+  maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
+  generator's own numbers.
+- **Not a check.** The findings it shows (`too_tall`, `height_unchecked`, `body_overlap`) are the
+  scene's, from the same numbers `fab` checks; the view decides nothing of its own.
+- **Not on the network.** three.js is in the editor's binary, in a chunk of its own that the page
+  loads the first time 3D opens (at most 250 kB gzipped, held by a test in
+  `crates/netsmith-editor/tests/bundle.rs`); nothing is fetched from elsewhere (ADR 0019). It
+  needs WebGL 2; without it the view says so and the 2D view works as before.
 
 ## Pictures for agents: `netsmith render`
 
@@ -229,12 +280,14 @@ camera framed on the edge (the library's `Camera`, with `netsmith_pcb::mesh::of_
 for the meshes); the picture is a view of the scene, and a copper layer's polygons are not
 checked against the Gerbers here.
 
-What is drawn is what the scene has: the board (laminate with the green solder mask, with its
-outline, cutouts and drilled holes), the plated barrels, each part's body as a dark box from its
-face to its height, a part of **unknown height as a flat orange outline** on the board (never a
+What is drawn is what the scene has: the board (laminate with its outline, cutouts and drilled
+holes), the solder mask with its openings (dark green over laminate, lighter green over copper),
+the copper of every layer net by net (gold where the mask is open), the silkscreen in white, the
+plated barrels, each part's body as a dark box from its face to its height (or its package
+shape), a part of **unknown height as a flat orange outline** on the board (never a
 box, ADR 0094), pins that stand out below the far face where the design states a protrusion, and
-each height limit as a see-through blue volume, red where a part is too tall for it. Other mesh
-ids, such as the copper's nets, pass through to `--highlight` as the scene gives them. A picture
+each height limit as a see-through blue volume, red where a part is too tall for it. `net:<name>`
+lights that net's copper on every layer and its vias' barrels. A picture
 is a view of the scene and not a check: the numbers of `board3d --json` are.
 
 Exit 0 when the picture is written, 1 when the board does not build or cannot be placed (the

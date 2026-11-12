@@ -32,5 +32,6 @@ fn easyduino_pcb_matches_the_original_where_it_must() {
                      -p netsmith --example parity -- fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
                      --table reference/placements.toml --map reference/designators.toml --svg \
                      reference/parity-overlay.svg",
+        known_failures: &[],
     });
 }

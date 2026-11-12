@@ -1,0 +1,92 @@
+//! The TPS55288 buck-boost converter with an I2C interface, Texas Instruments, in the 26-pin
+//! VQFN-HR package (RPM, 3.5 x 4 mm, 0.5 mm pitch), order code TPS55288RPMR: the U3 of the Power
+//! Manifold charger module (the board's footprint is `Local Library:VQFN-HR-26_L4.0-W3.5_
+//! TPS55288RPMR` and the LCSC number it carries, C2864583, is the TPS55288RPMR).
+//!
+//! The pin table was WRITTEN BY HAND from TI's datasheet "TPS55288 36-V, 16-A Buck-boost
+//! Converter with I2C Interface" (literature number SLVSF01B, November 2018, revised December
+//! 2020, 55 pages in the PDF TI serves, fetched on 2026-11-11 from
+//! <https://www.ti.com/lit/ds/symlink/tps55288.pdf>, SHA-256 `2b60a3054038`): section 5, Figure 5-1
+//! "26-pin VQFN-HR, RPM Package (Transparent Top View)" and Table 5-1 "Pin Functions" (printed
+//! pages 3 and 4) for the pad numbers, names, I/O types and descriptions. The datasheet is
+//! copyrighted (Texas Instruments): only facts are taken here (numbers, names, kinds).
+//!
+//! The package has 26 pins: 23 on the edge, numbered as the figure counts them (1 to 7 down the
+//! left, 8 to 13 along the bottom, 14 to 19 up the right and 20 to 23 along the top), and three
+//! at the middle of the underside, 24 `PGND`, 25 `SW2` and 26 `VOUT`, which the table gives
+//! as the second pad of each of those three pins (`PGND` is "9, 24", `SW2` "21, 25" and `VOUT`
+//! "11, 26"). The pins with two pads are one pin each here.
+//!
+//! The kinds follow Table 5-1's I/O column: `PWR` (`VIN`, `PGND`, `AGND`, `VOUT`) is `power`;
+//! `I` (`EN/UVLO`, `SCL`, `DITH/SYNC`, `MODE`, `COMP`, `ISP`, `ISN`) is `input`; `O` (`DR1L`,
+//! `DR1H`, `FSW`, `CDC`, `ILIM`, `VCC`) is `output`; `I/O` (`SDA`, `FB/INT`) is
+//! `bidirectional`. Four pins are written otherwise on purpose. `SW1` and `SW2` are the
+//! switching nodes of the two half bridges, between the inductor and the power switches, and
+//! `BOOT1` and `BOOT2` are the bootstrap capacitors' pins: the table prints `I` for `SW1`,
+//! `SW2` and `BOOT1`, and `O` for `BOOT2`, but none of them is a signal the part reads or
+//! drives (the descriptions say a node of the power stage and a capacitor to it), so all four
+//! are `passive`, as the inductor pins of the TPS63802 part are. `COMP` is printed `I` and
+//! described as "output of the internal error amplifier. Connect the loop compensation network
+//! between this pin and AGND": it is `input` as the table's column has it, and a board that
+//! joins only a network to it will meet the rule that an input must be driven.
+//!
+//! The input is a rail, `.vin`: `.vin.pos` is `VIN` and `.vin.neg` is `PGND` (pads 9 and 24),
+//! with the datasheet's recommended input voltage, section 6.3 "Recommended Operating
+//! Conditions" (printed page 5): VIN 2.7 V minimum and 36 V maximum. `AGND` (pad 10) is a
+//! pin of its own: the datasheet calls it the signal ground and does not say the two grounds are one net (the
+//! reference board joins them), so the part does not join them.
+//!
+//! What is deliberately left out: the output range (0.8 V to 22 V, section 6.3), the absolute
+//! maximum ratings (Section 6.1: VIN and SW1 40 V; VOUT, SW2, ISP and ISN 25 V; EN 20 V; the
+//! signal pins 6 V), the inductance and capacitance ranges, the current limit, the reference
+//! voltage, the internal switches' resistance and every register of the I2C interface. No std
+//! generic is a buck-boost converter, so the part provides none and has no `dc` statement: the
+//! analysis of a rail stops at it, and the checks that need a number are listed as not
+//! evaluated.
+
+import std::sources::Rail
+
+/// The TPS55288 in the 26-pin VQFN-HR package: a synchronous four-switch buck-boost converter
+/// with an I2C interface, 2.7 V to 36 V in and 0.8 V to 22 V out. The pin names are the
+/// datasheet's (Table 5-1's `DR1H`, which section 6.1 writes `DRH1`)
+/// and the pad numbers its pin numbers. `.vin` is the input rail: `.vin.pos` the `VIN` pad and
+/// `.vin.neg` the `PGND` pads.
+part Tps55288 {
+    .designator &= "U"
+
+    .vin: Rail
+    // Section 6.3, Recommended Operating Conditions (printed page 5): VIN 2.7 V to 36 V.
+    .vin.voltage >= 2.7V
+    .vin.voltage <= 36V
+
+    pins "VQFN-26-HR(3.5x4)" {
+        //  pin       kind           name         pads
+        .dr1l     output         "DR1L"       "1"
+        .dr1h     output         "DR1H"       "2"
+        .vin.pos  power          "VIN"        "3"
+        .en       input          "EN/UVLO"    "4"
+        .scl      input          "SCL"        "5"
+        .sda      bidirectional  "SDA"        "6"
+        .dith     input          "DITH/SYNC"  "7"
+        .fsw      output         "FSW"        "8"
+        .vin.neg  power          "PGND"       "9" "24"
+        .agnd     power          "AGND"       "10"
+        .vout     power          "VOUT"       "11" "26"
+        .isp      input          "ISP"        "12"
+        .isn      input          "ISN"        "13"
+        .fb       bidirectional  "FB/INT"     "14"
+        .mode     input          "MODE"       "15"
+        .cdc      output         "CDC"        "16"
+        .ilim     output         "ILIM"       "17"
+        .comp     input          "COMP"       "18"
+        .vcc      output         "VCC"        "19"
+        .boot2    passive        "BOOT2"      "20"
+        .sw2      passive        "SW2"        "21" "25"
+        .boot1    passive        "BOOT1"      "22"
+        .sw1      passive        "SW1"        "23"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog tps55288 by .mpn { .mpn, .package }
+}

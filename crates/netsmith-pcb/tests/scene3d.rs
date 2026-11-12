@@ -53,12 +53,12 @@ fn part(refdes: &str, kind: &str, path: &str) -> Part {
 /// The board, placed by the placer and then moved by hand: `a` on the top at (10, 5) from the
 /// outline's top-left corner, `b` on the top at (22, 5), `under` on the bottom at (10, 15) and
 /// the row on the top at (25, 12), all unturned.
-fn board() -> Board {
+pub(crate) fn board() -> Board {
     board_with(common::process())
 }
 
 /// [`board`] made with `process`.
-fn board_with(process: netsmith_core::Process) -> Board {
+pub(crate) fn board_with(process: netsmith_core::Process) -> Board {
     let folder = TempDir::new("scene3d");
     std::fs::write(folder.join("Box.kicad_mod"), BOX).unwrap();
     std::fs::write(folder.join("Row2.kicad_mod"), ROW).unwrap();
@@ -143,7 +143,7 @@ fn limit(name: &str, at: (f64, f64), size: (f64, f64), layers: &[&str], max: f64
     }
 }
 
-fn scene(board: &Board) -> Scene {
+pub(crate) fn scene(board: &Board) -> Scene {
     let provenance = BTreeMap::from([("b".to_string(), HeightProvenance::Catalog)]);
     Scene::of(board, &provenance)
 }
@@ -330,7 +330,7 @@ fn in_ring(ring: &[Plan], p: Plan) -> bool {
     inside
 }
 
-fn in_area(a: &PlanArea, p: Plan) -> bool {
+pub(crate) fn in_area(a: &PlanArea, p: Plan) -> bool {
     in_ring(&a.outer, p) && !a.holes.iter().any(|h| in_ring(h, p))
 }
 
@@ -384,7 +384,7 @@ fn near(a: f64, b: f64) -> bool {
 
 /// The board with a track, a via and a pour on the front, all by hand, in layout-file
 /// coordinates (from the outline's top-left corner, y down).
-fn routed() -> Board {
+pub(crate) fn routed() -> Board {
     let mut board = board();
     let origin = board.outline.min;
     board.tracks.push(Track {

@@ -54,9 +54,10 @@
 //! # Palette
 //!
 //! [`Theme::Light`] and [`Theme::Dark`] each give a [`Palette`]: a background, a colour per
-//! [`Material`] (green mask, tan laminate, gold copper finish, dark grey bodies, an orange flat
-//! outline for a part of unknown height, light grey metal, white marks, a blue see-through limit,
-//! a red see-through broken limit), the highlight colour and the outline colour.
+//! [`Material`] (green mask, a lighter green where copper is under it, tan laminate, gold copper
+//! and a brighter gold finish where the mask is open, dark grey bodies, an orange flat outline
+//! for a part of unknown height, light grey metal, white marks and silkscreen, a blue see-through
+//! limit, a red see-through broken limit), the highlight colour and the outline colour.
 
 mod cap;
 mod draw;
@@ -297,7 +298,7 @@ pub struct Palette {
     pub background: Rgba,
     /// One per material, in the order of [`Material::ALL`]; the alpha of a see-through one is
     /// its opacity.
-    pub materials: [Rgba; 11],
+    pub materials: [Rgba; 13],
     pub highlight: Rgba,
     pub outline: Rgba,
 }
@@ -333,6 +334,8 @@ impl Theme {
                     [250, 250, 250, 255], // mark
                     [60, 130, 240, 64],   // limit
                     [230, 60, 50, 96],    // limit-violated
+                    [222, 184, 96, 255],  // finish (ENIG gold, where the mask is open)
+                    [74, 158, 98, 255],   // mask-over-copper
                     [226, 208, 150, 255], // prepreg
                 ],
                 highlight: [255, 190, 0, 255],
@@ -351,6 +354,8 @@ impl Theme {
                     [232, 232, 232, 255],
                     [90, 150, 255, 64],
                     [255, 80, 70, 96],
+                    [206, 170, 88, 255],
+                    [58, 138, 84, 255],
                     [196, 178, 128, 255],
                 ],
                 highlight: [255, 200, 40, 255],

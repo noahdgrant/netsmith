@@ -40,6 +40,7 @@ repo="$(cd "$(dirname "$0")/.." && pwd)"
 # file: a run of this script has about a minute for each.
 no_fab=(
     "rp2350_minimal|the placer takes 3 s, but the router needs 35 s on an idle machine for the seed the project's layout file names (97 s for seed 0), more than the 60 s that one run of this script may take, and a run the router has to stop exits 1 with INCOMPLETE; the test rp2350_minimal_pcb_matches_raspberry_pi (crates/netsmith/tests/rp2350_parity.rs) runs fab on the project with NETSMITH_NO_KICAD=1 and a route timeout of 20 s, and gates on the parity checker, in the test slices"
+    "power_manifold_charger|89 parts on a 101.2 x 24 mm board: the placer takes 15 s, but the router does not finish (4 of 256 connections are left after its 4 tries, in 5 min in a debug build), and a run the router cannot finish exits 1 with INCOMPLETE; the test power_manifold_pcb_matches_the_original_where_it_can (crates/netsmith/tests/power_manifold_parity.rs) runs fab on the project with NETSMITH_NO_KICAD=1 and a route timeout of 20 s, and gates on the parity checker, in the test slices (README, \"The PCB\")"
 )
 
 # What of examples/ is not built, as "name|reason". A file is named by its file name, a folder

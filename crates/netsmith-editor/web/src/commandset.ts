@@ -26,6 +26,7 @@ import { canBack, canForward } from './source/navhistory';
 import { COMMENT_FONTS, autosave, commentFont, commentFontOf, hoverCards, inlineHints, outlineOpen, nextCommentFont, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from './source/prefs';
 import { openReplace } from './source/cm-search';
 import { type Selection, selectAndReveal, selection, setSelection } from './selection';
+import { PRESETS, pcbMode, togglePcbMode, view3d } from './pcb3d/mode';
 import { THEMES, isDark, theme } from './theme';
 import { chooseTheme } from './themeUi';
 import {
@@ -835,6 +836,7 @@ export function registerAppCommands() {
       when: () => job.value?.task === 'route',
       run: () => void api.cancelRoute(),
     },
+    ...pcb3dCommands(),
     ...THEMES.map<Command>((t) => ({
       id: `theme.${t.id}`,
       title: `Theme: ${t.label}`,
@@ -891,6 +893,71 @@ export function registerAppCommands() {
   });
 }
 
+// ---- the board in 3D (pcb3d/) ----
+// The keys work while the PCB is the pane in use; the palette runs them from anywhere.
+
+const pcbHere = () => focusedSection() === 'pcb';
+const in3d = () => pcbMode.value === '3d' && view3d.current !== null;
+
+function pcb3dCommands(): Command[] {
+  const act = () => view3d.current!;
+  return [
+    {
+      id: 'pcb.3d.toggle',
+      title: 'PCB: Switch between 2D and 3D',
+      group: 'PCB',
+      keys: 'D',
+      aliases: ['3d', 'three dimensions', '2d', 'heights', 'board view'],
+      keyFrom: pcbHere,
+      when: () => board.value !== null,
+      run: () => {
+        if (!pcbHere()) {
+          revealSection('pcb');
+          pcbMode.value = '3d';
+        } else togglePcbMode();
+      },
+    },
+    ...PRESETS.map<Command>((p) => ({
+      id: `pcb.3d.view.${p.id}`,
+      title: `3D view: ${p.id === 'iso' ? 'isometric' : `from the ${p.id}`}`,
+      group: 'PCB',
+      keys: p.key,
+      aliases: ['3d', 'camera', 'view', p.label],
+      keyFrom: pcbHere,
+      when: in3d,
+      run: () => act().preset(p.id),
+    })),
+    {
+      id: 'pcb.3d.flip',
+      title: '3D view: Flip the board over',
+      group: 'PCB',
+      keys: 'Shift+F',
+      aliases: ['3d', 'bottom', 'other side', 'turn over'],
+      keyFrom: pcbHere,
+      when: in3d,
+      run: () => act().flip(),
+    },
+    {
+      id: 'pcb.3d.projection',
+      title: '3D view: Perspective or orthographic',
+      group: 'PCB',
+      keys: 'P',
+      aliases: ['3d', 'ortho', 'orthographic', 'perspective', 'camera'],
+      keyFrom: pcbHere,
+      when: in3d,
+      run: () => act().toggleProjection(),
+    },
+    {
+      id: 'pcb.3d.fit',
+      title: '3D view: Fit the board',
+      group: 'PCB',
+      aliases: ['3d', 'zoom to fit', 'reset view'],
+      when: in3d,
+      run: () => act().fit(),
+    },
+  ];
+}
+
 /** Run a command from a button: the same command the palette and the key run. */
 export const run = runCommand;
 
@@ -915,6 +982,16 @@ export const LOCAL_KEYS: { group: string; keys: [string, string][] }[] = [
       ['Arrow keys', 'nudge (Shift for a larger step)'],
       ['Ctrl+Z · Ctrl+Shift+Z', 'undo / redo a move'],
       ['Ctrl+A · Delete', 'select all · remove the keepout or release the parts'],
+    ],
+  },
+  {
+    group: 'PCB in 3D',
+    keys: [
+      ['Drag · right-drag · scroll', 'orbit · pan · zoom'],
+      ['Click · double-click', 'select the part · show it in the source'],
+      ['Arrow keys', 'orbit (Shift to pan)'],
+      ['F or 0; + −', 'fit the board; zoom'],
+      ['Esc', 'clear the selection'],
     ],
   },
   {
