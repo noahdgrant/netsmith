@@ -15,6 +15,7 @@ import type {
   Project,
 } from './api';
 import { AnalysisPending, ApiFailure, Events, api } from './client';
+import { answerView } from './pcb3d/agent';
 import { nextDelay } from './feedback/early';
 import {
   type Layout,
@@ -317,6 +318,11 @@ export async function start() {
           break;
         case 'cancelled':
           noteCancelled(message);
+          break;
+        case 'view':
+        case 'view_picture':
+          // An agent drives the 3D view over `/api/view` (pcb3d/agent.ts).
+          if (events) answerView(message, events);
           break;
         default:
           // A message type added to `ServerMessage` without a case above fails the build here

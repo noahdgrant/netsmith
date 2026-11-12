@@ -44,9 +44,11 @@ use ts_rs::TS;
 
 mod compare;
 mod hints;
+mod view;
 
 pub use compare::*;
 pub use hints::*;
+pub use view::*;
 
 /// A place in a file, from its first character to its last.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1449,11 +1451,25 @@ pub struct Definition {
 }
 
 /// What the page tells the server over the socket.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
     /// Check the project with `path` as `text`, nothing written. `id` comes back.
     Check { id: u32, path: String, text: String },
+    /// The page's window has the focus (sent when it gets it, and on connecting if it has it):
+    /// `/api/view` drives the page that had it last.
+    Focus,
+    /// The answer to a `view`: the 3D view as it is now, after the change.
+    ViewState { id: u32, state: Box<ViewState> },
+    /// A `view` or a `view_picture` the page could not do, and why. `status` is the HTTP status
+    /// the route answers with (400 when it is not given: the change is wrong).
+    ViewError {
+        id: u32,
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        status: Option<u16>,
+    },
 }
 
 /// What the server tells the page over the socket.
@@ -1521,6 +1537,17 @@ pub enum ServerMessage {
         board: String,
         message: String,
     },
+    /// To one page, the one `/api/view` drives: apply `change` to the 3D view (none: change
+    /// nothing) and answer with `view_state`, or `view_error`.
+    View {
+        id: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        change: Option<ViewChange>,
+    },
+    /// To one page: draw the 3D view and answer with a binary frame, the `id` as 4 bytes
+    /// little-endian then the PNG of the canvas, or with `view_error`.
+    ViewPicture { id: u32 },
 }
 
 /// Every type, for the TypeScript file.
@@ -1680,6 +1707,12 @@ pub fn typescript() -> String {
         Compare,
         CancelAnswer,
         AutoBuild,
+        RenderView,
+        ColourBy,
+        CameraPlace,
+        PreviewSetting,
+        ViewChange,
+        ViewState,
         ClientMessage,
         ServerMessage,
     );

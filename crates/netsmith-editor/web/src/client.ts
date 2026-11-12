@@ -205,13 +205,18 @@ export class Events {
     private onState: (open: boolean) => void,
   ) {
     this.connect();
+    // The page focused last is the one `/api/view` drives (the server's pages.rs).
+    window.addEventListener('focus', () => this.send({ type: 'focus' }));
   }
 
   private connect() {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${scheme}://${location.host}/api/events`);
     this.socket = socket;
-    socket.onopen = () => this.onState(true);
+    socket.onopen = () => {
+      if (document.hasFocus()) this.send({ type: 'focus' });
+      this.onState(true);
+    };
     socket.onmessage = (event) => {
       try {
         this.onMessage(JSON.parse(event.data) as ServerMessage);
@@ -234,6 +239,16 @@ export class Events {
     const message: ClientMessage = { type: 'check', id, path, text };
     this.socket.send(JSON.stringify(message));
     return id;
+  }
+
+  /** Tell the server something; nothing when the socket is not open. */
+  send(message: ClientMessage) {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
+  }
+
+  /** A binary frame (a picture for `/api/view/picture`). */
+  sendBytes(bytes: ArrayBuffer) {
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(bytes);
   }
 
   isLatest(id: number): boolean {

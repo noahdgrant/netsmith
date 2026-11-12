@@ -28,7 +28,8 @@
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
 //! | `POST /api/definition` | where the name under the cursor is defined |
-//! | WebSocket `/api/events` | `rebuilt`, `analysing`, `progress`, `cancelled` to the page; `check` from the page and `checked` back |
+//! | `GET /api/view`, `POST /api/view`, `GET /api/view/picture` | the 3D view of the open page, as an agent reads and drives it, with the names of `netsmith render` (P8a of issue 430, docs/BOARD3D.md): its state as JSON, a change answered with the state once the page has drawn it, a PNG of the canvas; `409` with no page open, `504` when the page does not answer |
+//! | WebSocket `/api/events` | `rebuilt`, `analysing`, `progress`, `cancelled` to the page; `check` from the page and `checked` back; `view` and `view_picture` to one page, `focus`, `view_state`, `view_error` and a binary frame (a picture) back |
 //!
 //! **The guard.** The server listens on `127.0.0.1` only. A request whose Host is not
 //! `127.0.0.1:<port>` or `localhost:<port>` is refused (a rebinding page), an `Origin` header, if
@@ -62,6 +63,13 @@
 //! `progress`. `Backend::pending` is lock-free, because the analysis holds the state's lock for
 //! as long as it runs.
 //!
+//! **An agent drives the page, not a copy of it.** `/api/view` reaches the page that had the focus
+//! last ([`crate::pages`]) over its socket and waits for its answer: the page applies a change with
+//! the code its keys and palette run, so an agent sees what a person would, and the state it reads
+//! is the page's own. The server checks only the shape of a change; the page checks the ids, the
+//! section and the board against the scene it shows, as `netsmith render` checks them. Nothing is
+//! written and the design does not change: the view is read-only (ADR 0105).
+//!
 //! **Long jobs do not hold the server.** Routing, `fab`, a build and a compare run on a thread
 //! of their own and keep no lock on the editor's state while they run: the state is locked only
 //! to read what the job starts from and to store what it made, and a board placed or routed for
@@ -94,9 +102,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
-    api::{CancelAnswer, ClientMessage, Definition, Pending, ServerMessage},
+    api::{CancelAnswer, ClientMessage, Definition, Pending, ServerMessage, ViewChange},
     assets,
     backend::{AnalysisEvent, ApiError, Backend, Observer},
+    pages::{PageAnswer, Pages},
 };
 use netsmith_core::job::Cancel;
 
@@ -115,6 +124,12 @@ pub const PENDING_HEADER: &str = "x-netsmith-pending";
 /// Messages a socket may fall behind by before it misses one. A big project's analysis sends
 /// a few dozen `progress` lines, and `rebuilt` must not be among those that are lost.
 const EVENT_BACKLOG: usize = 256;
+/// How long `GET /api/view` and the picture wait for the page.
+const VIEW_READ_WAIT: Duration = Duration::from_secs(10);
+/// How long a change waits: the first may load the 3D view's chunk and the board's scene.
+const VIEW_CHANGE_WAIT: Duration = Duration::from_secs(45);
+/// The largest frame a page may send: a picture of a large canvas.
+const MAX_FRAME: usize = 64 * 1024 * 1024;
 
 /// The routes that wait for the analysis: all those that read the snapshot of the project, or
 /// change files and then read it again. `/api/project`, the files, `/api/definition`, the
@@ -163,6 +178,7 @@ struct AppState {
     running: Live,
     hosts: Vec<String>,
     jobs: Arc<Jobs>,
+    pages: Arc<Pages>,
 }
 
 /// The jobs that run for a request and can be cancelled (ADR 0062): each has the token the
@@ -285,6 +301,7 @@ pub fn serve_with_backlog(
         running,
         hosts: vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")],
         jobs: Arc::default(),
+        pages: Arc::default(),
     });
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -343,6 +360,8 @@ fn router(state: Shared) -> Router {
         .route("/api/order/cancel", post(cancel_order))
         .route("/api/order/download", get(order_download))
         .route("/api/definition", post(definition))
+        .route("/api/view", get(view_state).post(view_change))
+        .route("/api/view/picture", get(view_picture))
         .route("/api/events", get(events))
         .fallback(get(asset))
         .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY))
@@ -1021,6 +1040,122 @@ async fn watch(state: Shared, baseline: u64) {
     }
 }
 
+/// What an agent is told when no page is open.
+fn no_page(state: &Shared) -> ApiError {
+    let port = state.hosts.first().map_or(String::new(), |h| {
+        h.rsplit(':').next().unwrap_or("").to_string()
+    });
+    ApiError::conflict(format!(
+        "no editor page is open: open http://127.0.0.1:{port} in a browser, then ask again (the 3D view is driven in the page, which draws it)"
+    ))
+}
+
+/// Ask the page focused last, and wait up to `wait` for its answer.
+async fn ask_page(
+    state: &Shared,
+    make: impl FnOnce(u32) -> ServerMessage,
+    wait: Duration,
+) -> Result<PageAnswer, ApiError> {
+    let Some((ask, answered)) = state.pages.ask(make) else {
+        return Err(no_page(state));
+    };
+    match tokio::time::timeout(wait, answered).await {
+        Ok(Ok(PageAnswer::Error { status, message })) => Err(ApiError::new(status, message)),
+        Ok(Ok(answer)) => Ok(answer),
+        Ok(Err(_)) => Err(ApiError::conflict(
+            "the editor page closed before it answered: open it again, then ask again",
+        )),
+        Err(_) => {
+            state.pages.forget(ask);
+            Err(ApiError::new(
+                504,
+                format!(
+                    "the editor page did not answer within {} s: it may be busy (a large board loads for a while), hidden in a background tab, or a page from before this server (reload it)",
+                    wait.as_secs()
+                ),
+            ))
+        }
+    }
+}
+
+fn view_answer(answer: PageAnswer) -> Result<Response, ApiError> {
+    match answer {
+        PageAnswer::State(view) => Ok(Json(*view).into_response()),
+        _ => Err(ApiError::internal("the page answered with something else")),
+    }
+}
+
+/// `GET /api/view`: the 3D view of the page focused last.
+async fn view_state(State(s): State<Shared>) -> Result<Response, ApiError> {
+    let answer = ask_page(
+        &s,
+        |id| ServerMessage::View { id, change: None },
+        VIEW_READ_WAIT,
+    )
+    .await?;
+    view_answer(answer)
+}
+
+/// `POST /api/view`: change the 3D view of the page focused last, and answer with what it
+/// shows once it has drawn the change.
+async fn view_change(
+    State(s): State<Shared>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    let change: ViewChange = if body.iter().all(u8::is_ascii_whitespace) {
+        ViewChange::default()
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|e| ApiError::bad_request(format!("the change does not read: {e}")))?
+    };
+    if change.theme.is_some() {
+        return Err(ApiError::bad_request(
+            "`theme` cannot be changed here: the editor's theme is the person's own setting for the whole page, not a view of the board. `GET /api/view` says which it is (light or dark); `netsmith render --theme` draws a picture in either",
+        ));
+    }
+    if change.ortho.is_some() && change.perspective.is_some() && change.ortho == change.perspective
+    {
+        return Err(ApiError::bad_request(
+            "`ortho` and `perspective` say opposite things: give one",
+        ));
+    }
+    if change.view.is_some() && change.camera.is_some() {
+        return Err(ApiError::bad_request(
+            "`view` and `camera` both place the camera: give one",
+        ));
+    }
+    if change.highlight.is_some() && change.select.is_some() {
+        return Err(ApiError::bad_request(
+            "`highlight` and `select` both set the selection: give one (`highlight` also lights limits)",
+        ));
+    }
+    let answer = ask_page(
+        &s,
+        |id| ServerMessage::View {
+            id,
+            change: Some(change),
+        },
+        VIEW_CHANGE_WAIT,
+    )
+    .await?;
+    view_answer(answer)
+}
+
+/// `GET /api/view/picture`: a PNG of the 3D canvas of the page focused last, drawn for the ask.
+async fn view_picture(State(s): State<Shared>) -> Result<Response, ApiError> {
+    match ask_page(&s, |id| ServerMessage::ViewPicture { id }, VIEW_READ_WAIT).await? {
+        PageAnswer::Picture(png) => Ok((
+            [
+                (header::CONTENT_TYPE, "image/png"),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            png,
+        )
+            .into_response()),
+        _ => Err(ApiError::internal("the page answered with something else")),
+    }
+}
+
 fn send(events: &broadcast::Sender<String>, message: &ServerMessage) {
     if let Ok(text) = serde_json::to_string(message) {
         // Nobody listening is not a failure.
@@ -1099,7 +1234,13 @@ async fn events(State(s): State<Shared>, upgrade: WebSocketUpgrade) -> Response 
     // An analysis that is running now: the page that connects in the middle of it is told
     // so, and how far it has got, as the page that was there from the start was.
     let running = running_messages(&s.running);
-    upgrade.on_upgrade(move |socket| conversation(s, socket, pushes, running))
+    // A page's seat among the open pages, also before the handshake is answered: an agent that
+    // asks the moment the page is up finds it.
+    let seat = s.pages.open();
+    upgrade
+        .max_frame_size(MAX_FRAME)
+        .max_message_size(MAX_FRAME)
+        .on_upgrade(move |socket| conversation(s, socket, pushes, running, seat))
 }
 
 /// What a page that lost messages needs to hear to be as one that lost none: the analysis that
@@ -1178,6 +1319,7 @@ async fn conversation(
     mut socket: WebSocket,
     mut events: broadcast::Receiver<String>,
     running: Vec<String>,
+    (seat, mut told): (crate::pages::Seat, mpsc::UnboundedReceiver<String>),
 ) {
     for text in running {
         if socket.send(Message::Text(text.into())).await.is_err() {
@@ -1227,13 +1369,42 @@ async fn conversation(
                     return;
                 }
             }
+            Some(text) = told.recv() => {
+                if socket.send(Message::Text(text.into())).await.is_err() {
+                    return;
+                }
+            }
             received = socket.recv() => {
                 let Some(Ok(message)) = received else { return };
-                let Message::Text(text) = message else { continue };
-                if let Ok(ClientMessage::Check { id, path, text }) =
-                    serde_json::from_str::<ClientMessage>(&text)
-                {
-                    let _ = asks.send((id, path, text));
+                let text = match message {
+                    Message::Text(text) => text,
+                    // A picture: the ask's id, 4 bytes little-endian, then the PNG.
+                    Message::Binary(bytes) => {
+                        if let Some((id, png)) = bytes.split_first_chunk::<4>() {
+                            let id = u32::from_le_bytes(*id);
+                            state.pages.answer(seat.id, id, PageAnswer::Picture(png.to_vec()));
+                        }
+                        continue;
+                    }
+                    _ => continue,
+                };
+                match serde_json::from_str::<ClientMessage>(&text) {
+                    Ok(ClientMessage::Check { id, path, text }) => {
+                        let _ = asks.send((id, path, text));
+                    }
+                    Ok(ClientMessage::Focus) => state.pages.focus(seat.id),
+                    Ok(ClientMessage::ViewState { id, state: view }) => {
+                        state.pages.answer(seat.id, id, PageAnswer::State(view));
+                    }
+                    Ok(ClientMessage::ViewError { id, message, status }) => state.pages.answer(
+                        seat.id,
+                        id,
+                        PageAnswer::Error {
+                            status: status.unwrap_or(400),
+                            message,
+                        },
+                    ),
+                    Err(_) => {}
                 }
             }
         }
