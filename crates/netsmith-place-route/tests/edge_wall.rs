@@ -43,6 +43,7 @@ fn board(count: usize, size: (f64, f64)) -> Result<Board, netsmith_pcb::BoardErr
                 width: (size.0, size.0),
                 height: (size.1, size.1),
                 corner_radius: 0.0,
+                polygon: None,
             }),
             ..Features::default()
         },

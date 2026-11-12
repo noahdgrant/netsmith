@@ -58,6 +58,8 @@ const FIXTURES = {
   warn_bench: 'scripts/editor-verify-js/fixtures/warn_bench.nsm',
   // An invented microcontroller with three pin requests, a pin file and a stale pick lock beside it: the pin map and the lock panel.
   pin_map: 'scripts/editor-verify-js/fixtures/pin_map.nsm',
+  // An L-shaped polygon outline with fillets and an arc (issue #57): the PCB view draws its edge.
+  polygon_outline: 'scripts/editor-verify-js/fixtures/polygon_outline.nsm',
   // A project with no board: the views say where to write the first one.
   empty: 'scripts/editor-verify-js/fixtures/empty.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).

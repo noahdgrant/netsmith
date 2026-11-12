@@ -32,6 +32,7 @@ mod pin_edit;
 mod pin_requests;
 mod pins;
 mod place;
+mod polygon;
 mod rail_alias;
 mod rail_outputs;
 mod row;

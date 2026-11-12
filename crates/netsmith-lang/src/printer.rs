@@ -389,6 +389,25 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str("case ");
                 write_block(out, &[], &c.items, depth + 1);
             }
+            Item::Polygon(p) => {
+                out.push_str("polygon");
+                let point = |p: &Point| format!("({}, {})", p.x.to_source(), p.y.to_source());
+                for (k, c) in p.corners.iter().enumerate() {
+                    // A long run is put three corners to a line, under the first.
+                    if k > 0 && k % 3 == 0 {
+                        out.push('\n');
+                        out.push_str(&"    ".repeat(depth + 1));
+                        out.push_str("       ");
+                    }
+                    let _ = write!(out, " {}", point(&c.at));
+                    if let Some(r) = &c.round {
+                        let _ = write!(out, " round {}", r.to_source());
+                    }
+                    if let Some(t) = &c.through {
+                        let _ = write!(out, " arc through {}", point(t));
+                    }
+                }
+            }
             Item::Row(r) => {
                 let _ = write!(
                     out,

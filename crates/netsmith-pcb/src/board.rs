@@ -38,6 +38,9 @@ pub enum BoardError {
     },
     /// The parts do not fit the size the board was given.
     DoesNotFit(DoesNotFit),
+    /// The design's polygon outline is not a board edge: it does not close, or it crosses
+    /// itself (issue #57).
+    Outline(String),
     /// The design's requirements on where parts go (ADR 0045) cannot all be met: each entry
     /// names what conflicts and the numbers.
     Constraints(Vec<String>),
@@ -64,6 +67,7 @@ impl std::fmt::Display for BoardError {
                 "`{board}` does not say how it is made, and a PCB needs design rules: add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer` to the board"
             ),
             Self::Process(message) => write!(f, "{message}"),
+            Self::Outline(message) => write!(f, "{message}"),
             Self::Map { refdes, error } => write!(f, "{refdes}: {error}"),
             Self::Footprint { refdes, error } => write!(f, "{refdes}: {error}"),
             Self::NoPart { refdes } => write!(
@@ -576,7 +580,8 @@ pub enum PlacementProblem {
     },
     /// A courtyard is not wholly inside the outline, past an edge the design does not say
     /// the part may hang over (`past`: how far it is past each such edge, in mm; empty if the
-    /// box is inside and a corner of it is outside a rounded corner of the outline).
+    /// box is inside and a corner of it is outside a rounded corner of the outline, or, on a
+    /// polygon outline, outside its edge between the sides of its bounding box).
     OutsideOutline {
         refdes: String,
         /// The part's path, for the line that would allow the overhang.
@@ -585,6 +590,9 @@ pub enum PlacementProblem {
         /// The edges the design does say the part may hang over, and by what.
         stated: Vec<Edge>,
         by: String,
+        /// On a polygon outline, how far the courtyard reaches past its edge where it is not
+        /// past a side of the bounding box, in mm (issue #57).
+        cut: Option<f64>,
     },
     /// A pad is nearer the board edge than the rules allow, or outside it (a negative
     /// distance).
@@ -1057,11 +1065,18 @@ impl std::fmt::Display for PlacementProblem {
                 past,
                 stated,
                 by,
-            } => write!(
-                f,
-                "{}",
-                outside_text(refdes, path, past, stated, by, &[], false)
-            ),
+                cut,
+            } => {
+                let text = outside_text(refdes, path, past, stated, by, &[], false);
+                match (past.is_empty(), cut) {
+                    (true, Some(cut)) => write!(
+                        f,
+                        "{} is not wholly inside the board outline: its courtyard is {cut:.2} mm past the outline's edge",
+                        member(path, refdes)
+                    ),
+                    _ => write!(f, "{text}"),
+                }
+            }
             Self::InKeepout {
                 refdes,
                 path,
@@ -1306,10 +1321,14 @@ pub struct Via {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Board {
     pub name: String,
-    /// The board edge, in mm: a rectangle, with corners rounded by `corner_radius`.
+    /// The board edge, in mm: a rectangle, with corners rounded by `corner_radius`. On a
+    /// board with a `polygon` outline, the box that holds the polygon.
     pub outline: Rect,
-    /// The radius of the outline's four corners, 0 for square ones.
+    /// The radius of the outline's four corners, 0 for square ones (and for a polygon).
     pub corner_radius: f64,
+    /// The board edge when it is not a rectangle with four equal corners, on the sheet
+    /// (issue #57). [`Board::edge`] is the edge whichever shape it is.
+    pub polygon: Option<crate::polygon::Polygon>,
     /// Rectangular holes inside the outline.
     pub cutouts: Vec<BoardCutout>,
     /// The outer layers that are poured, top first. Every net with a pour is a net of the
@@ -1616,6 +1635,14 @@ impl Board {
             )));
         }
 
+        // A polygon outline (issue #57) is checked here, before any placing.
+        let polygon = match &design.features.outline {
+            Some(o) => crate::polygon::of_outline(o)
+                .map_err(|e| BoardError::Outline(format!("{}: {e}", design.name)))?
+                .map(|p| p.translated(ORIGIN)),
+            None => None,
+        };
+
         Ok(Unplaced {
             process,
             rules,
@@ -1626,6 +1653,7 @@ impl Board {
             planes,
             overhang,
             pinned,
+            polygon,
         })
     }
 
@@ -1796,9 +1824,28 @@ impl Board {
         self.parts.iter().find(|p| p.refdes == refdes)
     }
 
-    /// The board edge as a shape: the outline with its rounded corners.
+    /// The outline's box with its rounded corners: the board edge, unless the board has a
+    /// polygon outline, whose bounding box it then is. The router keeps to this (issue #495
+    /// is routing to a polygon's own edge); everything else measures [`Board::edge`].
     pub fn outline_shape(&self) -> RoundRect {
         RoundRect::new(self.outline, self.corner_radius)
+    }
+
+    /// The board edge, whichever shape it is.
+    pub fn edge(&self) -> crate::polygon::BoardEdge {
+        match &self.polygon {
+            Some(p) => crate::polygon::BoardEdge::Polygon(p.clone()),
+            None => crate::polygon::BoardEdge::Round(self.outline_shape()),
+        }
+    }
+
+    /// The part of the outline's box that is outside a polygon outline, as boxes the placer
+    /// keeps courtyards out of. Empty for a rounded rectangle.
+    pub fn outside_boxes(&self) -> Vec<Rect> {
+        self.polygon
+            .as_ref()
+            .map(crate::polygon::Polygon::outside_boxes)
+            .unwrap_or_default()
     }
 
     /// The cutouts that have a place, as shapes on the sheet.
@@ -1887,6 +1934,9 @@ impl Board {
 
     /// How far a box is from the board edge: negative if any of it is outside.
     pub fn edge_distance(&self, r: &Rect) -> f64 {
+        if let Some(p) = &self.polygon {
+            return p.box_depth(r);
+        }
         let o = &self.outline;
         let straight = (r.min.x - o.min.x)
             .min(r.min.y - o.min.y)
@@ -1912,7 +1962,7 @@ impl Board {
             && pad.extent.is_none()
             && (pad.width - pad.height).abs() < 1e-9;
         if round {
-            return self.outline_shape().depth(a.pad_centre(pad)) - pad.width / 2.0;
+            return self.edge().depth(a.pad_centre(pad)) - pad.width / 2.0;
         }
         self.edge_distance(&a.pad_bounds(pad))
     }
@@ -2229,15 +2279,15 @@ impl Board {
             });
         }
         let keepouts = self.keepout_areas();
+        let edge = self.edge();
         for (cutout, hole) in &cutouts {
-            if !self.outline.contains(&hole.rect) {
+            if edge.box_depth(&hole.rect) < -1e-6 {
                 problems.push(PlacementProblem::CutoutOutsideOutline {
                     cutout: cutout.name.clone(),
                 });
             }
         }
         for (i, a) in self.parts.iter().enumerate() {
-            let shape = self.outline_shape();
             let declared = may[i];
             let past: Vec<(Edge, f64)> = overhang::past(&courtyards[i], &self.outline)
                 .into_iter()
@@ -2246,13 +2296,26 @@ impl Board {
             // The corners of the room, but not those on an edge the part may hang over, which
             // are the board's edge and not its rounded corners.
             let o = &self.outline;
-            let in_corner = rooms[i].corners().iter().any(|&c| {
-                let on_edge = (declared.left && c.x <= o.min.x + 1e-6)
-                    || (declared.right && c.x >= o.max.x - 1e-6)
-                    || (declared.top && c.y <= o.min.y + 1e-6)
-                    || (declared.bottom && c.y >= o.max.y - 1e-6);
-                !on_edge && !shape.contains(c)
-            });
+            let (in_corner, cut) = match &self.polygon {
+                // A polygon's edge is measured along all of it, not only at the room's
+                // corners, which may all be inside an L while its inner corner is in the room.
+                // Past a side of the box the design allows, the room is clipped to the box.
+                Some(polygon) => {
+                    let depth = polygon.box_depth(&rooms[i]);
+                    (depth < -1e-6, (depth < -1e-6).then_some(-depth))
+                }
+                None => {
+                    let shape = self.outline_shape();
+                    let in_corner = rooms[i].corners().iter().any(|&c| {
+                        let on_edge = (declared.left && c.x <= o.min.x + 1e-6)
+                            || (declared.right && c.x >= o.max.x - 1e-6)
+                            || (declared.top && c.y <= o.min.y + 1e-6)
+                            || (declared.bottom && c.y >= o.max.y - 1e-6);
+                        !on_edge && !shape.contains(c)
+                    });
+                    (in_corner, None)
+                }
+            };
             if !past.is_empty() || in_corner {
                 let stated = self.overhang.get(&a.refdes);
                 problems.push(PlacementProblem::OutsideOutline {
@@ -2261,6 +2324,7 @@ impl Board {
                     past,
                     stated: declared.list(),
                     by: stated.map(Overhang::by).unwrap_or_default(),
+                    cut,
                 });
             }
             for k in keepouts
@@ -2391,6 +2455,9 @@ pub struct Unplaced {
     pub overhang: BTreeMap<String, Overhang>,
     /// The parts the requirements pin, as [`Board::pinned`].
     pub pinned: std::collections::BTreeSet<String>,
+    /// The design's polygon outline on the sheet, as [`Board::polygon`]: the placer keeps
+    /// the parts inside it.
+    pub polygon: Option<crate::polygon::Polygon>,
 }
 
 impl Unplaced {
@@ -2404,6 +2471,7 @@ impl Unplaced {
             planes,
             overhang,
             pinned,
+            polygon,
             ..
         } = self;
         let cutouts = design
@@ -2435,6 +2503,7 @@ impl Unplaced {
             name: design.name.clone(),
             outline,
             corner_radius,
+            polygon,
             cutouts,
             pours,
             keepouts: design
@@ -2902,7 +2971,8 @@ pub(crate) mod tests {
                 path: path(),
                 past: vec![(Edge::Left, 0.5)],
                 stated: Vec::new(),
-                by: String::new()
+                by: String::new(),
+                cut: None,
             })
             .starts_with("`stage.r3` (R3) is not wholly inside the board outline: its courtyard is 0.50 mm past the left edge")
         );

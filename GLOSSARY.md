@@ -109,11 +109,11 @@ _Avoid_: Reason, category, kind of note, note type
 How far above the board a loaded track may heat, `.process.max_temperature_rise` in kelvin, an upper bound. The track width check designs to it; it is 10 K when the board states none, a default of netsmith's and not a number a fabricator publishes (ADR 0036).
 
 **Outline**:
-The board edge, the board's member `.outline` (`std::pcb::Outline`): a width, a height and a corner radius. Without one the board is as big as its parts need. The origin of the board's frame is its top left corner.
+The board edge, the board's member `.outline` (`std::pcb::Outline`): a width, a height and a corner radius, or a **polygon**, the statement `polygon (x, y) (x, y) ...` in its block, an ordered run of corners where `round R` after a corner is a tangent fillet and `arc through (x, y)` makes the edge to the next corner an arc (issue #57). Without one the board is as big as its parts need. The origin of the board's frame is its top left corner (of the polygon's bounding box).
 _Avoid_: Board size, board shape
 
 **DXF import**:
-`netsmith dxf import <file.dxf>`, which reads the outline, the loops inside it and the circles on a holes layer from an enclosure's ASCII DXF and prints an `Outline`, `Cutout`s and `MountingHole`s as source to paste; `--write` puts them in the `case` section of the physical file (ADR 0045, ADR 0048). An outline that is not a rectangle with equal rounded corners is refused.
+`netsmith dxf import <file.dxf>`, which reads the outline, the loops inside it and the circles on a holes layer from an enclosure's ASCII DXF and prints an `Outline`, `Cutout`s and `MountingHole`s as source to paste; `--write` puts them in the `case` section of the physical file (ADR 0045, ADR 0048). An outline that is not a rectangle with equal rounded corners is printed as a `polygon`; a cutout of another shape than a rounded rectangle, a slot or a circle is refused.
 _Avoid_: Enclosure read
 
 **Cutout**:

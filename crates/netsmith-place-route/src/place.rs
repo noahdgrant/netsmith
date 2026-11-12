@@ -1395,6 +1395,7 @@ pub fn place_subset(
         .cutout_shapes()
         .into_iter()
         .map(|(_, s)| s.rect)
+        .chain(board.outside_boxes())
         .collect();
     keepouts.extend(cutouts.iter().copied());
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();

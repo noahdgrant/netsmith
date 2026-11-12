@@ -17,8 +17,15 @@
 //!   holds the parts". Rejected: geometry types in the library, `RoundRect`, `Rectangle`, a
 //!   polygon (each new shape is a type with fields of its own, and the rectangle is the first
 //!   one wanted, so the rest is speculation), and a field of the process (the size is a design
-//!   choice, not what the factory makes). A shape that is not a rounded rectangle needs an
-//!   import format and is not built.
+//!   choice, not what the factory makes). A shape that is not a rounded rectangle is a
+//!   `polygon` statement in the outline (issue #57, below).
+//! - **A polygon outline** (owner, 2026-11-12): `polygon (0mm, 0mm) (40mm, 0mm) round 2mm ...`
+//!   in the outline's block, an ordered run of corners, the form KiCad's `Edge.Cuts`, IPC-2581's
+//!   `Polygon` and the ODB++ profile give an outline. `round R` after a corner is a tangent
+//!   fillet there; `arc through (x, y)` after a corner makes the edge to the next corner an arc
+//!   through that point. Its values are fixed lengths; it says the size, so `.width`,
+//!   `.height` and `.corner_radius` beside it are errors. The router routes inside its box
+//!   (issue #495) and the design rules check holds the edge clearance.
 //! - **A cutout is a rectangle with an optional corner radius.** The router and the placement
 //!   check keep off it, and it is drawn on `Edge.Cuts` like the outline.
 //! - **A keepout is geometry, so it needs the board's coordinates** (ADR 0029). A footprint
@@ -32,14 +39,15 @@
 //!   the allowance and the overflow in x and y, and the corner radius is checked against the
 //!   shorter side. The edge is written as `gr_line` and `gr_arc` on `Edge.Cuts` (`gr_rect`
 //!   when square), and the router keeps off it as a closed run of short pieces.
-//! - **Not built:** an outline that is not a rectangle, logos and images (an image needs a
+//! - **Not built:** logos and images (an image needs a
 //!   bitmap-to-polygon importer, a file format and a licence record).
 
 /// The board edge: a rectangle with rounded corners, the member `.outline` of a board. A
 /// board with none is as big as the parts need. A range says how big the board may be:
 /// `.width &= 0mm..60mm` is at most 60 mm and the placer takes the least that holds the
 /// parts; a single value is that size, and the placer fails, naming the overflow, if the
-/// parts do not fit.
+/// parts do not fit. An edge of another shape is a `polygon` statement in the block instead
+/// of the three fields: `polygon (0mm, 0mm) (30mm, 0mm) round 2mm (30mm, 20mm) (0mm, 20mm)`.
 interface Outline {
     /// The extent in x and in y.
     .width: Length

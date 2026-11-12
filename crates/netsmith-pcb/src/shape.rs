@@ -7,7 +7,7 @@ use crate::geometry::{Pt, Rect};
 const SAGITTA: f64 = 0.005;
 
 /// A piece of an outline.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Edge {
     Line(Pt, Pt),
     /// A quarter circle, as KiCad draws an arc: the two ends and a point between them.

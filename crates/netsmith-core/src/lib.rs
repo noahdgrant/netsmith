@@ -312,6 +312,21 @@ pub struct Outline {
     pub height: (f64, f64),
     /// The radius of the four corners, 0 for square ones.
     pub corner_radius: f64,
+    /// The edge when it is not a rectangle with four equal corners (issue #57): its corners
+    /// in order, in mm in the board's frame, the top left of their bounding box at the
+    /// origin. The width and the height are then that box's, exactly, and `corner_radius`
+    /// is 0. `None` for the rounded rectangle.
+    pub polygon: Option<Vec<OutlineVertex>>,
+}
+
+/// A corner of a polygon outline and the edge from it to the next corner (the last's edge
+/// runs to the first).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OutlineVertex {
+    pub at: (f64, f64),
+    /// A point the edge to the next corner passes through when that edge is an arc (the
+    /// three points name one circle, as KiCad states an arc); `None` for a straight edge.
+    pub through: Option<(f64, f64)>,
 }
 
 /// A rectangular hole cut through the board.

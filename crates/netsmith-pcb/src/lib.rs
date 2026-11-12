@@ -42,6 +42,7 @@ pub mod layout;
 pub mod origin;
 pub mod overhang;
 pub mod placement;
+pub mod polygon;
 pub mod protrusion;
 pub mod ratsnest;
 pub mod rules;

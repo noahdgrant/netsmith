@@ -10,6 +10,7 @@ use crate::place::{self, Context};
 use netsmith_pcb::board::{BoardNet, Placed};
 use netsmith_pcb::geometry::{Pt, Rect};
 use netsmith_pcb::placement::{DoesNotFit, Fixed, ORIGIN, PlaceOptions, is_mechanical};
+use netsmith_pcb::polygon::{BoardEdge, Polygon};
 use netsmith_pcb::rules::Rules;
 use netsmith_pcb::shape::RoundRect;
 
@@ -44,15 +45,34 @@ fn axis(range: (f64, f64), need: f64, arranged: f64) -> Result<f64, f64> {
 /// (`PlaceOptions::fit`), with its keepouts and the faces the parts were told to be on. A
 /// size that is a range is the least that holds the parts, within the range; if the parts
 /// need more than its top, the placer says by how much.
+///
+/// A polygon outline (issue #57, on the sheet) is exactly the size of its box: the parts are
+/// laid out in the box, clear of the part of it outside the polygon (which `placement` holds
+/// among its cutouts), and the corners and the pads are measured against the polygon.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn fit(
     parts: &mut [Placed],
     nets: &[BoardNet],
     outline: &Outline,
+    polygon: Option<&Polygon>,
     rules: &Rules,
     placement: &PlaceOptions,
     planes: &[String],
     pours: bool,
 ) -> Result<Rect, DoesNotFit> {
+    // A polygon is its box's size, whatever the ranges say.
+    let outline = &match polygon {
+        Some(p) => {
+            let b = p.bounds();
+            Outline {
+                width: (b.width(), b.width()),
+                height: (b.height(), b.height()),
+                corner_radius: 0.0,
+                polygon: None,
+            }
+        }
+        None => outline.clone(),
+    };
     let context = Context {
         rules,
         planes,
@@ -95,12 +115,11 @@ pub(crate) fn fit(
     // The mechanical parts are in the corners of the outline, whose size is known now; the
     // rows of the other parts keep clear of them.
     let outline_rect = Rect::new(ORIGIN, Pt::new(ORIGIN.x + size.0, ORIGIN.y + size.1));
-    corners(
-        parts,
-        &mechanical,
-        &RoundRect::new(outline_rect, outline.corner_radius),
-        rules,
-    );
+    let edge = match polygon {
+        Some(p) => BoardEdge::Polygon(p.clone()),
+        None => BoardEdge::Round(RoundRect::new(outline_rect, outline.corner_radius)),
+    };
+    corners(parts, &mechanical, outline_rect, &edge, rules);
     // A mechanical part the layout file places is where it says.
     for &i in &mechanical {
         if let Some(f) = placement.fixed.get(&parts[i].refdes) {
@@ -141,16 +160,20 @@ pub(crate) fn fit(
         }
         // The rows keep the courtyards off the edge; a pad that sticks out of its courtyard
         // may still be nearer than the process allows, which only the annealer sees to.
-        let shape = RoundRect::new(outline_rect, outline.corner_radius);
         let pads_clear = placed.iter().all(|p| {
             p.footprint
                 .pads
                 .iter()
                 .filter(|pad| p.pad_layers(pad) != (false, false))
-                .flat_map(|pad| p.pad_bounds(pad).corners())
-                .all(|c| shape.depth(c) >= rules.copper_to_edge - 1e-9)
+                .all(|pad| edge.box_depth(&p.pad_bounds(pad)) >= rules.copper_to_edge - 1e-9)
         });
+        // Nor may a courtyard stand outside a polygon: the arrangement was made for its box.
+        let inside = polygon.is_none()
+            || placed
+                .iter()
+                .all(|p| edge.box_depth(&p.courtyard()) >= -1e-9);
         done = pads_clear
+            && inside
             && ((keepouts.is_empty() && placement.height_zones.is_empty()) || {
                 // The mechanical parts are in the corners, and stay: with them in the run, their
                 // reference text and silkscreen are kept clear of too.
@@ -201,8 +224,11 @@ pub(crate) fn fit(
 }
 
 /// Put the mechanical parts in the corners: holes first, then fiducials, one to a corner
-/// clockwise from the top left, and a second round beside the first.
-fn corners(parts: &mut [Placed], mechanical: &[usize], shape: &RoundRect, rules: &Rules) {
+/// clockwise from the top left, and a second round beside the first. The corners are those
+/// of the outline's box `r`; a part is moved in along the corner's diagonal until it is far
+/// enough inside the edge, which for a polygon whose box corner is cut away (an L) is the
+/// inner corner nearest it.
+fn corners(parts: &mut [Placed], mechanical: &[usize], r: Rect, shape: &BoardEdge, rules: &Rules) {
     let mut order = mechanical.to_vec();
     let rank = |kind: &str| match kind {
         "MountingHole" => 0,
@@ -212,7 +238,6 @@ fn corners(parts: &mut [Placed], mechanical: &[usize], shape: &RoundRect, rules:
     order.sort_by(|&a, &b| {
         (rank(&parts[a].kind), &parts[a].refdes).cmp(&(rank(&parts[b].kind), &parts[b].refdes))
     });
-    let r = shape.rect;
     // How far from the side edge each corner has been used, counting the gap after it.
     let mut used = [0.0f64; 4];
     for (n, &i) in order.iter().enumerate() {
@@ -241,11 +266,7 @@ fn corners(parts: &mut [Placed], mechanical: &[usize], shape: &RoundRect, rules:
                 r.max.y - inset - h
             };
             let keep_in = Rect::new(Pt::new(x, y - above), Pt::new(x + w, y + h));
-            let depth = keep_in
-                .corners()
-                .iter()
-                .map(|&p| shape.depth(p))
-                .fold(f64::MAX, f64::min);
+            let depth = shape.box_depth(&keep_in);
             if depth >= rules.copper_to_edge + SILK_EDGE - 1e-9 || inset > r.width().max(r.height())
             {
                 break Pt::new(x, y);

@@ -156,6 +156,37 @@ pub enum Item {
     Case(Case),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
+    /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical
+    /// file may hold one (issue #57).
+    Polygon(Polygon),
+}
+
+/// `polygon (0mm, 0mm) (40mm, 0mm) round 2mm (40mm, 15mm) arc through (30mm, 20mm) (0mm, 15mm)`:
+/// the board edge as an ordered run of corners (issue #57, owner decision 2026-11-12). The edge
+/// runs from each corner to the next and from the last back to the first.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Polygon {
+    pub corners: Vec<PolygonCorner>,
+    pub span: Span,
+}
+
+/// One corner of a [`Polygon`], with what follows it: `round R`, a tangent fillet of radius R
+/// at the corner, and `arc through (x, y)`, which makes the edge to the next corner an arc
+/// through that point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolygonCorner {
+    pub at: Point,
+    pub round: Option<Expr>,
+    pub through: Option<Point>,
+    pub span: Span,
+}
+
+/// `(x, y)`: a point of a [`Polygon`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Point {
+    pub x: Expr,
+    pub y: Expr,
+    pub span: Span,
 }
 
 /// `row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm`: a numbered run of parts on

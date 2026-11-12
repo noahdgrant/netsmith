@@ -446,6 +446,7 @@ impl Parser {
                     | Item::Lines(_)
                     | Item::Case(_)
                     | Item::Row(_)
+                    | Item::Polygon(_)
                     | Item::Constraint(_)
                     | Item::Connect(_),
                 ) => Err(ParseError::new(
@@ -485,6 +486,9 @@ impl Parser {
                 }
                 "row" if matches!(self.peek_second(), Tok::LeadingDot) => {
                     return only_decls(self.row(start)?);
+                }
+                "polygon" if matches!(self.peek_second(), Tok::LParen) => {
+                    return only_decls(self.polygon(start)?);
                 }
                 "case" if matches!(self.peek_second(), Tok::LBrace) => {
                     self.bump();
@@ -625,6 +629,87 @@ impl Parser {
             pitch,
             span: self.span_from(start),
         }))
+    }
+
+    /// `polygon (x, y) round R (x, y) arc through (x, y) (x, y) ...`. The run may go on over
+    /// newlines: a line that begins with `(`, `round` or `arc` continues it.
+    fn polygon(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let mut corners = Vec::new();
+        loop {
+            let corner_start = self.peek().span.start;
+            let at = self.point("a corner `(x, y)`")?;
+            let round = if self.continues("round") {
+                self.skip_newlines();
+                self.bump();
+                Some(self.tolerance()?)
+            } else {
+                None
+            };
+            let through = if self.continues("arc") {
+                self.skip_newlines();
+                self.bump();
+                let t = self.peek().clone();
+                if !matches!(&t.tok, Tok::Ident(w) if w == "through") {
+                    return Err(unexpected(&t, "`through (x, y)` after `arc`"));
+                }
+                self.bump();
+                Some(self.point("the point `(x, y)` the arc passes through")?)
+            } else {
+                None
+            };
+            corners.push(PolygonCorner {
+                at,
+                round,
+                through,
+                span: self.span_from(corner_start),
+            });
+            if !self.continues("(") {
+                break;
+            }
+            self.skip_newlines();
+        }
+        Ok(Item::Polygon(Polygon {
+            corners,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// Whether the polygon goes on with `word` (or `(`), on this line or at the start of the
+    /// next ones.
+    fn continues(&self, word: &str) -> bool {
+        let mut k = self.pos;
+        while self.toks[k].tok == Tok::Newline {
+            k += 1;
+        }
+        match &self.toks[k].tok {
+            Tok::LParen => word == "(",
+            Tok::Ident(w) => w == word,
+            _ => false,
+        }
+    }
+
+    /// `(x, y)`.
+    fn point(&mut self, what: &str) -> Res<Point> {
+        let open = self.expect(&Tok::LParen, what)?;
+        self.depth += 1;
+        let x = self.expr();
+        let x = x.and_then(|x| {
+            self.expect(&Tok::Comma, "`,` between x and y")?;
+            Ok(x)
+        });
+        let point = x.and_then(|x| {
+            let y = self.expr()?;
+            Ok((x, y))
+        });
+        self.depth -= 1;
+        let (x, y) = point?;
+        self.expect(&Tok::RParen, "`)` after the point's y")?;
+        Ok(Point {
+            x,
+            y,
+            span: self.span_from(open.span.start),
+        })
     }
 
     fn bridge(&mut self, start: usize) -> Res<Item> {

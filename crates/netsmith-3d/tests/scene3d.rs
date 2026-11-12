@@ -79,6 +79,7 @@ pub(crate) fn board_with(process: netsmith_core::Process) -> Board {
                 width: (30.0, 30.0),
                 height: (20.0, 20.0),
                 corner_radius: 0.0,
+                polygon: None,
             }),
             ..Features::default()
         },
