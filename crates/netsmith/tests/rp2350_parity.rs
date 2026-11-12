@@ -1227,7 +1227,4 @@ fn the_designator_map_says_what_it_cannot_read() {
     );
     assert!(DesignatorMap::parse("J1 = 3").unwrap_err().contains("J1"));
     assert!(DesignatorMap::parse("J1 =").is_err());
-    // The committed map reads.
-    let committed = fs::read_to_string(project().join("reference/designators.toml")).unwrap();
-    DesignatorMap::parse(&committed).unwrap_or_else(|e| panic!("{e}"));
 }

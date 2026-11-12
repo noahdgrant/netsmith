@@ -64,9 +64,9 @@ are netsmith's** (MIT, like the rest of the repository).
   Regenerate it with
   `cargo run -p netsmith --example reference_table -- reference/RPI-RP2350A-MINIMAL_R4-S1.kicad_pcb > reference/placements.toml`
   (run from this folder); a test checks that the file is what the program prints.
-- `reference/designators.toml`: which part of the board `netsmith fab` writes is which part of
-  Raspberry Pi's (see Parity): all 43 are paired. A test holds it against the design's own
-  designators.
+- `reference/parts.toml`: the parts file of the port, Raspberry Pi's designator of each part by its
+  member path (see Parity): all 43, the four mounting holes `hole1` to `hole4` as MH1 to MH4. The
+  nets proof and the parity check read it.
 - `src/main.physical.nsm`: the board's physical file: the outline, the mounting holes and the
   places of J1 to J4, SW1 and SW2, each number read from their board (see The physical file).
 - `src/main.pcb.toml`: the layout file, with only a placer seed (see The physical file).
@@ -251,7 +251,7 @@ and says so.
 ## Parity
 
 `netsmith parity <board.kicad_pcb> [--table <placements.toml>]
-[--map <designators.toml>] [--svg <overlay.svg>]`, run in this folder, compares the `.kicad_pcb` that `netsmith fab`
+[--parts <parts.toml>] [--svg <overlay.svg>]`, run in this folder, compares the `.kicad_pcb` that `netsmith fab`
 writes (in `fab/<Board>/`) with Raspberry Pi's board, as `reference/placements.toml` states it.
 It prints one line per item and `must-match: N ok, M failed`, writes the overlay (both boards at
 one scale: Raspberry Pi's in blue, netsmith's in orange, a failing must-match item in red with
@@ -299,9 +299,10 @@ upper-left corner of the outline's bounding box (the smallest x and y of `Edge.C
 grows downward): it is a corner of the box in both files and needs no flip of an axis. A board
 moved as a whole passes; the two corners as the files state them are an `info` line.
 
-**The map.** Raspberry Pi's references and netsmith's differ, so `reference/designators.toml`
-has a line `J1 = "J1"` (Raspberry Pi's reference, then the reference in `fab`'s board file) for
-each part. A part of the table with no line is `unmapped`: a failure if it must match, else a
+**The map.** Raspberry Pi's references and netsmith's differ, so the checker pairs them by the
+member path: `reference/parts.toml` has a line `usb = "J1"` (the member path, then Raspberry Pi's
+reference) for each part, and `fab` writes each footprint's member path on the board as a hidden
+property (`netsmith_path`); a board with no such property is refused. A part of the table with no line is `unmapped`: a failure if it must match, else a
 note. Map every part whose pads carry a net, U1 included: the nets are compared by name where
 both names are plain (a leading `/` and the case are ignored; `Net-(...)` and `unconnected-...`
 are not plain), and through the connectivity otherwise. A pad's net passes when the names are

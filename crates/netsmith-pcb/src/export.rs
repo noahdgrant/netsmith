@@ -270,7 +270,52 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
             written
         });
     }
+    // The part's member path, hidden, so that a tool that reads the board knows which part of
+    // the source each footprint is without building the design (the parity checker pairs a
+    // port's parts by it, #456). It goes after the footprint's last property.
+    let path = path_property(part, &format!("{key}/path"));
+    let after = items
+        .iter()
+        .rposition(|i| i.head() == Some("property"))
+        .map_or(items.len(), |i| i + 1);
+    items.insert(
+        after,
+        if part.mirrored() {
+            flipped(&path, None)
+        } else {
+            path
+        },
+    );
     Sexp::List(items)
+}
+
+/// The name of the hidden property that holds a footprint's member path in the design.
+pub const PATH_PROPERTY: &str = "netsmith_path";
+
+/// `(property "netsmith_path" "<path>" ...)`, hidden, on the fabrication layer of the front (a
+/// part on the back has it flipped with the rest).
+fn path_property(part: &Placed, key: &str) -> Sexp {
+    Sexp::node(
+        "property",
+        vec![
+            Sexp::string(PATH_PROPERTY),
+            Sexp::string(part.path.clone()),
+            Sexp::node("at", vec![Sexp::num(0.0), Sexp::num(0.0), Sexp::num(0.0)]),
+            Sexp::node("layer", vec![Sexp::string("F.Fab")]),
+            Sexp::node("hide", vec![Sexp::atom("yes")]),
+            uuid_for(key),
+            Sexp::node(
+                "effects",
+                vec![Sexp::node(
+                    "font",
+                    vec![
+                        Sexp::node("size", vec![Sexp::num(1.0), Sexp::num(1.0)]),
+                        Sexp::node("thickness", vec![Sexp::num(0.15)]),
+                    ],
+                )],
+            ),
+        ],
+    )
 }
 
 /// A layer name on the other face: `F.SilkS` is `B.SilkS`. Layers of both faces and the

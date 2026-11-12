@@ -56,7 +56,7 @@ pub use board::{
     ReferenceSide, Side, StandardPass, Track, Trim, Unplaced, Via,
 };
 pub use explain::{Fault, Precheck, RequirementReport};
-pub use export::{kicad_pcb, kicad_pro};
+pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro};
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
     PadShape, Shape,

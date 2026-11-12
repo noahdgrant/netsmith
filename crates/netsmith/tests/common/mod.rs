@@ -271,3 +271,4 @@ pub fn chip_libraries(dir: &Path, symbol: &str, footprint: &str) -> Libraries {
 }
 
 pub mod endpoints;
+pub mod port;

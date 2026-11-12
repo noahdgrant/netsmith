@@ -1926,87 +1926,33 @@ board Ics {
 mod board {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use netsmith::compare::netlist_of_design;
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::Mapping;
     use netsmith_kicad::install::Search;
     use netsmith_kicad::testlib;
-    use netsmith_netlist::{Identity, Options, Outcome, compare, normalize_value, report};
+    use netsmith_netlist::{Options, Outcome, compare, normalize_value, report};
+
+    use crate::common::port::{Pad, Port, Reading};
 
     use super::*;
 
-    /// Where each part of ORBIT's board is in the netsmith board (the path of its member), by
-    /// ORBIT's reference designator. The four 100 nF capacitors of the microcontroller's 3.3 V
-    /// rail (C3 to C6) are interchangeable: which of them is called C4 is arbitrary, and nothing
-    /// below depends on it. H1 to H4 (the mounting holes) and the logo `O` are the physical file's.
-    const PARTS: &[(&str, &str)] = &[
-        ("U1", "charger.ic"),
-        ("U10", "oscillator.crystal"),
-        ("U15", "buck_boost.ic"),
-        ("U16", "mcu"),
-        ("U17", "eeprom"),
-        ("U22", "usb_uart.ic"),
-        ("USB1", "usb"),
-        ("BAT1", "battery"),
-        ("J1", "header_west"),
-        ("J2", "header_east"),
-        ("PWR1", "power_switch"),
-        ("BOOT0", "boot_switch"),
-        ("SW1", "reset_button"),
-        ("SW2", "user_button"),
-        ("L1", "buck_boost.inductor"),
-        ("D1", "charger.status_led"),
-        ("D2", "led1"),
-        ("D3", "led2"),
-        ("R1", "charger.status_resistor"),
-        ("R2", "boot_pulldown"),
-        ("R3", "charger.rprog"),
-        ("R4", "led1_resistor"),
-        ("R5", "led2_resistor"),
-        ("R6", "buck_boost.pg_pullup.resistor"),
-        ("R7", "buck_boost.divider_top"),
-        ("R8", "buck_boost.divider_bottom"),
-        ("R9", "i2c_pullups.scl_pullup"),
-        ("R10", "i2c_pullups.sda_pullup"),
-        ("R11", "user_series"),
-        ("R12", "user_pulldown.resistor"),
-        ("C2", "v3v3_bulk"),
-        ("C3", "v3v3_100n_1"),
-        ("C4", "v3v3_100n_2"),
-        ("C5", "v3v3_100n_3"),
-        ("C6", "v3v3_100n_4"),
-        ("C7", "charger.vbatt_cap"),
-        ("C8", "charger.vbus_cap"),
-        ("C9", "reset_cap"),
-        ("C11", "oscillator.load_in"),
-        ("C12", "oscillator.load_out"),
-        ("C13", "buck_boost.output_cap"),
-        ("C14", "buck_boost.input_cap"),
-        ("C18", "user_node_cap"),
-        ("C19", "user_pin_cap"),
-        ("C20", "usb_uart.vdd_bulk"),
-        ("C21", "usb_uart.vdd_100n"),
-        ("C23", "usb_uart.vbus_1u"),
-        ("C24", "usb_uart.vbus_100n"),
-    ];
-
-    /// The parts of ORBIT's netlist that the circuit does not have: the four mounting holes, which
-    /// are the physical file's (the logo `O` is no part of the netlist: it has no pad).
-    const LEFT_OUT: [&str; 4] = ["H1", "H2", "H3", "H4"];
-
-    /// The mounting holes of the physical file (`.hole1` to `.hole4`), as ORBIT's `H1` to `H4`.
-    const HOLE_PATHS: [(&str, &str); 4] = [
-        ("H1", "hole1"),
-        ("H2", "hole2"),
-        ("H3", "hole3"),
-        ("H4", "hole4"),
-    ];
-
-    /// The resistors whose two pads are numbered the other way round in the design: the two I2C
+    /// The port: `reference/parts.toml` pairs each of the 48 parts of ORBIT's circuit with a
+    /// member of the board. The four 100 nF capacitors of the microcontroller's 3.3 V rail (C3 to
+    /// C6) are interchangeable: which of them is called C4 is arbitrary, and nothing below depends
+    /// on it. ORBIT's four mounting holes (H1 to H4) have no nets and are not in `parts.toml`: the
+    /// physical file has its own (`.hole1` to `.hole4`), which the parity checker judges as holes,
+    /// by place and drill (the logo `O` is no part of the netlist: it has no pad). The two I2C
     /// pull-ups (`I2cPullups`, from the supply to the line) put their resistor's pad 1 where ORBIT
-    /// has pad 2 (R2, once a `PullDown`, is a plain resistor joined as ORBIT's, for BOOT0's pad
-    /// 1). The two pads of a resistor are interchangeable; the board's pads are the other way.
-    const SWAPPED: [&str; 2] = ["R9", "R10"];
+    /// has pad 2 (R2, once a `PullDown`, is a plain resistor joined as ORBIT's, for BOOT0's pad 1):
+    /// the two pads of a resistor are interchangeable, and the board's are the other way.
+    const PORT: Port = Port {
+        folder: "orbit",
+        board: REFERENCE,
+        original: "ORBIT",
+        swapped: &["R9", "R10"],
+        renumbered: &[],
+        no_nets: &["H1", "H2", "H3", "H4"],
+        own: &["hole1", "hole2", "hole3", "hole4"],
+    };
 
     fn libraries() -> Libraries {
         let nowhere = testlib::TempDir::new("orbit-board-no-kicad");
@@ -2072,245 +2018,21 @@ mod board {
         built_from(&source()).unwrap_or_else(|e| panic!("{e}"))
     }
 
-    fn reference() -> Netlist {
-        Netlist::from_kicad_pcb(&read(&format!("reference/{REFERENCE}")))
-            .unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    /// The design's reference designator for each of ORBIT's, by designator.
-    fn designators(built: &netsmith::Built) -> BTreeMap<String, String> {
-        PARTS
-            .iter()
-            .map(|(reference, path)| {
-                let part = built
-                    .design
-                    .parts
-                    .iter()
-                    .find(|p| p.path == *path)
-                    .unwrap_or_else(|| panic!("{reference}: the board has no part `{path}`"));
-                (part.refdes.clone(), (*reference).to_string())
-            })
-            .collect()
-    }
-
-    fn design_netlist(built: &netsmith::Built) -> Netlist {
-        let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
-        netlist_of_design(&built.design, &mapping).unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    type Pad = (String, String);
-
-    /// The pad number of `pad` as the reference has it: the other pad for a resistor of
-    /// `SWAPPED`, when `swap` says to read the design that way.
-    fn aligned(refdes: &str, pad: &str, swap: bool) -> String {
-        if swap && SWAPPED.contains(&refdes) {
-            match pad {
-                "1" => "2",
-                "2" => "1",
-                other => other,
-            }
-            .to_string()
-        } else {
-            pad.to_string()
-        }
-    }
-
-    /// For each pad that is on a net with another pad: the other pads of the net, in ORBIT's
-    /// designators (`to_reference` maps a designator of this netlist; one it does not name keeps
-    /// its name). `swap` reads the pads of `SWAPPED` the other way round.
-    fn neighbours(
-        netlist: &Netlist,
-        to_reference: &BTreeMap<String, String>,
-        swap: bool,
-    ) -> BTreeMap<Pad, BTreeSet<Pad>> {
-        let mut out = BTreeMap::new();
-        for net in &netlist.nets {
-            let pads: BTreeSet<Pad> = net
-                .pins
-                .iter()
-                .map(|(c, pin)| {
-                    let refdes = &netlist.components[*c].refdes;
-                    let refdes = to_reference.get(refdes).unwrap_or(refdes).clone();
-                    let pin = aligned(&refdes, pin, swap);
-                    (refdes, pin)
-                })
-                .collect();
-            let pads: Vec<Pad> = pads.into_iter().collect();
-            if pads.len() < 2 {
-                continue;
-            }
-            for pad in &pads {
-                let others = pads.iter().filter(|p| *p != pad).cloned().collect();
-                out.insert(pad.clone(), others);
-            }
-        }
-        out
-    }
-
-    /// The same netlist with the value and footprint of every component blanked and the
-    /// components of `leave_out` gone: only the wiring is left to compare. `to_reference` renames
-    /// the designators (the identity for the reference), and `swap` reads the pads of `SWAPPED`
-    /// the other way round.
-    fn wiring_only(
-        netlist: &Netlist,
-        to_reference: &BTreeMap<String, String>,
-        leave_out: &[&str],
-        swap: bool,
-    ) -> Netlist {
-        let kept = |refdes: &str| !leave_out.contains(&refdes);
-        let components = netlist
-            .components
-            .iter()
-            .filter(|c| kept(&c.refdes))
-            .map(|c| (c.refdes.clone(), String::new(), String::new()))
-            .collect();
-        let nets = netlist
-            .nets
-            .iter()
-            .map(|n| {
-                let pins = n
-                    .pins
-                    .iter()
-                    .map(|(c, pin)| {
-                        let refdes = netlist.components[*c].refdes.clone();
-                        let renamed = to_reference.get(&refdes).unwrap_or(&refdes).clone();
-                        let pin = aligned(&renamed, pin, swap);
-                        (refdes, pin)
-                    })
-                    .filter(|(refdes, _)| kept(refdes))
-                    .collect();
-                (n.name.clone(), pins)
-            })
-            .collect();
-        Netlist::from_parts(components, nets).unwrap_or_else(|e| panic!("{e}"))
-    }
-
-    /// Every pad whose other pads on its net are not the same on both sides, one line each
-    /// (empty when the two boards have the same connectivity), for the pads of either side.
-    fn net_differences(
-        ours: &BTreeMap<Pad, BTreeSet<Pad>>,
-        theirs: &BTreeMap<Pad, BTreeSet<Pad>>,
-    ) -> Vec<String> {
-        let mut differences = Vec::new();
-        let pads: BTreeSet<&Pad> = ours.keys().chain(theirs.keys()).collect();
-        let empty = BTreeSet::new();
-        for pad in pads {
-            let (a, b) = (
-                ours.get(pad).unwrap_or(&empty),
-                theirs.get(pad).unwrap_or(&empty),
-            );
-            if a != b {
-                differences.push(format!(
-                    "{}.{}: board has {:?}, ORBIT has {:?}",
-                    pad.0,
-                    pad.1,
-                    a.difference(b).collect::<Vec<_>>(),
-                    b.difference(a).collect::<Vec<_>>()
-                ));
-            }
-        }
-        differences
-    }
-
+    /// Every part of the board is one of ORBIT's, once, and every part of theirs but the mounting
+    /// holes and the logo is in the board: ORBIT's netlist has 52 parts, its 53 footprints less
+    /// the logo, which has no pad.
     #[test]
     fn the_board_builds_with_no_kicad_and_has_the_parts_of_orbits_board() {
-        let built = built();
-        let by_designator = designators(&built);
-        // Every part of the board is one of ORBIT's, once, and every part of theirs but the
-        // mounting holes and the logo is in the board.
-        assert_eq!(by_designator.len(), PARTS.len());
-        let own: Vec<&str> = built
-            .design
-            .parts
-            .iter()
-            .map(|p| p.path.as_str())
-            .filter(|path| !PARTS.iter().any(|(_, part)| part == path))
-            .filter(|path| !HOLE_PATHS.iter().any(|(_, hole)| hole == path))
-            .collect();
-        assert_eq!(own, Vec::<&str>::new(), "a part that is not ORBIT's");
-        let reference = reference();
-        let theirs: BTreeSet<&str> = reference
-            .components
-            .iter()
-            .map(|c| c.refdes.as_str())
-            .collect();
-        let ours: BTreeSet<&str> = PARTS.iter().map(|(r, _)| *r).collect();
-        assert_eq!(
-            theirs.len(),
-            52,
-            "53 footprints less the logo, which has no pad"
-        );
-        assert_eq!(
-            theirs.difference(&ours).copied().collect::<Vec<_>>(),
-            LEFT_OUT,
-            "the reference's parts that the board does not have"
-        );
-        assert_eq!(ours.difference(&theirs).count(), 0);
-        assert!(built.schematic.starts_with("(kicad_sch"));
-    }
-
-    /// `reference/designators.toml` (the parity checker's map from ORBIT's references to the
-    /// references `fab` writes) says what the design says: designators come from the kind of a
-    /// part and the order of its declaration, so a part added to `src/main.nsm` ahead of another
-    /// renumbers it and this fails until the map is written again. Every one of the 48 parts of the
-    /// circuit is paired once, and nothing else is: the four holes of the physical file are judged
-    /// by the checker as holes, by place and drill, and the logo has no pad.
-    #[test]
-    fn the_parity_checkers_designator_map_is_the_designs_own() {
-        let built = built();
-        let map = netsmith::parity::DesignatorMap::parse(&read("reference/designators.toml"))
-            .unwrap_or_else(|e| panic!("{e}"));
-        let mut wrong = Vec::new();
-        for (reference, path) in PARTS {
-            let part = built
-                .design
-                .parts
-                .iter()
-                .find(|p| p.path == *path)
-                .unwrap_or_else(|| panic!("{reference}: the board has no part `{path}`"));
-            if map.get(reference) != Some(part.refdes.as_str()) {
-                wrong.push(format!(
-                    "{reference}: the map says {:?}, the design has {} (`{path}`)",
-                    map.get(reference),
-                    part.refdes
-                ));
-            }
-        }
-        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
-        assert_eq!(map.len(), PARTS.len());
-        // Each design part is the target of one entry only.
-        let mut targets: Vec<&str> = PARTS
-            .iter()
-            .map(|(reference, _)| map.get(reference).unwrap())
-            .collect();
-        targets.sort_unstable();
-        targets.dedup();
-        assert_eq!(
-            targets.len(),
-            map.len(),
-            "two parts of ORBIT's are one part"
-        );
+        PORT.assert_has_the_parts(&built(), 48, 52);
     }
 
     /// The proof: for every pad of every part of ORBIT's board, the set of the other pads on its
     /// net is the same as on the board's. It is made from the committed `.kicad_pcb` as a file
-    /// and the design's nets, with no `kicad-cli`. The two resistors of `SWAPPED` are read with
-    /// their two pads exchanged (README, "Differences").
+    /// and the design's nets, with no `kicad-cli`. The two resistors of `PORT.swapped` are read
+    /// with their two pads exchanged (README, "Differences").
     #[test]
     fn every_pad_has_the_same_pads_on_its_net_as_in_orbits_board() {
-        let built = built();
-        let to_reference = designators(&built);
-        let ours = neighbours(&design_netlist(&built), &to_reference, true);
-        let theirs = neighbours(&reference(), &BTreeMap::new(), false);
-        let differences = net_differences(&ours, &theirs);
-        assert!(differences.is_empty(), "{}", differences.join("\n"));
-        // It is a real comparison: both sides have pads on nets.
-        assert!(
-            theirs.len() > 150 && ours.len() == theirs.len(),
-            "{} {}",
-            ours.len(),
-            theirs.len()
-        );
+        PORT.assert_same_pads_on_nets(&built(), 150);
     }
 
     /// The pads of the CP2102's `NC` pin (the datasheet's table has one pin of these ten): the pads
@@ -2362,9 +2084,9 @@ mod board {
         assert_eq!(nc.len(), 1, "one `NC` pin, as the datasheet's table has it");
         assert_eq!(format!("{:?}", nc[0].kind), "NoConnect");
         assert_eq!(nc[0].pads, NC_PADS);
-        let to_reference = designators(&built);
-        let ours = design_netlist(&built);
-        let theirs = reference();
+        let to_reference = PORT.designators(&built);
+        let ours = PORT.design_netlist(&built);
+        let theirs = PORT.reference();
         for pad in NC_PADS {
             let (mates, ours_names) = pad_net_mates(&ours, &to_reference, "U22", pad);
             assert_eq!(mates, Vec::<Pad>::new(), "the board's U22 pad {pad}");
@@ -2396,23 +2118,22 @@ mod board {
     }
 
     /// The exchange of the two resistors' pads is the only thing that stands between the
-    /// board's pads and ORBIT's: read as they are, the differences are all on `SWAPPED`.
+    /// board's pads and ORBIT's: read as they are, the differences are all on `PORT.swapped`.
     #[test]
     fn only_the_two_resistors_have_pads_numbered_the_other_way() {
         let built = built();
-        let to_reference = designators(&built);
-        let ours = neighbours(&design_netlist(&built), &to_reference, false);
-        let theirs = neighbours(&reference(), &BTreeMap::new(), false);
-        let differences = net_differences(&ours, &theirs);
+        let ours = PORT.ours(&built);
+        let theirs = PORT.neighbours(&PORT.reference(), &BTreeMap::new(), Reading::AsIs);
+        let differences = PORT.net_differences(&ours, &theirs);
         assert!(!differences.is_empty());
         let on_swapped = |d: &str| {
-            SWAPPED
+            PORT.swapped
                 .iter()
                 .any(|r| d.starts_with(&format!("{r}.")) || d.contains(&format!("(\"{r}\", ")))
         };
         let other: Vec<&String> = differences.iter().filter(|d| !on_swapped(d)).collect();
         assert!(other.is_empty(), "{other:?}");
-        for r in SWAPPED {
+        for r in PORT.swapped {
             assert!(
                 differences.iter().any(|d| d.starts_with(&format!("{r}."))),
                 "{r} has no difference"
@@ -2421,26 +2142,19 @@ mod board {
     }
 
     /// The same, by `netsmith-netlist`'s `compare` (what `netsmith compare` runs), with the
-    /// designators paired by the table above and the value and footprint left out of the
+    /// designators paired by `reference/parts.toml` and the value and footprint left out of the
     /// comparison: the verdict is a match, and the report names no net.
     #[test]
     fn netsmith_compare_says_the_nets_are_the_same() {
         let built = built();
-        let to_reference = designators(&built);
-        let a = wiring_only(&design_netlist(&built), &to_reference, &LEFT_OUT, true);
-        let b = wiring_only(&reference(), &BTreeMap::new(), &LEFT_OUT, false);
-        let pairs = to_reference
-            .iter()
-            .map(|(ours, theirs)| (ours.clone(), theirs.clone()))
-            .collect();
-        let options = Options {
-            identity: Identity::Map(pairs),
-            ..Options::default()
-        };
-        let outcome = compare(&a, &b, &options).unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
-        // Without the table, the wiring alone still makes the two the same circuit.
-        let free = compare(&a, &b, &Options::default()).unwrap_or_else(|e| panic!("{e}"));
+        PORT.assert_compare_matches(&built);
+        // Without the pairs, the wiring alone still makes the two the same circuit.
+        let free = compare(
+            &PORT.wiring(&built),
+            &PORT.reference_wiring(),
+            &Options::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(free, Outcome::Match(_)), "{}", report(&free));
     }
 
@@ -2449,31 +2163,8 @@ mod board {
     #[test]
     fn the_comparison_sees_a_pad_on_the_wrong_net() {
         let built = built();
-        let to_reference = designators(&built);
-        let mut ours = neighbours(&design_netlist(&built), &to_reference, true);
-        let theirs = neighbours(&reference(), &BTreeMap::new(), false);
-        assert_eq!(net_differences(&ours, &theirs), Vec::<String>::new());
         // J2 pad 4 carries PB2 in ORBIT's board; say it carried the net of pad 6 (PB0).
-        let key = ("J2".to_string(), "4".to_string());
-        let wrong = ours
-            .get(&("J2".to_string(), "6".to_string()))
-            .unwrap()
-            .clone();
-        assert_ne!(ours[&key], wrong, "the wrong net must be another one");
-        ours.insert(key, wrong);
-        let differences = net_differences(&ours, &theirs);
-        assert!(
-            differences.iter().any(|d| d.starts_with("J2.4: board has")),
-            "{differences:?}"
-        );
-        // A pad that is on a net on one side only is a difference as well.
-        let mut ours = neighbours(&design_netlist(&built), &to_reference, true);
-        ours.remove(&("J2".to_string(), "4".to_string()));
-        assert!(
-            net_differences(&ours, &theirs)
-                .iter()
-                .any(|d| d.starts_with("J2.4: ")),
-        );
+        PORT.assert_sees_a_wrong_net(&built, ("J2", "4"), ("J2", "6"));
         // And the netsmith compare sees a design with one pin moved: the source with the J2
         // pad 4 joined to the net of pad 6 is a different circuit.
         let moved = source().replace(
@@ -2482,24 +2173,14 @@ mod board {
         );
         assert_ne!(moved, source());
         let moved = built_from(&moved).unwrap_or_else(|e| panic!("{e}"));
-        let b = wiring_only(&reference(), &BTreeMap::new(), &LEFT_OUT, false);
+        let b = PORT.reference_wiring();
         // Both sides leave out the four holes, as in the test above, so that the edit is the one
         // thing the two differ by: the control, the same board without the edit, matches.
-        let unmoved = wiring_only(
-            &design_netlist(&built),
-            &designators(&built),
-            &LEFT_OUT,
-            true,
-        );
-        let outcome = compare(&unmoved, &b, &Options::default()).unwrap_or_else(|e| panic!("{e}"));
+        let outcome = compare(&PORT.wiring(&built), &b, &Options::default())
+            .unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(outcome, Outcome::Match(_)), "{}", report(&outcome));
-        let a = wiring_only(
-            &design_netlist(&moved),
-            &designators(&moved),
-            &LEFT_OUT,
-            true,
-        );
-        let outcome = compare(&a, &b, &Options::default()).unwrap_or_else(|e| panic!("{e}"));
+        let outcome = compare(&PORT.wiring(&moved), &b, &Options::default())
+            .unwrap_or_else(|e| panic!("{e}"));
         assert!(
             !matches!(outcome, Outcome::Match(_)),
             "{}",
@@ -2512,15 +2193,16 @@ mod board {
     #[test]
     fn the_resistors_and_capacitors_have_orbits_values_and_packages() {
         let built = built();
-        let reference = reference();
+        let reference = PORT.reference();
         let mut wrong = Vec::new();
         let mut counted = 0;
-        for (name, path) in PARTS
+        for (path, name) in PORT
+            .parts()
             .iter()
-            .filter(|(r, _)| r.starts_with('R') || r.starts_with('C'))
+            .filter(|(_, r)| r.starts_with('R') || r.starts_with('C'))
         {
             counted += 1;
-            let part = built.design.parts.iter().find(|p| p.path == *path).unwrap();
+            let part = built.design.parts.iter().find(|p| p.path == path).unwrap();
             let theirs = &reference.components[reference.find(name).unwrap()];
             if normalize_value(&part.value, true) != normalize_value(&theirs.value, true) {
                 wrong.push(format!(
@@ -2609,7 +2291,7 @@ mod board {
     /// What each header pad carries on ORBIT's board, read from its nets: a power net, ground, or
     /// the name of the MCU pin that the net reaches.
     fn reference_signals() -> BTreeMap<(String, String), String> {
-        let reference = reference();
+        let reference = PORT.reference();
         let mut out = BTreeMap::new();
         for header in ["J1", "J2"] {
             let c = reference.find(header).unwrap();

@@ -246,20 +246,67 @@ fn compare_as_json_says_match_and_the_pairs() {
     assert_eq!(doc["a"]["path"], "two_buck.nsm");
 }
 
+/// `fab` writes the member path of each part on its footprint as a hidden property
+/// (`netsmith_path`, #456), so that `netsmith parity` pairs a port's parts by it, with no build.
+#[test]
+fn fab_writes_the_member_path_of_each_footprint() {
+    use netsmith_kicad::sexp::Sexp;
+    let root = led("output-fab-path");
+    let run = netsmith(&root, &["fab", "--quiet"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let pcb = fs::read_to_string(root.join("fab/LedExample/LedExample.kicad_pcb")).unwrap();
+    let board = Sexp::parse(&pcb).unwrap();
+    let property = |footprint: &Sexp, name: &str| {
+        footprint
+            .find_all("property")
+            .find(|p| p.args().first().and_then(Sexp::text) == Some(name))
+            .cloned()
+    };
+    let mut paths = Vec::new();
+    for footprint in board.find_all("footprint") {
+        let path = property(footprint, "netsmith_path").expect("a footprint with no path");
+        assert_eq!(
+            path.find("hide").map(|h| h.args().to_vec()),
+            Some(vec![Sexp::atom("yes")]),
+            "the path is hidden: {path:?}"
+        );
+        let reference = property(footprint, "Reference").unwrap();
+        paths.push((
+            path.args()[1].text().unwrap().to_string(),
+            reference.args()[1].text().unwrap().to_string(),
+        ));
+    }
+    paths.sort();
+    let paths: Vec<String> = paths.iter().map(|(p, r)| format!("{p}={r}")).collect();
+    assert_eq!(paths, ["led=D1", "power_in=J1", "r1=R1"]);
+}
+
+/// The charger's reference board with the member path of each part of `reference/parts.toml`
+/// on its footprint, as `fab` writes it: the board that `netsmith parity` pairs part by part.
+fn charger_reference_with_paths() -> String {
+    let reference = examples().join("power_manifold_charger/reference");
+    let parts = netsmith::port::PortParts::read(&reference.join("parts.toml")).unwrap();
+    let mut pcb = fs::read_to_string(reference.join("charger-module.kicad_pcb")).unwrap();
+    for (path, designator) in parts.iter() {
+        let at = format!("(property \"Reference\" \"{designator}\"");
+        assert_eq!(pcb.matches(&at).count(), 1, "{designator}");
+        pcb = pcb.replace(
+            &at,
+            &format!("(property \"netsmith_path\" \"{path}\" (hide yes)) {at}"),
+        );
+    }
+    pcb
+}
+
 #[test]
 fn parity_is_a_command_with_a_json_report() {
-    // The charger's reference board against itself, with a map that pairs each part with itself.
+    // The charger's reference board against itself, each footprint holding the member path that
+    // `reference/parts.toml` gives its designator, so every part is paired with itself.
     let reference = examples().join("power_manifold_charger/reference");
     let dir = TempDir::new("output-parity");
-    let map: String = fs::read_to_string(reference.join("designators.toml"))
-        .unwrap()
-        .lines()
-        .filter_map(|l| l.split_once(" = "))
-        .filter(|(k, _)| !k.starts_with('#'))
-        .map(|(k, _)| format!("{k} = \"{k}\"\n"))
-        .collect();
-    fs::write(dir.join("identity.toml"), map).unwrap();
-    let pcb = reference.join("charger-module.kicad_pcb");
+    fs::write(dir.join("board.kicad_pcb"), charger_reference_with_paths()).unwrap();
+    let pcb = dir.join("board.kicad_pcb");
+    let parts = reference.join("parts.toml");
     let table = reference.join("placements.toml");
     let args = |format: &'static str| {
         vec![
@@ -267,8 +314,8 @@ fn parity_is_a_command_with_a_json_report() {
             pcb.display().to_string(),
             "--table".into(),
             table.display().to_string(),
-            "--map".into(),
-            "identity.toml".into(),
+            "--parts".into(),
+            parts.display().to_string(),
             "--format".into(),
             format.into(),
         ]
@@ -291,6 +338,17 @@ fn parity_is_a_command_with_a_json_report() {
     assert_eq!(doc["passed"], true);
     assert_eq!(doc["must_match"]["failed"], 0);
     assert!(doc["must_match"]["ok"].as_u64().unwrap() > 0);
+    // Every part of the table is paired but the hot-surface mark on the back (`REF**`, a
+    // graphic with no designator of its own, which `parts.toml` does not name): no other item
+    // says a part is unmapped or not on the board.
+    let unpaired: Vec<&str> = doc["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_str().unwrap())
+        .filter(|id| id.ends_with(" unmapped") || id.ends_with(" missing"))
+        .collect();
+    assert_eq!(unpaired, ["part REF** unmapped"]);
     let item = &doc["items"][0];
     for key in [
         "id",
@@ -309,11 +367,27 @@ fn parity_is_a_command_with_a_json_report() {
             "nowhere.kicad_pcb",
             "--table",
             "x.toml",
-            "--map",
-            "identity.toml",
+            "--parts",
+            &parts.display().to_string(),
         ])
         .current_dir(&dir)
         .output()
         .unwrap();
     assert_eq!(missing.status.code(), Some(2));
+    // A board that holds no member paths (the original, or one that an older `fab` wrote) is
+    // refused, exit 2, with what to do.
+    let original = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .arg("parity")
+        .arg(reference.join("charger-module.kicad_pcb"))
+        .args(["--table", &table.display().to_string()])
+        .args(["--parts", &parts.display().to_string()])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(original.status.code(), Some(2), "{}", stderr(&original));
+    assert!(
+        stderr(&original).contains("no `netsmith_path`"),
+        "{}",
+        stderr(&original)
+    );
 }
