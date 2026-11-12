@@ -56,7 +56,7 @@ crates/netsmith-pcb/scripts/check-kicad.sh fab/LedExample/LedExample.kicad_pcb
 
 Read the last lines. ERC must print `ERC: 0 violation(s)`. DRC must print `DRC: 0 violation(s), 0 unconnected item(s)`. Results land in `out/check/<name>/`. A four-layer board has its zones filled by KiCad's Python first, because KiCad's DRC does not fill zones.
 
-To see how good a placement is, `cargo run --release -p netsmith --example place_report -- <file.nsm> --out <dir> [--seed n]` (from the project's folder for a project) prints the wire length, the ratsnest crossings, the decoupling distances, the routing result and the times, and writes the board for the script above. `NETSMITH_WRITE_BOARDS=<dir>` on the `measured` test of `crates/netsmith-pcb/tests/synthetic.rs` and `NETSMITH_KEEP_BOARDS=<dir>` on the tests of `crates/netsmith/tests/kicad_drc.rs` keep the boards they check; `NETSMITH_TEST_SEED=<n>` on those tests asks the placer for another arrangement of every board (ADR 0033).
+To see how good a placement is, `cargo run --release -p netsmith --example place_report -- <file.nsm> --out <dir> [--seed n]` (from the project's folder for a project) prints the wire length, the ratsnest crossings, the decoupling distances, the routing result and the times, and writes the board for the script above. `NETSMITH_WRITE_BOARDS=<dir>` on the `measured` test of `crates/netsmith-place-route/tests/synthetic.rs` and `NETSMITH_KEEP_BOARDS=<dir>` on the tests of `crates/netsmith/tests/kicad_drc.rs` keep the boards they check; `NETSMITH_TEST_SEED=<n>` on those tests asks the placer for another arrangement of every board (ADR 0033).
 
 ### Several KiCads at once
 

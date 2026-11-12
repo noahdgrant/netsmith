@@ -711,6 +711,7 @@ dependencies = [
  "netsmith-lang",
  "netsmith-netlist",
  "netsmith-pcb",
+ "netsmith-place-route",
  "netsmith-quantity",
  "netsmith-solve",
  "netsmith-view",
@@ -855,6 +856,21 @@ dependencies = [
  "serde_json",
  "toml",
  "uuid",
+]
+
+[[package]]
+name = "netsmith-place-route"
+version = "0.1.0"
+dependencies = [
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-fab",
+ "netsmith-kicad",
+ "netsmith-pcb",
+ "netsmith-solve",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

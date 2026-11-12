@@ -12,7 +12,8 @@ use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
 use netsmith_fab::{CliError, KicadCli, KicadCliExe};
 use netsmith_netlist::{Netlist, Options, Outcome, compare, report};
-use netsmith_pcb::{Board, kicad_pcb, route};
+use netsmith_pcb::{Board, kicad_pcb};
+use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
 const LED: &str = include_str!("../../../examples/led.nsm");

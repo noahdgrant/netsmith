@@ -13,8 +13,9 @@ use netsmith_kicad::Mapping;
 use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{
     Board, BoardKeepout, CopperLayer, FootprintLibrary, Layout, PlaceOptions, Pt, Ratsnest, Rect,
-    Track, Via, apply_layout, kicad_pcb, kicad_pro, route,
+    Track, Via, apply_layout, kicad_pcb, kicad_pro,
 };
+use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
 use crate::boards as common;

@@ -49,10 +49,11 @@ use netsmith_editor::{
     },
 };
 use netsmith_pcb::{
-    Board, Layout, Rect, RouteOptions, Side,
+    Board, Layout, Rect, Side,
     layout::{BoardLayout, Face, KeepoutPlace, PartPlace, copper_layers},
-    route_with, svg,
+    svg,
 };
+use netsmith_place_route::{RouteOptions, route_with};
 
 use super::{
     analysis::BoardData,

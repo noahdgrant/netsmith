@@ -6,7 +6,8 @@ use netsmith_fab::gbr::{Contour, Gerber};
 use netsmith_fab::geom::Pt as FabPt;
 use netsmith_fab::raster::{self, Image, View};
 use netsmith_pcb::copper::{self, Area, Copper};
-use netsmith_pcb::{Board, kicad_pcb, kicad_pro, route};
+use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
+use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
 /// Pixels per millimetre: 25 µm pixels.

@@ -4,8 +4,9 @@
 //! use the installed KiCad libraries and are skipped when there are none.
 
 use netsmith_pcb::{
-    Board, CopperLayer, FootprintLibrary, Pt, Ratsnest, Rect, Track, kicad_pcb, route, svg,
+    Board, CopperLayer, FootprintLibrary, Pt, Ratsnest, Rect, Track, kicad_pcb, svg,
 };
+use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
 use crate::boards as common;

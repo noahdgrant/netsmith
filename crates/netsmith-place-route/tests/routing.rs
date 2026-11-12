@@ -2,9 +2,8 @@
 
 use crate::common;
 
-use netsmith_pcb::{
-    Board, Costs, Pt, Ratsnest, Rect, RouteOptions, SnapshotStage, Stage, route, route_with,
-};
+use netsmith_pcb::{Board, Pt, Ratsnest, Rect};
+use netsmith_place_route::{Costs, RouteOptions, SnapshotStage, Stage, route, route_with};
 
 use common::{edge_gap, hard_boards};
 

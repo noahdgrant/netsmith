@@ -1,9 +1,9 @@
-//! The board: footprints from a tool-independent `Design`, placement, a ratsnest, routing,
-//! and export to KiCad and SVG. The 3D scene and its glTF, STEP and PNG writers are in
-//! `netsmith-3d`, which depends on this crate.
+//! The board: footprints from a tool-independent `Design`, placement, a ratsnest, and export
+//! to KiCad and SVG. The router is in `netsmith-place-route`, and the 3D scene and its glTF, STEP and
+//! PNG writers are in `netsmith-3d`; both depend on this crate.
 //!
 //! ```text
-//! Design --Board::from_design--> Board --route--> Board (with tracks and vias)
+//! Design --Board::from_design--> Board --netsmith_place_route::route--> Board (with tracks and vias)
 //!                                  |--kicad_pcb / kicad_pro / svg::render
 //!                                  |--Ratsnest::of
 //! ```
@@ -40,17 +40,14 @@ pub mod generate;
 pub mod geometry;
 pub mod layout;
 pub mod overhang;
-pub mod parallel;
 mod place;
 pub mod protrusion;
 pub mod quality;
 pub mod ratsnest;
-pub mod route;
 pub mod rules;
 pub mod shape;
 pub mod stackup;
 pub mod standard_height;
-mod stitch;
 pub mod svg;
 pub mod validate;
 
@@ -75,10 +72,5 @@ pub use place::{
 };
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use ratsnest::{Ratline, Ratsnest};
-pub use route::{
-    Costs, Crowding, LineReport, RouteOptions, Routing, Snapshot, SnapshotStage, Stage, route,
-    route_with,
-};
 pub use rules::Rules;
-pub use stitch::stitch;
 pub use validate::{Subject, validate_pinout};

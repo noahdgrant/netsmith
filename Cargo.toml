@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-design", "crates/netsmith", "crates/netsmith-cli", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf"]
+members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-design", "crates/netsmith", "crates/netsmith-cli", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-place-route", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf"]
 
 [workspace.package]
 version = "0.1.0"
@@ -17,9 +17,13 @@ license = "MIT"
 debug = "line-tables-only"
 
 # The placer and the router are loops over thousands of small steps: a debug build of the
-# rest of the workspace is quick to build and to step through, and this crate is optimised so
-# that its tests (a board of seventy parts is placed and routed) take seconds, not minutes.
+# rest of the workspace is quick to build and to step through, and these crates (the placer is
+# in netsmith-pcb, the router in netsmith-place-route) are optimised so that their tests (a
+# board of seventy parts is placed and routed) take seconds, not minutes.
 [profile.dev.package.netsmith-pcb]
+opt-level = 2
+
+[profile.dev.package.netsmith-place-route]
 opt-level = 2
 
 # The 3D scene, its meshes and the rasterizer were optimised with netsmith-pcb before they were

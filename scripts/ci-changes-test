@@ -53,6 +53,9 @@ file crates/netsmith/tests/pure.rs "$pure"
 file crates/netsmith-cli/tests/pure.rs "$pure"
 file crates/netsmith-fab/tests/pure.rs "$pure"
 file crates/netsmith-pcb/tests/pure.rs "$pure"
+file crates/netsmith-place-route/tests/pure.rs "$pure"
+file crates/netsmith-place-route/tests/asks.rs "$pure
+KicadCliExe::locate_runnable()"
 file crates/netsmith-design/tests/pure.rs "$pure"
 file crates/netsmith/src/supply/tests.rs "$pure"
 file crates/netsmith-fab/src/tests.rs "$pure"
@@ -151,6 +154,12 @@ row "1 1 1 1 1" crates/netsmith-kicad/src/symbols.rs
 row "1 1 1 1 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
 row "1 1 1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-design/src/lib.rs crates/netsmith-netlist/src/lib.rs
 row "1 1 1 1 1" crates/netsmith-fab/Cargo.toml
+# The router (issue #518): linked into the binary, and its tests check its boards with kicad-cli.
+row "1 1 1 1 1" crates/netsmith-place-route/src/route.rs
+row "1 1 1 1 1" crates/netsmith-place-route/Cargo.toml
+row "1 0 0 0 0" crates/netsmith-place-route/tests/pure.rs
+row "1 1 0 0 0" crates/netsmith-place-route/tests/asks.rs
+row "1 1 0 0 0" crates/netsmith-place-route/tests/main.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
 row "1 0 1 1 1" crates/netsmith-3d/src/gltf.rs
 row "1 0 1 1 1" crates/netsmith-3d/Cargo.toml
@@ -207,6 +216,9 @@ crates_row "netsmith" crates/netsmith/tests/pure.rs
 crates_row "netsmith-cli" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/tests/pure.rs
 crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
 crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
+crates_row "netsmith-place-route" crates/netsmith-place-route/src/route.rs
+# The synthetic boards the router's tests share are netsmith-pcb's: its dependents (the router) run too.
+crates_row "netsmith-pcb" crates/netsmith-pcb/tests/common/mod.rs
 crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs README.md docs/DESIGN-RULES.md
 # A path outside the crates that turns the tests on: every test.
