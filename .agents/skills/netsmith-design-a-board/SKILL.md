@@ -18,6 +18,7 @@ This skill assumes only the `netsmith` command and the project. Entry point: the
 6. Run `netsmith build`. Read the first error only, fix it, and run again. Use `netsmith-read-errors` for the messages.
 7. Run `netsmith editor` and look at the schematic, the power tree and the bill of materials. Check that each pin is on the net you meant and that no rail is asked for more than its supply can give.
 8. Run `netsmith fab`. It places and routes the board, runs the design rules check, and writes `fab/`. If the project has several boards and the user wants some of them, or several copies, write an order in `netsmith.toml` (`[order.<name>.boards]`, a board or a system as its folder is named, and its quantity) and run `netsmith fab --order <name>`. Continue with `netsmith-prepare-fab-order`.
+9. Check the board's heights as numbers and look at it, before you tell the user it is done (no KiCad, nothing written but the picture): `netsmith board3d <file.nsm> --json` gives each part's `z_top`, where the height came from (`unknown` is `null`: ask for the number) and each height limit's margin; `netsmith render <file.nsm> --view iso --out board.png` draws the board in 3D, and you read the PNG with your image viewer (`--view top` or `bottom` for a face, `--highlight J1` or `--highlight limit:lid` to light up a part or a limit, `--section x=12.5` to cut it, `--xray`; `docs/BOARD3D.md`, "Pictures for agents"). A part drawn as a flat orange outline has no known height; say so.
 
 ## Boards that plug into each other
 

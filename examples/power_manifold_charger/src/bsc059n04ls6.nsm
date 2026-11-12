@@ -1,0 +1,29 @@
+//! The BSC059N04LS6, Infineon OptiMOS 6, 40 V N-channel power MOSFET in TDSON-8 FL (fused
+//! leads): Q1 to Q4 of the Power Manifold charger module (LCSC C534356,
+//! `catalogs/bsc059n04ls6.csv`).
+//!
+//! The standard `NMosfet` has a pin table for the SOT-23 package only (gate 1, source 2, drain
+//! 3), so the part provides it with its own table for this package. The pads are those of
+//! Infineon's drawing "Outline TDSON-8 FL" (Rev. 2.0, 2018-07-31, "Final Data Sheet", page 1 for
+//! the pin diagram, printed page 11 for the board pads): pins 1, 2 and 3 are the source `S`,
+//! pin 4 the gate `G` and pins 5 to 8 the drain `D`. The footprint is one pad for the four
+//! drain pins (the maker's board pads fuse the leads), numbered 5, as the reference board's
+//! footprint (KiCad's `TDSON-8-1`) is; so the drain has the one pad `5`. The gate is an
+//! `input`, the source and the drain `passive`, as the standard `NMosfet`'s.
+//!
+//! The ratings are the catalog row's (`catalogs/bsc059n04ls6.csv`, with their table and page).
+
+import std::parts::transistor::NMosfet
+
+/// The BSC059N04LS6: 40 V, 17 A (at 25 C ambient on 6 cm2 of copper), 5.9 mohm at 10 V.
+part Bsc059n04ls6 provides NMosfet {
+    pins "TDSON-8FL" {
+        //  pin     kind     name  pads
+        .gate   input   "G"   "4"
+        .source passive "S"   "1" "2" "3"
+        .drain  passive "D"   "5"
+    }
+
+    .mpn: String
+    catalog bsc059n04ls6 by .mpn { .mpn, .package, .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .on_resistance_vgs }
+}

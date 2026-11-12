@@ -1,0 +1,76 @@
+//! The TCPP02-M18 USB Type-C protection IC for source applications, STMicroelectronics, in the
+//! 18-pin QFN package (3.5 x 3.5 x 0.55 mm, 0.5 mm pitch, exposed pad), order code TCPP02-M18:
+//! the U5 of the Power Manifold charger module (the board's footprint is `Local Library:
+//! QFN-18_L3.5-W3.5-P0.50-TL-EP2.2` and the LCSC number it carries, C3662929, is the
+//! TCPP02-M18).
+//!
+//! The pin table was WRITTEN BY HAND from ST's datasheet "TCPP02-M18: USB Type-C protection for
+//! source application" (DS13787 Rev 4, May 2022, 27 pages, the copy that LCSC links for C3662929,
+//! fetched on 2026-11-11 from
+//! <https://datasheet.lcsc.com/datasheet/pdf/3ad4428212a3b17bacf09a5a8bdbe7b1.pdf>, SHA-256
+//! `291a75882c46`): Figure 1 "QFN-18L 3.5 x 3.5 x 0.55 mm (top view)" and Table 1 "Pinout and
+//! functions" (printed page 2) for the pad numbers, names, types and descriptions. The datasheet
+//! is copyrighted (STMicroelectronics): only facts are taken here (numbers, names, kinds).
+//!
+//! The exposed pad is `GND`, which the table numbers `EP` and Figure 1 prints as pin 19: pad 19
+//! here (it is the number of the reference board's footprint too), one pin with the pads 10 and
+//! 14. The kinds follow Table 1's type column: `Input` (`EN`, `SRC`, `VBUSc`, `Isense`,
+//! `I2C_ADD`) is `input`, `Output` (`IANA`, `GATE`, `CBIAS`, `FLGn`) is `output`, `Input /
+//! Output` (`CC1`, `CC2`, `CC1c`, `CC2c`, `SDA`, `SCL`) is `bidirectional`, `Power`
+//! (`VCC_VCONN`) and `GND` are `power`. `FLGn` is "open-drain output flag (active low), floating
+//! when not connected": an `output`, and a board may leave it open. `CBIAS` is "ESD capacitor":
+//! the capacitor's pin, an `output` as the table says.
+//!
+//! The supply is a rail, `.vcc`: `.vcc.pos` is `VCC_VCONN` (pad 3) and `.vcc.neg` the `GND` pads
+//! (10, 14 and 19), with the datasheet's recommended window: Table 4 "Recommended operating
+//! condition" (printed page 5) 2.7 V minimum and 5.5 V maximum for `VCC_VCONN` (the pin
+//! description says "connect to 3.3 V or 5.5 V"). The other rows of Table 4 are not stated
+//! (`EN`, `IANA`, `I2C_ADD`, `SDA`, `SCL` and `FLGn` 1.7 V to 3.6 V; `CC1c`, `CC2c`, `VBUSc`,
+//! `Isense` and `SRC` 0 V to 22 V).
+//!
+//! What is deliberately left out: the rest of Table 4, the absolute maximum ratings (Table 2:
+//! `VCC_VCONN` 7 V, `VBUSc`, `Isense` and `SRC` 24 V, `CC1c` and `CC2c` 24 V), the overcurrent and
+//! overvoltage thresholds, the supply current, every register of the I2C interface (the address
+//! is set by `I2C_ADD`), and the function of the part (no std generic is a USB-C protection IC,
+//! so the part provides none and has no `dc` statement).
+
+import std::sources::Rail
+
+/// The TCPP02-M18 in QFN-18 with an exposed pad: a USB Type-C protection IC for a source, with
+/// the CC lines' overvoltage protection, a gate driver for the VBUS switch, a VBUS current
+/// monitor and an I2C interface. The pin names are the datasheet's and the pad numbers its pin
+/// numbers (the exposed pad is 19). `.vcc` is the supply: `.vcc.pos` the `VCC_VCONN` pad and
+/// `.vcc.neg` the `GND` pads.
+part Tcpp02M18 {
+    .designator &= "U"
+
+    .vcc: Rail
+    // Table 4, Recommended operating condition (printed page 5): VCC_VCONN 2.7 V to 5.5 V.
+    .vcc.voltage >= 2.7V
+    .vcc.voltage <= 5.5V
+
+    pins "QFN-18 (3.5x3.5)" {
+        //  pin       kind           name         pads
+        .en       input          "EN"         "1"
+        .cc1      bidirectional  "CC1"        "2"
+        .vcc.pos  power          "VCC_VCONN"  "3"
+        .cc2      bidirectional  "CC2"        "4"
+        .iana     output         "IANA"       "5"
+        .gate     output         "GATE"       "6"
+        .src      input          "SRC"        "7"
+        .vbusc    input          "VBUSc"      "8"
+        .isense   input          "Isense"     "9"
+        .vcc.neg  power          "GND"        "10" "14" "19"
+        .cc2c     bidirectional  "CC2c"       "11"
+        .cbias    output         "CBIAS"      "12"
+        .cc1c     bidirectional  "CC1c"       "13"
+        .i2c_add  input          "I2C_ADD"    "15"
+        .sda      bidirectional  "SDA"        "16"
+        .scl      bidirectional  "SCL"        "17"
+        .flgn     output         "FLGn"       "18"
+    }
+
+    .mpn: String
+    .package: Package
+    catalog tcpp02_m18 by .mpn { .mpn, .package }
+}

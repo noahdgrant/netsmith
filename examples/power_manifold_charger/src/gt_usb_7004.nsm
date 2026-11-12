@@ -1,0 +1,45 @@
+//! The USB Type-C receptacle of G-Switch (b-Switch), GT-USB-7004, "Horizontal Type-c 16P Female
+//! SMT CH=1.67 L=8.35mm White plastic": the J4 of the Power Manifold charger module (LCSC
+//! C2686968, `catalogs/gt_usb_7004.csv`). A 16-contact USB 2.0 receptacle, surface mount,
+//! right angle, with four plated shell legs and two pegs.
+//!
+//! The maker's drawing (GT-USB-7004, REV A1, scale and sheet 1/1, dated 2024.11.14, tolerance
+//! of the layout +/-0.05) names the contacts in its table: A1 and A12 `GND`, A4 and A9 `VBUS`,
+//! A5 `CC1`, A6 `D+`, A7 `D-`, A8 `SBU1` and B12 and B1 `GND`, B9 and B4 `VBUS`, B8 `SBU2`, B7
+//! `D-`, B6 `D+`, B5 `CC2`. A signal that two contacts carry is one pin here, since the
+//! receptacle joins the two inside (the plug's orientation picks one of them): `.vbus.pos` has
+//! four pads, `.vbus.neg` four, `.dp` two (A6, B6) and `.dm` two (A7, B7). The shell is the four
+//! plated legs, all numbered `S1` (the board's footprint does), one pin.
+//!
+//! It is a provider of `Connector` only, **not** of the standard `UsbCSinkReceptacle`: that generic
+//! says the receptacle is a source of VBUS (a host's), and this board's port is the other way
+//! round, a source that the board's own converter drives (the board states the rail on VBUS). So
+//! `.vbus` here is a plain rail of the part (what a load draws, not a source). The board's CC
+//! pins go to a USB Type-C port protection IC and not to Rd resistors, so the standard `UsbCSink`
+//! module does not fit either: a board writes `.j4: GtUsb7004` and joins its pins.
+
+import std::parts::connector::Connector
+import std::sources::Rail
+
+/// A USB Type-C receptacle with 16 contacts for USB 2.0 and a shell, in the footprint of the
+/// maker's recommended PCB layout.
+part GtUsb7004 provides Connector {
+    .vbus: Rail
+
+    pins "SMD" {
+        //  pin       kind           name      pads
+        .vbus.pos power         "VBUS"    "A4" "A9" "B4" "B9"
+        .vbus.neg power         "GND"     "A1" "A12" "B1" "B12"
+        .cc1      passive       "CC1"     "A5"
+        .cc2      passive       "CC2"     "B5"
+        .dp       bidirectional "D+"      "A6" "B6"
+        .dm       bidirectional "D-"      "A7" "B7"
+        .sbu1     passive       "SBU1"    "A8"
+        .sbu2     passive       "SBU2"    "B8"
+        .shell    passive       "SHELL"   "S1"
+    }
+
+    .package: Package
+    .mpn: String
+    catalog gt_usb_7004 by .mpn { .mpn, .package }
+}

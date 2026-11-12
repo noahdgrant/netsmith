@@ -291,6 +291,10 @@ pub struct ParityGate<'a> {
     pub route_seconds: &'a str,
     /// How the committed overlay is made again, for the message of a stale one.
     pub regenerate: &'a str,
+    /// The must-match items (by their `id`, as the report prints it) that the board is known not
+    /// to meet and that its README says why. Each must fail, and no other may: a fix is noticed
+    /// as much as a loss. The boards that match everything have none.
+    pub known_failures: &'a [&'a str],
 }
 
 /// Builds the project with `netsmith fab --locked`, with no KiCad, and gates on the parity
@@ -348,10 +352,20 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
         &Tolerances::default(),
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    assert!(report.passed(), "{}", report.text());
     let (ok, failed) = report.must_match_counts();
+    let failing: Vec<&str> = report
+        .failures()
+        .filter(|i| i.must_match)
+        .map(|i| i.id.as_str())
+        .collect();
     assert!(
-        ok >= gate.min_ok && failed == 0,
+        failing == gate.known_failures,
+        "the must-match items that fail are {failing:?}, the gate knows {:?}:\n{}",
+        gate.known_failures,
+        report.text()
+    );
+    assert!(
+        ok >= gate.min_ok && failed == gate.known_failures.len(),
         "{ok} must-match items ok:\n{}",
         report.text()
     );

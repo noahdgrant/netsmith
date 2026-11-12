@@ -1,0 +1,39 @@
+//! The LP2985, Texas Instruments, 150 mA low-noise low-dropout regulator with shutdown, fixed
+//! 3.3 V, in the 5-pin SOT-23 package (DBV): the U2 of the Power Manifold charger module (LCSC
+//! C89826, which is the LP2985A-33DBVR, the 1 % grade; `catalogs/lp2985.csv`).
+//!
+//! The standard `LinearRegulator` has a pin table for three pins only (and none for the
+//! 5-pin SOT-23), so the part provides it with its own: TI's "LP2985 150-mA Low-noise
+//! Low-dropout Regulator With Shutdown", SLVS522O (July 2004, revised January 2015), section 5
+//! (printed page 3), DBV (SOT-23) package: pin 1 `VIN`, 2 `GND`, 3 `ON/OFF`, 4 `BYPASS`, 5 `VOUT`.
+//! `ON/OFF` is an active-low shutdown input that the datasheet says to tie to VIN if unused
+//! (and not to leave open: section 7.4.2, "do not leave ON/OFF unconnected", and section 8.1.2,
+//! "ON/OFF must be actively terminated"), so it is an
+//! `input` that must be connected. `BYPASS` takes the 10 nF capacitor that lowers the noise
+//! (section 5, Pin Functions: "Attach a 10-nF capacitor to improve low-noise performance"; section 8.1.2: "Optional BYPASS capacitor"), and the part works
+//! without one: it is `passive`, and a passive pin may float.
+//!
+//! What is deliberately left out: the ON/OFF thresholds (1.4 V high at 25 C and 1.6 V over
+//! temperature, 0.55 V low at 25 C and 0.15 V over temperature, Table 6.5) as logic levels, the
+//! capacitor and ESR requirements of the output, and the power rating (see the row's notes).
+
+import std::parts::regulator::LinearRegulator
+
+/// The LP2985A-33: 3.3 V, 150 mA, in SOT-23-5.
+part Lp2985 provides LinearRegulator {
+    pins "SOT-23-5" {
+        //  pin       kind     name      pads
+        .vin.pos  power   "VIN"     "1"
+        .vin.neg  power   "GND"     "2"
+        .on_off   input   "ON/OFF"  "3"
+        .bypass   passive "BYPASS"  "4"
+        .vout.pos power   "VOUT"    "5"
+    }
+
+    // Table 6.5 (printed page 5), IL = 0, VON/OFF = 2 V: the GND pin current, 125 uA at most over
+    // -40 C to 125 C (95 uA at 25 C), with the output unloaded.
+    .quiescent_current &= 0A..125uA
+
+    .mpn: String
+    catalog lp2985 by .mpn { .mpn, .package, .vout.voltage, .dropout, .max_current }
+}
