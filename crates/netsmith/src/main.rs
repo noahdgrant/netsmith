@@ -576,6 +576,15 @@ fn run_build(file: Option<&str>, out: Option<&Path>, strict: bool, locked: bool)
 
 /// Whether constraints were asked to be strict, for this target and this run's
 /// `--constraints` (see [`netsmith::fab::constraints_strict`]).
+/// The project's `track_margin`, or the default.
+fn track_margin(target: &Target) -> f64 {
+    target
+        .project
+        .as_ref()
+        .and_then(|p| p.manifest.track_margin)
+        .unwrap_or(netsmith::fab::DEFAULT_TRACK_MARGIN)
+}
+
 fn strict_heights(target: &Target, flag: Option<bool>) -> bool {
     netsmith::fab::constraints_strict(
         target
@@ -678,6 +687,7 @@ fn run_fab(
         lock: None,
         pins: None,
         pin_map_source: None,
+        track_margin: track_margin(&target),
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -917,6 +927,7 @@ fn run_order(
         // An order is a release: it never moves a pin by itself.
         pins: None,
         pin_map_source: None,
+        track_margin: track_margin(&target),
     };
     let out = out.unwrap_or(&target.fab_out);
     match netsmith::order::fab_order(

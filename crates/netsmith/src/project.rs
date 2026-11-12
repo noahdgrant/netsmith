@@ -31,7 +31,7 @@ pub const KICAD_VERSION: i64 = 9;
 
 /// What `netsmith.toml` says, the `[project]` table. Only `name` is required; the rest
 /// are what `netsmith init` writes out. A key that is not one of these is refused.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub name: String,
@@ -90,6 +90,11 @@ pub struct Manifest {
     /// either with `--pins`. A team sets `"locked"` once firmware is built on the pin map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pins: Option<String>,
+    /// How many times the process's least track a signal is drawn at, where there is room
+    /// (`track_margin = 1.5`, the default; 1 is the least). A board the router cannot finish
+    /// at that width is routed at the least (issue #431).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_margin: Option<f64>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
     /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047). `"none"` offers
     /// only the catalog's rows.
@@ -207,6 +212,7 @@ impl Manifest {
             catalog_dirs: default_catalog_dirs(),
             catalogs: Vec::new(),
             assembly: None,
+            track_margin: None,
             environment: None,
             guidelines: None,
             constraints: None,
@@ -280,6 +286,13 @@ impl Manifest {
         {
             return Err(format!(
                 "{MANIFEST}: pins = {word:?} is not one of \"auto\" or \"locked\""
+            ));
+        }
+        if let Some(m) = self.track_margin
+            && !(1.0..=4.0).contains(&m)
+        {
+            return Err(format!(
+                "{MANIFEST}: track_margin = {m} must be from 1 (the process's least track) to 4"
             ));
         }
         if let Some(word) = &self.series
@@ -1076,6 +1089,15 @@ mod tests {
             e.contains("pins = \"free\" is not one of \"auto\" or \"locked\""),
             "{e}"
         );
+    }
+
+    #[test]
+    fn track_margin_is_from_one_to_four() {
+        let m = parse("[project]\nname = \"a\"\ntrack_margin = 1.5\n").unwrap();
+        assert_eq!(m.track_margin, Some(1.5));
+        assert_eq!(parse(&m.render()), Ok(m));
+        let e = parse("[project]\nname = \"a\"\ntrack_margin = 0.5\n").unwrap_err();
+        assert!(e.contains("track_margin = 0.5 must be from 1"), "{e}");
     }
 
     #[test]

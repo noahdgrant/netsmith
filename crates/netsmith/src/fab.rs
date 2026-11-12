@@ -151,6 +151,11 @@ pub struct FabOptions {
     /// `.pins.json`, which every board with pin requests gets in its output folder): the path
     /// from the project's root. `None` names the file as `fab` was given it.
     pub pin_map_source: Option<String>,
+    /// How many times the process's least track the router draws a signal at, where there is
+    /// room (`track_margin` in `netsmith.toml`): a board it leaves unfinished at that width is
+    /// routed again at the least, so the margin is kept where it fits and given up where it does
+    /// not (issue #431). 1 is the least.
+    pub track_margin: f64,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -247,9 +252,15 @@ impl Default for FabOptions {
             lock: None,
             pins: None,
             pin_map_source: None,
+            track_margin: DEFAULT_TRACK_MARGIN,
         }
     }
 }
+
+/// How many times the process's least track a signal is drawn at where there is room, when the
+/// project does not say (`track_margin` in `netsmith.toml`, issue #431): JLCPCB's page says of its
+/// 0.1 mm least "stay well above if possible", and 1.5 times it is 0.15 mm.
+pub const DEFAULT_TRACK_MARGIN: f64 = 1.5;
 
 /// [`fab`], with imports resolved by `loader`.
 pub fn fab_with(
@@ -677,14 +688,7 @@ fn fab_board(
         // The board as placed, for the pin optimizer if the router leaves connections.
         let placed = options.pins.is_some().then(|| board.clone());
         let routing = timings::stage("fab.route", &label, || {
-            route_with(
-                &mut board,
-                RouteOptions {
-                    time_limit: options.route_timeout,
-                    progress: options.progress,
-                    ..RouteOptions::default()
-                },
-            )
+            route_with_margin(&mut board, options, say)
         });
         let unrouted = routing.left;
         if let (false, Some(placed)) = (unrouted.is_empty(), placed) {
@@ -1700,6 +1704,48 @@ fn designator_key(designator: &str) -> (String, u32) {
         .unwrap_or(designator.len());
     let (letters, digits) = designator.split_at(split);
     (letters.to_string(), digits.parse().unwrap_or(0))
+}
+
+/// Route `board` with signals at the project's track margin where there is room (issue #431):
+/// the router tries the margin first, in half the route time, and a board it leaves unfinished
+/// is routed again from the same placement at the process's least track, in what is left.
+fn route_with_margin(
+    board: &mut Board,
+    options: &FabOptions,
+    say: &dyn Fn(String),
+) -> netsmith_pcb::Routing {
+    let route = |board: &mut Board, time: Option<Duration>| {
+        route_with(
+            board,
+            RouteOptions {
+                time_limit: time,
+                progress: options.progress,
+                ..RouteOptions::default()
+            },
+        )
+    };
+    let least = board.rules.min_track_width;
+    let wide = (least * options.track_margin * 100.0).round() / 100.0;
+    if wide <= board.rules.track_width + 1e-9 {
+        return route(board, options.route_timeout);
+    }
+    let started = std::time::Instant::now();
+    let mut trial = board.clone();
+    trial.rules.track_width = wide;
+    let routing = route(&mut trial, options.route_timeout.map(|t| t / 2));
+    if routing.left.is_empty() {
+        *board = trial;
+        return routing;
+    }
+    say(format!(
+        "{}: {} connection(s) left with signals at {wide} mm; routing again at the least track, {least} mm",
+        board.name,
+        routing.left.len()
+    ));
+    let left = options
+        .route_timeout
+        .map(|t| t.saturating_sub(started.elapsed()));
+    route(board, left)
 }
 
 /// What the design rules check needs that the board file does not say: the process's mask
