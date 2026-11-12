@@ -6,11 +6,17 @@ use std::collections::BTreeMap;
 
 use crate::common;
 
-use netsmith_core::{Design, Features, Outline, Part};
+use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
 use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::protrusion::Protrusion;
-use netsmith_pcb::scene3d::{HeightProvenance, Pins, Scene};
-use netsmith_pcb::{Board, BoardKeepout, FootprintLibrary, PlaceOptions, Pt, Side};
+use netsmith_pcb::scene3d::{
+    CopperLayer as CopperLayer3, CopperPad, HeightProvenance, Pins, Plan, PlanArea, Scene,
+    SceneCopper,
+};
+use netsmith_pcb::{
+    Board, BoardKeepout, BoardPour, CopperLayer, FootprintLibrary, PlaceOptions, Pt, Side, Track,
+    Via,
+};
 
 /// A box 4 mm along x and 2 mm along y, its origin at its centre, a pad at each end.
 const BOX: &str = "(footprint \"Box\" (version 20241229) (generator \"netsmith-test\") (layer \"F.Cu\") \
@@ -48,6 +54,11 @@ fn part(refdes: &str, kind: &str, path: &str) -> Part {
 /// outline's top-left corner, `b` on the top at (22, 5), `under` on the bottom at (10, 15) and
 /// the row on the top at (25, 12), all unturned.
 fn board() -> Board {
+    board_with(common::process())
+}
+
+/// [`board`] made with `process`.
+fn board_with(process: netsmith_core::Process) -> Board {
     let folder = TempDir::new("scene3d");
     std::fs::write(folder.join("Box.kicad_mod"), BOX).unwrap();
     std::fs::write(folder.join("Row2.kicad_mod"), ROW).unwrap();
@@ -62,7 +73,7 @@ fn board() -> Board {
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Scene".into(),
-        process: Some(common::process()),
+        process: Some(process),
         features: Features {
             outline: Some(Outline {
                 width: (30.0, 30.0),
@@ -77,7 +88,24 @@ fn board() -> Board {
             part("U3", "Box", "under"),
             part("J1", "Row2", "row"),
         ],
-        nets: Vec::new(),
+        nets: ["SIG:U1.1,U2.1", "GND:U1.2,U3.2", "3V3:U2.2"]
+            .map(|n| {
+                let (name, pins) = n.split_once(':').unwrap();
+                Net {
+                    name: name.into(),
+                    pins: pins
+                        .split(',')
+                        .map(|p| {
+                            let (refdes, pin) = p.split_once('.').unwrap();
+                            PinRef {
+                                refdes: refdes.into(),
+                                pin: pin.into(),
+                            }
+                        })
+                        .collect(),
+                }
+            })
+            .to_vec(),
     };
     let mut board =
         Board::from_design_placed(&design, &mapping, &library, &PlaceOptions::default())
@@ -284,6 +312,275 @@ fn two_bodies_on_one_face_that_share_space_are_an_overlap_and_faces_apart_are_no
 #[test]
 fn the_same_board_gives_the_same_scene() {
     assert_eq!(scene(&board()), scene(&board()));
+}
+
+fn copper(s: &Scene) -> &SceneCopper {
+    s.copper.as_ref().unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Even-odd over a ring.
+fn in_ring(ring: &[Plan], p: Plan) -> bool {
+    let mut inside = false;
+    for i in 0..ring.len() {
+        let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x) {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+fn in_area(a: &PlanArea, p: Plan) -> bool {
+    in_ring(&a.outer, p) && !a.holes.iter().any(|h| in_ring(h, p))
+}
+
+/// Twice the signed area: positive for a ring that runs counterclockwise, y up.
+fn shoelace(r: &[Plan]) -> f64 {
+    (0..r.len())
+        .map(|i| {
+            let (a, b) = (r[i], r[(i + 1) % r.len()]);
+            a.x * b.y - b.x * a.y
+        })
+        .sum()
+}
+
+fn extent(a: &PlanArea) -> (Plan, Plan) {
+    a.outer.iter().fold(
+        (
+            Plan {
+                x: f64::MAX,
+                y: f64::MAX,
+            },
+            Plan {
+                x: f64::MIN,
+                y: f64::MIN,
+            },
+        ),
+        |(lo, hi), p| {
+            (
+                Plan {
+                    x: lo.x.min(p.x),
+                    y: lo.y.min(p.y),
+                },
+                Plan {
+                    x: hi.x.max(p.x),
+                    y: hi.y.max(p.y),
+                },
+            )
+        },
+    )
+}
+
+fn pad<'a>(l: &'a CopperLayer3, refdes: &str, n: &str) -> &'a CopperPad {
+    l.pads
+        .iter()
+        .find(|p| p.refdes == refdes && p.number == n)
+        .unwrap_or_else(|| panic!("{refdes}.{n} on {}", l.name))
+}
+
+fn near(a: f64, b: f64) -> bool {
+    (a - b).abs() < 1e-9
+}
+
+/// The board with a track, a via and a pour on the front, all by hand, in layout-file
+/// coordinates (from the outline's top-left corner, y down).
+fn routed() -> Board {
+    let mut board = board();
+    let origin = board.outline.min;
+    board.tracks.push(Track {
+        net: "SIG".into(),
+        layer: CopperLayer::Front,
+        from: origin + Pt::new(14.0, 6.0),
+        to: origin + Pt::new(18.0, 6.0),
+        width: 0.25,
+    });
+    board.vias.push(Via {
+        net: "SIG".into(),
+        at: origin + Pt::new(14.0, 12.0),
+        diameter: 0.6,
+        drill: 0.3,
+    });
+    board.pours.push(BoardPour {
+        layer: CopperLayer::Front,
+        net: "GND".into(),
+        stitch_pitch: None,
+    });
+    board
+}
+
+#[test]
+fn each_copper_layer_is_at_its_height_of_the_stackup() {
+    let s = scene(&routed());
+    let c = copper(&s);
+    let names: Vec<&str> = c.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["F.Cu", "B.Cu"]);
+    for l in &c.layers {
+        let stack = s.board.layers.iter().find(|k| k.name == l.name).unwrap();
+        assert_eq!(
+            (l.z_top, l.z_bottom, l.thickness),
+            (stack.z_top, stack.z_bottom, stack.thickness)
+        );
+    }
+    // The copper is under the solder mask: 10 um of it on the top face.
+    assert_eq!((c.layers[0].z_top, c.layers[0].z_bottom), (-0.01, -0.045));
+    assert_eq!((c.layers[1].z_top, c.layers[1].z_bottom), (-1.555, -1.59));
+    // A via is a barrel from the top copper to the bottom copper.
+    let via = &c.vias[0];
+    assert_eq!((via.z_top, via.z_bottom), (-0.01, -1.59));
+    // The mask is on the outside of each face.
+    assert_eq!(
+        c.mask
+            .iter()
+            .map(|m| (m.layer.as_str(), m.side, m.z_top, m.z_bottom))
+            .collect::<Vec<_>>(),
+        [
+            ("F.Mask", Side::Front, 0.0, -0.01),
+            ("B.Mask", Side::Back, -1.59, -1.6)
+        ]
+    );
+}
+
+#[test]
+fn pads_tracks_and_vias_are_in_the_scene_frame_with_y_up() {
+    let s = scene(&routed());
+    let c = copper(&s);
+    let (top, bottom) = (&c.layers[0], &c.layers[1]);
+    // U1 is at (10, 5) from the top-left corner, its pads 1.5 mm either side: in plan, y up,
+    // at (8.5, 15) and (11.5, 15). Its pads are 0.8 by 1.6 mm.
+    let p1 = pad(top, "U1", "1");
+    assert_eq!((p1.part.as_str(), p1.net.as_deref()), ("a", Some("SIG")));
+    assert_eq!((p1.at.x, p1.at.y), (8.5, 15.0));
+    assert_eq!(p1.size, (0.8, 1.6));
+    let (lo, hi) = extent(&p1.areas[0]);
+    assert!(
+        near(lo.x, 8.1) && near(hi.x, 8.9) && near(lo.y, 14.2) && near(hi.y, 15.8),
+        "{lo:?} {hi:?}"
+    );
+    assert_eq!(
+        (pad(top, "U1", "2").at.x, pad(top, "U1", "2").at.y),
+        (11.5, 15.0)
+    );
+    // The part on the bottom face is mirrored, as the 2D view draws it (`scale(-1 1)`): its
+    // pad 1 is at +1.5, and at (10, 15) from the top-left corner it is at y = 5, up. Its
+    // surface pads are on the back copper only.
+    assert!(!top.pads.iter().any(|p| p.refdes == "U3"));
+    let u3 = pad(bottom, "U3", "1");
+    assert_eq!((u3.part.as_str(), u3.at.x, u3.at.y), ("under", 11.5, 5.0));
+    assert_eq!(
+        (pad(bottom, "U3", "2").at.x, pad(bottom, "U3", "2").at.y),
+        (8.5, 5.0)
+    );
+    // Pads are in order of their part's path.
+    let parts: Vec<&str> = top.pads.iter().map(|p| p.part.as_str()).collect();
+    assert_eq!(parts, ["a", "a", "b", "b", "row", "row"]);
+    // The track from (14, 6) to (18, 6) is at y = 14, with round ends.
+    let t = &top.tracks[0];
+    assert_eq!(
+        (t.from.x, t.from.y, t.to.x, t.to.y, t.width),
+        (14.0, 14.0, 18.0, 14.0, 0.25)
+    );
+    assert_eq!(t.net.as_deref(), Some("SIG"));
+    let (lo, hi) = extent(&t.area);
+    assert!(
+        near(lo.x, 13.875) && near(hi.x, 18.125) && near(lo.y, 13.875) && near(hi.y, 14.125),
+        "{lo:?} {hi:?}"
+    );
+    assert!(bottom.tracks.is_empty());
+    // The via at (14, 12) is at y = 8.
+    let via = &c.vias[0];
+    assert_eq!(
+        (via.at.x, via.at.y, via.diameter, via.drill),
+        (14.0, 8.0, 0.6, 0.3)
+    );
+    assert_eq!(via.net.as_deref(), Some("SIG"));
+}
+
+#[test]
+fn rings_turn_counterclockwise_outside_and_clockwise_inside_and_a_pour_has_holes_where_pads_are() {
+    let s = scene(&routed());
+    let c = copper(&s);
+    let top = &c.layers[0];
+    let all = c
+        .layers
+        .iter()
+        .flat_map(|l| {
+            l.pads
+                .iter()
+                .flat_map(|p| p.areas.iter())
+                .chain(l.tracks.iter().map(|t| &t.area))
+                .chain(l.pours.iter().map(|p| &p.area))
+        })
+        .chain(c.mask.iter().flat_map(|m| m.areas.iter()));
+    let mut holes = 0;
+    for a in all {
+        assert!(shoelace(&a.outer) > 0.0, "{:?}", a.outer);
+        for h in &a.holes {
+            assert!(shoelace(h) < 0.0);
+            holes += 1;
+        }
+    }
+    assert!(holes > 0);
+    // The pour of GND is cut round the pad of SIG at (8.5, 15) in plan, and is whole at the
+    // flipped place (8.5, 5), and it joins U1.2 (on GND) at (11.5, 15).
+    assert!(!top.pours.is_empty() && top.pours.iter().all(|p| p.net.as_deref() == Some("GND")));
+    let poured = |x: f64, y: f64| top.pours.iter().any(|p| in_area(&p.area, Plan { x, y }));
+    assert!(!poured(8.5, 15.0));
+    assert!(poured(8.5, 5.0));
+    assert!(poured(11.5, 15.0));
+    assert!(poured(2.0, 2.0));
+    // Nothing is outside the 30 x 20 outline.
+    for p in &top.pours {
+        let (lo, hi) = extent(&p.area);
+        assert!(
+            lo.x >= 0.0 && lo.y >= 0.0 && hi.x <= 30.0 && hi.y <= 20.0,
+            "{lo:?} {hi:?}"
+        );
+    }
+    // Per net, the copper adds up: the pads of SIG are 2 x 0.8 x 1.6 and its track is a
+    // stadium.
+    let sig = top.area_of(Some("SIG"));
+    let want = 2.0 * 0.8 * 1.6 + 4.0 * 0.25 + std::f64::consts::PI * 0.125 * 0.125;
+    assert!((sig - want).abs() < 5e-3, "{sig} and {want}");
+    // The row's pads have no net: that copper is listed first.
+    assert_eq!(top.nets(), [None, Some("3V3"), Some("GND"), Some("SIG")]);
+}
+
+#[test]
+fn the_mask_is_open_over_the_pads_of_each_face_in_the_scene_frame() {
+    let s = scene(&routed());
+    let c = copper(&s);
+    let open =
+        |face: usize, x: f64, y: f64| c.mask[face].areas.iter().any(|a| in_area(a, Plan { x, y }));
+    assert!(open(0, 8.5, 15.0) && open(0, 11.5, 15.0));
+    assert!(!open(0, 8.5, 5.0));
+    assert!(open(1, 11.5, 5.0) && open(1, 8.5, 5.0));
+    assert!(!open(1, 8.5, 15.0));
+}
+
+#[test]
+fn a_four_layer_board_has_copper_on_four_layers_with_the_planes_inside() {
+    let board = board_with(common::four_layer_process());
+    let s = scene(&board);
+    let c = copper(&s);
+    let names: Vec<&str> = c.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(names, ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]);
+    // Each plane is one net's sheet of copper, between the layers' own Z.
+    for (l, net) in c.layers[1..3].iter().zip(["GND", "3V3"]) {
+        assert!(
+            l.pads
+                .iter()
+                .all(|p| p.kind == netsmith_pcb::PadKind::ThruHole)
+                && l.tracks.is_empty()
+        );
+        assert!(
+            !l.pours.is_empty() && l.pours.iter().all(|p| p.net.as_deref() == Some(net)),
+            "{}",
+            l.name
+        );
+        assert!(l.z_top > l.z_bottom && l.z_bottom > -s.board.stack_thickness);
+    }
+    let z: Vec<f64> = c.layers.iter().map(|l| l.z_top).collect();
+    assert!(z.windows(2).all(|w| w[0] > w[1]), "{z:?}");
 }
 
 /// The volume a closed mesh holds: positive when its triangles face out.

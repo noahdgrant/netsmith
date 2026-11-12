@@ -136,6 +136,7 @@
 mod checks;
 mod connect;
 pub mod constraints;
+mod fab_rules;
 pub mod kicad;
 mod model;
 mod rules;
@@ -226,10 +227,29 @@ pub enum Rule {
     /// A requirement of the design on where a part goes that the board does not meet
     /// (ADR 0045; netsmith's, and not in the board file: see [`constraints`]).
     Constraint,
+    /// A track nearer a hole than the process allows (netsmith's, issue #431).
+    HoleToTrack,
+    /// Surface-mount pads of different nets nearer than the process allows (netsmith's).
+    PadToPad,
+    /// A track nearer another net's solder mask opening than the process allows (netsmith's).
+    MaskToTrack,
+    /// Two holes, one of them a pad's, nearer than the process allows; two vias' holes are
+    /// `hole_to_hole` (netsmith's).
+    PadHoleToHole,
+    /// A slot narrower than the process makes (netsmith's).
+    SlotWidth,
+    /// A non-plated hole smaller than the process drills (netsmith's).
+    NpthDrill,
+    /// A plated pad with less copper round its hole than the process leaves (netsmith's; a
+    /// via's ring is `annular_width`).
+    PlatedRing,
+    /// A track narrower than its net's current needs, away from the net's pads (netsmith's,
+    /// issue #431).
+    TrackCurrent,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 26] = [
+    pub const ALL: [Rule; 34] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -256,6 +276,14 @@ impl Rule {
         Rule::InvalidOutline,
         Rule::ViaInPad,
         Rule::Constraint,
+        Rule::HoleToTrack,
+        Rule::PadToPad,
+        Rule::MaskToTrack,
+        Rule::PadHoleToHole,
+        Rule::SlotWidth,
+        Rule::NpthDrill,
+        Rule::PlatedRing,
+        Rule::TrackCurrent,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -287,7 +315,34 @@ impl Rule {
             Rule::InvalidOutline => "invalid_outline",
             Rule::ViaInPad => "via_in_pad",
             Rule::Constraint => "constraint",
+            Rule::HoleToTrack => "hole_to_track",
+            Rule::PadToPad => "pad_to_pad",
+            Rule::MaskToTrack => "mask_to_track",
+            Rule::PadHoleToHole => "pad_hole_to_hole",
+            Rule::SlotWidth => "slot_width",
+            Rule::NpthDrill => "npth_drill",
+            Rule::PlatedRing => "plated_ring",
+            Rule::TrackCurrent => "track_current",
         }
+    }
+
+    /// Whether the rule is netsmith's own, which KiCad has no rule for: the cross-check counts
+    /// its findings and does not compare them.
+    pub fn is_netsmiths(self) -> bool {
+        matches!(
+            self,
+            Rule::HoleToEdge
+                | Rule::ViaInPad
+                | Rule::Constraint
+                | Rule::HoleToTrack
+                | Rule::PadToPad
+                | Rule::MaskToTrack
+                | Rule::PadHoleToHole
+                | Rule::SlotWidth
+                | Rule::NpthDrill
+                | Rule::PlatedRing
+                | Rule::TrackCurrent
+        )
     }
 
     pub fn from_id(id: &str) -> Option<Rule> {
@@ -465,6 +520,28 @@ pub struct Extras {
     /// `netsmith_pcb::protrusion` excuses (ADR 0045 section 15). The check does not judge that
     /// rule; the caller that has the design does, and says which pairs it excused.
     pub excused_courtyards: Vec<(String, String)>,
+    /// The process's rules that a KiCad project file cannot say (issue #431), each `None` when it
+    /// is not checked: the least space from a via's or a non-plated hole to a track, and from a
+    /// plated pad's hole to a track, between
+    /// surface-mount pads of different nets and from a solder mask opening to a track of another
+    /// net; the narrowest plated and non-plated slot; the smallest non-plated hole; and the
+    /// least copper round a plated pad's hole.
+    pub hole_to_track: Option<f64>,
+    pub plated_hole_clearance: Option<f64>,
+    pub pad_to_pad: Option<f64>,
+    /// The least space between two holes when one is a pad's (the project file's
+    /// `min_hole_to_hole` is the vias' figure).
+    pub pad_hole_to_hole: Option<f64>,
+    pub mask_to_track: Option<f64>,
+    pub plated_slot: Option<f64>,
+    pub npth_slot: Option<f64>,
+    pub npth_drill: Option<f64>,
+    pub pad_ring: Option<f64>,
+    /// The least width of the nets whose current needs more than the process's least track,
+    /// by net (issue #431), and how near one of the net's pads a track may be narrower (the
+    /// neck-down out of a fine-pitch pad). Empty when the currents are not known.
+    pub least_widths: Vec<(String, f64)>,
+    pub neck_reach: f64,
 }
 
 #[derive(Debug, PartialEq)]

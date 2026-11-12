@@ -7,6 +7,7 @@ mod common;
 mod constraints;
 mod drc_corpus;
 mod drc_rules;
+mod fab_rules;
 mod features;
 mod known_differences;
 

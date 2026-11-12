@@ -162,10 +162,31 @@ pub struct Process {
     pub min_drill: f64,
     /// The smallest copper disc of a via.
     pub min_via_diameter: f64,
-    /// The least copper left round a drilled hole.
+    /// The least copper left round a plated pad's hole.
     pub min_annular_ring: f64,
-    /// The least space between the edges of two holes.
+    /// The least copper left round a via's hole: half of how much wider the via is than its
+    /// hole (issue #431).
+    pub min_via_ring: f64,
+    /// The least space from the edge of a hole to copper of another net (a via's hole, a
+    /// non-plated hole), and from a plated pad's hole to a track.
+    pub min_hole_clearance: f64,
+    pub min_plated_hole_clearance: f64,
+    /// The least space between surface-mount pads of different nets.
+    pub min_pad_to_pad: f64,
+    /// The least space between a solder mask opening and a track of another net.
+    pub min_mask_to_track: f64,
+    /// The smallest non-plated hole, and the narrowest plated and non-plated slot.
+    pub min_npth_drill: f64,
+    pub min_plated_slot: f64,
+    pub min_npth_slot: f64,
+    /// The via the router draws: its hole and its copper (a default of the process the board
+    /// may replace, issue #431).
+    pub via_drill: f64,
+    pub via_diameter: f64,
+    /// The least space between the edges of two holes when one is a pad's, and between two
+    /// vias' holes.
     pub min_hole_to_hole: f64,
+    pub min_via_hole_to_hole: f64,
     /// The least space between copper and the board edge.
     pub min_edge_clearance: f64,
     /// The thinnest silkscreen stroke.
@@ -184,6 +205,9 @@ pub struct Process {
     /// (`.process.max_temperature_rise`). `None` is the IPC-2221 check's default
     /// (ADR 0036).
     pub max_temperature_rise: Option<f64>,
+    /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
+    /// track width check sizes for the narrowest.
+    pub track_width_tolerance: f64,
     pub stackup: Stackup,
 }
 
@@ -492,6 +516,17 @@ impl Offset {
     }
 }
 
+/// The current a net carries, and the least track that carries it (issue #431).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetCurrent {
+    pub net: String,
+    /// The worst case, in amperes: every load on at once (ADR 0036). A lower bound where a
+    /// current on the net is not known.
+    pub current: f64,
+    /// The narrowest track that carries it, in mm, before the process's least track.
+    pub least_width: f64,
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -502,6 +537,11 @@ pub struct Features {
     /// of the rail is in `std/sources.nsm`). The nets no rail gives a width are sized from
     /// their current (ADR 0036, see `netsmith_design::guidelines`) and put here too.
     pub net_widths: Vec<(String, f64)>,
+    /// The current each net carries, where it is known, and the least width that carries it
+    /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
+    /// the net below, away from its pads, and what the design rules check holds the routed
+    /// copper to (issue #431). Sorted by net name.
+    pub net_currents: Vec<NetCurrent>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,

@@ -703,7 +703,18 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         min_drill: mm(find("min_drill")),
         min_via_diameter: mm(find("min_via_diameter")),
         min_annular_ring: mm(find("min_annular_ring")),
+        min_via_ring: mm(find("min_via_ring")),
+        min_hole_clearance: mm(find("min_hole_clearance")),
+        min_plated_hole_clearance: mm(find("min_plated_hole_clearance")),
+        min_pad_to_pad: mm(find("min_pad_to_pad")),
+        min_mask_to_track: mm(find("min_mask_to_track")),
+        min_npth_drill: mm(find("min_npth_drill")),
+        min_plated_slot: mm(find("min_plated_slot")),
+        min_npth_slot: mm(find("min_npth_slot")),
+        via_drill: mm(find("via_drill")),
+        via_diameter: mm(find("via_diameter")),
         min_hole_to_hole: mm(find("min_hole_to_hole")),
+        min_via_hole_to_hole: mm(find("min_via_hole_to_hole")),
         min_edge_clearance: mm(find("min_edge_clearance")),
         min_silk_width: mm(find("min_silk_width")),
         min_text_height: mm(find("min_text_height")),
@@ -722,6 +733,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        track_width_tolerance: number(find("track_width_tolerance")),
         stackup: Stackup {
             layers,
             thickness: match find("stackup.thickness") {
@@ -1227,6 +1239,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     };
     features.net_widths.extend(plan.widths);
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
+    features.net_currents = plan.currents;
+    features.net_currents.sort_by(|a, b| a.net.cmp(&b.net));
     let mut guideline_findings = plan.findings;
     // Every fitted part against the board's environment, if it states one (ADR 0099).
     let judged = environment::judge(model, &fitted, &mut errors);

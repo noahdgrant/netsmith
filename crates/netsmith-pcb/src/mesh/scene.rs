@@ -75,9 +75,57 @@ fn box_ring(b: &PlanBox) -> Vec<[f64; 2]> {
     rounded_rect(xy(b.min), xy(b.max), 0.0, 0)
 }
 
+/// The meshes of a scene grouped by what they belong to, each list parallel to the scene's own,
+/// so a writer can name every mesh by the scene's ids (the `.glb` writer, [`crate::gltf`]).
+/// [`Pieces::into_meshes`] gives them in the order of the module's header, which is
+/// [`of_scene`].
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Pieces {
+    /// The substrate, then the top mask and the bottom mask where the stackup has them (id
+    /// `board`; their materials tell them apart).
+    pub board: Vec<Mesh>,
+    /// One per hole of the scene's `board.holes`: the plated barrel, `None` for a hole that is
+    /// not plated (or whose wall has no area).
+    pub walls: Vec<Option<Mesh>>,
+    /// One per body of the scene's `bodies`.
+    pub bodies: Vec<BodyPieces>,
+    /// One per limit of the scene's `limits`, and in each one per face of its `faces`.
+    pub limits: Vec<Vec<Option<Mesh>>>,
+}
+
+/// The meshes of one part.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct BodyPieces {
+    /// The body: its package shape (several meshes, one per solid), a box of known height, or the
+    /// flat outline of an unknown one; empty when its outline has no area.
+    pub body: Vec<Mesh>,
+    /// The pins below the far face, where their protrusion is known.
+    pub pins: Option<Mesh>,
+}
+
+impl Pieces {
+    /// Every mesh, in the order of the module's header.
+    pub fn into_meshes(self) -> Vec<Mesh> {
+        let mut out = self.board;
+        out.extend(self.walls.into_iter().flatten());
+        for b in self.bodies {
+            // A part's pins come right after its body.
+            out.extend(b.body);
+            out.extend(b.pins);
+        }
+        out.extend(self.limits.into_iter().flatten().flatten());
+        out
+    }
+}
+
 /// The meshes of `scene`, in the order of the module's header.
 pub fn of_scene(scene: &Scene) -> Vec<Mesh> {
-    let mut out = Vec::new();
+    pieces(scene).into_meshes()
+}
+
+/// The meshes of `scene`, grouped as the scene's lists are.
+pub fn pieces(scene: &Scene) -> Pieces {
+    let mut out = Pieces::default();
     let solid = &scene.board;
     let mut outline = Polygon::new(rounded_rect(
         [0.0, 0.0],
@@ -108,7 +156,7 @@ pub fn of_scene(scene: &Scene) -> Vec<Mesh> {
     let (mask_top, mask_bottom) = (mask(true), mask(false));
     let core_top = mask_top.map_or(0.0, |l| l.z_bottom);
     let core_bottom = mask_bottom.map_or(bottom, |l| l.z_top);
-    out.extend(
+    out.board.extend(
         Mesh::prism(
             "board",
             Material::Substrate,
@@ -119,35 +167,42 @@ pub fn of_scene(scene: &Scene) -> Vec<Mesh> {
         .ok(),
     );
     if let Some(l) = mask_top {
-        out.extend(Mesh::prism("board", Material::MaskTop, &outline, l.z_bottom, l.z_top).ok());
+        out.board
+            .extend(Mesh::prism("board", Material::MaskTop, &outline, l.z_bottom, l.z_top).ok());
     }
     if let Some(l) = mask_bottom {
-        out.extend(Mesh::prism("board", Material::MaskBottom, &outline, l.z_bottom, l.z_top).ok());
+        out.board
+            .extend(Mesh::prism("board", Material::MaskBottom, &outline, l.z_bottom, l.z_top).ok());
     }
-    for h in solid.holes.iter().filter(|h| h.plated) {
+    for h in &solid.holes {
+        if !h.plated {
+            out.walls.push(None);
+            continue;
+        }
         let id = match &h.owner {
             HoleOwner::Pad { path, .. } => path.clone(),
             HoleOwner::Via { net } => net.clone(),
         };
         let ring = slot(xy(h.from), xy(h.to), h.diameter, hole_segments(h.diameter));
-        out.extend(Mesh::wall(id, Material::Copper, &ring, bottom, 0.0).ok());
+        out.walls
+            .push(Mesh::wall(id, Material::Copper, &ring, bottom, 0.0).ok());
     }
-    for b in &scene.bodies {
-        body(b, &mut out);
-    }
+    out.bodies = scene.bodies.iter().map(body).collect();
     for limit in &scene.limits {
-        for face in &limit.faces {
-            let broken = scene
-                .findings
-                .too_tall
-                .iter()
-                .any(|t| t.keepout == limit.name && t.side == face.side);
-            let material = if broken {
-                Material::LimitViolated
-            } else {
-                Material::Limit
-            };
-            out.extend(
+        let faces = limit
+            .faces
+            .iter()
+            .map(|face| {
+                let broken = scene
+                    .findings
+                    .too_tall
+                    .iter()
+                    .any(|t| t.keepout == limit.name && t.side == face.side);
+                let material = if broken {
+                    Material::LimitViolated
+                } else {
+                    Material::Limit
+                };
                 Mesh::prism(
                     format!("limit:{}", limit.name),
                     material,
@@ -155,25 +210,27 @@ pub fn of_scene(scene: &Scene) -> Vec<Mesh> {
                     face.z_bottom,
                     face.z_top,
                 )
-                .ok(),
-            );
-        }
+                .ok()
+            })
+            .collect();
+        out.limits.push(faces);
     }
     out
 }
 
-fn body(b: &Body, out: &mut Vec<Mesh>) {
+fn body(b: &Body) -> BodyPieces {
     let ring = Polygon::new(b.corners.iter().map(|&p| xy(p)).collect());
     let down = b.side == Side::Back;
+    let mut body = Vec::new();
     match (b.z_far, &b.shape) {
-        (Some(_), Some(shape)) => super::package::meshes(&b.path, shape, out),
+        (Some(_), Some(shape)) => super::package::meshes(&b.path, shape, &mut body),
         (Some(far), None) => {
             let (z0, z1) = if far < b.z_face {
                 (far, b.z_face)
             } else {
                 (b.z_face, far)
             };
-            out.extend(Mesh::prism(b.path.clone(), Material::Body, &ring, z0, z1).ok());
+            body.extend(Mesh::prism(b.path.clone(), Material::Body, &ring, z0, z1).ok());
         }
         (None, _) => {
             let z = if down {
@@ -181,18 +238,17 @@ fn body(b: &Body, out: &mut Vec<Mesh>) {
             } else {
                 b.z_face + UNKNOWN_LIFT
             };
-            out.extend(Mesh::flat(b.path.clone(), Material::BodyUnknown, &ring, z, !down).ok());
+            body.extend(Mesh::flat(b.path.clone(), Material::BodyUnknown, &ring, z, !down).ok());
         }
     }
-    if let Pins::Known {
-        at,
-        z_top,
-        z_bottom,
-        ..
-    } = &b.pins
-    {
-        let (z0, z1) = (z_top.min(*z_bottom), z_top.max(*z_bottom));
-        out.extend(
+    let pins = match &b.pins {
+        Pins::Known {
+            at,
+            z_top,
+            z_bottom,
+            ..
+        } => {
+            let (z0, z1) = (z_top.min(*z_bottom), z_top.max(*z_bottom));
             Mesh::prism(
                 b.path.clone(),
                 Material::Metal,
@@ -200,9 +256,11 @@ fn body(b: &Body, out: &mut Vec<Mesh>) {
                 z0,
                 z1,
             )
-            .ok(),
-        );
-    }
+            .ok()
+        }
+        _ => None,
+    };
+    BodyPieces { body, pins }
 }
 
 #[cfg(test)]

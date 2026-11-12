@@ -385,6 +385,15 @@ impl Entry {
     }
 }
 
+/// The board as placed (and routed) in `entry`, as the `.glb` file `board3d --glb` writes
+/// (ADR 0105), with the stamp of the layout file it was placed with.
+pub fn glb(entry: &Entry, data: &BoardData) -> netsmith_editor::Pcb3d {
+    netsmith_editor::Pcb3d {
+        glb: crate::board3d::glb(&data.built, &entry.board),
+        layout_stamp: entry.layout_stamp.clone(),
+    }
+}
+
 /// The board as the canvas draws and edits it: the drawing (routed if it was routed since the
 /// files were last read, else only placed; it has no key, the page lists the nets itself), and
 /// what finds things in it. `layout_file` names the layout file in the page.
