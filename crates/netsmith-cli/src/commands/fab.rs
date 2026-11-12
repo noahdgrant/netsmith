@@ -16,7 +16,7 @@ use super::common::{self, libraries, no_boards, sync_pins, target};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`."
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab` unless `--allow-drc-violations` is given, and `fab-notes.txt` then says the board is not clean; its warnings (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `board3d --step` writes). Read `fab-notes.txt` before you order.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, or out of time) and the nets whose copper stands in its way; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -69,6 +69,12 @@ pub struct Args {
     /// run is removed.
     #[arg(long)]
     pub no_glb: bool,
+    /// Leave the board as STEP (`<board>.step`) out of the package.
+    ///
+    /// `step = false` in netsmith.toml does it for a project; a stale `<board>.step` of an
+    /// earlier run is removed.
+    #[arg(long)]
+    pub no_step: bool,
     /// Also write `<board>.placed.json`, the board before routing, for `netsmith route`.
     ///
     /// The file goes into the board's output folder, with the track margin `fab` routes with.
@@ -135,6 +141,7 @@ pub fn run(args: Args) -> ExitCode {
             args.locked,
             constraints_warn,
             args.no_glb,
+            args.no_step,
         ),
         None => timings::stage("fab.total", "", || {
             run_fab(
@@ -148,6 +155,7 @@ pub fn run(args: Args) -> ExitCode {
                 constraints_warn,
                 pins_locked,
                 args.no_glb,
+                args.no_step,
                 args.save_placed,
                 FabOutput {
                     quiet: args.quiet,
@@ -178,6 +186,17 @@ fn glb_wanted(target: &Target, no_glb: bool) -> bool {
             .project
             .as_ref()
             .and_then(|p| p.manifest.glb)
+            .unwrap_or(true)
+}
+
+/// Whether `fab` writes the board as STEP: `--no-step` for this run leaves it out, else `step`
+/// in the manifest, else yes.
+fn step_wanted(target: &Target, no_step: bool) -> bool {
+    !no_step
+        && target
+            .project
+            .as_ref()
+            .and_then(|p| p.manifest.step)
             .unwrap_or(true)
 }
 
@@ -231,6 +250,7 @@ fn run_fab(
     constraints_warn: Option<bool>,
     pins_locked: Option<bool>,
     no_glb: bool,
+    no_step: bool,
     save_placed: bool,
     output: FabOutput,
 ) -> ExitCode {
@@ -294,6 +314,7 @@ fn run_fab(
         pin_map_source: None,
         track_margin: track_margin(&target),
         glb: glb_wanted(&target, no_glb),
+        step: step_wanted(&target, no_step),
         save_placed,
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
@@ -472,6 +493,7 @@ fn run_order(
     locked: bool,
     constraints_warn: Option<bool>,
     no_glb: bool,
+    no_step: bool,
 ) -> ExitCode {
     let (target, loader, mut catalogs) = match target(None, strict) {
         Ok(t) => t,
@@ -530,6 +552,7 @@ fn run_order(
         pin_map_source: None,
         track_margin: track_margin(&target),
         glb: glb_wanted(&target, no_glb),
+        step: step_wanted(&target, no_step),
         save_placed: false,
     };
     let out = out.unwrap_or(&target.fab_out);
@@ -625,6 +648,7 @@ mod tests {
                 constraints: None,
                 pins: None,
                 no_glb: false,
+                no_step: false,
                 save_placed: false,
                 order: None,
                 quiet: false,
@@ -637,10 +661,12 @@ mod tests {
             "--cross-check",
             "--quiet",
             "--no-glb",
+            "--no-step",
         ]);
-        assert!(f.allow_drc_violations && f.cross_check && f.quiet && f.no_glb);
+        assert!(f.allow_drc_violations && f.cross_check && f.quiet && f.no_glb && f.no_step);
         assert!(parse(&["build", "--cross-check"]).is_err());
         assert!(parse(&["build", "--no-glb"]).is_err());
+        assert!(parse(&["build", "--no-step"]).is_err());
     }
 
     #[test]

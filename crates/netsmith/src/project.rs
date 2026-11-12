@@ -95,6 +95,11 @@ pub struct Manifest {
     /// with `--no-glb`, which wins over this key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub glb: Option<bool>,
+    /// Whether `fab` writes the board as STEP, `<board>.step`, into the fab package
+    /// (`step = false` leaves it out; the default, `true`, writes it). A run can leave it out
+    /// with `--no-step`, which wins over this key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<bool>,
     /// How many times the process's least track a signal is drawn at, where there is room
     /// (`track_margin = 1.5`, the default; 1 is the least). A board the router cannot finish
     /// at that width is routed at the least (issue #431).
@@ -218,6 +223,7 @@ impl Manifest {
             catalogs: Vec::new(),
             assembly: None,
             glb: None,
+            step: None,
             track_margin: None,
             environment: None,
             guidelines: None,

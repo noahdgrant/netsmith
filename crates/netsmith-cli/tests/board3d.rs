@@ -1331,6 +1331,146 @@ fn no_glb_and_the_manifest_key_leave_the_scene_out_and_remove_an_old_one() {
     );
 }
 
+#[test]
+fn fab_writes_the_board_as_step_beside_the_glb_and_not_in_the_gerber_zip() {
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-default");
+    std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
+    let run = fab(&dir, &["a.nsm", "--out", "out"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let package = dir.join("out/Lonely");
+    let step = std::fs::read(package.join("Lonely.step")).expect("fab writes <board>.step");
+    assert!(step.starts_with(b"ISO-10303-21;"));
+    assert!(package.join("Lonely.glb").is_file());
+
+    // The bytes are those of `board3d --step` for the board, placed as fab placed it.
+    let by_board3d = dir.join("b.step");
+    let run = board3d(&dir, &["a.nsm", "--step", by_board3d.to_str().unwrap()]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(step, std::fs::read(&by_board3d).unwrap());
+
+    // It is not for the board house: the Gerber zip has no `.step`.
+    let zip = std::fs::File::open(package.join("Lonely-gerbers.zip")).unwrap();
+    let archive = zip::ZipArchive::new(zip).unwrap();
+    assert!(
+        archive.file_names().all(|n| !n.ends_with(".step")),
+        "{:?}",
+        archive.file_names().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn the_step_of_a_routed_board_is_the_step_board3d_writes_for_it() {
+    // The STEP holds no copper, so the routing does not change it: a board that fab routes has
+    // the bytes of `board3d --step`, which routes nothing.
+    let examples = repo().join("examples");
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-routed");
+    let run = fab(
+        &examples,
+        &["led.nsm", "--out", dir.to_str().unwrap(), "--locked"],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let routed = std::fs::read(dir.join("LedExample/LedExample.step")).unwrap();
+    let unrouted = dir.join("unrouted.step");
+    let run = board3d(
+        &examples,
+        &["led.nsm", "--step", unrouted.to_str().unwrap()],
+    );
+    assert!(run.status.success());
+    assert_eq!(routed, std::fs::read(&unrouted).unwrap());
+}
+
+#[test]
+fn no_step_and_the_manifest_key_leave_the_step_out_and_remove_an_old_one() {
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-off");
+    std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
+    let step = dir.join("out/Lonely/Lonely.step");
+    let ok = |run: Output| {
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    };
+    ok(fab(&dir, &["a.nsm", "--out", "out"]));
+    assert!(step.is_file());
+
+    // `--no-step` leaves it out, removes the one of the earlier run, and keeps the `.glb`.
+    ok(fab(&dir, &["a.nsm", "--out", "out", "--no-step"]));
+    assert!(!step.exists());
+    assert!(dir.join("out/Lonely/Lonely.glb").is_file());
+    assert!(dir.join("out/Lonely/fab-notes.txt").is_file());
+
+    // `--no-glb` does not touch the STEP.
+    ok(fab(&dir, &["a.nsm", "--out", "out", "--no-glb"]));
+    assert!(step.is_file());
+    assert!(!dir.join("out/Lonely/Lonely.glb").exists());
+
+    // `step = false` in netsmith.toml does the same for the project, in `fab` and in an order.
+    std::fs::create_dir(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
+    std::fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"p\"\nstep = false\n\n[order.one.boards]\nLonely = 1\n",
+    )
+    .unwrap();
+    ok(fab(&dir, &["--out", "kept-out"]));
+    assert!(!dir.join("kept-out/Lonely/Lonely.step").exists());
+    assert!(dir.join("kept-out/Lonely/Lonely.glb").is_file());
+    ok(fab(&dir, &["--order", "one", "--out", "order-out"]));
+    let written = walk(&dir.join("order-out"));
+    assert!(written.iter().any(|f| f.ends_with("Lonely.kicad_pcb")));
+    assert!(!written.iter().any(|f| f.ends_with(".step")), "{written:?}");
+
+    // Without the key the order has it, and the flag leaves it out.
+    std::fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"p\"\n\n[order.one.boards]\nLonely = 1\n",
+    )
+    .unwrap();
+    ok(fab(&dir, &["--order", "one", "--out", "order-on"]));
+    assert!(
+        walk(&dir.join("order-on"))
+            .iter()
+            .any(|f| f.ends_with("Lonely.step"))
+    );
+    ok(fab(
+        &dir,
+        &["--order", "one", "--out", "order-flag", "--no-step"],
+    ));
+    assert!(
+        !walk(&dir.join("order-flag"))
+            .iter()
+            .any(|f| f.ends_with(".step"))
+    );
+}
+
+#[test]
+fn a_manifest_step_that_is_not_a_boolean_is_an_error() {
+    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-bad-key");
+    std::fs::create_dir(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
+    std::fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"p\"\nstep = \"no\"\n",
+    )
+    .unwrap();
+    let run = fab(&dir, &["--out", "out"]);
+    assert!(!run.status.success());
+    assert!(String::from_utf8_lossy(&run.stderr).contains("step"));
+}
+
 /// Every file under `dir`, as paths.
 fn walk(dir: &Path) -> Vec<String> {
     let mut found = Vec::new();

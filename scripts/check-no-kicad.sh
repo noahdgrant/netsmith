@@ -169,6 +169,10 @@ for args in "led.nsm" "four_layer.nsm" "outline_and_pours.nsm" "two_boards.nsm -
     # shellcheck disable=SC2086 # the arguments are words
     step "board3d examples/$args" "$work/examples" board3d $args --json
 done
+# `fab` writes the board as STEP and its 3D scene as `.glb` beside the notes, with no KiCad.
+for ext in step glb; do
+    [ -s "$work/fab/led/LedExample/LedExample.$ext" ] || { echo "FAIL  fab examples/led.nsm wrote no .$ext"; failed=1; }
+done
 # And the same scene as a `.glb` file (the one the editor's 3D view shows).
 step "board3d examples/four_layer.nsm --glb" "$work/examples" board3d four_layer.nsm --glb "$work/four_layer.glb"
 [ -s "$work/four_layer.glb" ] || { echo "FAIL  board3d --glb wrote no file"; failed=1; }

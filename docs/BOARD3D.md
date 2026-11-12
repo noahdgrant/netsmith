@@ -229,8 +229,25 @@ netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
 - **Size**: about a fifth of the `.glb`, or less, since the copper is left out: `led` 23 kB,
   `four_layer` 88 kB, `rp2350_minimal` 372 kB, `orbit` 776 kB.
 
-`fab` does not write it yet: whether it should, as it writes the `.glb`, is an open question
-(ADR 0107).
+### In the fab package (STEP)
+
+`netsmith fab` writes the STEP file of each board it makes as `<board>.step` into the board's
+folder in the package (`fab/<Board>/<Board>.step`), beside the `.glb`, `fab-notes.txt` and the
+`.kicad_pcb`, and not inside the Gerber zip. It needs no KiCad (ADR 0097), and `fab --order`
+writes it for each board of the order.
+
+- **Which board.** The board `fab` made, placed and routed. The STEP holds no copper, so the
+  routing does not change it: the file is byte for byte what `board3d --step` writes for the same
+  placement. A board `fab` writes as INCOMPLETE has the STEP of its routed part, which is the same
+  board.
+- **Off.** `fab --no-step` leaves it out for one run, and `step = false` under `[project]` in
+  `netsmith.toml` leaves it out for the project; the flag wins where both are given (the flag only
+  turns it off: remove the key to turn it back on). `--no-glb` and `glb = false` do not touch it,
+  nor the other way round. A run that leaves it out removes the `<board>.step` of an earlier run,
+  so that the folder never holds the board of another layout.
+- **If it cannot be written** (the folder is not writable, say) `fab` goes on: the package is
+  complete without it, and a `warning:` line in the run's output and in `fab-notes.txt` says
+  which file was not written.
 
 ## The editor's 3D view
 
