@@ -183,7 +183,12 @@ fn board(case: &Case) -> Result<Board, BoardError> {
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
         .with_library("t", folder.path());
-    Board::from_design_placed(&design(case), &mapping, &library, &PlaceOptions::default())
+    netsmith_place_route::board_from_design_placed(
+        &design(case),
+        &mapping,
+        &library,
+        &PlaceOptions::default(),
+    )
 }
 
 /// The lines the placement check finds, as the person reads them.
@@ -344,7 +349,12 @@ fn the_placer_moves_a_free_cover_off_pins_it_may_not_stand_over() {
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
         .with_library("t", folder.path());
-    let placed = Board::from_design_placed(&d, &mapping, &library, &PlaceOptions::default());
+    let placed = netsmith_place_route::board_from_design_placed(
+        &d,
+        &mapping,
+        &library,
+        &PlaceOptions::default(),
+    );
     // The cell is 30 mm wide and the board 60: it fits beside the row, on the back.
     if let Ok(board) = placed {
         assert!(
@@ -434,7 +444,7 @@ fn small(case: &Case) -> Result<Board, BoardError> {
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
         .with_library("t", folder.path());
-    Board::from_design_placed(&d, &mapping, &library, &PlaceOptions::default())
+    netsmith_place_route::board_from_design_placed(&d, &mapping, &library, &PlaceOptions::default())
 }
 
 #[test]

@@ -197,7 +197,7 @@ fn placed(physical: &str) -> Result<netsmith_pcb::Board, String> {
     let built = netsmith::build_with("widget.nsm", BOARD, &loader, &Catalogs::jlcpcb(), &libs)
         .unwrap_or_else(|e| panic!("{e}"));
     let design = &built[0].design;
-    netsmith_pcb::Board::from_design_placed(
+    netsmith_place_route::board_from_design_placed(
         design,
         &libs.mapping,
         &libs.footprints,

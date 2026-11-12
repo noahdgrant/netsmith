@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::board::{Board, KeepoutArea, Placed, Plane};
 use crate::geometry::{Pt, Rect};
-use crate::place::ORIGIN;
+use crate::placement::ORIGIN;
 use crate::rules::Rules;
 use crate::shape::{Edge, RoundRect};
 use crate::stackup::LayerKind;
@@ -740,18 +740,13 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::board::tests::{fixtures, four_layer_design, led_design};
+    use crate::board::tests::{four_layer_design, led_design};
     use crate::geometry::Pt;
 
     use super::*;
 
     fn led() -> Board {
-        Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap()
+        crate::board::tests::placed(&led_design())
     }
 
     fn parsed(board: &Board) -> Sexp {
@@ -954,10 +949,7 @@ mod tests {
             refdes: "U1".into(),
             pin: "2".into(),
         });
-        let pcb = parsed(
-            &Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-                .unwrap(),
-        );
+        let pcb = parsed(&crate::board::tests::placed(&design));
         let u1 = footprint_of(&pcb, "U1");
         let on_net: Vec<_> = u1
             .find_all("pad")
@@ -1035,12 +1027,7 @@ mod tests {
     }
 
     fn four() -> Board {
-        Board::from_design(
-            &four_layer_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap()
+        crate::board::tests::placed(&four_layer_design())
     }
 
     fn numbers(node: &Sexp, key: &str) -> Vec<f64> {

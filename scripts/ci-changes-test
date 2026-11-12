@@ -217,8 +217,9 @@ crates_row "netsmith-cli" crates/netsmith-cli/src/commands/fab.rs crates/netsmit
 crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
 crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
 crates_row "netsmith-place-route" crates/netsmith-place-route/src/route.rs
-# The synthetic boards the router's tests share are netsmith-pcb's: its dependents (the router) run too.
-crates_row "netsmith-pcb" crates/netsmith-pcb/tests/common/mod.rs
+# The synthetic boards the tests share are netsmith-place-route's: its dependents (netsmith-3d, the
+# netsmith crate) run too.
+crates_row "netsmith-place-route" crates/netsmith-place-route/tests/common/mod.rs
 crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs README.md docs/DESIGN-RULES.md
 # A path outside the crates that turns the tests on: every test.

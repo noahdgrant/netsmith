@@ -57,7 +57,7 @@ use netsmith_core::Design;
 
 use crate::board::{Board, BoardKeepout, ReferenceSide, Side};
 use crate::geometry::{Pt, Rect};
-use crate::place::{CarriedZone, Fixed, HeightZone, ORIGIN, PlaceOptions};
+use crate::placement::{CarriedZone, Fixed, HeightZone, ORIGIN, PlaceOptions};
 
 /// The version of the file format this reads and writes.
 pub const VERSION: u32 = 1;
@@ -1015,14 +1015,7 @@ side = "bottom"
         assert!(text.contains("seed = 7"), "{text}");
         assert_eq!(Layout::parse(&text, "x").unwrap(), layout);
         let design = led_with_paths();
-        let options = place_options(&design, Some(&layout));
-        let board = Board::from_design_placed(
-            &design,
-            &netsmith_kicad::Mapping::standard(),
-            &crate::board::tests::fixtures(),
-            &options,
-        )
-        .unwrap();
+        let board = crate::board::tests::placed_with(&design, &layout);
         let captured = Layout::capture(&board, layout.boards.get("LedExample"));
         assert_eq!(captured.seed, Some(7));
         assert_eq!(Layout::capture(&board, None).seed, None);
@@ -1063,13 +1056,7 @@ side = "bottom"
         assert!(!options.fixed.contains_key("D1") && !options.fixed.contains_key("J1"));
         // The board has them there, and the part the layout does not name is placed round
         // them without overlapping.
-        let board = Board::from_design_placed(
-            &design,
-            &netsmith_kicad::Mapping::standard(),
-            &crate::board::tests::fixtures(),
-            &options,
-        )
-        .unwrap();
+        let board = crate::board::tests::placed_with(&design, &layout);
         let r1 = board.part("R1").unwrap();
         assert_eq!((r1.at, r1.rotation), (ORIGIN + Pt::new(5.0, 4.0), 90.0));
         assert_eq!(board.part("D1").unwrap().side, Side::Back);

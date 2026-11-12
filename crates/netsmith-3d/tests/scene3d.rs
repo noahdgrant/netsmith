@@ -107,9 +107,13 @@ pub(crate) fn board_with(process: netsmith_core::Process) -> Board {
             })
             .to_vec(),
     };
-    let mut board =
-        Board::from_design_placed(&design, &mapping, &library, &PlaceOptions::default())
-            .unwrap_or_else(|e| panic!("{e}"));
+    let mut board = netsmith_place_route::board_from_design_placed(
+        &design,
+        &mapping,
+        &library,
+        &PlaceOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     let origin = board.outline.min;
     for (path, x, y, side, height) in [
         ("a", 10.0, 5.0, Side::Front, Some(2.0)),

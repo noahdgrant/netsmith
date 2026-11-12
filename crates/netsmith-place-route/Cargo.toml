@@ -13,6 +13,7 @@ path = "tests/main.rs"
 
 [dependencies]
 netsmith-core = { path = "../netsmith-core" }
+netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-pcb = { path = "../netsmith-pcb" }
 serde = { version = "1.0.229", features = ["derive"] }
 
@@ -22,6 +23,5 @@ serde = { version = "1.0.229", features = ["derive"] }
 netsmith-check = { path = "../netsmith-check" }
 netsmith-design = { path = "../netsmith-design" }
 netsmith-fab = { path = "../netsmith-fab" }
-netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-solve = { path = "../netsmith-solve" }
 serde_json = "1.0.154"

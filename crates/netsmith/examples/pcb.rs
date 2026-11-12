@@ -4,7 +4,7 @@
 
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
-use netsmith_pcb::{Board, FootprintLibrary, Ratsnest, kicad_pcb, kicad_pro, svg};
+use netsmith_pcb::{FootprintLibrary, Ratsnest, kicad_pcb, kicad_pro, svg};
 use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
@@ -54,14 +54,17 @@ fn main() -> ExitCode {
     let library = FootprintLibrary::installed();
     let mut failed = false;
     for b in built {
-        let mut board =
-            match Board::from_design(&b.design, &netsmith_kicad::Mapping::standard(), &library) {
-                Ok(board) => board,
-                Err(e) => {
-                    eprintln!("error: {}: {e}", b.label());
-                    return ExitCode::FAILURE;
-                }
-            };
+        let mut board = match netsmith_place_route::board_from_design(
+            &b.design,
+            &netsmith_kicad::Mapping::standard(),
+            &library,
+        ) {
+            Ok(board) => board,
+            Err(e) => {
+                eprintln!("error: {}: {e}", b.label());
+                return ExitCode::FAILURE;
+            }
+        };
         let problems = board.check_placement();
         for p in &problems {
             eprintln!("error: {}: {p}", b.label());

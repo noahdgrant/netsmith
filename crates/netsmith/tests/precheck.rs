@@ -86,7 +86,7 @@ fn precheck(parts: usize, headers: &str, size: (u32, u32), extra: &str) -> Prech
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let design = &built[0].design;
-    Board::precheck(
+    netsmith_place_route::precheck(
         design,
         &libraries.mapping,
         &libraries.footprints,
@@ -107,7 +107,7 @@ fn place(parts: usize, headers: &str, size: (u32, u32), extra: &str) -> Result<B
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let design = &built[0].design;
-    Board::from_design_placed(
+    netsmith_place_route::board_from_design_placed(
         design,
         &libraries.mapping,
         &libraries.footprints,
@@ -455,10 +455,12 @@ fn the_precheck_of_a_board_of_a_hundred_parts_takes_under_a_hundred_milliseconds
     let design = &built[0].design;
     let options = place_options(design, None);
     // Once to warm the footprint files, then timed.
-    let _ = Board::precheck(design, &libraries.mapping, &libraries.footprints, &options);
+    let _ =
+        netsmith_place_route::precheck(design, &libraries.mapping, &libraries.footprints, &options);
     let started = Instant::now();
-    let found = Board::precheck(design, &libraries.mapping, &libraries.footprints, &options)
-        .unwrap_or_else(|e| panic!("{e}"));
+    let found =
+        netsmith_place_route::precheck(design, &libraries.mapping, &libraries.footprints, &options)
+            .unwrap_or_else(|e| panic!("{e}"));
     let took = started.elapsed();
     assert!(!found.is_error(), "{found:?}");
     eprintln!("pre-check of 100 parts with windows: {took:?}");

@@ -733,6 +733,7 @@ dependencies = [
  "netsmith-design",
  "netsmith-kicad",
  "netsmith-pcb",
+ "netsmith-place-route",
  "netsmith-solve",
  "serde_json",
 ]
@@ -851,6 +852,7 @@ dependencies = [
  "netsmith-design",
  "netsmith-fab",
  "netsmith-kicad",
+ "netsmith-place-route",
  "netsmith-solve",
  "serde",
  "serde_json",

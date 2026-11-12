@@ -132,7 +132,7 @@ fn a_part_has_the_height_of_its_row_and_one_with_no_cell_has_none() {
 /// The board of `b`, placed.
 fn placed(b: &netsmith::Built) -> Board {
     let libraries = Libraries::sample();
-    Board::from_design_placed(
+    netsmith_place_route::board_from_design_placed(
         &b.design,
         &libraries.mapping,
         &libraries.footprints,

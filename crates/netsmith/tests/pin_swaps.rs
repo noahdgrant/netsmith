@@ -22,7 +22,8 @@ use netsmith::Libraries;
 use netsmith_check::Loader;
 use netsmith_kicad::testlib::{TempDir, sample_footprints, sample_symbols};
 use netsmith_kicad::{Mapping, SymbolLib};
-use netsmith_pcb::{Board, FootprintLibrary, Quality, place_options};
+use netsmith_pcb::{FootprintLibrary, place_options};
+use netsmith_place_route::Quality;
 use netsmith_place_route::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
@@ -268,7 +269,7 @@ pub fn measure(libraries: &Libraries, join: &[usize], pins: &str) -> Measured {
     let outcome = build(libraries, join, pins);
     let built = &outcome.boards[0];
     let placement = place_options(&built.design, None);
-    let mut board = Board::from_design_placed(
+    let mut board = netsmith_place_route::board_from_design_placed(
         &built.design,
         &libraries.mapping,
         &libraries.footprints,
@@ -596,7 +597,7 @@ fn searched(
 ) -> (Option<netsmith::pin_swap::Proposal>, usize) {
     let outcome = build(libs, &mirror(), pins);
     let built = &outcome.boards[0];
-    let board = Board::from_design_placed(
+    let board = netsmith_place_route::board_from_design_placed(
         &built.design,
         &libs.mapping,
         &libs.footprints,
@@ -667,7 +668,7 @@ fn the_search_gives_requests_for_a_shared_function_pins_of_their_own() {
         held,
         [("a1", "p00"), ("a2", "p01"), ("a3", "p02"), ("a4", "p03")]
     );
-    let board = Board::from_design_placed(
+    let board = netsmith_place_route::board_from_design_placed(
         &built.design,
         &libs.mapping,
         &libs.footprints,

@@ -3662,7 +3662,7 @@ mod tests {
 
     #[test]
     fn the_four_layer_board_is_routed_with_a_via_to_the_plane_beside_each_surface_mount_pad() {
-        let mut board = Board::from_design(
+        let mut board = crate::board_from_design(
             &four_layer_design(),
             &netsmith_kicad::Mapping::standard(),
             &fixtures(),
@@ -3698,7 +3698,7 @@ mod tests {
     /// A track of the net `3V3` over the first pad of the net `GND`, `gap` mm from its top
     /// edge, `width` wide, settled against that pad alone.
     fn settle_beside_a_foreign_pad(gap: f64, width: f64) -> (Option<Track>, f64) {
-        let board = Board::from_design(
+        let board = crate::board_from_design(
             &four_layer_design(),
             &netsmith_kicad::Mapping::standard(),
             &fixtures(),
@@ -3739,7 +3739,7 @@ mod tests {
     /// Whether a line with `mine` joins cleanly a line of its net with `theirs`, all on the
     /// front, away from the net's pads.
     fn joins(mine: &[(Pt, Pt)], theirs: &[(Pt, Pt)]) -> bool {
-        let board = Board::from_design(
+        let board = crate::board_from_design(
             &four_layer_design(),
             &netsmith_kicad::Mapping::standard(),
             &fixtures(),
@@ -3835,7 +3835,7 @@ mod tests {
 
     #[test]
     fn a_via_to_a_plane_keeps_the_rules_clear_of_other_copper() {
-        let mut board = Board::from_design(
+        let mut board = crate::board_from_design(
             &four_layer_design(),
             &netsmith_kicad::Mapping::standard(),
             &fixtures(),
@@ -3871,7 +3871,7 @@ mod tests {
 
     #[test]
     fn a_via_keeps_the_masks_least_web_from_an_opening_the_footprint_draws_in_the_mask() {
-        let mut board = Board::from_design(
+        let mut board = crate::board_from_design(
             &four_layer_design(),
             &netsmith_kicad::Mapping::standard(),
             &fixtures(),
@@ -3961,7 +3961,7 @@ mod tests {
 
     #[test]
     fn masks_made_from_the_cached_fixed_copper_leave_a_nets_own_pads_open() {
-        let board = Board::from_design(
+        let board = crate::board_from_design(
             &four_layer_design(),
             &netsmith_kicad::Mapping::standard(),
             &fixtures(),

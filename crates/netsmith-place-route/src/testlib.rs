@@ -38,12 +38,18 @@ fn net(name: &str, pins: &[(&str, &str)]) -> Net {
     }
 }
 
-/// The LED board of `examples/led.nsm` on four layers: ground and 3.3 V planes, and the supply
-/// net called `3V3`.
-pub fn four_layer_design() -> Design {
+/// The `TwoLayer` process at 1.6 mm, as `netsmith-pcb`'s tests have it (`rules::test_process`).
+pub fn test_process() -> Process {
+    process_of(
+        "import std::mfg::jlcpcb::TwoLayer\nimport std::parts::passive::Resistor\nboard T {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .r: Resistor\n}\n",
+    )
+}
+
+/// The same circuit as `examples/led.nsm`.
+pub fn led_design() -> Design {
     Design {
         name: "LedExample".into(),
-        process: Some(four_layer_process()),
+        process: Some(test_process()),
         features: Default::default(),
         interfaces: Vec::new(),
         notes: Vec::new(),
@@ -54,16 +60,25 @@ pub fn four_layer_design() -> Design {
         ],
         nets: vec![
             net("GND", &[("D1", "1"), ("J1", "2")]),
-            net("3V3", &[("J1", "1"), ("R1", "1")]),
+            net("VCC", &[("J1", "1"), ("R1", "1")]),
             net("net-led.anode", &[("D1", "2"), ("R1", "2")]),
         ],
     }
 }
 
-/// `FourLayer` after the board has made GND the first plane and 3V3 the second, as the check,
-/// the solver and the design stage resolve it.
-fn four_layer_process() -> Process {
-    let source = "import std::mfg::jlcpcb::FourLayer\nimport std::parts::passive::Resistor\nboard T {\n    .process: FourLayer {\n        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n    }\n    .r: Resistor {\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }\n}\n";
+/// The LED board on four layers: ground and 3.3 V planes, and the supply net called `3V3`.
+pub fn four_layer_design() -> Design {
+    let mut design = led_design();
+    design.process = Some(process_of(
+        "import std::mfg::jlcpcb::FourLayer\nimport std::parts::passive::Resistor\nboard T {\n    .process: FourLayer {\n        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n    }\n    .r: Resistor {\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }\n}\n",
+    ));
+    design.nets[1].name = "3V3".into();
+    design
+}
+
+/// The process of the one board of `source`, as the check, the solver and the design stage
+/// resolve it: what `netsmith::build_with` gives, without the netsmith crate.
+fn process_of(source: &str) -> Process {
     let checked = netsmith_check::check("t.nsm", source, &netsmith_check::Loader::std());
     assert!(checked.is_ok(), "{}", checked.render());
     let board = &checked.boards[0];

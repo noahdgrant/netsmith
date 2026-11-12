@@ -12,7 +12,7 @@ use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
 use netsmith_fab::{CliError, KicadCli, KicadCliExe};
 use netsmith_netlist::{Netlist, Options, Outcome, compare, report};
-use netsmith_pcb::{Board, kicad_pcb};
+use netsmith_pcb::kicad_pcb;
 use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
 
@@ -55,8 +55,12 @@ fn write_board(source: &str, dir: &Path) -> (PathBuf, PathBuf) {
     let sch = dir.join(format!("{}.kicad_sch", b.design.name));
     fs::write(&sch, &b.schematic).unwrap();
     let libraries = Libraries::sample();
-    let mut board =
-        Board::from_design(&b.design, &libraries.mapping, &libraries.footprints).unwrap();
+    let mut board = netsmith_place_route::board_from_design(
+        &b.design,
+        &libraries.mapping,
+        &libraries.footprints,
+    )
+    .unwrap();
     let unrouted = route(&mut board);
     assert!(unrouted.is_empty(), "{:?}", unrouted.lines);
     let pcb = dir.join(format!("{}.kicad_pcb", b.design.name));

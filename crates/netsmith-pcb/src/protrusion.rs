@@ -75,7 +75,7 @@
 
 use crate::board::{Placed, Side};
 use crate::geometry::Rect;
-use crate::place::HeightZone;
+use crate::placement::HeightZone;
 
 /// How much over a limit a stack may be before it is refused: half a micrometre, as the
 /// other height checks measure.

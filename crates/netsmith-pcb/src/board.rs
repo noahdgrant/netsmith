@@ -9,7 +9,7 @@ use netsmith_kicad::{MapError, Mapping};
 use crate::footprint::{Footprint, FootprintError, FootprintLibrary, Layer, Mount, Pad};
 use crate::geometry::{Pt, Rect};
 use crate::overhang::{self, Edge, Overhang};
-use crate::place::{self, DoesNotFit, ORIGIN, PlaceOptions};
+use crate::placement::{DoesNotFit, ORIGIN, PlaceOptions};
 use crate::rules::Rules;
 use crate::shape::RoundRect;
 
@@ -94,43 +94,10 @@ impl std::fmt::Display for BoardError {
 
 impl std::error::Error for BoardError {}
 
-/// The refusal with the requirements of the physical file that are not met where the placer
-/// ended with the parts, and the lines that cannot all hold (ADR 0045).
-/// `base` is what the layout file and the caller said, before the requirements were turned
-/// into places.
-fn explained(
-    mut error: DoesNotFit,
-    design: &Design,
-    parts: &[Placed],
-    base: &PlaceOptions,
-    rules: &Rules,
-) -> DoesNotFit {
-    // The parts as the refusal lists them: where the placer ended, not where they started.
-    let ended: Vec<Placed> = parts
-        .iter()
-        .map(|p| {
-            let mut q = p.clone();
-            if let Some(state) = error.parts.iter().find(|s| s.part == p.refdes) {
-                q.at = ORIGIN + Pt::new(state.at.0, state.at.1);
-                q.rotation = state.rotation;
-                q.side = state.side;
-            }
-            q
-        })
-        .collect();
-    let outline = Rect::new(
-        ORIGIN,
-        Pt::new(ORIGIN.x + error.outline.0, ORIGIN.y + error.outline.1),
-    );
-    error.requirements =
-        crate::explain::explain(design, &ended, outline, base, rules).map(Box::new);
-    error
-}
-
 /// The box of the outline the design states, from the top left corner of the sheet, as the
 /// most it allows (a range's top; infinite where a side is left open), and whether it is
 /// known on both sides, and whether its size is a range (the real outline may be smaller).
-fn outline_box(design: &Design) -> (Rect, bool, bool) {
+pub fn outline_box(design: &Design) -> (Rect, bool, bool) {
     let Some(o) = &design.features.outline else {
         return (
             Rect::new(ORIGIN, Pt::new(f64::INFINITY, f64::INFINITY)),
@@ -148,15 +115,15 @@ fn outline_box(design: &Design) -> (Rect, bool, bool) {
     )
 }
 
-/// What [`Board::load`] found: everything [`Board::from_design_placed`] needs before it turns
-/// the requirements into places.
-struct Loaded {
-    process: Process,
-    rules: Rules,
+/// What [`Board::load`] found: everything [`Board::unplaced`] needs before it turns the
+/// requirements into places.
+pub struct Loaded {
+    pub process: Process,
+    pub rules: Rules,
     /// The options with the design's keepouts, cutouts and height limits added.
-    placement: PlaceOptions,
+    pub placement: PlaceOptions,
     /// The footprints, on the faces the options gave them, not yet placed.
-    parts: Vec<Placed>,
+    pub parts: Vec<Placed>,
 }
 
 impl From<DesignError> for BoardError {
@@ -261,12 +228,12 @@ impl Placed {
 
     /// The height of the reference text on the board, in mm: what the library draws, or the
     /// process's smallest if that is more.
-    pub(crate) fn text_height(&self, rules: &Rules) -> f64 {
+    pub fn text_height(&self, rules: &Rules) -> f64 {
         self.footprint.reference_size.max(rules.min_text_height)
     }
 
     /// The width of the reference text, in mm: about one text height for each letter.
-    pub(crate) fn text_width(&self, rules: &Rules) -> f64 {
+    pub fn text_width(&self, rules: &Rules) -> f64 {
         self.refdes.chars().count() as f64 * self.text_height(rules) * 0.95
             + rules.min_text_thickness
     }
@@ -319,7 +286,7 @@ impl Placed {
         other: &Placed,
         court_b: Rect,
         clearance: f64,
-        zones: &[crate::place::HeightZone],
+        zones: &[crate::placement::HeightZone],
     ) -> bool {
         let excused = crate::protrusion::excused(self, other, zones);
         [Side::Front, Side::Back].into_iter().any(|face| {
@@ -433,7 +400,7 @@ impl Placed {
     }
 
     /// A box of the footprint's own frame, on the board.
-    pub(crate) fn rect_to_board(&self, r: Rect) -> Rect {
+    pub fn rect_to_board(&self, r: Rect) -> Rect {
         let r = if self.mirrored() { r.mirrored_x() } else { r };
         r.rotated(self.rotation).translated(self.at)
     }
@@ -617,7 +584,7 @@ impl PlacementProblem {
     pub(crate) fn overlap_of(
         a: &Placed,
         b: &Placed,
-        zones: &[crate::place::HeightZone],
+        zones: &[crate::placement::HeightZone],
     ) -> PlacementProblem {
         match crate::protrusion::relation(a, b, zones) {
             Some((first, crate::protrusion::Verdict::Refused(why))) => {
@@ -1201,22 +1168,10 @@ pub struct Board {
 }
 
 impl Board {
-    /// Choose a footprint for each part, place them, and keep the nets. The same design
-    /// always gives the same board. The design must say how it is made (its `process`), and
-    /// the board must have chosen a thickness for it. The mapping says which footprint each
-    /// part has and the library holds it.
-    pub fn from_design(
-        design: &Design,
-        mapping: &Mapping,
-        library: &FootprintLibrary,
-    ) -> Result<Board, BoardError> {
-        Self::from_design_placed(design, mapping, library, &PlaceOptions::default())
-    }
-
-    /// The part of [`Board::from_design_placed`] before the requirements are turned into
+    /// The part of [`Board::unplaced`] before the requirements are turned into
     /// places: the process and its rules, the options with the keepouts, cutouts and height
     /// limits of the design added, and the parts as footprints on the faces they were given.
-    fn load(
+    pub fn load(
         design: &Design,
         mapping: &Mapping,
         library: &FootprintLibrary,
@@ -1369,47 +1324,18 @@ impl Board {
         })
     }
 
-    /// What the requirements of `design` prove about where its parts can go, before any
-    /// placing: the same proofs [`Board::from_design_placed`] makes first (and fails with
-    /// [`BoardError::Unplaceable`]), with the warnings for what is only suspicious. It takes
-    /// milliseconds. `Err` is a design the placer could not start on either.
-    pub fn precheck(
+    /// The board of `design` before its parts are placed, with what is known about where they
+    /// go (the face each is on, the size the board must be): the footprints on the faces they
+    /// were given, the requirements of the physical file turned into what the placer is told
+    /// (ADR 0045), the nets and the planes. What is wrong with the design is refused here,
+    /// before any placing. The placer (`netsmith-place-route`) places the parts and makes the
+    /// board with [`Unplaced::into_board`].
+    pub fn unplaced(
         design: &Design,
         mapping: &Mapping,
         library: &FootprintLibrary,
         placement: &PlaceOptions,
-    ) -> Result<crate::explain::Precheck, BoardError> {
-        let Loaded {
-            rules,
-            placement,
-            parts,
-            ..
-        } = Self::load(design, mapping, library, placement)?;
-        let plan = crate::constraints::plan(design, &parts, &placement, rules.clearance)
-            .map_err(BoardError::Constraints)?;
-        let found = crate::explain::before_placing(
-            design,
-            &parts,
-            &placement,
-            &plan,
-            &rules,
-            outline_box(design),
-        );
-        Ok(if placement.lines_warn {
-            found.lines_as_warnings()
-        } else {
-            found
-        })
-    }
-
-    /// [`Board::from_design`], with what is known about where the parts go: the face each
-    /// is on, and the size the board must be.
-    pub fn from_design_placed(
-        design: &Design,
-        mapping: &Mapping,
-        library: &FootprintLibrary,
-        placement: &PlaceOptions,
-    ) -> Result<Board, BoardError> {
+    ) -> Result<Unplaced, BoardError> {
         let Loaded {
             process,
             rules,
@@ -1457,7 +1383,6 @@ impl Board {
                 placement.sides.insert(part.refdes.clone(), side);
             }
         }
-        let placement = &placement;
 
         let mut nets = Vec::with_capacity(design.nets.len());
         for net in &design.nets {
@@ -1513,96 +1438,14 @@ impl Board {
             )));
         }
 
-        // A board that states no outline is as big as its parts need, as ever.
-        let plane_nets: Vec<String> = planes.iter().map(|p| p.net.clone()).collect();
-        let (outline, corner_radius) = match &design.features.outline {
-            None => (
-                place::arrange_best(
-                    &mut parts,
-                    &nets,
-                    placement,
-                    &place::Context {
-                        rules: &rules,
-                        planes: &plane_nets,
-                        corner_radius: 0.0,
-                        pours: !design.features.pours.is_empty(),
-                    },
-                )
-                .map_err(|e| BoardError::DoesNotFit(explained(e, design, &parts, &base, &rules)))?,
-                0.0,
-            ),
-            Some(wanted) => (
-                crate::fit::fit(
-                    &mut parts,
-                    &nets,
-                    wanted,
-                    &rules,
-                    placement,
-                    &plane_nets,
-                    !design.features.pours.is_empty(),
-                )
-                .map_err(|e| BoardError::DoesNotFit(explained(e, design, &parts, &base, &rules)))?,
-                wanted.corner_radius,
-            ),
-        };
-        let cutouts = design
-            .features
-            .cutouts
-            .iter()
-            .map(|c| BoardCutout {
-                name: c.name.clone(),
-                at: c.at.map(|(x, y)| Pt::new(x, y)),
-                size: c.size,
-                radius: c.corner_radius,
-            })
-            .collect();
-        let pours = design
-            .features
-            .pours
-            .iter()
-            .map(|p| BoardPour {
-                layer: if p.layer == "top" {
-                    CopperLayer::Front
-                } else {
-                    CopperLayer::Back
-                },
-                net: p.net.clone(),
-                stitch_pitch: p.stitch_pitch,
-            })
-            .collect();
-        Ok(Board {
-            name: design.name.clone(),
-            outline,
-            corner_radius,
-            cutouts,
-            pours,
-            keepouts: design
-                .features
-                .keepouts
-                .iter()
-                .map(|k| BoardKeepout {
-                    name: k.name.clone(),
-                    part: k.part.clone(),
-                    at: k.at.map(|(x, y)| Pt::new(x, y)),
-                    size: k.size,
-                    layers: k.layers.clone(),
-                    tracks: k.tracks,
-                    vias: k.vias,
-                    copper: k.copper,
-                    parts: k.parts,
-                    max_height: k.max_height,
-                    drawn: false,
-                })
-                .collect(),
+        Ok(Unplaced {
+            process,
+            rules,
+            base,
+            placement,
             parts,
             nets,
-            rules,
-            process,
             planes,
-            tracks: Vec::new(),
-            vias: Vec::new(),
-            net_widths: design.features.net_widths.clone(),
-            net_currents: design.features.net_currents.clone(),
             overhang,
         })
     }
@@ -1827,12 +1670,12 @@ impl Board {
     }
 
     /// The areas that limit how tall a part may stand, for the placer.
-    pub(crate) fn height_zones(&self) -> Vec<crate::place::HeightZone> {
+    pub fn height_zones(&self) -> Vec<crate::placement::HeightZone> {
         self.keepout_areas()
             .into_iter()
             .filter(|k| k.carrier.is_none())
             .filter_map(|k| {
-                Some(crate::place::HeightZone {
+                Some(crate::placement::HeightZone {
                     front: k.limits_height_on(Side::Front),
                     back: k.limits_height_on(Side::Back),
                     limit: k.max_height?,
@@ -1844,13 +1687,13 @@ impl Board {
     }
 
     /// The keepouts that parts carry, each in its part's own frame, for the placer.
-    pub(crate) fn carried_zones(&self) -> Vec<crate::place::CarriedZone> {
+    pub fn carried_zones(&self) -> Vec<crate::placement::CarriedZone> {
         self.keepouts
             .iter()
             .filter_map(|k| {
                 let at = k.at?;
                 let on = |layer: &str| k.layers.iter().any(|l| l == layer);
-                Some(crate::place::CarriedZone {
+                Some(crate::placement::CarriedZone {
                     name: k.name.clone(),
                     part: k.part.clone()?,
                     local: Rect::new(at, Pt::new(at.x + k.size.0, at.y + k.size.1)),
@@ -2336,8 +2179,103 @@ impl Board {
     }
 }
 
+/// A board whose parts are not placed yet: what [`Board::unplaced`] makes of a design, and what
+/// the placer places.
+#[derive(Debug, Clone)]
+pub struct Unplaced {
+    pub process: Process,
+    pub rules: Rules,
+    /// What the layout file and the caller said, before the requirements were turned into
+    /// places.
+    pub base: PlaceOptions,
+    /// `base` with the requirements' fixed parts, wants, offsets, faces and overhangs: what the
+    /// placer keeps to.
+    pub placement: PlaceOptions,
+    /// The footprints, on the faces they were given, where the placer is to place them.
+    pub parts: Vec<Placed>,
+    pub nets: Vec<BoardNet>,
+    pub planes: Vec<Plane>,
+    /// The parts that may hang over an edge, as [`Board::overhang`].
+    pub overhang: BTreeMap<String, Overhang>,
+}
+
+impl Unplaced {
+    /// The board, with the parts where the placer left them in an outline of `outline`.
+    pub fn into_board(self, design: &Design, outline: Rect, corner_radius: f64) -> Board {
+        let Unplaced {
+            process,
+            rules,
+            parts,
+            nets,
+            planes,
+            overhang,
+            ..
+        } = self;
+        let cutouts = design
+            .features
+            .cutouts
+            .iter()
+            .map(|c| BoardCutout {
+                name: c.name.clone(),
+                at: c.at.map(|(x, y)| Pt::new(x, y)),
+                size: c.size,
+                radius: c.corner_radius,
+            })
+            .collect();
+        let pours = design
+            .features
+            .pours
+            .iter()
+            .map(|p| BoardPour {
+                layer: if p.layer == "top" {
+                    CopperLayer::Front
+                } else {
+                    CopperLayer::Back
+                },
+                net: p.net.clone(),
+                stitch_pitch: p.stitch_pitch,
+            })
+            .collect();
+        Board {
+            name: design.name.clone(),
+            outline,
+            corner_radius,
+            cutouts,
+            pours,
+            keepouts: design
+                .features
+                .keepouts
+                .iter()
+                .map(|k| BoardKeepout {
+                    name: k.name.clone(),
+                    part: k.part.clone(),
+                    at: k.at.map(|(x, y)| Pt::new(x, y)),
+                    size: k.size,
+                    layers: k.layers.clone(),
+                    tracks: k.tracks,
+                    vias: k.vias,
+                    copper: k.copper,
+                    parts: k.parts,
+                    max_height: k.max_height,
+                    drawn: false,
+                })
+                .collect(),
+            parts,
+            nets,
+            rules,
+            process,
+            planes,
+            tracks: Vec::new(),
+            vias: Vec::new(),
+            net_widths: design.features.net_widths.clone(),
+            net_currents: design.features.net_currents.clone(),
+            overhang,
+        }
+    }
+}
+
 /// The gap between two boxes, zero if they touch or overlap.
-pub(crate) fn rect_distance(a: &Rect, b: &Rect) -> f64 {
+pub fn rect_distance(a: &Rect, b: &Rect) -> f64 {
     let dx = (a.min.x - b.max.x).max(b.min.x - a.max.x).max(0.0);
     let dy = (a.min.y - b.max.y).max(b.min.y - a.max.y).max(0.0);
     dx.hypot(dy)
@@ -2419,6 +2357,36 @@ pub(crate) mod tests {
         }
     }
 
+    /// `design` placed by the placer (`netsmith_place_route::board_from_design`) with the
+    /// standard mapping and these fixtures: the board most tests of this crate check. The placer
+    /// links the netsmith-pcb that is not this test build, so the board comes back as the JSON
+    /// of a placed board (`fab --save-placed`), which reads back equal
+    /// (`crates/netsmith/tests/placed.rs`).
+    pub fn placed(design: &Design) -> Board {
+        placed_as(design, None)
+    }
+
+    /// [`placed`], with what `layout` says of where the parts go ([`crate::place_options`]).
+    pub fn placed_with(design: &Design, layout: &crate::layout::Layout) -> Board {
+        placed_as(design, Some(&layout.to_text()))
+    }
+
+    fn placed_as(design: &Design, layout: Option<&str>) -> Board {
+        use netsmith_place_route::netsmith_pcb as theirs;
+        let library = theirs::FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints());
+        let mapping = netsmith_kicad::Mapping::standard();
+        let board = match layout {
+            None => netsmith_place_route::board_from_design(design, &mapping, &library),
+            Some(text) => {
+                let layout = theirs::Layout::parse(text, "test.pcb.toml").expect("it reads back");
+                let options = theirs::place_options(design, Some(&layout));
+                netsmith_place_route::board_from_design_placed(design, &mapping, &library, &options)
+            }
+        }
+        .unwrap_or_else(|e| panic!("{e}"));
+        serde_json::from_str(&serde_json::to_string(&board).unwrap()).unwrap()
+    }
+
     /// The same circuit as `examples/led.nsm`.
     pub fn led_design() -> Design {
         Design {
@@ -2450,12 +2418,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_inner_layers_of_a_four_layer_board_are_planes_on_the_nets_the_board_named() {
-        let board = Board::from_design(
-            &four_layer_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let board = placed(&four_layer_design());
         let planes: Vec<(&str, &str)> = board
             .planes
             .iter()
@@ -2463,12 +2426,7 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(planes, [("In1.Cu", "GND"), ("In2.Cu", "3V3")]);
         assert!(board.rules.plane_clearance >= board.rules.clearance);
-        let two = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let two = placed(&led_design());
         assert_eq!(two.planes, vec![]);
     }
 
@@ -2477,9 +2435,14 @@ pub(crate) mod tests {
         // The design's supply net is called VCC, not 3V3.
         let mut design = four_layer_design();
         design.nets[1].name = "VCC".into();
-        let text = Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-            .unwrap_err()
-            .to_string();
+        let text = Board::unplaced(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             text.contains("In2.Cu is a plane on the net `3V3`")
                 && text.contains("`LedExample` has no net of that name"),
@@ -2489,12 +2452,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_process_note_says_which_net_each_plane_is() {
-        let board = Board::from_design(
-            &four_layer_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let board = placed(&four_layer_design());
         let note = board.process_note();
         assert!(
             note.contains(
@@ -2503,12 +2461,7 @@ pub(crate) mod tests {
             "{note}"
         );
         assert!(note.contains("track 0.09 mm"), "{note}");
-        let two = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let two = placed(&led_design());
         assert!(two.process_note().contains("; 2 layers, 1.6 mm thick"));
     }
 
@@ -2516,9 +2469,14 @@ pub(crate) mod tests {
     fn a_design_with_no_process_is_refused_with_what_to_add() {
         let mut design = led_design();
         design.process = None;
-        let text = Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-            .unwrap_err()
-            .to_string();
+        let text = Board::unplaced(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             text.contains("`LedExample` does not say how it is made"),
             "{text}"
@@ -2531,9 +2489,14 @@ pub(crate) mod tests {
     fn a_board_that_has_not_chosen_a_thickness_says_the_range() {
         let mut design = led_design();
         design.process.as_mut().unwrap().stackup.thickness = (0.4, 2.0);
-        let text = Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-            .unwrap_err()
-            .to_string();
+        let text = Board::unplaced(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(text.contains("offers 0.4 mm to 2 mm"), "{text}");
         assert!(
             text.contains(".process.stackup.thickness &= 1.6mm"),
@@ -2543,12 +2506,7 @@ pub(crate) mod tests {
 
     #[test]
     fn builds_a_board_from_a_design() {
-        let board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let board = placed(&led_design());
         assert_eq!(board.name, "LedExample");
         let refs: Vec<&str> = board.parts.iter().map(|p| p.refdes.as_str()).collect();
         assert_eq!(refs, ["D1", "J1", "R1"]);
@@ -2564,32 +2522,14 @@ pub(crate) mod tests {
 
     #[test]
     fn placement_is_valid_and_the_same_every_time() {
-        let board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let board = placed(&led_design());
         assert_eq!(board.check_placement(), vec![]);
-        assert_eq!(
-            board,
-            Board::from_design(
-                &led_design(),
-                &netsmith_kicad::Mapping::standard(),
-                &fixtures()
-            )
-            .unwrap()
-        );
+        assert_eq!(board, placed(&led_design()));
     }
 
     #[test]
     fn a_part_on_the_back_is_the_footprint_in_a_mirror_with_its_pads_on_the_back_layer() {
-        let mut board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let mut board = placed(&led_design());
         let mut front = board.part("R1").unwrap().clone();
         front.rotation = 0.0;
         let pad2 = front.footprint.pads_numbered("2").next().unwrap().clone();
@@ -2618,12 +2558,7 @@ pub(crate) mod tests {
 
     #[test]
     fn courtyards_of_opposite_faces_may_overlap_unless_one_part_has_a_hole() {
-        let mut board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let mut board = placed(&led_design());
         let d1 = board.part("D1").unwrap().at;
         {
             let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
@@ -2659,12 +2594,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_check_finds_overlaps_and_parts_off_the_board() {
-        let mut board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let mut board = placed(&led_design());
         let r1 = board.part("R1").unwrap().at;
         let d1 = board.parts.iter_mut().find(|p| p.refdes == "D1").unwrap();
         d1.at = r1 + Pt::new(0.5, 0.0);
@@ -2690,12 +2620,7 @@ pub(crate) mod tests {
     /// The led board with `refdes` moved so that its courtyard's right side is `past` mm past
     /// the right edge (negative: inside it), and what `check_placement` says of that part.
     fn moved_past_the_right_edge(refdes: &str, past: f64) -> Board {
-        let mut board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let mut board = placed(&led_design());
         let edge = board.outline.max.x;
         let part = board.parts.iter_mut().find(|p| p.refdes == refdes).unwrap();
         let right = part.courtyard().max.x;
@@ -2814,12 +2739,7 @@ pub(crate) mod tests {
                 .filter(|p| matches!(p, PlacementProblem::PadNearEdge { .. }))
                 .collect()
         };
-        let mut board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let mut board = placed(&led_design());
         assert_eq!(board.check_placement(), vec![]);
         // The leftmost pad of the board, wherever the placer put it.
         let (leftmost, left) = board
@@ -2859,12 +2779,7 @@ pub(crate) mod tests {
     /// box corner is nearly at the arc (0.05 mm), the copper is 1.09 mm from it.
     #[test]
     fn a_round_pad_near_a_rounded_corner_is_measured_as_a_circle() {
-        let mut board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let mut board = placed(&led_design());
         board.outline = Rect {
             min: Pt::new(0.0, 0.0),
             max: Pt::new(50.0, 50.0),
@@ -2895,12 +2810,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_rotated_part_moves_its_pads_and_courtyard() {
-        let board = Board::from_design(
-            &led_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap();
+        let board = placed(&led_design());
         let mut r1 = board.part("R1").unwrap().clone();
         r1.at = Pt::new(10.0, 10.0);
         r1.rotation = 0.0;
@@ -2917,8 +2827,13 @@ pub(crate) mod tests {
     fn a_net_that_names_a_missing_pad_says_which() {
         let mut design = led_design();
         design.nets[0].pins[0].pin = "7".into();
-        let err = Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-            .unwrap_err();
+        let err = Board::unplaced(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_err();
         assert_eq!(
             err.to_string(),
             "net GND joins pad 7 of D1, but footprint LED_SMD:LED_0603_1608Metric has only pads 1, 2"
@@ -2929,8 +2844,13 @@ pub(crate) mod tests {
     fn a_part_with_no_footprint_is_named() {
         let mut design = led_design();
         design.parts[2].kind = "Gizmo".into();
-        let err = Board::from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
-            .unwrap_err();
+        let err = Board::unplaced(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_err();
         assert_eq!(
             err.to_string(),
             "R1: there is no KiCad symbol for a `Gizmo` yet"
@@ -2940,9 +2860,14 @@ pub(crate) mod tests {
     #[test]
     fn a_missing_library_file_names_the_footprint_and_path() {
         let empty = FootprintLibrary::at("/nonexistent/footprints");
-        let text = Board::from_design(&led_design(), &netsmith_kicad::Mapping::standard(), &empty)
-            .unwrap_err()
-            .to_string();
+        let text = Board::unplaced(
+            &led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &empty,
+            &PlaceOptions::default(),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(text.starts_with("D1: footprint `LED_SMD:LED_0603_1608Metric` not found"));
         assert!(
             text.contains("/nonexistent/footprints/LED_SMD.pretty/LED_0603_1608Metric.kicad_mod")

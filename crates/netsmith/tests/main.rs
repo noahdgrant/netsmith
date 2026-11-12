@@ -4,10 +4,10 @@
 //! `cargo nextest run -p netsmith <file>::`.
 
 mod common;
-// The synthetic boards and processes of netsmith-pcb's tests, for the tests below that place and
-// route the example boards (examples, copper, placed, kicad_drc). They live there, upstream, so
+// The synthetic boards and processes of netsmith-place-route's tests, for the tests below that
+// place and route the example boards (examples, copper, placed, kicad_drc). They live there, so
 // that a change to them selects both crates' tests (scripts/ci-changes).
-#[path = "../../netsmith-pcb/tests/common/mod.rs"]
+#[path = "../../netsmith-place-route/tests/common/mod.rs"]
 mod boards;
 
 mod alternatives;

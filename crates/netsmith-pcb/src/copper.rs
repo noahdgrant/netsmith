@@ -429,16 +429,11 @@ fn net_of(art: &Artwork, tag: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::tests::{fixtures, four_layer_design};
+    use crate::board::tests::four_layer_design;
     use crate::board::{BoardPour, CopperLayer, Placed, Side, Track, Via};
 
     fn four() -> Board {
-        Board::from_design(
-            &four_layer_design(),
-            &netsmith_kicad::Mapping::standard(),
-            &fixtures(),
-        )
-        .unwrap()
+        crate::board::tests::placed(&four_layer_design())
     }
 
     fn part<'a>(board: &'a mut Board, refdes: &str) -> &'a mut Placed {

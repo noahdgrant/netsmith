@@ -1,9 +1,11 @@
-//! The board: footprints from a tool-independent `Design`, placement, a ratsnest, and export
-//! to KiCad and SVG. The router is in `netsmith-place-route`, and the 3D scene and its glTF, STEP and
-//! PNG writers are in `netsmith-3d`; both depend on this crate.
+//! The board model: footprints from a tool-independent `Design`, the board before and after
+//! placing, what the placer is told and answers ([`placement`]), the requirements and their
+//! checks, a ratsnest, and export to KiCad and SVG. The placer and the router are in
+//! `netsmith-place-route`, and the 3D scene and its glTF, STEP and PNG writers in `netsmith-3d`;
+//! both depend on this crate.
 //!
 //! ```text
-//! Design --Board::from_design--> Board --netsmith_place_route::route--> Board (with tracks and vias)
+//! Design --Board::unplaced--> Unplaced --(the placer)--> Board --(the router)--> Board (with tracks and vias)
 //!                                  |--kicad_pcb / kicad_pro / svg::render
 //!                                  |--Ratsnest::of
 //! ```
@@ -27,22 +29,19 @@
 //! A footprint's origin is where KiCad puts it, which is not always the centre of the part
 //! as a pick-and-place file wants it; use [`Footprint::courtyard`] for the centre.
 
-mod anneal;
 pub mod board;
 pub mod body3d;
 pub mod constraints;
 pub mod copper;
-mod explain;
+pub mod explain;
 pub mod export;
-mod fit;
 pub mod footprint;
 pub mod generate;
 pub mod geometry;
 pub mod layout;
 pub mod overhang;
-mod place;
+pub mod placement;
 pub mod protrusion;
-pub mod quality;
 pub mod ratsnest;
 pub mod rules;
 pub mod shape;
@@ -51,11 +50,10 @@ pub mod standard_height;
 pub mod svg;
 pub mod validate;
 
-pub use anneal::{Ended, OutsideAt, OverlapAt};
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, CopperLayer, Hang,
     HeightUnchecked, HoleNeighbour, KeepoutArea, PadRef, Placed, PlacementProblem, Plane,
-    ReferenceSide, Side, StandardPass, Track, Trim, Via,
+    ReferenceSide, Side, StandardPass, Track, Trim, Unplaced, Via,
 };
 pub use explain::{Fault, Precheck, RequirementReport};
 pub use export::{kicad_pcb, kicad_pro};
@@ -66,11 +64,10 @@ pub use footprint::{
 pub use geometry::{Pt, Rect};
 pub use layout::{BoardLayout, Layout, LayoutError, apply_layout, place_options};
 pub use overhang::{Edge, Edges, Overhang};
-pub use place::{
-    DoesNotFit, Fixed, HeightZone, ORIGIN, Oversize, PartState, PlaceError, PlaceOptions,
-    place_subset,
+pub use placement::{
+    DoesNotFit, Ended, Fixed, HeightZone, ORIGIN, OutsideAt, OverlapAt, Oversize, PartState,
+    PlaceOptions,
 };
-pub use quality::{DecouplingDistance, Quality, crossings};
 pub use ratsnest::{Ratline, Ratsnest};
 pub use rules::Rules;
 pub use validate::{Subject, validate_pinout};
