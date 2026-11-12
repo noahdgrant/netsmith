@@ -41,11 +41,13 @@
 //! **Shaped:** chips (R, C, L, LED, D, fuse; ceramic body and two end terminals), the molded
 //! diodes SOD-123, SOD-323, SMA, SMB and SMC (the body and its cathode band; the makers'
 //! terminals are not in the data, so none is drawn), SOT-23 (-3, -5, -6), SOT-223 (three
-//! pins and the wide tab, from the sourced dimensions in `generate/sot.rs`), SOIC, SSOP, TSSOP and
+//! pins and the wide tab, from the sourced dimensions in `generate/sot.rs`), SOT-89-3 (three
+//! short leads on one side and the wide tab of pin 2 under the body and out of the other, from
+//! the sourced dimensions in `generate/tab.rs`), SOIC, SSOP, TSSOP and
 //! MSOP (gull-wing leads on two edges), LQFP, TQFP and VQFP (gull-wing leads on four edges, and the
 //! exposed pad), QFN and DFN (terminals and the exposed pad under the body), BGA (a ball under
 //! every pad), pin headers and sockets, and SMD crystals (ceramic base and metal lid). **Left as
-//! the box:** SC-70, DPAK, D2PAK and SOT-89, whose pads are recorded and whose lead widths and
+//! the box:** SC-70, DPAK, D2PAK and SOT-89-5, whose pads are recorded and whose lead widths and
 //! spans the data does not hold, and the mechanical items (holes, fiducials, test points).
 
 use crate::footprint::Footprint;
@@ -143,12 +145,18 @@ pub enum Package {
 /// One lead of a package: the edge of the body it leaves, and its centre along that edge (y for
 /// the left and right edges, x for the top and bottom ones). A lead is as wide as its package's
 /// `lead_width` unless it states its own `width` (the tab of a SOT-223 is far wider than its
-/// pins).
+/// pins). A lead reaches as far as its package's `span` unless it states its own `reach` (the
+/// tab of a SOT-89 stops short of its pins). A lead that states `under` is flat metal on the
+/// board, from that far in under the body (a SOT-89's exposed tab) out to its tip.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lead {
     pub edge: Edge,
     pub at: f64,
     pub width: Option<f64>,
+    /// How far the tip is beyond the body's edge, in mm.
+    pub reach: Option<f64>,
+    /// How far in under the body, from its edge, the lead runs flat on the board, in mm.
+    pub under: Option<f64>,
 }
 
 /// An edge of a package's body: left is -x, top is -y (the footprint's y grows downward).
@@ -170,6 +178,8 @@ impl Lead {
                 edge,
                 at: at.y,
                 width: None,
+                reach: None,
+                under: None,
             }
         } else {
             let edge = if at.y < 0.0 { Edge::Top } else { Edge::Bottom };
@@ -177,6 +187,8 @@ impl Lead {
                 edge,
                 at: at.x,
                 width: None,
+                reach: None,
+                under: None,
             }
         }
     }
@@ -515,20 +527,27 @@ fn gull_wing(
     let mut out = vec![solid(Material::Body, centred(body, standoff, h))];
     for lead in leads {
         let be = across(lead.edge, body);
-        let tip = across(lead.edge, span).max(be);
+        let tip = match lead.reach {
+            Some(reach) => be + reach,
+            None => across(lead.edge, span).max(be),
+        };
         let foot_in = (tip - foot).max(be);
         let knee = be + (foot_in - be) / 2.0;
         // (outward, z), round the lead's side from the body's edge.
-        let path = [
-            (be, e),
-            ((knee - t).max(be), e),
-            ((foot_in - t).max(be), 0.0),
-            (tip, 0.0),
-            (tip, t),
-            (foot_in, t),
-            (knee, e + t),
-            (be, e + t),
-        ];
+        let path: Vec<(f64, f64)> = match lead.under {
+            // Flat on the board, from under the body to the tip.
+            Some(under) => vec![(be - under, 0.0), (tip, 0.0), (tip, t), (be - under, t)],
+            None => vec![
+                (be, e),
+                ((knee - t).max(be), e),
+                ((foot_in - t).max(be), 0.0),
+                (tip, 0.0),
+                (tip, t),
+                (foot_in, t),
+                (knee, e + t),
+                (be, e + t),
+            ],
+        };
         let width = lead.width.unwrap_or(width);
         let sign = match lead.edge {
             Edge::Left | Edge::Top => -1.0,
@@ -693,13 +712,8 @@ mod tests {
         fp.pads
             .iter()
             .filter(|p| p.layers.iter().any(|l| l.ends_with(".Cu")))
-            .fold(fp.body, |r, p| {
-                let (hw, hh) = (p.width / 2.0, p.height / 2.0);
-                r.union(&Rect::new(
-                    Pt::new(p.at.x - hw, p.at.y - hh),
-                    Pt::new(p.at.x + hw, p.at.y + hh),
-                ))
-            })
+            // A custom pad's box takes in its polygon (the tab of a SOT-89).
+            .fold(fp.body, |r, p| r.union(&p.bounds()))
     }
 
     /// Every solid inside the body and the pads in plan and between the board and the height,
@@ -872,6 +886,76 @@ mod tests {
                 .bounds();
             assert!(mark.max[0] < 0.0 && mark.max[1] < 0.0, "{mark:?}");
         }
+    }
+
+    #[test]
+    fn a_sot_89_has_three_short_leads_and_a_wide_tab_to_its_sourced_dimensions() {
+        // Diodes Inc. "SOT89 Package Information" (Rev. 2026-01-16), checked against onsemi 528AG.
+        for id in [
+            "Package_TO_SOT_SMD:SOT-89-3",
+            "Package_TO_SOT_SMD:SOT-89-3_Handsoldering",
+        ] {
+            let fp = made(id);
+            let shape = fits(id, &fp, 1.5);
+            assert!(shape.shaped, "{id} is not a box");
+            // Three leads on one side (pin 2's narrow end among them) and the tab.
+            assert_eq!(count(&shape, Material::Metal), 4, "{id}");
+            assert_eq!(count(&shape, Material::Mark), 1, "{id}");
+            // The body is 2.5 x 4.5 mm.
+            let body = body_solid(&shape);
+            assert!((body.max[0] - 1.25).abs() < EPS && (body.min[0] + 1.25).abs() < EPS);
+            assert!((body.max[1] - 2.25).abs() < EPS && (body.min[1] + 2.25).abs() < EPS);
+            let mut metal: Vec<Bounds> = shape
+                .solids
+                .iter()
+                .filter(|s| s.material == Material::Metal)
+                .map(Solid::bounds)
+                .collect();
+            metal.sort_by(|a, b| a.min[1].total_cmp(&b.min[1]));
+            let (left, right): (Vec<&Bounds>, Vec<&Bounds>) =
+                metal.iter().partition(|b| b.max[0] < 0.0);
+            assert_eq!((left.len(), right.len()), (3, 1), "{id}");
+            // Pins at 1.5 mm pitch, 1.05 mm out of the body (tip at -2.30 mm), flat on the board.
+            let centre = |b: &Bounds| (b.min[1] + b.max[1]) / 2.0;
+            let width = |b: &Bounds| b.max[1] - b.min[1];
+            for (b, (at, w)) in left.iter().zip([(-1.5, 0.48), (0.0, 0.56), (1.5, 0.48)]) {
+                assert!((centre(b) - at).abs() < EPS, "{id}: {b:?}");
+                assert!((width(b) - w).abs() < EPS, "{id}: width of {b:?}");
+                assert!((b.min[0] + 2.30).abs() < EPS, "{id}: {b:?}");
+                assert!(b.min[2].abs() < EPS);
+            }
+            // The outer pins stay outside the body; the centre lead runs 0.30 mm in under it.
+            assert!((left[0].max[0] + 1.25).abs() < EPS, "{id}: {:?}", left[0]);
+            assert!((left[1].max[0] + 0.95).abs() < EPS, "{id}: {:?}", left[1]);
+            // The tab: 1.733 mm wide, from 0.55 mm beyond the body (tip at 1.80 mm) in under it
+            // for 2.20 mm, where the centre lead takes over.
+            let tab = &right[0];
+            assert!((width(tab) - 1.733).abs() < EPS, "{id}: {tab:?}");
+            assert!(centre(tab).abs() < EPS, "the tab is centred");
+            assert!((tab.max[0] - 1.80).abs() < EPS, "{id}: {tab:?}");
+            assert!((tab.min[0] + 0.95).abs() < EPS, "{id}: {tab:?}");
+            assert!(tab.min[0] < body.max[0] && tab.min[0] > body.min[0]);
+            assert!(tab.min[2].abs() < EPS);
+            // The metal of pin 2 is one piece from tip to tip: the two parts meet.
+            assert!((left[1].max[0] - tab.min[0]).abs() < EPS);
+            // Tip to tip is the sourced 4.10 mm overall.
+            assert!((tab.max[0] - left[0].min[0] - 4.10).abs() < EPS);
+            // Pin 1's dot is on the pins' side.
+            let mark = shape
+                .solids
+                .iter()
+                .find(|s| s.material == Material::Mark)
+                .unwrap()
+                .bounds();
+            assert!(mark.max[0] < 0.0 && mark.max[1] < 0.0, "{mark:?}");
+        }
+    }
+
+    #[test]
+    fn a_sot_89_5_is_still_the_box() {
+        let fp = made("Package_TO_SOT_SMD:SOT-89-5");
+        assert!(fp.package.is_none());
+        assert!(!package_shape(&fp, Some(1.5)).shaped);
     }
 
     #[test]
@@ -1063,7 +1147,10 @@ mod tests {
                 Some(Package::GullWing { leads, exposed, .. })
                 | Some(Package::NoLead { leads, exposed, .. }) => {
                     // A tab numbered like a pin (SOT-223-3_TabPin2) is a lead of its own.
-                    let tab_as_pin = usize::from(id.ends_with("_TabPin2"));
+                    // So is pin 2 of a SOT-89: its narrow end among the pins and its tab are two leads.
+                    let tab_as_pin = usize::from(
+                        id.ends_with("_TabPin2") || id.starts_with("Package_TO_SOT_SMD:SOT-89-3"),
+                    );
                     assert_eq!(
                         leads.len() + usize::from(exposed.is_some()),
                         pins + tab_as_pin,
@@ -1071,8 +1158,12 @@ mod tests {
                     );
                     let on = |e: Edge| leads.iter().filter(|l| l.edge == e).count();
                     assert_eq!(on(Edge::Top), on(Edge::Bottom), "{id}");
-                    // SOT-223 has three pins on one side and the tab on the other.
-                    let uneven = if id.contains("SOT-223") { 2 } else { 1 };
+                    // SOT-223 and SOT-89 have three leads on one side and the tab on the other.
+                    let uneven = if id.contains("SOT-223") || id.contains("SOT-89-3") {
+                        2
+                    } else {
+                        1
+                    };
                     assert!(on(Edge::Left).abs_diff(on(Edge::Right)) <= uneven, "{id}");
                 }
                 Some(Package::Bga { balls, .. }) => assert_eq!(balls.len(), pins, "{id}"),
