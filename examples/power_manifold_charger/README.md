@@ -190,8 +190,8 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
 - `the_open_pins_are_the_ones_the_reference_leaves_open`: the pads on the board's `unconnected-(...)`
   nets (26) are the pads that no net of the design names.
 - `the_optimizer_cannot_move_a_pin` (no request, no pin file entry) and
-  `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC: the two findings
-  below and no other; skipped where `kicad-cli` is not found).
+  `the_electrical_rules_check_of_kicad_passes_on_the_schematic` (KiCad's ERC: no finding;
+  skipped where `kicad-cli` is not found).
 
 ### Differences from the reference (all of them)
 
@@ -205,9 +205,6 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
   this port is a source that the board's own converter drives, so VBUS is what the device on the
   cable draws (`.vbus.current >= 0A`), never a second source on the net. The design states no
   limit for the port's current, so that bound is one of the notes below.
-- **PA9 and PA10 are tied to ground** (U1 pads 29 and 32). The design types them "unspecified" in
-  its symbol; the port's are the datasheet's (bidirectional), and KiCad's rules refuse a
-  bidirectional pin on a net with a power flag: two `pin_to_pin` findings, asserted by name.
 - **Part numbers.** The design states no tolerance or voltage, and the solver picks the first
   catalog row that fits the value, the package and the rail. For a 100 nF 0402 it would pick
   C1525 (16 V, Basic) where the board has C307331 (50 V), and for 1 uF, 4.7 uF, 2.2 uF and 10 uF

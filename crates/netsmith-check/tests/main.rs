@@ -33,6 +33,7 @@ mod pin_requests;
 mod pins;
 mod place;
 mod rail_alias;
+mod rail_outputs;
 mod row;
 mod shared;
 mod std_generics;

@@ -15,6 +15,7 @@
 //! | Tied pin not tied | `tie .a ~ .b` in a part means the board must put the two on one net | `` `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but nothing is connected to `u.sense` ``, or, when it is on another net, `` ... but `u.sense` is on net `VIN` with ... `` |
 //! | No-connect pin connected | a `no_connect` pin must have nothing else on its net | `` `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with ... `` |
 //! | Two outputs on one net | two `output` pins on one net; pins the part joins inside are one; an `output` and a `bidirectional` pin are allowed | ``net `X` has two outputs: `a.tx`, `b.tx` `` |
+//! | Output on a rail | an `output` pin on the net of a rail's `pos` or `neg` (#461); an output that is itself a rail's pin, or a rail of its own part, does not count | `` `d.out` (`Zdrv`) is an output on net `GND`, the net of rail `gnd` (`gnd.neg`): ... `` |
 //! | Function not chosen | a connected pin with more than one function needs `.function &=` from the board | `` `u.pa9` has several functions (GPIO, UART1_TX, SPI1_MOSI) and is connected: choose one with `.u.pa9.function &= "GPIO"` `` |
 //! | Function not offered | `.function &=` names a function the pin does not list | `` `u.pa9` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_MOSI `` |
 //! | Function used twice | one function on two pins of one part (requests for a function that rows list on several pins each get their own pin) | `` function `UART1_TX` is chosen on both `u.pa9` and `u.pb6` `` |
@@ -627,6 +628,7 @@ impl<'a> Run<'a> {
             }
             self.outputs(net, &mine);
             self.open_drains(net, &mine);
+            self.outputs_on_rails(net, &mine);
             self.floating_inputs(net);
         }
     }
@@ -801,6 +803,64 @@ impl<'a> Run<'a> {
                 ),
             );
         }
+    }
+
+    /// A push-pull `output` pin on the net of a rail, its positive or its negative pin (#461, the
+    /// owner's decision of 2026-11-12): the output drives the other level against the rail, which
+    /// is a short. Any other kind may be tied to a rail (a GPIO to ground is an ordinary circuit).
+    /// An output that is itself a pin of a rail is a supply the part gives (a charger's or a hub's
+    /// VBUS, which `unused.rs` counts as a source), and a rail of the output's own part is the
+    /// part's business: neither counts.
+    fn outputs_on_rails(&mut self, net: &Net, terminals: &[InstId]) {
+        let model = self.model;
+        for &t in terminals {
+            if self.kind_here(t) != Some(PinKind::Output) {
+                continue;
+            }
+            let own_rail = model
+                .instance(t)
+                .parent
+                .and_then(|i| model.rail_of(i))
+                .is_some_and(|(_, pos, neg)| t == pos || t == neg);
+            if own_rail {
+                continue;
+            }
+            let owner = model.owner_of(t);
+            let rail = net.pins.iter().find_map(|&p| {
+                let iface = model.instance(p).parent?;
+                let (_, pos, neg) = model.rail_of(iface)?;
+                if p != pos && p != neg {
+                    return None;
+                }
+                if owner.is_some() && model.owner_of(iface) == owner {
+                    return None;
+                }
+                Some((iface, p))
+            });
+            let Some((rail, pin)) = rail else {
+                continue;
+            };
+            let at = model.instance(owner.expect("a terminal has a part")).at();
+            self.report(
+                at,
+                format!(
+                    "{} is an output on net `{}`, the net of rail `{}` (`{}`): a push-pull output drives the rail to its other level, which is a short; give it a net of its own, or, if its datasheet says the pin may be tied, write the kind it says (`bidirectional`, `open_drain` or `passive`)",
+                    self.describe_kind(t),
+                    net.name,
+                    model.path_of(rail),
+                    model.path_of(pin),
+                ),
+            );
+        }
+    }
+
+    /// `` `u.out` (`Part`) ``: a pin and the type of its part, for a message.
+    fn describe_kind(&self, pin: InstId) -> String {
+        let model = self.model;
+        let ty = model
+            .owner_of(pin)
+            .map_or(String::new(), |o| model.instance(o).type_name.clone());
+        format!("`{}` (`{ty}`)", model.path_of(pin))
     }
 
     /// Whether `pin` of `net` is one end of a resistor whose other end is on a net that holds

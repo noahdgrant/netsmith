@@ -28,6 +28,12 @@ pub(crate) fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
     let serial = RUNS.fetch_add(1, Ordering::SeqCst);
     let dir = TempDir::new_in(&base, &format!("erc-test-{serial}"));
     std::fs::write(dir.join(format!("{name}.kicad_sch")), schematic).ok()?;
+    // The project file `build` writes beside the schematic, with netsmith's ERC pin map (#461).
+    std::fs::write(
+        dir.join(format!("{name}.kicad_pro")),
+        netsmith_kicad::project_file(name),
+    )
+    .ok()?;
     let report = cli
         .arg(&dir.join("erc.json"))
         .unwrap_or_else(|e| panic!("{e}"));

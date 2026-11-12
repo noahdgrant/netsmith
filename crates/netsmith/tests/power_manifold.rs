@@ -682,13 +682,12 @@ mod board {
         let Some(found) = crate::erc::erc(&built.design.name, &built.schematic) else {
             return;
         };
-        // The design ties PA9 and PA10 of the microcontroller (U1 pads 29 and 32) to ground, and
-        // types those two pins "unspecified" in its symbol. The port's pins are the datasheet's
-        // (bidirectional), and KiCad's rules refuse a bidirectional pin on a net with a power
-        // flag: these two findings, and no other (README, "Differences from the reference").
+        // The design ties PA9 and PA10 of the microcontroller (U1 pads 29 and 32) to ground. The
+        // port's pins are the datasheet's (bidirectional), which the project's ERC pin map accepts
+        // on a net with a power flag, as netsmith's pin rules do (#461).
         assert_eq!(
             crate::erc::with_the_machines_libraries(found),
-            vec!["pin_to_pin: Pins of type Bidirectional and Power output are connected"; 2]
+            Vec::<String>::new()
         );
     }
 
