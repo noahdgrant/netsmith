@@ -113,7 +113,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `too_tall` | The parts over a limit: the placement check's own finding, which stops `fab`. |
 | `overlaps` | Two bodies on one face, both of known height, whose turned boxes share area: they fill the same space from the face up to the shorter one (`z_bottom` to `z_top`). New in 3D: the placement check compares courtyards in plan. |
 | `unknown_heights` | Each part of unknown height, with the reason (no `.height` and no catalog row, or a row whose `height` cell is empty) and the limits it stands under, whose check it leaves unchecked. |
-| `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated and from catalog rows. The same count as the coverage line of `fab-notes.txt`. |
+| `coverage` | _Height coverage_: how many parts have a known height, of all of them, and how many of those are stated and from catalog rows. The same count as the coverage line of `fab-notes.txt`. A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std, so they count as stated (`stated`, 0 mm, nothing drawn for the body) and not as unknown. |
 | `tallest` | The tallest part of known height on each face. |
 
 Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
