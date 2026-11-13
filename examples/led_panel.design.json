@@ -270,6 +270,21 @@
           "power_in"
         ],
         "result": null
+      },
+      {
+        "path": "",
+        "kind": "relation",
+        "text": ".led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance",
+        "at": {
+          "file": "led_panel.nsm",
+          "line": 38
+        },
+        "anchors": [
+          "led",
+          "r1"
+        ],
+        "result": "led.current = 7.05mA..10.57mA",
+        "derived": true
       }
     ],
     "modules": []
