@@ -343,6 +343,8 @@ fn kicad_finds_exactly_the_pads_the_ratsnest_says_have_no_way_to_their_plane() {
     assert!(route(&mut b).is_empty());
     b.tracks.retain(|t| t.net != "GND" && t.net != "3V3");
     b.vias.retain(|v| v.net != "GND" && v.net != "3V3");
+    // A teardrop is part of the track it widens: it goes with it.
+    b.teardrops.retain(|t| t.net != "GND" && t.net != "3V3");
     let to_plane = Ratsnest::of(&b).lines.iter().filter(|l| l.to_plane).count();
     assert!(to_plane >= 4, "{to_plane}");
     let Some(counts) = plane_drc("cut", &b) else {

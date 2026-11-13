@@ -338,6 +338,39 @@
 //! of 300 mm on RP2350: what is left is round U1, whose front is full, and the soft search
 //! for the nets in a line's way finds none whose rip-up would free it.
 //!
+//! # Decoupling: pin, capacitor, via (issue #431, S7)
+//!
+//! **What is built** (`decouple.rs`). The router's lines are the ratsnest's with, on each supply
+//! net, the line from a decoupled power pin to its capacitor's pad made first (the pin is the
+//! nearest power pin the placer's decoupling pair names, within 5 mm), so the pin's current
+//! passes the capacitor. These are the lines of [`Class::Decoupling`]. Then, after a complete try
+//! and the two passes above, [`Router::to_the_pours`] gives each such capacitor's pad on a return
+//! net poured on the other outer layer (ground on the back of RP2350 and Orbit) a via of its own,
+//! on at most [`RETURN_TRACK`] 1.5 mm of track, unless a via of the net is that near already. It
+//! never moves other copper or leaves a line. EasyDuino's ground is a plane, so its capacitors
+//! had their vias already; its 3.3 V plane pins now reach the plane through the capacitor's via.
+//!
+//! **Measured** (2026-11-13, main at 19861713 against this, `netsmith fab` back to back, the same
+//! placements; the scorecard's decoupling track from the capacitor to the part's nearest pad, mean
+//! / max, and from its ground pad to the nearest via, mean / max; length over the spanning length,
+//! vias, other nets' track on the GND pour, pair coupling):
+//!
+//! | | RP2350 | Orbit | EasyDuino |
+//! |---|---|---|---|
+//! | main | 11.0 / 37.5, 2.3 / 7.8 mm; 1.29x, 129 vias, 423 mm, 69 % | 10.3 / 38.5, 8.1 / 29.6 mm; 1.22x, 87, 304 mm, 0 % | 21.0 / 56.4, 0.7 / 1.0 mm; 1.22x, 105, 54 % |
+//! | **built** | **6.3 / 22.4, 1.3 / 4.0 mm**; 1.33x, 142 vias, 433 mm, 85 % | 10.4 / 40.9, **2.6 / 12.8 mm**; 1.20x, 94, 303 mm, 72 % | = main |
+//! | the pin a leaf too (not kept) | 7.0 / 25.3; 1.42x, 162 vias, 480 mm | 10.5 / 45.8; 1.18x, 91 | 24.9 / 56.4; 1.23x, 107 |
+//!
+//! The vias added are mostly the capacitors' own (about 6 on RP2350 and 7 on Orbit). RP2350's
+//! length and vias at turn cost 25 are inside the spread main shows over turn costs 24 to 27
+//! (1.29 to 1.43x, 129 to 162 vias; built 1.33 to 1.36x, 129 to 157). Robustness (one try at turn
+//! costs 24 / 25 / 26 / 27, the default margin and `--margin 1`): main leaves 0 / 0 / 0 / 1 on
+//! RP2350 at both, this leaves 0 / 0 / 0 / 0; Orbit and EasyDuino 0 / 0 / 0 / 0 on both. `fab`
+//! took 120 / 127 s on RP2350 against main's 122 / 124 s, 14 / 12 s on Orbit against 17 / 17 s,
+//! 7 s on EasyDuino as main; each board gives the same copper on both runs. The scorecard's
+//! decoupling counts every two-pad capacitor between a pour and a part of 8 pads or more, some of
+//! them bulk or crystal capacitors the placer does not pair, which keep their length.
+//!
 //! # Classes of lines (issue #416, S5 of #431)
 //!
 //! Every line has a [`Class`], derived from the board with nothing in the source, in a fixed
@@ -2087,21 +2120,7 @@ fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Class> {
             .any(|c| c.net == net && c.current >= POWER_CURRENT)
     };
     let decoupling = crate::quality::decoupling_pairs(&board.parts, &board.nets);
-    let decouples = |l: &Ratline| {
-        decoupling.iter().any(|pair| {
-            let cap = &board.parts[pair.cap].refdes;
-            pair.nets.iter().any(|n| {
-                let ends = |a: &netsmith_pcb::board::PadRef, b: &netsmith_pcb::board::PadRef| {
-                    &a.refdes == cap
-                        && a.number == n.cap_pad
-                        && n.pins.iter().any(|(part, pad)| {
-                            board.parts[*part].refdes == b.refdes && *pad == b.number
-                        })
-                };
-                ends(&l.from, &l.to) || ends(&l.to, &l.from)
-            })
-        })
-    };
+    let decouples = |l: &Ratline| crate::decouple::decouples(board, &decoupling, l);
     lines
         .iter()
         .zip(depth)
@@ -2344,6 +2363,11 @@ enum Memo {
     Search(Option<Result<(Routed, Vec<Spot>), Unsettled>>),
 }
 
+/// The longest track from a decoupling capacitor's pad to its own via to the return net's
+/// pour, and the nearest another via of the net may be for the pad to need none, in mm
+/// ([`Router::to_the_pours`]).
+const RETURN_TRACK: f64 = 1.5;
+
 /// How many steps of searches the memo holds before it is emptied.
 const MEMO_MOST: usize = 200_000;
 
@@ -2363,6 +2387,9 @@ struct Router<'a> {
     /// What the fixed obstacles keep cells from, for each room and track width asked for.
     bases: RefCell<HashMap<(u64, u64), std::rc::Rc<Base>>>,
     lines: Vec<Ratline>,
+    /// How many of `lines` are the ratsnest's, which the tries route; the rest are the
+    /// decoupling capacitors' vias to the pours ([`Router::to_the_pours`]).
+    routed_lines: usize,
     /// The net of each line, as an index into the board's nets.
     nets: Vec<usize>,
     /// The cells each line starts and ends on.
@@ -2440,7 +2467,11 @@ impl<'a> Router<'a> {
             .enumerate()
             .map(|(i, n)| (n.name.as_str(), i))
             .collect();
-        let lines = Ratsnest::of(board).lines;
+        let mut lines = crate::decouple::lines(board, Ratsnest::of(board).lines);
+        // The lines of the ratsnest, then the decoupling capacitors' vias to the pours, which
+        // are routed after a complete try only ([`Router::to_the_pours`]).
+        let routed_lines = lines.len();
+        lines.extend(crate::decouple::return_lines(board));
         let nets = lines.iter().map(|l| net_index[l.net.as_str()]).collect();
         let ends = lines
             .iter()
@@ -2516,6 +2547,7 @@ impl<'a> Router<'a> {
             bases: RefCell::new(HashMap::new()),
             grid,
             lines,
+            routed_lines,
             nets,
             ends,
             in_pads,
@@ -3696,6 +3728,7 @@ impl<'a> Router<'a> {
             // their coupling.
             self.side_by_side(&mut state);
             self.off_the_pours(&mut state, attempt, attempts);
+            self.to_the_pours(&mut state);
         }
         self.snapshot(SnapshotStage::Final, &state);
         state
@@ -3887,6 +3920,44 @@ impl<'a> Router<'a> {
         }
         self.fine.set(false);
         self.pouring.set(false);
+        *self.failed_in.borrow_mut() = failed_in;
+        self.stage.set(stage);
+    }
+
+    /// Give each decoupling capacitor's pad on a poured return net its own via to the pour, on
+    /// a try that routed every line (issue #431, S7): each line past [`Self::routed_lines`] is
+    /// searched for against all the other copper, as a pad's line to a plane is, and kept only
+    /// if its track is at most [`RETURN_TRACK`] long and the net has no via within
+    /// [`RETURN_TRACK`] of the pad already. Nothing else moves and no line is left.
+    fn to_the_pours(&self, state: &mut State) {
+        if self.routed_lines == self.lines.len() {
+            return;
+        }
+        let stage = self.stage.get();
+        let failed_in = self.failed_in.borrow().clone();
+        self.fine.set(true);
+        for line in self.routed_lines..self.lines.len() {
+            if self.out_of_time() {
+                break;
+            }
+            let at = self.lines[line].from_at;
+            let net = &self.lines[line].net;
+            let near = state
+                .routed
+                .iter()
+                .flat_map(|r| r.vias.iter())
+                .any(|v| &v.net == net && v.at.distance(at) <= RETURN_TRACK);
+            if near {
+                continue;
+            }
+            if let Some((r, _)) = self.try_line(line, state, &[], ROOM_LOOSE, false) {
+                let length: f64 = r.tracks.iter().map(|t| t.from.distance(t.to)).sum();
+                if !r.tracks.is_empty() && length <= RETURN_TRACK {
+                    state.routed.push(r);
+                }
+            }
+        }
+        self.fine.set(false);
         *self.failed_in.borrow_mut() = failed_in;
         self.stage.set(stage);
     }
@@ -4533,7 +4604,7 @@ impl<'a> Router<'a> {
 
     /// The orders to try the lines in.
     fn orders(&self, retry: bool) -> Vec<Vec<usize>> {
-        let mut shortest: Vec<usize> = (0..self.lines.len()).collect();
+        let mut shortest: Vec<usize> = (0..self.routed_lines).collect();
         shortest.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
         // Lines that end deep in a fine-pitch grid of pads first, the deepest first, and the
         // others shortest first. It differs from `shortest` only on a board that has such a
@@ -4880,7 +4951,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         router.report(true, || {
             format!(
                 "routing {} connections on a {} by {} mm board",
-                router.lines.len(),
+                router.routed_lines,
                 board.outline.width(),
                 board.outline.height()
             )

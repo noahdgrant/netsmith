@@ -32,7 +32,9 @@
 //! - **Decoupling**: for each capacitor of two pads with one pad on a poured net and the other on
 //!   a net that a part of at least [`IC_PADS`] pads is on, the length of track from the
 //!   capacitor's pad to the nearest pad of that part on the net, along the copper (tracks joined
-//!   end to end, through vias and pads). `None` when no track joins them.
+//!   end to end, through vias and pads). `None` when no track joins them. And the other half of
+//!   the loop: the length of track from the capacitor's pad on the poured net to the nearest via
+//!   of that net.
 //! - **Diff pairs**: nets whose names differ only in a suffix pair ([`PAIR_SUFFIXES`]), the
 //!   track length of each, the difference (skew), and the share of the first net's track that
 //!   has the second's within [`COUPLED`] on the same layer.
@@ -116,6 +118,9 @@ pub struct Decoupling {
     pub net: String,
     /// Track from the capacitor's pad to the part's nearest pad on the net, in mm.
     pub length: Option<f64>,
+    /// Track from the capacitor's pad on the poured net to the nearest via of that net, in mm:
+    /// the other half of the loop. `None` when no track joins it to a via.
+    pub to_via: Option<f64>,
 }
 
 /// One diff pair's numbers.
@@ -245,6 +250,18 @@ impl Scorecard {
             self.decoupling.len(),
             joined.len(),
             joined.iter().copied().fold(0.0, f64::max)
+        );
+        let vias: Vec<f64> = self.decoupling.iter().filter_map(|d| d.to_via).collect();
+        let mean = if vias.is_empty() {
+            0.0
+        } else {
+            vias.iter().sum::<f64>() / vias.len() as f64
+        };
+        let _ = writeln!(
+            s,
+            "  return to a via    {} joined, mean {mean:.1} mm, max {:.1} mm",
+            vias.len(),
+            vias.iter().copied().fold(0.0, f64::max)
         );
         for p in &self.pairs {
             let _ = writeln!(
@@ -764,9 +781,9 @@ fn decoupling(
         let (Some(a), Some(b)) = (nets[0], nets[1]) else {
             continue;
         };
-        let (supply_pad, net) = match (poured.contains(&a), poured.contains(&b)) {
-            (false, true) => (pads[0], a),
-            (true, false) => (pads[1], b),
+        let (supply_pad, net, return_pad, ret) = match (poured.contains(&a), poured.contains(&b)) {
+            (false, true) => (pads[0], a, pads[1], b),
+            (true, false) => (pads[1], b, pads[0], a),
             _ => continue,
         };
         // The part with the most pads on the supply net, of at least IC_PADS.
@@ -786,21 +803,33 @@ fn decoupling(
             .filter(|(_, (n, p, _))| *n == Some(net) && p.part == ic)
             .map(|(k, _)| k)
             .collect();
-        let from = pad_shapes
-            .iter()
-            .position(|(_, p, _)| std::ptr::eq(*p, supply_pad))
-            .expect("the pad is on the board");
+        let index = |pad: &crate::artwork::Pad| {
+            pad_shapes
+                .iter()
+                .position(|(_, p, _)| std::ptr::eq(*p, pad))
+                .expect("the pad is on the board")
+        };
         out.push(Decoupling {
             cap: part.to_string(),
             part: ic.to_string(),
             net: net.to_string(),
-            length: copper_path(art, tracks, pad_shapes, net, from, &targets),
+            length: copper_path(
+                art,
+                tracks,
+                pad_shapes,
+                net,
+                index(supply_pad),
+                &targets,
+                false,
+            ),
+            to_via: copper_path(art, tracks, pad_shapes, ret, index(return_pad), &[], true),
         });
     }
     out
 }
 
-/// The length of track from pad `from` to the nearest of `to` along the copper of `net`.
+/// The length of track from pad `from` to the nearest of `to` along the copper of `net`, or to
+/// the nearest via of the net as well when `vias_too`.
 fn copper_path(
     art: &Artwork,
     tracks: &[Seg],
@@ -808,6 +837,7 @@ fn copper_path(
     net: &str,
     from: usize,
     to: &[usize],
+    vias_too: bool,
 ) -> Option<f64> {
     // Nodes: the net's pads, its vias, then the ends of its tracks.
     let pads: Vec<usize> = (0..pad_shapes.len())
@@ -865,10 +895,13 @@ fn copper_path(
         }
     }
     let start = pads.iter().position(|&p| p == from)?;
-    let goal: Vec<usize> = to
+    let mut goal: Vec<usize> = to
         .iter()
         .filter_map(|t| pads.iter().position(|p| p == t))
         .collect();
+    if vias_too {
+        goal.extend(pads.len()..pads.len() + vias.len());
+    }
     // Dijkstra, in micrometres so the queue orders whole numbers.
     let mut dist = vec![u64::MAX; count];
     let mut queue = BinaryHeap::new();
