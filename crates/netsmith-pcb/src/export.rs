@@ -603,7 +603,7 @@ fn teardrop(board: &Board, i: usize, drop: &crate::board::Teardrop, net: Sexp) -
                     Sexp::node("clearance", vec![Sexp::num(0.0)]),
                 ],
             ),
-            Sexp::node("min_thickness", vec![Sexp::num(ZONE_MIN_THICKNESS)]),
+            Sexp::node("min_thickness", vec![Sexp::num(TEARDROP_MIN_THICKNESS)]),
             Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]),
             Sexp::node(
                 "fill",
@@ -621,6 +621,11 @@ fn teardrop(board: &Board, i: usize, drop: &crate::board::Teardrop, net: Sexp) -
         ],
     )
 }
+
+/// The least width of a teardrop zone's fill, KiCad 9's for its own teardrops: a teardrop is
+/// narrower than a pour's least width, and KiCad's filler (the cross-check fills the zones again)
+/// would erase it at that.
+const TEARDROP_MIN_THICKNESS: f64 = 0.0254;
 
 /// The priority KiCad 9 gives its teardrop zones, above every pour, so that a pour KiCad fills
 /// again keeps its clearance from them.
