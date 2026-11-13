@@ -8,6 +8,7 @@
 //!                                                  |--gltf::glb      (.glb)
 //!                                                  |--step::step     (.step)
 //!                                                  |--raster3d       (.png)
+//!                                                  `--render         (.png, as `netsmith render` asks)
 //! ```
 //!
 //! The board model, the footprints and the part bodies they carry (`body3d`) are in
@@ -18,6 +19,7 @@ pub mod case;
 pub mod gltf;
 pub mod mesh;
 pub mod raster3d;
+pub mod render;
 pub mod scene3d;
 pub mod step;
 pub mod system;

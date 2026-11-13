@@ -13,9 +13,9 @@ pub mod port_skeleton;
 pub mod port_tables;
 pub mod reference_table;
 pub mod refresh;
-pub mod render;
 pub mod symbol_gallery;
 
+pub use netsmith_3d::render;
 pub use netsmith_fabricate::{
     board3d, case_fit, fab, layout, models, no_supplier, order, physical, picture, pin_export,
     pin_swap, pins, placed, project, system3d,

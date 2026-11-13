@@ -221,6 +221,8 @@ row "1 1 0 0 0 0" crates/netsmith-router/tests/main.rs
 row "1 1 0 0 0 0" crates/netsmith-router/tests/drc_kit/mod.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/gltf.rs
+# `netsmith render`'s drawing (it was the netsmith crate's `render.rs`): the 3D crate's, after the design stage, with the recipes.
+row "1 0 1 1 0 0" crates/netsmith-3d/src/render.rs
 row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/scene3d.rs
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/main.rs
