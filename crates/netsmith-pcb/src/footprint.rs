@@ -12,7 +12,7 @@ pub const ROOT_VARIABLE: &str = install::FOOTPRINTS_VARIABLE;
 
 // Space added around the pads when a footprint draws no courtyard: the fab check's own, so
 // that the placer and the check measure one body (#457).
-use netsmith_fab::drc::constraints::BARE_COURTYARD_MARGIN;
+use netsmith_geom::drc::constraints::BARE_COURTYARD_MARGIN;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FootprintError {

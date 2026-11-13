@@ -4,9 +4,9 @@
 //! `M16`) with a tool as wide as the slot. The origin is the board's drill/place origin and
 //! y points up, the same as the Gerbers.
 
+use crate::Output;
 use crate::artwork::{Artwork, PadKind};
 use crate::geom::Pt;
-use crate::kicad::Output;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone, PartialEq)]

@@ -2,7 +2,7 @@
 //! a pad or a via, so that a drill that wanders or an etch that undercuts does not break the
 //! joint.
 //!
-//! The polygons are drawn by `netsmith_fab::drc::teardrops` over the board as the check reads
+//! The polygons are drawn by `netsmith_geom::drc::teardrops` over the board as the check reads
 //! it (the `.kicad_pcb` this crate writes, in memory) and to the check's own rules (the
 //! `.kicad_pro` it writes, and the process's spaces a project file cannot say), so a teardrop is
 //! kept only where the check passes with it. The sizes, the rules each one keeps and why netsmith
@@ -13,7 +13,7 @@
 //! The router adds them when it is done (`netsmith_place_route::route::route_with`, unless its
 //! options switch them off), so every board netsmith routes has them.
 
-use netsmith_fab::drc;
+use netsmith_geom::drc;
 
 use crate::board::{Board, CopperLayer, Teardrop};
 use crate::geometry::Pt;

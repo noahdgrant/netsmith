@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-design", "crates/netsmith", "crates/netsmith-cli", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-place-route", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf", "crates/netsmith-testkit"]
+members = ["crates/netsmith-core", "crates/netsmith-kicad", "crates/netsmith-lang", "crates/netsmith-quantity", "crates/netsmith-check", "crates/netsmith-solve", "crates/netsmith-design", "crates/netsmith", "crates/netsmith-cli", "crates/netsmith-view", "crates/netsmith-pcb", "crates/netsmith-3d", "crates/netsmith-place-route", "crates/netsmith-fab", "crates/netsmith-netlist", "crates/netsmith-editor", "crates/netsmith-dxf", "crates/netsmith-testkit", "crates/netsmith-sexp", "crates/netsmith-geom"]
 
 [workspace.package]
 version = "0.1.0"

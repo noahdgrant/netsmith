@@ -5,5 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-netsmith-fab = { path = "../netsmith-fab" }
+netsmith-sexp = { path = "../netsmith-sexp" }
 roxmltree = "0.21"

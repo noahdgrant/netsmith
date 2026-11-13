@@ -173,6 +173,14 @@ row "1 1 1 1 1 1" crates/netsmith-design/src/lib.rs
 row "1 1 1 1 0 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
 row "1 1 1 1 0 0" crates/netsmith-netlist/src/lib.rs
 row "1 1 1 1 0 1" crates/netsmith-fab/Cargo.toml crates/netsmith-pcb/Cargo.toml crates/netsmith-netlist/Cargo.toml
+# The S-expression reader (issue #611): a leaf in the binary that reads the mapping, so as netsmith-core.
+row "1 1 1 1 1 1" crates/netsmith-sexp/src/lib.rs
+row "1 1 1 1 1 1" crates/netsmith-sexp/Cargo.toml
+# The board's geometry and design rules check (issue #611): a leaf that the footprints use, so as
+# netsmith-pcb: no `locks`, but `designs`.
+row "1 1 1 1 0 1" crates/netsmith-geom/src/drc/mod.rs
+row "1 1 1 1 0 1" crates/netsmith-geom/Cargo.toml
+row "1 1 1 1 1 1" crates/netsmith-geom/src/plot.rs crates/netsmith-sexp/src/lib.rs
 # The router (issue #518): linked into the binary, and its tests check its boards with kicad-cli.
 row "1 1 1 1 0 0" crates/netsmith-place-route/src/route.rs
 row "1 1 1 1 0 0" crates/netsmith-place-route/Cargo.toml
@@ -238,6 +246,8 @@ crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs cra
 crates_row "netsmith" crates/netsmith/tests/pure.rs
 crates_row "netsmith-cli" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/tests/pure.rs
 crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
+crates_row "netsmith-geom" crates/netsmith-geom/src/geom.rs
+crates_row "netsmith-sexp" crates/netsmith-sexp/src/lib.rs
 crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
 crates_row "netsmith-place-route" crates/netsmith-place-route/src/route.rs
 # The synthetic boards the tests share are netsmith-place-route's: its dependents (netsmith-3d, the

@@ -15,8 +15,10 @@ path = "tests/main.rs"
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-# Polygon unions and differences, for the copper as polygons (`polygons`, ADR 0105).
-i_overlay = "9.1.0"
+# The board's geometry, the drawing of its layers and the design rules check, which the board
+# model and the router share (issue #611).
+netsmith-geom = { path = "../netsmith-geom" }
+netsmith-sexp = { path = "../netsmith-sexp" }
 # Where `kicad-cli` is (`install::Search`), the one place that knows the search order.
 netsmith-kicad = { path = "../netsmith-kicad" }
 # The PNG writer of the debug pictures (`netsmith_core::png`).

@@ -2,12 +2,12 @@
 //! copper layers it has, and for every part its designator, footprint, side, how it is
 //! soldered and its properties.
 
-use crate::sexp::{self, Sexp};
+use netsmith_sexp::Sexp;
 use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub enum BoardError {
-    Parse(sexp::ParseError),
+    Parse(netsmith_sexp::ParseError),
     /// The file is not a board: its first list is not `kicad_pcb`.
     NotABoard,
 }
@@ -88,12 +88,12 @@ pub struct Board {
 
 impl Board {
     pub fn parse(src: &str) -> Result<Self, BoardError> {
-        let root = sexp::parse(src).map_err(BoardError::Parse)?;
+        let root = Sexp::parse(src).map_err(BoardError::Parse)?;
         if root.head() != Some("kicad_pcb") {
             return Err(BoardError::NotABoard);
         }
         let copper_layers = root
-            .child("layers")
+            .find("layers")
             .map(|l| {
                 l.items()
                     .iter()
@@ -104,14 +104,14 @@ impl Board {
             })
             .unwrap_or_default();
         let origin = root
-            .child("setup")
-            .and_then(|s| s.child("aux_axis_origin"))
+            .find("setup")
+            .and_then(|s| s.find("aux_axis_origin"))
             .and_then(|o| {
                 let x = o.items().get(1)?.text()?.parse().ok()?;
                 let y = o.items().get(2)?.text()?.parse().ok()?;
                 Some((x, y))
             });
-        let parts = root.children("footprint").filter_map(read_part).collect();
+        let parts = root.find_all("footprint").filter_map(read_part).collect();
         Ok(Self {
             copper_layers,
             origin,
@@ -123,7 +123,7 @@ impl Board {
 fn read_part(fp: &Sexp) -> Option<BoardPart> {
     let footprint = fp.items().get(1)?.text()?.to_string();
     let mut properties = BTreeMap::new();
-    for p in fp.children("property") {
+    for p in fp.find_all("property") {
         if let (Some(k), Some(v)) = (
             p.items().get(1).and_then(Sexp::text),
             p.items().get(2).and_then(Sexp::text),
@@ -133,12 +133,12 @@ fn read_part(fp: &Sexp) -> Option<BoardPart> {
     }
     let designator = properties.get("Reference")?.clone();
     let value = properties.get("Value").cloned().unwrap_or_default();
-    let side = match fp.child("layer").and_then(|l| l.items().get(1)?.text()) {
+    let side = match fp.find("layer").and_then(|l| l.items().get(1)?.text()) {
         Some("B.Cu") => Side::Bottom,
         _ => Side::Top,
     };
     let attrs: Vec<&str> = fp
-        .child("attr")
+        .find("attr")
         .map(|a| a.items().iter().skip(1).filter_map(Sexp::text).collect())
         .unwrap_or_default();
     let has = |name: &str| attrs.contains(&name);
@@ -146,7 +146,7 @@ fn read_part(fp: &Sexp) -> Option<BoardPart> {
         return None;
     }
     let through_hole_pads = fp
-        .children("pad")
+        .find_all("pad")
         .any(|p| p.items().get(2).and_then(Sexp::text) == Some("thru_hole"));
     let fit = if has("dnp") {
         Fit::NotFitted
@@ -155,7 +155,7 @@ fn read_part(fp: &Sexp) -> Option<BoardPart> {
     } else {
         Fit::Assembled
     };
-    let at_node = fp.child("at");
+    let at_node = fp.find("at");
     let at_number = |i: usize| -> f64 {
         at_node
             .and_then(|a| a.items().get(i)?.text()?.parse().ok())

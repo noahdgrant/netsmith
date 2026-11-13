@@ -83,7 +83,7 @@ fn net_text(net: &Option<String>) -> String {
 }
 
 /// The shapes that make a pad's outline.
-pub(crate) fn outline_shapes(outline: &Outline) -> Vec<Shape> {
+pub fn outline_shapes(outline: &Outline) -> Vec<Shape> {
     match outline {
         Outline::Circle { c, r } => vec![Shape::disc(*c, *r)],
         Outline::Oval { c, w, h, angle } => {

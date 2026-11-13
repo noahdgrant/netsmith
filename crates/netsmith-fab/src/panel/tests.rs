@@ -308,15 +308,15 @@ fn overlapping_cells_are_found() {
 #[test]
 fn each_cell_is_the_boards_items_moved_with_nets_and_designators_of_its_own() {
     let pkg = build_2x3();
-    let root = sexp::parse(&pkg.pcb).unwrap();
+    let root = Sexp::parse(&pkg.pcb).unwrap();
     // 6 resistors and 6 headers, 4 tooling holes and 3 fiducials.
-    assert_eq!(root.children("footprint").count(), 6 * 2 + 4 + 3);
-    assert_eq!(root.children("via").count(), 6);
-    assert_eq!(root.children("segment").count(), 6 * 6);
+    assert_eq!(root.find_all("footprint").count(), 6 * 2 + 4 + 3);
+    assert_eq!(root.find_all("via").count(), 6);
+    assert_eq!(root.find_all("segment").count(), 6 * 6);
     let refs: Vec<String> = root
-        .children("footprint")
+        .find_all("footprint")
         .filter_map(|f| {
-            f.children("property")
+            f.find_all("property")
                 .find(|p| p.items()[1].text() == Some("Reference"))
                 .and_then(|p| p.items()[2].text().map(str::to_string))
         })
@@ -330,7 +330,7 @@ fn each_cell_is_the_boards_items_moved_with_nets_and_designators_of_its_own() {
     }
     // The nets of cell 3 are its own.
     let nets: Vec<String> = root
-        .children("net")
+        .find_all("net")
         .filter_map(|n| n.items().get(2)?.text().map(str::to_string))
         .collect();
     assert_eq!(nets.len(), 1 + 6 * 2);
@@ -338,13 +338,13 @@ fn each_cell_is_the_boards_items_moved_with_nets_and_designators_of_its_own() {
     // Cell 1 is the board moved by the rail, cell 6 by one column and two rows more.
     let r1 = |k: usize| -> (f64, f64) {
         let f = root
-            .children("footprint")
+            .find_all("footprint")
             .find(|f| {
-                f.children("property")
+                f.find_all("property")
                     .any(|p| p.items()[2].text() == Some(&format!("R1_{k}")))
             })
             .unwrap();
-        let at = f.child("at").unwrap();
+        let at = f.find("at").unwrap();
         (
             at.items()[1].text().unwrap().parse().unwrap(),
             at.items()[2].text().unwrap().parse().unwrap(),
@@ -355,8 +355,8 @@ fn each_cell_is_the_boards_items_moved_with_nets_and_designators_of_its_own() {
     assert_eq!(r1(6), (75.0, 95.0));
     // The silkscreen keeps the board's own name: six plain texts "R1" and no other.
     let silk: Vec<&str> = root
-        .children("footprint")
-        .flat_map(|f| f.children("fp_text"))
+        .find_all("footprint")
+        .flat_map(|f| f.find_all("fp_text"))
         .filter_map(|t| t.items().get(2)?.text())
         .collect();
     assert_eq!(silk.iter().filter(|t| **t == "R1").count(), 6, "{silk:?}");
@@ -375,9 +375,9 @@ fn each_cell_is_the_boards_items_moved_with_nets_and_designators_of_its_own() {
 #[test]
 fn one_outline_with_the_cut_lines_and_their_marks_on_edge_cuts() {
     let pkg = build_2x3();
-    let root = sexp::parse(&pkg.pcb).unwrap();
+    let root = Sexp::parse(&pkg.pcb).unwrap();
     let on_edge = |head: &str| -> usize {
-        root.children(head)
+        root.find_all(head)
             .filter(|e| layer_of(e) == Some("Edge.Cuts"))
             .count()
     };
@@ -490,8 +490,8 @@ fn a_panel_with_no_rail_has_no_marks() {
         ..Options::default()
     };
     let pkg = build(&spec(2, 3, 0.0), &input, &options).unwrap();
-    let root = sexp::parse(&pkg.pcb).unwrap();
-    assert_eq!(root.children("footprint").count(), 12);
+    let root = Sexp::parse(&pkg.pcb).unwrap();
+    assert_eq!(root.find_all("footprint").count(), 12);
     assert!(
         pkg.notes
             .contains("rails: none, so no tooling holes and no fiducials")

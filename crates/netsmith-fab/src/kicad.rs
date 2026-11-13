@@ -11,12 +11,8 @@ use std::sync::OnceLock;
 
 use crate::exclusive;
 
-/// A file KiCad wrote.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Output {
-    pub name: String,
-    pub bytes: Vec<u8>,
-}
+/// A file KiCad wrote (or one netsmith plotted).
+pub use netsmith_geom::Output;
 
 #[derive(Debug)]
 pub enum CliError {

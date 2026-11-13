@@ -10,7 +10,9 @@
 #            -place-route, whose tests check the routed boards with kicad-cli, the netsmith crate
 #            and the netsmith-cli crate, the binary and the tests that start it),
 #            the crates that make the files those tests check
-#            (netsmith-core, -design, -netlist), and the data the tests read: std/ (kicad.toml maps
+#            (netsmith-core, -design, -netlist, and the leaves netsmith-sexp, the S-expression
+#            reader and writer of every KiCad file, and netsmith-geom, the board's geometry, the
+#            drawing of its layers and the design rules check), and the data the tests read: std/ (kicad.toml maps
 #            kinds to KiCad's footprints), examples/ (the boards they build) and data/, and the
 #            test helpers (netsmith-testkit: its sample libraries are what those tests build
 #            with). The testkit is a dev-dependency only, so a change to it needs no other job.
@@ -44,15 +46,15 @@
 #            design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
 #            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
 #            Not the crates after the solver either: `lock` reads no KiCad library, no footprint and
-#            no board, so a change to netsmith-pcb, -place-route, -fab, -netlist, -3d, -view or
+#            no board, so a change to netsmith-geom, -pcb, -place-route, -fab, -netlist, -3d, -view or
 #            -editor cannot move a pick (the netsmith-kicad crate keeps `locks`: the umbrella's
-#            design stage still reads its mapping).
+#            design stage still reads its mapping, and so does netsmith-sexp, which reads it).
 #   designs  the `designs` job: scripts/check-example-designs.sh builds every example with
 #            `--emit-design` and compares the designs with the committed `<stem>.design.json`
 #            (issue #609). A design is what the checker, the solver and the design stage make of an
 #            example, std/ and the catalogs, so it follows `locks`, and also netsmith-pcb and
-#            netsmith-fab, which `locks` leaves out: the design stage loads each part's footprint
-#            (netsmith-pcb, which uses netsmith-fab's geometry), and a through-hole one makes the
+#            netsmith-fab and netsmith-geom, which `locks` leaves out: the design stage loads each part's footprint
+#            (netsmith-pcb, which uses netsmith-geom), and a through-hole one makes the
 #            part fitted by hand. Not the router (netsmith-place-route), netsmith-netlist, -3d,
 #            -view or -editor: none of them runs before the design is made.
 #
@@ -125,7 +127,7 @@ kicad_crate() {
     esac
 }
 
-# A crate after the solver that the design stage still runs (netsmith-pcb, -fab: the footprints): as
+# A crate after the solver that the design stage still runs (netsmith-geom, -pcb, -fab: the footprints): as
 # `kicad_crate`, but `netsmith lock` runs none of it, so the change does not start `locks`.
 before_design() {
     kicad_crate "$@"
@@ -181,11 +183,13 @@ while IFS= read -r path; do
         .agents/*) ;;
 
         crates/netsmith/src/refresh/*) rust=true recipes=true ;;
-        crates/netsmith-kicad/* | crates/netsmith-core/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        # The leaves netsmith-core and netsmith-sexp (the reader of the mapping and the libraries)
+        # are linked into the binary and are read by every stage, the solver's among them.
+        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-sexp/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
         # After the solver: no pick of `netsmith lock` depends on them. The design stage loads the
-        # footprints (netsmith-pcb, on netsmith-fab's geometry); the router and the netlist come after it.
-        crates/netsmith-fab/* | crates/netsmith-pcb/*) before_design "${path#crates/*/}" "$path" ;;
+        # footprints (netsmith-pcb, on netsmith-geom); the router and the netlist come after it.
+        crates/netsmith-geom/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) before_design "${path#crates/*/}" "$path" ;;
         crates/netsmith-place-route/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.

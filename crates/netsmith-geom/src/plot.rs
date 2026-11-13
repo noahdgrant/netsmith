@@ -20,6 +20,7 @@
 //! board or of the via); a hole with no copper round it (a pad no larger than its drill) has no
 //! copper on any layer.
 
+use crate::Output;
 use crate::artwork::{Artwork, Graphic, Pad, PadKind, PadShape, Shape, TrackShape};
 use crate::edge::{self, Outline as BoardEdge};
 use crate::fill;
@@ -27,7 +28,6 @@ use crate::font;
 use crate::gbr::{Ap, Contour, Gerber, Pen, escape};
 use crate::geom::{Arc, Pt};
 use crate::gerber::{self, GerberError};
-use crate::kicad::Output;
 use crate::pads;
 
 /// The width of a line drawn with none, in mm.

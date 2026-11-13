@@ -108,8 +108,8 @@ use std::collections::BTreeMap;
 use crate::artwork::Artwork;
 use crate::board::{Board, BoardPart, Fit};
 use crate::bom::{self, BomEntry};
-use crate::sexp::{self, Sexp};
 use crate::{DrcOutcome, Error, Options, Plan, cpl, drc, drill, edge, gerber, plot};
+use netsmith_sexp::Sexp;
 
 /// The mask opening round a fiducial, as a multiple of its copper, as the project's
 /// fiducial footprint draws it.
@@ -573,10 +573,10 @@ impl Carry {
     /// Whether `property` is a reference designator that is printed on the silkscreen.
     fn silk_reference(&self, property: &Sexp) -> bool {
         property.items().get(1).and_then(Sexp::text) == Some("Reference")
-            && property.child("hide").is_none()
+            && property.find("hide").is_none()
             && property
-                .child("effects")
-                .is_none_or(|e| e.child("hide").is_none())
+                .find("effects")
+                .is_none_or(|e| e.find("hide").is_none())
             && layer_of(property).is_some_and(|l| l.ends_with("SilkS"))
     }
 
@@ -588,7 +588,7 @@ impl Carry {
             property.items().get(2).cloned().unwrap_or(Sexp::string("")),
         ];
         for name in ["at", "layer", "effects"] {
-            if let Some(c) = property.child(name) {
+            if let Some(c) = property.find(name) {
                 out.push(c.clone());
             }
         }
@@ -637,7 +637,7 @@ pub fn unsuffixed(designator: &str) -> &str {
 }
 
 fn item(text: &str) -> Sexp {
-    sexp::parse(text).expect("a generated item is well formed")
+    Sexp::parse(text).expect("a generated item is well formed")
 }
 
 fn at(x: f64, y: f64) -> String {
@@ -736,14 +736,14 @@ pub fn board_file(
     pcb: &str,
     back_fiducials: bool,
 ) -> Result<String, Error> {
-    let root = sexp::parse(pcb).map_err(|e| Error::Panel(vec![e.to_string()]))?;
+    let root = Sexp::parse(pcb).map_err(|e| Error::Panel(vec![e.to_string()]))?;
     if root.head() != Some("kicad_pcb") {
         return Err(Error::Panel(vec![
             "the board file is not a KiCad board".to_string(),
         ]));
     }
     let nets: Vec<(i64, String)> = root
-        .children("net")
+        .find_all("net")
         .filter_map(|n| {
             let id: i64 = n.items().get(1)?.text()?.parse().ok()?;
             Some((id, n.items().get(2)?.text()?.to_string()))
@@ -759,7 +759,7 @@ pub fn board_file(
             return false;
         }
         let pt = |name: &str| -> Option<(f64, f64)> {
-            let c = e.child(name)?;
+            let c = e.find(name)?;
             Some((
                 c.items().get(1)?.text()?.parse().ok()?,
                 c.items().get(2)?.text()?.parse().ok()?,
@@ -778,10 +778,10 @@ pub fn board_file(
         }
     };
     let stroke = root
-        .children("gr_rect")
+        .find_all("gr_rect")
         .find(|e| is_outline(e))
-        .and_then(|e| e.child("stroke"))
-        .and_then(|s| s.child("width"))
+        .and_then(|e| e.find("stroke"))
+        .and_then(|s| s.find("width"))
         .and_then(|w| w.items().get(1)?.text()?.parse::<f64>().ok());
     let Some(stroke) = stroke else {
         return Err(Error::Panel(vec![
@@ -952,7 +952,7 @@ pub fn board_file(
 }
 
 fn layer_of(e: &Sexp) -> Option<&str> {
-    e.child("layer")?.items().get(1)?.text()
+    e.find("layer")?.items().get(1)?.text()
 }
 
 /// The panel drawn: boards outlined and named, cut lines, rails, tooling holes and fiducials.

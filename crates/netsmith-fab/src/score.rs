@@ -55,21 +55,7 @@ const CELL: f64 = 0.1;
 pub const PIECE_LEAST: f64 = 1.0;
 /// The fewest pads of a part that a decoupling capacitor is counted as decoupling.
 pub const IC_PADS: usize = 8;
-/// How near, centre line to centre line, the other net of a diff pair runs for a stretch of
-/// track to count as coupled, in mm.
-pub const COUPLED: f64 = 0.5;
-/// The suffixes that make two nets a diff pair: the net that ends in the first and the one that
-/// ends in the second, with the same name before them. The router runs the same pairs side by
-/// side (`netsmith_place_route`'s route module, issue #431).
-pub const PAIR_SUFFIXES: [(&str, &str); 7] = [
-    ("dp", "dm"),
-    ("DP", "DM"),
-    ("D+", "D-"),
-    ("_P", "_N"),
-    ("+", "-"),
-    ("_p", "_n"),
-    (".p", ".n"),
-];
+pub use netsmith_geom::pairs::{COUPLED, PAIR_SUFFIXES};
 /// Points closer than this are one point, in mm.
 const SAME: f64 = 1e-3;
 
