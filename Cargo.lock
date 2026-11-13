@@ -916,7 +916,6 @@ dependencies = [
  "netsmith-design",
  "netsmith-geom",
  "netsmith-kicad",
- "netsmith-placer",
  "netsmith-solve",
  "netsmith-testkit",
  "serde",
@@ -938,6 +937,7 @@ dependencies = [
  "netsmith-pcb",
  "netsmith-solve",
  "netsmith-testkit",
+ "serde_json",
 ]
 
 [[package]]

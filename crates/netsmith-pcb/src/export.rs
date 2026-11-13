@@ -924,14 +924,14 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::board::tests::{four_layer_design, led_design};
+    use crate::board::tests::led_design;
     use crate::board::{CopperLayer, Track};
     use crate::geometry::Pt;
 
     use super::*;
 
     fn led() -> Board {
-        crate::board::tests::placed(&led_design())
+        crate::board::tests::led_board()
     }
 
     fn parsed(board: &Board) -> Sexp {
@@ -1271,7 +1271,7 @@ mod tests {
             refdes: "U1".into(),
             pin: "2".into(),
         });
-        let pcb = parsed(&crate::board::tests::placed(&design));
+        let pcb = parsed(&crate::board::tests::unplaced_board(&design));
         let u1 = footprint_of(&pcb, "U1");
         let on_net: Vec<_> = u1
             .find_all("pad")
@@ -1349,7 +1349,7 @@ mod tests {
     }
 
     fn four() -> Board {
-        crate::board::tests::placed(&four_layer_design())
+        crate::board::tests::four_layer_board()
     }
 
     fn numbers(node: &Sexp, key: &str) -> Vec<f64> {
@@ -1389,7 +1389,7 @@ mod tests {
     }
 
     fn six() -> Board {
-        crate::board::tests::placed(&crate::board::tests::six_layer_design())
+        crate::board::tests::six_layer_board()
     }
 
     #[test]
@@ -1472,7 +1472,7 @@ mod tests {
 
     #[test]
     fn a_ten_layer_board_lists_ten_copper_layers_and_its_build_up() {
-        let board = crate::board::tests::placed(&crate::board::tests::ten_layer_design());
+        let board = crate::board::tests::ten_layer_board();
         let pcb = parsed(&board);
         let copper: Vec<(&str, &str, &str)> = pcb
             .find("layers")

@@ -1024,8 +1024,7 @@ side = "bottom"
         let text = layout.to_text();
         assert!(text.contains("seed = 7"), "{text}");
         assert_eq!(Layout::parse(&text, "x").unwrap(), layout);
-        let design = led_with_paths();
-        let board = crate::board::tests::placed_with(&design, &layout);
+        let board = crate::board::tests::led_board();
         let captured = Layout::capture(&board, layout.boards.get("LedExample"));
         assert_eq!(captured.seed, Some(7));
         assert_eq!(Layout::capture(&board, None).seed, None);
@@ -1064,13 +1063,7 @@ side = "bottom"
         // D1 is on the back but not locked: the placer is told its face and nothing else.
         assert_eq!(options.sides["D1"], Side::Back);
         assert!(!options.fixed.contains_key("D1") && !options.fixed.contains_key("J1"));
-        // The board has them there, and the part the layout does not name is placed round
-        // them without overlapping.
-        let board = crate::board::tests::placed_with(&design, &layout);
-        let r1 = board.part("R1").unwrap();
-        assert_eq!((r1.at, r1.rotation), (ORIGIN + Pt::new(5.0, 4.0), 90.0));
-        assert_eq!(board.part("D1").unwrap().side, Side::Back);
-        assert_eq!(board.check_placement(), vec![]);
+        // (The placer puts them there: `netsmith-placer`'s `board::tests`.)
         // With no layout there is nothing fixed and the seed is 0.
         let none = place_options(&design, None);
         assert_eq!((none.seed, none.fixed.len()), (0, 0));

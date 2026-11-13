@@ -32,8 +32,7 @@ netsmith-testkit = { path = "../netsmith-testkit" }
 # depends on, and the netsmith crate depends on all of them (issue #518).
 netsmith-check = { path = "../netsmith-check" }
 netsmith-design = { path = "../netsmith-design" }
-# The placer, for the tests that check the board model on a placed board. It links the
-# netsmith-pcb that is not the unit tests' build, so they read its board back through the JSON
-# of a placed board (`board::tests::placed`).
-netsmith-placer = { path = "../netsmith-placer" }
+# No placer and no router here, even in the tests: a crate that depends on this one cannot be a
+# dev-dependency of it without a second copy of this crate in the test build (issue #608). The
+# tests start from the placed boards in `tests/fixtures`, which the placer's tests keep in step.
 netsmith-solve = { path = "../netsmith-solve" }

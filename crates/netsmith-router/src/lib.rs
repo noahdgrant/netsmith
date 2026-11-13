@@ -7,7 +7,8 @@
 //! [`route`] and [`route_with`] draw the tracks and vias on the two outer layers (ADR 0031, the
 //! header of `route.rs`), then vias in parallel where one is too small for its current, the
 //! stitching vias of the pours, and an arc at each bend that has room for one (the header of
-//! `arcs.rs`).
+//! `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
+//! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
 //!
 //! The board model and the decoupling pairs ([`netsmith_pcb::quality`]) are in `netsmith-pcb`,
 //! the placer in `netsmith-placer`. This crate depends on `netsmith-pcb`, never the reverse
@@ -16,10 +17,12 @@
 
 pub mod arcs;
 mod decouple;
+pub mod meander;
 pub mod parallel;
 mod plan;
 pub mod route;
 mod stitch;
+pub mod teardrop;
 
 #[cfg(test)]
 mod testlib;
@@ -32,9 +35,6 @@ use netsmith_pcb::quality;
 #[cfg(test)]
 use netsmith_placer::board_from_design;
 
-/// The board model this crate routes. A caller can name the very types the functions here take
-/// through it.
-pub use netsmith_pcb;
 pub use route::{
     CoarsePlan, Costs, Crowding, LineClasses, LineReport, RouteOptions, Routing, Snapshot,
     SnapshotStage, Stage, route, route_with,

@@ -1388,7 +1388,7 @@ impl Track {
 }
 
 /// Copper that widens a track where it meets a pad or a via (issue #431, S11): a polygon on
-/// the track's layer and net, drawn by [`crate::teardrop::add`] once the board is routed.
+/// the track's layer and net, drawn by `netsmith_router::teardrop::add` once the board is routed.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Teardrop {
     pub net: String,
@@ -2762,34 +2762,45 @@ pub(crate) mod tests {
         }
     }
 
-    /// `design` placed by the placer (`netsmith_placer::board_from_design`) with the
-    /// standard mapping and these fixtures: the board most tests of this crate check. The placer
-    /// links the netsmith-pcb that is not this test build, so the board comes back as the JSON
-    /// of a placed board (`fab --save-placed`), which reads back equal
-    /// (`crates/netsmith/tests/placed.rs`).
-    pub fn placed(design: &Design) -> Board {
-        placed_as(design, None)
+    /// The board `json` holds, a placed `Board` from `tests/fixtures`, which the placer
+    /// wrote (`netsmith-placer`'s `pcb_fixtures` test keeps them in step with it, and says how
+    /// to write them again). The tests of this crate start from a placed board without
+    /// depending on the placer (issue #608).
+    fn fixture(json: &str) -> Board {
+        serde_json::from_str(json).expect("a fixture is the JSON of a Board")
     }
 
-    /// [`placed`], with what `layout` says of where the parts go ([`crate::place_options`]).
-    pub fn placed_with(design: &Design, layout: &crate::layout::Layout) -> Board {
-        placed_as(design, Some(&layout.to_text()))
+    /// `led_design` placed: the board most tests of this crate check.
+    pub fn led_board() -> Board {
+        fixture(include_str!("../tests/fixtures/led.board.json"))
     }
 
-    fn placed_as(design: &Design, layout: Option<&str>) -> Board {
-        use netsmith_placer::netsmith_pcb as theirs;
-        let library = theirs::FootprintLibrary::at(netsmith_testkit::sample_footprints());
-        let mapping = netsmith_kicad::Mapping::standard();
-        let board = match layout {
-            None => netsmith_placer::board_from_design(design, &mapping, &library),
-            Some(text) => {
-                let layout = theirs::Layout::parse(text, "test.pcb.toml").expect("it reads back");
-                let options = theirs::place_options(design, Some(&layout));
-                netsmith_placer::board_from_design_placed(design, &mapping, &library, &options)
-            }
-        }
-        .unwrap_or_else(|e| panic!("{e}"));
-        serde_json::from_str(&serde_json::to_string(&board).unwrap()).unwrap()
+    /// `four_layer_design` placed.
+    pub fn four_layer_board() -> Board {
+        fixture(include_str!("../tests/fixtures/four_layer.board.json"))
+    }
+
+    /// The LED board placed on six layers.
+    pub fn six_layer_board() -> Board {
+        fixture(include_str!("../tests/fixtures/six_layer.board.json"))
+    }
+
+    /// The LED board placed on ACME's ten layers.
+    pub fn ten_layer_board() -> Board {
+        fixture(include_str!("../tests/fixtures/ten_layer.board.json"))
+    }
+
+    /// The board of `design` with its parts where [`Board::unplaced`] leaves them, in an outline
+    /// of 60 by 40 mm: for the tests that put the parts where they want them.
+    pub fn unplaced_board(design: &Design) -> Board {
+        Board::unplaced(
+            design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+        .into_board(design, Rect::new(ORIGIN, ORIGIN + Pt::new(60.0, 40.0)), 0.0)
     }
 
     /// The same circuit as `examples/led.nsm`.
@@ -2822,24 +2833,9 @@ pub(crate) mod tests {
         design
     }
 
-    pub fn six_layer_design() -> Design {
-        let mut design = led_design();
-        design.process = Some(crate::rules::six_layer_process());
-        design.nets[1].name = "3V3".into();
-        design
-    }
-
-    /// The LED board on ACME's ten layers: ground on the first inner layer, 3.3 V on the last.
-    pub fn ten_layer_design() -> Design {
-        let mut design = led_design();
-        design.process = Some(crate::rules::acme_process(10));
-        design.nets[1].name = "3V3".into();
-        design
-    }
-
     #[test]
     fn a_board_of_a_fictional_fabricator_says_it_is_not_for_ordering() {
-        let board = placed(&ten_layer_design());
+        let board = ten_layer_board();
         assert_eq!(board.inner_layers().len(), 8);
         let note = board.process_note();
         assert!(
@@ -2858,14 +2854,14 @@ pub(crate) mod tests {
             "{extras:?}"
         );
         // A real fabricator's board says neither.
-        let six = placed(&six_layer_design());
+        let six = six_layer_board();
         assert!(six.process_note().ends_with("order it with these"));
         assert!(!six.process_extras().iter().any(|e| e.contains("fictional")));
     }
 
     #[test]
     fn a_six_layer_board_has_planes_on_the_named_layers_and_says_what_each_inner_layer_is() {
-        let board = placed(&six_layer_design());
+        let board = six_layer_board();
         let planes: Vec<(&str, &str)> = board
             .planes
             .iter()
@@ -2887,7 +2883,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_inner_layers_of_a_four_layer_board_are_planes_on_the_nets_the_board_named() {
-        let board = placed(&four_layer_design());
+        let board = four_layer_board();
         let planes: Vec<(&str, &str)> = board
             .planes
             .iter()
@@ -2895,7 +2891,7 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(planes, [("In1.Cu", "GND"), ("In2.Cu", "3V3")]);
         assert!(board.rules.plane_clearance >= board.rules.clearance);
-        let two = placed(&led_design());
+        let two = led_board();
         assert_eq!(two.planes, vec![]);
     }
 
@@ -2921,7 +2917,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_process_note_says_which_net_each_plane_is() {
-        let board = placed(&four_layer_design());
+        let board = four_layer_board();
         let note = board.process_note();
         assert!(
             note.contains(
@@ -2930,7 +2926,7 @@ pub(crate) mod tests {
             "{note}"
         );
         assert!(note.contains("track 0.09 mm"), "{note}");
-        let two = placed(&led_design());
+        let two = led_board();
         assert!(two.process_note().contains("; 2 layers, 1.6 mm thick"));
     }
 
@@ -2975,7 +2971,7 @@ pub(crate) mod tests {
 
     #[test]
     fn builds_a_board_from_a_design() {
-        let board = placed(&led_design());
+        let board = led_board();
         assert_eq!(board.name, "LedExample");
         let refs: Vec<&str> = board.parts.iter().map(|p| p.refdes.as_str()).collect();
         assert_eq!(refs, ["D1", "J1", "R1"]);
@@ -2990,15 +2986,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn placement_is_valid_and_the_same_every_time() {
-        let board = placed(&led_design());
-        assert_eq!(board.check_placement(), vec![]);
-        assert_eq!(board, placed(&led_design()));
+    fn the_placed_led_board_is_a_valid_placement() {
+        assert_eq!(led_board().check_placement(), vec![]);
     }
 
     #[test]
     fn a_part_on_the_back_is_the_footprint_in_a_mirror_with_its_pads_on_the_back_layer() {
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         let mut front = board.part("R1").unwrap().clone();
         front.rotation = 0.0;
         let pad2 = front.footprint.pads_numbered("2").next().unwrap().clone();
@@ -3027,7 +3021,7 @@ pub(crate) mod tests {
 
     #[test]
     fn courtyards_of_opposite_faces_may_overlap_unless_one_part_has_a_hole() {
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         let d1 = board.part("D1").unwrap().at;
         {
             let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
@@ -3058,7 +3052,7 @@ pub(crate) mod tests {
 
     #[test]
     fn an_overlap_names_both_members_by_path_with_the_designator_and_by_how_much() {
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         for p in &mut board.parts {
             p.path = match p.refdes.as_str() {
                 "D1" => "status.led".into(),
@@ -3209,7 +3203,7 @@ pub(crate) mod tests {
 
     #[test]
     fn the_check_finds_overlaps_and_parts_off_the_board() {
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         let r1 = board.part("R1").unwrap().at;
         let d1 = board.parts.iter_mut().find(|p| p.refdes == "D1").unwrap();
         d1.at = r1 + Pt::new(0.5, 0.0);
@@ -3234,7 +3228,7 @@ pub(crate) mod tests {
     /// The led board with `refdes` moved so that its courtyard's right side is `past` mm past
     /// the right edge (negative: inside it), and what `check_placement` says of that part.
     fn moved_past_the_right_edge(refdes: &str, past: f64) -> Board {
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         let edge = board.outline.max.x;
         let part = board.parts.iter_mut().find(|p| p.refdes == refdes).unwrap();
         let right = part.courtyard().max.x;
@@ -3353,7 +3347,7 @@ pub(crate) mod tests {
                 .filter(|p| matches!(p, PlacementProblem::PadNearEdge { .. }))
                 .collect()
         };
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         assert_eq!(board.check_placement(), vec![]);
         // The leftmost pad of the board, wherever the placer put it.
         let (leftmost, left) = board
@@ -3395,7 +3389,7 @@ pub(crate) mod tests {
     /// box corner is nearly at the arc (0.05 mm), the copper is 1.09 mm from it.
     #[test]
     fn a_round_pad_near_a_rounded_corner_is_measured_as_a_circle() {
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         board.outline = Rect {
             min: Pt::new(0.0, 0.0),
             max: Pt::new(50.0, 50.0),
@@ -3426,7 +3420,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_rotated_part_moves_its_pads_and_courtyard() {
-        let board = placed(&led_design());
+        let board = led_board();
         let mut r1 = board.part("R1").unwrap().clone();
         r1.at = Pt::new(10.0, 10.0);
         r1.rotation = 0.0;
@@ -3446,7 +3440,7 @@ pub(crate) mod tests {
         // the one the fab check measures on the written board are one box, at a right angle
         // and at any other.
         use netsmith_geom::drc::constraints::{Constraint, Constraints, Measure};
-        let mut board = placed(&led_design());
+        let mut board = led_board();
         let bare = crate::footprint::Footprint::parse(
             "T:Fingers",
             r#"(footprint "Fingers"

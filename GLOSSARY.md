@@ -76,7 +76,7 @@ _Avoid_: Grade (the temperature grades of AEC-Q100 are an _Environment_'s range,
 A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy and caps it with plating so that the solder stays on the pad; the process says up to what size it does that (`.via_in_pad`), and `fab-notes.txt` lists the pads that have one. The router uses one only when a pad cannot be reached any other way.
 
 **Meander**:
-A serpentine of 45 degree bends that the router draws on a straight run of the shorter net of a diff pair, so that the pair's two nets are as long as each other (issue #431). Its bumps stand on one side of the run, away from the partner, with an edge gap of three track widths (or the clearance, if larger) between neighbouring legs; it goes only where the run is not coupled to the partner and where it keeps every space the design rules check asks of a track (`netsmith_pcb::meander`).
+A serpentine of 45 degree bends that the router draws on a straight run of the shorter net of a diff pair, so that the pair's two nets are as long as each other (issue #431). Its bumps stand on one side of the run, away from the partner, with an edge gap of three track widths (or the clearance, if larger) between neighbouring legs; it goes only where the run is not coupled to the partner and where it keeps every space the design rules check asks of a track (`netsmith_router::meander`).
 _Avoid_: Serpentine, trombone, tuning (for the copper itself)
 
 **Teardrop**:

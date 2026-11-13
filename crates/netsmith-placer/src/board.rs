@@ -143,3 +143,48 @@ fn explained(
         netsmith_pcb::explain::explain(design, &ended, outline, base, rules).map(Box::new);
     error
 }
+
+#[cfg(test)]
+mod tests {
+    use netsmith_pcb::{Layout, Side, place_options};
+
+    use super::*;
+    use crate::testlib::{fixtures, led_design};
+
+    fn placed(design: &Design) -> Board {
+        board_from_design(design, &Mapping::standard(), &fixtures()).unwrap()
+    }
+
+    #[test]
+    fn placement_is_valid_and_the_same_every_time() {
+        let board = placed(&led_design());
+        assert_eq!(board.check_placement(), vec![]);
+        assert_eq!(board, placed(&led_design()));
+    }
+
+    /// The LED board with each part's path its designator in lower case, as a layout names them.
+    fn led_with_paths() -> Design {
+        let mut design = led_design();
+        for p in &mut design.parts {
+            p.path = p.refdes.to_lowercase();
+        }
+        design
+    }
+
+    #[test]
+    fn a_layout_puts_the_parts_it_locks_where_it_says_and_the_others_go_round_them() {
+        let layout = Layout::parse(
+            "version = 1\n[LedExample]\nseed = 7\n[LedExample.parts.r1]\nat = [5.0, 4.0]\nrotation = 90.0\nlock = true\n[LedExample.parts.d1]\nat = [12.0, 6.0]\nside = \"bottom\"\n",
+            "led.pcb.toml",
+        )
+        .unwrap();
+        let design = led_with_paths();
+        let options = place_options(&design, Some(&layout));
+        let board =
+            board_from_design_placed(&design, &Mapping::standard(), &fixtures(), &options).unwrap();
+        let r1 = board.part("R1").unwrap();
+        assert_eq!((r1.at, r1.rotation), (ORIGIN + Pt::new(5.0, 4.0), 90.0));
+        assert_eq!(board.part("D1").unwrap().side, Side::Back);
+        assert_eq!(board.check_placement(), vec![]);
+    }
+}
