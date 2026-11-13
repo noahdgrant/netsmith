@@ -1,9 +1,8 @@
 //! The schematic's layout can be stopped (ADR 0062), and with a token that is not cancelled it
-//! draws the same bytes as without one.
+//! draws the same bytes as without one. How soon a cancel is heard is counted in checkpoints and
+//! sheets, never in time, so that a busy runner cannot fail it.
 
 use crate::common;
-
-use std::time::{Duration, Instant};
 
 use netsmith_core::job::{self, Cancel, Cancelled};
 use netsmith_view::{Marks, render_svg_by_module_marked};
@@ -22,9 +21,7 @@ fn a_drawing_with_a_cancelled_token_stops_at_once_and_with_another_is_the_same_d
         )
         .expect("draws")
     };
-    let started = Instant::now();
     let plain = draw();
-    let whole = started.elapsed();
 
     let token = Cancel::new();
     let watched = job::catch(|| job::scope(&token, draw)).expect("not cancelled");
@@ -32,30 +29,37 @@ fn a_drawing_with_a_cancelled_token_stops_at_once_and_with_another_is_the_same_d
         watched == plain,
         "a token that is not cancelled changes no byte of the drawing"
     );
+    let whole = token.checkpoints();
 
+    let token = Cancel::new();
     token.cancel();
-    let started = Instant::now();
     let result = job::catch(|| job::scope(&token, draw));
-    let stopped_after = started.elapsed();
     assert!(matches!(result, Err(Cancelled)));
-    assert!(
-        stopped_after < Duration::from_millis(100),
-        "stopped after {stopped_after:?}, a whole drawing takes {whole:?}"
+    assert_eq!(
+        token.checkpoints(),
+        1,
+        "the drawing went past a checkpoint of a token that was cancelled (a whole drawing reaches {whole})"
     );
 }
 
+/// Asked from inside, when the second sheet begins (the same place whatever the load): the
+/// drawing reports no sheet after it, and ends cancelled.
 #[test]
-fn a_drawing_is_stopped_while_it_runs() {
+fn a_drawing_is_stopped_while_it_runs_before_it_begins_another_sheet() {
     let b = common::bench::bench();
     let token = Cancel::new();
-    let asked = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let started = Instant::now();
-    // Counted in sheets: asked from inside, at the second sheet.
+    // The sheets reported, and how many of them came after the cancel was asked.
+    let heard = std::rc::Rc::new(std::cell::RefCell::new((0u64, 0usize)));
     let sink: std::rc::Rc<dyn Fn(&job::Work)> = {
-        let (token, asked) = (token.clone(), std::sync::Arc::clone(&asked));
+        let (token, heard) = (token.clone(), std::rc::Rc::clone(&heard));
         std::rc::Rc::new(move |w: &job::Work| {
-            if w.unit == "sheets drawn" && w.done >= 1 && asked.lock().unwrap().is_none() {
-                *asked.lock().unwrap() = Some(Instant::now());
+            if w.unit != "sheets drawn" {
+                return;
+            }
+            if token.is_cancelled() {
+                heard.borrow_mut().1 += 1;
+            } else if w.done >= 1 {
+                heard.borrow_mut().0 = w.done;
                 token.cancel();
             }
         })
@@ -74,16 +78,12 @@ fn a_drawing_is_stopped_while_it_runs() {
             })
         })
     });
-    let asked = asked
-        .lock()
-        .unwrap()
-        .expect("the drawing reached its second sheet");
+    let (asked_at, after) = *heard.borrow();
+    assert_eq!(asked_at, 1, "the drawing reached its second sheet");
     assert!(matches!(result, Err(Cancelled)));
-    assert!(
-        asked.elapsed() < Duration::from_millis(500),
-        "stopped {:?} after it was asked (the whole call took {:?})",
-        asked.elapsed(),
-        started.elapsed()
+    assert_eq!(
+        after, 0,
+        "the drawing began {after} more sheet(s) after it was asked to stop"
     );
 }
 

@@ -370,7 +370,6 @@ fn two_relations_that_cannot_both_hold_are_reported_by_the_check_and_not_looped_
     let physical = physical_with(
         "    .radio.row_b.place.x - .radio.row_a.place.x >= 20mm\n    .radio.row_b.place.x - .radio.row_a.place.x <= 18mm\n",
     );
-    let started = std::time::Instant::now();
     let (_dir, made) = fab("contradiction", &physical, "", &Catalogs::jlcpcb());
     let e = made.expect_err("no placement holds both");
     // `fab` stops before placing and names the two lines that cannot both hold (issue #80,
@@ -388,9 +387,4 @@ fn two_relations_that_cannot_both_hold_are_reported_by_the_check_and_not_looped_
     // The lines are proved to conflict before the placer starts, so there is no arrangement
     // to measure: nothing is said of where the placer ended.
     assert!(!e.contains("where the placer ended"), "{e}");
-    assert!(
-        started.elapsed().as_secs() < 60,
-        "it took {:?}",
-        started.elapsed()
-    );
 }

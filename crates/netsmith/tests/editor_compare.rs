@@ -655,12 +655,9 @@ fn a_second_compare_of_a_ref_is_served_from_the_cache_by_commit_hash() {
     assert_eq!(stages(&events), ["diff"]);
     assert_eq!(warm.boards, cold.boards);
     assert_eq!(warm.summary, cold.summary);
-    assert!(
-        warm.elapsed_ms < cold.elapsed_ms,
-        "{} < {}",
-        warm.elapsed_ms,
-        cold.elapsed_ms
-    );
+    // The work saved is in the stages above: the cold compare went through seven stages, the warm
+    // one only the last. (Their times are printed, not compared: a speed is not the code's.)
+    eprintln!("cold {} ms, warm {} ms", cold.elapsed_ms, warm.elapsed_ms);
     // Another ref is another reading.
     assert!(!compare_with(&w, "HEAD", None, &silent()).unwrap().cached);
 }

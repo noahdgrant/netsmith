@@ -12,8 +12,8 @@
 //! (no cache, no lock, no thread), so what an unwind passes is dropped and nothing is left half
 //! done.
 //!
-//! A checkpoint outside any scope costs one thread-local read; inside one, one more relaxed
-//! atomic load. The results of a call that is not cancelled are the same bytes as without the
+//! A checkpoint outside any scope costs one thread-local read; inside one, a relaxed atomic add
+//! (the count of checkpoints reached, which tests read) and a load. The results of a call that is not cancelled are the same bytes as without the
 //! checkpoints: they only read.
 //!
 //! **Why the call is stopped by unwinding and not by a `Result`.** The long calls are `check`,
@@ -92,26 +92,67 @@ use std::{
     rc::Rc,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
 /// A request to stop, shared by whoever may ask and the call that is asked. Cloning shares it.
+///
+/// It also counts the checkpoints that the calls under it have reached ([`Cancel::checkpoints`]),
+/// which is how a test says how far a call went after a cancel: in checkpoints, which are the
+/// same on every machine, and not in milliseconds, which are not.
 #[derive(Debug, Clone, Default)]
-pub struct Cancel(Arc<AtomicBool>);
+pub struct Cancel(Arc<Shared>);
+
+#[derive(Debug, Default)]
+struct Shared {
+    asked: AtomicBool,
+    /// How many checkpoints under this token have been reached (the one that stopped the call
+    /// included).
+    reached: AtomicU64,
+    /// The checkpoint that cancels the token when it is reached, 0 for none ([`Cancel::at_checkpoint`]).
+    cancel_at: AtomicU64,
+}
 
 impl Cancel {
     pub fn new() -> Cancel {
         Cancel::default()
     }
 
+    /// A token that cancels itself at the `n`th checkpoint a call under it reaches (`n` of at
+    /// least 1), and that checkpoint stops the call: the call has reached `n` checkpoints when
+    /// it ends, never more. For tests, which ask for a cancel at a known place of the work
+    /// whatever the load of the machine, and not after a time.
+    pub fn at_checkpoint(n: u64) -> Cancel {
+        assert!(n >= 1, "checkpoints are counted from 1");
+        let token = Cancel::new();
+        token.0.cancel_at.store(n, Ordering::Relaxed);
+        token
+    }
+
     /// Ask the call that watches this to stop at its next checkpoint. It stays asked.
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::Relaxed);
+        self.0.asked.store(true, Ordering::Relaxed);
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
+        self.0.asked.load(Ordering::Relaxed)
+    }
+
+    /// How many checkpoints the calls under this token have reached, the one that stopped a
+    /// call included. A call that is stopped by a token cancelled before it began has reached
+    /// one.
+    pub fn checkpoints(&self) -> u64 {
+        self.0.reached.load(Ordering::Relaxed)
+    }
+
+    /// Counts one checkpoint reached, and says whether the call is to stop.
+    fn reach(&self) -> bool {
+        let n = self.0.reached.fetch_add(1, Ordering::Relaxed) + 1;
+        if n == self.0.cancel_at.load(Ordering::Relaxed) {
+            self.cancel();
+        }
+        self.is_cancelled()
     }
 }
 
@@ -174,10 +215,11 @@ pub fn is_cancelled() -> bool {
 
 /// A place where a call may be stopped: ends it with [`Cancelled`] if the thread's token is
 /// cancelled, else does nothing. Put it in a loop at a grain of a millisecond or so; it is no
-/// cost to put one in each pass of a loop of that size.
+/// cost to put one in each pass of a loop of that size. The token counts it
+/// ([`Cancel::checkpoints`]).
 #[inline]
 pub fn checkpoint() {
-    if is_cancelled() {
+    if WATCHED.with(Cell::get) && CURRENT.with(|c| c.borrow().as_ref().is_some_and(Cancel::reach)) {
         resume_unwind(Box::new(Cancelled));
     }
 }
@@ -274,6 +316,37 @@ mod tests {
             !is_cancelled(),
             "the token of the scope is not the thread's any more"
         );
+    }
+
+    #[test]
+    fn the_token_counts_the_checkpoints_reached_and_a_token_at_a_checkpoint_stops_there() {
+        let token = Cancel::new();
+        scope(&token, || (0..7).for_each(|_| checkpoint()));
+        assert_eq!(token.checkpoints(), 7);
+        // Outside a scope, and in an uninterruptible part, nothing is counted.
+        checkpoint();
+        scope(&token, || uninterruptible(checkpoint));
+        assert_eq!(token.checkpoints(), 7);
+
+        let token = Cancel::at_checkpoint(3);
+        let passes = Cell::new(0);
+        let result = catch(|| {
+            scope(&token, || {
+                loop {
+                    checkpoint();
+                    passes.set(passes.get() + 1);
+                }
+            })
+        });
+        assert_eq!(result, Err(Cancelled));
+        assert_eq!(passes.get(), 2, "the third checkpoint stops the call");
+        assert_eq!(token.checkpoints(), 3);
+
+        // A token cancelled before the call stops it at its first checkpoint.
+        let token = Cancel::new();
+        token.cancel();
+        assert_eq!(catch(|| scope(&token, checkpoint)), Err(Cancelled));
+        assert_eq!(token.checkpoints(), 1);
     }
 
     #[test]

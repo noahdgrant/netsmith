@@ -8,6 +8,7 @@
 //! mixed::measured -- --ignored --nocapture` prints, for each seed, how the router ended.
 
 use crate::common;
+use crate::guard;
 
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
@@ -494,16 +495,22 @@ fn two_busy_packages_that_a_dozen_nets_join_are_not_pulled_together_past_the_roo
 #[test]
 fn the_mixed_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_that_keeps_the_rules()
  {
-    // Seed 3 leaves lines at QFN pads (see `measured`). Stopped early, what was routed must
-    // still pass the design rules check, and every line left is named.
+    // Seed 3 leaves lines at QFN pads when the router tries no other order and does no rip-up or negotiation
+    // (a fixed amount of work, so that what is left is the same on every machine: a time limit
+    // would leave what a machine got done in it). What was routed must still pass the design
+    // rules check, and every line left is named.
     let mut board = mixed_board(3, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(10)),
+            retry_orders: false,
+            rip_up: false,
+            negotiate: false,
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
+    guard::not_hung(&routing);
     assert!(!routing.left.is_empty());
     assert!(routing.left.lines.iter().all(|l| !l.net.is_empty()));
     assert!(!board.tracks.is_empty() && !board.vias.is_empty());
@@ -516,19 +523,19 @@ fn the_mixed_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_t
 
 /// The aim of issue #3 for this board: every connection routed, on every seed (the first four
 /// are run here, each a test of its own so that a test run deals them out side by side; `measured`
-/// prints the others). The time limit is `fab`'s: routing time is watched, not a gate (owner,
-/// 2026-11-11, issue #431); seeds 1 to 3 take 140 to 160 s since the router bends by 45 degrees
-/// only (issue #415).
+/// prints the others). Routing time is watched, not a gate (owner, 2026-11-11, issue #431), and
+/// no test passes or fails by it (#663): the limit is `guard::GUARD`, a hang guard. Seeds 1 to 3
+/// take 110 to 160 s since the router bends by 45 degrees only (issue #415).
 fn routes_completely(seed: u64) {
     let mut board = mixed_board(seed, AREA, Mix::DEFAULT).unwrap_or_else(|e| panic!("{e}"));
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(300)),
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
-    assert!(!routing.stopped);
+    guard::not_hung(&routing);
     assert!(
         routing.left.is_empty(),
         "seed {seed}, unrouted: {:#?}",
@@ -581,11 +588,11 @@ fn route_seed_7(negotiate: bool) -> (Board, netsmith_pcb::Ratsnest) {
         RouteOptions {
             retry_orders: false,
             negotiate,
-            time_limit: Some(Duration::from_secs(120)),
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
-    assert!(!routing.stopped);
+    guard::not_hung(&routing);
     (board, routing.left)
 }
 
@@ -658,7 +665,7 @@ fn measured() {
         let routing = route_with(
             &mut board,
             RouteOptions {
-                time_limit: Some(Duration::from_secs(300)),
+                time_limit: Some(guard::GUARD),
                 ..RouteOptions::default()
             },
         );

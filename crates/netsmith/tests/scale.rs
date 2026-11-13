@@ -1,7 +1,8 @@
 //! A design the size of the showcase boards (#561): about 1,200 parts and 5,000 pads in modules
 //! and repeated circuits, generated as `.nsm` source. `measured` times every stage on it from the
-//! source to the parity report; the regular test keeps the slowest of them under a bound on a
-//! smaller size, so that a regression shows.
+//! source to the parity report. The regular tests time nothing (the speed of the machine is not
+//! the code's): one runs every stage on a smaller size and checks what each makes, and one
+//! compares the solver's trials, which it counts, between two sizes, so that a search that grows with the square of the board shows on every machine.
 //!
 //! The placer and the router are not measured (they are the router epic's, #431): the export is
 //! given a board whose parts are put in rows, left to right, by their courtyards, with no placer.
@@ -198,14 +199,6 @@ impl Times {
         r
     }
 
-    fn slowest(&self) -> (&'static str, Duration) {
-        self.stages
-            .iter()
-            .map(|(s, d, _)| (*s, *d))
-            .max_by_key(|(_, d)| *d)
-            .unwrap()
-    }
-
     fn text(&self) -> String {
         self.stages
             .iter()
@@ -399,20 +392,40 @@ fn measured() {
     }
 }
 
-/// Half the full size (577 parts, 2,738 pads), every stage but the editor's: the slowest stays
-/// under a bound. In the test profile on a 10-core machine the slowest stage, the comparison with
-/// no designators, takes about 3 s and the build about 2.5 s (2026-11-13); the bound leaves five
-/// times that for a slower CI machine, so it fails a stage that becomes about five times slower
-/// (the picks were 2.5 times slower than now before #561, at this size).
+/// Every stage at a quarter of the full size, with what each makes checked as `run` goes (the
+/// build, the board, the comparison with the board's netlist and the parity against itself pass).
+/// The times are printed and not compared.
 #[test]
-fn half_a_showcase_board_goes_from_source_to_parity_in_time() {
-    let t = run(FULL / 2 / PER_BANK * PER_BANK, false);
-    let (stage, took) = t.slowest();
+fn a_quarter_of_a_showcase_board_goes_from_source_to_parity() {
+    let t = run(FULL / 4 / PER_BANK * PER_BANK, false);
     eprintln!("{}", t.text());
+}
+
+/// The candidates the solver's search tried for a board of `channels` channels.
+fn solver_trials(channels: usize) -> usize {
+    let c = netsmith_check::check("scale.nsm", &source(channels), &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let solved = netsmith_solve::solve(&c.boards[0], &Catalogs::jlcpcb());
+    assert!(solved.diagnostics.is_empty(), "{:?}", solved.diagnostics);
+    eprintln!(
+        "{channels} channels: {} trials, {} work",
+        solved.trials, solved.work
+    );
+    solved.trials
+}
+
+/// The solver's search grows with the board and not with its square: twice the channels, about
+/// twice the trials (the channels share the bus's nets and not the groups of parts that are
+/// searched, so each is searched on its own). A count, so that a busy runner cannot fail it. The
+/// work is printed and not bounded: what a trial costs grows with the board by design.
+#[test]
+fn the_solvers_trials_grow_with_the_board_and_not_with_its_square() {
+    let (small, big) = (solver_trials(8), solver_trials(16));
+    let ratio = big as f64 / small.max(1) as f64;
+    eprintln!("ratio of the trials {ratio:.2}");
     assert!(
-        took < Duration::from_secs(15),
-        "{stage} took {took:.1?}:\n{}",
-        t.text()
+        ratio < 2.5,
+        "twice the board took {ratio:.2} times the trials ({small}, {big})"
     );
 }
 

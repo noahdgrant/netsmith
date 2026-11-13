@@ -5,7 +5,6 @@
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    time::{Duration, Instant},
 };
 
 use netsmith_check::{Checked, Loader, check};
@@ -21,23 +20,43 @@ fn checked(stages: usize) -> Checked {
     c
 }
 
+/// Counts work and times nothing: a solve under a token that was cancelled before it began
+/// reaches one checkpoint, and reports no part prepared or chosen.
 #[test]
-fn a_solve_with_a_cancelled_token_stops_at_once() {
+fn a_solve_with_a_cancelled_token_stops_at_its_first_checkpoint() {
     let c = checked(6);
     let catalogs = Catalogs::jlcpcb();
-    let started = Instant::now();
-    let _ = solve(&c.boards[0], &catalogs);
-    let whole = started.elapsed();
+    let whole = Cancel::new();
+    let _ = job::scope(&whole, || solve(&c.boards[0], &catalogs));
+    assert!(
+        whole.checkpoints() > 10,
+        "a whole solve reaches {} checkpoints",
+        whole.checkpoints()
+    );
 
     let token = Cancel::new();
     token.cancel();
-    let started = Instant::now();
-    let result = job::catch(|| job::scope(&token, || solve(&c.boards[0], &catalogs)));
-    let stopped_after = started.elapsed();
+    let reported: Rc<Cell<usize>> = Rc::default();
+    let sink: Rc<dyn Fn(&Work)> = {
+        let reported = Rc::clone(&reported);
+        Rc::new(move |_| reported.set(reported.get() + 1))
+    };
+    let result = job::catch(|| {
+        job::reporting(sink, || {
+            job::scope(&token, || solve(&c.boards[0], &catalogs))
+        })
+    });
     assert!(matches!(result, Err(Cancelled)));
-    assert!(
-        stopped_after < Duration::from_millis(100),
-        "stopped after {stopped_after:?}, a whole solve takes {whole:?}"
+    assert_eq!(
+        token.checkpoints(),
+        1,
+        "the solver went past a checkpoint of a token that was cancelled (a whole solve reaches {})",
+        whole.checkpoints()
+    );
+    assert_eq!(
+        reported.get(),
+        0,
+        "the solver reported work after it was cancelled"
     );
 }
 
