@@ -1100,7 +1100,7 @@
             "power_flow": null
           },
           {
-            "name": "io4",
+            "name": "gpio4",
             "datasheet": "IO4",
             "kind": "bidirectional",
             "pads": [
@@ -1110,7 +1110,7 @@
             "power_flow": null
           },
           {
-            "name": "io5",
+            "name": "gpio5",
             "datasheet": "IO5",
             "kind": "bidirectional",
             "pads": [
@@ -1120,7 +1120,7 @@
             "power_flow": null
           },
           {
-            "name": "io6",
+            "name": "gpio6",
             "datasheet": "IO6",
             "kind": "bidirectional",
             "pads": [
@@ -1130,7 +1130,7 @@
             "power_flow": null
           },
           {
-            "name": "io7",
+            "name": "gpio7",
             "datasheet": "IO7",
             "kind": "bidirectional",
             "pads": [
@@ -1140,7 +1140,7 @@
             "power_flow": null
           },
           {
-            "name": "io15",
+            "name": "gpio15",
             "datasheet": "IO15",
             "kind": "bidirectional",
             "pads": [
@@ -1150,7 +1150,7 @@
             "power_flow": null
           },
           {
-            "name": "io16",
+            "name": "gpio16",
             "datasheet": "IO16",
             "kind": "bidirectional",
             "pads": [
@@ -1160,7 +1160,7 @@
             "power_flow": null
           },
           {
-            "name": "io17",
+            "name": "gpio17",
             "datasheet": "IO17",
             "kind": "bidirectional",
             "pads": [
@@ -1170,7 +1170,7 @@
             "power_flow": null
           },
           {
-            "name": "io18",
+            "name": "gpio18",
             "datasheet": "IO18",
             "kind": "bidirectional",
             "pads": [
@@ -1180,7 +1180,7 @@
             "power_flow": null
           },
           {
-            "name": "io8",
+            "name": "gpio8",
             "datasheet": "IO8",
             "kind": "bidirectional",
             "pads": [
@@ -1190,7 +1190,7 @@
             "power_flow": null
           },
           {
-            "name": "io19",
+            "name": "gpio19",
             "datasheet": "IO19",
             "kind": "bidirectional",
             "pads": [
@@ -1200,7 +1200,7 @@
             "power_flow": null
           },
           {
-            "name": "io20",
+            "name": "gpio20",
             "datasheet": "IO20",
             "kind": "bidirectional",
             "pads": [
@@ -1210,7 +1210,7 @@
             "power_flow": null
           },
           {
-            "name": "io3",
+            "name": "gpio3",
             "datasheet": "IO3",
             "kind": "bidirectional",
             "pads": [
@@ -1220,7 +1220,7 @@
             "power_flow": null
           },
           {
-            "name": "io46",
+            "name": "gpio46",
             "datasheet": "IO46",
             "kind": "bidirectional",
             "pads": [
@@ -1230,7 +1230,7 @@
             "power_flow": null
           },
           {
-            "name": "io9",
+            "name": "gpio9",
             "datasheet": "IO9",
             "kind": "bidirectional",
             "pads": [
@@ -1240,7 +1240,7 @@
             "power_flow": null
           },
           {
-            "name": "io10",
+            "name": "gpio10",
             "datasheet": "IO10",
             "kind": "bidirectional",
             "pads": [
@@ -1250,7 +1250,7 @@
             "power_flow": null
           },
           {
-            "name": "io11",
+            "name": "gpio11",
             "datasheet": "IO11",
             "kind": "bidirectional",
             "pads": [
@@ -1260,7 +1260,7 @@
             "power_flow": null
           },
           {
-            "name": "io12",
+            "name": "gpio12",
             "datasheet": "IO12",
             "kind": "bidirectional",
             "pads": [
@@ -1270,7 +1270,7 @@
             "power_flow": null
           },
           {
-            "name": "io13",
+            "name": "gpio13",
             "datasheet": "IO13",
             "kind": "bidirectional",
             "pads": [
@@ -1280,7 +1280,7 @@
             "power_flow": null
           },
           {
-            "name": "io14",
+            "name": "gpio14",
             "datasheet": "IO14",
             "kind": "bidirectional",
             "pads": [
@@ -1290,7 +1290,7 @@
             "power_flow": null
           },
           {
-            "name": "io21",
+            "name": "gpio21",
             "datasheet": "IO21",
             "kind": "bidirectional",
             "pads": [
@@ -1300,7 +1300,7 @@
             "power_flow": null
           },
           {
-            "name": "io47",
+            "name": "gpio47",
             "datasheet": "IO47",
             "kind": "bidirectional",
             "pads": [
@@ -1310,7 +1310,7 @@
             "power_flow": null
           },
           {
-            "name": "io48",
+            "name": "gpio48",
             "datasheet": "IO48",
             "kind": "bidirectional",
             "pads": [
@@ -1320,7 +1320,7 @@
             "power_flow": null
           },
           {
-            "name": "io45",
+            "name": "gpio45",
             "datasheet": "IO45",
             "kind": "bidirectional",
             "pads": [
@@ -1330,7 +1330,7 @@
             "power_flow": null
           },
           {
-            "name": "io0",
+            "name": "gpio0",
             "datasheet": "IO0",
             "kind": "bidirectional",
             "pads": [
@@ -1340,7 +1340,7 @@
             "power_flow": null
           },
           {
-            "name": "io35",
+            "name": "gpio35",
             "datasheet": "IO35",
             "kind": "bidirectional",
             "pads": [
@@ -1350,7 +1350,7 @@
             "power_flow": null
           },
           {
-            "name": "io36",
+            "name": "gpio36",
             "datasheet": "IO36",
             "kind": "bidirectional",
             "pads": [
@@ -1360,7 +1360,7 @@
             "power_flow": null
           },
           {
-            "name": "io37",
+            "name": "gpio37",
             "datasheet": "IO37",
             "kind": "bidirectional",
             "pads": [
@@ -1370,7 +1370,7 @@
             "power_flow": null
           },
           {
-            "name": "io38",
+            "name": "gpio38",
             "datasheet": "IO38",
             "kind": "bidirectional",
             "pads": [
@@ -1380,7 +1380,7 @@
             "power_flow": null
           },
           {
-            "name": "io39",
+            "name": "gpio39",
             "datasheet": "IO39",
             "kind": "bidirectional",
             "pads": [
@@ -1390,7 +1390,7 @@
             "power_flow": null
           },
           {
-            "name": "io40",
+            "name": "gpio40",
             "datasheet": "IO40",
             "kind": "bidirectional",
             "pads": [
@@ -1400,7 +1400,7 @@
             "power_flow": null
           },
           {
-            "name": "io41",
+            "name": "gpio41",
             "datasheet": "IO41",
             "kind": "bidirectional",
             "pads": [
@@ -1410,7 +1410,7 @@
             "power_flow": null
           },
           {
-            "name": "io42",
+            "name": "gpio42",
             "datasheet": "IO42",
             "kind": "bidirectional",
             "pads": [
@@ -1440,7 +1440,7 @@
             "power_flow": null
           },
           {
-            "name": "io2",
+            "name": "gpio2",
             "datasheet": "IO2",
             "kind": "bidirectional",
             "pads": [
@@ -1450,7 +1450,7 @@
             "power_flow": null
           },
           {
-            "name": "io1",
+            "name": "gpio1",
             "datasheet": "IO1",
             "kind": "bidirectional",
             "pads": [
