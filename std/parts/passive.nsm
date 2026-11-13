@@ -319,6 +319,66 @@ generic Fuse {
     catalog fuse { .rated_current, .rated_voltage, .resistance, .package }
 }
 
+/// An NTC thermistor: a resistor whose resistance falls as it warms. At DC it is a resistor
+/// (`dc resistor .a .b .resistance`) over the range of resistance it has at the temperatures it
+/// works at, so a divider with a pull-up is solved over the whole range.
+///
+/// The range comes from the maker's resistance-temperature table, not from a formula. A
+/// provider states the table's resistance at the two ends of its operating range,
+/// `.cold_resistance` (the coldest end, the largest) and `.hot_resistance` (the hottest end,
+/// the smallest), with the document, revision and page in its catalog row, and `.resistance`
+/// defaults to the range between them. A board whose part sees a narrower range of temperature
+/// states the resistance from the same table (`.th.resistance &= 1.455kohm..27.445kohm`, 0 C to
+/// 85 C for a 10 kohm, 3380 K part), and a range outside the table's ends is refused.
+/// `.resistance_25c` is the zero-power resistance at 25 C with its tolerance, which the
+/// datasheet's part number names.
+///
+/// Why no B formula. `R = R25 * exp(B * (1/T - 1/T25))` matches a maker's table only near the two
+/// temperatures B is measured at: for APV's ANTC1608-103F3380FB (B25/50 3380 K) it gives
+/// 235.8 kohm at -40 C, where the maker's table gives 197.39 kohm (19.5 % more), and 0.580 kohm at
+/// 125 C, where it gives 0.532 kohm (APV "Chip NTC Thermistors, ANTC Series", revised
+/// 2026-06-21, p.10). The language has no `exp` either. A table gives no tolerance away from
+/// 25 C, so the ends are the table's centre values.
+///
+/// What is not checked. A thermistor's power and current ratings are figures at 25 C that limit
+/// its self-heating (the ANTC's 100 mW and 0.31 mA, with a dissipation factor of 1 mW/C, p.4),
+/// not a limit over its range: a provider keeps them as data, and a board that needs a bound on
+/// the self-heating states it. No standard catalog: a project's provider brings its own rows
+/// (`part X provides NtcThermistor`).
+generic NtcThermistor {
+    .designator &= "RT"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    /// The zero-power resistance at 25 C, with its tolerance.
+    .resistance_25c: Resistance
+    /// The resistance at the coldest end of the operating range, from the maker's
+    /// resistance-temperature table.
+    .cold_resistance: Resistance
+    /// The resistance at the hottest end of the operating range, from the same table.
+    .hot_resistance: Resistance
+    /// The resistance at the temperatures the board runs at: the table's whole range unless
+    /// the board states a narrower one.
+    .resistance: Resistance
+    .resistance ?= .hot_resistance .. .cold_resistance
+    // A board's narrower range is read from the same table, so it lies inside the table's.
+    .resistance >= .hot_resistance
+    .resistance <= .cold_resistance
+    /// Through-current, a to b.
+    .current: Current
+    /// Voltage at a relative to b.
+    .drop: Voltage
+
+    .drop == .current * .resistance
+    bridge .a ~> .b
+    dc resistor .a .b .resistance
+
+    .package: Package
+}
+
 /// A single-pole single-throw switch or push button: it joins its two terminals while it is
 /// closed. In a `~>` chain it is taken as closed, and `.current` is checked against
 /// `.rated_current`.

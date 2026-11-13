@@ -29,23 +29,23 @@ fn message(src: &str) -> String {
 #[test]
 fn passive_parts_parse() {
     let file = parse(PASSIVE).unwrap();
-    // Eight parts and the enum `Dielectric` of the capacitor (ADR 0055). Seven of the parts
-    // are generics that are their own first provider (ADR 0068 stage 2); `Switch` has no
-    // catalog and stays a `part`.
-    assert_eq!(file.definitions.len(), 9);
+    // Nine parts and the enum `Dielectric` of the capacitor (ADR 0055). Eight of the parts
+    // are generics that are their own first provider (ADR 0068 stage 2), `NtcThermistor`
+    // among them (#473); `Switch` has no catalog and stays a `part`.
+    assert_eq!(file.definitions.len(), 10);
     assert_eq!(
         file.definitions
             .iter()
             .filter(|d| matches!(d.kind, DefKind::Part | DefKind::Generic))
             .count(),
-        8
+        9
     );
     assert_eq!(
         file.definitions
             .iter()
             .filter(|d| d.kind == DefKind::Generic)
             .count(),
-        7
+        8
     );
     let dielectric = def(&file, "Dielectric");
     assert_eq!(dielectric.kind, DefKind::Enum);

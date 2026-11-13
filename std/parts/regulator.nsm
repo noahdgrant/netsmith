@@ -155,6 +155,15 @@ module FeedbackDivider {
 /// must be at most the input; the minimum on-time and off-time are modelled since ADR 0093),
 /// light-load modes, the divider's and the IC's quiescent current in the load (see `BuckStage`),
 /// and the second capacitor an IC may ask for. Each was open in issue #63.
+///
+/// Why there is no `BuckBoost` beside it (the owner, 2026-11-12, #473). `dc switching_regulator`
+/// is a power balance and assumes no topology, so a buck-boost IC states it on its own rails as a
+/// part (`.vout: Rail`, its efficiency and quiescent current from its datasheet), with no std
+/// interface: the TPS55288 of `examples/power_manifold_charger` does. A std interface and stage
+/// wait for a second buck-boost IC. The only one so far is a poor template: its buck leg is two
+/// external MOSFETs that most buck-boost ICs have inside, its inductor sits between two switch
+/// nodes and not in a `~>` chain to the output, and every check of a stage would have to hold in
+/// both the buck and the boost mode over ranges of input and output that overlap.
 interface Buck {
     /// The switching node as a supply: its `pos` is the IC's switch pin and its `voltage` the
     /// output voltage it averages to, and the load current comes out of it (the `current` is

@@ -16,6 +16,7 @@ mod build;
 mod case_model_files;
 mod catalog_add;
 mod catalog_height;
+mod charger_models;
 mod compare;
 mod conflicts;
 mod consigned;

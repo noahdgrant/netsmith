@@ -499,26 +499,48 @@ mod board {
 
     /// What the solver does and does not check on the power path (README, "What the solver
     /// checks"). The microcontroller's and the comparator's supply windows are checked against
-    /// the 3.3 V rail, the protector's against the 5 V rail, and the converter's input against
-    /// the slot's; the converter, the protector, the MOSFETs' gate drive and the comparators'
-    /// thresholds are not modelled, so what they do is listed as not evaluated. This pins the
+    /// the 3.3 V rail and the protector's against the 5 V rail; the port switch's gate drive is
+    /// the protector's (#473) and its trip current is checked against the MOSFETs and the
+    /// shunt. The converter is a switching regulator at DC, but nothing on the board sources
+    /// the slot's 24 V and Q1's drain on its input is not modelled, so its input window is
+    /// still listed as not evaluated, as are the switching MOSFETs Q1 and Q2. This pins the
     /// listed ones: when a part states what is missing, this fails and the README is to be
     /// rewritten.
     #[test]
     fn the_power_path_is_checked_as_far_as_the_parts_state_and_the_rest_is_listed() {
         let built = built();
         let listed = |needle: &str| built.notes.iter().any(|n| n.contains(needle));
-        // Checked, so not listed: the supply windows of the chips that sit on a stated rail.
+        // Checked, so not listed: the supply windows of the chips that sit on a stated rail,
+        // the port switch's gate drive and its trip current.
         assert!(!listed("mcu.vdd.voltage"), "{:?}", built.notes);
         assert!(!listed("comparator.supply.voltage"), "{:?}", built.notes);
         assert!(!listed("protector.vcc.voltage"), "{:?}", built.notes);
-        // Not evaluated: the converter's input window, the regulator's drop and the MOSFETs.
+        assert!(!listed("q_port_a.gate_source_voltage"), "{:?}", built.notes);
+        assert!(!listed("q_port_b.gate_source_voltage"), "{:?}", built.notes);
+        assert!(!listed("port_trip_current"), "{:?}", built.notes);
+        // The converter's output is its own rail, no longer a pin the analysis cannot see.
+        assert!(
+            !listed("`converter.vout` is not modelled"),
+            "{:?}",
+            built.notes
+        );
+        // Not evaluated: the converter's input window and the switching MOSFETs.
         assert!(listed("not evaluated: converter.vin.voltage >= 2.7V"));
         assert!(listed(
             "not evaluated: q_high.gate_source_voltage >= q_high.gate_threshold"
         ));
         assert!(listed(
-            "the balance on net `VOUT_CONV` is incomplete: `converter.vout` is not modelled"
+            "the balance on net `EMI_VIN` is incomplete: `q_high.drain` is not modelled"
         ));
+        assert_eq!(
+            built
+                .notes
+                .iter()
+                .filter(|n| n.contains("not evaluated: "))
+                .count(),
+            69,
+            "{:#?}",
+            built.notes
+        );
     }
 }

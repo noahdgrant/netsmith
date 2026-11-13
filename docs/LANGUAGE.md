@@ -9346,14 +9346,14 @@ board Overload {
 
 ```text
 error: -u.buck.sw.current must always be at most u.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:175:5
+    --> std/parts/regulator.nsm:184:5
     |
-175 |     -.sw.current <= .max_output_current
+184 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -stage.vout.current must always be at most stage.buck.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + stage.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `stage`: -stage.inductor.current (6.402uA..3A) + -stage.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `stage.divider.rtop.a` is not modelled; net `net-stage.inductor.a` in `stage`: -stage.buck.sw.current (6.402uA..3A) + stage.inductor.current (6.402uA..3A) add up to zero; net `net-stage.inductor.a`: stage.buck.sw.current (6.402uA..3A) + u.buck.sw.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:449:5
+    --> std/parts/regulator.nsm:458:5
     |
-449 |     -.vout.current <= .buck.max_output_current
+458 |     -.vout.current <= .buck.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9422,9 +9422,9 @@ board HighInput {
 
 ```text
 error: stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:460:5
+    --> std/parts/regulator.nsm:469:5
     |
-460 |     .on_time >= .buck.min_on_time
+469 |     .on_time >= .buck.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9499,9 +9499,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `stage.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`stage.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:467:5
+    --> std/parts/regulator.nsm:476:5
     |
-467 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+476 |     .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10227,7 +10227,7 @@ dc source .vbatt
 - `dc linear_regulator <input rail> <output rail> [<quiescent current>]` and `dc switching_regulator <input rail> <output rail> <efficiency> [<quiescent current>]` (ADR 0076, amendment 3; the optional operand, ADR 0096): a regulator. The first two operands are the part's rails (a rail inside an interface is named through it: `.buck.sw`), not pins. The output rail is an ideal source over the range of its `.voltage`; the input rail draws what the output asks. A linear regulator draws what it supplies and its quiescent current, a range of currents that is not negative, taken at both ends (amendment 9): the third operand is optional, a field of the part that is a current, and a linear regulator that leaves it out draws what it supplies alone. A switching one draws `Pout / (efficiency * Vin)`, with the efficiency a number (a range, `0.85..0.95`, is taken at both ends); an efficiency has to be above 0 and at most 1 (ADR 0076, amendment 14), and one that is not (`85..95` for `85%..95%`, a converter that makes power) is an error that names the part and the value, and the regulator is not modelled. A switching regulator draws its quiescent current too when its statement names one, as a fourth operand that is optional in the same way (ADR 0096); with the output unloaded it still draws that current. A quiescent current that the part names and leaves with no value (or a negative one) is a number nothing can model with: the regulator is not modelled and the island in front of it is left alone, as for a regulator that states no `dc`.
 - `dc source <supply rail>` (ADR 0076, amendment 5): the part gives this rail from outside the board, as a connector gives the supply of a vehicle. The operand is a rail of the part. Its `pos` net is held over the range of the rail's `.voltage` that the design states, and its `neg` net at zero, as a `Rail` that the board declares itself is (see "Supplies" below). A part with a rail it takes its supply from (what a load is) does not state it.
 
-The standard `Resistor`, `Fuse`, `FerriteBead`, `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `NMosfet`, `PMosfet`, `LinearRegulator`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
+The standard `Resistor`, `Fuse`, `FerriteBead`, `NtcThermistor` (over the range of its maker's resistance-temperature table), `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `NMosfet`, `PMosfet`, `LinearRegulator`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does; the statement is a power balance that assumes no topology, so a buck-boost or boost IC states it the same way on its own input and output rails), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
 
 The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator` and `source`; the pins are pins of the part (the rails of a regulator or a source are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
@@ -13440,11 +13440,11 @@ Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen w
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
 
-Parts are numbered by their letters in the order the design declares them (a module's parts where the module is declared, depth first; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
+Parts are numbered by their letters in the order the design declares them (a module's parts where the module is declared, depth first; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `RT` thermistor (IEEE 315), `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator (ADR 0046; see Designators).
 
 ### Parts
 
-`Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `Schottky`, `Zener`, `Tvs`, `NMosfet` and `LinearRegulator` are written `generic`, not `part` (ADR 0068, stage 2): each is its own first provider, so a design uses it as it always did, and a project can add a provider of it (see _The standard passives are generics_). Every other definition in this table is a plain `part`.
+`Resistor`, `Capacitor`, `Led`, `Inductor`, `FerriteBead`, `Crystal`, `Fuse`, `Schottky`, `Zener`, `Tvs`, `NMosfet`, `LinearRegulator` and `NtcThermistor` are written `generic`, not `part` (ADR 0068, stage 2): each is its own first provider, so a design uses it as it always did, and a project can add a provider of it (see _The standard passives are generics_). Every other definition in this table is a plain `part`.
 
 | Definition | What it is |
 |---|---|
@@ -13478,6 +13478,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::passive::FerriteBead` | A ferrite bead: `.impedance` at `.impedance_frequency`, `.rated_current`, `.dc_resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. Catalog `ferrite_bead`. |
 | `std::parts::passive::Crystal` | A two-terminal crystal: `.frequency` (with its tolerance) and `.load_capacitance`. Pins `a`, `b`. Catalog `crystal`. |
 | `std::parts::passive::Fuse` | A fuse: `.rated_current`, `.rated_voltage`, `.resistance`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current` and `.supply_peak <= .rated_voltage` (`.supply_peak` is the `.peak` of the rail its chain starts on, ADR 0086). `.limit_current == .rated_current` is what it lets through to a part behind it (ADR 0091). Catalog `fuse`. |
+| `std::parts::passive::NtcThermistor` | An NTC thermistor: `.resistance_25c` (with its tolerance), `.cold_resistance` and `.hot_resistance` (the maker's resistance-temperature table at the two ends of the operating range), `.resistance` (defaults to the range between them), `.current` and `.drop` tied by Ohm's law. Pins `a` and `b`, bridge `a ~> b`. At DC a resistor over `.resistance` (`dc resistor`); no B formula, and no rating is checked (a thermistor's are figures at 25 C). No standard catalog: a project's provider brings its rows. |
 | `std::parts::passive::Switch` | A single-pole single-throw switch or button: `.rated_current`, `.rated_voltage`. Pins `a`, `b`, bridge `a ~> b`. Requires `.current <= .rated_current`. |
 | `std::parts::diode::Diode` | A diode: `.forward_voltage`, `.max_reverse_voltage`, `.max_forward_current`, `.bias`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Requires `.bias <= .max_reverse_voltage`, `.current <= .max_forward_current` and, for a diode across a rail, the right way round (`.bias >= -.forward_voltage`, from `.bridge_voltage`, ADR 0088); behind a fuse, `.supply_fault_current <= .max_forward_current`, and first in a chain from a rail that states a `.reverse_peak`, `.supply_reverse_peak <= .max_reverse_voltage` (ADR 0091). |
 | `std::parts::diode::Schottky` | A Schottky diode, with the fields and ratings of `Diode`. Catalog `schottky`. |

@@ -316,12 +316,26 @@ board PowerManifoldCharger {
     .vout_conv.pos ~> .output_shunt ~> .vout.pos
     .vbus.pos ~> .port_shunt ~> .vbus_f.pos
 
+    // The port switch: the protector's gate driver holds GATE at its VGS above SRC, the common
+    // source of Q3 and Q4 (TCPP02-M18, DS13787 Rev 4, Table 6, p.6: 4.5 V to 5.5 V).
+    .q_port_a.gate_source_voltage == .protector.gate_drive
+    .q_port_b.gate_source_voltage == .protector.gate_drive
+
+    /// The port current at which the protector opens the switch: its OCP threshold over the
+    /// shunt R27 (Table 6, p.6: 35 mV to 45 mV; 7 mohm +/- 1 %, so about 4.95 A to 6.49 A).
+    .port_trip_current: Current
+    .port_trip_current == .protector.ocp_threshold / .port_shunt.resistance
+    // The switch and the shunt carry the trip current until the protector opens the switch.
+    .port_trip_current <= .q_port_a.max_drain_current
+    .port_trip_current <= .q_port_b.max_drain_current
+    .protector.ocp_threshold * .port_trip_current <= .port_shunt.max_power
+
     // The supply pins of the chips.
     .mcu.vdd ~ .v3v3
     .mcu.vbat ~ .v3v3.pos
     .mcu.vrefp ~ .v3v3.pos
     .converter.vin ~ .emi_vin
-    .converter.vout ~ .vout_conv.pos
+    .converter.vout ~ .vout_conv
     .converter.isp ~ .vout_conv.pos
     .protector.vcc ~ .v5
     .comparator.supply ~ .v3v3
