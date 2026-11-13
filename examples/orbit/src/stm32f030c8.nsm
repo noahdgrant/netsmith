@@ -28,7 +28,7 @@
 //! `USART1_TX` on `PA9` and `USART1_RX` on `PA10`, `I2C1_SCL` on `PB6` and `I2C1_SDA` on `PB7`,
 //! and the debug port, `SWDIO` on `PA13` and `SWCLK` on `PA14` (the datasheet's note 7: they
 //! are those after a reset). A board that connects a pin with more than one function chooses
-//! it: `.u.pa9.function &= "USART1_TX"`.
+//! it: `.u.pa9.function &= USART1_TX`.
 //!
 //! What is deliberately left out: levels, ratings, the clock, timing and every model (the part
 //! is a boundary of the design: the checks that need a number are listed as not evaluated), and

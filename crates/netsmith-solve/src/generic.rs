@@ -352,7 +352,7 @@ impl Generic {
     }
 
     /// `340 ohm 1% 0402 62.5 mW (E24)`, `100 nF 10% 0402 at least 10 V (E24)`,
-    /// `RED LED 0603 forward voltage 1.8 V..2.2 V`.
+    /// `Red LED 0603 forward voltage 1.8 V..2.2 V`.
     pub fn describe(&self) -> String {
         let with = |parts: Vec<String>| {
             parts

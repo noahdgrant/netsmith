@@ -447,7 +447,7 @@ board InterfaceBare {
     .button: XunpuTs1088 { .mpn &= "TS-1088-AR02016" }
     .headers: Esp32S3DevKitCHeaders
     .led: Led {
-        .color &= "BLUE"
+        .color &= Blue
         .package &= "0402"
         .forward_voltage &= 2.6V..3.2V
         .current &= 3mA..10mA

@@ -131,9 +131,9 @@ module RadioSockets {
 module Indicators {
     .power: Rail
 
-    .led_a: Led { .color &= "GREEN" }
-    .led_b: Led { .color &= "GREEN" }
-    .led_c: Led { .color &= "GREEN" }
+    .led_a: Led { .color &= Green }
+    .led_b: Led { .color &= Green }
+    .led_c: Led { .color &= Green }
     .r_a: Resistor { .resistance &= 330ohm +/- 1% }
     .r_b: Resistor { .resistance &= 330ohm +/- 1% }
     .r_c: Resistor { .resistance &= 330ohm +/- 1% }

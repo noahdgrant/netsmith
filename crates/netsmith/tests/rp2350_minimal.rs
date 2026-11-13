@@ -2117,7 +2117,7 @@ mod board {
         let text = fs::read_to_string(&source.path).unwrap();
         for n in 26..=29 {
             assert!(
-                text.contains(&format!(".mcu.gpio{n}.function &= \"GPIO\"")),
+                text.contains(&format!(".mcu.gpio{n}.function &= GPIO")),
                 "gpio{n}"
             );
         }

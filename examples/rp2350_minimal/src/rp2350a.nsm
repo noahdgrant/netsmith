@@ -25,7 +25,7 @@
 //! functions of the QSPI pins. A GPIO has `fn GPIO class` (a class: a board may choose `GPIO` on
 //! any number of pins), and GPIO26 to GPIO29 also their ADC input (`ADC0` to `ADC3`, an input
 //! as the pin type of Table 1673 says); a board that connects one of those four chooses with
-//! `.u.gpio26.function &= "GPIO"` or `"ADC0"`.
+//! `.u.gpio26.function &= GPIO` or `ADC0`.
 
 /// The RP2350A: a dual Cortex-M33 or Hazard3 microcontroller with 30 GPIOs, four of them ADC
 /// inputs, an on-chip buck regulator for the core (`VREG_*`), a crystal oscillator, USB and

@@ -705,19 +705,19 @@ fn the_leds_have_the_datasheet_forward_voltage_color_and_package() {
     assert_eq!(vf_of(&led_by("C125103")), (2.65, 3.05));
     assert_eq!(vf_of(&led_by("C965799")), (1.9, 2.2));
     assert_eq!(vf_of(&led_by("C965804")), (2.6, 3.4));
-    // The yellow-green and the emerald green are both GREEN.
+    // The yellow-green and the emerald green are both `Green`.
     for (lcsc, wanted, package) in [
-        ("C2286", "RED", "0603"),
-        ("C25503345", "RED", "0402"),
-        ("C125094", "GREEN", "0603"),
-        ("C965804", "GREEN", "0603"),
-        ("C965793", "GREEN", "0402"),
-        ("C965802", "YELLOW", "0603"),
-        ("C25503856", "YELLOW", "0402"),
-        ("C125103", "BLUE", "0603"),
-        ("C22355736", "BLUE", "0402"),
-        ("C2290", "WHITE", "0603"),
-        ("C20613596", "WHITE", "0402"),
+        ("C2286", "Red", "0603"),
+        ("C25503345", "Red", "0402"),
+        ("C125094", "Green", "0603"),
+        ("C965804", "Green", "0603"),
+        ("C965793", "Green", "0402"),
+        ("C965802", "Yellow", "0603"),
+        ("C25503856", "Yellow", "0402"),
+        ("C125103", "Blue", "0603"),
+        ("C22355736", "Blue", "0402"),
+        ("C2290", "White", "0603"),
+        ("C20613596", "White", "0402"),
     ] {
         let c = led_by(lcsc);
         assert_eq!(c.column("color"), Some(&Value::Text(wanted.into())));

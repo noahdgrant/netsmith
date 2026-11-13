@@ -241,7 +241,7 @@ fn a_test_pad_and_a_ground_do_not_use_the_interface() {
 
 #[test]
 fn a_function_chosen_on_a_pin_contradicts_the_statement() {
-    let src = board("    .proc.usb.dm.function &= \"USB_DM\"\n    unused .proc.usb\n");
+    let src = board("    .proc.usb.dm.function &= USB_DM\n    unused .proc.usb\n");
     let c = run(&src);
     assert!(
         messages(&c).iter().any(|m| m.contains(

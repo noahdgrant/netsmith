@@ -46,7 +46,7 @@ module Indicator {
 
     .limit: Resistor { .resistance &= 120ohm +/- 1% }
     .led: Led {
-        .color &= "GREEN"
+        .color &= Green
         .forward_voltage &= 1.8V..2.5V
     }
     .bypass: Capacitor { .capacitance &= 100nF +/- 20% }

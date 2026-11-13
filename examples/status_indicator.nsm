@@ -16,7 +16,7 @@ module StatusIndicator {
         .resistance &= 1kohm +/- 1%
     }
     .led: Led {
-        .color &= "GREEN"
+        .color &= Green
         // It must light from a 3.3 V rail. An emerald green is up to 3.4 V, which could not.
         .forward_voltage &= 1.8V..2.5V
     }

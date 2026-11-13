@@ -94,7 +94,7 @@ fn run_with(part: &str, statements: &str) -> Checked {
 
 /// `pin` of the part on `probe` pin `n`, chosen as `function`: two statements.
 fn choose(pin: u32, function: &str) -> String {
-    format!("    .u.p{pin:02} ~ .probe.a{pin}\n    .u.p{pin:02}.function &= \"{function}\"\n")
+    format!("    .u.p{pin:02} ~ .probe.a{pin}\n    .u.p{pin:02}.function &= {function}\n")
 }
 
 fn messages(c: &Checked) -> Vec<String> {
@@ -154,7 +154,7 @@ fn a_fifth_interface_on_four_units_names_both_uses_and_says_none_is_free() {
         "`u` (`Zmcu`) uses SPIM1 and UARTE1, which share `SERIAL1` and run one at a time: SPIM1 on `u.p02` as SPIM1_SCK (main.nsm:57) and on `u.p03` as SPIM1_MOSI (main.nsm:59), UARTE1 on `u.p08` as UARTE1_TX (main.nsm:69) and on `u.p09` as UARTE1_RX (main.nsm:71); the other shared resources of `Zmcu` are in use as well, `SERIAL0` by UARTE0, `SERIAL2` by TWIM2 and `SERIAL3` by TWIM3, so none is free",
     );
     // The error is at the statement of the use that goes over, the second in path order.
-    assert_eq!(line_of(&c, 0), ".u.p08.function &= \"UARTE1_TX\"");
+    assert_eq!(line_of(&c, 0), ".u.p08.function &= UARTE1_TX");
 }
 
 #[test]
@@ -213,7 +213,7 @@ fn a_function_that_no_peripheral_lists_is_not_a_use() {
 #[test]
 fn a_function_chosen_on_an_unconnected_pin_is_a_use() {
     let c = run(&format!(
-        "{}    .u.p02.function &= \"SPIM0_SCK\"\n",
+        "{}    .u.p02.function &= SPIM0_SCK\n",
         choose(0, "UARTE0_TX")
     ));
     only(
@@ -227,7 +227,7 @@ fn a_function_a_peripheral_lists_takes_its_kind_from_the_peripheral() {
     // UARTE0_TX is an output of the peripheral, though its rows write no kind: two of them
     // on one net are two outputs.
     let c = run(
-        "    .u.p00 ~ .u.p08\n    .u.p00.function &= \"UARTE0_TX\"\n    .u.p08.function &= \"UARTE3_TX\"\n",
+        "    .u.p00 ~ .u.p08\n    .u.p00.function &= UARTE0_TX\n    .u.p08.function &= UARTE3_TX\n",
     );
     only(
         &c,
@@ -244,10 +244,10 @@ module Hub {{
     .probe: Probe
     .mcu.p00 ~ .probe.a0
     .mcu.p08 ~ .probe.a8
-    .mcu.p00.function &= \"UARTE0_TX\"
-    .mcu.p08.function &= \"UARTE0_RX\"
+    .mcu.p00.function &= UARTE0_TX
+    .mcu.p08.function &= UARTE0_RX
     .mcu.p02 ~ .probe.a2
-    .mcu.p02.function &= \"SPIM0_SCK\"
+    .mcu.p02.function &= SPIM0_SCK
 }}
 board B {{
     .hub: Hub
@@ -503,8 +503,8 @@ board B {
     .probe: Probe
     .u.p0 ~ .probe.a
     .u.p1 ~ .probe.b
-    .u.p0.function &= \"UART0_TX\"
-    .u.p1.function &= \"SPI0_SCK\"
+    .u.p0.function &= UART0_TX
+    .u.p1.function &= SPI0_SCK
 }
 ";
     let c = check("main.nsm", src, &Loader::std());

@@ -561,11 +561,11 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('an error written to disk is a new problem, and the comparison follows the files');
   const file = path.join(project, 'src/main.nsm');
   const original = fs.readFileSync(file, 'utf8');
-  fs.writeFileSync(file, original.replace('.led: Led {', '.led: Led { .color &= "red"'));
+  fs.writeFileSync(file, original.replace('.led: Led {', '.led: Led { .color &= Rde'));
   await page.waitForSelector('[data-testid="cmp-head-errors"]');
   await tab('problems');
   await page.waitForSelector('.cr-kind.k-problem');
-  expect(/catalog has nothing/.test(await text('[data-testid="cmp-list"]')) && /New/.test(await text('[data-testid="cmp-list"]')), 'the new error is listed');
+  expect(/no variant `Rde`/.test(await text('[data-testid="cmp-list"]')) && /New/.test(await text('[data-testid="cmp-list"]')), 'the new error is listed');
   expect(/\d+ new/.test(tile_text(await text('[data-testid="tile-problems"]'))), 'and the tile counts it');
   await shot('problems');
   fs.writeFileSync(file, original);

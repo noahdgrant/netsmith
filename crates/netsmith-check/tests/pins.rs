@@ -318,7 +318,7 @@ fn a_connected_pin_with_several_functions_needs_one_chosen() {
     let c = mcu_board("    .u.pa2 ~ .p.b");
     only(
         &c,
-        "`u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= \"GPIO\"`",
+        "`u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= GPIO`",
     );
     // An unconnected pin needs no function, and a pin with one needs none.
     let c = mcu_board("    .u.pa4 ~ .p.b");
@@ -327,7 +327,7 @@ fn a_connected_pin_with_several_functions_needs_one_chosen() {
 
 #[test]
 fn a_chosen_function_is_recorded_on_the_pin() {
-    let c = mcu_board("    .u.pa2 ~ .p.b\n    .u.pa2.function &= \"UART1_TX\"");
+    let c = mcu_board("    .u.pa2 ~ .p.b\n    .u.pa2.function &= UART1_TX");
     assert!(c.is_ok(), "{}", c.render());
     let m = &c.board("B").unwrap().model;
     let pa2 = m.inst_at("u.pa2").unwrap();
@@ -336,7 +336,7 @@ fn a_chosen_function_is_recorded_on_the_pin() {
 
 #[test]
 fn a_function_the_pin_does_not_offer_is_refused() {
-    let c = mcu_board("    .u.pa2 ~ .p.b\n    .u.pa2.function &= \"I2C1_SDA\"");
+    let c = mcu_board("    .u.pa2 ~ .p.b\n    .u.pa2.function &= I2C1_SDA");
     only(
         &c,
         "`u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK",
@@ -348,7 +348,7 @@ fn a_function_the_pin_does_not_offer_is_refused() {
 
 #[test]
 fn a_pin_with_no_functions_offers_none() {
-    let c = mcu_board("    .u.boot0 ~ .p.b\n    .u.boot0.function &= \"GPIO\"");
+    let c = mcu_board("    .u.boot0 ~ .p.b\n    .u.boot0.function &= GPIO");
     only(
         &c,
         "`u.boot0` cannot be `GPIO`; it has no functions to choose from",
@@ -358,7 +358,7 @@ fn a_pin_with_no_functions_offers_none() {
 #[test]
 fn one_function_cannot_be_chosen_on_two_pins_of_a_part() {
     let c = mcu_board(
-        "    .u.pa2 ~ .p.b\n    .u.pb6 ~ .p.c\n    .u.pa2.function &= \"UART1_TX\"\n    .u.pb6.function &= \"UART1_TX\"",
+        "    .u.pa2 ~ .p.b\n    .u.pb6 ~ .p.c\n    .u.pa2.function &= UART1_TX\n    .u.pb6.function &= UART1_TX",
     );
     only(
         &c,

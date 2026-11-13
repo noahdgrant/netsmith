@@ -64,7 +64,7 @@ pub fn source(channels: usize) -> String {
          \x20   .enable: Logic\n\
          \x20   .enable.reference ~ .power\n\
          \x20   .limit: Resistor {\n        .resistance &= 1kohm +/- 1%\n    }\n\
-         \x20   .led: Led {\n        .color &= \"GREEN\"\n        .forward_voltage &= 1.8V..2.5V\n    }\n\
+         \x20   .led: Led {\n        .color &= Green\n        .forward_voltage &= 1.8V..2.5V\n    }\n\
          \x20   .enable.line ~> .limit ~> .led ~> .power.neg\n\
          }\n\n",
     );

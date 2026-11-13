@@ -110,11 +110,11 @@ fn a_tri_state_pin_may_stay_open_like_an_output() {
 fn a_tri_state_function_kind_is_chosen_on_a_gpio() {
     // Two pins chosen as a `tri_state` function share a net; a transmitter beside one does not.
     let c = run(
-        "    .a: Zmcu\n    .b: Zmcu\n    .a.p1 ~ .b.p1\n    .a.p1.function &= \"DO\"\n    .b.p1.function &= \"DO\"",
+        "    .a: Zmcu\n    .b: Zmcu\n    .a.p1 ~ .b.p1\n    .a.p1.function &= DO\n    .b.p1.function &= DO",
     );
     assert!(c.is_ok(), "{}", c.render());
     let c = run(
-        "    .a: Zmcu\n    .b: Zmcu\n    .a.p1 ~ .b.p1\n    .a.p1.function &= \"DO\"\n    .b.p1.function &= \"UART_TX\"",
+        "    .a: Zmcu\n    .b: Zmcu\n    .a.p1 ~ .b.p1\n    .a.p1.function &= DO\n    .b.p1.function &= UART_TX",
     );
     let m = messages(&c);
     assert_eq!(m.len(), 1, "{m:?}");

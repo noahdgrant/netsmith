@@ -39,7 +39,7 @@ board Mixed {
         .inductance &= 3.3uH +/- 20%
     }
     .led: Led {
-        .color &= "RED"
+        .color &= Red
         .forward_voltage &= 1.5V..1.7V
         .current &= 5mA..15mA
     }
@@ -107,7 +107,7 @@ fn a_generic_capacitor_inductor_and_led_are_each_listed_unresolved_by_name() {
     let d = line("Led");
     let why = d.unresolved.as_deref().expect("an unresolved LED");
     assert!(
-        why.starts_with("unresolved: no row of the `led` catalog can be ordered for RED LED 0402, forward voltage 1.5 V..1.7 V."),
+        why.starts_with("unresolved: no row of the `led` catalog can be ordered for Red LED 0402, forward voltage 1.5 V..1.7 V."),
         "{why}"
     );
     assert!(bom.total_usd.is_none());
@@ -285,8 +285,8 @@ fn a_part_fitted_by_hand_or_not_at_all_is_not_reported() {
             "        .inductance &= 3.3uH +/- 20%\n        .assembly &= AssemblyMode::Hand\n",
         )
         .replace(
-            "        .color &= \"RED\"\n",
-            "        .color &= \"RED\"\n        .assembly &= AssemblyMode::None\n",
+            "        .color &= Red\n",
+            "        .color &= Red\n        .assembly &= AssemblyMode::None\n",
         );
     let found = warnings(&src);
     assert_eq!(parts_named(&found), ["C1"], "{found:#?}");

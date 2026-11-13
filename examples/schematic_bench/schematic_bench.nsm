@@ -329,7 +329,7 @@ module ModemModule {
     .r_cts: Resistor { .resistance &= 10kohm +/- 5% }
     .r_stat: Resistor { .resistance &= 1kohm +/- 5% }
     .r_led: Resistor { .resistance &= 10kohm +/- 5% }
-    .led: Led { .color &= "GREEN" }
+    .led: Led { .color &= Green }
     .c_a: Capacitor { .capacitance &= 10uF +/- 20% }
     .c_b: Capacitor { .capacitance &= 100nF +/- 20% }
     .c_c: Capacitor { .capacitance &= 100nF +/- 20% }

@@ -134,6 +134,18 @@ generic Capacitor {
     catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional }
 }
 
+/// The colour an LED gives, as its listing and its datasheet name it. A design that needs one
+/// states it on the LED with the bare variant (`.color &= Red`, ADR 0118); a row of the
+/// catalog states the variant's name as it is (`Red`). A colour that is not here is added to
+/// this list together with the rows that have it, as for `Dielectric`.
+enum Color {
+    Red,
+    Green,
+    Blue,
+    White,
+    Yellow,
+}
+
 /// A light-emitting diode. Current flows from anode to cathode. At DC it is a diode that drops
 /// `.forward_voltage` (ADR 0113), so a `~>` chain from a rail through a resistor and the LED
 /// back to the rail sets the LED's current, and a window on `.current` picks the resistor.

@@ -260,8 +260,8 @@ fn the_nearest_rows_are_those_nearest_the_need_that_fails_and_not_the_nearest_in
 // ---- LEDs --------------------------------------------------------------------------
 
 const LEDS: &str = "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
-C900301,ZZ-RED,Red 0603,ZZ-RED,RED,1.8V..2.2V,0603,Basic,https://example.invalid/a\n\
-C900302,ZZ-GRN,Green 0603,ZZ-GRN,GREEN,2.0V..2.4V,0603,Extended,https://example.invalid/b\n";
+C900301,ZZ-RED,Red 0603,ZZ-RED,Red,1.8V..2.2V,0603,Basic,https://example.invalid/a\n\
+C900302,ZZ-GRN,Green 0603,ZZ-GRN,Green,2.0V..2.4V,0603,Extended,https://example.invalid/b\n";
 
 fn led_board(extra: &str) -> String {
     format!("import std::parts::passive::Led\nboard B {{\n    .led: Led {{\n{extra}    }}\n}}\n")
@@ -271,7 +271,7 @@ fn led_board(extra: &str) -> String {
 fn a_generic_led_takes_the_colour_and_forward_voltage_the_design_states() {
     // No row has a forward voltage as low as this.
     let s = solved(
-        &led_board("        .color &= \"RED\"\n        .forward_voltage &= 1.5V..1.7V\n"),
+        &led_board("        .color &= Red\n        .forward_voltage &= 1.5V..1.7V\n"),
         &catalogs("led", LEDS),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
@@ -283,12 +283,12 @@ fn a_generic_led_takes_the_colour_and_forward_voltage_the_design_states() {
     else {
         panic!("{g:?}")
     };
-    assert_eq!(*color, Need::Text("RED".into()));
+    assert_eq!(*color, Need::Text("Red".into()));
     assert!(
         matches!(forward_voltage, Need::Within { lo, hi } if (*lo - 1.5).abs() < 1e-9 && (*hi - 1.7).abs() < 1e-9),
         "{forward_voltage:?}"
     );
-    assert_eq!(g.describe(), "RED LED 0402, forward voltage 1.5 V..1.7 V");
+    assert_eq!(g.describe(), "Red LED 0402, forward voltage 1.5 V..1.7 V");
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn a_generic_led_is_not_used_when_the_forward_voltage_is_used_but_not_stated() {
     // A colour no row has, with no forward voltage stated: the forward voltage feeds
     // `.drop`, so a generic part that cannot say it is not used, and nothing is guessed.
     let s = solved(
-        &led_board("        .color &= \"PURPLE\"\n"),
+        &led_board("        .color &= Yellow\n"),
         &catalogs("led", LEDS),
     );
     assert!(s.picks.is_empty(), "{:?}", s.picks);
@@ -316,7 +316,7 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
     };
     let got = resolve(
         &g(
-            Need::Text("GREEN".into()),
+            Need::Text("Green".into()),
             Need::Within { lo: 1.9, hi: 2.5 },
         ),
         &c,
@@ -327,7 +327,7 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
     // A range the green row does not fit inside.
     let e = resolve(
         &g(
-            Need::Text("GREEN".into()),
+            Need::Text("Green".into()),
             Need::Within { lo: 2.2, hi: 2.3 },
         ),
         &c,
@@ -335,7 +335,7 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
     )
     .unwrap_err();
     assert!(
-        e.starts_with("unresolved: no row of the `led` catalog can be ordered for GREEN LED 0603, forward voltage 2.2 V..2.3 V."),
+        e.starts_with("unresolved: no row of the `led` catalog can be ordered for Green LED 0603, forward voltage 2.2 V..2.3 V."),
         "{e}"
     );
     // The same colour comes first among the rows offered instead.

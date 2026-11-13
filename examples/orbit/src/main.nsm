@@ -108,8 +108,8 @@ board Orbit {
     // ---- The crystal (U10, C11, C12) ----
 
     .oscillator: Oscillator
-    .mcu.pf0.function &= "OSC_IN"
-    .mcu.pf1.function &= "OSC_OUT"
+    .mcu.pf0.function &= OSC_IN
+    .mcu.pf1.function &= OSC_OUT
     .oscillator.xin ~ .mcu.pf0
     .oscillator.xout ~ .mcu.pf1
     .oscillator.gnd ~ .vbus.neg
@@ -182,8 +182,8 @@ board Orbit {
     .usb_uart.vbus ~ .vbus
     .usb.dp ~ .usb_uart.dp
     .usb.dm ~ .usb_uart.dm
-    .mcu.pa9.function &= "USART1_TX"
-    .mcu.pa10.function &= "USART1_RX"
+    .mcu.pa9.function &= USART1_TX
+    .mcu.pa10.function &= USART1_RX
     .mcu.pa9 ~ .usb_uart.rxd
     .mcu.pa10 ~ .usb_uart.txd
 
@@ -197,8 +197,8 @@ board Orbit {
     .eeprom.a1 ~ .v3v3.pos
     .eeprom.a2 ~ .vbus.neg
     .eeprom.wp ~ .vbus.neg
-    .mcu.pb6.function &= "I2C1_SCL"
-    .mcu.pb7.function &= "I2C1_SDA"
+    .mcu.pb6.function &= I2C1_SCL
+    .mcu.pb7.function &= I2C1_SDA
     .mcu.pb6 ~ .eeprom.scl
     .mcu.pb7 ~ .eeprom.sda
     /// R9 and R10: 2.2 kohm on each line to 3.3 V.
@@ -210,15 +210,15 @@ board Orbit {
 
     // ---- The headers: ORBIT's pin map, joined pin by pin (fixed) ----
 
-    .mcu.pa13.function &= "SWDIO"
-    .mcu.pa14.function &= "SWCLK"
+    .mcu.pa13.function &= SWDIO
+    .mcu.pa14.function &= SWCLK
     // PC14 and PC15 are plain GPIO in ORBIT (the 32 kHz crystal is not fitted), and a connected
     // pin with several functions has one chosen. `GPIO` cannot be chosen on two pins (it is no
     // class), so each takes the function whose name it carries, as the RP2350A Minimal's ADC
     // pins do. Nothing reads which: the pad is on the pin either way. The pull request that
     // added this board lists it under "For the owner".
-    .mcu.pc14.function &= "OSC32_IN"
-    .mcu.pc15.function &= "OSC32_OUT"
+    .mcu.pc14.function &= OSC32_IN
+    .mcu.pc15.function &= OSC32_OUT
     .header_west.p1 ~ .vbus.neg
     .header_west.p2 ~ .mcu.pa13
     .header_west.p3 ~ .mcu.pa14

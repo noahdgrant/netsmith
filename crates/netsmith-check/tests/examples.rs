@@ -171,7 +171,7 @@ fn status_example_values_and_wiring() {
     );
     assert_eq!(
         m.domain_at("status_indicator.led.color"),
-        Some(&Domain::Text("GREEN".into()))
+        Some(&Domain::Text("Green".into()))
     );
 
     // One rail joins the source, the logic reference, and the module's power input.

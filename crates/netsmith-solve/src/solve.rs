@@ -2154,6 +2154,61 @@ impl Solver<'_> {
         Ok(cat)
     }
 
+    /// A package the design states that no row of the part's catalog is in. It is reported at
+    /// the statement, with the nearest package the catalog has (ADR 0118), and the part is left
+    /// unresolved: no row is tried for it. A catalog whose rows do not all name a package (a
+    /// generic row that leaves it open) is not judged here.
+    fn unknown_package(
+        &mut self,
+        part: InstId,
+        path: &str,
+        catalog: &str,
+        columns: &[(FieldId, String)],
+        cat: &Catalog,
+    ) -> bool {
+        let Some((field, key)) = columns.iter().find(|(_, key)| key == "package") else {
+            return false;
+        };
+        let Domain::Text(stated) = self.domain(*field) else {
+            return false;
+        };
+        let Some(&(source, span)) = self.model.field(*field).narrowed_at.last() else {
+            return false;
+        };
+        let mut packages: Vec<String> = Vec::new();
+        for c in &cat.candidates {
+            match c.column(key) {
+                Some(Value::Text(p)) => {
+                    if !packages.contains(p) {
+                        packages.push(p.clone());
+                    }
+                }
+                _ => return false,
+            }
+        }
+        if packages.is_empty() || packages.contains(&stated) {
+            return false;
+        }
+        packages.sort();
+        let hint = netsmith_check::closest(&stated, &packages)
+            .map(|p| format!("; did you mean \"{p}\"?"))
+            .unwrap_or_default();
+        let listed: Vec<String> = packages.iter().map(|p| format!("\"{p}\"")).collect();
+        self.report(
+            source,
+            span,
+            format!(
+                "`{path}.package` is \"{stated}\", and no row of the `{catalog}` catalog is in that package; its packages are {}{hint}",
+                listed.join(", ")
+            ),
+        );
+        self.unresolved.push(Unresolved {
+            part,
+            reason: format!("no row of the `{catalog}` catalog is in package \"{stated}\""),
+        });
+        true
+    }
+
     /// Whether `e` is a text field that nothing has set.
     fn is_unset_text(&self, e: &RExpr) -> bool {
         matches!(e, RExpr::Field(f)
@@ -2747,6 +2802,8 @@ impl Solver<'_> {
                     });
                 }
                 Some(Ok(cat)) if self.unnamed_key(part, &path, &catalog, &columns, &cat) => {}
+                Some(Ok(cat))
+                    if self.unknown_package(part, &path, &catalog.name, &columns, &cat) => {}
                 Some(Ok(mut cat)) => {
                     // A part held to one row (`Catalogs::with_pin`) is offered only that row.
                     if let Some(row) = self.catalogs.pinned(&path) {

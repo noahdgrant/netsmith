@@ -219,7 +219,7 @@ fn builtin(name: &str) -> Option<Builtin> {
     let q = |d| Some(Builtin::Quantity(d));
     match name {
         "Pin" => Some(Builtin::Pin),
-        "String" | "Package" | "Color" => Some(Builtin::Text),
+        "String" | "Package" => Some(Builtin::Text),
         "Number" => q(D::NONE),
         "Voltage" => q(D::VOLTAGE),
         "Current" => q(D::CURRENT),
