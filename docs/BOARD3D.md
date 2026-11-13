@@ -420,7 +420,8 @@ What it is:
 
 - **netsmith's own data, and only that.** The board as its stackup makes it, the holes, each part's
   body to its known height (its package shape where the footprint generator made the footprint,
-  else a box), the height limits as see-through volumes (in the error colour when a part breaks
+  else a box; a part's own STEP model where the project names one, in the model's colours, and
+  the hover adds `Drawn from <file>`), the height limits as see-through volumes (in the error colour when a part breaks
   one) and the pins out of the far face where their length is stated. The copper of each net,
   the solder mask with its openings (a second green over copper), the gold finish of the bare
   copper and the silkscreen are in the same file, and the view draws each mesh by its
@@ -509,9 +510,10 @@ What it is not:
 
 - **Not an editor.** Nothing moves in 3D: a part is moved in the 2D view, which writes the layout
   file (ADR 0032).
-- **Not a model library.** No third-party 3D model is drawn or bundled: not KiCad's, not a
-  maker's, not a STEP file (ADR 0105). A body is a box, or a shape made from the footprint
-  generator's own numbers. Still boxes, because the data
+- **Not a model library.** No third-party 3D model is bundled or downloaded: not KiCad's, not a
+  maker's (ADR 0105). The one STEP file drawn is one the project names for a part and keeps in its
+  own tree (ADR 0108, [above](#a-parts-step-model)). Otherwise a body is a box, or a shape made
+  from the footprint generator's own numbers. Still boxes, because the data
   does not hold their lead span and width yet (each family is added with a sourced row, one at a
   time): SOT-343 (SC-70-4), SC-70-8, the DPAK of four or five lead pads (TO-252-4, -5), the
   D2PAK of four to nine (TO-263-4 to -9) and SOT-89-5, and the mechanical items (holes,

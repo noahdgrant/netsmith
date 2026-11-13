@@ -47,6 +47,16 @@ describe('readInfo: the extras of the scene file (schema 1)', () => {
       findings: [{ code: 'too_tall', message: 'J1 stands 9 mm tall', parts: ['tall'], limit: 'lid', face: 'top' }],
     });
   });
+  it('reads the STEP model a part is drawn from, and the tooltip names its file (ADR 0108)', () => {
+    const j = readInfo({ netsmith: { kind: 'part', path: 'usb', refdes: 'J1', side: 'top', provenance: 'stated', height_mm: 3.2, model: { file: 'models/usb.step', sha256: 'ab12', top_mm: 3.16 } } }) as PartInfo3d;
+    expect(j.model).toEqual({ file: 'models/usb.step', sha256: 'ab12', topMm: 3.16 });
+    expect(partTip(j, []).lines).toEqual(['3.2 mm tall, stated in the design', 'On the top face', 'Drawn from models/usb.step']);
+    // A file before models, or a part with none, has none.
+    expect((readInfo({ netsmith: { kind: 'part', path: 'r1', model: null } }) as PartInfo3d).model).toBeUndefined();
+    // A part of unknown height drawn from a model is not drawn flat, and its height is still not guessed.
+    const u = readInfo({ netsmith: { kind: 'part', path: 'u', refdes: 'U1', provenance: 'unknown', height_mm: null, model: { file: 'm.step', sha256: '', top_mm: 1 } } }) as PartInfo3d;
+    expect(partTip(u, []).lines[0]).toBe('Height not known, not guessed: the model is a drawing');
+  });
   it("reads a package standard's height and its count, apart from the others (ADR 0106)", () => {
     const board = readInfo({ netsmith: { kind: 'board', coverage: { known: 3, total: 4, standard: 1 } } });
     expect(board).toMatchObject({ coverage: { known: 3, total: 4, standard: 1 } });

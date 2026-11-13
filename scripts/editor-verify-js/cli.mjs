@@ -62,6 +62,8 @@ const FIXTURES = {
   polygon_outline: 'scripts/editor-verify-js/fixtures/polygon_outline.nsm',
   // A project with no board: the views say where to write the first one.
   empty: 'scripts/editor-verify-js/fixtures/empty.nsm',
+  // A part drawn from its own STEP model (ADR 0108), for pcb-3d-model.
+  model_3d: 'scripts/editor-verify-js/fixtures/model_3d.nsm',
   // The LED example with a project catalog and a fake LCSC endpoint (ADR 0039).
   catalog_refresh: 'examples/led.nsm',
 };
@@ -215,6 +217,9 @@ async function launch() {
     }
     const libs = fixture.replace(/\.nsm$/, '.libs');
     if (libs !== fixture && fs.existsSync(libs)) fs.cpSync(libs, path.join(project, 'libs'), { recursive: true });
+    // The STEP models beside the fixture, if it has them (ADR 0108): `x.models/` is the project's `models/`.
+    const models = fixture.replace(/\.nsm$/, '.models');
+    if (models !== fixture && fs.existsSync(models)) fs.cpSync(models, path.join(project, 'models'), { recursive: true });
     // A module, so the tree and the imports have something to show.
     fs.writeFileSync(
       path.join(project, 'src/power.nsm'),

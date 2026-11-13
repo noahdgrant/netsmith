@@ -478,6 +478,9 @@ impl Workspace {
         let libraries = Arc::new(Libraries::for_project(
             target.project.as_ref().map(|p| p.root.as_path()),
         ));
+        // Where the target's files are, to find the STEP models its parts are drawn from in
+        // the 3D view (ADR 0108).
+        let places = crate::models::Places::of(&target);
         let files = target.files.len() as u32;
         for (index, file) in target.files.iter().enumerate() {
             observe(AnalysisEvent::Progress {
@@ -585,8 +588,28 @@ impl Workspace {
                         .pins
                         .insert(file.name.clone(), Arc::new(outcome.pins.clone()));
                     let drawn = outcome.boards.len() as u32;
-                    for (n, built) in outcome.boards.into_iter().enumerate() {
+                    for (n, mut built) in outcome.boards.into_iter().enumerate() {
                         let label = built.label();
+                        // The STEP models the 3D view draws parts from: a file that is not
+                        // there or cannot be read, or a path outside the project, is a problem
+                        // and the part keeps its generated shape. The files are read once
+                        // here and again only when they change (`models::read`).
+                        let found = crate::models::locate(&mut built.design, &places);
+                        for (severity, message) in found
+                            .errors
+                            .iter()
+                            .map(|e| (Severity::Error, e))
+                            .chain(found.warnings.iter().map(|w| (Severity::Warning, w)))
+                        {
+                            snapshot
+                                .problems
+                                .push(model_problem(&label, severity, message));
+                        }
+                        for w in crate::models::uses(&built.design).1 {
+                            snapshot
+                                .problems
+                                .push(model_problem(&label, Severity::Warning, &w));
+                        }
                         // The entries of the layout file that match this board, and the ones
                         // the drawing cannot honour.
                         let groups = module_groups(&built);
@@ -1139,6 +1162,25 @@ fn note_problem(built: &Built, note: &str, cause: Cause, from_design: bool) -> P
             .map(|inst| model.path_of(inst))
             .filter(|p| !p.is_empty()),
         cause,
+    }
+}
+
+/// What finding a part's STEP model found (ADR 0108), for the board `label`.
+fn model_problem(label: &str, severity: Severity, message: &str) -> Problem {
+    let word = if severity == Severity::Error {
+        "error"
+    } else {
+        "warning"
+    };
+    Problem {
+        severity,
+        message: format!("{label}: {message}"),
+        rendered: format!("{word}: {label}: {message}\n"),
+        at: None,
+        stage: Some(ProblemStage::Design),
+        board: Some(label.to_string()),
+        path: None,
+        cause: None,
     }
 }
 

@@ -1,0 +1,30 @@
+//! A small board for the recipe `pcb-3d-model` (a part drawn from its own STEP model, ADR
+//! 0108). Its physical file names `model_3d.models/header.step` for the header, a model written
+//! by hand for this fixture (netsmith's own, MIT: a black plastic block, two gold pins and a red
+//! mark by pin 1, in KiCad's frame for a model), and a file that is not there for the resistor.
+//! The model's pins stand on the header's pads only if its y runs up the footprint, as KiCad's
+//! does.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Modelled {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .led: Led { .current &= 2mA..5mA }
+    .r1: Resistor {}
+    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+}
