@@ -416,79 +416,88 @@ fn half_a_showcase_board_goes_from_source_to_parity_in_time() {
     );
 }
 
-/// Counts the bytes that each thread holds, and the most it held, for
-/// [`memory_grows_about_linearly_with_the_board`]. The counts are a thread's own, so tests that
-/// run beside it do not change them; what one thread frees of another's goes against the thread
-/// that frees it, which the solver (on one thread) does not do.
-struct Counting;
+/// The environment variable that makes [`peak_rss_of_one_build`] build a board of that many
+/// channels, in a child copy of this test binary.
+const CHILD: &str = "NETSMITH_SCALE_PEAK_RSS_CHANNELS";
 
-thread_local! {
-    static HELD: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
-    static MOST: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
-}
-
-fn count(delta: isize) {
-    let _ = HELD.try_with(|held| {
-        let now = held.get() + delta;
-        held.set(now);
-        let _ = MOST.try_with(|most| most.set(most.get().max(now)));
-    });
-}
-
-// SAFETY: every call is passed on to the system allocator unchanged; only counts are added.
-unsafe impl std::alloc::GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
-        count(layout.size() as isize);
-        // SAFETY: the caller's contract is passed on.
-        unsafe { std::alloc::System.alloc(layout) }
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
-        count(-(layout.size() as isize));
-        // SAFETY: the caller's contract is passed on.
-        unsafe { std::alloc::System.dealloc(ptr, layout) }
-    }
-    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
-        count(layout.size() as isize);
-        // SAFETY: the caller's contract is passed on.
-        unsafe { std::alloc::System.alloc_zeroed(layout) }
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new: usize) -> *mut u8 {
-        count(new as isize - layout.size() as isize);
-        // SAFETY: the caller's contract is passed on.
-        unsafe { std::alloc::System.realloc(ptr, layout, new) }
-    }
-}
-
-#[global_allocator]
-static COUNTING: Counting = Counting;
-
-/// The most this thread held, above what it held at the start, while checking, solving and
-/// designing a board of `channels` channels.
-fn peak_bytes(channels: usize) -> isize {
+/// Run by [`memory_grows_about_linearly_with_the_board`] in a child process: builds a board of
+/// [`CHILD`] channels and prints the process's peak resident memory (`VmHWM`, Linux). Ignored, and
+/// does nothing without the variable.
+#[test]
+#[ignore]
+fn peak_rss_of_one_build() {
+    let Some(channels) = std::env::var(CHILD)
+        .ok()
+        .and_then(|c| c.parse::<usize>().ok())
+    else {
+        return;
+    };
     let text = source(channels);
     let catalogs = Catalogs::jlcpcb();
     let loader = Loader::std();
-    let start = HELD.with(|h| h.get());
-    MOST.with(|m| m.set(start));
     let outcome = outcome_with("scale.nsm", &text, &loader, &catalogs, None)
         .unwrap_or_else(|p| panic!("{}", netsmith::render_problems(&p)));
-    let most = MOST.with(|m| m.get());
+    let status = fs::read_to_string("/proc/self/status").expect("/proc/self/status");
+    let kb = status
+        .lines()
+        .find_map(|l| l.strip_prefix("VmHWM:"))
+        .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+        .expect("VmHWM");
     drop(outcome);
-    most - start
+    println!("peak_rss_kb={kb}");
+}
+
+/// The peak resident memory of a child process that builds a board of `channels` channels.
+fn peak_rss_kb(channels: usize) -> u64 {
+    let exe = std::env::current_exe().expect("the test binary");
+    let out = std::process::Command::new(exe)
+        .args([
+            "--exact",
+            "scale::peak_rss_of_one_build",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(CHILD, channels.to_string())
+        .output()
+        .expect("run the child");
+    let text = String::from_utf8_lossy(&out.stdout);
+    // libtest prints the test's name before its output on the same line.
+    text.split("peak_rss_kb=")
+        .nth(1)
+        .map(|v| {
+            v.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        })
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| {
+            panic!(
+                "no peak from the child: {text}{}",
+                String::from_utf8_lossy(&out.stderr)
+            )
+        })
 }
 
 /// The memory of a build grows about as the board does (#569): the picks kept a copy of every
 /// field's domain for each group of parts, so twice the board took four times the memory (0.56 GB
-/// at 36 channels, 2.2 GB at 76). In the test profile the old picks held 40 MB at 8 channels and
-/// 124 MB at 16 (3.1 times), and now 18 MB and 35 MB (2.0 times; 2026-11-13).
+/// at 36 channels, 2.2 GB at 76). Each size is built in its own process and its peak resident
+/// memory read, so the binary's other tests pay nothing for the measurement (a counting global
+/// allocator made the placer's pre-check twice as slow). The fixed part of a process's memory
+/// cancels in the ratio of what 8 more channels cost to what 4 more cost: about 2 when memory
+/// grows with the board, about 4 when it grows with its square. Measured 2026-11-13: 1.99 to 2.10
+/// now, 3.06 with the picks before #569.
 #[test]
 fn memory_grows_about_linearly_with_the_board() {
-    let small = peak_bytes(8);
-    let large = peak_bytes(16);
-    let ratio = large as f64 / small as f64;
-    eprintln!("8 channels {small} B, 16 channels {large} B, ratio {ratio:.2}");
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let [p4, p8, p16] = [4, 8, 16].map(peak_rss_kb);
+    let (first, second) = (p8.saturating_sub(p4).max(1), p16.saturating_sub(p8));
+    let ratio = second as f64 / first as f64;
+    eprintln!("peak RSS 4/8/16 channels: {p4}/{p8}/{p16} kB, ratio of the increments {ratio:.2}");
     assert!(
         ratio < 2.6,
-        "twice the board took {ratio:.2} times the memory ({small} B, then {large} B)"
+        "8 more channels cost {ratio:.2} times what 4 more did ({p4}, {p8}, {p16} kB)"
     );
 }
