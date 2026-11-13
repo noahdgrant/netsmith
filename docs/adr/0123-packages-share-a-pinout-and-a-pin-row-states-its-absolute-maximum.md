@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Packages share a pinout, and a pin row states its absolute maximum
@@ -20,7 +20,7 @@ The owner decided on 2026-11-13 (issue #630, epic #638) two shorter forms for a 
 - **The absolute maximum in the row.** A row may end with `abs_max VALUE`, optionally `from .pin`: `.en_uv input "EN/UV" "14" abs_max 65V`. It narrows the pin's `.abs_max` (`&=`), the field every pin has, once for the part however many tables state it. The value is any expression a narrowing takes. `from` names a pin of the part, not the pin itself. The pinouts of a part give a pin one limit, as they give it one kind and one name. `abs_max` with no value is a parse error at the word.
 - **The reference.** The solver measures the worst-case voltage of the pin's net from a reference pin (`absolute_maximums` in `crates/netsmith-solve/src/levels.rs`). It is, in order: the ground of the pin's `Logic`, or of its bus's `levels`, the `neg` of their reference rail, as before (`from` is refused there: the interface already says it); else the row's `from`; else **the part's ground, which is the one row of the table that is the `neg` of a rail** (a `neg` pin of an interface that also has a `pos` pin). A table with no such row, or with several, needs `from`, and the error says so. The model keeps the reference in the row (`RowLimit` in `crates/netsmith-check/src/model.rs`, read by `Model::limit_reference`).
 
-The default is **proposed, for the owner**. It is what std means today: the `Lt8641`'s wrappers took their ground from `.vin`, whose `neg` is `GND`, the one rail ground of its table, so its three limits are judged against the same net with the same numbers. The only change a board sees is the field a refusal names: `u.sync_mode.abs_max` in place of `u.sync_mode_limit.line.abs_max`. The `Logic` and its zero-current reference rail are gone from the part, so no balance or DC relation changed.
+The owner accepted this default on 2026-11-13. It is what std means today: the `Lt8641`'s wrappers took their ground from `.vin`, whose `neg` is `GND`, the one rail ground of its table, so its three limits are judged against the same net with the same numbers. The only change a board sees is the field a refusal names: `u.sync_mode.abs_max` in place of `u.sync_mode_limit.line.abs_max`. The `Logic` and its zero-current reference rail are gone from the part, so no balance or DC relation changed.
 
 ## Rejected
 
@@ -36,6 +36,5 @@ A pin's absolute maximum has two spellings: the row, and a narrowing of `.abs_ma
 
 ## Left open
 
-- The default reference (above), for the owner.
-- Whether the rows of `Logic` lines and bus pins should state their limits in the row as well, and the narrowing of `.abs_max` on a table pin be refused, so a limit has one place; and whether `abs_min` should get a row form. Neither is built.
+- One spelling of an absolute maximum, the row: moving the limits of `Logic` lines and bus pins into their rows, refusing the narrowing of `.abs_max` on a table pin, and a row form for `abs_min` are issue #695.
 - `PG` and `FB` of the `Lt8641` still state no limit, for the solver's reasons in its doc comment (ADR 0095), which a reference in the row does not change.
