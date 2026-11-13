@@ -83,8 +83,7 @@
 //! 5. Lines still left are **negotiated** for (PathFinder in a small form): each is routed
 //!    where it would go if no other net were in the way, the nets it comes near are ripped up,
 //!    the cells they fought over cost more from then on, and what was ripped up is routed
-//!    again. At most six rounds, ending after a round that leaves no fewer lines than the
-//!    best state seen ([`NEGOTIATION_PATIENCE`]), and the best state is kept. The earlier
+//!    again. Six rounds, and the best state is kept. The earlier
 //!    rip-up put the nets back if the line did not fit; this one lets lines fail for a round so
 //!    the others can move.
 //!
@@ -197,19 +196,18 @@
 //!   print (the other nets' copper within reach, hard or soft, the net's own vias, the
 //!   negotiation's history of the cells) is unchanged finds what it found before. The joins
 //!   with the net's own tracks are checked each time. A quarter of the repairs' searches.
-//! - **The negotiation stops after a round that does not improve** ([`NEGOTIATION_PATIENCE`]):
-//!   on RP2350 and Orbit no round ever did. On the invented tight board two negotiations
-//!   improved after one that did not, and over 12 seeds it made no difference to what was left
-//!   (9 of 12 complete, 5 lines); on the mixed board, 11 of 12 and 1 line against 10 and 2.
+//! - **Not kept: the negotiation stopping after a round that does not improve.** On RP2350 at
+//!   0.15 mm no round ever did, so it saved time there with the same copper. But at the least
+//!   track (0.1 mm), Orbit's first try routed completely only through a round that improved
+//!   after one that did not: with the early stop it left a line after six tries. All six rounds
+//!   are run.
 //!
-//! RP2350 routed alone from a saved placement (`netsmith route --margin 1 --route-timeout 0`),
-//! against main at 78d662b (escape lanes on the second try) on the same machine, back to back,
-//! the copper byte-identical in every run: one try (`--tries 1`) at turn costs 24, 25, 26 and
-//! 27 takes 140, 38, 71 and 76 s against 372, 145, 177 and 221 s, leaving 2, 0, 2 and 2 lines
-//! as before; two tries (the second with the lanes) take 263, 40, 133 and 154 s against 579,
-//! 103, 426 and 558 s and leave none. `netsmith route` with `fab`'s flow (the margin trial,
-//! then the tries, in 300 s) routes RP2350 in 116 s against 202, Orbit in 6.4 against 10.3, the
-//! Easyduino in 2.5 as before.
+//! Measured on the same machine, back to back with main at fda6cd4f, the copper byte-identical:
+//! RP2350's `fab` takes 136 and 133 s against main's 138 and 166 s (a loaded machine, load
+//! average 6 to 12), and Orbit routed at the least track from a saved placement
+//! (`netsmith route --margin 1 --route-timeout 0`) takes 18.5 s against 32.6 s. With the
+//! negotiation's early stop as well (not kept, above), one RP2350 try took a third to two
+//! fifths of main's time: most of a try at 0.15 mm was negotiation rounds that changed nothing.
 //!
 //! Not done: a cache keyed on the whole board (searches repeat only where little changed),
 //! smaller first windows (a line found in 4 mm is cheap already), fewer soft searches (one a
@@ -345,9 +343,6 @@ const REPORT_EVERY: Duration = Duration::from_secs(2);
 /// How many rounds of negotiation the lines left over get, and what a cell the lines fought
 /// over costs for each time they did, and the most it counts.
 const NEGOTIATION_ROUNDS: usize = 6;
-/// The negotiation stops after this many rounds in a row that leave no fewer lines than the
-/// best state it has seen.
-const NEGOTIATION_PATIENCE: usize = 1;
 
 const HISTORY_COST: i64 = 40;
 const HISTORY_MOST: u8 = 25;
@@ -3596,8 +3591,6 @@ impl<'a> Router<'a> {
         let cells = self.grid.nx * self.grid.ny;
         *self.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
         let mut best = state.clone();
-        // Rounds in a row that left no fewer lines than the best state.
-        let mut idle = 0;
         for round in 1..=NEGOTIATION_ROUNDS {
             if state.failed.is_empty() || self.out_of_time() {
                 break;
@@ -3645,12 +3638,6 @@ impl<'a> Router<'a> {
             }
             if state.failed.len() < best.failed.len() {
                 best = state.clone();
-                idle = 0;
-            } else {
-                idle += 1;
-                if idle >= NEGOTIATION_PATIENCE {
-                    break;
-                }
             }
         }
         *state = best;
