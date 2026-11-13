@@ -2,7 +2,7 @@
 //! copper (`netsmith fab --save-placed` and `netsmith route`).
 
 use netsmith_pcb::{Board, FootprintLibrary, kicad_pcb};
-use netsmith_place_route::route;
+use netsmith_router::route;
 use netsmith_solve::Catalogs;
 
 use crate::boards as common;
@@ -18,7 +18,7 @@ fn example(name: &str, library: &FootprintLibrary) -> Board {
         &netsmith::Libraries::sample(),
     )
     .unwrap();
-    netsmith_place_route::board_from_design(
+    netsmith_placer::board_from_design(
         &built[0].design,
         &netsmith_kicad::Mapping::standard(),
         library,

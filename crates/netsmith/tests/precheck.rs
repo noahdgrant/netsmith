@@ -85,7 +85,7 @@ fn precheck(parts: usize, headers: &str, size: (u32, u32), extra: &str) -> Prech
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let design = &built[0].design;
-    netsmith_place_route::precheck(
+    netsmith_placer::precheck(
         design,
         &libraries.mapping,
         &libraries.footprints,
@@ -106,7 +106,7 @@ fn place(parts: usize, headers: &str, size: (u32, u32), extra: &str) -> Result<B
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let design = &built[0].design;
-    netsmith_place_route::board_from_design_placed(
+    netsmith_placer::board_from_design_placed(
         design,
         &libraries.mapping,
         &libraries.footprints,
@@ -463,13 +463,9 @@ fn precheck_time(parts: usize, runs: usize) -> std::time::Duration {
     let options = place_options(design, None);
     let run = || {
         let started = thread_cpu_time();
-        let found = netsmith_place_route::precheck(
-            design,
-            &libraries.mapping,
-            &libraries.footprints,
-            &options,
-        )
-        .unwrap_or_else(|e| panic!("{e}"));
+        let found =
+            netsmith_placer::precheck(design, &libraries.mapping, &libraries.footprints, &options)
+                .unwrap_or_else(|e| panic!("{e}"));
         let took = thread_cpu_time() - started;
         assert!(!found.is_error(), "{found:?}");
         took

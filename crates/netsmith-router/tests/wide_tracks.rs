@@ -10,7 +10,7 @@ use crate::common;
 
 use netsmith_fab::drc;
 use netsmith_pcb::{Board, BoardKeepout, Pt};
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_router::{RouteOptions, route_with};
 
 use common::{hard_boards, synthetic_board};
 
@@ -143,7 +143,7 @@ fn a_rail_sized_by_its_current_is_necked_down_only_near_its_own_pads() {
         let routing = route_with(&mut board, RouteOptions::default());
         let name = format!("seed {seed}, {} parts", board.parts.len());
         assert!(routing.left.is_empty(), "{name}: {:?}", routing.left.lines);
-        let reach = netsmith_place_route::route::NECK_REACH;
+        let reach = netsmith_router::route::NECK_REACH;
         for t in &board.tracks {
             let least = board.least_width(&t.net);
             if t.width >= least - 1e-9 {
@@ -199,7 +199,7 @@ fn a_rail_whose_current_one_via_does_not_carry_changes_layer_through_vias_side_b
     let on_rails = board.vias.iter().filter(|v| rails.contains(&v.net)).count();
     assert!(on_rails >= 3, "the rails change layer: {on_rails} vias");
     assert_eq!(
-        netsmith_place_route::parallel::short_clusters(&board),
+        netsmith_router::parallel::short_clusters(&board),
         Vec::new(),
         "every via of a rail stands with two more"
     );

@@ -10,7 +10,7 @@
 //! board file as KiCad 9's teardrop zones ([`crate::export`]), which netsmith's Gerbers draw and
 //! its check sees.
 //!
-//! The router adds them when it is done (`netsmith_place_route::route::route_with`, unless its
+//! The router adds them when it is done (`netsmith_router::route::route_with`, unless its
 //! options switch them off), so every board netsmith routes has them.
 
 use netsmith_geom::drc;

@@ -5,7 +5,7 @@
 //! too big for the outline in every turn, which is made before any placing as well
 //! ([`oversize_before_placing`]).
 //!
-//! The placer itself is the crate `netsmith-place-route`. These are here, beside the board
+//! The placer itself is the crate `netsmith-placer`. These are here, beside the board
 //! model, because the board, its requirements, the layout file and the errors are made of them
 //! (issue #518).
 
@@ -183,7 +183,7 @@ pub struct DoesNotFit {
     pub parts: Box<[PartState]>,
     /// The requirements of the physical file that are not met where the placer ended, and
     /// the lines that cannot all hold where that is proved (ADR 0045). Filled
-    /// by `netsmith_place_route::board_from_design_placed`, which knows the design; `None` before, and for a
+    /// by `netsmith_placer::board_from_design_placed`, which knows the design; `None` before, and for a
     /// design that states no requirement.
     pub requirements: Option<Box<crate::explain::RequirementReport>>,
 }

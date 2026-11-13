@@ -33,7 +33,7 @@
 //! the check after routing). A hole to hole or hole to copper fault names the pad of each hole.
 //!
 //! **Before the placer starts** (ADR 0045 section 14, issue #99). [`before_placing`] runs on the parts as loaded, after `constraints::plan`
-//! and before any placing, in `netsmith_place_route::board_from_design_placed` (so `fab` and the editor's placement)
+//! and before any placing, in `netsmith_placer::board_from_design_placed` (so `fab` and the editor's placement)
 //! and in `netsmith build`. It takes milliseconds (5 ms for 100 parts with windows in a debug
 //! build; a test asserts under 100 ms), is deterministic and starts no placer: the placer takes
 //! 40 to 70 seconds on a tight board. Only a proved conflict is an error.

@@ -514,7 +514,7 @@ fn placed(source: &Design, layout: Option<&netsmith_pcb::Layout>) -> (Result<Boa
     .unwrap_or_else(|e| panic!("{e}"));
     let design = &built[0].design;
     let started = Instant::now();
-    let board = netsmith_place_route::board_from_design_placed(
+    let board = netsmith_placer::board_from_design_placed(
         design,
         &libs.mapping,
         &libs.footprints,

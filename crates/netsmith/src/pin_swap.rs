@@ -29,7 +29,7 @@ use netsmith_check::{EntrySource, PartSpace, PinFile};
 use netsmith_core::Design;
 use netsmith_pcb::board::{BoardNet, PadRef};
 use netsmith_pcb::{Board, Ratsnest};
-use netsmith_place_route::crossings;
+use netsmith_placer::crossings;
 
 /// How many times `fab` goes round (search, place, route) before it stops (owner decision of
 /// 2026-11-09, Q16 of `docs/research/pin-assignment-options.md`).

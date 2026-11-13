@@ -8,14 +8,14 @@
 
 use std::collections::HashMap;
 
-use netsmith_pcb::board::{Board, BoardNet, Placed};
-use netsmith_pcb::geometry::Pt;
-use netsmith_pcb::ratsnest::{Ratline, Ratsnest};
+use crate::board::{Board, BoardNet, Placed};
+use crate::geometry::Pt;
+use crate::ratsnest::{Ratline, Ratsnest};
 
 /// One net of a decoupling pair: the capacitor's pad on it and the power pins it should be
 /// near.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PairNet {
+pub struct PairNet {
     /// The number of the capacitor's pad on this net.
     pub cap_pad: String,
     /// The pads of power pins on this net, as (part index, pad number): the candidates the
@@ -25,7 +25,7 @@ pub(crate) struct PairNet {
 
 /// A capacitor and the part it decouples.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DecouplingPair {
+pub struct DecouplingPair {
     /// The capacitor's index in the board's parts.
     pub cap: usize,
     pub nets: [PairNet; 2],
@@ -61,7 +61,7 @@ fn shared_segments(a: &str, b: &str) -> usize {
 /// capacitor's instance path are kept (the capacitor of a module belongs to the module's
 /// own part), then all of them. Parts are in board order, so the result does not depend on
 /// anything else.
-pub(crate) fn decoupling_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<DecouplingPair> {
+pub fn decoupling_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<DecouplingPair> {
     let index: HashMap<&str, usize> = parts
         .iter()
         .enumerate()
@@ -159,11 +159,11 @@ impl Quality {
     pub fn of(board: &Board) -> Quality {
         let mut hpwl = 0.0;
         for net in &board.nets {
-            let points: Vec<Pt> = netsmith_pcb::ratsnest::nodes_of(&board.parts, net)
+            let points: Vec<Pt> = crate::ratsnest::nodes_of(&board.parts, net)
                 .iter()
                 .map(|n| n.centre)
                 .collect();
-            if let Some(b) = netsmith_pcb::geometry::Rect::around(points) {
+            if let Some(b) = crate::geometry::Rect::around(points) {
                 hpwl += b.width() + b.height();
             }
         }
@@ -226,7 +226,7 @@ impl Quality {
 }
 
 /// Whether the segments `p`-`q` and `r`-`s` cross at a point inside both.
-pub(crate) fn segments_cross(p: Pt, q: Pt, r: Pt, s: Pt) -> bool {
+pub fn segments_cross(p: Pt, q: Pt, r: Pt, s: Pt) -> bool {
     let side = |a: Pt, b: Pt, c: Pt| (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     let (d1, d2, d3, d4) = (side(p, q, r), side(p, q, s), side(r, s, p), side(r, s, q));
     ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))

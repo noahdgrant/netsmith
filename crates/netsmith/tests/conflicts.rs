@@ -88,7 +88,7 @@ fn place(
     let design = built[0].design.clone();
     let mut options = place_options(&design, None);
     options.lines_warn = true;
-    let board = netsmith_place_route::board_from_design_placed(
+    let board = netsmith_placer::board_from_design_placed(
         &design,
         &libraries.mapping,
         &libraries.footprints,

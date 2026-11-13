@@ -10,8 +10,8 @@ use std::{env, fs, path::PathBuf, process::ExitCode, time::Instant};
 use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
 use netsmith_pcb::{apply_layout, kicad_pcb, kicad_pro};
-use netsmith_place_route::Quality;
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_placer::Quality;
+use netsmith_router::{RouteOptions, route_with};
 
 fn main() -> ExitCode {
     let mut file: Option<String> = None;
@@ -63,7 +63,7 @@ fn main() -> ExitCode {
             if seed != 0 {
                 options.seed = seed;
             }
-            let mut board = netsmith_place_route::board_from_design_placed(
+            let mut board = netsmith_placer::board_from_design_placed(
                 &built.design,
                 &libraries.mapping,
                 &libraries.footprints,

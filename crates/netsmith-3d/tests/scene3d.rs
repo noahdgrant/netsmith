@@ -115,7 +115,7 @@ fn board_outlined(process: netsmith_core::Process, polygon: Option<Vec<OutlineVe
             })
             .to_vec(),
     };
-    let mut board = netsmith_place_route::board_from_design_placed(
+    let mut board = netsmith_placer::board_from_design_placed(
         &design,
         &mapping,
         &library,

@@ -354,7 +354,7 @@ pub fn place(
     let ((board, options), seeds) = search(base.seed, stated, seeds, |seed| {
         let mut options = base.clone();
         options.seed = seed;
-        match netsmith_place_route::board_from_design_placed(
+        match netsmith_placer::board_from_design_placed(
             design,
             &libraries.mapping,
             &libraries.footprints,

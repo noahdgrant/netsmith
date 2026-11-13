@@ -7,7 +7,7 @@
 #   kicad    the `kicad` job: the same tests with KiCad 9 installed, so the ones that skip
 #            themselves in `test` run. A change needs it when it can change what those tests see:
 #            the crates that call kicad-cli or read KiCad's libraries (netsmith-kicad, -fab, -pcb,
-#            -place-route, whose tests check the routed boards with kicad-cli, the netsmith crate
+#            -placer and -router, whose tests check the boards with kicad-cli, the netsmith crate
 #            and the netsmith-cli crate, the binary and the tests that start it),
 #            the crates that make the files those tests check
 #            (netsmith-core, -design, -netlist, and the leaves netsmith-sexp, the S-expression
@@ -47,7 +47,7 @@
 #            logic are netsmith-catalog, and the checker and the design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
 #            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
 #            Not the crates after the solver either: `lock` reads no KiCad library, no footprint and
-#            no board, so a change to netsmith-geom, -pcb, -place-route, -fab, -netlist, -3d, -view or
+#            no board, so a change to netsmith-geom, -pcb, -placer, -router, -fab, -netlist, -3d, -view or
 #            -editor cannot move a pick (the netsmith-kicad crate keeps `locks`: the umbrella's
 #            design stage still reads its mapping, and so does netsmith-sexp, which reads it).
 #   designs  the `designs` job: scripts/check-example-designs.sh builds every example with
@@ -56,8 +56,8 @@
 #            example, std/ and the catalogs, so it follows `locks`, and also netsmith-pcb and
 #            netsmith-fab and netsmith-geom, which `locks` leaves out: the design stage loads each part's footprint
 #            (netsmith-pcb, which uses netsmith-geom), and a through-hole one makes the
-#            part fitted by hand. Not the router (netsmith-place-route), netsmith-netlist, -3d,
-#            -view or -editor: none of them runs before the design is made.
+#            part fitted by hand. Not the placer (netsmith-placer), the router (netsmith-router),
+#            netsmith-netlist, -3d, -view or -editor: none of them runs before the design is made.
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -135,7 +135,7 @@ before_design() {
     locks=false
 }
 
-# A crate after the design stage (netsmith-place-route, -netlist): as `before_design`, and no design
+# A crate after the design stage (netsmith-placer, -router, -netlist): as `before_design`, and no design
 # depends on it either, so the change does not start `designs`.
 after_solver() {
     before_design "$@"
@@ -192,9 +192,10 @@ while IFS= read -r path; do
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-sexp/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
         # After the solver: no pick of `netsmith lock` depends on them. The design stage loads the
-        # footprints (netsmith-pcb, on netsmith-geom); the router and the netlist come after it.
+        # footprints (netsmith-pcb, on netsmith-geom); the placer, the router and the netlist come
+        # after it.
         crates/netsmith-geom/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) before_design "${path#crates/*/}" "$path" ;;
-        crates/netsmith-place-route/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
+        crates/netsmith-placer/* | crates/netsmith-router/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;

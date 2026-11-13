@@ -53,8 +53,11 @@ file crates/netsmith/tests/pure.rs "$pure"
 file crates/netsmith-cli/tests/pure.rs "$pure"
 file crates/netsmith-fab/tests/pure.rs "$pure"
 file crates/netsmith-pcb/tests/pure.rs "$pure"
-file crates/netsmith-place-route/tests/pure.rs "$pure"
-file crates/netsmith-place-route/tests/asks.rs "$pure
+file crates/netsmith-placer/tests/pure.rs "$pure"
+file crates/netsmith-placer/tests/asks.rs "$pure
+KicadCliExe::locate_runnable()"
+file crates/netsmith-router/tests/pure.rs "$pure"
+file crates/netsmith-router/tests/asks.rs "$pure
 KicadCliExe::locate_runnable()"
 file crates/netsmith-design/tests/pure.rs "$pure"
 file crates/netsmith/src/editor/tests.rs "$pure"
@@ -173,7 +176,8 @@ row "1 1 1 1 1 1" crates/netsmith-core/src/lib.rs
 row "1 1 1 1 1 1" crates/netsmith-design/src/lib.rs
 # After the solver: `netsmith lock` runs none of it, so `locks` stays off (a pick lock is solver output).
 # The design stage loads footprints (netsmith-pcb, on netsmith-fab), so a design can move with them:
-# `designs` stays on for those two, and off for the router and the netlist, which come after it.
+# `designs` stays on for those two, and off for the placer, the router and the netlist, which come
+# after it.
 row "1 1 1 1 0 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
 row "1 1 1 1 0 0" crates/netsmith-netlist/src/lib.rs
 row "1 1 1 1 0 1" crates/netsmith-fab/Cargo.toml crates/netsmith-pcb/Cargo.toml crates/netsmith-netlist/Cargo.toml
@@ -185,16 +189,24 @@ row "1 1 1 1 1 1" crates/netsmith-sexp/Cargo.toml
 row "1 1 1 1 0 1" crates/netsmith-geom/src/drc/mod.rs
 row "1 1 1 1 0 1" crates/netsmith-geom/Cargo.toml
 row "1 1 1 1 1 1" crates/netsmith-geom/src/plot.rs crates/netsmith-sexp/src/lib.rs
-# The router (issue #518): linked into the binary, and its tests check its boards with kicad-cli.
-row "1 1 1 1 0 0" crates/netsmith-place-route/src/route.rs
-row "1 1 1 1 0 0" crates/netsmith-place-route/Cargo.toml
+# The placer and the router (issues #518, #607): linked into the binary, and their tests check
+# their boards with kicad-cli.
+row "1 1 1 1 0 0" crates/netsmith-placer/src/place.rs
+row "1 1 1 1 0 0" crates/netsmith-placer/Cargo.toml
+row "1 1 1 1 0 0" crates/netsmith-router/src/route.rs
+row "1 1 1 1 0 0" crates/netsmith-router/Cargo.toml
+row "1 1 1 1 0 0" crates/netsmith-placer/src/place.rs crates/netsmith-router/src/route.rs
 # ... until the change reaches something the solver reads.
-row "1 1 1 1 1 1" crates/netsmith-place-route/src/route.rs crates/netsmith-solve/src/solve.rs
-row "1 1 1 1 1 1" crates/netsmith-place-route/src/route.rs crates/netsmith-kicad/src/symbols.rs
-row "1 1 1 1 1 1" crates/netsmith-place-route/src/route.rs std/kicad.toml
-row "1 0 0 0 0 0" crates/netsmith-place-route/tests/pure.rs
-row "1 1 0 0 0 0" crates/netsmith-place-route/tests/asks.rs
-row "1 1 0 0 0 0" crates/netsmith-place-route/tests/main.rs
+row "1 1 1 1 1 1" crates/netsmith-router/src/route.rs crates/netsmith-solve/src/solve.rs
+row "1 1 1 1 1 1" crates/netsmith-router/src/route.rs crates/netsmith-kicad/src/symbols.rs
+row "1 1 1 1 1 1" crates/netsmith-router/src/route.rs std/kicad.toml
+row "1 1 1 1 1 1" crates/netsmith-placer/src/place.rs crates/netsmith-solve/src/solve.rs
+row "1 0 0 0 0 0" crates/netsmith-placer/tests/pure.rs
+row "1 1 0 0 0 0" crates/netsmith-placer/tests/asks.rs
+row "1 1 0 0 0 0" crates/netsmith-placer/tests/main.rs
+row "1 0 0 0 0 0" crates/netsmith-router/tests/pure.rs
+row "1 1 0 0 0 0" crates/netsmith-router/tests/asks.rs
+row "1 1 0 0 0 0" crates/netsmith-router/tests/main.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/gltf.rs
 row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
@@ -255,10 +267,12 @@ crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
 crates_row "netsmith-geom" crates/netsmith-geom/src/geom.rs
 crates_row "netsmith-sexp" crates/netsmith-sexp/src/lib.rs
 crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
-crates_row "netsmith-place-route" crates/netsmith-place-route/src/route.rs
-# The synthetic boards the tests share are netsmith-place-route's: its dependents (netsmith-3d, the
-# netsmith crate) run too.
-crates_row "netsmith-place-route" crates/netsmith-place-route/tests/common/mod.rs
+crates_row "netsmith-router" crates/netsmith-router/src/route.rs
+crates_row "netsmith-placer" crates/netsmith-placer/src/place.rs
+crates_row "netsmith-placer netsmith-router" crates/netsmith-placer/src/place.rs crates/netsmith-router/src/route.rs
+# The synthetic boards the tests share are netsmith-placer's: its dependents (netsmith-router,
+# netsmith-3d, the netsmith crate) run too.
+crates_row "netsmith-placer" crates/netsmith-placer/tests/common/mod.rs
 crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml
 # The test helpers: every crate that dev-depends on them runs (rdeps).
 crates_row "netsmith-testkit" crates/netsmith-testkit/src/lib.rs

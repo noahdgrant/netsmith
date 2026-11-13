@@ -1,6 +1,6 @@
 //! Pictures of the router's work as PNG files, for an agent that can open a picture and not an
 //! SVG (`netsmith route --stages`, issue #431 S3b): one of each stage of the try that gave the
-//! result ([`netsmith_place_route::Snapshot`]) and one of the crowding map ([`netsmith_place_route::Crowding`]).
+//! result ([`netsmith_router::Snapshot`]) and one of the crowding map ([`netsmith_router::Crowding`]).
 //!
 //! A stage's picture is the board's outline, its back copper (blue) and front copper (red) as
 //! that stage left them, the pads and the vias, and on top of all the lines still left, drawn
@@ -17,7 +17,7 @@ use netsmith_fab::raster::{Canvas, Point, disc};
 use netsmith_pcb::board::{Board, CopperLayer};
 use netsmith_pcb::copper::{self, CopperError};
 use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_place_route::{Crowding, Snapshot, SnapshotStage};
+use netsmith_router::{Crowding, Snapshot, SnapshotStage};
 
 /// The pixels along the long side of a picture.
 pub const LONG_SIDE: usize = 1600;

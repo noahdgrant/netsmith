@@ -7,8 +7,8 @@ use netsmith_testkit::TempDir;
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{PlaceOptions, Ratsnest};
-use netsmith_place_route::Quality;
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_placer::Quality;
+use netsmith_router::{RouteOptions, route_with};
 
 use common::{land_grid_board, land_grid_board_with, synthetic_board, synthetic_board_structured};
 
@@ -208,7 +208,7 @@ fn a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad() {
     };
     let (mut with, _) = land_grid_board(7, 12);
     join(&mut with);
-    let left = netsmith_place_route::route(&mut with);
+    let left = netsmith_router::route(&mut with);
     assert!(left.is_empty(), "{:?}", left.lines);
     let u1 = with.part("U1").unwrap();
     let pad = u1.footprint.pads_numbered("11").next().unwrap();
@@ -224,7 +224,7 @@ fn a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad() {
     // Without vias in pads, the pad has no way to the plane and is named.
     let (mut without, _) = land_grid_board_with(7, 12, &[".via_in_pad &= 0mm"]);
     join(&mut without);
-    let left = netsmith_place_route::route(&mut without);
+    let left = netsmith_router::route(&mut without);
     assert!(
         left.lines
             .iter()
@@ -234,7 +234,7 @@ fn a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad() {
     );
 }
 
-/// Prints the numbers the header of `anneal.rs` quotes (ADR 0033): `cargo test --release -p netsmith-place-route --test main
+/// Prints the numbers the header of `anneal.rs` quotes (ADR 0033): `cargo test --release -p netsmith-router --test main
 /// synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture`. With
 /// `NETSMITH_WRITE_BOARDS` set to a folder it writes the routed boards there, for
 /// `crates/netsmith-pcb/scripts/check-kicad.sh`.

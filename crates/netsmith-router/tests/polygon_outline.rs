@@ -94,12 +94,7 @@ fn board(count: usize, polygon: Vec<OutlineVertex>, size: (f64, f64)) -> Result<
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
-    netsmith_place_route::board_from_design_placed(
-        &design,
-        &mapping,
-        &library,
-        &PlaceOptions::default(),
-    )
+    netsmith_placer::board_from_design_placed(&design, &mapping, &library, &PlaceOptions::default())
 }
 
 /// The notch of the L on the sheet.
@@ -276,7 +271,7 @@ fn a_line_across_a_notch_routes_round_it_and_keeps_the_edge_space() {
     ];
     let mut b = board(2, u, (30.0, 20.0)).unwrap_or_else(|e| panic!("{e}"));
     place_two(&mut b, (5.0, 4.0), (25.0, 4.0));
-    let unrouted = netsmith_place_route::route(&mut b);
+    let unrouted = netsmith_router::route(&mut b);
     assert!(unrouted.is_empty(), "{unrouted:?}");
     assert!(!b.tracks.is_empty());
     let o = b.outline.min;
@@ -310,7 +305,7 @@ fn a_line_under_a_curved_edge_keeps_the_edge_space_along_the_arc() {
     ];
     let mut b = board(2, dip, (30.0, 20.0)).unwrap_or_else(|e| panic!("{e}"));
     place_two(&mut b, (3.0, 10.0), (27.0, 10.0));
-    let unrouted = netsmith_place_route::route(&mut b);
+    let unrouted = netsmith_router::route(&mut b);
     assert!(unrouted.is_empty(), "{unrouted:?}");
     assert!(!b.tracks.is_empty());
     let depth = least_track_depth(&b);

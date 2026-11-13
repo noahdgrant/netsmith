@@ -74,12 +74,7 @@ fn board(count: usize, size: (f64, f64)) -> Result<Board, netsmith_pcb::BoardErr
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
     let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
-    netsmith_place_route::board_from_design_placed(
-        &design,
-        &mapping,
-        &library,
-        &PlaceOptions::default(),
-    )
+    netsmith_placer::board_from_design_placed(&design, &mapping, &library, &PlaceOptions::default())
 }
 
 #[test]

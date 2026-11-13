@@ -48,7 +48,7 @@
 //!   it is a choice about the language; the owner may want it, or the marker ADR 0052
 //!   rejected.
 //! - `netsmith-view/src/layout.rs` `is_series_kind` (`Inductor`, `FerriteBead`, `Fuse`) and
-//!   `netsmith-place-route/src/quality.rs` `is_capacitor_kind` read the kind and `Part.provides`: a
+//!   `netsmith-pcb/src/quality.rs` `is_capacitor_kind` read the kind and `Part.provides`: a
 //!   project's own part called `Inductor` has been drawn in series by its kind since before
 //!   generics, and the unit tests build a `Part` by hand with a kind and no `provides`. They
 //!   are about different things (what a layout hangs in series, what the placer calls a

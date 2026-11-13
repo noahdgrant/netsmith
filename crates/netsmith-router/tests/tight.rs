@@ -5,7 +5,7 @@ use crate::common;
 
 use std::time::{Duration, Instant};
 
-use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_router::{RouteOptions, route_with};
 
 use common::tight_board;
 
@@ -127,7 +127,7 @@ fn the_lines_that_end_deep_in_the_fine_pitch_module_are_routed_first_so_an_easy_
 }
 
 /// Prints, for each seed in `NETSMITH_SEEDS` (`0..8` by default; `a..b`), the lines left
-/// unrouted and the time: `NETSMITH_SEEDS=0..20 cargo test --release -p netsmith-place-route --test
+/// unrouted and the time: `NETSMITH_SEEDS=0..20 cargo test --release -p netsmith-router --test
 /// main tight::measured -- --ignored --nocapture`.
 #[test]
 #[ignore = "a measurement, not a check"]
