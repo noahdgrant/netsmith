@@ -1,0 +1,417 @@
+//! A design the size of the showcase boards (#561): about 1,200 parts and 5,000 pads in modules
+//! and repeated circuits, generated as `.nsm` source. `measured` times every stage on it from the
+//! source to the parity report; the regular test keeps the slowest of them under a bound on a
+//! smaller size, so that a regression shows.
+//!
+//! The placer and the router are not measured (they are the router epic's, #431): the export is
+//! given a board whose parts are put in rows, left to right, by their courtyards, with no placer.
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::fs;
+use std::time::{Duration, Instant};
+
+use netsmith::compare::netlist_of_design;
+use netsmith::editor::Workspace;
+use netsmith::parity::{DesignatorMap, Tolerances, check_text};
+use netsmith::project::Target;
+use netsmith::reference_table::{Board as Table, placements_toml};
+use netsmith::{Built, Libraries, build_with, outcome_with};
+use netsmith_check::Loader;
+use netsmith_editor::Backend;
+use netsmith_kicad::install::Search;
+use netsmith_kicad::testlib::TempDir;
+use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare};
+use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::{Board, PlaceOptions, kicad_pcb};
+use netsmith_solve::Catalogs;
+
+use crate::common::port::{Port, Reading};
+
+/// The channels of the full size: 16 parts and 76 pads each, about 1,200 parts and 5,800 pads
+/// in all.
+const FULL: usize = 76;
+
+/// How many channels a bank holds.
+const PER_BANK: usize = 4;
+
+/// The pins of a channel's headers that are its bus, which runs through every channel.
+const BUS: std::ops::RangeInclusive<usize> = 9..=18;
+
+/// The source of a board of `channels` channels (a multiple of [`PER_BANK`]). A channel is a
+/// module of two 20-pin headers, a 10-pin socket, four indicators (a module of a resistor and an
+/// LED), and decoupling; banks of channels are a module too. The bus pins of every header are
+/// on one net each across the whole board, as a backplane's are; the rest are the channel's own.
+pub fn source(channels: usize) -> String {
+    assert!(channels > 0 && channels.is_multiple_of(PER_BANK));
+    let mut s = String::from(
+        "import std::parts::connector::{Header1x2, Header2x10, Socket1x10}\n\
+         import std::parts::passive::{Resistor, Led, Capacitor}\n\
+         import std::sources::Rail\n\
+         import std::logic::Logic\n\
+         import std::mfg::jlcpcb::TwoLayer\n\n",
+    );
+    s.push_str(
+        "/// The lines of the bus that runs through every channel.\ninterface Backplane {\n",
+    );
+    for p in BUS {
+        let _ = writeln!(s, "    .l{p}: Pin");
+    }
+    s.push_str("}\n\n");
+    s.push_str(
+        "module Indicator {\n\
+         \x20   .power: Rail\n\
+         \x20   .enable: Logic\n\
+         \x20   .enable.reference ~ .power\n\
+         \x20   .limit: Resistor {\n        .resistance &= 1kohm +/- 1%\n    }\n\
+         \x20   .led: Led {\n        .color &= \"GREEN\"\n        .forward_voltage &= 1.8V..2.5V\n    }\n\
+         \x20   .enable.line ~> .limit ~> .led ~> .power.neg\n\
+         }\n\n",
+    );
+    s.push_str("module Channel {\n    .power: Rail\n    .bus_a: Backplane\n    .bus_b: Backplane\n    .bus_in: Header2x10\n    .bus_out: Header2x10\n    .probe: Socket1x10\n");
+    for i in 1..=4 {
+        let _ = writeln!(
+            s,
+            "    .ind{i}: Indicator\n    .ind{i}.power ~ .power\n    .ind{i}.enable.line ~ .bus_in.p{i}\n    .ind{i}.enable.line ~ .probe.p{i}"
+        );
+    }
+    for i in 5..=8 {
+        // The channel's own lines with no indicator, to the probe socket.
+        let _ = writeln!(s, "    .bus_in.p{i} ~ .probe.p{i}");
+    }
+    for p in BUS {
+        let _ = writeln!(
+            s,
+            "    .bus_in.p{p} ~ .bus_out.p{p}\n    .bus_a.l{p} ~ .bus_in.p{p}\n    .bus_b.l{p} ~ .bus_out.p{p}"
+        );
+    }
+    for i in 1..=8 {
+        let _ = writeln!(s, "    .bus_out.p{i} ~ .bus_in.p{i}");
+    }
+    s.push_str(
+        "    .power.pos ~ .bus_in.p19\n    .power.neg ~ .bus_in.p20\n\
+         \x20   .power.pos ~ .bus_out.p19\n    .power.neg ~ .bus_out.p20\n\
+         \x20   .power.pos ~ .probe.p9\n    .power.neg ~ .probe.p10\n",
+    );
+    for i in 1..=5 {
+        let value = if i == 5 { "10uF" } else { "100nF" };
+        let _ = writeln!(
+            s,
+            "    .bypass{i}: Capacitor {{\n        .capacitance &= {value} +/- 20%\n    }}\n    .power.pos ~> .bypass{i} ~> .power.neg"
+        );
+    }
+    s.push_str(
+        "}\n\nmodule Bank {\n    .power: Rail\n    .bus_a: Backplane\n    .bus_b: Backplane\n",
+    );
+    for c in 0..PER_BANK {
+        let _ = writeln!(s, "    .ch{c}: Channel\n    .ch{c}.power ~ .power");
+    }
+    for c in 1..PER_BANK {
+        let _ = writeln!(s, "    .ch{}.bus_b ~ .ch{c}.bus_a", c - 1);
+    }
+    let _ = writeln!(
+        s,
+        "    .bus_a ~ .ch0.bus_a\n    .bus_b ~ .ch{}.bus_b",
+        PER_BANK - 1
+    );
+    s.push_str("}\n\n");
+    s.push_str(
+        "board Scale {\n\
+         \x20   .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n\
+         \x20   .supply: Rail {\n        .voltage &= 3.3V +/- 5%\n        .pos.net &= \"VCC\"\n        .neg.net &= \"GND\"\n    }\n\
+         \x20   .power_in: Header1x2\n\
+         \x20   .supply.pos ~ .power_in.p1\n    .supply.neg ~ .power_in.p2\n",
+    );
+    let banks = channels / PER_BANK;
+    for b in 0..banks {
+        let _ = writeln!(s, "    .bank{b}: Bank\n    .bank{b}.power ~ .supply");
+    }
+    for b in 1..banks {
+        let _ = writeln!(s, "    .bank{}.bus_b ~ .bank{b}.bus_a", b - 1);
+    }
+    s.push_str("}\n");
+    s
+}
+
+/// The libraries of a machine with no KiCad: the generated footprints and std's own symbols, the
+/// same on every machine (ADR 0097).
+fn libraries(empty: &TempDir) -> Libraries {
+    Libraries::for_project_by(None, &Search::under(empty.to_path_buf())).unwrap()
+}
+
+/// The board of `built` with its parts in rows by their courtyards, and no placer.
+fn board_in_rows(built: &Built, libraries: &Libraries) -> Board {
+    let mut u = Board::unplaced(
+        &built.design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &PlaceOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let gap = 1.0;
+    let area: f64 = u
+        .parts
+        .iter()
+        .map(|p| {
+            let c = p.footprint.courtyard;
+            (c.max.x - c.min.x + gap) * (c.max.y - c.min.y + gap)
+        })
+        .sum();
+    let width = area.sqrt() * 1.2;
+    let (mut x, mut y, mut row) = (gap, gap, 0.0_f64);
+    let mut right = 0.0_f64;
+    for p in &mut u.parts {
+        let c = p.footprint.courtyard;
+        let (w, h) = (c.max.x - c.min.x, c.max.y - c.min.y);
+        if x + w > width {
+            x = gap;
+            y += row + gap;
+            row = 0.0;
+        }
+        p.at = Pt::new(x - c.min.x, y - c.min.y);
+        p.rotation = 0.0;
+        x += w + gap;
+        right = right.max(x);
+        row = row.max(h);
+    }
+    let outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(right, y + row + gap));
+    u.into_board(&built.design, outline, 0.0)
+}
+
+/// How long each stage took, in order, and what it made.
+#[derive(Default)]
+pub struct Times {
+    pub stages: Vec<(&'static str, Duration, String)>,
+}
+
+impl Times {
+    fn time<R>(
+        &mut self,
+        stage: &'static str,
+        work: impl FnOnce() -> R,
+        said: impl Fn(&R) -> String,
+    ) -> R {
+        let started = Instant::now();
+        let r = work();
+        let took = started.elapsed();
+        self.stages.push((stage, took, said(&r)));
+        r
+    }
+
+    fn slowest(&self) -> (&'static str, Duration) {
+        self.stages
+            .iter()
+            .map(|(s, d, _)| (*s, *d))
+            .max_by_key(|(_, d)| *d)
+            .unwrap()
+    }
+
+    fn text(&self) -> String {
+        self.stages
+            .iter()
+            .map(|(stage, took, said)| {
+                format!("{stage:<28} {:>9.3} s  {said}\n", took.as_secs_f64())
+            })
+            .collect()
+    }
+}
+
+fn verdict(outcome: &Outcome) -> &'static str {
+    match outcome {
+        Outcome::Match(_) => "match",
+        Outcome::Different(_) => "different",
+        Outcome::Undecided(_) => "undecided",
+    }
+}
+
+/// Every stage on a board of `channels` channels; `editor` adds the editor's analysis of the
+/// design as a project on disk.
+pub fn run(channels: usize, editor: bool) -> Times {
+    let mut t = Times::default();
+    let text = source(channels);
+    let empty = TempDir::new("scale-no-kicad");
+    let libraries = libraries(&empty);
+    let catalogs = Catalogs::jlcpcb();
+    let loader = Loader::std();
+
+    t.time(
+        "check, solve, design",
+        || {
+            outcome_with("scale.nsm", &text, &loader, &catalogs, None)
+                .unwrap_or_else(|p| panic!("{}", netsmith::render_problems(&p)))
+        },
+        |o| {
+            let d = &o.boards[0].design;
+            let pads: usize = d.nets.iter().map(|n| n.pins.len()).sum();
+            format!(
+                "{} parts, {} nets, {pads} pins on nets",
+                d.parts.len(),
+                d.nets.len()
+            )
+        },
+    );
+    let built = t.time(
+        "build (with schematic)",
+        || {
+            build_with("scale.nsm", &text, &loader, &catalogs, &libraries)
+                .unwrap_or_else(|e| panic!("{e}"))
+        },
+        |b| format!("schematic {} kB", b[0].schematic.len() / 1000),
+    );
+    let built = &built[0];
+
+    let board = t.time(
+        "board in rows (no placer)",
+        || board_in_rows(built, &libraries),
+        |b| {
+            let pads: usize = b.parts.iter().map(|p| p.footprint.pads.len()).sum();
+            format!("{} footprints, {pads} pads", b.parts.len())
+        },
+    );
+    let pcb = t.time(
+        "kicad_pcb export",
+        || kicad_pcb(&board),
+        |s| format!("{} kB", s.len() / 1000),
+    );
+
+    let design = netlist_of_design(&built.design, &libraries.mapping).unwrap();
+    let read = t.time(
+        "read the kicad_pcb netlist",
+        || Netlist::from_kicad_pcb(&pcb).unwrap(),
+        |n| format!("{} components, {} nets", n.components.len(), n.nets.len()),
+    );
+    let by_refdes = Options {
+        identity: Identity::ByRefdes,
+        ..Options::default()
+    };
+    let o = t.time(
+        "compare by designator",
+        || compare(&design, &read, &by_refdes).unwrap(),
+        |o| verdict(o).into(),
+    );
+    assert!(
+        matches!(o, Outcome::Match(_)),
+        "{}",
+        netsmith_netlist::report(&o)
+    );
+    let o = t.time(
+        "compare free (no designators)",
+        || compare(&design, &read, &Options::default()).unwrap(),
+        |o| verdict(o).into(),
+    );
+    assert!(
+        matches!(o, Outcome::Match(_)),
+        "{}",
+        netsmith_netlist::report(&o)
+    );
+
+    let port = Port {
+        folder: "",
+        board: None,
+        original: "the board",
+        swapped: &[],
+        renumbered: &[],
+        no_nets: &[],
+        own: &[],
+    };
+    let differences = t.time(
+        "nets proof (pads' neighbours)",
+        || {
+            let none = BTreeMap::new();
+            let ours = port.neighbours(&design, &none, Reading::AsIs);
+            let theirs = port.neighbours(&read, &none, Reading::AsIs);
+            port.net_differences(&ours, &theirs)
+        },
+        |d| format!("{} differences", d.len()),
+    );
+    assert!(differences.is_empty(), "{differences:?}");
+
+    let table = t.time(
+        "reference table of the board",
+        || placements_toml(&pcb, "self").unwrap(),
+        |s| format!("{} kB", s.len() / 1000),
+    );
+    let map = DesignatorMap::identity(&Table::from_table(&table).unwrap());
+    let report = t.time(
+        "parity against itself",
+        || check_text(&table, &pcb, &map, &Tolerances::default()).unwrap(),
+        |r| {
+            let (ok, failed) = r.must_match_counts();
+            format!("{ok} items match, {failed} fail")
+        },
+    );
+    assert!(report.passed(), "{}", report.text());
+    t.time(
+        "parity report text",
+        || report.text(),
+        |s| format!("{} kB", s.len() / 1000),
+    );
+    t.time(
+        "parity overlay",
+        || report.overlay_svg(),
+        |s| format!("{} kB", s.len() / 1000),
+    );
+
+    if editor {
+        let root = TempDir::new("scale-editor");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("netsmith.toml"),
+            "[project]\nname = \"scale\"\ntop_level = [\"src/main.nsm\"]\n",
+        )
+        .unwrap();
+        fs::write(root.join("src/main.nsm"), &text).unwrap();
+        let workspace = t.time(
+            "editor: open and analyse",
+            || {
+                let w = Workspace::open(Target::resolve_from(&root, None).unwrap()).unwrap();
+                let a = w.analysis();
+                (w, a)
+            },
+            |(_, a)| format!("{} boards, {} errors", a.boards.len(), a.errors),
+        );
+        let (workspace, analysis) = workspace;
+        assert_eq!(analysis.errors, 0, "{:?}", analysis.problems);
+        let name = analysis.boards[0].name.clone();
+        t.time(
+            "editor: schematic view",
+            || workspace.schematic(&name).unwrap(),
+            |s| format!("{} kB", s.len() / 1000),
+        );
+    }
+    t
+}
+
+/// Prints the time of every stage at the full size (76 channels), or at the sizes of
+/// `NETSMITH_SCALE=20,36,76` (channels, multiples of 4); `NETSMITH_SCALE_EDITOR=0` leaves the
+/// editor out. Run with `--release`, and under `/usr/bin/time -v` for the peak memory.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn measured() {
+    let sizes: Vec<usize> = std::env::var("NETSMITH_SCALE")
+        .ok()
+        .map(|s| s.split(',').map(|n| n.trim().parse().unwrap()).collect())
+        .unwrap_or_else(|| vec![FULL]);
+    let editor = std::env::var("NETSMITH_SCALE_EDITOR").map_or(true, |v| v != "0");
+    for channels in sizes {
+        let t = run(channels, editor);
+        eprintln!("{channels} channels:\n{}", t.text());
+    }
+}
+
+/// Half the full size (577 parts, 2,738 pads), every stage but the editor's: the slowest stays
+/// under a bound. In the test profile on a 10-core machine the slowest stage, the comparison with
+/// no designators, takes about 3 s and the build about 2.5 s (2026-11-13); the bound leaves five
+/// times that for a slower CI machine, so it fails a stage that becomes about five times slower
+/// (the picks were 2.5 times slower than now before #561, at this size).
+#[test]
+fn half_a_showcase_board_goes_from_source_to_parity_in_time() {
+    let t = run(FULL / 2 / PER_BANK * PER_BANK, false);
+    let (stage, took) = t.slowest();
+    eprintln!("{}", t.text());
+    assert!(
+        took < Duration::from_secs(15),
+        "{stage} took {took:.1?}:\n{}",
+        t.text()
+    );
+}

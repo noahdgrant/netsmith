@@ -10,6 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use netsmith::compare::netlist_of_design;
 use netsmith::port::PortParts;
@@ -20,8 +21,10 @@ use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, report};
 /// A pad: the original's designator of its part and its number.
 pub type Pad = (String, String);
 
-/// For each pad on a net with another pad, the other pads of that net.
-pub type Neighbours = BTreeMap<Pad, BTreeSet<Pad>>;
+/// For each pad on a net with another pad, the pads of that net, itself among them: one set for
+/// each net, which every pad of it shares (a copy for each pad made the proof of a net of a
+/// thousand pads quadratic, #561).
+pub type Neighbours = BTreeMap<Pad, Rc<BTreeSet<Pad>>>;
 
 /// What a port is and the differences from its original that it accepts.
 pub struct Port {
@@ -117,7 +120,7 @@ impl Port {
             .map_or_else(|| pad.to_string(), |(_, _, ours)| (*ours).to_string())
     }
 
-    /// For each pad that is on a net with another pad: the other pads of the net, in the
+    /// For each pad that is on a net with another pad: the pads of the net, in the
     /// original's designators (`to_reference` maps a designator of `netlist`; one it does not
     /// name keeps its name).
     pub fn neighbours(
@@ -138,13 +141,12 @@ impl Port {
                     (refdes, pin)
                 })
                 .collect();
-            let pads: Vec<Pad> = pads.into_iter().collect();
             if pads.len() < 2 {
                 continue;
             }
-            for pad in &pads {
-                let others = pads.iter().filter(|p| *p != pad).cloned().collect();
-                out.insert(pad.clone(), others);
+            let pads = Rc::new(pads);
+            for pad in pads.iter() {
+                out.insert(pad.clone(), Rc::clone(&pads));
             }
         }
         out
@@ -175,20 +177,32 @@ impl Port {
     pub fn net_differences(&self, ours: &Neighbours, theirs: &Neighbours) -> Vec<String> {
         let mut differences = Vec::new();
         let pads: BTreeSet<&Pad> = ours.keys().chain(theirs.keys()).collect();
-        let empty = BTreeSet::new();
+        let empty = Rc::new(BTreeSet::new());
+        let mut equal: std::collections::HashMap<
+            (*const BTreeSet<Pad>, *const BTreeSet<Pad>),
+            bool,
+        > = std::collections::HashMap::new();
         for pad in pads {
             let (a, b) = (
                 ours.get(pad).unwrap_or(&empty),
                 theirs.get(pad).unwrap_or(&empty),
             );
-            if a != b {
+            // Both sets have the pad itself, or the pad is on no net with another on one side.
+            // Two nets are compared once, not once for each of their pads.
+            let same = *equal
+                .entry((Rc::as_ptr(a), Rc::as_ptr(b)))
+                .or_insert_with(|| a == b);
+            if !same {
+                let only = |x: &BTreeSet<Pad>, y: &BTreeSet<Pad>| -> Vec<Pad> {
+                    x.difference(y).filter(|p| *p != pad).cloned().collect()
+                };
                 differences.push(format!(
                     "{}.{}: board has {:?}, {} has {:?}",
                     pad.0,
                     pad.1,
-                    a.difference(b).collect::<Vec<_>>(),
+                    only(a, b),
                     self.original,
-                    b.difference(a).collect::<Vec<_>>()
+                    only(b, a)
                 ));
             }
         }

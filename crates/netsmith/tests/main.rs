@@ -86,6 +86,7 @@ mod root_spelling;
 mod row;
 mod rp2350_minimal;
 mod rp2350_parity;
+mod scale;
 mod schematic_invariants;
 mod search_budget;
 mod std_additions;

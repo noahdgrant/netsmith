@@ -3,11 +3,10 @@
 
 use crate::diag::SourceId;
 use crate::model::{
-    Domain, InstId, InstKind, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow,
-    PinTable, Pinout, RExpr,
+    Domain, InstId, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow, PinTable,
+    Pinout,
 };
 use netsmith_lang::Span;
-use netsmith_lang::ast::CmpOp;
 
 impl Model {
     /// The package a part is in, if its `package` field holds one.
@@ -343,16 +342,7 @@ impl Model {
         let Member::Field(own) = self.member(pin, "function")? else {
             return None;
         };
-        self.relations()
-            .iter()
-            .find_map(|r| match (&r.lhs, r.op, &r.rhs) {
-                (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(g)) if *l == own => {
-                    let g = self.field(*g);
-                    (g.name == "function" && self.instance(g.owner).kind == InstKind::Pin)
-                        .then_some(g.owner)
-                }
-                _ => None,
-            })
+        self.forwards().from.get(&own).copied()
     }
 
     /// The pins whose function an equation sets from this pin's: `.mcu.p04` for `.scl`, with
@@ -361,17 +351,7 @@ impl Model {
         let Some(Member::Field(g)) = self.member(pin, "function") else {
             return Vec::new();
         };
-        self.relations()
-            .iter()
-            .filter_map(|r| match (&r.lhs, r.op, &r.rhs) {
-                (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(x)) if *x == g => {
-                    let l = self.field(*l);
-                    (l.name == "function" && self.instance(l.owner).kind == InstKind::Pin)
-                        .then_some(l.owner)
-                }
-                _ => None,
-            })
-            .collect()
+        self.forwards().read_by.get(&g).cloned().unwrap_or_default()
     }
 
     /// The pin, then the pins its function is taken from, one after the other, to a depth
