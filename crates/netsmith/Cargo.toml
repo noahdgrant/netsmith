@@ -12,6 +12,7 @@ name = "main"
 path = "tests/main.rs"
 
 [dependencies]
+netsmith-catalog = { path = "../netsmith-catalog" }
 netsmith-check = { path = "../netsmith-check" }
 netsmith-core = { path = "../netsmith-core" }
 netsmith-dxf = { path = "../netsmith-dxf" }
@@ -34,7 +35,6 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sha2 = "0.11.1"
 toml = "1.1.8"
-ureq = "3"
 # `Libraries::sample()`, behind the `test-support` feature.
 netsmith-testkit = { path = "../netsmith-testkit", optional = true }
 

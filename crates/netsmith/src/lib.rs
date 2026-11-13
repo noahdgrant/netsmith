@@ -21,7 +21,6 @@ pub mod parity;
 pub mod part_draft;
 pub mod physical;
 pub mod pick_lock;
-pub mod picks;
 pub mod picture;
 pub mod pin_export;
 pub mod pin_swap;
@@ -35,12 +34,8 @@ pub mod providers;
 pub mod reference_table;
 pub mod refresh;
 pub mod render;
-pub mod resolve;
-mod stock;
-pub mod supply;
 pub mod symbol_gallery;
 pub mod system3d;
-mod values;
 
 use std::path::{Path, PathBuf};
 
@@ -60,6 +55,8 @@ use netsmith_pcb::{Subject, validate_pinout};
 use netsmith_solve::{Catalogs, PickLock, Solution, solve, solve_system};
 
 pub use libraries::Libraries;
+pub use netsmith_catalog::{picks, resolve, supply};
+use netsmith_catalog::{stock, values};
 pub use netsmith_editor::api::PowerIssue;
 pub use providers::{MAX_PROVIDER_TRIALS, ProviderNote};
 

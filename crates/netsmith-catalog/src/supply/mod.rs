@@ -431,6 +431,3 @@ impl Supply {
         Arc::new(StockOf(self))
     }
 }
-
-#[cfg(test)]
-mod tests;

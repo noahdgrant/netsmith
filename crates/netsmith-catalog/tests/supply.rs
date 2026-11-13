@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use netsmith_testkit::TempDir;
 
-use super::*;
+use netsmith_catalog::supply::*;
+use netsmith_solve::Availability;
 
 /// 2026-11-02 00:00 UTC.
 const NOW: u64 = 1_793_577_600;

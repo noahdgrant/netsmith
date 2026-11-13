@@ -272,7 +272,7 @@ pub fn resolve_generics(
 /// board is built, for every assembled generic and not only on power paths; a part that is
 /// fitted by hand or not at all is left out, as `fab` leaves it out. `origins` is the
 /// instance of each part of `sourcing`, and `path_of` says the path of an instance.
-pub(crate) fn unresolved_findings(
+pub fn unresolved_findings(
     sourcing: &[Sourced],
     origins: &[InstId],
     catalogs: &Catalogs,

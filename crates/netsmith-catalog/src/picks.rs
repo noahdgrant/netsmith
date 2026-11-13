@@ -46,7 +46,7 @@ pub fn holding(
     })
 }
 
-pub(crate) fn parse(text: &str, name: &str) -> Result<Picks, String> {
+pub fn parse(text: &str, name: &str) -> Result<Picks, String> {
     let wrong = |what: String| format!("error: {name}: {what}");
     let table: toml::Table = text.parse().map_err(|e| wrong(format!("{e}")))?;
     match table.get("version") {

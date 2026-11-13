@@ -150,7 +150,7 @@ pub use http::{
     default_cache_dir, is_lcsc_number,
 };
 pub use records::{Product, package_matches, parse_product};
-pub use targets::{Target, resolve_targets};
+pub use targets::{STD_DIR, Target, directory};
 
 use csvfile::CsvFile;
 use http::Got;
