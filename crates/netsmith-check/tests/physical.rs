@@ -162,7 +162,7 @@ fn a_physical_file_declares_no_part_or_module() {
     let m = messages(&c);
     assert_eq!(m.len(), 1, "{m:?}");
     assert!(
-        m[0].starts_with("a physical file declares the outline, cutouts, keepouts, mounting holes, fiducials and labels of a board; `.extra: Header1x2` is none of them"),
+        m[0].starts_with("a physical file declares the outline, cutouts, keepouts, mounting holes, fiducials, labels and case models of a board; `.extra: Header1x2` is none of them"),
         "{}",
         m[0]
     );

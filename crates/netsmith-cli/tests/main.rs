@@ -6,6 +6,7 @@
 mod common;
 
 mod board3d;
+mod case_model_files;
 mod cli_help;
 mod compare;
 mod constraints;

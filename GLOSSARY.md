@@ -495,7 +495,7 @@ _Avoid_: Propagated voltage, derived voltage (a derived value is any worked-out 
 
 **Enclosure**:
 A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load: the sum of what the loads on its output draw, each over every pick it could have, when every load has a current the design's relations give, and otherwise (a load that states nothing) from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendments 5, 6, 7 and 11).
-_Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing)
+_Avoid_: Seed, start window (those are a range the board writes by hand and states as a claim; an enclosure is worked out and is not stated), bound (the bound from Ohm's law is another, cheaper thing); for the box a board goes in, say _Case model_ or case
 
 **Assumed window**:
 The range taken for the input of a regulator while the parts in series with it are picked, before the network can be solved: from the largest of what the part and the design need of it to the highest supply that reaches it. It is an assumption about a valid design, it is never kept (the picks are made again without it, from the one row each was given), and what the pass after the picks writes is the circuit's (ADR 0076, amendment 7).
@@ -715,6 +715,10 @@ _Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D e
 **STEP model**:
 A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), to be drawn in the _Scene_ in place of its _Package shape_ (ADR 0108). It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape.
 _Avoid_: 3D model (KiCad's word, which also names VRML files), user model, CAD model
+
+**Case model**:
+A STEP file of the board's case, kept in the project, that a `CaseModel` member of the `case { }` section of the board's physical file names (`.shell: CaseModel { .file &= "case/box.step"  .z &= -1.6mm  .rx &= 180 }`, with the fields and the rotation order of a _STEP model_, in the _Scene_'s frame), for the board and its parts' bodies to be drawn in and checked against (ADR 0109). It is a drawing and a check, never a height, an outline or a hole: those stay statements of the `case` section. netsmith bundles and downloads none; a file that is not there leaves the fit unchecked, a warning, and an error with strict constraints.
+_Avoid_: Enclosure (a solver range, above), case STEP, housing model
 
 **Package shape**:
 The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). Another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.

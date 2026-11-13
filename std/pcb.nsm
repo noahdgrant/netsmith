@@ -91,3 +91,34 @@ interface Keepout {
     /// states this and none of the four above forbids nothing else.
     .max_height: Length
 }
+
+/// A STEP file of the board's case, kept in the project, that the board is to be drawn in and
+/// checked against (ADR 0109). It is declared in the `case { }` section of the board's
+/// physical file, one member for each file: `.shell: CaseModel { .file &= "case/box.step" }`;
+/// a base and a lid are two members, or one file with two solids.
+///
+/// It has the fields and the rotation order of a part's `StepModel` (ADR 0108). The model is
+/// placed in the 3D scene's frame (`docs/BOARD3D.md`: millimetres, z up, the origin at the
+/// outline's bottom-left corner on the top face): `.rx`, `.ry` and `.rz` turn it about x, then
+/// y, then z, and `.x`, `.y` and `.z` then move it. Each is one value, and an unstated one is
+/// zero. The side up is a rotation and the gap an offset: a box modelled upside down that
+/// stands on the board's bottom face is `.rx &= 180` and `.z &= -1.6mm`.
+///
+/// A case model is a drawing and a check, never a height, an outline or a hole: those stay
+/// statements of the `case { }` section (by hand or `netsmith dxf import`), and the check says
+/// where they disagree with the model. A file that is not there is a warning (the fit is not
+/// checked), an error with strict constraints. netsmith bundles and downloads none. Only the
+/// file and its placement are read today; the fit check and the drawing come later.
+interface CaseModel {
+    /// The STEP file, relative to the physical file that states it. It must be inside the
+    /// project.
+    .file: String
+    /// The offset, in the 3D scene's frame.
+    .x: Length
+    .y: Length
+    .z: Length
+    /// The rotation in degrees about x, then y, then z, applied before the offset.
+    .rx: Number
+    .ry: Number
+    .rz: Number
+}

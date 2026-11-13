@@ -5,8 +5,12 @@
 //! license often keeps its model out of a public repository, so a clone or a CI job may not
 //! have it.
 //!
+//! A case model's file (`CaseModel` in the physical file's `case { }` section, ADR 0109) is
+//! found the same way. One that is not there leaves the board's fit in its case unchecked: a
+//! warning, and an error when constraints are strict.
+//!
 //! Only the file's place is settled here. It is not read: the model never gives the part a
-//! height.
+//! height, and a case model never gives the board an outline, a hole or a height limit.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -22,6 +26,10 @@ pub struct Located {
     pub warnings: Vec<String>,
     /// A path outside the project, an absolute path, or two statements that name two files.
     pub errors: Vec<String>,
+    /// A case model's file that is not there (ADR 0109): the board's fit in its case is not
+    /// checked. A warning, and an error when constraints are strict (`fab --constraints
+    /// error` or `constraints = "error"`), as a part of unknown height under a limit is.
+    pub unchecked: Vec<String>,
 }
 
 /// Where the files of a target are on disk, to find a model relative to the file that names it.
@@ -87,67 +95,98 @@ impl Places {
     }
 }
 
-/// Find the file of each STEP model of `design` and put it in `resolved`, unless it is not
-/// there. `design.features.models` must have its `stated_in` filled
-/// ([`crate::constraints::name_model_sources`]).
+/// Find the file of each STEP model of `design`, and of each case model (ADR 0109), and put it
+/// in `resolved`, unless it is not there. `design.features.models` and `case_models` must have
+/// their `stated_in` filled ([`crate::constraints::name_model_sources`],
+/// [`crate::constraints::name_case_model_sources`]).
 pub fn locate(design: &mut Design, places: &Places) -> Located {
     let mut found = Located::default();
     for model in &mut design.features.models {
         let path = &model.path;
-        let stated = Path::new(&model.file);
-        if stated.has_root() || stated.is_absolute() {
-            found.errors.push(format!(
-                "`{path}.model.file` is `{}`, an absolute path ({}); name the STEP file relative to the file that states it, inside the project",
-                model.file, model.source
-            ));
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        for name in &model.stated_in {
-            let base = places.path_of(name);
-            let dir = base.parent().unwrap_or(&places.root);
-            let file = normal(&dir.join(stated));
-            if !files.contains(&file) {
-                files.push(file);
-            }
-        }
-        let Some(file) = files.first().cloned() else {
-            continue;
-        };
-        if files.len() > 1 {
-            found.errors.push(format!(
-                "`{path}.model.file` is `{}` in each of {}, and relative to each of those files it names a different file ({}): state it once, or with a path that names one file",
-                model.file,
-                model.source,
-                files
-                    .iter()
-                    .map(|f| format!("`{}`", shown(f, &places.root)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-            continue;
-        }
-        if !file.starts_with(&places.root) {
-            found.errors.push(format!(
-                "`{path}.model.file` is `{}` ({}), which is `{}`, outside the project (`{}`): put the STEP file inside the project, as netsmith never reads a model from elsewhere",
-                model.file,
-                model.source,
-                file.display(),
-                places.root.display()
-            ));
-            continue;
-        }
-        if file.is_file() {
-            model.resolved = Some(file);
-        } else {
-            found.warnings.push(format!(
-                "`{path}.model.file` names `{}` ({}), and there is no such file, so `{path}` is drawn with its generated shape; add the file, or leave it out on a machine that may not have it",
+        let field = format!("{path}.model.file");
+        match find(&field, &model.file, &model.source, &model.stated_in, places) {
+            Find::There(file) => model.resolved = Some(file),
+            Find::Missing(file) => found.warnings.push(format!(
+                "`{field}` names `{}` ({}), and there is no such file, so `{path}` is drawn with its generated shape; add the file, or leave it out on a machine that may not have it",
                 shown(&file, &places.root),
                 model.source
-            ));
+            )),
+            Find::Refused(error) => found.errors.push(error),
+            Find::Unstated => {}
+        }
+    }
+    for case in &mut design.features.case_models {
+        let field = format!("{}.file", case.name);
+        match find(&field, &case.file, &case.source, &case.stated_in, places) {
+            Find::There(file) => case.resolved = Some(file),
+            Find::Missing(file) => found.unchecked.push(format!(
+                "`{field}` names `{}` ({}), and there is no such file, so the board's fit in its case model `{}` is not checked; add the file, or leave it out on a machine that may not have it",
+                shown(&file, &places.root),
+                case.source,
+                case.name
+            )),
+            Find::Refused(error) => found.errors.push(error),
+            Find::Unstated => {}
         }
     }
     found
+}
+
+/// What [`find`] found of one file.
+enum Find {
+    /// The file, inside the project.
+    There(PathBuf),
+    /// Where the file would be, inside the project, and it is not there.
+    Missing(PathBuf),
+    /// Why the path is refused: absolute, outside the project, or naming two files.
+    Refused(String),
+    /// No statement says where it is.
+    Unstated,
+}
+
+/// Find the file `stated` (the value of the field `field`, stated at `source` in the files
+/// `stated_in`) relative to the file that states it.
+fn find(field: &str, stated: &str, source: &str, stated_in: &[String], places: &Places) -> Find {
+    let path = Path::new(stated);
+    if path.has_root() || path.is_absolute() {
+        return Find::Refused(format!(
+            "`{field}` is `{stated}`, an absolute path ({source}); name the STEP file relative to the file that states it, inside the project"
+        ));
+    }
+    let mut files: Vec<PathBuf> = Vec::new();
+    for name in stated_in {
+        let base = places.path_of(name);
+        let dir = base.parent().unwrap_or(&places.root);
+        let file = normal(&dir.join(path));
+        if !files.contains(&file) {
+            files.push(file);
+        }
+    }
+    let Some(file) = files.first().cloned() else {
+        return Find::Unstated;
+    };
+    if files.len() > 1 {
+        return Find::Refused(format!(
+            "`{field}` is `{stated}` in each of {source}, and relative to each of those files it names a different file ({}): state it once, or with a path that names one file",
+            files
+                .iter()
+                .map(|f| format!("`{}`", shown(f, &places.root)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !file.starts_with(&places.root) {
+        return Find::Refused(format!(
+            "`{field}` is `{stated}` ({source}), which is `{}`, outside the project (`{}`): put the STEP file inside the project, as netsmith never reads a model from elsewhere",
+            file.display(),
+            places.root.display()
+        ));
+    }
+    if file.is_file() {
+        Find::There(file)
+    } else {
+        Find::Missing(file)
+    }
 }
 
 /// A path from the current directory as an absolute one, with no `.` or `..`.

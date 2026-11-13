@@ -413,6 +413,31 @@ pub struct StepModel {
     pub resolved: Option<std::path::PathBuf>,
 }
 
+/// A STEP file of the board's case that the board is drawn in and checked against (a
+/// `CaseModel` of the physical file's `case { }` section, ADR 0109). It is a drawing and a
+/// check, never a height, an outline or a hole.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaseModel {
+    /// The member's name in the board (`shell`).
+    pub name: String,
+    /// The file as the design states it (`.shell.file`), relative to the file that states it.
+    pub file: String,
+    /// The offset, in mm along x, y and z of the 3D scene's frame (`docs/BOARD3D.md`: z up,
+    /// the origin at the outline's bottom-left corner on the top face).
+    pub offset: [f64; 3],
+    /// The rotation in degrees about x, then y, then z, applied before the offset.
+    pub rotation: [f64; 3],
+    /// The lines that state the file, separated by commas. Filled by the caller that knows the
+    /// source files; empty otherwise.
+    pub source: String,
+    /// The file of each statement of the file, as it was loaded. Filled by the same caller;
+    /// empty otherwise.
+    pub stated_in: Vec<String>,
+    /// The file on disk, inside the project. Filled by the caller that knows where the files
+    /// are; `None` otherwise, and when the file is not there, so that the fit is not checked.
+    pub resolved: Option<std::path::PathBuf>,
+}
+
 /// A line of silkscreen text: a `Label` part. The part's value is the text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
@@ -586,6 +611,8 @@ pub struct Features {
     pub protrusions: Vec<PinProtrusion>,
     /// The STEP models parts are drawn from, by path (ADR 0108).
     pub models: Vec<StepModel>,
+    /// The STEP files of the board's case, by member name (ADR 0109).
+    pub case_models: Vec<CaseModel>,
     /// The paths of the parts the board house does not assemble (`.assembly` is `hand` or
     /// `none`), so fitted by hand or not at all. Filled by the caller that knows who
     /// assembles each part; empty otherwise, which counts every part as assembled by the
