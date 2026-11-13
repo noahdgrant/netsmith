@@ -207,6 +207,10 @@ _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placem
 The way out the router keeps in front of a pad of a fine-pitch part: the cells straight out from the pad's edge, away from the part, on its layer, 1.5 mm long. Other nets' tracks pay to use it and any via that would close it pays more, except the pad's own via at its end; the two nets of a diff pair share their lanes. A cost and not a wall, used from the router's second try of a board (`Lanes` in `netsmith_place_route::route`, issue #431).
 _Avoid_: Fan-out (a fixed track and via for each pad, which the router does not draw), reservation, keepout (a wall)
 
+**Diff pair**:
+Two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_fab::score::PAIR_SUFFIXES`), such as the nets of the fields of `std::bus::Usb2`. Nothing in the source marks one: the names say it. When a try of the router has routed every line, it routes each net of a pair again beside the other and keeps that copper only where more of it runs coupled at no more length or vias; the route scorecard reports each pair's skew and how much of it runs coupled (issue #431).
+_Avoid_: Differential pair marking, pair class
+
 **Route robustness**:
 Whether a board routes for more than one lucky set of the router's costs: its placed board routed again in one try with no time limit at the turn costs 24, 25 (the router's own), 26 and 27, and the connections each leaves (`netsmith route --tries 1 --route-timeout 0 --turn T`). `scripts/route-scorecard` prints it for each ported board beside the route scorecard, and a change to the router is judged by all four, since one unit of a cost re-rolls where the tracks go (issue #431, S3b).
 _Avoid_: Stability (the placer's), determinism (the same input always gives the same copper; that is a separate property), variance

@@ -6907,6 +6907,10 @@ netsmith's router bends a track by 45 degrees only (issue #415). Its first pass 
 
 When the router's first try leaves connections on a board with a fine-pitch part (at least 16 surface-mount pads, two of them 0.55 mm apart or nearer, on at least three sides, such as a QFN or a QFP), its second try routes the lines in the same order again with an escape lane in front of each of the part's pads (issue #431): the 1.5 mm straight out from the pad, on its layer, which other nets' tracks pay a little to use and where any via pays a lot, except the pad's own via at the lane's end. A lane is a cost and not a wall, so a line with no other way still crosses one. It keeps the part's lines from closing each other's way out with vias against its pins. A board that routes on its first try is routed as before, and a board with such a part may have one try more.
 
+### Diff pairs
+
+Two nets whose names differ only in a pair of suffixes, such as `dp` and `dm`, `D+` and `D-`, `_P` and `_N`, or `.p` and `.n`, are a diff pair, so the fields of `std::bus::Usb2` make one with nothing more said. When a try of the router has routed every connection, it routes each net of a pair again with a step within 0.5 mm of its partner's track (centre line to centre line) costing half, and keeps the new copper only where more of the net runs coupled and it is no longer (by more than 0.2 mm) and has no more vias. So a pair runs side by side where that costs nothing, and a board routes exactly as completely as before. It does not yet hold a fixed gap, mirror the pads' exits or tune the skew (issue #431). The route scorecard reports each pair's lengths, skew and the share of its track that runs coupled.
+
 ### Track widths by rail
 
 A rail's `.min_track` is the narrowest track its nets are drawn with. It is a lower bound, written as a range like a process rule, and the bottom of what is left is the width. Both pins of the rail get it. A net takes the widest `.min_track` of the rails on it, so `GND` below is 0.8 mm without anyone saying so. `~` between rails equates the width too, so a module's rail carries it.

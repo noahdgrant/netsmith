@@ -53,14 +53,16 @@ pub const IC_PADS: usize = 8;
 /// track to count as coupled, in mm.
 pub const COUPLED: f64 = 0.5;
 /// The suffixes that make two nets a diff pair: the net that ends in the first and the one that
-/// ends in the second, with the same name before them.
-pub const PAIR_SUFFIXES: [(&str, &str); 6] = [
+/// ends in the second, with the same name before them. The router runs the same pairs side by
+/// side (`netsmith_place_route`'s route module, issue #431).
+pub const PAIR_SUFFIXES: [(&str, &str); 7] = [
     ("dp", "dm"),
     ("DP", "DM"),
     ("D+", "D-"),
     ("_P", "_N"),
     ("+", "-"),
     ("_p", "_n"),
+    (".p", ".n"),
 ];
 /// Points closer than this are one point, in mm.
 const SAME: f64 = 1e-3;

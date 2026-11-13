@@ -362,3 +362,67 @@ fn most_tries_stops_the_router_after_that_many_orders() {
     assert_eq!(once(0), 1);
     assert!(once(2) <= 2);
 }
+
+/// The share of the track of `net` within 0.5 mm of `other`'s on the same layer, centre line to
+/// centre line, as the route scorecard counts a pair coupled.
+fn coupled(board: &Board, net: &str, other: &str) -> f64 {
+    let theirs: Vec<&netsmith_pcb::Track> =
+        board.tracks.iter().filter(|t| t.net == other).collect();
+    let (mut length, mut near) = (0.0, 0.0);
+    for t in board.tracks.iter().filter(|t| t.net == net) {
+        let l = t.from.distance(t.to);
+        length += l;
+        let n = (l / 0.05).ceil().max(1.0) as usize;
+        for k in 0..n {
+            let f = (k as f64 + 0.5) / n as f64;
+            let p = Pt::new(
+                t.from.x + (t.to.x - t.from.x) * f,
+                t.from.y + (t.to.y - t.from.y) * f,
+            );
+            let to_line = |a: Pt, b: Pt| {
+                let (dx, dy) = (b.x - a.x, b.y - a.y);
+                let len2 = dx * dx + dy * dy;
+                let u = if len2 == 0.0 {
+                    0.0
+                } else {
+                    (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0)
+                };
+                p.distance(Pt::new(a.x + u * dx, a.y + u * dy))
+            };
+            if theirs
+                .iter()
+                .any(|o| o.layer == t.layer && to_line(o.from, o.to) <= 0.5 + 1e-9)
+            {
+                near += l / n as f64;
+            }
+        }
+    }
+    if length > 0.0 { near / length } else { 0.0 }
+}
+
+#[test]
+fn two_nets_named_as_a_diff_pair_route_as_before_and_are_no_less_coupled() {
+    // The same board with two of its nets named as a pair (`.p` and `.n`) and not: only the
+    // router's pass for pairs differs, which never leaves a line and keeps new copper only
+    // where more of it runs coupled.
+    for (n, board) in hard_boards(12).into_iter().enumerate() {
+        let mut plain = board.clone();
+        for net in &mut plain.nets {
+            net.name = format!("{}.a", net.name);
+        }
+        let mut paired = board.clone();
+        paired.nets[0].name = "P.p".into();
+        paired.nets[1].name = "P.n".into();
+        let plain_left = route(&mut plain).len();
+        let mut again = paired.clone();
+        assert_eq!(route(&mut paired).len(), plain_left, "board {n}");
+        route(&mut again);
+        assert_eq!(paired, again, "board {n} is routed the same each time");
+        let before = coupled(&plain, "N0.a", "N1.a") + coupled(&plain, "N1.a", "N0.a");
+        let after = coupled(&paired, "P.p", "P.n") + coupled(&paired, "P.n", "P.p");
+        assert!(
+            after >= before - 1e-9,
+            "board {n}: coupled {before} -> {after}"
+        );
+    }
+}
