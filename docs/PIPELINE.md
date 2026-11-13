@@ -9,8 +9,8 @@ each part to the row it names; and the pin file (`<stem>.pins.toml`, ADR 0101, p
 `NETSMITH_TIMINGS=1` prints the seconds of each stage; `docs/solver-timings.md` has them for a board with two buck stages.
 
 Written against `main` at `b504854`. Where a name in the code differs from the name a person
-would expect, the diagram says so. The code is the authority: `crates/netsmith/src/lib.rs`
-(`outcome_observed`) for stages 1 to 4, `crates/netsmith/src/fab.rs` (`fab_board`) for stage 5,
+would expect, the diagram says so. The code is the authority: `crates/netsmith-pipeline/src/lib.rs`
+(`outcome_observed`) for stages 1 to 4, `crates/netsmith-fabricate/src/fab.rs` (`fab_board`) for stage 5,
 and `crates/netsmith-solve/src/solve.rs` (`solve_model`) for the solver. The pick files, the
 generic parts the solver leaves to the catalogs and the supply providers are in `crates/netsmith-catalog`.
 
@@ -79,7 +79,7 @@ a pin, `--locked` makes a run that would change it stop, and the next run reads 
 a stage reads that netsmith wrote. The editor assigns in memory and never writes it.
 
 The pipeline has one back edge, from stage 5 to the pin file, taken only when the router leaves
-connections of a board that has pin requests (the pin optimizer, `crates/netsmith/src/pin_swap.rs`,
+connections of a board that has pin requests (the pin optimizer, `crates/netsmith-fabricate/src/pin_swap.rs`,
 the loop in `fab_board_pinned`). The edge goes through the file, not through memory: a round
 searches the placed board for a better pin map, then stages 1 to 5 run again from the source and
 that map, so no stage runs out of order. At most three rounds, which together may take as long as

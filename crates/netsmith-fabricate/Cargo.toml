@@ -1,0 +1,52 @@
+[package]
+name = "netsmith-fabricate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[dependencies]
+netsmith-3d = { path = "../netsmith-3d" }
+netsmith-catalog = { path = "../netsmith-catalog" }
+netsmith-check = { path = "../netsmith-check" }
+netsmith-core = { path = "../netsmith-core" }
+netsmith-design = { path = "../netsmith-design" }
+netsmith-fab = { path = "../netsmith-fab" }
+netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-lang = { path = "../netsmith-lang" }
+netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-pipeline = { path = "../netsmith-pipeline" }
+netsmith-placer = { path = "../netsmith-placer" }
+netsmith-router = { path = "../netsmith-router" }
+netsmith-solve = { path = "../netsmith-solve" }
+netsmith-view = { path = "../netsmith-view" }
+serde = { version = "1.0.229", features = ["derive"] }
+# `float_roundtrip`: a placed board read back (`netsmith route`) has the numbers it was saved with.
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+# The SHA-256 of a part's STEP model, in the .glb and the STEP export so that a changed model
+# shows in a diff (ADR 0108).
+sha2 = "0.11.1"
+toml = "1.1.8"
+
+[features]
+# What the tests of this crate and of the crates above it need from the pipeline's
+# `Libraries::sample()`. Only dev-dependencies turn it on.
+test-support = ["netsmith-pipeline/test-support"]
+
+[dev-dependencies]
+automod = "1.0.17"
+netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"] }
+netsmith-quantity = { path = "../netsmith-quantity" }
+netsmith-fabricate = { path = ".", features = ["test-support"] }
+netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
+netsmith-testkit = { path = "../netsmith-testkit" }
+zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# The CPU time of a thread, which a busy machine does not change as it does the time of the clock
+# (`precheck.rs`).
+rustix = { version = "1.1.6", default-features = false, features = ["time"] }

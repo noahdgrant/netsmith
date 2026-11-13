@@ -157,7 +157,7 @@ An area of a board, or of a part in its own frame, where tracks, vias, copper po
 _Avoid_: Exclusion zone, restricted area
 
 **Height limit**:
-The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, ADR 0045; the rule is in the header of `crates/netsmith/src/heights.rs`), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero. The check measures the part's body against the zone; the placer keeps the body, plus a small margin, out of it (owner decision 2026-11-04); a part with no fabrication outline has only its courtyard.
+The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, ADR 0045; the rule is in the header of `crates/netsmith-pipeline/src/heights.rs`), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero. The check measures the part's body against the zone; the placer keeps the body, plus a small margin, out of it (owner decision 2026-11-04); a part with no fabrication outline has only its courtyard.
 
 **Standard height**:
 The greatest body height a package's standard allows (the JEDEC outline's `A` maximum, `SOIC-8` 1.75 mm by MS-012), read from a maker's drawing that cites it, for a generated footprint listed in `crates/netsmith-pcb/src/standard_height.rs` (ADR 0106). It stands in for a part with no stated and no catalog height, with the provenance `standard`: a limit it fits is a pass said to rest on the standard, a limit it exceeds leaves the part unchecked. It is never written as the part's `.height`.
@@ -256,7 +256,7 @@ A PNG of one stage of the router's winning try (`stage-1-first-pass.png` to `sta
 _Avoid_: Screenshot, render (`netsmith render` draws the 3D scene), snapshot (the router's data a picture is drawn from)
 
 **Placed board**:
-A board as `fab` placed it, just before routing, saved as `<board>.placed.json` in the board's output folder by `fab --save-placed` (the `netsmith_pcb::Board` with the track margin `fab` routes with; `crates/netsmith/src/placed.rs`). `netsmith route` routes it again alone, with no checking, solving or placing, for experiments on the router. A file of a working tool, not of the design: it is not committed, a `fab` without the flag removes it, and a file of another version of netsmith is refused.
+A board as `fab` placed it, just before routing, saved as `<board>.placed.json` in the board's output folder by `fab --save-placed` (the `netsmith_pcb::Board` with the track margin `fab` routes with; `crates/netsmith-fabricate/src/placed.rs`). `netsmith route` routes it again alone, with no checking, solving or placing, for experiments on the router. A file of a working tool, not of the design: it is not committed, a `fab` without the flag removes it, and a file of another version of netsmith is refused.
 _Avoid_: Layout (the layout file holds positions a person or the editor keeps), snapshot, checkpoint
 
 **Derived placement**:
