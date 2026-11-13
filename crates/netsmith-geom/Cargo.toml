@@ -1,0 +1,14 @@
+[package]
+name = "netsmith-geom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# A board's geometry as its file holds it, the drawing of its layers and the design rules check
+# (issue #611): what netsmith-pcb, the router and netsmith-fab share. It depends on no netsmith
+# crate but netsmith-sexp.
+[dependencies]
+netsmith-sexp = { path = "../netsmith-sexp" }
+serde_json = "1.0.154"
+# Polygon unions and differences, for the copper as polygons (`polygons`, ADR 0105).
+i_overlay = "9.1.0"

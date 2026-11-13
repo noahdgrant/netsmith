@@ -2,8 +2,7 @@
 
 use std::path::Path;
 
-use netsmith_fab::sexp::{self, Sexp};
-use netsmith_fab::{CliError, KicadCli};
+use netsmith_sexp::Sexp;
 
 use crate::model::{Netlist, NetlistError};
 
@@ -62,7 +61,7 @@ impl Netlist {
     /// Read the footprints and pad nets of a `.kicad_pcb`. A footprint that is only on the
     /// board (`board_only`), and a pad with no number, are not part of the circuit.
     pub fn from_kicad_pcb(text: &str) -> Result<Netlist, NetlistError> {
-        let root = sexp::parse(text)
+        let root = Sexp::parse(text)
             .map_err(|e| NetlistError::Format(format!("cannot read the .kicad_pcb file: {e}")))?;
         if root.head() != Some("kicad_pcb") {
             return Err(NetlistError::Format(
@@ -72,13 +71,13 @@ impl Netlist {
         let mut components = Vec::new();
         let mut nets: Vec<(String, Vec<(String, String)>)> = Vec::new();
         let mut net_index = std::collections::HashMap::new();
-        for fp in root.children("footprint") {
+        for fp in root.find_all("footprint") {
             let mut reference = None;
             let mut value = String::new();
             // KiCad 8 and later: `(property "Reference" "R1" ...)`; KiCad 7 and earlier (format
             // 20221018 and before): `(fp_text reference "R1" ...)`. A board with both has the
             // property.
-            for p in fp.children("fp_text") {
+            for p in fp.find_all("fp_text") {
                 let text = |i: usize| p.items().get(i).and_then(Sexp::text).unwrap_or("");
                 match text(1) {
                     "reference" => reference = Some(text(2).to_string()),
@@ -86,7 +85,7 @@ impl Netlist {
                     _ => {}
                 }
             }
-            for p in fp.children("property") {
+            for p in fp.find_all("property") {
                 let text = |i: usize| p.items().get(i).and_then(Sexp::text).unwrap_or("");
                 match text(1) {
                     "Reference" => reference = Some(text(2).to_string()),
@@ -94,7 +93,7 @@ impl Netlist {
                     _ => {}
                 }
             }
-            let board_only = fp.child("attr").is_some_and(|a| {
+            let board_only = fp.find("attr").is_some_and(|a| {
                 a.items()
                     .iter()
                     .skip(1)
@@ -105,11 +104,11 @@ impl Netlist {
             };
             let footprint = fp.items().get(1).and_then(Sexp::text).unwrap_or("");
             components.push((refdes.clone(), value, footprint.to_string()));
-            for pad in fp.children("pad") {
+            for pad in fp.find_all("pad") {
                 let number = pad.items().get(1).and_then(Sexp::text).unwrap_or("");
                 // `(net 3 "GND")`, or `(net "GND")` in later versions: the name is last.
                 let net = pad
-                    .child("net")
+                    .find("net")
                     .and_then(|n| n.items().last())
                     .and_then(Sexp::text)
                     .filter(|n| !n.is_empty());
@@ -125,9 +124,13 @@ impl Netlist {
         Netlist::from_parts(components, nets)
     }
 
-    /// Read the netlist of a schematic, which KiCad exports.
-    pub fn from_kicad_schematic(sch: &Path, kicad: &dyn KicadCli) -> Result<Netlist, String> {
-        let xml = kicad.netlist(sch).map_err(|e: CliError| e.to_string())?;
+    /// Read the netlist of a schematic, which KiCad exports: `export` gives the XML of
+    /// `kicad-cli sch export netlist --format kicadxml` (`netsmith_fab::KicadCli::netlist`).
+    pub fn from_kicad_schematic<E: std::fmt::Display>(
+        sch: &Path,
+        export: impl FnOnce(&Path) -> Result<String, E>,
+    ) -> Result<Netlist, String> {
+        let xml = export(sch).map_err(|e| e.to_string())?;
         Netlist::from_kicad_xml(&xml).map_err(|e| format!("{}: {e}", sch.display()))
     }
 }

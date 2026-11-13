@@ -1,0 +1,10 @@
+[package]
+name = "netsmith-sexp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The one S-expression reader and writer (issue #611): KiCad's schematic writer, fab's board
+# reader and the netlist reader share it. It depends on no netsmith crate.
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }

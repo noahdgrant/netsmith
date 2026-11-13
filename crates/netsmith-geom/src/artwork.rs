@@ -15,7 +15,7 @@
 //! in hatch mode, a custom pad primitive other than line, arc, circle, rectangle or polygon.
 
 use crate::geom::{Arc, Pt};
-use crate::sexp::{self, Sexp};
+use netsmith_sexp::Sexp;
 
 #[derive(Debug, PartialEq)]
 pub enum ArtworkError {
@@ -335,7 +335,7 @@ pub struct Artwork {
 
 impl Artwork {
     pub fn parse(src: &str) -> Result<Artwork, ArtworkError> {
-        let root = sexp::parse(src).map_err(|e| ArtworkError::Parse(e.to_string()))?;
+        let root = Sexp::parse(src).map_err(|e| ArtworkError::Parse(e.to_string()))?;
         Self::from_sexp(&root)
     }
 
@@ -410,22 +410,22 @@ fn point(node: &Sexp, what: &str) -> Result<Pt, ArtworkError> {
 }
 
 fn child_point(node: &Sexp, name: &str, what: &str) -> Result<Option<Pt>, ArtworkError> {
-    node.child(name).map(|c| point(c, what)).transpose()
+    node.find(name).map(|c| point(c, what)).transpose()
 }
 
 fn child_num(node: &Sexp, name: &str) -> Option<f64> {
-    node.child(name)?.items().get(1)?.text()?.parse().ok()
+    node.find(name)?.items().get(1)?.text()?.parse().ok()
 }
 
 /// A flag written `(name yes)`, `(name no)` or just `(name)`.
 fn flag(node: &Sexp, name: &str) -> Option<bool> {
-    let c = node.child(name)?;
+    let c = node.find(name)?;
     Some(!matches!(c.items().get(1).and_then(Sexp::text), Some("no")))
 }
 
 /// The stroke width of a drawing: `(stroke (width w))` or the older `(width w)`.
 fn stroke_width(node: &Sexp) -> f64 {
-    node.child("stroke")
+    node.find("stroke")
         .and_then(|s| child_num(s, "width"))
         .or_else(|| child_num(node, "width"))
         .unwrap_or(0.0)
@@ -434,7 +434,7 @@ fn stroke_width(node: &Sexp) -> f64 {
 /// Whether a drawing is filled: `(fill yes)`, `(fill solid)`, or the older `(fill solid)`.
 fn is_filled(node: &Sexp) -> bool {
     matches!(
-        node.child("fill")
+        node.find("fill")
             .and_then(|f| f.items().get(1))
             .and_then(Sexp::text),
         Some("yes" | "solid")
@@ -454,17 +454,17 @@ fn zone_connect_of(node: &Sexp) -> Option<Connect> {
 }
 
 fn layer_of(node: &Sexp) -> String {
-    node.child("layer")
+    node.find("layer")
         .and_then(|l| l.items().get(1)?.text())
         .unwrap_or("")
         .to_string()
 }
 
 fn points_of(node: &Sexp, what: &str) -> Result<Vec<Pt>, ArtworkError> {
-    let Some(pts) = node.child("pts") else {
+    let Some(pts) = node.find("pts") else {
         return Err(ArtworkError::Malformed(format!("{what} has no (pts")));
     };
-    pts.children("xy").map(|xy| point(xy, what)).collect()
+    pts.find_all("xy").map(|xy| point(xy, what)).collect()
 }
 
 struct Reader<'a> {
@@ -498,7 +498,7 @@ impl Frame {
 impl<'a> Reader<'a> {
     fn new(root: &'a Sexp) -> Result<Self, ArtworkError> {
         let copper: Vec<String> = root
-            .child("layers")
+            .find("layers")
             .map(|l| {
                 l.items()
                     .iter()
@@ -509,7 +509,7 @@ impl<'a> Reader<'a> {
             })
             .unwrap_or_default();
         let mut nets = std::collections::BTreeMap::new();
-        for n in root.children("net") {
+        for n in root.find_all("net") {
             if let (Some(i), Some(name)) = (
                 n.items()
                     .get(1)
@@ -520,14 +520,14 @@ impl<'a> Reader<'a> {
                 nets.insert(i, name.to_string());
             }
         }
-        let setup = root.child("setup");
+        let setup = root.find("setup");
         let origin = setup
-            .and_then(|s| s.child("aux_axis_origin"))
+            .and_then(|s| s.find("aux_axis_origin"))
             .map(|o| point(o, "aux_axis_origin"))
             .transpose()?
             .unwrap_or_default();
         let tenting: Vec<&str> = setup
-            .and_then(|s| s.child("tenting"))
+            .and_then(|s| s.find("tenting"))
             .map(|t| t.items().iter().skip(1).filter_map(Sexp::text).collect())
             .unwrap_or_default();
         let out = Artwork {
@@ -562,7 +562,7 @@ impl<'a> Reader<'a> {
     }
 
     fn net_name(&self, node: &Sexp) -> Option<String> {
-        let n = node.child("net")?;
+        let n = node.find("net")?;
         if let Some(name) = n.items().get(2).and_then(Sexp::text) {
             return Some(name).filter(|n| !n.is_empty()).map(str::to_string);
         }
@@ -627,7 +627,7 @@ impl<'a> Reader<'a> {
         let at = child_point(item, "at", "a via")?.unwrap_or_default();
         let diameter = child_num(item, "size").unwrap_or(0.0);
         let layers: Vec<&str> = item
-            .child("layers")
+            .find("layers")
             .map(|l| l.items().iter().skip(1).filter_map(Sexp::text).collect())
             .unwrap_or_default();
         let through = self.copper.first().map(String::as_str) == layers.first().copied()
@@ -642,7 +642,7 @@ impl<'a> Reader<'a> {
             )));
         }
         // A via's own `(tenting front back)` (or `none`) replaces the board's.
-        let tent = |name: &str, board: bool| match item.child("tenting") {
+        let tent = |name: &str, board: bool| match item.find("tenting") {
             Some(t) => t.items().iter().skip(1).any(|a| a.text() == Some(name)),
             None => board,
         };
@@ -661,7 +661,7 @@ impl<'a> Reader<'a> {
     }
 
     fn zone(&mut self, item: &Sexp) -> Result<(), ArtworkError> {
-        let layers: Vec<String> = match item.child("layers") {
+        let layers: Vec<String> = match item.find("layers") {
             Some(l) => l
                 .items()
                 .iter()
@@ -671,9 +671,9 @@ impl<'a> Reader<'a> {
                 .collect(),
             None => vec![layer_of(item)],
         };
-        let keepout = item.child("keepout").map(|k| {
+        let keepout = item.find("keepout").map(|k| {
             let not_allowed = |name: &str| {
-                k.child(name).and_then(|c| c.items().get(1)?.text()) == Some("not_allowed")
+                k.find(name).and_then(|c| c.items().get(1)?.text()) == Some("not_allowed")
             };
             Keepout {
                 tracks: not_allowed("tracks"),
@@ -684,11 +684,11 @@ impl<'a> Reader<'a> {
             }
         });
         let name = item
-            .child("name")
+            .find("name")
             .and_then(|n| n.items().get(1)?.text())
             .unwrap_or("")
             .to_string();
-        let connect_pads = item.child("connect_pads");
+        let connect_pads = item.find("connect_pads");
         let connect = match connect_pads
             .and_then(|c| c.items().get(1))
             .and_then(Sexp::text)
@@ -699,9 +699,9 @@ impl<'a> Reader<'a> {
             Some("thru_hole_only") => Connect::ThruHoleOnly,
             Some(_) => Connect::Thermal,
         };
-        let fill = item.child("fill");
+        let fill = item.find("fill");
         if let Some(mode) = fill
-            .and_then(|f| f.child("mode"))
+            .and_then(|f| f.find("mode"))
             .and_then(|m| m.items().get(1)?.text())
             && mode != "solid"
         {
@@ -712,11 +712,11 @@ impl<'a> Reader<'a> {
             )));
         }
         let outlines = item
-            .children("polygon")
+            .find_all("polygon")
             .map(|p| points_of(p, "a zone's polygon"))
             .collect::<Result<Vec<_>, _>>()?;
         let mut filled = Vec::new();
-        for f in item.children("filled_polygon") {
+        for f in item.find_all("filled_polygon") {
             filled.push((layer_of(f), points_of(f, "a zone's filled polygon")?));
         }
         let zone = Zone {
@@ -739,8 +739,8 @@ impl<'a> Reader<'a> {
                 .unwrap_or(0.5),
             name,
             teardrop: item
-                .child("attr")
-                .is_some_and(|a| a.child("teardrop").is_some()),
+                .find("attr")
+                .is_some_and(|a| a.find("teardrop").is_some()),
         };
         self.out.zones.push(zone);
         Ok(())
@@ -824,14 +824,14 @@ impl<'a> Reader<'a> {
             1
         };
         let raw = item.items().get(first).and_then(Sexp::text).unwrap_or("");
-        let effects = item.child("effects");
+        let effects = item.find("effects");
         let hidden = flag(item, "hide").unwrap_or(false)
             || effects.is_some_and(|e| flag(e, "hide").unwrap_or(false));
         if hidden || raw.is_empty() {
             return Ok(());
         }
         let layer = layer_of(item);
-        let at_node = item.child("at");
+        let at_node = item.find("at");
         let local = match at_node {
             Some(a) => point(a, "a text's position")?,
             None => Pt::default(),
@@ -839,9 +839,9 @@ impl<'a> Reader<'a> {
         let angle = at_node
             .and_then(|a| a.items().get(3)?.text()?.parse::<f64>().ok())
             .unwrap_or(0.0);
-        let font = effects.and_then(|e| e.child("font"));
+        let font = effects.and_then(|e| e.find("font"));
         let size = font
-            .and_then(|f| f.child("size"))
+            .and_then(|f| f.find("size"))
             .map(|s| -> Result<(f64, f64), ArtworkError> {
                 Ok((
                     num(s.items().get(1), "a text's size")?,
@@ -854,7 +854,7 @@ impl<'a> Reader<'a> {
             .and_then(|f| child_num(f, "thickness"))
             .unwrap_or(size.1 * 0.15);
         let justify: Vec<&str> = effects
-            .and_then(|e| e.child("justify"))
+            .and_then(|e| e.find("justify"))
             .map(|j| j.items().iter().skip(1).filter_map(Sexp::text).collect())
             .unwrap_or_default();
         let owner = frame.map_or("the board".to_string(), |f| f.part.clone());
@@ -894,7 +894,7 @@ impl<'a> Reader<'a> {
     }
 
     fn footprint(&mut self, fp: &Sexp) -> Result<(), ArtworkError> {
-        let at_node = fp.child("at");
+        let at_node = fp.find("at");
         let at = at_node
             .map(|a| point(a, "a footprint's position"))
             .transpose()?
@@ -903,7 +903,7 @@ impl<'a> Reader<'a> {
             .and_then(|a| a.items().get(3)?.text()?.parse::<f64>().ok())
             .unwrap_or(0.0);
         let property = |name: &str| -> String {
-            fp.children("property")
+            fp.find_all("property")
                 .find(|p| p.items().get(1).and_then(Sexp::text) == Some(name))
                 .and_then(|p| p.items().get(2)?.text())
                 .unwrap_or("")
@@ -930,7 +930,7 @@ impl<'a> Reader<'a> {
             part: frame.part.clone(),
             at,
             angle,
-            back: fp.child("layer").and_then(|l| l.items().get(1)?.text()) == Some("B.Cu"),
+            back: fp.find("layer").and_then(|l| l.items().get(1)?.text()) == Some("B.Cu"),
         });
         for item in fp.items().iter().skip(2) {
             match item.head() {
@@ -985,12 +985,12 @@ impl<'a> Reader<'a> {
                 )));
             }
         };
-        if item.child("padstack").is_some() {
+        if item.find("padstack").is_some() {
             return Err(ArtworkError::Unsupported(format!(
                 "{where_} has a padstack (a different shape on different layers), which is not supported"
             )));
         }
-        let at_node = item.child("at");
+        let at_node = item.find("at");
         let local = at_node
             .map(|a| point(a, &format!("{where_}'s position")))
             .transpose()?
@@ -999,7 +999,7 @@ impl<'a> Reader<'a> {
             .and_then(|a| a.items().get(3)?.text()?.parse::<f64>().ok())
             .unwrap_or(0.0);
         let size = item
-            .child("size")
+            .find("size")
             .map(|s| -> Result<(f64, f64), ArtworkError> {
                 let w = num(s.items().get(1), &format!("{where_}'s size"))?;
                 let h = s.items().get(2).map_or(Ok(w), |_| {
@@ -1010,7 +1010,7 @@ impl<'a> Reader<'a> {
             .transpose()?
             .unwrap_or((0.0, 0.0));
         let drill = item
-            .child("drill")
+            .find("drill")
             .map(|d| -> Result<Drill, ArtworkError> {
                 let args: Vec<&Sexp> = d
                     .items()
@@ -1041,7 +1041,7 @@ impl<'a> Reader<'a> {
             .transpose()?
             .filter(|d| d.width > 0.0);
         let layers = self.expand_layers(
-            item.child("layers")
+            item.find("layers")
                 .map(|l| {
                     l.items()
                         .iter()
@@ -1052,7 +1052,7 @@ impl<'a> Reader<'a> {
                 .unwrap_or_default(),
         );
         let mut chamfer = [false; 4];
-        if let Some(c) = item.child("chamfer") {
+        if let Some(c) = item.find("chamfer") {
             for corner in c.items().iter().skip(1).filter_map(Sexp::text) {
                 match corner {
                     "top_left" => chamfer[0] = true,
@@ -1063,20 +1063,20 @@ impl<'a> Reader<'a> {
                 }
             }
         }
-        let primitives = match item.child("primitives") {
+        let primitives = match item.find("primitives") {
             Some(p) => self.primitives(p, &where_)?,
             None => Vec::new(),
         };
         let anchor_rect = item
-            .child("options")
-            .and_then(|o| o.child("anchor")?.items().get(1)?.text())
+            .find("options")
+            .and_then(|o| o.find("anchor")?.items().get(1)?.text())
             == Some("rect");
         let connect = zone_connect_of(item).or(frame.zone_connect);
         let pad = Pad {
             part: frame.part.clone(),
             number,
             function: item
-                .child("pinfunction")
+                .find("pinfunction")
                 .and_then(|f| f.items().get(1)?.text())
                 .map(str::to_string),
             net: self.net_name(item),
@@ -1088,7 +1088,7 @@ impl<'a> Reader<'a> {
             // KiCad reads a rounded rectangle with no ratio as 0.25.
             roundrect_ratio: child_num(item, "roundrect_rratio").unwrap_or(0.25),
             rect_delta: item
-                .child("rect_delta")
+                .find("rect_delta")
                 .map(|d| {
                     (
                         num(d.items().get(1), "rect_delta").unwrap_or(0.0),

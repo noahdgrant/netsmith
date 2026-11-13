@@ -5,13 +5,13 @@
 //! server's SVG.
 //!
 //! **The same copper as the Gerbers.** The board is read into the plotting model of
-//! `netsmith-fab` ([`netsmith_fab::artwork::Artwork`]) from the tree of the `.kicad_pcb` that
+//! `netsmith-geom` ([`netsmith_geom::artwork::Artwork`]) from the tree of the `.kicad_pcb` that
 //! [`crate::kicad_pcb`] writes, in memory: no file, no text and no KiCad in between. Then every
 //! shape is drawn by the code that writes the Gerbers, into a pen that keeps polygons
-//! ([`netsmith_fab::polygons::Polygons`]) instead of a file: a pad with
-//! [`netsmith_fab::pads::Outline::draw`], a pour with [`netsmith_fab::fill::pour`] (the filler
+//! ([`netsmith_geom::polygons::Polygons`]) instead of a file: a pad with
+//! [`netsmith_geom::pads::Outline::draw`], a pour with [`netsmith_geom::fill::pour`] (the filler
 //! `fab` uses, with the clearances, thermal reliefs and edge band the copper files get), the
-//! mask with [`netsmith_fab::plot::mask`]. So the pours here are the fill the Gerbers hold,
+//! mask with [`netsmith_geom::plot::mask`]. So the pours here are the fill the Gerbers hold,
 //! cut into straight pieces no further than 2 µm from its curves, and a footprint on the back,
 //! a turned pad or a custom pad is where and what the file says, by one code.
 //!
@@ -30,11 +30,10 @@
 
 use std::collections::HashMap;
 
-use netsmith_fab::artwork::{self, Artwork, TrackShape};
-use netsmith_fab::geom;
-use netsmith_fab::polygons::{self, Polygons};
-use netsmith_fab::{drill, edge, fill, gbr, pads, plot};
-use netsmith_kicad::sexp::Sexp;
+use netsmith_geom::artwork::{self, Artwork, TrackShape};
+use netsmith_geom::geom;
+use netsmith_geom::polygons::{self, Polygons};
+use netsmith_geom::{drill, edge, fill, gbr, pads, plot};
 
 use crate::board::Board;
 use crate::footprint::{Drill, PadKind};
@@ -235,21 +234,11 @@ pub struct SilkInk {
     pub areas: Vec<Area>,
 }
 
-/// The board in netsmith-fab's plotting model, as fab reads it from the board file: built
+/// The board in netsmith-geom's plotting model, as fab reads it from the board file: built
 /// from the same tree in memory.
 pub fn artwork(board: &Board) -> Result<Artwork, CopperError> {
-    let tree = to_fab(&crate::export::board_tree(board));
+    let tree = crate::export::board_tree(board);
     Artwork::from_sexp(&tree).map_err(|e| CopperError(e.to_string()))
-}
-
-/// netsmith-kicad's tree as netsmith-fab's, which is the same three kinds of node.
-fn to_fab(node: &Sexp) -> netsmith_fab::sexp::Sexp {
-    use netsmith_fab::sexp::Sexp as F;
-    match node {
-        Sexp::Atom(a) => F::Atom(a.clone()),
-        Sexp::Str(s) => F::Str(s.clone()),
-        Sexp::List(items) => F::List(items.iter().map(to_fab).collect()),
-    }
 }
 
 fn pt(p: geom::Pt) -> Pt {
@@ -282,7 +271,7 @@ fn kind(k: artwork::PadKind) -> PadKind {
 /// The board's copper.
 pub fn copper(board: &Board) -> Result<Copper, CopperError> {
     let art = artwork(board)?;
-    let rules = netsmith_fab::plot_rules_of(Some(&crate::export::kicad_pro(board)));
+    let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
     let outline = edge::outline(&art).map_err(CopperError)?;
     let paths: HashMap<&str, &str> = board
         .parts

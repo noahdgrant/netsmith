@@ -278,8 +278,8 @@ pub(crate) fn sheets_are_one_sheet_to_kicad(b: &Built, libraries: &Libraries) ->
     let flat = TempDir::new("module-sheets-flat");
     let one = write(&flat, &b.design.name, &flat_schematic.root, &[]);
 
-    let from_sheets = Netlist::from_kicad_schematic(&sheets, &kicad as &dyn KicadCli).unwrap();
-    let from_one = Netlist::from_kicad_schematic(&one, &kicad as &dyn KicadCli).unwrap();
+    let from_sheets = Netlist::from_kicad_schematic(&sheets, |p| kicad.netlist(p)).unwrap();
+    let from_one = Netlist::from_kicad_schematic(&one, |p| kicad.netlist(p)).unwrap();
     // The same designators: every part keeps its reference on its sheet.
     let options = Options {
         identity: Identity::ByRefdes,

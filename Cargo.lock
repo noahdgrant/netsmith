@@ -842,9 +842,10 @@ name = "netsmith-fab"
 version = "0.1.0"
 dependencies = [
  "automod",
- "i_overlay",
  "netsmith-core",
+ "netsmith-geom",
  "netsmith-kicad",
+ "netsmith-sexp",
  "netsmith-testkit",
  "serde",
  "serde_json",
@@ -852,10 +853,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "netsmith-geom"
+version = "0.1.0"
+dependencies = [
+ "i_overlay",
+ "netsmith-sexp",
+ "serde_json",
+]
+
+[[package]]
 name = "netsmith-kicad"
 version = "0.1.0"
 dependencies = [
  "netsmith-core",
+ "netsmith-sexp",
  "netsmith-testkit",
  "serde",
  "toml",
@@ -873,7 +884,7 @@ dependencies = [
 name = "netsmith-netlist"
 version = "0.1.0"
 dependencies = [
- "netsmith-fab",
+ "netsmith-sexp",
  "roxmltree",
 ]
 
@@ -885,7 +896,7 @@ dependencies = [
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
- "netsmith-fab",
+ "netsmith-geom",
  "netsmith-kicad",
  "netsmith-place-route",
  "netsmith-solve",
@@ -905,6 +916,7 @@ dependencies = [
  "netsmith-core",
  "netsmith-design",
  "netsmith-fab",
+ "netsmith-geom",
  "netsmith-kicad",
  "netsmith-pcb",
  "netsmith-solve",
@@ -918,6 +930,13 @@ name = "netsmith-quantity"
 version = "0.1.0"
 dependencies = [
  "automod",
+]
+
+[[package]]
+name = "netsmith-sexp"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

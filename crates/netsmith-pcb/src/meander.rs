@@ -16,10 +16,10 @@
 //!
 //! **Where.** On a straight track of the shorter net, the longest first, no nearer than one pitch
 //! to its ends, on an interval of it that runs no nearer than the scorecard's coupled distance
-//! (`netsmith_fab::score::COUPLED`, 0.5 mm) to the partner's track on its layer, so the pair's
+//! (`netsmith_geom::pairs::COUPLED`, 0.5 mm) to the partner's track on its layer, so the pair's
 //! coupled run is left as it was. The meander's copper keeps every space the design rules check
 //! asks of a track from the other nets' copper, holes, the edge, mask openings and rule areas
-//! (`netsmith_fab::drc::Room`, the teardrops' room), and the pitch's gap from its own net's pads,
+//! (`netsmith_geom::drc::Room`, the teardrops' room), and the pitch's gap from its own net's pads,
 //! vias and other tracks. A run that cannot take all the length takes what it can (three
 //! quarters, a half, a quarter) and the next run the rest. No other net moves and no connection
 //! changes: the meander replaces the middle of one track with a longer path between the same two
@@ -37,8 +37,8 @@
 //! curve and draws meanders on straight tracks only, so it can top a pair up after the arcs. The
 //! same board gives the same meanders: pairs, runs and places are taken in a fixed order.
 
-use netsmith_fab::drc::{self, Room, shape::Shape};
-use netsmith_fab::geom::Pt as FPt;
+use netsmith_geom::drc::{self, Room, shape::Shape};
+use netsmith_geom::geom::Pt as FPt;
 
 use crate::board::{Board, Track};
 use crate::geometry::Pt;
@@ -64,7 +64,7 @@ const PLACES: usize = 24;
 /// A diff pair and its skew before and after the meanders.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Matched {
-    /// The two nets, in the order of `netsmith_fab::score::PAIR_SUFFIXES` (`dp` then `dm`).
+    /// The two nets, in the order of `netsmith_geom::pairs::PAIR_SUFFIXES` (`dp` then `dm`).
     pub p: String,
     pub n: String,
     /// The difference of the two nets' track lengths before, in mm.
@@ -74,14 +74,14 @@ pub struct Matched {
 }
 
 /// The diff pairs of the board's routed nets: two nets whose names differ only in a suffix pair
-/// of `netsmith_fab::score::PAIR_SUFFIXES`, in the order of their first net's name.
+/// of `netsmith_geom::pairs::PAIR_SUFFIXES`, in the order of their first net's name.
 fn pairs(board: &Board) -> Vec<(String, String)> {
     let mut nets: Vec<&str> = board.tracks.iter().map(|t| t.net.as_str()).collect();
     nets.sort_unstable();
     nets.dedup();
     let mut out = Vec::new();
     for &p in &nets {
-        for (sp, sn) in netsmith_fab::score::PAIR_SUFFIXES {
+        for (sp, sn) in netsmith_geom::pairs::PAIR_SUFFIXES {
             let Some(stem) = p.strip_suffix(sp) else {
                 continue;
             };
@@ -324,7 +324,7 @@ fn plan(
         let steps = ((x1 - x0) / 0.05).ceil().max(1.0) as usize;
         (0..=steps).any(|k| {
             let p = along(x0 + (x1 - x0) * k as f64 / steps as f64);
-            distance_to(partner, track.layer, p) <= netsmith_fab::score::COUPLED
+            distance_to(partner, track.layer, p) <= netsmith_geom::pairs::COUPLED
         })
     };
     let most = (usable / (2.0 * g)).floor() as usize + 1;

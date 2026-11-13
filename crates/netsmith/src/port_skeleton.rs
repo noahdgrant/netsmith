@@ -43,7 +43,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use netsmith_fab::sexp::{self, Sexp};
+use netsmith_kicad::sexp::Sexp;
 use netsmith_netlist::Netlist;
 
 /// The tolerances the skeleton gives a standard part's value, since a KiCad value states none.
@@ -443,12 +443,12 @@ fn pad_order(pad: &str) -> (u64, String) {
 /// designator, read as `Netlist::from_kicad_pcb` reads the designators.
 fn pin_names(pcb: &str) -> BTreeMap<String, BTreeMap<String, String>> {
     let mut out = BTreeMap::new();
-    let Ok(root) = sexp::parse(pcb) else {
+    let Ok(root) = Sexp::parse(pcb) else {
         return out;
     };
-    for fp in root.children("footprint") {
+    for fp in root.find_all("footprint") {
         let mut reference = None;
-        for p in fp.children("fp_text").chain(fp.children("property")) {
+        for p in fp.find_all("fp_text").chain(fp.find_all("property")) {
             let text = |i: usize| p.items().get(i).and_then(Sexp::text).unwrap_or("");
             if matches!(text(1), "reference" | "Reference") {
                 reference = Some(text(2).to_string());
@@ -458,10 +458,10 @@ fn pin_names(pcb: &str) -> BTreeMap<String, BTreeMap<String, String>> {
             continue;
         };
         let names: &mut BTreeMap<String, String> = out.entry(reference).or_default();
-        for pad in fp.children("pad") {
+        for pad in fp.find_all("pad") {
             let number = pad.items().get(1).and_then(Sexp::text).unwrap_or("");
             let name = pad
-                .child("pinfunction")
+                .find("pinfunction")
                 .and_then(|f| f.items().get(1))
                 .and_then(Sexp::text);
             if let (false, Some(name)) = (number.is_empty(), name) {

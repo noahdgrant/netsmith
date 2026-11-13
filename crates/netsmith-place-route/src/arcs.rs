@@ -31,7 +31,7 @@
 
 use std::collections::HashMap;
 
-use netsmith_fab::geom::ARC_ERROR;
+use netsmith_geom::geom::ARC_ERROR;
 use netsmith_pcb::board::{Board, CopperLayer, Track};
 use netsmith_pcb::geometry::{Pt, Rect};
 
@@ -288,7 +288,7 @@ impl Bend {
         if sweep > std::f64::consts::PI {
             sweep -= tau;
         }
-        let steps = netsmith_fab::geom::steps_for(self.radius, sweep.abs());
+        let steps = netsmith_geom::geom::steps_for(self.radius, sweep.abs());
         let mut out = vec![self.from];
         for k in 1..steps {
             let a = a0 + sweep * k as f64 / steps as f64;

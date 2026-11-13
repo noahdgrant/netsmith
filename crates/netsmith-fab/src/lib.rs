@@ -20,8 +20,10 @@
 //! are left out of the BOM and placement file and listed in the notes as hand-soldered. All coordinates share one origin, the board's
 //! drill/place origin (`aux_axis_origin`).
 //!
-//! The board is read from its file with a reader of our own, so nothing here depends on the
-//! other netsmith crates.
+//! The board is read from its file with netsmith's own reader (`netsmith-sexp`), and its
+//! geometry, the drawing of its layers and the design rules check are `netsmith-geom`'s, which
+//! the board model and the router share. Of the other crates it uses only netsmith-kicad (to
+//! find `kicad-cli`) and netsmith-core (the PNG writer).
 //!
 //! # Why netsmith writes its own files (ADR 0034)
 //!
@@ -59,30 +61,25 @@
 //! and are named in the notes. Without a `.kicad_pro` beside the board the zone fill uses no
 //! edge clearance and the zone's own hole clearance (netsmith always writes one).
 
-pub mod artwork;
 pub mod board;
 pub mod bom;
 pub mod cpl;
 pub mod crosscheck;
 mod csv;
 pub mod drc;
-pub mod drill;
-pub mod edge;
 pub mod exclusive;
-pub mod fill;
-pub mod font;
-pub mod gbr;
-pub mod geom;
 pub mod gerber;
 pub mod kicad;
-pub mod pads;
 pub mod panel;
-pub mod plot;
-pub mod polygons;
 pub mod raster;
 pub mod rotation;
 pub mod score;
-pub mod sexp;
+
+// The board's geometry, the drawing of its layers and the design rules check are
+// `netsmith-geom`'s, which the board model and the router share (issue #611).
+pub use netsmith_geom::{
+    artwork, drill, edge, fill, font, gbr, geom, pads, plot, plot_rules_of, polygons,
+};
 
 pub use board::{Board, BoardPart, Fit, Side};
 pub use bom::BomEntry;
@@ -585,22 +582,6 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
 pub(crate) fn plot_rules(pcb: &Path) -> plot::Rules {
     let pro = std::fs::read_to_string(pcb.with_extension("kicad_pro")).unwrap_or_default();
     plot_rules_of(Some(&pro))
-}
-
-/// The rules the plot needs, from the text of the project file beside the board (`.kicad_pro`):
-/// what `fab` plots with, and what `netsmith_pcb::copper` fills the pours with.
-pub fn plot_rules_of(pro: Option<&str>) -> plot::Rules {
-    let pro = pro.unwrap_or_default();
-    let number = |key: &str| -> Option<f64> {
-        let at = pro.find(&format!("\"{key}\""))?;
-        let rest = pro[at..].split_once(':')?.1;
-        let end = rest.find([',', '}', '\n'])?;
-        rest[..end].trim().parse().ok()
-    };
-    plot::Rules {
-        edge_clearance: number("min_copper_edge_clearance").unwrap_or(0.0),
-        hole_clearance: number("min_hole_clearance"),
-    }
 }
 
 /// Lines for the notes about the fill of zones and anything the writers left out.

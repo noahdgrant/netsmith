@@ -157,7 +157,7 @@ impl Rules {
 }
 
 /// Whether `net` matches `pattern`, where `*` stands for any run of characters.
-pub(crate) fn matches_pattern(pattern: &str, net: &str) -> bool {
+pub fn matches_pattern(pattern: &str, net: &str) -> bool {
     let parts: Vec<&str> = pattern.split('*').collect();
     if parts.len() == 1 {
         return pattern == net;

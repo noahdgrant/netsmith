@@ -407,12 +407,12 @@ struct Unmarked {
 
 impl Unmarked {
     fn make(pcb: &Path, src: &str) -> Result<Self, std::io::Error> {
-        let root = crate::sexp::parse(src)
+        let root = netsmith_sexp::Sexp::parse(src)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
         let mut text = String::from("(kicad_pcb");
         for e in root.items().iter().skip(1) {
             let mark = e.head() == Some("gr_text")
-                && e.child("layer").and_then(|l| l.items().get(1)?.text()) == Some("Edge.Cuts");
+                && e.find("layer").and_then(|l| l.items().get(1)?.text()) == Some("Edge.Cuts");
             if !mark {
                 text.push_str("\n\t");
                 e.write(&mut text);

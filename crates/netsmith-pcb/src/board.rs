@@ -1342,13 +1342,13 @@ impl Track {
     }
 
     /// The track's arc, if it is one whose three points are not on a line.
-    pub fn arc(&self) -> Option<netsmith_fab::geom::Arc> {
-        let g = |p: Pt| netsmith_fab::geom::Pt::new(p.x, p.y);
-        netsmith_fab::geom::Arc::through(g(self.from), g(self.mid?), g(self.to))
+    pub fn arc(&self) -> Option<netsmith_geom::geom::Arc> {
+        let g = |p: Pt| netsmith_geom::geom::Pt::new(p.x, p.y);
+        netsmith_geom::geom::Arc::through(g(self.from), g(self.mid?), g(self.to))
     }
 
     /// The track's centre line from `from` to `to`: its two ends, or for an arc points no
-    /// further than 2 µm from it (`netsmith_fab::geom::ARC_ERROR`).
+    /// further than 2 µm from it (`netsmith_geom::geom::ARC_ERROR`).
     pub fn centre_line(&self) -> Vec<Pt> {
         match self.arc() {
             Some(arc) => arc
@@ -3445,7 +3445,7 @@ pub(crate) mod tests {
         // back and turned, with pads off its origin. The placer's body (`Placed::body`) and
         // the one the fab check measures on the written board are one box, at a right angle
         // and at any other.
-        use netsmith_fab::drc::constraints::{Constraint, Constraints, Measure};
+        use netsmith_geom::drc::constraints::{Constraint, Constraints, Measure};
         let mut board = placed(&led_design());
         let bare = crate::footprint::Footprint::parse(
             "T:Fingers",
@@ -3481,10 +3481,10 @@ pub(crate) mod tests {
                 ],
                 sides: Vec::new(),
                 relations: Vec::new(),
-                severity: netsmith_fab::drc::Severity::Error,
+                severity: netsmith_geom::drc::Severity::Error,
             };
             let art =
-                netsmith_fab::artwork::Artwork::parse(&crate::export::kicad_pcb(&board)).unwrap();
+                netsmith_geom::artwork::Artwork::parse(&crate::export::kicad_pcb(&board)).unwrap();
             let checked: Vec<f64> = constraints
                 .measure(&art)
                 .iter()

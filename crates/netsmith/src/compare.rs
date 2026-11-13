@@ -191,7 +191,7 @@ pub fn load(
                     ),
                 }
             })?;
-            Netlist::from_kicad_schematic(Path::new(path), kicad)
+            Netlist::from_kicad_schematic(Path::new(path), |p| kicad.netlist(p))
         }
         Some("kicad_pcb") => Netlist::from_kicad_pcb(&read()?).map_err(|e| format!("{path}: {e}")),
         Some("xml") => Netlist::from_kicad_xml(&read()?).map_err(|e| format!("{path}: {e}")),
