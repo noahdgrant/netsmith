@@ -1093,11 +1093,11 @@ board IcsFixture {
 
     .module: Header1x8
     .u1.en ~ .module.p1
-    .u1.io0 ~ .module.p2
+    .u1.gpio0 ~ .module.p2
     .u1.rxd0 ~ .u3.txd
     .u1.txd0 ~ .u3.rxd
-    .u1.io19 ~ .module.p3
-    .u1.io20 ~ .module.p4
+    .u1.gpio19 ~ .module.p3
+    .u1.gpio20 ~ .module.p4
 
     .bridge: Header1x8
     .u3.dp ~ .bridge.p1
@@ -2040,18 +2040,22 @@ mod board {
         PORT.assert_sees_a_wrong_net(&built(), ("U2", "4"), ("U2", "5"));
     }
 
-    /// The same comparison on the source: the text of the board with the header's GPIO4 and
-    /// GPIO5 pins swapped in its rename map (GPIO4 on the module's IO5, GPIO5 on IO4) is built,
-    /// and the comparison finds exactly that. (The test above edits the computed map; this one
-    /// edits what a person writes.)
+    /// The same comparison on the source: the text of the module part with its pins for the pads
+    /// IO4 and IO5 swapped in their names (the pin `.gpio4` is on pad 5 and `.gpio5` on pad 4, so
+    /// the join `.headers ~ .module` puts the header's GPIO4 on the module's IO5 and GPIO5 on
+    /// IO4) is built, and the comparison finds exactly that. (The test above edits the computed
+    /// map; this one edits what a person writes.)
     #[test]
     fn the_comparison_sees_a_header_pin_on_the_wrong_module_pin_in_the_source() {
-        let text = source();
-        let line = "gpio4 = io4; gpio5 = io5;";
-        assert_eq!(text.matches(line).count(), 1);
+        let text = read("src/esp32_s3_wroom_1.nsm");
+        let line4 = ".gpio4  bidirectional \"IO4\"    \"4\"";
+        let line5 = ".gpio5  bidirectional \"IO5\"    \"5\"";
+        assert_eq!(text.matches(line4).count(), 1);
+        assert_eq!(text.matches(line5).count(), 1);
         let theirs = PORT.theirs();
         let wiring_of = |text: &str| {
-            let built = built_from(text, &[]).unwrap_or_else(|e| panic!("{e}"));
+            let built = built_from(&source(), &[("esp32_s3_wroom_1.nsm", text.to_string())])
+                .unwrap_or_else(|e| panic!("{e}"));
             let ours = PORT.ours(&built);
             (built, ours)
         };
@@ -2059,7 +2063,9 @@ mod board {
         let (control, ours) = wiring_of(&text);
         assert_eq!(PORT.net_differences(&ours, &theirs), Vec::<String>::new());
 
-        let wrong = text.replace(line, "gpio4 = io5; gpio5 = io4;");
+        let wrong = text
+            .replace(line4, ".gpio5  bidirectional \"IO4\"    \"4\"")
+            .replace(line5, ".gpio4  bidirectional \"IO5\"    \"5\"");
         assert_ne!(wrong, text);
         let (moved, ours) = wiring_of(&wrong);
         let differences = PORT.net_differences(&ours, &theirs);

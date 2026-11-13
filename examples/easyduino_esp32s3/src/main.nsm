@@ -12,7 +12,7 @@
 //! Its nets are Easyduino's, and the proof is the test `board` of `crates/netsmith/tests/easyduino.rs`
 //! (`README.md`, "Same nets"). The pin-to-signal map of the headers (U2), of the receptacles and
 //! of the buttons is Easyduino's too, and it is FIXED: the board joins each header pin to a
-//! named pin of the module (`.module.io4`) and never to a request for "any GPIO" (ADR 0101), so
+//! named pin of the module (`.module.gpio4`) and never to a request for "any GPIO" (ADR 0101), so
 //! the pin optimizer of `fab` has nothing to move and the firmware's pin map cannot change.
 
 import src::auto_reset::AutoReset
@@ -122,8 +122,8 @@ board EasyduinoEsp32s3 {
     .module.vdd ~ .v3v3
     // The module's own USB, on the second receptacle with no part between (the reference has
     // none): IO19 is D- and IO20 is D+.
-    .usb_native.dm ~ .module.io19
-    .usb_native.dp ~ .module.io20
+    .usb_native.dm ~ .module.gpio19
+    .usb_native.dp ~ .module.gpio20
 
     // ---- The bridge (U3), on the first receptacle ----
 
@@ -155,14 +155,14 @@ board EasyduinoEsp32s3 {
     .auto_reset.dtr ~ .bridge.dtr
     .auto_reset.rts ~ .bridge.rts
     .auto_reset.en ~ .module.en
-    .auto_reset.boot ~ .module.io0
+    .auto_reset.boot ~ .module.gpio0
 
     // ---- The buttons (SW1, SW2) and EN's pull-up ----
 
     .reset.a ~ .vbus.neg
     .reset.b ~ .module.en
     .boot.a ~ .vbus.neg
-    .boot.b ~ .module.io0
+    .boot.b ~ .module.gpio0
     /// R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).
     .en_pullup: PullUp { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .en_pullup.supply ~ .v3v3
@@ -185,7 +185,7 @@ board EasyduinoEsp32s3 {
         .forward_voltage &= 2.6V..3.2V
     }
     .user_led_resistor: Resistor { .resistance &= 2.4kohm +/- 1%; .package &= "0402" }
-    .module.io38 ~ .user_led_resistor.b
+    .module.gpio38 ~ .user_led_resistor.b
     .user_led_resistor.a ~ .user_led.anode
     .user_led.cathode ~ .vbus.neg
 
@@ -210,21 +210,15 @@ board EasyduinoEsp32s3 {
     .v3v3.pos ~> .v3v3_100n ~> .v3v3.neg
     .v3v3.pos ~> .v3v3_22u ~> .v3v3.neg
     .module.en ~> .en_100n ~> .vbus.neg
-    .module.io0 ~> .boot_100n ~> .vbus.neg
+    .module.gpio0 ~> .boot_100n ~> .vbus.neg
 
     // ---- The headers (U2): Easyduino's pin map (fixed) ----
 
     .headers.v3v3 ~ .v3v3.pos
     .headers.vbus ~ .vbus.pos
     .headers.gnd ~ .vbus.neg
-    // Each header pin is named as the development board's silkscreen (GPIO4) and joined to the
-    // module's pin of that GPIO (IO4); `.en` has one name on both.
-    .headers ~ .module {
-        gpio4 = io4; gpio5 = io5; gpio6 = io6; gpio7 = io7; gpio15 = io15; gpio16 = io16
-        gpio17 = io17; gpio18 = io18; gpio8 = io8; gpio3 = io3; gpio46 = io46; gpio9 = io9
-        gpio10 = io10; gpio11 = io11; gpio12 = io12; gpio13 = io13; gpio14 = io14; gpio19 = io19
-        gpio20 = io20; gpio21 = io21; gpio47 = io47; gpio48 = io48; gpio45 = io45; gpio0 = io0
-        gpio35 = io35; gpio36 = io36; gpio37 = io37; gpio38 = io38; gpio39 = io39; gpio40 = io40
-        gpio41 = io41; gpio42 = io42; gpio2 = io2; gpio1 = io1; gpio44 = rxd0; gpio43 = txd0
-    } except { v3v3 vbus gnd vdd }
+    // Each header pin is named as the module's pin of that GPIO (`.gpio4` for the silkscreen's
+    // GPIO4), so the join needs no rename map but for the two pins that the module names after
+    // the UART signal (the pads `RXD0` and `TXD0`, GPIO44 and GPIO43).
+    .headers ~ .module { gpio44 = rxd0; gpio43 = txd0 } except { v3v3 vbus gnd vdd }
 }
