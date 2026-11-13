@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A chain across a rail sets its current before the pick
