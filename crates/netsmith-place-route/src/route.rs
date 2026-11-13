@@ -83,8 +83,9 @@
 //! 5. Lines still left are **negotiated** for (PathFinder in a small form): each is routed
 //!    where it would go if no other net were in the way, the nets it comes near are ripped up,
 //!    the cells they fought over cost more from then on, and what was ripped up is routed
-//!    again. Six rounds, and the best state is kept. The earlier rip-up put the nets back if
-//!    the line did not fit; this one lets lines fail for a round so the others can move.
+//!    again. Six rounds, and the best state is kept. The earlier
+//!    rip-up put the nets back if the line did not fit; this one lets lines fail for a round so
+//!    the others can move.
 //!
 //! There is no fan-out stage that puts a via beside each pad of a dense footprint before
 //! routing: the search already puts a via on any free cell next to a pad, and a pad with no
@@ -170,6 +171,47 @@
 //! which is why the lanes are the second try's. A try of RP2350 takes 4 to 10 minutes, so under
 //! `fab`'s 300 s the second try runs only on a smaller or faster board: the lanes make the
 //! board's later tries finish, not its first.
+//!
+//! # What a try costs (issue #431)
+//!
+//! A try of RP2350 (`examples/rp2350_minimal`) took 150 to 250 s on a dense two-layer board
+//! with a QFN-60, against `fab`'s route timeout of 300 s, so `fab` got one try after the
+//! margin trial, and whether the board routed was luck. Exact speed-ups of a single search
+//! had been measured to gain nothing (S3, 2026-11-11), so this is about how many searches a
+//! try makes and how much of each is wasted. Counted per stage (2026-11-12), at a turn cost of
+//! 25: the negotiation re-routed 9 900 lines for 118 negotiated, and never left fewer lines
+//! than it started with; at 24, 26 and 27 the chain spent two thirds of its states in searches
+//! with no right angle that had no path, each running out of states in each window in turn.
+//! Each change below leaves the copper of a board as it was, except the last, which leaves it
+//! on the boards measured:
+//!
+//! - **The neck boxes are kept** ([`Router::necks`]): asking [`Board::neck_box`] at every cell
+//!   made the margin trial (signals at 0.15 mm) spend 58 s on masks and checks.
+//! - **Stale entries of the search queue are skipped**: a state queued again at a lower cost
+//!   comes off the queue first, so its dearer entries relax nothing (12 to 17 % of states).
+//! - **A flood before a search with no right angle** ([`reachable`]), over the same states and
+//!   moves ([`moves`]): it says that there is no path for much less than a search that runs
+//!   out of states.
+//! - **A memo of searches** ([`Router::memo`], [`Router::print`]): a search in a window whose
+//!   print (the other nets' copper within reach, hard or soft, the net's own vias, the
+//!   negotiation's history of the cells) is unchanged finds what it found before. The joins
+//!   with the net's own tracks are checked each time. A quarter of the repairs' searches.
+//! - **Not kept: the negotiation stopping after a round that does not improve.** On RP2350 at
+//!   0.15 mm no round ever did, so it saved time there with the same copper. But at the least
+//!   track (0.1 mm), Orbit's first try routed completely only through a round that improved
+//!   after one that did not: with the early stop it left a line after six tries. All six rounds
+//!   are run.
+//!
+//! Measured on the same machine, back to back with main at fda6cd4f, the copper byte-identical:
+//! RP2350's `fab` takes 136 and 133 s against main's 138 and 166 s (a loaded machine, load
+//! average 6 to 12), and Orbit routed at the least track from a saved placement
+//! (`netsmith route --margin 1 --route-timeout 0`) takes 18.5 s against 32.6 s. With the
+//! negotiation's early stop as well (not kept, above), one RP2350 try took a third to two
+//! fifths of main's time: most of a try at 0.15 mm was negotiation rounds that changed nothing.
+//!
+//! Not done: a cache keyed on the whole board (searches repeat only where little changed),
+//! smaller first windows (a line found in 4 mm is cheap already), fewer soft searches (one a
+//! failed line a pass already), and incremental masks (12 % at most, S3).
 //!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
@@ -548,7 +590,7 @@ impl Grid {
 /// A rectangle of cells: the part of the grid a search is confined to. Most lines join pads
 /// that are near each other, so most are routed in a small window; one that cannot be is
 /// tried again in a larger.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Window {
     i0: usize,
     j0: usize,
@@ -936,7 +978,7 @@ enum Miss {
 }
 
 /// Whether a path can exist at all.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Link {
     /// The ends are joined by free cells, so a search will find a path.
     Joined,
@@ -1125,10 +1167,16 @@ fn search(
     let mut finished = vec![false; states];
     let end_of = |s: usize| s - states;
     let mut taken = 0u32;
-    while let Some(Reverse((_, _, _, s))) = queue.pop() {
+    while let Some(Reverse((_, g, _, s))) = queue.pop() {
         taken += 1;
         if taken.is_multiple_of(CLOCK_EVERY) && stop() {
             return Err(Miss::Stopped);
+        }
+        // A state queued again when a cheaper way to it was found is taken from the queue first
+        // at that cost (its estimate is the same, the cost lower); the dearer entries left are
+        // stale, and taking them again would relax nothing.
+        if s < states && -g > cost[s] {
+            continue;
         }
         if s >= states {
             let mut path = Vec::new();
@@ -1163,8 +1211,7 @@ fn search(
             return Ok(path);
         }
         let here = cost[s];
-        let (i, j, layer) = spot;
-        let mut relax = |next: Spot, next_dir: usize, step: i64| {
+        moves(masks, &open, extras, spot, dir, |next, next_dir, step| {
             let n = state(next, next_dir);
             if here + step < cost[n] {
                 cost[n] = here + step;
@@ -1172,77 +1219,148 @@ fn search(
                 queue.push(Reverse((cost[n] + heuristic(next), -cost[n], sequence, n)));
                 sequence += 1;
             }
-        };
-        let passable = |(ci, cj): (isize, isize)| {
-            ci >= 0
-                && cj >= 0
-                && window.contains(ci as usize, cj as usize)
-                && (!masks.track[layer][masks.at(ci as usize, cj as usize)]
-                    || open((ci as usize, cj as usize, layer)))
-        };
-        for (d, (di, dj)) in MOVES8.iter().enumerate() {
-            if extras.coarse && d % 2 == 1 {
-                continue;
-            }
-            // No bend sharper than 45 degrees: a right angle, an acute one, or back.
-            let bend = if dir < 8 {
-                let k = (d + 8 - dir) % 8;
-                k.min(8 - k)
-            } else {
-                0
-            };
-            // Inside a pad of the net the corner is in the pad's copper, and any turn but back
-            // is free.
-            let free = bend < 4 && masks.turns_freely(layer, i, j);
-            if bend > 1 && !free && !(bend == 2 && (extras.right_angles || extras.coarse)) {
-                continue;
-            }
-            let (ni, nj) = (i as isize + di, j as isize + dj);
-            if !passable((ni, nj)) {
-                continue;
-            }
-            // A diagonal step passes between the two cells beside it, which must be open too.
-            let diagonal = *di != 0 && *dj != 0;
-            if diagonal
-                && !(passable((i as isize + di, j as isize))
-                    && passable((i as isize, j as isize + dj)))
-            {
-                continue;
-            }
-            let next = (ni as usize, nj as usize, layer);
-            let turn = match bend {
-                0 => 0,
-                _ if extras.coarse || free => masks.turn,
-                1 => masks.turn,
-                _ => TURN_RIGHT,
-            };
-            let neck = if masks.necked(layer, next.0, next.1) {
-                NECK
-            } else {
-                0
-            };
-            relax(
-                next,
-                d,
-                if diagonal { DIAGONAL } else { STEP }
-                    + turn
-                    + neck
-                    + masks.history_cost(layer, next.0, next.1)
-                    + masks.soft_cost(layer, next.0, next.1)
-                    + masks.lane_cost(layer, next.0, next.1),
-            );
-        }
-        let other = 1 - layer;
-        let at = masks.at(i, j);
-        if dir != AFTER_VIA && !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
-            relax(
-                (i, j, other),
-                AFTER_VIA,
-                VIA + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
-            );
-        }
+        });
     }
     Err(Miss::Blocked)
+}
+
+/// The moves of the search from a state, in the order the search queues them: each legal next
+/// state of `spot`, come in by direction `dir`, with what the move costs, given to `relax`.
+/// [`search`] and [`reachable`] share it, so they agree on which states can be reached.
+fn moves(
+    masks: &Masks,
+    open: &impl Fn(Spot) -> bool,
+    extras: Extras,
+    spot: Spot,
+    dir: usize,
+    mut relax: impl FnMut(Spot, usize, i64),
+) {
+    let window = masks.window;
+    let (i, j, layer) = spot;
+    let passable = |(ci, cj): (isize, isize)| {
+        ci >= 0
+            && cj >= 0
+            && window.contains(ci as usize, cj as usize)
+            && (!masks.track[layer][masks.at(ci as usize, cj as usize)]
+                || open((ci as usize, cj as usize, layer)))
+    };
+    for (d, (di, dj)) in MOVES8.iter().enumerate() {
+        if extras.coarse && d % 2 == 1 {
+            continue;
+        }
+        // No bend sharper than 45 degrees: a right angle, an acute one, or back.
+        let bend = if dir < 8 {
+            let k = (d + 8 - dir) % 8;
+            k.min(8 - k)
+        } else {
+            0
+        };
+        // Inside a pad of the net the corner is in the pad's copper, and any turn but back
+        // is free.
+        let free = bend < 4 && masks.turns_freely(layer, i, j);
+        if bend > 1 && !free && !(bend == 2 && (extras.right_angles || extras.coarse)) {
+            continue;
+        }
+        let (ni, nj) = (i as isize + di, j as isize + dj);
+        if !passable((ni, nj)) {
+            continue;
+        }
+        // A diagonal step passes between the two cells beside it, which must be open too.
+        let diagonal = *di != 0 && *dj != 0;
+        if diagonal
+            && !(passable((i as isize + di, j as isize)) && passable((i as isize, j as isize + dj)))
+        {
+            continue;
+        }
+        let next = (ni as usize, nj as usize, layer);
+        let turn = match bend {
+            0 => 0,
+            _ if extras.coarse || free => masks.turn,
+            1 => masks.turn,
+            _ => TURN_RIGHT,
+        };
+        let neck = if masks.necked(layer, next.0, next.1) {
+            NECK
+        } else {
+            0
+        };
+        relax(
+            next,
+            d,
+            if diagonal { DIAGONAL } else { STEP }
+                + turn
+                + neck
+                + masks.history_cost(layer, next.0, next.1)
+                + masks.soft_cost(layer, next.0, next.1)
+                + masks.lane_cost(layer, next.0, next.1),
+        );
+    }
+    let other = 1 - layer;
+    let at = masks.at(i, j);
+    if dir != AFTER_VIA && !masks.via[at] && (!masks.track[other][at] || open((i, j, other))) {
+        relax(
+            (i, j, other),
+            AFTER_VIA,
+            VIA + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
+        );
+    }
+}
+
+/// Whether a search with these masks, ends and moves can reach the goal at all: a flood over
+/// the search's states (cell, layer and the direction come in by) with [`moves`], which costs
+/// far less than a search that runs out of states, and says the same.
+fn reachable(
+    masks: &Masks,
+    from: &[Spot],
+    goal: Goal,
+    extras: Extras,
+    stop: &dyn Fn() -> bool,
+) -> Result<bool, Miss> {
+    let window = masks.window;
+    let cells = window.cells();
+    let state =
+        |(i, j, layer): Spot, dir: usize| (layer * cells + window.index(i, j)) * DIRECTIONS + dir;
+    let open = |spot: Spot| {
+        from.contains(&spot)
+            || extras.from.contains(&spot)
+            || extras.to.contains(&spot)
+            || matches!(goal, Goal::Spots(to) if to.contains(&spot))
+    };
+    let done = |spot: Spot| match goal {
+        Goal::Spots(to) => to.contains(&spot) || extras.to.contains(&spot),
+        Goal::Via => !masks.via[masks.at(spot.0, spot.1)],
+    };
+    let mut seen = vec![false; cells * 2 * DIRECTIONS];
+    let mut stack: Vec<(Spot, usize)> = Vec::new();
+    for &spot in from
+        .iter()
+        .chain(extras.from)
+        .filter(|s| window.contains(s.0, s.1))
+    {
+        let s = state(spot, NO_DIRECTION);
+        if !seen[s] {
+            seen[s] = true;
+            stack.push((spot, NO_DIRECTION));
+        }
+    }
+    let mut taken = 0u32;
+    while let Some((spot, dir)) = stack.pop() {
+        taken += 1;
+        if taken.is_multiple_of(CLOCK_EVERY) && stop() {
+            return Err(Miss::Stopped);
+        }
+        if done(spot) {
+            return Ok(true);
+        }
+        moves(masks, &open, extras, spot, dir, |next, next_dir, _| {
+            let n = state(next, next_dir);
+            if !seen[n] {
+                seen[n] = true;
+                stack.push((next, next_dir));
+            }
+        });
+    }
+    Ok(false)
 }
 
 /// Straight runs through a list of cells on one layer; a single cell has none.
@@ -1796,6 +1914,7 @@ fn initial_obstacles(board: &Board) -> Obstacles {
 
 /// Why a line's copper was not kept: it comes too near other copper, or a right angle has no
 /// cut into two bends of 45 degrees that keeps the rules' space.
+#[derive(Clone, Copy)]
 enum Unsettled {
     Clearance,
     Corner,
@@ -1823,6 +1942,34 @@ struct Routed {
     vias: Vec<Via>,
 }
 
+/// A step of a search for a line in a window, and the print of what it depends on
+/// ([`Router::print`]).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct MemoKey {
+    line: usize,
+    room: u64,
+    soft: bool,
+    fine: bool,
+    /// Whether the search pays for the escape lanes ([`Lanes`]), which never move.
+    escaping: bool,
+    window: Window,
+    print: u128,
+    /// 0 for the flood ([`link`]), and 1 on for the searches in turn.
+    step: u8,
+}
+
+/// What a step of a search found: whether the ends are joined, or the copper of the path (as
+/// [`Router::settled`] left it, before the joins with the net's own tracks are checked) and
+/// the path, `None` if there is no path.
+#[derive(Clone)]
+enum Memo {
+    Link(Link),
+    Search(Option<Result<(Routed, Vec<Spot>), Unsettled>>),
+}
+
+/// How many steps of searches the memo holds before it is emptied.
+const MEMO_MOST: usize = 200_000;
+
 /// Which lines are routed and how, and which are not.
 #[derive(Clone, Default)]
 struct State {
@@ -1845,6 +1992,10 @@ struct Router<'a> {
     ends: Vec<(Vec<Spot>, Vec<Spot>)>,
     /// The pads at each end of a line that a via may stand in.
     in_pads: Vec<(Option<InPad>, Option<InPad>)>,
+    /// The boxes round the pads of the parts at each end of a line, that a track may be necked
+    /// down near ([`Board::neck_box`]), the second `None` for a line to a plane. Asked for at
+    /// every cell of a window, so kept.
+    necks: Vec<[Option<Rect>; 2]>,
     /// How deep in a fine-pitch grid of pads the deeper end of each line is ([`pad_depth`]).
     depth: Vec<f64>,
     /// Whether lines left over are negotiated for and given a chain of rip-ups, and what the
@@ -1875,6 +2026,12 @@ struct Router<'a> {
     lanes: Option<Lanes>,
     /// Whether this try's searches pay for the lanes: from the second try on.
     escaping: Cell<bool>,
+    /// What searches found, by line, window and the print of the copper near the window
+    /// ([`Router::print`]): a search whose print is unchanged finds what it found before.
+    memo: RefCell<HashMap<MemoKey, Memo>>,
+    /// How far beyond a window copper is in its print: farther than any mask, check or via
+    /// keeps from it.
+    print_reach: f64,
 }
 
 impl<'a> Router<'a> {
@@ -1910,6 +2067,17 @@ impl<'a> Router<'a> {
                 (in_pad(board, &l.from, l.from_at, &grid), to)
             })
             .collect();
+        let necks = lines
+            .iter()
+            .map(|l| {
+                [
+                    board.neck_box(&l.from.refdes),
+                    (!l.to_plane)
+                        .then(|| board.neck_box(&l.to.refdes))
+                        .flatten(),
+                ]
+            })
+            .collect();
         let depth = lines
             .iter()
             .map(|l| {
@@ -1930,6 +2098,19 @@ impl<'a> Router<'a> {
         }
         let crowding = Crowding::over(&grid);
         let lanes = escape_lanes(board, &grid);
+        // The farthest any copper reaches into a mask or a check: half the widest track or
+        // a via, its space and the room, or a via's hole and its space, with a millimetre over.
+        let rules = &board.rules;
+        let widest = board
+            .nets
+            .iter()
+            .map(|n| board.track_width(&n.name))
+            .fold(rules.via_diameter, f64::max);
+        let print_reach = 1.0
+            + widest
+            + rules.clearance
+            + MARGIN
+            + (rules.via_hole_to_hole + rules.via_drill).max(rules.hole_clearance);
         Router {
             board,
             fixed,
@@ -1940,6 +2121,7 @@ impl<'a> Router<'a> {
             nets,
             ends,
             in_pads,
+            necks,
             depth,
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
@@ -1957,6 +2139,8 @@ impl<'a> Router<'a> {
             snapshots: options.snapshots.then(|| RefCell::new(Vec::new())),
             lanes,
             escaping: Cell::new(false),
+            memo: RefCell::new(HashMap::new()),
+            print_reach,
         }
     }
 
@@ -2114,13 +2298,10 @@ impl<'a> Router<'a> {
 
     /// Whether a point is within `reach` of the pads of a part an end of the line is on.
     fn near_end_by(&self, line: usize, p: Pt, reach: f64) -> bool {
-        let l = &self.lines[line];
-        let near = |refdes: &str| {
-            self.board
-                .neck_box(refdes)
-                .is_some_and(|b| b.expanded(reach).contains(&Rect::new(p, p)))
-        };
-        near(&l.from.refdes) || (!l.to_plane && near(&l.to.refdes))
+        self.necks[line]
+            .iter()
+            .flatten()
+            .any(|b| b.expanded(reach).contains(&Rect::new(p, p)))
     }
 
     /// Whether a point is within [`NECK_REACH`] of the pads of a part an end of the line is on.
@@ -2294,8 +2475,6 @@ impl<'a> Router<'a> {
             coarse: false,
         };
         let ends: Vec<Spot> = from.iter().chain(to).copied().collect();
-        // The width this line's net is drawn at.
-        let track_width = self.width_of(line);
         let mut tried: Option<Window> = None;
         for margin in WINDOW_MARGINS.iter().map(|&m| Some(m)).chain([None]) {
             let window = match margin {
@@ -2306,73 +2485,46 @@ impl<'a> Router<'a> {
                 continue;
             }
             tried = Some(window);
-            let rules = &self.board.rules;
-            let mut masks = self.masks(
+            // What a search in this window found before, if nothing it depends on has changed
+            // since ([`Router::memo`]): the masks are made only when something is searched.
+            let print = self.print(window, net, &others, soft, locked);
+            let key = |step: u8| MemoKey {
+                line,
+                room: room.to_bits(),
+                soft,
+                fine: self.fine.get(),
+                escaping: self.escaping.get(),
                 window,
-                net,
-                (hard, hard_keepouts),
-                (soft_list, soft_keepouts),
-                Reach {
-                    room,
-                    width: track_width,
-                },
-            );
-            // With the least room, a track that cannot pass between two pads at its full
-            // width may pass necked down: to the width its current needs anywhere, and to the
-            // narrowest the process makes within `NECK_REACH` of the line's own pads.
-            let floor = self.neck_width(line);
-            if room == ROOM_TIGHT && track_width > rules.min_track_width + 1e-9 {
-                let reach = |width| Reach { room, width };
-                let mut narrow = self
-                    .masks(
+                print,
+                step,
+            };
+            let mut built: Option<Masks> = None;
+            let make = |built: &mut Option<Masks>| {
+                if built.is_none() {
+                    *built = Some(self.window_masks(
+                        line,
                         window,
-                        net,
+                        room,
                         (hard, hard_keepouts),
                         (soft_list, soft_keepouts),
-                        reach(floor),
-                    )
-                    .track;
-                if floor > rules.min_track_width + 1e-9 {
-                    let thin = self
-                        .masks(
-                            window,
-                            net,
-                            (hard, hard_keepouts),
-                            (soft_list, soft_keepouts),
-                            reach(rules.min_track_width),
-                        )
-                        .track;
-                    let near = self.near_ends(line, window);
-                    let pinch = [FRONT, BACK].map(|l| {
-                        (0..window.cells())
-                            .map(|c| narrow[l][c] && !thin[l][c] && near[c])
-                            .collect::<Vec<bool>>()
-                    });
-                    for l in [FRONT, BACK] {
-                        for c in 0..window.cells() {
-                            if pinch[l][c] {
-                                narrow[l][c] = false;
-                            }
-                        }
-                    }
-                    masks.pinch = Some(pinch);
+                    ));
                 }
-                if floor < track_width - 1e-9 || masks.pinch.is_some() {
-                    masks.wide = Some(std::mem::replace(&mut masks.track, narrow));
-                }
-            }
-            self.room_for_vias(line, &mut masks);
-            self.mark_own_pads(net, &mut masks);
-            if self.escaping.get() {
-                masks.lane = self.lanes.as_ref().and_then(|l| l.charged(window, net));
-            }
+            };
             let own: Vec<&Routed> = others
                 .iter()
                 .copied()
                 .filter(|r| r.line != line && self.nets[r.line] == net)
                 .collect();
-            self.add_history(&mut masks);
-            match link(&masks, from, goal, extras) {
+            let linked = match self.recall(&key(0)) {
+                Some(Memo::Link(linked)) => linked,
+                _ => {
+                    make(&mut built);
+                    let linked = link(built.as_ref().expect("made"), from, goal, extras);
+                    self.remember(key(0), Memo::Link(linked));
+                    linked
+                }
+            };
+            match linked {
                 Link::Joined => {}
                 Link::Closed => break,
                 Link::Cramped if window.covers(&self.grid) => break,
@@ -2399,34 +2551,62 @@ impl<'a> Router<'a> {
                     coarse,
                     ..extras
                 };
-                match search(&masks, from, goal, extras, &|| self.out_of_time()) {
-                    Ok(path) => {
-                        let start = in_from.filter(|p| path.first() == Some(&p.spot));
-                        let end = in_to.filter(|p| path.last() == Some(&p.spot));
-                        let routed = self.realize(line, &path, start, end, &masks);
-                        // What the grid let through is measured again on the copper itself: a
-                        // line whose copper is nearer to another net's than the rules allow,
-                        // even at the narrowest track, is not routed.
-                        // A path that only finds the nets in the way is never drawn, so its
-                        // corners are not cut.
-                        match self
-                            .settled(routed, net, &obstacles, !soft)
-                            .and_then(|r| self.joins_cleanly(r, &own, !soft))
-                        {
-                            Ok(routed) => return Some((routed, path)),
-                            Err(Unsettled::Corner) if !last => continue,
-                            Err(_) => {
-                                give_up = true;
-                                break;
+                let found = match self.recall(&key(n as u8 + 1)) {
+                    Some(Memo::Search(found)) => found,
+                    _ => {
+                        make(&mut built);
+                        let masks = built.as_ref().expect("made");
+                        let stop = || self.out_of_time();
+                        // Where no right angle is allowed, a line often has no path: a pad that
+                        // is reached only round a corner. A flood says so for much less than
+                        // a search that runs out of states.
+                        let flood = (!extras.right_angles && !extras.coarse)
+                            .then(|| reachable(masks, from, goal, extras, &stop));
+                        let searched = match flood {
+                            Some(Err(miss)) => Err(miss),
+                            Some(Ok(false)) => Err(Miss::Blocked),
+                            _ => search(masks, from, goal, extras, &stop),
+                        };
+                        let found = match searched {
+                            Ok(path) => {
+                                let start = in_from.filter(|p| path.first() == Some(&p.spot));
+                                let end = in_to.filter(|p| path.last() == Some(&p.spot));
+                                let routed = self.realize(line, &path, start, end, masks);
+                                // What the grid let through is measured again on the copper
+                                // itself: a line whose copper is nearer to another net's than
+                                // the rules allow, even at the narrowest track, is not routed.
+                                // A path that only finds the nets in the way is never drawn, so
+                                // its corners are not cut.
+                                Some(
+                                    self.settled(routed, net, &obstacles, !soft)
+                                        .map(|r| (r, path)),
+                                )
                             }
-                        }
+                            Err(Miss::Stopped) => return None,
+                            Err(Miss::Blocked) => None,
+                        };
+                        self.remember(key(n as u8 + 1), Memo::Search(found.clone()));
+                        found
                     }
-                    Err(Miss::Stopped) => return None,
-                    Err(Miss::Blocked) if window.covers(&self.grid) => {
+                };
+                match found {
+                    // The joins with the net's own tracks are checked on the copper there is
+                    // now: the memo does not depend on them.
+                    Some(settled) => match settled
+                        .and_then(|(r, path)| Ok((self.joins_cleanly(r, &own, !soft)?, path)))
+                    {
+                        Ok(done) => return Some(done),
+                        Err(Unsettled::Corner) if !last => continue,
+                        Err(_) => {
+                            give_up = true;
+                            break;
+                        }
+                    },
+                    None if window.covers(&self.grid) => {
                         give_up = true;
                         break;
                     }
-                    Err(Miss::Blocked) => break,
+                    None => break,
                 }
             }
             if give_up {
@@ -2455,6 +2635,170 @@ impl<'a> Router<'a> {
             ));
         }
         None
+    }
+
+    /// The masks a line is searched for in, in a window: the copper of other nets, kept at
+    /// `room`, with the cells where its track is necked down, the room its vias need, the
+    /// cells inside its own pads and what the negotiation has learnt.
+    fn window_masks(
+        &self,
+        line: usize,
+        window: Window,
+        room: f64,
+        (hard, hard_keepouts): (&[&Obstacle], &[(Form, f64)]),
+        (soft_list, soft_keepouts): (&[&Obstacle], &[(Form, f64)]),
+    ) -> Masks {
+        let net = self.nets[line];
+        let rules = &self.board.rules;
+        // The width this line's net is drawn at.
+        let track_width = self.width_of(line);
+        let mut masks = self.masks(
+            window,
+            net,
+            (hard, hard_keepouts),
+            (soft_list, soft_keepouts),
+            Reach {
+                room,
+                width: track_width,
+            },
+        );
+        // With the least room, a track that cannot pass between two pads at its full
+        // width may pass necked down: to the width its current needs anywhere, and to the
+        // narrowest the process makes within `NECK_REACH` of the line's own pads.
+        let floor = self.neck_width(line);
+        if room == ROOM_TIGHT && track_width > rules.min_track_width + 1e-9 {
+            let reach = |width| Reach { room, width };
+            let mut narrow = self
+                .masks(
+                    window,
+                    net,
+                    (hard, hard_keepouts),
+                    (soft_list, soft_keepouts),
+                    reach(floor),
+                )
+                .track;
+            if floor > rules.min_track_width + 1e-9 {
+                let thin = self
+                    .masks(
+                        window,
+                        net,
+                        (hard, hard_keepouts),
+                        (soft_list, soft_keepouts),
+                        reach(rules.min_track_width),
+                    )
+                    .track;
+                let near = self.near_ends(line, window);
+                let pinch = [FRONT, BACK].map(|l| {
+                    (0..window.cells())
+                        .map(|c| narrow[l][c] && !thin[l][c] && near[c])
+                        .collect::<Vec<bool>>()
+                });
+                for l in [FRONT, BACK] {
+                    for c in 0..window.cells() {
+                        if pinch[l][c] {
+                            narrow[l][c] = false;
+                        }
+                    }
+                }
+                masks.pinch = Some(pinch);
+            }
+            if floor < track_width - 1e-9 || masks.pinch.is_some() {
+                masks.wide = Some(std::mem::replace(&mut masks.track, narrow));
+            }
+        }
+        self.room_for_vias(line, &mut masks);
+        self.mark_own_pads(net, &mut masks);
+        if self.escaping.get() {
+            masks.lane = self.lanes.as_ref().and_then(|l| l.charged(window, net));
+        }
+        self.add_history(&mut masks);
+        masks
+    }
+
+    /// A print of everything a search of a line of `net` in `window` depends on that changes
+    /// while the router runs ([`Router::memo`]): the routed copper near the window, each piece
+    /// marked hard or soft (in a soft search, the copper of the `locked` lines is hard), and
+    /// what the negotiation has learnt about the window's cells. The net's own tracks are left
+    /// out: the masks and the check of the copper do not see them, and the joins with them are
+    /// checked on every search ([`Router::joins_cleanly`]). The net's own vias are in: their
+    /// holes keep other vias away. The print does not depend on the order of the copper.
+    fn print(
+        &self,
+        window: Window,
+        net: usize,
+        others: &[&Routed],
+        soft: bool,
+        locked: &[usize],
+    ) -> u128 {
+        use std::hash::{Hash, Hasher};
+        let seen = Rect::new(
+            self.grid.centre(window.i0, window.j0),
+            self.grid
+                .centre(window.i0 + window.nx - 1, window.j0 + window.ny - 1),
+        )
+        .expanded(self.print_reach);
+        let one = |piece: &dyn Fn(&mut std::hash::DefaultHasher)| {
+            let mut h = std::hash::DefaultHasher::new();
+            piece(&mut h);
+            h.finish()
+        };
+        let mut pieces: Vec<u64> = Vec::new();
+        for r in others {
+            let own = self.nets[r.line] == net;
+            let hard = !soft || locked.contains(&r.line);
+            if !own {
+                for t in &r.tracks {
+                    if seen.overlaps(&Form::Segment(t.from, t.to, t.width / 2.0).bounds()) {
+                        pieces.push(one(&|h| {
+                            (0u8, hard, t.layer == CopperLayer::Front).hash(h);
+                            [t.from.x, t.from.y, t.to.x, t.to.y, t.width]
+                                .map(f64::to_bits)
+                                .hash(h);
+                        }));
+                    }
+                }
+            }
+            for v in &r.vias {
+                if seen.overlaps(&Form::Circle(v.at, v.diameter / 2.0).bounds()) {
+                    pieces.push(one(&|h| {
+                        (1u8, hard, own).hash(h);
+                        [v.at.x, v.at.y, v.diameter].map(f64::to_bits).hash(h);
+                    }));
+                }
+            }
+        }
+        pieces.sort_unstable();
+        let history = self.history.borrow();
+        let halves = [0u8, 1].map(|seed| {
+            let mut h = std::hash::DefaultHasher::new();
+            seed.hash(&mut h);
+            pieces.hash(&mut h);
+            if !history[FRONT].is_empty() {
+                for layer in [FRONT, BACK] {
+                    for j in window.j0..window.j0 + window.ny {
+                        let row = j * self.grid.nx + window.i0;
+                        history[layer][row..row + window.nx].hash(&mut h);
+                    }
+                }
+            }
+            h.finish()
+        });
+        (u128::from(halves[0]) << 64) | u128::from(halves[1])
+    }
+
+    /// What a search with this key found before, if it is remembered.
+    fn recall(&self, key: &MemoKey) -> Option<Memo> {
+        self.memo.borrow().get(key).cloned()
+    }
+
+    /// Remember what a search found. The memo is emptied when it grows past [`MEMO_MOST`],
+    /// which only costs the searches again.
+    fn remember(&self, key: MemoKey, found: Memo) {
+        let mut memo = self.memo.borrow_mut();
+        if memo.len() >= MEMO_MOST {
+            memo.clear();
+        }
+        memo.insert(key, found);
     }
 
     /// The line's copper as it will be drawn, checked against the copper of other nets, the
@@ -3700,6 +4044,56 @@ mod tests {
         assert_eq!(changes, 2, "down to the back and up again");
     }
 
+    /// Masks of the 3 by 1 mm grid with cells closed at random (a fixed sequence), about one
+    /// in `one_in` for tracks on each layer and for vias.
+    fn random_masks(seed: u64, one_in: u64) -> (Grid, Masks) {
+        let (grid, mut masks) = open_grid();
+        let mut x = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let mut next = || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 33).is_multiple_of(one_in)
+        };
+        for c in 0..masks.window.cells() {
+            masks.track[FRONT][c] = next();
+            masks.track[BACK][c] = next();
+            masks.via[c] = next();
+        }
+        (grid, masks)
+    }
+
+    #[test]
+    fn the_flood_finds_a_way_exactly_when_the_search_finds_a_path() {
+        let modes = [(true, true), (true, false), (false, false)];
+        let (mut joined, mut apart) = (0, 0);
+        for seed in 0..120 {
+            let (_, masks) = random_masks(seed, 2 + seed % 3);
+            let from = [(0, (seed % 10) as usize, FRONT)];
+            let to = [(29, ((seed * 7) % 10) as usize, (seed % 2) as usize)];
+            for goal in [Goal::Spots(&to), Goal::Via] {
+                for (right_angles, coarse) in modes {
+                    let extras = Extras {
+                        right_angles,
+                        coarse,
+                        ..Extras::default()
+                    };
+                    let found = search(&masks, &from, goal, extras, &|| false).is_ok();
+                    let flood = reachable(&masks, &from, goal, extras, &|| false);
+                    assert_eq!(flood, Ok(found), "seed {seed}, {right_angles} {coarse}");
+                    if found {
+                        joined += 1;
+                    } else {
+                        apart += 1;
+                    }
+                }
+            }
+        }
+        assert!(joined > 50 && apart > 50, "{joined} joined, {apart} apart");
+    }
+
     #[test]
     fn a_wall_on_both_layers_cannot_be_crossed() {
         let (grid, mut masks) = open_grid();
@@ -4166,6 +4560,104 @@ mod tests {
             settled.ok().map(|r| r.tracks[0].clone()),
             board.rules.min_track_width,
         )
+    }
+
+    fn a_track(net: &str, from: Pt, to: Pt) -> Track {
+        Track {
+            net: net.into(),
+            layer: CopperLayer::Front,
+            from,
+            to,
+            width: 0.2,
+        }
+    }
+
+    #[test]
+    fn the_print_of_a_window_changes_with_the_copper_near_it_only() {
+        let board = crate::board_from_design(
+            &four_layer_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let router = Router::new(&board, &RouteOptions::default());
+        let window = Window {
+            i0: 0,
+            j0: 0,
+            nx: 5,
+            ny: 5,
+        };
+        let corner = router.grid.centre(0, 0);
+        let far = router.grid.centre(router.grid.nx - 1, router.grid.ny - 1);
+        assert!(
+            far.distance(corner) > 2.0 * router.print_reach + 1.0,
+            "a far corner"
+        );
+        // Line 0 is of one net and the line `other` of another.
+        let net = router.nets[0];
+        let other = (0..router.lines.len())
+            .find(|&l| router.nets[l] != net)
+            .unwrap();
+        let (mine, theirs) = (router.lines[0].net.clone(), router.lines[other].net.clone());
+        let routed = |line: usize, net: &str, at: Pt| Routed {
+            line,
+            tracks: vec![a_track(net, at, at + Pt::new(0.5, 0.0))],
+            vias: Vec::new(),
+        };
+        let near = routed(other, &theirs, corner);
+        let print = |others: &[&Routed], soft: bool, locked: &[usize]| {
+            router.print(window, net, others, soft, locked)
+        };
+        let bare = print(&[], false, &[]);
+        // The net's own tracks, copper far away, and the order of the copper are not in it.
+        assert_eq!(print(&[&routed(0, &mine, corner)], false, &[]), bare);
+        assert_eq!(print(&[&routed(other, &theirs, far)], false, &[]), bare);
+        let far_too = routed(other, &theirs, far);
+        assert_eq!(
+            print(&[&near, &far_too], false, &[]),
+            print(&[&far_too, &near], false, &[])
+        );
+        // Another net's track near the window is, and whether a soft search may cross it.
+        let hard = print(&[&near], false, &[]);
+        assert_ne!(hard, bare);
+        assert_ne!(print(&[&near], true, &[]), hard);
+        assert_eq!(print(&[&near], true, &[other]), hard);
+        // So is what the negotiation has learnt about the window's cells.
+        let cells = router.grid.nx * router.grid.ny;
+        *router.history.borrow_mut() = [vec![0; cells], vec![0; cells]];
+        let learnt = print(&[], false, &[]);
+        router.learn(&[(1, 1, FRONT)]);
+        assert_ne!(print(&[], false, &[]), learnt);
+    }
+
+    #[test]
+    fn a_search_whose_print_is_unchanged_finds_what_it_found_before() {
+        let board = crate::board_from_design(
+            &four_layer_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let router = Router::new(&board, &RouteOptions::default());
+        let state = State::default();
+        let copper =
+            |found: Option<(Routed, Vec<Spot>)>| found.map(|(r, path)| (r.tracks, r.vias, path));
+        let first = copper(router.try_line(0, &state, &[], ROOM_TIGHT, false));
+        assert!(first.is_some());
+        let remembered = router.memo.borrow().len();
+        assert!(remembered > 0);
+        let again = copper(router.try_line(0, &state, &[], ROOM_TIGHT, false));
+        assert_eq!(
+            router.memo.borrow().len(),
+            remembered,
+            "nothing searched again"
+        );
+        assert_eq!(again, first);
+        router.memo.borrow_mut().clear();
+        assert_eq!(
+            copper(router.try_line(0, &state, &[], ROOM_TIGHT, false)),
+            first
+        );
     }
 
     /// Whether a line with `mine` joins cleanly a line of its net with `theirs`, all on the
