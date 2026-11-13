@@ -28,6 +28,7 @@ pub mod pins;
 pub mod placed;
 pub mod port;
 pub mod port_skeleton;
+pub mod port_tables;
 pub mod project;
 pub mod providers;
 pub mod reference_table;

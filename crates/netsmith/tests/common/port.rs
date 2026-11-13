@@ -2,17 +2,18 @@
 //! built, its parts are named as the original names them by the port's `reference/parts.toml`
 //! (member path to the original's designator), and for every pad the set of the other pads on its
 //! net must be the same on both sides. A port gives what is its own as data ([`Port`]): the
-//! original's board file, the two-pad parts whose pads read the other way round, a pad the
+//! original's board file (or none, for a port that holds the derived `reference/netlist.xml`,
+//! #560), the two-pad parts whose pads read the other way round, a pad the
 //! original numbers otherwise, the parts with no nets (mounting holes) and the design's parts the
 //! original does not have. What else a port proves (its values and packages, its open pins, ERC)
 //! stays in its own file and uses the helpers here.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::PathBuf;
 
 use netsmith::compare::netlist_of_design;
 use netsmith::port::PortParts;
+use netsmith::port_tables::reference_netlist;
 use netsmith_kicad::Mapping;
 use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare, report};
 
@@ -26,8 +27,9 @@ pub type Neighbours = BTreeMap<Pad, BTreeSet<Pad>>;
 pub struct Port {
     /// The folder of the example (`examples/<folder>`).
     pub folder: &'static str,
-    /// The original's board file in `reference/`.
-    pub board: &'static str,
+    /// The original's board file in `reference/`, or `None` when the port holds its derived
+    /// tables instead (`reference/netlist.xml`, written by `netsmith port tables`, #560).
+    pub board: Option<&'static str>,
     /// The name the messages give the original (`Easyduino has [...]`).
     pub original: &'static str,
     /// The original's two-pad parts whose pads 1 and 2 the design numbers the other way round: a
@@ -67,11 +69,11 @@ impl Port {
     }
 
     /// The original's netlist, read from its committed `.kicad_pcb` as a file
-    /// (`Netlist::from_kicad_pcb`), with no `kicad-cli`.
+    /// (`Netlist::from_kicad_pcb`), or from `reference/netlist.xml` when the port names no board
+    /// file, with no `kicad-cli`.
     pub fn reference(&self) -> Netlist {
-        let path = self.project().join("reference").join(self.board);
-        let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        Netlist::from_kicad_pcb(&text).unwrap_or_else(|e| panic!("{e}"))
+        reference_netlist(&self.project().join("reference"), self.board)
+            .unwrap_or_else(|e| panic!("{e}"))
     }
 
     /// The design's netlist, with the project's mapping of parts to footprints.
@@ -159,7 +161,13 @@ impl Port {
 
     /// The original's pads on their nets, numbered as the design numbers them.
     pub fn theirs(&self) -> Neighbours {
-        self.neighbours(&self.reference(), &BTreeMap::new(), Reading::AsTheDesign)
+        self.theirs_of(&self.reference())
+    }
+
+    /// The pads on their nets of `reference`, a netlist of the original, as [`Port::theirs`]
+    /// sees them.
+    pub fn theirs_of(&self, reference: &Netlist) -> Neighbours {
+        self.neighbours(reference, &BTreeMap::new(), Reading::AsTheDesign)
     }
 
     /// Every pad whose other pads on its net are not the same on both sides, one line each

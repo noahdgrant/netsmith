@@ -30,6 +30,7 @@ netsmith-view = { path = "../netsmith-view" }
 serde = { version = "1.0.229", features = ["derive"] }
 # `float_roundtrip`: a placed board read back (`netsmith route`) has the numbers it was saved with.
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+sha2 = "0.11.1"
 toml = "1.1.8"
 ureq = "3"
 

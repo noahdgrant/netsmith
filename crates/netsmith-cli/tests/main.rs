@@ -28,6 +28,7 @@ mod pin_export;
 mod pin_swaps;
 mod pins;
 mod port_skeleton;
+mod port_tables;
 mod power_issues;
 mod power_manifold_parity;
 mod project;

@@ -230,7 +230,7 @@ mod board {
     /// of the board. The members are named by what the part does, so each pair is one to one.
     const PORT: Port = Port {
         folder: "power_manifold_charger",
-        board: REFERENCE,
+        board: Some(REFERENCE),
         original: "the charger board",
         swapped: &[],
         renumbered: &[],
@@ -295,6 +295,45 @@ mod board {
     #[test]
     fn every_pad_has_the_same_pads_on_its_net_as_in_the_charger_board() {
         PORT.assert_same_pads_on_nets(&built(), 200);
+    }
+
+    /// #560: a port may hold the tables `netsmith port tables` derives (`netlist.xml`,
+    /// `placements.toml`) instead of its board file. Derived from the charger's board file, the
+    /// netlist the harness reads from `netlist.xml` is the board file's, pad for pad as the nets
+    /// proof sees it, and the placements are the committed table.
+    #[test]
+    fn the_derived_netlist_is_the_board_files_as_the_nets_proof_sees_it() {
+        use netsmith::port_tables::{Mode, reference_netlist, write};
+        let dir = testlib::TempDir::new("power-manifold-derived-tables");
+        std::fs::copy(
+            project().join("reference/must_match.toml"),
+            dir.join("must_match.toml"),
+        )
+        .unwrap();
+        let url = format!(
+            "https://raw.githubusercontent.com/owner/repo/{}/{REFERENCE}",
+            "0".repeat(40)
+        );
+        let original = project().join("reference").join(REFERENCE);
+        let written =
+            write(&original, dir.path(), Some(&url), Mode::Write).unwrap_or_else(|e| panic!("{e}"));
+        assert!(written.new_source);
+        assert_eq!(written.tables.components, 89);
+        let derived = reference_netlist(dir.path(), None).unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            derived == PORT.reference(),
+            "netlist.xml is not the board file's netlist"
+        );
+        let theirs = PORT.theirs();
+        assert!(theirs.len() > 200);
+        assert!(PORT.theirs_of(&derived) == theirs);
+        assert!(
+            std::fs::read_to_string(dir.join("placements.toml")).unwrap()
+                == read("reference/placements.toml"),
+            "the derived placements.toml is not the committed one"
+        );
+        // The tables check against the original they were derived from.
+        write(&original, dir.path(), None, Mode::Check).unwrap_or_else(|e| panic!("{e}"));
     }
 
     #[test]

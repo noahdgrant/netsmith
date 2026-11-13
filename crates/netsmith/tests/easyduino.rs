@@ -1919,7 +1919,7 @@ mod board {
     /// resistor at pad 1 (README, "Differences from the reference").
     const PORT: Port = Port {
         folder: "easyduino_esp32s3",
-        board: REFERENCE,
+        board: Some(REFERENCE),
         original: "Easyduino",
         swapped: &["R6", "R11"],
         renumbered: &[],

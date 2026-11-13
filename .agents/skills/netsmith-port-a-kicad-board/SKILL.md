@@ -56,6 +56,15 @@ The parts file, `reference/parts.toml`, which the skeleton wrote, is a table `[p
 
 Build the board with `netsmith fab` once every sheet is in. Compare the part count and the BOM with the original's. Then compare the generated `.kicad_pcb` with the original board or schematic: `netsmith compare original.kicad_pcb fab/<Board>/<Board>.kicad_pcb`. To compare where the parts are, put the original's facts in `reference/placements.toml` (in this repository, `cargo run -p netsmith --example reference_table -- <original>.kicad_pcb > reference/placements.toml`) and run `netsmith parity fab/<Board>/<Board>.kicad_pcb`: it pairs the parts by the parts file and the member path `fab` writes on each footprint (`netsmith_path`), so it needs no map of designators.
 
+## Hold a large original as derived tables
+
+Commit the original's `.kicad_pcb` in `reference/` when it is 10 MB or smaller. A larger one (a board of 36 MB or more) is not committed: commit what the tests read from it instead.
+
+1. Fetch the original from its repository at a commit, not a branch, and keep it outside the repository.
+2. In the project, run `netsmith port tables <original.kicad_pcb> --url <URL>` with the file's URL at that commit (`https://raw.githubusercontent.com/<owner>/<repo>/<commit>/<path>`). Put `reference/must_match.toml` there first. The command writes `reference/netlist.xml` (the netlist, in KiCad's netlist XML), `reference/placements.toml` (the outline, the holes, the parts and pads) and `reference/source.toml` (the file name, the URL, the size and the sha256).
+3. In the port's test, give the harness `board: None`: it reads `reference/netlist.xml`. `netsmith compare` reads the XML, and `netsmith parity` reads `placements.toml`.
+4. To prove the tables, fetch the file again and run `netsmith port tables <original.kicad_pcb> --check`. It exits 1 when the file does not match `source.toml`'s hash, or when a table is not what the file gives. After a change to the readers, run it without `--check` and review the tables' diff.
+
 ## Place the parts that must match
 
 The physical file's `.place.x` and `.place.y` measure the part's body (its fabrication drawing, else its courtyard, else its pads and 0.25 mm); parity compares the footprint's origin.

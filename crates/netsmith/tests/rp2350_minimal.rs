@@ -1867,7 +1867,7 @@ mod board {
     /// "Differs from Raspberry Pi's board").
     const PORT: Port = Port {
         folder: "rp2350_minimal",
-        board: REFERENCE,
+        board: Some(REFERENCE),
         original: "Raspberry Pi",
         swapped: &[],
         renumbered: &[("U2", "4", "2")],
