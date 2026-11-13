@@ -159,6 +159,8 @@ impl Workspace {
                 allow_drc_violations,
                 layout: Some(crate::layout::layout_path(&source.path)),
                 pin_map_source: Some(source.stable_name(target.project.as_ref())),
+                place_seeds: crate::layout::place_seeds(target.project.as_ref()),
+                seed_writes: crate::fab::SeedWrites::EditorRelease,
                 ..FabOptions::default()
             },
         );

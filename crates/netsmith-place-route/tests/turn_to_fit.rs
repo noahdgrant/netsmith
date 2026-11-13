@@ -178,7 +178,7 @@ fn a_header_that_fits_no_turn_is_refused_with_its_own_numbers() {
         .expect_err("the header cannot fit")
         .to_string();
     for wanted in [
-        "J1 (Header)",
+        "`long` (J1) (Header)",
         "60.0 x 5.0 mm turned 0 degrees",
         "5.0 x 60.0 mm turned 90 degrees",
         "60.0 x 5.0 mm turned 180 degrees",
@@ -234,7 +234,7 @@ fn a_refusal_names_the_locked_header_with_only_the_turn_it_has() {
     let message = board_with((60.0, 5.0), (30.0, 70.0), 160, &options)
         .expect_err("160 parts cannot fit on one face")
         .to_string();
-    assert!(message.contains("J1 (Header)"), "{message}");
+    assert!(message.contains("`long` (J1) (Header)"), "{message}");
     assert!(
         message.contains("60.0 x 5.0 mm turned 0 degrees"),
         "{message}"
@@ -361,7 +361,7 @@ fn a_part_with_a_stated_rotation_keeps_it() {
     let message = long_part(states(Some("bottom"), &[(PlaceField::Rotation, 0.0, 0.0)]))
         .expect_err("a stated turn that cannot fit")
         .to_string();
-    assert!(message.contains("J1 (Module)"), "{message}");
+    assert!(message.contains("`long` (J1) (Module)"), "{message}");
     assert!(
         message.contains("37.0 x 15.0 mm turned 0 degrees"),
         "{message}"
@@ -466,7 +466,12 @@ fn the_full_list_has_every_part_with_its_place_and_state() {
     for p in &error.parts {
         let line = lines
             .iter()
-            .find(|l| l.starts_with(&format!("{} (", p.part)))
+            .find(|l| {
+                l.starts_with(&format!(
+                    "{} (",
+                    netsmith_pcb::board::member(&p.path, &p.part)
+                ))
+            })
             .unwrap_or_else(|| panic!("no line for {}: {report}", p.part));
         assert!(line.contains(" top at ("), "{line}");
         assert!(line.contains(" courtyard "), "{line}");

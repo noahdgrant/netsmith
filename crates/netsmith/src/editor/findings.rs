@@ -174,7 +174,9 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                 PlacementProblem::PadNearEdge { refdes, .. } => {
                     ("pad_near_edge", vec![refdes], courtyard(refdes))
                 }
-                PlacementProblem::InCutout { refdes, cutout: c } => (
+                PlacementProblem::InCutout {
+                    refdes, cutout: c, ..
+                } => (
                     "in_cutout",
                     vec![refdes],
                     courtyard(refdes).zip(cutout(c)).map(|(a, b)| a.union(&b)),
@@ -186,12 +188,16 @@ pub fn placement_findings(board: &Board) -> Vec<PcbFinding> {
                     vec![refdes],
                     courtyard(refdes).zip(cutout(c)).map(|(a, b)| a.union(&b)),
                 ),
-                PlacementProblem::InKeepout { refdes, keepout: k } => (
+                PlacementProblem::InKeepout {
+                    refdes, keepout: k, ..
+                } => (
                     "in_keepout",
                     vec![refdes],
                     courtyard(refdes).zip(keepout(k)).map(|(a, b)| a.union(&b)),
                 ),
-                PlacementProblem::PadInKeepout { refdes, keepout: k } => (
+                PlacementProblem::PadInKeepout {
+                    refdes, keepout: k, ..
+                } => (
                     "pad_in_keepout",
                     vec![refdes],
                     courtyard(refdes).zip(keepout(k)).map(|(a, b)| a.union(&b)),
@@ -743,6 +749,9 @@ mod tests {
         let mut board = placed("led");
         assert_eq!(placement_findings(&board), []);
         let (a, b) = (board.parts[0].refdes.clone(), board.parts[1].refdes.clone());
+        let named =
+            |i: usize| netsmith_pcb::board::member(&board.parts[i].path, &board.parts[i].refdes);
+        let (name_a, name_b) = (named(0), named(1));
         board.parts[1].at = board.parts[0].at;
         let found = placement_findings(&board);
         let overlap = found
@@ -752,9 +761,11 @@ mod tests {
         assert_eq!(overlap.id, format!("placement:overlap:{a}+{b}"));
         assert_eq!(overlap.parts, [a.clone(), b.clone()]);
         assert!(
-            overlap
-                .message
-                .contains(&format!("the courtyards of {a} and {b} overlap"))
+            overlap.message.contains(&format!(
+                "the courtyards of {name_a} and {name_b} overlap by "
+            )),
+            "{}",
+            overlap.message
         );
         for refdes in [&a, &b] {
             let c = board.part(refdes).unwrap().courtyard();

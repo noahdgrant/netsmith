@@ -205,11 +205,12 @@ pub fn place_with(
 ) -> Result<Entry, PlaceError> {
     let other = |e: ApiError| PlaceError::Other(e);
     let libraries = data.libraries().map_err(other)?;
-    let (board, _) = crate::layout::place(
+    let board = crate::layout::place(
         &data.built.design,
         layout.as_ref(),
         libraries,
         data.constraints_warn,
+        data.place_seeds,
     )
     .map_err(|e| match e {
         crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::Unplaceable(found)) => {
@@ -217,7 +218,15 @@ pub fn place_with(
         }
         crate::layout::PlaceFailure::Board(e) => PlaceError::Other(board_error(name, &e)),
         crate::layout::PlaceFailure::Layout(e) => PlaceError::Layout(format!("{name}: {e}")),
-    })?;
+        failure @ crate::layout::PlaceFailure::Unplaced { .. } => {
+            PlaceError::Other(ApiError::unprocessable(
+                format!("{name}: {}", failure.message()),
+                "does_not_fit",
+                &[("board", name)],
+            ))
+        }
+    })?
+    .board;
     Ok(Entry {
         board,
         routed: false,

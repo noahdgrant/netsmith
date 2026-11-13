@@ -212,7 +212,7 @@ fn a_tall_part_where_it_stands_under_the_lid_is_named_with_the_numbers() {
     assert_eq!(found.len(), 1, "{found:?}");
     let text = found[0].to_string();
     for want in [
-        "R1 (`r1`)",
+        "`r1` (R1)",
         "stands 9.00 mm tall on the top face",
         "the keepout `lid` allows 3.00 mm there (6.00 mm too tall)",
         "around (20.0, 6.0) mm",
@@ -251,7 +251,7 @@ fn a_part_with_no_height_is_reported_by_name_and_not_as_too_tall() {
         .expect("R2 is unchecked");
     let text = r2.to_string();
     assert!(
-        text.contains("height of R2 (`r2`) is unchecked")
+        text.contains("height of `r2` (R2) is unchecked")
             && text.contains("the keepout `lid` limits parts on the top face to 3.00 mm")
             && text.contains("states no height"),
         "{text}"
@@ -417,11 +417,11 @@ fn fab_places_a_tall_part_clear_of_the_lid_and_names_the_parts_it_cannot_check()
     assert!(
         unchecked
             .iter()
-            .all(|l| l.starts_with("warning: height of R")),
+            .all(|l| l.starts_with("warning: height of `r")),
         "{notes}"
     );
     assert!(
-        !notes.contains("height of R1") && !notes.contains("height of R2"),
+        !notes.contains("height of `r1` (R1)") && !notes.contains("height of `r2` (R2)"),
         "{notes}"
     );
 }
@@ -433,7 +433,7 @@ fn fab_stops_on_a_tall_part_the_layout_file_locks_under_the_lid() {
     let (dir, made) = fab("locked", &extra, layout);
     let e = made.expect_err("a 9 mm part under a 3 mm lid must stop fab");
     assert!(
-        e.contains("R1 (`r1`) stands 9.00 mm tall on the top face")
+        e.contains("`r1` (R1) stands 9.00 mm tall on the top face")
             && e.contains("the keepout `lid` allows 3.00 mm there (6.00 mm too tall)"),
         "{e}"
     );
@@ -448,13 +448,13 @@ fn a_height_nobody_stated_is_a_warning_by_default_and_an_error_when_constraints_
     let (_dir, made) = fab("unknown-default", &extra, "");
     let notes = made.unwrap_or_else(|e| panic!("{e}"))[0].notes.clone();
     assert!(
-        notes.contains("warning: height of R"),
+        notes.contains("warning: height of `r"),
         "a warning, and the package is made: {notes}"
     );
     let (dir, made) = fab_with("unknown-strict", &extra, "", true, false);
     let e = made.expect_err("strict constraints make an unknown height an error");
     assert!(
-        e.contains("error: Widget: height of R")
+        e.contains("error: Widget: height of `r")
             && e.contains(
                 "is unchecked: the keepout `lid` limits parts on the top face to 3.00 mm"
             )

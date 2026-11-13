@@ -198,7 +198,7 @@ fn a_protrusion_that_leaves_too_little_room_names_the_numbers_and_the_lines() {
     for expected in [
         // Both parts are pinned, so the lines are proved to conflict before the placer starts.
         "these lines cannot both hold",
-        "over a pad of J1 (`row`) (pins protruding 0.4 mm)",
+        "over a pad of `row` (J1) (pins protruding 0.4 mm)",
         "protrude 0.40 mm",
         &format!("widget.physical.nsm:{line}"),
         "3.80 mm",
@@ -218,7 +218,7 @@ fn a_covering_part_with_no_height_is_an_error() {
     let (_, made, _) = fab("f2", &physical(PROTRUSION, ""));
     let e = made.expect_err("the stack cannot be checked");
     assert!(
-        e.contains("U1 states no height") && e.contains("`.cell.height`"),
+        e.contains("`cell` (U1) states no height") && e.contains("`.cell.height`"),
         "{e}"
     );
 }

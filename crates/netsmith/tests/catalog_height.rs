@@ -282,7 +282,7 @@ fn a_standard_height_is_counted_as_known_and_apart_and_named_in_the_notes() {
     assert_eq!(passes.len(), 1, "{passes:?}");
     assert!(passes[0]
         .to_string()
-        .starts_with("R2 (`r2`) fits the 3.00 mm the keepout `lid` allows on the top face by its package standard (JEDEC MS-012"));
+        .starts_with("`r2` (R2) fits the 3.00 mm the keepout `lid` allows on the top face by its package standard (JEDEC MS-012"));
     assert!(board.heights_unchecked().is_empty());
     let lines = notes(&b.design, &b.catalog_heights, &board);
     assert!(

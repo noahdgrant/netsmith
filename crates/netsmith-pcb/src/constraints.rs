@@ -490,7 +490,7 @@ pub fn plan(
         if reqs.is_empty() && side_req.is_none() {
             continue;
         }
-        let name = format!("{} (`{}`)", part.refdes, part.path);
+        let name = crate::board::member(&part.path, &part.refdes);
         let says: Vec<String> = reqs.iter().map(Req::says).collect();
         let causes = says.join(", ");
 
@@ -812,6 +812,7 @@ pub fn plan(
                 let pins = match crate::board::PlacementProblem::overlap_of(
                     &qa,
                     &qb,
+                    clearance,
                     &options.height_zones,
                 ) {
                     p @ (crate::board::PlacementProblem::OverPins { .. }
@@ -820,9 +821,13 @@ pub fn plan(
                     }
                     _ => String::new(),
                 };
+                let (na, nb) = (
+                    crate::board::member(&pa.path, &a.0),
+                    crate::board::member(&pb.path, &b.0),
+                );
                 errors.push(format!(
-                    "{} and {} are put on top of each other: {} ({}), {} ({}); the courtyard of {} spans {} mm and that of {} spans {} mm{pins}",
-                    a.0, b.0, a.0, a.4, b.0, b.4, a.0, span(&ca), b.0, span(&cb)
+                    "{na} and {nb} are put on top of each other: {na} ({}), {nb} ({}); the courtyard of {na} spans {} mm and that of {nb} spans {} mm{pins}",
+                    a.4, b.4, span(&ca), span(&cb)
                 ));
             }
         }
@@ -865,7 +870,7 @@ fn offset_cannot_be_met(
     let fixed = |refdes: &str| decided.iter().find(|d| d.0 == refdes);
     let (pa, pb) = (find(&o.a)?, find(&o.b)?);
     let axis = o.axis();
-    let name = |p: &Placed| format!("{} (`{}`)", p.refdes, p.path);
+    let name = |p: &Placed| crate::board::member(&p.path, &p.refdes);
     let value = |d: &Decided, p: &Placed, field: PlaceField| {
         offset(field, body_at(p, d.2, d.3).translated(d.1))
     };

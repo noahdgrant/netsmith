@@ -248,6 +248,7 @@ impl Refusal {
     /// The reason, as the end of a finding. `protrusion` is how far the pins protrude in mm, and
     /// `cover` and `path` name the covering part.
     pub fn because(&self, protrusion: f64, cover: &str, path: &str, face: Side) -> String {
+        let cover = &crate::board::member(path, cover);
         match self {
             Refusal::HouseFitted => format!(
                 "{cover} is assembled by the board house, which fits it before the pins are soldered and cut to protrude {} mm, and {cover} is to be fitted after that; make {cover} `hand` (`.{path}.assembly &= \"hand\"` in the circuit source), or move it off the pins",

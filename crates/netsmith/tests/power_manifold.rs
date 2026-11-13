@@ -272,8 +272,9 @@ mod board {
             netsmith_pcb::Layout::parse("version = 1\n[PowerManifoldCharger]\nseed = 3\n", &file)
                 .unwrap();
         let built = built();
-        let Ok((board, _)) =
-            netsmith::layout::place(&built.design, Some(&(layout, file)), &libraries(), false)
+        // One seed: the test is of seed 3 itself, not of the search (#458).
+        let Ok(netsmith::layout::Placing { board, .. }) =
+            netsmith::layout::place(&built.design, Some(&(layout, file)), &libraries(), false, 1)
         else {
             panic!("seed 3 does not place");
         };

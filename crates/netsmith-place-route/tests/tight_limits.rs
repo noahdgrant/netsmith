@@ -514,8 +514,8 @@ fn a_hole_pinned_inside_a_keepout_for_parts_is_refused_before_placing_for_every_
     );
     for want in [
         "these lines cannot both hold: ",
-        "the courtyard of H1 (",
-        "the courtyard of H2 (",
+        "the courtyard of `h1` (H1)",
+        "the courtyard of `h2` (H2)",
         "the keepout `peg_bases`",
         "which forbids parts",
     ] {

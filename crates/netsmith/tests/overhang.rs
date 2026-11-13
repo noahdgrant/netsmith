@@ -246,7 +246,7 @@ fn a_plug_that_hangs_over_the_bottom_edge_by_a_stated_requirement_places_routes_
     );
     // The notes say what hangs over, how far, and which requirement said it may.
     assert!(
-        notes.contains("warning: J1 hangs over the bottom edge: its courtyard is ")
+        notes.contains("warning: `plug` (J1) hangs over the bottom edge: its courtyard is ")
             && notes.contains("mm past it (`plug.place.bottom (widget.physical.nsm:")
             && notes.contains(")` allows 74.5 to 75.5 mm)"),
         "{notes}"
@@ -315,7 +315,7 @@ fn an_overhang_nobody_stated_stops_fab_with_the_edge_and_the_numbers() {
     let run = fab("undeclared", &source(35, 60, 30, extra), "");
     let e = failure(&run);
     assert!(
-        e.contains("J1 is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge, ")
+        e.contains("`plug` (J1) is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge, ")
             && e.contains("the design does not say it may hang over an edge")
             && e.contains("to allow it past the bottom edge, require the body to reach it, for example `.plug.place.bottom >= outline.height`"),
         "{e}"
@@ -335,7 +335,7 @@ fn an_overhang_in_a_direction_nobody_stated_is_still_an_error_beside_the_stated_
     let run = fab("direction", &source(35, 60, 30, &extra), "");
     let e = failure(&run);
     assert!(
-        e.contains("J1 is not wholly inside the board outline: its courtyard is 4.00 mm past the right edge, ")
+        e.contains("`plug` (J1) is not wholly inside the board outline: its courtyard is 4.00 mm past the right edge, ")
             && e.contains("and the design says it may hang over only the bottom edge (`plug.place.bottom (widget.physical.nsm:")
             && e.contains("for example `.plug.place.right >= outline.width`"),
         "{e}"
@@ -359,7 +359,7 @@ fn a_pad_outside_the_outline_is_still_an_error_whatever_is_stated() {
     let run = fab("pads", &source(35, 60, 30, extra), "");
     let e = failure(&run);
     assert!(
-        e.contains("a pad of J1 is ") && e.contains(" mm outside the board edge"),
+        e.contains("a pad of `plug` (J1) is ") && e.contains(" mm outside the board edge"),
         "{e}"
     );
     assert!(
@@ -386,7 +386,10 @@ fn a_plug_whose_pads_cannot_stay_inside_is_not_placed_and_the_placer_says_what_i
     );
     // The rows' size is not what is wrong, and is not given; J1 leads, with how far.
     assert!(!e.contains("the parts need "), "{e}");
-    assert!(e.contains("by mm past what is kept clear: J1 "), "{e}");
+    assert!(
+        e.contains("by mm past what is kept clear: `plug` (J1) "),
+        "{e}"
+    );
     // The full list is in a file beside the board's output, and the message names it.
     let file = run.dir.join("fab").join("placement-failure.txt");
     assert!(
@@ -404,12 +407,12 @@ fn a_plug_whose_pads_cannot_stay_inside_is_not_placed_and_the_placer_says_what_i
     assert_eq!(parts, 32, "{list}");
     assert!(
         list.lines()
-            .any(|l| l.starts_with("J1 (") && l.contains("a pad is ")),
+            .any(|l| l.starts_with("`plug` (J1) (") && l.contains("a pad is ")),
         "{list}"
     );
     // The part is named, with the way it is outside.
     assert!(
-        e.contains("parts outside the outline or inside its margin (the furthest first):\n    J1: a pad is "),
+        e.contains("parts outside the outline or inside its margin (the furthest first):\n    `plug` (J1): a pad is "),
         "{e}"
     );
 }
@@ -427,7 +430,7 @@ fn a_plug_locked_in_the_layout_file_may_hang_over_the_edge_its_requirement_state
         made[0].notes.contains("design rules check: passed")
             && made[0]
                 .notes
-                .contains("warning: J1 hangs over the bottom edge: its courtyard is 16.00 mm past it (`plug.place.bottom (widget.physical.nsm:"),
+                .contains("warning: `plug` (J1) hangs over the bottom edge: its courtyard is 16.00 mm past it (`plug.place.bottom (widget.physical.nsm:"),
         "{}",
         made[0].notes
     );
@@ -442,7 +445,7 @@ fn a_locked_plug_past_an_edge_nobody_stated_is_an_undeclared_overhang() {
     let run = fab("locked-unstated", &source(35, 60, 30, ""), layout);
     let e = failure(&run);
     assert!(
-        e.contains("J1 is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge")
+        e.contains("`plug` (J1) is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge")
             && e.contains("does not say it may hang over an edge")
             && e.contains("outline.height"),
         "{e}"
@@ -464,7 +467,7 @@ fn a_plug_moved_by_hand_without_a_lock_is_an_undeclared_overhang() {
     let run = fab("moved", &source(35, 60, 30, ""), layout);
     let e = failure(&run);
     assert!(
-        e.contains("J1 is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge"),
+        e.contains("`plug` (J1) is not wholly inside the board outline: its courtyard is 16.00 mm past the bottom edge"),
         "{e}"
     );
 }
@@ -477,7 +480,7 @@ fn a_locked_plug_with_a_pad_off_the_board_is_still_an_error() {
     let run = fab("locked-pads", &source(35, 60, 30, ""), layout);
     let e = failure(&run);
     assert!(
-        e.contains("a pad of J1 is 13.00 mm outside the board edge"),
+        e.contains("a pad of `plug` (J1) is 13.00 mm outside the board edge"),
         "{e}"
     );
 }
@@ -612,7 +615,7 @@ fn a_body_whose_centre_is_off_the_board_may_be_required_when_the_edge_field_stat
     assert!(
         notes.contains("design rules check: passed")
             && notes.contains("constraints: 2 of 2 satisfied")
-            && notes.contains("warning: J1 hangs over the bottom edge"),
+            && notes.contains("warning: `plug` (J1) hangs over the bottom edge"),
         "{notes}"
     );
 }

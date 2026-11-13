@@ -82,6 +82,8 @@ impl Workspace {
             &FabOptions {
                 progress: Some(forward),
                 allow_drc_violations,
+                place_seeds: crate::layout::place_seeds(target.project.as_ref()),
+                seed_writes: crate::fab::SeedWrites::Order,
                 ..FabOptions::default()
             },
             // The editor does not read or write the pick lock yet.

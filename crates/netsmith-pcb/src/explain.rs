@@ -252,8 +252,8 @@ pub fn before_placing(
     found.conflicts.retain(|c| {
         !faults.iter().any(|f| {
             c.contains(&format!(
-                "keeps the courtyard of {} (`{}`) inside the outline",
-                f.refdes, f.path
+                "keeps the courtyard of {} inside the outline",
+                crate::board::member(&f.path, &f.refdes)
             ))
         })
     });
@@ -472,8 +472,8 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
                 "Fab"
             }
         );
-        let name = format!("{} (`{}`)", part.refdes, part.path);
-        let drawn = format!("{} (`{}`, {drawing})", part.refdes, part.path);
+        let name = crate::board::member(&part.path, &part.refdes);
+        let drawn = format!("{name} ({drawing})");
         for r in &reqs {
             let m = miss(r, body, part.rotation);
             if m <= TOLERANCE {
@@ -528,14 +528,12 @@ fn unmet(design: &Design, parts: &[Placed]) -> Vec<String> {
             o.a.field.word()
         );
         found.push(format!(
-            "{}: {} of the body of {} (`{}`) minus {} of the body of {} (`{}`) is {} mm along {}, and it allows {} ({} mm out)",
+            "{}: {} of the body of {} minus {} of the body of {} is {} mm along {}, and it allows {} ({} mm out)",
             quote(design, &o.source, &id),
             what(o.b.field),
-            b.refdes,
-            b.path,
+            crate::board::member(&b.path, &b.refdes),
             what(o.a.field),
-            a.refdes,
-            a.path,
+            crate::board::member(&a.path, &a.refdes),
             number(v),
             if axis == 0 { "x" } else { "y" },
             range_text(o.lo, o.hi, "mm"),
@@ -773,7 +771,7 @@ impl<'a> Context<'a> {
     }
 
     fn name_of(part: &Placed) -> String {
-        format!("{} (`{}`)", part.refdes, part.path)
+        crate::board::member(&part.path, &part.refdes)
     }
 
     /// The lines of the windows, once each, joined.

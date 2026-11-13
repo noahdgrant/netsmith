@@ -833,6 +833,7 @@ fn part_states(parts: &[Placed], fixed: &[bool], ended: &Ended) -> Vec<PartState
                 .flat_map(|o| o.why.iter().cloned())
                 .collect();
             state.extend(ended.overlapping.iter().filter_map(|o| {
+                let named = |r: &String| ended.member(r);
                 let other = if o.a == p.refdes {
                     &o.b
                 } else if o.b == p.refdes {
@@ -841,13 +842,17 @@ fn part_states(parts: &[Placed], fixed: &[bool], ended: &Ended) -> Vec<PartState
                     return None;
                 };
                 Some(format!(
-                    "its courtyard overlaps {other}'s by {:.2} mm2 ({:.2} x {:.2} mm)",
-                    o.area, o.size.0, o.size.1
+                    "its courtyard overlaps that of {} by {:.2} mm2 ({:.2} x {:.2} mm)",
+                    named(other),
+                    o.area,
+                    o.size.0,
+                    o.size.1
                 ))
             }));
             let court = p.courtyard();
             PartState {
                 part: p.refdes.clone(),
+                path: p.path.clone(),
                 kind: p.kind.clone(),
                 side: p.side,
                 at: (p.at.x - ORIGIN.x, p.at.y - ORIGIN.y),
@@ -1312,6 +1317,8 @@ pub enum PlaceError {
     Crowded {
         region: Rect,
         parts: Vec<String>,
+        /// The path in the design of each of `parts`, for the message.
+        paths: Vec<String>,
         /// The courtyard area of the parts and the region's free area, in mm squared.
         needs: f64,
         free: f64,
@@ -1325,13 +1332,24 @@ impl std::fmt::Display for PlaceError {
             Self::Crowded {
                 region,
                 parts,
+                paths,
                 needs,
                 free,
             } => write!(
                 f,
                 "{} part(s) ({}) with {needs:.0} mm2 of courtyard do not fit the region {:.1} x {:.1} mm at ({:.1}, {:.1}), which has {free:.0} mm2 free of other parts",
                 parts.len(),
-                parts.join(", "),
+                parts
+                    .iter()
+                    .zip(
+                        paths
+                            .iter()
+                            .map(String::as_str)
+                            .chain(std::iter::repeat(""))
+                    )
+                    .map(|(r, p)| netsmith_pcb::board::member(p, r))
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 region.width(),
                 region.height(),
                 region.min.x,
@@ -1471,9 +1489,17 @@ pub fn place_subset(
             .filter(|p| !parts.contains(&p.refdes.as_str()))
             .map(|p| overlap(&p.courtyard(), &region))
             .sum();
+        let path_of = |r: &str| {
+            board
+                .parts
+                .iter()
+                .find(|p| p.refdes == r)
+                .map_or(String::new(), |p| p.path.clone())
+        };
         return Err(PlaceError::Crowded {
             region,
             parts: parts.iter().map(|s| s.to_string()).collect(),
+            paths: parts.iter().map(|s| path_of(s)).collect(),
             needs,
             free: (region.width() * region.height() - used).max(0.0),
         });
@@ -1539,6 +1565,164 @@ mod tests {
         );
         // One try is not worth a line.
         assert!(!refusal(1).to_string().contains("tries"));
+    }
+
+    #[test]
+    fn a_refusal_names_what_blocks_it_by_member_path_and_by_how_much() {
+        let state = |part: &str, path: &str| PartState {
+            part: part.into(),
+            path: path.into(),
+            kind: "Capacitor".into(),
+            side: Side::Front,
+            at: (0.0, 0.0),
+            rotation: 0.0,
+            size: (1.0, 1.0),
+            fixed: false,
+            state: Vec::new(),
+        };
+        let refusal = DoesNotFit {
+            needs: (30.0, 20.0),
+            outline: (25.0, 20.0),
+            ended: Some(Box::new(Ended {
+                overlaps: 1,
+                outside: 1,
+                overlapping: vec![netsmith_pcb::placement::OverlapAt {
+                    a: "J2".into(),
+                    b: "C37".into(),
+                    area: 0.42,
+                    size: (0.6, 0.7),
+                    at: (1.0, 1.0),
+                    nearest: ("left", 1.0),
+                }],
+                outside_parts: vec![netsmith_pcb::placement::OutsideAt {
+                    part: "R3".into(),
+                    why: vec!["0.80 mm outside the left edge".into()],
+                    worst: 0.8,
+                }],
+                relations: vec![
+                    "`stage.r3` is 2 mm from `stage.c1`, and must be within 1 mm".into(),
+                ],
+                ..Ended::default()
+            })),
+            wall: 0.5,
+            oversize: Vec::new(),
+            area: (100.0, 900.0),
+            parts: vec![
+                state("J2", "usb"),
+                state("C37", "vbus.c37"),
+                state("R3", ""),
+            ]
+            .into_boxed_slice(),
+            requirements: None,
+        };
+        assert_eq!(
+            refusal.blockers(),
+            [
+                "the courtyards of `usb` (J2) and `vbus.c37` (C37) overlap by 0.42 mm2",
+                "R3: 0.80 mm outside the left edge",
+                "`stage.r3` is 2 mm from `stage.c1`, and must be within 1 mm",
+            ]
+        );
+        assert!(
+            refusal
+                .full_report()
+                .contains("\n`usb` (J2) (Capacitor) top at (0.00, 0.00) turned 0 courtyard 1.00 x 1.00 mm: ok\n"),
+            "{}",
+            refusal.full_report()
+        );
+        assert!(refusal.seed_may_help());
+        assert_eq!(refusal.badness(), (4, 0.8 + 0.42));
+        // A refusal the placer did not try is no better for another seed.
+        let untried = DoesNotFit {
+            ended: None,
+            ..refusal
+        };
+        assert!(!untried.seed_may_help());
+    }
+
+    #[test]
+    fn the_refusal_lists_and_the_full_report_name_members_by_path() {
+        let ended = Ended {
+            overlapping: vec![netsmith_pcb::placement::OverlapAt {
+                a: "J2".into(),
+                b: "C37".into(),
+                area: 0.42,
+                size: (0.6, 0.7),
+                at: (1.0, 1.0),
+                nearest: ("left", 1.0),
+            }],
+            outside_parts: vec![netsmith_pcb::placement::OutsideAt {
+                part: "R3".into(),
+                why: vec!["0.80 mm outside the left edge".into()],
+                worst: 0.8,
+            }],
+            paths: [("J2", "usb"), ("C37", "vbus.c37"), ("R3", "stage.r3")]
+                .into_iter()
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .collect(),
+            ..Ended::default()
+        };
+        assert_eq!(
+            ended.compact(),
+            "outside the outline or inside its margin, by mm past what is kept clear: `stage.r3` (R3) 0.80; courtyards overlapping, by mm2: `usb` (J2) and `vbus.c37` (C37) 0.42"
+        );
+        assert_eq!(
+            netsmith_pcb::placement::Oversize {
+                part: "J3".into(),
+                path: "edge".into(),
+                kind: "Connector".into(),
+                tried: vec![(0.0, (40.0, 10.0))],
+                free: true,
+            }
+            .to_string(),
+            "`edge` (J3) (Connector) has a courtyard of 40.0 x 10.0 mm turned 0 degrees"
+        );
+        assert_eq!(
+            PlaceError::Crowded {
+                region: Rect::new(Pt::new(0.0, 0.0), Pt::new(5.0, 4.0)),
+                parts: vec!["R1".into(), "R2".into()],
+                paths: vec!["stage.r1".into(), String::new()],
+                needs: 30.0,
+                free: 12.0,
+            }
+            .to_string(),
+            "2 part(s) (`stage.r1` (R1), R2) with 30 mm2 of courtyard do not fit the region 5.0 x 4.0 mm at (0.0, 0.0), which has 12 mm2 free of other parts"
+        );
+        let mut board = crate::board_from_design(
+            &led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        for p in &mut board.parts {
+            p.path = format!("m.{}", p.refdes.to_lowercase());
+        }
+        let (a, b) = (board.parts[0].refdes.clone(), board.parts[1].refdes.clone());
+        let ended = Ended {
+            overlapping: vec![netsmith_pcb::placement::OverlapAt {
+                a: a.clone(),
+                b: b.clone(),
+                area: 1.0,
+                size: (1.0, 1.0),
+                at: (0.0, 0.0),
+                nearest: ("left", 0.0),
+            }],
+            paths: board
+                .parts
+                .iter()
+                .map(|p| (p.refdes.clone(), p.path.clone()))
+                .collect(),
+            ..Ended::default()
+        };
+        let states = part_states(&board.parts, &vec![false; board.parts.len()], &ended);
+        assert_eq!(states[0].path, format!("m.{}", a.to_lowercase()));
+        assert_eq!(
+            states[0].state,
+            [format!(
+                "its courtyard overlaps that of `m.{}` ({b}) by 1.00 mm2 (1.00 x 1.00 mm)",
+                b.to_lowercase()
+            )]
+        );
     }
 
     #[test]

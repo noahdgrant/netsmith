@@ -809,6 +809,8 @@ pub fn fab_order(
             layout: Some(crate::layout::layout_path(&source.path)),
             lock: using,
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
+            // An order is a release: a seed that would change stops it (issue #458).
+            seed_writes: crate::fab::SeedWrites::Order,
             ..options.clone()
         };
         match fab_with_options(

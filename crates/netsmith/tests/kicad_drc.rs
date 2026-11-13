@@ -860,7 +860,7 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
     let part = &mut b.parts[0];
     let c = part.footprint.courtyard;
     part.at = Pt::new(hole.min.x - c.min.x, hole.min.y - c.min.y);
-    let r = part.refdes.clone();
+    let r = netsmith_pcb::board::member(&part.path, &part.refdes);
     let found = problems(&b);
     assert!(
         found.contains(&format!("{r} overlaps the cutout `slot`")),
@@ -1162,7 +1162,7 @@ fn a_part_or_a_pad_in_a_keepout_is_found_and_named() {
     let p = &mut b.parts[0];
     let cy = p.footprint.courtyard.centre();
     p.at = Pt::new(c.x - cy.x, c.y - cy.y);
-    let r = p.refdes.clone();
+    let r = netsmith_pcb::board::member(&p.path, &p.refdes);
     let found = problems(&b);
     assert!(
         found.contains(&format!(
