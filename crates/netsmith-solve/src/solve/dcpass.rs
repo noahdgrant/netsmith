@@ -30,7 +30,7 @@
 //!   early ones lean on an assumed window for each regulator input (`assumed_windows`), which is
 //!   taken out again before they are kept.
 //! - Inside a search, when the last part of a group is chosen: `network_trial` solves the small
-//!   island that has a part of the group, cut at the rails an earlier pass wrote (`cut_rails`),
+//!   island that has a part of the group, cut at the rails an earlier pass wrote (`network.cuts`),
 //!   and writes the voltage of rails nothing has given, so a pick is refused on the circuit's
 //!   own number.
 //!
@@ -534,8 +534,19 @@ impl Solver<'_> {
         if self.network.active == Some(false) {
             return None;
         }
+        let index = self
+            .dc_index
+            .get_or_insert_with(|| dc::Index::new(&self.model));
         if self.network.active.is_none() {
-            self.network.cuts = self.cut_rails();
+            self.network.cuts = index
+                .rails()
+                .iter()
+                .filter(|&&(_, voltage)| {
+                    self.derived.contains(&voltage)
+                        && matches!(self.model.field(voltage).domain, Domain::Quantity(_))
+                })
+                .map(|&(rail, _)| rail)
+                .collect();
             let mut read = Vec::new();
             for r in self.model.relations() {
                 crate::eval::fields_in(&r.lhs, &mut read);
@@ -543,7 +554,8 @@ impl Solver<'_> {
             }
             self.network.read = read.into_iter().collect();
         }
-        let outcomes = dc::analyze_around(&self.model, &self.network.parts, &self.network.cuts);
+        let outcomes =
+            dc::analyze_around(&self.model, index, &self.network.parts, &self.network.cuts);
         let mut applicable = false;
         let mut todo: Vec<(dc::RailNode, HashSet<FieldId>, Rc<Run>)> = Vec::new();
         let mut reads: Vec<FieldId> = Vec::new();
@@ -589,19 +601,6 @@ impl Solver<'_> {
             wrote |= self.dc_write_rail(&rail, &class, &run) > 0;
         }
         wrote.then_some((reads, opaque))
-    }
-
-    /// The rails whose voltage a pass worked out: where the pick-time analysis cuts the network.
-    fn cut_rails(&self) -> HashSet<InstId> {
-        self.model
-            .instances()
-            .filter_map(|(i, _)| {
-                let (voltage, _, _) = self.model.rail_of(i)?;
-                (self.derived.contains(&voltage)
-                    && matches!(self.domain(voltage), Domain::Quantity(_)))
-                .then_some(i)
-            })
-            .collect()
     }
 
     /// The jobs whose pick waits on a voltage no one has given: a derated column whose bias has

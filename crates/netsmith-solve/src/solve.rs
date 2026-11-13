@@ -757,6 +757,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         chosen_before: 0,
         to_choose: 0,
         network: Default::default(),
+        dc_index: None,
     };
     job::checkpoint();
     s.relax_pinned();
@@ -1073,6 +1074,9 @@ struct Solver<'a> {
     to_choose: usize,
     /// The pick-time analysis of the group being searched (ADR 0076, amendment 10).
     network: dcpass::NetworkTrial,
+    /// What the pick-time analysis reads of the model's nets and instances, which the picks do
+    /// not change: made at the first analysis and kept for the solve (issue #568).
+    dc_index: Option<crate::dc::Index>,
 }
 
 /// The currents in a balance that the design gave a range (`.x.current &= a..b`) and that

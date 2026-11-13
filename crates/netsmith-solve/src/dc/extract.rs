@@ -216,6 +216,117 @@ struct Item {
     reads: Vec<FieldId>,
 }
 
+/// What `extract` reads of the model that the picks do not change: which net each pin is on,
+/// and which instances can make an element on each net. The picks narrow domains and add
+/// relations; the instances, the nets and the root stay as the checker made them, so one index
+/// serves every pick of a solve (issue #568).
+pub(crate) struct Index {
+    net_of: HashMap<InstId, usize>,
+    /// The part pins of each net, as a set.
+    terminals: Vec<HashSet<InstId>>,
+    /// For each net, the instances with a pin on it that an element is made from: a part's
+    /// `dc` pins and its `bridge`, and a rail's `pos` and `neg`. In the order of their ids.
+    by_net: Vec<Vec<InstId>>,
+    /// The parts that state a regulator, and those that state a source.
+    regulators: Vec<InstId>,
+    sources: Vec<InstId>,
+    /// The rails that can be a source: a board's own, and a part's that it says it gives.
+    supplies: Vec<InstId>,
+    /// The interfaces that a board owns (its ports).
+    board_ports: Vec<InstId>,
+    /// The rails under the root, with their `.voltage`.
+    rails: Vec<(InstId, FieldId)>,
+}
+
+impl Index {
+    pub(crate) fn new(model: &Model) -> Self {
+        let nets = model.nets();
+        let mut net_of: HashMap<InstId, usize> = HashMap::new();
+        for (i, n) in nets.iter().enumerate() {
+            for &p in &n.pins {
+                net_of.insert(p, i);
+            }
+        }
+        let terminals = nets
+            .iter()
+            .map(|n| n.terminals.iter().copied().collect())
+            .collect();
+        let mut by_net: Vec<Vec<InstId>> = vec![Vec::new(); nets.len()];
+        let mut add = |i: InstId, pins: &[InstId]| {
+            let mut on: Vec<usize> = pins.iter().filter_map(|p| net_of.get(p).copied()).collect();
+            on.sort_unstable();
+            on.dedup();
+            for n in on {
+                by_net[n].push(i);
+            }
+        };
+        // The elements of `dc` statements are looked at for every instance of the model, the
+        // others for those under the root, as `extract` does.
+        let (mut regulators, mut sources) = (Vec::new(), Vec::new());
+        let mut supplies: BTreeSet<InstId> = BTreeSet::new();
+        for (i, dc) in model.dc_elements() {
+            add(i, &dc.pins);
+            match dc.kind {
+                DcKind::LinearRegulator | DcKind::SwitchingRegulator => regulators.push(i),
+                DcKind::Source => {
+                    sources.push(i);
+                    supplies.extend(dc.pins.first().copied());
+                }
+                _ => {}
+            }
+        }
+        let (mut board_ports, mut rails) = (Vec::new(), Vec::new());
+        for (i, inst) in model.instances() {
+            if let Some((a, b)) = inst.bridge {
+                add(i, &[a, b]);
+            }
+            if let Some((voltage, pos, neg)) = model.rail_of(i) {
+                add(i, &[pos, neg]);
+                rails.push((i, voltage));
+                if inst
+                    .parent
+                    .is_some_and(|p| model.instance(p).kind == InstKind::Board)
+                {
+                    supplies.insert(i);
+                }
+            }
+            if inst.kind == InstKind::Interface
+                && model
+                    .owner_of(i)
+                    .is_some_and(|o| model.instance(o).kind == InstKind::Board)
+            {
+                board_ports.push(i);
+            }
+        }
+        for list in &mut by_net {
+            list.sort_unstable();
+            list.dedup();
+        }
+        Self {
+            net_of,
+            terminals,
+            by_net,
+            regulators,
+            sources,
+            supplies: supplies.into_iter().collect(),
+            board_ports,
+            rails,
+        }
+    }
+
+    /// The rails under the root, with their `.voltage`, in the order of their ids.
+    pub(crate) fn rails(&self) -> &[(InstId, FieldId)] {
+        &self.rails
+    }
+}
+
+/// What a scoped extraction looks at: the nets whose every element it makes, and the parts
+/// whose islands it returns.
+struct Scope<'a> {
+    nets: &'a BTreeSet<usize>,
+    parts: &'a [InstId],
+}
+
 /// The islands of a model, in the order of their lowest net. A rail in `cuts` is held at the
 /// range its voltage has, as a source is: the network is cut there, and what is on its two
 /// sides is solved on its own (the pick-time analysis of ADR 0076, amendment 10, cuts at the
@@ -226,13 +337,89 @@ pub(crate) fn extract(
     hulled: &HashSet<InstId>,
     cuts: &HashSet<InstId>,
 ) -> Extracted {
-    let nets = model.nets();
-    let mut net_of: HashMap<InstId, usize> = HashMap::new();
-    for (i, n) in nets.iter().enumerate() {
-        for &p in &n.pins {
-            net_of.insert(p, i);
+    extract_in(model, &Index::new(model), enclosed, hulled, cuts, None).0
+}
+
+/// The islands of `extract(model, {}, {}, cuts)` that have one of `parts`, the same and in the
+/// same order, made from the nets around the parts only (issue #568: the picks asked for them
+/// once per candidate, and the whole board's extraction grew with the board).
+///
+/// Every element of a net is made from what is on that net, except a MOSFET, which is modelled
+/// as a switch by what is on its gate's net. So when the scope holds every free net of the
+/// islands of `parts` and the gate of every switch it made (a held gate is never open, and
+/// sets the gate, unless a regulator's output holds it), the elements on those nets are the
+/// whole extraction's, and so are the islands. The scope starts empty and grows to that.
+pub(crate) fn extract_around(
+    model: &Model,
+    index: &Index,
+    cuts: &HashSet<InstId>,
+    parts: &[InstId],
+) -> Vec<Planned> {
+    let (enclosed, hulled) = (HashMap::new(), HashSet::new());
+    let mut nets: BTreeSet<usize> = BTreeSet::new();
+    loop {
+        let scope = Scope { nets: &nets, parts };
+        let (extracted, needs) = extract_in(model, index, &enclosed, &hulled, cuts, Some(&scope));
+        if needs.is_subset(&nets) {
+            return extracted.islands;
         }
+        nets.extend(needs);
     }
+}
+
+/// `extract`, or with a scope, the islands of the scope's parts and the nets the scope needs
+/// for them to be the whole extraction's (see `extract_around`).
+fn extract_in(
+    model: &Model,
+    ix: &Index,
+    enclosed: &HashMap<InstId, Range>,
+    hulled: &HashSet<InstId>,
+    cuts: &HashSet<InstId>,
+    scope: Option<&Scope<'_>>,
+) -> (Extracted, BTreeSet<usize>) {
+    let nets = model.nets();
+    let net_of = &ix.net_of;
+    // With a scope: the instances that make an element on its nets, and its parts, in the
+    // order of their ids (the order the whole model's are looked at in).
+    let pool: Option<Vec<InstId>> = scope.map(|s| {
+        let mut pool: Vec<InstId> = s
+            .nets
+            .iter()
+            .flat_map(|&n| ix.by_net[n].iter().copied())
+            .chain(s.parts.iter().copied())
+            .collect();
+        pool.sort_unstable();
+        pool.dedup();
+        pool
+    });
+    let dc_elements = || -> Box<dyn Iterator<Item = (InstId, &netsmith_check::DcElement)> + '_> {
+        match &pool {
+            Some(pool) => Box::new(
+                pool.iter()
+                    .filter_map(|&i| model.instance(i).dc.as_ref().map(|d| (i, d))),
+            ),
+            None => Box::new(model.dc_elements()),
+        }
+    };
+    let instances = || -> Box<dyn Iterator<Item = (InstId, &netsmith_check::Instance)> + '_> {
+        match &pool {
+            Some(pool) => Box::new(
+                pool.iter()
+                    .copied()
+                    .filter(|&i| model.is_inside(i, model.root))
+                    .map(|i| (i, model.instance(i))),
+            ),
+            None => Box::new(model.instances()),
+        }
+    };
+    // The nets whose pins are looked at one by one: the scope's, or all.
+    let scoped_nets = || -> Box<dyn Iterator<Item = (usize, &netsmith_check::Net)> + '_> {
+        match scope {
+            Some(s) => Box::new(s.nets.iter().map(|&n| (n, &nets[n]))),
+            None => Box::new(nets.iter().enumerate()),
+        }
+    };
+    let mut needs: BTreeSet<usize> = BTreeSet::new();
 
     // The regulators: what each holds on its output net, and what its input is.
     let mut regs: Vec<Reg> = Vec::new();
@@ -247,7 +434,10 @@ pub(crate) fn extract(
     let mut reg_rails: HashSet<InstId> = HashSet::new();
     let mut reg_pins: Vec<[InstId; 4]> = Vec::new();
     let mut out_nets: Vec<(usize, usize)> = Vec::new();
-    for (part, dc) in model.dc_elements() {
+    for &part in &ix.regulators {
+        let Some(dc) = &model.instance(part).dc else {
+            continue;
+        };
         let switching = match dc.kind {
             DcKind::LinearRegulator => false,
             DcKind::SwitchingRegulator => true,
@@ -365,14 +555,24 @@ pub(crate) fn extract(
     let mut left: Vec<Left> = Vec::new();
     let mut source_pins: HashSet<InstId> = HashSet::new();
     let mut budgeted: BTreeMap<usize, Vec<(InstId, FieldId)>> = BTreeMap::new();
-    let supply_rails: HashSet<InstId> = model
-        .dc_elements()
+    let supply_rails: HashSet<InstId> = ix
+        .sources
+        .iter()
+        .filter_map(|&part| Some((part, model.instance(part).dc.as_ref()?)))
         .filter(|(part, dc)| {
             dc.kind == DcKind::Source && model.instance(*part).kind == InstKind::Part
         })
         .map(|(_, dc)| dc.pins[0])
         .collect();
-    for (iface, inst) in model.instances() {
+    // The rails that can hold a net: a board's, a part's supply, and the cuts.
+    let mut can_hold: Vec<InstId> = ix.supplies.iter().chain(cuts).copied().collect();
+    can_hold.sort_unstable();
+    can_hold.dedup();
+    for iface in can_hold {
+        if !model.is_inside(iface, model.root) {
+            continue;
+        }
+        let inst = model.instance(iface);
         if inst.kind != InstKind::Interface {
             continue;
         }
@@ -476,7 +676,7 @@ pub(crate) fn extract(
     let mut enclosed_loads: Vec<(String, usize, usize, Range)> = Vec::new();
     // The MOSFETs are decided after everything else is known (below).
     let mut switches: Vec<(InstId, &netsmith_check::DcElement)> = Vec::new();
-    for (part, dc) in model.dc_elements() {
+    for (part, dc) in dc_elements() {
         if model.instance(part).kind != InstKind::Part {
             continue;
         }
@@ -605,7 +805,7 @@ pub(crate) fn extract(
     let reader = crate::levels::reader(model);
     let mut drivers: Vec<Driver> = Vec::new();
     let mut leaky_open: BTreeSet<usize> = BTreeSet::new();
-    for (index, net) in nets.iter().enumerate() {
+    for (index, net) in scoped_nets() {
         if held.contains_key(&index) {
             continue;
         }
@@ -613,12 +813,12 @@ pub(crate) fn extract(
             if accounted.contains(&t) || source_pins.contains(&t) {
                 continue;
             }
-            if let Some(d) = driver_of(model, &reader, t, index, &net_of, &held) {
+            if let Some(d) = driver_of(model, &reader, t, index, net_of, &held) {
                 drivers.push(d);
             } else {
                 // An input that states its leakage draws it, and a net with such a pin that
                 // cannot be modelled is not one that nothing is drawn from.
-                match receiver_of(model, &reader, t, index, &net_of, &held) {
+                match receiver_of(model, &reader, t, index, net_of, &held) {
                     Some(Some(d)) => drivers.push(d),
                     Some(None) => {
                         leaky_open.insert(index);
@@ -707,7 +907,7 @@ pub(crate) fn extract(
             b,
         ))
     };
-    for (part, inst) in model.instances() {
+    for (part, inst) in instances() {
         if inst.kind != InstKind::Part
             || modelled_parts.contains(&part)
             || switch_parts.contains(&part)
@@ -727,7 +927,11 @@ pub(crate) fn extract(
     // part pins, which are looked at themselves.
     let mut outside_open: BTreeSet<usize> = BTreeSet::new();
     outside_open.extend(leaky_open.iter().copied());
-    for (iface, inst) in model.instances() {
+    for &iface in &ix.board_ports {
+        if !model.is_inside(iface, model.root) {
+            continue;
+        }
+        let inst = model.instance(iface);
         if inst.kind != InstKind::Interface {
             continue;
         }
@@ -777,9 +981,12 @@ pub(crate) fn extract(
         }
     }
     // Every pin of a board's own ports that is not one of those above.
-    for (index, net) in nets.iter().enumerate() {
+    for (index, net) in scoped_nets() {
         for &p in &net.pins {
-            if net.terminals.contains(&p) || accounted.contains(&p) || source_pins.contains(&p) {
+            if ix.terminals[index].contains(&p)
+                || accounted.contains(&p)
+                || source_pins.contains(&p)
+            {
                 continue;
             }
             let Some(owner) = model.owner_of(p) else {
@@ -792,7 +999,7 @@ pub(crate) fn extract(
     }
 
     // The rails of the parts: what the part draws from `pos`, which comes back at `neg`.
-    for (iface, inst) in model.instances() {
+    for (iface, inst) in instances() {
         if inst.kind != InstKind::Interface {
             continue;
         }
@@ -849,7 +1056,7 @@ pub(crate) fn extract(
     // The nets some pin on them may set or draw from, that nothing here models.
     let open_nets = |accounted: &HashSet<InstId>| -> BTreeSet<usize> {
         let mut open: BTreeSet<usize> = outside_open.clone();
-        for (index, net) in nets.iter().enumerate() {
+        for (index, net) in scoped_nets() {
             if held.contains_key(&index) && !reg_out_nets.contains(&index) {
                 continue;
             }
@@ -878,6 +1085,17 @@ pub(crate) fn extract(
     // net may set it. A switch whose gate is left to something unmodelled stays a boundary (a
     // current source over its `.current` when that has a value), so that the island of its drain
     // and source is solved as it was.
+    // A switch is decided by what is on its gate's net, which a scope has to hold, unless the
+    // net is held and no regulator's output: such a gate is set, and never open.
+    if scope.is_some() {
+        for (_, dc) in &switches {
+            if let Some(&g) = net_of.get(&dc.pins[0])
+                && !(held.contains_key(&g) && !reg_out_nets.contains(&g))
+            {
+                needs.insert(g);
+            }
+        }
+    }
     let open: BTreeSet<usize> = {
         let mut tentative = accounted.clone();
         for (_, dc) in &switches {
@@ -976,7 +1194,7 @@ pub(crate) fn extract(
     // The rails whose voltage a node of the circuit gives: any rail but the two of a regulator,
     // whose input the pass writes as an element's drop and whose output is held.
     let mut rail_candidates: Vec<(FieldId, InstId, usize, usize)> = Vec::new();
-    for (iface, inst) in model.instances() {
+    for (iface, inst) in instances() {
         if inst.kind != InstKind::Interface || reg_rails.contains(&iface) {
             continue;
         }
@@ -1032,10 +1250,21 @@ pub(crate) fn extract(
     let mut unsolved_outputs: BTreeSet<usize> = BTreeSet::new();
     for members in groups.values() {
         netsmith_core::job::checkpoint();
+        // A scope returns the islands of its parts only, and needs their free nets.
+        if let Some(s) = scope
+            && !members
+                .iter()
+                .any(|&i| items[i].part.is_some_and(|p| s.parts.contains(&p)))
+        {
+            continue;
+        }
         let mut touched: BTreeSet<usize> = members
             .iter()
             .flat_map(|&i| items[i].nets.iter().copied())
             .collect();
+        if scope.is_some() {
+            needs.extend(touched.iter().filter(|n| !held.contains_key(n)));
+        }
         // The ground a load that waits on a pick returns to is a node of the island, though no
         // element of it is on that net: the load is drawn to it, not to some other held net
         // (issue #289, item 3).
@@ -1388,12 +1617,15 @@ pub(crate) fn extract(
             opaque,
         });
     }
-    Extracted {
-        islands: out,
-        regs,
-        unsolved_outputs,
-        left,
-    }
+    (
+        Extracted {
+            islands: out,
+            regs,
+            unsolved_outputs,
+            left,
+        },
+        needs,
+    )
 }
 
 fn hold_net(held: &mut BTreeMap<usize, Held_>, net: usize, hold: Hold, range: Range, name: &str) {

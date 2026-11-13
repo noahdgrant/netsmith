@@ -55,7 +55,7 @@ use netsmith_check::{Domain, FieldId, InstId, Model, RExpr};
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Dimension;
 
-pub(crate) use extract::{Left, Modelled, Planned, RailNode, Reg, Supply, extract};
+pub(crate) use extract::{Index, Left, Modelled, Planned, RailNode, Reg, Supply, extract};
 pub(crate) use net::{Collapse, Error, MAX_COMBINATIONS, Range, Report, Which};
 
 use net::{Draw, Kind};
@@ -358,13 +358,16 @@ fn skipped_note(planned: &Planned, reg: &Reg, why: Option<Why>) -> Left {
 /// pick-time analysis, ADR 0076 amendment 10): an island that is not a resistive one (a regulator
 /// in it, or a node a regulator holds) is left out, since what it would need is the island behind
 /// the regulator, and that is the pass after the picks'.
+///
+/// Only the islands around `parts` are extracted (`extract::extract_around`), with the `index`
+/// of the model that the picks share.
 pub(crate) fn analyze_around(
     model: &Model,
+    index: &Index,
     parts: &[InstId],
     cuts: &HashSet<InstId>,
 ) -> Vec<Outcome> {
-    let extract::Extracted { islands, .. } = extract(model, &HashMap::new(), &HashSet::new(), cuts);
-    islands
+    extract::extract_around(model, index, cuts, parts)
         .into_iter()
         .filter(|p| {
             p.sinks.is_empty()

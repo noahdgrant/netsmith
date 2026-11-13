@@ -922,3 +922,111 @@ board B {{
         range_is(draw, 0.0, 1e-3);
     }
 }
+
+/// The islands `extract_around` makes for a part are the ones the whole extraction makes that
+/// have the part, in the same order (issue #568). The board has a switch whose gate a pin drives
+/// on a net of its own, which a scope reaches only through the gate, a divider, and a pull-down
+/// that nothing else is on.
+#[test]
+fn the_islands_around_a_part_are_the_whole_extractions() {
+    use netsmith_check::{InstKind, Loader, check};
+    use std::collections::{HashMap, HashSet};
+
+    let source = r#"import std::parts::passive::Resistor
+import std::logic::Logic
+import std::sources::Rail
+
+part Mcu {
+    .vdd: Rail
+    .gpio: Logic
+    .gpio.reference ~ .vdd
+    .gpio.voh &= .vdd.voltage - 0.4V at 2mA
+    .gpio.vol &= 0.4V at 2mA
+    pins {
+        .vdd.pos    power  "VDD" "1"
+        .vdd.neg    power  "GND" "2"
+        .gpio.line  output "IO"  "3"
+    }
+}
+
+part Switch1 {
+    pins {
+        .gate   input   "G" "1"
+        .source passive "S" "2"
+        .drain  passive "D" "3"
+    }
+    .gate_threshold: Voltage
+    .on_resistance: Resistance
+    .current: Current
+    bridge .drain ~> .source
+    dc nmos .gate .drain .source .gate_threshold .on_resistance
+}
+
+board B {
+    .main: Rail {
+        .voltage &= 12V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .logic: Rail {
+        .voltage &= 3.3V +/- 3%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .mcu: Mcu
+    .logic ~ .mcu.vdd
+    .q: Switch1 { .gate_threshold &= 1V..2V; .on_resistance &= 50mohm..80mohm }
+    .gate: Resistor { .resistance &= 100ohm }
+    .mcu.gpio.line ~ .gate.a
+    .gate.b ~ .q.gate
+    .load: Resistor { .resistance &= 1kohm +/- 1% }
+    .main.pos ~ .load.a
+    .load.b ~ .q.drain
+    .q.source ~ .main.neg
+    .top: Resistor { .resistance &= 10kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 4.7kohm +/- 1% }
+    .main.pos ~ .top.a
+    .top.b ~ .bottom.a
+    .bottom.b ~ .main.neg
+    .pd: Resistor { .resistance &= 10kohm }
+    .pd.a ~ .bottom.a
+    .pd.b ~ .main.neg
+}
+"#;
+    let checked = check("main.nsm", source, &Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
+    let model = &checked.boards[0].model;
+    let index = super::Index::new(model);
+    let parts: Vec<_> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(p, _)| p)
+        .collect();
+    let rails: HashSet<_> = ["main", "logic"]
+        .iter()
+        .filter_map(|r| model.inst_at(r))
+        .collect();
+    let mut switches = 0;
+    for cuts in [HashSet::new(), rails] {
+        let whole = super::extract(model, &HashMap::new(), &HashSet::new(), &cuts).islands;
+        for &part in &parts {
+            let around = super::extract::extract_around(model, &index, &cuts, &[part]);
+            let want: Vec<_> = whole
+                .iter()
+                .filter(|p| p.parts.iter().any(|m| m.part == part))
+                .collect();
+            assert_eq!(
+                format!("{want:?}"),
+                format!("{:?}", around.iter().collect::<Vec<_>>()),
+                "{}",
+                model.path_of(part)
+            );
+            switches += around
+                .iter()
+                .flat_map(|p| &p.island.elements)
+                .filter(|e| matches!(e.kind, Kind::Mosfet { .. }))
+                .count();
+        }
+    }
+    assert!(switches > 0, "the switch is modelled");
+}
