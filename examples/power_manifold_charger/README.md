@@ -132,9 +132,10 @@ it; the gate runs `fab` with a 20 s timeout and allows `INCOMPLETE`.
 - **J3, the edge connector.** The 36 fingers are `connect` pads (an edge-connector pad: copper
   on one face; KiCad's `connect`): side A is on the front face and side B on the back in the
   original, which draws the footprint on the back face (`B.Cu`). `fab` writes a back-face
-  footprint with every x negated, so the project's footprint
+  footprint with every x negated and every layer on the other face, so the project's footprint
   (`libs/power_manifold_must_match.pretty/PCIe_x1_Edge_Fingers`) is drawn as seen from the back
-  (x negated), and equals the reference when placed on the bottom face, rotated 90 degrees: the
+  (x negated, side A on `B.Cu` and side B on `F.Cu`), and equals the reference, side A on `F.Cu`,
+  when placed on the bottom face, rotated 90 degrees: the
   origin is 3.45 mm from the card's end and 19.65 mm from its top edge. Its courtyard (the pads
   and 0.1 mm, on both faces) is what the physical file measures, so `.slot.place.y` is the
   body's centre, 9.5 mm from the origin along the card. The footprint draws no `Edge.Cuts`.
@@ -163,7 +164,7 @@ outline, which it names, and the committed overlay equal to the one the board gi
 **Result: `must-match: 144 ok, 2 failed`** (the two are the outline's corner radius and
 elements). Per item: the outline's size 1 ok, the five holes (J2's three and J4's two, 0.00 mm
 off), J2 (position, rotation, layer, 6 numbered pads and 3 holes, and each pad's net), J3 (the
-position, rotation and layer and each of the 36 fingers' geometry and net) and J4 (position,
+position, rotation and layer and each of the 36 fingers' geometry, copper face and net) and J4 (position,
 rotation, layer, 16 contacts, 4 shield legs and 2 pegs, and each pad's net). Every difference
 is 0.000 mm. **Reported, not gated:** every other part's place and turn.
 
@@ -454,7 +455,7 @@ PARTS WITH PIN TABLES (kind kinds: P=passive)
 - U6 `Usblc62sc6` (C2687116): .io1 "1" "6"; .gnd "2"; .io2 "3" "4"; .vbus "5" (all P). **LCSC/JLCPCB sell UMW's USBLC6-2SC6, not ST's**; UMW datasheet Nov.2024 p.1 pin figure, p.2 TJ -55..125. Generator SOT-23-6.
 - U4 `Tlv7022` (TI TLV7022DDFR, C2862588): OUTA "1" open_drain, INA- "2", INA+ "3", VEE "4" (supply.neg), INB+ "5", INB- "6" (inputs), OUTB "7" open_drain, VCC "8" (supply.pos). Supply 1.6..6.5 V (Table 6.5); datasheet read is the Chinese edition ZHCSGK4E (11/2019); the pin table is the DGK one (no DDF pinout printed; reference nets agree). No reference inside the part. Footprint: TI DDF0008A example layout, reference frame (pad 1 lower right).
 - J4 `GtUsb7004 provides UsbCSourceReceptacle, Connector` (G-Switch GT-USB-7004, C2686968, keyed catalog gt_usb_7004): same 9 pins as Easyduino's Shouhan (VBUS A4 A9 B4 B9, GND A1 A12 B1 B12, CC1 A5, CC2 B5, D+ A6 B6, D- A7 B7, SBU1 A8, SBU2 B8, SHELL S1); drawing REV A1 2024.11.14 agrees with the reference pads; footprint libs/power_manifold_must_match.pretty/USB_C_Receptacle_GT-USB-7004 equals the reference (0.05 mm). Use it directly, not UsbCSink (CC goes to U5).
-- J3 `PcieX1EdgeFingers provides Connector`: 36 passive pins .a1-.a18/.b1-.b18, pads A1..B18 (comments carry the reference's pin functions; CEM spec not read), AssemblyMode::None, no catalog. Footprint PCIe_x1_Edge_Fingers equals the reference pads (A on F.Cu, B on B.Cu as stored; no Edge.Cuts; test enforces for both libraries).
+- J3 `PcieX1EdgeFingers provides Connector`: 36 passive pins .a1-.a18/.b1-.b18, pads A1..B18 (comments carry the reference's pin functions; CEM spec not read), AssemblyMode::None, no catalog. Footprint PCIe_x1_Edge_Fingers is the reference pads before the flip to the back (x negated, A on B.Cu, B on F.Cu), so fab puts A on F.Cu and B on B.Cu as stored (#537); no Edge.Cuts; test enforces for both libraries.
 - J2: std ProgrammingPads6 (TC2030-NL): its std footprint equals the reference pads (tested, 0.05 mm). J1/J5/J6: std TestPoint "D1.5mm", equals reference (tested). HOT_SURFACE_SMALL marker (REF**): graphic only, skipped.
 
 FOOTPRINT BLOCKS in kicad.toml: Tvs DFN1610-2, Fuse 2410, Inductor x2, Capacitor "SMD,D8xL9mm" (reference pads of KiCad CP_Elec_8x10 though the part is 8x9) and "SMD,D6.3xL7.7mm", Resistor 1206, plus one block per part above.

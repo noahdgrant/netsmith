@@ -1136,5 +1136,5 @@
 <text class="label" x="3.45" y="19.65" fill="#2d3748">J3 position: dx +0.000 dy +0.000</text>
 <text class="label" x="98.02" y="14.89" fill="#2d3748">J4 position: dx +0.000 dy +0.000</text>
 </g>
-<g class="legend" stroke="none"><text x="0" y="29" fill="#2b6cb0">blue: the original board</text><text x="16" y="29" fill="#dd6b20">orange: netsmith's board</text><text x="34" y="29" fill="#e53e3e">red: a must-match item that fails</text><text x="0" y="31" fill="#4a5568">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text><text x="0" y="33" fill="#4a5568">a part is judged on position, rotation and layer, each pad on number, centre, size, shape, drill and net, the outline on its box, radius and elements</text></g>
+<g class="legend" stroke="none"><text x="0" y="29" fill="#2b6cb0">blue: the original board</text><text x="16" y="29" fill="#dd6b20">orange: netsmith's board</text><text x="34" y="29" fill="#e53e3e">red: a must-match item that fails</text><text x="0" y="31" fill="#4a5568">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text><text x="0" y="33" fill="#4a5568">a part is judged on position, rotation and layer, each pad on number, centre, size, shape, drill, copper layers and net, the outline on its box, radius and elements</text></g>
 </svg>

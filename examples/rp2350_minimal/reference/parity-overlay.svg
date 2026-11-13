@@ -696,5 +696,5 @@
 <text class="label" x="17.2" y="5.2" fill="#2d3748">SW1 position: dx +0.000 dy +0.000</text>
 <text class="label" x="37.8" y="37.475" fill="#2d3748">SW2 position: dx +0.000 dy +0.000</text>
 </g>
-<g class="legend" stroke="none"><text x="0" y="56" fill="#2b6cb0">blue: the original board</text><text x="16" y="56" fill="#dd6b20">orange: netsmith's board</text><text x="34" y="56" fill="#e53e3e">red: a must-match item that fails</text><text x="0" y="58" fill="#4a5568">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text><text x="0" y="60" fill="#4a5568">a part is judged on position, rotation and layer, each pad on number, centre, size, shape, drill and net, the outline on its box, radius and elements</text></g>
+<g class="legend" stroke="none"><text x="0" y="56" fill="#2b6cb0">blue: the original board</text><text x="16" y="56" fill="#dd6b20">orange: netsmith's board</text><text x="34" y="56" fill="#e53e3e">red: a must-match item that fails</text><text x="0" y="58" fill="#4a5568">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text><text x="0" y="60" fill="#4a5568">a part is judged on position, rotation and layer, each pad on number, centre, size, shape, drill, copper layers and net, the outline on its box, radius and elements</text></g>
 </svg>

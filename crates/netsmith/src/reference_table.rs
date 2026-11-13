@@ -233,8 +233,9 @@ const HEADER: &str = "\
 #   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
 #   `drill_slot` the [width, height] of an oval one; `extent` (a custom pad only) is the box
 #   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
-#   own frame and with each stroke's half width added; `net` is the net's name and is left out
-#   for a pad no net names.
+#   own frame and with each stroke's half width added; `layers` are the pad's copper layers as
+#   the file writes them (a footprint on the back has them on the other face already); `net` is
+#   the net's name and is left out for a pad no net names.
 ";
 
 const MUST_MATCH_DEFAULT_PARAGRAPH: &str = "\
@@ -479,6 +480,19 @@ impl Board {
                             }
                         },
                     },
+                    layers: pad
+                        .get("layers")
+                        .and_then(toml::Value::as_array)
+                        .and_then(|l| {
+                            l.iter()
+                                .map(|v| v.as_str().map(str::to_string))
+                                .collect::<Option<Vec<_>>>()
+                        })
+                        .ok_or_else(|| {
+                            format!(
+                                "{at} pad {number}: no layers (a list of names): a table lacks it"
+                            )
+                        })?,
                     net: pad
                         .get("net")
                         .and_then(toml::Value::as_str)
@@ -862,6 +876,10 @@ pub struct Pad {
     /// A custom pad's box `[min_x, min_y, max_x, max_y]` over its primitives, in the pad's own
     /// frame (before its angle), rounded to 0.1 micrometre.
     pub extent: Option<[f64; 4]>,
+    /// The copper layers of the pad's `(layers ...)` as the file writes them (`F.Cu`, `B.Cu`,
+    /// `*.Cu`, ...), in its order; the mask, paste and other layers are left out. A footprint on
+    /// the back has its pads' layers already moved to the other face.
+    pub layers: Vec<String>,
     pub net: Option<String>,
 }
 
@@ -897,6 +915,8 @@ impl Pad {
                 num(e[3])
             );
         }
+        let layers: Vec<String> = self.layers.iter().map(|l| quote(l)).collect();
+        let _ = write!(s, ", layers = [{}]", layers.join(", "));
         if let Some(net) = &self.net {
             let _ = write!(s, ", net = {}", quote(net));
         }
@@ -964,6 +984,17 @@ fn pad(pad: &Sexp) -> Result<Pad, String> {
         .and_then(Sexp::text)
         .filter(|n| !n.is_empty())
         .map(str::to_string);
+    let layers = pad
+        .find("layers")
+        .map(|l| {
+            l.args()
+                .iter()
+                .filter_map(Sexp::text)
+                .filter(|l| l.ends_with(".Cu"))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
     let extent = if shape == "custom" {
         primitives_extent(pad).map_err(|e| format!("pad {number}: {e}"))?
     } else {
@@ -980,6 +1011,7 @@ fn pad(pad: &Sexp) -> Result<Pad, String> {
         drill,
         drill_slot,
         extent,
+        layers,
         net,
     })
 }

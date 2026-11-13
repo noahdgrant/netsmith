@@ -257,7 +257,8 @@ fn shape_word(pad: &netsmith_pcb::Pad) -> &'static str {
 /// own frame, size, drill, shape, kind and angle. Empty when they are the same. A `connect` pad
 /// of the file (an edge-connector pad: copper on one face) is a surface pad. A footprint that the
 /// reference has on the back face (`B.Cu`) is written by `fab` with every x negated, so the
-/// project's footprint of it is drawn as seen from the back: x is read negated.
+/// project's footprint of it is drawn as seen from the back: x is read negated, and since `fab`
+/// also moves every layer to the other face, a pad's copper layers are read on the other face.
 fn pad_differences(
     footprint: &Footprint,
     table: &toml::Table,
@@ -347,6 +348,31 @@ fn pad_differences(
             differences.push(format!(
                 "{at}: angle {} differs from the reference's",
                 own.angle
+            ));
+        }
+        // The copper layers, on the face `fab` puts them on (#537).
+        let face = |layer: &str| match layer.split_once('.') {
+            Some(("F", rest)) if mirror < 0.0 => format!("B.{rest}"),
+            Some(("B", rest)) if mirror < 0.0 => format!("F.{rest}"),
+            _ => layer.to_string(),
+        };
+        let mut own_copper: Vec<String> = own
+            .layers
+            .iter()
+            .filter(|l| l.ends_with(".Cu"))
+            .map(|l| face(l))
+            .collect();
+        let mut want_copper: Vec<String> = pad["layers"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{at}: the table has no layers"))
+            .iter()
+            .map(|l| l.as_str().unwrap().to_string())
+            .collect();
+        own_copper.sort();
+        want_copper.sort();
+        if own_copper != want_copper {
+            differences.push(format!(
+                "{at}: copper on {own_copper:?} on the board, the reference's {want_copper:?}"
             ));
         }
         let want_drill = if let Some(slot) = pad.get("drill_slot") {
