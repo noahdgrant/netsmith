@@ -189,8 +189,8 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
 - `the_resistors_and_capacitors_have_the_charger_boards_values_and_packages`: all 27 resistors and
   38 capacitors have the value and the package of the reference's footprint.
 - `the_parts_have_the_lcsc_numbers_of_the_charger_boards_footprints`: 84 parts carry an `LCSC`
-  property in the board file; every one is picked as that number, 19 ceramics of them through the
-  picks file (below).
+  property in the board file; every one is picked as that number, 19 ceramics of them through a
+  hand pick (below).
 - `the_open_pins_are_the_ones_the_reference_leaves_open`: the pads on the board's `unconnected-(...)`
   nets (26) are the pads that no net of the design names.
 - `the_optimizer_cannot_move_a_pin` (no request, no pin file entry) and
@@ -212,8 +212,9 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
 - **Part numbers.** The design states no tolerance or voltage, and the solver picks the first
   catalog row that fits the value, the package and the rail. For a 100 nF 0402 it would pick
   C1525 (16 V, Basic) where the board has C307331 (50 V), and for 1 uF, 4.7 uF, 2.2 uF and 10 uF
-  parts the board's number is another row too. `src/main.picks.toml` holds those 19 ceramics to
-  the board's numbers (#462), and the solver judges each by the design as it judges any row. The two Sunlord
+  parts the board's number is another row too. Each of those 19 ceramics states the board's number
+  in `src/main.nsm` (`.lcsc &= "C307331"`, a hand pick, ADR 0121), and the solver judges each by
+  the design as it judges any row. The two Sunlord
   inductors, the shunts and every other part have the board's number. U2 is C89826, which is the
   LP2985**A**-33DBVR (1 % grade), where the board's value field says "LP2985-3.3"; C46550469
   (C39) is an 8 x 9 mm part on the 8 x 10 mm footprint the board draws.

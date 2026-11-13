@@ -8,7 +8,7 @@ use super::common::{no_boards, target};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`lock --update` solves each board without the pick lock's holding (the picks file still holds its parts) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist, or when the picks file names a part that is gone (for CI). Both exit 2 when they cannot tell: the lock or the picks file is not readable, or the design does not build. With no file it acts on the project's boards."
+    after_long_help = "`lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards."
 )]
 #[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
 pub struct Args {
@@ -85,25 +85,6 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
                 "note: the rows {name} holds that no longer pass, in the solver's words ({outcome}):\n{}",
                 found.reported.trim_end()
             );
-        }
-        // The entries of the picks file whose part is gone (#462): the file is a person's, so a
-        // refresh leaves it alone, and `--check` fails on them.
-        if !found.stale.is_empty() {
-            let picks = netsmith::picks::picks_path(&source.path);
-            let lines: String = found.stale.iter().map(|l| format!("  {l}\n")).collect();
-            match mode {
-                LockMode::Update => eprint!(
-                    "note: {} names parts the design no longer picks a row for; remove their entries:\n{lines}",
-                    picks.display()
-                ),
-                LockMode::Check => {
-                    eprint!(
-                        "error: {} names parts the design no longer picks a row for; remove their entries:\n{lines}",
-                        picks.display()
-                    );
-                    stale = true;
-                }
-            }
         }
         match mode {
             LockMode::Update => {

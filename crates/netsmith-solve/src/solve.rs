@@ -232,17 +232,18 @@ pub use findings::{HeldBy, UnconstrainedPick, UnstatedValue};
 pub use seed::Seeded;
 
 use netsmith_check::{
-    Board, Bookmark, Diagnostic, FieldId, InstId, Model, RExpr, Relation, SourceId, System,
+    Board, Bookmark, Diagnostic, Domain, FieldId, InstId, InstKind, Member, Model, RExpr, Relation,
+    SourceId, System,
 };
 use netsmith_core::job;
 use netsmith_lang::Span;
 use netsmith_lang::ast::CmpOp;
 use netsmith_quantity::Quantity;
 
-use crate::catalog::{Candidate, Catalog, Catalogs, DeratingError, Library};
+use crate::catalog::{Candidate, Catalog, Catalogs, DeratingError, Library, Value};
 use crate::eval::fields_in;
 use crate::generic::Need;
-use crate::lock::{ChosenRow, LockedRow};
+use crate::lock::LockedRow;
 
 use equations::{
     claimed_by_ranges, equations_of, several_equations, sole_equations, stated_currents,
@@ -740,16 +741,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
                     .collect()
             })
             .unwrap_or_default(),
-        chosen: catalogs
-            .picks()
-            .map(|picks| {
-                picks
-                    .rows(unit)
-                    .iter()
-                    .map(|r| (r.path.clone(), r.clone()))
-                    .collect()
-            })
-            .unwrap_or_default(),
+        chosen: hand_picks(model),
         diagnostics: Vec::new(),
         seen: HashSet::new(),
         picks: Vec::new(),
@@ -784,6 +776,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     };
     job::checkpoint();
     s.relax_pinned();
+    s.refuse_stray_hand_picks();
     s.fed_at_start = s.fed_at_start();
     for c in s.propagate() {
         s.report(c.source, c.span, c.message);
@@ -1045,15 +1038,99 @@ impl Budget {
     }
 }
 
+/// A part's hand pick (ADR 0121): the `.lcsc` and `.mpn` the design narrowed it to, and where.
+#[derive(Debug, Clone)]
+struct HandPick {
+    lcsc: Option<String>,
+    mpn: Option<String>,
+    /// The narrowing a message points at: the last statement that narrowed either member.
+    at: Option<(SourceId, Span)>,
+}
+
+impl HandPick {
+    /// Whether `c` is the row the hand pick names: it has every number the pick states.
+    /// A row made in code may carry a number only as a column of that name.
+    fn is(&self, c: &Candidate) -> bool {
+        let has = |number: &Option<String>, own: &Option<String>, column: &str| {
+            number.as_ref().is_none_or(|n| {
+                own.as_ref() == Some(n)
+                    || matches!(c.column(column), Some(Value::Text(t)) if t == n)
+            })
+        };
+        has(&self.lcsc, &c.lcsc, "lcsc") && has(&self.mpn, &c.mpn, "mpn")
+    }
+
+    /// The statements as the source writes them: `.lcsc &= "C307331"`.
+    fn statement(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(l) = &self.lcsc {
+            parts.push(format!("`.lcsc &= \"{l}\"`"));
+        }
+        if let Some(m) = &self.mpn {
+            parts.push(format!("`.mpn &= \"{m}\"`"));
+        }
+        parts.join(" and ")
+    }
+
+    /// The numbers as a message says them: `LCSC number C307331`.
+    fn number(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(l) = &self.lcsc {
+            parts.push(format!("the LCSC number {l}"));
+        }
+        if let Some(m) = &self.mpn {
+            parts.push(format!("the manufacturer part number {m}"));
+        }
+        parts.join(" and ")
+    }
+}
+
+/// The hand picks of the parts of `model` that pick from a catalog, by path: each part whose
+/// `.lcsc` or `.mpn` holds one text (ADR 0121).
+fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
+    let mut picks = BTreeMap::new();
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Part || inst.catalog.is_none() {
+            continue;
+        }
+        let mut pick = HandPick {
+            lcsc: None,
+            mpn: None,
+            at: None,
+        };
+        for name in ["lcsc", "mpn"] {
+            let Some(Member::Field(f)) = model.member(id, name) else {
+                continue;
+            };
+            let field = model.field(f);
+            let Domain::Text(text) = &field.domain else {
+                continue;
+            };
+            if let Some(&at) = field.narrowed_at.last() {
+                pick.at = Some(at);
+            }
+            match name {
+                "lcsc" => pick.lcsc = Some(text.clone()),
+                _ => pick.mpn = Some(text.clone()),
+            }
+        }
+        if pick.lcsc.is_some() || pick.mpn.is_some() {
+            picks.insert(model.path_of(id), pick);
+        }
+    }
+    picks
+}
+
 struct Solver<'a> {
     model: Model,
     catalogs: &'a Catalogs,
     /// The rows a pick lock holds the parts of this board or system to, by path (see
     /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.
     locked: BTreeMap<String, LockedRow>,
-    /// The rows a picks file holds the parts of this board or system to, by path (#462). A
-    /// chosen row comes before the lock's for its part.
-    chosen: BTreeMap<String, ChosenRow>,
+    /// The hand picks of the parts of this board or system, by path: a part whose `.lcsc` or
+    /// `.mpn` the design narrows is held to the row with that number, before the lock's (ADR
+    /// 0121).
+    chosen: BTreeMap<String, HandPick>,
     diagnostics: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,
     picks: Vec<Pick>,

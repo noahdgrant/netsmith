@@ -246,9 +246,7 @@ mod board {
     fn built() -> netsmith::Built {
         let target = Target::resolve_from(&project(), None).unwrap_or_else(|e| panic!("{e}"));
         let source = &target.files[0];
-        // The rows of the picks file are the design's, as for `netsmith build` (#462).
-        let catalogs = netsmith::picks::holding(&source.path, &target.catalogs().unwrap())
-            .unwrap_or_else(|e| panic!("{e}"));
+        let catalogs = target.catalogs().unwrap();
         build_with(
             &source.name,
             &read("src/main.nsm"),
@@ -465,8 +463,8 @@ mod board {
 
     /// The parts whose pick is another row than the board's LCSC number: none. The design states
     /// a value, a package and what the rail needs, not a part number, and the solver picks the
-    /// first row that fits; for 19 ceramics that is another row than the board's, and
-    /// `src/main.picks.toml` holds them to the board's numbers (#462).
+    /// first row that fits; for 19 ceramics that is another row than the board's, and their
+    /// hand picks (`.lcsc &= ...` in `src/main.nsm`, ADR 0121) hold them to the board's numbers.
     const OTHER_ROW: &[&str] = &[];
 
     /// Every part of the board that has a number is sourced with that LCSC number.

@@ -498,17 +498,13 @@ impl Workspace {
                 Some(text) => Ok(text.clone()),
                 None => fs::read_to_string(&file.path),
             };
-            // The rows a person chose in the picks file are the design's (#462); the lock is not
-            // read here.
-            let catalogs = match netsmith_catalog::picks::holding(&file.path, &catalogs) {
-                Ok(held) => held,
-                Err(e) => {
-                    snapshot
-                        .problems
-                        .push(general(e.trim_start_matches("error: ").to_string()));
-                    catalogs.clone()
-                }
-            };
+            // A picks file beside the source is refused with how to move it into the source
+            // (ADR 0121); the lock is not read here.
+            if let Err(e) = netsmith_catalog::picks::refuse(&file.path) {
+                snapshot
+                    .problems
+                    .push(general(e.trim_start_matches("error: ").to_string()));
+            }
             let outcome = match &text {
                 Err(e) => Err(vec![netsmith_pipeline::Problem {
                     message: format!("{}: {e}", file.name),

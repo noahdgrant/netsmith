@@ -1,9 +1,8 @@
 //! Holding a part to a row of a pick lock, or to a stated choice.
 
-use super::{Solver, Unresolved};
+use super::{HandPick, Solver, Unresolved};
 use crate::catalog::{Candidate, Catalog};
-use crate::lock::ChosenRow;
-use netsmith_check::{Domain, FieldKind, InstId, InstKind};
+use netsmith_check::{Domain, FieldId, FieldKind, InstId, InstKind, Member};
 
 impl Solver<'_> {
     /// A part held to one row (`Catalogs::with_pin`) stands in for a part the design stated
@@ -113,66 +112,71 @@ impl Solver<'_> {
         }
     }
 
-    /// A part that a picks file names is offered only the row a person chose for it (#462), which
-    /// every statement of the design and every relation then judge, as for a locked row. Returns
-    /// `false` when the catalog has no such row, which it has reported.
+    /// A `.lcsc` narrowed on a part that picks from no catalog names a row of nothing (ADR
+    /// 0121): an error at the narrowing, as a member that does not exist would be.
+    pub(super) fn refuse_stray_hand_picks(&mut self) {
+        let stray: Vec<(InstId, FieldId)> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Part && i.catalog.is_none())
+            .filter_map(|(id, _)| match self.model.member(id, "lcsc") {
+                Some(Member::Field(f)) => Some((id, f)),
+                _ => None,
+            })
+            .filter(|(_, f)| matches!(self.domain(*f), Domain::Text(_)))
+            .collect();
+        for (id, f) in stray {
+            let path = self.model.path_of(id);
+            let inst = self.model.instance(id);
+            let ty = inst.type_name.clone();
+            let (source, span) = self
+                .model
+                .field(f)
+                .narrowed_at
+                .last()
+                .copied()
+                .unwrap_or_else(|| inst.at());
+            self.report(
+                source,
+                span,
+                format!(
+                    "`{path}.lcsc` holds the part to a catalog row, but `{path}` (`{ty}`) picks from no catalog: remove the narrowing"
+                ),
+            );
+        }
+    }
+
+    /// A part that the design holds to one row by its `.lcsc` or `.mpn` (a hand pick, ADR 0121)
+    /// is offered only that row, which every statement of the design and every relation then
+    /// judge, as for a locked row. Returns `false` when the catalog has no such row, which it has
+    /// reported at the narrowing.
     fn hold_to_choice(
         &mut self,
         part: InstId,
         path: &str,
-        chosen: &ChosenRow,
+        chosen: &HandPick,
         cat: &mut Catalog,
     ) -> bool {
-        let file = self.picks_file();
-        let is_chosen = |c: &Candidate| match (&chosen.lcsc, &chosen.mpn) {
-            (Some(l), _) => c.lcsc.as_ref() == Some(l),
-            (None, Some(m)) => c.mpn.as_ref() == Some(m),
-            (None, None) => false,
-        };
-        let reason = if chosen.catalog != cat.name {
-            Some(format!(
-                "the part picks from the `{}` catalog, and {file} names `{}`",
-                cat.name, chosen.catalog
-            ))
-        } else if !cat.candidates.iter().any(is_chosen) {
-            Some(format!(
-                "the `{}` catalog has no row with {}",
+        if cat.candidates.iter().any(|c| chosen.is(c)) {
+            cat.candidates.retain(|c| chosen.is(c));
+            return true;
+        }
+        let (source, span) = chosen.at.unwrap_or_else(|| self.model.instance(part).at());
+        self.report(
+            source,
+            span,
+            format!(
+                "`{path}` is held by {} to a row of the `{}` catalog, and the catalog has no row with {}: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick",
+                chosen.statement(),
                 cat.name,
                 chosen.number()
-            ))
-        } else {
-            None
-        };
-        match reason {
-            None => {
-                cat.candidates.retain(is_chosen);
-                true
-            }
-            Some(reason) => {
-                let (source, span) = self.model.instance(part).at();
-                self.report(
-                    source,
-                    span,
-                    format!(
-                        "`{path}` is picked as the row with {} of the `{}` catalog by {file}, and {reason}: no other row was tried for it; change the entry in {file}, or remove it to let the solver pick",
-                        chosen.number(),
-                        chosen.catalog
-                    ),
-                );
-                self.unresolved.push(Unresolved {
-                    part,
-                    reason: "the row its picks file chose is not in the catalog".into(),
-                });
-                false
-            }
-        }
-    }
-
-    /// What a message calls the picks file.
-    pub(super) fn picks_file(&self) -> String {
-        self.catalogs
-            .picks()
-            .map_or_else(String::new, |p| p.file.clone())
+            ),
+        );
+        self.unresolved.push(Unresolved {
+            part,
+            reason: "the catalog has no row with the number its hand pick names".into(),
+        });
+        false
     }
 
     /// What a message calls the file of the pick lock.

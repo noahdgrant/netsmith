@@ -212,16 +212,17 @@ impl Solver<'_> {
                 continue;
             }
             if let Some(chosen) = self.chosen.get(&job.path).cloned() {
-                let (source, span) = self.model.instance(job.part).at();
-                let file = self.picks_file();
+                let (source, span) = chosen
+                    .at
+                    .unwrap_or_else(|| self.model.instance(job.part).at());
                 self.report(
                     source,
                     span,
                     format!(
-                        "`{}` is picked as the row with {} of the `{}` catalog by {file}, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the entry in {file}",
+                        "`{}` is held by {} to one row of the `{}` catalog, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the narrowing",
                         job.path,
-                        chosen.number(),
-                        chosen.catalog
+                        chosen.statement(),
+                        job.catalog.name
                     ),
                 );
                 continue;

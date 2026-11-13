@@ -233,7 +233,7 @@ impl Solver<'_> {
         cat: &Catalog,
     ) -> bool {
         let Some(key) = catalog.key else { return false };
-        if !matches!(self.domain(key), Domain::Unset) {
+        if !matches!(self.domain(key), Domain::Unset) || self.chosen.contains_key(path) {
             return false;
         }
         let key_name = columns

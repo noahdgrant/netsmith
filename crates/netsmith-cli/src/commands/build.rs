@@ -27,14 +27,12 @@ pub struct Args {
     /// guideline is a warning.
     #[arg(long)]
     pub strict: bool,
-    /// Stop, before anything is written, when the pick lock, the pin file or the picks file
-    /// would change.
+    /// Stop, before anything is written, when the pick lock or the pin file would change.
     ///
     /// The run ends with an error, before anything is written, when the parts it picks differ from
     /// the pick lock beside the source (`<file>.lock.toml`) or when it does not exist, when the
     /// pins that its requests get differ from the pin file beside it (`<file>.pins.toml`, ADR
-    /// 0101), or when the picks file beside it (`<file>.picks.toml`, #462) names a part that is
-    /// gone (see _The pick lock_ in docs/LANGUAGE.md).
+    /// 0101) (see _The pick lock_ in docs/LANGUAGE.md).
     #[arg(long)]
     pub locked: bool,
     /// Also write the design of each board to this file, as JSON.
@@ -200,7 +198,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                     .collect::<Vec<_>>()
                     .join("\n")
             };
-            let mut notes: Vec<String> = catalogs
+            let notes: Vec<String> = catalogs
                 .pick_lock()
                 .map(|old| netsmith::pick_lock::compare(old, &outcome.lock).lines())
                 .filter(|lines| !lines.is_empty())
@@ -212,16 +210,6 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                     )]
                 })
                 .unwrap_or_default();
-            if let Some(picks) = &using.picks {
-                let stale = netsmith::picks::stale(picks, &outcome.lock);
-                if !stale.is_empty() {
-                    notes.push(format!(
-                        "{} names parts the design no longer picks a row for:\n{}",
-                        picks.file,
-                        indent(&stale)
-                    ));
-                }
-            }
             notes
         };
         for note in &lock_notes {

@@ -149,16 +149,13 @@ impl Workspace {
         .map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
+        netsmith_catalog::picks::refuse(&source.path).map_err(ApiError::internal)?;
         let made = fab_with_options(
             &source.name,
             &text,
             &loader,
             &target.fab_out,
-            &netsmith_catalog::picks::holding(
-                &source.path,
-                &target.catalogs().map_err(ApiError::internal)?,
-            )
-            .map_err(ApiError::internal)?,
+            &target.catalogs().map_err(ApiError::internal)?,
             &libraries,
             None,
             &FabOptions {
