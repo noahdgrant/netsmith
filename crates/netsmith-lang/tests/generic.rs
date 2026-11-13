@@ -133,11 +133,18 @@ fn the_list_of_generics_may_wrap_after_a_comma() {
 }
 
 #[test]
-fn only_a_part_or_a_module_provides() {
-    for kind in ["board", "system", "panel", "interface", "enum", "generic"] {
+fn an_interface_provides_a_generic() {
+    let def = only("interface JlcTwoLayer2oz provides TwoLayer {\n .min_track &= 0.16mm..1m\n}\n");
+    assert_eq!(def.kind, DefKind::Interface);
+    assert_eq!(def.provides[0].name, "TwoLayer");
+}
+
+#[test]
+fn only_a_part_a_module_or_an_interface_provides() {
+    for kind in ["board", "system", "panel", "enum", "generic"] {
         let message = err(&format!("{kind} X provides G {{}}\n"));
         assert!(
-            message.contains("only a part or a module provides a generic"),
+            message.contains("only a part, a module or an interface provides a generic"),
             "{kind}: {message}"
         );
         assert!(message.contains(&format!("a {kind} does not")), "{message}");
