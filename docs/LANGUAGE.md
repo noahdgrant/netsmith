@@ -7362,6 +7362,8 @@ board Poured {
 
 A pour on a net the board does not have is an error that lists the nets, as for a plane. The pads of the pour's net keep the via the router puts beside them; the pour is KiCad's to fill (`fab` has it fill the zones before it checks and plots the board).
 
+Track of other nets on a pour cuts it, and a pour on one side of a two-layer board is the return path of the signals over it. So when a try of the router has routed every connection, and one outer layer is poured on a net while the other is not, the router routes each line with track on that pour again, the most first, with a step on the pour costing twice its length and a via 60 mm of track, and keeps the new copper only where it costs less so counted (issue #431). A track keeps to the other layer where the way round is short, and a board routes exactly as completely as before. The nets of a diff pair (see Diff pairs) are left where the pair's own pass put them. Where both outer layers are poured, as on a board with ground on both, nothing moves. The route scorecard reports how much other nets' track each pour has and how many pieces it falls into.
+
 ### Keepouts
 
 A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"` separated by commas. The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.

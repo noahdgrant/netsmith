@@ -267,6 +267,51 @@
 //! estimate cut to match left RP2350 with 2 connections at 300 s; in the pass the same pull
 //! costs nothing it does not gain.
 //!
+//! # Track off other nets' pours (issue #431, S7)
+//!
+//! A pour on one outer layer of a two-layer board (GND on B.Cu on RP2350 and Orbit) is the
+//! return path of the signals over it, and every other net's track on it cuts it.
+//!
+//! **What is built** ([`Router::off_the_pours`]). When a try has routed every line, after the
+//! pairs' pass, each line with track on an outer layer another net pours, while the other outer
+//! layer is free of other nets' pours, is routed again, the most such track first, against all
+//! the other copper, at the usual room and failing that at the least. In that search a step on
+//! the pour costs [`POUR`] more (twice its length) and a via [`POUR_VIA`] more (60 mm of track
+//! with [`VIA`]), and the new copper is kept only if it costs less so counted. A line is never
+//! left, so a board routes exactly as completely as before; a board with both outer layers
+//! poured (EasyDuino) or neither is unchanged. The nets of a diff pair are left alone: moved
+//! by this pass, Orbit's `usb.dp` came out 7.7 mm shorter than `.dm` (skew 0.77 to 6.87 mm).
+//! It runs after the pairs' pass for the same reason: before it, the other nets it moved let
+//! the pairs' pass shorten `usb.dp` the same way. One sweep ([`POUR_SWEEPS`]).
+//!
+//! **Measured** (2026-11-12, main at d07d6e8f with S9, `netsmith fab`, the same machine back to
+//! back; other nets' track on the pour, length over the spanning length, vias, `fab` time):
+//!
+//! | | RP2350 | Orbit | EasyDuino |
+//! |---|---|---|---|
+//! | main | 646 mm, 1.40x, 137 vias, 122 s | 466 mm, 1.28x, 87 vias, 14.5 s | 504 + 352 mm, 1.22x, 105, 6.8 s |
+//! | **the pass (built)** | **423 mm**, 1.29x, 129 vias, 117 s | **304 mm**, 1.22x, 87 vias, 15.6 s | = main, 7.0 s |
+//! | the pass before the pairs' | 423 mm, 1.29x, 129 | 294 mm, 1.21x, 87, pair skew 6.87 mm | = main |
+//! | three sweeps | 407 mm, 1.26x, 123 vias | 286 mm, 1.21x, 86 vias | = main |
+//!
+//! The same board gives the same copper on every run. A second `fab` of each, at a load of 6 to
+//! 10 against 2 to 3, took 130 / 26 / 9 s on main and 154 / 32 / 12 s with the pass. The pass
+//! itself, from one try of each (`netsmith route --tries 1 --route-timeout 0`, six at once):
+//! 6 to 10 s of RP2350's 170 to 185 s, 4 to 12 s of Orbit's 17 to 48 s, nothing on EasyDuino.
+//! Three sweeps took 5 s more on RP2350 and 19 s more on Orbit (doubling its try) for a sixth of
+//! the first sweep's gain, so one sweep is kept. Robustness (one try at turn costs 24 / 25 / 26 /
+//! 27, at the placed margin and at `--margin 1`) is main's: RP2350 0 / 0 / 0 / 1 lines left at
+//! both, Orbit and EasyDuino 0 / 0 / 0 / 0. Every pair's coupling and skew are main's on every
+//! run.
+//!
+//! Earlier forms, on main before #548 and #550 (782 and 458 mm on main then): the pour's cost in
+//! every search of every try left RP2350 with 9 connections at 300 s (Orbit 152 mm, 131 vias);
+//! from the second try only it changed nothing, as every board routes on its first; vias at no
+//! extra cost in the pass moved more of Orbit (210 mm) for 28 vias more; and a line that cannot
+//! move ripping up the nets in its way moved no line. The pass does not reach the epic's target
+//! of 300 mm on RP2350: what is left is round U1, whose front is full, and the soft search
+//! for the nets in a line's way finds none whose rip-up would free it.
+//!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
 //! An agent cannot fix what it cannot see, so [`Routing`] says why each line is left and where
