@@ -209,6 +209,23 @@ fn the_rotation_is_the_footprints_turn_and_a_full_turn_is_none() {
     );
 }
 
+/// A back footprint's file orientation is the turn plus a half (KiCad's flip mirrors in y,
+/// netsmith's in x, #553): a footprint the file turns 300 on the back is turned 120.
+#[test]
+fn the_rotation_of_a_back_footprint_is_the_files_less_a_half_turn() {
+    let pcb = with_fab((20.0, 15.0), 300.0, true);
+    let c = set(vec![want(
+        "u.place.rotation",
+        &["U1"],
+        Measure::Rotation,
+        120.0,
+        120.0,
+    )]);
+    assert!(measure(&c, &pcb)[0].satisfied, "{:#?}", measure(&c, &pcb));
+    let front = with_fab((20.0, 15.0), 300.0, false);
+    assert!(!measure(&c, &front)[0].satisfied);
+}
+
 #[test]
 fn a_module_is_measured_on_the_box_round_all_its_parts() {
     let mut b = Pcb::new(2);

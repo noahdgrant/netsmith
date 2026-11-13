@@ -1902,3 +1902,270 @@ fn a_track_keeps_the_process_space_from_a_hole_s_solder_mask_opening() {
         "{report}"
     );
 }
+
+// ---- a footprint on the back, as KiCad reads it ---------------------------------------------
+
+/// A face of a box: its corners (0 or 1 for each axis) counterclockwise seen from outside, its
+/// outward normal and a direction in it.
+type Face = ([[usize; 3]; 4], [f64; 3], [f64; 3]);
+
+/// A STEP file of one box, `x`, `y` and `z` from the first to the second number, in the model's
+/// own frame (y up, as KiCad's models are drawn).
+fn box_step(x: [f64; 2], y: [f64; 2], z: [f64; 2]) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    let mut add = |s: String| {
+        lines.push(s);
+        format!("#{}", lines.len())
+    };
+    let real = |v: f64| format!("{v:?}");
+    let triple = |p: [f64; 3]| format!("({},{},{})", real(p[0]), real(p[1]), real(p[2]));
+    let corner = |c: [usize; 3]| [x[c[0]], y[c[1]], z[c[2]]];
+    let mut vertices = std::collections::HashMap::new();
+    for c in [0, 1]
+        .into_iter()
+        .flat_map(|i| [0, 1].into_iter().flat_map(move |j| [[i, j, 0], [i, j, 1]]))
+    {
+        let p = add(format!("CARTESIAN_POINT('',{})", triple(corner(c))));
+        vertices.insert(c, add(format!("VERTEX_POINT('',{p})")));
+    }
+    let mut edges: std::collections::HashMap<([usize; 3], [usize; 3]), String> =
+        std::collections::HashMap::new();
+    let faces: [Face; 6] = [
+        (
+            [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]],
+            [0., 0., -1.],
+            [1., 0., 0.],
+        ),
+        (
+            [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+            [0., 0., 1.],
+            [1., 0., 0.],
+        ),
+        (
+            [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],
+            [0., -1., 0.],
+            [1., 0., 0.],
+        ),
+        (
+            [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]],
+            [0., 1., 0.],
+            [1., 0., 0.],
+        ),
+        (
+            [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],
+            [-1., 0., 0.],
+            [0., 1., 0.],
+        ),
+        (
+            [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]],
+            [1., 0., 0.],
+            [0., 1., 0.],
+        ),
+    ];
+    let mut face_ids = Vec::new();
+    for (corners, normal, along) in faces {
+        let mut oriented = Vec::new();
+        for k in 0..4 {
+            let (a, b) = (corners[k], corners[(k + 1) % 4]);
+            let key = if a < b { (a, b) } else { (b, a) };
+            let curve = match edges.get(&key) {
+                Some(c) => c.clone(),
+                None => {
+                    let (s, e) = (corner(key.0), corner(key.1));
+                    let d = [e[0] - s[0], e[1] - s[1], e[2] - s[2]];
+                    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                    let p = add(format!("CARTESIAN_POINT('',{})", triple(s)));
+                    let dir = add(format!(
+                        "DIRECTION('',{})",
+                        triple([d[0] / len, d[1] / len, d[2] / len])
+                    ));
+                    let v = add(format!("VECTOR('',{dir},{})", real(len)));
+                    let line = add(format!("LINE('',{p},{v})"));
+                    let c = add(format!(
+                        "EDGE_CURVE('',{},{},{line},.T.)",
+                        vertices[&key.0], vertices[&key.1]
+                    ));
+                    edges.insert(key, c.clone());
+                    c
+                }
+            };
+            let sense = if key.0 == a { ".T." } else { ".F." };
+            oriented.push(add(format!("ORIENTED_EDGE('',*,*,{curve},{sense})")));
+        }
+        let lp = add(format!("EDGE_LOOP('',({}))", oriented.join(",")));
+        let bound = add(format!("FACE_OUTER_BOUND('',{lp},.T.)"));
+        let p = add(format!(
+            "CARTESIAN_POINT('',{})",
+            triple(corner(corners[0]))
+        ));
+        let n = add(format!("DIRECTION('',{})", triple(normal)));
+        let r = add(format!("DIRECTION('',{})", triple(along)));
+        let axis = add(format!("AXIS2_PLACEMENT_3D('',{p},{n},{r})"));
+        let plane = add(format!("PLANE('',{axis})"));
+        face_ids.push(add(format!("ADVANCED_FACE('',({bound}),{plane},.T.)")));
+    }
+    let shell = add(format!("CLOSED_SHELL('',({}))", face_ids.join(",")));
+    let solid = add(format!("MANIFOLD_SOLID_BREP('box',{shell})"));
+    let mm = add("( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) )".into());
+    let rad = add("( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) )".into());
+    let sr = add("( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() )".into());
+    let unc = add(format!(
+        "UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),{mm},'distance_accuracy_value','')"
+    ));
+    let ctx = add(format!(
+        "( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT(({unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT(({mm},{rad},{sr})) REPRESENTATION_CONTEXT('','') )"
+    ));
+    let o = add("CARTESIAN_POINT('',(0.,0.,0.))".into());
+    let zd = add("DIRECTION('',(0.,0.,1.))".into());
+    let xd = add("DIRECTION('',(1.,0.,0.))".into());
+    let origin = add(format!("AXIS2_PLACEMENT_3D('',{o},{zd},{xd})"));
+    let rep = add(format!(
+        "ADVANCED_BREP_SHAPE_REPRESENTATION('',({solid},{origin}),{ctx})"
+    ));
+    let app = add("APPLICATION_CONTEXT('automotive design')".into());
+    add(format!(
+        "APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,{app})"
+    ));
+    let pc = add(format!("PRODUCT_CONTEXT('',{app},'mechanical')"));
+    let product = add(format!("PRODUCT('box','box','',({pc}))"));
+    let formation = add(format!("PRODUCT_DEFINITION_FORMATION('','',{product})"));
+    let pdc = add(format!(
+        "PRODUCT_DEFINITION_CONTEXT('part definition',{app},'design')"
+    ));
+    let pd = add(format!("PRODUCT_DEFINITION('design','',{formation},{pdc})"));
+    let pds = add(format!("PRODUCT_DEFINITION_SHAPE('','',{pd})"));
+    add(format!("SHAPE_DEFINITION_REPRESENTATION({pds},{rep})"));
+    let mut out = String::from(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('box'),'2;1');\nFILE_NAME('box.step','',(''),(''),'','','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));\nENDSEC;\nDATA;\n",
+    );
+    for (k, line) in lines.iter().enumerate() {
+        out.push_str(&format!("#{}={line};\n", k + 1));
+    }
+    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    out
+}
+
+/// The box, on the board (x right, y down), of the vertices of an ASCII STL file that `keep`
+/// keeps (by their KiCad coordinates: x right, y up, z up from the board's bottom).
+fn stl_box(text: &str, keep: impl Fn([f64; 3]) -> bool) -> Option<Rect> {
+    let points: Vec<Pt> = text
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("vertex "))
+        .map(|v| {
+            let n: Vec<f64> = v.split_whitespace().map(|t| t.parse().unwrap()).collect();
+            [n[0], n[1], n[2]]
+        })
+        .filter(|p| keep(*p))
+        .map(|p| Pt::new(p[0], -p[1]))
+        .collect();
+    let first = *points.first()?;
+    Some(points.iter().fold(Rect::new(first, first), |r, p| {
+        Rect::new(
+            Pt::new(r.min.x.min(p.x), r.min.y.min(p.y)),
+            Pt::new(r.max.x.max(p.x), r.max.y.max(p.y)),
+        )
+    }))
+}
+
+/// A footprint with nothing symmetric about it, on the back and turned a quarter, read by KiCad:
+/// its 3D model (a box of our own, as the stock models are not installed everywhere) and its
+/// pad are where netsmith puts them (`Placed::to_board`). KiCad mirrors a back footprint in y and
+/// netsmith in x, so the file turns the footprint a half more; written at netsmith's own angle,
+/// KiCad drew the model a half turn away from the pads (#553).
+#[test]
+fn kicad_draws_a_back_footprints_model_and_pads_where_netsmith_puts_them() {
+    let Some(cli) = KicadCliExe::locate_runnable() else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    let mut b = board("led");
+    let j1 = b.parts.iter_mut().find(|p| p.refdes == "J1").unwrap();
+    j1.footprint = netsmith_pcb::Footprint::parse(
+        "T:Lopsided",
+        r#"(footprint "Lopsided"
+            (property "Reference" "REF**" (at 0 -3 0) (layer "F.SilkS")
+                (effects (font (size 1 1) (thickness 0.15))))
+            (property "Value" "Lopsided" (at 0 3 0) (layer "F.Fab")
+                (effects (font (size 1 1) (thickness 0.15))))
+            (attr smd)
+            (pad "1" smd rect (at 1.5 0.5) (size 1 0.6) (layers "F.Cu" "F.Mask"))
+            (pad "2" smd rect (at -1 -1.5) (size 0.6 0.6) (layers "F.Cu" "F.Mask"))
+            (model "${KIPRJMOD}/lopsided.step"))"#,
+    )
+    .unwrap();
+    j1.side = netsmith_pcb::Side::Back;
+    j1.rotation = 90.0;
+    let part = b.part("J1").unwrap().clone();
+
+    let base = cli.scratch_base().unwrap_or_else(|e| panic!("{e}"));
+    let dir = TempDir::new_in(&base, "pcb-back-face");
+    // The model's x 1 to 3 mm and y 0.5 to 1.5 mm up: in the footprint's frame (y down), x 1 to
+    // 3 and y -1.5 to -0.5.
+    std::fs::write(
+        dir.join("lopsided.step"),
+        box_step([1.0, 3.0], [0.5, 1.5], [0.0, 1.0]),
+    )
+    .unwrap();
+    std::fs::write(dir.join("b.kicad_pcb"), kicad_pcb(&b)).unwrap();
+    std::fs::write(dir.join("b.kicad_pro"), kicad_pro(&b)).unwrap();
+    let export = |out: &str, extra: &[&str]| -> String {
+        let (board, stl) = (
+            cli.arg(&dir.join("b.kicad_pcb")).unwrap(),
+            cli.arg(&dir.join(out)).unwrap(),
+        );
+        let ran = netsmith_fab::exclusive::run(|| {
+            let mut command = Command::new(cli.exe());
+            command
+                .args(["pcb", "export", "stl", "--user-origin", "0x0mm", "-f", "-o"])
+                .arg(&stl)
+                .args(extra)
+                .arg(&board);
+            command
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(ran.success(), "kicad-cli failed:\n{}", ran.report());
+        std::fs::read_to_string(dir.join(out)).unwrap()
+    };
+    let close = |a: Rect, b: Rect, what: &str| {
+        let d = (a.min.x - b.min.x)
+            .abs()
+            .max((a.min.y - b.min.y).abs())
+            .max((a.max.x - b.max.x).abs())
+            .max((a.max.y - b.max.y).abs());
+        assert!(d < 0.01, "{what}: KiCad's {a:?} against netsmith's {b:?}");
+    };
+
+    // The model hangs under the board; the board's body is above z 0.
+    let model = export("model.stl", &["--component-filter", "J1"]);
+    let theirs = stl_box(&model, |p| p[2] < -0.05).expect("KiCad drew no model under the board");
+    let ours = Rect::new(
+        part.to_board(Pt::new(1.0, -1.5)),
+        part.to_board(Pt::new(3.0, -0.5)),
+    );
+    let ours = Rect::new(
+        Pt::new(ours.min.x.min(ours.max.x), ours.min.y.min(ours.max.y)),
+        Pt::new(ours.min.x.max(ours.max.x), ours.min.y.max(ours.max.y)),
+    );
+    close(theirs, ours, "the model");
+
+    // Pad 1's copper, on the back (below z 0): J1's is the only pad of its net there.
+    let net = b
+        .nets
+        .iter()
+        .find(|n| n.pads.iter().any(|p| p.refdes == "J1" && p.number == "1"))
+        .unwrap()
+        .name
+        .clone();
+    let pads = export(
+        "pads.stl",
+        &[
+            "--no-components",
+            "--include-pads",
+            "--net-filter",
+            net.as_str(),
+        ],
+    );
+    let theirs = stl_box(&pads, |p| p[2] < 0.0).expect("KiCad drew no pad on the back");
+    let pad = part.footprint.pads_numbered("1").next().unwrap();
+    close(theirs, part.pad_bounds(pad), "pad 1");
+}

@@ -294,9 +294,21 @@ pub struct Text {
 pub struct Footprint {
     pub part: String,
     pub at: Pt,
+    /// The orientation as the file writes it, which turns the footprint's frame.
     pub angle: f64,
     /// On the back of the board.
     pub back: bool,
+}
+
+impl Footprint {
+    /// The turn as `.place.rotation` says it, in degrees from 0 to 360. On the front it is the
+    /// file's orientation. On the back it is that less a half turn: netsmith mirrors a back part
+    /// in x in its own frame and then turns it, where KiCad's flip mirrors it in y, which is a
+    /// mirror in x and a half turn (#553).
+    pub fn turn(&self) -> f64 {
+        let half = if self.back { 180.0 } else { 0.0 };
+        (self.angle - half).rem_euclid(360.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
