@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeBig } from './fixtures/big.mjs';
 import { gitHere, makeCompareRepo, resetCompareRepo } from './fixtures/gitrepo.mjs';
 import { writeRefresh } from './fixtures/refresh.mjs';
+import { HANG_MS, whenIdle } from './settle.mjs';
 import { writeTree } from './fixtures/tree.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -328,6 +329,14 @@ async function drive() {
       continue;
     }
     const context = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
+    context.setDefaultTimeout(HANG_MS);
+    context.setDefaultNavigationTimeout(HANG_MS);
+    // A pause of a fixed time is a wager on the machine's speed: a recipe waits on what the page says (settle.mjs) or on the thing it expects.
+    context.on('page', (p) => {
+      p.waitForTimeout = () => {
+        throw new Error('page.waitForTimeout is not allowed: wait for a condition of the page (whenIdle(page) from settle.mjs, or waitForSelector/waitForFunction)');
+      };
+    });
     const page = await context.newPage();
     const problems = [];
     const allowed = [];
@@ -367,19 +376,24 @@ async function drive() {
     console.log(`recipe ${name}`);
     try {
       await page.goto(pageUrl);
-      await page.waitForSelector('.app', { timeout: 10000 });
+      await page.waitForSelector('.app');
       // `.app` is there before the project has loaded (a big one takes a moment): wait for the
-      // tree (the source section is in the page, if hidden), and for the board list when the project has a board, so a recipe starts on a page
-      // that has something in it. A project that never gets a board (a broken one) just moves on.
-      await page.waitForSelector('.sidebar > *', { state: 'attached', timeout: 20000 });
-      await page.waitForSelector('.boardpick select option', { state: 'attached', timeout: 5000 }).catch(() => {});
+      // tree (the source section is in the page, if hidden), and for the page to be done reading the project (its socket open, the
+      // analysis in), so a recipe starts on a page that has something in it. A project that never gets a board (a broken one) just moves on.
+      await page.waitForSelector('.sidebar > *', { state: 'attached' });
+      await whenIdle(page);
       await run(tools);
       const unexpected = problems.filter((p) => !allowed.some((re) => re.test(p)));
       if (unexpected.length) throw new Error(unexpected.join('\n'));
       console.log(`PASS ${name}`);
     } catch (e) {
       failed++;
-      console.log(`FAIL ${name}: ${String(e.message).slice(0, 700)}`);
+      // A wait that outlasted the hang guard says the page hung; it does not say the page was slow.
+      const hung = e?.name === 'TimeoutError';
+      const why = hung
+        ? `HUNG: the page never reached the state this step waits for (no change in ${HANG_MS / 1000} s; the guard is not a speed limit): ${String(e.message).split('\n')[0]}`
+        : String(e.message);
+      console.log(`FAIL ${name}: ${why.slice(0, 700)}`);
       try {
         await tools.shot('failure');
       } catch {

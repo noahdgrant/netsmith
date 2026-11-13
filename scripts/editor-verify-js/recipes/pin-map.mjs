@@ -3,6 +3,7 @@
 // Select the part in the schematic and read the panel's rows; run `netsmith lock --update` in the project as a person would, and the
 // lock panel says it is current without the page being touched (the lock file is watched); delete it and it says it is absent; and a
 // request nothing offers shows the check's own message in the pin map. The editor writes neither file: the recipe checks their bytes.
+import { Hung, whenIdle } from '../settle.mjs';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +16,10 @@ export async function run({ page, shot, step, expect, project, binary }) {
   const pinsBefore = fs.readFileSync(src('main.pins.toml'), 'utf8');
   const lockBefore = fs.readFileSync(src('main.lock.toml'), 'utf8');
   const detail = () => page.evaluate(async () => (await fetch('/api/board?name=PinMapBoard', { cache: 'no-store' })).json());
-  const until = (fn, what) => page.waitForFunction(fn, null, { timeout: 15000 }).catch(() => expect(false, what));
+  const until = (fn, what) =>
+    page.waitForFunction(fn, null).catch((e) => {
+      throw e.name === 'TimeoutError' ? new Hung(what) : e;
+    });
 
   await page.waitForSelector('.schematic[data-board="PinMapBoard"]');
   step('find the microcontroller by its path in the source, not by a designator');
@@ -78,7 +82,7 @@ export async function run({ page, shot, step, expect, project, binary }) {
 
   step('`netsmith lock --update` in the project, as a person runs it: the page says the lock is current without being touched');
   execFileSync(binary, ['lock', '--update'], { cwd: project, stdio: 'pipe' });
-  await page.waitForSelector('[data-testid="pick-lock-state"][data-state="current"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="pick-lock-state"][data-state="current"]');
   state = await lock();
   expect(state.lines.length === 0, 'a current lock has no diff');
   expect((await page.locator('[data-testid="pick-lock"]').count()) === 0, 'a lock that is current is folded');
@@ -88,16 +92,16 @@ export async function run({ page, shot, step, expect, project, binary }) {
 
   step('delete the lock: it is absent, and the editor does not write it back');
   fs.rmSync(src('main.lock.toml'));
-  await page.waitForSelector('[data-testid="pick-lock-state"][data-state="absent"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="pick-lock-state"][data-state="absent"]');
   await page.waitForSelector('[data-testid="pick-lock"]');
   expect((await page.locator('.lock-says').innerText()).includes('netsmith build'), 'it says what writes the lock');
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   expect(!fs.existsSync(src('main.lock.toml')), 'the lock is still absent');
   await shot('lock-absent');
 
   step('a request nothing offers shows the check\'s message in the pin map, with the others still there');
   fs.writeFileSync(src('main.nsm'), original.replace('.spare ~ .pull.a', '.nope: .u.GPIOO\n    .nope ~ .pull.b\n    .spare ~ .pull.a'));
-  await page.waitForSelector('[data-testid="pin-map"] .pm-row[data-request="nope"] .pm-msg', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="pin-map"] .pm-row[data-request="nope"] .pm-msg');
   list = await rows();
   expect(list.map((r) => r.request).join() === 'nope,spare,status,vbat', `four requests (${list.map((r) => r.request)})`);
   expect(byName('nope').pin === '' && byName('nope').message.includes('`nope` asks for GPIOO on `u` (`Zmcu4`), and no pin of `Zmcu4` offers it'), `the check's own words (${byName('nope').message})`);

@@ -3,6 +3,7 @@
 // table of ports that never wraps and never overflows, long tables folded into "22 ports", the
 // wires between two modules grouped ("10 nets", opening on a click), every wire in a free channel,
 // every label on a clear spot, a click lighting what feeds a module and what it feeds.
+import { whenIdle } from '../settle.mjs';
 import { edgesOf, nodesOf, routeProblems, sizeSteps } from '../flow-helpers.mjs';
 
 export const fixture = 'system_view';
@@ -12,11 +13,11 @@ export async function run({ page, shot, step, expect, section }) {
   // sit on the cards): zoom in to see it, then fit again.
   const zoomIn = async (scope) => {
     for (let i = 0; i < 2; i++) await page.locator(`${scope} .zoombar button[title^="Zoom in"]`).click();
-    await page.waitForTimeout(250);
+    await whenIdle(page);
   };
   const fitAgain = async (scope) => {
     await page.locator(`${scope} .zoombar button`, { hasText: 'Fit' }).click();
-    await page.waitForTimeout(250);
+    await whenIdle(page);
   };
   const nodes = () => nodesOf(page, '.sec-system');
   const lit = async () => (await nodes()).filter((n) => !/\bdim\b/.test(n.cls)).map((n) => n.id).sort();
@@ -26,7 +27,7 @@ export async function run({ page, shot, step, expect, section }) {
     step(`the drawing at ${w} x ${h}`);
     await section('system');
     await page.waitForSelector('.sec-system .pt-node');
-    await page.waitForTimeout(400);
+    await whenIdle(page);
     const all = await nodes();
     expect(all.length === 13, `a card for each of the 13 modules (${all.map((n) => n.id).join(' ')})`);
 
@@ -120,7 +121,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.pt-edge.hot.down').count()) >= 8 && (await page.locator('.pt-edge.hot.up').count()) === 0, 'only in the downstream tint');
   // A graph that would need less than 75 % to fit opens at 75 % (round 5: below it the text is under 8 px), so all the cards are in the window after Fit.
   await page.locator('.sec-system .zoombar button', { hasText: 'Fit' }).click();
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect((await page.locator('.sec-system .pt-minimap').count()) === 0, 'no overview while all the cards are in the window: it covered the cards');
   await zoomIn('.sec-system');
   expect((await page.locator('.sec-system .pt-minimap rect[class*="hot-down"]').count()) >= 9, 'zoomed in, the lit cards are in the minimap');

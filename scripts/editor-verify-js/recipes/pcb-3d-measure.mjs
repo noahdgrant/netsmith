@@ -4,6 +4,7 @@
 // camera moves and when the tool is left; a picked part shows its height above its face and its
 // margin to the height limit above it (the fixture's tall part is 6 mm over the lid's 3 mm); Esc
 // leaves the tool and the clear-all control removes the measurements.
+import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fresh, openPcb, partOf, scene } from '../pcb-helpers.mjs';
@@ -37,13 +38,13 @@ export async function run(tools) {
   const s = await scene(page, BOARD);
   const tall = partOf(s, 'tall');
   await page.getByTestId('pcb-3d-toggle').click();
-  await page.waitForSelector(`${HOST}[data-ready]`, { timeout: 30000 });
+  await page.waitForSelector(`${HOST}[data-ready]`);
 
   step('M turns the measure tool on: its panel says what to do');
   await page.locator(HOST).focus();
   await page.keyboard.press('t');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'top', HOST);
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   await page.keyboard.press('m');
   await page.waitForSelector('[data-testid=measure-panel]');
   expect((await page.getByTestId('tool-measure').getAttribute('aria-pressed')) === 'true', 'the Measure button is pressed');
@@ -54,23 +55,25 @@ export async function run(tools) {
   for (const p of padsOf(s)) {
     const at = await ask(page, 'toScreen', p.at);
     await page.mouse.move(at.x + 4, at.y + 3);
-    const snap = await page
-      .waitForSelector('[data-testid=measure-snap]', { timeout: 1500 })
-      .then(() => page.locator('[data-testid=measure-snap]').evaluate((e) => ({ kind: e.dataset.kind, text: e.innerText })))
-      .catch(() => null);
+    // The view has handled the move once the page is idle: the snap target is then there or it is not (a pad under a body has none).
+    await whenIdle(page);
+    const snap = await page.evaluate(() => {
+      const e = document.querySelector('[data-testid=measure-snap]');
+      return e ? { kind: e.dataset.kind, text: e.innerText } : null;
+    });
     if (snap?.kind === 'pad' && snap.text.includes(`Pad ${p.part.refdes}.${p.pad.number}`)) snapping.push({ ...p, screen: at });
   }
   let found = [];
   for (const x of snapping) for (const y of snapping) if (x !== y && (!found.length || Math.hypot(x.at[0] - y.at[0], x.at[1] - y.at[1]) > Math.hypot(found[0].at[0] - found[1].at[0], found[0].at[1] - found[1].at[1]))) found = [x, y];
   expect(found.length === 2, `pads snap where nothing stands over them (${snapping.map((f) => `${f.part.refdes}.${f.pad.number}`).join(', ')})`);
   await page.mouse.move(found[0].screen.x + 4, found[0].screen.y + 3);
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   await shot('measure-snap-pad');
 
   step('two clicks measure from one pad centre to the other: the distance and dx, dy, dz, as the 2D scene has them');
   for (const f of found) {
     await page.mouse.move(f.screen.x + 3, f.screen.y - 2);
-    await page.waitForTimeout(80);
+    await whenIdle(page);
     await page.mouse.click(f.screen.x + 3, f.screen.y - 2);
   }
   await page.waitForSelector('[data-testid=measure-label]');
@@ -87,7 +90,7 @@ export async function run(tools) {
   step('the measurement stays when the camera moves');
   await page.keyboard.press('i');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'iso', HOST);
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await page.getByTestId('measure-label').count()) === 1, 'the label is still there in the isometric view');
   await shot('measure-pads');
 
@@ -116,17 +119,17 @@ export async function run(tools) {
   step('the light theme');
   await page.keyboard.press('t');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'top', HOST);
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   for (const f of found) {
     const p = await ask(page, 'toScreen', f.at);
     await page.mouse.move(p.x + 3, p.y - 2);
-    await page.waitForTimeout(80);
+    await whenIdle(page);
     await page.mouse.click(p.x + 3, p.y - 2);
   }
   await page.keyboard.press('i');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'iso', HOST);
   await theme(page, 'Light', 'light');
-  await page.waitForTimeout(1200);
+  await whenIdle(page);
   const relabel = await page.getByTestId('measure-label').innerText();
   expect(relabel.includes(want), `measured again in the light theme: ${relabel.replace(/\n/g, ' | ')}`);
   await shot('measure-light');

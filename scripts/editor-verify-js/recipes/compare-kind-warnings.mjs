@@ -3,6 +3,7 @@
 // disk and between two refs. It needs `launch --git` (see compare.mjs and fixtures/gitrepo.mjs). The kind is changed in the
 // work tree (a header becomes a socket); the warnings are on two branches the recipe makes, `warn-wide` and `warn-narrow`, a
 // small board whose supply is drawn with a wide and with a narrow track (IPC-2221, ADR 0036), and removes at the end.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -69,11 +70,10 @@ export async function run({ page, shot, step, expect, project, resetRepo, allowC
     await page.reload();
     await page.waitForSelector('.sidebar > *', { state: 'attached' });
     await page.setViewportSize({ width: 1920, height: 1080 });
-    const settle = (ms = 300) => page.waitForTimeout(ms);
     const text = (sel) => page.locator(sel).first().innerText();
     const visible = (sel) => page.locator(`.section:not(.away) ${sel}`);
     const summary = async () => {
-      await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 60000 });
+      await page.waitForSelector('[data-testid="cmp-summary"]');
       return text('[data-testid="cmp-summary"]');
     };
     const choose = async (slot, name) => {
@@ -82,10 +82,10 @@ export async function run({ page, shot, step, expect, project, resetRepo, allowC
       if (slot) await page.click(`[data-testid="ref-slot-${slot}"]`);
       await page.locator(`[data-testid="ref-item"][data-name="${name}"]`).click();
     };
-    const sentenceIs = (re) => page.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), re, { timeout: 60000 });
+    const sentenceIs = (re) => page.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), re);
     const tab = async (id) => {
       await page.click(`.cmp-tab[data-tab="${id}"]`);
-      await settle(150);
+      await whenIdle(page);
     };
     const tile = async (id) => (await text(`[data-testid="tile-${id}"]`)).replace(/\s+/g, ' ');
 
@@ -109,7 +109,7 @@ export async function run({ page, shot, step, expect, project, resetRepo, allowC
     await shot('kind-changed');
     // A part whose value changed and kind did not has no such pill.
     fs.writeFileSync(main, fs.readFileSync(main, 'utf8').replace('.r1: Resistor {}', '.r1: Resistor { .resistance &= 150ohm +/- 1% }'));
-    await page.waitForFunction(() => document.querySelectorAll('[data-testid="cmp-row"]').length >= 3, null, { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="cmp-row"]').length >= 3, null);
     const r1 = page.locator('[data-testid="cmp-row"]', { has: page.locator('.cr-title', { hasText: /^r1$/ }) });
     expect(/Resistor/.test(await r1.innerText()) && (await r1.locator('[data-testid="kind-changed"]').count()) === 0, 'a row says what the part is, and no kind changed for a value');
     fs.writeFileSync(main, fs.readFileSync(main, 'utf8').replace('.power_in: Socket1x2', '.power_in: Header1x2').replace('.r1: Resistor { .resistance &= 150ohm +/- 1% }', '.r1: Resistor {}'));
@@ -132,7 +132,7 @@ export async function run({ page, shot, step, expect, project, resetRepo, allowC
     expect((await page.locator('[data-testid="cmp-row"][data-kind="problem"] .cr-title').allInnerTexts()).some((t) => /IPC-2221/.test(t)), 'with the guideline that was broken');
     await shot('warnings-new');
     await page.click('[data-testid="sev-warning"]');
-    await settle(150);
+    await whenIdle(page);
     expect((await page.locator('[data-testid="cmp-row"]').count()) === 2, 'the filter leaves the two warnings');
     // the same triangle and the same colour as everywhere else a warning is shown (warning-marks)
     const mark = await page.evaluate(() => {
@@ -146,7 +146,7 @@ export async function run({ page, shot, step, expect, project, resetRepo, allowC
     });
     expect(mark.n === 2 && mark.same, `the rows of the warnings carry the warning triangle in the --warning colour (${mark.n} icons)`);
     await page.click('[data-testid="sev-error"]');
-    await settle(150);
+    await whenIdle(page);
     expect((await page.locator('[data-testid="cmp-row"]').count()) === 0 && /No errors are new or resolved/.test(await text('.cmp-scroll')), 'no error is new: said, with the way back');
     await page.click('[data-testid="sev-all"]');
 
@@ -166,6 +166,5 @@ export async function run({ page, shot, step, expect, project, resetRepo, allowC
     for (const b of ['warn-wide', 'warn-narrow']) tryGit('branch', '-D', b);
     resetRepo();
     await page.goto(url).catch(() => {});
-    await page.waitForSelector('.sidebar > *', { state: 'attached' }).catch(() => {});
   }
 }

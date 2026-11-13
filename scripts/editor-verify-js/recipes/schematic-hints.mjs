@@ -67,7 +67,7 @@ export async function run({ page, shot, step, expect, project }) {
     const box = (ref) => document.querySelector(`.schematic .part[data-ref="${ref}"]`)?.getBoundingClientRect();
     const [p, q] = [box(a), box(b)];
     return p && q && Math.round((p.left + p.width / 2) - (q.left + q.width / 2)) !== x;
-  }, [connector.refdes, resistor.refdes, before.x], { timeout: 15000 });
+  }, [connector.refdes, resistor.refdes, before.x]);
   const after = await gap();
   expect(after.x !== before.x, `the page redrew, and the connector is ${after.x - before.x} px from where it was, relative to the resistor`);
   await shot('moved');
@@ -75,7 +75,7 @@ export async function run({ page, shot, step, expect, project }) {
   step('a file edited by another program is read too, and a finding for an entry that matches nothing is a note at its line');
   const text = 'version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\n\n[LedBoard.parts.gone]\ndx = 1.27\ndy = 0\n\n[Retired.parts.x]\ndx = 1.27\ndy = 0\n';
   fs.writeFileSync(file, text);
-  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout'), null, { timeout: 15000 });
+  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout'), null);
   const lineOf = (needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
   const found = await layoutProblems();
   expect(found.length === 2 && found.every((p) => p.severity === 'note' && p.at.file === 'src/main.sch.toml'), `two notes at the file (${found.map((p) => p.message).join(' | ')})`);
@@ -91,7 +91,7 @@ export async function run({ page, shot, step, expect, project }) {
   step('a file that does not read: a warning in the dock at its line, and the drawing is the one without a file');
   const broken = 'version = 1\n\n[LedBoard.parts.r1]\ndx = 25.4\ndy = 0\nspin = 3\n';
   fs.writeFileSync(file, broken);
-  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout' && p.severity === 'warning'), null, { timeout: 15000 });
+  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout' && p.severity === 'warning'), null);
   expect((await svg()) === drawingBefore, 'the drawing is byte for byte the one without a file');
   const bad = (await layoutProblems())[0];
   expect(bad.at.file === 'src/main.sch.toml' && bad.at.line === 6 && bad.message.includes('the file is ignored'), `at line ${bad.at.line}: ${bad.message}`);
@@ -117,13 +117,13 @@ export async function run({ page, shot, step, expect, project }) {
 
   step('deleting the file brings the first drawing back');
   fs.rmSync(file);
-  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.every((p) => p.stage !== 'layout'), null, { timeout: 15000 });
+  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.every((p) => p.stage !== 'layout'), null);
   expect((await svg()) === drawingBefore, 'the drawing is byte for byte the first one');
   await page.waitForFunction(([a, b, x]) => {
     const box = (ref) => document.querySelector(`.schematic .part[data-ref="${ref}"]`)?.getBoundingClientRect();
     const [p, q] = [box(a), box(b)];
     return p && q && Math.round((p.left + p.width / 2) - (q.left + q.width / 2)) === x;
-  }, [connector.refdes, resistor.refdes, before.x], { timeout: 15000 });
+  }, [connector.refdes, resistor.refdes, before.x]);
   expect(!(await get()).exists, 'GET says there is no file');
   await shot('back');
 }

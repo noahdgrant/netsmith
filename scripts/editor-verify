@@ -18,6 +18,11 @@ if [ "${1:-}" = slices ]; then
     shift
     exec node "$here/editor-verify-js/slices.mjs" "$@"
 fi
+# `waits` (scripts/ci-recipe-slices) reads the text of the recipes and needs no packages.
+if [ "${1:-}" = waits ]; then
+    shift
+    exec node "$here/editor-verify-js/waits.mjs" "$@"
+fi
 # `doctor` reports a missing Playwright; the other commands install it.
 if [ ! -d "$here/editor-verify-js/node_modules" ] && [ "${1:-}" != "doctor" ]; then
     (cd "$here/editor-verify-js" && npm ci --no-audit --no-fund >&2)

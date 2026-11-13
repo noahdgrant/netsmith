@@ -2,12 +2,13 @@
 // symbol for a pin's kind, only the side it is on (an output goes right, an input left, a
 // bidirectional pin to the shorter side), so a `tri_state` pin is on the right with the outputs
 // and a mark on it names the kind, like the marks of the other kinds.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'tri_state';
 
 export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.schematic[data-board="TriStateBoard"]');
   await page.waitForSelector('.schematic .part[data-ref="U2"]');
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   await shot('boxes');
 
   step('read the side of each pin name from the drawing');

@@ -18,7 +18,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.locator('.cm-line', { hasText: '.r1: Resistor {}' }).click();
   await page.keyboard.press('Home');
   await page.keyboard.type('.oops: Missing\n    ');
-  await page.waitForSelector('.cm-lintRange-error', { timeout: 10000 });
+  await page.waitForSelector('.cm-lintRange-error');
   expect(true, 'a squiggle under the mistake, before anything was saved');
   await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'));
   expect(true, 'the status bar counts one error');
@@ -37,7 +37,7 @@ export async function run({ page, shot, step, expect, project, section }) {
 
   step('delete the mistake: the squiggle goes');
   for (let i = 0; i < 20; i++) await page.keyboard.press('Control+z');
-  await page.waitForFunction(() => !document.querySelector('.cm-lintRange-error'), null, { timeout: 10000 });
+  await page.waitForFunction(() => !document.querySelector('.cm-lintRange-error'), null);
   expect(true, 'no squiggle');
 
   step('add a comment and save with Ctrl+S');
@@ -63,12 +63,12 @@ export async function run({ page, shot, step, expect, project, section }) {
   step('another program changes the file: the page reads it again');
   await page.locator('.tab', { hasText: 'main.nsm' }).click();
   fs.writeFileSync(file, `// changed on disk\n${fs.readFileSync(file, 'utf8')}`);
-  await page.waitForFunction(() => document.querySelector('.cm-content')?.textContent.startsWith('// changed on disk'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.cm-content')?.textContent.startsWith('// changed on disk'), null);
   expect(true, 'the new text in the editor');
 
   step('a mistake saved to disk shows in the page and keeps the last good drawing');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Resistor {}', '.r1: Nothing {}'));
-  await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'), null);
   await section('schematic');
   await page.waitForSelector('.section:not(.away) .stale-strip');
   const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
@@ -79,6 +79,6 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.locator('.problem.error').first().click();
   await page.waitForSelector('.cm-lintRange-error');
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('.r1: Nothing {}', '.r1: Resistor {}'));
-  await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('0'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('0'), null);
   expect(true, 'the mistake cleared once fixed on disk');
 }

@@ -1,5 +1,6 @@
 // The BOM's dates and stale mark, and "Refresh prices" (ADR 0039), against stand-ins for the
 // LCSC endpoint (JLCPCB is not asked). No network is used.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'catalog_refresh';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -32,10 +33,10 @@ export async function run({ page, shot, step, expect, section }) {
   step('check for real');
   await page.getByLabel('preview only').uncheck();
   await page.getByRole('button', { name: 'Check parts against LCSC' }).click();
-  await page.waitForSelector('.refresh-result .chip:has-text("checked dates written")', { timeout: 30000 });
+  await page.waitForSelector('.refresh-result .chip:has-text("checked dates written")');
   // The price, stock and their date are the hand-entered ones: LCSC's price 0.0205 and stock 0
   // were not written, and the row is as stale as it was.
-  await page.waitForTimeout(1500);
+  await whenIdle(page);
   const row = await resistor.innerText();
   expect(row.includes('$0.012') && row.includes('42') && row.includes('2026-06-01'), `the BOM still shows the hand-entered numbers: ${row}`);
   expect(!row.includes('0.0205') && (await resistor.locator('.checked.stale').count()) === 1, 'LCSC\'s price and stock were not written, so the row is still stale');

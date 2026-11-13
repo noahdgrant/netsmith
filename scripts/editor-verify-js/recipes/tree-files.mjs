@@ -1,6 +1,7 @@
 // The file tree's file operations, on the invented greenhouse project (`launch --fixture tree`):
 // make a folder and files (with a starter), see them in the tree, open one, rename it, delete
 // it, by the toolbar, the right-click menu and the keys. The files are checked on the disk too.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -11,7 +12,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   const disk = (p) => path.join(project, p);
   const press = async (key) => {
     await page.keyboard.press(key);
-    await page.waitForTimeout(120);
+    await whenIdle(page);
   };
   const analysisProblems = (file) => page.evaluate(async (f) => {
     const a = await (await fetch('/api/analysis')).json();
@@ -22,7 +23,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   await page.setViewportSize({ width: 1366, height: 768 });
   await section('source');
   await page.waitForSelector('.ft-row[role=treeitem]');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
 
   step('the toolbar has New file and New folder');
   expect((await page.locator('button[aria-label="New file"]').isEnabled()) && (await page.locator('button[aria-label="New folder"]').isEnabled()), 'both buttons are there and enabled');
@@ -197,8 +198,8 @@ export async function run({ page, shot, step, expect, section, project }) {
   expect((await page.locator('.tab:has-text("hush.nsm")').count()) === 0, 'and its tab is closed');
   // The page puts the focus on the row above the deleted one once the list is drawn again (a few frames after the row is gone),
   // so the check waits for that and does not read the focus in the frame the row left.
-  const focused = await page.waitForFunction(() => !!document.activeElement?.closest('[role=tree]'), null, { timeout: 5000 }).then(() => true, () => false);
-  expect(focused, 'the focus stays in the tree');
+  await page.waitForFunction(() => !!document.activeElement?.closest('[role=tree]'));
+  expect(true, 'the focus stays in the tree');
 
   step('a top-level file needs the box ticked; the manifest cannot be deleted');
   await row('f:src/irrigation.nsm').focus();
@@ -236,7 +237,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   await page.setViewportSize({ width: 2000, height: 1000 });
   await page.locator('button[aria-label="New folder"]').click();
   await page.keyboard.type('proposed_2');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   await shot('new-folder-2000x1000');
   await press('Enter');
   await page.waitForSelector('.ft-row[data-id="d:module:proposed_2"]');

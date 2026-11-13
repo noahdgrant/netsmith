@@ -3,6 +3,7 @@
 // to the working tree and a second ref that does not analyse. It needs `launch --git` (see compare.mjs and
 // fixtures/gitrepo.mjs): `main` is the earlier design, `feature` the project as launched, `broken` has a typo in a type, and
 // an untracked NOTES.md makes the work tree differ from `feature`, which two refs must not show.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 export const needs = 'git';
 
@@ -12,11 +13,10 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.reload();
   await page.waitForSelector('.sidebar > *', { state: 'attached' });
   await page.setViewportSize({ width: 1920, height: 1080 });
-  const settle = (ms = 300) => page.waitForTimeout(ms);
   const text = (sel) => page.locator(sel).first().innerText();
   const visible = (sel) => page.locator(`.section:not(.away) ${sel}`);
   const summary = async () => {
-    await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 60000 });
+    await page.waitForSelector('[data-testid="cmp-summary"]');
     return text('[data-testid="cmp-summary"]');
   };
   const openPicker = async (slot) => {
@@ -30,7 +30,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   };
   const tab = async (id) => {
     await page.click(`.cmp-tab[data-tab="${id}"]`);
-    await settle(150);
+    await whenIdle(page);
   };
   const titles = () => page.locator('[data-testid="cmp-row"] .cr-title').allInnerTexts();
   const marksOnPage = () => page.evaluate(() => document.querySelectorAll('[class*="cmp-changed"], [class*="cmp-added"], [class*="cmp-net-"]').length);
@@ -64,7 +64,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
 
   step('feature as the second ref: the same circuit changes, read from two commits, and the notes are not there');
   await page.locator('[data-testid="ref-item"][data-name="feature"]').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="cmp-against"]'), null, { timeout: 60000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="cmp-against"]'), null);
   const two = await summary();
   expect(/1 part added, 1 removed, 2 values changed/.test(two) && /headroom shrank from 70 mA to 50 mA/.test(two), `the sentence of two refs (${two})`);
   expect((await text('[data-testid="ref-button"]')).replace(/\s+/g, ' ').trim() === 'vs main and feature', 'the button names both refs');
@@ -86,7 +86,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   expect((await toggle.getAttribute('aria-disabled')) === 'true' && (await toggle.getAttribute('aria-pressed')) === 'false', 'the switch of a view is off, and says so');
   expect(/files on disk/.test((await toggle.getAttribute('data-tip')) ?? ''), 'its tooltip says the views draw the files on disk');
   await toggle.click({ force: true });
-  await settle(300);
+  await whenIdle(page);
   expect((await marksOnPage()) === 0 && !(await page.evaluate(() => document.documentElement.classList.contains('cmp-on'))), 'a click marks nothing');
   await section('compare');
   await page.waitForSelector('[data-testid="cmp-summary"]');
@@ -96,7 +96,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   const r1 = page.locator('[data-testid="cmp-row"]', { has: page.locator('.cr-title', { hasText: /^r1$/ }) });
   await r1.locator('[data-testid="link-head"]').click();
   await page.waitForSelector('[data-testid="diff-panel"]');
-  await settle(500);
+  await whenIdle(page);
   const side = await text('[data-testid="diff-head-side"]');
   expect(/^[0-9a-f]{7}$/.test(side.trim()), `the head side is a commit (${side})`);
   const diffText = await page.locator('[data-testid="diff-side"]').innerText();
@@ -111,17 +111,17 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.waitForSelector('.sidebar > *', { state: 'attached' });
   await page.keyboard.press('8');
   await summary();
-  await page.waitForSelector('[data-testid="cmp-against"]', { timeout: 60000 });
+  await page.waitForSelector('[data-testid="cmp-against"]');
   expect((await text('[data-testid="ref-button"]')).replace(/\s+/g, ' ').trim() === 'vs main and feature', 'the button still names both refs');
 
   step('the other way round: feature against main renames the net back');
-  const buttonSays = (re) => page.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-testid="ref-button"]')?.innerText?.replace(/\s+/g, ' ') ?? ''), re, { timeout: 60000 });
+  const buttonSays = (re) => page.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-testid="ref-button"]')?.innerText?.replace(/\s+/g, ' ') ?? ''), re);
   await choose('against', 'main');
   await buttonSays('vs main and main');
   expect(/No circuit changes/.test(await summary()), 'a ref against itself changes nothing');
   await choose('base', 'feature');
   await buttonSays('vs feature and main');
-  await page.waitForFunction(() => !/No circuit changes/.test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), null, { timeout: 60000 });
+  await page.waitForFunction(() => !/No circuit changes/.test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), null);
   await tab('nets');
   const nets = await titles();
   expect(nets.includes('VOUT'), `the net that was 3V3 is now VOUT (${nets.join(', ')})`);
@@ -130,7 +130,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await choose('base', 'main');
   await buttonSays('vs main and main');
   await choose('against', 'broken');
-  await page.waitForSelector('[data-testid="cmp-broken"]', { timeout: 60000 });
+  await page.waitForSelector('[data-testid="cmp-broken"]');
   const broken = await text('[data-testid="cmp-error"]');
   expect(/does not analyse at/.test(broken) && /Resistr/.test(broken), `it says why (${broken})`);
   await shot('second-ref-broken');
@@ -138,8 +138,8 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   step('the working tree again: the notes come back, the views can be marked');
   await openPicker('against');
   await page.click('[data-testid="ref-worktree"]');
-  await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 60000 });
-  await settle();
+  await page.waitForSelector('[data-testid="cmp-summary"]');
+  await whenIdle(page);
   expect((await text('[data-testid="ref-button"]')).replace(/\s+/g, ' ').trim() === 'vs main', 'one ref again');
   expect((await page.locator('.cmp-head [data-testid="changes-switch"]').count()) === 1, 'the switch is back');
   await tab('source');

@@ -2,6 +2,7 @@
 // (Back returns); put the cursor on a declaration and the part is marked in the drawing. The notes (doc comments and `==` relations drawn as
 // cards, ADR 0060) are the page's: its colours in all four themes, a hover, a click that opens the source at the line they are written at,
 // and no overlap with a part.
+import { whenIdle } from '../settle.mjs';
 import { THEMES, contrastOf, noteFacts, overlaps, partBoxes, setTheme, visibleHalos, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'two_boards';
@@ -33,14 +34,11 @@ export async function run({ page, shot, step, expect, section }) {
       return { sel, selRgb, stroke: body.stroke, dash: body.strokeDasharray, width: body.strokeWidth, haloStroke: halo.stroke, haloFill: halo.fill, textFill: text.fill, classes: part.getAttribute('class') };
     });
   // The halo's stroke and fill are CSS transitions (style.css, --dur-fast): a stroke goes from `none` to a colour at the
-  // middle of one, so a read on the first frame of the pick saw `none` on a slow runner (CI). Read when they have run;
-  // a halo that never comes is then what the next line reports.
-  await page
-    .waitForFunction(() => {
-      const halo = document.querySelector('.schematic .part[data-ref="R1"]')?.previousElementSibling;
-      return !!halo && halo.getAnimations().length === 0 && getComputedStyle(halo).stroke !== 'none';
-    }, null, { timeout: 5000 })
-    .catch(() => {});
+  // middle of one, so a read on the first frame of the pick saw `none` on a slow runner (CI). Read when they have run.
+  await page.waitForFunction(() => {
+    const halo = document.querySelector('.schematic .part[data-ref="R1"]')?.previousElementSibling;
+    return !!halo && halo.getAnimations().length === 0 && getComputedStyle(halo).stroke !== 'none';
+  });
   const picked = await wear();
   expect(picked.haloStroke === picked.selRgb, `a picked part has a halo in the selection's blue, behind it (${picked.haloStroke})`);
   expect(picked.dash === 'none' && picked.stroke !== picked.selRgb && picked.textFill !== picked.selRgb, `and its own strokes and labels are as drawn: not recoloured, not dashed (${picked.stroke}, ${picked.dash})`);
@@ -98,7 +96,7 @@ export async function run({ page, shot, step, expect, section }) {
   const original = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
   for (const theme of THEMES) {
     await setTheme(page, theme);
-    await page.waitForTimeout(250);
+    await whenIdle(page);
     const f = await noteFacts(page);
     const min = theme.startsWith('hc') ? 7 : 4.5;
     for (const n of f.notes) {
@@ -125,7 +123,7 @@ export async function run({ page, shot, step, expect, section }) {
   step('the pointer over a note lifts its card and lights nothing else');
   const rest = await page.locator('.schematic g.note .note-frame').first().evaluate((e) => ({ width: getComputedStyle(e).strokeWidth, filter: getComputedStyle(e).filter }));
   await page.locator('.schematic g.note').first().hover();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const lifted = await page.locator('.schematic g.note .note-frame').first().evaluate((e) => ({ width: getComputedStyle(e).strokeWidth, filter: getComputedStyle(e).filter }));
   expect(parseFloat(lifted.width) > parseFloat(rest.width) && lifted.filter !== 'none' && rest.filter === 'none', `the frame is heavier and has a soft shadow (${rest.width} ${rest.filter} to ${lifted.width})`);
   expect((await page.locator('svg.schematic .hover-lit').count()) === 0 && !(await page.evaluate(() => document.querySelector('svg.schematic').classList.contains('has-on'))), 'no part is lit, nothing is dimmed');
@@ -138,7 +136,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator(`.schematic g.note[data-at="${target.at}"]`).click();
   await page.waitForSelector('.section.sec-source:not(.away)');
   const written = file.split('\n')[Number(target.at.split(':').pop()) - 1].trim();
-  await page.waitForFunction((t) => document.querySelector('.cm-activeLine')?.textContent.trim() === t, written, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction((t) => document.querySelector('.cm-activeLine')?.textContent.trim() === t, written);
   const active = (await page.locator('.cm-activeLine').innerText()).trim();
   expect(active === written && written.length > 0, `the cursor is on line ${target.at} (${written.slice(0, 50)})`);
   expect((await page.locator('.selchip').count()) === 0, 'no selection chip: a note is not a part');
@@ -186,7 +184,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(await page.evaluate(() => document.activeElement?.matches?.('g.note') ?? false), 'a note has the focus');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Shift+Tab');
-  await page.waitForTimeout(350);
+  await whenIdle(page);
   const ring = await page.evaluate(() => {
     const n = document.activeElement;
     const frame = n?.querySelector?.('.note-frame');
@@ -242,20 +240,20 @@ export async function run({ page, shot, step, expect, section }) {
   const percentBefore = await zoomPercent(page);
   for (let i = 0; i < 4; i++) await page.keyboard.press('+');
   await page.waitForFunction((p0) => Number(document.querySelector('.zoombar span:not(.zsep)')?.textContent.replace('%', '')) > p0 * 1.5, percentBefore);
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const zoomedIn = await ringNow();
   expect(zoomedIn && zoomedIn.frameWidth > before.frameWidth * 1.5, `the drawing is larger (note ${before?.frameWidth.toFixed(0)} to ${zoomedIn?.frameWidth.toFixed(0)} px wide)`);
   expect(zoomedIn.shown && zoomedIn.gaps.every((g) => Math.abs(g - 2) < 0.75) && zoomedIn.width === 2, `zoomed in the ring is still 2 px and 2 px clear on every side (${zoomedIn.gaps.map((g) => g.toFixed(2)).join(', ')} px)`);
   await shot('note-focus-ring-zoomed-in');
   for (let i = 0; i < 9; i++) await page.keyboard.press('-');
   await page.waitForFunction((p0) => Number(document.querySelector('.zoombar span:not(.zsep)')?.textContent.replace('%', '')) < p0 * 0.8, percentBefore);
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const zoomedOut = await ringNow();
   expect(zoomedOut && zoomedOut.frameWidth < before.frameWidth * 0.8, `the drawing is smaller (note ${zoomedOut?.frameWidth.toFixed(0)} px wide)`);
   expect(zoomedOut.shown && zoomedOut.gaps.every((g) => Math.abs(g - 2) < 0.75) && zoomedOut.width === 2, `zoomed out the ring is still 2 px and 2 px clear on every side (${zoomedOut.gaps.map((g) => g.toFixed(2)).join(', ')} px)`);
   await shot('note-focus-ring-zoomed-out');
   for (let i = 0; i < 5; i++) await page.keyboard.press('+');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const second = await page.evaluate(() => {
     const all = [...document.querySelectorAll('svg.schematic g.note')];
     return all.indexOf(document.activeElement);
@@ -267,10 +265,10 @@ export async function run({ page, shot, step, expect, section }) {
   step('focus on a note lights the parts it is about in every view (the shared hover), and leaving puts the light out');
   const relEl = page.locator('.schematic g.note.note-relation').first();
   await relEl.focus();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const lit = await page.evaluate(() => [...document.querySelectorAll('svg.schematic g.part.hover-lit')].map((p) => p.getAttribute('data-ref')));
   expect(lit.length >= 2, `the relation's parts are lit (${lit.join(', ')})`);
-  await page.locator('.schematic .stage, .schematic-host').first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+  await page.locator('.schematic .stage, .schematic-host').first().click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('Escape');
 
   step('Enter and Space on a note open the Source at its line, as a click does; Back returns');
@@ -279,7 +277,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.keyboard.press('Enter');
   await page.waitForSelector('.section.sec-source:not(.away)');
   const wanted = file.split('\n')[Number(doc.at.split(':').pop()) - 1].trim();
-  await page.waitForFunction((t) => document.querySelector('.cm-activeLine')?.textContent.trim() === t, wanted, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction((t) => document.querySelector('.cm-activeLine')?.textContent.trim() === t, wanted);
   expect((await page.locator('.cm-activeLine').innerText()).trim() === wanted, `Enter put the cursor on line ${doc.at}`);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.section.sec-schematic:not(.away)');

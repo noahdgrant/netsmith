@@ -1,5 +1,6 @@
 // The source editor keeps, for each open file, where the cursor and the scroll position were: switching to another file and back
 // finds both as they were.
+import { whenIdle } from '../settle.mjs';
 
 export const fixture = 'two_boards';
 
@@ -27,7 +28,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.tab.active:has-text("power.nsm")');
   await page.locator('.tab', { hasText: 'main.nsm' }).click();
   await page.waitForSelector('.tab.active:has-text("main.nsm")');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   const after = await where();
   expect(after.line === before.line, `the cursor is on the same line (${after.line.trim()})`);
   expect(Math.abs(after.top - before.top) <= 2, `the scroll position is the same (${before.top} and ${after.top})`);

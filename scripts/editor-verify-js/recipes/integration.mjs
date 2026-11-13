@@ -2,6 +2,7 @@
 // to anything, the dock opened with Ctrl+J, F8 to a problem, the top bar chip and the dock row
 // naming the same part, and the palette (and `!`) driving the dock. Parts are found by their path
 // from /api/board; the mistake is put in the declaration of a part so that a row can select it.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -47,14 +48,14 @@ export async function run({ page, shot, step, expect, project, section }) {
 
     step('a mistake in the resistor, saved to disk: the dock lists it');
     fs.writeFileSync(file, good.replace('.r1: Resistor {}', '.r1: Resistor { .nonsense &= 1V }'));
-    await page.waitForSelector('.dock .problem.error', { timeout: 15000 });
+    await page.waitForSelector('.dock .problem.error');
     const row = await page.locator('.dock .problem.error').first().innerText();
     expect(row.includes('nonsense') && row.includes(`main.nsm:${target.decl.line}`), `the row names the line (${row.replace(/\s+/g, ' ')})`);
     await shot('dock-with-error');
 
     step('F8 goes to the problem: the dock row, the source cursor and the chip agree');
     await page.keyboard.press('F8');
-    await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'), null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'), null);
     expect((await page.locator('.problem.active').count()) === 1, 'one dock row is marked');
     await page.waitForFunction((r) => document.querySelector('.selchip')?.textContent.includes(r), target.refdes);
     expect((await chip()).includes(target.refdes), `the chip names ${target.refdes}, the part whose line holds the mistake`);
@@ -74,7 +75,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     step('the same selection is in the schematic after the build is fixed');
     fs.writeFileSync(file, good);
     await section('schematic');
-    await page.waitForSelector('.section:not(.away) .stale-strip', { state: 'detached', timeout: 15000 });
+    await page.waitForSelector('.section:not(.away) .stale-strip', { state: 'detached' });
     await page.waitForSelector('.dock-empty');
     expect((await chip()).includes(target.refdes), 'the chip keeps the part after the fix');
     expect(await page.evaluate((r) => !!document.querySelector(`svg.schematic .part.mark:not(.linked)[data-ref="${r}"]`), target.refdes), 'the schematic marks it');
@@ -122,13 +123,13 @@ export async function run({ page, shot, step, expect, project, section }) {
     await page.waitForSelector('.cheat, [role=dialog][aria-label*=hortcut]');
     const sheet = await page.locator('.cheat, [role=dialog][aria-label*=hortcut]').first().innerText();
     expect(/Problems/.test(sheet) && /F8/.test(sheet) && /Ctrl/.test(sheet) && /Toggle Problems/.test(sheet), 'Problems, Toggle Problems, F8 are listed');
-    await page.waitForTimeout(300);
+    await whenIdle(page);
     await shot('cheat-sheet');
     await page.keyboard.press('Escape');
 
     step('! in go to anything lists the problems; a pick goes there');
     fs.writeFileSync(file, good.replace('.r1: Resistor {}', '.r1: Resistor { .nonsense &= 1V }'));
-    await page.waitForSelector('.dock .problem.error', { timeout: 15000 });
+    await page.waitForSelector('.dock .problem.error');
     await page.keyboard.press('Control+p');
     await page.waitForSelector('.qp[role=dialog]');
     await page.keyboard.press('Control+a');
@@ -137,13 +138,13 @@ export async function run({ page, shot, step, expect, project, section }) {
     expect((await page.locator('.qp-row').first().innerText()).includes('nonsense'), 'the problem is listed');
     await shot('goto-problem');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'), null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'), null);
     expect((await page.locator('.problem.active').count()) === 1, 'the source is at the mistake and its row is marked');
 
     step('at 1920x1080 the top bar, tabs, view, dock and status bar fit without overlap');
     await page.setViewportSize({ width: 1920, height: 1080 });
     await section('schematic');
-    await page.waitForTimeout(400);
+    await whenIdle(page);
     const boxes = await page.evaluate(() => {
       const r = (s) => document.querySelector(s)?.getBoundingClientRect();
       return { top: r('.topbar'), strip: r('.pane-strip'), dock: r('.dock'), status: r('.statusbar'), vh: innerHeight };

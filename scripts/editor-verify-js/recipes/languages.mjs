@@ -2,6 +2,7 @@
 // anything else as plain text (the tree lists only .nsm files and the manifest, so a catalog's .csv
 // cannot be opened in the editor; the choice for it is in src/languages.test.ts). Nothing but .nsm may
 // show the red wavy mark of an invalid token, and there it comes with a note that says what it is.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'catalog_refresh';
 
 export async function run({ page, shot, step, expect, section, project }) {
@@ -22,7 +23,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   await page.locator('.ft-row.ft-file', { hasText: 'netsmith.toml' }).click();
   await page.waitForSelector('.tab.active:has-text("netsmith.toml")');
   await page.waitForFunction(() => document.querySelector('.cm-content')?.innerText.includes('['));
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   let w = await wavy();
   expect(w.bad.length === 0 && w.lint === 0, `no wavy underline and no lint mark in the manifest (${JSON.stringify(w)})`);
   const colours = await page.evaluate(() => new Set([...document.querySelectorAll('.cm-content .cm-line span')].map((s) => getComputedStyle(s).color)).size);
@@ -35,11 +36,11 @@ export async function run({ page, shot, step, expect, section, project }) {
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type('\n]');
-  await page.waitForSelector('.cm-content .cm-lintRange-error', { timeout: 15000 });
+  await page.waitForSelector('.cm-content .cm-lintRange-error');
   const line = page.locator('.cm-content .cm-line', { hasText: /^\]$/ });
   const box = await line.boundingBox();
   await page.mouse.move(box.x + 3, box.y + box.height / 2);
-  await page.waitForSelector('.cm-tooltip', { timeout: 10000 });
+  await page.waitForSelector('.cm-tooltip');
   const tip = (await page.locator('.cm-tooltip').first().innerText()).trim();
   expect(tip.length > 10, `a tooltip with words, not an unexplained mark (${tip.slice(0, 140)})`);
   await shot('nsm-invalid-tooltip');

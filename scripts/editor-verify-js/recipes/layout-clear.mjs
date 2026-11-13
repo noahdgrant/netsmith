@@ -1,6 +1,7 @@
 // Clearing and finding the layout file (ADR 0061, stage 4), on a board of several modules: the palette clears a module's entries or the
 // file's, after a question; a part with an entry is marked in the drawing; the file is in the project tree and opens in Source; a problem
 // of the layout stage opens the file at its line; and a change by another program redraws the page.
+import { analysedSince, pageVersion, whenIdle } from '../settle.mjs';
 import { layoutFile, partStates, partsOf } from '../layout-helpers.mjs';
 import { openSheet } from '../schematic-helpers.mjs';
 
@@ -11,9 +12,12 @@ export async function run(tools) {
   try {
     await body(tools);
   } finally {
-    layoutFile(tools.project, 'schematic_bench.sch.toml').remove();
-    // Long enough for the page to read the open file once more, which says 404, while the console is still listened to.
-    await tools.page.waitForTimeout(1500);
+    const layout = layoutFile(tools.project, 'schematic_bench.sch.toml');
+    const before = await pageVersion(tools.page);
+    const there = layout.exists();
+    layout.remove();
+    // Until the page has the analysis of the file's going and has read the open file once more, which says 404, while the console is still listened to.
+    if (there) await analysedSince(tools.page, before);
   }
 }
 
@@ -39,15 +43,15 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
       [board, text],
     );
   const settle = async () => {
-    await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached', timeout: 30000 });
-    await page.waitForTimeout(700);
+    await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached' });
+    await whenIdle(page);
   };
   const palette = async (text) => {
     await page.keyboard.press('Control+Shift+P');
     await page.waitForSelector('.qp');
     await page.keyboard.press('Control+a');
     await page.keyboard.type(`>${text}`);
-    await page.waitForTimeout(250);
+    await whenIdle(page);
   };
   const canvas = () => page.locator('.schematic-host').click({ position: { x: 6, y: 6 } });
   const hinted = async (ref) => (await partStates(page))[ref]?.hinted ?? null;
@@ -56,7 +60,7 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
       const g = [...document.querySelectorAll(`svg.schematic g.part[data-ref="${r}"]`)].find((e) => e.getClientRects().length);
       const hint = g?.previousElementSibling?.previousElementSibling?.previousElementSibling;
       return !!hint?.classList.contains('hinted') === w;
-    }, [ref, want], { timeout: 30000 });
+    }, [ref, want]);
 
   step('on a module of the bench, with no entry, neither clear command is offered');
   await openSheet(page, 'buck');
@@ -70,7 +74,7 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
   const file = `version = 1\n\n[Other.parts.x]\ndx = 1.27\ndy = 0\n\n[${board}.sheets.adc.parts.c_filter]\nrotate = 180\n\n[${board}.sheets.buck.parts.c_in]\nrotate = 180\n\n[${board}.sheets.buck.parts.c_out]\nmirror = true\n`;
   expect((await put(file)) === 200, 'the file is written');
   await waitHinted(buckCap, true);
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   expect((await hinted(buckCap)) === true && (await hinted(parts['buck.c_out'])) === true && (await hinted(buckIc)) === false, 'c_in and c_out of the module on show are marked, its regulator is not');
   const colours = await page.evaluate((r) => {
     const g = [...document.querySelectorAll(`svg.schematic g.part[data-ref="${r}"]`)].find((e) => e.getClientRects().length);
@@ -88,13 +92,13 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
   step('the file is in the project tree under "Schematic layout" and opens in Source with TOML colouring');
   await section('source');
   const treeRow = page.locator('.sidebar .ft-row', { hasText: NAME }).first();
-  await treeRow.waitFor({ timeout: 15000 });
+  await treeRow.waitFor();
   expect((await page.locator('.sidebar').innerText()).includes('Schematic layout'), 'a section "Schematic layout"');
   const tabOpen = (n) => page.evaluate((x) => [...document.querySelectorAll('[role=tab], .tab, .ftab')].some((t) => t.textContent.includes(x)), n);
   await treeRow.click();
-  await page.waitForTimeout(1500);
+  await whenIdle(page);
   if (!(await tabOpen(NAME))) await treeRow.dblclick();
-  await page.waitForFunction((x) => [...document.querySelectorAll('[role=tab], .tab, .ftab')].some((t) => t.textContent.includes(x)), NAME, { timeout: 20000 });
+  await page.waitForFunction((x) => [...document.querySelectorAll('[role=tab], .tab, .ftab')].some((t) => t.textContent.includes(x)), NAME);
   await page.waitForSelector('.cm-content');
   const tab = await page.evaluate(() => [...document.querySelectorAll('[role=tab], .tab, .ftab')].map((t) => t.textContent).join(' | '));
   expect(tab.includes(NAME), `its tab is open (${tab})`);
@@ -110,7 +114,7 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
   await page.waitForSelector('[data-testid="confirm"]');
   const q = await page.locator('[data-testid="confirm"]').innerText();
   expect(/2 entries/.test(q) && new RegExp(NAME.replace(/\./g, '\\.')).test(q), `the question says what goes (${q.replace(/\n/g, ' ')})`);
-  await page.waitForTimeout(350);
+  await whenIdle(page);
   await shot('confirm');
   await page.locator('[data-testid="confirm"] button', { hasText: 'Cancel' }).click();
   expect(/buck\.parts\.c_in/.test(layout.text()), 'Cancel: the file is as it was');
@@ -137,7 +141,7 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
 
   step('a file that does not read: its problem opens the file in Source at the line');
   layout.write(`version = 1\n\n[${board}.sheets.buck.parts.c_in]\nrotate = 180\nspin = 3\n`);
-  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout'), null, { timeout: 30000 });
+  await page.waitForFunction(async () => (await (await fetch('/api/analysis', { cache: 'no-store' })).json()).problems.some((p) => p.stage === 'layout'), null);
   await page.keyboard.press('Control+j');
   // The bench has other warnings (a guideline about a generic part that no row can be ordered
   // for): click the one that is about the layout file.
@@ -145,7 +149,7 @@ async function body({ page, shot, step, expect, project, section, allowConsole }
   await fault.first().waitFor();
   await fault.first().click();
   await page.waitForSelector('.cm-content');
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('spin'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('spin'), null);
   const where = await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '');
   expect(where.includes('spin'), `the cursor is on the line of the fault (${JSON.stringify(where)})`);
   await shot('problem-opens-the-file');

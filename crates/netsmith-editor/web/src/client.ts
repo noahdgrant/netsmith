@@ -34,6 +34,7 @@ import type {
   SystemView,
 } from './api';
 import { PENDING_HEADER, pendingElapsed } from './feedback/early';
+import { held, hold } from './idle';
 
 /** A change needs this header; a page on another origin cannot send it. */
 const GUARD = { 'X-Netsmith': '1' };
@@ -83,12 +84,13 @@ async function check(response: Response): Promise<Response> {
 
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
-async function getJson<T>(url: string): Promise<T> {
-  return (await check(await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } }))).json();
-}
+const getJson = <T>(url: string): Promise<T> =>
+  held(async () => (await check(await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } }))).json() as Promise<T>);
 
 /** A read that is told, not made to wait, while the server's first analysis runs. */
-async function getJsonEarly<T>(url: string): Promise<T> {
+const getJsonEarly = <T>(url: string): Promise<T> => held(() => getJsonEarlyNow<T>(url));
+
+async function getJsonEarlyNow<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', headers: { [PENDING_HEADER]: '1' } });
   if (response.status === 503) {
     const elapsed = pendingElapsed(503, await response.clone().text());
@@ -97,11 +99,11 @@ async function getJsonEarly<T>(url: string): Promise<T> {
   return (await check(response)).json();
 }
 
-async function getText(url: string): Promise<string> {
-  return (await check(await fetch(url, { cache: 'no-store' }))).text();
-}
+const getText = (url: string): Promise<string> => held(async () => (await check(await fetch(url, { cache: 'no-store' }))).text());
 
-async function post<T>(url: string, body?: unknown): Promise<T> {
+const post = <T>(url: string, body?: unknown): Promise<T> => held(() => postNow<T>(url, body));
+
+async function postNow<T>(url: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method: 'POST', headers: { ...GUARD } };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
@@ -126,14 +128,15 @@ export const api = {
   cancelFab: () => post<CancelAnswer>('/api/fab/cancel'),
   cancelOrder: () => post<CancelAnswer>('/api/order/cancel'),
   file: (path: string) => getJson<FileContent>(`/api/file?${q({ path })}`),
-  async save(path: string, text: string, stamp: string): Promise<Saved> {
-    const response = await fetch(`/api/file?${q({ path })}`, {
-      method: 'PUT',
-      headers: { ...GUARD, 'X-Stamp': stamp, 'Content-Type': 'text/plain; charset=utf-8' },
-      body: text,
-    });
-    return (await check(response)).json();
-  },
+  save: (path: string, text: string, stamp: string): Promise<Saved> =>
+    held(async () => {
+      const response = await fetch(`/api/file?${q({ path })}`, {
+        method: 'PUT',
+        headers: { ...GUARD, 'X-Stamp': stamp, 'Content-Type': 'text/plain; charset=utf-8' },
+        body: text,
+      });
+      return (await check(response)).json() as Promise<Saved>;
+    }),
   /** Make a file, a folder, move one or remove one below the project's src/ (the server refuses
    * anything else, and a path that is taken). */
   createFile: (path: string, text: string) => post<Changed>('/api/fs/create-file', { path, text }),
@@ -148,12 +151,13 @@ export const api = {
   /** Write the schematic layout file from its text. The server writes the canonical text of what it says, and
    * answers `ApiFailure` with status 422 and code `schematic_hints_invalid` for text that does not read, or 409
    * if `stamp` (the file's, as read) is no longer the file's. The project is analysed again as the file changed. */
-  async writeSchematicHints(board: string, text: string, stamp?: string): Promise<SchematicHints> {
-    const headers: Record<string, string> = { ...GUARD, Accept: 'application/json', 'Content-Type': 'text/plain; charset=utf-8' };
-    if (stamp !== undefined) headers['X-Stamp'] = stamp;
-    const response = await fetch(`/api/schematic-hints?${q({ board })}`, { method: 'PUT', headers, body: text });
-    return (await check(response)).json();
-  },
+  writeSchematicHints: (board: string, text: string, stamp?: string): Promise<SchematicHints> =>
+    held(async () => {
+      const headers: Record<string, string> = { ...GUARD, Accept: 'application/json', 'Content-Type': 'text/plain; charset=utf-8' };
+      if (stamp !== undefined) headers['X-Stamp'] = stamp;
+      const response = await fetch(`/api/schematic-hints?${q({ board })}`, { method: 'PUT', headers, body: text });
+      return (await check(response)).json() as Promise<SchematicHints>;
+    }),
   power: (board: string) => getJson<PowerTree>(`/api/power?${q({ board })}`),
   system: (name: string) => getJson<SystemView>(`/api/system?${q({ name })}`),
   panel: (name: string) => getJson<PanelView>(`/api/panel?${q({ name })}`),
@@ -167,9 +171,10 @@ export const api = {
   pinMove: (edit: PinMove) => post<PinWritten>('/api/pins/move', edit),
   pcbFindings: (board: string) => getJson<PcbFindings>(`/api/pcb/findings?${q({ board })}`),
   pcbDrc: (board: string) => post<PcbFindings>(`/api/pcb/drc?${q({ board })}`),
-  async cancelRoute(): Promise<void> {
-    await check(await fetch('/api/pcb/cancel', { method: 'POST', headers: { ...GUARD } }));
-  },
+  cancelRoute: (): Promise<void> =>
+    held(async () => {
+      await check(await fetch('/api/pcb/cancel', { method: 'POST', headers: { ...GUARD } }));
+    }),
   /** `netsmith catalog refresh` over the project's own catalog files (ADR 0039). */
   refreshCatalogs: (dry: boolean, offline: boolean) =>
     post<CatalogRefresh>(`/api/catalog/refresh?${q({ dry: dry ? '1' : '0', offline: offline ? '1' : '0' })}`),
@@ -213,7 +218,10 @@ export class Events {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${scheme}://${location.host}/api/events`);
     this.socket = socket;
+    // The page is not ready while it has no socket: the server's news comes by it.
+    const connected = hold();
     socket.onopen = () => {
+      connected();
       if (document.hasFocus()) this.send({ type: 'focus' });
       this.onState(true);
     };
@@ -225,6 +233,7 @@ export class Events {
       }
     };
     socket.onclose = () => {
+      connected();
       this.onState(false);
       setTimeout(() => this.connect(), 1000);
     };

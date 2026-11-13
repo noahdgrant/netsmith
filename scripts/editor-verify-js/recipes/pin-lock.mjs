@@ -4,6 +4,7 @@
 // moves `vbat` with the keyboard (Tab to the pin, Enter), is refused by the server for a pin another request holds (a toast with the
 // server's words, nothing written), drags `status` onto a free pin, and asserts the text of the pin file on disk after each step. At
 // the end it puts the file back, so the other recipes of this fixture find it as it was.
+import { Hung, whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -18,7 +19,10 @@ export async function run({ page, shot, step, expect, project, allowConsole }) {
   const nsm = read('main.nsm');
   const lockFile = read('main.lock.toml');
   const detail = () => page.evaluate(async () => (await fetch('/api/board?name=PinMapBoard', { cache: 'no-store' })).json());
-  const until = (fn, what, arg) => page.waitForFunction(fn, arg, { timeout: 15000 }).catch(() => expect(false, what));
+  const until = (fn, what, arg) =>
+    page.waitForFunction(fn, arg).catch((e) => {
+      throw e.name === 'TimeoutError' ? new Hung(what) : e;
+    });
   const row = (request) => page.locator(`[data-testid="pin-map"] .pm-row[data-request="${request}"]`);
   const state = () =>
     page.evaluate(() =>
@@ -106,7 +110,7 @@ export async function run({ page, shot, step, expect, project, allowConsole }) {
   expect(said.includes('`status`: the pin file was not written') && said.includes('p00 is held by `spare`, which is locked'), `the toast has the server's words (${said})`);
   expect(read() === afterMove, 'the file keeps its bytes');
   // The toast slides in; look at it settled.
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   await shot('refused');
 
   step('a locked request has no move: its Move button says why');

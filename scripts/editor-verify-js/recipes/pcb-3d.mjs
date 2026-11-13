@@ -5,6 +5,7 @@
 // 3D, the preset views move the camera, the list of parts with no height picks one, and the light
 // theme repaints the view. The fixture has a part of each kind: a stated height that breaks the
 // lid's limit, one that fits, and one with no known height.
+import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fresh, labelOf, openPcb, partOf, scene } from '../pcb-helpers.mjs';
@@ -47,7 +48,7 @@ export async function run(tools) {
   step('the 2D view does not load the 3D chunk; the toggle does, and the view says when its first frame is drawn');
   expect((await chunk()) === 0, 'no 3D chunk before 3D is opened');
   await page.getByTestId('pcb-3d-toggle').click();
-  await page.waitForSelector(`${HOST}[data-ready]`, { timeout: 30000 });
+  await page.waitForSelector(`${HOST}[data-ready]`);
   expect((await chunk()) > 0, 'the 3D chunk was loaded on demand');
   expect((await page.locator('.pcb-overlay').count()) === 0, 'the 2D canvas (and its editing keys) is gone');
   const drawn = await ask(page, 'sample');
@@ -94,7 +95,7 @@ export async function run(tools) {
   const title = await page.locator('[data-testid=part-inspector] h3').innerText();
   expect(title.startsWith(labelOf(flat)), `the inspector shows ${labelOf(flat)} (${title})`);
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const after = await ask(page, 'colourAt', at.x, at.y);
   expect(before !== after, `the picked body changed colour (${before} to ${after})`);
   await shot('picked');
@@ -102,7 +103,7 @@ export async function run(tools) {
   step('a pick made in the side panel lights the part in 3D');
   await page.locator('.part-row', { hasText: labelOf(tall) }).click();
   await page.waitForFunction((t) => document.querySelector('[data-testid=part-inspector] h3')?.innerText.startsWith(t), labelOf(tall));
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const tallAt = await placeOf(page, tall.path);
   const lit = await ask(page, 'colourAt', tallAt.x, tallAt.y);
   const flatNow = await ask(page, 'colourAt', at.x, at.y);
@@ -112,7 +113,7 @@ export async function run(tools) {
   step('the preset views: top, then the flip to the bottom; perspective and orthographic');
   await page.getByTestId('view-top').click();
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'top', HOST);
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await shot('top');
   await page.getByTestId('view-flip').click();
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'bottom', HOST);
@@ -130,13 +131,13 @@ export async function run(tools) {
   expect(rows.length === 1 && rows[0].includes(bare.refdes), `one part with no height: ${rows.join(' | ')}`);
   await page.locator('[data-testid=unknown-heights] .v3-unknown-row').first().click();
   await page.waitForFunction((t) => document.querySelector('[data-testid=part-inspector] h3')?.innerText.startsWith(t), labelOf(bare));
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await shot('unknown-list');
 
   step('the light theme repaints the view in its own colours');
   const darkBg = await ask(page, 'colourAt', 20, 400);
   await theme(page, 'Light', 'light');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const box = await page.locator(HOST).boundingBox();
   const lightBg = await ask(page, 'colourAt', box.x + 6, box.y + box.height - 40);
   expect(lightBg !== darkBg, `the background changed with the theme (${darkBg} to ${lightBg})`);

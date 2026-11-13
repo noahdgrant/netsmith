@@ -1,5 +1,6 @@
 // Findings on the PCB canvas: what is wrong with the board is listed with where it is, a click
 // zooms to it and marks it, the list follows the edits, and Re-check runs KiCad's check.
+import { whenIdle } from '../settle.mjs';
 import { BOARD, PART, drag, fresh, openPcb, partAt, scene, settled } from '../pcb-helpers.mjs';
 
 export const fixture = 'outline_and_pours';
@@ -31,7 +32,7 @@ export async function run(tools) {
   step('click a finding: the canvas zooms to it, marks it and selects its parts');
   const zoomBefore = await page.locator('.pcb-host .zoombar span').innerText();
   await page.locator('[data-testid=finding]', { hasText: 'overlap' }).first().click();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await page.locator('.pcb-host .zoombar span').innerText()) !== zoomBefore, 'the zoom changed');
   expect((await page.locator('.pcb-overlay .mark.on').count()) === 1, 'one finding is highlighted');
   expect((await page.locator('[data-testid=part-inspector] h3').innerText()).match(/^2 PARTS/i), 'the two parts are selected');
@@ -49,10 +50,10 @@ export async function run(tools) {
   await page.waitForSelector('[data-testid=findings-chip].bad');
   await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   // The answer of the check, not the click: the page redraws a moment after it.
-  const answered = page.waitForResponse((r) => r.url().includes('/api/pcb/drc') && r.request().method() === 'POST', { timeout: 90000 });
+  const answered = page.waitForResponse((r) => r.url().includes('/api/pcb/drc') && r.request().method() === 'POST');
   await page.locator('[data-testid=recheck]').click();
   await answered;
-  await page.waitForFunction(() => !document.querySelector('[data-testid=recheck]')?.textContent?.includes('Checking'), null, { timeout: 90000 });
+  await page.waitForFunction(() => !document.querySelector('[data-testid=recheck]')?.textContent?.includes('Checking'), null);
   // What the server says now: KiCad's state for this layout, and whether it found kicad-cli at all.
   const server = await page.evaluate(async (b) => {
     const findings = await (await fetch(`/api/pcb/findings?board=${encodeURIComponent(b)}`)).json();
@@ -66,7 +67,7 @@ export async function run(tools) {
   const WORDS = { ran: 'with KiCad', unavailable: 'KiCad unavailable', not_run: 'KiCad not run' };
   expect(!!WORDS[server.state], `the server's state is one the page knows (${server.state})`);
   if (server.found) {
-    await page.waitForFunction((state) => document.querySelector('[data-testid=kicad-state]')?.getAttribute('data-state') === state, server.state, { timeout: 10000 });
+    await page.waitForFunction((state) => document.querySelector('[data-testid=kicad-state]')?.getAttribute('data-state') === state, server.state);
     const shown = await page.locator('[data-testid=kicad-state]').innerText();
     expect(shown === WORDS[server.state], `the page's line matches the server's state ${server.state} (${shown})`);
     expect((await page.locator('.kicad-missing').count()) === 0, 'no "not found" state when kicad-cli is there');

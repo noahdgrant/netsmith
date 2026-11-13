@@ -13,7 +13,7 @@ export async function run({ page, shot, step, expect }) {
 
   step('click Make fab files in the top bar');
   await page.locator('.topbar button', { hasText: 'Make fab files' }).click();
-  await page.waitForSelector('.build .chip:has-text("package made"), .build .chip:has-text("stopped")', { timeout: 180000 });
+  await page.waitForSelector('.build .chip:has-text("package made"), .build .chip:has-text("stopped")');
   const text = await page.locator('.build').innerText();
   expect(text.includes('design rules check: passed'), 'the design rules check passed');
   expect(text.includes('fab-notes.txt'), 'fab-notes.txt shown');

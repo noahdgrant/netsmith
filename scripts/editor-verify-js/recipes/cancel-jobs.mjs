@@ -8,6 +8,7 @@ import path from 'node:path';
 
 import { writeBig } from '../fixtures/big.mjs';
 import { git } from '../fixtures/gitrepo.mjs';
+import { gate } from '../settle.mjs';
 
 export const fixture = 'two_boards';
 export const needs = 'git';
@@ -82,14 +83,15 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await pick('bigref');
   await page.waitForSelector('[data-testid="cmp-progress"]');
   await page.waitForSelector('[data-testid="cmp-cancel"]');
-  await page.waitForFunction(() => /solving|Solving/.test(document.querySelector('[data-testid="cmp-stage"]')?.textContent ?? ''), null, { timeout: 60000 });
+  await page.waitForFunction(() => /solving|Solving/.test(document.querySelector('[data-testid="cmp-stage"]')?.textContent ?? ''), null);
   expect(/Solving/i.test(await text('[data-testid="cmp-stage"]')), `the stage (${await text('[data-testid="cmp-stage"]')})`);
   await shot('comparing');
 
   step('Cancel in the card: "Comparison cancelled", no result, the server has nothing running');
   const asked = Date.now();
   await page.locator('[data-testid="cmp-cancel"]').click();
-  await page.waitForSelector('[data-testid="cmp-cancelled"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="cmp-cancelled"]');
+  // Printed, never judged: how long the stop took is the machine's.
   console.log(`    the comparison stopped ${Date.now() - asked} ms after the click`);
   expect(/Comparison cancelled/.test(await text('[data-testid="cmp-cancelled"]')), 'the card says so');
   expect((await page.locator('[data-testid="cmp-summary"]').count()) === 0, 'there is no summary of a comparison that was stopped');
@@ -99,16 +101,16 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('Escape in the card cancels too, and "Compare again" starts it');
   await page.locator('[data-testid="cmp-cancelled"] .tool.primary').click();
   await page.waitForSelector('[data-testid="cmp-progress"]');
-  await page.waitForFunction(() => /solving|Solving/.test(document.querySelector('[data-testid="cmp-stage"]')?.textContent ?? ''), null, { timeout: 60000 });
+  await page.waitForFunction(() => /solving|Solving/.test(document.querySelector('[data-testid="cmp-stage"]')?.textContent ?? ''), null);
   await page.keyboard.press('Escape');
-  await page.waitForSelector('[data-testid="cmp-cancelled"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid="cmp-cancelled"]');
   expect(true, 'Escape stopped it');
   expect((await api('/api/compare/cancel', 'POST')).cancelled === false, 'nothing is left running');
 
   step('a ref that is small compares as ever after the cancelled ones, and is not slowed by what was cancelled');
   await visible('[data-testid="ref-button"]').click();
   await pick('main');
-  await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 120000 });
+  await page.waitForSelector('[data-testid="cmp-summary"]');
   expect(/part|rail|net/.test(await text('[data-testid="cmp-summary"]')), `a summary (${await text('[data-testid="cmp-summary"]')})`);
   await shot('compared-after');
 
@@ -116,21 +118,23 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await section('build');
   await page.waitForSelector('.acard[data-task="build"]');
   let cancelAsked = 0;
+  const cancelled = gate();
   await page.route('**/api/build/cancel', async (route) => {
     cancelAsked++;
     await route.continue();
+    cancelled.open();
   });
-  // The build is held for a moment so that its card is on screen; the server has nothing to cancel then.
+  // The build is held until the cancel has been asked, so that its card is on screen as long as the step needs; the server has nothing to cancel then.
   await page.route('**/api/build', async (route) => {
     if (route.request().method() !== 'POST') return route.continue();
-    await new Promise((r) => setTimeout(r, 1500));
+    await cancelled.opened;
     await route.continue();
   });
   await page.locator('.acard[data-task="build"] button.tool', { hasText: 'Build schematic' }).click();
   await page.waitForSelector('[data-testid="cancel-build"]');
   await shot('build-running');
   await page.locator('[data-testid="cancel-build"]').click();
-  await page.waitForFunction(() => document.querySelectorAll('[data-testid="cancel-build"]').length === 0, null, { timeout: 60000 });
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="cancel-build"]').length === 0, null);
   expect(cancelAsked === 1, 'the button asked the server to cancel the build');
   await page.unroute('**/api/build');
   await page.unroute('**/api/build/cancel');
@@ -138,9 +142,9 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('a fab is cancelled from its card: a calm note, no failure, no package');
   await page.locator('.acard[data-task="fab"] button.tool', { hasText: 'Make fab package' }).click();
   await page.waitForSelector('[data-testid="cancel-fab"]');
-  await page.waitForFunction(() => /placing|placed|routing|routed|reading/.test(document.querySelector('.acard[data-task="fab"] .job-line')?.textContent ?? ''), null, { timeout: 120000 });
+  await page.waitForFunction(() => /placing|placed|routing|routed|reading/.test(document.querySelector('.acard[data-task="fab"] .job-line')?.textContent ?? ''), null);
   await page.locator('[data-testid="cancel-fab"]').click();
-  await page.locator('.toast', { hasText: 'Fab was cancelled' }).waitFor({ timeout: 30000 });
+  await page.locator('.toast', { hasText: 'Fab was cancelled' }).waitFor();
   expect((await page.locator('.acard[data-task="fab"] .pill.bad').count()) === 0, 'the card shows no failure');
   expect((await page.locator('.acard[data-task="fab"] .downloads a').count()) === 0, 'and offers no download: nothing was kept');
   await shot('fab-cancelled');

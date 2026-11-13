@@ -6,6 +6,7 @@
 // limit. The fixture has parts of several kinds under and beside a 3 mm lid: one too tall, one
 // with little to spare, two of unknown height, and outside it a regulator whose height is its
 // package standard's (ADR 0106).
+import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fresh, openPcb, partOf, scene } from '../pcb-helpers.mjs';
@@ -32,7 +33,6 @@ async function theme(page, label, id) {
 }
 
 /** Let the view draw what changed (a frame, and a camera move of 180 ms). */
-const settle = (page) => page.waitForTimeout(350);
 
 export async function run(tools) {
   const { page, shot, step, expect } = tools;
@@ -44,12 +44,12 @@ export async function run(tools) {
   const led = partOf(s, 'led');
   const cap = partOf(s, 'input_cap');
   await page.getByTestId('pcb-3d-toggle').click();
-  await page.waitForSelector(`${HOST}[data-ready]`, { timeout: 30000 });
+  await page.waitForSelector(`${HOST}[data-ready]`);
   await page.locator(HOST).focus();
   // Nearer, so the pads and the bodies' colours show in the pictures.
   await page.keyboard.press('+');
   await page.keyboard.press('+');
-  await settle(page);
+  await whenIdle(page);
   const chipBefore = await page.getByTestId('height-coverage').innerText();
 
   step("colour by provenance: the regulator's height is its package standard's (SOT-23, JEDEC TO-236), in a colour of its own, counted apart");
@@ -80,13 +80,13 @@ export async function run(tools) {
   const solid = await ask(page, 'colourAt', capAt.x, capAt.y);
   await page.keyboard.press('v');
   await page.waitForFunction(() => document.querySelector('[data-testid=view-xray]')?.getAttribute('aria-pressed') === 'true');
-  await settle(page);
+  await whenIdle(page);
   const seen = await ask(page, 'colourAt', capAt.x, capAt.y);
   expect(seen !== solid, `the capacitor's body is see-through in x-ray (${solid} to ${seen})`);
   await shot('xray');
   await page.keyboard.press('v');
   await page.waitForFunction(() => document.querySelector('[data-testid=view-xray]')?.getAttribute('aria-pressed') === 'false');
-  await settle(page);
+  await whenIdle(page);
   expect((await ask(page, 'colourAt', capAt.x, capAt.y)) === solid, 'x-ray off: the body is solid again');
 
   step('a net picked in the nets list is lit on every layer, the rest dimmed');
@@ -95,7 +95,7 @@ export async function run(tools) {
   const row = page.locator('.net-row', { hasText: 'VIN' }).first();
   await row.click();
   await page.waitForFunction(() => document.querySelector('.net-row.sel')?.innerText.includes('VIN'));
-  await settle(page);
+  await whenIdle(page);
   // VIN is on the header's first pad (through the board, so on both layers), the regulator's input and the input capacitor.
   expect(nets.includes('VIN') && nets.includes('GND'), `the scene has the nets' copper (${nets.join(', ')})`);
   const lit = await ask(page, 'litReport');
@@ -118,7 +118,7 @@ export async function run(tools) {
   const kinds = await page.getByTestId('kind-legend').innerText();
   expect(/Connector\s*1/.test(kinds) && /Capacitor\s*2/.test(kinds) && /IC\s*1/.test(kinds) && /Diode\s*1/.test(kinds), `the legend counts the kinds: ${kinds.replace(/\n/g, ' | ')}`);
   expect(/Unknown height\s*2/.test(kinds), 'the parts of unknown height stay hatched, and are counted apart');
-  await settle(page);
+  await whenIdle(page);
   const capKind = await ask(page, 'colourAt', capAt.x, capAt.y);
   expect(capKind !== near, `the capacitor takes its kind's colour (${near} to ${capKind})`);
   await shot('colour-kind');
@@ -130,7 +130,7 @@ export async function run(tools) {
   expect(/Over\s*1/.test(margin) && /Under 1 mm\s*1/.test(margin) && /1 mm\+\s*1/.test(margin) && /No limit over it\s*2/.test(margin), `the bands: ${margin.replace(/\n/g, ' | ')}`);
   const note = await page.getByTestId('margin-note').innerText();
   expect(note.includes('1 mm to spare') && note.includes('not a check'), `the legend says what green means: ${note}`);
-  await settle(page);
+  await whenIdle(page);
   const ledAt = await placeOf(page, led.path);
   const [capM, ledM] = [await ask(page, 'colourAt', capAt.x, capAt.y), await ask(page, 'colourAt', ledAt.x, ledAt.y)];
   expect(capM !== ledM, `plenty to spare and little to spare are two colours (${capM}, ${ledM})`);
@@ -153,7 +153,7 @@ export async function run(tools) {
   expect((await page.getByTestId('height-coverage').innerText()) === chipBefore, `the coverage chip is the same: ${chipBefore}`);
   const parts3d = await ask(page, 'parts');
   expect(parts3d.filter((p) => p.heightMm === null).length === 2, 'the parts of unknown height still have no height');
-  await settle(page);
+  await whenIdle(page);
   await shot('preview');
   await page.keyboard.press('h');
   await page.waitForFunction(() => !document.querySelector('[data-testid=preview-label]'));
@@ -172,7 +172,7 @@ export async function run(tools) {
   await page.getByTestId('section-at').press('Enter');
   await page.getByTestId('view-front').click();
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'front', HOST);
-  await settle(page);
+  await whenIdle(page);
   const caps = await ask(page, 'caps');
   expect(caps.includes('substrate') || caps.some((c) => /core|prepreg|substrate/.test(c)), `x-ray with a section keeps the laminate's caps: ${caps.join(', ')}`);
   expect((await ask(page, 'litReport')).layers.length === 2, 'VIN is still lit on both layers through the cut');
@@ -184,12 +184,12 @@ export async function run(tools) {
   await page.keyboard.press('i');
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.exploded(), HOST);
-  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().some((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) > 1), HOST, { timeout: 15000 });
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().some((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) > 1), HOST);
   expect((await ask(page, 'litReport')).layers.length === 2, 'the net stays lit with the layers apart');
   await shot('xray-exploded');
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => !document.querySelector(sel).view3d.exploded(), HOST);
-  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), HOST, { timeout: 15000 });
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), HOST);
   await page.keyboard.press('v');
   await page.locator('.net-row', { hasText: 'VIN' }).first().click();
   await page.mouse.move(5, 5);
@@ -205,7 +205,7 @@ export async function run(tools) {
   await page.waitForSelector('[data-testid=section-panel]');
   await page.keyboard.press('h');
   await page.waitForSelector('[data-testid=preview-label]');
-  await settle(page);
+  await whenIdle(page);
   const boxes = await page.evaluate(() =>
     ['.v3-bar', '.v3-tools', '.v3-info', '[data-testid=section-panel]', '[data-testid=measure-panel]', '.v3-inspect', '.v3-wrap .zoombar', '.v3-preview-tag']
       .map((sel) => {
@@ -229,19 +229,19 @@ export async function run(tools) {
   await page.keyboard.press('s');
   await page.keyboard.press('Escape');
   await page.setViewportSize(size);
-  await settle(page);
+  await whenIdle(page);
 
   step('a finding picked in the problems dock flies the camera to it and lights its limit');
   await page.keyboard.press('i');
-  await settle(page);
+  await whenIdle(page);
   await page.keyboard.press('Control+j');
   await page.waitForSelector('[data-testid=dock]');
   const problem = page.locator('[data-testid=problem]', { hasText: tall.refdes }).filter({ hasText: 'lid' }).first();
-  await problem.waitFor({ timeout: 20000 });
+  await problem.waitFor();
   const before = await placeOf(page, tall.path);
   await problem.click();
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.focused().includes('lid:top'), HOST);
-  await page.waitForTimeout(1000);
+  await whenIdle(page);
   expect((await page.getByTestId('pcb-3d').count()) === 1, 'the PCB stays in 3D');
   const after = await placeOf(page, tall.path);
   expect(Math.hypot(after.x - before.x, after.y - before.y) > 10, `the camera moved to the finding (${before.x},${before.y} to ${after.x},${after.y})`);
@@ -253,6 +253,6 @@ export async function run(tools) {
   await page.getByTestId('colour-by').selectOption('margin');
   await theme(page, 'Light', 'light');
   await page.keyboard.press('Escape');
-  await settle(page);
+  await whenIdle(page);
   await shot('height-map-light');
 }

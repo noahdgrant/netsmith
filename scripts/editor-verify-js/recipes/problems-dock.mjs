@@ -1,6 +1,7 @@
 // The problems dock under every view: Ctrl+J, a calm empty state, rows for a mistake on disk,
 // F8 from a view to the mistake in the source, the strip above a stale drawing, a height that
 // is kept, and the status bar's counts.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -22,7 +23,7 @@ export async function run({ page, shot, step, expect, project, section }) {
 
     step('a mistake saved to disk: counts, a row, and the strip above the dimmed drawing');
     fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V'));
-    await page.waitForSelector('.dock .problem.error', { timeout: 15000 });
+    await page.waitForSelector('.dock .problem.error');
     await page.waitForSelector('.section:not(.away) .stale-strip');
     const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
     expect(strip.includes('Showing last good version') && strip.includes('nonsense'), `the strip names the error (${strip.replace(/\s+/g, ' ')})`);
@@ -49,7 +50,7 @@ export async function run({ page, shot, step, expect, project, section }) {
 
     step('F8 from the schematic goes to the mistake in the source');
     await page.keyboard.press('F8');
-    await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'), null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('nonsense'), null);
     expect(true, 'the cursor is on the line with the mistake');
     expect((await page.locator('.problem.active').count()) === 1, 'the row is marked');
     await shot('f8');
@@ -63,7 +64,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     const h = (await page.locator('.dock').boundingBox()).height;
     await page.reload();
     await page.waitForSelector('.dock');
-    await page.waitForTimeout(300); // the dock opens over 160 ms
+    await whenIdle(page); // the dock opens over 160 ms
     expect(Math.abs((await page.locator('.dock').boundingBox()).height - h) < 2, `the same height after a reload (${h})`);
     await page.locator('.statusbar .conn').waitFor();
     await page.keyboard.press('Control+j');
@@ -73,7 +74,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     step('fixed on disk: the strip goes, the dock says nothing is wrong');
     fs.writeFileSync(file, good);
     await section('schematic');
-    await page.waitForSelector('.section:not(.away) .stale-strip', { state: 'detached', timeout: 15000 });
+    await page.waitForSelector('.section:not(.away) .stale-strip', { state: 'detached' });
     await page.keyboard.press('Control+j');
     await page.waitForSelector('.dock-empty');
     expect(true, 'no strip, the empty state');

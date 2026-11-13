@@ -2,6 +2,7 @@
 // folders with guide lines, folder and file icons, the keyboard, the filter, collapse and expand
 // all, what is remembered, the width, and a click on a definition (the cursor goes to its name,
 // and the editor does not mark every letter of the keyword).
+import { analysedSince, pageVersion, waitFor, whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -12,17 +13,14 @@ export async function run({ page, shot, step, expect, section, project }) {
   const focused = () => page.evaluate(() => document.activeElement?.dataset?.id ?? null);
   const press = async (key) => {
     await page.keyboard.press(key);
-    await page.waitForTimeout(80);
+    await whenIdle(page);
   };
-  // What a key does shows when the page has handled it, not after a fixed pause: wait for the state to be the one wanted
-  // (up to five seconds) before saying it is not. `want` is a value or a test of the value.
+  // What a key does shows when the page has handled it, not after a fixed pause: wait for the state to be the one wanted.
+  // `want` is a value or a test of the value.
   const until = async (read, want, label) => {
     const ok = (got) => (typeof want === 'function' ? want(got) : got === want);
-    let got = await read();
-    for (let i = 0; i < 50 && !ok(got); i++) {
-      await page.waitForTimeout(100);
-      got = await read();
-    }
+    let got;
+    await waitFor(label, async () => ok((got = await read())));
     expect(ok(got), `${label} (got ${got})`);
   };
   const expanded = (id) => () => row(id).getAttribute('aria-expanded');
@@ -33,7 +31,7 @@ export async function run({ page, shot, step, expect, section, project }) {
 
   await page.setViewportSize({ width: 1366, height: 768 });
   await open();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await shot('1366x768');
 
   step('sections, nested folders and guide lines');
@@ -152,10 +150,9 @@ export async function run({ page, shot, step, expect, section, project }) {
   await press('ArrowLeft');
   await until(expanded('s:top_level'), 'false', 'Left closes the section that holds the active file');
   const main = path.join(project, 'src/main.nsm');
+  const seen = await pageVersion(page);
   fs.appendFileSync(main, '\n// the project is read again\n');
-  await page.waitForFunction(async () => (await fetch('/api/analysis', { cache: 'no-store' }).then((r) => r.json())).version > 1, null, { timeout: 60000 });
-  await page.waitForSelector('.statusbar .item.idle', { timeout: 60000 });
-  await page.waitForTimeout(1500);
+  await analysedSince(page, seen);
   expect((await row('s:top_level').getAttribute('aria-expanded')) === 'false', 'the section is still closed after the project was read again');
   await press('ArrowRight');
   await until(expanded('s:top_level'), 'true', 'and Right opens it');
@@ -177,7 +174,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   const treeBox = page.locator('.ft-tree');
   const scrollTop = () => treeBox.evaluate((e) => e.scrollTop);
   await treeBox.evaluate((e) => { e.scrollTop = 400; });
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const at = await scrollTop();
   expect(at === 400, `the list is scrolled 400 px down (${at})`);
   // A file with definitions, near the bottom of what is on screen.
@@ -188,33 +185,33 @@ export async function run({ page, shot, step, expect, section, project }) {
   const lowFile = (await visibleFiles()).at(-1);
   expect(!!lowFile, `a file with definitions is in view (${lowFile})`);
   await row(lowFile).locator('.ft-twisty').click();
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `closing a file near the bottom keeps the scroll (${await scrollTop()})`);
   await row(lowFile).locator('.ft-twisty').click();
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `and opening it again (${await scrollTop()})`);
   const folderId = await treeBox.evaluate((e) => { const box = e.getBoundingClientRect(); const r = [...e.querySelectorAll('.ft-folder')].find((x) => { const b = x.getBoundingClientRect(); return b.top > box.top + 40 && b.bottom < box.bottom - 60; }); return r?.dataset.id; });
   await row(folderId).click();
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `closing a folder (${folderId}) keeps the scroll (${await scrollTop()})`);
   await row(folderId).click();
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `and opening it (${await scrollTop()})`);
   // A click on a file below the top: the active file changes, and the list stays.
   const another = (await visibleFiles()).at(0);
   await row(another).click();
   await page.waitForSelector('.ft-row.active');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `opening another file keeps the scroll (${await scrollTop()})`);
   // The filter: typing leaves the place, and clearing it goes back to it.
   await page.fill('.tree-filter', 'adc');
   await page.fill('.tree-filter', '');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `a filter typed and cleared (${await scrollTop()})`);
   // The tree is drawn again, as when the files are read again: the same.
   await page.locator('.ft-tree').evaluate((e) => e.dispatchEvent(new Event('scroll')));
   await page.keyboard.press('Control+s');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect(Math.abs((await scrollTop()) - at) <= 1, `a draw that changes nothing (${await scrollTop()})`);
   await shot('scrolled-1366x768');
   await page.locator('button[aria-label="Collapse all"]').click();
@@ -269,6 +266,6 @@ export async function run({ page, shot, step, expect, section, project }) {
   step('2000 x 1000');
   await page.setViewportSize({ width: 2000, height: 1000 });
   await page.locator('button[aria-label="Expand all"]').click();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await shot('2000x1000');
 }

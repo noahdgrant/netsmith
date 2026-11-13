@@ -27,7 +27,7 @@ export async function run(tools) {
   // As an agent runs it: `netsmith view --port N ...`, the exit status and both streams kept.
   const view = async (...args) => {
     try {
-      const r = await exec(binary, ['view', '--port', port, ...args], { timeout: 90000 });
+      const r = await exec(binary, ['view', '--port', port, ...args]);
       return { code: 0, out: r.stdout, err: r.stderr };
     } catch (e) {
       return { code: e.code, out: e.stdout ?? '', err: e.stderr ?? '' };

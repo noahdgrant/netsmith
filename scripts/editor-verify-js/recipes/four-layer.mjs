@@ -1,5 +1,6 @@
 // A four-layer board (launch --fixture four_layer): its planes are drawn dashed, and routing
 // finishes with no unrouted connection.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'four_layer';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -70,7 +71,7 @@ export async function run({ page, shot, step, expect, section }) {
   await shot('plane-labels-fit');
   for (const label of ['+', '+', '\u2212', '\u2212', '\u2212']) {
     await page.locator('.sec-pcb .zoombar button', { hasText: new RegExp(`^${label === '+' ? '\\+' : label}$`) }).first().click();
-    await page.waitForTimeout(250);
+    await whenIdle(page);
     const bad = await onParts();
     expect(bad.length === 0, `still none after zoom ${label} (${await page.locator('.sec-pcb .zoombar span').first().innerText()}): ${bad.join('; ') || (await state())}`);
     expect((await clash()).length === 0, `and no two labels meet after zoom ${label} (${(await clash()).join('; ')})`);
@@ -78,9 +79,9 @@ export async function run({ page, shot, step, expect, section }) {
   step('a label that finds no room is hidden and counted by the chip +N (a button over the canvas; pcb-plane-more drives it); no mark is left in the drawing');
   for (let i = 0; i < 6; i++) {
     await page.locator('.sec-pcb .zoombar button', { hasText: /^\u2212$/ }).first().click();
-    await page.waitForTimeout(150);
+    await whenIdle(page);
   }
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const tagState = await page.evaluate(() => {
     const all = [...document.querySelectorAll('.pcb-host svg .l-plane-labels > text.plane-label')];
     const hidden = all.filter((t) => t.classList.contains('plane-label-off')).map((t) => t.textContent);
@@ -94,12 +95,12 @@ export async function run({ page, shot, step, expect, section }) {
   await shot('plane-labels-more');
   for (let i = 0; i < 6; i++) {
     await page.locator('.sec-pcb .zoombar button', { hasText: /^\+$/ }).first().click();
-    await page.waitForTimeout(100);
+    await whenIdle(page);
   }
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await page.locator('.sec-pcb [data-testid="plane-more"]').count()) === 0 || (await page.locator('.pcb-host svg .plane-label-off').count()) > 0, 'zoomed in again the chip is gone with the labels it stood for');
   await page.locator('.sec-pcb .zoombar button', { hasText: /^Fit$/ }).first().click();
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   step('route it');
   await page.getByRole('button', { name: /Place and route/ }).click();
   await page.waitForSelector('.chip:has-text("routed")');

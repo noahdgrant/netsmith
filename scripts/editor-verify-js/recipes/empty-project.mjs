@@ -1,4 +1,5 @@
 // A project with no board yet: every view that needs a board says "No boards yet", names the file to write it in, and the button opens it.
+import { gate, whenIdle } from '../settle.mjs';
 export const fixture = 'empty';
 
 export async function run({ page, shot, step, expect, section, url }) {
@@ -6,7 +7,7 @@ export async function run({ page, shot, step, expect, section, url }) {
   for (const id of ['schematic', 'power', 'system', 'bom', 'pcb']) {
     step(`${id}: the empty state`);
     await section(id);
-    await page.waitForSelector(`.sec-${id} [data-testid="no-board"]`, { timeout: 15000 });
+    await page.waitForSelector(`.sec-${id} [data-testid="no-board"]`);
     const text = await page.locator(`.sec-${id} [data-testid="no-board"]`).innerText();
     expect(text.includes('No boards yet') && text.includes('src/main.nsm'), `${id} says No boards yet and names src/main.nsm`);
     if (id === 'schematic') await shot('schematic');
@@ -33,31 +34,34 @@ export async function run({ page, shot, step, expect, section, url }) {
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('compare with a ref');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   await page.keyboard.press('Enter');
   await page.waitForSelector('.section.sec-compare:not(.away) [data-testid="cmp-no-git"]');
   expect((await page.locator('[data-testid="ref-popover"]').count()) === 0, 'no picker is open');
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('show changes vs');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.toast', { timeout: 5000 });
+  await page.waitForSelector('.toast');
   expect(/not in a git repository/.test(await page.locator('.toast').first().innerText()), 'a toast says there is nothing to compare with');
   expect(!(await page.evaluate(() => document.documentElement.classList.contains('cmp-on'))), 'and no mark is on');
 
   step('the first-run splash is the same in a project that is not a repository: the mark, the words, then the page');
   const p2 = await page.context().newPage();
+  // The project is held back until the step has looked at the splash: the splash is there for as long as that takes, on any machine.
+  const arrives = gate();
   await p2.route('**/api/project', async (r) => {
-    await new Promise((x) => setTimeout(x, 1000));
+    await arrives.opened;
     await r.continue();
   });
   const nav = p2.goto(url);
   await p2.waitForSelector('.splash');
   expect(((await p2.locator('.splash').innerText()) || '').includes('Reading the project'), 'it says Reading the project');
+  arrives.open();
   await nav;
-  await p2.waitForSelector('.splash', { state: 'detached', timeout: 8000 });
-  await p2.waitForSelector('.section:not(.away)', { timeout: 8000 });
+  await p2.waitForSelector('.splash', { state: 'detached' });
+  await p2.waitForSelector('.section:not(.away)');
   expect(true, 'the page is there');
   await p2.close();
 }

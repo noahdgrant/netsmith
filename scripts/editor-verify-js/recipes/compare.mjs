@@ -3,6 +3,7 @@
 // the bill of materials, the power tree and the source, a ref that does not analyse, a progress state and a
 // project that is not in a repository. It needs `launch --git`: the project is a throwaway repository whose
 // first commit (`main`, tag `v1.0`) is an earlier design (see fixtures/gitrepo.mjs).
+import { gate, waitFor, whenIdle } from '../settle.mjs';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -31,7 +32,6 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForSelector('.sidebar > *', { state: 'attached' });
   await page.setViewportSize({ width: 1920, height: 1080 });
   const text = (sel) => page.locator(sel).first().innerText();
-  const settle = (ms = 300) => page.waitForTimeout(ms);
   const visible = (sel) => page.locator(`.section:not(.away) ${sel}`);
   // The popover is in the page a frame before its key handler is: the page attaches the handler, then focuses the
   // search box, in one effect (RefPicker.tsx). A key pressed on seeing the popover alone was lost on a slow runner
@@ -43,12 +43,12 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     await page.locator(`[data-testid="ref-item"][data-name="${name}"]`).click();
   };
   const summary = async () => {
-    await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 60000 });
+    await page.waitForSelector('[data-testid="cmp-summary"]');
     return text('[data-testid="cmp-summary"]');
   };
   const tab = async (id) => {
     await page.click(`.cmp-tab[data-tab="${id}"]`);
-    await settle(150);
+    await whenIdle(page);
   };
   const rows = () => page.locator('.cmp-group [data-testid="cmp-row"]');
   const rowOf = (title) => page.locator('[data-testid="cmp-row"]', { has: page.locator('.cr-title', { hasText: new RegExp(`^${title}$`) }) });
@@ -69,7 +69,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('compare with');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   expect((await page.locator('.qp-row', { hasText: 'Compare with a ref' }).count()) === 1, 'the command is listed');
   await page.keyboard.press('Escape');
 
@@ -88,7 +88,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/uncommitted changes \(compared as is\)/.test(await text('[data-testid="ref-dirty"]')), 'the sentence about the work tree');
   await shot('picker');
   await page.keyboard.type('v1');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="ref-item"]').count()) === 1, 'the search narrows the list to the tag');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid="ref-popover"]', { state: 'detached' });
@@ -101,7 +101,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/1 part added, 1 removed, 2 values changed/.test(sentence) && /headroom shrank from 70 mA to 50 mA/.test(sentence), `the summary sentence (${sentence})`);
   // One model of the counts: the section starts on all the boards, so the sentence, the tiles, the tabs, the chip and the total say one thing.
   expect((await page.locator('[data-testid="cmp-board"]').inputValue()) === 'all', 'the section starts on All boards, not the board in front');
-  await settle();
+  await whenIdle(page);
   const tiles = await page.locator('[data-testid^="tile-"]').evaluateAll((els) => els.map((e) => [e.getAttribute('data-testid'), e.innerText.replace(/\s+/g, ' ')]));
   expect(tiles.length === 7, 'seven tiles: parts, nets, rails, BOM cost, systems, PCB, problems');
   const tile = (id) => tiles.find((t) => t[0] === `tile-${id}`)[1];
@@ -120,7 +120,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(/line/.test((await page.locator('[data-testid="compare-chip"]').getAttribute('data-tip')) ?? ''), 'the chip\'s tooltip has the source lines');
   const boardSentence = async (name) => {
     await page.selectOption('[data-testid="cmp-board"]', name);
-    await settle(250);
+    await whenIdle(page);
     return { sentence: await text('[data-testid="cmp-summary"]'), total: Number((await text('[data-testid="cmp-total"]')).match(/\d+/)[0]), parts: Number((await text('[data-testid="tile-parts"]')).replace(/\s+/g, ' ').match(/ (\d+) /)?.[1] ?? NaN) };
   };
   const systemsN = Number(await text('[data-testid="count-systems"]'));
@@ -155,7 +155,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
   step('the list is as tall as its rows with a foot that counts right under the last one, and scrolls inside only past the height the page has; the summary and the tabs stay put; a column of help stands in the margin on a wide window');
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await settle(400);
+  await whenIdle(page);
   const cmpSel = { frame: '.cmp-scroll', scroller: '.cmp-scroll', foot: '.cmp-foot', section: '.section.sec-compare' };
   const wide = await page.evaluate(() => {
     const foot = document.querySelector('.cmp-foot');
@@ -174,17 +174,17 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await shot('compare-wide');
   for (const tab of ['bom', 'nets', 'rails']) {
     await page.click(`#cmp-tab-${tab}`);
-    await settle(300);
+    await whenIdle(page);
     if (await page.locator('.cmp-foot').count()) await expectFrameFits(page, expect, `Compare, ${tab}`, cmpSel);
   }
   await page.click('#cmp-tab-parts');
-  await settle(300);
+  await whenIdle(page);
   await page.setViewportSize({ width: 1280, height: 520 });
-  await settle(400);
+  await whenIdle(page);
   const tight = await expectFrameFits(page, expect, 'Compare, parts at 1280 x 520', cmpSel);
   expect(tight.scrolls, 'a short window makes the list scroll inside its frame, the foot kept at its end');
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await settle(400);
+  await whenIdle(page);
 
   step('expand a row: the fields that changed, each with its old and new value');
   await r1.locator('.cr-chev').click();
@@ -195,11 +195,11 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
   step('filter, and group by module');
   await page.fill('.cmp-filter input', 'cap');
-  await settle(150);
+  await whenIdle(page);
   expect((await rows().count()) === 1, 'the filter finds the capacitor');
   await page.fill('.cmp-filter input', '');
   await page.click('.seg-btn:has-text("By module")');
-  await settle(150);
+  await whenIdle(page);
   const heads = await page.locator('.cmp-group-head').allInnerTexts();
   expect(heads.some((h) => /On the board/.test(h)) && heads.some((h) => /stage/.test(h)), `groups by module (${heads.map((h) => h.replace(/\s+/g, ' ')).join(' | ')})`);
   await page.click('.seg-btn:has-text("Flat")');
@@ -244,7 +244,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   // ------------------------------------------------------------------ click-through
   step('click a row: it is picked in every view; hovering lights it through the shared hover');
   await rowOf('r1').locator('.cr-main').hover();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect(await page.evaluate(() => document.documentElement.classList.contains('has-hover')), 'the shared hover is on while the pointer is on the row');
   await rowOf('r1').locator('.cr-main').click();
   await page.waitForSelector('.selchip');
@@ -264,7 +264,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect((await rowOf('debug').locator('[data-testid="link-head"]').isDisabled()) === true, 'a removed part has no Head');
   await rowOf('r1').locator('[data-testid="link-base"]').click();
   await page.waitForSelector('[data-testid="diff-panel"] .cm-editor');
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   expect((await text('[data-testid="diff-path"]')) === 'src/main.nsm', 'the diff view is of the file');
   expect(/main/.test(await text('.diff-title')) || /[0-9a-f]{7}/.test(await text('.diff-title')), 'it says the ref and "working file"');
   expect(/working file/.test(await text('.diff-title')) && /read only/.test(await text('.diff-title')), 'the working file against the ref, read only');
@@ -310,22 +310,22 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
   step('a click on a bar shows its lines in both views; Enter on another does the same from the keyboard; the choice is kept');
   await barsOf(0).first().click();
-  await settle();
+  await whenIdle(page);
   expect(JSON.stringify(await counts(0)) === JSON.stringify(c0.slice(1)) && JSON.stringify(await counts(1)) === JSON.stringify(c0.slice(1)), 'the first run is open in both views');
   expect((await col(0).locator('.cm-content').innerText()).includes('Two boards in one system'), 'its lines are there');
   await barsOf(0).first().focus();
   await page.keyboard.press('Enter');
-  await settle();
+  await whenIdle(page);
   expect((await counts(0)).length === c0.length - 2 && (await counts(1)).length === c0.length - 2, 'Enter opened the next one');
   await page.locator('[data-testid="diff-hide"]').click();
-  await settle();
+  await whenIdle(page);
   expect((await page.locator('.cm-diff-bar').count()) === 0 && (await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'false', 'the switch off: every line is drawn');
   await page.locator('[data-testid="diff-hide"]').click();
-  await settle();
+  await whenIdle(page);
   expect((await counts(0)).length === c0.length - 2, 'on again: the two bars that were opened stay open');
   await page.click('[data-testid="diff-mode-inline"]');
   await page.waitForSelector('[data-testid="diff-inline"] .cm-editor');
-  await settle();
+  await whenIdle(page);
   expect((await page.locator('.diff-inline .cm-diff-bar, [data-testid="diff-inline"] .cm-diff-bar').count()) === c0.length - 2, 'the inline view hides the same runs');
   await page.click('[data-testid="diff-mode-side"]');
   await page.waitForSelector('[data-testid="diff-side"] .cm-editor');
@@ -335,18 +335,18 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await col(0).locator('.cm-content').focus();
   const before = await at();
   await page.keyboard.press('F7');
-  await settle();
+  await whenIdle(page);
   expect((await at()) === before + 1, `F7 goes to the next change (${before} -> ${await at()})`);
   await page.keyboard.press('Shift+F7');
-  await settle();
+  await whenIdle(page);
   expect((await at()) === before, 'Shift+F7 goes back');
   const pressed = () => page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed');
   const was = await pressed();
   await page.keyboard.press('Control+Alt+h');
-  await settle();
+  await whenIdle(page);
   expect((await pressed()) !== was, 'Ctrl+Alt+H turns the hiding of unchanged lines on or off');
   await page.keyboard.press('Control+Alt+h');
-  await settle();
+  await whenIdle(page);
   expect((await pressed()) === was, 'and back');
   await col(0).locator('.cm-content').focus();
   await page.keyboard.press('F1');
@@ -360,11 +360,11 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('unchanged lines');
-  await settle(300);
+  await whenIdle(page);
   expect(/(Hide|Show) unchanged lines in the comparison/.test(await page.locator('.qp').innerText()), 'the palette has the switch, worded as what it does next');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.qp', { state: 'detached' });
-  await settle(300);
+  await whenIdle(page);
   expect(await page.evaluate(() => !!document.activeElement?.closest('.diff-panel')), 'the focus is back in the comparison');
   await page.keyboard.press('Escape');
   await page.waitForSelector('[data-testid="diff-panel"]', { state: 'detached' });
@@ -409,7 +409,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   });
   expect((await markedWith('svg.schematic .part[class*="cmp-"]')) === 0, 'no marks while the switch is off');
   await visible('[data-testid="changes-switch"]').click();
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   expect(await page.evaluate(() => document.documentElement.classList.contains('cmp-on')), 'the page says marks are on');
   const changedParts = await page.evaluate(() => [...document.querySelectorAll('svg.schematic .part.cmp-changed')].map((e) => e.getAttribute('data-ref')));
   expect(changedParts.length === 2, `the resistor and the LED are outlined as changed (${changedParts.join(', ')})`);
@@ -460,7 +460,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('the power tree: the rail whose headroom shrank has a badge, before to after');
   await section('power');
   await page.waitForSelector('.pt-rail');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   const badge = await page.evaluate(() => [...document.querySelectorAll('.pt-rail.cmp-shrank')].map((e) => e.getAttribute('data-cmp-delta')));
   expect(badge.length === 1 && /70 mA.*50 mA/.test(badge[0]), `the delta badge (${badge.join(', ')})`);
   const badgeText = await page.evaluate(() => getComputedStyle(document.querySelector('.pt-rail.cmp-shrank'), '::after').content);
@@ -471,7 +471,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('the system: the boards that changed are marked');
   await section('system');
   await page.waitForSelector('.sy-card');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect((await markedWith('.sy-card.cmp-board-changed')) === 2, 'both boards are marked as changed');
   await shot('system-marks');
 
@@ -480,7 +480,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForSelector('.cm-content');
   // (the gutter keeps a hidden copy of its widest mark to size itself: only a mark with a height is a line's)
   const shown = (kind) => page.evaluate((k) => [...document.querySelectorAll(`[data-testid="chg-${k}"]`)].filter((e) => e.offsetHeight > 0).length, kind);
-  await page.waitForFunction(() => [...document.querySelectorAll('[data-testid^="chg-"]')].some((e) => e.offsetHeight > 0), null, { timeout: 15000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-testid^="chg-"]')].some((e) => e.offsetHeight > 0), null);
   const bars = { added: await shown('added'), changed: await shown('changed'), deleted: await shown('deleted') };
   expect(bars.added + bars.changed > 0, `a bar beside lines that are new or changed (${JSON.stringify(bars)})`);
   expect(/\d+ lines? changed in this file/.test(await text('[data-testid="source-changes"]')), `the number of lines changed, in this file, in the status bar (${await text('[data-testid="source-changes"]')})`);
@@ -493,29 +493,29 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   const starts = [...new Set(ticks.map((t) => t.line))].sort((a, b) => a - b);
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+Home');
-  await settle(200);
+  await whenIdle(page);
   await page.keyboard.press('Alt+F5');
-  await settle(300);
+  await whenIdle(page);
   const first = await gutterLine();
   expect(first === starts[0], `Alt+F5 goes to the first change (line ${first}, the ruler's first bar is at ${starts[0]})`);
   await page.keyboard.press('Alt+F5');
-  await settle(300);
+  await whenIdle(page);
   const second = await gutterLine();
   expect(second > first && (starts.length < 2 || second === starts[1] || second <= starts[starts.length - 1]), `Alt+F5 again goes on to the next one (line ${second})`);
   await page.keyboard.press('Shift+Alt+F5');
-  await settle(300);
+  await whenIdle(page);
   expect((await gutterLine()) === first, 'Shift+Alt+F5 goes back to the one before');
   let wrapped = first;
   for (let i = 0; i < starts.length + 2 && !(await page.locator('.toast', { hasText: 'Back at the first change' }).count()); i++) {
     await page.keyboard.press('Alt+F5');
-    await settle(200);
+    await whenIdle(page);
     wrapped = await gutterLine();
   }
   expect(wrapped === first && (await page.locator('.toast', { hasText: 'Back at the first change' }).count()) > 0, 'past the last change it comes round to the first, and a toast says so');
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('next change');
-  await settle(250);
+  await whenIdle(page);
   const listed = await page.locator('.qp').innerText();
   expect(/Next change/.test(listed) && /Alt\s*\+?\s*F5/.test(listed), `the palette lists Next change with its key (${listed.replace(/\s+/g, ' ').slice(0, 120)})`);
   await page.keyboard.press('Escape');
@@ -532,9 +532,9 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('hide changes');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   expect(!(await page.evaluate(() => document.documentElement.classList.contains('cmp-on'))), 'the page says marks are off');
   expect((await markedWith('[class*="cmp-changed"], [class*="cmp-added"], [class*="cmp-renumbered"], [data-cmp-delta]')) === 0, 'no class of a mark is left in the page');
   expect((await shown('added')) + (await shown('changed')) + (await shown('deleted')) === 0, 'and none in the margin');
@@ -546,10 +546,10 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.waitForSelector('[data-testid="chip-marks"]');
   await shot('chip-menu');
   await page.click('[data-testid="chip-marks"]');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect(await page.evaluate(() => document.documentElement.classList.contains('cmp-on')), 'on again');
   await page.click('.section:not(.away) [data-testid="changes-switch"]');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
 
   // ------------------------------------------------------------------ remembered, and a change on disk
   step('the ref is remembered for the project: after a reload the section opens on the comparison');
@@ -562,14 +562,14 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   const file = path.join(project, 'src/main.nsm');
   const original = fs.readFileSync(file, 'utf8');
   fs.writeFileSync(file, original.replace('.led: Led {', '.led: Led { .color &= "red"'));
-  await page.waitForSelector('[data-testid="cmp-head-errors"]', { timeout: 30000 });
+  await page.waitForSelector('[data-testid="cmp-head-errors"]');
   await tab('problems');
   await page.waitForSelector('.cr-kind.k-problem');
   expect(/catalog has nothing/.test(await text('[data-testid="cmp-list"]')) && /New/.test(await text('[data-testid="cmp-list"]')), 'the new error is listed');
   expect(/\d+ new/.test(tile_text(await text('[data-testid="tile-problems"]'))), 'and the tile counts it');
   await shot('problems');
   fs.writeFileSync(file, original);
-  await page.waitForSelector('[data-testid="cmp-head-errors"]', { state: 'detached', timeout: 30000 });
+  await page.waitForSelector('[data-testid="cmp-head-errors"]', { state: 'detached' });
   expect(true, 'it is gone when the file is right again');
   await tab('parts');
 
@@ -577,7 +577,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('HEAD: no change to the circuit, and the source that differs is said');
   await visible('[data-testid="ref-button"]').click();
   await pick('HEAD');
-  await page.waitForSelector('[data-testid="cmp-empty"]', { timeout: 60000 });
+  await page.waitForSelector('[data-testid="cmp-empty"]');
   expect(/No changes in the circuit/.test(await text('[data-testid="cmp-empty"]')), 'No changes in the circuit');
   expect(/Only the source differs/.test(await text('[data-testid="cmp-empty"]')) && /NOTES\.md/.test(await text('[data-testid="cmp-source-only"]')), 'with what did differ: NOTES.md, which is not part of the circuit');
   expect((await page.locator('[data-testid="cmp-empty"] .empty-mark svg').count()) === 1, 'with a check mark');
@@ -585,23 +585,31 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
   // ------------------------------------------------------------------ progress and a ref that does not analyse
   step('progress: the stage and the time, no percentage');
+  // The answer is held until the step has looked at the progress: it is on screen for as long as that takes, on any machine.
+  const answered = gate();
   await page.route('**/api/compare**', async (route) => {
     const response = await route.fetch();
-    await new Promise((r) => setTimeout(r, 2500));
+    await answered.opened;
     await route.fulfill({ response });
   });
   await visible('[data-testid="ref-button"]').click();
   await pick('broken');
   await page.waitForSelector('[data-testid="cmp-progress"]');
-  await page.waitForTimeout(1000);
+  // The stage comes by the socket while the answer is held (the page is busy with the request: not `whenIdle`).
+  await page.waitForFunction(() => {
+    const t = document.querySelector('[data-testid="cmp-stage"]')?.textContent.trim() ?? '';
+    return t.length > 3 && t !== 'Working';
+  });
+  await page.waitForFunction(() => /\d+(\.\d)? s/.test(document.querySelector('[data-testid="cmp-elapsed"]')?.textContent ?? ''));
   const stage = await text('[data-testid="cmp-stage"]');
   expect(stage.trim().length > 3 && stage.trim() !== 'Working', `the stage the server is in (${stage})`);
   expect(/\d+(\.\d)? s/.test(await text('[data-testid="cmp-elapsed"]')), 'the time it has taken');
   expect(!/%/.test(await text('[data-testid="cmp-progress"]')), 'never a percentage');
   expect((await page.locator('[data-testid="compare-chip"]').innerText()).includes('comparing'), 'the chip says it is comparing');
   await shot('progress');
+  answered.open();
   step('a ref that does not analyse: the sentence and the ref\'s own problems, and a way out');
-  await page.waitForSelector('[data-testid="cmp-broken"]', { timeout: 60000 });
+  await page.waitForSelector('[data-testid="cmp-broken"]');
   await page.unroute('**/api/compare**');
   expect(/does not analyse/.test(await text('[data-testid="cmp-error"]')), `the sentence (${await text('[data-testid="cmp-error"]')})`);
   expect(/unknown type/.test(await text('.cmp-baseproblems')), 'the error of the ref');
@@ -625,7 +633,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   await page.keyboard.type('no-such-branch');
   await page.waitForSelector('[data-testid="ref-custom"]');
   await page.keyboard.press('Enter');
-  await page.waitForSelector('[data-testid="cmp-failed"]', { timeout: 30000 });
+  await page.waitForSelector('[data-testid="cmp-failed"]');
   expect(/no ref called/.test(await text('[data-testid="cmp-failed"]')), 'there is no ref called that');
   await page.click('[data-testid="another-ref"]');
   await pickerReady();
@@ -641,15 +649,15 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   const port = await freePort();
   const server = spawn(binary, ['editor', '--port', String(port)], { cwd: copy, stdio: 'ignore' });
   try {
-    let reason = null;
-    for (let i = 0; i < 100 && !reason; i++) {
+    // The server answers when it is up: ask until it does.
+    const reason = await waitFor('the server over the copy to answer', async () => {
       try {
         const r = await fetch(`http://127.0.0.1:${port}/api/git`);
-        if (r.ok) reason = await r.text();
+        return r.ok ? await r.text() : null;
       } catch {
-        await new Promise((r) => setTimeout(r, 150));
+        return null;
       }
-    }
+    });
     expect(!!reason && JSON.parse(reason).available === false, 'the server over a folder that is no repository says so');
     await page.route('**/api/git', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: reason }));
     await page.evaluate(() => localStorage.clear());

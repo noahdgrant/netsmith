@@ -2,6 +2,7 @@
 // the breadcrumbs with their dropdown; the outline; Back and Forward through the places the cursor was
 // taken to; inline hints that are not text; the file tabs; folds, wrapping and the size of the text; the
 // lint card; completion; find and replace; the library's read-only note; go to symbol in the open file.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect, project, section }) {
@@ -17,10 +18,9 @@ export async function run({ page, shot, step, expect, project, section }) {
   const detail = await page.evaluate(async (b) => (await fetch(`/api/board?name=${encodeURIComponent(b)}`)).json(), board);
   const r1 = detail.parts.find((p) => p.path === 'r1');
   const net = detail.nets.find((n) => n.name === '3V3');
-  const settle = (ms = 300) => page.waitForTimeout(ms);
   const goDef = async (name) => {
     await page.locator('.ft-def', { hasText: name }).first().click();
-    await settle(500);
+    await whenIdle(page);
   };
   const lineOf = (text) => page.locator('.cm-line', { hasText: text }).first();
   const hoverToken = async (line, word, nth = 0) => {
@@ -28,15 +28,15 @@ export async function run({ page, shot, step, expect, project, section }) {
   };
   const away = async () => {
     await page.mouse.move(1500, 960);
-    await settle(400);
+    await whenIdle(page);
   };
   const palette = async (text) => {
     await page.keyboard.press('Control+Shift+P');
     await page.waitForSelector('.qp');
     await page.keyboard.type(text);
-    await settle(250);
+    await whenIdle(page);
     await page.keyboard.press('Enter');
-    await settle(300);
+    await whenIdle(page);
   };
   const activeLine = () => page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '');
   const hints = () => page.locator('[data-testid="inline-hint"]').count();
@@ -45,7 +45,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   step('hover a part declaration: a card with the designator, kind, value, package, pins and nets');
   await goDef('LedBoard');
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"][data-kind="part"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"][data-kind="part"]');
   let card = await page.locator('[data-testid="hover-card"]').innerText();
   expect(card.includes(r1.refdes) && card.includes(r1.value) && card.includes(r1.kind), `the card names ${r1.refdes}, its value and kind`);
   expect(card.includes('Pins') && r1.package ? card.includes(r1.package) : true, 'its package');
@@ -61,10 +61,10 @@ export async function run({ page, shot, step, expect, project, section }) {
   const chip = page.locator('[data-testid="hover-card"] .hc-pin').first();
   const netName = (await chip.locator('span').last().innerText()).trim();
   await chip.hover();
-  await settle(250);
+  await whenIdle(page);
   expect((await page.locator('html.has-hover').count()) === 1, 'the page has a hover');
   await chip.click();
-  await settle(300);
+  await whenIdle(page);
   expect((await page.locator('.selchip').innerText()).includes(netName), `the selection chip names ${netName}`);
 
   step('the card goes when the pointer moves off the token');
@@ -73,8 +73,8 @@ export async function run({ page, shot, step, expect, project, section }) {
 
   step('hover a net name in a string: a card with its pins and, once the power tree is read, its rail');
   await hoverToken('.pos.net &= "3V3"', '"3V3"');
-  await page.waitForSelector('[data-testid="hover-card"][data-kind="net"]', { timeout: 4000 });
-  await page.waitForFunction(() => document.querySelector('[data-testid="hover-card"]')?.innerText.includes('Voltage'), null, { timeout: 5000 });
+  await page.waitForSelector('[data-testid="hover-card"][data-kind="net"]');
+  await page.waitForFunction(() => document.querySelector('[data-testid="hover-card"]')?.innerText.includes('Voltage'), null);
   card = await page.locator('[data-testid="hover-card"]').innerText();
   expect(card.includes('3V3') && card.includes(`${net.pins.length} pins`) && /Voltage\s+[\d.]+\s*V/.test(card), `the net, its pin count and its voltage (${card.replace(/\s+/g, ' ').slice(0, 120)})`);
   await shot('hover-net');
@@ -82,8 +82,8 @@ export async function run({ page, shot, step, expect, project, section }) {
 
   step('hover a type of the library: its signature, its doc comment and what it declares');
   await hoverToken('.r1: Resistor', 'Resistor');
-  await page.waitForSelector('[data-testid="hover-card"][data-kind="definition"]', { timeout: 4000 });
-  await page.waitForFunction(() => /resistor\. Its/i.test(document.querySelector('[data-testid="hover-card"]')?.innerText ?? ''), null, { timeout: 5000 });
+  await page.waitForSelector('[data-testid="hover-card"][data-kind="definition"]');
+  await page.waitForFunction(() => /resistor\. Its/i.test(document.querySelector('[data-testid="hover-card"]')?.innerText ?? ''), null);
   card = await page.locator('[data-testid="hover-card"]').innerText();
   expect(card.includes('generic Resistor') && card.includes('.resistance') && card.includes('std/parts/passive.nsm'), 'signature, members and file');
   await shot('hover-definition');
@@ -91,33 +91,33 @@ export async function run({ page, shot, step, expect, project, section }) {
 
   step('hover a module instance (the power board is the one shown): its parts as chips');
   await page.selectOption('.boardpick select', 'TwoBoards/power');
-  await settle(1500);
+  await whenIdle(page);
   await goDef('PowerBoard');
   await hoverToken('.stage: LdoStage', 'stage');
-  await page.waitForSelector('[data-testid="hover-card"][data-kind="module"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"][data-kind="module"]');
   card = await page.locator('[data-testid="hover-card"]').innerText();
   expect(card.includes('Module instance') && card.includes('LdoStage') && /3 parts/.test(card), 'the module, its type and its three parts');
   await shot('hover-module');
   await away();
   await page.selectOption('.boardpick select', board);
-  await settle(1500);
+  await whenIdle(page);
   await goDef('LedBoard');
 
   step('Escape closes a card the pointer opened, with the focus in the editor or out of it, and the selection stays');
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   expect((await page.locator('[data-testid="hover-card"]').count()) === 1, 'the pointer opened a card');
   await page.keyboard.press('Escape');
-  await settle(250);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes a card opened by the pointer');
   await away();
   await lineOf('.r1: Resistor').locator('span', { hasText: 'r1' }).first().click();
   await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
   await page.mouse.move(1500, 960);
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   await page.keyboard.press('Escape');
-  await settle(250);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'and when the focus is not in the editor');
   await away();
 
@@ -126,10 +126,10 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Home');
   for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Control+Alt+i');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 3000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   expect(true, 'a card without the pointer');
   await page.keyboard.press('Escape');
-  await settle(250);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes it');
 
   step('a card is a dialog labelled by its title; Tab moves the focus into it, its chips and buttons take Tab and Shift+Tab, Enter activates a chip, Escape closes it and the focus returns to the text');
@@ -138,7 +138,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Home');
   for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Control+Alt+i');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 3000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   const dialog = await page.evaluate(() => {
     const d = document.querySelector('[data-testid="hover-card"]');
     const t = document.getElementById(d.getAttribute('aria-labelledby') ?? '');
@@ -163,13 +163,13 @@ export async function run({ page, shot, step, expect, project, section }) {
   await shot('card-focus');
   if (chipName) {
     await page.keyboard.press('Enter');
-    await settle(300);
+    await whenIdle(page);
     expect((await page.locator('.selchip').count()) === 1, `Enter on a pin chip picks its net (${chipName})`);
     await page.keyboard.press('Escape');
-    await settle(200);
+    await whenIdle(page);
   } else {
     await page.keyboard.press('Escape');
-    await settle(250);
+    await whenIdle(page);
   }
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes the card');
   expect(await page.evaluate(() => !!document.activeElement?.closest('.cm-content')), 'and the focus is in the text again');
@@ -177,17 +177,17 @@ export async function run({ page, shot, step, expect, project, section }) {
   step('a card the pointer opened stays while the focus is in it, whatever the pointer does');
   await away();
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   await lineOf('.r1: Resistor').click();
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   await page.keyboard.press('Tab');
   expect(await inCard(), 'Tab goes into a card the pointer opened');
   await page.mouse.move(1500, 960);
-  await settle(1000);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 1, 'and the card is still there with the pointer far away');
   await page.keyboard.press('Escape');
-  await settle(250);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0 && (await page.evaluate(() => !!document.activeElement?.closest('.cm-content'))), 'Escape closes it, and the focus returns to the text');
   await away();
 
@@ -196,9 +196,9 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Home');
   for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowRight');
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   await page.keyboard.press('Control+Alt+i');
-  await settle(400);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 1, 'one card');
   await page.keyboard.press('Escape');
   await away();
@@ -206,19 +206,19 @@ export async function run({ page, shot, step, expect, project, section }) {
   step('the palette turns hover cards off and on');
   await palette('hide hover cards');
   await hoverToken('.r1: Resistor', 'r1');
-  await settle(900);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'no card while they are off');
   await away();
   await palette('show hover cards');
   await hoverToken('.r1: Resistor', 'r1');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   expect(true, 'the card is back');
   await away();
 
   // ---- breadcrumbs ----
   step('the breadcrumbs follow the cursor: file, definition, declaration');
   await lineOf('.r1: Resistor').click();
-  await settle(300);
+  await whenIdle(page);
   const crumbs = await page.locator('.bc-crumb').allInnerTexts();
   expect(crumbs.length === 3 && crumbs[0].includes('main.nsm') && crumbs[1].includes('LedBoard') && crumbs[2].startsWith('r1'), `main.nsm > LedBoard > r1 (${crumbs.join(' > ').replace(/\s+/g, ' ')})`);
 
@@ -231,17 +231,17 @@ export async function run({ page, shot, step, expect, project, section }) {
   await shot('crumbs');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board PowerBoard'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board PowerBoard'), null);
   expect((await page.locator('.bc-crumb').nth(1).innerText()).includes('PowerBoard'), 'the crumb follows');
 
   // ---- the outline ----
   step('the outline lists the definitions and what they declare; a click puts the cursor there and the cursor marks its entry');
   await page.waitForSelector('.ol-row[data-name="stage"]');
   await page.locator('.ol-row[data-name="stage"]').click();
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.stage: LdoStage'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.stage: LdoStage'), null);
   expect((await page.locator('.ol-row.active').getAttribute('data-name')) === 'stage', 'its entry is marked');
   await lineOf('.power_in: Header1x2').first().click();
-  await settle(300);
+  await whenIdle(page);
   expect((await page.locator('.ol-row.active').getAttribute('data-name')) === 'power_in', 'the marked entry follows the cursor');
   const kinds = await page.locator('.ol-row.def').evaluateAll((els) => els.map((e) => e.dataset.kind));
   expect(['module', 'board', 'system'].every((k) => kinds.includes(k)), `a row for each kind of definition (${kinds.join(', ')})`);
@@ -255,38 +255,38 @@ export async function run({ page, shot, step, expect, project, section }) {
   expect(rowsNow.filter((r) => r.open === 'false').every((r) => /^\d+$/.test(r.kids ?? '') && Number(r.kids) > 0), `each folded one says how many it holds (${rowsNow.filter((r) => r.open === 'false').map((r) => `${r.name}:${r.kids}`).join(', ')})`);
   const total = await page.locator('.ol-row').count();
   await page.locator('[data-testid="outline-expand-all"]').click();
-  await settle(200);
+  await whenIdle(page);
   expect((await page.locator('.ol-row').count()) > total && (await page.locator('.ol-kids').count()) === 0, 'Expand all opens every definition');
   await page.locator('[data-testid="outline-collapse-all"]').click();
-  await settle(200);
+  await whenIdle(page);
   expect((await page.locator('.ol-row').count()) === (await page.locator('.ol-row.def').count()) && (await page.locator('.ol-row.def[aria-expanded="false"]').count()) === rowsNow.length, 'Collapse all folds every one, the current too');
   await page.locator('.ol-row.def[data-name="LdoStage"] .ol-twisty').click();
-  await settle(200);
+  await whenIdle(page);
   expect((await page.locator('.ol-row.def[data-name="LdoStage"]').getAttribute('aria-expanded')) === 'true', 'a twisty opens one');
   const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('netsmith.source.outlineFolds.v1') ?? '{}'));
   const mine = kept['src/main.nsm'];
   expect(mine && mine.open.includes('module:LdoStage') && mine.closed.includes('board:PowerBoard'), `the choice is kept for the file by names (${JSON.stringify(mine)})`);
   await page.locator('[data-testid="outline-expand-all"]').click();
-  await settle(150);
+  await whenIdle(page);
 
   step('the gutter shows a faint chevron on every foldable line, full on the gutter; Fold all and Unfold all are in the bar above the text');
   await page.mouse.move(1500, 960);
-  await settle(300);
+  await whenIdle(page);
   const chevrons = await page.evaluate(() => [...document.querySelectorAll('.cm-fold-mark:not(.folded)')].map((e) => Number(getComputedStyle(e).opacity)));
   expect(chevrons.length >= 3 && chevrons.every((o) => o >= 0.3 && o < 1), `a chevron on each foldable line at rest, not hidden and not loud (${chevrons.length} at ${chevrons[0]})`);
   await page.locator('.cm-gutters').hover();
-  await settle(250);
+  await whenIdle(page);
   expect((await page.evaluate(() => Math.max(...[...document.querySelectorAll('.cm-fold-mark:not(.folded)')].map((e) => Number(getComputedStyle(e).opacity))))) === 1, 'full on the gutter');
   await page.locator('[data-testid="fold-all"]').click();
   await page.waitForSelector('.cm-foldPlaceholder');
   expect(true, 'Fold all in the bar folds the blocks');
   await page.locator('[data-testid="unfold-all"]').click();
-  await settle(200);
+  await whenIdle(page);
   expect((await page.locator('.cm-foldPlaceholder').count()) === 0, 'Unfold all opens them');
 
   step('the outline filters, and shows a problem where it is');
   await page.locator('.ol-filter input').fill('cap');
-  await settle(250);
+  await whenIdle(page);
   const filtered = await page.locator('.ol-row').evaluateAll((els) => els.map((e) => e.dataset.name));
   expect(filtered.includes('input_cap') && filtered.includes('LdoStage') && !filtered.includes('process'), `only what matches, with its parents (${filtered.join(', ')})`);
   await page.locator('.ol-filter input').fill('');
@@ -294,12 +294,12 @@ export async function run({ page, shot, step, expect, project, section }) {
   await lineOf('.r1: Resistor {}').click();
   await page.keyboard.press('Home');
   await page.keyboard.type('.oops: Missing\n    ');
-  await page.waitForSelector('.cm-lintRange-error', { timeout: 10000 });
-  await page.waitForSelector('.ol-row[data-name="oops"] .ft-problems', { timeout: 5000 });
+  await page.waitForSelector('.cm-lintRange-error');
+  await page.waitForSelector('.ol-row[data-name="oops"] .ft-problems');
   expect(true, 'the entry of the mistake has a badge');
 
   step('the overview ruler: a tick for the problem in its lane, in the danger colour, that says "line N: message"; a faint thumb for the window; a press scrolls there');
-  await page.waitForSelector('.cm-ruler:not([hidden]) .cm-ruler-tick.kind-error', { timeout: 8000 });
+  await page.waitForSelector('.cm-ruler:not([hidden]) .cm-ruler-tick.kind-error');
   const tick = page.locator('.cm-ruler-tick.kind-error').first();
   const tip = (await tick.getAttribute('data-tip')) ?? '';
   expect(/^line \d+: .+/.test(tip), `the tick says where and what (${tip})`);
@@ -330,16 +330,16 @@ export async function run({ page, shot, step, expect, project, section }) {
   expect(/polygon/.test(tri.clip) && tri.w >= 7, `a warning is a triangle, not a bar (${tri.clip.slice(0, 40)}, ${tri.w} px wide)`);
   expect(look.scrolls ? !look.thumbHidden && look.thumb > 8 && look.thumb < look.height : look.thumbHidden, `the thumb is the window's share of the file (${look.thumb.toFixed(0)} of ${look.height.toFixed(0)} px)`);
   await page.keyboard.press('Control+Home');
-  await settle(200);
+  await whenIdle(page);
   await tick.click();
-  await settle(300);
+  await whenIdle(page);
   expect((await activeLine()).includes('.oops'), `a press on the tick puts the cursor on its line (${(await activeLine()).trim()})`);
   const sc0 = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop);
   await page.keyboard.press('Control+Home');
-  await settle(200);
+  await whenIdle(page);
   const box = await page.locator('.cm-ruler').boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + box.height - 6);
-  await settle(300);
+  await whenIdle(page);
   const sc1 = await page.evaluate(() => document.querySelector('.cm-scroller').scrollTop);
   expect(sc1 > 0 || !look.scrolls, `a press on the strip scrolls there (${sc1}px)`);
   await shot('ruler');
@@ -348,17 +348,17 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.locator('.cm-content').click();
   const sel0 = await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '');
   await page.keyboard.press('Alt+F5');
-  await page.waitForSelector('.toast', { timeout: 4000 });
+  await page.waitForSelector('.toast');
   expect(/No comparison active/.test(await page.locator('.toast').first().innerText()), 'Alt+F5: "No comparison active"');
   await page.keyboard.press('Shift+Alt+F5');
-  await settle(300);
+  await whenIdle(page);
   expect((await page.evaluate(() => document.querySelector('.cm-activeLine')?.textContent ?? '')) === sel0, 'and the cursor stays where it was');
 
   step('the gutter marks the line with the page\'s severity icon, and the lint tooltip is a card');
   await page.waitForSelector('[data-testid="gutter-error"]');
   expect((await page.locator('[data-testid="gutter-error"] svg').count()) === 1, 'an error icon in the gutter');
   await page.locator('.cm-lintRange-error').first().hover();
-  await page.waitForSelector('[data-testid="lint-card"]', { timeout: 4000 });
+  await page.waitForSelector('[data-testid="lint-card"]');
   card = await page.locator('[data-testid="lint-card"]').innerText();
   expect(card.includes('Error') && card.includes('Missing') && card.includes('Checker') && card.includes('main.nsm'), `severity, the compiler's message, its stage and its place (${card.replace(/\s+/g, ' ')})`);
   expect((await page.locator('[data-testid="lint-card"] .lt-btn').count()) >= 1, 'an action');
@@ -370,14 +370,14 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('End');
   await page.keyboard.press('Shift+Home');
   await page.keyboard.type('.oops: Re');
-  await page.waitForSelector('.cm-tooltip-autocomplete li', { timeout: 4000 });
+  await page.waitForSelector('.cm-tooltip-autocomplete li');
   const items = await page.locator('.cm-tooltip-autocomplete li').allInnerTexts();
   expect(items.some((t) => t.includes('Resistor')), `Resistor is offered (${items.join(' | ').replace(/\s+/g, ' ').slice(0, 100)})`);
   expect((await page.locator('.cm-tooltip-autocomplete .cm-comp-icon.part').count()) >= 1, 'a part icon');
   await shot('autocomplete');
   await page.keyboard.press('Escape');
   for (let i = 0; i < 40; i++) await page.keyboard.press('Control+z');
-  await page.waitForFunction(() => !document.querySelector('.cm-lintRange-error'), null, { timeout: 10000 });
+  await page.waitForFunction(() => !document.querySelector('.cm-lintRange-error'), null);
   expect(!fs.readFileSync(file, 'utf8').includes('oops'), 'nothing was written to disk');
 
   // ---- history ----
@@ -389,15 +389,15 @@ export async function run({ page, shot, step, expect, project, section }) {
   expect(here.includes('board LedBoard'), 'at LedBoard');
   expect(!(await page.locator('[data-testid="history-back"]').isDisabled()), 'Back is on');
   await page.locator('[data-testid="history-back"]').click();
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board PowerBoard'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board PowerBoard'), null);
   expect(!(await page.locator('[data-testid="history-forward"]').isDisabled()), 'Forward is on');
   await page.keyboard.press('Alt+ArrowLeft');
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('module LdoStage'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('module LdoStage'), null);
   expect(true, 'Alt+Left goes back again');
   await page.keyboard.press('Alt+ArrowRight');
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board PowerBoard'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board PowerBoard'), null);
   await page.locator('[data-testid="history-forward"]').click();
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board LedBoard'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('board LedBoard'), null);
   expect((await page.locator('[data-testid="history-forward"]').isDisabled()) === true, 'Forward is off at the newest place');
   await palette('go to symbol in the open file');
   expect(true, 'the history commands are in the palette too');
@@ -408,16 +408,16 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForSelector('.section.sec-schematic:not(.away)');
   await page.keyboard.press('Control+p');
   await page.keyboard.type('r1');
-  await settle(300);
+  await whenIdle(page);
   await page.keyboard.press('Enter');
-  await settle(500);
+  await whenIdle(page);
   await section('source');
   expect((await activeLine()).length >= 0, 'the source is shown');
 
   // ---- inline hints ----
   step('inline hints: the value, package and LCSC number of a part at the end of its line, and the rail of a net');
   await goDef('LedBoard');
-  await settle(400);
+  await whenIdle(page);
   expect((await hints()) >= 3, `hints are shown (${await hints()})`);
   const hintTexts = await page.locator('[data-testid="inline-hint"]').allInnerTexts();
   expect(hintTexts.some((t) => t.includes(r1.value) && (!r1.lcsc || t.includes(r1.lcsc))), `the hint of the resistor has its value and part number (${hintTexts.join(' | ')})`);
@@ -445,7 +445,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForSelector('[data-testid="opt-hints"]');
   expect((await page.locator('[data-testid="opt-hints"]').getAttribute('aria-checked')) === 'false', 'the menu shows them off');
   await page.locator('[data-testid="opt-hints"]').click();
-  await settle(400);
+  await whenIdle(page);
   expect((await hints()) >= 3, 'and on again from the menu');
   await shot('source-menu');
   await page.keyboard.press('Escape');
@@ -466,10 +466,10 @@ export async function run({ page, shot, step, expect, project, section }) {
   step('word wrap (Alt+Z) and the size of the text (Ctrl+=, Ctrl+-, Ctrl+0), which is remembered');
   await page.locator('.cm-content').click();
   await page.keyboard.press('Alt+z');
-  await page.waitForSelector('.cm-lineWrapping', { timeout: 3000 });
+  await page.waitForSelector('.cm-lineWrapping');
   expect(true, 'wrapped');
   await page.keyboard.press('Alt+z');
-  await page.waitForSelector('.cm-lineWrapping', { state: 'detached', timeout: 3000 });
+  await page.waitForSelector('.cm-lineWrapping', { state: 'detached' });
   expect(true, 'and not');
   const size = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize));
   const was = await size();
@@ -490,7 +490,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Control+f');
   await page.waitForSelector('.sp');
   await page.keyboard.type('Resistor');
-  await settle(300);
+  await whenIdle(page);
   const count = await page.locator('.sp-count').innerText();
   expect(/\d+ (found|of \d+)/.test(count), `the count (${count})`);
   expect((await page.locator('.sp-replace').isHidden()) === true, 'replace is folded away');
@@ -508,9 +508,9 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForSelector('.qp');
   expect((await page.locator('.qp-group').first().innerText()).includes('In this file'), 'a group "In this file"');
   await page.keyboard.type('r1');
-  await settle(300);
+  await whenIdle(page);
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.r1: Resistor'), null, { timeout: 4000 });
+  await page.waitForFunction(() => document.querySelector('.cm-activeLine')?.textContent.includes('.r1: Resistor'), null);
   expect(true, 'the cursor is on .r1');
 
   // ---- the library file ----
@@ -536,33 +536,33 @@ export async function run({ page, shot, step, expect, project, section }) {
   await away();
   expect((await opacity('.dot')) === 1 && (await opacity('.close')) === 0, 'the dot shows and the close button does not');
   await tab.hover();
-  await settle(250);
+  await whenIdle(page);
   expect((await opacity('.dot')) === 0 && (await opacity('.close')) === 1, 'under the pointer the close button takes its place');
   await page.locator('.cm-content').click();
   for (let i = 0; i < 12; i++) await page.keyboard.press('Control+z');
-  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 5000 });
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
   const before = await page.locator('.tab[data-path]').evaluateAll((els) => els.map((e) => e.dataset.path));
   expect(before.length === 2, `two tabs (${before.join(', ')})`);
 
   step('tabs: drag one before the other');
   await page.locator('.tab[data-path="std/parts/passive.nsm"]').dragTo(page.locator('.tab[data-path="src/main.nsm"]'), { targetPosition: { x: 4, y: 12 } });
-  await settle(300);
+  await whenIdle(page);
   const order = await page.locator('.tab[data-path]').evaluateAll((els) => els.map((e) => e.dataset.path));
   expect(order[0] === 'std/parts/passive.nsm' && order[1] === 'src/main.nsm', `the order changed (${order.join(', ')})`);
 
   step('tabs: a middle click closes, and the strip lists them all when they do not fit');
   await page.locator('.tab[data-path="std/parts/passive.nsm"]').click({ button: 'middle' });
-  await settle(300);
+  await whenIdle(page);
   expect((await page.locator('.tab[data-path]').count()) === 1, 'a middle click closed it');
   for (const name of ['connector', 'diode', 'logic', 'mechanical', 'passive', 'regulator', 'transistor']) {
     await page.keyboard.press('Control+p');
     await page.keyboard.type(`${name}.nsm`);
-    await settle(250);
+    await whenIdle(page);
     await page.keyboard.press('Enter');
-    await settle(350);
+    await whenIdle(page);
   }
   await page.setViewportSize({ width: 900, height: 900 });
-  await settle(500);
+  await whenIdle(page);
   await page.waitForSelector('[data-testid="tab-more"]');
   await page.locator('[data-testid="tab-more"]').click();
   await page.waitForSelector('[data-testid="tab-menu"]');

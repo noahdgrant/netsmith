@@ -1,6 +1,7 @@
 // Settings (theme, density, size, motion), the help menu, About, the diagnostics copy, the tab title, the favicon and the splash.
 // The settings are kept in localStorage (`netsmith.settings`), applied before the first paint, changed from the gear's panel and from
 // the palette; the help menu opens the shortcuts, the palette and About; "Report a problem" copies a block of facts.
+import { gate, whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 const SECTIONS = ['source', 'schematic', 'power', 'system', 'bom', 'pcb', 'build', 'compare'];
@@ -18,9 +19,9 @@ export async function run({ page, shot, step, expect, url, section }) {
     await page.keyboard.press('Control+Shift+p');
     await page.waitForSelector('.qp');
     await page.keyboard.type(text);
-    await page.waitForTimeout(250);
+    await whenIdle(page);
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    await whenIdle(page);
   };
 
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -47,12 +48,12 @@ export async function run({ page, shot, step, expect, url, section }) {
   step('Compact: the controls, the rows and the bar get smaller, the choice is kept, a toast says so');
   await openPanel();
   await page.click('[data-testid="density-compact"]');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   expect((await attr('density')) === 'compact', 'html[data-density] is compact');
   expect((await settings())?.density === 'compact', 'kept in localStorage');
   expect((await page.locator('.toast', { hasText: 'Density: Compact' }).count()) === 1, 'a toast says Density: Compact');
-  await page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 2600 });
-  expect(true, 'and it is gone within 2 seconds, not left standing');
+  await page.waitForFunction(() => !document.querySelector('.toast'), null);
+  expect(true, 'and it goes by itself, not left standing');
   expect((await px('.topbar')) < comfortableBar && (await px('.tb-ghosts .icon-btn')) < comfortableCtl, `the bar and a control are smaller (${comfortableBar} to ${await px('.topbar')}, ${comfortableCtl} to ${await px('.tb-ghosts .icon-btn')})`);
   await page.keyboard.press('Escape');
 
@@ -60,7 +61,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   const bad = [];
   for (const id of SECTIONS) {
     await section(id);
-    await page.waitForTimeout(350);
+    await whenIdle(page);
     const r = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth }));
     if (r.overflow) bad.push(`${id}: overflow`);
     await shot(`compact-${id}`);
@@ -84,7 +85,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   await page.setViewportSize({ width: 1000, height: 600 });
   for (const id of ['power', 'system']) {
     await section(id);
-    await page.waitForTimeout(700);
+    await whenIdle(page);
     at100[id] = await clips(id);
     wide[id] = { width: await cardWidth(id), font: await cardFont(id) };
   }
@@ -93,7 +94,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   const source100 = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize));
   await openPanel();
   await page.click('[data-testid="scale-125"]');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   expect((await rootPx()) === 20, 'the root font size is 20 px');
   expect(Math.abs((await px('.topbar')) / bar100 - 1.25) < 0.02, `the bar is 125 % (${bar100} to ${await px('.topbar')})`);
   expect((await settings())?.scale === 125, 'kept');
@@ -101,21 +102,21 @@ export async function run({ page, shot, step, expect, url, section }) {
   await shot('scale-125');
   for (const id of SECTIONS) {
     await section(id);
-    await page.waitForTimeout(300);
+    await whenIdle(page);
     if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) bad.push(`125 % ${id}: overflow`);
   }
   expect(bad.length === 0, `no view overflows at 125 % (${bad.join('; ')})`);
   step('at 125 % the cards of the power tree and the system view overflow by what they did at 100 % (the canvas keeps its own size)');
   for (const id of ['power', 'system']) {
     await section(id);
-    await page.waitForTimeout(500);
+    await whenIdle(page);
     const now = await clips(id);
     expect(now === at100[id], `${id}: the cards clip no more than at 100 % (${now})`);
   }
   step('at 125 % the cards of the power tree and the system view, with their text, are 125 % of what they were: the size is the zoom a graph opens at');
   for (const id of ['power', 'system']) {
     await section(id);
-    await page.waitForTimeout(700);
+    await whenIdle(page);
     const w = await cardWidth(id);
     const f = await cardFont(id);
     // The power tree of this project does not fit a 1000 x 600 window and opens at the floor; the system view does, and is fitted (the power-tree and system-view recipes
@@ -136,15 +137,15 @@ export async function run({ page, shot, step, expect, url, section }) {
   expect(Math.abs(source125 / source100 - 1.25) < 0.01 && source100 === 13, `the text is ${source125} px, was ${source100}`);
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+=');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   const zoomed = await page.evaluate(() => ({ px: parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize), own: document.querySelector('[data-testid="font-size"]')?.textContent ?? '' }));
   expect(Math.abs(zoomed.px - 14 * 1.25) < 0.01, `Ctrl+= makes the editor's own size 14 px and the text ${zoomed.px} px (14 x 1.25)`);
   await page.keyboard.press('Control+0');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect((await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize))) === source125, 'Ctrl+0 goes back');
   await openPanel();
   await page.click('[data-testid="scale-90"]');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   expect(Math.abs((await rootPx()) - 14.4) < 0.01, 'the root is 14.4 px at 90 %');
   await page.keyboard.press('Escape');
 
@@ -228,14 +229,14 @@ export async function run({ page, shot, step, expect, url, section }) {
   await section('source');
   await page.locator('.cm-content').click();
   await page.keyboard.type(' ');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await page.title()).startsWith('● netsmith'), `a dot while unsaved (${await page.title()})`);
   await page.keyboard.press('Control+s');
-  await page.waitForTimeout(800);
+  await whenIdle(page);
   expect(!(await page.title()).startsWith('●'), 'the dot is gone after the save');
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+s');
-  await page.waitForTimeout(600);
+  await whenIdle(page);
 
   step('the favicon is an SVG with a dark variant, served by the editor');
   const icon = await page.evaluate(async () => {
@@ -248,16 +249,19 @@ export async function run({ page, shot, step, expect, url, section }) {
 
   step('the splash: the mark and `Reading the project…` (or `Analysing the project…`) until the project arrives, then it is gone');
   const p2 = await page.context().newPage();
+  // The project is held back until the step has looked at the splash: the splash is there for as long as that takes, on any machine.
+  const arrives = gate();
   await p2.route('**/api/project', async (r) => {
-    await new Promise((x) => setTimeout(x, 1200));
+    await arrives.opened;
     await r.continue();
   });
   const nav = p2.goto(url);
   await p2.waitForSelector('.splash');
   // `Reading the project…` until the analysis has a clock, `Analysing the project…` when the server is still re-analysing what an earlier step saved (round 7: the text raced those saves)
   expect(/(Reading|Analysing) the project/.test((await p2.locator('.splash').innerText()) || ''), 'it says Reading the project (or Analysing the project while the server is still at an earlier save)');
+  arrives.open();
   await nav;
-  await p2.waitForSelector('.splash', { state: 'detached', timeout: 8000 });
+  await p2.waitForSelector('.splash', { state: 'detached' });
   expect(true, 'it is gone once the project is there');
   await p2.close();
 
@@ -276,7 +280,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   p3.on('pageerror', (e) => errors.push(e.message));
   await p3.goto(url);
   await p3.waitForSelector('.app');
-  await p3.waitForTimeout(500);
+  await whenIdle(p3);
   await p3.click('[data-testid="menu-settings"]');
   await p3.click('[data-testid="density-compact"]');
   await p3.waitForSelector('.toast', { hasText: 'not remembered' });

@@ -2,6 +2,7 @@
 // the constraint finding with its numbers, a click zooms to it, and handing the part back to
 // the placer, which keeps to the requirement, clears it. (The windows and the drag clamp are
 // not drawn yet; this checks the findings only.)
+import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fresh, labelOf, openPcb, partAt, partOf, scene, settled } from '../pcb-helpers.mjs';
@@ -41,10 +42,10 @@ export async function run(tools) {
 
   step('click it: the canvas zooms to it, marks it and selects the part');
   await page.getByRole('button', { name: 'Fit' }).click();
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   const zoomBefore = await page.locator('.pcb-host .zoombar span').innerText();
   await page.locator('[data-testid=finding]').click();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await page.locator('.pcb-host .zoombar span').innerText()) !== zoomBefore, 'the zoom changed');
   expect((await page.locator('.pcb-overlay .mark.on').count()) === 1, 'the finding is highlighted');
   expect((await page.locator('[data-testid=part-inspector] h3').innerText()).startsWith(name), `${name} is selected`);

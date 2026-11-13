@@ -4,6 +4,7 @@
 // zoomed far in is not kept there; a net picked in the schematic is the one the top bar chip and
 // the inspector name; a click on a flag follows the net to the other sheet; Esc clears the
 // selection in the schematic, the chip and the bill of materials.
+import { whenIdle } from '../settle.mjs';
 import { activeSheet, openSheet, visibleHalos, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'schematic_bench';
@@ -66,9 +67,9 @@ export async function run({ page, shot, step, expect, section }) {
   await goToAnything(first.refdes.toLowerCase());
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, mcu);
   expect((await activeSheet(page)) === mcu, `the module ${mcu} is open`);
-  await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
+  await page.waitForSelector('.schematic-host .pulse-ring');
   expect(true, 'a ring is on the part');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const z1 = await zoomPercent(page);
   expect(z1 >= 140 && z1 <= 260, `the zoom is one the text reads at, not a close-up (${z1}%)`);
   expect(await inView(first.refdes), `${first.refdes} is on screen`);
@@ -77,16 +78,16 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await chip()).includes(first.refdes), `the top bar chip names ${first.refdes}`);
   expect(await page.evaluate((r) => !!document.querySelector(`svg.schematic .part.mark:not(.linked)[data-ref="${r}"]`), first.refdes), 'the drawing marks it');
   await shot('part-found');
-  await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached', timeout: 4000 });
+  await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached' });
   expect(true, 'the ring goes after a moment');
 
   step('a part that is on screen already: the view does not move, the ring shows where it is');
   const before = await transform();
   await goToAnything(first.refdes.toLowerCase());
-  await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
+  await page.waitForSelector('.schematic-host .pulse-ring');
   expect((await transform()) === before, 'the zoom and the place did not change');
   expect(await inView(first.refdes), `${first.refdes} is still where it was, on screen`);
-  await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached', timeout: 4000 });
+  await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached' });
 
   step('a part off screen: the view pans to it and keeps the zoom');
   const small = detail.parts.filter((p) => sheetOf[p.refdes] === mcu && p.kind !== 'Mcu97' && p.refdes !== first.refdes);
@@ -95,29 +96,29 @@ export async function run({ page, shot, step, expect, section }) {
   expect(!!away, `a part of the module is off screen (${away})`);
   const zBefore = await zoomPercent(page);
   await goToAnything(away.toLowerCase());
-  await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
-  await page.waitForTimeout(200);
+  await page.waitForSelector('.schematic-host .pulse-ring');
+  await whenIdle(page);
   expect(await inView(away), `${away} is on screen now`);
   const zAway = await zoomPercent(page);
   // The zoom is kept, or lowered where the part and what it is wired to (a crystal and the big IC) would not fit in view at it.
   expect(zAway <= zBefore + 1 && zAway >= 140, `at the zoom it was or less, never below what reads (${zBefore}% to ${zAway}%)`);
   const off = await centreOff(away);
   expect(off.dx < 0.1 && off.dy < 0.1, 'in the middle of the view');
-  await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached', timeout: 4000 });
+  await page.waitForSelector('.schematic-host .pulse-ring', { state: 'detached' });
 
   step('zoomed far in, a pick elsewhere on the module does not leave the view that close');
   const area = await host();
   await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2);
   for (let i = 0; i < 5; i++) {
     await page.mouse.wheel(0, -400);
-    await page.waitForTimeout(80);
+    await whenIdle(page);
   }
   const zoomedIn = await zoomPercent(page);
   expect(zoomedIn > 300, `zoomed in to ${zoomedIn}%`);
   const target = small.find((c) => c.refdes !== away && !!c.refdes) ?? first;
   await goToAnything(target.refdes.toLowerCase());
-  await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
-  await page.waitForTimeout(200);
+  await page.waitForSelector('.schematic-host .pulse-ring');
+  await whenIdle(page);
   const z3 = await zoomPercent(page);
   expect(z3 <= 205, `the zoom came back to a reading size (${zoomedIn}% to ${z3}%)`);
   expect(await inView(target.refdes), `${target.refdes} is on screen`);
@@ -175,7 +176,7 @@ export async function run({ page, shot, step, expect, section }) {
   // The chip's pin buttons walked to a pin on another sheet: come back to the microcontroller's, fitted, so its flags are on screen.
   await openSheet(page, mcu);
   await page.keyboard.press('f');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const flagNet = await page.evaluate(() => {
     const slot = document.querySelector('svg.schematic > g.sheet-slot:not([style*="none"])');
     const here = slot.getAttribute('data-sheet');
@@ -243,7 +244,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.selchip').getAttribute('aria-label')).includes('module'), 'the shared selection is a module');
   // The selected module is the sheet on screen: every part would wear the halo, which says nothing. The chip says it; the drawing is not boxed.
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   // (The source's cursor still sits on the line of the last part found: that part is `linked`, dimmer, as ever.)
   expect(await page.evaluate(() => document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) .part.mark:not(.linked)').length === 0), 'the module\'s own sheet does not mark its parts as selected');
   const linkedNow = await page.evaluate(() => [...document.querySelectorAll('svg.schematic > g.sheet-slot:not([style*="none"]) .part.mark.linked')].map((e) => e.getAttribute('data-ref')));
@@ -255,7 +256,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator('.pick-pop .sl-row.all').click();
   await page.waitForSelector('.sheet-overview .ov-card');
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   const marked = await page.evaluate((c) => {
     const el = [...document.querySelectorAll('.sheet-overview .ov-card')].find((e) => e.querySelector('.ov-name')?.textContent === c);
     return { own: el.querySelectorAll('g.part.mark').length, others: [...document.querySelectorAll('.sheet-overview .ov-card')].filter((e) => e !== el).reduce((n, e) => n + e.querySelectorAll('g.part.mark').length, 0) };
@@ -266,10 +267,10 @@ export async function run({ page, shot, step, expect, section }) {
   step('at 1920 x 1080 the same pick fits the view and the ring is round the part');
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await goToAnything(first.refdes.toLowerCase());
-  await page.waitForSelector('.schematic-host .pulse-ring', { timeout: 3000 });
-  await page.waitForTimeout(250);
+  await page.waitForSelector('.schematic-host .pulse-ring');
+  await whenIdle(page);
   expect(await inView(first.refdes), `${first.refdes} is on screen at 1920 x 1080`);
   const z4 = await zoomPercent(page);
   expect(z4 >= 140 && z4 <= 260, `at a zoom that reads (${z4}%)`);
