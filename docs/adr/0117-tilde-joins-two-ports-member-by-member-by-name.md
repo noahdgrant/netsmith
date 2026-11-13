@@ -33,6 +33,10 @@ A rename map is close to the netlist it replaces when two ports name everything 
 - Plain `~`, with no keyword, joins by name, and strictly.
 - Members are one level deep, `except` leaves out on both sides, names are bare, and a map does not follow a chain.
 
+## Owner decision on same-kind interfaces (2026-11-13)
+
+A rename map or `except` on two interfaces of one kind is refused. `~` joins them whole, and a by-name join there would drop their values and a bus's crossings.
+
 ## Left open
 
-Joining a rail to many pins of one port (power_manifold_charger's ground and supply pins) is a different construct. A rename map or `except` on two interfaces of one kind is refused for now (proposed, for the owner): `~` joins them whole, and a by-name join there would drop their values and a bus's crossings.
+Joining a rail to many pins of one port (power_manifold_charger's ground and supply pins) is a different construct. 
