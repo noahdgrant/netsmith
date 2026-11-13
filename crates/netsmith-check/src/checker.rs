@@ -422,7 +422,12 @@ impl<'a> Checker<'a> {
     ) -> usize {
         let source = self.sources.add(name, text);
         let mut file = match parse(text) {
-            Ok(file) => file,
+            Ok(mut file) => {
+                for e in netsmith_lang::expand_groups(&mut file) {
+                    self.report_syntax(source, e);
+                }
+                file
+            }
             Err(e) => {
                 self.report_syntax(source, e);
                 netsmith_lang::ast::File {
@@ -487,7 +492,12 @@ impl<'a> Checker<'a> {
     fn add_physical(&mut self, owner: usize, name: &str, text: &str) {
         let source = self.sources.add(name, text);
         let file = match parse(text) {
-            Ok(file) => file,
+            Ok(mut file) => {
+                for e in netsmith_lang::expand_groups(&mut file) {
+                    self.report_syntax(source, e);
+                }
+                file
+            }
             Err(e) => {
                 self.report_syntax(source, e);
                 return;
@@ -1660,6 +1670,30 @@ impl<'a> Checker<'a> {
         true
     }
 
+    /// What to say when `name` is not a member of `inst` but names a group of it (ADR 0118):
+    /// the group as a whole (`decoupling`), or an index past its last member (`decoupling[7]`).
+    fn group_hint(&self, inst: InstId, name: &str) -> Option<String> {
+        let (base, index) = match name.strip_suffix(']').and_then(|n| n.rsplit_once('[')) {
+            Some((base, index)) => (base, Some(index)),
+            None => (name, None),
+        };
+        let count = (0..)
+            .take_while(|k| self.model.member(inst, &format!("{base}[{k}]")).is_some())
+            .count();
+        if count == 0 {
+            return None;
+        }
+        let last = count - 1;
+        Some(match index {
+            None => format!(
+                "`.{base}` is a group of {count}, not one member: name one, `.{base}[0]` to `.{base}[{last}]`; a statement in the group's body holds for every member"
+            ),
+            Some(index) => format!(
+                "`.{base}` is a group of {count}, `.{base}[0]` to `.{base}[{last}]`, and has no member `[{index}]`"
+            ),
+        })
+    }
+
     pub fn resolve_path(&mut self, p: &Path) -> Res {
         let cur = self.current();
         let first = &p.segments[0];
@@ -1672,6 +1706,10 @@ impl<'a> Checker<'a> {
                     m
                 }
                 None => {
+                    if let Some(hint) = self.group_hint(cur, &first.name) {
+                        self.error(first.span, hint);
+                        return Res::Bad;
+                    }
                     let owner = self.model.instance(cur).type_name.clone();
                     let names: Vec<String> = self
                         .model
@@ -1738,6 +1776,10 @@ impl<'a> Checker<'a> {
                     }
                     None => {
                         if self.report_outside_bound(i, seg) {
+                            return Res::Bad;
+                        }
+                        if let Some(hint) = self.group_hint(i, &seg.name) {
+                            self.error(seg.span, hint);
                             return Res::Bad;
                         }
                         let ty = self.model.instance(i).type_name.clone();

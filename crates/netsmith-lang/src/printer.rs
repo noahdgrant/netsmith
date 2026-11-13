@@ -270,7 +270,8 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 } else {
                     d.ty.to_source()
                 };
-                let _ = write!(out, "{}: {ty}", d.name.to_source());
+                let count = d.count.map_or(String::new(), |c| format!("{} x ", c.n));
+                let _ = write!(out, "{}: {count}{ty}", d.name.to_source());
                 if d.optional.is_some() {
                     out.push_str(" optional");
                 }
@@ -445,12 +446,23 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             }
             Item::Connect(c) => {
                 out.push_str(&c.first.to_source());
-                for (op, path) in &c.rest {
+                for (i, (op, path)) in c.rest.iter().enumerate() {
                     let sym = match op {
                         ConnectOp::Same => "~",
                         ConnectOp::Series => "~>",
                     };
-                    let _ = write!(out, " {sym} {}", path.to_source());
+                    match c.groups.iter().find(|g| g.at == i) {
+                        Some(g) => {
+                            let _ = write!(out, " {sym} {} x {}", g.count.n, g.ty.to_source());
+                            if let Some(body) = &g.body {
+                                out.push(' ');
+                                write_block(out, &[], body, depth + 1);
+                            }
+                        }
+                        None => {
+                            let _ = write!(out, " {sym} {}", path.to_source());
+                        }
+                    }
                 }
             }
         }
