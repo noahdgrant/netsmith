@@ -361,7 +361,7 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
 /// 0037). Not listed here: the connections left, which are the ratsnest's (`unrouted`), and
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
-    let extras = crate::fab::drc_extras(board);
+    let extras = netsmith_fabricate::fab::drc_extras(board);
     let report = match drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.
@@ -597,8 +597,9 @@ pub fn run_kicad(board: &Board, routed: bool, say: &Say) -> KicadResult {
         findings: Vec::new(),
     };
     let Some(cli) = KicadCliExe::locate() else {
-        let note = match crate::fab::kicad_switched_off(&netsmith_kicad::install::Search::machine())
-        {
+        let note = match netsmith_fabricate::fab::kicad_switched_off(
+            &netsmith_kicad::install::Search::machine(),
+        ) {
             Some(off) => format!("KiCad is switched off: {off} (only netsmith's own checks ran)"),
             None => {
                 "KiCad not found: set KICAD_CLI or install KiCad (only netsmith's own checks ran)"
@@ -656,8 +657,8 @@ mod tests {
             "{}/../../examples/{example}.nsm",
             env!("CARGO_MANIFEST_DIR")
         );
-        let libraries = crate::Libraries::sample();
-        let built = crate::build_with(
+        let libraries = netsmith_pipeline::Libraries::sample();
+        let built = netsmith_pipeline::build_with(
             &path,
             &std::fs::read_to_string(&path).unwrap(),
             &netsmith_check::Loader::std(),

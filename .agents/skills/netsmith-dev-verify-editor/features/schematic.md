@@ -31,7 +31,7 @@ A rail is **one straight wire across its group of parts**, at the bottom (a grou
 
 ### Power symbols
 
-A net that the checked model says is the return of a rail (the `neg` side) is drawn with the ground symbol (bars that shrink), a net a rail draws from with the supply symbol (a stem and an arrow head, the name beside it), by the model and not by name (`crates/netsmith/src/editor/analysis.rs`, `rails_of`). A symbol is only at the end of a wire, never on one, directly above (a supply) or below (a ground) the pins it serves, which share a bus; pins of one rail near each other share one symbol. Grounds carry their names only when the board has several. Hovering a symbol lights the whole net; its tooltip names it. The KiCad export does not use them.
+A net that the checked model says is the return of a rail (the `neg` side) is drawn with the ground symbol (bars that shrink), a net a rail draws from with the supply symbol (a stem and an arrow head, the name beside it), by the model and not by name (`crates/netsmith-workspace/src/analysis.rs`, `rails_of`). A symbol is only at the end of a wire, never on one, directly above (a supply) or below (a ground) the pins it serves, which share a bus; pins of one rail near each other share one symbol. Grounds carry their names only when the board has several. Hovering a symbol lights the whole net; its tooltip names it. The KiCad export does not use them.
 
 ### Proof in a browser
 

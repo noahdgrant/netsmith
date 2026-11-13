@@ -11,7 +11,8 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use netsmith::{editor::Workspace, project::Target};
+use netsmith_fabricate::project::Target;
+use netsmith_workspace::Workspace;
 use netsmith_editor::{
     AnalysisEvent, ApiError, Backend, Observer,
     api::{BoardStatus, Compare, CompareBoard, GitRefKind, Severity, SourceStatus},

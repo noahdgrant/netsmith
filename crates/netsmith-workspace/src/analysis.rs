@@ -64,7 +64,7 @@ use netsmith_editor::{
 };
 
 use super::{Workspace, hints};
-use crate::{Built, Libraries, SolvedSystem, Stage, locate, outcome_observed};
+use netsmith_pipeline::{Built, Libraries, SolvedSystem, Stage, locate, outcome_observed};
 
 /// A board that built, with its drawing.
 pub struct BoardData {
@@ -245,7 +245,7 @@ impl Snapshot {
     }
 }
 
-fn problem(severity: Severity, p: &crate::Problem) -> Problem {
+fn problem(severity: Severity, p: &netsmith_pipeline::Problem) -> Problem {
     Problem {
         severity,
         message: p.message.clone(),
@@ -480,7 +480,7 @@ impl Workspace {
         ));
         // Where the target's files are, to find the STEP models its parts are drawn from in
         // the 3D view (ADR 0108).
-        let places = crate::models::Places::of(&target);
+        let places = netsmith_fabricate::models::Places::of(&target);
         let files = target.files.len() as u32;
         for (index, file) in target.files.iter().enumerate() {
             observe(AnalysisEvent::Progress {
@@ -500,7 +500,7 @@ impl Workspace {
             };
             // The rows a person chose in the picks file are the design's (#462); the lock is not
             // read here.
-            let catalogs = match crate::picks::holding(&file.path, &catalogs) {
+            let catalogs = match netsmith_catalog::picks::holding(&file.path, &catalogs) {
                 Ok(held) => held,
                 Err(e) => {
                     snapshot
@@ -510,7 +510,7 @@ impl Workspace {
                 }
             };
             let outcome = match &text {
-                Err(e) => Err(vec![crate::Problem {
+                Err(e) => Err(vec![netsmith_pipeline::Problem {
                     message: format!("{}: {e}", file.name),
                     at: None,
                     rendered: format!("{}: {e}\n", file.name),
@@ -525,7 +525,7 @@ impl Workspace {
                         &loader,
                         &catalogs,
                         None,
-                        &|step: crate::Step<'_>| {
+                        &|step: netsmith_pipeline::Step<'_>| {
                             let stage = if step.stage == Stage::Solve {
                                 "solve"
                             } else {
@@ -577,7 +577,7 @@ impl Workspace {
                         &source_boards.iter().map(String::as_str).collect::<Vec<_>>(),
                     ));
                     let layout = Some((
-                        crate::layout::layout_path(&file.path),
+                        netsmith_fabricate::layout::layout_path(&file.path),
                         outcome
                             .boards
                             .iter()
@@ -594,7 +594,7 @@ impl Workspace {
                         // there or cannot be read, or a path outside the project, is a problem
                         // and the part keeps its generated shape. The files are read once
                         // here and again only when they change (`models::read`).
-                        let found = crate::models::locate(&mut built.design, &places);
+                        let found = netsmith_fabricate::models::locate(&mut built.design, &places);
                         for (severity, message) in found
                             .errors
                             .iter()
@@ -605,7 +605,7 @@ impl Workspace {
                                 .problems
                                 .push(model_problem(&label, severity, message));
                         }
-                        for w in crate::models::uses(&built.design).1 {
+                        for w in netsmith_fabricate::models::uses(&built.design).1 {
                             snapshot
                                 .problems
                                 .push(model_problem(&label, Severity::Warning, &w));
@@ -712,7 +712,9 @@ impl Workspace {
                                 libraries: libraries.clone(),
                                 layout: layout.clone(),
                                 constraints_warn: catalogs.constraints_warn(),
-                                place_seeds: crate::layout::place_seeds(target.project.as_ref()),
+                                place_seeds: netsmith_fabricate::layout::place_seeds(
+                                    target.project.as_ref(),
+                                ),
                                 hints: hints::Hints {
                                     path: hints_path.clone(),
                                     name: hints_name.clone(),
@@ -804,7 +806,7 @@ impl Workspace {
 
     fn check_modules(
         &self,
-        target: &crate::project::Target,
+        target: &netsmith_fabricate::project::Target,
         unsaved: &HashMap<PathBuf, String>,
         loader: &Loader,
         snapshot: &mut Snapshot,
@@ -854,7 +856,7 @@ impl Workspace {
             };
             let checked = check(&module.name(&project.root), &text, loader);
             snapshot.problems.extend(
-                crate::problems_of(&checked)
+                netsmith_pipeline::problems_of(&checked)
                     .iter()
                     .map(|p| problem(Severity::Error, p)),
             );
@@ -1208,7 +1210,7 @@ fn guideline_problem(built: &Built, guideline: &netsmith_design::guidelines::Gui
 /// What the power model leaves unsettled (issue #187) is a note, at the rail or converter it is
 /// about. A rail that can draw more than its supply gives stops the build, so it is an error
 /// of the build and not one of these.
-fn power_problem(built: &Built, issue: &crate::PowerIssue) -> Problem {
+fn power_problem(built: &Built, issue: &netsmith_pipeline::PowerIssue) -> Problem {
     let message = format!("{}: {} {}", built.label(), issue.subject, issue.text);
     Problem {
         severity: Severity::Note,

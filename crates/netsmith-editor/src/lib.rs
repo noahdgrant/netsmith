@@ -7,7 +7,7 @@
 //!
 //! **Why the crate does not know the compiler.** `netsmith-editor` holds the server, the types
 //! and the page, and a [`Backend`] trait with a method for each thing the page asks. `netsmith`
-//! implements it (`crates/netsmith/src/editor/`, a `Workspace` over a `Target`), because the work
+//! implements it (`crates/netsmith-workspace/src/`, a `Workspace` over a `Target`), because the work
 //! is the pipeline that lives there (`build_with`, `fab_with`, `Project`), and a crate the
 //! binary uses could not use the binary's library back. The split lets the server be tested with
 //! no compiler behind it and keeps `axum` out of every crate but one. `netsmith-view` keeps its

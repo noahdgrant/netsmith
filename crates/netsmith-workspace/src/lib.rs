@@ -47,7 +47,7 @@ use netsmith_editor::{
     },
 };
 
-use crate::project::Target;
+use netsmith_fabricate::project::Target;
 
 pub use analysis::{Snapshot, module_groups, must_connect, rails_of, schematic_layout};
 pub use git::sweep_scratch;
@@ -65,7 +65,7 @@ pub struct Workspace {
     /// Held while a layout edit is made, so two edits are one after the other.
     editing: Mutex<()>,
     /// How "Check parts against LCSC" asks the endpoints (ADR 0039); the tests point it at a fake.
-    network: crate::refresh::Network,
+    network: netsmith_catalog::refresh::Network,
     /// Who hears of each analysis of the files on disk, once the server has said.
     observer: OnceLock<Observer>,
     /// Whether the first analysis has finished. Read without the state's lock, which an
@@ -257,7 +257,7 @@ impl Workspace {
             manifest_error: Mutex::new(None),
             state: Mutex::new(State::default()),
             editing: Mutex::new(()),
-            network: crate::refresh::Network::default(),
+            network: netsmith_catalog::refresh::Network::default(),
             observer: OnceLock::new(),
             ready: AtomicBool::new(false),
             auto_analysis: AtomicBool::new(true),
@@ -273,7 +273,7 @@ impl Workspace {
 
     /// [`Workspace::open_deferred`] for a workspace that a job reads for itself: the job's token
     /// stops its analysis.
-    pub(super) fn open_for_job(target: Target, cancel: &Cancel) -> Result<Workspace, String> {
+    pub(crate) fn open_for_job(target: Target, cancel: &Cancel) -> Result<Workspace, String> {
         let mut workspace = Workspace::open_deferred(target)?;
         workspace.inherited = Some(cancel.clone());
         Ok(workspace)
@@ -286,7 +286,7 @@ impl Workspace {
     }
 
     /// Where "Check parts against LCSC" asks, how long it waits and where it keeps answers.
-    pub fn with_network(mut self, network: crate::refresh::Network) -> Workspace {
+    pub fn with_network(mut self, network: netsmith_catalog::refresh::Network) -> Workspace {
         self.network = network;
         self
     }
@@ -341,7 +341,7 @@ impl Workspace {
         self.target()
             .files
             .iter()
-            .map(|f| crate::layout::layout_path(&f.path))
+            .map(|f| netsmith_fabricate::layout::layout_path(&f.path))
             .collect()
     }
 
@@ -370,9 +370,9 @@ impl Workspace {
                 state.pcb.entry(label).or_insert(entry);
             }
         }
-        let pairs: Vec<(&crate::Built, &netsmith_pcb::Board)> =
+        let pairs: Vec<(&netsmith_pipeline::Built, &netsmith_pcb::Board)> =
             members.iter().map(|(d, b, _)| (&d.built, b)).collect();
-        let scene = crate::system3d::scene(&system.solved, &pairs);
+        let scene = netsmith_fabricate::system3d::scene(&system.solved, &pairs);
         Ok(netsmith_editor::Pcb3d {
             glb: netsmith_3d::gltf::system_glb(&scene),
             layout_stamp: members
@@ -410,7 +410,7 @@ impl Workspace {
                 .target()
                 .project
                 .as_ref()
-                .map(|p| p.root.join(crate::project::MANIFEST));
+                .map(|p| p.root.join(netsmith_fabricate::project::MANIFEST));
             if let Some(manifest) = manifest {
                 if !self.reload_manifest() {
                     same_manifest = Some(manifest);
@@ -534,7 +534,7 @@ impl Workspace {
             Some(layers) => layers,
             None => pcb::place(&data, name)?.layers(),
         };
-        let mut layout = crate::layout::read(file, boards)
+        let mut layout = netsmith_fabricate::layout::read(file, boards)
             .map_err(|e| ApiError::internal(format!("{name}: {e}")))?
             .map_or_else(netsmith_pcb::Layout::default, |(layout, _)| layout);
         pcb::change_layout(&mut layout, &data.built.design.name, &layers, &edit.changes)?;
@@ -724,8 +724,11 @@ impl Backend for Workspace {
     fn bom(&self, board: &str) -> Result<Bom, ApiError> {
         let state = self.fresh();
         let catalogs = self.target().catalogs().map_err(ApiError::internal)?;
-        let today =
-            crate::refresh::date_of(self.network.now.unwrap_or_else(crate::refresh::now_secs));
+        let today = netsmith_catalog::refresh::date_of(
+            self.network
+                .now
+                .unwrap_or_else(netsmith_catalog::refresh::now_secs),
+        );
         let own = match &self.target().project {
             Some(project) => project
                 .catalog_files()
@@ -737,7 +740,7 @@ impl Backend for Workspace {
         };
         let supply = match &self.target().project {
             Some(project) => project.supply().map_err(ApiError::internal)?,
-            None => crate::supply::Supply::none(),
+            None => netsmith_catalog::supply::Supply::none(),
         };
         sourcing::bom(
             state.snapshot.board(board)?,

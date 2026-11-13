@@ -733,11 +733,11 @@ dependencies = [
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-view",
+ "netsmith-workspace",
  "serde",
  "serde_json",
  "sha2",
  "toml",
- "tungstenite 0.30.0",
  "zip",
 ]
 
@@ -794,6 +794,7 @@ dependencies = [
  "clap",
  "netsmith",
  "netsmith-3d",
+ "netsmith-catalog",
  "netsmith-check",
  "netsmith-core",
  "netsmith-dxf",
@@ -1053,6 +1054,33 @@ dependencies = [
  "netsmith-kicad",
  "netsmith-testkit",
  "toml",
+]
+
+[[package]]
+name = "netsmith-workspace"
+version = "0.1.0"
+dependencies = [
+ "automod",
+ "netsmith-3d",
+ "netsmith-catalog",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-editor",
+ "netsmith-fab",
+ "netsmith-fabricate",
+ "netsmith-kicad",
+ "netsmith-lang",
+ "netsmith-pcb",
+ "netsmith-pipeline",
+ "netsmith-placer",
+ "netsmith-quantity",
+ "netsmith-router",
+ "netsmith-solve",
+ "netsmith-testkit",
+ "netsmith-view",
+ "serde_json",
+ "tungstenite 0.30.0",
 ]
 
 [[package]]

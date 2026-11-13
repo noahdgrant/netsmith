@@ -47,7 +47,7 @@
 #            logic are netsmith-catalog, and the checker and the design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
 #            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
 #            Not the crates after the solver either: `lock` reads no KiCad library, no footprint and
-#            no board, so a change to netsmith-geom, -pcb, -placer, -router, -fab, -fabricate, -netlist, -3d, -view or
+#            no board, so a change to netsmith-geom, -pcb, -placer, -router, -fab, -fabricate, -workspace, -netlist, -3d, -view or
 #            -editor cannot move a pick (the netsmith-kicad crate keeps `locks`: the umbrella's
 #            design stage still reads its mapping, and so does netsmith-sexp, which reads it).
 #   designs  the `designs` job: scripts/check-example-designs.sh builds every example with
@@ -57,7 +57,8 @@
 #            netsmith-fab and netsmith-geom, which `locks` leaves out: the design stage loads each part's footprint
 #            (netsmith-pcb, which uses netsmith-geom), and a through-hole one makes the
 #            part fitted by hand. Not the placer (netsmith-placer), the router (netsmith-router), the fab driver
-#            (netsmith-fabricate), netsmith-netlist, -3d, -view or -editor: none of them runs before the design is made.
+#            (netsmith-fabricate), the editor's backend (netsmith-workspace), netsmith-netlist, -3d, -view or -editor: none of
+#            them runs before the design is made (the backend reads a design and writes sidecars; it feeds none).
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -71,7 +72,7 @@
 # holds for the `tests.rs` of a module in `src/`. A change in the source of a crate (even in
 # crates/netsmith/src/lib.rs, which builds the design and exports its KiCad files) is not
 # narrowed: it is the code those tests run. The one exception is the catalog refresh (crates/netsmith-catalog/src/refresh/*
-# and crates/netsmith/src/refresh.rs: CSV and HTTP, nothing of KiCad), which keeps `recipes` (the
+# and crates/netsmith-fabricate/src/refresh.rs: CSV and HTTP, nothing of KiCad), which keeps `recipes` (the
 # editor refreshes catalogs) and drops `kicad`.
 #
 # A change to the workflows, the actions (.github/actions) or to scripts/ runs everything, and so does a path nothing here knows:
@@ -135,7 +136,7 @@ before_design() {
     locks=false
 }
 
-# A crate after the design stage (netsmith-placer, -router, -fabricate, -netlist): as `before_design`, and no design
+# A crate after the design stage (netsmith-placer, -router, -fabricate, -workspace, -netlist): as `before_design`, and no design
 # depends on it either, so the change does not start `designs`.
 after_solver() {
     before_design "$@"
@@ -155,14 +156,17 @@ example_readers() {
     case "$name" in
         # The design files (`<stem>.design.json`) are what the tests of netsmith-core (a loader), the
         # placer and the router start from (issue #610).
-        led) echo "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-fabricate" ;;
+        led) echo "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-fabricate netsmith-workspace" ;;
         status_indicator) echo "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router" ;;
         linear_regulator) echo "netsmith netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-fabricate" ;;
-        two_boards) echo "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-fabricate" ;;
+        two_boards) echo "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-fabricate netsmith-workspace" ;;
         carrier_and_cards) echo "netsmith netsmith-check netsmith-solve" ;;
         four_layer | six_layer | ten_layer) echo "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" ;;
-        enclosure_sensor | led_panel | outline_and_pours | power_manifold_charger) echo "netsmith netsmith-fabricate" ;;
+        enclosure_sensor | power_manifold_charger) echo "netsmith netsmith-fabricate" ;;
+        led_panel | outline_and_pours) echo "netsmith netsmith-fabricate netsmith-workspace" ;;
         rp2350_minimal) echo "netsmith netsmith-pcb" ;;
+        # The editor backend's tests open it as a project (the `example_project` helper takes a name).
+        schematic_bench) echo "netsmith netsmith-workspace" ;;
         *) echo "netsmith" ;;
     esac
 }
@@ -189,18 +193,18 @@ while IFS= read -r path; do
         .claude/*) rust=true ;;
         .agents/*) ;;
 
-        # The catalog refresh (library in netsmith-catalog, the targets of a command in netsmith): it
-        # runs from `catalog refresh` and the editor's button, never in a build.
-        crates/netsmith/src/refresh.rs | crates/netsmith-catalog/src/refresh/*) rust=true recipes=true ;;
+        # The catalog refresh (library in netsmith-catalog, the targets of a command in netsmith-fabricate,
+        # beside the project manifest): it runs from `catalog refresh` and the editor's button, never in a build.
+        crates/netsmith-fabricate/src/refresh.rs | crates/netsmith-catalog/src/refresh/*) rust=true recipes=true ;;
         # The leaves netsmith-core and netsmith-sexp (the reader of the mapping and the libraries)
         # are linked into the binary and are read by every stage, the solver's among them.
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-sexp/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith-pipeline/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
         # After the solver: no pick of `netsmith lock` depends on them. The design stage loads the
-        # footprints (netsmith-pcb, on netsmith-geom); the placer, the router and the netlist come
-        # after it.
+        # footprints (netsmith-pcb, on netsmith-geom); the placer, the router, the fab driver, the
+        # editor's backend (netsmith-workspace) and the netlist come after it.
         crates/netsmith-geom/* | crates/netsmith-fab/* | crates/netsmith-pcb/*) before_design "${path#crates/*/}" "$path" ;;
-        crates/netsmith-placer/* | crates/netsmith-router/* | crates/netsmith-fabricate/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
+        crates/netsmith-placer/* | crates/netsmith-router/* | crates/netsmith-fabricate/* | crates/netsmith-workspace/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;

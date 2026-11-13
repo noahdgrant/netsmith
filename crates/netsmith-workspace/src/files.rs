@@ -16,7 +16,7 @@ use super::{
     Workspace,
     outline::{self, Kinds},
 };
-use crate::project::MANIFEST;
+use netsmith_fabricate::project::MANIFEST;
 
 /// Modification time and length of each file, `None` for one that cannot be read.
 pub fn stamps(paths: &[PathBuf]) -> Vec<Option<(SystemTime, u64)>> {
@@ -100,7 +100,7 @@ impl Workspace {
             .filter(|e| matches!(e.role, FileRole::TopLevel | FileRole::Module))
             .filter_map(|e| {
                 let source = e.fs.as_ref()?;
-                let file = crate::physical::physical_path(source);
+                let file = netsmith_fabricate::physical::physical_path(source);
                 file.is_file().then(|| Entry {
                     path: netsmith_check::physical_file_name(&e.path),
                     role: FileRole::Physical,

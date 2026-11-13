@@ -15,7 +15,7 @@ Work from the front of the pipeline. Finish and test each stage before the next.
 2. `crates/netsmith-check`: `checker.rs` (names, declarations), `connect.rs` (connections, nets, chains, balances), `lower.rs` (expressions, narrowing), `model.rs`. Every refusal names the field or path involved.
 3. `crates/netsmith-solve`: propagation, picking, verification. Catalog rows are CSV in `data/jlcpcb/catalog/` (`src/table.rs` reads them, `src/jlcpcb.rs` loads the embedded ones).
 4. `crates/netsmith-design` and `crates/netsmith-core`: the tool-independent `Design`.
-5. Exporters: `netsmith-kicad`, `netsmith-pcb`, `netsmith-fab`, `netsmith-view`, and the editor (`netsmith-editor`, `crates/netsmith/src/editor/`) if it shows the construct.
+5. Exporters: `netsmith-kicad`, `netsmith-pcb`, `netsmith-fab`, `netsmith-view`, and the editor (`netsmith-editor`, `crates/netsmith-workspace/src/`) if it shows the construct.
 6. `crates/netsmith`: commands and the project manifest.
 
 Tests live in each crate's `tests/`. Add a test for the behaviour and one for each failure message, asserting that it names the numbers and fields.

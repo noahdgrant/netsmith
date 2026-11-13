@@ -15,7 +15,7 @@ use super::{
     Workspace,
     progress::{Reporting, forward},
 };
-use crate::fab::{FabOptions, fab_with_options};
+use netsmith_fabricate::fab::{FabOptions, fab_with_options};
 
 /// The files `fab` writes that the page offers, by the name it asks for them with.
 const DOWNLOADS: [(&str, &str); 5] = [
@@ -40,7 +40,7 @@ impl Workspace {
         let built = (|| -> Result<_, String> {
             let loader = self.target().loader()?;
             let catalogs = self.target().catalogs()?;
-            let libraries = crate::Libraries::for_project(
+            let libraries = netsmith_pipeline::Libraries::for_project(
                 self.target().project.as_ref().map(|p| p.root.as_path()),
             )?;
             Ok((loader, catalogs, libraries))
@@ -60,7 +60,13 @@ impl Workspace {
                             continue;
                         }
                     };
-                    match crate::build_with(&source.name, &text, &loader, &catalogs, &libraries) {
+                    match netsmith_pipeline::build_with(
+                        &source.name,
+                        &text,
+                        &loader,
+                        &catalogs,
+                        &libraries,
+                    ) {
                         Err(problems) => {
                             ok = false;
                             output.push_str(&format!(
@@ -137,9 +143,10 @@ impl Workspace {
         let text = fs::read_to_string(&source.path)
             .map_err(|e| ApiError::internal(format!("{}: {e}", source.name)))?;
         let loader = target.loader().map_err(ApiError::internal)?;
-        let libraries =
-            crate::Libraries::for_project(target.project.as_ref().map(|p| p.root.as_path()))
-                .map_err(ApiError::internal)?;
+        let libraries = netsmith_pipeline::Libraries::for_project(
+            target.project.as_ref().map(|p| p.root.as_path()),
+        )
+        .map_err(ApiError::internal)?;
         // The stages `netsmith fab` prints to stderr go to the page instead.
         let _reporting = Reporting::to(say);
         let made = fab_with_options(
@@ -147,7 +154,7 @@ impl Workspace {
             &text,
             &loader,
             &target.fab_out,
-            &crate::picks::holding(
+            &netsmith_catalog::picks::holding(
                 &source.path,
                 &target.catalogs().map_err(ApiError::internal)?,
             )
@@ -157,10 +164,10 @@ impl Workspace {
             &FabOptions {
                 progress: Some(forward),
                 allow_drc_violations,
-                layout: Some(crate::layout::layout_path(&source.path)),
+                layout: Some(netsmith_fabricate::layout::layout_path(&source.path)),
                 pin_map_source: Some(source.stable_name(target.project.as_ref())),
-                place_seeds: crate::layout::place_seeds(target.project.as_ref()),
-                seed_writes: crate::fab::SeedWrites::EditorRelease,
+                place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
+                seed_writes: netsmith_fabricate::fab::SeedWrites::EditorRelease,
                 ..FabOptions::default()
             },
         );

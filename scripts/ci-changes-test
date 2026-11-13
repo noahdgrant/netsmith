@@ -60,7 +60,7 @@ file crates/netsmith-router/tests/pure.rs "$pure"
 file crates/netsmith-router/tests/asks.rs "$pure
 KicadCliExe::locate_runnable()"
 file crates/netsmith-design/tests/pure.rs "$pure"
-file crates/netsmith/src/editor/tests.rs "$pure"
+file crates/netsmith-workspace/src/tests.rs "$pure"
 file crates/netsmith-fab/src/tests.rs "$pure"
 file crates/netsmith/tests/main.rs "mod pure;"
 i=0
@@ -164,7 +164,6 @@ row "1 1 1 1 1 1" examples/notes.txt
 # --- the crates that reach KiCad: their source is what the tests, and the binary, run ---------
 row "1 1 1 1 1 1" crates/netsmith/src/lib.rs
 row "1 1 1 1 1 1" crates/netsmith/src/parity.rs crates/netsmith/src/compare.rs
-row "1 1 1 1 1 1" crates/netsmith/src/editor/analysis.rs
 row "1 1 1 1 1 1" crates/netsmith-pipeline/src/pick_lock.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/src/main.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/src/commands/mod.rs
@@ -199,6 +198,10 @@ row "1 1 1 1 0 0" crates/netsmith-placer/src/place.rs crates/netsmith-router/src
 # The fab driver (issue #612) is after the design stage, as the placer and the router: it moves no pick
 # and no design. The build driver (netsmith-pipeline) makes both, so it keeps `locks` and `designs`.
 row "1 1 1 1 0 0" crates/netsmith-fabricate/src/fab.rs crates/netsmith-fabricate/Cargo.toml
+# The editor's backend (issue #612) is linked into the binary and drives the editor, so the recipes run;
+# it comes after the design stage and feeds neither a pick nor a design, so `locks` and `designs` stay off.
+row "1 1 1 1 0 0" crates/netsmith-workspace/src/analysis.rs crates/netsmith-workspace/src/lib.rs crates/netsmith-workspace/Cargo.toml
+row "1 1 0 0 0 0" crates/netsmith-workspace/tests/main.rs crates/netsmith-workspace/tests/common/mod.rs
 row "1 1 1 1 1 1" crates/netsmith-pipeline/src/lib.rs crates/netsmith-pipeline/Cargo.toml
 row "1 1 0 0 0 0" crates/netsmith-fabricate/tests/main.rs
 # The router's steps that lived in netsmith-pcb until issue #608 (meanders, teardrops): after the design
@@ -227,13 +230,13 @@ row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/scene3d.rs
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/main.rs
 row "1 1 0 0 0 0" crates/netsmith-kicad/examples/locate.rs crates/netsmith-fab/examples/drc.rs
-row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/mod.rs crates/netsmith/src/refresh.rs
+row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/mod.rs crates/netsmith-fabricate/src/refresh.rs
 row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/http.rs crates/netsmith-catalog/src/refresh/csvfile.rs
 
 # --- test files of those crates: KiCad only when the file can ask; never the recipes ----------
 row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs
 row "1 0 0 0 0 0" crates/netsmith-fab/tests/pure.rs crates/netsmith-pcb/tests/pure.rs crates/netsmith-design/tests/pure.rs
-row "1 0 0 0 0 0" crates/netsmith/src/editor/tests.rs crates/netsmith-fab/src/tests.rs
+row "1 0 0 0 0 0" crates/netsmith-workspace/src/tests.rs crates/netsmith-fab/src/tests.rs
 row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs crates/netsmith-pcb/tests/pure.rs
 row "1 0 0 0 0 0" crates/netsmith/tests/message.rs crates/netsmith/tests/mapping.rs
 for n in $(seq 1 "$i"); do
@@ -283,6 +286,7 @@ crates_row "netsmith-sexp" crates/netsmith-sexp/src/lib.rs
 crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
 crates_row "netsmith-router" crates/netsmith-router/src/route.rs
 crates_row "netsmith-fabricate" crates/netsmith-fabricate/src/fab.rs
+crates_row "netsmith-workspace" crates/netsmith-workspace/src/analysis.rs
 crates_row "netsmith-pipeline" crates/netsmith-pipeline/src/lib.rs
 crates_row "netsmith-placer" crates/netsmith-placer/src/place.rs
 crates_row "netsmith-placer netsmith-router" crates/netsmith-placer/src/place.rs crates/netsmith-router/src/route.rs
@@ -306,15 +310,17 @@ crates_row "netsmith-view netsmith" crates/netsmith-view/src/layout.rs .agents/s
 # An example is read by the crates whose tests include it, and by the netsmith crate for all of them.
 crates_row "netsmith" examples/orbit/src/main.nsm
 crates_row "netsmith" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
-crates_row "netsmith netsmith-fabricate" examples/two_buck/src/main.nsm examples/led_panel.physical.nsm examples/led_panel.lock.toml
-crates_row "netsmith netsmith-fabricate" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
+crates_row "netsmith" examples/two_buck/src/main.nsm
+crates_row "netsmith netsmith-fabricate netsmith-workspace" examples/led_panel.physical.nsm examples/led_panel.lock.toml
+crates_row "netsmith netsmith-fabricate netsmith-workspace" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
 crates_row "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm
 crates_row "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/six_layer.lock.toml examples/ten_layer.nsm
 crates_row "netsmith netsmith-check netsmith-solve" examples/carrier_and_cards.nsm
-crates_row "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-fabricate netsmith-placer netsmith-router" examples/two_boards.nsm examples/linear_regulator.lock.toml
-crates_row "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/led.nsm
-crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-core netsmith-fabricate" examples/status_indicator.nsm examples/led.lock.toml
+crates_row "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-fabricate netsmith-workspace netsmith-placer netsmith-router" examples/two_boards.nsm examples/linear_regulator.lock.toml
+crates_row "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-fabricate netsmith-workspace" examples/led.nsm
+crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-core netsmith-fabricate netsmith-workspace" examples/status_indicator.nsm examples/led.lock.toml
 crates_row "netsmith netsmith-design netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
+crates_row "netsmith netsmith-workspace" examples/schematic_bench/src/main.nsm
 crates_row "netsmith netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
 # A path outside the crates that names no crate keeps the whole run wide, whatever else is there.
 crates_row "" examples/orbit/src/main.nsm std/kicad.toml

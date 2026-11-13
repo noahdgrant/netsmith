@@ -7,7 +7,8 @@ use netsmith_editor::{
 };
 
 use super::Workspace;
-use crate::refresh::{self, Network, Options, Report, Status};
+use netsmith_catalog::refresh::{Network, Options, Report, Status};
+use netsmith_fabricate::refresh;
 
 impl Workspace {
     /// The same code as the command line, over the files the manifest lists. The standard

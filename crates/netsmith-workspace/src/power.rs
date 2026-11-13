@@ -25,7 +25,9 @@ pub fn tree(snapshot: &Snapshot, name: &str) -> Result<PowerTree, ApiError> {
 }
 
 /// The scope of each board of a solved system: its instance and its name in the system.
-pub(crate) fn solved_scopes(solved: &crate::SolvedSystem) -> Vec<(InstId, Option<String>)> {
+pub(crate) fn solved_scopes(
+    solved: &netsmith_pipeline::SolvedSystem,
+) -> Vec<(InstId, Option<String>)> {
     solved
         .boards
         .iter()

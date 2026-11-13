@@ -15,8 +15,8 @@ use std::{
 use crate::common;
 
 use common::endpoints::{Fake, Reply, Seen};
-use netsmith::editor::Workspace;
-use netsmith::project::Target;
+use netsmith_workspace::Workspace;
+use netsmith_fabricate::project::Target;
 use netsmith_editor::{
     Backend, Say,
     api::{
@@ -1295,7 +1295,7 @@ fn the_check_runs_the_command_over_the_projects_catalogs_and_writes_only_checked
     );
     assert_eq!(*heard.lock().unwrap(), ["resistor 1/1: C9999999"]);
     // The page is told what is never written and why, in the command's words.
-    assert_eq!(preview.notice, netsmith::refresh::NOTICE);
+    assert_eq!(preview.notice, netsmith_catalog::refresh::NOTICE);
     assert!(preview.notice.contains("JLCPCB data is not fetched"));
     assert!(
         preview

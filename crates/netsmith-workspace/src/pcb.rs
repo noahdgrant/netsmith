@@ -61,7 +61,7 @@ use super::{
     findings::{self, KicadResult},
     progress::{Reporting, forward},
 };
-use crate::fab::DEFAULT_ROUTE_TIMEOUT;
+use netsmith_fabricate::fab::DEFAULT_ROUTE_TIMEOUT;
 
 /// Set to stop the route that is running; cleared when the next starts.
 static CANCEL: AtomicBool = AtomicBool::new(false);
@@ -138,7 +138,7 @@ pub fn place_checked(data: &BoardData, name: &str) -> Result<Entry, PlaceError> 
             // The stamp first: a file that changes meanwhile then makes an edit that
             // was based on this reading refused, not applied over the change.
             let stamp = super::files::stamp_of(file);
-            let layout = crate::layout::read(file, boards).map_err(|e| {
+            let layout = netsmith_fabricate::layout::read(file, boards).map_err(|e| {
                 PlaceError::Other(ApiError::unprocessable(
                     format!("{name}: {e}"),
                     "layout_unreadable",
@@ -210,7 +210,7 @@ pub fn place_with(
 ) -> Result<Entry, PlaceError> {
     let other = |e: ApiError| PlaceError::Other(e);
     let libraries = data.libraries().map_err(other)?;
-    let board = crate::layout::place(
+    let board = netsmith_fabricate::layout::place(
         &data.built.design,
         layout.as_ref(),
         libraries,
@@ -218,12 +218,16 @@ pub fn place_with(
         data.place_seeds,
     )
     .map_err(|e| match e {
-        crate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::Unplaceable(found)) => {
-            PlaceError::Unplaceable(name.to_string(), found)
+        netsmith_fabricate::layout::PlaceFailure::Board(netsmith_pcb::BoardError::Unplaceable(
+            found,
+        )) => PlaceError::Unplaceable(name.to_string(), found),
+        netsmith_fabricate::layout::PlaceFailure::Board(e) => {
+            PlaceError::Other(board_error(name, &e))
         }
-        crate::layout::PlaceFailure::Board(e) => PlaceError::Other(board_error(name, &e)),
-        crate::layout::PlaceFailure::Layout(e) => PlaceError::Layout(format!("{name}: {e}")),
-        failure @ crate::layout::PlaceFailure::Unplaced { .. } => {
+        netsmith_fabricate::layout::PlaceFailure::Layout(e) => {
+            PlaceError::Layout(format!("{name}: {e}"))
+        }
+        failure @ netsmith_fabricate::layout::PlaceFailure::Unplaced { .. } => {
             PlaceError::Other(ApiError::unprocessable(
                 format!("{name}: {}", failure.message()),
                 "does_not_fit",
@@ -235,7 +239,10 @@ pub fn place_with(
     let case_findings = if data.built.design.features.case_models.is_empty() {
         Vec::new()
     } else {
-        findings::case_findings(&board, &crate::board3d::scene(&data.built, &board).case)
+        findings::case_findings(
+            &board,
+            &netsmith_fabricate::board3d::scene(&data.built, &board).case,
+        )
     };
     Ok(Entry {
         case_findings,
@@ -248,7 +255,10 @@ pub fn place_with(
         layout_stamp,
         kicad: None,
         drc: OnceLock::new(),
-        constraints: crate::constraints::of_design(&data.built.design, data.constraints_warn),
+        constraints: netsmith_pipeline::constraints::of_design(
+            &data.built.design,
+            data.constraints_warn,
+        ),
         constraint_findings: OnceLock::new(),
     })
 }
@@ -411,7 +421,7 @@ impl Entry {
 /// (ADR 0105), with the stamp of the layout file it was placed with.
 pub fn glb(entry: &Entry, data: &BoardData) -> netsmith_editor::Pcb3d {
     netsmith_editor::Pcb3d {
-        glb: crate::board3d::glb(&data.built, &entry.board),
+        glb: netsmith_fabricate::board3d::glb(&data.built, &entry.board),
         layout_stamp: entry.layout_stamp.clone(),
     }
 }
@@ -819,7 +829,7 @@ pub fn digest(entry: &Entry, data: &BoardData) -> PcbDigest {
             )
         })
         .collect();
-    let layout_file = crate::layout::layout_path(std::path::Path::new(&data.file))
+    let layout_file = netsmith_fabricate::layout::layout_path(std::path::Path::new(&data.file))
         .to_string_lossy()
         .into_owned();
     PcbDigest {

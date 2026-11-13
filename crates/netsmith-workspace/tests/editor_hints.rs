@@ -11,8 +11,8 @@ use std::{
     },
 };
 
-use netsmith::editor::Workspace;
-use netsmith::project::Target;
+use netsmith_workspace::Workspace;
+use netsmith_fabricate::project::Target;
 use netsmith_editor::{
     AnalysisEvent, Backend,
     api::{Analysis, HintFindingKind, Problem, ProblemStage, Severity},

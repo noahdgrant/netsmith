@@ -340,7 +340,7 @@ Build option 1 first, with option 3 in the same change (a lean, not a decision).
 
 | Q | Option | Files and ADR sections |
 |---|---|---|
-| 1 | any | ADR 0031 "Parts on the back" (the amended two-face paragraph); ADR 0045 section 11 ("Both faces", "What a violation reports", "The placer") and section 13 (one more proved kind); a new section in ADR 0045 or an ADR of its own for the member (the owner's call); `GLOSSARY.md`; `docs/LANGUAGE.md` "Height limits"; `crates/netsmith-check/src/checker.rs` (the built-in member, where `.height` is defined), `crates/netsmith-lower/src/features.rs`, `crates/netsmith-core` (the design feature); `crates/netsmith-pcb/src/board.rs` (`Placed::room_on`, `rooms_overlap`, `check_placement` and a finding beside `TooTall`), `anneal.rs` (`rooms_on`, `room_pairs`), `place.rs` (`could_fit`, `face_forbidden`), `explain.rs`; `crates/netsmith-fab/src/lib.rs` (notes) and `drc/checks.rs` (`courtyards`); `crates/netsmith/src/fab.rs`; `crates/netsmith/src/editor/findings.rs`; the skills `netsmith-prepare-fab-order`, `netsmith-use-constraints`, `netsmith-read-errors`, `netsmith-write-nsm` |
+| 1 | any | ADR 0031 "Parts on the back" (the amended two-face paragraph); ADR 0045 section 11 ("Both faces", "What a violation reports", "The placer") and section 13 (one more proved kind); a new section in ADR 0045 or an ADR of its own for the member (the owner's call); `GLOSSARY.md`; `docs/LANGUAGE.md` "Height limits"; `crates/netsmith-check/src/checker.rs` (the built-in member, where `.height` is defined), `crates/netsmith-lower/src/features.rs`, `crates/netsmith-core` (the design feature); `crates/netsmith-pcb/src/board.rs` (`Placed::room_on`, `rooms_overlap`, `check_placement` and a finding beside `TooTall`), `anneal.rs` (`rooms_on`, `room_pairs`), `place.rs` (`could_fit`, `face_forbidden`), `explain.rs`; `crates/netsmith-fab/src/lib.rs` (notes) and `drc/checks.rs` (`courtyards`); `crates/netsmith/src/fab.rs`; `crates/netsmith-workspace/src/findings.rs`; the skills `netsmith-prepare-fab-order`, `netsmith-use-constraints`, `netsmith-read-errors`, `netsmith-write-nsm` |
 | 1 | A | adds `std/parts/connector.nsm` or a project part, with sourced numbers |
 | 1 | B | adds `docs/LANGUAGE.md` "The physical file"; `crates/netsmith/src/physical.rs` and the checker's reach rules (a part's `.tail_height` is a statement it may make); the guide's physical block pair; the F5 check reads `.assembly` from the circuit source |
 | 1 | C | adds `crates/netsmith-lang` (the parser, a statement naming pads), and the lowering's per-pad table |
@@ -353,7 +353,7 @@ Build option 1 first, with option 3 in the same change (a lean, not a decision).
 | 3 | baseline | `explain.rs` and `crates/netsmith/src/fab.rs` (message only); no ADR |
 | 4 | 1 | ADR 0045 section 13; `crates/netsmith-pcb/src/explain.rs` and `place.rs` (an entry point before the annealer), `crates/netsmith/src/fab.rs`; the skills `netsmith-read-errors`, `netsmith-use-constraints`; `conflicts.rs` |
 | 4 | 2 | `crates/netsmith/src/cli.rs` and `main.rs`; ADR 0030 (`layout check`); `README.md`; the skills |
-| 4 | 3 | `crates/netsmith/src/editor/findings.rs` and `crates/netsmith-editor/web` (then `scripts/web-bundle update`) |
+| 4 | 3 | `crates/netsmith-workspace/src/findings.rs` and `crates/netsmith-editor/web` (then `scripts/web-bundle update`) |
 
 ## 6. Questions for the owner, ranked
 

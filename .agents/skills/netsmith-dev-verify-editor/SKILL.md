@@ -1,6 +1,6 @@
 ---
 name: netsmith-dev-verify-editor
-description: Launch the netsmith editor, drive it in a real headless browser, take screenshots and look at them. Use when you change the editor (crates/netsmith-editor, crates/netsmith/src/editor) or any view it shows, and before you report that a UI change works.
+description: Launch the netsmith editor, drive it in a real headless browser, take screenshots and look at them. Use when you change the editor (crates/netsmith-editor, crates/netsmith-workspace) or any view it shows, and before you report that a UI change works.
 ---
 
 # Verify the editor in a browser
