@@ -153,10 +153,14 @@ example_readers() {
     name="${name%%/*}"
     name="${name%%.*}"
     case "$name" in
-        led | status_indicator) echo "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design" ;;
-        linear_regulator | two_boards) echo "netsmith netsmith-check netsmith-solve netsmith-design" ;;
+        # The design files (`<stem>.design.json`) are what the tests of netsmith-core (a loader), the
+        # placer and the router start from (issue #610).
+        led) echo "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router" ;;
+        status_indicator) echo "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router" ;;
+        linear_regulator) echo "netsmith netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router" ;;
+        two_boards) echo "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design" ;;
         carrier_and_cards) echo "netsmith netsmith-check netsmith-solve" ;;
-        four_layer | six_layer | ten_layer) echo "netsmith netsmith-design" ;;
+        four_layer | six_layer | ten_layer) echo "netsmith netsmith-design netsmith-placer netsmith-router" ;;
         rp2350_minimal) echo "netsmith netsmith-pcb" ;;
         *) echo "netsmith" ;;
     esac

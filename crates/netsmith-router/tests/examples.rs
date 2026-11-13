@@ -1,87 +1,15 @@
-//! The three example boards, from source text to a placed board, a ratsnest and files.
-//!
-//! The first tests use the footprints in `fixtures/`, so they run anywhere. The last ones
-//! use the installed KiCad libraries and are skipped when there are none.
+//! The example boards routed, from their design files: the copper clears every pad, track and the
+//! edge, the rules reach the router and the project file, and the planes of the layered examples
+//! are written. (The placer's `examples` hold the boards before they are routed.)
 
-use netsmith_pcb::{
-    Board, CopperLayer, FootprintLibrary, Pt, Ratsnest, Rect, Track, kicad_pcb, svg,
-};
+use netsmith_pcb::{Board, CopperLayer, Pt, Ratsnest, Rect, Track, kicad_pcb, svg};
 use netsmith_router::route;
-use netsmith_solve::Catalogs;
 
-use crate::boards as common;
+use crate::common;
 
-use common::{edge_gap, fixtures};
+use common::{edge_gap, example_board as board, fixtures};
 
-fn board(example: &str, library: &FootprintLibrary) -> Board {
-    let path = format!(
-        "{}/../../examples/{example}.nsm",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap();
-    let built = netsmith::build_with(
-        &path,
-        &text,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &netsmith::Libraries::sample(),
-    )
-    .unwrap();
-    assert_eq!(built.len(), 1);
-    netsmith_placer::board_from_design(
-        &built[0].design,
-        &netsmith_kicad::Mapping::standard(),
-        library,
-    )
-    .unwrap()
-}
-
-/// Example, how many parts it has, and how many lines KiCad's DRC reports as unconnected
-/// on the file written for it (checked with KiCad 9.0.0).
-const EXAMPLES: [(&str, usize, usize); 3] = [
-    ("led", 3, 3),
-    ("status_indicator", 5, 6),
-    ("linear_regulator", 5, 9),
-];
-
-#[test]
-fn each_example_is_placed_without_overlaps_or_parts_off_the_board() {
-    for (example, parts, _) in EXAMPLES {
-        let board = board(example, &fixtures());
-        assert_eq!(board.parts.len(), parts, "{example}");
-        assert_eq!(board.check_placement(), vec![], "{example}");
-    }
-}
-
-#[test]
-fn each_examples_ratsnest_has_the_lines_kicad_counts() {
-    for (example, _, lines) in EXAMPLES {
-        let board = board(example, &fixtures());
-        let rats = Ratsnest::of(&board);
-        assert_eq!(rats.len(), lines, "{example}");
-        assert!(rats.total_length() > 0.0, "{example}");
-    }
-}
-
-#[test]
-fn each_example_writes_the_same_files_every_time() {
-    for (example, _, _) in EXAMPLES {
-        let a = board(example, &fixtures());
-        let b = board(example, &fixtures());
-        assert_eq!(kicad_pcb(&a), kicad_pcb(&b), "{example}");
-        assert_eq!(svg::render(&a), svg::render(&b), "{example}");
-    }
-}
-
-#[test]
-fn the_regulators_tab_and_pin_carry_the_output_net() {
-    let text = kicad_pcb(&board("linear_regulator", &fixtures()));
-    let u1 = text
-        .split("(footprint ")
-        .find(|f| f.contains("\"U1\""))
-        .unwrap();
-    assert_eq!(u1.matches("(net 1 \"3V3\")").count(), 2);
-}
+const EXAMPLES: [&str; 3] = ["led", "status_indicator", "linear_regulator"];
 
 /// Points along a track, close enough together to find its nearest approach to a shape.
 fn samples(t: &Track) -> Vec<Pt> {
@@ -112,7 +40,7 @@ fn distance_to_track(p: Pt, t: &Track) -> f64 {
 
 #[test]
 fn placement_leaves_the_copper_to_edge_distance_round_every_pad_and_track() {
-    for (example, _, _) in EXAMPLES {
+    for example in EXAMPLES {
         let mut board = board(example, &fixtures());
         let wanted = board.rules.copper_to_edge;
         let placed = edge_gap(&board);
@@ -131,7 +59,7 @@ fn placement_leaves_the_copper_to_edge_distance_round_every_pad_and_track() {
 
 #[test]
 fn each_example_routes_completely_and_cleanly() {
-    for (example, _, _) in EXAMPLES {
+    for example in EXAMPLES {
         let mut board = board(example, &fixtures());
         let left = route(&mut board);
         assert!(left.is_empty(), "{example}: {} lines unrouted", left.len());
@@ -200,7 +128,7 @@ fn routing_is_the_same_every_time_and_reaches_the_file() {
         route(&mut b);
         b
     };
-    for (example, _, _) in EXAMPLES {
+    for example in EXAMPLES {
         let (a, b) = (routed(example), routed(example));
         assert_eq!(a, b, "{example}");
         let text = kicad_pcb(&a);
@@ -218,70 +146,13 @@ fn routing_is_the_same_every_time_and_reaches_the_file() {
     }
 }
 
-fn installed() -> Option<FootprintLibrary> {
-    let library = FootprintLibrary::installed();
-    if library.root().is_dir() {
-        Some(library)
-    } else {
-        eprintln!(
-            "skipped: no KiCad footprint libraries at {}",
-            library.root().display()
-        );
-        None
-    }
-}
-
-#[test]
-fn with_the_installed_libraries_each_example_is_valid_and_has_the_same_ratsnest() {
-    let Some(library) = installed() else { return };
-    for (example, parts, lines) in EXAMPLES {
-        let board = board(example, &library);
-        assert_eq!(board.parts.len(), parts, "{example}");
-        assert_eq!(board.check_placement(), vec![], "{example}");
-        assert_eq!(Ratsnest::of(&board).len(), lines, "{example}");
-    }
-}
-
-#[test]
-fn every_footprint_the_mapping_names_is_in_the_installed_libraries() {
-    let Some(library) = installed() else { return };
-    for name in [
-        "Resistor_SMD:R_0402_1005Metric",
-        "Resistor_SMD:R_0603_1608Metric",
-        "Resistor_SMD:R_0805_2012Metric",
-        "Capacitor_SMD:C_0402_1005Metric",
-        "Capacitor_SMD:C_0603_1608Metric",
-        "Capacitor_SMD:C_0805_2012Metric",
-        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-        "Package_TO_SOT_SMD:SOT-223-3_TabPin2",
-        "LED_SMD:LED_0402_1005Metric",
-        "LED_SMD:LED_0603_1608Metric",
-        "LED_SMD:LED_0805_2012Metric",
-    ] {
-        let footprint = library.load(name).unwrap_or_else(|e| panic!("{e}"));
-        assert!(!footprint.pads.is_empty(), "{name}");
-    }
-}
-
-/// The LED example as source, with `lines` added to its `.process` block.
+/// The LED example with `lines` added to its `.process` block: its design, with the process the
+/// design stage resolves for `TwoLayer` at 1.6 mm and those narrowings (`common::process_with`).
 fn led_board_narrowed(lines: &[&str]) -> Board {
-    let path = format!("{}/../../examples/led.nsm", env!("CARGO_MANIFEST_DIR"));
-    let text = std::fs::read_to_string(path).unwrap();
-    let extra: String = lines.iter().map(|l| format!("\n        {l}")).collect();
-    let text = text.replace(
-        ".stackup.thickness &= 1.6mm",
-        &format!(".stackup.thickness &= 1.6mm{extra}"),
-    );
-    let built = netsmith::build_with(
-        "led.nsm",
-        &text,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &netsmith::Libraries::sample(),
-    )
-    .unwrap();
+    let mut design = common::example_design("led");
+    design.process = Some(common::process_with(lines));
     netsmith_placer::board_from_design(
-        &built[0].design,
+        &design,
         &netsmith_kicad::Mapping::standard(),
         &fixtures(),
     )
@@ -347,21 +218,10 @@ fn the_board_file_takes_its_thickness_from_the_process() {
 
 #[test]
 fn a_board_with_no_process_cannot_become_a_pcb() {
-    let path = format!("{}/../../examples/led.nsm", env!("CARGO_MANIFEST_DIR"));
-    let text = std::fs::read_to_string(path).unwrap().replace(
-        ".process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }",
-        "",
-    );
-    let built = netsmith::build_with(
-        "led.nsm",
-        &text,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &netsmith::Libraries::sample(),
-    )
-    .unwrap();
+    let mut design = common::example_design("led");
+    design.process = None;
     let err = netsmith_placer::board_from_design(
-        &built[0].design,
+        &design,
         &netsmith_kicad::Mapping::standard(),
         &fixtures(),
     )
@@ -455,7 +315,7 @@ fn own_findings(board: &Board) -> Vec<String> {
 
 #[test]
 fn each_routed_example_the_placer_makes_passes_netsmiths_own_design_rules_check() {
-    for (example, ..) in EXAMPLES {
+    for example in EXAMPLES {
         let mut b = board(example, &fixtures());
         assert!(route(&mut b).is_empty(), "{example}");
         assert_eq!(own_findings(&b), Vec::<String>::new(), "{example}");

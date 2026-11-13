@@ -1,30 +1,10 @@
 //! A placed board written to JSON and read back is the same board, and routes to the same
 //! copper (`netsmith fab --save-placed` and `netsmith route`).
 
-use netsmith_pcb::{Board, FootprintLibrary, kicad_pcb};
+use netsmith_pcb::{Board, kicad_pcb};
 use netsmith_router::route;
-use netsmith_solve::Catalogs;
 
-use crate::boards as common;
-
-fn example(name: &str, library: &FootprintLibrary) -> Board {
-    let path = format!("{}/../../examples/{name}.nsm", env!("CARGO_MANIFEST_DIR"));
-    let text = std::fs::read_to_string(&path).unwrap();
-    let built = netsmith::build_with(
-        &path,
-        &text,
-        &netsmith_check::Loader::std(),
-        &Catalogs::sample(),
-        &netsmith::Libraries::sample(),
-    )
-    .unwrap();
-    netsmith_placer::board_from_design(
-        &built[0].design,
-        &netsmith_kicad::Mapping::standard(),
-        library,
-    )
-    .unwrap()
-}
+use crate::common;
 
 fn round_trip(board: &Board) -> Board {
     let text = serde_json::to_string(board).unwrap();
@@ -35,7 +15,7 @@ fn round_trip(board: &Board) -> Board {
 fn a_placed_board_read_back_is_equal_and_routes_to_the_same_copper() {
     let mut boards: Vec<Board> = ["led", "status_indicator", "linear_regulator"]
         .iter()
-        .map(|name| example(name, &common::fixtures()))
+        .map(|name| common::example_board(name, &common::fixtures()))
         .collect();
     boards.extend(common::hard_boards(2));
     // A footprint the generator made carries its package's shape (for the 3D view).

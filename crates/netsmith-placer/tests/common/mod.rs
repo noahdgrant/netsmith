@@ -5,6 +5,40 @@ use netsmith_core::{Design, Net, Part, PinRef};
 use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, Pt, Rect};
 use netsmith_testkit::TempDir;
 
+// The design files of the examples that the tests of the later stages start from (issue #609):
+// what the design stage hands the placer, so a test needs neither the checker nor the solver.
+// Each is named by its path in the repository, which scripts/ci-changes-test reads to know that
+// the crates that include this module read those examples (`example_readers` in scripts/ci-changes).
+const EXAMPLE_DESIGNS: [(&str, &str); 6] = [
+    ("led", "examples/led.design.json"),
+    ("status_indicator", "examples/status_indicator.design.json"),
+    ("linear_regulator", "examples/linear_regulator.design.json"),
+    ("four_layer", "examples/four_layer.design.json"),
+    ("six_layer", "examples/six_layer.design.json"),
+    ("ten_layer", "examples/ten_layer.design.json"),
+];
+
+/// The design of the example `name`, from its design file.
+pub fn example_design(name: &str) -> Design {
+    let (_, file) = EXAMPLE_DESIGNS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .unwrap_or_else(|| panic!("{name} has no design file in this list"));
+    Design::from_json_file(format!("{}/../../{file}", env!("CARGO_MANIFEST_DIR")))
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The example `name` as a board the placer laid out, with the standard mapping and the
+/// footprints of `library`.
+pub fn example_board(name: &str, library: &FootprintLibrary) -> Board {
+    netsmith_placer::board_from_design(
+        &example_design(name),
+        &netsmith_kicad::Mapping::standard(),
+        library,
+    )
+    .unwrap_or_else(|e| panic!("{name}: {e}"))
+}
+
 /// The least distance from any pad, track or via to the board edge, from the board model.
 pub fn edge_gap(board: &Board) -> f64 {
     let pads = board.parts.iter().flat_map(|part| {

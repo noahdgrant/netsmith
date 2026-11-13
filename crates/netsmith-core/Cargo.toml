@@ -3,6 +3,13 @@ name = "netsmith-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
 
 [dependencies]
 # A placed board is saved as JSON (`netsmith fab --save-placed`), and it holds the process.
@@ -14,3 +21,5 @@ serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 [dev-dependencies]
 # An inflater that is not ours, to check the PNG writer's deflate.
 flate2 = "1"
+automod = "1.0.17"
+netsmith-testkit = { path = "../netsmith-testkit" }

@@ -8,38 +8,25 @@ use netsmith_fab::raster::{self, Image, View};
 use netsmith_pcb::copper::{self, Area, Copper};
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
 use netsmith_router::route;
-use netsmith_solve::Catalogs;
+
+use crate::common;
 
 /// Pixels per millimetre: 25 µm pixels.
 const SCALE: f64 = 40.0;
 
-/// An example's source, with `process` lines added inside the four-layer example's
-/// `.process: FourLayer` (the outer pours, as `kicad_drc.rs` adds them).
-fn source(example: &str, process: &str) -> (String, String) {
-    let path = format!(
-        "{}/../../examples/{example}.nsm",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap();
-    let anchor = "        .inner2.net &= \"3V3\"\n";
-    assert!(process.is_empty() || text.contains(anchor));
-    let text = text.replace(anchor, &format!("{anchor}{process}"));
-    (path, text)
-}
-
-fn routed(example: &str, process: &str) -> Board {
-    let (path, text) = source(example, process);
-    let mut loader = netsmith_check::Loader::std();
-    if let Ok(physical) = std::fs::read_to_string(path.replace(".nsm", ".physical.nsm")) {
-        loader.attach_physical(&path, "board.physical.nsm", &physical);
+/// An example as a routed board: its design file, with `pours` as the lines added inside the
+/// four-layer example's `.process: FourLayer` (the outer pours, as `kicad_drc.rs` adds them),
+/// resolved by the design stage as `common::four_layer_process_with` does.
+fn routed(example: &str, pours: &[&str]) -> Board {
+    let mut design = common::example_design(example);
+    if !pours.is_empty() {
+        assert_eq!(example, "four_layer");
+        design.process = Some(common::four_layer_process_with(pours));
     }
-    let libraries = netsmith::Libraries::sample();
-    let built =
-        netsmith::build_with(&path, &text, &loader, &Catalogs::sample(), &libraries).unwrap();
     let mut board = netsmith_placer::board_from_design(
-        &built[0].design,
-        &libraries.mapping,
-        &libraries.footprints,
+        &design,
+        &netsmith_kicad::Mapping::standard(),
+        &common::fixtures(),
     )
     .unwrap();
     assert!(route(&mut board).is_empty(), "{example} routes");
@@ -113,8 +100,8 @@ fn suffix(layer: &str) -> String {
 }
 
 /// Compares every copper layer of the board, whole and pours alone.
-fn compare(example: &str, process: &str) {
-    let board = routed(example, process);
+fn compare(example: &str, pours: &[&str]) {
+    let board = routed(example, pours);
     let c = copper::copper(&board).unwrap();
     let art = netsmith_fab::artwork::Artwork::parse(&kicad_pcb(&board)).unwrap();
     let rules = netsmith_fab::plot_rules_of(Some(&kicad_pro(&board)));
@@ -162,28 +149,33 @@ fn compare(example: &str, process: &str) {
 
 #[test]
 fn the_planes_of_the_four_layer_example_are_its_gerbers_copper() {
-    compare("four_layer", "");
+    compare("four_layer", &[]);
 }
 
 #[test]
 fn the_planes_and_empty_signal_layers_of_the_six_layer_example_are_its_gerbers_copper() {
-    compare("six_layer", "");
+    compare("six_layer", &[]);
 }
 
 #[test]
 fn the_planes_and_empty_signal_layers_of_the_ten_layer_example_are_its_gerbers_copper() {
-    compare("ten_layer", "");
+    compare("ten_layer", &[]);
 }
 
 #[test]
 fn outer_pours_with_stitching_vias_are_the_gerbers_copper() {
     compare(
         "four_layer",
-        "        .top.net &= \"GND\"\n        .bottom.net &= \"GND\"\n        .top.stitch_pitch &= 0mm..7mm\n        .bottom.stitch_pitch &= 0mm..7mm\n",
+        &[
+            ".top.net &= \"GND\"",
+            ".bottom.net &= \"GND\"",
+            ".top.stitch_pitch &= 0mm..7mm",
+            ".bottom.stitch_pitch &= 0mm..7mm",
+        ],
     );
 }
 
 #[test]
 fn a_board_with_no_pour_is_its_gerbers_copper() {
-    compare("led", "");
+    compare("led", &[]);
 }

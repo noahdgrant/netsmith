@@ -4,10 +4,8 @@
 //! `cargo nextest run -p netsmith <file>::`.
 
 mod common;
-// The synthetic boards and processes of netsmith-placer's tests, for the tests below that
-// place and route the example boards (examples, copper, placed, kicad_drc). They live there, so
-// that a change to them selects both crates' tests (scripts/ci-changes).
-#[path = "../../netsmith-placer/tests/common/mod.rs"]
-mod boards;
+// KiCad's design rule check of a board, which netsmith-router's `kicad_drc` shares with `kicad_drc`.
+#[path = "../../netsmith-router/tests/drc_kit/mod.rs"]
+mod drc_kit;
 
 automod::dir!("tests");

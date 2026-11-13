@@ -211,6 +211,9 @@ row "1 1 0 0 0 0" crates/netsmith-placer/tests/main.rs
 row "1 0 0 0 0 0" crates/netsmith-router/tests/pure.rs
 row "1 1 0 0 0 0" crates/netsmith-router/tests/asks.rs
 row "1 1 0 0 0 0" crates/netsmith-router/tests/main.rs
+# The router's shared KiCad check is a module folder (`tests/drc_kit`, which the netsmith crate includes): every test
+# file of both crates uses it, so a change to it runs `kicad`.
+row "1 1 0 0 0 0" crates/netsmith-router/tests/drc_kit/mod.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
 row "1 0 1 1 0 0" crates/netsmith-3d/src/gltf.rs
 row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
@@ -296,13 +299,13 @@ crates_row "netsmith" examples/orbit/src/main.nsm
 crates_row "netsmith" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
 crates_row "netsmith" examples/two_buck/src/main.nsm examples/led_panel.physical.nsm examples/led_panel.lock.toml
 crates_row "netsmith" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
-crates_row "netsmith netsmith-design" examples/four_layer.nsm
-crates_row "netsmith netsmith-design" examples/six_layer.lock.toml examples/ten_layer.nsm
+crates_row "netsmith netsmith-design netsmith-placer netsmith-router" examples/four_layer.nsm
+crates_row "netsmith netsmith-design netsmith-placer netsmith-router" examples/six_layer.lock.toml examples/ten_layer.nsm
 crates_row "netsmith netsmith-check netsmith-solve" examples/carrier_and_cards.nsm
-crates_row "netsmith netsmith-check netsmith-solve netsmith-design" examples/two_boards.nsm examples/linear_regulator.lock.toml
-crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design" examples/led.nsm
-crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design" examples/status_indicator.nsm examples/led.lock.toml
-crates_row "netsmith netsmith-design" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
+crates_row "netsmith netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router" examples/two_boards.nsm examples/linear_regulator.lock.toml
+crates_row "netsmith netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router" examples/led.nsm
+crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-placer netsmith-router netsmith-core" examples/status_indicator.nsm examples/led.lock.toml
+crates_row "netsmith netsmith-design netsmith-placer netsmith-router" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
 crates_row "netsmith netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
 # A path outside the crates that names no crate keeps the whole run wide, whatever else is there.
 crates_row "" examples/orbit/src/main.nsm std/kicad.toml
