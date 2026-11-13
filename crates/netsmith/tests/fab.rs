@@ -327,9 +327,17 @@ fn the_four_layer_board_becomes_a_package_with_its_inner_layers() {
         notes.contains("zone fill: netsmith filled GND on In1.Cu, 3V3 on In2.Cu itself"),
         "{notes}"
     );
-    // The board file holds the zones unfilled, as netsmith writes them.
+    // The board file holds the planes and pours unfilled, as netsmith writes them; only a
+    // teardrop (a zone KiCad 9 names `$teardrop_padvia$`) carries its fill (issue #431, S11).
     let pcb = read(&dir, "FourLayerExample", "FourLayerExample.kicad_pcb");
-    assert!(pcb.contains("(zone") && !pcb.contains("filled_polygon"));
+    assert!(pcb.contains("(zone"));
+    for zone in pcb.split("(zone").skip(1) {
+        assert!(
+            !zone.contains("filled_polygon") || zone.contains("$teardrop_padvia$"),
+            "a zone that is not a teardrop is written filled: {}",
+            &zone[..zone.len().min(200)]
+        );
+    }
 }
 
 #[test]

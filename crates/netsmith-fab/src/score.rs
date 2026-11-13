@@ -16,6 +16,8 @@
 //!   a lower bound that no routing beats; the ratio of the two is how much longer than the
 //!   least the routing is.
 //! - **Vias**.
+//! - **Teardrops** are no track and no pour: a zone KiCad marks as a teardrop counts in neither,
+//!   and a pour's pieces keep its clearance from another net's.
 //! - **Bends**: where exactly two straight tracks of one net and layer meet, outside every pad,
 //!   the angle between them: straight (no bend), 135 degrees (a 45 degree bend), 90 degrees, acute,
 //!   or another angle. Where three or more meet (a tee), an acute angle between any two is
@@ -339,7 +341,7 @@ fn score(
     let poured: Vec<&str> = art
         .zones
         .iter()
-        .filter(|z| z.keepout.is_none())
+        .filter(|z| z.keepout.is_none() && !z.teardrop)
         .filter_map(|z| z.net.as_deref())
         .collect();
     let mut length_by_layer = BTreeMap::new();
@@ -552,7 +554,11 @@ fn pours(art: &Artwork, rules: &Rules, tracks: &[Seg]) -> Vec<PourScore> {
         .collect();
     let board = crate::edge::outline(art).ok();
     let mut out = Vec::new();
-    for zone in art.zones.iter().filter(|z| z.keepout.is_none()) {
+    for zone in art
+        .zones
+        .iter()
+        .filter(|z| z.keepout.is_none() && !z.teardrop)
+    {
         let Some(net) = zone.net.as_deref() else {
             continue;
         };
@@ -650,6 +656,18 @@ fn pour_pieces(
         match &t.shape {
             TrackShape::Line(a, b) => blocks.push(shape::Shape::capsule(*a, *b, t.width / 2.0)),
             TrackShape::Arc(arc) => blocks.push(shape::Shape::stroke(arc.points(), t.width / 2.0)),
+        }
+    }
+    // A teardrop of another net, which the pour keeps its clearance from as from a track.
+    for z in art
+        .zones
+        .iter()
+        .filter(|z| z.teardrop && z.net.as_deref() != Some(net))
+    {
+        for (l, p) in &z.filled {
+            if l == layer && p.len() >= 3 {
+                blocks.push(shape::Shape::polygon(p.clone(), 0.0));
+            }
         }
     }
     for s in &blocks {

@@ -10,7 +10,7 @@
 //! It is the only reader of the board for plotting (ADR 0034), so a board ported from KiCad plots
 //! as well as one netsmith wrote. It reads every pad shape KiCad has, with the footprint's turn,
 //! drill, margins, zone connection and clearance, vias, tracks and arcs, zones with their rule
-//! areas, drawings and text, the origin and the mask settings. What it cannot make it refuses
+//! areas and teardrops, drawings and text, the origin and the mask settings. What it cannot make it refuses
 //! with the pad, via or zone named: a pad with a `padstack`, a blind or buried via, a zone filled
 //! in hatch mode, a custom pad primitive other than line, arc, circle, rectangle or polygon.
 
@@ -232,6 +232,10 @@ pub struct Zone {
     pub thermal_gap: f64,
     pub thermal_bridge: f64,
     pub name: String,
+    /// A teardrop (`(attr (teardrop ...))`, KiCad 9's own mark): copper that widens a track
+    /// where it meets a pad or a via. Its fill is the copper; the check sees it as copper of its
+    /// net, and pours of other nets keep their clearance from it.
+    pub teardrop: bool,
 }
 
 /// A line, arc, circle or polygon drawn on a layer.
@@ -368,6 +372,7 @@ impl Artwork {
             });
             let by_zone = self.zones.iter().any(|z| {
                 z.keepout.is_none()
+                    && !z.teardrop
                     && z.net == pad.net
                     && z.layers.iter().any(|l| l == layer)
                     && z.outlines.iter().any(|o| crate::geom::contains(o, pad.at))
@@ -721,6 +726,9 @@ impl<'a> Reader<'a> {
                 .and_then(|f| child_num(f, "thermal_bridge_width"))
                 .unwrap_or(0.5),
             name,
+            teardrop: item
+                .child("attr")
+                .is_some_and(|a| a.child("teardrop").is_some()),
         };
         self.out.zones.push(zone);
         Ok(())

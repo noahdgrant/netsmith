@@ -565,6 +565,72 @@ fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
     )
 }
 
+/// A teardrop as KiCad 9 writes one: a zone of the track's net on its layer, marked as a
+/// teardrop, joined solid to its pad, with the polygon as its outline and as its fill, so that
+/// netsmith's Gerbers and check, and KiCad, take the copper as it is (see `crate::teardrop`).
+fn teardrop(board: &Board, i: usize, drop: &crate::board::Teardrop, net: Sexp) -> Sexp {
+    let pts = || {
+        Sexp::node(
+            "pts",
+            drop.points
+                .iter()
+                .map(|p| Sexp::node("xy", vec![Sexp::num(p.x), Sexp::num(p.y)]))
+                .collect(),
+        )
+    };
+    let layer = drop.layer.name();
+    Sexp::node(
+        "zone",
+        vec![
+            net,
+            Sexp::node("net_name", vec![Sexp::string(drop.net.clone())]),
+            Sexp::node("layer", vec![Sexp::string(layer)]),
+            uuid_for(&format!("{}/teardrop/{i}", board.name)),
+            Sexp::node("name", vec![Sexp::string("$teardrop_padvia$")]),
+            Sexp::node("hatch", vec![Sexp::atom("full"), Sexp::num(0.1)]),
+            Sexp::node("priority", vec![Sexp::num(TEARDROP_PRIORITY)]),
+            Sexp::node(
+                "attr",
+                vec![Sexp::node(
+                    "teardrop",
+                    vec![Sexp::node("type", vec![Sexp::atom("padvia")])],
+                )],
+            ),
+            Sexp::node(
+                "connect_pads",
+                vec![
+                    Sexp::atom("yes"),
+                    Sexp::node("clearance", vec![Sexp::num(0.0)]),
+                ],
+            ),
+            Sexp::node("min_thickness", vec![Sexp::num(TEARDROP_MIN_THICKNESS)]),
+            Sexp::node("filled_areas_thickness", vec![Sexp::atom("no")]),
+            Sexp::node(
+                "fill",
+                vec![
+                    Sexp::atom("yes"),
+                    Sexp::node("thermal_gap", vec![Sexp::num(THERMAL)]),
+                    Sexp::node("thermal_bridge_width", vec![Sexp::num(THERMAL)]),
+                ],
+            ),
+            Sexp::node("polygon", vec![pts()]),
+            Sexp::node(
+                "filled_polygon",
+                vec![Sexp::node("layer", vec![Sexp::string(layer)]), pts()],
+            ),
+        ],
+    )
+}
+
+/// The least width of a teardrop zone's fill, KiCad 9's for its own teardrops: a teardrop is
+/// narrower than a pour's least width, and KiCad's filler (the cross-check fills the zones again)
+/// would erase it at that.
+const TEARDROP_MIN_THICKNESS: f64 = 0.0254;
+
+/// The priority KiCad 9 gives its teardrop zones, above every pour, so that a pour KiCad fills
+/// again keeps its clearance from them.
+const TEARDROP_PRIORITY: f64 = 16962.0;
+
 /// A shape drawn on the board edge layer: one `gr_rect` if it is a rectangle with square
 /// corners, else the lines and arcs round it (a polygon outline's pieces as they are, issue
 /// #57). `key` makes the uuids.
@@ -785,6 +851,9 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
                 uuid_for(&format!("{}/via/{i}", board.name)),
             ],
         ));
+    }
+    for (i, drop) in board.teardrops.iter().enumerate() {
+        items.push(teardrop(board, i, drop, net_number(&drop.net)));
     }
     for plane in &board.planes {
         items.push(zone(board, plane, net_number(&plane.net)));

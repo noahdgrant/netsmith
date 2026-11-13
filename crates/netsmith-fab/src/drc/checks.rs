@@ -188,6 +188,7 @@ fn sizes(out: &mut Out<'_>) {
                     );
                 }
             }
+            Kind::Teardrop(_) => {}
             Kind::Pad(i) => {
                 let pad = &m.art.pads[i];
                 let Some(d) = &pad.drill else { continue };
@@ -991,7 +992,7 @@ fn rule_areas(out: &mut Out<'_>) {
         };
         for c in &m.items {
             let forbidden = match c.kind {
-                Kind::Track(_) => k.tracks,
+                Kind::Track(_) | Kind::Teardrop(_) => k.tracks,
                 Kind::Via(_) => k.vias,
                 Kind::Pad(_) => k.pads,
             };

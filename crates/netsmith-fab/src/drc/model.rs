@@ -13,6 +13,16 @@ pub(crate) enum Kind {
     Pad(usize),
     Via(usize),
     Track(usize),
+    /// A teardrop: an index into the artwork's zones.
+    Teardrop(usize),
+}
+
+impl Kind {
+    /// A track or a teardrop, the copper the router draws between pads and vias: the rules of
+    /// the process that are "to a track" hold for both.
+    pub fn is_track_like(self) -> bool {
+        matches!(self, Kind::Track(_) | Kind::Teardrop(_))
+    }
 }
 
 /// A pad, via or track: copper that exists on some layers.
@@ -299,9 +309,47 @@ impl<'a> Model<'a> {
             });
         }
 
+        // A teardrop's fill is copper like a track's, checked against everything else.
+        for (i, z) in art.zones.iter().enumerate() {
+            if !z.teardrop || z.keepout.is_some() {
+                continue;
+            }
+            for l in &z.layers {
+                let Some(layer) = layer_index(l) else {
+                    continue;
+                };
+                let shapes: Vec<Shape> = z
+                    .filled
+                    .iter()
+                    .filter(|(fl, p)| fl == l && p.len() >= 3)
+                    .map(|(_, p)| Shape::polygon(p.clone(), 0.0))
+                    .collect();
+                let Some(at) = shapes.first().map(|s| s.pts[0]) else {
+                    continue;
+                };
+                items.push(Copper {
+                    kind: Kind::Teardrop(i),
+                    net: z.net.clone(),
+                    layers: vec![layer],
+                    bounds: bounds_of(&shapes),
+                    shapes,
+                    item: Item {
+                        what: format!("Teardrop{} on {l}", net_text(&z.net)),
+                        at,
+                        part: None,
+                        pad: None,
+                        net: z.net.clone(),
+                    },
+                    own_clearance: 0.0,
+                    anchors: vec![at],
+                    length: 0.0,
+                });
+            }
+        }
+
         let mut pours = Vec::new();
         for z in &art.zones {
-            if z.keepout.is_some() || z.net.is_none() {
+            if z.keepout.is_some() || z.net.is_none() || z.teardrop {
                 continue;
             }
             for l in &z.layers {

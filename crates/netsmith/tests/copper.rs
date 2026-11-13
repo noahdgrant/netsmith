@@ -86,6 +86,7 @@ fn render_layer(c: &Copper, layer: &str, origin: FabPt, view: &View) -> Image {
         .iter()
         .map(|p| &p.area)
         .chain(l.pads.iter().flat_map(|p| &p.areas))
+        .chain(l.fills.iter().map(|f| &f.area))
         .chain(&l.drawings);
     let mut img = render_areas(origin, areas, view);
     let mut g = Gerber::new(origin);

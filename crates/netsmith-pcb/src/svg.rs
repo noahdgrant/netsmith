@@ -554,6 +554,19 @@ fn draw(board: &Board, with_key: bool) -> String {
                 n(t.width)
             );
         }
+        for d in board.teardrops.iter().filter(|d| d.layer == layer) {
+            let points: Vec<String> = d
+                .points
+                .iter()
+                .map(|p| format!("{},{}", n(p.x), n(p.y)))
+                .collect();
+            let _ = writeln!(
+                out,
+                r#"<polygon data-net="{}" points="{}" fill="{colour}" fill-opacity="0.85"/>"#,
+                escape(&d.net),
+                points.join(" ")
+            );
+        }
         let _ = writeln!(out, "</g>");
     }
     let _ = writeln!(out, r#"<g class="l-vias">"#);

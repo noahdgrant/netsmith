@@ -379,7 +379,11 @@ fn the_four_layer_example_has_planes_and_routes_completely_on_the_outer_layers()
     assert_eq!(Ratsnest::of(&board).len(), 0);
     assert!(edge_gap(&board) >= board.rules.copper_to_edge);
     let text = kicad_pcb(&board);
-    assert_eq!(text.matches("(zone").count(), 2);
+    // The two planes; the teardrops (zones KiCad 9 names `$teardrop_padvia$`) are not counted.
+    assert_eq!(
+        text.matches("(zone").count() - text.matches("$teardrop_padvia$").count(),
+        2
+    );
     assert!(text.contains("\"In1.Cu\"") && text.contains("\"In2.Cu\""));
     // The planes are drawn in the picture and listed in its key.
     let picture = svg::render(&board);
@@ -396,7 +400,11 @@ fn the_six_layer_example_has_two_planes_two_empty_signal_layers_and_routes_on_th
     assert!(left.is_empty(), "{} lines unrouted", left.len());
     assert_eq!(Ratsnest::of(&board).len(), 0);
     let text = kicad_pcb(&board);
-    assert_eq!(text.matches("(zone").count(), 2);
+    // The two planes; the teardrops (zones KiCad 9 names `$teardrop_padvia$`) are not counted.
+    assert_eq!(
+        text.matches("(zone").count() - text.matches("$teardrop_padvia$").count(),
+        2
+    );
     // Every track is on an outer layer.
     assert!(
         !text
