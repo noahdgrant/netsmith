@@ -217,8 +217,8 @@ fn a_board_with_no_requirement_is_as_it_was() {
     for path in [
         "stage.inductor.inductance",
         "stage.output_cap.capacitance",
-        "stage.output_count",
-        "stage.input_count",
+        "stage.output_cap.count",
+        "stage.input_cap.count",
         "stage.ripple",
     ] {
         assert_eq!(
@@ -440,8 +440,8 @@ fn a_board_that_states_no_requirement_is_as_it_was() {
     for path in [
         "stage.inductor.inductance",
         "stage.output_cap.capacitance",
-        "stage.output_count",
-        "stage.input_count",
+        "stage.output_cap.count",
+        "stage.input_cap.count",
         "stage.ripple",
         "stage.ic.soft_start.capacitance",
     ] {

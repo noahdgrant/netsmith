@@ -174,7 +174,7 @@ fn the_hand_figures_are_the_ones_the_header_says() {
 #[test]
 fn a_ripple_inside_the_limit_passes_and_the_worst_case_is_the_corner() {
     let s = run(
-        "        .output_count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 12mV\n",
+        "        .output_cap.count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 12mV\n",
     );
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
     assert!(not_evaluated(&s).is_empty(), "{:#?}", not_evaluated(&s));
@@ -192,7 +192,7 @@ fn a_ripple_inside_the_limit_passes_and_the_worst_case_is_the_corner() {
 #[test]
 fn a_ripple_over_the_limit_fails_and_names_the_numbers() {
     let s = run(
-        "        .output_count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 9mV\n",
+        "        .output_cap.count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 9mV\n",
     );
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
@@ -215,11 +215,11 @@ fn the_limit_is_exact_at_the_worst_case() {
     let worst = output_ripple(1.0, 5e-3);
     assert!((worst - 9.5358e-3).abs() < 1e-6, "{worst}");
     let s = run(
-        "        .output_count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 9.54mV\n",
+        "        .output_cap.count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 9.54mV\n",
     );
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
     let s = run(
-        "        .output_count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 9.53mV\n",
+        "        .output_cap.count &= 1\n        .output_esr &= 3mohm..5mohm\n        .output_ripple <= 9.53mV\n",
     );
     assert_eq!(messages(&s).len(), 1, "{:#?}", messages(&s));
 }
@@ -228,7 +228,7 @@ fn the_limit_is_exact_at_the_worst_case() {
 #[test]
 fn a_bank_of_two_halves_both_terms() {
     let s = run(
-        "        .output_count &= 2\n        .output_esr &= 5mohm\n        .output_ripple <= 5mV\n",
+        "        .output_cap.count &= 2\n        .output_esr &= 5mohm\n        .output_ripple <= 5mV\n",
     );
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
     near(
@@ -238,7 +238,7 @@ fn a_bank_of_two_halves_both_terms() {
     assert!(output_ripple(2.0, 5e-3) < 5e-3 && output_ripple(1.0, 5e-3) > 5e-3);
     // The same limit on a single capacitor fails.
     let s = run(
-        "        .output_count &= 1\n        .output_esr &= 5mohm\n        .output_ripple <= 5mV\n",
+        "        .output_cap.count &= 1\n        .output_esr &= 5mohm\n        .output_ripple <= 5mV\n",
     );
     assert_eq!(messages(&s).len(), 1, "{:#?}", messages(&s));
 }
@@ -248,7 +248,7 @@ fn a_bank_of_two_halves_both_terms() {
 /// limit and is not used for it.
 #[test]
 fn a_limit_with_no_esr_is_not_evaluated_and_never_passes() {
-    let s = run("        .output_count &= 1\n        .output_ripple <= 5mV\n");
+    let s = run("        .output_cap.count &= 1\n        .output_ripple <= 5mV\n");
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
     let n = not_evaluated(&s);
     assert!(

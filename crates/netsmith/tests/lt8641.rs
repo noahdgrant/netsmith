@@ -208,7 +208,7 @@ fn a_stage_around_it_solves_for_a_12_v_input_and_3_3_v_out() {
     // The input capacitor is rated for the 36 V peak, and keeps 2.2 uF at 16 V.
     assert!(range(&s, "stage.input_cap.max_voltage").lo() >= 36.0 - 1e-9);
     let cin = range(&s, "stage.input_cap.effective_capacitance");
-    assert!(cin.lo() * range(&s, "stage.input_count").lo() >= 2.2e-6 - 1e-12);
+    assert!(cin.lo() * range(&s, "stage.input_cap.count").lo() >= 2.2e-6 - 1e-12);
     // The output asks for 47 uF, as every Typical Application of the datasheet has.
     assert_eq!(range(&s, "stage.ic.min_output_capacitance").lo(), 47e-6);
 }

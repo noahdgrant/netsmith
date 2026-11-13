@@ -136,13 +136,13 @@
 //! range is 1 to 8, a round number above what a datasheet asks of a 5 V rail with the catalog's
 //! parts, and one number in `std/parts/regulator.nsm`. When no count meets the requirement the
 //! message names the nearest as `2 x <row>`; a relation that mentions a field of a part the pick
-//! has refused (the `==` that ties a stated `.output_count` to the capacitor's `.count`) is not
+//! has refused (the output ripple reads the count) is not
 //! judged again on the value the part was left with, because the part's own message says what
 //! failed. The count is part of what a pick sets for the backjump (`Coupling.columns`): without
 //! it a failure that read an earlier bank's count (a board value that is the sum of two banks'
 //! counts) was recorded as depending on no earlier part, and the earlier bank's other counts
 //! were skipped, which refused a board that has a solution. Skipping less is the sound
-//! direction. A stated `.output_count` is a requirement: the pick tries counts up to the first
+//! direction. A stated `.count` is a requirement: the pick tries counts up to the first
 //! that meets it and equals it, and says what it tried if none does. Not modelled: the ripple
 //! current a capacitor takes (the catalog has no ripple rating), so it is not divided between
 //! the capacitors of a bank.
@@ -805,8 +805,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         .collect();
     // A bank whose pick failed has been reported with the count and row that came nearest. A
     // relation that mentions its `.count` would fail again on the range the count was left
-    // with (a stated `.output_count` of a stage, tied by `==` to the capacitor's `.count`),
-    // so it says nothing more (ADR 0052).
+    // with (the output ripple of a stage reads it), so it says nothing more (ADR 0052).
     let refused = std::mem::take(&mut s.refused_counts);
     // The relation a `~>` chain across a rail gives its current (ADR 0113) waits when the rail
     // has no voltage, and so, often, do the parts' own checks that read the current. When one of

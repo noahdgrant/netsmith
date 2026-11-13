@@ -2546,7 +2546,7 @@ board Shipped {
 
 `build` prints it as `consigned` in the bill-of-materials column. `fab` puts it in `cpl.csv`, so the board house places it, and in `bom.csv`, with the manufacturer's number as the comment and the LCSC cell empty (or the row's number, if it has one). JLCPCB's BOM format has no column that marks a consigned part: you register the parts on its site, ship them, and pick them in the order page's component matching, so `fab-notes.txt` lists them under `consigned:` with their manufacturer's number and quantity, and says that you ship them with the order. Look at the matching step of the order preview before you pay.
 
-A board may narrow a part inside a module (ADR 0116), but a module that wants the board to make one choice of who assembles all its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
+A board may narrow a part inside a module (ADR 0116), but a module that wants the board to make one choice of who assembles all its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). The value earns its place by tying several parts to one choice; a module with one part offers none, since the board narrows `.part.assembly` itself, and std has no module that forwards a value inward (issue #670). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -10073,9 +10073,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:104:5
+    --> std/parts/regulator.nsm:107:5
     |
-104 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+107 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10168,12 +10168,12 @@ board Converter {
 
 The solver picks the inductor (a 2.2 uH 1210 part saturating at 3.6 A, over the IC's 3 A, with 85 mohm, under its 0.1 ohm, and a tolerance that still leaves 1.76 uH, over the IC's 1.5 uH), a capacitor for each side that keeps the effective capacitance the IC asks for at the voltage across it, and the two divider resistors. The supply draws 0 to 459 mA for the 0 to 1 A load. The ripple current is `(vin - vout) * vout / (vin * L * fsw)`, 0.30 A to 0.67 A here, and the inductor must carry the load plus half of it: 1.33 A of 3.6 A.
 
-Each side of the converter is a bank of identical capacitors (the section on capacitors above): `.input_cap` and `.output_cap` stand for one capacitor of the bank, and `.input_count` and `.output_count` say how many. The solver chooses the row and the count together, from 1 to 8, so that `count * effective_capacitance` meets what the IC asks for (the capacitance the datasheet states is for the whole side) and each capacitor is rated for its rail. With the IC of this guide changed to ask for 47 uF at the output and 40 uF at the input, the converter takes two capacitors at the 1.8 V output (the 47 uF row keeps 26 uF of its value there) and four at the 5 V input (it keeps 10 uF). The board reads the count from `.reg.output_count`, states it when it wants one (`.reg.output_count &= 3`, which the checks then hold to), or limits what the solver may choose (`.reg.output_count &= 1..3`). A bank of one is a single capacitor, as the converter had before.
+Each side of the converter is a bank of identical capacitors (the section on capacitors above): `.input_cap` and `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The solver chooses the row and the count together, from 1 to 8, so that `count * effective_capacitance` meets what the IC asks for (the capacitance the datasheet states is for the whole side) and each capacitor is rated for its rail. With the IC of this guide changed to ask for 47 uF at the output and 40 uF at the input, the converter takes two capacitors at the 1.8 V output (the 47 uF row keeps 26 uF of its value there) and four at the 5 V input (it keeps 10 uF). The board states the count when it wants one (`.reg.output_cap.count &= 3`, which the checks then hold to), or limits what the solver may choose (`.reg.output_cap.count &= 1..3`), by the path into the converter (ADR 0116). A bank of one is a single capacitor, as the converter had before.
 
 ```nsm-fragment
 .reg: Buck<Zbk2> {
     .vout.voltage &= 1.8V +/- 3%
-    .output_count &= 3
+    .output_cap.count &= 3
 }
 ```
 
@@ -10245,14 +10245,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero)
-    --> std/parts/regulator.nsm:195:5
+    --> std/parts/regulator.nsm:198:5
     |
-195 |     -.sw.current <= .max_output_current
+198 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:470:5
+    --> std/parts/regulator.nsm:467:5
     |
-470 |     -.vout.current <= .ic.max_output_current
+467 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10314,15 +10314,15 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:481:5
+    --> std/parts/regulator.nsm:478:5
     |
-481 |     .on_time >= .ic.min_on_time
+478 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
 
-The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * n * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `n` the output bank's count (`.output_count`), `C` one capacitor's effective capacitance and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the converter, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
+The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * n * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `n` the output bank's count (`.output_cap.count`), `C` one capacitor's effective capacitance and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the converter, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
 
 ```nsm evaluate
 import src::zbk2::Zbk2
@@ -10367,7 +10367,7 @@ board TooQuiet {
     }
     .reg: Buck<Zbk2> {
         .vout.voltage &= 1.8V +/- 3%
-        .output_count &= 1
+        .output_cap.count &= 1
         .output_esr &= 100mohm
         .output_ripple <= 0.5mV
     }
@@ -10379,9 +10379,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (reg.output_cap.count * reg.output_cap.effective_capacitance) must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:488:5
+    --> std/parts/regulator.nsm:485:5
     |
-488 |     .output_cap.count * .output_cap.effective_capacitance >= .ic.min_output_capacitance
+485 |     .output_cap.count * .output_cap.effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -13998,8 +13998,8 @@ error: connected values disagree: `a.spi.mode` is SpiMode::Mode1 but `b.spi.mode
 
 A reset, an enable or an open-drain output often needs a resistor from a rail to the line. A plain `Resistor` between the rail's `pos` and the line works for the circuit and leaves the net unsolved: the resistor starts a chain on the rail's net, nothing says what it carries, so the net has two unknowns and every check on it waits (the regulator's current, its power, the resistor's own power). `std::bus::PullUp` is that resistor with its draw stated.
 
-- `.supply` is the rail whose `pos` the resistor is on, `.line` is the pin it pulls, and `.resistance` is the value the board states, with its tolerance (`.pull.resistance &= 10kohm +/- 5%`). A board that forgets it gets the unconstrained pick finding for the resistor, with the member named (see "A value that nobody stated"). The resistor inside is `.resistor`.
-- The line is held low for the share `.line_low` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_low &= 0..0.1`). While it is low the resistor carries `supply.voltage / resistance`, and while it is released nothing, so the resistor's `.current`, and the draw on `supply`, is 0 up to the supply over the resistance. That is the worst case: the lowest the line goes is 0 V, and a driver's real low level draws a little less. It is the steady draw, with two assumptions the module offers and the board may replace (ADR 0070): `.overdrive`, how far above the supply a driver holds the line, 0 V unless stated (`.pull.overdrive &= 0V..1.7V` for a 5 V driver on a 3.3 V pull-up: the draw then reaches `-overdrive / resistance`, current pushed back into the rail), and `.supply_top`, the voltage the draw is worked out at, `supply.voltage` unless stated (`.pull.supply_top &= .pull.supply.peak` for the draw at the transient the rail's stated `.peak` allows).
+- `.supply` is the rail whose `pos` the resistor is on, `.line` is the pin it pulls, and the resistor inside is `.resistor`, whose value the board states with its tolerance (`.pull.resistor.resistance &= 10kohm +/- 5%`, ADR 0116). A board that forgets it gets the unconstrained pick finding for the resistor (see "A value that nobody stated").
+- The line is held low for the share `.line_low` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_low &= 0..0.1`). While it is low the resistor carries `supply.voltage / resistor.resistance`, and while it is released nothing, so the resistor's `.current`, and the draw on `supply`, is 0 up to the supply over the resistor's resistance. That is the worst case: the lowest the line goes is 0 V, and a driver's real low level draws a little less. It is the steady draw, with two assumptions the module offers and the board may replace (ADR 0070): `.overdrive`, how far above the supply a driver holds the line, 0 V unless stated (`.pull.overdrive &= 0V..1.7V` for a 5 V driver on a 3.3 V pull-up: the draw then reaches `-overdrive / resistor.resistance`, current pushed back into the rail), and `.supply_top`, the voltage the draw is worked out at, `supply.voltage` unless stated (`.pull.supply_top &= .pull.supply.peak` for the draw at the transient the rail's stated `.peak` allows).
 - A current the board states on `supply` is a budget (ADR 0038): the draw has to be able to fit in it. Two `PullUp`s on one rail add on its net.
 - The resistor is a pull-up for the checker's I2C rule too: a `PullUp` on `sda` and one on `scl` satisfy it. `I2cPullups` is the same circuit for both lines of a bus; it is not built from two `PullUp`s, because its members keep the paths that boards and tests name (`.pullups.sda_pullup.current`).
 
@@ -14030,7 +14030,7 @@ board Reset {
 
     // The reset line is held high by 10 kohm and is low a tenth of the time at most.
     .pull: PullUp {
-        .resistance &= 10kohm +/- 5%
+        .resistor.resistance &= 10kohm +/- 5%
         .line_low &= 0..0.1
     }
     .supply ~ .pull.supply
@@ -14038,7 +14038,7 @@ board Reset {
 }
 ```
 
-A board that forgets the resistance is told so, with the member to state:
+A board that forgets the resistance is told so, with the path to state:
 
 ```nsm solve warns
 import std::bus::PullUp
@@ -14055,12 +14055,12 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:338), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104: state it, `.pull.resistor.resistance &= 4.7kohm +/- 5%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.pull.resistor.resistance &= 10kohm..100kohm`
 ```
 
-A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
+A module that wraps a `PullUp` states the resistance itself (`.pull.resistor.resistance &= 10kohm +/- 5%`) or leaves it to the board, which narrows it by path (`.reset.pull.resistor.resistance &= 10kohm +/- 5%`). A member of the wrapper that only passes the value on (`.pull.resistor.resistance &= .resistance`) says one fact twice (ADR 0116); keep one only when it ties several parts or relates the value to a rail.
 
-A board that needs a size for the resistor narrows it inside the module (ADR 0116): `.pull: PullUp { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }`, and the same for `PullDown`. `I2cPullups` and `FeedbackDivider` have an `optional` `.package` (a text such as `"0402"`) that gives one package to both of their resistors. A board that states nothing leaves the pick to the solver, as before: the relation that ties the member to the resistors is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
+A board that needs a size for the resistor narrows it inside the module (ADR 0116): `.pull: PullUp { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }`, and the same for `PullDown`. `I2cPullups` and `FeedbackDivider` have an `optional` `.package` (a text such as `"0402"`) that gives one package to both of their resistors. A board that states nothing leaves the pick to the solver, as before: the relation that ties the member to the resistors is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
 
 ```nsm evaluate
 import std::bus::PullUp
@@ -14089,7 +14089,7 @@ board Sized {
 
     // The same pull-up as above, in the 0402 package.
     .pull: PullUp {
-        .resistance &= 10kohm +/- 1%
+        .resistor.resistance &= 10kohm +/- 1%
         .resistor.package &= "0402"
     }
     .supply ~ .pull.supply
@@ -14101,8 +14101,8 @@ board Sized {
 
 A boot-mode pin, an enable or a gate often needs a resistor from the line to ground, so that it reads low when its driver lets go. A plain `Resistor` from the line to the rail's `neg` works for the circuit and leaves the resistor's current unknown: nothing in the circuit says what the driver puts into it, and its drop and power wait. `std::bus::PullDown` is that resistor with its current stated, the mirror of `PullUp`.
 
-- `.reference` is the rail whose `neg` the resistor is on, `.line` is the pin it holds low, and `.resistance` is the value the board states, with its tolerance (`.pull.resistance &= 100kohm +/- 5%`). A board that forgets it gets the unconstrained pick finding for the resistor, with the member named. The resistor inside is `.resistor`.
-- The line is high for the share `.line_high` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_high &= 0..0.1`). While it is high the resistor carries the line's voltage over its resistance, and while it is low or released nothing, so the resistor's `.current` is 0 up to `.line_top / resistance`. `.line_top`, the highest voltage the line is held at above `reference`'s `neg`, is `reference.voltage` unless the board states it (`.pull.line_top &= 0V..5.25V` for a 5 V driver on a line judged against 3.3 V; ADR 0070's way of offering an assumption).
+- `.reference` is the rail whose `neg` the resistor is on, `.line` is the pin it holds low, and the resistor inside is `.resistor`, whose value the board states with its tolerance (`.pull.resistor.resistance &= 100kohm +/- 5%`, ADR 0116). A board that forgets it gets the unconstrained pick finding for the resistor.
+- The line is high for the share `.line_high` of the time, 0 to 1 and never narrower unless the board says so (`.pull.line_high &= 0..0.1`). While it is high the resistor carries the line's voltage over its resistance, and while it is low or released nothing, so the resistor's `.current` is 0 up to `.line_top / resistor.resistance`. `.line_top`, the highest voltage the line is held at above `reference`'s `neg`, is `reference.voltage` unless the board states it (`.pull.line_top &= 0V..5.25V` for a 5 V driver on a line judged against 3.3 V; ADR 0070's way of offering an assumption).
 - Unlike a `PullUp`, it draws nothing from a rail: the current comes from the line's driver, whose supply the module does not know. `.reference` names the ground and the level, it is not a load, and the module states `.reference.current &= 0A`, as `Levels` does, so joining it to the board's rail adds no unknown to that net. The driver's own output current, and the input current of the pins on the line, are not stated by anything yet (issue 192).
 
 ```nsm evaluate
@@ -14132,7 +14132,7 @@ board Enable {
 
     // The enable line is held low by 100 kohm and is high a tenth of the time at most.
     .pull: PullDown {
-        .resistance &= 100kohm +/- 5%
+        .resistor.resistance &= 100kohm +/- 5%
         .line_high &= 0..0.1
     }
     .supply ~ .pull.reference
@@ -14140,7 +14140,7 @@ board Enable {
 }
 ```
 
-A board that forgets the resistance is told so, with the member to state:
+A board that forgets the resistance is told so, with the path to state:
 
 ```nsm solve warns
 import std::bus::PullDown
@@ -14157,7 +14157,7 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:541), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104: state it, `.pull.resistor.resistance &= 4.7kohm +/- 5%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.pull.resistor.resistance &= 10kohm..100kohm`
 ```
 
 ## The standard library
@@ -14257,9 +14257,9 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | Definition | What it is |
 |---|---|
 | `std::parts::regulator::FeedbackDivider` | The resistors that set an adjustable output: pins `top`, `fb`, `bottom`, voltages `vref` and `vout`, the `current` it draws, with `vout == vref * (1 + rtop / rbottom)` in the worst case. |
-| `std::parts::regulator::Buck` | A buck converter, `Buck<Ic: BuckIc>`: the IC, a part that provides `BuckIc` (ADR 0115), with the inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin` and `vout`, and the values `ripple`, `divider_current`, `voltage_margin`, `input_count` and `output_count` (how many capacitors stand in parallel on each side, 1 to 8, chosen by the solver or stated by the board). Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`, each times `.voltage_margin` (1 unless the board states it, ADR 0085). |
-| `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
-| `std::bus::PullDown` | A pull-down resistor from one line to the `neg` of a rail: a `reference` (`Rail`, a reference and not a load: `reference.current` is 0 A), a `line` (`Pin`), a `.resistance` the board states, `.line_high`, the share of the time the line is high (0 to 1), and the offer `.line_top` (`reference.voltage`, the highest the line is held at). Its resistor carries 0 up to `line_top / resistance`, so its drop and power are evaluated; it draws nothing from a rail. |
+| `std::parts::regulator::Buck` | A buck converter, `Buck<Ic: BuckIc>`: the IC, a part that provides `BuckIc` (ADR 0115), with the inductor, input and output capacitors and a `FeedbackDivider`, with ports `vin` and `vout`, and the values `ripple`, `divider_current` and `voltage_margin`. How many capacitors stand in parallel on each side (1 to 8, chosen by the solver) is the `.count` of `input_cap` and `output_cap`, which a board narrows by path. Checks the input range, the output current, the ripple and the inductor's saturation, the inductor limits the IC states, the capacitance the IC asks for of each side's bank, and that each capacitor is rated for the rail's voltage and for its `.peak`, each times `.voltage_margin` (1 unless the board states it, ADR 0085). |
+| `std::bus::PullUp` | A pull-up resistor from a rail's `pos` to one line: a `supply` (`Rail`), a `line` (`Pin`), a `.resistor` whose `.resistance` the board states, `.line_low`, the share of the time the line is low (0 to 1), and the offers `.overdrive` (0 V) and `.supply_top` (`supply.voltage`). It states what it draws from `supply`: its resistor carries 0 up to `supply.voltage / resistance` (below 0 when a stated `.overdrive` lets a driver push current back), so the net it is on is solved and the checks after it are evaluated. |
+| `std::bus::PullDown` | A pull-down resistor from one line to the `neg` of a rail: a `reference` (`Rail`, a reference and not a load: `reference.current` is 0 A), a `line` (`Pin`), a `.resistor` whose `.resistance` the board states, `.line_high`, the share of the time the line is high (0 to 1), and the offer `.line_top` (`reference.voltage`, the highest the line is held at). Its resistor carries 0 up to `line_top / resistance`, so its drop and power are evaluated; it draws nothing from a rail. |
 | `std::bus::I2cPullups` | The two pull-up resistors of an I2C bus: a `bus` (`I2c`), a `supply` (`Rail`) and a `.resistance` the board states. It states what it draws from `supply`: each line's pull-up carries 0 up to `supply.voltage / resistance` (`.sda_low` and `.scl_low`, 0 to 1, are the share; `.overdrive` and `.supply_top` are offered as for `PullUp`), and `supply.current` is the sum, so the net it is on is solved and the checks after it are evaluated. `.rise_time` is `0.8473 * resistance * bus_capacitance`, a closed-form check the board bounds (`.pullups.rise_time <= 300ns`), with the optional `.bus_capacitance`, which the checker derives as the sum of the pins' `.capacitance` of the parts on the bus and the board's own optional `.trace_capacitance` (ADR 0102; a board may state `.bus_capacitance` itself); with no capacitance the bound is listed as not evaluated and the part with no figure is named. `.resistance >= (supply.voltage - low_level) / sink_current` is the lower bound from a driver's sink current: the checker states it for each part on the bus with the part's own figures, and a board may state the optional `.sink_current` and `.low_level` itself instead; the supply counts at its greatest. |
 
 ### Enums

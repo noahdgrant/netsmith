@@ -32,7 +32,7 @@ module BuckBoost {
         .package &= "0603"
     }
     /// R6, the pull-up of the power-good output.
-    .pg_pullup: PullUp { .resistance &= 100kohm +/- 1%; .resistor.package &= "0603" }
+    .pg_pullup: PullUp { .resistor.resistance &= 100kohm +/- 1%; .resistor.package &= "0603" }
     /// C14, the input capacitor.
     .input_cap: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0603" }
     /// C13, the output capacitor.
