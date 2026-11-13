@@ -1,9 +1,8 @@
-//! The copper, solder mask and silkscreen of a scene as meshes (`netsmith_3d::mesh::pieces`)
+//! The copper, solder mask and silkscreen of a scene as meshes (`netsmith_3d::mesh_pieces`)
 //! and in the `.glb` file: the board of `scene3d`'s tests, with a track, a via and a pour
 //! routed by hand (`board3d` places but does not route).
 
-use netsmith_3d::mesh::{Material, Mesh, NO_NET, Pieces, SILK_LIFT, of_scene, pieces};
-use netsmith_3d::scene3d::{Plan, PlanArea, Scene, SceneCopper};
+use netsmith_3d::{Material, Mesh, NO_NET, MeshPieces, SILK_LIFT, meshes_of_scene, mesh_pieces, ScenePlan, ScenePlanArea, Scene, SceneCopper};
 use netsmith_pcb::Side;
 
 use crate::common;
@@ -14,7 +13,7 @@ fn copper(s: &Scene) -> &SceneCopper {
 }
 
 /// The triangles of `m` whose normal points along +z (`up`) or -z, with their area and centroid.
-fn caps(m: &Mesh, up: bool) -> Vec<(f64, Plan, f64)> {
+fn caps(m: &Mesh, up: bool) -> Vec<(f64, ScenePlan, f64)> {
     m.indices
         .chunks(3)
         .filter_map(|t| {
@@ -23,7 +22,7 @@ fn caps(m: &Mesh, up: bool) -> Vec<(f64, Plan, f64)> {
             if (nz > 0.0) != up || nz == 0.0 || a[2] != b[2] || a[2] != c[2] {
                 return None;
             }
-            let centre = Plan {
+            let centre = ScenePlan {
                 x: (a[0] + b[0] + c[0]) / 3.0,
                 y: (a[1] + b[1] + c[1]) / 3.0,
             };
@@ -36,18 +35,18 @@ fn cap_area(m: &Mesh, up: bool) -> f64 {
     caps(m, up).iter().map(|c| c.0).sum()
 }
 
-fn in_any(areas: &[PlanArea], p: Plan) -> bool {
+fn in_any(areas: &[ScenePlanArea], p: ScenePlan) -> bool {
     areas.iter().any(|a| in_area(a, p))
 }
 
 /// The share of the top of `m` whose triangles' centres `keep` accepts.
-fn share(m: &Mesh, up: bool, keep: impl Fn(Plan) -> bool) -> f64 {
+fn share(m: &Mesh, up: bool, keep: impl Fn(ScenePlan) -> bool) -> f64 {
     let all = caps(m, up);
     let total: f64 = all.iter().map(|c| c.0).sum();
     all.iter().filter(|c| keep(c.1)).map(|c| c.0).sum::<f64>() / total
 }
 
-fn net_meshes<'a>(p: &'a Pieces, layer: &str, net: Option<&str>) -> Vec<&'a Mesh> {
+fn net_meshes<'a>(p: &'a MeshPieces, layer: &str, net: Option<&str>) -> Vec<&'a Mesh> {
     let l = p.copper.iter().find(|l| l.layer == layer).unwrap();
     l.nets
         .iter()
@@ -59,7 +58,7 @@ fn net_meshes<'a>(p: &'a Pieces, layer: &str, net: Option<&str>) -> Vec<&'a Mesh
 #[test]
 fn each_net_on_each_layer_is_one_piece_of_copper_named_by_its_net() {
     let s = scene(&routed());
-    let p = pieces(&s);
+    let p = mesh_pieces(&s);
     let c = copper(&s);
     let names: Vec<&str> = p.copper.iter().map(|l| l.layer.as_str()).collect();
     assert_eq!(names, ["F.Cu", "B.Cu"]);
@@ -88,7 +87,7 @@ fn each_net_on_each_layer_is_one_piece_of_copper_named_by_its_net() {
 #[test]
 fn the_copper_meshes_cover_the_copper_and_leave_the_drills_open() {
     let s = scene(&routed());
-    let p = pieces(&s);
+    let p = mesh_pieces(&s);
     let c = copper(&s);
     let top = &c.layers[0];
     for net in top.nets() {
@@ -132,7 +131,7 @@ fn the_copper_meshes_cover_the_copper_and_leave_the_drills_open() {
         .iter()
         .find(|p| p.net.as_deref() == Some("GND"))
         .unwrap();
-    let inside = |meshes: &[&Mesh], q: Plan| {
+    let inside = |meshes: &[&Mesh], q: ScenePlan| {
         meshes.iter().any(|m| {
             m.indices.chunks(3).any(|t| {
                 let [a, b, c] = [0, 1, 2].map(|k| m.positions[t[k] as usize]);
@@ -160,7 +159,7 @@ fn the_copper_meshes_cover_the_copper_and_leave_the_drills_open() {
 #[test]
 fn the_finish_is_where_the_mask_is_open_and_the_mask_is_open_over_it() {
     let s = scene(&routed());
-    let p = pieces(&s);
+    let p = mesh_pieces(&s);
     let c = copper(&s);
     let open_top = &c.mask[0].areas;
     let mut finished = 0;
@@ -194,7 +193,7 @@ fn the_finish_is_where_the_mask_is_open_and_the_mask_is_open_over_it() {
         assert!(share(m, true, |q| !in_any(open_top, q)) > 0.99);
     }
     // The mask over copper is over the copper: the GND pour fills most of the top.
-    let pour: Vec<PlanArea> = c.layers[0].pours.iter().map(|p| p.area.clone()).collect();
+    let pour: Vec<ScenePlanArea> = c.layers[0].pours.iter().map(|p| p.area.clone()).collect();
     let pour = &pour;
     assert!(share(over, true, |q| in_any(pour, q)) > 0.95);
     assert!(share(bare, true, |q| !in_any(pour, q)) > 0.95);
@@ -209,7 +208,7 @@ fn the_finish_is_where_the_mask_is_open_and_the_mask_is_open_over_it() {
 #[test]
 fn the_silkscreen_is_on_the_mask_and_off_its_openings() {
     let s = scene(&routed());
-    let p = pieces(&s);
+    let p = mesh_pieces(&s);
     let c = copper(&s);
     let top = p.silk.iter().find(|s| s.side == Side::Front).unwrap();
     let ink = top
@@ -225,7 +224,7 @@ fn the_silkscreen_is_on_the_mask_and_off_its_openings() {
     assert_eq!((b.min[2], b.max[2]), (SILK_LIFT, SILK_LIFT));
     assert!(share(ink, true, |q| !in_any(&c.mask[0].areas, q)) > 0.999);
     // The ink is no more than the legend drew.
-    let drawn: f64 = c.silk[0].areas.iter().map(PlanArea::size).sum();
+    let drawn: f64 = c.silk[0].areas.iter().map(ScenePlanArea::size).sum();
     assert!(cap_area(ink, true) <= drawn + 1e-6);
     // The part on the back has its designator on the back, facing down.
     let bottom = p.silk.iter().find(|s| s.side == Side::Back).unwrap();
@@ -240,7 +239,7 @@ fn the_silkscreen_is_on_the_mask_and_off_its_openings() {
 #[test]
 fn nothing_shares_a_plane_from_the_silk_down_to_the_substrate() {
     let s = scene(&routed());
-    let p = pieces(&s);
+    let p = mesh_pieces(&s);
     let c = copper(&s);
     let z_top = |m: &Mesh| m.bounds().unwrap().max[2];
     let z_bottom = |m: &Mesh| m.bounds().unwrap().min[2];
@@ -272,7 +271,7 @@ fn nothing_shares_a_plane_from_the_silk_down_to_the_substrate() {
 fn a_four_layer_board_has_its_planes_inside_and_the_same_meshes_every_time() {
     let board = board_with(common::four_layer_process());
     let s = scene(&board);
-    let p = pieces(&s);
+    let p = mesh_pieces(&s);
     let names: Vec<&str> = p.copper.iter().map(|l| l.layer.as_str()).collect();
     assert_eq!(names, ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]);
     let substrate = p.board[0].bounds().unwrap();
@@ -287,8 +286,8 @@ fn a_four_layer_board_has_its_planes_inside_and_the_same_meshes_every_time() {
         let b = plane.copper.as_ref().unwrap().bounds().unwrap();
         assert!(b.min[2] > substrate.min[2] && b.max[2] < substrate.max[2]);
     }
-    assert_eq!(p, pieces(&scene(&board_with(common::four_layer_process()))));
-    let meshes = of_scene(&s);
+    assert_eq!(p, mesh_pieces(&scene(&board_with(common::four_layer_process()))));
+    let meshes = meshes_of_scene(&s);
     let triangles: usize = meshes.iter().map(Mesh::triangle_count).sum();
     assert!(triangles < 200_000, "{triangles} triangles");
 }
@@ -297,8 +296,8 @@ fn a_four_layer_board_has_its_planes_inside_and_the_same_meshes_every_time() {
 fn the_glb_has_a_node_per_net_per_layer_and_the_silk_and_mask_of_each_face() {
     use serde_json::Value;
     let s = scene(&routed());
-    let glb = netsmith_3d::gltf::glb(&s, "Scene");
-    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let glb = netsmith_3d::glb(&s, "Scene");
+    let doc = netsmith_3d::json_chunk(&glb).unwrap();
     let nodes = doc["nodes"].as_array().unwrap();
     let node = |name: &str| -> &Value {
         nodes
@@ -376,15 +375,15 @@ fn the_glb_has_a_node_per_net_per_layer_and_the_silk_and_mask_of_each_face() {
         &substrate[substrate.len() - 2..],
         ["silk:top", "silk:bottom"]
     );
-    assert_eq!(glb, netsmith_3d::gltf::glb(&scene(&routed()), "Scene"));
+    assert_eq!(glb, netsmith_3d::glb(&scene(&routed()), "Scene"));
 }
 
 /// The routed board drawn from the top and the iso view, into `NETSMITH_RENDER3D_OUT` when it is
 /// set, to look at: the pour shows as the lighter green, the pads as gold.
 #[test]
 fn the_routed_board_draws_the_same_bytes_each_time() {
-    use netsmith_3d::raster3d::{RenderOptions, View, render_view};
-    let meshes = of_scene(&scene(&routed()));
+    use netsmith_3d::{RenderOptions, View, render_view};
+    let meshes = meshes_of_scene(&scene(&routed()));
     let options = RenderOptions {
         width: 800,
         height: 560,

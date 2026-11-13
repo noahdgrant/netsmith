@@ -87,8 +87,8 @@ fn run_board3d(
                 }
             }
             let files = [
-                glb.map(|out| (out, netsmith_3d::gltf::system_glb(&scene))),
-                step.map(|out| (out, netsmith_3d::step::system_step(&scene).into_bytes())),
+                glb.map(|out| (out, netsmith_3d::system_glb(&scene))),
+                step.map(|out| (out, netsmith_3d::system_step(&scene).into_bytes())),
             ];
             for (out, bytes) in files.into_iter().flatten() {
                 if let Err(e) = fs::write(out, bytes) {
@@ -109,8 +109,8 @@ fn run_board3d(
         eprintln!("warning: {label}: {w}");
     }
     let files = [
-        glb.map(|out| (out, netsmith_3d::gltf::glb(&scene, label))),
-        step.map(|out| (out, netsmith_3d::step::step(&scene, label).into_bytes())),
+        glb.map(|out| (out, netsmith_3d::glb(&scene, label))),
+        step.map(|out| (out, netsmith_3d::scene_step(&scene, label).into_bytes())),
     ];
     for (out, bytes) in files.into_iter().flatten() {
         if let Err(e) = fs::write(out, bytes) {

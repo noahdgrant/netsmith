@@ -6,18 +6,20 @@
 
 use std::time::Instant;
 
-use netsmith_3d::mesh::{Material, Mesh, Polygon, circle, rounded_rect};
-use netsmith_3d::raster3d::{RenderOptions, View, render_view};
+use netsmith_3d::{
+    Material, Mesh, MeshPolygon, RenderOptions, View, circle_polygon, render_view,
+    rounded_rect_polygon,
+};
 
 fn main() {
     let start = Instant::now();
-    let mut outline = Polygon::new(rounded_rect([0.0, 0.0], [160.0, 100.0], 3.0, 8))
-        .with_hole(rounded_rect([120.0, 40.0], [150.0, 60.0], 2.0, 6));
+    let mut outline = MeshPolygon::new(rounded_rect_polygon([0.0, 0.0], [160.0, 100.0], 3.0, 8))
+        .with_hole(rounded_rect_polygon([120.0, 40.0], [150.0, 60.0], 2.0, 6));
     let mut meshes = Vec::new();
     for i in 0..20 {
         for j in 0..20 {
             let c = [5.0 + 5.5 * f64::from(i), 5.0 + 4.5 * f64::from(j)];
-            outline.holes.push(circle(c, 0.4, 16));
+            outline.holes.push(circle_polygon(c, 0.4, 16));
             meshes
                 .push(Mesh::cylinder_wall("net", Material::Copper, c, 0.4, -1.6, 0.0, 16).unwrap());
         }

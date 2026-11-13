@@ -104,15 +104,17 @@ impl Ids {
 /// The fit of the board in its case models (ADR 0109, the scene's `case`), each finding with the
 /// part's courtyard (or the point) on the sheet, the solid the 3D view lights and the point it
 /// flies to. A collision is an error; the rest are warnings, as the 3D view has them.
-pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<PcbFinding> {
-    use netsmith_3d::case::{Subject, Weight};
+pub fn case_findings(board: &Board, case: &netsmith_3d::CaseScene) -> Vec<PcbFinding> {
+    use netsmith_3d::{CaseSubject, CaseWeight};
     let mut ids = Ids(Vec::new());
     let height = board.outline.height();
     case.findings
         .iter()
         .map(|f| {
             let refdes = match &f.subject {
-                Subject::Part { refdes, .. } | Subject::Pins { refdes, .. } => Some(refdes.clone()),
+                CaseSubject::Part { refdes, .. } | CaseSubject::Pins { refdes, .. } => {
+                    Some(refdes.clone())
+                }
                 _ => None,
             };
             // The scene's frame is y up from the outline's bottom-left corner; the sheet's is
@@ -129,7 +131,7 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
             let subject = refdes
                 .clone()
                 .map(|r| match f.subject {
-                    Subject::Pins { .. } => format!("{r}:pins"),
+                    CaseSubject::Pins { .. } => format!("{r}:pins"),
                     _ => r,
                 })
                 .or_else(|| (!f.solid.is_empty()).then(|| f.solid.clone()))
@@ -138,7 +140,7 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
             let mut finding = make(
                 id,
                 FindingSource::Placement,
-                if f.weight() == Weight::Error {
+                if f.weight() == CaseWeight::Error {
                     Severity::Error
                 } else {
                     Severity::Warning
@@ -150,12 +152,12 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
             );
             finding.case_solid = if !f.solid.is_empty() {
                 Some(format!("case:{}:{}", f.case, f.solid))
-            } else if f.subject == Subject::Model {
+            } else if f.subject == CaseSubject::Model {
                 Some(format!("case:{}", f.case))
             } else {
                 None
             };
-            if f.subject != Subject::Model {
+            if f.subject != CaseSubject::Model {
                 finding.point3d = Some(f.at);
                 finding.x = at.x;
                 finding.y = at.y;

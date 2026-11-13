@@ -38,13 +38,13 @@
 //!   a direction is written once, and a real is written to ten places.
 
 mod copy;
-pub mod read;
+pub(crate) mod read;
 mod writer;
 
 #[cfg(test)]
 mod tests;
 
-pub use writer::{Extrusion, Loop, Polyhedron, Segment};
+pub(crate) use writer::{Extrusion, Loop, Polyhedron, Segment};
 use writer::{Id, Writer, cross, dot, list, polygon, real, string};
 
 use crate::mesh::package::{BALL_RINGS, ROUND_SEGMENTS, settled};

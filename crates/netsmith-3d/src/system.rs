@@ -56,15 +56,15 @@ use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_centres};
 
 /// How far a pad of a mate that did not place its member may land from its partner, in mm (ADR
 /// 0110).
-pub const ALIGNMENT: f64 = 0.1;
+pub(crate) const ALIGNMENT: f64 = 0.1;
 
 /// How far two prisms of different members must reach into each other, in plan and in z, to
 /// collide, in mm (ADR 0110).
-pub const COLLISION: f64 = 0.01;
+pub(crate) const COLLISION: f64 = 0.01;
 
 /// How far past the placed members' bounds, along +x, a member that cannot be placed is drawn,
 /// in mm (ADR 0110).
-pub const APART_GAP: f64 = 10.0;
+pub(crate) const APART_GAP: f64 = 10.0;
 
 /// A rigid motion of a member's scene into the system's: a point `p` of the member's frame is
 /// `turn(flip(p)) + offset`, where the flip (when there is one) turns the board over about the x
@@ -519,7 +519,7 @@ impl SystemScene {
 /// Every mesh of the system scene, in the system's frame: each member's meshes
 /// ([`crate::mesh::of_scene`]) moved by its motion, each id starting with `member/` (`led/r1`,
 /// `led/GND`), the members in order. What `render --board System` draws.
-pub fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
+pub(crate) fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
     let mut out = Vec::new();
     for m in &system.members {
         for mut mesh in crate::mesh::of_scene(&m.scene) {

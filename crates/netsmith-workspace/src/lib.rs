@@ -374,7 +374,7 @@ impl Workspace {
             members.iter().map(|(d, b, _)| (&d.built, b)).collect();
         let scene = netsmith_fabricate::system3d::scene(&system.solved, &pairs);
         Ok(netsmith_editor::Pcb3d {
-            glb: netsmith_3d::gltf::system_glb(&scene),
+            glb: netsmith_3d::system_glb(&scene),
             layout_stamp: members
                 .iter()
                 .map(|(_, _, s)| s.as_str())

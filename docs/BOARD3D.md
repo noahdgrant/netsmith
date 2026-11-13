@@ -108,7 +108,7 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `board.stack_thickness` | The sum of the layers below, the process's own figures. On a four-layer JLCPCB board it is 1.6062 mm against 1.6 mm (JLC04161H-7628 is 1.5862 mm, and the mask adds 0.01 mm a face): `thickness` is the nominal, which the board house makes to within ±10% (±0.1 mm below 1 mm), and the bottom layers reach a little past `-thickness`. A test holds every stack to within that tolerance. |
 | `board.layers` | Top to bottom: mask, copper, dielectrics (`core`, `prepreg`), copper, mask, each with its `z_top` and `z_bottom`. The same list the KiCad board file's stackup is written from (`crates/netsmith-pcb/src/stackup.rs`). |
 | `board.cutouts`, `board.holes` | The holes through the board: cutouts as boxes with a corner radius; drilled holes by part `path`, `refdes` and `pad` (or by `net` for a via), a slot from `from` to `to`, `plated` or not. |
-| `copper` | A summary of the board's copper, with no polygons (they are in the scene, `netsmith_3d::scene3d::SceneCopper`, for the 3D view). One entry per copper layer, top to bottom (`F.Cu`, the inner layers, `B.Cu`): `z_top`, `z_bottom` and `thickness` (the same as the layer's entry in `board.layers`), and how many `pads`, `tracks` (straight pieces) and `vias` it has, and how many polygons of `pours` (a pour on an outer layer, a plane on an inner one). `nets` is the copper of each net on the layer in mm², to 1e-4 mm², by net name with the copper that has no net (`null`) first. It adds up each net's pad, track and pour polygons, each by itself: a pad that stands in a pour of its own net is in the number twice, and drill holes and via rings are not taken away or added. `vias` at the top is the count of the board, each a barrel through it with a ring on every layer; `mask_openings` counts the openings of the solder mask on each face. The copper is the copper of the Gerbers (`crates/netsmith-pcb/src/copper.rs`), so the pours have the clearances and thermal reliefs `fab` writes. |
+| `copper` | A summary of the board's copper, with no polygons (they are in the scene, `netsmith_3d::SceneCopper`, for the 3D view). One entry per copper layer, top to bottom (`F.Cu`, the inner layers, `B.Cu`): `z_top`, `z_bottom` and `thickness` (the same as the layer's entry in `board.layers`), and how many `pads`, `tracks` (straight pieces) and `vias` it has, and how many polygons of `pours` (a pour on an outer layer, a plane on an inner one). `nets` is the copper of each net on the layer in mm², to 1e-4 mm², by net name with the copper that has no net (`null`) first. It adds up each net's pad, track and pour polygons, each by itself: a pad that stands in a pour of its own net is in the number twice, and drill holes and via rings are not taken away or added. `vias` at the top is the count of the board, each a barrel through it with a ring on every layer; `mask_openings` counts the openings of the solder mask on each face. The copper is the copper of the Gerbers (`crates/netsmith-pcb/src/copper.rs`), so the pours have the clearances and thermal reliefs `fab` writes. |
 | `parts` | One per part with a body (a label has none), by path. |
 | `parts[].body` | The body box: the footprint's fabrication outline (`from: "fab"`), else its courtyard (`"courtyard"`), as a placement requirement and the height check measure it. `corners` are turned with the part; `min` and `max` hold them. |
 | `parts[].z_bottom`, `z_top` | The body's Z range. The end at the board face is always known; the far end is `null` when the height is unknown. |
@@ -737,9 +737,9 @@ the command never changes the design or a file; `--picture` writes only its PNG.
 
 `netsmith render` places the board exactly as `board3d` does (the same code: the pick lock, the
 physical file and the layout file are read, nothing is routed, nothing is written but the
-picture), makes the scene's meshes (`netsmith_3d::mesh`, the ones the `.glb` file is written
+picture), makes the scene's meshes (`netsmith_3d::meshes_of_scene`, the ones the `.glb` file is written
 from) and draws them to a PNG with netsmith's own software rasterizer
-(`netsmith_3d::raster3d`, ADR 0105). It is for an agent that can read an image, a golden test
+(`netsmith_3d::render_view`, ADR 0105). It is for an agent that can read an image, a golden test
 and a person without a 3D viewer: **no GPU, no browser and no KiCad**, and the same source and
 options give the same bytes on every machine (all geometry is `f64` arithmetic in a fixed order,
 coverage is decided in integers, and there are no threads).
@@ -804,7 +804,7 @@ an outer layer, the prepreg for an inner one). A plated barrel is a ring of copp
 side of it. A part's body, its pins and a height limit's volume are cut solid. No line is drawn
 between the bands. The layers are to scale: at the default size a whole board's 10 µm mask and
 35 µm copper are a fraction of a pixel, so to read the bands, look at a narrow board or use a
-camera framed on the edge (the library's `Camera`, with `netsmith_3d::mesh::of_scene_section`
+camera framed on the edge (the library's `Camera`, with `netsmith_3d::meshes_of_scene_section`
 for the meshes); the picture is a view of the scene, and a copper layer's polygons are not
 checked against the Gerbers here.
 

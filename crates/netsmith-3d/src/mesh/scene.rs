@@ -62,7 +62,7 @@ use netsmith_pcb::board::Side;
 use netsmith_pcb::stackup::LayerKind;
 
 /// How far off its face the flat outline of a part of unknown height is drawn, in mm.
-pub const UNKNOWN_LIFT: f64 = 0.02;
+pub(crate) const UNKNOWN_LIFT: f64 = 0.02;
 
 /// How far off the mask the silkscreen is drawn, in mm: about the ink's thickness, and enough
 /// that a viewer's depth buffer tells it from the mask.
@@ -75,7 +75,7 @@ type NetCopper = (Option<String>, Vec<Polygon>);
 pub const NO_NET: &str = "(no net)";
 
 /// The corners a round hole of `diameter` mm is drawn with.
-pub fn hole_segments(diameter: f64) -> usize {
+pub(crate) fn hole_segments(diameter: f64) -> usize {
     if diameter <= 1.0 {
         16
     } else if diameter <= 3.0 {
@@ -87,7 +87,7 @@ pub fn hole_segments(diameter: f64) -> usize {
 
 /// The ring of a slot of `diameter` with its axis from `a` to `b` (a circle when they meet),
 /// counterclockwise.
-pub fn slot(a: [f64; 2], b: [f64; 2], diameter: f64, segments: usize) -> Vec<[f64; 2]> {
+pub(crate) fn slot(a: [f64; 2], b: [f64; 2], diameter: f64, segments: usize) -> Vec<[f64; 2]> {
     let r = 0.5 * diameter;
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let len = (dx * dx + dy * dy).sqrt();

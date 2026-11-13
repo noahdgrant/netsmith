@@ -19,7 +19,7 @@ use crate::mesh::triangulate_keeping;
 
 /// The furthest a triangle may be from the surface it stands for, in mm: an edge, a side of a
 /// triangle and a triangle's middle are all within it.
-pub const CHORD_TOLERANCE: f64 = 0.01;
+pub(crate) const CHORD_TOLERANCE: f64 = 0.01;
 
 /// The widest angle a piece of a circle or an ellipse spans, so that a small round is still
 /// round: twelve pieces a turn.
@@ -34,7 +34,7 @@ const MAX_EDGE_POINTS: usize = 100_000;
 
 /// The points along an edge from its start to its end, both exactly the edge's vertices, the
 /// pieces between within `tol` of the curve.
-pub fn edge_points(e: &Edge, tol: f64) -> Result<Vec<P3>, String> {
+pub(crate) fn edge_points(e: &Edge, tol: f64) -> Result<Vec<P3>, String> {
     let c = &e.curve;
     // Its vertices on its curve, as a file's tolerance has them.
     for (p, which) in [(e.start, "start"), (e.end, "end")] {
@@ -175,7 +175,7 @@ fn split_curve(
 /// A face's triangles in the file's unit: positions, unit normals and indices, each triangle
 /// counterclockwise seen from outside.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct FaceMesh {
+pub(crate) struct FaceMesh {
     pub positions: Vec<P3>,
     pub normals: Vec<P3>,
     pub indices: Vec<[u32; 3]>,
@@ -592,7 +592,12 @@ impl Hasher for SideHash {
 
 /// The triangles of `face` (turned over when `reversed`, for a reversed shell), from the points
 /// of the model's `edges`, within `tol` in the file's unit.
-pub fn face(face: &Face, edges: &[Vec<P3>], reversed: bool, tol: f64) -> Result<FaceMesh, String> {
+pub(crate) fn face(
+    face: &Face,
+    edges: &[Vec<P3>],
+    reversed: bool,
+    tol: f64,
+) -> Result<FaceMesh, String> {
     let Some((mut m, mut tris, outward)) = cut(face, edges, reversed)? else {
         return Ok(FaceMesh::default());
     };

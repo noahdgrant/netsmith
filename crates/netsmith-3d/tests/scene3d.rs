@@ -1,4 +1,4 @@
-//! The 3D scene of a board (ADR 0105, `netsmith_3d::scene3d`): an invented 30 x 20 mm board with
+//! The 3D scene of a board (ADR 0105, `netsmith_3d::Scene`): an invented 30 x 20 mm board with
 //! a 4 x 2 mm box on each face, a second box on the top, and a two-pin through-hole row, each
 //! placed by hand. Heights are set on the placed parts, as the design would state them.
 
@@ -6,10 +6,7 @@ use std::collections::BTreeMap;
 
 use crate::common;
 
-use netsmith_3d::scene3d::{
-    CopperLayer as CopperLayer3, CopperPad, HeightProvenance, Pins, Plan, PlanArea, Scene,
-    SceneCopper,
-};
+use netsmith_3d::{SceneCopperLayer as CopperLayer3, SceneCopperPad, HeightProvenance, ScenePins, ScenePlan, ScenePlanArea, Scene, SceneCopper};
 use netsmith_core::{Design, Features, Net, Outline, OutlineVertex, Part, PinRef};
 use netsmith_pcb::protrusion::Protrusion;
 use netsmith_pcb::{
@@ -184,13 +181,13 @@ fn a_polygon_board_is_written_to_step_as_its_lines_and_arcs() {
         corner(0.0, 15.0),
     ];
     let s = scene(&board_outlined(common::process(), Some(polygon)));
-    let step = netsmith_3d::step::step(&s, "Scene");
+    let step = netsmith_3d::scene_step(&s, "Scene");
     // The arc is a true arc: a cylinder of its radius, as the rounded corners are.
     assert!(
         step.contains("CYLINDRICAL_SURFACE('',") && step.contains(",5.);"),
         "no arc of radius 5 mm"
     );
-    let read = netsmith_3d::step::read::read(step.as_bytes()).unwrap();
+    let read = netsmith_3d::read_step(step.as_bytes()).unwrap();
     let board = read
         .pieces
         .iter()
@@ -229,7 +226,7 @@ fn a_polygon_board_is_written_to_step_as_its_lines_and_arcs() {
 
 /// How many of a mesh's triangles lie over or under a point of the plan (walls, edge-on, are
 /// not counted): 0 outside a solid, 2 inside a slab.
-fn covers(m: &netsmith_3d::mesh::Mesh, p: [f64; 2]) -> usize {
+fn covers(m: &netsmith_3d::Mesh, p: [f64; 2]) -> usize {
     let side =
         |a: [f64; 3], b: [f64; 3]| (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
     m.indices
@@ -314,9 +311,9 @@ fn the_pins_below_the_board_are_known_only_where_the_design_states_them() {
     let mut board = board();
     assert!(matches!(
         scene(&board).body("row").unwrap().pins,
-        Pins::Unknown { .. }
+        ScenePins::Unknown { .. }
     ));
-    assert_eq!(scene(&board).body("a").unwrap().pins, Pins::None);
+    assert_eq!(scene(&board).body("a").unwrap().pins, ScenePins::None);
     board
         .parts
         .iter_mut()
@@ -327,7 +324,7 @@ fn the_pins_below_the_board_are_known_only_where_the_design_states_them() {
         source: "scene.physical.nsm:3".into(),
     });
     match &scene(&board).body("row").unwrap().pins {
-        Pins::Known {
+        ScenePins::Known {
             z_top,
             z_bottom,
             length,
@@ -357,7 +354,7 @@ fn a_header_read_from_a_file_has_its_posts_and_its_tails_through_the_board() {
     let before = scene(&board).body("row").unwrap().clone();
     // As `Row2` it is its body box and the box of its pins below the board.
     assert!(before.shape.is_none());
-    assert!(matches!(&before.pins, Pins::Known { tails, .. } if tails.is_empty()));
+    assert!(matches!(&before.pins, ScenePins::Known { tails, .. } if tails.is_empty()));
 
     let row = board.parts.iter_mut().find(|p| p.path == "row").unwrap();
     row.footprint.name = "PinHeader_1x02_P2.54mm".into();
@@ -381,10 +378,10 @@ fn a_header_read_from_a_file_has_its_posts_and_its_tails_through_the_board() {
     assert_eq!(posts, 2);
     // The case fit's box is as before; each tail runs from 1.5 mm under the bottom face up
     // through the board to the top face, on its pad.
-    let Pins::Known { at, tails, .. } = &b.pins else {
+    let ScenePins::Known { at, tails, .. } = &b.pins else {
         panic!("{:?}", b.pins)
     };
-    let Pins::Known { at: at0, .. } = &before.pins else {
+    let ScenePins::Known { at: at0, .. } = &before.pins else {
         unreachable!()
     };
     assert_eq!(at, at0);
@@ -403,7 +400,7 @@ fn a_header_read_from_a_file_has_its_posts_and_its_tails_through_the_board() {
         assert_eq!((lo[2].min(hi[2]), lo[2].max(hi[2])), (-3.1, 0.0));
     }
     // The meshes draw the two pins, not the box.
-    let pieces = netsmith_3d::mesh::pieces(&s);
+    let pieces = netsmith_3d::mesh_pieces(&s);
     let i = s.bodies.iter().position(|b| b.path == "row").unwrap();
     let pins = pieces.bodies[i].pins.as_ref().unwrap();
     let zs: Vec<f64> = pins.positions.iter().map(|p| p[2]).collect();
@@ -491,7 +488,7 @@ fn copper(s: &Scene) -> &SceneCopper {
 }
 
 /// Even-odd over a ring.
-fn in_ring(ring: &[Plan], p: Plan) -> bool {
+fn in_ring(ring: &[ScenePlan], p: ScenePlan) -> bool {
     let mut inside = false;
     for i in 0..ring.len() {
         let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
@@ -502,12 +499,12 @@ fn in_ring(ring: &[Plan], p: Plan) -> bool {
     inside
 }
 
-pub(crate) fn in_area(a: &PlanArea, p: Plan) -> bool {
+pub(crate) fn in_area(a: &ScenePlanArea, p: ScenePlan) -> bool {
     in_ring(&a.outer, p) && !a.holes.iter().any(|h| in_ring(h, p))
 }
 
 /// Twice the signed area: positive for a ring that runs counterclockwise, y up.
-fn shoelace(r: &[Plan]) -> f64 {
+fn shoelace(r: &[ScenePlan]) -> f64 {
     (0..r.len())
         .map(|i| {
             let (a, b) = (r[i], r[(i + 1) % r.len()]);
@@ -516,25 +513,25 @@ fn shoelace(r: &[Plan]) -> f64 {
         .sum()
 }
 
-fn extent(a: &PlanArea) -> (Plan, Plan) {
+fn extent(a: &ScenePlanArea) -> (ScenePlan, ScenePlan) {
     a.outer.iter().fold(
         (
-            Plan {
+            ScenePlan {
                 x: f64::MAX,
                 y: f64::MAX,
             },
-            Plan {
+            ScenePlan {
                 x: f64::MIN,
                 y: f64::MIN,
             },
         ),
         |(lo, hi), p| {
             (
-                Plan {
+                ScenePlan {
                     x: lo.x.min(p.x),
                     y: lo.y.min(p.y),
                 },
-                Plan {
+                ScenePlan {
                     x: hi.x.max(p.x),
                     y: hi.y.max(p.y),
                 },
@@ -543,7 +540,7 @@ fn extent(a: &PlanArea) -> (Plan, Plan) {
     )
 }
 
-fn pad<'a>(l: &'a CopperLayer3, refdes: &str, n: &str) -> &'a CopperPad {
+fn pad<'a>(l: &'a CopperLayer3, refdes: &str, n: &str) -> &'a SceneCopperPad {
     l.pads
         .iter()
         .find(|p| p.refdes == refdes && p.number == n)
@@ -696,7 +693,7 @@ fn rings_turn_counterclockwise_outside_and_clockwise_inside_and_a_pour_has_holes
     // The pour of GND is cut round the pad of SIG at (8.5, 15) in plan, and is whole at the
     // flipped place (8.5, 5), and it joins U1.2 (on GND) at (11.5, 15).
     assert!(!top.pours.is_empty() && top.pours.iter().all(|p| p.net.as_deref() == Some("GND")));
-    let poured = |x: f64, y: f64| top.pours.iter().any(|p| in_area(&p.area, Plan { x, y }));
+    let poured = |x: f64, y: f64| top.pours.iter().any(|p| in_area(&p.area, ScenePlan { x, y }));
     assert!(!poured(8.5, 15.0));
     assert!(poured(8.5, 5.0));
     assert!(poured(11.5, 15.0));
@@ -723,7 +720,7 @@ fn the_mask_is_open_over_the_pads_of_each_face_in_the_scene_frame() {
     let s = scene(&routed());
     let c = copper(&s);
     let open =
-        |face: usize, x: f64, y: f64| c.mask[face].areas.iter().any(|a| in_area(a, Plan { x, y }));
+        |face: usize, x: f64, y: f64| c.mask[face].areas.iter().any(|a| in_area(a, ScenePlan { x, y }));
     assert!(open(0, 8.5, 15.0) && open(0, 11.5, 15.0));
     assert!(!open(0, 8.5, 5.0));
     assert!(open(1, 11.5, 5.0) && open(1, 8.5, 5.0));
@@ -800,7 +797,7 @@ fn a_ten_layer_board_has_copper_on_ten_layers_stacked_through_its_thickness() {
 }
 
 /// The volume a closed mesh holds: positive when its triangles face out.
-fn volume(m: &netsmith_3d::mesh::Mesh) -> f64 {
+fn volume(m: &netsmith_3d::Mesh) -> f64 {
     m.indices
         .chunks(3)
         .map(|t| {
@@ -827,14 +824,14 @@ fn shaped(id: &str, height: Option<f64>) -> Board {
 
 #[test]
 fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
-    use netsmith_3d::mesh::{Material, of_scene};
+    use netsmith_3d::{Material, meshes_of_scene};
     for (id, h) in [
         ("Resistor_SMD:R_0603_1608Metric", 0.5),
         ("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", 1.75),
     ] {
         let board = shaped(id, Some(h));
         let s = scene(&board);
-        let meshes = of_scene(&s);
+        let meshes = meshes_of_scene(&s);
         let (left, bottom) = (board.outline.min.x, board.outline.max.y);
         for path in ["a", "under"] {
             let body = s.body(path).unwrap();
@@ -848,7 +845,7 @@ fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
                     m.material
                 );
             }
-            let b = netsmith_3d::mesh::bounds_of(
+            let b = netsmith_3d::mesh_bounds(
                 &mine.iter().map(|m| (*m).clone()).collect::<Vec<_>>(),
             )
             .unwrap();
@@ -917,10 +914,10 @@ fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
         assert_eq!(box_[0].material, Material::Body);
         assert_eq!(box_[0].triangle_count(), 12);
         // The same board gives the same meshes.
-        assert_eq!(meshes, of_scene(&scene(&shaped(id, Some(h)))));
+        assert_eq!(meshes, meshes_of_scene(&scene(&shaped(id, Some(h)))));
         // To look at: `NETSMITH_RENDER3D_OUT=<folder>` writes the board from above and below.
         if let Some(out) = std::env::var_os("NETSMITH_RENDER3D_OUT") {
-            use netsmith_3d::raster3d::{RenderOptions, View, render_view};
+            use netsmith_3d::{RenderOptions, View, render_view};
             std::fs::create_dir_all(&out).unwrap();
             let stem = id.split(':').nth(1).unwrap_or(id);
             for view in [View::Iso, View::IsoBottom] {
@@ -934,9 +931,9 @@ fn a_shaped_part_lands_where_its_box_was_on_either_face_and_turned() {
 
 #[test]
 fn a_shaped_footprint_of_unknown_height_is_still_its_flat_outline() {
-    use netsmith_3d::mesh::{Material, of_scene};
+    use netsmith_3d::{Material, meshes_of_scene};
     let s = scene(&shaped("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", None));
-    let meshes = of_scene(&s);
+    let meshes = meshes_of_scene(&s);
     for path in ["a", "under"] {
         assert!(s.body(path).unwrap().shape.is_none());
         let mine: Vec<_> = meshes.iter().filter(|m| m.id == path).collect();

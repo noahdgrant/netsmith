@@ -18,8 +18,7 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use netsmith_3d::scene3d::ModelUse;
-use netsmith_3d::step::read::ReadModel;
+use netsmith_3d::{ModelUse, StepModel};
 use netsmith_core::Design;
 use sha2::{Digest, Sha256};
 
@@ -232,7 +231,7 @@ fn shown(file: &Path, root: &Path) -> String {
 }
 
 /// A model file read and drawn, by its place on disk: its SHA-256 and what reading it gave.
-type Read = (String, Result<Arc<ReadModel>, String>);
+type Read = (String, Result<Arc<StepModel>, String>);
 
 /// The files read so far, by path, with the SHA-256 of the bytes they were read from: a file
 /// is read again only when its bytes change, so a build, the editor's rebuilds and `fab` of
@@ -249,7 +248,7 @@ pub fn sha256(bytes: &[u8]) -> String {
 
 /// Reads the file at `path` (ADR 0108), or takes it from the files read before when its bytes
 /// are the same: its SHA-256, and its model or why it cannot be read.
-pub fn read(path: &Path) -> Result<(String, Arc<ReadModel>), String> {
+pub fn read(path: &Path) -> Result<(String, Arc<StepModel>), String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     let sha = sha256(&bytes);
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
@@ -258,7 +257,7 @@ pub fn read(path: &Path) -> Result<(String, Arc<ReadModel>), String> {
     {
         return read.clone().map(|r| (sha, r));
     }
-    let read = netsmith_3d::step::read::load(&bytes)
+    let read = netsmith_3d::load_step(&bytes)
         .map(Arc::new)
         .map_err(|e| e.to_string());
     cache.insert(path.to_path_buf(), (sha.clone(), read.clone()));

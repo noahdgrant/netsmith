@@ -333,7 +333,7 @@ fn the_board3d_report_and_the_glb_label_a_standard_height_and_count_it_apart() {
     assert!(json["unknown_heights"].as_array().unwrap().is_empty());
 
     let glb = netsmith_fabricate::board3d::glb(&b, &board);
-    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let doc = netsmith_3d::json_chunk(&glb).unwrap();
     let node = |name: &str| {
         doc["nodes"]
             .as_array()

@@ -152,7 +152,7 @@ impl fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 /// Reads `bytes` as a Part 21 file.
-pub fn parse(bytes: &[u8]) -> Result<Exchange, ParseError> {
+pub(crate) fn parse(bytes: &[u8]) -> Result<Exchange, ParseError> {
     let mut p = Parser {
         s: bytes,
         at: 0,

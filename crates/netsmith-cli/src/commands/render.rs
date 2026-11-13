@@ -40,7 +40,7 @@ pub struct Args {
     /// the board's top face. The cut faces are filled as a section of the stackup, each layer at
     /// its true thickness in its own colour, unless `--no-caps` leaves them open.
     #[arg(long, value_name = "AXIS=MM", value_parser = netsmith::render::parse_section)]
-    pub section: Option<(netsmith_3d::mesh::Axis, f64)>,
+    pub section: Option<(netsmith_3d::Axis, f64)>,
     /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` and dim the rest (comma-separated or repeated).
     ///
     /// A part is named by its designator or its path. An id the board does not have is an error
@@ -198,9 +198,9 @@ mod tests {
             "dark",
             "--perspective",
         ]);
-        assert_eq!(r.view, netsmith_3d::raster3d::View::Top);
+        assert_eq!(r.view, netsmith_3d::View::Top);
         assert_eq!(r.size, (64, 80));
-        assert_eq!(r.section, Some((netsmith_3d::mesh::Axis::Z, -0.8)));
+        assert_eq!(r.section, Some((netsmith_3d::Axis::Z, -0.8)));
         assert_eq!(r.highlight, vec!["J1", "net:GND", "limit:lid"]);
         assert!(r.xray && !r.caps && r.dark && r.perspective);
         assert_eq!(r.case, netsmith::render::CaseMode::Solid);

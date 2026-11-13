@@ -29,10 +29,10 @@
 //!   the instances are read in id order, the tolerance is fixed, the trig is the scene's own
 //!   and every position is rounded to a nanometre, as the scene's are.
 
-pub mod geometry;
-pub mod model;
-pub mod part21;
-pub mod tessellate;
+pub(crate) mod geometry;
+pub(crate) mod model;
+pub(crate) mod part21;
+pub(crate) mod tessellate;
 
 #[cfg(test)]
 mod fixtures;
@@ -43,9 +43,9 @@ mod tests;
 
 use std::fmt;
 
-pub use model::{Model, Rgb};
-pub use part21::{Exchange, ParseError};
-pub use tessellate::CHORD_TOLERANCE;
+pub(crate) use model::{Model, Rgb};
+pub(crate) use part21::{Exchange, ParseError};
+pub(crate) use tessellate::CHORD_TOLERANCE;
 
 use crate::mesh::{Material, Mesh};
 
@@ -157,7 +157,7 @@ pub fn load(bytes: &[u8]) -> Result<ReadModel, StepError> {
 }
 
 /// Reads a STEP file's bytes into its model: the solids, where they are, and their faces.
-pub fn read_model(bytes: &[u8]) -> Result<Model, StepError> {
+pub(crate) fn read_model(bytes: &[u8]) -> Result<Model, StepError> {
     let ex = part21::parse(bytes)?;
     model::model(&ex)
 }
@@ -174,7 +174,7 @@ fn nanometre(x: f64) -> f64 {
 }
 
 /// The triangles of a model read.
-pub fn mesh(model: &Model) -> Result<StepMesh, StepError> {
+pub(crate) fn mesh(model: &Model) -> Result<StepMesh, StepError> {
     // Each edge's points and each face's triangles once, at the tolerance of the first solid
     // that uses it.
     let mut edges: Vec<Vec<geometry::P3>> = vec![Vec::new(); model.edges.len()];

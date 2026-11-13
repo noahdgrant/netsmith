@@ -289,7 +289,7 @@ fn the_glb_holds_the_case_and_render_lights_it() {
         "{}",
         String::from_utf8_lossy(&run.stderr)
     );
-    let doc = netsmith_3d::gltf::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
+    let doc = netsmith_3d::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
     let nodes = doc["nodes"].as_array().unwrap();
     let node = |name: &str| {
         nodes
@@ -386,7 +386,7 @@ fn a_members_case_model_is_its_own_boards_and_not_the_systems() {
             "{}",
             String::from_utf8_lossy(&run.stderr)
         );
-        let doc = netsmith_3d::gltf::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
+        let doc = netsmith_3d::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
         doc["nodes"]
             .as_array()
             .unwrap()

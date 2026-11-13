@@ -864,7 +864,7 @@ impl Scene {
 /// The centre of each pad of the part at `path` on `board`, in the plan of the board's scene,
 /// with its number, in the footprint's order: what the system scene lines two mated connectors
 /// up by (ADR 0110). Empty when the board has no part at `path`.
-pub fn pad_centres(board: &Board, path: &str) -> Vec<(String, Plan)> {
+pub(crate) fn pad_centres(board: &Board, path: &str) -> Vec<(String, Plan)> {
     let frame = Frame::of(board);
     board
         .parts
@@ -1287,7 +1287,7 @@ fn body(
 /// `step_pcb_model.cpp`: "aOrientation is applied -Z*-Y*-X, b. aOffset is applied", the y of
 /// the footprint's position negated and the offset's not). The map is a rigid motion on
 /// both faces: the y flip and the bottom face's mirror and its z flip cancel out.
-pub fn model_frame(place: &Placement, offset: [f64; 3], rotation: [f64; 3]) -> Affine {
+pub(crate) fn model_frame(place: &Placement, offset: [f64; 3], rotation: [f64; 3]) -> Affine {
     let turn = |deg: f64| sin_cos_turns(-deg / 360.0);
     let (sx, cx) = turn(rotation[0]);
     let (sy, cy) = turn(rotation[1]);

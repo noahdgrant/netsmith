@@ -13,7 +13,7 @@ use crate::scene3d::PlacedShape;
 use netsmith_pcb::body3d::{Axis, Material as Made, Primitive, Solid};
 
 /// Drawing only: how far below a level mark or pin a body's top is drawn at most, in mm.
-pub const TOP_GAP: f64 = 0.02;
+pub(crate) const TOP_GAP: f64 = 0.02;
 
 /// The corners round a pin 1 dot or a ball.
 pub(crate) const ROUND_SEGMENTS: usize = 16;

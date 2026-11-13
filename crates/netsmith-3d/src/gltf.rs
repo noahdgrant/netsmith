@@ -101,7 +101,7 @@ use crate::system::{Finding, Motion, Place, SystemScene};
 use netsmith_pcb::board::Side;
 
 /// The version of the file's contract (the module's header).
-pub const SCHEMA: u32 = 1;
+pub(crate) const SCHEMA: u32 = 1;
 
 /// The scene's frame (mm, Z up) to glTF's (m, Y up).
 fn position(p: [f64; 3]) -> [f32; 3] {
@@ -826,7 +826,8 @@ pub fn json_chunk(glb: &[u8]) -> Option<Value> {
 }
 
 /// The binary chunk of a `.glb` file, `None` if it has none.
-pub fn bin_chunk(glb: &[u8]) -> Option<&[u8]> {
+#[cfg(test)]
+pub(crate) fn bin_chunk(glb: &[u8]) -> Option<&[u8]> {
     let word = |at: usize| -> Option<usize> {
         Some(u32::from_le_bytes(glb.get(at..at + 4)?.try_into().ok()?) as usize)
     };

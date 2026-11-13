@@ -4,7 +4,7 @@
 //! at the root carries the module it comes from (`stdlib_files`, `passive_symbol`,
 //! `generated_symbol`, `locate_install`).
 
-#![warn(unreachable_pub)]
+#![cfg_attr(not(test), warn(unreachable_pub))]
 
 mod footprint_spec;
 mod generate;

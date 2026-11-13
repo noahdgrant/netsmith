@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 
 /// A reference to an entity instance, `#n`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Id(pub usize);
+pub(super) struct Id(pub usize);
 
 impl std::fmt::Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -21,7 +21,7 @@ impl std::fmt::Display for Id {
 }
 
 /// A list of references, `(#1,#2)`.
-pub fn list(ids: &[Id]) -> String {
+pub(super) fn list(ids: &[Id]) -> String {
     let mut s = String::from("(");
     for (k, id) in ids.iter().enumerate() {
         if k > 0 {
@@ -35,7 +35,7 @@ pub fn list(ids: &[Id]) -> String {
 
 /// A real as STEP writes one: always with a point (`1.`, `-0.25`), to ten places (1e-10 mm for a
 /// length), with no trailing zeros and never `-0.`.
-pub fn real(x: f64) -> String {
+pub(super) fn real(x: f64) -> String {
     let mut s = format!("{x:.10}");
     while s.ends_with('0') {
         s.pop();
@@ -48,7 +48,7 @@ pub fn real(x: f64) -> String {
 
 /// A string as STEP writes one: in single quotes, a quote doubled, and every character outside
 /// printable ASCII written as `\X2\hhhh\X0\` (UTF-16 code units), so the file is plain ASCII.
-pub fn string(s: &str) -> String {
+pub(super) fn string(s: &str) -> String {
     let mut out = String::from("'");
     for c in s.chars() {
         match c {
@@ -71,7 +71,7 @@ pub fn string(s: &str) -> String {
 
 /// The entity instances of a file's `DATA` section.
 #[derive(Debug, Default)]
-pub struct Writer {
+pub(super) struct Writer {
     lines: Vec<String>,
     /// Points and directions already written, by their text, so that each is written once.
     shared: BTreeMap<String, Id>,
@@ -79,13 +79,13 @@ pub struct Writer {
 
 impl Writer {
     /// Adds an instance (`ENTITY(...)`, or a complex one in parentheses) and returns its id.
-    pub fn add(&mut self, body: impl Into<String>) -> Id {
+    pub(super) fn add(&mut self, body: impl Into<String>) -> Id {
         self.lines.push(body.into());
         Id(self.lines.len())
     }
 
     /// The id the next instance added will have.
-    pub fn next_id(&self) -> Id {
+    pub(super) fn next_id(&self) -> Id {
         Id(self.lines.len() + 1)
     }
 
@@ -98,7 +98,7 @@ impl Writer {
         id
     }
 
-    pub fn point(&mut self, p: [f64; 3]) -> Id {
+    pub(super) fn point(&mut self, p: [f64; 3]) -> Id {
         self.shared(format!(
             "CARTESIAN_POINT('',({},{},{}))",
             real(p[0]),
@@ -107,7 +107,7 @@ impl Writer {
         ))
     }
 
-    pub fn direction(&mut self, d: [f64; 3]) -> Id {
+    pub(super) fn direction(&mut self, d: [f64; 3]) -> Id {
         self.shared(format!(
             "DIRECTION('',({},{},{}))",
             real(d[0]),
@@ -117,13 +117,13 @@ impl Writer {
     }
 
     /// A placement at `at` with its Z along `axis` and its X along `x`.
-    pub fn axis(&mut self, at: [f64; 3], axis: [f64; 3], x: [f64; 3]) -> Id {
+    pub(super) fn axis(&mut self, at: [f64; 3], axis: [f64; 3], x: [f64; 3]) -> Id {
         let (p, z, x) = (self.point(at), self.direction(axis), self.direction(x));
         self.add(format!("AXIS2_PLACEMENT_3D('',{p},{z},{x})"))
     }
 
     /// The file, with `header` (the lines between `HEADER;` and `ENDSEC;`).
-    pub fn file(&self, header: &str) -> String {
+    pub(super) fn file(&self, header: &str) -> String {
         let mut out = String::new();
         out.push_str("ISO-10303-21;\nHEADER;\n");
         out.push_str(header);
@@ -140,7 +140,7 @@ impl Writer {
 /// the last): a straight line, or an arc round `centre`, counterclockwise when `ccw`. An arc
 /// that is the only segment of its loop is a full circle.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Segment {
+pub(crate) enum Segment {
     Line {
         start: [f64; 2],
     },
@@ -152,7 +152,7 @@ pub enum Segment {
 }
 
 impl Segment {
-    pub fn start(&self) -> [f64; 2] {
+    pub(crate) fn start(&self) -> [f64; 2] {
         match *self {
             Segment::Line { start } | Segment::Arc { start, .. } => start,
         }
@@ -160,7 +160,7 @@ impl Segment {
 }
 
 /// A closed loop of segments.
-pub type Loop = Vec<Segment>;
+pub(crate) type Loop = Vec<Segment>;
 
 /// Points along a loop, enough to tell which way it turns: each start, and three points inside
 /// each arc.
@@ -194,7 +194,7 @@ fn samples(l: &Loop) -> Vec<[f64; 2]> {
 
 /// Twice the signed area a loop holds: positive when it turns counterclockwise. Only its sign is
 /// used, so the arcs' samples (with the platform's `atan2`) cannot change the file.
-pub fn signed_area(l: &Loop) -> f64 {
+pub(super) fn signed_area(l: &Loop) -> f64 {
     let p = samples(l);
     (0..p.len())
         .map(|k| {
@@ -205,7 +205,7 @@ pub fn signed_area(l: &Loop) -> f64 {
 }
 
 /// The loop run the other way.
-pub fn reversed(l: &Loop) -> Loop {
+pub(super) fn reversed(l: &Loop) -> Loop {
     let n = l.len();
     (0..n)
         .map(|k| {
@@ -225,7 +225,7 @@ pub fn reversed(l: &Loop) -> Loop {
 }
 
 /// A polygon as a loop of lines, with the points that repeat their neighbour dropped.
-pub fn polygon(points: &[[f64; 2]]) -> Loop {
+pub(super) fn polygon(points: &[[f64; 2]]) -> Loop {
     let mut out: Loop = Vec::with_capacity(points.len());
     for &p in points {
         if out.last().is_none_or(|s| s.start() != p) {
@@ -242,7 +242,7 @@ pub fn polygon(points: &[[f64; 2]]) -> Loop {
 /// `(a, b)` in the region `loops` bound (the first the outside, the rest holes) and `t` from
 /// `from` to `to`. `u`, `v` and `n` are unit vectors, at right angles.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Extrusion {
+pub(crate) struct Extrusion {
     pub origin: [f64; 3],
     pub u: [f64; 3],
     pub v: [f64; 3],
@@ -254,12 +254,12 @@ pub struct Extrusion {
 
 /// A closed solid of planar polygons, each listed counterclockwise seen from outside.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Polyhedron {
+pub(crate) struct Polyhedron {
     pub points: Vec<[f64; 3]>,
     pub faces: Vec<Vec<usize>>,
 }
 
-pub fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+pub(super) fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -267,7 +267,7 @@ pub fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     ]
 }
 
-pub fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+pub(super) fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
@@ -284,7 +284,7 @@ impl Extrusion {
     /// The same solid with `u`, `v`, `n` right-handed, `from < to`, the outside loop
     /// counterclockwise and the holes clockwise, as [`Writer::extrusion`] needs it. `None` when it
     /// has no volume.
-    pub fn normalised(mut self) -> Option<Extrusion> {
+    pub(crate) fn normalised(mut self) -> Option<Extrusion> {
         if dot(cross(self.u, self.v), self.n) < 0.0 {
             self.n = neg(self.n);
             (self.from, self.to) = (-self.to, -self.from);
@@ -346,7 +346,7 @@ impl Writer {
     }
 
     /// The solid of `e` (normalised) as a `MANIFOLD_SOLID_BREP` named `name`.
-    pub fn extrusion(&mut self, name: &str, e: &Extrusion) -> Id {
+    pub(super) fn extrusion(&mut self, name: &str, e: &Extrusion) -> Id {
         let (from, to) = (e.from, e.to);
         let mut faces = Vec::new();
         let mut tops: Vec<Vec<Id>> = Vec::new();
@@ -465,7 +465,7 @@ impl Writer {
     }
 
     /// The solid of `p` as a `MANIFOLD_SOLID_BREP` named `name`.
-    pub fn polyhedron(&mut self, name: &str, p: &Polyhedron) -> Id {
+    pub(super) fn polyhedron(&mut self, name: &str, p: &Polyhedron) -> Id {
         let verts: Vec<Id> = p
             .points
             .iter()

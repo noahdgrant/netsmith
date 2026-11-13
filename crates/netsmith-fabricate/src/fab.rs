@@ -884,7 +884,7 @@ fn fab_board(
         // constraints are strict, the rest are warnings. A file that is not there was said by
         // `models::locate` above; it is in the notes too.
         let fit = if built.design.features.case_models.is_empty() {
-            netsmith_3d::case::CaseScene::default()
+            netsmith_3d::CaseScene::default()
         } else {
             timings::stage("fab.case", &label, || {
                 crate::board3d::scene(built, &board).case
@@ -902,7 +902,7 @@ fn fab_board(
         for f in fit
             .findings
             .iter()
-            .filter(|f| !matches!(f.why, netsmith_3d::case::Why::Missing { .. }))
+            .filter(|f| !matches!(f.why, netsmith_3d::CaseWhy::Missing { .. }))
         {
             say(format!(
                 "{}: warning: {}: {f}",
@@ -1270,9 +1270,9 @@ fn fab_system(
             continue;
         }
         let bytes = if extension == "glb" {
-            netsmith_3d::gltf::system_glb(&scene)
+            netsmith_3d::system_glb(&scene)
         } else {
-            netsmith_3d::step::system_step(&scene).into_bytes()
+            netsmith_3d::system_step(&scene).into_bytes()
         };
         match fs::write(&file, bytes) {
             Ok(()) => say(format!(
@@ -1296,7 +1296,7 @@ fn write_glb(
     dir: &Path,
     name: &str,
     built: &Built,
-    scene: Option<&netsmith_3d::scene3d::Scene>,
+    scene: Option<&netsmith_3d::Scene>,
     write: bool,
 ) -> (Option<PathBuf>, Option<String>) {
     let file = dir.join(format!("{name}.glb"));
@@ -1315,7 +1315,7 @@ fn write_glb(
     let Some(scene) = scene.filter(|_| write) else {
         return (None, None);
     };
-    match fs::write(&file, netsmith_3d::gltf::glb(scene, &built.label())) {
+    match fs::write(&file, netsmith_3d::glb(scene, &built.label())) {
         Ok(()) => (Some(file), None),
         Err(e) => (
             None,
@@ -1335,7 +1335,7 @@ fn write_step(
     dir: &Path,
     name: &str,
     built: &Built,
-    scene: Option<&netsmith_3d::scene3d::Scene>,
+    scene: Option<&netsmith_3d::Scene>,
     write: bool,
 ) -> (Option<PathBuf>, Option<String>) {
     let file = dir.join(format!("{name}.step"));
@@ -1356,7 +1356,7 @@ fn write_step(
     };
     match fs::write(
         &file,
-        netsmith_3d::step::step(scene, &built.label()).into_bytes(),
+        netsmith_3d::scene_step(scene, &built.label()).into_bytes(),
     ) {
         Ok(()) => (Some(file), None),
         Err(e) => (
@@ -1372,7 +1372,7 @@ fn write_step(
 /// The lines of `fab-notes.txt` that name the parts drawn from a STEP model (ADR 0108 "Cost"):
 /// the `.glb` and the `.step` hold the model, which its maker's license may keep from being
 /// shared.
-fn model_notes(scene: &netsmith_3d::scene3d::Scene) -> Vec<String> {
+fn model_notes(scene: &netsmith_3d::Scene) -> Vec<String> {
     let drawn: Vec<String> = scene
         .bodies
         .iter()
@@ -1394,14 +1394,14 @@ fn model_notes(scene: &netsmith_3d::scene3d::Scene) -> Vec<String> {
 }
 
 /// Why a finding of the case fit check stops `fab` (ADR 0109), and what to do.
-fn case_refusal(f: &netsmith_3d::case::FitFinding) -> String {
-    use netsmith_3d::case::{Weight, Why};
+fn case_refusal(f: &netsmith_3d::FitFinding) -> String {
+    use netsmith_3d::{CaseWeight, CaseWhy};
     let kind = f.kind.word();
     match (f.weight(), &f.why) {
-        (Weight::Error, Why::Unreadable { .. }) => format!(
+        (CaseWeight::Error, CaseWhy::Unreadable { .. }) => format!(
             "{kind}: {f}; a case model netsmith cannot read stops `fab`, and `--allow-drc-violations` does not waive it"
         ),
-        (Weight::Error, _) => format!(
+        (CaseWeight::Error, _) => format!(
             "{kind}: {f}; a collision with the case stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it: move or lower the part, or correct the case model's placement (`.x`, `.y`, `.z`, `.rx`, `.ry`, `.rz`)"
         ),
         _ => format!(

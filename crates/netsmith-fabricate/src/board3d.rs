@@ -1,4 +1,4 @@
-//! `netsmith board3d`: the board's _Scene_ (ADR 0105, `netsmith_3d::scene3d`) as numbers, for an
+//! `netsmith board3d`: the board's _Scene_ (ADR 0105, `netsmith_3d::Scene`) as numbers, for an
 //! agent or a person: the board's stackup, each part's body box with its Z and _Height
 //! provenance_, each height limit with the tallest part under it and the margin, bodies that
 //! overlap in 3D, the parts of unknown height with the reason, and the _Height coverage_; and a
@@ -12,7 +12,9 @@
 
 use std::collections::BTreeMap;
 
-use netsmith_3d::scene3d::{Body, HeightProvenance, HoleOwner, Pins, Plan, PlanBox, Scene};
+use netsmith_3d::{
+    HeightProvenance, HoleOwner, Scene, SceneBody, ScenePins, ScenePlan, ScenePlanBox,
+};
 use netsmith_pcb::{Board, Side};
 use serde::Serialize;
 
@@ -49,16 +51,16 @@ pub fn scene_without_case(built: &Built, board: &Board) -> Scene {
     scene
 }
 
-/// The scene of a placed board as a `.glb` file (`netsmith_3d::gltf`), labelled as the report
+/// The scene of a placed board as a `.glb` file (`netsmith_3d::glb`), labelled as the report
 /// labels it: what `board3d --glb` writes and the editor's `GET /api/pcb/3d` serves.
 pub fn glb(built: &Built, board: &Board) -> Vec<u8> {
-    netsmith_3d::gltf::glb(&scene(built, board), &built.label())
+    netsmith_3d::glb(&scene(built, board), &built.label())
 }
 
 /// A placed board as a STEP file (`netsmith_pcb::step`), labelled as the report
 /// labels it: what `board3d --step` writes.
 pub fn step(built: &Built, board: &Board) -> Vec<u8> {
-    netsmith_3d::step::step(&scene(built, board), &built.label()).into_bytes()
+    netsmith_3d::scene_step(&scene(built, board), &built.label()).into_bytes()
 }
 
 #[derive(Debug, Serialize)]
@@ -83,7 +85,7 @@ pub struct Report {
     /// The board's case models (ADR 0109), by name: each file, whether it was read, and its
     /// solids.
     pub case_models: Vec<CaseModelReport>,
-    /// What the fit check found, in the check's order (`netsmith_3d::case::check`).
+    /// What the fit check found, in the check's order (`netsmith_3d::check_case`).
     pub case_findings: Vec<CaseFindingReport>,
 }
 
@@ -419,7 +421,7 @@ pub struct TallestReport {
     pub bottom: Option<TallestPart>,
 }
 
-fn xy(p: Plan) -> [f64; 2] {
+fn xy(p: ScenePlan) -> [f64; 2] {
     [p.x, p.y]
 }
 
@@ -427,7 +429,7 @@ fn face(side: Side) -> &'static str {
     side.word()
 }
 
-fn tallest(t: Option<netsmith_3d::scene3d::Tallest>, side: Option<Side>) -> Option<TallestPart> {
+fn tallest(t: Option<netsmith_3d::Tallest>, side: Option<Side>) -> Option<TallestPart> {
     t.map(|t| TallestPart {
         path: t.path,
         refdes: t.refdes,
@@ -437,7 +439,7 @@ fn tallest(t: Option<netsmith_3d::scene3d::Tallest>, side: Option<Side>) -> Opti
 }
 
 /// Why a part has no height: what the design and its catalog row lack.
-fn reason(body: &Body, built: &Built, rows: &BTreeMap<&str, String>) -> String {
+fn reason(body: &SceneBody, built: &Built, rows: &BTreeMap<&str, String>) -> String {
     match rows.get(body.path.as_str()) {
         Some(row) => format!(
             "the design states no `.height` and the `height` cell of its catalog row {row} is empty (state it: `.{}.height &= <mm>`, from the datasheet)",
@@ -545,9 +547,9 @@ pub fn report(
         .map(|b| {
             let (z_bottom, z_top) = b.z_range();
             let pins = match &b.pins {
-                Pins::None => None,
-                Pins::Unknown { at } => Some(pins_report(at, None, None, None, None)),
-                Pins::Known {
+                ScenePins::None => None,
+                ScenePins::Unknown { at } => Some(pins_report(at, None, None, None, None)),
+                ScenePins::Known {
                     at,
                     length,
                     source,
@@ -739,8 +741,8 @@ pub fn report(
 }
 
 /// Each case model of the design, read or not.
-fn case_models_report(built: &Built, fit: &netsmith_3d::case::CaseScene) -> Vec<CaseModelReport> {
-    use netsmith_3d::case::Why;
+fn case_models_report(built: &Built, fit: &netsmith_3d::CaseScene) -> Vec<CaseModelReport> {
+    use netsmith_3d::CaseWhy;
     built
         .design
         .features
@@ -753,7 +755,7 @@ fn case_models_report(built: &Built, fit: &netsmith_3d::case::CaseScene) -> Vec<
                 None if fit
                     .findings
                     .iter()
-                    .any(|f| f.case == c.name && matches!(f.why, Why::Unreadable { .. })) =>
+                    .any(|f| f.case == c.name && matches!(f.why, CaseWhy::Unreadable { .. })) =>
                 {
                     "unreadable"
                 }
@@ -789,30 +791,34 @@ fn case_models_report(built: &Built, fit: &netsmith_3d::case::CaseScene) -> Vec<
         .collect()
 }
 
-fn case_finding_report(f: &netsmith_3d::case::FitFinding) -> CaseFindingReport {
-    use netsmith_3d::case::{Subject, Weight, Why};
+fn case_finding_report(f: &netsmith_3d::FitFinding) -> CaseFindingReport {
+    use netsmith_3d::{CaseSubject, CaseWeight, CaseWhy};
     let (path, refdes, subject) = match &f.subject {
-        Subject::Part { path, refdes } => (Some(path.clone()), Some(refdes.clone()), "part"),
-        Subject::Pins { path, refdes, .. } => (Some(path.clone()), Some(refdes.clone()), "pins"),
-        Subject::Board => (None, None, "board"),
-        Subject::Solid => (None, None, "solid"),
-        Subject::Model => (None, None, "model"),
+        CaseSubject::Part { path, refdes } => (Some(path.clone()), Some(refdes.clone()), "part"),
+        CaseSubject::Pins { path, refdes, .. } => {
+            (Some(path.clone()), Some(refdes.clone()), "pins")
+        }
+        CaseSubject::Board => (None, None, "board"),
+        CaseSubject::Solid => (None, None, "solid"),
+        CaseSubject::Model => (None, None, "model"),
     };
     let (mut depth, mut gap, mut limit, mut distance, mut edge) = (None, None, None, None, None);
     match &f.why {
-        Why::Collision { depth: d, .. } | Why::Standard { depth: d, .. } => depth = Some(*d),
-        Why::Clearance { gap: g, least } => {
+        CaseWhy::Collision { depth: d, .. } | CaseWhy::Standard { depth: d, .. } => {
+            depth = Some(*d)
+        }
+        CaseWhy::Clearance { gap: g, least } => {
             gap = Some(*g);
             limit = Some(*least);
         }
-        Why::ReachBlocked {
+        CaseWhy::ReachBlocked {
             edge: e,
             distance: d,
         } => {
             distance = Some(*d);
             edge = Some(*e);
         }
-        Why::ReachDeep {
+        CaseWhy::ReachDeep {
             edge: e,
             depth: d,
             most,
@@ -821,13 +827,13 @@ fn case_finding_report(f: &netsmith_3d::case::FitFinding) -> CaseFindingReport {
             limit = Some(*most);
             edge = Some(*e);
         }
-        Why::Boss { gap: g } => gap = Some(*g),
+        CaseWhy::Boss { gap: g } => gap = Some(*g),
         _ => {}
     }
     CaseFindingReport {
         kind: f.kind.word(),
         severity: f.severity(false),
-        strict_error: f.weight() == Weight::Unchecked,
+        strict_error: f.weight() == CaseWeight::Unchecked,
         case: f.case.clone(),
         solid: f.solid.clone(),
         subject,
@@ -891,7 +897,7 @@ fn copper_report(scene: &Scene) -> Result<CopperReport, String> {
 }
 
 fn pins_report(
-    at: &PlanBox,
+    at: &ScenePlanBox,
     protrusion: Option<f64>,
     source: Option<String>,
     z_top: Option<f64>,
@@ -1178,12 +1184,7 @@ impl Placed<'_> {
 /// What `board3d` made of what `--board` names: a board's report and scene, or a system's.
 pub enum Made {
     Board(Box<(Report, Scene)>),
-    System(
-        Box<(
-            crate::system3d::SystemReport,
-            netsmith_3d::system::SystemScene,
-        )>,
-    ),
+    System(Box<(crate::system3d::SystemReport, netsmith_3d::SystemScene)>),
 }
 
 impl Placed<'_> {
@@ -1258,7 +1259,7 @@ fn system_with(
     solved: &netsmith_pipeline::SolvedSystem,
     members: &[(&Built, &Board)],
     found: &BTreeMap<String, Vec<String>>,
-) -> netsmith_3d::system::SystemScene {
+) -> netsmith_3d::SystemScene {
     let mut system = crate::system3d::scene(solved, members);
     for ((built, _), member) in members.iter().zip(&mut system.members) {
         if let Some(found) = found.get(&built.label()) {
@@ -1271,7 +1272,7 @@ fn system_with(
 /// A board's scene with its label, or a system's scene.
 pub enum AnyScene {
     Board(Box<Scene>, String),
-    System(Box<netsmith_3d::system::SystemScene>),
+    System(Box<netsmith_3d::SystemScene>),
 }
 
 /// `then` of the board [`run`] picks, built and placed.

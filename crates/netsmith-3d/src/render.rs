@@ -15,13 +15,13 @@ use crate::system::SystemScene;
 /// The picture's size unless `--size` says one.
 pub const DEFAULT_SIZE: (usize, usize) = (1600, 1000);
 /// The least and the most pixels along a side.
-pub const SIZE_RANGE: (usize, usize) = (64, 8192);
+pub(crate) const SIZE_RANGE: (usize, usize) = (64, 8192);
 /// The most pixels in a picture: the drawing keeps four samples of every pixel.
-pub const MAX_PIXELS: usize = 16_000_000;
+pub(crate) const MAX_PIXELS: usize = 16_000_000;
 /// The view unless `--view` says one.
 pub const DEFAULT_VIEW: View = View::Iso;
 /// The vertical field of view of `--perspective`, in degrees.
-pub const FOV_DEG: f64 = 30.0;
+pub(crate) const FOV_DEG: f64 = 30.0;
 
 /// How a case model (ADR 0109) is drawn: not at all (the board alone), see-through (the default:
 /// the board shows inside its case), or solid (the case hides what is inside it). A case model
@@ -142,7 +142,10 @@ pub fn default_out(label: &str, view: View) -> PathBuf {
 /// designator, `net:<name>`, `limit:<name>` and `case:<name>` (a case model, ADR 0109); `board`
 /// is the board itself. The error names
 /// every id that is none of them.
-pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<String>, String> {
+pub(crate) fn resolve_highlight(
+    scene: &Scene,
+    requested: &[String],
+) -> Result<Vec<String>, String> {
     let mut nets: Vec<&str> = Vec::new();
     if let Ok(copper) = &scene.copper {
         nets.extend(copper.layers.iter().flat_map(|l| l.nets()).flatten());
@@ -297,7 +300,7 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
 /// `led/net:GND`), or a member's name alone for the whole member. A net or a limit may also be
 /// named with the member after its prefix, as the editor's 3D view names it (`net:led/GND`,
 /// `limit:led/lid`), which is the same id.
-pub fn resolve_system_highlight(
+pub(crate) fn resolve_system_highlight(
     system: &SystemScene,
     requested: &[String],
 ) -> Result<Vec<String>, String> {

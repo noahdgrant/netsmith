@@ -394,14 +394,14 @@ impl Ring {
 /// The triangles of the polygon `outer` with `holes`, as indices into the points of `outer`
 /// followed by those of each hole in turn, each triangle counterclockwise (seen from +z). The
 /// rings may turn either way and need not repeat their first point.
-pub fn triangulate(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3]> {
+pub(crate) fn triangulate(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3]> {
     cut(outer, holes, false)
 }
 
 /// As [`triangulate`], but every point stays a corner of some triangle, also one on a straight
 /// run between its neighbours: a side shared with another face keeps all its points, so the two
 /// meet with no crack. Only a point that repeats its neighbour is dropped.
-pub fn triangulate_keeping(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3]> {
+pub(crate) fn triangulate_keeping(outer: &[[f64; 2]], holes: &[Vec<[f64; 2]>]) -> Vec<[usize; 3]> {
     cut(outer, holes, true)
 }
 
