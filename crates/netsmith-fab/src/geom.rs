@@ -207,6 +207,17 @@ impl Arc {
         out
     }
 
+    /// The unit directions in which the arc leaves its start and its end, each into the arc:
+    /// its tangents there.
+    pub fn tangents(&self) -> (Pt, Pt) {
+        let s = self.sweep().signum();
+        let along = |a: f64, sign: f64| Pt::new(-a.sin() * sign, -a.cos() * sign);
+        (
+            along(self.angle_of(self.start), s),
+            along(self.angle_of(self.end), -s),
+        )
+    }
+
     /// The arc as points from start to end, no further than [`ARC_ERROR`] from the arc.
     pub fn points(&self) -> Vec<Pt> {
         let sweep = self.sweep();
@@ -304,6 +315,19 @@ mod tests {
         assert_eq!(Pt::new(1.0, 0.0).rotate(-90.0), Pt::new(0.0, 1.0));
         assert_eq!(Pt::new(2.0, 1.0).rotate(180.0), Pt::new(-2.0, -1.0));
         assert!(is_right_angle(270.0) && is_right_angle(-90.0) && !is_right_angle(45.0));
+    }
+
+    #[test]
+    fn an_arc_leaves_its_ends_along_its_tangents_into_the_arc() {
+        // Over the top from the right to the left: up out of the start, up out of the end.
+        let a = Arc::through(Pt::new(1.0, 0.0), Pt::new(0.0, -1.0), Pt::new(-1.0, 0.0)).unwrap();
+        let (s, e) = a.tangents();
+        assert!(s.dist(Pt::new(0.0, -1.0)) < 1e-9, "{s:?}");
+        assert!(e.dist(Pt::new(0.0, -1.0)) < 1e-9, "{e:?}");
+        // Under the bottom: down out of both.
+        let b = Arc::through(Pt::new(1.0, 0.0), Pt::new(0.0, 1.0), Pt::new(-1.0, 0.0)).unwrap();
+        let (s, e) = b.tangents();
+        assert!(s.dist(Pt::new(0.0, 1.0)) < 1e-9 && e.dist(Pt::new(0.0, 1.0)) < 1e-9);
     }
 
     #[test]

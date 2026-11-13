@@ -321,7 +321,8 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         for t in art.tracks.iter().filter(|t| t.layer == *layer) {
             let points = match &t.shape {
                 TrackShape::Line(a, b) => vec![*a, *b],
-                // netsmith routes straight lines only; a board file's arc is cut into them.
+                // An arc (a router's rounded bend, or a board file's) is cut into straight
+                // pieces no further than 2 µm from it.
                 TrackShape::Arc(arc) => arc.points(),
             };
             for w in points.windows(2) {
@@ -668,6 +669,7 @@ mod tests {
             from,
             to,
             width: 0.25,
+            mid: None,
         });
         let c = copper(&board).unwrap();
         let top = layer(&c, "F.Cu");

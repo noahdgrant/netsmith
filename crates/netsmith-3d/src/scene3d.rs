@@ -48,7 +48,7 @@
 //!   boxes share area in plan and whose heights both start at the face).
 //!
 //! - The copper ([`SceneCopper`]): per copper layer, at that layer's Z of the stackup, the pads,
-//!   the tracks (each a straight piece with round ends), the planes and the pours as polygons
+//!   the tracks (each a straight piece with round ends, an arc as such pieces), the planes and the pours as polygons
 //!   with holes; the vias as barrels from the top copper to the bottom copper; and the
 //!   openings of the solder mask and the silkscreen of each face. It is the output of
 //!   [`netsmith_pcb::copper`], the copper of the Gerbers, moved into this frame, not computed again. Its ids are the net

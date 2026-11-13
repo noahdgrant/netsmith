@@ -126,7 +126,7 @@ impl<'a> Free<'a> {
             .board
             .tracks
             .iter()
-            .any(|t| t.net != self.net && to_segment(p, t.from, t.to) - t.width / 2.0 < clearance)
+            .any(|t| t.net != self.net && t.distance_to(p) - t.width / 2.0 < clearance)
         {
             return false;
         }

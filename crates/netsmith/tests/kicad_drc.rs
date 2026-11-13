@@ -235,6 +235,7 @@ fn a_board_that_breaks_the_rules_is_caught() {
         from: Pt::new(b.outline.max.x - 4.0, b.outline.max.y - 1.5),
         to: Pt::new(b.outline.max.x - 2.0, b.outline.max.y - 1.5),
         width: 0.05,
+        mid: None,
     });
     // A via with a 0.1 mm drill, under the process's 0.15 mm, in clear board.
     b.vias.push(Via {
@@ -279,6 +280,7 @@ fn tracks_and_vias_that_are_too_close_are_caught() {
             from: Pt::new(x, y + dy),
             to: Pt::new(x + 3.0, y + dy),
             width: 0.25,
+            mid: None,
         });
     }
     b.vias.push(Via {
@@ -1059,6 +1061,7 @@ fn kicad_reads_a_keepout_as_a_rule_area_and_flags_what_it_forbids() {
                 from: Pt::new(c.x - 2.0, c.y),
                 to: Pt::new(c.x + 2.0, c.y),
                 width: 0.25,
+                mid: None,
             }),
             "via" => b.vias.push(Via {
                 net: "VIN".into(),

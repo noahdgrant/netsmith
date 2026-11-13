@@ -415,6 +415,7 @@ mod tests {
             from: ends(&board, "R1", "1"),
             to: ends(&board, "J1", "1"),
             width: 0.2,
+            mid: None,
         });
         let rats = Ratsnest::of(&board);
         assert_eq!(rats.len(), 2);
@@ -438,6 +439,7 @@ mod tests {
             from,
             to,
             width: 0.2,
+            mid: None,
         };
         // Back copper from the header's through-hole pad to a via, then front copper on to
         // the resistor.
@@ -506,6 +508,7 @@ mod tests {
             from: d1,
             to: via_at,
             width: 0.09,
+            mid: None,
         });
         let rats = Ratsnest::of(&board);
         assert_eq!(rats.len(), 2);

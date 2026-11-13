@@ -997,6 +997,7 @@ mod tests {
             from: Pt::new(at.min.x - 0.2, y),
             to: Pt::new(at.max.x + 0.2, y),
             width: 0.1,
+            mid: None,
         });
         let found = drc_findings(&board);
         let clearance = found

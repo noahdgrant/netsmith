@@ -114,6 +114,9 @@ pub struct RouteRequest {
     /// Which tries route the lines by class ([`RouteOptions::classes`]); `None` is the router's
     /// own.
     pub classes: Option<LineClasses>,
+    /// The largest radius of an arc at a bend, in track widths ([`RouteOptions::arcs`]); `None`
+    /// is the router's own, 0 draws no arcs.
+    pub arcs: Option<f64>,
 }
 
 /// What `route` made of a placed board.
@@ -160,6 +163,7 @@ pub fn route(
         snapshots: request.stages,
         plan: request.plan.unwrap_or(RouteOptions::default().plan),
         classes: request.classes.unwrap_or(RouteOptions::default().classes),
+        arcs: request.arcs.unwrap_or(RouteOptions::default().arcs),
         ..RouteOptions::default()
     };
     let routing = route_with_margin(&mut board, request.route_timeout, base, margin, say);

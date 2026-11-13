@@ -7,9 +7,9 @@
 //! apart across the track, and two on the track's edges `length` beyond the exit. The width is
 //! [`WIDTH_RATIO`] (90 %) of the pad's or via's copper across the track, at most [`MAX_WIDTH`];
 //! the length is [`LENGTH_RATIO`] (half) of it, at most [`MAX_LENGTH`] and no longer than the
-//! straight run of track beyond the exit. These are KiCad's own defaults for a round pad
-//! (`best_length_ratio` 0.5, `max_length` 1 mm, `max_width` 2 mm), with the width a little under
-//! KiCad's 100 % so the corners stay inside the copper. The sides are straight (KiCad's default,
+//! straight run of track beyond the exit, which an arc at a bend ends. These are KiCad's own
+//! defaults for a round pad (`best_length_ratio` 0.5, `max_length` 1 mm, `max_width` 2 mm),
+//! with the width a little under KiCad's 100 % so the corners stay inside the copper. The sides are straight (KiCad's default,
 //! no curve points). A teardrop no wider than 1.2 times the track adds nothing and is not drawn.
 //!
 //! **Only where it fits.** A teardrop is kept only if it keeps every space the check
@@ -467,6 +467,32 @@ mod tests {
         assert_eq!(
             teardrops(&board(&far), &rules(), &Extras::default()).len(),
             1
+        );
+    }
+
+    #[test]
+    fn a_teardrop_ends_where_its_track_turns_into_an_arc() {
+        // The via's track runs straight to 10.55 and bends on as an arc (a router's rounded
+        // bend): the teardrop reaches no further than the straight piece, and fits it.
+        let src = r#"(kicad_pcb (version 20241229) (generator "test")
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+  (net 0 "") (net 1 "A")
+  (gr_rect (start 0 0) (end 20 20) (layer "Edge.Cuts") (width 0.05))
+  (via (at 10 10) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+  (segment (start 10 10) (end 10.55 10) (width 0.2) (layer "F.Cu") (net 1))
+  (arc (start 10.55 10) (mid 10.7031 10.0305) (end 10.8328 10.1172) (width 0.2) (layer "F.Cu") (net 1))
+  (segment (start 10.8328 10.1172) (end 12 11.2844) (width 0.2) (layer "F.Cu") (net 1)))"#;
+        let art = Artwork::parse(src).unwrap();
+        let drops = teardrops(&art, &rules(), &Extras::default());
+        assert_eq!(drops.len(), 1, "{drops:?}");
+        let b = Bounds::of(drops[0].polygon.iter().copied()).unwrap();
+        // The via's edge is at 10.3; the straight piece ends at 10.55.
+        assert!(b.max.x > 10.5 && b.max.x <= 10.55 + 1e-9, "{b:?}");
+        // Its tip is the track's width, on the track's edges.
+        let tip: Vec<_> = drops[0].polygon.iter().filter(|p| p.x > 10.5).collect();
+        assert!(
+            tip.iter().all(|p| ((p.y - 10.0).abs() - 0.1).abs() < 1e-9),
+            "{tip:?}"
         );
     }
 

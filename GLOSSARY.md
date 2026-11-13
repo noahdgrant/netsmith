@@ -79,6 +79,10 @@ A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy
 Copper that widens a track where it meets a pad or a via, so that a drill that wanders or an etch that undercuts does not cut the track off (issue #431). The router adds one to each such joint where it keeps every space the design rules check asks of a track, and the board file holds it as KiCad 9's teardrop zone, filled.
 _Avoid_: Fillet (KiCad's old name for it), pad flare
 
+**Rounded bend**:
+A bend of a track drawn as an arc tangent to the two straight tracks it joins, in place of the 45 degree corner (issue #431). The router draws one once a board is routed, of the largest radius up to four track widths that keeps every space, and leaves the corner where none fits; the board file writes it as KiCad's `(arc (start) (mid) (end))`.
+_Avoid_: Curved track, fillet (a teardrop's old name), mitre (a corner cut straight)
+
 **Neck-down**:
 A track drawn narrower for a short run where the board's wider track does not fit, such as between two pads: no narrower than the width its net's current needs, except within 1 mm of the pads of a part the line ends on, where it may be the process's least width (issue #431). The router measures the finished copper of every line against the other nets' copper, and a line whose copper is too near at any width it may have is not routed (ADR 0036).
 

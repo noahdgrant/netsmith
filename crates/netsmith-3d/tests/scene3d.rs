@@ -399,6 +399,7 @@ pub(crate) fn routed() -> Board {
         from: origin + Pt::new(14.0, 6.0),
         to: origin + Pt::new(18.0, 6.0),
         width: 0.25,
+        mid: None,
     });
     board.vias.push(Via {
         net: "SIG".into(),

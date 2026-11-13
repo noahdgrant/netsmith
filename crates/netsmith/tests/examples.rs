@@ -205,11 +205,14 @@ fn routing_is_the_same_every_time_and_reaches_the_file() {
         assert_eq!(a, b, "{example}");
         let text = kicad_pcb(&a);
         assert_eq!(text, kicad_pcb(&b), "{example}");
+        // A straight track is a segment, a rounded bend an arc.
+        let arcs = a.tracks.iter().filter(|t| t.mid.is_some()).count();
         assert_eq!(
             text.matches("(segment").count(),
-            a.tracks.len(),
+            a.tracks.len() - arcs,
             "{example}"
         );
+        assert_eq!(text.matches("(arc").count(), arcs, "{example}");
         assert_eq!(text.matches("(via").count(), a.vias.len(), "{example}");
         assert_eq!(svg::render(&a), svg::render(&b), "{example}");
     }
