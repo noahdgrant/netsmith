@@ -44,8 +44,9 @@
 //! whole board is routed again with the lines in another order (shortest first, longest
 //! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all; on a board with a
 //! fine-pitch part, the second try is the first order again with **escape lanes** reserved
-//! softly round the part's pads, and every later try has them too (see "Escape lanes"). The first
-//! complete result is kept, or failing that the one that leaves fewest lines. There is no
+//! softly round the part's pads, and every later try has them too (see "Escape lanes"). From the
+//! second try on, every order also keeps the lines' classes in turn (see "Classes of lines").
+//! The first complete result is kept, or failing that the one that leaves fewest lines. There is no
 //! push-and-shove, so a board can still end partly routed, and what is left is returned.
 //!
 //! The work is bounded. A line is searched for in a window round its pads first, and in a
@@ -312,6 +313,46 @@
 //! move ripping up the nets in its way moved no line. The pass does not reach the epic's target
 //! of 300 mm on RP2350: what is left is round U1, whose front is full, and the soft search
 //! for the nets in a line's way finds none whose rip-up would free it.
+//!
+//! # Classes of lines (issue #416, S5 of #431)
+//!
+//! Every line has a [`Class`], derived from the board with nothing in the source, in a fixed
+//! order: escape (to a plane, or a pad deep in a fine-pitch grid, [`pad_depth`]), decoupling (a
+//! capacitor's pad to the pin it decouples, [`crate::quality`]), pair (a net of a diff pair),
+//! clock (a crystal's net, or one named `clk`, `xin`, `xout`, `xtal`, but no plane's or pour's),
+//! power (at least [`POWER_CURRENT`]) and the rest.
+//!
+//! **What is built** ([`RouteOptions::classes`], [`LineClasses::FromSecondTry`] by default).
+//! The first try is the router's own, with no classes, so a board that routes on it has the
+//! copper of main byte for byte. From the second try on, which routes the first order again (as
+//! the escape lanes do), every order keeps the classes in turn and each class in its own order
+//! ([`Router::classed_order`]), and the copper of a decoupling, pair or clock line is never
+//! ripped up for a line of a later class: in the soft searches for the lines in a line's way it is
+//! hard, and its net is never named ([`Router::protected`], [`Class::protected`]); the pass off
+//! the pours leaves those lines too. Escape and power lines keep their place in the order only.
+//! **Decided** by the agent under the owner's delegation of 2026-11-13 (option 2 of the S5
+//! comment): protecting every class left RP2350 unrouted or cost Orbit a line at every turn cost,
+//! and the classes on the first try made RP2350's one try less robust.
+//!
+//! **Measured** (2026-11-13, main at 0e05e4d9 with S7, the placed boards of `fab`; lines left at
+//! turn cost 24 / 25 / 26 / 27, `netsmith route --route-timeout 0 --tries N --turn T`, at the
+//! default margin and at `--margin 1`; `every` is [`LineClasses::EveryTry`]):
+//!
+//! | | RP2350 one try, default / margin 1 | RP2350 two tries, default / margin 1 | Orbit, EasyDuino |
+//! |---|---|---|---|
+//! | main | 0/0/0/1, 0/0/0/1 | 0/0/0/0, 0/0/0/0 | 0/0/0/0 everywhere |
+//! | **from the second try (built)** | = main, the same copper | 0/0/0/0, 0/0/0/**1** | = main, the same copper |
+//! | every try | **1/1**/0/0, **1/1**/0/1 | 0/**1**/0/0, 0/**1**/0/**1** | 0/0/0/0; EasyDuino 108 vias against 105 |
+//!
+//! `fab` writes the same board as main for all three (each routes on its first try), and
+//! `netsmith route --margin 1` at `fab`'s 300 s routes all three; with classes on every try it
+//! leaves RP2350 a line at the timeout. Where the second try ran (RP2350, default margin, two
+//! tries, T = 26 and 27), it routed the board at its track margin (signals at 0.15 mm, where main
+//! falls back to 0.1 mm), with the longest decoupling track 22.1 mm against 36.1 and 35.3 mm (mean
+//! 7.3 against 10.4 and 9.2), 1.28x the spanning length against 1.33x and 1.30x, `mcu.usb` 75 %
+//! coupled against 80 and 86 % (skew 12.2 mm against 13.9 and 12.7), and 143 vias against 141 and
+//! 130. At `--margin 1` and T = 27 the second try leaves a line that main's (lanes only) routes;
+//! with three tries it routes (129 vias against main's 130).
 //!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
@@ -1936,6 +1977,116 @@ fn diff_pair_partners(board: &Board) -> Vec<Option<usize>> {
     partner
 }
 
+/// How important a line is (issue #416), most important first: the order the classes are
+/// routed in from the second try on ([`LineClasses`]). Every class is derived from what the
+/// board knows, with nothing written in the source. The copper of a decoupling, pair or clock
+/// line is not ripped up for a line of a later class ([`Class::protected`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Class {
+    /// A pad that must reach its net's plane, or a pad deep in a fine-pitch grid of pads: the
+    /// fewest ways out.
+    Escape,
+    /// A decoupling capacitor's pad to the power pin it decouples ([`crate::quality`]).
+    Decoupling,
+    /// A net of a diff pair ([`diff_pair_partners`]).
+    Pair,
+    /// A net of a crystal (a part of the kind, or that provides the generic, `Crystal`), or
+    /// whose name says it is a clock (`clk`, `xin`, `xout`, `xtal`).
+    Clock,
+    /// A net that carries at least [`POWER_CURRENT`].
+    Power,
+    Rest,
+}
+
+impl Class {
+    /// Whether a line of this class keeps its copper against a line of a later class: a
+    /// decoupling, pair or clock line does. An escape or power line keeps its place in the order
+    /// only (decided by the agent under the owner's delegation of 2026-11-13): protecting the
+    /// escapes of a QFN and every power net left RP2350 unrouted, and a power line ripped up is
+    /// routed again at its full width.
+    fn protected(self) -> bool {
+        matches!(self, Class::Decoupling | Class::Pair | Class::Clock)
+    }
+}
+
+/// The least current of a net that is routed as power, in amperes.
+const POWER_CURRENT: f64 = 0.1;
+
+/// The class of each line ([`Class`]); `depth` is each line's [`pad_depth`].
+fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Class> {
+    let partners = diff_pair_partners(board);
+    let index: HashMap<&str, usize> = board
+        .nets
+        .iter()
+        .enumerate()
+        .map(|(n, net)| (net.name.as_str(), n))
+        .collect();
+    let pair = |net: &str| index.get(net).is_some_and(|&n| partners[n].is_some());
+    let crystal = |part: &netsmith_pcb::board::Placed| {
+        part.kind.starts_with("Crystal") || part.provides.iter().any(|g| g == "Crystal")
+    };
+    let clock_nets: Vec<&str> = board
+        .nets
+        .iter()
+        .filter(|n| {
+            let lower = n.name.to_lowercase();
+            let named = ["clk", "xin", "xout", "xtal"]
+                .iter()
+                .any(|w| lower.contains(w));
+            let on_crystal = n
+                .pads
+                .iter()
+                .any(|p| board.part(&p.refdes).is_some_and(crystal));
+            // A crystal's ground pins are not its clock.
+            let plane = board.planes.iter().any(|pl| pl.net == n.name)
+                || board.pours.iter().any(|po| po.net == n.name);
+            !plane && (named || on_crystal)
+        })
+        .map(|n| n.name.as_str())
+        .collect();
+    let power = |net: &str| {
+        board
+            .net_currents
+            .iter()
+            .any(|c| c.net == net && c.current >= POWER_CURRENT)
+    };
+    let decoupling = crate::quality::decoupling_pairs(&board.parts, &board.nets);
+    let decouples = |l: &Ratline| {
+        decoupling.iter().any(|pair| {
+            let cap = &board.parts[pair.cap].refdes;
+            pair.nets.iter().any(|n| {
+                let ends = |a: &netsmith_pcb::board::PadRef, b: &netsmith_pcb::board::PadRef| {
+                    &a.refdes == cap
+                        && a.number == n.cap_pad
+                        && n.pins.iter().any(|(part, pad)| {
+                            board.parts[*part].refdes == b.refdes && *pad == b.number
+                        })
+                };
+                ends(&l.from, &l.to) || ends(&l.to, &l.from)
+            })
+        })
+    };
+    lines
+        .iter()
+        .zip(depth)
+        .map(|(l, &d)| {
+            if l.to_plane || d > 0.0 {
+                Class::Escape
+            } else if decouples(l) {
+                Class::Decoupling
+            } else if pair(&l.net) {
+                Class::Pair
+            } else if clock_nets.contains(&l.net.as_str()) {
+                Class::Clock
+            } else if power(&l.net) {
+                Class::Power
+            } else {
+                Class::Rest
+            }
+        })
+        .collect()
+}
+
 fn initial_obstacles(board: &Board) -> Obstacles {
     let rules = &board.rules;
     let net_of: HashMap<(&str, &str), usize> = board
@@ -2188,6 +2339,12 @@ struct Router<'a> {
     necks: Vec<[Option<Rect>; 2]>,
     /// How deep in a fine-pitch grid of pads the deeper end of each line is ([`pad_depth`]).
     depth: Vec<f64>,
+    /// How important each line is ([`Class`], issue #416).
+    class: Vec<Class>,
+    /// Which tries keep the classes in turn and their protection ([`LineClasses`]).
+    class_use: LineClasses,
+    /// Whether this try keeps the classes' protection.
+    classed: Cell<bool>,
     /// Whether lines left over are negotiated for and given a chain of rip-ups, and what the
     /// negotiation has learnt.
     negotiate: bool,
@@ -2282,7 +2439,7 @@ impl<'a> Router<'a> {
                 ]
             })
             .collect();
-        let depth = lines
+        let depth: Vec<f64> = lines
             .iter()
             .map(|l| {
                 let to = if l.to_plane {
@@ -2293,6 +2450,7 @@ impl<'a> Router<'a> {
                 pad_depth(board, &l.from, l.from_at).max(to)
             })
             .collect();
+        let class = classes(board, &lines, &depth);
         let fixed = initial_obstacles(board);
         let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
         for (k, o) in fixed.list.iter().enumerate() {
@@ -2327,6 +2485,9 @@ impl<'a> Router<'a> {
             in_pads,
             necks,
             depth,
+            class,
+            class_use: options.classes,
+            classed: Cell::new(false),
             negotiate: options.negotiate,
             history: RefCell::new([Vec::new(), Vec::new()]),
             fine: Cell::new(true),
@@ -3476,6 +3637,11 @@ impl<'a> Router<'a> {
     /// runs out, the lines not yet tried count as failed.
     fn run(&self, order: &[usize], rip_up: bool, attempt: usize, attempts: usize) -> State {
         self.escaping.set(attempt > 1);
+        self.classed.set(match self.class_use {
+            LineClasses::Off => false,
+            LineClasses::EveryTry => true,
+            LineClasses::FromSecondTry => attempt > 1,
+        });
         self.planned.set(
             self.plan.is_some()
                 && match self.plan_use {
@@ -3652,6 +3818,9 @@ impl<'a> Router<'a> {
                 .routed
                 .iter()
                 .filter(|r| self.partners[self.nets[r.line]].is_none())
+                // On a try with classes, a decoupling or clock line keeps the copper its class
+                // gave it, as a pair's does (issue #416).
+                .filter(|r| !(self.classed.get() && self.class[r.line].protected()))
                 .map(|r| (r.line, self.on_pour(r)))
                 .filter(|&(_, mm)| mm > 0.0)
                 .collect();
@@ -3843,12 +4012,20 @@ impl<'a> Router<'a> {
     /// line's way, not all that lie between its ends. `None` if even that has no path.
     fn contested(&self, line: usize, state: &State, room: f64) -> Option<(Vec<Spot>, Vec<usize>)> {
         let net = self.nets[line];
-        let (_, path) = self.try_line(line, state, &[], room, true)?;
+        // A protected line's copper is no way through, and its net is not ripped up for this
+        // line ([`Class::protected`]).
+        let protected = self.protected(line, state);
+        let (_, path) = self.try_line_locked(line, state, &[], room, true, &protected)?;
         self.count_crowding(&path);
         let rules = &self.board.rules;
         let reach = rules.clearance + MARGIN + self.width_of(line) + PITCH;
         let mut found = Vec::new();
-        for r in state.routed.iter().filter(|r| self.nets[r.line] != net) {
+        let protected_nets: Vec<usize> = protected.iter().map(|&l| self.nets[l]).collect();
+        for r in state
+            .routed
+            .iter()
+            .filter(|r| self.nets[r.line] != net && !protected_nets.contains(&self.nets[r.line]))
+        {
             let forms = r
                 .tracks
                 .iter()
@@ -3879,6 +4056,9 @@ impl<'a> Router<'a> {
         locked: &[usize],
     ) -> Option<Vec<(usize, f64)>> {
         let net = self.nets[line];
+        let mut locked = locked.to_vec();
+        locked.extend(self.protected(line, state));
+        let locked = &locked[..];
         let (_, path) = self.try_line_locked(line, state, &[], room, true, locked)?;
         self.count_crowding(&path);
         let rules = &self.board.rules;
@@ -4324,6 +4504,64 @@ impl<'a> Router<'a> {
         orders.truncate(MOST_TRIES);
         orders
     }
+
+    /// The order of each try: [`Self::orders`], with the first order again second on a board
+    /// with escape lanes or a later-try plan or classes, and the classes in turn from the try
+    /// [`RouteOptions::classes`] says ([`Self::classed_order`]); the first try is never changed
+    /// by the classes when they come later.
+    fn tries(&self, options: &RouteOptions) -> Vec<Vec<usize>> {
+        let mut orders = self.orders(options.retry_orders);
+        // On a board with escape lanes, the second try is the first order again with the lanes
+        // (see the module's header), and every try after it has them too. A plan used from the
+        // second try on is used there too.
+        let second_again = self.lanes.is_some()
+            || options.plan == CoarsePlan::FromSecondTry
+            || options.classes == LineClasses::FromSecondTry;
+        if second_again && options.retry_orders {
+            orders.insert(1, orders[0].clone());
+        }
+        // The tries with classes route them in turn (issue #416), each in its own order.
+        let first_classed = match options.classes {
+            LineClasses::Off => orders.len(),
+            LineClasses::EveryTry => 0,
+            LineClasses::FromSecondTry => 1,
+        };
+        for order in orders.iter_mut().skip(first_classed) {
+            *order = self.classed_order(order);
+        }
+        let mut seen: Vec<Vec<usize>> = Vec::new();
+        let mut k = 0;
+        orders.retain(|o| {
+            k += 1;
+            // The first try, and the first order again on the second, are kept as they are.
+            let keep = k == 1 || (k == 2 && second_again) || !seen.contains(o);
+            seen.push(o.clone());
+            keep
+        });
+        orders
+    }
+
+    /// `order` with the classes in turn, the most important first, and its own order inside
+    /// each ([`Class`], issue #416).
+    fn classed_order(&self, order: &[usize]) -> Vec<usize> {
+        let mut order = order.to_vec();
+        order.sort_by_key(|&l| self.class[l]);
+        order
+    }
+
+    /// The routed lines whose copper is not ripped up for `line` on this try: those of a
+    /// protected class before `line`'s ([`Class::protected`]). None on a try without classes.
+    fn protected(&self, line: usize, state: &State) -> Vec<usize> {
+        if !self.classed.get() {
+            return Vec::new();
+        }
+        state
+            .routed
+            .iter()
+            .map(|r| r.line)
+            .filter(|&l| self.class[l] < self.class[line] && self.class[l].protected())
+            .collect()
+    }
 }
 
 /// How hard to try.
@@ -4360,6 +4598,22 @@ pub struct RouteOptions {
     /// What a step outside a line's corridor costs, beyond the step, on a tile the plan fills,
     /// in tenths of a millimetre of track; `None` is the router's own.
     pub plan_cost: Option<i64>,
+    /// Which tries route the lines' classes in turn, with their protection ([`LineClasses`]).
+    pub classes: LineClasses,
+}
+
+/// Which tries of the router route the lines by class, the most important first, and keep the
+/// copper of a decoupling, pair or clock line from being ripped up for a line of a later class
+/// (issue #416, the module's header).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineClasses {
+    /// No try: the orders and the rip-ups know no classes.
+    Off,
+    /// Every try.
+    EveryTry,
+    /// From the second try on, which routes the first order again by class: a board that
+    /// routes on its first try is unchanged.
+    FromSecondTry,
 }
 
 /// Which tries of the router follow the coarse plan (the header of `plan.rs`): the detailed
@@ -4389,6 +4643,7 @@ impl Default for RouteOptions {
             most_tries: None,
             plan: CoarsePlan::Off,
             plan_cost: None,
+            classes: LineClasses::FromSecondTry,
         }
     }
 }
@@ -4555,14 +4810,7 @@ pub fn route(board: &mut Board) -> Ratsnest {
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     let (best, stopped, tries, why, crowding, stages) = {
         let mut router = Router::new(board, &options);
-        let mut orders = router.orders(options.retry_orders);
-        // On a board with escape lanes, the second try is the first order again with the lanes
-        // (see the module's header), and every try after it has them too. A plan used from the
-        // second try on is used there too.
-        let second_again = router.lanes.is_some() || options.plan == CoarsePlan::FromSecondTry;
-        if second_again && options.retry_orders {
-            orders.insert(1, orders[0].clone());
-        }
+        let mut orders = router.tries(&options);
         if options.plan != CoarsePlan::Off {
             router.plan = Some(router.make_plan(&orders[0]));
         }
@@ -5149,6 +5397,177 @@ mod tests {
             ),
             Err(Miss::Blocked)
         );
+    }
+
+    fn led_board() -> Board {
+        crate::board_from_design(
+            &crate::testlib::led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn the_first_try_keeps_the_first_order_and_later_tries_keep_the_classes_in_turn() {
+        let board = led_board();
+        let options = RouteOptions::default();
+        let mut router = Router::new(&board, &options);
+        assert!(router.lines.len() >= 3);
+        // The classes most important last in the plain order, so that putting them in turn
+        // moves every line.
+        let plain = router.orders(true);
+        let n = router.lines.len();
+        let mut class = vec![Class::Rest; n];
+        let order = [
+            Class::Escape,
+            Class::Decoupling,
+            Class::Pair,
+            Class::Clock,
+            Class::Power,
+        ];
+        for (k, &l) in plain[0].iter().rev().enumerate() {
+            class[l] = order[k.min(order.len() - 1)];
+        }
+        router.class = class;
+        let tries = router.tries(&options);
+        assert_eq!(tries[0], plain[0], "the first try is the router's own");
+        assert_eq!(
+            tries[1],
+            router.classed_order(&plain[0]),
+            "then the first order by class"
+        );
+        assert_ne!(tries[1], tries[0]);
+        for t in &tries[1..] {
+            let classes: Vec<Class> = t.iter().map(|&l| router.class[l]).collect();
+            assert!(classes.is_sorted(), "{classes:?}");
+        }
+        // Inside a class a line keeps the order it had.
+        router.class = vec![Class::Rest; n];
+        assert_eq!(router.classed_order(&plain[0]), plain[0]);
+        // With no classes the tries are the plain ones; with classes on every try, the first
+        // is by class too.
+        let off = RouteOptions {
+            classes: LineClasses::Off,
+            ..RouteOptions::default()
+        };
+        assert_eq!(router.tries(&off)[0], plain[0]);
+    }
+
+    #[test]
+    fn the_fixed_order_of_the_classes_is_escape_decoupling_pair_clock_power_rest() {
+        let fixed = [
+            Class::Escape,
+            Class::Decoupling,
+            Class::Pair,
+            Class::Clock,
+            Class::Power,
+            Class::Rest,
+        ];
+        assert!(fixed.is_sorted());
+        let protected: Vec<Class> = fixed.into_iter().filter(|c| c.protected()).collect();
+        assert_eq!(protected, [Class::Decoupling, Class::Pair, Class::Clock]);
+    }
+
+    /// A state of the LED board where only line `a` is routed: a track of its net across the
+    /// middle of line `b`, of another net.
+    fn across(router: &Router, a: usize, b: usize) -> State {
+        let (from, to) = (router.lines[b].from_at, router.lines[b].to_at);
+        let mid = Pt::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
+        let (dx, dy) = (to.x - from.x, to.y - from.y);
+        let len = (dx * dx + dy * dy).sqrt();
+        let (nx, ny) = (-dy / len, dx / len);
+        // On both layers and right across the board, so that no way round is cheaper.
+        let track = |layer| Track {
+            net: router.lines[a].net.clone(),
+            layer,
+            from: Pt::new(mid.x - nx * 50.0, mid.y - ny * 50.0),
+            to: Pt::new(mid.x + nx * 50.0, mid.y + ny * 50.0),
+            width: 0.2,
+        };
+        State {
+            routed: vec![Routed {
+                line: a,
+                tracks: vec![track(CopperLayer::Front), track(CopperLayer::Back)],
+                vias: Vec::new(),
+            }],
+            ..State::default()
+        }
+    }
+
+    #[test]
+    fn a_decoupling_line_is_not_ripped_up_for_a_line_of_a_later_class() {
+        let board = led_board();
+        let mut router = Router::new(&board, &RouteOptions::default());
+        // Two lines of different nets, neither to a plane.
+        let (a, b) = (0..router.lines.len())
+            .flat_map(|a| (0..router.lines.len()).map(move |b| (a, b)))
+            .find(|&(a, b)| {
+                router.nets[a] != router.nets[b]
+                    && !router.lines[a].to_plane
+                    && !router.lines[b].to_plane
+            })
+            .unwrap();
+        let state = across(&router, a, b);
+        let mut class = vec![Class::Rest; router.lines.len()];
+        class[a] = Class::Decoupling;
+        router.class = class.clone();
+        let names = |router: &Router| {
+            let found = router.contested(b, &state, ROOM_LOOSE).map(|(_, n)| n);
+            let chain = router
+                .contested_lines(b, &state, ROOM_LOOSE, &[])
+                .map(|l| l.iter().map(|&(l, _)| l).collect::<Vec<_>>());
+            (found, chain)
+        };
+        // A try without classes rips up whatever is in the way.
+        router.classed.set(false);
+        let (found, chain) = names(&router);
+        assert!(found.unwrap().contains(&router.nets[a]));
+        assert!(chain.unwrap().contains(&a));
+        // A try with them never names the decoupling line for a later one.
+        router.classed.set(true);
+        assert_eq!(router.protected(b, &state), [a]);
+        let (found, chain) = names(&router);
+        assert!(!found.unwrap_or_default().contains(&router.nets[a]));
+        assert!(!chain.unwrap_or_default().contains(&a));
+        // A power line keeps its place in the order only: it may be ripped up.
+        class[a] = Class::Power;
+        router.class = class.clone();
+        assert!(router.protected(b, &state).is_empty());
+        assert!(names(&router).0.unwrap().contains(&router.nets[a]));
+        // And a decoupling line is ripped up for one of its own class or a more important one.
+        class[a] = Class::Decoupling;
+        class[b] = Class::Escape;
+        router.class = class;
+        assert!(router.protected(b, &state).is_empty());
+    }
+
+    #[test]
+    fn a_board_that_routes_on_its_first_try_has_the_same_copper_with_or_without_classes() {
+        for design in [crate::testlib::led_design(), four_layer_design()] {
+            let route_once = |classes| {
+                let mut board = crate::board_from_design(
+                    &design,
+                    &netsmith_kicad::Mapping::standard(),
+                    &fixtures(),
+                )
+                .unwrap();
+                let routing = route_with(
+                    &mut board,
+                    RouteOptions {
+                        classes,
+                        ..RouteOptions::default()
+                    },
+                );
+                assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+                assert_eq!(routing.tries, 1);
+                (board.tracks, board.vias)
+            };
+            assert_eq!(
+                route_once(LineClasses::Off),
+                route_once(LineClasses::FromSecondTry)
+            );
+        }
     }
 
     #[test]

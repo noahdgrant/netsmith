@@ -40,7 +40,7 @@ pub use netsmith_pcb;
 pub use place::{PlaceError, place_subset};
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use route::{
-    CoarsePlan, Costs, Crowding, LineReport, RouteOptions, Routing, Snapshot, SnapshotStage, Stage,
-    route, route_with,
+    CoarsePlan, Costs, Crowding, LineClasses, LineReport, RouteOptions, Routing, Snapshot,
+    SnapshotStage, Stage, route, route_with,
 };
 pub use stitch::stitch;

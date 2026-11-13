@@ -223,6 +223,10 @@ _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placem
 The way out the router keeps in front of a pad of a fine-pitch part: the cells straight out from the pad's edge, away from the part, on its layer, 1.5 mm long. Other nets' tracks pay to use it and any via that would close it pays more, except the pad's own via at its end; the two nets of a diff pair share their lanes. A cost and not a wall, used from the router's second try of a board (`Lanes` in `netsmith_place_route::route`, issue #431).
 _Avoid_: Fan-out (a fixed track and via for each pad, which the router does not draw), reservation, keepout (a wall)
 
+**Line class**:
+How important a connection of the router is, derived from the board: escape (to a plane, or deep in a fine-pitch grid), decoupling (a capacitor's pad to the pin it decouples), pair (a net of a diff pair), clock (a crystal's or a clock-named net), power (at least 100 mA), and the rest, in that fixed order. From the router's second try of a board the lines are routed class by class, and the copper of a decoupling, pair or clock line is never ripped up for a line of a later class (`Class` in `netsmith_place_route::route`, issue #416).
+_Avoid_: Net class (KiCad's, the width and clearance the `.kicad_pro` gives a net), priority, importance (alone)
+
 **Diff pair**:
 Two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_fab::score::PAIR_SUFFIXES`), such as the nets of the fields of `std::bus::Usb2`. Nothing in the source marks one: the names say it. When a try of the router has routed every line, it routes each net of a pair again beside the other and keeps that copper only where more of it runs coupled at no more length or vias; the route scorecard reports each pair's skew and how much of it runs coupled (issue #431).
 _Avoid_: Differential pair marking, pair class

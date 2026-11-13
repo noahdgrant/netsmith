@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro, svg};
-pub use netsmith_place_route::CoarsePlan;
+pub use netsmith_place_route::{CoarsePlan, LineClasses};
 use netsmith_place_route::{Costs, RouteOptions};
 use serde::{Deserialize, Serialize};
 
@@ -111,6 +111,9 @@ pub struct RouteRequest {
     pub stages: bool,
     /// Which tries follow a coarse plan ([`RouteOptions::plan`]); `None` is the router's own.
     pub plan: Option<CoarsePlan>,
+    /// Which tries route the lines by class ([`RouteOptions::classes`]); `None` is the router's
+    /// own.
+    pub classes: Option<LineClasses>,
 }
 
 /// What `route` made of a placed board.
@@ -156,6 +159,7 @@ pub fn route(
         most_tries: request.tries,
         snapshots: request.stages,
         plan: request.plan.unwrap_or(RouteOptions::default().plan),
+        classes: request.classes.unwrap_or(RouteOptions::default().classes),
         ..RouteOptions::default()
     };
     let routing = route_with_margin(&mut board, request.route_timeout, base, margin, say);
