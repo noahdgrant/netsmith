@@ -520,18 +520,7 @@ generic UsbCDualRoleReceptacle {
 /// (`"HRO_TYPE-C-31-M-12"`), the same pads in both as in `UsbC2`. A project's own receptacle is
 /// a part of its own that provides `UsbCSinkReceptacle`.
 part UsbCReceptacle16P provides UsbCSinkReceptacle, Connector {
-    pins "GCT_USB4105_16P" {
-        .vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"
-        .vbus.neg power         "GND"   "A1" "B1" "A12" "B12"
-        .dp       bidirectional "D+"    "A6" "B6"
-        .dm       bidirectional "D-"    "A7" "B7"
-        .cc1      passive       "CC1"   "A5"
-        .cc2      passive       "CC2"   "B5"
-        .sbu1     passive       "SBU1"  "A8"
-        .sbu2     passive       "SBU2"  "B8"
-        .shell    passive       "SHELL" "S1"
-    }
-    pins "HRO_TYPE-C-31-M-12" {
+    pins "GCT_USB4105_16P" "HRO_TYPE-C-31-M-12" {
         .vbus.pos power         "VBUS"  "A4" "B4" "A9" "B9"
         .vbus.neg power         "GND"   "A1" "B1" "A12" "B12"
         .dp       bidirectional "D+"    "A6" "B6"

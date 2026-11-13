@@ -20,7 +20,8 @@
 //! resistor joins it to (ADR 0046). A level is the datasheet's guaranteed number, so `voh` and
 //! `vih` are minimums and `vol` and `vil` maximums, and they are ranges when the rail is. The
 //! checks that cannot be made are the ones listed above, and also a pin that is not the `.line` of
-//! a `Logic` (it has no ground), a net that a driver which is not a `Logic` line drives, and a rail
+//! a `Logic` and whose pin row states no `abs_max` (it has no ground; a row's limit names its
+//! ground, ADR 0123), a net that a driver which is not a `Logic` line drives, and a rail
 //! on another ground. The voltage of a net is not followed through anything but resistors, so a
 //! net that a plain output drives is not evaluated, and a level check does not know the load (the
 //! part states the load of its numbers in its comment).
@@ -774,18 +775,26 @@ impl Run<'_> {
                 continue;
             }
             let path = model.path_of(pin);
-            let Some(logic) = self.logic_of(pin) else {
-                self.note(
-                    owner,
-                    vec![owner],
-                    Cause::PartModel,
-                    format!(
-                        "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, so its ground is not known"
-                    ),
-                );
-                continue;
+            // The ground is the `Logic`'s or the bus's, else the one the pin row names or
+            // takes from its table (ADR 0123).
+            let ground = match self.logic_of(pin) {
+                Some(logic) => self.ground_pin(logic),
+                None => match model.limit_reference(pin) {
+                    Some(reference) => Some(reference),
+                    None => {
+                        self.note(
+                            owner,
+                            vec![owner],
+                            Cause::PartModel,
+                            format!(
+                                "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, and its pin row states no `abs_max`, so its ground is not known"
+                            ),
+                        );
+                        continue;
+                    }
+                },
             };
-            let Some(ground) = self.ground_pin(logic) else {
+            let Some(ground) = ground else {
                 continue;
             };
             // A net the DC analysis solved has the voltage the circuit around it makes of it

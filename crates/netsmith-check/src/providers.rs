@@ -354,7 +354,7 @@ impl Checker<'_> {
                 Item::Pins(table) if own => {
                     let at = *contract.get_or_insert_with(|| {
                         items.push(Item::Pins(netsmith_lang::ast::Pins {
-                            package: None,
+                            packages: Vec::new(),
                             rows: Vec::new(),
                             span: table.span,
                         }));
@@ -372,6 +372,7 @@ impl Checker<'_> {
                         row.name = String::new();
                         row.pads = Vec::new();
                         row.functions = Vec::new();
+                        row.abs_max = None;
                         merged.rows.push(row);
                     }
                 }

@@ -67,6 +67,41 @@ impl Model {
         self.instance(part).tables.iter().find_map(|t| t.row(pin))
     }
 
+    /// The pin an absolute maximum of the pin's row is measured from (ADR 0123), if its row
+    /// states one with a reference of its own.
+    pub fn limit_reference(&self, pin: InstId) -> Option<InstId> {
+        self.pin_facts(pin)?.abs_max.as_ref()?.reference
+    }
+
+    /// Whether the pin's ground is that of an interface it belongs to: it is the `.line` of a
+    /// `Logic`, or a pin of an interface with `levels` (a bus), as the levels check reads it.
+    pub fn grounded_by_levels(&self, pin: InstId) -> bool {
+        let inst = self.instance(pin);
+        let Some(parent) = inst.parent else {
+            return false;
+        };
+        let p = self.instance(parent);
+        if p.kind != crate::model::InstKind::Interface {
+            return false;
+        }
+        if inst.name == "line" && p.type_name == "Logic" {
+            return true;
+        }
+        matches!(self.member(parent, "levels"), Some(Member::Inst(l)) if self.is_levels(l))
+    }
+
+    /// Whether the pin is the ground of a rail: the `neg` of an interface that also has a
+    /// `pos` pin.
+    pub fn is_rail_ground(&self, pin: InstId) -> bool {
+        let inst = self.instance(pin);
+        let Some(parent) = inst.parent else {
+            return false;
+        };
+        inst.name == "neg"
+            && self.instance(parent).kind == crate::model::InstKind::Interface
+            && matches!(self.member(parent, "pos"), Some(Member::Inst(p)) if self.instance(p).kind == crate::model::InstKind::Pin)
+    }
+
     /// The packages whose table has a row for the pin.
     pub fn packages_with(&self, pin: InstId) -> Vec<&str> {
         let Some(part) = self.owner_of(pin) else {

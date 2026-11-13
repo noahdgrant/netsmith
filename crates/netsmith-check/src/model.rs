@@ -354,7 +354,20 @@ pub struct PinRow {
     pub pads: Vec<String>,
     pub functions: Vec<PinFunction>,
     pub requirement: Option<Requirement>,
+    /// `abs_max 65V from .gnd` at the end of the row (ADR 0123).
+    pub abs_max: Option<RowLimit>,
     pub span: Span,
+}
+
+/// The absolute maximum a pin row states. The checker narrows the pin's `.abs_max` to the
+/// value; the solver measures the net's voltage from `reference`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RowLimit {
+    /// `65V from .gnd`, as written: the tables of a part must agree on it.
+    pub text: String,
+    /// The pin the limit is measured from: the row's `from`, else the one rail ground of the
+    /// table. `None` for a pin whose ground its `Logic` or its bus's `levels` give.
+    pub reference: Option<InstId>,
 }
 
 /// One function a pin can be chosen as. It has its own kind when the table gives one

@@ -364,14 +364,29 @@ pub struct PinRow {
     /// What the pin can be, in the order written. Empty for a pin with one purpose.
     pub functions: Vec<PinFunction>,
     pub requirement: Option<(Requirement, Span)>,
+    /// `abs_max 65V` or `abs_max 4V from .gnd` at the end of the row.
+    pub abs_max: Option<AbsMax>,
     pub span: Span,
 }
 
-/// `pins "DFN-8-EP" { ... }`: the datasheet's pin table of a part in one package, or
-/// `pins { ... }` for a part whose pads do not depend on the package.
+/// `abs_max 4V from .gnd` at the end of a pin row: the pin's absolute maximum, the voltage its
+/// net must not exceed above the reference pin (ADR 0123). With no `from` the reference is the
+/// ground of the pin's `Logic`, else the one rail ground of the table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsMax {
+    pub value: Expr,
+    pub from: Option<Path>,
+    /// The word `abs_max`.
+    pub span: Span,
+}
+
+/// `pins "DFN-8-EP" { ... }`: the datasheet's pin table of a part in one or more packages
+/// (`pins "SOT-23" "SOT-223" { ... }`, which share the table), or `pins { ... }` for a part
+/// whose pads do not depend on the package.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pins {
-    pub package: Option<(String, Span)>,
+    /// The packages of the header, in the order written; empty for an unnamed table.
+    pub packages: Vec<(String, Span)>,
     pub rows: Vec<PinRow>,
     pub span: Span,
 }

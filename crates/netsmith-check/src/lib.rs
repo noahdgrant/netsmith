@@ -45,7 +45,7 @@ pub use model::{
     InstId, InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, OutlinePolygon,
     PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest,
     PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement,
-    Role, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
+    Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};

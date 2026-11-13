@@ -396,15 +396,15 @@ fn part_error(body: &str, message: &str) {
 fn a_pin_has_one_kind_and_one_name_in_every_package() {
     part_error(
         "    .package: Package\n    pins \"A\" {\n        .x input \"X\" \"1\"\n    }\n    pins \"B\" {\n        .x output \"X\" \"1\"\n    }",
-        "`.x` is an output named `X` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind and one datasheet name in every package",
+        "`.x` is an output named `X` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind, one datasheet name and one absolute maximum in every package",
     );
     part_error(
         "    .package: Package\n    pins \"A\" {\n        .x input \"X\" \"1\"\n    }\n    pins \"B\" {\n        .x input \"Y\" \"1\"\n    }",
-        "`.x` is an input named `Y` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind and one datasheet name in every package",
+        "`.x` is an input named `Y` in `pins \"B\"` but an input named `X` in `pins \"A\"`; a pin has one kind, one datasheet name and one absolute maximum in every package",
     );
     part_error(
         "    .package: Package\n    pins \"A\" {\n        .x input \"X\" \"1\" optional\n    }\n    pins \"B\" {\n        .x input \"X\" \"1\"\n    }",
-        "`.x` is an input named `X` in `pins \"B\"` but an input named `X` (optional) in `pins \"A\"`; a pin has one kind and one datasheet name in every package",
+        "`.x` is an input named `X` in `pins \"B\"` but an input named `X` (optional) in `pins \"A\"`; a pin has one kind, one datasheet name and one absolute maximum in every package",
     );
 }
 
@@ -555,4 +555,152 @@ fn a_catalog_may_name_the_column_that_picks_a_row() {
         "    .mpn: String\n    .r: Rail\n    catalog mcu by .r { .mpn }",
         "`.r` is not a plain value, so it cannot be a key",
     );
+}
+
+// ---- several packages share a table, and the absolute maximum in the row (ADR 0123) ----
+
+/// A regulator with one table for two packages and the absolute maximum of its enable pin in
+/// the row, measured from the table's one rail ground, `.vin.neg`.
+const SHARED: &str = r#"
+part Shared {
+    .vin:  Rail
+    .vout: Rail
+    .vin.neg ~ .vout.neg
+    .vin.current == -.vout.current
+
+    pins "SOT-23-5" "SOT-223-5" {
+        .vin.pos       power       "IN"     "1"
+        .vin.neg       power       "GND"    "2"
+        .en            input       "EN"     "3" abs_max 6V
+        .fb            input       "FB"     "4" optional abs_max 2V from .vin.neg
+        .vout.pos      power       "OUT"    "5"
+    }
+
+    .package: Package
+}
+"#;
+
+fn shared_board(package: &str) -> Checked {
+    run(&format!(
+        "import std::sources::Rail\n{SHARED}\nboard B {{\n    \
+         .input: Rail {{ .voltage &= 5V\n .pos.net &= \"VIN\"\n .neg.net &= \"GND\" }}\n    \
+         .u: Shared {{ .package &= \"{package}\" }}\n    \
+         .output: Rail {{ .pos.net &= \"3V3\"\n .neg.net &= \"GND\"\n .current &= 0mA..50mA }}\n    \
+         .input ~ .u.vin\n    .u.vout ~ .output\n    .u.en ~ .u.vin.pos\n}}\n"
+    ))
+}
+
+#[test]
+fn a_shared_table_is_the_table_of_each_of_its_packages() {
+    for package in ["SOT-23-5", "SOT-223-5"] {
+        let c = shared_board(package);
+        assert!(c.is_ok(), "{}", c.render());
+        let m = &c.board("B").unwrap().model;
+        let u = m.inst_at("u").unwrap();
+        let tables = &m.instance(u).tables;
+        assert_eq!(
+            tables
+                .iter()
+                .map(|t| t.package.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("SOT-23-5"), Some("SOT-223-5")]
+        );
+        assert_eq!(tables[0].rows, tables[1].rows);
+        let en = m.inst_at("u.en").unwrap();
+        assert_eq!(m.pin_row(en).unwrap().pads, ["3"]);
+    }
+}
+
+#[test]
+fn a_rows_abs_max_narrows_the_pin_and_names_its_ground() {
+    let c = shared_board("SOT-23-5");
+    let m = &c.board("B").unwrap().model;
+    match m.domain_at("u.en.abs_max") {
+        Some(Domain::Quantity(q)) => assert_eq!((q.lo(), q.hi()), (6.0, 6.0)),
+        other => panic!("{other:?}"),
+    }
+    let ground = m.inst_at("u.vin.neg").unwrap();
+    // No `from`: the table's one rail ground.
+    assert_eq!(m.limit_reference(m.inst_at("u.en").unwrap()), Some(ground));
+    // `from` names it.
+    assert_eq!(m.limit_reference(m.inst_at("u.fb").unwrap()), Some(ground));
+    let row = m.pin_row(m.inst_at("u.fb").unwrap()).unwrap();
+    assert_eq!(row.abs_max.as_ref().unwrap().text, "2V from .vin.neg");
+    // A pin with no limit in its row has no reference.
+    assert_eq!(m.limit_reference(m.inst_at("u.vout.pos").unwrap()), None);
+}
+
+#[test]
+fn a_package_is_listed_once_in_a_header() {
+    part_error(
+        "    .package: Package\n    pins \"A\" \"B\" \"A\" {\n        .x input \"X\" \"1\"\n    }",
+        "package \"A\" is listed twice in this `pins` header",
+    );
+    // A package of a shared header that another table has.
+    part_error(
+        "    .package: Package\n    pins \"A\" \"B\" {\n        .x input \"X\" \"1\"\n    }\n    pins \"B\" {\n        .x input \"X\" \"1\"\n    }",
+        "this part already has a `pins` table for package `B`",
+    );
+    part_error(
+        "    pins \"A\" \"B\" {\n        .x input \"X\" \"1\"\n    }",
+        "`pins \"B\"` names a package, but this part has no `.package: Package` to hold it",
+    );
+}
+
+#[test]
+fn from_names_a_pin_of_the_part() {
+    let c = run(
+        "import std::sources::Rail\npart P {\n    .vin: Rail\n    pins {\n        .vin.pos power \"IN\" \"1\"\n        .vin.neg power \"GND\" \"2\"\n        .en input \"EN\" \"3\" abs_max 6V from .gnd\n    }\n}\n",
+    );
+    assert_eq!(messages(&c), ["`gnd` is not a member of this P"]);
+    part_error(
+        "    .vin: Rail\n    .limit: Voltage\n    pins {\n        .vin.pos power \"IN\" \"1\"\n        .vin.neg power \"GND\" \"2\"\n        .en input \"EN\" \"3\" abs_max 6V from .limit\n    }",
+        "`.limit` is a value, not a pin",
+    );
+    part_error(
+        "    .vin: Rail\n    pins {\n        .vin.pos power \"IN\" \"1\"\n        .vin.neg power \"GND\" \"2\"\n        .en input \"EN\" \"3\" abs_max 6V from .en\n    }",
+        "`.en` cannot be measured from itself; name its ground",
+    );
+}
+
+#[test]
+fn a_limit_with_no_from_needs_one_rail_ground_in_its_table() {
+    part_error(
+        "    pins {\n        .gnd power \"GND\" \"1\"\n        .en input \"EN\" \"2\" abs_max 6V\n    }",
+        "the `abs_max` of `.en` is measured from the part's ground, the `neg` of its rail, and this table has no rail's `neg` to be it; name the pin it is measured from, such as `abs_max 65V from .gnd`",
+    );
+    part_error(
+        "    .a: Rail\n    .b: Rail\n    pins {\n        .a.pos power \"A\" \"1\"\n        .a.neg power \"AGND\" \"2\"\n        .b.pos power \"B\" \"3\"\n        .b.neg power \"BGND\" \"4\"\n        .en input \"EN\" \"5\" abs_max 6V\n    }",
+        "the `abs_max` of `.en` is measured from the part's ground, the `neg` of its rail, and this table has several, `.a.neg` and `.b.neg`; name the pin it is measured from, such as `abs_max 65V from .gnd`",
+    );
+    // `from` settles it.
+    let c = run(
+        "import std::sources::Rail\npart P {\n    pins {\n        .gnd power \"GND\" \"1\"\n        .en input \"EN\" \"2\" abs_max 6V from .gnd\n    }\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_logic_line_takes_its_ground_from_its_logic() {
+    let src = "import std::sources::Rail\nimport std::logic::Logic\npart P {\n    .vcc: Rail\n    .a: Logic\n    .a.reference ~ .vcc\n    pins {\n        .vcc.pos power \"VCC\" \"1\"\n        .vcc.neg power \"GND\" \"2\"\n        .a.line input \"A\" \"3\" abs_max 6.5V\n    }\n}\n";
+    let c = run(src);
+    assert!(c.is_ok(), "{}", c.render());
+    let c = run(&src.replace("abs_max 6.5V", "abs_max 6.5V from .vcc.neg"));
+    assert_eq!(
+        messages(&c),
+        ["`.a.line` is measured from the ground its `Logic` or its bus's `levels` give, the `neg` of their reference rail; leave out `from`"]
+    );
+}
+
+#[test]
+fn a_pin_has_one_absolute_maximum_in_every_package() {
+    part_error(
+        "    .vin: Rail\n    .package: Package\n    pins \"A\" {\n        .vin.neg power \"GND\" \"1\"\n        .x input \"X\" \"2\" abs_max 6V\n    }\n    pins \"B\" {\n        .vin.neg power \"GND\" \"1\"\n        .x input \"X\" \"2\" abs_max 5V\n    }",
+        "`.x` is an input named `X` with `abs_max 5V` in `pins \"B\"` but an input named `X` with `abs_max 6V` in `pins \"A\"`; a pin has one kind, one datasheet name and one absolute maximum in every package",
+    );
+    // The same limit in two tables is one narrowing.
+    let c = run(
+        "import std::sources::Rail\npart P {\n    .vin: Rail\n    .package: Package\n    pins \"A\" {\n        .vin.neg power \"GND\" \"1\"\n        .x input \"X\" \"2\" abs_max 6V\n    }\n    pins \"B\" {\n        .vin.neg power \"GND\" \"3\"\n        .x input \"X\" \"4\" abs_max 6V\n    }\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
 }

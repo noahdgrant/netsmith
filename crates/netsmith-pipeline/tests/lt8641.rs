@@ -302,7 +302,7 @@ fn sync_mode_tied_to_the_input_is_refused_at_6_v() {
     ));
     assert!(
         text.contains("net `VIN` reaches 16V above its ground `GND`")
-            && text.contains("`u.sync_mode_limit.line.abs_max` is 6V"),
+            && text.contains("`u.sync_mode.abs_max` is 6V"),
         "{text}"
     );
 }
@@ -311,7 +311,7 @@ fn sync_mode_tied_to_the_input_is_refused_at_6_v() {
 fn tr_ss_tied_to_the_input_is_refused_at_4_v() {
     let (_, text) = solved(&bare("9V..16V", "0A..1A", "    .u.tr_ss ~ .input.pos\n"));
     assert!(
-        text.contains("`u.tr_ss_limit.line.abs_max` is 4V"),
+        text.contains("`u.tr_ss.abs_max` is 4V"),
         "{text}"
     );
 }
@@ -323,11 +323,11 @@ fn en_uv_on_an_input_over_65_v_is_refused() {
     let (_, text) = solved(&bare("70V", "0A..1A", ""));
     assert!(
         text.contains("net `VIN` reaches 70V above its ground `GND`")
-            && text.contains("`u.en_uv_limit.line.abs_max` is 65V"),
+            && text.contains("`u.en_uv.abs_max` is 65V"),
         "{text}"
     );
     let (_, text) = solved(&bare("60V", "0A..1A", ""));
-    assert!(!text.contains("en_uv_limit"), "{text}");
+    assert!(!text.contains("`u.en_uv.abs_max`"), "{text}");
 }
 
 #[test]
