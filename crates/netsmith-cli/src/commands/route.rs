@@ -48,6 +48,15 @@ pub struct Args {
     /// that this one does not draw are removed.
     #[arg(long)]
     pub stages: bool,
+    /// Follow a coarse plan of the board: `off` (the router's own), `every` try, or `later`, from
+    /// the second try on.
+    ///
+    /// For experiments on the router. The plan routes every line over tiles of 1 mm whose edges
+    /// hold as many tracks as the pads and the edge leave room for, negotiating where they are
+    /// full, and the search then pays for each step outside a line's tiles grown by one. The
+    /// header of the router's `plan.rs` has what it was measured to do.
+    #[arg(long, value_name = "WHEN", value_parser = parse_plan)]
+    pub plan: Option<netsmith::placed::CoarsePlan>,
 }
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
@@ -63,6 +72,7 @@ pub fn run(args: Args) -> ExitCode {
         turn: args.turn,
         tries: args.tries,
         stages: args.stages,
+        plan: args.plan,
     };
     run_route(&args.file, args.out.as_deref(), request)
 }
@@ -128,6 +138,16 @@ fn parse_turn(given: &str) -> Result<i64, String> {
         })
 }
 
+fn parse_plan(given: &str) -> Result<netsmith::placed::CoarsePlan, String> {
+    use netsmith::placed::CoarsePlan;
+    match given {
+        "off" => Ok(CoarsePlan::Off),
+        "every" => Ok(CoarsePlan::EveryTry),
+        "later" => Ok(CoarsePlan::FromSecondTry),
+        _ => Err(format!("takes `off`, `every` or `later`, not `{given}`")),
+    }
+}
+
 fn parse_tries(given: &str) -> Result<usize, String> {
     given
         .parse::<usize>()
@@ -173,6 +193,7 @@ mod tests {
                 turn: None,
                 tries: None,
                 stages: false,
+                plan: None,
             }))
         );
         assert_eq!(kind(&["route"]), ErrorKind::MissingRequiredArgument);
@@ -207,6 +228,7 @@ mod tests {
                 turn: Some(27),
                 tries: Some(1),
                 stages: true,
+                plan: None,
             }))
         );
         for bad in ["2.5", "steep", "10001"] {
@@ -223,6 +245,18 @@ mod tests {
                 "{bad}: {e}"
             );
         }
+        for (given, plan) in [
+            ("off", netsmith::placed::CoarsePlan::Off),
+            ("every", netsmith::placed::CoarsePlan::EveryTry),
+            ("later", netsmith::placed::CoarsePlan::FromSecondTry),
+        ] {
+            match parse(&["route", "b.placed.json", "--plan", given]) {
+                Ok(Command::Route(args)) => assert_eq!(args.plan, Some(plan), "{given}"),
+                other => panic!("{given}: {other:?}"),
+            }
+        }
+        let e = parse(&["route", "b.placed.json", "--plan", "always"]).unwrap_err();
+        assert!(e.contains("takes `off`, `every` or `later`"), "{e}");
         // clap takes a negative number for a flag of its own and refuses it before the parser.
         for flag in ["--turn", "--tries"] {
             assert!(

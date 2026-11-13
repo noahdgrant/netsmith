@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro, svg};
+pub use netsmith_place_route::CoarsePlan;
 use netsmith_place_route::{Costs, RouteOptions};
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +109,8 @@ pub struct RouteRequest {
     pub tries: Option<usize>,
     /// Draw each stage of the try that gave the result, and the crowding map, as PNGs.
     pub stages: bool,
+    /// Which tries follow a coarse plan ([`RouteOptions::plan`]); `None` is the router's own.
+    pub plan: Option<CoarsePlan>,
 }
 
 /// What `route` made of a placed board.
@@ -152,6 +155,7 @@ pub fn route(
         },
         most_tries: request.tries,
         snapshots: request.stages,
+        plan: request.plan.unwrap_or(RouteOptions::default().plan),
         ..RouteOptions::default()
     };
     let routing = route_with_margin(&mut board, request.route_timeout, base, margin, say);
