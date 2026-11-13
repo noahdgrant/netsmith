@@ -267,8 +267,15 @@ fn a_regulator_has_two_rails_a_headroom_requirement_and_a_catalog() {
 #[test]
 fn a_manufacturing_process_is_an_interface_of_quantities_with_no_pins() {
     let file = parse(JLCPCB).unwrap();
+    // `TwoLayer` is a generic whose providers are interfaces, one per copper weight (ADR 0113).
     let two_layer = def(&file, "TwoLayer");
-    assert_eq!(two_layer.kind, DefKind::Interface);
+    assert_eq!(two_layer.kind, DefKind::Generic);
+    for weight in ["JlcTwoLayer1oz", "JlcTwoLayer2oz"] {
+        let provider = def(&file, weight);
+        assert_eq!(provider.kind, DefKind::Interface);
+        assert_eq!(provider.provides[0].name, "TwoLayer");
+    }
+    assert_eq!(def(&file, "FourLayer").kind, DefKind::Interface);
     let pins = two_layer.items.iter().any(|i| match i {
         Item::Decl(d) => d.ty.segments[0].name == "Pin",
         _ => false,

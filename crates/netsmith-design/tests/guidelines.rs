@@ -250,8 +250,8 @@ fn the_2_oz_provider_of_two_layer_rates_a_track_by_its_copper() {
     // so 0.19 mm is enough, as it is not in 1 oz.
     let thin = board(
         1.0,
-        "",
-        "        .stackup.copper_weight &= 2\n        .min_track &= 0.19mm..1m\n",
+        "        .min_track &= 0.19mm..1m\n",
+        "        .stackup.copper_weight &= 2\n",
     );
     let mut assign = Assignment::new();
     assign.insert(
@@ -279,9 +279,9 @@ fn the_2_oz_provider_of_two_layer_rates_a_track_by_its_copper() {
             p.min_annular_ring,
             p.min_mask_bridge
         ),
-        (0.19, 0.16, 0.254, 0.2)
+        (0.16, 0.16, 0.254, 0.2)
     );
-    let one_oz = board(1.0, "", "        .min_track &= 0.19mm..1m\n");
+    let one_oz = board(1.0, "        .min_track &= 0.19mm..1m\n", "");
     assert!(!findings(&one_oz).is_empty());
 }
 
