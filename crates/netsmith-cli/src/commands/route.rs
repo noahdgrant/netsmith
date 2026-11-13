@@ -53,8 +53,8 @@ pub struct Args {
     ///
     /// For experiments on the router. The plan routes every line over tiles of 1 mm whose edges
     /// hold as many tracks as the pads and the edge leave room for, negotiating where they are
-    /// full, and the search then pays for each step outside a line's tiles grown by one. The
-    /// header of the router's `plan.rs` has what it was measured to do.
+    /// full, and the search then pays for a step outside a line's tiles where the plan fills
+    /// the tile. The header of the router's `plan.rs` has what it was measured to do.
     #[arg(long, value_name = "WHEN", value_parser = parse_plan)]
     pub plan: Option<netsmith::placed::CoarsePlan>,
 }

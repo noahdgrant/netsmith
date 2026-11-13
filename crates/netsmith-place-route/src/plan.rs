@@ -19,9 +19,15 @@
 //! search queue breaks ties by when a state was queued. The round with the least overuse is
 //! kept (the first of equals).
 //!
-//! **The corridor** ([`corridor`]) of a line is the tiles of its plan, on both layers, grown
-//! by one tile each way; a line wider than the narrowest has none. The detailed search pays a cost for each step outside it; it is not a
-//! wall, so a line the plan got wrong still finds its way.
+//! **The corridor** ([`corridor`]) of a line is the tiles of its plan, on both layers. The
+//! detailed search pays for a step outside it by how crowded the plan leaves that tile on that
+//! layer ([`Plan::fill`], the fullest of its four edges): nothing below 70 %, the whole
+//! crowding cost (`OFF_PLAN` in `route.rs`, 20, two steps) from 100 %, in proportion between
+//! ([`crowding_cost`]). A free detour stays free where the plan has room. It is a cost, not a
+//! wall, so a line the plan got wrong still finds its way. The plan steers only lines of the
+//! narrowest track (the capacities are counted in it); a line to a plane, a net its current
+//! widens, a pour's net (the pour joins it anyway) and a diff pair's nets (which run beside
+//! each other, S9, and which any cost moves apart) have no corridor.
 //!
 //! **When** ([`crate::route::CoarsePlan`], `RouteOptions::plan`): off by default. `EveryTry`
 //! follows the plan on every try; `FromSecondTry` routes the first order again with it as the
@@ -30,49 +36,78 @@
 //!
 //! # Measured (issue #431, S10, 2026-11-12)
 //!
-//! Main at 1852adb (#550), placements saved by main's `fab`, one try with no time limit at the
-//! least track (`netsmith route <placed> --tries 1 --route-timeout 0 --margin 1 --turn T`). Lines
-//! left at T = 24 / 25 / 26 / 27, and vias at 25:
+//! Main at d07d6e8 (#557), placements saved by main's `fab`. The robustness runs are one try
+//! with no time limit: `netsmith route <placed> --tries 1 --route-timeout 0 --turn T`, at the
+//! least track (`--margin 1`) and at the board's own margin. Lines left and vias at
+//! T = 24 / 25 / 26 / 27:
 //!
 //! | | RP2350 | Orbit | EasyDuino |
 //! |---|---|---|---|
-//! | main | 0 / 0 / 0 / 1, 137 vias | 0 / 0 / 0 / 0, 91 | 0 / 0 / 0 / 0, 105 |
-//! | the plan on every try (built) | **0 / 0 / 0 / 0**, 209 vias | 0 / 0 / 0 / 0, 109 | 0 / 0 / 0 / 0, 115 |
+//! | main, least track | 0/0/0/1, 137/137/151/162 | 0/0/0/0, 93/91/93/93 | 0/0/0/0, 106/105/105/105 |
+//! | plan, least track | **0/0/0/0**, 159/159/159/166 | 0/0/0/0, 100/100/106/106 | 0/0/0/0, 103/103/103/103 |
+//! | main, own margin | 0/0/0/1, 137/137/151/162 | 0/0/0/0, 87/87/90/96 | 0/0/0/0, 106/105/105/105 |
+//! | plan, own margin | **0/0/0/0**, 147/**130**/159/166 | 0/0/0/0, 100/100/106/106 | 0/0/0/0, 113/109/109/109 |
 //!
-//! At 25, routed length over the spanning tree: RP2350 1.43x against 1.40x, Orbit 1.26x against
-//! 1.27x, EasyDuino 1.18x against 1.21x; other nets' track on RP2350's GND pour 706 mm against
-//! 647, Orbit's 407 against 464; EasyDuino's pair coupled 22 % against 23 %, skew 0.21 mm
-//! against 0.75. A try of RP2350 takes 76 to 80 s against 54 to 57 (Orbit 26 to 29 against 19).
-//! The plan makes RP2350 route at every turn cost and makes its result nearly the same at each
-//! (a sign that it no longer depends on luck), but costs a third more vias on RP2350 and a
-//! tenth on the others, and a third more time. From the second try, RP2350 with two tries
-//! leaves no line at any turn cost, as main does (143 against 149 vias at 27, where the second
-//! try runs; the others route on their first try and are byte for byte main's). So neither
-//! form meets the bar of no more vias and no more time, and the plan is off.
+//! At T = 25, routed length over the spanning tree, least track: RP2350 1.34x against 1.40x,
+//! Orbit 1.24x against 1.27x, EasyDuino 1.22x against 1.21x; own margin: 1.42x against 1.40x,
+//! 1.27x against 1.28x, 1.18x against 1.22x. At its own margin RP2350 routes completely in the
+//! margin pass at 24 and 25 (signals at 0.15 mm), which main never does. Other nets' track on
+//! the GND pour at the own margin: RP2350 731 mm against 646, Orbit 418 against 466,
+//! EasyDuino F 429 against 504, B 399 against 352. Pair coupling: RP2350's mcu.usb 75 %
+//! against 69 %, Orbit's usb 91 % against 0 %, EasyDuino's bridge 20 % against 54 %.
 //!
-//! **Why the vias.** On a board of two layers a plan's two lines that cross in a tile do so on
-//! different layers, and the plan does not count crossings. Without a plan the detailed search
-//! goes round a track that is in its way; inside a corridor three tiles wide that detour costs,
-//! so it crosses by a via, and a power net's crossing becomes a cluster of vias. The pictures of
-//! the first pass are alike; the vias come in the repairs.
+//! As `fab` routes (`netsmith route <placed>`, fab's tries and time, one at a time on one
+//! machine, main and the plan in turn, twice):
 //!
-//! **Tried and not kept** (same boards and runs; lines left at 25 and 27, vias at 25):
+//! | | RP2350 | Orbit | EasyDuino |
+//! |---|---|---|---|
+//! | main | 121 and 123 s, 137 vias, 1.40x, 0.1 mm | 11 and 13 s, 87, 1.28x | 2.4 and 2.3 s, 105, 1.22x |
+//! | plan | **73 s, 130 vias, 1.42x, 0.15 mm; then 152 s, 159, 1.34x, 0.1 mm** | 13 and 13 s, 100, 1.27x | 1.8 and 1.6 s, 109, 1.18x |
 //!
-//! - The capacity of an edge counting pads as closed, and paths of tiles with no pull toward the
-//!   straight line: 100 to 190 tracks over capacity after ten rounds, L-shaped corridors, RP2350
-//!   2 and 4 lines left, EasyDuino 130 vias. Counting a pad's copper as a way across (each pad is
-//!   its own line's way out) and the pull ([`DEVIATION`]) bring it to 0 to 5 over capacity.
-//! - A step outside the corridor at 2 or 4 (against 10): RP2350 177 to 197 vias, one line left
-//!   at 27 with 2. Corridors grown by two tiles: 150 to 180 vias. Tiles of 2 mm: 175 to 181.
-//!   The plan in the first pass only (the repairs free): 175 to 202 vias.
-//! - A cost only in tiles the plan fills (where its lines take every track of an edge, and the
-//!   tile is not the line's): almost no tile is full (0 to 8 of 1300 to 2800), so it is main.
+//! With the plan, one try of RP2350 at its margin takes 73 s of the margin pass's 75: the first
+//! run finished it, the second ran out and routed again at the least track. So `fab`'s result
+//! with the plan would hang on the machine's speed, which main's does not.
 //!
-//! **What would make it pass**, in my view: a plan that knows the order of tracks across an
-//! edge, so two lines that cross are planned as a crossing with a via (a cost the plan pays and
-//! the capacity counts), or the corridor as a cost on the layer the plan chose, with the plan's
-//! via places; and a way to keep the detailed search's free detours where the plan has room
-//! (a cost that grows with the tile's use, not a flat one outside the corridor).
+//! So the plan makes every board route at every turn cost and can take RP2350 through its
+//! margin pass, but not reliably within its time, and costs Orbit 10 to 18 % more vias in every form tried, RP2350 16 % at the least
+//! track and EasyDuino 4 to 8 % at its margin: it misses the bar (no more than main's vias and
+//! 5 %), and is off.
+//!
+//! **Why the vias.** On two layers the plan does not count crossings, and a cost that differs
+//! by layer makes a line change to the emptier one: Orbit's extra vias are about two on each of
+//! a dozen signal nets, one layer change each, and six on GND. A cost on both layers (the
+//! fuller or the mean of the two) does not help: the mean is almost never 70 % (main's copper),
+//! the fuller leaves a line on RP2350 and Orbit.
+//!
+//! **Tried and not kept** (RP2350 at T = 25 and the least track unless said; main 137 vias,
+//! 1.40x):
+//!
+//! - The plan of #556: a flat cost of 10 on every step outside a corridor grown by one tile:
+//!   209 vias (Orbit 109, EasyDuino 115). Costs of 2 or 4, corridors grown by two, tiles of
+//!   2 mm and the plan in the first pass only: 150 to 202. Pads counted as closed and no pull
+//!   toward the straight line: L-shaped corridors and worse on every board.
+//! - The corridor on the plan's layer only, grown by one there (both layers where it changes
+//!   layer): 163 to 165 vias, but 1.30x and only 291 to 323 mm of other nets' track on the
+//!   GND pour against 646, the best length and pour of anything tried; grown by two, 206 vias.
+//!   A lead for a plan that counts crossings.
+//! - The crowding cost at 10: 154 to 157 vias; at 30 or 50: 161; from 30 % or 50 % full:
+//!   160 to 170; charged once where a step enters a tile instead of on every cell (50 to
+//!   200, as `fab` routes): 147 to 177 vias, and 140 s against 66 at 50. The thresholds 60 % to 95 % give the same
+//!   copper at 20 (a tile's fullness takes few values).
+//! - Corridors grown by one, with the pour's net steered: 145 to 147 vias at every turn cost
+//!   at the least track (the best RP2350 there), but Orbit 108 to 110 and EasyDuino 121 at
+//!   its margin. With a diff pair steered too, Orbit leaves its USB pair unrouted at every
+//!   turn cost.
+//! - No corridor for a net whose current needs a cluster of vias: no change (at the least
+//!   track every net needs one). The plan's via cost at 300 or 600 against 150: no better.
+//! - From the second try: the margin pass has a quarter of the route time and one try of
+//!   RP2350 takes most of it, so the second try never finishes there and `fab` is main's.
+//!
+//! **What to try next.** A plan that counts crossings: the order of tracks across each tile
+//! edge, so that two lines that must cross are planned as a crossing with a via that the plan
+//! pays for and the tile's vias count, and then the corridor on the plan's layer (above, the
+//! best length and pour). And a measure of more than three boards before a choice: one
+//! placement and one variant moves a board's vias by 10 % either way.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -80,11 +115,20 @@ use std::collections::BinaryHeap;
 /// How many grid cells a side of a tile has: 10, a tile of 1 mm.
 pub(crate) const TILE_CELLS: usize = 10;
 
+/// How many tiles a line's corridor reaches past its plan: none, the plan's own tiles.
+pub(crate) const CORRIDOR_GROW: usize = 0;
+
 /// What a step to the next tile costs before congestion, and a via.
 const STEP_COST: u64 = 100;
 const VIA_COST: u64 = 150;
 /// What entering a tile costs for each tile it is from the straight line between a line's ends.
 const DEVIATION: u64 = 30;
+
+/// How full a tile's fullest edge must be (planned tracks over capacity) before a step there
+/// outside a line's corridor costs anything, and how full it is when it costs the whole of the
+/// crowding cost.
+const CROWDED_FROM: f64 = 0.7;
+const CROWDED: f64 = 1.0;
 
 /// The rounds of negotiation, and the present-use factor of the first (in hundredths; it
 /// doubles each round).
@@ -259,6 +303,54 @@ pub(crate) struct Plan {
     pub(crate) overuse: u32,
     /// The rounds negotiated.
     pub(crate) rounds: usize,
+    /// How many planned tracks or vias use each resource, by [`Tiles::index`].
+    occupied: Vec<u32>,
+}
+
+impl Plan {
+    /// How full each tile is on each layer: the most of its four edges' planned tracks over
+    /// their capacity (an edge no track crosses is empty, and one with no room that a track
+    /// crosses counts as twice full), row by row.
+    pub(crate) fn fill(&self, tiles: &Tiles) -> [Vec<f64>; 2] {
+        let (nx, ny) = (tiles.nx, tiles.ny);
+        let ratio = |u: Use| -> f64 {
+            let used = self.occupied[tiles.index(u)];
+            match (used, tiles.capacity(u)) {
+                (0, _) => 0.0,
+                (_, 0) => 2.0,
+                (used, cap) => f64::from(used) / f64::from(cap),
+            }
+        };
+        let layer = |l: usize| -> Vec<f64> {
+            (0..nx * ny)
+                .map(|t| {
+                    let (a, b) = (t % nx, t / nx);
+                    let mut edges = Vec::with_capacity(4);
+                    if a + 1 < nx {
+                        edges.push(Use::X(l, t));
+                    }
+                    if a > 0 {
+                        edges.push(Use::X(l, t - 1));
+                    }
+                    if b + 1 < ny {
+                        edges.push(Use::Y(l, t));
+                    }
+                    if b > 0 {
+                        edges.push(Use::Y(l, t - nx));
+                    }
+                    edges.into_iter().map(ratio).fold(0.0, f64::max)
+                })
+                .collect()
+        };
+        [layer(0), layer(1)]
+    }
+}
+
+/// What a step costs, beyond the step, on a tile and layer this full outside a line's corridor:
+/// nothing below [`CROWDED_FROM`], `cost` from [`CROWDED`], and in proportion between.
+pub(crate) fn crowding_cost(fill: f64, cost: i64) -> i64 {
+    let share = ((fill - CROWDED_FROM) / (CROWDED - CROWDED_FROM)).clamp(0.0, 1.0);
+    (share * cost as f64).round() as i64
 }
 
 /// Route every line of `ends` on the tiles by negotiated congestion (see the module's header),
@@ -291,6 +383,7 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
                 paths: paths.clone(),
                 overuse,
                 rounds: round,
+                occupied: occupied.clone(),
             });
         }
         if overuse == 0 {
@@ -302,6 +395,7 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
         paths,
         overuse: 0,
         rounds: 0,
+        occupied: vec![0; n],
     });
     plan.rounds = plan.rounds.max(1);
     plan
@@ -503,6 +597,42 @@ mod tests {
         // The same plan every time.
         let again = negotiate(&tiles, &[line(), line()], &[0, 1]);
         assert_eq!(plan.paths, again.paths);
+    }
+
+    #[test]
+    fn a_tile_is_as_full_as_its_fullest_edge_on_its_layer() {
+        // Two tiles side by side whose edge holds two tracks on the front and none on the back;
+        // two lines cross it on the front.
+        let tiles = Tiles {
+            cells: 10,
+            nx: 2,
+            ny: 1,
+            across_x: [vec![2, 0], vec![0, 0]],
+            across_y: [vec![0, 0], vec![0, 0]],
+            vias: vec![0, 0],
+        };
+        let line = || {
+            Some(Ends {
+                from: vec![(0, 0, 0)],
+                to: vec![(1, 0, 0)],
+            })
+        };
+        let plan = negotiate(&tiles, &[line(), line()], &[0, 1]);
+        assert_eq!(plan.overuse, 0);
+        assert_eq!(plan.fill(&tiles), [vec![1.0, 1.0], vec![0.0, 0.0]]);
+        // One line fills the edge halfway.
+        let plan = negotiate(&tiles, &[line()], &[0]);
+        assert_eq!(plan.fill(&tiles)[0], vec![0.5, 0.5]);
+    }
+
+    #[test]
+    fn a_step_costs_nothing_where_the_plan_leaves_room_and_the_whole_cost_where_it_is_full() {
+        assert_eq!(crowding_cost(0.0, 20), 0);
+        assert_eq!(crowding_cost(0.5, 20), 0);
+        assert_eq!(crowding_cost(0.7, 20), 0);
+        assert_eq!(crowding_cost(0.85, 20), 10);
+        assert_eq!(crowding_cost(1.0, 20), 20);
+        assert_eq!(crowding_cost(2.0, 20), 20);
     }
 
     #[test]

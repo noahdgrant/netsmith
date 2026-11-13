@@ -175,10 +175,11 @@
 //! # A coarse plan (issue #431, S10)
 //!
 //! [`RouteOptions::plan`] can have the router make a global route of every line over tiles of
-//! 1 mm first, negotiated for the tiles' capacities, and the detailed search then pays
-//! [`OFF_PLAN`] for each step outside its line's corridor. It is off by default: on the three
-//! ported boards it made RP2350 route at every turn cost but cost a third more vias and time.
-//! The design, the numbers and what would make it pass are in the header of `plan.rs`.
+//! 1 mm first, negotiated for the tiles' capacities, and the detailed search then pays up to
+//! [`OFF_PLAN`] for each step outside its line's corridor on a tile the plan crowds. It is off
+//! by default: on the three ported boards it makes every board route at every turn cost, but
+//! costs Orbit 10 to 18 % more vias. The design, the numbers and what to try next are in the
+//! header of `plan.rs`.
 //!
 //! # What a try costs (issue #431)
 //!
@@ -497,8 +498,9 @@ const LANE_VIA: i64 = 300;
 /// How far a pad's escape lane runs out from the pad's edge, in mm: past the ring of
 /// decoupling capacitors round a fine-pitch part.
 const LANE_LENGTH: f64 = 1.5;
-/// What a track pays a step, beyond the step, outside its corridor of the coarse plan.
-const OFF_PLAN: i64 = 10;
+/// What a track pays a step, beyond the step, outside its corridor of the coarse plan, on a tile
+/// the plan fills on that layer ([`crate::plan::crowding_cost`]): two steps.
+const OFF_PLAN: i64 = 20;
 /// What a step costs beyond its length, in the pass that takes track off other nets' pours
 /// ([`Router::off_the_pours`]), on an outer layer another net is poured on while the other outer
 /// layer is not: the same again, so that a track cuts the pour (the return path) only where the
@@ -797,9 +799,10 @@ struct Masks {
     /// The cells of other nets' escape lanes, which a track or a via of this line pays
     /// [`LANE_TRACK`] or [`LANE_VIA`] to use. `None` when there are none.
     lane: Option<LaneCost>,
-    /// The cells outside the line's corridor of the coarse plan ([`crate::plan`]), which a
-    /// track pays the corridor cost to use; and that cost. `None` when the try follows no plan.
-    off_plan: Option<(Vec<bool>, i64)>,
+    /// What a track pays, beyond a step, on each cell by layer for the coarse plan
+    /// ([`crate::plan`]): nothing in the line's corridor, and outside it the crowding of the
+    /// cell's tile on that layer. `None` when the try follows no plan or nothing costs.
+    off_plan: Option<[Vec<i64>; 2]>,
     /// For a net of a diff pair whose partner is routed, the cells beside the partner's tracks
     /// (within [`PAIR_NEAR`] of their centre lines), by layer: a step onto one costs [`FOLLOW`]
     /// of its length, so the net runs beside its partner (issue #431, S9). Empty when unset.
@@ -909,12 +912,11 @@ impl Masks {
         }
     }
 
-    /// What it costs, beyond a step, to put a track on a cell outside the line's corridor.
-    fn off_plan_cost(&self, i: usize, j: usize) -> i64 {
-        match &self.off_plan {
-            Some((off, cost)) if off[self.at(i, j)] => *cost,
-            _ => 0,
-        }
+    /// What it costs, beyond a step, to put a track on a cell for the coarse plan.
+    fn off_plan_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
+        self.off_plan
+            .as_ref()
+            .map_or(0, |cost| cost[layer][self.at(i, j)])
     }
 
     /// What it costs, beyond a step, to put a track on the cell.
@@ -1451,7 +1453,7 @@ fn moves(
                 + masks.history_cost(layer, next.0, next.1)
                 + masks.soft_cost(layer, next.0, next.1)
                 + masks.lane_cost(layer, next.0, next.1)
-                + masks.off_plan_cost(next.0, next.1)
+                + masks.off_plan_cost(layer, next.0, next.1)
                 + masks.pour.0[layer],
         );
     }
@@ -2108,8 +2110,11 @@ fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint:
 /// The coarse plan of a board and the corridor of each line ([`crate::plan`]).
 struct Planned {
     tiles: crate::plan::Tiles,
-    /// For each line, the tiles of its corridor, row by row; `None` for a line to a plane.
+    /// For each line, the tiles of its corridor, row by row; `None` for a line the plan does
+    /// not steer.
     corridors: Vec<Option<Vec<bool>>>,
+    /// How full the plan leaves each tile on each layer ([`crate::plan::Plan::fill`]).
+    fill: [Vec<f64>; 2],
 }
 
 /// What one ratsnest line became.
@@ -2972,14 +2977,22 @@ impl<'a> Router<'a> {
             && let Some(inside) = &plan.corridors[line]
         {
             let tiles = &plan.tiles;
-            let off: Vec<bool> = (0..window.cells())
-                .map(|c| {
-                    let (a, b) = tiles.of(window.i0 + c % window.nx, window.j0 + c / window.nx);
-                    !inside[b * tiles.nx + a]
-                })
-                .collect();
-            if off.iter().any(|&o| o) {
-                masks.off_plan = Some((off, self.plan_cost));
+            let cost = |layer: usize| -> Vec<i64> {
+                (0..window.cells())
+                    .map(|c| {
+                        let (a, b) = tiles.of(window.i0 + c % window.nx, window.j0 + c / window.nx);
+                        let t = b * tiles.nx + a;
+                        if inside[t] {
+                            0
+                        } else {
+                            crate::plan::crowding_cost(plan.fill[layer][t], self.plan_cost)
+                        }
+                    })
+                    .collect()
+            };
+            let off = [cost(FRONT), cost(BACK)];
+            if off.iter().flatten().any(|&c| c > 0) {
+                masks.off_plan = Some(off);
             }
         }
         if self.pouring.get() {
@@ -4258,8 +4271,11 @@ impl<'a> Router<'a> {
                 plan.overuse
             )
         });
-        // A line wider than the narrowest (a net its current widens) has no corridor: the
-        // capacities are counted in the narrowest track.
+        // The plan steers a line of the narrowest track only: the capacities are counted in it,
+        // so a net its current widens has no corridor. Nor has a net of a pour, whose copper
+        // the pour joins anyway, or a net of a diff pair, which runs beside its partner (S9)
+        // and which any cost moves off it.
+        let poured = |l: usize| self.board.pours.iter().any(|p| p.net == self.lines[l].net);
         let corridors = plan
             .paths
             .iter()
@@ -4267,10 +4283,16 @@ impl<'a> Router<'a> {
             .map(|(l, p)| {
                 p.as_ref()
                     .filter(|_| self.width_of(l) <= width + 1e-9)
-                    .map(|p| crate::plan::corridor(&tiles, p, 1))
+                    .filter(|_| !poured(l) && self.partners[self.nets[l]].is_none())
+                    .map(|p| crate::plan::corridor(&tiles, p, crate::plan::CORRIDOR_GROW))
             })
             .collect();
-        Planned { tiles, corridors }
+        let fill = plan.fill(&tiles);
+        Planned {
+            tiles,
+            corridors,
+            fill,
+        }
     }
 
     /// The orders to try the lines in.
@@ -4335,8 +4357,8 @@ pub struct RouteOptions {
     pub most_tries: Option<usize>,
     /// Which tries follow a coarse plan of the board ([`CoarsePlan`]).
     pub plan: CoarsePlan,
-    /// What a step outside a line's corridor costs, beyond the step, in tenths of a millimetre
-    /// of track; `None` is the router's own.
+    /// What a step outside a line's corridor costs, beyond the step, on a tile the plan fills,
+    /// in tenths of a millimetre of track; `None` is the router's own.
     pub plan_cost: Option<i64>,
 }
 
@@ -5158,6 +5180,48 @@ mod tests {
         }
         let again = Router::new(&board, &options).make_plan(&order);
         assert_eq!(plan.corridors, again.corridors);
+    }
+
+    #[test]
+    fn a_line_of_the_pours_net_or_of_a_diff_pair_has_no_corridor() {
+        let mut board = crate::board_from_design(
+            &crate::testlib::led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let options = RouteOptions {
+            plan: CoarsePlan::EveryTry,
+            ..RouteOptions::default()
+        };
+        let router = Router::new(&board, &options);
+        let order = router.orders(false).remove(0);
+        let plan = router.make_plan(&order);
+        let mut steered: Vec<usize> = (0..router.lines.len())
+            .filter(|&l| plan.corridors[l].is_some())
+            .map(|l| router.nets[l])
+            .collect();
+        steered.dedup();
+        assert!(steered.len() >= 3, "{steered:?}");
+        let (poured, paired) = (steered[0], steered[1]);
+        board.pours.push(netsmith_pcb::board::BoardPour {
+            layer: netsmith_pcb::board::CopperLayer::Back,
+            net: board.nets[poured].name.clone(),
+            stitch_pitch: None,
+        });
+        let mut router = Router::new(&board, &options);
+        router.partners[paired] = Some(poured);
+        let plan = router.make_plan(&order);
+        for (l, corridor) in plan.corridors.iter().enumerate() {
+            let net = router.nets[l];
+            if net == poured || net == paired {
+                assert!(corridor.is_none(), "line {l}");
+            }
+        }
+        assert!(
+            (0..router.lines.len())
+                .any(|l| router.nets[l] == steered[2] && plan.corridors[l].is_some())
+        );
     }
 
     #[test]
