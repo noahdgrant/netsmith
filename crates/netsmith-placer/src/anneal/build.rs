@@ -207,20 +207,16 @@ impl<'a> Engine<'a> {
             }
         }
 
-        // Module instances: each prefix of an instance path shared by two or more parts.
+        // Module instances: each module the board places directly whose instance path two or
+        // more parts share. A module nested in it (`reg.stage.divider`) has no group of its own:
+        // its parts are already in their outer module's group, and a second pull on a few of
+        // them moved every part of a board when a module started using a std one inside it.
         let mut by_prefix: std::collections::BTreeMap<String, Vec<usize>> = Default::default();
         for (i, q) in parts.iter().enumerate() {
-            let Some((parent, _)) = q.path.rsplit_once('.') else {
+            let Some((outer, _)) = q.path.split_once('.') else {
                 continue;
             };
-            let mut prefix = String::new();
-            for segment in parent.split('.') {
-                if !prefix.is_empty() {
-                    prefix.push('.');
-                }
-                prefix.push_str(segment);
-                by_prefix.entry(prefix.clone()).or_default().push(i);
-            }
+            by_prefix.entry(outer.to_string()).or_default().push(i);
         }
         let groups: Vec<Vec<usize>> = by_prefix
             .into_values()
