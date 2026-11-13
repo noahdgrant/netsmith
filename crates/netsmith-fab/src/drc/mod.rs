@@ -13,7 +13,9 @@
 //! clearance and edge clearance of its zone by construction (the fill is "everything but
 //! the clearances"), so the copper of a pour is never checked against other copper; a fill
 //! the file already holds is not checked either. A pour connects the pads, vias and tracks
-//! of its net that lie inside its outline.
+//! of its net that lie inside its outline. A teardrop (a zone KiCad 9 marks
+//! `(attr (teardrop ...))`) is no pour: its fill is copper of its net, checked as a track is,
+//! and [`teardrops`] draws the ones a routed board gets (see `teardrop.rs`).
 //!
 //! # Why the check is here, what it reads, and what it was checked against (ADR 0037)
 //!
@@ -141,12 +143,14 @@ pub mod kicad;
 mod model;
 mod rules;
 pub mod shape;
+mod teardrop;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
 pub(crate) use model::outline_shapes;
 pub(crate) use rules::matches_pattern;
 pub use rules::{Class, Rules};
+pub use teardrop::{LENGTH_RATIO, MAX_LENGTH, MAX_WIDTH, Teardrop, WIDTH_RATIO, teardrops};
 
 /// How bad a finding is. A rule the project file says to ignore produces none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

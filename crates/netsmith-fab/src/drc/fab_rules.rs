@@ -333,7 +333,7 @@ fn hole_to_track(out: &mut Out<'_>) {
         .filter(|&h| limit(&m.holes[h]).is_some())
         .collect();
     let tracks: Vec<usize> = (0..m.items.len())
-        .filter(|&i| matches!(m.items[i].kind, Kind::Track(_)))
+        .filter(|&i| m.items[i].kind.is_track_like())
         .collect();
     let most = x
         .hole_to_track
@@ -424,8 +424,7 @@ fn mask_to_track(out: &mut Out<'_>) {
             .collect();
         let tracks: Vec<usize> = (0..m.items.len())
             .filter(|&i| {
-                matches!(m.items[i].kind, Kind::Track(_))
-                    && m.items[i].layers.contains(&copper_layer)
+                m.items[i].kind.is_track_like() && m.items[i].layers.contains(&copper_layer)
             })
             .collect();
         let mut boxes: Vec<Bounds> = openings.iter().map(|(_, s)| Model::bounds_of(s)).collect();

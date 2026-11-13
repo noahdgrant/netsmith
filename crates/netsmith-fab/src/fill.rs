@@ -4,7 +4,8 @@
 //! The file says it in order: the zone's outline as dark copper; then, in clear polarity,
 //! everything the pour keeps away from, namely the outside of the board and a band along
 //! its edge, rule areas that forbid pours, the clearance round the copper of other nets
-//! (pads, vias, tracks, drawings) and round holes, and the thermal gaps round the pads of
+//! (pads, vias, tracks,
+//! teardrops, drawings) and round holes, and the thermal gaps round the pads of
 //! its own net, drawn as the four pieces between the spokes so that the spokes stay copper;
 //! then the caller draws every pad, via and track dark again. What the reader sees is the
 //! pour with the clearances cut out, which is the fill.
@@ -286,6 +287,28 @@ fn around_copper(
             }
         }
     }
+    // A teardrop of another net: its fill grown by the clearance.
+    for t in art
+        .zones
+        .iter()
+        .filter(|t| t.teardrop && t.keepout.is_none() && !own(&t.net))
+    {
+        for (l, poly) in &t.filled {
+            if l != layer
+                || poly.len() < 3
+                || !Bounds::of(poly.iter().copied())
+                    .is_some_and(|b| b.expanded(clearance).overlaps(&area))
+            {
+                continue;
+            }
+            g.region(Contour::polygon(poly), None, &[]);
+            let mut ring = poly.clone();
+            ring.push(poly[0]);
+            for w in ring.windows(2) {
+                stroke(g, w[0], w[1], 2.0 * clearance);
+            }
+        }
+    }
     for gr in art.graphics.iter().filter(|gr| gr.layer == layer) {
         let width = gr.width.max(0.0) + 2.0 * clearance;
         if gr.fill
@@ -442,6 +465,22 @@ mod tests {
         assert!(t.contains("C,0.800000"), "{t}");
         assert!(t.trim_end().ends_with("M02*"));
         assert!(t.contains("%TO.N,GND*%"), "the pour is on its net");
+    }
+
+    #[test]
+    fn a_pour_keeps_its_clearance_from_a_teardrop_of_another_net() {
+        let drop = r#"(zone (net 2) (net_name "SIG") (layer "F.Cu") (attr (teardrop (type padvia)))
+              (connect_pads yes (clearance 0)) (polygon (pts (xy 5 9) (xy 6 9.9) (xy 6 10.1) (xy 5 11)))
+              (filled_polygon (layer "F.Cu") (pts (xy 5 9) (xy 6 9.9) (xy 6 10.1) (xy 5 11))))"#;
+        let t = poured(&art(drop));
+        let clear = t.find("%LPC*%").unwrap();
+        // The teardrop as a clear region, and its edges stroked at twice the clearance.
+        let region = t[clear..].find("X5000000Y-9000000D02*").map(|i| i + clear);
+        assert!(region.is_some(), "{t}");
+        assert!(t.contains("C,0.600000"), "{t}");
+        // Of the pour's own net, nothing is cleared round it.
+        let own = drop.replace("(net 2) (net_name \"SIG\")", "(net 1) (net_name \"GND\")");
+        assert!(!poured(&art(&own)).contains("X5000000Y-9000000"));
     }
 
     #[test]
