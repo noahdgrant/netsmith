@@ -15,7 +15,7 @@ Fix errors one at a time, from the first one. Later errors are often caused by e
 
 | Message starts | Change |
 |---|---|
-| `... is not a member of this X` | Fix the spelling. Read the part's fields in the guide's catalogue. |
+| `... is not a member of this X` (followed by `did you mean` when a member is close) | Take the suggested member, or fix the spelling. Read the part's fields in the guide's catalogue. |
 | `... is not defined in any enclosing block; write .x` | Add the leading dot. |
 | `... holds Ω, but this value is A` | Use a unit of the field's dimension. |
 | `contradiction on ...` | Two narrowings do not overlap. Widen one or remove it. ``... is connected here to ... but `x.usb` is stated `unused` at F:N`` is the same kind: the board says an interface is unused and uses it (ADR 0083); remove the connection or the `unused`. A test pad or a ground return is not a use. |

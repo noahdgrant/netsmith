@@ -159,6 +159,33 @@ fn unknown_member_names_the_block() {
 }
 
 #[test]
+fn unknown_member_suggests_the_nearest_member() {
+    // A British spelling of `.color` on an `Led`.
+    one_error(
+        "board B {\n    .led: Led { .colour &= \"RED\" }\n}\n",
+        "`colour` is not a member of this Led; did you mean `.color`?",
+    );
+    // Another case of the same letters.
+    one_error(
+        "board B {\n    .r: Resistor { .Resistance &= 1kohm }\n}\n",
+        "did you mean `.resistance`?",
+    );
+}
+
+#[test]
+fn unknown_member_far_from_every_member_has_no_suggestion() {
+    let c = one_error(
+        "board B {\n    .s: Rail { .nope &= 1V }\n}\n",
+        "`nope` is not a member of this Rail",
+    );
+    assert!(
+        !messages(&c)[0].contains("did you mean"),
+        "{:#?}",
+        messages(&c)
+    );
+}
+
+#[test]
 fn unknown_name_suggests_the_dot() {
     one_error(
         "board B {\n    .r: Resistor { resistance &= 1kohm }\n}\n",
