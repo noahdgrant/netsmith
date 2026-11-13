@@ -690,6 +690,9 @@ pub struct Scene {
     /// above its part's height, a model the STEP export cannot copy. Warnings, for the command
     /// that built the scene to print. Empty from [`Scene::of`].
     pub warnings: Vec<String>,
+    /// The board's case models and their fit (ADR 0109, [`crate::case`]): empty unless the
+    /// caller that reads the files adds them ([`Scene::with_case`]).
+    pub case: crate::case::CaseScene,
 }
 
 /// How far two boxes must share before they count as overlapping, in mm: what the placement
@@ -725,6 +728,7 @@ impl Scene {
             limits,
             findings,
             warnings: Vec::new(),
+            case: crate::case::CaseScene::default(),
         }
     }
 
@@ -784,6 +788,20 @@ impl Scene {
                 read: u.read.clone(),
             });
         }
+    }
+
+    /// The scene with its case models placed and checked (ADR 0109): `models` are drawn
+    /// see-through, and the scene's case findings are `unread` (what the caller found of the
+    /// files it could not read) and then the fit check's.
+    pub fn with_case(
+        mut self,
+        models: Vec<crate::case::PlacedCase>,
+        unread: Vec<crate::case::FitFinding>,
+    ) -> Scene {
+        let mut findings = unread;
+        findings.extend(crate::case::check(&self.board, &self.bodies, &models));
+        self.case = crate::case::CaseScene { models, findings };
+        self
     }
 
     pub fn body(&self, path: &str) -> Option<&Body> {

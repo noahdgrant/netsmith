@@ -52,6 +52,8 @@ const FIXTURES = {
   constrained: 'scripts/editor-verify-js/fixtures/constrained.nsm',
   // Three headers under a lid that allows 3 mm, one too tall, one with no height, one that fits (ADR 0045 section 11).
   height_limits: 'scripts/editor-verify-js/fixtures/height_limits.nsm',
+  // A board in a case of two STEP files (a box with a boss, a lid; ADR 0109): a header that collides with the lid, one of unknown height, one near the wall, a hole with no boss.
+  case_fit: 'scripts/editor-verify-js/fixtures/case_fit.nsm',
   // Seven parts of several kinds, under and beside a 3 mm lid: one too tall, one with little to spare, two of unknown height. For the 3D view's tools.
   inspect_3d: 'scripts/editor-verify-js/fixtures/inspect_3d.nsm',
   // A board whose rail is drawn too thin for its current: two guideline warnings, and it builds. For the warning markers.
@@ -205,6 +207,9 @@ async function launch() {
       fs.writeFileSync(path.join(project, 'src/main.physical.nsm'), text);
     }
     if (layout !== fixture && fs.existsSync(layout)) fs.copyFileSync(layout, path.join(project, 'src/main.pcb.toml'));
+    // A folder beside the fixture with its name (`x/`) holds files its physical file names, such as a case model's STEP (ADR 0109): it is `src/x/`.
+    const folder = fixture.replace(/\.nsm$/, '');
+    if (folder !== fixture && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) fs.cpSync(folder, path.join(project, 'src', path.basename(folder)), { recursive: true });
     // The mapping to KiCad beside the fixture, if it has one (ADR 0021): `x.kicad.toml` is the
     // project's `kicad.toml`, and `x.libs/` is its `libs/` (the project's own symbol and
     // footprint libraries), so the PCB view has footprints for the fixture's invented parts.
@@ -432,7 +437,7 @@ function cleanup() {
 
 const commands = { doctor, launch, drive, groups, evidence, cleanup };
 if (!commands[command]) {
-  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|inspect_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
+  console.error('usage: scripts/editor-verify doctor [--no-browser] | launch [--fixture two_boards|led|regulator|four_layer|outline_and_pours|carrier_and_cards|led_panel|catalog_refresh|constrained|height_limits|case_fit|inspect_3d|empty|tri_state|shared_module|schematic_bench|big|tree] [--file f.nsm] | drive <recipe>|all | groups | evidence | cleanup [--keep-evidence]  (launch also takes --git)');
   process.exit(2);
 }
 await commands[command]();

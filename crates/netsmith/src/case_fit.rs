@@ -20,32 +20,21 @@
 //! The check needs a placement, so `fab`, `board3d` and the editor run it; `build` and `check`
 //! place nothing and only say that a file is not there.
 
-use netsmith_3d::case::{self, FitFinding, FitKind, PlacedCase, Subject, Why};
+use netsmith_3d::case::{self, CaseScene, FitFinding, FitKind, PlacedCase, Subject, Why};
 use netsmith_3d::scene3d::Scene;
 use netsmith_core::{CaseModel, Design};
 
-/// The case models of a board, read and placed, and what the check found.
-#[derive(Debug, Clone, Default)]
-pub struct CaseFit {
-    /// The models read, in the design's order (by name).
-    pub cases: Vec<PlacedCase>,
-    /// The files not read first (one that is not there, one the reader cannot read), then
-    /// the check's findings.
-    pub findings: Vec<FitFinding>,
-}
-
-impl CaseFit {
-    /// The lines of `fab-notes.txt`: one note per model read, then each finding that does not
-    /// stop `fab` as a warning. Nothing for a board with no case model.
-    pub fn notes(&self) -> Vec<String> {
-        let mut lines: Vec<String> = self.cases.iter().map(note).collect();
-        lines.extend(
-            self.findings
-                .iter()
-                .map(|f| format!("warning: {}: {f}", f.kind.word())),
-        );
-        lines
-    }
+/// The lines of `fab-notes.txt` of a scene's case (`Scene::case`): one note per model read,
+/// then each finding that does not stop `fab` as a warning. Nothing for a board with no case
+/// model.
+pub fn notes(case: &CaseScene) -> Vec<String> {
+    let mut lines: Vec<String> = case.models.iter().map(note).collect();
+    lines.extend(
+        case.findings
+            .iter()
+            .map(|f| format!("warning: {}: {f}", f.kind.word())),
+    );
+    lines
 }
 
 /// The note of one case model read: its file, hash, solids and triangles.
@@ -119,12 +108,12 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
     (cases, findings)
 }
 
-/// The fit of `design`'s board, as `scene` draws it placed, in its case models.
-pub fn check(design: &Design, scene: &Scene) -> CaseFit {
+/// `scene`, the scene of `design`'s placed board, with its case models read, placed and
+/// checked (`Scene::case`); unchanged for a board with none.
+pub fn with_case(design: &Design, scene: Scene) -> Scene {
     if design.features.case_models.is_empty() {
-        return CaseFit::default();
+        return scene;
     }
-    let (cases, mut findings) = read(design);
-    findings.extend(case::check(&scene.board, &scene.bodies, &cases));
-    CaseFit { cases, findings }
+    let (models, unread) = read(design);
+    scene.with_case(models, unread)
 }

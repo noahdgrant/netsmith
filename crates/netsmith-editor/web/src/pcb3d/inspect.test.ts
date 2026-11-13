@@ -64,9 +64,10 @@ describe('x-ray', () => {
       expect(o, r).not.toBeNull();
       expect(o!).toBeLessThan(0.5);
     }
-    for (const r of ['copper', 'finish', 'body-unknown', 'limit', 'limit-violated'] as Role[]) expect(xrayOpacity(r), r).toBeNull();
+    // A case model's solids are see-through already (ADR 0109).
+    for (const r of ['copper', 'finish', 'body-unknown', 'limit', 'limit-violated', 'case'] as Role[]) expect(xrayOpacity(r), r).toBeNull();
     // Every role the view draws is one of the two lists above.
-    expect(Object.keys(LOOKS).length).toBe(16);
+    expect(Object.keys(LOOKS).length).toBe(17);
     expect(DIM.opacity).toBeLessThan(1);
   });
 });

@@ -53,7 +53,7 @@ use std::fmt;
 use netsmith_core::CaseFigures;
 use netsmith_pcb::board::Side;
 
-use crate::mesh::{Aabb, rounded_rect, trig};
+use crate::mesh::{Aabb, Material, Mesh, rounded_rect, trig};
 use crate::scene3d::{BoardSolid, Body, HeightProvenance, HoleOwner, PartCategory, Plan};
 use crate::step::read::StepMesh;
 
@@ -144,6 +144,53 @@ impl PlacedCase {
             .map(|s| s.bounds)
             .reduce(Aabb::union)
     }
+}
+
+impl PlacedCase {
+    /// One mesh per solid, its id `case:<name>` (what `render --highlight` names), material
+    /// [`Material::Case`], each triangle shaded flat; closed when the solid is.
+    pub fn meshes(&self) -> Vec<Mesh> {
+        self.solids
+            .iter()
+            .filter(|s| !s.triangles.is_empty())
+            .map(|s| {
+                let mut mesh = Mesh::new(format!("case:{}", self.name), Material::Case);
+                let mut normals = Vec::with_capacity(3 * s.triangles.len());
+                for t in &s.triangles {
+                    let (u, v) = (
+                        [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]],
+                        [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]],
+                    );
+                    let n = [
+                        u[1] * v[2] - u[2] * v[1],
+                        u[2] * v[0] - u[0] * v[2],
+                        u[0] * v[1] - u[1] * v[0],
+                    ];
+                    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                    let n = if len > 0.0 {
+                        n.map(|c| c / len)
+                    } else {
+                        [0.0, 0.0, 1.0]
+                    };
+                    let base = mesh.positions.len() as u32;
+                    mesh.positions.extend_from_slice(t);
+                    normals.extend([n; 3]);
+                    mesh.indices.extend([base, base + 1, base + 2]);
+                }
+                mesh.normals = Some(normals);
+                mesh.closed = s.closed;
+                mesh
+            })
+            .collect()
+    }
+}
+
+/// What a scene holds of its case models: each model read and placed, and what the fit check
+/// found, the files not read first.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CaseScene {
+    pub models: Vec<PlacedCase>,
+    pub findings: Vec<FitFinding>,
 }
 
 /// The map of a case model's `.rx`, `.ry`, `.rz` (degrees, about x, then y, then z) and
@@ -1034,21 +1081,15 @@ fn nearest<'a>(volume: &Convex, case: &'a PlacedCase) -> Option<(&'a str, [f64; 
             candidates = near;
         }
     }
-    // The point of the nearest piece of surface that is least outside the body: beside a face
-    // rather than off a corner, where the camera is to look.
+    // The middle of the nearest piece of surface, where the camera is to look: beside the
+    // body's face rather than off a corner of the grown box.
     let (s, t) = candidates[0];
-    let outside = |q: &[f64; 3]| -> f64 {
-        volume
-            .planes
-            .iter()
-            .map(|p| (p.n[0] * q[0] + p.n[1] * q[1] + p.n[2] * q[2] - p.d).max(0.0))
-            .sum()
-    };
     let q = volume
         .clip(t, hi)
-        .and_then(|poly| {
-            poly.into_iter()
-                .min_by(|a, b| outside(a).total_cmp(&outside(b)))
+        .filter(|poly| !poly.is_empty())
+        .map(|poly| {
+            let n = poly.len() as f64;
+            [0, 1, 2].map(|k| poly.iter().map(|p| p[k]).sum::<f64>() / n)
         })
         .unwrap_or(t[0]);
     Some((s, q, (hi * 1e4).round() / 1e4))

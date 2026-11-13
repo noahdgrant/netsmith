@@ -883,10 +883,10 @@ fn fab_board(
         // constraints are strict, the rest are warnings. A file that is not there was said by
         // `models::locate` above; it is in the notes too.
         let fit = if built.design.features.case_models.is_empty() {
-            crate::case_fit::CaseFit::default()
+            netsmith_3d::case::CaseScene::default()
         } else {
             timings::stage("fab.case", &label, || {
-                crate::case_fit::check(&built.design, &crate::board3d::scene(built, &board))
+                crate::board3d::scene(built, &board).case
             })
         };
         let refused: Vec<String> = fit
@@ -1075,7 +1075,7 @@ fn fab_board(
             &built.catalog_heights,
             &board,
         ));
-        extras.extend(fit.notes());
+        extras.extend(crate::case_fit::notes(&fit));
         extras.extend(
             board
                 .trims()

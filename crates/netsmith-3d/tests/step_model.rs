@@ -256,7 +256,10 @@ fn the_glb_draws_a_model_in_its_own_colours() {
         .iter()
         .map(|m| m["name"].as_str().unwrap())
         .collect();
-    assert_eq!(materials[13..], ["model:#333338", "model:#d91a1a"]);
+    // After the fixed materials (`case` the last of them, ADR 0109), in the order first used.
+    let fixed = netsmith_3d::mesh::Material::ALL.len();
+    assert_eq!(materials[fixed - 1], "case");
+    assert_eq!(materials[fixed..], ["model:#333338", "model:#d91a1a"]);
     let node = doc["nodes"]
         .as_array()
         .unwrap()
@@ -270,7 +273,7 @@ fn the_glb_draws_a_model_in_its_own_colours() {
         .iter()
         .map(|p| p["material"].as_u64().unwrap())
         .collect();
-    assert_eq!(used, [13, 14]);
+    assert_eq!(used, [fixed as u64, fixed as u64 + 1]);
 }
 
 #[test]

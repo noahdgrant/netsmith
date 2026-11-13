@@ -29,7 +29,7 @@ pub struct Request {
     pub view: View,
     pub size: (usize, usize),
     pub section: Option<(Axis, f64)>,
-    /// As given: part paths, designators, `net:<name>` and `limit:<name>`.
+    /// As given: part paths, designators, `net:<name>`, `limit:<name>` and `case:<name>`.
     pub highlight: Vec<String>,
     pub xray: bool,
     /// Fill the cut faces of a section ([`RenderOptions::caps`]); `--no-caps` leaves them open.
@@ -113,7 +113,8 @@ pub fn default_out(label: &str, view: View) -> PathBuf {
 }
 
 /// The ids of the meshes `requested` names, in the order given, each once. A part by path or
-/// designator, `net:<name>` and `limit:<name>`; `board` is the board itself. The error names
+/// designator, `net:<name>`, `limit:<name>` and `case:<name>` (a case model, ADR 0109); `board`
+/// is the board itself. The error names
 /// every id that is none of them.
 pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<String>, String> {
     let mut nets: Vec<&str> = Vec::new();
@@ -136,6 +137,13 @@ pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<Stri
                 .limits
                 .iter()
                 .any(|l| format!("limit:{}", l.name) == *want)
+                .then(|| want.clone())
+        } else if want.starts_with("case:") {
+            scene
+                .case
+                .models
+                .iter()
+                .any(|c| format!("case:{}", c.name) == *want)
                 .then(|| want.clone())
         } else if let Some(b) = scene.body(want) {
             Some(b.path.clone())
@@ -161,7 +169,7 @@ pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<Stri
         }
     };
     Err(format!(
-        "error: --highlight names {} that the board does not have: {}\nthe parts are: {}\nthe nets: {}\nthe limits: {}",
+        "error: --highlight names {} that the board does not have: {}\nthe parts are: {}\nthe nets: {}\nthe limits: {}\nthe case models: {}",
         if unknown.len() == 1 { "an id" } else { "ids" },
         unknown
             .iter()
@@ -181,6 +189,14 @@ pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<Stri
                 .limits
                 .iter()
                 .map(|l| format!("limit:{}", l.name))
+                .collect()
+        ),
+        list(
+            scene
+                .case
+                .models
+                .iter()
+                .map(|c| format!("case:{}", c.name))
                 .collect()
         ),
     ))

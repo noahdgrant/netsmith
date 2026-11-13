@@ -6,11 +6,12 @@
 // three.js: the view reads the table and the tokens, and a test holds the tokens to their contrast.
 
 /** What the view draws: a material of the file, or a body by its height's provenance. */
-export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-standard' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper' | 'silk';
+export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-standard' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper' | 'silk' | 'case';
 
 /** The material names of the file's contract (schema 1), in its order: the ten of the first file,
- * then `finish` and `mask-over-copper` (added with the copper). */
-export const FILE_MATERIALS = ['substrate', 'mask-top', 'mask-bottom', 'copper', 'body', 'body-unknown', 'metal', 'mark', 'limit', 'limit-violated', 'finish', 'mask-over-copper'] as const;
+ * then `finish` and `mask-over-copper` (added with the copper), then `case` (a case model's
+ * solids, ADR 0109; the file's `prepreg` is drawn only in a section, which the page makes itself). */
+export const FILE_MATERIALS = ['substrate', 'mask-top', 'mask-bottom', 'copper', 'body', 'body-unknown', 'metal', 'mark', 'limit', 'limit-violated', 'finish', 'mask-over-copper', 'case'] as const;
 
 export interface Look {
   /** The theme token of its colour. */
@@ -42,6 +43,8 @@ export const LOOKS: Record<Role, Look> = {
   silk: { token: '--pcb3d-silk', metalness: 0, roughness: 0.8, opacity: 1 },
   finish: { token: '--pcb3d-finish', metalness: 0.7, roughness: 0.3, opacity: 1 },
   'mask-over-copper': { token: '--pcb3d-mask-copper', metalness: 0, roughness: 0.5, opacity: 1 },
+  // A case model's solids (ADR 0109): see-through, so the board shows inside its case.
+  case: { token: '--pcb3d-case', metalness: 0, roughness: 0.9, opacity: 0.16 },
 };
 
 /** The tokens the view reads besides the materials'. */

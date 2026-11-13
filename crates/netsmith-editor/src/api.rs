@@ -1301,6 +1301,7 @@ pub enum FindingSource {
 
 /// One thing wrong with the board, with where it is.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct PcbFinding {
     /// Names it within one answer: the same finding has the same id in the next.
     pub id: String,
@@ -1326,6 +1327,16 @@ pub struct PcbFinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub at: Option<Location>,
+    /// The case model's solid the finding is about (ADR 0109), as the 3D scene's node names it
+    /// (`case:<model>:<solid>`), or the model's group (`case:<model>`): the 3D view lights it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub case_solid: Option<String>,
+    /// Where to look in 3D, in mm in the scene's frame (`docs/BOARD3D.md`), for a finding of
+    /// the case fit check: the 3D view flies there when no part is named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub point3d: Option<[f64; 3]>,
 }
 
 /// Whether KiCad's check has been run on the board as it is.

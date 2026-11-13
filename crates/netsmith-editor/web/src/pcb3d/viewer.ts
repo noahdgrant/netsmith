@@ -58,7 +58,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
 import type { ColourBy } from './inspectMode';
-import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
+import { type BoardInfo, type CaseSolidInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
 import { LOOKS, type Role, lit, modelColour, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
 import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole, spreadMembers } from './tools';
@@ -268,6 +268,11 @@ export class Viewer {
   private edges = new Group();
   private parts = new Map<string, PartEntry>();
   private limits: { info: LimitInfo; mesh: Mesh; lines: LineSegments[] }[] = [];
+  /** The case models' solids (ADR 0109), see-through, shown or hidden together. */
+  private cases: { info: CaseSolidInfo; mesh: Mesh; lines: LineSegments[] }[] = [];
+  private caseShown = true;
+  /** The case solids a finding lit, as `case:<model>:<solid>`. */
+  private focusedSolids = new Set<string>();
   private pickable: Mesh[] = [];
   private infoOf = new Map<Object3D, Info>();
   private materials = new Map<string, Material>();
@@ -494,6 +499,8 @@ export class Viewer {
     this.clearCaps();
     this.parts.clear();
     this.limits = [];
+    this.cases = [];
+    this.focusedSolids.clear();
     this.pickable = [];
     this.infoOf.clear();
     this.board = null;
@@ -550,11 +557,12 @@ export class Viewer {
       o.userData.modelColour = modelColour(name);
       if (role === 'body-unknown') planarUv(o);
       if (role && LOOKS[role].hatch) o.renderOrder = 2;
-      if (role === 'limit' || role === 'limit-violated') o.renderOrder = 3;
+      if (role === 'limit' || role === 'limit-violated' || role === 'case') o.renderOrder = 3;
       const lines: LineSegments[] = [];
       if (info?.kind === 'part' || info?.kind === 'substrate' || info?.kind === 'height_limit') {
         lines.push(this.edgeLines(o, role === 'body-unknown' ? 'edge-unknown' : info.kind === 'height_limit' ? (role ?? 'edge') : 'edge'));
       }
+      if (info?.kind === 'case_solid') lines.push(this.edgeLines(o, 'case'));
       // What the tools need: the laminate, the barrels, what moves with which layer, what the measure tool snaps to.
       const raw = ((owner?.node.userData as { netsmith?: Record<string, unknown> })?.netsmith ?? {}) as Record<string, unknown>;
       const face = raw.face === 'bottom' ? 'bottom' : 'top';
@@ -580,7 +588,7 @@ export class Viewer {
       const st = this.stacks.get(stack);
       if (info?.kind === 'silk' && st) st.silk[face] = true;
       if (slot) this.movers.push({ obj: o, base: o.position.y, slot, stack });
-      if (role !== 'limit' && role !== 'limit-violated') this.solids.push(o);
+      if (role !== 'limit' && role !== 'limit-violated' && role !== 'case') this.solids.push(o);
       if (part) {
         let entry = this.parts.get(part.path);
         if (!entry) this.parts.set(part.path, (entry = { info: part, meshes: [], lines: [] }));
@@ -595,8 +603,33 @@ export class Viewer {
       } else if (info?.kind === 'copper' || info?.kind === 'hole') {
         this.copper.push({ mesh: o, info: info as CopperInfo, exposed: role === 'finish' });
         this.infoOf.set(o, info);
+      } else if (info?.kind === 'case_solid') {
+        // Not picked: a click or a hover goes through the case to the board inside it.
+        this.cases.push({ info: info as CaseSolidInfo, mesh: o, lines });
+        this.infoOf.set(o, info);
       }
     });
+    this.setCaseShown(this.caseShown);
+  }
+
+  /** The case models' solids (ADR 0109), in the file's order. */
+  caseList(): CaseSolidInfo[] {
+    return this.cases.map((c) => c.info);
+  }
+
+  /** Whether the case is drawn. */
+  caseShownState(): boolean {
+    return this.caseShown;
+  }
+
+  /** Show or hide every case model's solids, and their edges. */
+  setCaseShown(on: boolean) {
+    this.caseShown = on;
+    for (const c of this.cases) {
+      c.mesh.visible = on;
+      for (const l of c.lines) l.visible = on;
+    }
+    this.request();
   }
 
   /** The net of a piece of copper or a barrel: its own, or its pad's. */
@@ -1165,7 +1198,7 @@ export class Viewer {
           ? c.select
           : state === 'hover'
             ? `#${litColour(new Color(c.edge), new Color(c.hover)).getHexString()}`
-            : role === 'limit' || role === 'limit-violated'
+            : role === 'limit' || role === 'limit-violated' || role === 'case'
               ? c[role]
               : role === 'edge-unknown'
                 ? c['body-unknown']
@@ -1222,6 +1255,9 @@ export class Viewer {
       } else if (info?.kind === 'height_limit') {
         const l = info as LimitInfo;
         o.material = this.focusedLimits.has(`${l.name}:${l.face}`) ? this.limitFocus(role) : this.surface(role, 'rest');
+      } else if (info?.kind === 'case_solid') {
+        const c = info as CaseSolidInfo;
+        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.surface(role, 'rest');
       } else {
         o.material = this.surface(role, 'rest', { xray, dim: netsOn });
       }
@@ -1338,6 +1374,17 @@ export class Viewer {
 
   // ---- a finding of the problems dock, shown in 3D ----
 
+  /** A case solid lit for a finding: in the theme's danger ink (the part it is about is in the selection's), still see-through so the part inside shows. */
+  private caseFocus(): Material {
+    const c = this.colours!;
+    return this.material('focus:case', () => {
+      const ink = new Color(c['limit-violated']);
+      const m = new MeshStandardMaterial({ name: 'case-focus', color: ink, metalness: 0, roughness: 1, transparent: true, opacity: 0.3, depthWrite: false, side: DoubleSide });
+      m.emissive = ink.clone().multiplyScalar(0.25);
+      return m;
+    });
+  }
+
   /** A limit lit for a finding: its volume brighter, pulsed once when it is first lit. */
   private limitFocus(role: Role): Material {
     const c = this.colours!;
@@ -1360,14 +1407,22 @@ export class Viewer {
     });
   }
 
-  /** Fly to a finding's parts and limits and light them: the parts through the selection (the dock picks them), the limits here. The violated limit's volume pulses once; with reduced motion it does not. */
-  focusFinding(paths: string[], limitKeys: string[]) {
+  /** Fly to a finding's parts and limits and light them: the parts through the selection (the dock picks them), the limits here. The violated limit's volume pulses once; with reduced motion it does not. A finding of the case fit (ADR 0109) also names its case solid (`case:<model>:<solid>`, or `case:<model>` for every solid of the model), which is lit and shown, and the point to look at, in mm in the scene's frame. */
+  focusFinding(paths: string[], limitKeys: string[], solids: string[] = [], point: [number, number, number] | null = null) {
     this.focusedLimits = new Set(limitKeys);
+    this.focusedSolids = new Set(this.cases.map((c) => `case:${c.info.case}:${c.info.solid}`).filter((k) => solids.some((s) => k === s || k.startsWith(`${s}:`))));
+    if (this.focusedSolids.size && !this.caseShown) this.setCaseShown(true);
     this.restyle();
     const box = new Box3();
-    // The parts, where it names some (a limit's volume may be half the board); else the limit.
+    // The parts, where it names some (a limit's volume may be half the board); else the point; else the limit; else the solid.
     for (const path of paths) for (const m of this.parts.get(path)?.meshes ?? []) box.expandByObject(m);
+    if (box.isEmpty() && point) {
+      // The scene's frame (z up) in the view's (y up; the model is scaled to mm).
+      const at = new Vector3(point[0], point[2], -point[1]);
+      box.set(at.clone().addScalar(-4), at.clone().addScalar(4));
+    }
     if (box.isEmpty()) for (const l of this.limits) if (this.focusedLimits.has(`${l.info.name}:${l.info.face}`)) box.expandByObject(l.mesh);
+    if (box.isEmpty()) for (const c of this.cases) if (this.focusedSolids.has(`case:${c.info.case}:${c.info.solid}`)) box.expandByObject(c.mesh);
     if (!box.isEmpty()) {
       box.expandByScalar(Math.max(0, 10 - box.getSize(new Vector3()).length() / 4));
       const dir = this.direction();
@@ -1397,10 +1452,16 @@ export class Viewer {
     return [...this.focusedLimits];
   }
 
+  /** The case solids a finding lit, as `case:<model>:<solid>`. */
+  focusedSolidList(): string[] {
+    return [...this.focusedSolids];
+  }
+
   clearFocus() {
-    if (!this.focusedLimits.size) return;
+    if (!this.focusedLimits.size && !this.focusedSolids.size) return;
     cancelAnimationFrame(this.pulseAnim);
     this.focusedLimits.clear();
+    this.focusedSolids.clear();
     this.restyle();
     this.request();
   }

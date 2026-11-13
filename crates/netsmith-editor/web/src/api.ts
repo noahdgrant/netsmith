@@ -994,7 +994,17 @@ keepout?: string,
  * finding quotes, where it quotes one; the first of them if it quotes several. A point at
  * the start of the line (`column` and `endColumn` are 1), `file` as the checker names it.
  */
-at?: Location, };
+at?: Location, 
+/**
+ * The case model's solid the finding is about (ADR 0109), as the 3D scene's node names it
+ * (`case:<model>:<solid>`), or the model's group (`case:<model>`): the 3D view lights it.
+ */
+caseSolid?: string, 
+/**
+ * Where to look in 3D, in mm in the scene's frame (`docs/BOARD3D.md`), for a finding of
+ * the case fit check: the 3D view flies there when no part is named.
+ */
+point3d?: [number, number, number], };
 
 export type KicadState = "not_run" | "ran" | "unavailable";
 
