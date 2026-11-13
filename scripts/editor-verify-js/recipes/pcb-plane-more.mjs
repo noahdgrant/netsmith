@@ -16,6 +16,8 @@ export async function run({ page, shot, step, expect, section }) {
   };
   const chip = () => page.locator('.sec-pcb [data-testid="plane-more"]');
   const hiddenNames = () => page.evaluate(() => [...document.querySelectorAll('.sec-pcb .pcb-host svg .l-plane-labels > text.plane-label.plane-label-off')].map((t) => t.textContent));
+  // The list takes the focus in an effect after it is drawn, so its being in the page does not mean a key reaches it: wait for the focus.
+  const listFocused = () => page.waitForFunction(() => document.activeElement?.matches('[data-testid="plane-more-item"]'));
   const percent = async () => Number((await page.locator('.sec-pcb .zoombar span').first().innerText()).replace('%', ''));
 
   step('open the PCB at Fit: every plane has its label, so there is no chip and nothing is drawn for one');
@@ -58,6 +60,7 @@ export async function run({ page, shot, step, expect, section }) {
   step('a click opens the list: one row for each hidden plane, the first focused; the board outlines the plane the pointer is on');
   await chip().click();
   await page.waitForSelector('[data-testid="plane-more-list"]');
+  await listFocused();
   const items = await page.locator('[data-testid="plane-more-item"]').evaluateAll((els) => els.map((e) => ({ text: e.querySelector('.pm-name').textContent, net: e.getAttribute('data-net'), layer: e.getAttribute('data-layer') })));
   const now = await hiddenNames();
   expect(items.length === now.length && now.every((n) => items.some((i) => i.text === n)), `the list names the hidden planes (${items.map((i) => i.text).join(', ')})`);
@@ -85,6 +88,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.pcb-host svg rect.plane-peek').count()) === 0, 'and no plane is outlined any more');
   await page.keyboard.press('Enter');
   await page.waitForSelector('[data-testid="plane-more-list"]');
+  await listFocused();
   expect(true, 'Enter on the chip opens it again');
 
   step('choosing a plane zooms the board to it, so its label comes back');
