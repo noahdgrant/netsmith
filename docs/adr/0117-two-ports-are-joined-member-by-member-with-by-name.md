@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Two ports are joined member by member with `by name`
@@ -23,7 +23,7 @@ A spread of `~` over two ports with no keyword (`.a ~ .b` already joins two inte
 
 A large rename map is close to the netlist it replaces when two ports name everything differently (easyduino's map pairs `gpioN` with `ioN`: its 40 lines of header joins became 13, and the file has 133 code lines instead of 162). power_manifold_charger does not use it: its joins pair one rail pin with many pins of the edge connector, or one microcontroller pin with pins of several chips, and no two of its ports share names. A pin can now be on a net that no line names in full, which a reader finds by reading the two parts' member lists.
 
-## Proposed, for the owner
+## Owner decisions (2026-11-13: all accepted)
 
 These were not settled by the decision and are provisional:
 
