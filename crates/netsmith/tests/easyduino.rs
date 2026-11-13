@@ -2040,13 +2040,14 @@ mod board {
         PORT.assert_sees_a_wrong_net(&built(), ("U2", "4"), ("U2", "5"));
     }
 
-    /// The same comparison on the source: the text of the board with the header's GPIO4 pin
-    /// joined to the module's IO5 instead of IO4 is built, and the comparison finds exactly
-    /// that. (The test above edits the computed map; this one edits what a person writes.)
+    /// The same comparison on the source: the text of the board with the header's GPIO4 and
+    /// GPIO5 pins swapped in its rename map (GPIO4 on the module's IO5, GPIO5 on IO4) is built,
+    /// and the comparison finds exactly that. (The test above edits the computed map; this one
+    /// edits what a person writes.)
     #[test]
     fn the_comparison_sees_a_header_pin_on_the_wrong_module_pin_in_the_source() {
         let text = source();
-        let line = "    .headers.gpio4 ~ .module.io4\n";
+        let line = "gpio4 = io4; gpio5 = io5;";
         assert_eq!(text.matches(line).count(), 1);
         let theirs = PORT.theirs();
         let wiring_of = |text: &str| {
@@ -2058,12 +2059,12 @@ mod board {
         let (control, ours) = wiring_of(&text);
         assert_eq!(PORT.net_differences(&ours, &theirs), Vec::<String>::new());
 
-        let wrong = text.replace(line, "    .headers.gpio4 ~ .module.io5\n");
+        let wrong = text.replace(line, "gpio4 = io5; gpio5 = io4;");
         assert_ne!(wrong, text);
         let (moved, ours) = wiring_of(&wrong);
         let differences = PORT.net_differences(&ours, &theirs);
-        // The pads that differ are those of the two nets involved: the header's pad 4, its
-        // pad 5 (on IO5's net, which now has pad 4 too) and the module's pads IO4 and IO5.
+        // The pads that differ are those of the two nets involved: the header's pads 4 and 5
+        // and the module's pads IO4 and IO5.
         let pads: BTreeSet<&str> = differences
             .iter()
             .map(|d| d.split(':').next().unwrap())

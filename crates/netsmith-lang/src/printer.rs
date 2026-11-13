@@ -443,6 +443,21 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     r.pitch.to_source()
                 );
             }
+            Item::JoinMap(b) => {
+                let _ = write!(out, "{} ~ {}", b.left.to_source(), b.right.to_source());
+                if !b.renames.is_empty() {
+                    let renames: Vec<String> = b
+                        .renames
+                        .iter()
+                        .map(|(from, to)| format!("{} = {}", from.to_source(), to.to_source()))
+                        .collect();
+                    let _ = write!(out, " {{ {} }}", renames.join("; "));
+                }
+                if !b.except.is_empty() {
+                    let names: Vec<String> = b.except.iter().map(Ident::to_source).collect();
+                    let _ = write!(out, " except {{ {} }}", names.join(" "));
+                }
+            }
             Item::Connect(c) => {
                 out.push_str(&c.first.to_source());
                 for (op, path) in &c.rest {

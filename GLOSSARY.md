@@ -24,6 +24,10 @@ _Avoid_: host port, device port (for the power direction), DRP
 Two connectors that a system joins with `~` between their `.mating`: contact N of one meets contact N of the other (`.carrier.slot.mating ~ .card.j1.mating`, ADR 0040). The checker reads what each board has behind each contact (ground, power, a signal, or open), refuses what cannot meet (a header with a header, two outputs, ground against power, a count or pitch that differs), and joins the ports the contacts carry, so the same fact is not said twice with a port join.
 _Avoid_: Connection, link, plug
 
+**Join by name**:
+What `~` does between two ports that are parts, modules or interfaces of different kinds, `.headers ~ .module { gpio4 = io4 } except { gnd }` (ADR 0117): it joins their pins and pin-holding interfaces pairwise by name, a rename map pairs members whose names differ, `except` leaves members out on both sides, and a member with no partner is an error. It makes the nets the `~` lines would.
+_Avoid_: bulk join, auto-connect, wildcard join
+
 **Seat**:
 How far above the face of its board a connector's partner rests when the two are mated, `.mating.seat` (ADR 0110): a header's plastic top, a socket's body top. It is a fact of one part, true whatever it mates with, a range with the maker's tolerance, and comes from the `header` catalog's `mating.seat` column with the drawing in the row's `source` (2.50 +/- 0.20 mm for the std 2.54 mm headers, 8.50 +/- 0.15 mm for the sockets). Unset means unknown, never a default, and never the part's height, which is its tallest point.
 _Avoid_: Stack height (that is the _Mated height_), seating plane, insertion depth

@@ -216,46 +216,19 @@ board EasyduinoEsp32s3 {
     .module.en ~> .en_100n_b ~> .vbus.neg
     .module.io0 ~> .boot_100n ~> .vbus.neg
 
-    // ---- The headers (U2): Easyduino's pin map, joined pin by pin (fixed) ----
+    // ---- The headers (U2): Easyduino's pin map (fixed) ----
 
     .headers.v3v3 ~ .v3v3.pos
     .headers.vbus ~ .vbus.pos
     .headers.gnd ~ .vbus.neg
-    .headers.en ~ .module.en
-    .headers.gpio4 ~ .module.io4
-    .headers.gpio5 ~ .module.io5
-    .headers.gpio6 ~ .module.io6
-    .headers.gpio7 ~ .module.io7
-    .headers.gpio15 ~ .module.io15
-    .headers.gpio16 ~ .module.io16
-    .headers.gpio17 ~ .module.io17
-    .headers.gpio18 ~ .module.io18
-    .headers.gpio8 ~ .module.io8
-    .headers.gpio3 ~ .module.io3
-    .headers.gpio46 ~ .module.io46
-    .headers.gpio9 ~ .module.io9
-    .headers.gpio10 ~ .module.io10
-    .headers.gpio11 ~ .module.io11
-    .headers.gpio12 ~ .module.io12
-    .headers.gpio13 ~ .module.io13
-    .headers.gpio14 ~ .module.io14
-    .headers.gpio19 ~ .module.io19
-    .headers.gpio20 ~ .module.io20
-    .headers.gpio21 ~ .module.io21
-    .headers.gpio47 ~ .module.io47
-    .headers.gpio48 ~ .module.io48
-    .headers.gpio45 ~ .module.io45
-    .headers.gpio0 ~ .module.io0
-    .headers.gpio35 ~ .module.io35
-    .headers.gpio36 ~ .module.io36
-    .headers.gpio37 ~ .module.io37
-    .headers.gpio38 ~ .module.io38
-    .headers.gpio39 ~ .module.io39
-    .headers.gpio40 ~ .module.io40
-    .headers.gpio41 ~ .module.io41
-    .headers.gpio42 ~ .module.io42
-    .headers.gpio2 ~ .module.io2
-    .headers.gpio1 ~ .module.io1
-    .headers.gpio44 ~ .module.rxd0
-    .headers.gpio43 ~ .module.txd0
+    // Each header pin is named as the development board's silkscreen (GPIO4) and joined to the
+    // module's pin of that GPIO (IO4); `.en` has one name on both.
+    .headers ~ .module {
+        gpio4 = io4; gpio5 = io5; gpio6 = io6; gpio7 = io7; gpio15 = io15; gpio16 = io16
+        gpio17 = io17; gpio18 = io18; gpio8 = io8; gpio3 = io3; gpio46 = io46; gpio9 = io9
+        gpio10 = io10; gpio11 = io11; gpio12 = io12; gpio13 = io13; gpio14 = io14; gpio19 = io19
+        gpio20 = io20; gpio21 = io21; gpio47 = io47; gpio48 = io48; gpio45 = io45; gpio0 = io0
+        gpio35 = io35; gpio36 = io36; gpio37 = io37; gpio38 = io38; gpio39 = io39; gpio40 = io40
+        gpio41 = io41; gpio42 = io42; gpio2 = io2; gpio1 = io1; gpio44 = rxd0; gpio43 = txd0
+    } except { v3v3 vbus gnd vdd }
 }
