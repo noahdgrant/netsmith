@@ -351,7 +351,8 @@ netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
   cylinder), its cutouts and every drilled hole, round or a slot. A part is
   its _Package shape_, one solid per piece named `body`, `metal` or `mark`, or else its body box
   from its face to its far end (`body`); pins that stand out of the far face by a stated length
-  are a box named `pins`. A BGA's balls are the one shape made of flat faces: the 3D view's
+  are named `pins`: one solid per pin of a pin header or socket, from the far end of its
+  protrusion up through the board to the part's face, else one box of its pads. A BGA's balls are the one shape made of flat faces: the 3D view's
   polygons of an ellipsoid, which STEP has no exact surface for. A body box that a mark sits
   level with ends 0.02 mm short of it, as the 3D view draws it; the part's top is still its
   height.
@@ -462,6 +463,22 @@ What it is:
   2.0 mm, from the makers' drawings that `data/jlcpcb/README.md` names; the pins go on up to the
   part's height, which for a header is the tip of its pins (8.9 mm for the catalog's 2.54 mm
   headers). A header shorter than its plastic is drawn as tall as its height.
+- **A project's own pin header is drawn as one.** A footprint read from a file (a project's
+  `.pretty` library, KiCad's) whose name starts as KiCad names a vertical header or socket
+  (`PinHeader_2x18_P2.54mm`, `PinSocket_1x04_P2.00mm`, then the end of the name or `_` and
+  anything) and whose pads are what that name says (rows x pins round plated holes on a full grid
+  at that pitch, inside its `F.Fab` body) is drawn with the generated header's shape: its body
+  as the plastic, to the family's figure, and a post on each pad up to the part's height (a
+  socket: the body to its height, with an opening over each pad). Both must agree; any other
+  file footprint is the box of its body. The plastic is the family's figure, not the part's
+  own (the example's Samtec TSW prints .100 in, 2.54 mm, where the family's is 2.50 mm).
+- **Pins through the board where their length is stated.** A pin header or socket, generated
+  or drawn as one, whose `.pin_protrusion` is stated has each pin drawn from the far end of
+  the protrusion up through its hole to the face it stands on, the family's square section
+  (0.64 mm at 2.54 mm pitch). Another part of a stated protrusion has the box of its pads out
+  of the far face, whose pins' section the data does not hold. A part of no stated protrusion
+  has none: how far its pins stand out is unknown, not zero, and none is drawn. The case fit
+  measures the box in both cases.
 - **One selection with the rest of the editor.** A click selects a part in every view (the 2D
   board, the schematic, the tree, the bill of materials), and a selection made in any of them is
   lit here; the hover is shared the same way. A double click opens the part's declaration in the

@@ -30,7 +30,8 @@
 //!   height is unknown has none: it is never given zero or a guess (ADR 0094, ADR 0105). A
 //!   part with no height of its own whose footprint has a _Standard height_ stands to the
 //!   package standard's maximum, labelled `standard` (ADR 0106).
-//!   Where the footprint has a package record and the height is known, the body also carries
+//!   Where the footprint has a package record (or is a pin header read from a file,
+//!   [`netsmith_pcb::body3d::package_of`]) and the height is known, the body also carries
 //!   its _Package shape_ ([`PlacedShape`]): the solids of [`netsmith_pcb::body3d::package_shape`] in the
 //!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
 //!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
@@ -39,7 +40,10 @@
 //!   ([`Scene::draw_models`], ADR 0108): its triangles placed in KiCad's frame for a model
 //!   ([`model_frame`]), drawn in place of the package shape. A drawing only, like the shape.
 //! - The pins of a through-hole part below the far face, where the design states their
-//!   protrusion (ADR 0045 section 15); unknown otherwise.
+//!   protrusion (ADR 0045 section 15); unknown otherwise. A pin header's or socket's are its
+//!   pins one by one ([`netsmith_pcb::body3d::pin_tails`], drawn from the far end up through the
+//!   board to the part's face); another part's are the box of its plated pads. The case fit
+//!   measures the box.
 //! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, per face it
 //!   limits, with the tallest part under it and the margin.
 //! - [`Findings`] that are 3D facts: the parts too tall for a limit (the placement check's own
@@ -287,12 +291,18 @@ pub enum Pins {
     /// The design states no protrusion: how far the pins stand out is unknown, not zero.
     Unknown { at: PlanBox },
     /// They stand out by `length` (the lines in `source` state it), from `z_top` to `z_bottom`.
+    /// `at` is the box of the plated pads they stand out in, which the case fit measures.
     Known {
         at: PlanBox,
         length: f64,
         source: String,
         z_top: f64,
         z_bottom: f64,
+        /// Each pin's tail, where the package's pins are known (a pin header or socket,
+        /// [`netsmith_pcb::body3d::pin_tails`]): in the footprint's frame, placed by the
+        /// body's [`Body::place`], from the far end of the protrusion up through the board to
+        /// the part's face. Empty otherwise: the box at `at` is drawn. Drawing only.
+        tails: Vec<Solid>,
     },
 }
 
@@ -327,7 +337,8 @@ pub struct Body {
     pub standard: Option<netsmith_pcb::standard_height::StandardHeight>,
     pub pins: Pins,
     /// The package shape, drawn in place of the box. `None` when the footprint has no package
-    /// record (a footprint read from a file, ADR 0105) or the height is unknown: the box, or the
+    /// record (a footprint read from a file, ADR 0105, that is not a pin header,
+    /// [`netsmith_pcb::body3d::header_of_file`]) or the height is unknown: the box, or the
     /// flat outline, is drawn instead.
     pub shape: Option<PlacedShape>,
     /// Where the footprint's frame is in the scene's.
@@ -1224,13 +1235,15 @@ fn body(
                         source: t.source.clone(),
                         z_top: near.max(far),
                         z_bottom: near.min(far),
+                        tails: netsmith_pcb::body3d::pin_tails(&p.footprint, thickness + t.length),
                     }
                 }
             }
         }
     };
     let place = placement(p, frame, z_face, out);
-    let shape = (p.footprint.package.is_some() && height.is_some())
+    let shape = height
+        .is_some()
         .then(|| netsmith_pcb::body3d::package_shape(&p.footprint, height))
         .filter(|s| s.shaped && !s.solids.is_empty())
         .map(|s| PlacedShape {

@@ -512,6 +512,7 @@ fn pinned(min: [f64; 2], max: [f64; 2], length: f64) -> Body {
         source: "a test".into(),
         z_top: -T,
         z_bottom: -T - length,
+        tails: Vec::new(),
     };
     b
 }

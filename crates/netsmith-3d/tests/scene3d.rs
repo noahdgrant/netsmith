@@ -338,6 +338,84 @@ fn the_pins_below_the_board_are_known_only_where_the_design_states_them() {
 }
 
 #[test]
+fn a_header_read_from_a_file_has_its_posts_and_its_tails_through_the_board() {
+    // The row's footprint named as KiCad names a one-row header of two pins: two round plated
+    // holes 2.54 mm apart, inside its body. It stands 8.5 mm and its pins 1.5 mm out.
+    let mut board = board();
+    let row = board.parts.iter_mut().find(|p| p.path == "row").unwrap();
+    row.height = Some(8.5);
+    row.protrusion = Some(Protrusion {
+        length: 1.5,
+        source: "scene.physical.nsm:3".into(),
+    });
+    let pads: Vec<Pt> = row
+        .footprint
+        .pads
+        .iter()
+        .map(|p| row.to_board(p.at))
+        .collect();
+    let before = scene(&board).body("row").unwrap().clone();
+    // As `Row2` it is its body box and the box of its pins below the board.
+    assert!(before.shape.is_none());
+    assert!(matches!(&before.pins, Pins::Known { tails, .. } if tails.is_empty()));
+
+    let row = board.parts.iter_mut().find(|p| p.path == "row").unwrap();
+    row.footprint.name = "PinHeader_1x02_P2.54mm".into();
+    let s = scene(&board);
+    let b = s.body("row").unwrap();
+    // The plastic to the family's 2.5 mm and a post on each pad up to the height.
+    let shape = b.shape.as_ref().expect("drawn as a header");
+    let body: Vec<_> = shape
+        .solids
+        .iter()
+        .filter(|s| s.material == netsmith_pcb::body3d::Material::Body)
+        .map(|s| s.bounds())
+        .collect();
+    assert_eq!(body.len(), 1);
+    assert_eq!(body[0].max[2], 2.5);
+    let posts = shape
+        .solids
+        .iter()
+        .filter(|s| s.material == netsmith_pcb::body3d::Material::Metal)
+        .count();
+    assert_eq!(posts, 2);
+    // The case fit's box is as before; each tail runs from 1.5 mm under the bottom face up
+    // through the board to the top face, on its pad.
+    let Pins::Known { at, tails, .. } = &b.pins else {
+        panic!("{:?}", b.pins)
+    };
+    let Pins::Known { at: at0, .. } = &before.pins else {
+        unreachable!()
+    };
+    assert_eq!(at, at0);
+    assert_eq!(tails.len(), 2);
+    let frame_y = |y: f64| board.outline.max.y - y;
+    for (t, pad) in tails.iter().zip(&pads) {
+        let c = t.bounds();
+        let lo = b.place.point(c.min);
+        let hi = b.place.point(c.max);
+        let mid = ((lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0);
+        assert!(
+            (mid.0 - (pad.x - board.outline.min.x)).abs() < 1e-9,
+            "{mid:?} {pad:?}"
+        );
+        assert!((mid.1 - frame_y(pad.y)).abs() < 1e-9, "{mid:?} {pad:?}");
+        assert_eq!((lo[2].min(hi[2]), lo[2].max(hi[2])), (-3.1, 0.0));
+    }
+    // The meshes draw the two pins, not the box.
+    let pieces = netsmith_3d::mesh::pieces(&s);
+    let i = s.bodies.iter().position(|b| b.path == "row").unwrap();
+    let pins = pieces.bodies[i].pins.as_ref().unwrap();
+    let zs: Vec<f64> = pins.positions.iter().map(|p| p[2]).collect();
+    assert_eq!(zs.iter().copied().fold(f64::MAX, f64::min), -3.1);
+    assert_eq!(zs.iter().copied().fold(f64::MIN, f64::max), 0.0);
+    let ys: Vec<f64> = pins.positions.iter().map(|p| p[1]).collect();
+    let span =
+        ys.iter().copied().fold(f64::MIN, f64::max) - ys.iter().copied().fold(f64::MAX, f64::min);
+    assert!((span - (2.54 + 0.64)).abs() < 1e-9, "{span}");
+}
+
+#[test]
 fn a_limit_names_the_tallest_part_under_it_its_margin_and_the_unknown_ones() {
     let mut board = board();
     // Over `a` and the row on the top, and over `under` on the bottom.

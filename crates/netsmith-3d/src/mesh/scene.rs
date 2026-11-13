@@ -56,7 +56,7 @@ use std::collections::BTreeMap;
 use crate::mesh::boolean::{difference, intersection};
 use crate::mesh::{Material, Mesh, Polygon, circle, rounded_rect};
 use crate::scene3d::{
-    BoardSolid, Body, CopperLayer, HoleOwner, Pins, Plan, PlanArea, PlanBox, Scene,
+    BoardSolid, Body, CopperLayer, HoleOwner, Pins, PlacedShape, Plan, PlanArea, PlanBox, Scene,
 };
 use netsmith_pcb::board::Side;
 use netsmith_pcb::stackup::LayerKind;
@@ -567,6 +567,16 @@ fn body(b: &Body) -> BodyPieces {
         }
     }
     let pins = match &b.pins {
+        // Each pin of a header or socket, through the board and out of its far face.
+        Pins::Known { tails, .. } if !tails.is_empty() => {
+            let shape = PlacedShape {
+                solids: tails.clone(),
+                place: b.place,
+            };
+            let mut meshes = Vec::new();
+            super::package::meshes(&b.path, &shape, &mut meshes);
+            join(&b.path, Material::Metal, meshes.into_iter())
+        }
         Pins::Known {
             at,
             z_top,

@@ -27,9 +27,9 @@ HOLES = [(12.03, 47.0), (39.97, 47.0), (39.97, 3.82), (12.03, 3.82)]
 GAP = 0.5  # between the board's edge and the inside of a wall
 WALL = 2.0  # wall thickness
 FLOOR = 2.0  # floor thickness
-# The board rests on four bosses this tall: the header's tails stand about 1.6 mm out of the
-# bottom face (TSW-118-07: a 3.18 mm tail under the 2.54 mm body, through 1.6 mm of board), so
-# 4 mm leaves them and their solder 2 mm over the floor.
+# The board rests on four bosses this tall: the header's tails stand 0.94 mm out of the bottom
+# face (TSW-118-07: a 2.54 mm tail under the 2.54 mm body, Samtec's catalog page F-226, through
+# 1.6 mm of board), so 4 mm leaves them and their solder about 3 mm over the floor.
 STANDOFF = 4.0
 BOSS = 6.0  # a boss's square, round the hole
 BOSS_BORE = 2.2  # the square bore of a boss, for an M2.5 thread-forming screw

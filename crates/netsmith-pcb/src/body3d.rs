@@ -6,8 +6,11 @@
 //! length, the exposed pad, the ball pads, the pins of a header. [`package_shape`] turns that and
 //! the part's height into simple solids (boxes, extruded polygons, vertical cylinders and
 //! spheroids, each with a [`Material`]) that the glTF writer and the rasterizer triangulate. A
-//! footprint that no generator made (a KiCad library file, a footprint of `std/libs/`) and the
-//! generated families listed below as not shaped get the box of their _Body_ ([`Footprint::body`]).
+//! footprint that no generator made (a KiCad library file, a footprint of `std/libs/`, a
+//! project's own) and the generated families listed below as not shaped get the box of their
+//! _Body_ ([`Footprint::body`]), except a vertical pin header or socket whose name and pads say
+//! so ([`header_of_file`]), which is drawn as the generated one. [`pin_tails`] gives a header's
+//! pins below its face, to the depth of a stated protrusion (`.pin_protrusion`).
 //!
 //! **The height is never taken from here (ADR 0094).** The caller gives the part's known height,
 //! stated, from the catalog or its package standard's maximum ([`crate::standard_height`], ADR
@@ -57,7 +60,9 @@
 //! widths and spans the data does not hold, and the mechanical items (holes, fiducials, test
 //! points).
 
-use crate::footprint::Footprint;
+use std::borrow::Cow;
+
+use crate::footprint::{Footprint, PadKind};
 use crate::geometry::{Pt, Rect};
 
 /// Drawing only: the thickness of a gull-wing lead, in mm, at most a quarter of the height.
@@ -391,8 +396,8 @@ pub fn package_shape(footprint: &Footprint, height: Option<f64>) -> BodyShape {
             shaped: false,
         };
     };
-    let (solids, shaped) = match &footprint.package {
-        Some(package) => (shape(package, h), true),
+    let (solids, shaped) = match package_of(footprint) {
+        Some(package) => (shape(&package, h), true),
         None => (
             vec![solid(
                 Material::Body,
@@ -406,6 +411,126 @@ pub fn package_shape(footprint: &Footprint, height: Option<f64>) -> BodyShape {
         solids,
         shaped,
     }
+}
+
+/// What `footprint`'s package is drawn as: the generator's record ([`Footprint::package`]), else,
+/// for a footprint read from a file, a pin header or socket it is recognised as
+/// ([`header_of_file`]).
+pub fn package_of(footprint: &Footprint) -> Option<Cow<'_, Package>> {
+    match &footprint.package {
+        Some(p) => Some(Cow::Borrowed(p)),
+        None => header_of_file(footprint).map(Cow::Owned),
+    }
+}
+
+/// A footprint read from a file drawn as a pin header or socket of the generator's families,
+/// when two things agree:
+///
+/// - its name starts as KiCad's library names a vertical one (`PinHeader_2x18_P2.54mm`, then
+///   the end of the name or `_` and anything, as in `PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D`):
+///   `PinHeader` is a header of square pins standing out of its plastic, `PinSocket` a socket,
+///   one or two rows, at a pitch the generator has a family for (2.54 mm, 2.00 mm);
+/// - its pads are the ones that name says: rows x pins plated through holes, all round, their
+///   centres a full grid of that many rows and pins at that pitch (the rows along x or along y),
+///   inside its body.
+///
+/// The plastic is the body ([`Footprint::body`], the `F.Fab` drawing), the pins the pads'
+/// centres in the file's order, and the side of the pin and the height of the plastic the
+/// family's figures (`generate/header.rs`). Anything else (another name, a pad that is not a
+/// round plated hole, a pad off the grid) is `None`, and the part is drawn as its box.
+pub fn header_of_file(footprint: &Footprint) -> Option<Package> {
+    let (socket, rest) = match footprint.name.strip_prefix("PinHeader_") {
+        Some(rest) => (false, rest),
+        None => (true, footprint.name.strip_prefix("PinSocket_")?),
+    };
+    let (size, rest) = rest.split_once("_P")?;
+    let (rows, per_row) = size.split_once('x')?;
+    let rows: usize = rows.parse().ok().filter(|r| [1, 2].contains(r))?;
+    let per_row: usize = per_row.parse().ok().filter(|n| *n >= 1)?;
+    let (pitch, rest) = rest.split_once("mm")?;
+    if !(rest.is_empty() || rest.starts_with('_')) {
+        return None;
+    }
+    let pitch = crate::generate::header::pitch_of(pitch)?;
+    let (pin, plastic) = crate::generate::header::family(pitch)?;
+    let pads = &footprint.pads;
+    if pads.len() != rows * per_row {
+        return None;
+    }
+    let round = |p: &crate::footprint::Pad| {
+        p.kind == PadKind::ThruHole
+            && p.drill
+                .is_some_and(|d| d.width > 0.0 && (d.width - d.height).abs() < 1e-6)
+    };
+    if !pads.iter().all(round) {
+        return None;
+    }
+    // The pads as steps of the pitch from the first: whole steps, each place once.
+    let first = pads[0].at;
+    let mut steps = Vec::with_capacity(pads.len());
+    for p in pads {
+        let (i, j) = ((p.at.x - first.x) / pitch, (p.at.y - first.y) / pitch);
+        let (ri, rj) = (i.round(), j.round());
+        if (i - ri).abs() > 1e-3 || (j - rj).abs() > 1e-3 {
+            return None;
+        }
+        steps.push((ri as i64, rj as i64));
+    }
+    let span = |k: fn(&(i64, i64)) -> i64| {
+        let lo = steps.iter().map(k).min().unwrap_or(0);
+        let hi = steps.iter().map(k).max().unwrap_or(0);
+        (hi - lo + 1) as usize
+    };
+    let (nx, ny) = (span(|s| s.0), span(|s| s.1));
+    let mut unique = steps.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    let grid = (nx, ny) == (rows, per_row) || (nx, ny) == (per_row, rows);
+    if !grid || unique.len() != pads.len() {
+        return None;
+    }
+    let body = footprint.body;
+    let inside =
+        |c: Pt| body.min.x < c.x && c.x < body.max.x && body.min.y < c.y && c.y < body.max.y;
+    if !pads.iter().all(|p| inside(p.at)) {
+        return None;
+    }
+    Some(Package::Header {
+        body,
+        pitch,
+        pin,
+        plastic,
+        pins: pads.iter().map(|p| p.at).collect(),
+        socket,
+    })
+}
+
+/// The tails of a header's or a socket's pins below the face the part is on, in the
+/// footprint's frame: each pin's square section from `z = -depth` up to the face, so through the
+/// board and out of its far face. `depth` is the board's thickness and the pins' stated
+/// protrusion (`.pin_protrusion`): the tails are drawn only where it is stated (the caller does
+/// not call this otherwise), never a guessed length. Empty for any other package: their pins'
+/// section is not known, and the scene draws the box the pins stand out in. Drawing only, as
+/// every shape is: the case fit measures that box.
+pub fn pin_tails(footprint: &Footprint, depth: f64) -> Vec<Solid> {
+    let Some(package) = package_of(footprint) else {
+        return Vec::new();
+    };
+    let Package::Header { pin, pins, .. } = package.as_ref() else {
+        return Vec::new();
+    };
+    if !(depth.is_finite() && depth > 0.0) {
+        return Vec::new();
+    }
+    let p = pin / 2.0;
+    pins.iter()
+        .map(|c| {
+            solid(
+                Material::Metal,
+                cuboid(c.x - p, c.y - p, -depth, c.x + p, c.y + p, 0.0),
+            )
+        })
+        .collect()
 }
 
 fn solid(material: Material, primitive: Primitive) -> Solid {
@@ -1560,6 +1685,181 @@ mod tests {
                 assert_eq!(shape.outline[2], fp.body.max);
             }
         }
+    }
+
+    /// The example's own footprint of J2 and J3, a Samtec TSW-118-07-L-D (2 x 18, 2.54 mm).
+    fn tsw() -> Footprint {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/rp2350_minimal/libs/netsmith_rp2350.pretty/",
+            "PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D.kicad_mod"
+        );
+        let text = std::fs::read_to_string(path).unwrap();
+        Footprint::parse("PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D", &text).unwrap()
+    }
+
+    /// `id`'s generated footprint written out, renamed `name`, and read back.
+    fn read_as(id: &str, name: &str) -> Footprint {
+        let fp = made(id);
+        let text = fp.source.to_kicad_string().replacen(
+            &format!("(footprint \"{}\"", fp.name),
+            &format!("(footprint \"{name}\""),
+            1,
+        );
+        let read = Footprint::parse(name, &text).unwrap();
+        assert_eq!(read.name, name);
+        read
+    }
+
+    #[test]
+    fn a_header_read_from_a_file_is_drawn_as_the_generated_one() {
+        for (id, name) in [
+            (
+                "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+                "PinHeader_2x05_P2.54mm_Vertical",
+            ),
+            (
+                "Connector_PinSocket_2.00mm:PinSocket_1x04_P2.00mm_Vertical",
+                "PinSocket_1x04_P2.00mm_Vertical",
+            ),
+        ] {
+            let read = read_as(id, name);
+            assert!(read.package.is_none(), "{name}");
+            let Some(Package::Header {
+                pitch,
+                pin,
+                plastic,
+                pins,
+                socket,
+                ..
+            }) = header_of_file(&read)
+            else {
+                panic!("{name} is not recognised");
+            };
+            let Some(Package::Header {
+                pitch: p0,
+                pin: n0,
+                plastic: l0,
+                pins: c0,
+                socket: s0,
+                ..
+            }) = made(id).package
+            else {
+                unreachable!()
+            };
+            assert_eq!((pitch, pin, plastic, socket), (p0, n0, l0, s0), "{name}");
+            assert_eq!(pins, c0, "{name}");
+            assert!(package_shape(&read, Some(8.5)).shaped, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_samtec_tsw_footprint_is_a_two_row_header_of_36_pins() {
+        let fp = tsw();
+        let Some(Package::Header {
+            body,
+            pitch,
+            pin,
+            plastic,
+            pins,
+            socket,
+        }) = header_of_file(&fp)
+        else {
+            panic!("not recognised");
+        };
+        assert_eq!((pitch, pin, plastic, socket), (2.54, 0.64, 2.5, false));
+        assert_eq!(body, fp.body);
+        let centres: Vec<Pt> = fp.pads.iter().map(|p| p.at).collect();
+        assert_eq!(pins, centres);
+        assert_eq!(pins.len(), 36);
+
+        // At its catalog height, 8.38 mm: the plastic to the family's 2.5 mm, and each pin a
+        // 0.64 mm square post from the board up to the height, on its pad.
+        let shape = package_shape(&fp, Some(8.38));
+        assert!(shape.shaped);
+        let plastic = body_solid(&shape);
+        assert_eq!(plastic.max[2], 2.5);
+        assert_eq!(
+            (
+                plastic.min[0],
+                plastic.max[0],
+                plastic.min[1],
+                plastic.max[1]
+            ),
+            (-22.86, 22.86, -2.54, 2.54)
+        );
+        let posts: Vec<Bounds> = shape
+            .solids
+            .iter()
+            .filter(|s| s.material == Material::Metal)
+            .map(Solid::bounds)
+            .collect();
+        assert_eq!(posts.len(), 36);
+        for (b, c) in posts.iter().zip(&centres) {
+            assert!((b.max[0] - b.min[0] - 0.64).abs() < EPS);
+            assert!(((b.min[0] + b.max[0]) / 2.0 - c.x).abs() < EPS);
+            assert!(((b.min[1] + b.max[1]) / 2.0 - c.y).abs() < EPS);
+            assert_eq!((b.min[2], b.max[2]), (0.0, 8.38));
+        }
+    }
+
+    #[test]
+    fn a_file_is_a_header_only_when_its_name_and_its_pads_agree() {
+        let id = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical";
+        // Another name, a name that says another size or pitch, or a name that runs on.
+        for name in [
+            "Conn_2x05_P2.54mm",
+            "PinHeader_2x06_P2.54mm_Vertical",
+            "PinHeader_5x02_P2.54mm",
+            "PinHeader_2x05_P2.00mm_Vertical",
+            "PinHeader_2x05_P1.27mm",
+            "PinHeader_2x05_P2.54mmX",
+            "PinHeader_3x05_P2.54mm",
+        ] {
+            assert!(header_of_file(&read_as(id, name)).is_none(), "{name}");
+        }
+        let name = "PinHeader_2x05_P2.54mm";
+        assert!(header_of_file(&read_as(id, name)).is_some());
+        // A pad off the grid, a pad that is not a plated hole, an oval hole.
+        let mut fp = read_as(id, name);
+        fp.pads[3].at.x += 0.3;
+        assert!(header_of_file(&fp).is_none());
+        let mut fp = read_as(id, name);
+        fp.pads[3].kind = PadKind::NpThruHole;
+        assert!(header_of_file(&fp).is_none());
+        let mut fp = read_as(id, name);
+        fp.pads[3].drill.as_mut().unwrap().height = 2.0;
+        assert!(header_of_file(&fp).is_none());
+        // Two pads in one place leave one of the grid empty.
+        let mut fp = read_as(id, name);
+        fp.pads[3].at = fp.pads[2].at;
+        assert!(header_of_file(&fp).is_none());
+    }
+
+    #[test]
+    fn a_headers_tails_run_from_the_stated_depth_to_its_face_and_no_other_part_has_any() {
+        // The board (1.6 mm) and the 0.94 mm the example states.
+        let fp = tsw();
+        let tails = pin_tails(&fp, 2.54);
+        assert_eq!(tails.len(), 36);
+        for (t, pad) in tails.iter().zip(&fp.pads) {
+            assert_eq!(t.material, Material::Metal);
+            let b = t.bounds();
+            assert_eq!((b.min[2], b.max[2]), (-2.54, 0.0));
+            assert!((b.max[1] - b.min[1] - 0.64).abs() < EPS);
+            assert!(((b.min[0] + b.max[0]) / 2.0 - pad.at.x).abs() < EPS);
+            assert!(((b.min[1] + b.max[1]) / 2.0 - pad.at.y).abs() < EPS);
+        }
+        assert!(pin_tails(&fp, 0.0).is_empty());
+        assert!(pin_tails(&fp, f64::NAN).is_empty());
+        // A part whose pins' section is not known has no tails: the scene draws their box.
+        let chip = made("Resistor_SMD:R_0603_1608Metric");
+        assert!(pin_tails(&chip, 2.0).is_empty());
+        let row = read_as(
+            "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+            "Row_2x05",
+        );
+        assert!(pin_tails(&row, 2.0).is_empty());
     }
 
     #[test]

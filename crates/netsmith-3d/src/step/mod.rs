@@ -21,8 +21,9 @@
 //!   ([`netsmith_pcb::body3d`]: boxes, prisms, cylinders), named `body`, `metal` or `mark`, each with
 //!   the 3D view's colour; a part with no package record is its body box from its face to its
 //!   far end, named `body`. A BGA's balls are the only solids made of flat facets, the polygons
-//!   of the 3D view's balls. Pins that stand out of the far face by a stated length are a box
-//!   named `pins`.
+//!   of the 3D view's balls. Pins that stand out of the far face by a stated length are named
+//!   `pins`: each pin of a pin header or socket, through the board and out, else the box they
+//!   stand out in.
 //! - **A part drawn from its STEP model** (ADR 0108) holds the model's solids, copied from its
 //!   file ([`copy`]): one child product per solid, in the model's own units, placed by an
 //!   `ITEM_DEFINED_TRANSFORMATION` where the scene draws it; the part's description names the
@@ -539,7 +540,7 @@ fn model_part(f: &mut File, b: &Body, model: &DrawnModel, prefix: &str, under: (
     let mut items = vec![axis];
     items.extend(places.iter().map(|(at, _)| *at));
     let ctx = f.context;
-    if let Some(pins) = pins_solid(b) {
+    for pins in pins_solids(b) {
         let brep = f.w.extrusion("pins", &pins);
         f.paint(brep, Colour::Metal, false);
         items.push(brep);
@@ -566,17 +567,32 @@ fn model_part(f: &mut File, b: &Body, model: &DrawnModel, prefix: &str, under: (
     }
 }
 
-/// The box of a part's pins out of the far face, where their length is stated.
-fn pins_solid(b: &Body) -> Option<Extrusion> {
+/// A part's pins out of the far face, where their length is stated: each pin of a header or
+/// socket through the board and out, else the box they stand out in.
+fn pins_solids(b: &Body) -> Vec<Extrusion> {
     let Pins::Known {
         at,
         z_top,
         z_bottom,
+        tails,
         ..
     } = &b.pins
     else {
-        return None;
+        return Vec::new();
     };
+    if !tails.is_empty() {
+        let shape = PlacedShape {
+            solids: tails.clone(),
+            place: b.place,
+        };
+        return tails
+            .iter()
+            .filter_map(|t| match placed(&shape, &t.primitive) {
+                Some(Solid::Extrusion(e)) => Some(e),
+                _ => None,
+            })
+            .collect();
+    }
     Extrusion {
         origin: [0.0; 3],
         u: X,
@@ -587,6 +603,8 @@ fn pins_solid(b: &Body) -> Option<Extrusion> {
         to: *z_top,
     }
     .normalised()
+    .into_iter()
+    .collect()
 }
 
 /// A solid of a part.
@@ -762,7 +780,11 @@ fn part_solids(b: &Body) -> Vec<(&'static str, Colour, Solid)> {
             );
         }
     }
-    out.extend(pins_solid(b).map(|e| ("pins", Colour::Metal, Solid::Extrusion(e))));
+    out.extend(
+        pins_solids(b)
+            .into_iter()
+            .map(|e| ("pins", Colour::Metal, Solid::Extrusion(e))),
+    );
     out
 }
 
