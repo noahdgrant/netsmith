@@ -3777,6 +3777,9 @@ impl<'a> Router<'a> {
                 .routed
                 .iter()
                 .filter(|r| self.partners[self.nets[r.line]].is_none())
+                // On a try with classes, a decoupling or clock line keeps the copper its class
+                // gave it, as a pair's does (issue #416).
+                .filter(|r| !(self.classed.get() && self.class[r.line].protected()))
                 .map(|r| (r.line, self.on_pour(r)))
                 .filter(|&(_, mm)| mm > 0.0)
                 .collect();
