@@ -17,7 +17,7 @@
 //! - a bound (`>=`, `<=`) holds against numbers alone (`.max_dcr <= 0.1ohm`).
 //!
 //! A bound against another field is a check, not a statement: the library's own relation
-//! `.inductor.dc_resistance <= .buck.max_dcr` has the member alone on one side, and counting
+//! `.inductor.dc_resistance <= .ic.max_dcr` has the member alone on one side, and counting
 //! it would make every optional member stated by the relation that reads it. A value that a
 //! catalog row or a pick gives is never a statement either.
 //!
@@ -58,7 +58,7 @@
 //! a relation over an optional member of its own interface is skipped there when it states
 //! nothing. The provider search (ADR 0068) is unaffected: a provider whose statements state the
 //! member is judged on the relation, and one that does not has no relation to judge. Whether
-//! other members of `Buck` and of std should be marked is the owner's, member by member.
+//! other members of `BuckIc` and of std should be marked is the owner's, member by member.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -122,7 +122,7 @@ impl Checker<'_> {
                 "a pin; a pin that need not be connected says so in its `pins` row (`optional`)"
                     .to_string()
             }
-            Ty::Def(m, i) => {
+            Ty::Def(m, i) | Ty::Param { arg: (m, i), .. } => {
                 let def = &self.modules[*m].defs[*i];
                 let word = crate::providers::kind_word(def);
                 let article = if word.starts_with(['a', 'e', 'i', 'o', 'u']) {

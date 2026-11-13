@@ -278,6 +278,12 @@ fn visit<'a>(
         Item::Peripheral(_) => {}
         // A polygon's corners are numbers; a path in one is refused by the checker.
         Item::Polygon(_) => {}
+        // A part's support section holds declarations and statements like its body.
+        Item::Support(support) => {
+            for inner in &support.items {
+                visit(inner, inside, out);
+            }
+        }
         Item::Shared(shared) => {
             for member in &shared.members {
                 if let netsmith_lang::ast::SharedMember::Pin(p) = member {

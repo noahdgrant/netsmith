@@ -269,9 +269,10 @@ impl Hierarchy {
                     let count = per_type.entry(key.0.clone()).or_insert(0);
                     let name = loop {
                         *count += 1;
+                        let stem = file_stem(&key.0);
                         let name = match *count {
-                            1 => format!("{}.kicad_sch", key.0),
-                            n => format!("{}_{n}.kicad_sch", key.0),
+                            1 => format!("{stem}.kicad_sch"),
+                            n => format!("{stem}_{n}.kicad_sch"),
                         };
                         // Windows folds case, so two names that differ by it are one file.
                         if taken.insert(name.to_lowercase()) {
@@ -408,4 +409,31 @@ fn signature(design: &Design, instance: &SheetInstance) -> String {
         text.push_str(&net);
     }
     text
+}
+
+/// The name of a module definition as the stem of a file: a module made with type arguments
+/// (`Buck<Lt8641>`, ADR 0115) has characters no file name should have, so each run of them is
+/// one `_` and none ends the name (`Buck_Lt8641`).
+fn file_stem(type_name: &str) -> String {
+    let mut out = String::new();
+    for c in type_name.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+            out.push(c);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+    out.trim_end_matches('_').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_stem;
+
+    #[test]
+    fn a_module_made_with_type_arguments_has_a_plain_file_name() {
+        assert_eq!(file_stem("LdoStage"), "LdoStage");
+        assert_eq!(file_stem("Buck<Lt8641>"), "Buck_Lt8641");
+        assert_eq!(file_stem("Pair<Zbk2, Zbk9>"), "Pair_Zbk2_Zbk9");
+    }
 }

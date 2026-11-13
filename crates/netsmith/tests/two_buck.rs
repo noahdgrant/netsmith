@@ -90,7 +90,7 @@ fn it_solves_and_the_dc_analysis_settles_what_each_regulator_draws() {
     // The DC analysis reached the regulators: each IC's input current is a range with a draw
     // in it, and the output of each stage is held inside what the board asked for.
     for stage in ["buck_5v", "buck_3v3"] {
-        let drawn = range(&solution, &format!("{stage}.ic.vin.current"));
+        let drawn = range(&solution, &format!("{stage}.stage.ic.vin.current"));
         assert!(drawn.hi() > 0.0 && drawn.hi() < 3.0, "{stage}: {drawn}");
     }
     let five = range(&solution, "buck_5v.vout.voltage");

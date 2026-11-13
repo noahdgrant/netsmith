@@ -69,7 +69,7 @@ impl Checker<'_> {
         let (m, i) = match self.resolve_type(ty) {
             Ty::Enum(m, i) => (m, i),
             Ty::Poison | Ty::Bad => return None,
-            Ty::Def(m, i) => {
+            Ty::Def(m, i) | Ty::Param { arg: (m, i), .. } => {
                 let kind = self.module_def_kind(m, i);
                 self.error(
                     span,

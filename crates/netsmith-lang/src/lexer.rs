@@ -32,6 +32,10 @@ pub enum Tok {
     EqEq,
     GtEq,
     LtEq,
+    /// `<` and `>` around the type parameters of a module and the type arguments of a use
+    /// (`Buck<Lt8641>`, ADR 0115). Not a comparison: those are `<=` and `>=`.
+    Lt,
+    Gt,
     Plus,
     Minus,
     Star,
@@ -330,7 +334,7 @@ impl Lexer<'_> {
             });
         }
         // Longer spellings first.
-        let table: [(&str, Tok); 22] = [
+        let table: [(&str, Tok); 24] = [
             ("::", Tok::ColonColon),
             ("~>", Tok::TildeArrow),
             ("&=", Tok::AmpEq),
@@ -338,6 +342,8 @@ impl Lexer<'_> {
             ("==", Tok::EqEq),
             (">=", Tok::GtEq),
             ("<=", Tok::LtEq),
+            ("<", Tok::Lt),
+            (">", Tok::Gt),
             ("+/-", Tok::PlusMinus),
             ("±", Tok::PlusMinus),
             ("..", Tok::DotDot),

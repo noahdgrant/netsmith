@@ -342,6 +342,14 @@ _Avoid_: Abstract part, trait, protocol, role (a **Role** is a part's end of a b
 A `part`, `module` or `interface` whose header says `provides Name` (`part AcmeMicroCoax provides CoaxReceptacle`), naming a generic; an interface provides a generic with no pins and no catalog, such as a process (ADR 0113). It has every member and statement of the generic, does not declare them again, and adds its own pin table, numbers, catalog and, for a module, parts. It is a candidate for a use of the generic when its file is imported, directly or through other files, by the board's file. A provider's name is unique among the providers of one generic, and it does not contain a use of the generic it provides (ADR 0068 section 13). A provider is never a **supply provider**, the source of price and stock; say which one is meant (ADR 0068). A part may provide a standard generic such as `Resistor`: the generic's own catalog and pads are not read into it, and the design lists the generics it provides (`Part.provides`), so that the schematic and the placer treat it as the kind it provides.
 _Avoid_: Implementation, implementer, subtype, instance (of a generic)
 
+**Type parameter**:
+A part that a module takes, written after its name with the generic that bounds it: `module Buck<Ic: BuckIc>` (ADR 0115). Inside the module it is the type of a member (`.ic: Ic`) or the argument of another module (`Buck<Ic>`), and a path through such a member reaches only what the bound declares. A board names the part, `Buck<Lt8641>` (a **type argument**), or uses a generic the module provides, and then each provider of the bound is a candidate (`Buck<Lt8641>`, `Buck<Zbk2>`).
+_Avoid_: Template, generic module (a _Generic_ is a definition, not a module with a parameter), wrapper per IC
+
+**Support section**:
+The `support { ... }` section of a part: the parts and connections its datasheet's application circuit puts around it (a bootstrap capacitor, the resistor on `RT`), which come with the part wherever it is placed, at the path below it (`reg.ic.boost`, ADR 0115). It is how a part that provides a generic carries what not every provider needs.
+_Avoid_: Application module, companion parts, external components, satellite parts
+
 **Use of a generic**:
 A member declared with a generic's type (`.rf: CoaxReceptacle { ... }`). The solver puts one provider in its place, an instance of that part or module at the use's own path (`rf`), and the build says which and why the providers before it were passed over. A use reaches only the members the generic declares, so a board works with every provider; a board that wants exactly one writes the provider as the type (`.rf: AcmeMicroCoax`), and nothing is picked (ADR 0068).
 _Avoid_: Instantiation, binding

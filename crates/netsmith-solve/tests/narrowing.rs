@@ -254,70 +254,62 @@ fn a_bound_on_a_single_column_that_the_design_wrote_filters_as_the_columns_do() 
     );
 }
 
-/// A buck stage and its controller, as in `joint_bank.rs`, with an invented IC.
+/// A buck stage around an invented IC, as in `joint_bank.rs`.
 const BUCK: &str = r#"import std::parts::passive::{Capacitor, Resistor, FerriteBead}
-import std::parts::regulator::{Buck, BuckStage}
+import std::parts::regulator::{Buck, BuckIc}
 import std::sources::Rail
 
-part Zbk2 {
-    .vin: Rail
+part Zbk2 provides BuckIc {
     .vin.voltage >= 3V
     .vin.voltage <= 65V
     .vin_abs_max: Voltage
     .vin_abs_max &= 80V
     .vin.peak <= .vin_abs_max
-    .buck: Buck {
-        .vref &= 0.8V +/- 1.5%
-        .min_input_voltage &= 3V
-        .max_input_voltage &= 65V
-        .max_output_current &= 3A
-        .efficiency &= 0.85..0.95
-        .min_input_capacitance &= 2.2uF
-        .min_output_capacitance &= 10uF
-    }
+    .vref &= 0.8V +/- 1.5%
+    .min_input_voltage &= 3V
+    .max_input_voltage &= 65V
+    .max_output_current &= 3A
+    .efficiency &= 0.85..0.95
+    .min_input_capacitance &= 2.2uF
+    .min_output_capacitance &= 10uF
     .rt_resistance: Resistance
     .fsw_nominal: Frequency
     .fsw_nominal == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)
     .fsw_tolerance: Number
     .fsw_tolerance &= 0.925..1.075
-    .fsw: Frequency
+    .fsw ?= 0.8MHz..1.2MHz
     .fsw == .fsw_nominal * .fsw_tolerance
-    .buck.fsw == .fsw
-    .buck.min_inductance == (2 * .buck.sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+    .min_inductance == (2 * .sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
     pins {
         .vin.pos       power   "VIN"  "1"
         .vin.neg       power   "GND"  "2"
-        .buck.sw.pos   power   "SW"   "3"
-        .buck.fb       input   "FB"   "4"
+        .sw.pos        power   "SW"   "3"
+        .fb            input   "FB"   "4"
         .en            input   "EN"   "5"
         .rt            passive "RT"   "6"
     }
     .mpn: String
     .package: Package
     catalog zbk2 { .mpn, .package }
+
+    support {
+        .en ~ .vin.pos
+        .frequency_resistor: Resistor
+        .rt ~> .frequency_resistor ~> .vin.neg
+        .rt_resistance == .frequency_resistor.resistance
+    }
 }
 
 module Zbk2Buck {
     .vin: Rail
     .vout: Rail
-    .fsw: Frequency
-    .fsw ?= 0.8MHz..1.2MHz
-    .controller: Zbk2
-    .stage: BuckStage
-    .frequency_resistor: Resistor
+    .stage: Buck<Zbk2>
     .vin1_cap: Capacitor { .capacitance &= 1uF +/- 20% }
     .vin2_cap: Capacitor { .capacitance &= 1uF +/- 20% }
 
-    .controller.vin ~ .vin
     .stage.vin ~ .vin
     .stage.vout ~ .vout
-    .stage.buck ~ .controller.buck
-    .controller.en ~ .vin.pos
-    .controller.rt ~> .frequency_resistor ~> .vin.neg
-    .controller.rt_resistance == .frequency_resistor.resistance
-    .controller.fsw == .fsw
     .vin.pos ~> .vin1_cap ~> .vin.neg
     .vin.pos ~> .vin2_cap ~> .vin.neg
     .vin1_cap.max_voltage >= .vin.voltage * 2

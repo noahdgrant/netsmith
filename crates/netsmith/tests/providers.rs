@@ -592,100 +592,90 @@ generic BuckConverter {
 
 /// The guide's invented 4.5 V to 6 V, 2 A converter.
 const ZBK2: &str = "\
-import std::parts::regulator::Buck
-import std::sources::Rail
+import std::parts::regulator::BuckIc
 
-part Zbk2 {
-    .vin: Rail
-    .buck: Buck {
-        .vref &= 0.8V +/- 1.5%
-        .fsw &= 1.2MHz +/- 15%
-        .min_input_voltage &= 4.5V
-        .max_input_voltage &= 6V
-        .max_output_current &= 2A
-        .efficiency &= 0.85..0.95
-        .min_inductance &= 1.5uH
-        .min_inductor_saturation &= 3A
-        .max_inductor_dcr &= 0.1ohm
-        .min_input_capacitance &= 2uF
-        .min_output_capacitance &= 10uF
-    }
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+part Zbk2 provides BuckIc {
+    .vref &= 0.8V +/- 1.5%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 6V
+    .max_output_current &= 2A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_inductor_saturation &= 3A
+    .max_inductor_dcr &= 0.1ohm
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
 
     pins {
-        .vin.pos       power   \"VIN\"  \"1\" \"2\"
-        .vin.neg       power   \"GND\"  \"3\" \"9\"
-        .buck.sw.pos   power   \"SW\"   \"4\" \"5\"
-        .buck.fb       input   \"FB\"   \"6\"
-        .en            input   \"EN\"   \"7\"
+        .vin.pos   power   \"VIN\"  \"1\" \"2\"
+        .vin.neg   power   \"GND\"  \"3\" \"9\"
+        .sw.pos    power   \"SW\"   \"4\" \"5\"
+        .fb        input   \"FB\"   \"6\"
+        .en        input   \"EN\"   \"7\"
+    }
+
+    support {
+        .en ~ .vin.pos
     }
 }
 ";
 
 /// Another invented IC: 4.5 V to 60 V, 3.5 A.
 const ZBK9: &str = "\
-import std::parts::regulator::Buck
-import std::sources::Rail
+import std::parts::regulator::BuckIc
 
-part Zbk9 {
-    .vin: Rail
-    .buck: Buck {
-        .vref &= 0.8V +/- 1.5%
-        .fsw &= 1.2MHz +/- 15%
-        .min_input_voltage &= 4.5V
-        .max_input_voltage &= 60V
-        .max_output_current &= 3.5A
-        .efficiency &= 0.85..0.95
-        .min_inductance &= 1.5uH
-        .min_inductor_saturation &= 3A
-        .max_inductor_dcr &= 0.1ohm
-        .min_input_capacitance &= 2uF
-        .min_output_capacitance &= 10uF
-    }
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
+part Zbk9 provides BuckIc {
+    .vref &= 0.8V +/- 1.5%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 60V
+    .max_output_current &= 3.5A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_inductor_saturation &= 3A
+    .max_inductor_dcr &= 0.1ohm
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
 
     pins {
-        .vin.pos       power   \"VIN\"  \"1\" \"2\"
-        .vin.neg       power   \"GND\"  \"3\" \"9\"
-        .buck.sw.pos   power   \"SW\"   \"4\" \"5\"
-        .buck.fb       input   \"FB\"   \"6\"
-        .en            input   \"EN\"   \"7\"
+        .vin.pos   power   \"VIN\"  \"1\" \"2\"
+        .vin.neg   power   \"GND\"  \"3\" \"9\"
+        .sw.pos    power   \"SW\"   \"4\" \"5\"
+        .fb        input   \"FB\"   \"6\"
+        .en        input   \"EN\"   \"7\"
+    }
+
+    support {
+        .en ~ .vin.pos
     }
 }
 ";
 
 const BUCK_PROVIDERS: &str = "\
-import std::parts::regulator::BuckStage
+import std::parts::regulator::Buck
 import src::buck::BuckConverter
 import src::zbk2::Zbk2
 import src::zbk9::Zbk9
 
-/// Zbk2 with its stage.
+/// Zbk2 with its circuit.
 module Zbk2Buck provides BuckConverter {
     .vin_abs_max &= 7V
 
-    .controller: Zbk2
-    .stage: BuckStage
-    .controller.vin ~ .vin
-    .stage.vin ~ .vin
-    .stage.vout ~ .vout
-    .stage.buck ~ .controller.buck
-    .controller.en ~ .vin.pos
+    .buck: Buck<Zbk2>
+    .buck.vin ~ .vin
+    .buck.vout ~ .vout
 }
 
-/// Zbk9 with its stage.
+/// Zbk9 with its circuit.
 module Zbk9Buck provides BuckConverter {
     .vin_abs_max &= 65V
 
-    .controller: Zbk9
-    .stage: BuckStage
-    .controller.vin ~ .vin
-    .stage.vin ~ .vin
-    .stage.vout ~ .vout
-    .stage.buck ~ .controller.buck
-    .controller.en ~ .vin.pos
+    .buck: Buck<Zbk9>
+    .buck.vin ~ .vin
+    .buck.vout ~ .vout
 }
 ";
 
@@ -744,7 +734,7 @@ fn a_buck_converter_picks_the_ic_that_takes_the_input_voltage() {
     assert!(
         b.providers[0].passed_over[0]
             .1
-            .contains("buck.max_input_voltage"),
+            .contains("ic.max_input_voltage"),
         "{}",
         b.providers[0].passed_over[0].1
     );
@@ -755,9 +745,9 @@ fn a_buck_converter_picks_the_ic_that_takes_the_input_voltage() {
     );
     // The module's parts are on the board at paths through the use.
     let paths: Vec<&str> = b.design.parts.iter().map(|p| p.path.as_str()).collect();
-    assert!(paths.contains(&"reg.controller"), "{paths:?}");
+    assert!(paths.contains(&"reg.buck.ic"), "{paths:?}");
     assert!(
-        paths.iter().any(|p| p.starts_with("reg.stage.")),
+        paths.iter().any(|p| p.starts_with("reg.buck.inductor")),
         "{paths:?}"
     );
 }
@@ -793,6 +783,88 @@ fn a_buck_converter_no_ic_can_take_names_the_closest() {
         "{m}"
     );
     assert!(m.contains("; the others: Zbk2Buck ("), "{m}");
+}
+
+// ---- a module that takes a part: one candidate for each IC (ADR 0115) ----------------------
+
+const CONVERTER: &str = "\
+import std::parts::regulator::{Buck, BuckIc}
+import src::buck::BuckConverter
+
+/// Any buck IC with its circuit.
+module Converter<Ic: BuckIc> provides BuckConverter {
+    .vin_abs_max &= 65V
+
+    .buck: Buck<Ic>
+    .buck.vin ~ .vin
+    .buck.vout ~ .vout
+}
+";
+
+fn converter_world() -> World {
+    let mut loader = Loader::std();
+    loader.insert("src::buck", "src/buck.nsm", BUCK_GENERIC);
+    loader.insert("src::zbk2", "src/zbk2.nsm", ZBK2);
+    loader.insert("src::zbk9", "src/zbk9.nsm", ZBK9);
+    loader.insert("src::converter", "src/converter.nsm", CONVERTER);
+    World {
+        loader,
+        catalogs: Catalogs::jlcpcb(),
+    }
+}
+
+fn picked_converter(volts: &str) -> String {
+    converter(volts, "40V")
+        .replace(
+            "import src::ics::Zbk9Buck    // brings every provider of the file into scope",
+            "import src::converter::Converter\nimport src::zbk2::Zbk2\nimport src::zbk9::Zbk9",
+        )
+        .replace("board Converter {", "board PowerBoard {")
+}
+
+#[test]
+fn a_parametric_converter_tries_each_ic_of_its_bound_in_order() {
+    let w = converter_world();
+    let o =
+        build(&w, &picked_converter("12V +/- 5%")).unwrap_or_else(|e| panic!("{:?}", messages(&e)));
+    let b = &o.boards[0];
+    assert_eq!(b.providers[0].chosen, "Converter<Zbk9>");
+    // The standard library's IC first (its catalog has no row here), then the project's.
+    let passed: Vec<&str> = b.providers[0]
+        .passed_over
+        .iter()
+        .map(|(n, _)| n.as_str())
+        .collect();
+    assert_eq!(passed, ["Converter<Lt8641>", "Converter<Zbk2>"]);
+    assert_eq!(b.providers[0].candidates, 3);
+    assert!(
+        b.providers[0].passed_over[1]
+            .1
+            .contains("reg.buck.ic.max_input_voltage"),
+        "{}",
+        b.providers[0].passed_over[1].1
+    );
+    // The IC and its circuit are parts at paths through the use.
+    let paths: Vec<&str> = b.design.parts.iter().map(|p| p.path.as_str()).collect();
+    assert!(paths.contains(&"reg.buck.ic"), "{paths:?}");
+    let ic = b
+        .design
+        .parts
+        .iter()
+        .find(|p| p.path == "reg.buck.ic")
+        .unwrap();
+    assert_eq!(ic.kind, "Zbk9");
+}
+
+#[test]
+fn a_board_that_names_the_ic_picks_nothing() {
+    let w = converter_world();
+    let source =
+        picked_converter("5V +/- 5%").replace(".reg: BuckConverter {", ".reg: Converter<Zbk2> {");
+    let o = build(&w, &source).unwrap_or_else(|e| panic!("{:?}", messages(&e)));
+    let b = &o.boards[0];
+    assert!(b.providers.is_empty(), "{:?}", b.providers);
+    assert_eq!(providers::trials_run(), 0);
 }
 
 // ---- what cannot be judged is not what holds -----------------------------------------------

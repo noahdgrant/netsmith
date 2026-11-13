@@ -1,5 +1,5 @@
 //! The ripple of a buck stage's output voltage, a closed-form check in std (`.output_ripple`
-//! of `BuckStage`, `docs/research/closed-form-checks.md`, check 3). Every part and value here is
+//! of `Buck`, `docs/research/closed-form-checks.md`, check 3). Every part and value here is
 //! invented; the expected numbers are worked out below by hand from
 //! `dI / (8 * fsw * n * C) + dI * ESR / n` and not read from the solver.
 //!
@@ -22,32 +22,28 @@ use netsmith_solve::{Catalogs, Solution, solve};
 
 fn board(extra: &str) -> String {
     format!(
-        r#"import std::parts::regulator::{{Buck, BuckStage}}
+        r#"import std::parts::regulator::{{Buck, BuckIc}}
 import std::sources::Rail
 
-part Zbk2 {{
-    .vin: Rail
+part Zbk2 provides BuckIc {{
     .vin.voltage >= 3V
     .vin.voltage <= 65V
-    .buck: Buck {{
-        .vref &= 0.8V +/- 1.5%
-        .min_input_voltage &= 3V
-        .max_input_voltage &= 65V
-        .max_output_current &= 3A
-        .efficiency &= 0.85..0.95
-        .min_input_capacitance &= 2.2uF
-        .min_output_capacitance &= 10uF
-        .fsw &= 1MHz +/- 10%
-        .min_inductance &= 1.5uH
-    }}
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
-    dc switching_regulator .vin .buck.sw .buck.efficiency
+    .vref &= 0.8V +/- 1.5%
+    .min_input_voltage &= 3V
+    .max_input_voltage &= 65V
+    .max_output_current &= 3A
+    .efficiency &= 0.85..0.95
+    .min_input_capacitance &= 2.2uF
+    .min_output_capacitance &= 10uF
+    .fsw &= 1MHz +/- 10%
+    .min_inductance &= 1.5uH
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
     pins {{
         .vin.pos       power   "VIN"  "1"
         .vin.neg       power   "GND"  "2"
-        .buck.sw.pos   power   "SW"   "3"
-        .buck.fb       input   "FB"   "4"
+        .sw.pos        power   "SW"   "3"
+        .fb            input   "FB"   "4"
     }}
     .mpn: String
     .package: Package
@@ -67,14 +63,11 @@ board Converter {{
         .current &= 0mA..1A
         .peak &= 1.9V
     }}
-    .u: Zbk2
-    .stage: BuckStage {{
+    .stage: Buck<Zbk2> {{
         .vout.voltage &= 1.8V +/- 3%
 {extra}    }}
     .input ~ .stage.vin
-    .input ~ .u.vin
     .stage.vout ~ .output
-    .stage.buck ~ .u.buck
 }}
 "#
     )

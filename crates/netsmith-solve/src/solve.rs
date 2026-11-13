@@ -1540,7 +1540,7 @@ impl Solver<'_> {
     /// worse, and its power check failed with `-1.7e-199 fW..461 kW`. The terms of a balance are
     /// independent ranges, so the difference of their sums is wider than any one of them and says
     /// nothing about a part. A balance of two terms is an equality and nothing is widened: a fuse
-    /// in series with a load carries the load's current, and the inductor of `BuckStage`, in a
+    /// in series with a load carries the load's current, and the inductor of `Buck`, in a
     /// chain from the IC's switch pin to the output, carries the output's. Refusing these would
     /// have meant stating `.fuse.current == .load.current` on every board, which ADR 0014
     /// removed; a first version that refused every part broke four tests, all two-term cases.

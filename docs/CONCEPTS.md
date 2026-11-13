@@ -22,7 +22,7 @@ Beside the system is the `panel` (ADR 0040): one board repeated in a grid on one
 |---|---|---|---|---|
 | `part` | A component. States only what is always true of it: its pins and pads per package, its ratings, its catalog columns. | pins, quantities, relations | `part Name { ... }` | `Resistor`, `Capacitor`, `Led`, `LinearRegulator`, `Diode`, `NMosfet`, `Header1x2`, ... |
 | `interface` | A typed bundle of pins and quantities that is connected as one. | pins, quantities, other interfaces | `interface Name { ... }` | `Rail`, `Uart`, `Spi`, `I2c`, `Swd`, `Usb2`, `Logic`, `TwoLayer` (a process), `Stackup` |
-| `module` | A reusable sub-circuit. Placed on a board or inside another module. | parts, modules, interfaces, relations | `module Name { ... }` | `I2cPullups`, `BuckStage`, `FeedbackDivider` |
+| `module` | A reusable sub-circuit. Placed on a board or inside another module. | parts, modules, interfaces, relations | `module Name { ... }` | `I2cPullups`, `Buck<Ic: BuckIc>`, `FeedbackDivider` |
 | `board` | One physical PCB. The only level that names nets and has a manufacturing process. | parts, modules, rails, a `.process` | `board Name { ... }` | none (a board is yours) |
 | `system` | Boards and the joins between their ports. Names no nets. | boards | `system Name { ... }` | none |
 

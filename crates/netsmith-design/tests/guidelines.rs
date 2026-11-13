@@ -734,33 +734,32 @@ fn converter(no_efficiency: bool) -> String {
 /// The same with a load of up to `load` on the output and `extra` more statements on the
 /// output rail.
 fn converter_of(no_efficiency: bool, load: &str, extra: &str) -> String {
-    let relation = ".vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)\n";
+    let relation = ".vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)\n";
     let ic = format!(
-        "import std::parts::regulator::{{Buck, BuckStage}}
+        "import std::parts::regulator::{{Buck, BuckIc}}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
-part Zbk2 {{
-    .vin: Rail
-    .buck: Buck {{
-        .vref &= 0.8V +/- 1.5%
-        .fsw &= 1.2MHz +/- 15%
-        .min_input_voltage &= 4.5V
-        .max_input_voltage &= 6V
-        .max_output_current &= 2A
-        .efficiency &= 0.85..0.95
-        .min_inductance &= 1.5uH
-        .min_input_capacitance &= 2uF
-        .min_output_capacitance &= 10uF
-    }}
-    .buck.sw.neg ~ .vin.neg
+part Zbk2 provides BuckIc {{
+    .vref &= 0.8V +/- 1.5%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 6V
+    .max_output_current &= 2A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
     {}
     pins {{
         .vin.pos power \"VIN\" \"1\"
         .vin.neg power \"GND\" \"2\"
-        .buck.sw.pos power \"SW\" \"3\"
-        .buck.fb input \"FB\" \"4\"
+        .sw.pos power \"SW\" \"3\"
+        .fb input \"FB\" \"4\"
         .en input \"EN\" \"5\"
+    }}
+    support {{
+        .en ~ .vin.pos
     }}
 }}
 ",
@@ -782,13 +781,9 @@ board Converter {{
         .neg.net &= \"GND\"
         .current &= 0mA..{load}
 {extra}    }}
-    .u: Zbk2
-    .stage: BuckStage {{ .vout.voltage &= 1.8V +/- 3% }}
+    .stage: Buck<Zbk2> {{ .vout.voltage &= 1.8V +/- 3% }}
     .input ~ .stage.vin
-    .input ~ .u.vin
     .stage.vout ~ .output
-    .stage.buck ~ .u.buck
-    .u.en ~ .input.pos
 }}
 "
     )
@@ -849,7 +844,7 @@ fn a_known_current_beside_an_unknown_one_sizes_the_net_for_the_known_part() {
     assert_eq!(width_of(&l, "GND"), Some(known));
     let gnd = note_of(&l, "GND").unwrap_or_else(|| panic!("{:?}", l.notes));
     assert!(
-        gnd.starts_with("the current of rail `input`, rail `u.vin` is not known")
+        gnd.starts_with("the current of rail `input`, rail `stage.ic.vin` is not known")
             && gnd.contains(
                 "so the tracks of net `GND` are 0.49 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current"
             ),
@@ -859,7 +854,7 @@ fn a_known_current_beside_an_unknown_one_sizes_the_net_for_the_known_part() {
     assert_eq!(width_of(&l, "VIN"), None);
     let vin = note_of(&l, "VIN").unwrap_or_else(|| panic!("{:?}", l.notes));
     assert!(
-        vin.contains("rail `u.vin`")
+        vin.contains("rail `stage.ic.vin`")
             && vin.contains("is not known")
             && vin.contains(
                 "are the process's least, 0.1 mm, a lower bound: no current on the net is known"
@@ -929,7 +924,7 @@ fn a_stated_min_track_narrower_than_the_known_current_needs_is_still_a_finding()
     assert!(
         found[0].starts_with("net `GND` carries at least 1.2 A (")
             && found[0].contains(
-                "the current of rail `input`, rail `u.vin` is not known, so it may be more"
+                "the current of rail `input`, rail `stage.ic.vin` is not known, so it may be more"
             )
             && found[0].contains("tracks are 0.2 mm wide (a rail's `.min_track`)")
             && found[0].contains("IPC-2221 needs 0.49 mm"),

@@ -285,6 +285,11 @@ impl Parser {
         };
         let kind = DefKind::from_keyword(word).expect("caller checked the keyword");
         let name = self.ident(&format!("a name for the {word}"))?;
+        let params = if self.at(&Tok::Lt) {
+            self.type_params(word)?
+        } else {
+            Vec::new()
+        };
         let mut provides = Vec::new();
         if matches!(&self.peek().tok, Tok::Ident(w) if w == "provides") {
             let at = self.bump();
@@ -325,6 +330,7 @@ impl Parser {
             kind,
             name,
             provides,
+            params,
             items,
             variants,
             span: self.span_from(keyword.span.start),
@@ -445,6 +451,7 @@ impl Parser {
                     | Item::Shared(_)
                     | Item::Lines(_)
                     | Item::Case(_)
+                    | Item::Support(_)
                     | Item::Row(_)
                     | Item::Polygon(_)
                     | Item::Constraint(_)
@@ -489,6 +496,15 @@ impl Parser {
                 }
                 "polygon" if matches!(self.peek_second(), Tok::LParen) => {
                     return only_decls(self.polygon(start)?);
+                }
+                "support" if matches!(self.peek_second(), Tok::LBrace) => {
+                    self.bump();
+                    let open = self.bump();
+                    let items = self.block(open.span)?;
+                    return only_decls(Item::Support(Support {
+                        items,
+                        span: self.span_from(start),
+                    }));
                 }
                 "case" if matches!(self.peek_second(), Tok::LBrace) => {
                     self.bump();
@@ -805,6 +821,7 @@ impl Parser {
                     Some(Expr::Variant {
                         ty: TypePath {
                             segments,
+                            args: Vec::new(),
                             of_member: false,
                         },
                         variant,
@@ -999,6 +1016,7 @@ impl Parser {
                 Some(Expr::Variant {
                     ty: TypePath {
                         segments,
+                        args: Vec::new(),
                         of_member: false,
                     },
                     variant,
@@ -1448,6 +1466,7 @@ impl Parser {
         }
         Ok(TypePath {
             segments: path.segments,
+            args: Vec::new(),
             of_member: true,
         })
     }
@@ -1457,10 +1476,54 @@ impl Parser {
         while self.eat(&Tok::ColonColon) {
             segments.push(self.ident("a name after `::`")?);
         }
+        // `Buck<Lt8641>`: the parts for a module's type parameters (ADR 0115).
+        let mut args = Vec::new();
+        if self.eat(&Tok::Lt) {
+            loop {
+                args.push(self.type_path()?);
+                if !self.eat(&Tok::Comma) {
+                    break;
+                }
+            }
+            self.expect(&Tok::Gt, "`>` or `,` after a type argument")?;
+        }
         Ok(TypePath {
             segments,
+            args,
             of_member: false,
         })
+    }
+
+    /// `<Ic: BuckIc, ...>` after a module's name, from the `<` on: each parameter with the
+    /// generic that bounds it (ADR 0115).
+    fn type_params(&mut self, word: &str) -> Res<Vec<TypeParam>> {
+        let open = self.bump();
+        if word != "module" {
+            return Err(ParseError::new(
+                open.span,
+                format!(
+                    "only a module takes type parameters; a {word} does not (`module Buck<Ic: BuckIc>`)"
+                ),
+            ));
+        }
+        let mut params = Vec::new();
+        loop {
+            let name = self.ident("the name of a type parameter, such as `Ic`")?;
+            self.expect(
+                &Tok::Colon,
+                &format!(
+                    "`:` and the generic that bounds `{}`, as in `{}: BuckIc`",
+                    name.name, name.name
+                ),
+            )?;
+            let bound = self.ident("the name of the generic that bounds the parameter")?;
+            params.push(TypeParam { name, bound });
+            if !self.eat(&Tok::Comma) {
+                break;
+            }
+        }
+        self.expect(&Tok::Gt, "`>` or `,` after a type parameter")?;
+        Ok(params)
     }
 
     fn path(&mut self) -> Res<Path> {
@@ -1571,6 +1634,7 @@ impl Parser {
                 Ok(Expr::Variant {
                     ty: TypePath {
                         segments,
+                        args: Vec::new(),
                         of_member: false,
                     },
                     variant,
@@ -1673,6 +1737,8 @@ fn describe(tok: &Tok) -> String {
         Tok::EqEq => symbol("=="),
         Tok::GtEq => symbol(">="),
         Tok::LtEq => symbol("<="),
+        Tok::Lt => symbol("<"),
+        Tok::Gt => symbol(">"),
         Tok::Plus => symbol("+"),
         Tok::Minus => symbol("-"),
         Tok::Star => symbol("*"),

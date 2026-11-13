@@ -3,36 +3,6 @@
     "name": "TwoBuck",
     "parts": [
       {
-        "refdes": "C14",
-        "kind": "Capacitor",
-        "provides": [],
-        "value": "100n",
-        "package": "0402",
-        "path": "buck_3v3.boost",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
         "refdes": "C16",
         "kind": "Capacitor",
         "provides": [],
@@ -89,147 +59,6 @@
             ],
             "function": null,
             "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "R12",
-        "kind": "Resistor",
-        "provides": [],
-        "value": "33k",
-        "package": "0402",
-        "path": "buck_3v3.enable_bottom",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "R11",
-        "kind": "Resistor",
-        "provides": [],
-        "value": "100k",
-        "package": "0402",
-        "path": "buck_3v3.enable_top",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "U2",
-        "kind": "BenchBuck",
-        "provides": [],
-        "value": "BenchBuck",
-        "package": "SOIC-8",
-        "path": "buck_3v3.ic",
-        "pins": [
-          {
-            "name": "bst",
-            "datasheet": "BST",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "vin.pos",
-            "datasheet": "VIN",
-            "kind": "power",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": "takes"
-          },
-          {
-            "name": "en",
-            "datasheet": "EN",
-            "kind": "input",
-            "pads": [
-              "3"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "pg",
-            "datasheet": "PG",
-            "kind": "output",
-            "pads": [
-              "4"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "buck.fb",
-            "datasheet": "FB",
-            "kind": "input",
-            "pads": [
-              "5"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "vin.neg",
-            "datasheet": "GND",
-            "kind": "power",
-            "pads": [
-              "6",
-              "7"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "buck.sw.pos",
-            "datasheet": "SW",
-            "kind": "power",
-            "pads": [
-              "8"
-            ],
-            "function": null,
-            "power_flow": "gives"
           }
         ]
       },
@@ -327,56 +156,6 @@
         "refdes": "R9",
         "kind": "Resistor",
         "provides": [],
-        "value": "100k",
-        "package": "0402",
-        "path": "buck_3v3.pg_pullup.resistor",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "TP2",
-        "kind": "TestPoint",
-        "provides": [],
-        "value": "TestPoint",
-        "package": null,
-        "path": "buck_3v3.pg_test",
-        "pins": [
-          {
-            "name": "p1",
-            "datasheet": "TP",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "R8",
-        "kind": "Resistor",
-        "provides": [],
         "value": "330",
         "package": "0402",
         "path": "buck_3v3.stage.divider.rbottom",
@@ -404,12 +183,185 @@
         ]
       },
       {
-        "refdes": "R7",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "value": "1k",
         "package": "0402",
         "path": "buck_3v3.stage.divider.rtop",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U2",
+        "kind": "BenchBuck",
+        "provides": [
+          "BuckIc"
+        ],
+        "value": "BenchBuck",
+        "package": "SOIC-8",
+        "path": "buck_3v3.stage.ic",
+        "pins": [
+          {
+            "name": "bst",
+            "datasheet": "BST",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vin.pos",
+            "datasheet": "VIN",
+            "kind": "power",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": "takes"
+          },
+          {
+            "name": "en",
+            "datasheet": "EN",
+            "kind": "input",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "pg",
+            "datasheet": "PG",
+            "kind": "output",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "fb",
+            "datasheet": "FB",
+            "kind": "input",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vin.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "6",
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "sw.pos",
+            "datasheet": "SW",
+            "kind": "power",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": "gives"
+          }
+        ]
+      },
+      {
+        "refdes": "C11",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "buck_3v3.stage.ic.boost",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R7",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "33k",
+        "package": "0402",
+        "path": "buck_3v3.stage.ic.enable_bottom",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R6",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "100k",
+        "package": "0402",
+        "path": "buck_3v3.stage.ic.enable_top",
         "pins": [
           {
             "name": "a",
@@ -464,7 +416,7 @@
         ]
       },
       {
-        "refdes": "C11",
+        "refdes": "C12",
         "kind": "Capacitor",
         "provides": [],
         "value": "2.2u",
@@ -494,7 +446,7 @@
         ]
       },
       {
-        "refdes": "C12",
+        "refdes": "C13",
         "kind": "Capacitor",
         "provides": [],
         "value": "2.2u",
@@ -524,42 +476,12 @@
         ]
       },
       {
-        "refdes": "C13",
+        "refdes": "C14",
         "kind": "Capacitor",
         "provides": [],
         "value": "47u",
         "package": "0805",
         "path": "buck_3v3.stage.output_cap",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "C7",
-        "kind": "Capacitor",
-        "provides": [],
-        "value": "100n",
-        "package": "0402",
-        "path": "buck_5v.boost",
         "pins": [
           {
             "name": "a",
@@ -644,147 +566,6 @@
         ]
       },
       {
-        "refdes": "R6",
-        "kind": "Resistor",
-        "provides": [],
-        "value": "33k",
-        "package": "0402",
-        "path": "buck_5v.enable_bottom",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "R5",
-        "kind": "Resistor",
-        "provides": [],
-        "value": "100k",
-        "package": "0402",
-        "path": "buck_5v.enable_top",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "U1",
-        "kind": "BenchBuck",
-        "provides": [],
-        "value": "BenchBuck",
-        "package": "SOIC-8",
-        "path": "buck_5v.ic",
-        "pins": [
-          {
-            "name": "bst",
-            "datasheet": "BST",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "vin.pos",
-            "datasheet": "VIN",
-            "kind": "power",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": "takes"
-          },
-          {
-            "name": "en",
-            "datasheet": "EN",
-            "kind": "input",
-            "pads": [
-              "3"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "pg",
-            "datasheet": "PG",
-            "kind": "output",
-            "pads": [
-              "4"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "buck.fb",
-            "datasheet": "FB",
-            "kind": "input",
-            "pads": [
-              "5"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "vin.neg",
-            "datasheet": "GND",
-            "kind": "power",
-            "pads": [
-              "6",
-              "7"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "buck.sw.pos",
-            "datasheet": "SW",
-            "kind": "power",
-            "pads": [
-              "8"
-            ],
-            "function": null,
-            "power_flow": "gives"
-          }
-        ]
-      },
-      {
         "refdes": "C10",
         "kind": "Capacitor",
         "provides": [],
@@ -845,7 +626,7 @@
         ]
       },
       {
-        "refdes": "R4",
+        "refdes": "R5",
         "kind": "Resistor",
         "provides": [],
         "value": "1k",
@@ -875,57 +656,7 @@
         ]
       },
       {
-        "refdes": "R3",
-        "kind": "Resistor",
-        "provides": [],
-        "value": "100k",
-        "package": "0402",
-        "path": "buck_5v.pg_pullup.resistor",
-        "pins": [
-          {
-            "name": "a",
-            "datasheet": "A",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          },
-          {
-            "name": "b",
-            "datasheet": "B",
-            "kind": "passive",
-            "pads": [
-              "2"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "TP1",
-        "kind": "TestPoint",
-        "provides": [],
-        "value": "TestPoint",
-        "package": null,
-        "path": "buck_5v.pg_test",
-        "pins": [
-          {
-            "name": "p1",
-            "datasheet": "TP",
-            "kind": "passive",
-            "pads": [
-              "1"
-            ],
-            "function": null,
-            "power_flow": null
-          }
-        ]
-      },
-      {
-        "refdes": "R2",
+        "refdes": "R4",
         "kind": "Resistor",
         "provides": [],
         "value": "510",
@@ -955,12 +686,185 @@
         ]
       },
       {
-        "refdes": "R1",
+        "refdes": "R3",
         "kind": "Resistor",
         "provides": [],
         "value": "2.7k",
         "package": "0603",
         "path": "buck_5v.stage.divider.rtop",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U1",
+        "kind": "BenchBuck",
+        "provides": [
+          "BuckIc"
+        ],
+        "value": "BenchBuck",
+        "package": "SOIC-8",
+        "path": "buck_5v.stage.ic",
+        "pins": [
+          {
+            "name": "bst",
+            "datasheet": "BST",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vin.pos",
+            "datasheet": "VIN",
+            "kind": "power",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": "takes"
+          },
+          {
+            "name": "en",
+            "datasheet": "EN",
+            "kind": "input",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "pg",
+            "datasheet": "PG",
+            "kind": "output",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "fb",
+            "datasheet": "FB",
+            "kind": "input",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vin.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "6",
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "sw.pos",
+            "datasheet": "SW",
+            "kind": "power",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": "gives"
+          }
+        ]
+      },
+      {
+        "refdes": "C4",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "buck_5v.stage.ic.boost",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R2",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "33k",
+        "package": "0402",
+        "path": "buck_5v.stage.ic.enable_bottom",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R1",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "100k",
+        "package": "0402",
+        "path": "buck_5v.stage.ic.enable_top",
         "pins": [
           {
             "name": "a",
@@ -1015,7 +919,7 @@
         ]
       },
       {
-        "refdes": "C4",
+        "refdes": "C5",
         "kind": "Capacitor",
         "provides": [],
         "value": "2.2u",
@@ -1045,7 +949,7 @@
         ]
       },
       {
-        "refdes": "C5",
+        "refdes": "C6",
         "kind": "Capacitor",
         "provides": [],
         "value": "2.2u",
@@ -1075,7 +979,7 @@
         ]
       },
       {
-        "refdes": "C6",
+        "refdes": "C7",
         "kind": "Capacitor",
         "provides": [],
         "value": "47u",
@@ -1255,7 +1159,7 @@
         ]
       },
       {
-        "refdes": "R14",
+        "refdes": "R12",
         "kind": "Resistor",
         "provides": [],
         "value": "4.7k",
@@ -1415,7 +1319,7 @@
         ]
       },
       {
-        "refdes": "R13",
+        "refdes": "R11",
         "kind": "Resistor",
         "provides": [],
         "value": "1k",
@@ -1663,7 +1567,7 @@
         ]
       },
       {
-        "refdes": "TP5",
+        "refdes": "TP3",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1683,7 +1587,7 @@
         ]
       },
       {
-        "refdes": "TP6",
+        "refdes": "TP4",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1703,7 +1607,7 @@
         ]
       },
       {
-        "refdes": "TP4",
+        "refdes": "TP2",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1723,7 +1627,7 @@
         ]
       },
       {
-        "refdes": "TP7",
+        "refdes": "TP5",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1743,7 +1647,7 @@
         ]
       },
       {
-        "refdes": "TP9",
+        "refdes": "TP7",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1763,7 +1667,7 @@
         ]
       },
       {
-        "refdes": "TP8",
+        "refdes": "TP6",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1783,7 +1687,7 @@
         ]
       },
       {
-        "refdes": "TP3",
+        "refdes": "TP1",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1808,7 +1712,7 @@
         "name": "3V3",
         "pins": [
           {
-            "refdes": "C13",
+            "refdes": "C14",
             "pin": "1"
           },
           {
@@ -1832,15 +1736,11 @@
             "pin": "1"
           },
           {
-            "refdes": "R7",
+            "refdes": "R8",
             "pin": "1"
           },
           {
-            "refdes": "R9",
-            "pin": "1"
-          },
-          {
-            "refdes": "TP5",
+            "refdes": "TP3",
             "pin": "1"
           }
         ]
@@ -1861,11 +1761,11 @@
             "pin": "1"
           },
           {
-            "refdes": "R13",
+            "refdes": "R11",
             "pin": "1"
           },
           {
-            "refdes": "TP6",
+            "refdes": "TP4",
             "pin": "1"
           },
           {
@@ -1886,7 +1786,7 @@
             "pin": "1"
           },
           {
-            "refdes": "C6",
+            "refdes": "C7",
             "pin": "1"
           },
           {
@@ -1906,19 +1806,15 @@
             "pin": "2"
           },
           {
-            "refdes": "R1",
-            "pin": "1"
-          },
-          {
             "refdes": "R3",
             "pin": "1"
           },
           {
-            "refdes": "R4",
+            "refdes": "R5",
             "pin": "1"
           },
           {
-            "refdes": "TP4",
+            "refdes": "TP2",
             "pin": "1"
           },
           {
@@ -1939,15 +1835,15 @@
             "pin": "2"
           },
           {
-            "refdes": "C11",
-            "pin": "2"
-          },
-          {
             "refdes": "C12",
             "pin": "2"
           },
           {
             "refdes": "C13",
+            "pin": "2"
+          },
+          {
+            "refdes": "C14",
             "pin": "2"
           },
           {
@@ -1987,15 +1883,15 @@
             "pin": "2"
           },
           {
-            "refdes": "C4",
-            "pin": "2"
-          },
-          {
             "refdes": "C5",
             "pin": "2"
           },
           {
             "refdes": "C6",
+            "pin": "2"
+          },
+          {
+            "refdes": "C7",
             "pin": "2"
           },
           {
@@ -2043,27 +1939,27 @@
             "pin": "2"
           },
           {
-            "refdes": "R12",
-            "pin": "2"
-          },
-          {
             "refdes": "R2",
             "pin": "2"
           },
           {
-            "refdes": "R6",
+            "refdes": "R4",
             "pin": "2"
           },
           {
-            "refdes": "R8",
+            "refdes": "R7",
             "pin": "2"
           },
           {
-            "refdes": "TP7",
+            "refdes": "R9",
+            "pin": "2"
+          },
+          {
+            "refdes": "TP5",
             "pin": "1"
           },
           {
-            "refdes": "TP9",
+            "refdes": "TP7",
             "pin": "1"
           },
           {
@@ -2100,11 +1996,11 @@
             "pin": "1"
           },
           {
-            "refdes": "C11",
+            "refdes": "C12",
             "pin": "1"
           },
           {
-            "refdes": "C12",
+            "refdes": "C13",
             "pin": "1"
           },
           {
@@ -2120,11 +2016,11 @@
             "pin": "1"
           },
           {
-            "refdes": "C4",
+            "refdes": "C5",
             "pin": "1"
           },
           {
-            "refdes": "C5",
+            "refdes": "C6",
             "pin": "1"
           },
           {
@@ -2132,19 +2028,19 @@
             "pin": "1"
           },
           {
-            "refdes": "R11",
+            "refdes": "R1",
             "pin": "1"
           },
           {
-            "refdes": "R14",
+            "refdes": "R12",
             "pin": "1"
           },
           {
-            "refdes": "R5",
+            "refdes": "R6",
             "pin": "1"
           },
           {
-            "refdes": "TP3",
+            "refdes": "TP1",
             "pin": "1"
           },
           {
@@ -2173,89 +2069,8 @@
             "pin": "1"
           },
           {
-            "refdes": "TP8",
+            "refdes": "TP6",
             "pin": "1"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.boost.a",
-        "pins": [
-          {
-            "refdes": "C14",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "1"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.boost.b",
-        "pins": [
-          {
-            "refdes": "C14",
-            "pin": "2"
-          },
-          {
-            "refdes": "L2",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "8"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.enable_bottom.a",
-        "pins": [
-          {
-            "refdes": "R11",
-            "pin": "2"
-          },
-          {
-            "refdes": "R12",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "3"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.ic.buck.fb",
-        "pins": [
-          {
-            "refdes": "R7",
-            "pin": "2"
-          },
-          {
-            "refdes": "R8",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "5"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_3v3.ic.pg",
-        "pins": [
-          {
-            "refdes": "R9",
-            "pin": "2"
-          },
-          {
-            "refdes": "TP2",
-            "pin": "1"
-          },
-          {
-            "refdes": "U2",
-            "pin": "4"
           }
         ]
       },
@@ -2273,10 +2088,104 @@
         ]
       },
       {
-        "name": "net-buck_5v.boost.a",
+        "name": "net-buck_3v3.stage.divider.rbottom.a",
         "pins": [
           {
-            "refdes": "C7",
+            "refdes": "R8",
+            "pin": "2"
+          },
+          {
+            "refdes": "R9",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "5"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_3v3.stage.ic.boost.a",
+        "pins": [
+          {
+            "refdes": "C11",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_3v3.stage.ic.boost.b",
+        "pins": [
+          {
+            "refdes": "C11",
+            "pin": "2"
+          },
+          {
+            "refdes": "L2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "8"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_3v3.stage.ic.en",
+        "pins": [
+          {
+            "refdes": "R6",
+            "pin": "2"
+          },
+          {
+            "refdes": "R7",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "3"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.light.anode",
+        "pins": [
+          {
+            "refdes": "D3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R5",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.stage.divider.rbottom.a",
+        "pins": [
+          {
+            "refdes": "R3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R4",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "5"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.stage.ic.boost.a",
+        "pins": [
+          {
+            "refdes": "C4",
             "pin": "1"
           },
           {
@@ -2286,10 +2195,10 @@
         ]
       },
       {
-        "name": "net-buck_5v.boost.b",
+        "name": "net-buck_5v.stage.ic.boost.b",
         "pins": [
           {
-            "refdes": "C7",
+            "refdes": "C4",
             "pin": "2"
           },
           {
@@ -2303,24 +2212,7 @@
         ]
       },
       {
-        "name": "net-buck_5v.enable_bottom.a",
-        "pins": [
-          {
-            "refdes": "R5",
-            "pin": "2"
-          },
-          {
-            "refdes": "R6",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "3"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_5v.ic.buck.fb",
+        "name": "net-buck_5v.stage.ic.en",
         "pins": [
           {
             "refdes": "R1",
@@ -2332,37 +2224,7 @@
           },
           {
             "refdes": "U1",
-            "pin": "5"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_5v.ic.pg",
-        "pins": [
-          {
-            "refdes": "R3",
-            "pin": "2"
-          },
-          {
-            "refdes": "TP1",
-            "pin": "1"
-          },
-          {
-            "refdes": "U1",
-            "pin": "4"
-          }
-        ]
-      },
-      {
-        "name": "net-buck_5v.light.anode",
-        "pins": [
-          {
-            "refdes": "D3",
-            "pin": "2"
-          },
-          {
-            "refdes": "R4",
-            "pin": "2"
+            "pin": "3"
           }
         ]
       },
@@ -2374,7 +2236,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R14",
+            "refdes": "R12",
             "pin": "2"
           }
         ]
@@ -2387,7 +2249,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R13",
+            "refdes": "R11",
             "pin": "2"
           }
         ]
@@ -2449,26 +2311,26 @@
         ],
         [
           "VIN",
-          3.37
+          3.36
         ],
         [
           "VIN_RAW",
           1.71
         ],
         [
-          "net-buck_3v3.boost.b",
+          "net-buck_3v3.stage.ic.boost.b",
           0.66
         ],
         [
-          "net-buck_5v.boost.b",
+          "net-buck_5v.stage.ic.boost.b",
           0.7
         ]
       ],
       "net_currents": [
         {
           "net": "3V3",
-          "current": 1.5042561607968266,
-          "least_width": 0.6594353817217172,
+          "current": 1.5042211607968266,
+          "least_width": 0.6594142186566219,
           "vias": 3
         },
         {
@@ -2479,20 +2341,20 @@
         },
         {
           "net": "5V",
-          "current": 1.556858329282126,
-          "least_width": 0.6914513336886948,
+          "current": 1.5568052989790957,
+          "least_width": 0.6914188477200537,
           "vias": 3
         },
         {
           "net": "GND",
-          "current": 8.008331897691876,
-          "least_width": 6.619960061524672,
+          "current": 8.00831079105442,
+          "least_width": 6.619935996066617,
           "vias": 15
         },
         {
           "net": "VIN",
-          "current": 4.898125089512644,
-          "least_width": 3.3601277905118523,
+          "current": 4.897828442986496,
+          "least_width": 3.3598471035793076,
           "vias": 9
         },
         {
@@ -2502,63 +2364,51 @@
           "vias": 6
         },
         {
-          "net": "net-buck_3v3.boost.b",
-          "current": 1.5017168181818183,
-          "least_width": 0.6579004303289926,
-          "vias": 3
-        },
-        {
-          "net": "net-buck_3v3.enable_bottom.a",
-          "current": 0.00011999696322222223,
-          "least_width": 1.4674030817509108e-6,
-          "vias": 1
-        },
-        {
-          "net": "net-buck_3v3.ic.buck.fb",
-          "current": 0.002539342615008365,
-          "least_width": 0.00009883157048356366,
-          "vias": 1
-        },
-        {
-          "net": "net-buck_3v3.ic.pg",
-          "current": 0.000035000000000000004,
-          "least_width": 2.6821151020723907e-7,
-          "vias": 1
-        },
-        {
           "net": "net-buck_3v3.light.anode",
           "current": 0.0016818181818181817,
           "least_width": 0.000055985916141391685,
           "vias": 1
         },
         {
-          "net": "net-buck_5v.boost.b",
-          "current": 1.5552196969696972,
-          "least_width": 0.690447713677679,
+          "net": "net-buck_3v3.stage.divider.rbottom.a",
+          "current": 0.002539342615008365,
+          "least_width": 0.00009883157048356366,
+          "vias": 1
+        },
+        {
+          "net": "net-buck_3v3.stage.ic.boost.b",
+          "current": 1.5016818181818183,
+          "least_width": 0.6578792808222048,
           "vias": 3
         },
         {
-          "net": "net-buck_5v.enable_bottom.a",
+          "net": "net-buck_3v3.stage.ic.en",
           "current": 0.00011999696322222223,
           "least_width": 1.4674030817509108e-6,
-          "vias": 1
-        },
-        {
-          "net": "net-buck_5v.ic.buck.fb",
-          "current": 0.0016386323124291044,
-          "least_width": 0.000054012712887801536,
-          "vias": 1
-        },
-        {
-          "net": "net-buck_5v.ic.pg",
-          "current": 0.00005303030303030303,
-          "least_width": 4.7575386812470433e-7,
           "vias": 1
         },
         {
           "net": "net-buck_5v.light.anode",
           "current": 0.003484848484848485,
           "least_width": 0.00015293232181797385,
+          "vias": 1
+        },
+        {
+          "net": "net-buck_5v.stage.divider.rbottom.a",
+          "current": 0.0016386323124291044,
+          "least_width": 0.000054012712887801536,
+          "vias": 1
+        },
+        {
+          "net": "net-buck_5v.stage.ic.boost.b",
+          "current": 1.555166666666667,
+          "least_width": 0.6904152406829887,
+          "vias": 3
+        },
+        {
+          "net": "net-buck_5v.stage.ic.en",
+          "current": 0.00011999696322222223,
+          "least_width": 1.4674030817509108e-6,
           "vias": 1
         },
         {
@@ -2580,10 +2430,6 @@
       "keepouts": [],
       "heights": [
         {
-          "path": "buck_3v3.boost",
-          "height": 0.55
-        },
-        {
           "path": "buck_3v3.bulk",
           "height": 1.0
         },
@@ -2600,12 +2446,12 @@
           "height": 0.4
         },
         {
-          "path": "buck_3v3.pg_test",
-          "height": 0.0
-        },
-        {
           "path": "buck_3v3.stage.divider.rtop",
           "height": 0.4
+        },
+        {
+          "path": "buck_3v3.stage.ic.boost",
+          "height": 0.55
         },
         {
           "path": "buck_3v3.stage.inductor",
@@ -2624,10 +2470,6 @@
           "height": 1.45
         },
         {
-          "path": "buck_5v.boost",
-          "height": 0.55
-        },
-        {
           "path": "buck_5v.bulk",
           "height": 1.0
         },
@@ -2644,8 +2486,8 @@
           "height": 0.4
         },
         {
-          "path": "buck_5v.pg_test",
-          "height": 0.0
+          "path": "buck_5v.stage.ic.boost",
+          "height": 0.55
         },
         {
           "path": "buck_5v.stage.inductor",
@@ -2752,8 +2594,6 @@
       "models": [],
       "case_models": [],
       "hand_fitted": [
-        "buck_3v3.pg_test",
-        "buck_5v.pg_test",
         "power_3v3",
         "power_3v3a",
         "power_5v",
@@ -2773,22 +2613,12 @@
     },
     "interfaces": [
       {
-        "path": "buck_3v3.ic.buck",
-        "type_name": "Buck",
-        "members": [
-          {
-            "name": "fb",
-            "net": "net-buck_3v3.ic.buck.fb"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.ic.buck.sw",
+        "path": "buck_3v3.stage.ic.sw",
         "type_name": "Rail",
         "members": [
           {
             "name": "pos",
-            "net": "net-buck_3v3.boost.b"
+            "net": "net-buck_3v3.stage.ic.boost.b"
           },
           {
             "name": "neg",
@@ -2797,50 +2627,12 @@
         ]
       },
       {
-        "path": "buck_3v3.ic.vin",
+        "path": "buck_3v3.stage.ic.vin",
         "type_name": "Rail",
         "members": [
           {
             "name": "pos",
             "net": "VIN"
-          },
-          {
-            "name": "neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.pg_pullup.supply",
-        "type_name": "Rail",
-        "members": [
-          {
-            "name": "pos",
-            "net": "3V3"
-          },
-          {
-            "name": "neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.stage.buck",
-        "type_name": "Buck",
-        "members": [
-          {
-            "name": "fb",
-            "net": "net-buck_3v3.ic.buck.fb"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.stage.buck.sw",
-        "type_name": "Rail",
-        "members": [
-          {
-            "name": "pos",
-            "net": "net-buck_3v3.boost.b"
           },
           {
             "name": "neg",
@@ -2905,22 +2697,12 @@
         ]
       },
       {
-        "path": "buck_5v.ic.buck",
-        "type_name": "Buck",
-        "members": [
-          {
-            "name": "fb",
-            "net": "net-buck_5v.ic.buck.fb"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.ic.buck.sw",
+        "path": "buck_5v.stage.ic.sw",
         "type_name": "Rail",
         "members": [
           {
             "name": "pos",
-            "net": "net-buck_5v.boost.b"
+            "net": "net-buck_5v.stage.ic.boost.b"
           },
           {
             "name": "neg",
@@ -2929,50 +2711,12 @@
         ]
       },
       {
-        "path": "buck_5v.ic.vin",
+        "path": "buck_5v.stage.ic.vin",
         "type_name": "Rail",
         "members": [
           {
             "name": "pos",
             "net": "VIN"
-          },
-          {
-            "name": "neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.pg_pullup.supply",
-        "type_name": "Rail",
-        "members": [
-          {
-            "name": "pos",
-            "net": "5V"
-          },
-          {
-            "name": "neg",
-            "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.stage.buck",
-        "type_name": "Buck",
-        "members": [
-          {
-            "name": "fb",
-            "net": "net-buck_5v.ic.buck.fb"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.stage.buck.sw",
-        "type_name": "Rail",
-        "members": [
-          {
-            "name": "pos",
-            "net": "net-buck_5v.boost.b"
           },
           {
             "name": "neg",
@@ -3142,7 +2886,7 @@
         "text": "The 12 V supply, from outside the board: 9 V to 16 V.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 102
+          "line": 95
         },
         "anchors": [],
         "result": null
@@ -3153,7 +2897,7 @@
         "text": "The input after the reverse-polarity diode.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 108
+          "line": 101
         },
         "anchors": [],
         "result": null
@@ -3164,7 +2908,7 @@
         "text": "The 5 V rail, made by the first buck stage and the load it carries.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 114
+          "line": 107
         },
         "anchors": [],
         "result": null
@@ -3175,7 +2919,7 @@
         "text": "The 3.3 V rail, made by the second buck stage.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 120
+          "line": 113
         },
         "anchors": [],
         "result": null
@@ -3186,7 +2930,7 @@
         "text": "The quiet 3.3 V rail, made from the 5 V rail by the linear regulator.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 126
+          "line": 119
         },
         "anchors": [],
         "result": null
@@ -3197,7 +2941,7 @@
         "text": "A Schottky diode in series: a supply connected the wrong way round is blocked.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 133
+          "line": 126
         },
         "anchors": [
           "reverse_diode"
@@ -3210,7 +2954,7 @@
         "text": "A TVS diode across the input: a surge is clamped under what the ICs survive.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 135
+          "line": 128
         },
         "anchors": [
           "surge"
@@ -3220,48 +2964,48 @@
       {
         "path": "buck_5v",
         "kind": "doc",
-        "text": "One buck stage: the IC, its stage (inductor, input and output capacitor banks and the feedback divider), the bootstrap capacitor, a power-good pull-up and the power light.",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider) and the power light.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 60
+          "line": 68
         },
         "anchors": [],
         "result": null
       },
       {
-        "path": "buck_5v.enable_top",
+        "path": "buck_5v.stage.ic",
         "kind": "doc",
-        "text": "The enable divider: the stage starts above about 7 V.",
+        "text": "The IC, a part that provides `BuckIc`.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 74
+          "line": 27
         },
         "anchors": [
-          "buck_5v.enable_top"
+          "buck_5v.stage.ic"
         ],
         "result": null
       },
       {
         "path": "buck_3v3",
         "kind": "doc",
-        "text": "One buck stage: the IC, its stage (inductor, input and output capacitor banks and the feedback divider), the bootstrap capacitor, a power-good pull-up and the power light.",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider) and the power light.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 60
+          "line": 68
         },
         "anchors": [],
         "result": null
       },
       {
-        "path": "buck_3v3.enable_top",
+        "path": "buck_3v3.stage.ic",
         "kind": "doc",
-        "text": "The enable divider: the stage starts above about 7 V.",
+        "text": "The IC, a part that provides `BuckIc`.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 74
+          "line": 27
         },
         "anchors": [
-          "buck_3v3.enable_top"
+          "buck_3v3.stage.ic"
         ],
         "result": null
       },
@@ -3271,7 +3015,7 @@
         "text": "The input and each output leave through a header of their own.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 154
+          "line": 147
         },
         "anchors": [
           "power_in"
@@ -3284,7 +3028,7 @@
         "text": ".light.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 88
+          "line": 81
         },
         "anchors": [
           "buck_5v.light",
@@ -3298,7 +3042,7 @@
         "text": ".light.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 88
+          "line": 81
         },
         "anchors": [
           "buck_3v3.light",
@@ -3312,7 +3056,7 @@
         "text": ".input_light.current == (.vin.voltage - .input_light.forward_voltage) / .input_light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 181
+          "line": 174
         },
         "anchors": [
           "input_light",
@@ -3326,7 +3070,7 @@
         "text": ".ldo_light.current == (.out_3v3a.voltage - .ldo_light.forward_voltage) / .ldo_light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 182
+          "line": 175
         },
         "anchors": [
           "ldo_light",
@@ -3360,20 +3104,8 @@
       },
       {
         "path": "buck_5v.stage",
-        "type_name": "BuckStage",
+        "type_name": "Buck<BenchBuck>",
         "ports": [
-          {
-            "name": "buck.sw.pos",
-            "net": "net-buck_5v.boost.b"
-          },
-          {
-            "name": "buck.sw.neg",
-            "net": "GND"
-          },
-          {
-            "name": "buck.fb",
-            "net": "net-buck_5v.ic.buck.fb"
-          },
           {
             "name": "vin.pos",
             "net": "VIN"
@@ -3402,29 +3134,11 @@
           },
           {
             "name": "fb",
-            "net": "net-buck_5v.ic.buck.fb"
+            "net": "net-buck_5v.stage.divider.rbottom.a"
           },
           {
             "name": "bottom",
             "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_5v.pg_pullup",
-        "type_name": "PullUp",
-        "ports": [
-          {
-            "name": "supply.pos",
-            "net": "5V"
-          },
-          {
-            "name": "supply.neg",
-            "net": "GND"
-          },
-          {
-            "name": "line",
-            "net": "net-buck_5v.ic.pg"
           }
         ]
       },
@@ -3452,20 +3166,8 @@
       },
       {
         "path": "buck_3v3.stage",
-        "type_name": "BuckStage",
+        "type_name": "Buck<BenchBuck>",
         "ports": [
-          {
-            "name": "buck.sw.pos",
-            "net": "net-buck_3v3.boost.b"
-          },
-          {
-            "name": "buck.sw.neg",
-            "net": "GND"
-          },
-          {
-            "name": "buck.fb",
-            "net": "net-buck_3v3.ic.buck.fb"
-          },
           {
             "name": "vin.pos",
             "net": "VIN"
@@ -3494,29 +3196,11 @@
           },
           {
             "name": "fb",
-            "net": "net-buck_3v3.ic.buck.fb"
+            "net": "net-buck_3v3.stage.divider.rbottom.a"
           },
           {
             "name": "bottom",
             "net": "GND"
-          }
-        ]
-      },
-      {
-        "path": "buck_3v3.pg_pullup",
-        "type_name": "PullUp",
-        "ports": [
-          {
-            "name": "supply.pos",
-            "net": "3V3"
-          },
-          {
-            "name": "supply.neg",
-            "net": "GND"
-          },
-          {
-            "name": "line",
-            "net": "net-buck_3v3.ic.pg"
           }
         ]
       }

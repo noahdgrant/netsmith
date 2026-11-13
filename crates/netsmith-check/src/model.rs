@@ -235,7 +235,7 @@ impl DcKind {
             Self::Nmos => "dc nmos .gate .drain .source .gate_threshold .on_resistance",
             Self::Pmos => "dc pmos .gate .drain .source .gate_threshold .on_resistance",
             Self::LinearRegulator => "dc linear_regulator .vin .vout",
-            Self::SwitchingRegulator => "dc switching_regulator .vin .buck.sw .buck.efficiency",
+            Self::SwitchingRegulator => "dc switching_regulator .vin .sw .efficiency",
             Self::Source => "dc source .vbatt",
         }
     }

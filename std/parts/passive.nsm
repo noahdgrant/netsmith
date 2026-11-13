@@ -164,7 +164,7 @@ generic Led {
 /// `.current <= .saturation_current` is checked. `.current` is the largest current through the
 /// part, the peak and not the average, when it carries a ripple; in a `~>` chain it is the
 /// draw of what is behind the chain (ADR 0014), the average, and a design that knows the ripple
-/// adds half of it to the saturation check itself (`BuckStage` does). The winding's resistance
+/// adds half of it to the saturation check itself (`Buck` does). The winding's resistance
 /// drops `.current * .dc_resistance`.
 ///
 /// `.rms_current` is the heating (RMS) rating: the DC current at which the datasheet says the

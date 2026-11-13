@@ -8,12 +8,6 @@ version = 1
 generic = "TwoLayer"
 provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 
-[TwoBuck.parts."buck_3v3.boost"]
-catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
-
 [TwoBuck.parts."buck_3v3.bulk"]
 catalog = "capacitor"
 row = "22uF 20% 6.3V X5R 0603 C59461"
@@ -25,18 +19,6 @@ catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
-
-[TwoBuck.parts."buck_3v3.enable_bottom"]
-catalog = "resistor"
-row = "33kΩ 1% 0402 C25779"
-lcsc = "C25779"
-mpn = "0402WGF3302TCE"
-
-[TwoBuck.parts."buck_3v3.enable_top"]
-catalog = "resistor"
-row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
-mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_3v3.input_decoupling"]
 catalog = "capacitor"
@@ -56,12 +38,6 @@ row = "1kΩ 1% 0402 C11702"
 lcsc = "C11702"
 mpn = "0402WGF1001TCE"
 
-[TwoBuck.parts."buck_3v3.pg_pullup.resistor"]
-catalog = "resistor"
-row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
-mpn = "0402WGF1003TCE"
-
 [TwoBuck.parts."buck_3v3.stage.divider.rbottom"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
@@ -73,6 +49,24 @@ catalog = "resistor"
 row = "1kΩ 1% 0402 C11702"
 lcsc = "C11702"
 mpn = "0402WGF1001TCE"
+
+[TwoBuck.parts."buck_3v3.stage.ic.boost"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_3v3.stage.ic.enable_bottom"]
+catalog = "resistor"
+row = "33kΩ 1% 0402 C25779"
+lcsc = "C25779"
+mpn = "0402WGF3302TCE"
+
+[TwoBuck.parts."buck_3v3.stage.ic.enable_top"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_3v3.stage.inductor"]
 catalog = "inductor"
@@ -92,12 +86,6 @@ row = "47uF 20% 6.3V X5R 0805 C16780"
 lcsc = "C16780"
 mpn = "CL21A476MQYNNNE"
 
-[TwoBuck.parts."buck_5v.boost"]
-catalog = "capacitor"
-row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
-mpn = "CL05B104KO5NNNC"
-
 [TwoBuck.parts."buck_5v.bulk"]
 catalog = "capacitor"
 row = "22uF 20% 6.3V X5R 0603 C59461"
@@ -109,18 +97,6 @@ catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
-
-[TwoBuck.parts."buck_5v.enable_bottom"]
-catalog = "resistor"
-row = "33kΩ 1% 0402 C25779"
-lcsc = "C25779"
-mpn = "0402WGF3302TCE"
-
-[TwoBuck.parts."buck_5v.enable_top"]
-catalog = "resistor"
-row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
-mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_5v.input_decoupling"]
 catalog = "capacitor"
@@ -140,12 +116,6 @@ row = "1kΩ 1% 0402 C11702"
 lcsc = "C11702"
 mpn = "0402WGF1001TCE"
 
-[TwoBuck.parts."buck_5v.pg_pullup.resistor"]
-catalog = "resistor"
-row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
-mpn = "0402WGF1003TCE"
-
 [TwoBuck.parts."buck_5v.stage.divider.rbottom"]
 catalog = "resistor"
 row = "510Ω 1% 0402 C25123"
@@ -157,6 +127,24 @@ catalog = "resistor"
 row = "2.7kΩ 1% 0603 C13167"
 lcsc = "C13167"
 mpn = "0603WAF2701T5E"
+
+[TwoBuck.parts."buck_5v.stage.ic.boost"]
+catalog = "capacitor"
+row = "100nF 10% 16V X7R 0402 C1525"
+lcsc = "C1525"
+mpn = "CL05B104KO5NNNC"
+
+[TwoBuck.parts."buck_5v.stage.ic.enable_bottom"]
+catalog = "resistor"
+row = "33kΩ 1% 0402 C25779"
+lcsc = "C25779"
+mpn = "0402WGF3302TCE"
+
+[TwoBuck.parts."buck_5v.stage.ic.enable_top"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_5v.stage.inductor"]
 catalog = "inductor"

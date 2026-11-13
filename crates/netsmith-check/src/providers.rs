@@ -28,7 +28,7 @@
 //! 1. Every member and statement of each generic it provides, with the same name and type,
 //!    never declared again (``` `max_frequency` is declared by `CoaxReceptacle`, which this part
 //!    provides; narrow it with `.max_frequency &= ...` ```). A member that carries a block in a
-//!    part today (`.buck: Buck { .vref &= ... }`) becomes statements. The generic's statements
+//!    part (`.buck: Buck { .vref &= ... }`) becomes statements. The generic's statements
 //!    are read before the provider's, each in its own file.
 //! 2. Each pin of the generic has a row in the provider's table of every package, with the same
 //!    kind, or is an alias of a pin that has one (`.signal ~ .rf`); an alias carries the kind of
@@ -77,7 +77,9 @@
 //! and then name. The root file is one module whatever its spelling (`Loader::root_key`; before
 //! that `src/main.nsm` and `./src/main.nsm` sorted differently). A provider's id is
 //! `module::Name`, the module being the file's name without `.nsm` and with `::` for `/`, which
-//! is what an `Assignment` names. The pick depends on the sources, the catalog files and the
+//! is what an `Assignment` names. A module with type parameters that provides the generic stands for
+//! one candidate for each provider of its bound, `module::Buck<argmodule::Lt8641>` (ADR 0115,
+//! `params.rs`). The pick depends on the sources, the catalog files and the
 //! manifest only: not on KiCad libraries or the mapping, a supply provider, stock or the time,
 //! so a provider with no symbol in `kicad.toml` is not skipped (the build fails at export,
 //! naming it).
@@ -105,6 +107,9 @@ use crate::model::{GenericUse, InstId, InstKind, Member, Provider};
 pub(crate) struct ProviderRef {
     pub info: Provider,
     pub def: (usize, usize),
+    /// The parts that stand for the parameters of a parametric module (`Buck<Lt8641>`, ADR
+    /// 0115), in the order of its parameters. Empty for any other provider.
+    pub args: Vec<(usize, usize)>,
 }
 
 /// The members every part has whatever its definition says, which a use of a generic may
@@ -179,7 +184,24 @@ impl Checker<'_> {
     /// generic itself first when it is its own provider (it has pads or a catalog), then the
     /// providers of the standard library, then the project's, each by module path and name.
     /// Never by the order of definitions in a file (ADR 0068 section 4).
-    pub(crate) fn providers_of(&self, generic: (usize, usize)) -> Vec<ProviderRef> {
+    ///
+    /// A parametric module stands for one candidate for each provider of its bound (ADR 0115,
+    /// `Checker::expand_parametric`), at the module's place in the order.
+    pub(crate) fn providers_of(&mut self, generic: (usize, usize)) -> Vec<ProviderRef> {
+        let mut out = Vec::new();
+        for p in self.providers_of_unexpanded(generic) {
+            let parametric = !self.modules()[p.def.0].defs[p.def.1].params.is_empty();
+            if parametric && !p.info.own {
+                out.extend(self.expand_parametric(&p));
+            } else {
+                out.push(p);
+            }
+        }
+        out
+    }
+
+    /// [`Checker::providers_of`], with a parametric module as one entry and no arguments.
+    pub(crate) fn providers_of_unexpanded(&self, generic: (usize, usize)) -> Vec<ProviderRef> {
         let gdef = &self.modules()[generic.0].defs[generic.1];
         let mut found: Vec<ProviderRef> = Vec::new();
         if is_own_provider(gdef) {
@@ -194,6 +216,7 @@ impl Checker<'_> {
                     kind: InstKind::Part,
                 },
                 def: generic,
+                args: Vec::new(),
             });
         }
         let mut others: Vec<ProviderRef> = Vec::new();
@@ -223,6 +246,7 @@ impl Checker<'_> {
                         },
                     },
                     def: (m, i),
+                    args: Vec::new(),
                 });
             }
         }
@@ -245,6 +269,7 @@ impl Checker<'_> {
         for name in &def.provides {
             let tp = netsmith_lang::ast::TypePath {
                 segments: vec![name.clone()],
+                args: Vec::new(),
                 of_member: false,
             };
             match self.resolve_type(&tp) {
@@ -280,6 +305,13 @@ impl Checker<'_> {
                     name.span,
                     format!(
                         "`{}` is a built-in type, and only a `generic` is provided",
+                        name.name
+                    ),
+                ),
+                Ty::Param { .. } => self.error(
+                    name.span,
+                    format!(
+                        "`{}` is a type parameter, and only a `generic` is provided",
                         name.name
                     ),
                 ),
@@ -460,6 +492,9 @@ impl Checker<'_> {
             }
             Some(p) => {
                 let def = self.modules()[p.def.0].defs[p.def.1].clone();
+                if !p.args.is_empty() {
+                    self.next_args = Some(p.args.clone());
+                }
                 self.instantiate_as(
                     &def,
                     p.def,
@@ -652,7 +687,7 @@ impl Checker<'_> {
     /// All the providers of a generic are parts, or all are modules (ADR 0068): a provider of
     /// the other kind than the first is reported at its own name, in its own file.
     pub(crate) fn check_provider_kinds(&mut self, generic: (usize, usize)) {
-        let providers = self.providers_of(generic);
+        let providers = self.providers_of_unexpanded(generic);
         let generic_name = self.modules()[generic.0].defs[generic.1].name.name.clone();
         self.check_provider_names(&providers, &generic_name);
         let Some(first) = providers.iter().find(|p| !p.info.own) else {

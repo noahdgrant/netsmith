@@ -8,7 +8,8 @@
 //!
 //! The order is fixed and the pick is a function of the sources alone: depth first over the
 //! uses in path order, the last use varying fastest, each use's providers in the order the
-//! checker lists them (`netsmith_check::Provider`). Nothing compares providers: the first
+//! checker lists them (`netsmith_check::Provider`). A module that takes a part as a type parameter is one candidate for
+//! each provider of its bound (`Buck<Lt8641>`, ADR 0115), and each counts against the bound. Nothing compares providers: the first
 //! assignment that works is the one.
 //!
 //! A check whose only mistakes are contradictions inside uses with several providers

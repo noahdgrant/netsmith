@@ -1,5 +1,5 @@
 //! The start-up time of a buck stage against a requirement, a closed-form check in std
-//! (`.soft_start_time` of `Buck`, forwarded by `BuckStage`; `docs/research/closed-form-checks.md`,
+//! (`.soft_start_time` of `BuckIc`, forwarded by `Buck`; `docs/research/closed-form-checks.md`,
 //! check 4, option A of ADR 0076). Every part and figure here is invented: the IC `Zbk2` has an
 //! internal ramp that its invented datasheet gives as 2 ms to 4 ms, and the board is the one of
 //! `buck_ripple.rs`.
@@ -14,32 +14,28 @@ use netsmith_solve::{Catalogs, Solution, solve};
 
 fn board(ic: &str, extra: &str) -> String {
     format!(
-        r#"import std::parts::regulator::{{Buck, BuckStage}}
+        r#"import std::parts::regulator::{{Buck, BuckIc}}
 import std::sources::Rail
 
-part Zbk2 {{
-    .vin: Rail
+part Zbk2 provides BuckIc {{
     .vin.voltage >= 3V
     .vin.voltage <= 65V
-    .buck: Buck {{
-        .vref &= 0.8V +/- 1.5%
-        .min_input_voltage &= 3V
-        .max_input_voltage &= 65V
-        .max_output_current &= 3A
-        .efficiency &= 0.85..0.95
-        .min_input_capacitance &= 2.2uF
-        .min_output_capacitance &= 10uF
-        .fsw &= 1MHz +/- 10%
-        .min_inductance &= 1.5uH
-{ic}    }}
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
-    dc switching_regulator .vin .buck.sw .buck.efficiency
+    .vref &= 0.8V +/- 1.5%
+    .min_input_voltage &= 3V
+    .max_input_voltage &= 65V
+    .max_output_current &= 3A
+    .efficiency &= 0.85..0.95
+    .min_input_capacitance &= 2.2uF
+    .min_output_capacitance &= 10uF
+    .fsw &= 1MHz +/- 10%
+    .min_inductance &= 1.5uH
+{ic}    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
     pins {{
         .vin.pos       power   "VIN"  "1"
         .vin.neg       power   "GND"  "2"
-        .buck.sw.pos   power   "SW"   "3"
-        .buck.fb       input   "FB"   "4"
+        .sw.pos        power   "SW"   "3"
+        .fb            input   "FB"   "4"
     }}
     .mpn: String
     .package: Package
@@ -59,14 +55,11 @@ board Converter {{
         .current &= 0mA..1A
         .peak &= 1.9V
     }}
-    .u: Zbk2
-    .stage: BuckStage {{
+    .stage: Buck<Zbk2> {{
         .vout.voltage &= 1.8V +/- 3%
 {extra}    }}
     .input ~ .stage.vin
-    .input ~ .u.vin
     .stage.vout ~ .output
-    .stage.buck ~ .u.buck
 }}
 "#
     )
@@ -139,7 +132,7 @@ fn not_evaluated(s: &Solution) -> Vec<String> {
         .collect()
 }
 
-const TIME: &str = "        .soft_start_time &= 2ms..4ms\n";
+const TIME: &str = "    .soft_start_time &= 2ms..4ms\n";
 
 fn near(got: f64, want: f64) {
     assert!(
@@ -206,7 +199,7 @@ fn a_requirement_with_no_time_is_not_evaluated_and_never_passes() {
     assert!(range(&s, "stage.soft_start_time").is_none());
     // The relation that forwards the IC's member was taken out (ADR 0074), not left to be listed.
     assert!(
-        !n.iter().any(|r| r.contains("buck.soft_start_time")),
+        !n.iter().any(|r| r.contains("ic.soft_start_time")),
         "{n:#?}"
     );
 }
@@ -238,10 +231,16 @@ fn a_board_with_no_requirement_is_as_it_was() {
 
 // ---- the LT8641: the time follows the capacitor on TR/SS (item CF2b of epic #308) ----
 //
-// `Lt8641` has `.css: Capacitance optional` and the relation
-// `.buck.soft_start_time == .css * 0.8V / .tr_ss_current` (Rev. C: TR/SS Source Current 1.2 uA
+// `Lt8641` has `.css: Capacitance` and the relation
+// `.soft_start_time == .css * 0.8V / .tr_ss_current` (Rev. C: TR/SS Source Current 1.2 uA
 // to 2.6 uA, p.3; the output tracks the TR/SS voltage from 0 V to 0.8 V, p.19). The current is a
 // range, so the time is one, and the smallest current gives the longest time.
+//
+// The capacitor is the part's own, in its `support` section (ADR 0115): 10 nF +/- 10 % by
+// default, which states `.css`. A board that places the IC through `Buck<Lt8641>` cannot reach
+// it (ADR 0004), so these boards judge the default capacitor: 9 nF to 11 nF, 9 nF * 0.8 V /
+// 2.6 uA = 2.769 ms to 11 nF * 0.8 V / 1.2 uA = 7.333 ms. Before, the board placed the IC and
+// its capacitor itself and stated `.u.css &= 10nF` exactly.
 
 /// A project's rows for the `lt8641` catalog (the standard file has none), and an inductor of
 /// a DC resistance the part accepts (the standard ones have more than its 0.04 ohm).
@@ -256,8 +255,7 @@ ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,Extended,
 
 fn lt_board(extra: &str) -> String {
     format!(
-        r#"import std::parts::passive::{{Capacitor, Resistor}}
-import std::parts::regulator::{{BuckStage, Lt8641}}
+        r#"import std::parts::regulator::{{Buck, Lt8641}}
 import std::sources::Rail
 
 board Converter {{
@@ -272,32 +270,16 @@ board Converter {{
         .neg.net &= "GND"
         .current &= 0A..2A
     }}
-    .u: Lt8641 {{ .mpn &= "LT8641IUDC#WPBF" }}
-    .stage: BuckStage {{ .vout.voltage &= 3.3V +/- 4% }}
-    .rt: Resistor {{ .resistance &= 47kohm +/- 1% }}
-    .boost: Capacitor {{ .capacitance &= 100nF +/- 20% }}
-    .intvcc_cap: Capacitor {{ .capacitance &= 1uF +/- 20% }}
+    .stage: Buck<Lt8641> {{ .vout.voltage &= 3.3V +/- 4% }}
 
     .input ~ .stage.vin
-    .input ~ .u.vin
     .stage.vout ~ .output
-    .stage.buck ~ .u.buck
-    .u.en_uv ~ .input.pos
-    .u.bias ~ .output.pos
-    .u.bias_voltage == .output.voltage
-    .u.sync_mode ~ .input.neg
-    .u.rt ~> .rt ~> .input.neg
-    .u.rt_resistance == .rt.resistance
-    .u.bst ~> .boost ~> .u.buck.sw.pos
-    .u.intvcc ~> .intvcc_cap ~> .input.neg
 {extra}}}
 "#
     )
 }
 
-fn lt_run(extra: &str) -> Solution {
-    let c = check("lt8641_soft_start.nsm", &lt_board(extra), &Loader::std());
-    assert!(c.is_ok(), "{}", c.render());
+fn lt_catalogs() -> Catalogs {
     let mut catalogs = Catalogs::jlcpcb();
     catalogs
         .add_file("lt8641", "catalogs/lt8641.csv", LT_ROWS)
@@ -305,15 +287,25 @@ fn lt_run(extra: &str) -> Solution {
     catalogs
         .add_file("inductor", "catalogs/inductor.csv", LT_INDUCTORS)
         .unwrap();
-    solve(&c.boards[0], &catalogs)
+    catalogs
 }
 
-/// A capacitor of 10 nF on TR/SS gives the time from the datasheet's figures: 10 nF * 0.8 V is
-/// 8 nC, over 2.6 uA (the largest current, the shortest time) and over 1.2 uA (the smallest, the
-/// longest). A requirement of 7 ms holds, and the stage's member is the whole range.
+fn lt_run(extra: &str) -> Solution {
+    let c = check("lt8641_soft_start.nsm", &lt_board(extra), &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    solve(&c.boards[0], &lt_catalogs())
+}
+
+/// The time of the default capacitor at its two ends, as the header works it out.
+const LT_SHORTEST: f64 = 9e-9 * 0.8 / 2.6e-6;
+const LT_LONGEST: f64 = 11e-9 * 0.8 / 1.2e-6;
+
+/// The capacitor on TR/SS gives the time from the datasheet's figures, the largest current
+/// (2.6 uA) the shortest time and the smallest (1.2 uA) the longest. A requirement of 8 ms holds,
+/// and the stage's member is the whole range, the IC's.
 #[test]
 fn the_time_follows_the_capacitor_on_tr_ss_and_the_orientation_is_the_currents() {
-    let s = lt_run("    .u.css &= 10nF\n    .stage.soft_start_time <= 7ms\n");
+    let s = lt_run("    .stage.soft_start_time <= 8ms\n");
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
     // The board's other relations that the solver cannot evaluate are not this one's.
     let n = not_evaluated(&s);
@@ -324,97 +316,126 @@ fn the_time_follows_the_capacitor_on_tr_ss_and_the_orientation_is_the_currents()
     );
     let t = range(&s, "stage.soft_start_time").unwrap();
     // The smallest current gives the largest time, the largest current the smallest.
-    near(t.0, 8e-9 / 2.6e-6);
-    near(t.1, 8e-9 / 1.2e-6);
+    near(t.0, LT_SHORTEST);
+    near(t.1, LT_LONGEST);
     assert!(
         t.0 < 4.211e-3 && 4.211e-3 < t.1,
-        "{t:?}: the typical 1.9 uA is inside"
+        "{t:?}: the typical 1.9 uA at 10 nF is inside"
     );
-    let u = range(&s, "u.buck.soft_start_time").unwrap();
+    let u = range(&s, "stage.ic.soft_start_time").unwrap();
     near(u.0, t.0);
     near(u.1, t.1);
 }
 
-/// The worst case is judged: 5 ms is above the typical 4.2 ms and the best case 3.1 ms, and the
-/// 1.2 uA end, 6.667 ms, misses it. The message names the range and the bound.
+/// The worst case is judged: 5 ms is above the typical 4.2 ms and the best case 2.8 ms, and the
+/// 1.2 uA end at 11 nF, 7.333 ms, misses it. The message names the range and the bound.
 #[test]
 fn a_requirement_the_worst_case_current_misses_fails_and_names_the_figures() {
-    let s = lt_run("    .u.css &= 10nF\n    .stage.soft_start_time <= 5ms\n");
+    let s = lt_run("    .stage.soft_start_time <= 5ms\n");
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
         m[0].starts_with(
-            "stage.soft_start_time must always be at most 5ms, but 3.076ms..6.667ms is not always below 5ms"
+            "stage.soft_start_time must always be at most 5ms, but 2.769ms..7.334ms is not always below 5ms"
         ),
         "{}",
         m[0]
     );
 }
 
-/// The bound is exact at the worst-case end (8 nC / 1.2 uA is 6.6667 ms), and a lower bound is
-/// judged at the other end (the best case, 3.077 ms, is under 3.1 ms).
+/// The bound is exact at the worst-case end (8.8 nC / 1.2 uA is 7.3333 ms), and a lower bound is
+/// judged at the other end (7.2 nC / 2.6 uA, the best case, is 2.7692 ms).
 #[test]
 fn the_bound_is_exact_at_the_ends_of_the_range() {
-    let s = lt_run("    .u.css &= 10nF\n    .stage.soft_start_time <= 6.67ms\n");
+    let s = lt_run("    .stage.soft_start_time <= 7.34ms\n");
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
-    let s = lt_run("    .u.css &= 10nF\n    .stage.soft_start_time <= 6.66ms\n");
+    let s = lt_run("    .stage.soft_start_time <= 7.33ms\n");
     assert_eq!(messages(&s).len(), 1, "{:#?}", messages(&s));
-    let s = lt_run("    .u.css &= 10nF\n    .stage.soft_start_time >= 3.07ms\n");
+    let s = lt_run("    .stage.soft_start_time >= 2.76ms\n");
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
-    let s = lt_run("    .u.css &= 10nF\n    .stage.soft_start_time >= 3.1ms\n");
+    let s = lt_run("    .stage.soft_start_time >= 2.77ms\n");
     assert_eq!(messages(&s).len(), 1, "{:#?}", messages(&s));
 }
 
-/// A capacitor of a tolerance widens the range at both ends: 10 nF +/- 10% is 9 nF to 11 nF,
-/// so 9 nF * 0.8 V / 2.6 uA to 11 nF * 0.8 V / 1.2 uA.
+/// The capacitor's tolerance widens the range at both ends: 10 nF +/- 10% is 9 nF to 11 nF, so
+/// the time is wider than that of an exact 10 nF, 8 nC / 2.6 uA to 8 nC / 1.2 uA.
 #[test]
 fn the_capacitors_tolerance_widens_the_time() {
-    let s = lt_run("    .u.css &= 10nF +/- 10%\n    .stage.soft_start_time <= 8ms\n");
+    let s = lt_run("    .stage.soft_start_time <= 8ms\n");
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
+    let css = range(&s, "stage.ic.css").unwrap();
+    near(css.0, 9e-9);
+    near(css.1, 11e-9);
     let t = range(&s, "stage.soft_start_time").unwrap();
-    near(t.0, 9e-9 * 0.8 / 2.6e-6);
-    near(t.1, 11e-9 * 0.8 / 1.2e-6);
+    assert!(
+        t.0 < 8e-9 / 2.6e-6 && t.1 > 8e-9 / 1.2e-6,
+        "{t:?} is not wider than an exact 10 nF's"
+    );
 }
 
-/// The capacitor a board puts on TR/SS states `.css` by an equation, as it does for RT.
+/// A board that places the IC alone, not through `Buck`, reaches its support capacitor (a part
+/// has no private members; ADR 0115 leaves this open) and states another value, which states
+/// `.css` through the support section's equation as the default does.
 #[test]
-fn the_capacitor_of_the_board_can_state_css() {
-    let s = lt_run(
-        "    .soft_start: Capacitor { .capacitance &= 22nF +/- 10% }\n    \
-         .u.tr_ss ~> .soft_start ~> .input.neg\n    .u.css == .soft_start.capacitance\n    \
-         .stage.soft_start_time <= 20ms\n",
-    );
+fn a_board_that_places_the_ic_alone_can_state_its_soft_start_capacitor() {
+    let src = r#"import std::parts::regulator::Lt8641
+import std::sources::Rail
+
+board Alone {
+    .input: Rail {
+        .voltage &= 9V..16V
+        .peak &= 36V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .voltage &= 3.3V +/- 4%
+        .pos.net &= "VOUT"
+        .neg.net &= "GND"
+        .current &= 0A..2A
+    }
+    .u: Lt8641
+    .input ~ .u.vin
+    .u.sw ~ .output
+    .u.fb ~ .output.pos
+    .u.soft_start.capacitance &= 22nF +/- 10%
+    .u.soft_start_time <= 20ms
+}
+"#;
+    let c = check("lt8641_alone.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &lt_catalogs());
     assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
-    let t = range(&s, "stage.soft_start_time").unwrap();
+    let t = range(&s, "u.soft_start_time").unwrap();
     near(t.0, 22e-9 * 0.9 * 0.8 / 2.6e-6);
     near(t.1, 22e-9 * 1.1 * 0.8 / 1.2e-6);
 }
 
-/// With `.css` unstated nothing changes: a bound is listed as not evaluated and never passes,
-/// and the relation that computes the time is skipped, not listed.
+/// The support section always states `.css`, so a bound on the stage is always judged, never
+/// listed as not evaluated: before, a board that placed no capacitor left it unstated (an IC that
+/// states no time at all is judged so above, with `Zbk2`).
 #[test]
-fn a_requirement_with_no_capacitor_is_not_evaluated_and_never_passes() {
+fn a_requirement_is_always_judged_with_the_support_capacitor() {
     let s = lt_run("    .stage.soft_start_time <= 5ms\n");
-    assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
+    assert_eq!(messages(&s).len(), 1, "{:#?}", messages(&s));
     let n = not_evaluated(&s);
     assert!(
-        n.iter().any(|r| r == "stage.soft_start_time <= 5ms"),
+        !n.iter()
+            .any(|r| r.contains("soft_start") || r.contains("css")),
         "{n:#?}"
     );
-    assert!(range(&s, "stage.soft_start_time").is_none());
-    assert!(!n.iter().any(|r| r.contains("css")), "{n:#?}");
 }
 
-/// A board that states neither a capacitor nor a requirement is as it was: nothing is said,
-/// nothing is listed, and the picks do not move with a stated capacitor.
+/// A board that states no requirement is as it was: nothing is said, and a bound that holds
+/// lists nothing more and moves no pick.
 #[test]
 fn a_board_that_states_no_requirement_is_as_it_was() {
     let without = lt_run("");
-    let with = lt_run("    .u.css &= 10nF\n");
+    let with = lt_run("    .stage.soft_start_time <= 8ms\n");
     for s in [&without, &with] {
         assert!(messages(s).is_empty(), "{:#?}", messages(s));
     }
-    // The list of what is not evaluated is the same, with a capacitor stated or not.
+    // The list of what is not evaluated is the same, with a requirement stated or not.
     assert_eq!(not_evaluated(&with), not_evaluated(&without));
     for path in [
         "stage.inductor.inductance",
@@ -422,11 +443,12 @@ fn a_board_that_states_no_requirement_is_as_it_was() {
         "stage.output_count",
         "stage.input_count",
         "stage.ripple",
+        "stage.ic.soft_start.capacitance",
     ] {
         assert_eq!(
             range(&with, path),
             range(&without, path),
-            "{path} moved with a stated capacitor"
+            "{path} moved with a stated requirement"
         );
     }
 }

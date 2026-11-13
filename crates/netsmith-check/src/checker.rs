@@ -85,6 +85,13 @@ pub(crate) enum Ty {
     Def(usize, usize),
     /// An `enum` (ADR 0054), by module and index in it.
     Enum(usize, usize),
+    /// A type parameter of the module being read (`Ic`, ADR 0115): the part that stands for
+    /// it and the generic that bounds it.
+    Param {
+        arg: (usize, usize),
+        bound: (usize, usize),
+        name: String,
+    },
     Poison,
     Bad,
 }
@@ -172,6 +179,16 @@ pub(crate) struct Checker<'a> {
     /// What the pin file says that is stale but does not stop the run: an entry that no longer
     /// holds and is picked again, an entry of a request that is gone.
     pub(crate) pin_findings: Vec<String>,
+    /// The type parameters of the module whose text is being read, with what stands for each
+    /// (ADR 0115).
+    pub(crate) params: Option<crate::params::ParamEnv>,
+    /// The arguments of the next parametric module made, set just before it is made.
+    pub(crate) next_args: Option<Vec<(usize, usize)>>,
+    /// The members made from a type parameter, with the parameter's name: a path through one
+    /// reaches only the members of the parameter's bound.
+    pub(crate) param_insts: HashMap<InstId, String>,
+    /// Set while the `support` section of a part is read (ADR 0115).
+    pub(crate) in_support: bool,
 }
 
 /// The pin file of the top-level source (ADR 0101): where it is among the loaded files, and
@@ -247,6 +264,10 @@ impl<'a> Checker<'a> {
             pin_input: None,
             pin_roots: Vec::new(),
             pin_findings: Vec::new(),
+            params: None,
+            next_args: None,
+            param_insts: HashMap::new(),
+            in_support: false,
         }
     }
 
@@ -622,6 +643,30 @@ impl<'a> Checker<'a> {
             .scope
             .get(&first.name)
             .copied();
+        if tp.segments.len() == 1
+            && !tp.of_member
+            && let Some(b) = self.param_named(&first.name)
+        {
+            let ty = match b.bound {
+                Some((bound, arg)) => Ty::Param {
+                    arg,
+                    bound,
+                    name: b.name.clone(),
+                },
+                None => Ty::Poison,
+            };
+            if !tp.args.is_empty() {
+                self.error(
+                    first.span,
+                    format!(
+                        "`{}` is a type parameter, which takes no type arguments",
+                        first.name
+                    ),
+                );
+                return Ty::Bad;
+            }
+            return ty;
+        }
         if tp.segments.len() > 1 {
             if matches!(bound, Some(Binding::Poison)) {
                 return Ty::Poison;
@@ -737,6 +782,9 @@ impl<'a> Checker<'a> {
         self.generic_members.clear();
         self.contract_rows.clear();
         self.making.clear();
+        self.params = None;
+        self.next_args = None;
+        self.param_insts.clear();
         self.use_site = None;
         self.scope.clear();
         self.uf.clear();
@@ -802,6 +850,14 @@ impl<'a> Checker<'a> {
     ) -> InstId {
         // One for each instance made: a board of a thousand parts is a thousand of these.
         netsmith_core::job::checkpoint();
+        // A module's type parameters stand for the arguments it was made with, or for their
+        // bounds when it is checked on its own (ADR 0115).
+        let args = self.next_args.take();
+        let env = self.param_env(def_ref, args.as_deref());
+        let type_name = match &args {
+            Some(a) if env.is_some() => self.applied_name(def_ref, a),
+            _ => def.name.name.clone(),
+        };
         let kind = match def.kind {
             DefKind::Board => InstKind::Board,
             DefKind::System => InstKind::System,
@@ -818,7 +874,7 @@ impl<'a> Checker<'a> {
         let id = self.model.add_instance(Instance {
             name: name.to_string(),
             kind,
-            type_name: def.name.name.clone(),
+            type_name,
             parent,
             children: Vec::new(),
             bridge: None,
@@ -903,6 +959,8 @@ impl<'a> Checker<'a> {
         // names look outward only through its own blocks, never through its user.
         let saved_module = std::mem::replace(&mut self.cur_module, def_ref.0);
         let saved_def = self.cur_def.replace(def_ref);
+        let saved_params = std::mem::replace(&mut self.params, env);
+        let saved_support = std::mem::replace(&mut self.in_support, false);
         let saved_scope = std::mem::replace(&mut self.scope, vec![id]);
         // A definition's own text is circuit source, even when a physical file is what
         // asked for it to be made.
@@ -964,6 +1022,8 @@ impl<'a> Checker<'a> {
         self.phys = saved_phys;
         self.cur_module = saved_module;
         self.cur_def = saved_def;
+        self.params = saved_params;
+        self.in_support = saved_support;
         self.scope = saved_scope;
         self.making.pop();
         id
@@ -1132,7 +1192,7 @@ impl<'a> Checker<'a> {
     }
 
     /// First pass: create every member, so later statements can name any of them.
-    fn declare(&mut self, items: &[Item]) {
+    pub(crate) fn declare(&mut self, items: &[Item]) {
         for item in items {
             if let Item::Pins(table) = item {
                 if self.phys.is_none() {
@@ -1150,6 +1210,10 @@ impl<'a> Checker<'a> {
                 } else {
                     self.error(case.span, CASE_OUTSIDE);
                 }
+                continue;
+            }
+            if let Item::Support(support) = item {
+                self.declare_support(support);
                 continue;
             }
             let Item::Decl(d) = item else { continue };
@@ -1196,7 +1260,7 @@ impl<'a> Checker<'a> {
                 self.model.add_member(cur, &name, Member::Poison);
                 continue;
             }
-            if !self.fits_here(&ty, d) {
+            if !self.fits_here(&ty, d) || !self.fits_support(&ty, d) {
                 self.model.add_member(cur, &name, Member::Poison);
                 continue;
             }
@@ -1242,12 +1306,38 @@ impl<'a> Checker<'a> {
                 Ty::Def(m, i) if self.misplaced(&self.modules[m].defs[i].clone(), d) => {
                     self.model.add_member(cur, &name, Member::Poison)
                 }
-                Ty::Def(m, i) => {
-                    let def = self.modules[m].defs[i].clone();
+                Ty::Param {
+                    arg,
+                    bound,
+                    name: param,
+                } => {
                     let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
                     let site = (self.cur_source(), Span::new(d.name.span.start, last));
                     self.use_site = Some(site);
-                    let Some(child) = self.instantiate(&def, (m, i), &name, Some(cur)) else {
+                    let Some(child) = self.instantiate_param(&name, cur, arg, bound, &param) else {
+                        self.model.add_member(cur, &name, Member::Poison);
+                        continue;
+                    };
+                    self.model.instances[child.0].docs = d.docs.clone();
+                    self.model.instances[child.0].declared = Some(site);
+                    self.model.add_member(cur, &name, Member::Inst(child));
+                }
+                Ty::Def(m, i) => {
+                    let def = self.modules[m].defs[i].clone();
+                    // The parts a parametric module is made with (ADR 0115).
+                    let Some(args) = self.type_arguments(&d.ty, (m, i)) else {
+                        self.model.add_member(cur, &name, Member::Poison);
+                        continue;
+                    };
+                    if !args.is_empty() {
+                        self.next_args = Some(args);
+                    }
+                    let last = d.ty.segments.last().map_or(d.name.span.end, |s| s.span.end);
+                    let site = (self.cur_source(), Span::new(d.name.span.start, last));
+                    self.use_site = Some(site);
+                    let made = self.instantiate(&def, (m, i), &name, Some(cur));
+                    self.next_args = None;
+                    let Some(child) = made else {
                         self.model.add_member(cur, &name, Member::Poison);
                         continue;
                     };
@@ -1418,6 +1508,12 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                Item::Support(support) => {
+                    if self.support_allowed() {
+                        let items = crate::support::wiring(support);
+                        self.process(&items);
+                    }
+                }
                 Item::Row(r) => self.row(r),
                 Item::Polygon(p) => self.polygon(p),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
@@ -1460,6 +1556,9 @@ impl<'a> Checker<'a> {
         // A use of a generic reaches the members the generic declares, so that the board works
         // with whichever provider is picked (ADR 0068).
         if let Some(generic) = self.outside_contract(owner, &name.name) {
+            if self.report_outside_bound(owner, name) {
+                return false;
+            }
             let ty = self.model.instance(owner).type_name.clone();
             self.error(
                 name.span,
@@ -1619,6 +1718,9 @@ impl<'a> Checker<'a> {
                         member = m;
                     }
                     None => {
+                        if self.report_outside_bound(i, seg) {
+                            return Res::Bad;
+                        }
                         let ty = self.model.instance(i).type_name.clone();
                         self.error(seg.span, format!("`{ty}` has no member `{}`", seg.name));
                         return Res::Bad;
