@@ -19,6 +19,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     most_tries: None,
     plan: netsmith_place_route::CoarsePlan::Off,
     plan_cost: None,
+    classes: netsmith_place_route::LineClasses::FromSecondTry,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -32,6 +33,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     most_tries: None,
     plan: netsmith_place_route::CoarsePlan::Off,
     plan_cost: None,
+    classes: netsmith_place_route::LineClasses::FromSecondTry,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -45,6 +47,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     most_tries: None,
     plan: netsmith_place_route::CoarsePlan::Off,
     plan_cost: None,
+    classes: netsmith_place_route::LineClasses::FromSecondTry,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -59,6 +62,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     most_tries: None,
     plan: netsmith_place_route::CoarsePlan::Off,
     plan_cost: None,
+    classes: netsmith_place_route::LineClasses::FromSecondTry,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {

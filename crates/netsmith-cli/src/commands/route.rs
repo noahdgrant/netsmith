@@ -57,6 +57,14 @@ pub struct Args {
     /// the tile. The header of the router's `plan.rs` has what it was measured to do.
     #[arg(long, value_name = "WHEN", value_parser = parse_plan)]
     pub plan: Option<netsmith::placed::CoarsePlan>,
+    /// Route the lines by class, the most important first, with the protection: `off`, `every`
+    /// try, or `later`, from the second try on (the router's own).
+    ///
+    /// For experiments on the router. The classes, their order and which of them keep their
+    /// copper against a later class are in the language guide's "How the router orders the
+    /// nets".
+    #[arg(long, value_name = "WHEN", value_parser = parse_classes)]
+    pub classes: Option<netsmith::placed::LineClasses>,
 }
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
@@ -73,6 +81,7 @@ pub fn run(args: Args) -> ExitCode {
         tries: args.tries,
         stages: args.stages,
         plan: args.plan,
+        classes: args.classes,
     };
     run_route(&args.file, args.out.as_deref(), request)
 }
@@ -166,6 +175,16 @@ fn parse_margin(given: &str) -> Result<f64, String> {
         })
 }
 
+fn parse_classes(given: &str) -> Result<netsmith::placed::LineClasses, String> {
+    use netsmith::placed::LineClasses;
+    match given {
+        "off" => Ok(LineClasses::Off),
+        "every" => Ok(LineClasses::EveryTry),
+        "later" => Ok(LineClasses::FromSecondTry),
+        _ => Err(format!("takes `off`, `every` or `later`, not `{given}`")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::commands::common::testing::{kind, parse};
@@ -194,6 +213,7 @@ mod tests {
                 tries: None,
                 stages: false,
                 plan: None,
+                classes: None,
             }))
         );
         assert_eq!(kind(&["route"]), ErrorKind::MissingRequiredArgument);
@@ -229,6 +249,7 @@ mod tests {
                 tries: Some(1),
                 stages: true,
                 plan: None,
+                classes: None,
             }))
         );
         for bad in ["2.5", "steep", "10001"] {
