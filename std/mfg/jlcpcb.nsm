@@ -49,7 +49,7 @@
 //! A limit is a lower bound, so it is written `lo..1m`: ranges are closed, and `1m`, longer
 //! than any board, stands for "no upper limit".
 
-import std::mfg::stackup::{Plane, Pour, Stackup}
+import std::mfg::stackup::{InnerLayer, Pour, Stackup}
 
 /// JLCPCB's standard two-layer rigid board, 1 oz copper. Each `min_` field is the least the
 /// process can make; a board narrows it up to be made with more margin
@@ -187,9 +187,9 @@ interface TwoLayer {
 }
 
 /// JLCPCB's standard four-layer rigid board: 1 oz outer copper, 0.5 oz inner copper, 1.6 mm
-/// thick. The inner layers are planes, and the board names the net of each
-/// (`.process.inner1.net &= "GND"`, `.process.inner2.net &= "3V3"`); the router draws signals
-/// on the outer layers only.
+/// thick. Each inner layer is a plane, whose net the board names
+/// (`.process.inner1.net &= "GND"`), or a signal layer (`.process.inner2.use &= "signal"`,
+/// ADR 0111); the router draws signals on the outer layers only.
 ///
 /// Numbers are from the page's multilayer rows, https://jlcpcb.com/capabilities/pcb-capabilities
 /// (fetched 2026-11-01), and the stackup from https://jlcpcb.com/impedance (fetched
@@ -346,18 +346,213 @@ interface FourLayer {
     .hole_plating &= 0.018mm
 
     .stackup: Stackup
-    .stackup.layers          &= 4
-    .stackup.thickness       &= 1.6mm
-    .stackup.copper_weight   &= 1
-    .stackup.inner_copper    &= 0.0152mm
-    .stackup.prepreg         &= 0.2104mm
-    .stackup.core            &= 1.065mm
-    .stackup.prepreg_epsilon &= 4.4
-    .stackup.core_epsilon    &= 4.6
+    .stackup.layers        &= 4
+    .stackup.thickness     &= 1.6mm
+    .stackup.copper_weight &= 1
+    .stackup.build         &= "JLC04161H-7628"
+    .stackup.inner_copper  &= 0.0152mm
+    .stackup.dielectric1.kind      &= "prepreg"
+    .stackup.dielectric1.glass     &= "7628"
+    .stackup.dielectric1.thickness &= 0.2104mm
+    .stackup.dielectric1.epsilon   &= 4.4
+    .stackup.dielectric2.kind      &= "core"
+    .stackup.dielectric2.thickness &= 1.065mm
+    .stackup.dielectric2.epsilon   &= 4.6
+    .stackup.dielectric3.kind      &= "prepreg"
+    .stackup.dielectric3.glass     &= "7628"
+    .stackup.dielectric3.thickness &= 0.2104mm
+    .stackup.dielectric3.epsilon   &= 4.4
 
-    /// The first and second inner layers, counted from the top. The board names their nets.
-    .inner1: Plane
-    .inner2: Plane
+    /// The first and second inner layers, counted from the top: planes, or signal layers.
+    /// The board says what each is and names the net of a plane.
+    .inner1: InnerLayer
+    .inner2: InnerLayer
+
+    /// The pours on the outer layers, which the board names the nets of.
+    .top: Pour
+    .bottom: Pour
+}
+
+/// JLCPCB's standard six-layer rigid board: 1 oz outer copper, 0.5 oz inner copper, 1.6 mm
+/// thick. Each of the four inner layers is a plane, whose net the board names
+/// (`.process.inner1.net &= "GND"`), or a signal layer (`.process.inner2.use &= "signal"`,
+/// ADR 0111); the router draws signals on the outer layers only.
+///
+/// The rules are the multilayer rows of https://jlcpcb.com/capabilities/pcb-capabilities
+/// (fetched 2026-11-12), which are the same for every layer count and the same as
+/// `FourLayer`'s (each field's comment quotes its row): track and space 0.09 mm (stated as
+/// 0.10 mm, as in `FourLayer`), via 0.15 / 0.25 mm, drill 0.15 mm, annular ring 0.15 mm
+/// absolute minimum, inner layer copper to a via hole 0.2 mm and to a PTH pad hole 0.3 mm,
+/// plated slot 0.35 mm on more than two layers. Also from the page, for six layers and more:
+/// HASL is not offered ("FR-4/HDI boards with 6 or more layers ... do not support HASL"), so
+/// the board file says ENIG; and epoxy filled and capped vias are the default process. Finished
+/// multilayer copper is 1 oz or 2 oz outside and 0.5 oz (the default), 1 oz or 2 oz inside;
+/// `SixLayer` is the 1 oz outer, 0.5 oz inner process.
+///
+/// The stackup is the page's six-layer `JLC06161H-3313` build, from https://jlcpcb.com/impedance
+/// (fetched 2026-11-12): outer copper 0.035 mm, prepreg 3313 x 1 0.0994 mm, inner copper
+/// 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 2116 x 1 0.1088 mm, inner copper
+/// 0.0152 mm, core 0.55 mm, inner copper 0.0152 mm, prepreg 3313 x 1 0.0994 mm, outer copper
+/// 0.035 mm, 1.5384 mm in all. Its "no requirement" default differs only in the middle prepreg
+/// (2116 x 1, 0.1164 mm) and has no name to order it by, so the named build is the one stated.
+/// Relative permittivity, from the same page: 3313 prepreg 4.1, 2116 prepreg 4.16, core 4.6.
+/// The page's thickness selector offers 1.2, 1.6 and 2.0 mm for six layers, but its text holds
+/// the 1.6 mm tables only, so `SixLayer` offers 1.6 mm only. The page states no build-up of 8
+/// or 10 layers, so std has no process for them yet.
+interface SixLayer {
+    /// Who makes it, and where the numbers are published.
+    .fabricator: String
+    .source:     String
+    .fabricator &= "JLCPCB"
+    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+
+    /// The narrowest track.
+    .min_track: Length
+    .min_track &= 0.09mm..1m
+    /// The least space between copper of different nets.
+    .min_clearance: Length
+    .min_clearance &= 0.1mm..1m
+    /// The smallest drilled hole, which is a via's drill.
+    .min_drill: Length
+    .min_drill &= 0.15mm..1m
+    /// The smallest copper disc of a via.
+    .min_via_diameter: Length
+    .min_via_diameter &= 0.25mm..1m
+    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
+    /// `.min_via_ring`.
+    .min_annular_ring: Length
+    .min_annular_ring &= 0.15mm..1m
+    /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
+    /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
+    .min_hole_to_hole: Length
+    .min_hole_to_hole &= 0.45mm..1m
+    .min_via_hole_to_hole: Length
+    .min_via_hole_to_hole &= 0.2mm..1m
+    /// The least space between copper and a routed board edge.
+    .min_edge_clearance: Length
+    .min_edge_clearance &= 0.2mm..1m
+    /// The least space between a plane and the hole of a via or a through-hole pad that is
+    /// not on its net.
+    .min_plane_hole_clearance: Length
+    .min_plane_hole_clearance &= 0.3mm..1m
+    /// The thinnest silkscreen stroke.
+    .min_silk_width: Length
+    .min_silk_width &= 0.15mm..1m
+    /// The smallest silkscreen text.
+    .min_text_height: Length
+    .min_text_height &= 1mm..1m
+    /// The least space between silkscreen and a pad.
+    .min_silk_to_pad: Length
+    .min_silk_to_pad &= 0.15mm..1m
+    /// The least solder mask left between two pads.
+    .min_mask_bridge: Length
+    .min_mask_bridge &= 0.13mm..1m
+    /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
+    /// mm preferred) larger than via hole size", half of it on each side (issue #431).
+    .min_via_ring: Length
+    .min_via_ring &= 0.05mm..1m
+    /// The least space from the edge of a via's hole or a non-plated hole to a track of another
+    /// net: the page's "via hole to track" and "NPTH to track", 0.2 mm each.
+    .min_hole_clearance: Length
+    .min_hole_clearance &= 0.2mm..1m
+    /// The least space from a plated pad's hole to a track of another net: "PTH to track
+    /// 0.28 mm, 0.35 mm is recommended".
+    .min_plated_hole_clearance: Length
+    .min_plated_hole_clearance &= 0.28mm..1m
+    /// The least space between surface-mount pads of different nets: "SMD pad to pad
+    /// clearance (different nets) 0.15 mm".
+    .min_pad_to_pad: Length
+    .min_pad_to_pad &= 0.15mm..1m
+    /// The least space between a solder mask opening and a track of another net: "keep at
+    /// least 0.09 mm clearance between soldermask openings and neighboring traces".
+    .min_mask_to_track: Length
+    .min_mask_to_track &= 0.09mm..1m
+    /// The smallest non-plated hole ("min. non-plated holes 0.50 mm"), the narrowest plated
+    /// slot ("2-layer: 0.5 mm, multi-layer: 0.35 mm") and the narrowest non-plated slot
+    /// ("1.0 mm").
+    .min_npth_drill: Length
+    .min_npth_drill &= 0.5mm..1m
+    .min_plated_slot: Length
+    .min_plated_slot &= 0.35mm..1m
+    .min_npth_slot: Length
+    .min_npth_slot &= 1mm..1m
+    /// The via the router draws, its hole and its copper: an offer the board may replace
+    /// (`.process.via_drill &= 0.3mm`), checked against the rules above. 0.2 mm in a 0.45 mm
+    /// via is the smallest via at the standard price: the page says that "0.1 mm or 0.15 mm
+    /// hole size with any size via diameter, and 0.2 mm or 0.25 mm hole size with via diameter
+    /// less than 0.45 mm, will cost more", and 0.2 mm is its "preferred min. via hole size";
+    /// the copper is 0.25 mm wider than the hole, more than the 0.15 mm the page prefers.
+    .via_drill: Length
+    .via_drill ?= 0.2mm
+    .via_diameter: Length
+    .via_diameter ?= 0.45mm
+    /// The largest via JLCPCB fills with epoxy and caps with copper, which a via may be to
+    /// stand in a pad: 0.55 mm, the top of its range for filled and capped vias. This is an
+    /// upper bound, unlike the `min_` fields, and the router may use a via in a pad up to
+    /// it; the board narrows it to `0mm` where it does not want the extra process step
+    /// (`.process.via_in_pad &= 0mm`). A via in a pad that is not filled and capped
+    /// draws solder away from the joint, so a board that has one needs the fabricator to
+    /// fill and cap it, and `fab` says so in `fab-notes.txt` (the Gerbers do not say it, and
+    /// the note says how many vias and in which pads). The number is from JLCPCB's
+    /// capabilities page ("epoxy filled and capped" vias of 0.15 mm to 0.55 mm; "vias can be
+    /// placed within BGA pads using filled and plated-over vias"). The page calls the range
+    /// "via diameters", and the router uses a via in a pad only if the copper of its via is no
+    /// wider than the number. A soldermask-plugged via is not one: it needs no mask opening, so
+    /// it cannot stand in a pad (ADR 0031). The page says that this process "is the default for
+    /// 6-layer and above multilayer boards".
+    .via_in_pad: Length
+    .via_in_pad &= 0mm..0.55mm
+
+    /// How far above the board's temperature a loaded track may heat: the rise the
+    /// IPC-2221 track width check (ADR 0036) designs to. Not a number JLCPCB publishes, so
+    /// the process leaves it unstated; a board that states none is checked at 10 K, a
+    /// conservative default of this tool's and not a sourced figure, and the finding says
+    /// so.
+    /// It is an upper bound, like `via_in_pad`: `.process.max_temperature_rise &= 20K`
+    /// allows 20 K.
+    .max_temperature_rise: Temperature
+    /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
+    /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
+    /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
+    /// tolerance allows (issue #431).
+    .track_width_tolerance: Number
+    .track_width_tolerance &= 0.2
+    /// The copper plated on the wall of a hole: the page's "average hole plating thickness
+    /// 18 μm". The track width check rates a via for current by it (issue #431).
+    .hole_plating: Length
+    .hole_plating &= 0.018mm
+
+    .stackup: Stackup
+    .stackup.layers        &= 6
+    .stackup.thickness     &= 1.6mm
+    .stackup.copper_weight &= 1
+    .stackup.build         &= "JLC06161H-3313"
+    .stackup.inner_copper  &= 0.0152mm
+    .stackup.dielectric1.kind      &= "prepreg"
+    .stackup.dielectric1.glass     &= "3313"
+    .stackup.dielectric1.thickness &= 0.0994mm
+    .stackup.dielectric1.epsilon   &= 4.1
+    .stackup.dielectric2.kind      &= "core"
+    .stackup.dielectric2.thickness &= 0.55mm
+    .stackup.dielectric2.epsilon   &= 4.6
+    .stackup.dielectric3.kind      &= "prepreg"
+    .stackup.dielectric3.glass     &= "2116"
+    .stackup.dielectric3.thickness &= 0.1088mm
+    .stackup.dielectric3.epsilon   &= 4.16
+    .stackup.dielectric4.kind      &= "core"
+    .stackup.dielectric4.thickness &= 0.55mm
+    .stackup.dielectric4.epsilon   &= 4.6
+    .stackup.dielectric5.kind      &= "prepreg"
+    .stackup.dielectric5.glass     &= "3313"
+    .stackup.dielectric5.thickness &= 0.0994mm
+    .stackup.dielectric5.epsilon   &= 4.1
+
+    /// The four inner layers, counted from the top: planes, or signal layers. The board says
+    /// what each is and names the net of a plane.
+    .inner1: InnerLayer
+    .inner2: InnerLayer
+    .inner3: InnerLayer
+    .inner4: InnerLayer
 
     /// The pours on the outer layers, which the board names the nets of.
     .top: Pour

@@ -11,34 +11,62 @@ interface Stackup {
     /// Finished outer copper, in ounces per square foot.
     .copper_weight: Number
 
-    // How a board of more than two layers is built up, from the top: outer copper, prepreg,
-    // inner copper, core, inner copper, prepreg, outer copper. A two-layer process leaves
-    // these unstated; a process with inner layers states every one.
+    // How a board of more than two layers is built up. A two-layer process leaves these
+    // unstated: its one core is what the thickness leaves after the copper. A process with
+    // inner layers states every one (ADR 0111).
 
+    /// The name the fabricator gives the build-up, such as `JLC04161H-7628`.
+    .build: String
     /// The copper of an inner layer.
     .inner_copper: Length
-    /// The prepreg between an outer copper layer and the inner one beside it.
-    .prepreg: Length
-    /// The core between the inner copper layers.
-    .core: Length
-    /// The relative permittivity of the prepreg and of the core.
-    .prepreg_epsilon: Number
-    .core_epsilon: Number
+    /// The dielectric layers between the copper layers, from the top: `.dielectric1` is
+    /// between the top copper and the first inner layer, and a board of n layers has n - 1.
+    /// Nine are declared, for up to ten layers; a process states those it has.
+    .dielectric1: DielectricLayer
+    .dielectric2: DielectricLayer
+    .dielectric3: DielectricLayer
+    .dielectric4: DielectricLayer
+    .dielectric5: DielectricLayer
+    .dielectric6: DielectricLayer
+    .dielectric7: DielectricLayer
+    .dielectric8: DielectricLayer
+    .dielectric9: DielectricLayer
 }
 
-/// An inner copper layer that is one sheet of copper on a net: a power or ground plane.
-/// A process with inner layers has one `Plane` for each (`.inner1`, `.inner2`), and the
-/// board says which net each is (`.process.inner1.net &= "GND"`), because only a board
-/// names nets (ADR 0005).
-interface Plane {
-    /// The net the layer is poured on.
+/// One dielectric layer of a build-up: a prepreg or a core, as the fabricator's build-up
+/// table gives it.
+interface DielectricLayer {
+    /// `"prepreg"` or `"core"`.
+    .kind: String
+    /// The glass style of a prepreg as the table names it (`"7628"`, `"3313"`, `"2116"`); a
+    /// core states none.
+    .glass: String
+    .thickness: Length
+    /// The relative permittivity.
+    .epsilon: Number
+}
+
+/// An inner copper layer: a plane or a signal layer (ADR 0111). A process with inner layers
+/// has one for each (`.inner1`, `.inner2`..., counted from the top), and the board says what
+/// each is, because only a board names nets (ADR 0005).
+///
+/// A plane is one sheet of copper on a net, a power or ground plane: the board names the net
+/// (`.process.inner1.net &= "GND"`). A signal layer has no net; the board says it is one
+/// (`.process.inner2.use &= "signal"`), and it is written as a signal layer and plotted and
+/// checked like the outer layers. The router draws on the outer layers only, so a signal
+/// layer has no copper yet.
+interface InnerLayer {
+    /// `"plane"`, the default, or `"signal"`.
+    .use: String
+    .use ?= "plane"
+    /// The net of a plane.
     .net: String
 }
 
 /// A copper pour on an outer layer: copper filled round the tracks and joined to its net,
-/// the member `.top` or `.bottom` of a process. Unlike a `Plane` it leaves room for the
-/// tracks and for copper of other nets, and it is optional: an outer layer whose pour has
-/// no net has no pour. The board names the net (`.process.top.net &= "GND"`), because only
+/// the member `.top` or `.bottom` of a process. Unlike a plane (an `InnerLayer`) it leaves
+/// room for the tracks and for copper of other nets, and it is optional: an outer layer whose
+/// pour has no net has no pour. The board names the net (`.process.top.net &= "GND"`), because only
 /// a board names nets (ADR 0005). Where two layers carry the same net, vias stitch them.
 ///
 /// Why a member of the process beside the planes (the owner's decision, 2026-11-02): the net
@@ -46,11 +74,12 @@ interface Plane {
 /// same place, as `.top` and `.bottom`. Rejected: a board member that names its layer
 /// (`.layer &= "top"`: two places would say what is on a layer, the layer would be a string
 /// checked only by hand, and two pours on one layer would have to be refused by hand) and a
-/// `Plane` that may be poured (one type with two meanings, a whole layer with nothing routed
+/// plane that may be poured (one type with two meanings, a whole layer with nothing routed
 /// and a fill round the routing, so the router would have to ask which). An inner plane with
-/// no net is an error, because a four-layer board has to do something with it; an outer pour
-/// with no net is no pour. Thermal relief is KiCad's default, as for the planes; `.thermal_gap`
-/// and `.spoke_width` would follow the range convention if a design needs them.
+/// no net is an error, because a board has to do something with it (or say it is a signal
+/// layer, ADR 0111); an outer pour with no net is no pour. Thermal relief is KiCad's default,
+/// as for the planes; `.thermal_gap` and `.spoke_width` would follow the range convention if a
+/// design needs them.
 interface Pour {
     /// The net the layer is poured on.
     .net: String

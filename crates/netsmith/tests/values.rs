@@ -210,6 +210,7 @@ fn the_examples_state_what_they_need_and_get_neither_finding() {
             "four_layer",
             include_str!("../../../examples/four_layer.nsm"),
         ),
+        ("six_layer", include_str!("../../../examples/six_layer.nsm")),
         (
             "two_boards",
             include_str!("../../../examples/two_boards.nsm"),

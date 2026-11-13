@@ -602,7 +602,7 @@ fn a_part_cannot_name_a_net() {
 fn a_module_cannot_name_the_net_of_a_plane() {
     // A plane's net is a net name like a pin's, so only a board may set it.
     one_error(
-        "import std::mfg::stackup::Plane\nmodule M {\n    .p: Plane\n    .p.net &= \"GND\"\n}\n",
+        "import std::mfg::stackup::InnerLayer\nmodule M {\n    .p: InnerLayer\n    .p.net &= \"GND\"\n}\n",
         "`p.net` names a net, and only a board names nets",
     );
 }
@@ -610,7 +610,7 @@ fn a_module_cannot_name_the_net_of_a_plane() {
 #[test]
 fn a_board_names_the_net_of_a_plane() {
     let c = run(
-        "import std::mfg::stackup::Plane\nboard B {\n    .p: Plane\n    .p.net &= \"GND\"\n}\n",
+        "import std::mfg::stackup::InnerLayer\nboard B {\n    .p: InnerLayer\n    .p.net &= \"GND\"\n}\n",
     );
     assert!(c.is_ok(), "{}", c.render());
 }

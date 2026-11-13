@@ -88,27 +88,30 @@ impl Rules {
     /// process (`.process.min_track &= 0.2mm..1m`). A via's copper is its drill with the
     /// ring on both sides, and at least the process's smallest via.
     ///
-    /// Fails if the process is not one this router can draw: it makes boards of two layers,
-    /// or of four with the two inner layers planes.
+    /// Fails if the process is not one this router can draw: an even number of layers, with
+    /// what each inner layer is (a plane or a signal layer, ADR 0111). The router draws on the
+    /// outer layers only.
     pub fn for_process(process: &Process) -> Result<Rules, String> {
         let layers = process.stackup.layers;
-        if layers != 2 && layers != 4 {
+        if layers < 2 || !layers.is_multiple_of(2) {
             return Err(format!(
-                "the process `{}` has {layers} copper layers, but only two- and four-layer boards can be routed",
+                "the process `{}` has {layers} copper layers, but a board has an even number of them, two or more",
                 process.name
             ));
         }
-        let plane_hole = match (&process.stackup.inner, layers) {
-            (None, 2) => 0.0,
-            (Some(inner), 4) if inner.planes.len() == 2 => inner.hole_clearance,
-            _ => {
-                return Err(format!(
-                    "the process `{}` has {layers} copper layers and {} planes on its inner layers",
-                    process.name,
-                    process.stackup.inner.as_ref().map_or(0, |i| i.planes.len())
-                ));
-            }
-        };
+        let inner = process.stackup.inner.as_ref().map_or(0, |i| i.layers.len());
+        if inner != layers as usize - 2 {
+            return Err(format!(
+                "the process `{}` has {layers} copper layers and says what {inner} of its {} inner layers are",
+                process.name,
+                layers - 2
+            ));
+        }
+        let plane_hole = process
+            .stackup
+            .inner
+            .as_ref()
+            .map_or(0.0, |i| i.hole_clearance);
         // The via is the process's (a default the board may replace, issue #431), and must meet
         // its own rules.
         let (via_drill, via_diameter) = (process.via_drill, process.via_diameter);
@@ -411,9 +414,46 @@ pub(crate) fn four_layer_process(narrowings: &[&str]) -> Process {
     process_of(&source)
 }
 
+/// `SixLayer` with GND on its first inner layer, 3V3 on its last and the two between them
+/// signal layers.
+#[cfg(test)]
+pub(crate) fn six_layer_process() -> Process {
+    let body = [
+        ".inner1.net &= \"GND\"",
+        ".inner2.use &= \"signal\"",
+        ".inner3.use &= \"signal\"",
+        ".inner4.net &= \"3V3\"",
+    ]
+    .map(|n| format!("        {n}\n"))
+    .concat();
+    let source = format!(
+        "import std::mfg::jlcpcb::SixLayer\nimport std::parts::passive::Resistor\nboard T {{\n    .process: SixLayer {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    );
+    process_of(&source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_six_layer_process_with_signal_layers_is_routed_on_the_outer_layers() {
+        let r = Rules::for_process(&six_layer_process()).unwrap();
+        // The planes keep the inner-layer hole space; the signal layers change nothing.
+        assert_eq!(r.plane_clearance, 0.3);
+        assert_eq!(r.min_track_width, 0.09);
+    }
+
+    #[test]
+    fn a_process_whose_inner_layers_are_not_all_said_is_refused() {
+        let mut p = six_layer_process();
+        p.stackup.inner.as_mut().unwrap().layers.pop();
+        let err = Rules::for_process(&p).unwrap_err();
+        assert!(
+            err.contains("has 6 copper layers and says what 3 of its 4 inner layers are"),
+            "{err}"
+        );
+    }
 
     fn rules() -> Rules {
         Rules::for_process(&test_process()).unwrap()
@@ -485,23 +525,26 @@ mod tests {
     }
 
     #[test]
-    fn only_two_and_four_layer_boards_can_be_routed() {
+    fn a_board_of_an_odd_number_of_layers_is_refused() {
         let mut p = test_process();
-        p.stackup.layers = 6;
+        p.stackup.layers = 3;
         let err = Rules::for_process(&p).unwrap_err();
         assert!(
-            err.contains("TwoLayer") && err.contains("6 copper layers"),
+            err.contains("TwoLayer") && err.contains("3 copper layers"),
             "{err}"
         );
-        assert!(err.contains("two- and four-layer"), "{err}");
+        assert!(err.contains("an even number of them"), "{err}");
     }
 
     #[test]
-    fn four_layers_without_planes_are_refused() {
+    fn four_layers_that_do_not_say_what_their_inner_layers_are_are_refused() {
         let mut p = test_process();
         p.stackup.layers = 4;
         let err = Rules::for_process(&p).unwrap_err();
-        assert!(err.contains("4 copper layers and 0 planes"), "{err}");
+        assert!(
+            err.contains("4 copper layers and says what 0 of its 2 inner layers are"),
+            "{err}"
+        );
     }
 
     #[test]

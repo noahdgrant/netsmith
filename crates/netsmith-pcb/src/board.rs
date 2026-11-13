@@ -1208,6 +1208,15 @@ impl CopperLayer {
     }
 }
 
+/// The number of an inner layer's KiCad name, `In3.Cu` -> 3, and 0 for any other.
+fn inner_number(layer: &str) -> u32 {
+    layer
+        .strip_prefix("In")
+        .and_then(|n| n.strip_suffix(".Cu"))
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
+}
+
 /// An inner copper layer poured as one sheet on a net.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Plane {
@@ -1619,9 +1628,9 @@ impl Board {
             .inner
             .iter()
             .flat_map(|inner| {
-                inner.planes.iter().enumerate().map(|(i, net)| Plane {
-                    layer: format!("In{}.Cu", i + 1),
-                    net: net.clone(),
+                inner.planes().map(|(n, net)| Plane {
+                    layer: format!("In{n}.Cu"),
+                    net: net.to_string(),
                 })
             })
             .collect();
@@ -1739,13 +1748,34 @@ impl Board {
             .stackup
             .chosen_thickness()
             .map_or_else(|| "unchosen".to_string(), |t| t.to_string());
-        let planes = if self.planes.is_empty() && self.pours.is_empty() {
+        let signals: Vec<String> = self
+            .inner_layers()
+            .into_iter()
+            .filter(|l| !self.planes.iter().any(|pl| pl.layer == *l))
+            .collect();
+        let planes = if self.planes.is_empty() && self.pours.is_empty() && signals.is_empty() {
             String::new()
         } else {
-            let list: Vec<String> = self
+            let mut inner: Vec<(String, String)> = self
                 .planes
                 .iter()
-                .map(|pl| format!("{} is a plane on {}", pl.layer, pl.net))
+                .map(|pl| {
+                    (
+                        pl.layer.clone(),
+                        format!("{} is a plane on {}", pl.layer, pl.net),
+                    )
+                })
+                .chain(signals.iter().map(|l| {
+                    (
+                        l.clone(),
+                        format!("{l} is a signal layer, with no tracks yet"),
+                    )
+                }))
+                .collect();
+            inner.sort_by_key(|(l, _)| inner_number(l));
+            let list: Vec<String> = inner
+                .into_iter()
+                .map(|(_, text)| text)
                 .chain(
                     self.pours
                         .iter()
@@ -1755,7 +1785,7 @@ impl Board {
             format!(" ({})", list.join(", "))
         };
         format!(
-            "{} {} (numbers from {}); track {} mm, space {} mm, drill {} mm, via {} mm, annular ring {} mm, hole to hole {} mm, copper to edge {} mm, silkscreen {} mm line and {} mm text, mask bridge {} mm; {} layers{}, {} mm thick, {} oz copper; order it with these",
+            "{} {} (numbers from {}); track {} mm, space {} mm, drill {} mm, via {} mm, annular ring {} mm, hole to hole {} mm, copper to edge {} mm, silkscreen {} mm line and {} mm text, mask bridge {} mm; {} layers{}, {} mm thick, {} oz copper{}; order it with these",
             p.fabricator,
             p.name,
             p.source,
@@ -1773,7 +1803,19 @@ impl Board {
             planes,
             thickness,
             p.stackup.copper_weight,
+            p.stackup
+                .inner
+                .as_ref()
+                .map_or_else(String::new, |i| format!(", build-up {}", i.build)),
         )
+    }
+
+    /// KiCad's names of the inner copper layers, from the top: `In1.Cu`, `In2.Cu`... Each is a
+    /// plane (in [`Board::planes`]) or a signal layer (ADR 0111).
+    pub fn inner_layers(&self) -> Vec<String> {
+        (1..=self.process.stackup.layers.saturating_sub(2))
+            .map(|n| format!("In{n}.Cu"))
+            .collect()
     }
 
     /// Each via that stands in a surface-mount pad (its centre is on the pad's copper): the
@@ -2679,6 +2721,35 @@ pub(crate) mod tests {
         design.process = Some(crate::rules::four_layer_process(&[]));
         design.nets[1].name = "3V3".into();
         design
+    }
+
+    pub fn six_layer_design() -> Design {
+        let mut design = led_design();
+        design.process = Some(crate::rules::six_layer_process());
+        design.nets[1].name = "3V3".into();
+        design
+    }
+
+    #[test]
+    fn a_six_layer_board_has_planes_on_the_named_layers_and_says_what_each_inner_layer_is() {
+        let board = placed(&six_layer_design());
+        let planes: Vec<(&str, &str)> = board
+            .planes
+            .iter()
+            .map(|p| (p.layer.as_str(), p.net.as_str()))
+            .collect();
+        assert_eq!(planes, [("In1.Cu", "GND"), ("In4.Cu", "3V3")]);
+        assert_eq!(
+            board.inner_layers(),
+            ["In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu"]
+        );
+        let note = board.process_note();
+        assert!(
+            note.contains(
+                "6 layers (In1.Cu is a plane on GND, In2.Cu is a signal layer, with no tracks yet, In3.Cu is a signal layer, with no tracks yet, In4.Cu is a plane on 3V3), 1.6 mm thick, 1 oz copper, build-up JLC06161H-3313"
+            ),
+            "{note}"
+        );
     }
 
     #[test]

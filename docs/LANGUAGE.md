@@ -6348,7 +6348,7 @@ A bank is one choice: the capacitors of a bank are identical, and the ripple cur
 
 ## The process of a board
 
-A board is made by one manufacturing process. Its design rules and stackup come from a definition in the standard library, and the board has it as a member named `process` (ADR 0008, ADR 0012).
+A board is made by one manufacturing process. Its design rules and stackup come from a definition in the standard library, and the board has it as a member named `process` (ADR 0008, ADR 0111).
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -6372,7 +6372,30 @@ Rules.
 - A board must choose `.stackup.thickness`. The process offers 0.4 mm to 2 mm, and netsmith will not pick.
 - A board with no `process` builds and views as a schematic. `fab` stops and says to add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`. There is no default.
 - `.max_temperature_rise` is the rise in kelvin that the track width check designs to (see Track width against current). The process leaves it unstated and it is 10 K when the board does too: `.process.max_temperature_rise &= 20K`.
-- `std::mfg::jlcpcb::FourLayer` has two inner planes. The board names the net of each: `.process.inner1.net &= "GND"`. See `examples/four_layer.nsm`. A plane on a net the board does not have is an error. `FourLayer` offers 1.6 mm only.
+- `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so a signal layer stays empty for now; it is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. Each offers 1.6 mm only, the one thickness whose build-up JLCPCB's impedance page gives (`JLC04161H-7628`, `JLC06161H-3313`); `fab-notes.txt` names the build-up and says what each inner layer is. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no process for them yet.
+
+A six-layer board with planes outside and signal layers inside:
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::SixLayer
+
+board Six {
+    .process: SixLayer {
+        .inner1.net &= "GND"
+        .inner2.use &= "signal"
+        .inner3.use &= "signal"
+        .inner4.net &= "5V"
+    }
+    .supply: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
 
 `netsmith fab` on a board without one prints (this block is not run by the guide test):
 
@@ -6422,6 +6445,32 @@ board Planes {
 
 ```text
 error: Planes: `process.inner1` is a plane on the net `VCC`, but the board has no net of that name (its nets: `5V`, `GND`)
+```
+
+A signal layer carries the tracks of any net, so it names none:
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+import std::mfg::jlcpcb::FourLayer
+
+board Signal {
+    .process: FourLayer {
+        .inner1.net &= "GND"
+        .inner2.use &= "signal"
+        .inner2.net &= "5V"
+    }
+    .supply: Rail {
+        .pos.net &= "5V"
+        .neg.net &= "GND"
+    }
+    .r1: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+```
+
+```text
+error: Signal: `process.inner2` is a signal layer and names the net `5V`: a signal layer carries the tracks of any net, so it names none; for a plane on `5V`, leave out `.use &= "signal"`
 ```
 
 ## The environment of a board
@@ -7364,7 +7413,7 @@ A pour on a net the board does not have is an error that lists the nets, as for 
 
 ### Keepouts
 
-A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"` separated by commas. The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.
+A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"`... (as many as the board has inner layers) separated by commas. The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.
 
 A keepout is a member of a board's physical file, with its place in the board's frame, or a member of a part, in the part's own frame (the footprint's, turned with the part), so that a part carries its own no-copper zone. A part states it relative to itself and nothing else; the keepouts a board draws are physical intent and are in its physical file (a keepout in a board's circuit source is an error that says so).
 
@@ -13514,8 +13563,9 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::bus::Swd` | Pins `swdio`, `swclk`, `swo`, `reset`, a `.role` (`SwdRole`) and a `.frequency`. One probe on a port. |
 | `std::bus::Usb2` | Pins `dp` and `dm`, a rail `vbus` and a `.role` (`UsbRole`). One host and one device on a bus; a receptacle states `UsbRole::Passthrough` and is not an end of it. |
 | `std::parts::connector::Mating` | What a connector says about how it meets another (ADR 0040), the member `.mating` of a header or socket: `.kind` (`"pin_header"`), `.gender` (`"header"` or `"socket"`), `.pitch`, `.rows`, `.positions`, `.pin_current` (the rated current of one contact, from the `header` catalog; unset is unrated), `.seat` (how far above its board its partner rests, from the `header` catalog, an `optional` column; unset is unknown, ADR 0110) and `.keyed` (`"none"`, or `"shrouded"` or `"polarised"`; unset is the same as `"none"`). A system mates two with `~`. |
-| `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the prepreg and core. |
-| `std::mfg::stackup::Plane` | An inner layer that is one sheet of copper on a net. The board names the net. |
+| `std::mfg::stackup::Stackup` | Layers, thickness, copper weight and, for inner layers, the build-up: its name, the inner copper and each dielectric layer from the top. |
+| `std::mfg::stackup::DielectricLayer` | A prepreg or a core of a build-up: its glass style, thickness and relative permittivity. |
+| `std::mfg::stackup::InnerLayer` | An inner copper layer: a plane on a net the board names, or a signal layer (`.use &= "signal"`). |
 | `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
@@ -13558,7 +13608,8 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | Definition | What it is |
 |---|---|
 | `std::mfg::jlcpcb::TwoLayer` | JLCPCB's two-layer board, 1 oz copper. Rules from `.min_track` to `.min_mask_bridge`, `.max_temperature_rise` (the rise the track width check designs to, unstated by the process), `.via_in_pad` (the largest via the fabricator fills and caps so that it may stand in a pad: an upper bound, `0mm` refuses vias in pads), `.stackup`, and the outer pours `.top` and `.bottom`. Thickness 0.4 mm to 2 mm, chosen by the board. |
-| `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm. Planes `.inner1` and `.inner2`, each on a net the board names. |
+| `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `JLC04161H-7628`. Inner layers `.inner1` and `.inner2`, each a plane on a net the board names or a signal layer. |
+| `std::mfg::jlcpcb::SixLayer` | JLCPCB's six-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `JLC06161H-3313`. Inner layers `.inner1` to `.inner4`, each a plane on a net the board names or a signal layer. |
 | `std::mfg::jlcpcb::VCutPanel` | JLCPCB's V-cut panel, the member `.fab` of a `panel`: `.columns`, `.rows` and `.rail`, and the limits of the board house (panel size, lines, line spacing, copper clearance, thickness, tooling holes and fiducials), each with its source. |
 
 Every number in a process cites its source in a doc comment in `std/mfg/jlcpcb.nsm`.
