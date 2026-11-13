@@ -52,7 +52,6 @@ board OutlineAndPours {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
         .min_track &= 0.4mm..1m
     }
 
@@ -63,7 +62,6 @@ board OutlineAndPours {
     /// What the outside world draws from the output.
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
         .min_track &= 0.3mm..1m
     }

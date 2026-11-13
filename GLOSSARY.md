@@ -489,7 +489,7 @@ A pin that belongs to a part, directly or through one of its interfaces. Termina
 A pin of an interface on a module or board. A port only passes a connection along to the terminals behind it. An interface that a board declares directly (`.output: Rail`) is also the port of that board in a system, which can join it to another board's port and reach nothing else of the board.
 
 **Net**:
-All the pins joined at one electrical node, with its name. Only a board names a net; an unnamed one is called `net-` and its smallest terminal path.
+All the pins joined at one electrical node, with its name. Only a board names a net; an unnamed one is called `net-` and its smallest terminal path. A rail's ground is `GND` unless a statement names another (ADR 0118).
 
 **Bridge**:
 The two terminals of a part that a series chain enters and leaves by.

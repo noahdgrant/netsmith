@@ -82,19 +82,16 @@ board Carrier {
         .voltage &= 3.3V +/- 5%
         .peak &= 3.6V
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     /// What the carrier gives to its cards, through a fuse: up to 500 mA.
     .cards: Rail {
         .pos.net &= "3V3_CARDS"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
         .current &= 0mA..500mA
     }
     .fuse: Fuse
     .supply.pos ~> .fuse ~> .cards.pos
-    .supply.neg ~ .cards.neg
     // The fuse drops a little of the supply; the cards get what is left.
     .cards.voltage == .supply.voltage - .fuse.drop
 
@@ -131,7 +128,6 @@ board SensorCard {
 
     .supply: Rail {
         .pos.net &= "3V3_CARD"
-        .neg.net &= "GND"
         .current &= -30mA..-5mA
     }
     .sensor: SpiSensor
@@ -157,7 +153,6 @@ board SerialCard {
 
     .supply: Rail {
         .pos.net &= "3V3_CARD"
-        .neg.net &= "GND"
         .current &= -60mA..-10mA
     }
     .chip: SerialChip

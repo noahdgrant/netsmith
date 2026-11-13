@@ -65,19 +65,16 @@ board Rp2350Minimal {
     .vbus: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VBUS"
-        .neg.net &= "GND"
     }
     /// The IO supply, from the regulator.
     .v3v3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "+3V3"
-        .neg.net &= "GND"
     }
     /// The core supply, made by the MCU's own switching regulator with the inductor and a
     /// capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.
     .v1v1: Rail {
         .pos.net &= "+1V1"
-        .neg.net &= "GND"
     }
 
     .usb.vbus ~ .vbus.pos
@@ -85,8 +82,6 @@ board Rp2350Minimal {
     .usb.shield ~ .vbus.neg
     .vbus ~ .regulator.vin
     .regulator.vout ~ .v3v3
-    .v3v3.neg ~ .vbus.neg
-    .v1v1.neg ~ .vbus.neg
 
     // ---- The MCU's supplies ----
 

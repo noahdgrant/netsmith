@@ -7,6 +7,8 @@
 /// when it draws, negative when it supplies. A design states the load side
 /// (`.output.current &= 0mA..50mA`); the checker adds up the rails on each net so that
 /// what is drawn equals what is supplied (ADR 0007).
+///
+/// `neg` is on `GND` unless the board says otherwise (`.neg.net &= "AGND"`, ADR 0118).
 interface Rail {
     .pos: Pin
     .neg: Pin
@@ -56,4 +58,11 @@ interface Rail {
     /// name). A signal that must be wide has no rail: widen every net with
     /// `.process.min_track`. Clearance per class and a via size per class are not built.
     .min_track: Length
+    // Ground is `GND` unless a rail says otherwise. A board states ground once, by saying
+    // nothing: a rail with no statement for `.neg.net` is on `GND`, and a rail with its own
+    // ground (isolated, analog) states it, `.agnd_rail: Rail { .neg.net &= "AGND" }`. The
+    // name is a default (ADR 0051) and takes effect only where the rail is on a board, since
+    // only a board names nets (ADR 0118); a rail joined (`~`) to a pin or rail whose net a
+    // `&=` names keeps that name.
+    .neg.net ?= "GND"
 }

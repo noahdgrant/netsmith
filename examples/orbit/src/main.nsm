@@ -57,13 +57,11 @@ board Orbit {
     .vbus: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VBUS"
-        .neg.net &= "GND"
     }
     /// The battery's rail behind the power switch, `+BATT`. The schematic names no cell, so no
     /// voltage is stated.
     .vbatt: Rail {
         .pos.net &= "+BATT"
-        .neg.net &= "GND"
     }
     /// The 3.3 V rail of the buck-boost regulator. ORBIT's schematic names it `+3.3V`; the
     /// window is a stated requirement (as for the RP2350A Minimal), and the regulator's divider
@@ -71,10 +69,7 @@ board Orbit {
     .v3v3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "+3.3V"
-        .neg.net &= "GND"
     }
-    .vbus.neg ~ .vbatt.neg
-    .vbus.neg ~ .v3v3.neg
 
     // ---- The power path: USB -> charger -> battery -> buck-boost ----
 

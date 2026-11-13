@@ -46,7 +46,6 @@ board PowerBoard {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
 
     .stage: LdoStage {
@@ -57,7 +56,6 @@ board PowerBoard {
     /// board is built to give.
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
 
@@ -82,7 +80,6 @@ board LedBoard {
     /// Supplied by the other board, through this socket.
     .input: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
 
     .led: Led {

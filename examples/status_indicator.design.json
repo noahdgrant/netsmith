@@ -159,20 +159,7 @@
     ],
     "nets": [
       {
-        "name": "net-enable_in.p1",
-        "pins": [
-          {
-            "refdes": "J2",
-            "pin": "1"
-          },
-          {
-            "refdes": "R1",
-            "pin": "1"
-          }
-        ]
-      },
-      {
-        "name": "net-enable_in.p2",
+        "name": "GND",
         "pins": [
           {
             "refdes": "C1",
@@ -189,6 +176,19 @@
           {
             "refdes": "J2",
             "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-enable_in.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "1"
+          },
+          {
+            "refdes": "R1",
+            "pin": "1"
           }
         ]
       },
@@ -307,7 +307,7 @@
           },
           {
             "name": "neg",
-            "net": "net-enable_in.p2"
+            "net": "GND"
           }
         ]
       },
@@ -331,7 +331,7 @@
           },
           {
             "name": "neg",
-            "net": "net-enable_in.p2"
+            "net": "GND"
           }
         ]
       },
@@ -355,7 +355,7 @@
           },
           {
             "name": "neg",
-            "net": "net-enable_in.p2"
+            "net": "GND"
           }
         ]
       },
@@ -369,7 +369,7 @@
           },
           {
             "name": "neg",
-            "net": "net-enable_in.p2"
+            "net": "GND"
           }
         ]
       }
@@ -422,7 +422,7 @@
           },
           {
             "name": "power.neg",
-            "net": "net-enable_in.p2"
+            "net": "GND"
           },
           {
             "name": "enable.line",
@@ -434,7 +434,7 @@
           },
           {
             "name": "enable.reference.neg",
-            "net": "net-enable_in.p2"
+            "net": "GND"
           }
         ]
       }

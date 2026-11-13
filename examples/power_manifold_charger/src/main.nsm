@@ -248,66 +248,54 @@ board PowerManifoldCharger {
     .slot_vin: Rail {
         .voltage &= 20.4V..28.8V
         .pos.net &= "VIN_PREFUSE"
-        .neg.net &= "GND"
     }
     /// The slot's 5 V logic supply (A12, B12), from the backplane's buck.
     .v5: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "+5V"
-        .neg.net &= "GND"
     }
     /// The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.
     .v3v3: Rail {
         .pos.net &= "+3.3V"
-        .neg.net &= "GND"
     }
     /// Behind the fuse.
     .vin: Rail {
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     /// Behind the input inductor: the converter's input.
     .emi_vin: Rail {
         .pos.net &= "EMI_VIN"
-        .neg.net &= "GND"
     }
     /// The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V;
     /// the blade is offered 5 V to 21 V by its firmware).
     .vout_conv: Rail {
         .voltage &= 5V..21V
         .pos.net &= "VOUT_CONV"
-        .neg.net &= "GND"
     }
     /// Behind the output shunt R28.
     .vout: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
     }
     /// The two back-to-back MOSFETs' common source.
     .vbus_src: Rail {
         .pos.net &= "VBUS_SRC"
-        .neg.net &= "GND"
     }
     /// Behind the shunt R27, ahead of the MOSFET Q4.
     .vbus_f: Rail {
         .pos.net &= "VBUSf"
-        .neg.net &= "GND"
     }
     /// The port's VBUS, on the receptacle.
     .vbus: Rail {
         .pos.net &= "VBUS"
-        .neg.net &= "GND"
     }
 
+    // Nothing of a part is on the ground of these five rails, so `Rail`'s default of `GND` does
+    // not reach them (it names a net only where a part is): each joins the ground of the rest.
     .slot_vin.neg ~ .v5.neg
-    .v3v3.neg ~ .v5.neg
     .vin.neg ~ .v5.neg
-    .emi_vin.neg ~ .v5.neg
-    .vout_conv.neg ~ .v5.neg
     .vout.neg ~ .v5.neg
     .vbus_src.neg ~ .v5.neg
     .vbus_f.neg ~ .v5.neg
-    .vbus.neg ~ .v5.neg
 
     // Series parts between rails: the fuse F1, the input inductor L1, the output shunt R28 and the
     // port shunt R27.

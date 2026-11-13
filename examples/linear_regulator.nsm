@@ -38,7 +38,6 @@ board RegulatorExample {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
 
     .stage: LdoStage {
@@ -48,7 +47,6 @@ board RegulatorExample {
     /// What the outside world draws from the output.
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
 
