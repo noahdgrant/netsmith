@@ -46,7 +46,7 @@ pub fn source(channels: usize) -> String {
     assert!(channels > 0 && channels.is_multiple_of(PER_BANK));
     let mut s = String::from(
         "import std::parts::connector::{Header1x2, Header2x10, Socket1x10}\n\
-         import std::parts::passive::{Resistor, Led, Capacitor}\n\
+         import std::parts::passive::{Resistor, Led, Color, Capacitor}\n\
          import std::sources::Rail\n\
          import std::logic::Logic\n\
          import std::mfg::jlcpcb::TwoLayer\n\n",
@@ -64,7 +64,7 @@ pub fn source(channels: usize) -> String {
          \x20   .enable: Logic\n\
          \x20   .enable.reference ~ .power\n\
          \x20   .limit: Resistor {\n        .resistance &= 1kohm +/- 1%\n    }\n\
-         \x20   .led: Led {\n        .color &= Green\n        .forward_voltage &= 1.8V..2.5V\n    }\n\
+         \x20   .led: Led {\n        .color &= Color::Green\n        .forward_voltage &= 1.8V..2.5V\n    }\n\
          \x20   .enable.line ~> .limit ~> .led ~> .power.neg\n\
          }\n\n",
     );

@@ -115,14 +115,14 @@ fn text_where_a_variant_belongs_says_which_variant_it_was_meant_to_be() {
     assert_eq!(
         messages(&c),
         [
-            "`lamp.drive` holds a variant of `Drive`, but this value is text; a variant of `Drive` is a name, not text: write `Dimmed` (the variants are `Steady`, `Dimmed` and `Blinking`)"
+            "`lamp.drive` holds a variant of `Drive`, but this value is text; a variant of `Drive` is not written as text: write `Drive::Dimmed` (the variants are `Drive::Steady`, `Drive::Dimmed` and `Drive::Blinking`)"
         ]
     );
     let c = run(&lamp("    .lamp.drive &= \"flashing\"\n"));
     assert_eq!(
         messages(&c),
         [
-            "`lamp.drive` holds a variant of `Drive`, but this value is text; a variant of `Drive` is a name, not text, and \"flashing\" is none of them: the variants are `Steady`, `Dimmed` and `Blinking`"
+            "`lamp.drive` holds a variant of `Drive`, but this value is text; a variant of `Drive` is not written as text, and \"flashing\" is none of them: the variants are `Drive::Steady`, `Drive::Dimmed` and `Drive::Blinking`"
         ]
     );
 }
@@ -182,7 +182,7 @@ fn variants_compare_with_equals_equals_and_nothing_else() {
     assert_eq!(
         messages(&c),
         [
-            "the two sides do not match: left is a variant of `Drive`, right is text; a variant of `Drive` is a name, not text: write `Dimmed` (the variants are `Steady`, `Dimmed` and `Blinking`)"
+            "the two sides do not match: left is a variant of `Drive`, right is text; a variant of `Drive` is not written as text: write `Drive::Dimmed` (the variants are `Drive::Steady`, `Drive::Dimmed` and `Drive::Blinking`)"
         ]
     );
 }
@@ -313,7 +313,7 @@ fn the_quoted_words_of_earlier_versions_are_refused_with_the_variant_to_write() 
         assert!(
             all[0].starts_with(
                 "`r1.assembly` holds a variant of `AssemblyMode`, but this value is text;"
-            ) && all[0].contains(&format!("write `{variant}`")),
+            ) && all[0].contains(&format!("write `AssemblyMode::{variant}`")),
             "{all:?}"
         );
     }
@@ -325,7 +325,7 @@ board B {
 ";
     let all = messages(&run(src));
     assert!(
-        all[0].contains("\"solder\" is none of them: the variants are `Fab`, `Hand`, `None` and `Consigned`"),
+        all[0].contains("\"solder\" is none of them: the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`"),
         "{all:?}"
     );
 }

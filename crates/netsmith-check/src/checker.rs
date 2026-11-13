@@ -18,6 +18,9 @@ use crate::providers::generic_is_part_shaped;
 #[derive(Clone, Copy)]
 pub(crate) enum Binding {
     Def(usize, usize),
+    /// A variant of an enum, imported by name (`import std::parts::passive::Color::Red`,
+    /// ADR 0118): the enum's definition and the variant's index.
+    Variant(usize, usize, usize),
     /// An import that failed. Uses of the name are not reported again.
     Poison,
 }
@@ -145,7 +148,7 @@ pub(crate) struct Checker<'a> {
     pub(crate) source_override: Option<SourceId>,
     /// The enums that fields of the model in progress have the type of, by the module and
     /// index of their definition.
-    enum_ids: HashMap<(usize, usize), EnumId>,
+    pub(crate) enum_ids: HashMap<(usize, usize), EnumId>,
     /// The interface definitions whose `lines` had a mistake (ADR 0064), so that the rules do not
     /// read them and the mistake is said once.
     pub(crate) bus_def_failed: HashSet<(usize, usize)>,
@@ -605,38 +608,82 @@ impl<'a> Checker<'a> {
             }
         };
 
-        let target = if module_path.is_empty() {
+        if module_path.is_empty() {
             self.report(
                 source,
                 import.span,
                 "an import needs a module path before the name",
             );
-            None
-        } else {
-            let found = self.load_module(&module_path);
-            if found.is_none() {
+            self.bind_imported(module, source, &names, |_, _| Binding::Poison);
+            return;
+        }
+        let target = self.load_module(&module_path);
+        // `import a::b::Enum::Variant` or `import a::b::Enum::{X, Y}`: the variants of an enum
+        // of module `a::b` (ADR 0118).
+        if target.is_none()
+            && let Some((enum_name, parent)) = module_path.split_last()
+            && !parent.is_empty()
+            && let Some(m) = self.load_module(parent)
+            && let Some(i) = self.modules[m]
+                .defs
+                .iter()
+                .position(|d| d.name.name == *enum_name && d.kind == DefKind::Enum)
+        {
+            let variants: Vec<String> = self.modules[m].defs[i]
+                .variants
+                .iter()
+                .map(|v| v.name.name.clone())
+                .collect();
+            let enum_name = enum_name.clone();
+            let mut missing = Vec::new();
+            for (name, span) in &names {
+                if !variants.contains(name) {
+                    missing.push((name.clone(), *span));
+                }
+            }
+            for (name, span) in missing {
+                let listed: Vec<String> = variants.iter().map(|v| format!("`{v}`")).collect();
+                let hint = crate::lower::closest(&name, &variants)
+                    .map(|v| format!("; did you mean `{v}`?"))
+                    .unwrap_or_default();
                 self.report(
                     source,
-                    import.span,
-                    format!("unknown module `{}`", module_path.join("::")),
+                    span,
+                    format!(
+                        "`{enum_name}` has no variant `{name}`; its variants are {}{hint}",
+                        crate::lower::list_of(&listed)
+                    ),
                 );
             }
-            found
-        };
-
-        for (name, span) in names {
+            self.bind_imported(module, source, &names, |name, _| {
+                match variants.iter().position(|v| v == name) {
+                    Some(v) => Binding::Variant(m, i, v),
+                    None => Binding::Poison,
+                }
+            });
+            return;
+        }
+        if target.is_none() {
+            self.report(
+                source,
+                import.span,
+                format!("unknown module `{}`", module_path.join("::")),
+            );
+        }
+        let mut bindings = Vec::new();
+        for (name, span) in &names {
             let binding = match target {
                 None => Binding::Poison,
                 Some(t) => match self.modules[t]
                     .defs
                     .iter()
-                    .position(|d| d.name.name == name)
+                    .position(|d| d.name.name == *name)
                 {
                     Some(index) => Binding::Def(t, index),
                     None => {
                         self.report(
                             source,
-                            span,
+                            *span,
                             format!(
                                 "module `{}` has no definition `{name}`",
                                 module_path.join("::")
@@ -646,6 +693,22 @@ impl<'a> Checker<'a> {
                     }
                 },
             };
+            bindings.push(binding);
+        }
+        self.bind_imported(module, source, &names, |_, at| bindings[at]);
+    }
+
+    /// Put the imported names in the scope of `module`, each with the binding `of` gives it
+    /// (by name and by its place in the list).
+    fn bind_imported(
+        &mut self,
+        module: usize,
+        source: SourceId,
+        names: &[(String, Span)],
+        of: impl Fn(&str, usize) -> Binding,
+    ) {
+        for (at, (name, span)) in names.iter().enumerate() {
+            let binding = of(name, at);
             if self.modules[module]
                 .scope
                 .insert(name.clone(), binding)
@@ -653,11 +716,65 @@ impl<'a> Checker<'a> {
             {
                 self.report(
                     source,
-                    span,
+                    *span,
                     format!("`{name}` is already defined or imported"),
                 );
             }
         }
+    }
+
+    /// The variant a bare name stands for in the current file, if the file imports it.
+    pub(crate) fn imported_variant(&self, name: &str) -> Option<(usize, usize, String)> {
+        match self.modules[self.cur_module].scope.get(name) {
+            Some(Binding::Variant(m, i, v)) => Some((
+                *m,
+                *i,
+                self.modules[*m].defs[*i].variants[*v].name.name.clone(),
+            )),
+            _ => None,
+        }
+    }
+
+    /// How a bare name could be written as a variant of an enum the file can see (its own,
+    /// an imported one or the prelude's): `` `AssemblyMode::Hand` `` and the import of the
+    /// variant, for the message of a name that is not in scope.
+    pub(crate) fn variant_hint(&mut self, name: &str) -> Option<String> {
+        let mut enums: Vec<(usize, usize)> = self.modules[self.cur_module]
+            .scope
+            .values()
+            .filter_map(|b| match b {
+                Binding::Def(m, i) if self.modules[*m].defs[*i].kind == DefKind::Enum => {
+                    Some((*m, *i))
+                }
+                _ => None,
+            })
+            .collect();
+        let prelude = self.prelude();
+        enums.extend(
+            self.modules[prelude]
+                .defs
+                .iter()
+                .enumerate()
+                .filter(|(_, d)| d.kind == DefKind::Enum)
+                .map(|(i, _)| (prelude, i)),
+        );
+        enums.sort();
+        enums.dedup();
+        enums.into_iter().find_map(|(m, i)| {
+            let def = &self.modules[m].defs[i];
+            let variants: Vec<String> = def.variants.iter().map(|v| v.name.name.clone()).collect();
+            let variant = crate::lower::closest(name, &variants)?;
+            Some(self.variant_spellings(m, i, &variant))
+        })
+    }
+
+    /// `` `Color::Red`, or import the variant: `import std::parts::passive::Color::Red` ``.
+    pub(crate) fn variant_spellings(&self, m: usize, i: usize, variant: &str) -> String {
+        let name = &self.modules[m].defs[i].name.name;
+        format!(
+            "`{name}::{variant}`, or import the variant: `import {}::{name}::{variant}`",
+            self.modules[m].key
+        )
     }
 
     pub fn resolve_type(&mut self, tp: &TypePath) -> Ty {
@@ -706,6 +823,14 @@ impl<'a> Checker<'a> {
         }
         match bound {
             Some(Binding::Def(m, i)) => self.def_type(m, i),
+            Some(Binding::Variant(m, i, _)) => {
+                let name = &self.modules[m].defs[i].name.name;
+                self.error(
+                    first.span,
+                    format!("`{}` is a variant of `{name}`, not a type", first.name),
+                );
+                Ty::Bad
+            }
             Some(Binding::Poison) => Ty::Poison,
             None => match self.prelude_def(&first.name) {
                 Some((m, i)) => self.def_type(m, i),
@@ -1869,6 +1994,11 @@ impl<'a> Checker<'a> {
                 None => {
                     let hint = if self.model.member(cur, &first.name).is_some() {
                         format!("; write `.{}` for a member of this block", first.name)
+                    } else if p.segments.len() == 1
+                        && let Some(spellings) = self.variant_hint(&first.name)
+                    {
+                        // A variant is in scope by its enum or by its own import (ADR 0118).
+                        format!("; did you mean {spellings}?")
                     } else {
                         String::new()
                     };

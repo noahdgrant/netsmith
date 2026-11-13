@@ -615,7 +615,7 @@ error: the currents on net `3V3` do not add up: `supply.current` must stay withi
 
 ## Enums: a value from a fixed list
 
-An `enum` names a type whose values are a fixed list of variants (ADR 0054). It is declared at the top of a file, like a definition, and a variant is written `Enum::Variant`, or bare where a field of the enum says which enum it is (`.drive &= Dimmed`, ADR 0118):
+An `enum` names a type whose values are a fixed list of variants (ADR 0054). It is declared at the top of a file, like a definition, and a variant is written `Enum::Variant` where the enum is in scope, or bare where the variant itself is imported (ADR 0118):
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -652,9 +652,21 @@ board Lamps {
 - A value is stated with `&=` or given as a default with `?=` (ADR 0051), and two statements of one field must name the same variant, or the usual empty-intersection error names both: ``contradiction on `lamp.drive`: it is already Drive::Dimmed, which does not overlap Drive::Steady``.
 - `==` compares two values of one enum, a field and a variant or a field and a field, and is checked like any other relation: `.drive == Drive::Steady` fails when the field is `Drive::Dimmed`. Only `==` compares variants; they have no order.
 - `&=`, `?=` and `==` take only a variant of the field's own enum. Text is not one: `.drive &= "Dimmed"` is refused and the message says what to write.
-- A variant is written with its enum's name (`Drive::Dimmed`), or bare (`Dimmed`) where the other side of `&=`, `?=` or `==` is a field of the enum (ADR 0118). The field says which enum the name is a variant of, so two enums may still have a variant of one name, and the bare name needs no import. A bare name that is no variant of the field's enum is a member of an enclosing block, as a bare name is everywhere else; where there is no such member either, it is refused with the variants listed and the nearest named. A file imports the enum, not its variants.
-- An LED's colour is the enum `Color` of `std::parts::passive` (`Red`, `Green`, `Blue`, `White`, `Yellow`): `.led: Led { .color &= Red }`. A colour is added to the enum with the catalog rows that have it.
+- A variant follows the import system like any other name (ADR 0118). It is written with its enum's name (`Drive::Dimmed`) where the enum is in scope: declared in the file, imported, or in the prelude. It is written bare (`Dimmed`) only where the file imports the variant itself, `import src::lamp::Drive::Dimmed`, or several at once, `import src::lamp::Drive::{Steady, Dimmed}`. The rule is the same for every enum. A bare name that is not imported is a member of an enclosing block, as everywhere else; where there is none, the error says how the variant is written.
+- An LED's colour is the enum `Color` of `std::parts::passive` (`Red`, `Green`, `Blue`, `White`, `Yellow`): `import std::parts::passive::{Led, Color}` and `.led: Led { .color &= Color::Red }`. A colour is added to the enum with the catalog rows that have it.
 - `AssemblyMode` (variants `Fab`, `Hand`, `None` and `Consigned`) is the one enum that every file knows without an import, because every part has a built-in `.assembly` of that type (Who assembles a part, above). It is defined in `std/prelude.nsm`.
+
+A file that writes the same variants often imports them and writes them bare:
+
+```nsm
+import std::parts::passive::Led
+import std::parts::passive::Color::{Red, Green}
+
+board Signals {
+    .fault: Led { .color &= Red }
+    .ready: Led { .color &= Green }
+}
+```
 
 A variant the enum does not have is refused where it is written, with the variants listed and the nearest one named:
 
@@ -676,7 +688,7 @@ error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab
   |                                    ^^^^
 ```
 
-A bare name is checked the same way against the enum of its field:
+A bare variant that the file does not import is refused, with the two ways to write it:
 
 ```nsm fails
 import std::parts::passive::Led
@@ -687,7 +699,7 @@ board Lamp {
 ```
 
 ```text
-error: `Color` has no variant `Gren`; its variants are `Red`, `Green`, `Blue`, `White` and `Yellow`; did you mean `Green`?
+error: `Gren` is not defined here; a variant of `Color` is written `Color::Green`, or import the variant: `import std::parts::passive::Color::Green`
   --> main.nsm:4:27
   |
 4 |     .led: Led { .color &= Gren }
@@ -707,7 +719,7 @@ board Quoted {
 ```
 
 ```text
-error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is a name, not text: write `Hand` (the variants are `Fab`, `Hand`, `None` and `Consigned`)
+error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`)
   --> main.nsm:5:9
   |
 5 |         .assembly &= "hand"
@@ -2977,7 +2989,7 @@ board Uart {
 }
 ```
 
-A function is written as the pin table writes it after `fn`, a bare name with no quotes (ADR 0118): `.u.pa2.function &= UART1_TX`. A module passes a choice on with an equation of two functions (below), never with text. A quoted function is refused, and the message says what to write:
+A function is written as the pin table writes it after `fn`, a bare name with no quotes (ADR 0118): `.u.pa2.function &= UART1_TX`. A function is a name of the part's pin table, not a variant of an enum, so it needs no import. A module passes a choice on with an equation of two functions (below), never with text. A quoted function is refused, and the message says what to write:
 
 ```nsm fails
 import src::mcu::Mcu32
@@ -10702,9 +10714,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:328:5
+    --> std/parts/passive.nsm:329:5
     |
-328 |     .current <= .rated_current
+329 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10728,9 +10740,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:210:5
+    --> std/parts/passive.nsm:211:5
     |
-210 |     .current <= .saturation_current
+211 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10794,9 +10806,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:329:5
+    --> std/parts/passive.nsm:330:5
     |
-329 |     .supply_peak <= .rated_voltage
+330 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -14259,7 +14271,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
 | `std::bus::SpiMode` | The clock mode of an SPI bus: `Mode0` to `Mode3`. The type of `Spi`'s `.mode`, equated along the bus. |
 | `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`, or `Passthrough` for a connector that the bus goes through (no `lines`, no limit, judged from the end behind it). |
-| `std::parts::passive::Color` | The colour of an LED, `Red`, `Green`, `Blue`, `White` or `Yellow`: the type of `Led`'s `.color` and of the `color` column of the LED catalogs. Written bare on the right of `.color &=` (ADR 0118), so it needs no import. |
+| `std::parts::passive::Color` | The colour of an LED, `Red`, `Green`, `Blue`, `White` or `Yellow`: the type of `Led`'s `.color` and of the `color` column of the LED catalogs. Import it with the part (`.color &= Color::Red`), or import a variant to write it bare (ADR 0118). |
 | `std::parts::passive::Dielectric` | The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the type of `Capacitor`'s `.dielectric` and of the `dielectric` column of the capacitor catalog (ADR 0055). Import it with the part. |
 | `std::prelude::AssemblyMode` | Who puts a part on the board: `Fab`, `Hand` or `None`. The type of the built-in `.assembly` of every part and of the `.assembly_mode` a module offers. In scope in every file without an import (ADR 0054). |
 

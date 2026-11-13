@@ -18,7 +18,7 @@ use netsmith_solve::Catalogs;
 
 /// A capacitor of 130 nF (E24 has it, no standard row does), an inductor of 3.3 uH with
 /// 15 mA to carry, and a red LED whose forward voltage is lower than any row's.
-const MIXED: &str = r#"import std::parts::passive::{Capacitor, Inductor, Led}
+const MIXED: &str = r#"import std::parts::passive::{Capacitor, Color, Inductor, Led}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -39,7 +39,7 @@ board Mixed {
         .inductance &= 3.3uH +/- 20%
     }
     .led: Led {
-        .color &= Red
+        .color &= Color::Red
         .forward_voltage &= 1.5V..1.7V
         .current &= 5mA..15mA
     }
@@ -285,8 +285,8 @@ fn a_part_fitted_by_hand_or_not_at_all_is_not_reported() {
             "        .inductance &= 3.3uH +/- 20%\n        .assembly &= AssemblyMode::Hand\n",
         )
         .replace(
-            "        .color &= Red\n",
-            "        .color &= Red\n        .assembly &= AssemblyMode::None\n",
+            "        .color &= Color::Red\n",
+            "        .color &= Color::Red\n        .assembly &= AssemblyMode::None\n",
         );
     let found = warnings(&src);
     assert_eq!(parts_named(&found), ["C1"], "{found:#?}");

@@ -12,7 +12,7 @@
 import std::bus::{I2c, I2cPullups, I2cRole}
 import std::parts::connector::{Coax, Socket1x10, UsbCPower}
 import std::parts::mechanical::TestPoint
-import std::parts::passive::{Capacitor, Led, Resistor, Switch}
+import std::parts::passive::{Capacitor, Color, Led, Resistor, Switch}
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
@@ -131,9 +131,9 @@ module RadioSockets {
 module Indicators {
     .power: Rail
 
-    .led_a: Led { .color &= Green }
-    .led_b: Led { .color &= Green }
-    .led_c: Led { .color &= Green }
+    .led_a: Led { .color &= Color::Green }
+    .led_b: Led { .color &= Color::Green }
+    .led_c: Led { .color &= Color::Green }
     .r_a: Resistor { .resistance &= 330ohm +/- 1% }
     .r_b: Resistor { .resistance &= 330ohm +/- 1% }
     .r_c: Resistor { .resistance &= 330ohm +/- 1% }

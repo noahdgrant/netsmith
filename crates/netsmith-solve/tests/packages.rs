@@ -11,7 +11,7 @@ C900403,ZZ-GRN-0603,Green 0603,ZZ-GRN,Green,2.0V..2.4V,0603,Extended,https://exa
 
 fn led(statements: &str, rows: &str) -> (Checked, Solution) {
     let source =
-        format!("import std::parts::passive::Led\nboard B {{\n    .led: Led {{ {statements} }}\n}}\n");
+        format!("import std::parts::passive::{{Color, Led}}\nboard B {{\n    .led: Led {{ {statements} }}\n}}\n");
     let c = check("t.nsm", &source, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let mut catalogs = Catalogs::empty();
@@ -26,14 +26,14 @@ fn messages(s: &Solution) -> Vec<String> {
 
 #[test]
 fn a_package_of_the_catalog_picks_a_row_in_it() {
-    let (_, s) = led(".color &= Green; .package &= \"0603\"", LEDS);
+    let (_, s) = led(".color &= Color::Green; .package &= \"0603\"", LEDS);
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
     assert_eq!(s.picks[0].lcsc.as_deref(), Some("C900403"));
 }
 
 #[test]
 fn a_package_no_row_is_in_is_refused_at_its_statement_with_the_nearest() {
-    let (c, s) = led(".color &= Green; .package &= \"603\"", LEDS);
+    let (c, s) = led(".color &= Color::Green; .package &= \"603\"", LEDS);
     assert_eq!(
         messages(&s),
         [
@@ -63,7 +63,7 @@ fn a_package_far_from_every_row_lists_the_packages_and_names_none() {
 fn a_colour_cell_that_is_no_variant_of_color_is_refused() {
     // A project catalog written before `Color` was an enum.
     let rows = LEDS.replace(",Green,2.0V..2.4V,0402,", ",GREEN,2.0V..2.4V,0402,");
-    let (_, s) = led(".color &= Green", &rows);
+    let (_, s) = led(".color &= Color::Green", &rows);
     let all = messages(&s);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(

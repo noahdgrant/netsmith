@@ -16,7 +16,7 @@ import std::bus::PullUp
 import std::parts::connector::Header1x2
 import std::parts::diode::{Schottky, Tvs}
 import std::parts::mechanical::TestPoint
-import std::parts::passive::{Capacitor, Led, Resistor}
+import std::parts::passive::{Capacitor, Color, Led, Resistor}
 import std::parts::regulator::{Buck, BuckIc, LinearRegulator}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
@@ -74,7 +74,7 @@ module BuckSupply {
 
     .stage: Buck<BenchBuck>
     .light_resistor: Resistor { .resistance &= 1kohm +/- 5% }
-    .light: Led { .color &= Red; .forward_voltage &= 1.8V..2.5V }
+    .light: Led { .color &= Color::Red; .forward_voltage &= 1.8V..2.5V }
     .decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
     .bulk: Capacitor { .capacitance &= 22uF +/- 20% }
     .input_decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
@@ -141,9 +141,9 @@ board TwoBuck {
     .bulk_5v: Capacitor { .capacitance &= 22uF +/- 20% }
     .ldo_bulk: Capacitor { .capacitance &= 4.7uF +/- 20% }
     .ldo_light_resistor: Resistor { .resistance &= 1kohm +/- 5% }
-    .ldo_light: Led { .color &= Red; .forward_voltage &= 1.8V..2.5V }
+    .ldo_light: Led { .color &= Color::Red; .forward_voltage &= 1.8V..2.5V }
     .input_light_resistor: Resistor { .resistance &= 4.7kohm +/- 5% }
-    .input_light: Led { .color &= Red; .forward_voltage &= 1.8V..2.5V }
+    .input_light: Led { .color &= Color::Red; .forward_voltage &= 1.8V..2.5V }
 
     /// The input and each output leave through a header of their own.
     .power_in: Header1x2

@@ -134,7 +134,11 @@ impl Checker<'_> {
     /// A text that a field of an enum may not hold, said with the variant it was meant to be.
     fn text_for_enum(&self, e: EnumId, text: &str) -> String {
         let info = self.model.enum_info(e);
-        let listed: Vec<String> = info.variants.iter().map(|v| format!("`{v}`")).collect();
+        let listed: Vec<String> = info
+            .variants
+            .iter()
+            .map(|v| format!("`{}::{v}`", info.name))
+            .collect();
         let found = info
             .variants
             .iter()
@@ -144,21 +148,23 @@ impl Checker<'_> {
             });
         match found {
             Some(v) => format!(
-                "a variant of `{}` is a name, not text: write `{v}` (the variants are {})",
+                "a variant of `{}` is not written as text: write `{}::{v}` (the variants are {})",
+                info.name,
                 info.name,
                 list_of(&listed)
             ),
             None => format!(
-                "a variant of `{}` is a name, not text, and \"{text}\" is none of them: the variants are {}",
+                "a variant of `{}` is not written as text, and \"{text}\" is none of them: the variants are {}",
                 info.name,
                 list_of(&listed)
             ),
         }
     }
 
-    /// The right side of a statement whose other side is `beside`: a bare name (`Red`,
-    /// `USART1_TX`) is a variant when `beside` is a variant of an enum, and a function when it
-    /// is the `function` of a pin (ADR 0118). Anything else is lowered as it always is.
+    /// The right side of a statement whose other side is `beside`: a bare name (`USART1_TX`)
+    /// is a function when `beside` is the `function` of a pin (ADR 0118); a function is a name
+    /// of the part's pin table, which no import brings in. Anything else is lowered as it
+    /// always is.
     fn lower_beside(&mut self, beside: &Typed, e: &Expr) -> Option<Typed> {
         let function = matches!(beside.e, RExpr::Field(f) if self.model.is_pin_function(f));
         if function {
@@ -192,43 +198,54 @@ impl Checker<'_> {
                 });
             }
         }
+        // A bare name beside a field of an enum that is not in scope: say how the variant is
+        // written, by its enum or by importing it (ADR 0118).
         if let VTy::Enum(id) = beside.ty
             && let Some(name) = bare_name(e)
+            && self.imported_variant(&name.name).is_none()
+            && !self.outer_member(&name.name)
+            && let Some((m, i)) = self.enum_def(id)
         {
             let info = self.model.enum_info(id).clone();
-            if info.variants.contains(&name.name) {
-                return Some(Typed {
-                    e: RExpr::Text(name.name.clone()),
-                    ty: VTy::Enum(id),
-                });
-            }
-            if !self.outer_member(&name.name) {
-                let listed: Vec<String> = info.variants.iter().map(|v| format!("`{v}`")).collect();
-                let hint = closest(&name.name, &info.variants)
-                    .map(|v| format!("; did you mean `{v}`?"))
-                    .unwrap_or_default();
-                self.error(
-                    name.span,
+            let variant = closest(&name.name, &info.variants);
+            let message = match variant {
+                Some(v) => format!(
+                    "`{}` is not defined here; a variant of `{}` is written {}",
+                    name.name,
+                    info.name,
+                    self.variant_spellings(m, i, &v)
+                ),
+                None => {
+                    let listed: Vec<String> =
+                        info.variants.iter().map(|v| format!("`{v}`")).collect();
                     format!(
-                        "`{}` has no variant `{}`; its variants are {}{hint}",
-                        info.name,
+                        "`{}` is not defined here, and `{}` has no such variant: its variants are {}",
                         name.name,
+                        info.name,
                         list_of(&listed)
-                    ),
-                );
-                return None;
-            }
+                    )
+                }
+            };
+            self.error(name.span, message);
+            return None;
         }
         self.lower(e)
     }
 
-    /// Whether a bare name is a member of an enclosing block, which is what it means where no
-    /// variant of that name fits.
+    /// Whether a bare name is a member of an enclosing block.
     fn outer_member(&self, name: &str) -> bool {
         let outer = self.scope.len().saturating_sub(1);
         self.scope[..outer]
             .iter()
             .any(|&s| self.model.member(s, name).is_some())
+    }
+
+    /// The definition of an enum the model has an id for.
+    fn enum_def(&self, id: EnumId) -> Option<(usize, usize)> {
+        self.enum_ids
+            .iter()
+            .find(|(_, e)| **e == id)
+            .map(|(&def, _)| def)
     }
 
     fn module_def_kind(&self, module: usize, index: usize) -> &'static str {
@@ -265,6 +282,17 @@ impl Checker<'_> {
                 ty: VTy::Text,
             }),
             Expr::Variant { ty, variant, span } => self.lower_variant(ty, variant, *span),
+            // A variant imported by name (`import std::parts::passive::Color::Red`, ADR 0118).
+            Expr::Path(_)
+                if let Some(name) = bare_name(e)
+                    && let Some((m, i, variant)) = self.imported_variant(&name.name) =>
+            {
+                let id = self.enum_id(m, i);
+                Some(Typed {
+                    e: RExpr::Text(variant),
+                    ty: VTy::Enum(id),
+                })
+            }
             Expr::Path(p) => match self.resolve_path(p) {
                 Res::Field(f) => Some(self.typed_field(f)),
                 Res::Inst(i) => {

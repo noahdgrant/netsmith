@@ -18,7 +18,7 @@ const LDO: &str = include_str!("../../../examples/linear_regulator.nsm");
 /// A capacitor of 130 nF (E24 has it, no standard row does), an inductor of 3.3 uH, and a red
 /// LED whose forward voltage is lower than any row's.
 const MIXED: &str = "\
-import std::parts::passive::{Capacitor, Inductor, Led}
+import std::parts::passive::{Capacitor, Color, Inductor, Led}
 import std::sources::Rail
 
 board Mixed {
@@ -35,7 +35,7 @@ board Mixed {
         .inductance &= 3.3uH +/- 20%
     }
     .led: Led {
-        .color &= Red
+        .color &= Color::Red
         .forward_voltage &= 1.5V..1.7V
         .current &= 5mA..15mA
     }

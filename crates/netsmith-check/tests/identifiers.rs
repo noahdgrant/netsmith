@@ -1,6 +1,7 @@
 //! Pin functions, colours and packages are checked names, not free text (ADR 0118): a
-//! function is a bare name from the part's pin table, a colour a bare variant of the enum
-//! `Color`, and a package text that names one of the part's pin tables. A misspelling is an
+//! function is a bare name from the part's pin table, a colour a variant of the enum `Color`
+//! (in scope by the enum's import, or bare by the variant's own import), and a package text that
+//! names one of the part's pin tables. A misspelling is an
 //! error at its line with the nearest name.
 //!
 //! `Mcu` and `Ldo` are invented for these tests; they are not real parts.
@@ -109,19 +110,48 @@ fn a_module_passes_a_bare_function_on_with_an_equation() {
     assert!(c.is_ok(), "{}", c.render());
 }
 
+fn checked(src: &str) -> Checked {
+    check("test.nsm", src, &Loader::std())
+}
+
 #[test]
-fn a_colour_is_a_bare_variant_of_color() {
-    let c = run(&format!("{BOTH}    .led: Led {{ .color &= Red }}\n"));
-    assert!(c.is_ok(), "{}", c.render());
-    assert_eq!(text_at(&c, "led.color").as_deref(), Some("Red"));
-    // The spelling with the enum's name is the same value, and `==` reads a bare variant
-    // beside a field of the enum as `&=` does.
-    let c = check(
-        "test.nsm",
-        "import std::parts::passive::{Led, Color}\nboard B {\n    .led: Led { .color &= Color::Green }\n    .led.color == Green\n}\n",
-        &Loader::std(),
+fn a_colour_is_a_variant_of_color_written_with_the_enum() {
+    let c = checked(
+        "import std::parts::passive::{Led, Color}\nboard B {\n    .led: Led { .color &= Color::Green }\n    .led.color == Color::Green\n}\n",
     );
     assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(text_at(&c, "led.color").as_deref(), Some("Green"));
+}
+
+#[test]
+fn an_imported_variant_is_written_bare() {
+    let c = checked(
+        "import std::parts::passive::Led\nimport std::parts::passive::Color::Red\nboard B {\n    .led: Led { .color &= Red }\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(text_at(&c, "led.color").as_deref(), Some("Red"));
+    // Several at once, with the import's braces.
+    let c = checked(
+        "import std::parts::passive::Led\nimport std::parts::passive::Color::{Red, Blue}\nboard B {\n    .a: Led { .color &= Red }\n    .b: Led { .color &= Blue }\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(text_at(&c, "b.color").as_deref(), Some("Blue"));
+    // Every enum, the prelude's too.
+    let c = checked(
+        "import std::parts::passive::Resistor\nimport std::prelude::AssemblyMode::Hand\nboard B {\n    .r: Resistor { .assembly &= Hand }\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(text_at(&c, "r.assembly").as_deref(), Some("Hand"));
+}
+
+#[test]
+fn a_bare_variant_that_is_not_imported_says_how_to_write_it() {
+    let c = run(&format!("{BOTH}    .led: Led {{ .color &= Red }}\n"));
+    assert_eq!(
+        messages(&c),
+        ["`Red` is not defined here; a variant of `Color` is written `Color::Red`, or import the variant: `import std::parts::passive::Color::Red`"]
+    );
+    assert_eq!(lines(&c), [".led: Led { .color &= Red }"]);
 }
 
 #[test]
@@ -129,9 +159,30 @@ fn a_misspelt_colour_is_refused_at_its_line_with_the_nearest() {
     let c = run(&format!("{BOTH}    .led: Led {{ .color &= Gren }}\n"));
     assert_eq!(
         messages(&c),
+        ["`Gren` is not defined here; a variant of `Color` is written `Color::Green`, or import the variant: `import std::parts::passive::Color::Green`"]
+    );
+    let c = checked(
+        "import std::parts::passive::{Led, Color}\nboard B {\n    .led: Led { .color &= Color::Gren }\n}\n",
+    );
+    assert_eq!(
+        messages(&c),
+        ["`Color` has no variant `Gren`; its variants are `Color::Red`, `Color::Green`, `Color::Blue`, `Color::White` and `Color::Yellow`; did you mean `Color::Green`?"]
+    );
+    let c = checked(
+        "import std::parts::passive::Led\nimport std::parts::passive::Color::Gren\nboard B {\n    .led: Led\n}\n",
+    );
+    assert_eq!(
+        messages(&c),
         ["`Color` has no variant `Gren`; its variants are `Red`, `Green`, `Blue`, `White` and `Yellow`; did you mean `Green`?"]
     );
-    assert_eq!(lines(&c), [".led: Led { .color &= Gren }"]);
+}
+
+#[test]
+fn a_variant_is_not_a_type() {
+    let c = checked(
+        "import std::parts::passive::Color::Red\nmodule M {\n    .x: Red\n}\n",
+    );
+    assert_eq!(messages(&c), ["`Red` is a variant of `Color`, not a type"]);
 }
 
 #[test]
@@ -140,15 +191,15 @@ fn a_quoted_colour_is_refused_and_names_the_variant() {
     assert_eq!(
         messages(&c),
         [
-            "`led.color` holds a variant of `Color`, but this value is text; a variant of `Color` is a name, not text: write `Red` (the variants are `Red`, `Green`, `Blue`, `White` and `Yellow`)"
+            "`led.color` holds a variant of `Color`, but this value is text; a variant of `Color` is not written as text: write `Color::Red` (the variants are `Color::Red`, `Color::Green`, `Color::Blue`, `Color::White` and `Color::Yellow`)"
         ]
     );
 }
 
 #[test]
 fn a_bare_name_that_is_no_variant_is_a_member_of_an_enclosing_block() {
-    // `shade` is not a variant of `Color`: it is the module's member, as a bare name is
-    // anywhere else, and the module's colour is passed to its LED.
+    // `shade` is the module's member, as a bare name is anywhere else, and the module's
+    // colour is passed to its LED.
     let src = "\
 import std::parts::passive::{Led, Color}
 module Lamp {
@@ -156,7 +207,7 @@ module Lamp {
     .led: Led { .color &= shade }
 }
 board B {
-    .lamp: Lamp { .shade &= Blue }
+    .lamp: Lamp { .shade &= Color::Blue }
 }
 ";
     let c = check("test.nsm", src, &Loader::std());

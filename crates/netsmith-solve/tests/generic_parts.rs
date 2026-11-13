@@ -264,14 +264,14 @@ C900301,ZZ-RED,Red 0603,ZZ-RED,Red,1.8V..2.2V,0603,Basic,https://example.invalid
 C900302,ZZ-GRN,Green 0603,ZZ-GRN,Green,2.0V..2.4V,0603,Extended,https://example.invalid/b\n";
 
 fn led_board(extra: &str) -> String {
-    format!("import std::parts::passive::Led\nboard B {{\n    .led: Led {{\n{extra}    }}\n}}\n")
+    format!("import std::parts::passive::{{Color, Led}}\nboard B {{\n    .led: Led {{\n{extra}    }}\n}}\n")
 }
 
 #[test]
 fn a_generic_led_takes_the_colour_and_forward_voltage_the_design_states() {
     // No row has a forward voltage as low as this.
     let s = solved(
-        &led_board("        .color &= Red\n        .forward_voltage &= 1.5V..1.7V\n"),
+        &led_board("        .color &= Color::Red\n        .forward_voltage &= 1.5V..1.7V\n"),
         &catalogs("led", LEDS),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
@@ -296,7 +296,7 @@ fn a_generic_led_is_not_used_when_the_forward_voltage_is_used_but_not_stated() {
     // A colour no row has, with no forward voltage stated: the forward voltage feeds
     // `.drop`, so a generic part that cannot say it is not used, and nothing is guessed.
     let s = solved(
-        &led_board("        .color &= Yellow\n"),
+        &led_board("        .color &= Color::Yellow\n"),
         &catalogs("led", LEDS),
     );
     assert!(s.picks.is_empty(), "{:?}", s.picks);

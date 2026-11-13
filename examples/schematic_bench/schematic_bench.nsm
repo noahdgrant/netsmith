@@ -7,7 +7,7 @@
 //! the regulator IC are drawn by the project's own symbol library (`libs/bench.kicad_sym`).
 
 import std::parts::connector::Header1x4
-import std::parts::passive::{Capacitor, Crystal, Inductor, Led, Resistor}
+import std::parts::passive::{Capacitor, Color, Crystal, Inductor, Led, Resistor}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -329,7 +329,7 @@ module ModemModule {
     .r_cts: Resistor { .resistance &= 10kohm +/- 5% }
     .r_stat: Resistor { .resistance &= 1kohm +/- 5% }
     .r_led: Resistor { .resistance &= 10kohm +/- 5% }
-    .led: Led { .color &= Green }
+    .led: Led { .color &= Color::Green }
     .c_a: Capacitor { .capacitance &= 10uF +/- 20% }
     .c_b: Capacitor { .capacitance &= 100nF +/- 20% }
     .c_c: Capacitor { .capacitance &= 100nF +/- 20% }

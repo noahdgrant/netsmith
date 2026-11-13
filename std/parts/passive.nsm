@@ -135,9 +135,10 @@ generic Capacitor {
 }
 
 /// The colour an LED gives, as its listing and its datasheet name it. A design that needs one
-/// states it on the LED with the bare variant (`.color &= Red`, ADR 0118); a row of the
-/// catalog states the variant's name as it is (`Red`). A colour that is not here is added to
-/// this list together with the rows that have it, as for `Dielectric`.
+/// imports `Color` and states it on the LED (`.color &= Color::Red`), or imports the variant
+/// and writes it bare (ADR 0118); a row of the catalog states the variant's name as it is
+/// (`Red`). A colour that is not here is added to this list together with the rows that have
+/// it, as for `Dielectric`.
 enum Color {
     Red,
     Green,
