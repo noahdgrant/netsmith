@@ -120,37 +120,17 @@ board Rp2350Minimal {
     // Their board has no statement of which pin each belongs to, so none is written.
 
     .vbus_bulk: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
-    .v3v3_bulk_a: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
-    .v3v3_bulk_b: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
+    .v3v3_bulk: 2 x Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805" }
     .v3v3_bulk_c: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
     .v1v1_bulk: Capacitor { .capacitance &= 4.7uF +/- 20%; .package &= "0402" }
-    .v3v3_100n_1: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_2: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_3: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_4: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_5: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_6: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_7: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_100n_8: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v1v1_100n_1: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v1v1_100n_2: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v1v1_100n_3: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v3v3_100n: 8 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .v1v1_100n: 3 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
     .vbus.pos ~> .vbus_bulk ~> .vbus.neg
-    .v3v3.pos ~> .v3v3_bulk_a ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_bulk_b ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_bulk ~> .v3v3.neg
     .v3v3.pos ~> .v3v3_bulk_c ~> .v3v3.neg
     .v1v1.pos ~> .v1v1_bulk ~> .v1v1.neg
-    .v3v3.pos ~> .v3v3_100n_1 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_2 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_3 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_4 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_5 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_6 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_7 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_8 ~> .v3v3.neg
-    .v1v1.pos ~> .v1v1_100n_1 ~> .v1v1.neg
-    .v1v1.pos ~> .v1v1_100n_2 ~> .v1v1.neg
-    .v1v1.pos ~> .v1v1_100n_3 ~> .v1v1.neg
+    .v3v3.pos ~> .v3v3_100n ~> .v3v3.neg
+    .v1v1.pos ~> .v1v1_100n ~> .v1v1.neg
 
     // ---- Crystal ----
 

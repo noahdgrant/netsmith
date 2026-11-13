@@ -525,7 +525,8 @@ impl Parser {
             Tok::Colon => {
                 let name = as_path(lhs, "a name before `:`")?;
                 self.bump();
-                let ty = if self.at(&Tok::LeadingDot) {
+                let count = self.group_count()?;
+                let ty = if self.at(&Tok::LeadingDot) && count.is_none() {
                     self.request_type()?
                 } else {
                     self.type_path()?
@@ -541,10 +542,24 @@ impl Parser {
                 } else {
                     None
                 };
+                if let Some(count) = count
+                    && name.segments.len() > 1
+                {
+                    return Err(ParseError::new(
+                        count.span,
+                        format!(
+                            "a group is declared by one name of its own, such as `.{}: {} x {}`, not by a path into a member",
+                            name.segments.last().expect("a path has a segment").name,
+                            count.n,
+                            ty.segments.last().map_or("Capacitor", |s| s.name.as_str())
+                        ),
+                    ));
+                }
                 Ok(Item::Decl(Decl {
                     docs,
                     name,
                     ty,
+                    count,
                     optional,
                     body,
                     span: self.span_from(start),
@@ -584,6 +599,7 @@ impl Parser {
             Tok::Tilde | Tok::TildeArrow => {
                 let first = as_path(lhs, "a name before `~`")?;
                 let mut rest = Vec::new();
+                let mut groups = Vec::new();
                 loop {
                     let op = match self.peek().tok {
                         Tok::Tilde => ConnectOp::Same,
@@ -592,6 +608,34 @@ impl Parser {
                     };
                     self.bump();
                     self.skip_newlines();
+                    let operand_start = self.peek().span.start;
+                    if let Some(count) = self.group_count()? {
+                        let ty = self.type_path()?;
+                        let body = if self.at(&Tok::LBrace) {
+                            let open = self.bump();
+                            Some(self.block(open.span)?)
+                        } else {
+                            None
+                        };
+                        let span = self.span_from(operand_start);
+                        groups.push(InlineGroup {
+                            at: rest.len(),
+                            count,
+                            ty,
+                            body,
+                            span,
+                        });
+                        // A stand-in until the chain's ends are known; named below.
+                        rest.push((
+                            op,
+                            Path {
+                                leading_dot: true,
+                                segments: Vec::new(),
+                                span,
+                            },
+                        ));
+                        continue;
+                    }
                     rest.push((op, self.path()?));
                     let map_follows = self.at(&Tok::LBrace)
                         || matches!(&self.peek().tok, Tok::Ident(w) if w == "except");
@@ -606,9 +650,13 @@ impl Parser {
                         return only_decls(self.member_map(first, right, start)?);
                     }
                 }
+                for group in &groups {
+                    name_inline_group(&first, &mut rest, group)?;
+                }
                 only_decls(Item::Connect(Connect {
                     first,
                     rest,
+                    groups,
                     span: self.span_from(start),
                 }))
             }
@@ -1619,12 +1667,99 @@ impl Parser {
         Ok(params)
     }
 
+    /// `4 x` before a type: the count of a group (ADR 0119), or `None` when the next token is
+    /// not a number followed by `x`.
+    fn group_count(&mut self) -> Res<Option<Count>> {
+        let t = self.peek().clone();
+        let Tok::Number(n) = &t.tok else {
+            return Ok(None);
+        };
+        if n.unit.as_deref() == Some("x") {
+            return Err(ParseError::new(
+                t.span,
+                format!(
+                    "write the count of a group with a space before and after the `x`: `{} x Capacitor`",
+                    n.text.trim_end_matches('x')
+                ),
+            ));
+        }
+        if !matches!(self.peek_second(), Tok::Ident(w) if w == "x") {
+            return Ok(None);
+        }
+        self.bump();
+        let x = self.bump();
+        let span = Span::new(t.span.start, x.span.end);
+        let whole = n.unit.is_none() && n.value.fract() == 0.0 && n.value >= 0.0;
+        if !whole {
+            return Err(ParseError::new(
+                t.span,
+                format!(
+                    "the count of a group is a whole number with no unit, such as `4 x`, not `{}`",
+                    n.text
+                ),
+            ));
+        }
+        if n.value < 2.0 {
+            return Err(ParseError::new(
+                span,
+                format!(
+                    "a group has at least two members; `{} x` is not one, so declare the member alone (`.c: Capacitor`)",
+                    n.text
+                ),
+            ));
+        }
+        if n.value > f64::from(MAX_GROUP) {
+            return Err(ParseError::new(
+                t.span,
+                format!(
+                    "a group has at most {MAX_GROUP} members, and `{}` is more",
+                    n.text
+                ),
+            ));
+        }
+        Ok(Some(Count {
+            n: n.value as u32,
+            span,
+        }))
+    }
+
+    /// `[2]` touching the name before it: the index of one member of a group (ADR 0119),
+    /// which becomes part of the name (`decoupling[2]`).
+    fn index_suffix(&mut self, ident: &mut Ident) -> Res<()> {
+        let open = self.peek().clone();
+        if open.tok != Tok::LBracket || open.span.start != ident.span.end {
+            return Ok(());
+        }
+        self.bump();
+        let t = self.peek().clone();
+        let index = match &t.tok {
+            Tok::Number(n) if n.unit.is_none() && n.value.fract() == 0.0 && n.value >= 0.0 => {
+                n.value as u64
+            }
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    "the index of a member of a group, a whole number such as `[0]`",
+                ));
+            }
+        };
+        self.bump();
+        let close = self.expect(&Tok::RBracket, "`]` after the index")?;
+        ident.name = format!("{}[{index}]", ident.name);
+        ident.span = Span::new(ident.span.start, close.span.end);
+        Ok(())
+    }
+
     fn path(&mut self) -> Res<Path> {
         let start = self.peek().span.start;
         let leading_dot = self.eat(&Tok::LeadingDot);
-        let mut segments = vec![self.ident("a name")?];
+        let mut first = self.ident("a name")?;
+        self.index_suffix(&mut first)?;
+        let mut segments = vec![first];
         while self.eat(&Tok::Dot) {
-            segments.push(self.ident("a name after `.`")?);
+            let mut next = self.ident("a name after `.`")?;
+            self.index_suffix(&mut next)?;
+            segments.push(next);
         }
         Ok(Path {
             leading_dot,
@@ -1791,6 +1926,51 @@ fn binary(op: BinOp, lhs: Expr, rhs: Expr) -> Expr {
     }
 }
 
+/// The most members a group may have (ADR 0119): more is a mistake in the count.
+pub const MAX_GROUP: u32 = 1000;
+
+/// Give a group written in a chain its name, from its kind and the chain's two ends, and check
+/// that it stands between two ends: `.v.pos ~> 2 x Capacitor ~> .v.neg` is the group
+/// `capacitor_v_pos_v_neg` (ADR 0119).
+fn name_inline_group(first: &Path, rest: &mut [(ConnectOp, Path)], group: &InlineGroup) -> Res<()> {
+    let shape = "a group written in a chain stands alone between the chain's two ends, each member in parallel: `.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`";
+    if rest.len() != 2 || group.at != 0 || rest.iter().any(|(op, _)| *op != ConnectOp::Series) {
+        return Err(ParseError::new(group.span, shape));
+    }
+    let end = &rest[1].1;
+    if end.segments.is_empty() {
+        return Err(ParseError::new(group.span, shape));
+    }
+    let kind = group.ty.segments.last().expect("a type has a name");
+    let mut name = snake_case(&kind.name);
+    for segment in first.segments.iter().chain(&end.segments) {
+        name.push('_');
+        name.push_str(&segment.name);
+    }
+    rest[0].1.segments = vec![Ident {
+        name,
+        quoted: false,
+        span: group.span,
+    }];
+    Ok(())
+}
+
+/// `ferrite_bead` for `FerriteBead`.
+fn snake_case(name: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in name.chars().enumerate() {
+        if c.is_uppercase() {
+            if i > 0 {
+                out.push('_');
+            }
+            out.extend(c.to_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn as_path(expr: Expr, what: &str) -> Res<Path> {
     match expr {
         Expr::Path(p) => Ok(p),
@@ -1816,6 +1996,8 @@ fn describe(tok: &Tok) -> String {
         Tok::RBrace => symbol("}"),
         Tok::LParen => symbol("("),
         Tok::RParen => symbol(")"),
+        Tok::LBracket => symbol("["),
+        Tok::RBracket => symbol("]"),
         Tok::Comma => symbol(","),
         Tok::Semi => symbol(";"),
         Tok::Colon => symbol(":"),

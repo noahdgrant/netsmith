@@ -2109,7 +2109,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v1v1_100n_1",
+        "path": "v1v1_100n[0]",
         "pins": [
           {
             "name": "a",
@@ -2139,7 +2139,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v1v1_100n_2",
+        "path": "v1v1_100n[1]",
         "pins": [
           {
             "name": "a",
@@ -2169,7 +2169,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v1v1_100n_3",
+        "path": "v1v1_100n[2]",
         "pins": [
           {
             "name": "a",
@@ -2229,7 +2229,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_1",
+        "path": "v3v3_100n[0]",
         "pins": [
           {
             "name": "a",
@@ -2259,7 +2259,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_2",
+        "path": "v3v3_100n[1]",
         "pins": [
           {
             "name": "a",
@@ -2289,7 +2289,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_3",
+        "path": "v3v3_100n[2]",
         "pins": [
           {
             "name": "a",
@@ -2319,7 +2319,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_4",
+        "path": "v3v3_100n[3]",
         "pins": [
           {
             "name": "a",
@@ -2349,7 +2349,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_5",
+        "path": "v3v3_100n[4]",
         "pins": [
           {
             "name": "a",
@@ -2379,7 +2379,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_6",
+        "path": "v3v3_100n[5]",
         "pins": [
           {
             "name": "a",
@@ -2409,7 +2409,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_7",
+        "path": "v3v3_100n[6]",
         "pins": [
           {
             "name": "a",
@@ -2439,7 +2439,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "v3v3_100n_8",
+        "path": "v3v3_100n[7]",
         "pins": [
           {
             "name": "a",
@@ -2469,7 +2469,7 @@
         "provides": [],
         "value": "10u",
         "package": "0805",
-        "path": "v3v3_bulk_a",
+        "path": "v3v3_bulk[0]",
         "pins": [
           {
             "name": "a",
@@ -2499,7 +2499,7 @@
         "provides": [],
         "value": "10u",
         "package": "0805",
-        "path": "v3v3_bulk_b",
+        "path": "v3v3_bulk[1]",
         "pins": [
           {
             "name": "a",
@@ -3960,15 +3960,15 @@
           "height": 0.4
         },
         {
-          "path": "v1v1_100n_1",
+          "path": "v1v1_100n[0]",
           "height": 0.55
         },
         {
-          "path": "v1v1_100n_2",
+          "path": "v1v1_100n[1]",
           "height": 0.55
         },
         {
-          "path": "v1v1_100n_3",
+          "path": "v1v1_100n[2]",
           "height": 0.55
         },
         {
@@ -3976,43 +3976,43 @@
           "height": 0.65
         },
         {
-          "path": "v3v3_100n_1",
+          "path": "v3v3_100n[0]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_2",
+          "path": "v3v3_100n[1]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_3",
+          "path": "v3v3_100n[2]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_4",
+          "path": "v3v3_100n[3]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_5",
+          "path": "v3v3_100n[4]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_6",
+          "path": "v3v3_100n[5]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_7",
+          "path": "v3v3_100n[6]",
           "height": 0.55
         },
         {
-          "path": "v3v3_100n_8",
+          "path": "v3v3_100n[7]",
           "height": 0.55
         },
         {
-          "path": "v3v3_bulk_a",
+          "path": "v3v3_bulk[0]",
           "height": 1.35
         },
         {
-          "path": "v3v3_bulk_b",
+          "path": "v3v3_bulk[1]",
           "height": 1.35
         },
         {
@@ -4663,7 +4663,7 @@
         "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 197
+          "line": 177
         },
         "anchors": [
           "bootsel"
@@ -4676,7 +4676,7 @@
         "text": "RESET: pulls RUN to ground through 1 kohm.",
         "at": {
           "file": "src/main.nsm",
-          "line": 203
+          "line": 183
         },
         "anchors": [
           "reset"

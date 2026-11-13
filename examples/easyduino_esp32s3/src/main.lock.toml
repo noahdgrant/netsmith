@@ -66,13 +66,13 @@ row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[EasyduinoEsp32s3.parts."en_100n_a"]
+[EasyduinoEsp32s3.parts."en_100n[0]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[EasyduinoEsp32s3.parts."en_100n_b"]
+[EasyduinoEsp32s3.parts."en_100n[1]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
@@ -186,13 +186,13 @@ row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[EasyduinoEsp32s3.parts."v3v3_22u_a"]
+[EasyduinoEsp32s3.parts."v3v3_22u[0]"]
 catalog = "capacitor"
 row = "22uF 10% 10V tantalum CASE-A-3216-18 C11366"
 lcsc = "C11366"
 mpn = "TAJA226K010RNJ"
 
-[EasyduinoEsp32s3.parts."v3v3_22u_b"]
+[EasyduinoEsp32s3.parts."v3v3_22u[1]"]
 catalog = "capacitor"
 row = "22uF 10% 10V tantalum CASE-A-3216-18 C11366"
 lcsc = "C11366"

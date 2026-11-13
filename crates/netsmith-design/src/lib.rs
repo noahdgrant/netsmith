@@ -38,7 +38,8 @@ const DEFAULT_LETTERS: &str = "U";
 
 /// The order in which parts are numbered: paths compared segment by segment, and a number at
 /// the end of a segment compared as a number, so `pads.tp2` comes before `pads.tp10` and
-/// `.tp02` and `.tp2` stay apart (the shorter digit string first). The same inputs always
+/// `.tp02` and `.tp2` stay apart (the shorter digit string first). The index of a member of a
+/// group is such a number too: `decoupling[2]` before `decoupling[10]`. The same inputs always
 /// give the same order, and a path without such a number sorts as plain text does.
 pub fn natural_path_order(a: &str, b: &str) -> std::cmp::Ordering {
     let mut left = a.split('.');
@@ -58,8 +59,15 @@ pub fn natural_path_order(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
-/// `tp` and `10` of `tp10`; a segment that does not end in digits has none.
+/// `tp` and `10` of `tp10`, and `decoupling[` and `10` of `decoupling[10]` (a member of a
+/// group, ADR 0119); a segment that does not end in digits, or in an index, has none.
 fn split_trailing_number(segment: &str) -> (&str, Option<&str>) {
+    if let Some(inner) = segment.strip_suffix(']') {
+        let stem = inner.trim_end_matches(|c: char| c.is_ascii_digit());
+        if stem.len() < inner.len() && stem.ends_with('[') {
+            return (stem, Some(&inner[stem.len()..]));
+        }
+    }
     let stem = segment.trim_end_matches(|c: char| c.is_ascii_digit());
     if stem.len() == segment.len() {
         (segment, None)

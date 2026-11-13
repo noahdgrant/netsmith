@@ -2346,7 +2346,7 @@
         "provides": [],
         "value": "100n",
         "package": "0603",
-        "path": "v3v3_100n_1",
+        "path": "v3v3_100n[0]",
         "pins": [
           {
             "name": "a",
@@ -2376,7 +2376,7 @@
         "provides": [],
         "value": "100n",
         "package": "0603",
-        "path": "v3v3_100n_2",
+        "path": "v3v3_100n[1]",
         "pins": [
           {
             "name": "a",
@@ -2406,7 +2406,7 @@
         "provides": [],
         "value": "100n",
         "package": "0603",
-        "path": "v3v3_100n_3",
+        "path": "v3v3_100n[2]",
         "pins": [
           {
             "name": "a",
@@ -2436,7 +2436,7 @@
         "provides": [],
         "value": "100n",
         "package": "0603",
-        "path": "v3v3_100n_4",
+        "path": "v3v3_100n[3]",
         "pins": [
           {
             "name": "a",
@@ -4407,7 +4407,7 @@
         "text": "SW1, RESET: pulls NRST to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 131
+          "line": 125
         },
         "anchors": [
           "reset_button"
@@ -4420,7 +4420,7 @@
         "text": "C9, on NRST.",
         "at": {
           "file": "src/main.nsm",
-          "line": 133
+          "line": 127
         },
         "anchors": [
           "reset_cap"
@@ -4433,7 +4433,7 @@
         "text": "BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1 on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 143
+          "line": 137
         },
         "anchors": [
           "boot_switch"
@@ -4446,7 +4446,7 @@
         "text": "R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of R2's pad 2 in ORBIT's board, and the parity checker compares the pad.",
         "at": {
           "file": "src/main.nsm",
-          "line": 148
+          "line": 142
         },
         "anchors": [
           "boot_pulldown"
@@ -4459,7 +4459,7 @@
         "text": "SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor and a 100 nF capacitor take it to the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 158
+          "line": 152
         },
         "anchors": [
           "user_button"
@@ -4472,7 +4472,7 @@
         "text": "R12.",
         "at": {
           "file": "src/main.nsm",
-          "line": 160
+          "line": 154
         },
         "anchors": [],
         "result": null
@@ -4483,7 +4483,7 @@
         "text": "C18.",
         "at": {
           "file": "src/main.nsm",
-          "line": 162
+          "line": 156
         },
         "anchors": [
           "user_node_cap"
@@ -4496,7 +4496,7 @@
         "text": "R11.",
         "at": {
           "file": "src/main.nsm",
-          "line": 164
+          "line": 158
         },
         "anchors": [
           "user_series"
@@ -4509,7 +4509,7 @@
         "text": "C19, on the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 166
+          "line": 160
         },
         "anchors": [
           "user_pin_cap"
@@ -4522,7 +4522,7 @@
         "text": "D2 and R4, on PA5.",
         "at": {
           "file": "src/main.nsm",
-          "line": 182
+          "line": 176
         },
         "anchors": [
           "led1"
@@ -4535,7 +4535,7 @@
         "text": "D3 and R5, on PA4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 186
+          "line": 180
         },
         "anchors": [
           "led2"
@@ -4624,7 +4624,7 @@
         "text": "U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 204
+          "line": 198
         },
         "anchors": [
           "eeprom"
@@ -4637,7 +4637,7 @@
         "text": "R9 and R10: 2.2 kohm on each line to 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 216
+          "line": 210
         },
         "anchors": [],
         "result": null

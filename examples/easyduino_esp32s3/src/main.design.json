@@ -559,7 +559,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "en_100n_a",
+        "path": "en_100n[0]",
         "pins": [
           {
             "name": "a",
@@ -589,7 +589,7 @@
         "provides": [],
         "value": "100n",
         "package": "0402",
-        "path": "en_100n_b",
+        "path": "en_100n[1]",
         "pins": [
           {
             "name": "a",
@@ -2119,7 +2119,7 @@
         "provides": [],
         "value": "22u",
         "package": "CASE-A-3216-18",
-        "path": "v3v3_22u_a",
+        "path": "v3v3_22u[0]",
         "pins": [
           {
             "name": "a",
@@ -2149,7 +2149,7 @@
         "provides": [],
         "value": "22u",
         "package": "CASE-A-3216-18",
-        "path": "v3v3_22u_b",
+        "path": "v3v3_22u[1]",
         "pins": [
           {
             "name": "a",
@@ -3452,11 +3452,11 @@
           "height": 0.55
         },
         {
-          "path": "en_100n_a",
+          "path": "en_100n[0]",
           "height": 0.55
         },
         {
-          "path": "en_100n_b",
+          "path": "en_100n[1]",
           "height": 0.55
         },
         {
@@ -4080,15 +4080,15 @@
         "result": null
       },
       {
-        "path": "en_100n_a",
+        "path": "en_100n[0]",
         "kind": "doc",
         "text": "C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 206
+          "line": 205
         },
         "anchors": [
-          "en_100n_a"
+          "en_100n[0]"
         ],
         "result": null
       },

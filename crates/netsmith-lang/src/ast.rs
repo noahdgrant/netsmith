@@ -518,9 +518,35 @@ pub struct Decl {
     pub docs: Vec<String>,
     pub name: Path,
     pub ty: TypePath,
+    /// `4 x` before the type: a group of that many identical members, `.decoupling[0]` to
+    /// `.decoupling[3]` (ADR 0119). `None` for a declaration of one member.
+    pub count: Option<Count>,
     /// `optional` after the type (ADR 0074): a value that a design may leave unstated, and
     /// the checks that read it are then skipped. The word's place.
     pub optional: Option<Span>,
+    pub body: Option<Vec<Item>>,
+    pub span: Span,
+}
+
+/// `4 x` in `.decoupling: 4 x Capacitor` or `~> 2 x Capacitor { ... } ~>`: how many identical
+/// members a group has (ADR 0119). Always at least two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Count {
+    pub n: u32,
+    /// The number and the `x`.
+    pub span: Span,
+}
+
+/// `2 x Capacitor { .capacitance &= 100nF }` written in a chain, between its two ends
+/// (`.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`, ADR 0119): a group with no name of its own,
+/// each member in parallel between the ends.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InlineGroup {
+    /// Where the group is in the chain's `rest`. The path there is the name the group is
+    /// given (`.capacitor_v_pos_v_neg`), with the span of the group.
+    pub at: usize,
+    pub count: Count,
+    pub ty: TypePath,
     pub body: Option<Vec<Item>>,
     pub span: Span,
 }
@@ -578,6 +604,9 @@ pub enum CmpOp {
 pub struct Connect {
     pub first: Path,
     pub rest: Vec<(ConnectOp, Path)>,
+    /// The groups written in the chain itself (`~> 2 x Capacitor { ... } ~>`, ADR 0119). Each
+    /// stands in `rest` as the path of the name it is given; empty for most chains.
+    pub groups: Vec<InlineGroup>,
     pub span: Span,
 }
 

@@ -14,6 +14,9 @@ pub enum Tok {
     RBrace,
     LParen,
     RParen,
+    /// `[` and `]` around the index of one part of a group (`.decoupling[2]`, ADR 0119).
+    LBracket,
+    RBracket,
     Comma,
     Semi,
     Colon,
@@ -321,7 +324,7 @@ impl Lexer<'_> {
                 .i
                 .checked_sub(1)
                 .and_then(|i| self.chars.get(i))
-                .is_some_and(|&(_, c)| c.is_alphanumeric() || c == '_' || c == '\'');
+                .is_some_and(|&(_, c)| c.is_alphanumeric() || c == '_' || c == '\'' || c == ']');
             self.i += 1;
             let tok = if touches_name {
                 Tok::Dot
@@ -334,7 +337,7 @@ impl Lexer<'_> {
             });
         }
         // Longer spellings first.
-        let table: [(&str, Tok); 24] = [
+        let table: [(&str, Tok); 26] = [
             ("::", Tok::ColonColon),
             ("~>", Tok::TildeArrow),
             ("&=", Tok::AmpEq),
@@ -358,6 +361,8 @@ impl Lexer<'_> {
             ("}", Tok::RBrace),
             ("(", Tok::LParen),
             (")", Tok::RParen),
+            ("[", Tok::LBracket),
+            ("]", Tok::RBracket),
             (",", Tok::Comma),
         ];
         for (text, tok) in table {

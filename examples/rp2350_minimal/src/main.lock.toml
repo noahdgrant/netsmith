@@ -146,19 +146,19 @@ row = "27Ω 1% 0402 C25100"
 lcsc = "C25100"
 mpn = "0402WGF270JTCE"
 
-[Rp2350Minimal.parts."v1v1_100n_1"]
+[Rp2350Minimal.parts."v1v1_100n[0]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v1v1_100n_2"]
+[Rp2350Minimal.parts."v1v1_100n[1]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v1v1_100n_3"]
+[Rp2350Minimal.parts."v1v1_100n[2]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
@@ -170,61 +170,61 @@ row = "4.7uF 20% 10V X5R 0402 C23733"
 lcsc = "C23733"
 mpn = "CL05A475MP5NRNC"
 
-[Rp2350Minimal.parts."v3v3_100n_1"]
+[Rp2350Minimal.parts."v3v3_100n[0]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_2"]
+[Rp2350Minimal.parts."v3v3_100n[1]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_3"]
+[Rp2350Minimal.parts."v3v3_100n[2]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_4"]
+[Rp2350Minimal.parts."v3v3_100n[3]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_5"]
+[Rp2350Minimal.parts."v3v3_100n[4]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_6"]
+[Rp2350Minimal.parts."v3v3_100n[5]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_7"]
+[Rp2350Minimal.parts."v3v3_100n[6]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_100n_8"]
+[Rp2350Minimal.parts."v3v3_100n[7]"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
 lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
 
-[Rp2350Minimal.parts."v3v3_bulk_a"]
+[Rp2350Minimal.parts."v3v3_bulk[0]"]
 catalog = "capacitor"
 row = "10uF 10% 16V X5R 0805 C77075"
 lcsc = "C77075"
 mpn = "GRM21BR61C106KE15L"
 
-[Rp2350Minimal.parts."v3v3_bulk_b"]
+[Rp2350Minimal.parts."v3v3_bulk[1]"]
 catalog = "capacitor"
 row = "10uF 10% 16V X5R 0805 C77075"
 lcsc = "C77075"

@@ -2,12 +2,14 @@
 
 pub mod ast;
 pub mod error;
+mod group;
 mod lexer;
 mod parser;
 mod printer;
 
 pub use error::{ParseError, Span, floor_boundary};
-pub use parser::{parse, parse_expr};
+pub use group::expand_groups;
+pub use parser::{MAX_GROUP, parse, parse_expr};
 
 /// A number that says what the program in `src` is, apart from its plain comments: the tokens (doc
 /// comments are tokens: they are what the schematic's notes say) with the line and column of each.
