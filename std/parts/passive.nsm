@@ -102,9 +102,7 @@ enum Dielectric {
 /// that no single capacitor meets (`.count * .effective_capacitance >= 47uF`) can be met by
 /// several. Every other field is the value of one capacitor of the bank. The netlist, the
 /// bill of materials and the schematic have one part for each, with consecutive reference
-/// designators, at the paths `bulk[0]`, `bulk[1]`. A board that knows its count writes
-/// `3 x Capacitor` instead, and a whole number as the `.count` of a board's own capacitor is
-/// refused; a module may pass a whole number through its interface.
+/// designators (`bulk[0]`, `bulk[1]`). A board that knows its count writes `3 x Capacitor`.
 ///
 /// `.dielectric` is the class of the ceramic (`Dielectric::X7R`), read from the catalog row
 /// and stated by a design only when it needs one. A generic capacitor (no catalog row) has

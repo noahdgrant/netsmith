@@ -88,21 +88,54 @@ fn a_part_with_no_count_stated_is_one_part() {
     ));
 }
 
+/// A count a module passes through its interface: a board cannot write a whole number as the
+/// `.count` of its own capacitor (issue #685), but it states `.held` of a module that does.
+fn held(count: u32) -> String {
+    format!(
+        r#"import std::parts::passive::Capacitor
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+module Held {{
+    .rail: Rail
+    .held: Number
+    .bulk: Capacitor
+    .bulk.count == .held
+    .bulk.count * .bulk.effective_capacitance >= 60uF
+    .bulk.max_voltage >= 6V
+    .rail.pos ~> .bulk ~> .rail.neg
+}}
+
+board B {{
+    .process: TwoLayer {{ .stackup.thickness &= 1.6mm }}
+    .supply: Rail {{
+        .voltage &= 5V
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }}
+    .h: Held {{ .held &= {count} }}
+    .h.rail ~ .supply
+}}
+"#
+    )
+}
+
 #[test]
 fn a_stated_count_is_the_count_and_the_checks_hold_it() {
-    let s = solved(&board(".count &= 8", NEED));
+    let s = solved(&held(8));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    assert_eq!(number(&s, "bulk.count"), 8.0);
+    assert_eq!(number(&s, "h.bulk.count"), 8.0);
     assert_eq!(s.picks[0].count, 8);
     // Two are not enough with any row at 5 V: the message says what was tried.
-    let s = solved(&board(".count &= 2", NEED));
+    let s = solved(&held(2));
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
-        m[0].contains("no `capacitor` candidate satisfies `bulk`")
+        m[0].contains("no `capacitor` candidate satisfies `h.bulk`")
             && m[0].contains("2 x ")
-            && m[0]
-                .contains("(bulk.count * bulk.effective_capacitance) must always be at least 60uF"),
+            && m[0].contains(
+                "(h.bulk.count * h.bulk.effective_capacitance) must always be at least 60uF"
+            ),
         "{}",
         m[0]
     );

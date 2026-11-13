@@ -1210,7 +1210,6 @@ fn a_capacitor_with_a_count_is_still_a_two_pin_part_and_the_count_is_a_plain_num
             ),
         )
     };
-    clean(&board("3"));
     clean(&board("1..4"));
     // A count is a number, not a capacitance.
     let m = messages(&board("3uF"));
