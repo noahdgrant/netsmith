@@ -1,0 +1,32 @@
+[package]
+name = "netsmith-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+netsmith-3d = { path = "../netsmith-3d" }
+netsmith-catalog = { path = "../netsmith-catalog" }
+netsmith-check = { path = "../netsmith-check" }
+netsmith-core = { path = "../netsmith-core" }
+netsmith-design = { path = "../netsmith-design" }
+netsmith-editor = { path = "../netsmith-editor" }
+netsmith-fab = { path = "../netsmith-fab" }
+netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-lang = { path = "../netsmith-lang" }
+netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-quantity = { path = "../netsmith-quantity" }
+netsmith-solve = { path = "../netsmith-solve" }
+toml = "1.1.8"
+# `Libraries::sample()`, behind the `test-support` feature.
+netsmith-testkit = { path = "../netsmith-testkit", optional = true }
+
+[features]
+# `Libraries::sample()`, over the sample libraries of netsmith-testkit. Only dev-dependencies turn
+# it on, so a release binary carries no test helpers.
+test-support = ["dep:netsmith-testkit"]
+
+[dev-dependencies]
+netsmith-pipeline = { path = ".", features = ["test-support"] }
+netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
+netsmith-testkit = { path = "../netsmith-testkit" }

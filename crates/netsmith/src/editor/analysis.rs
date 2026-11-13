@@ -1121,15 +1121,7 @@ pub fn module_groups(built: &Built) -> Vec<netsmith_view::Group> {
     groups
 }
 
-pub(super) fn api_location(l: crate::Location) -> Location {
-    Location {
-        file: l.file,
-        line: l.line as u32,
-        column: l.column as u32,
-        end_line: l.end_line as u32,
-        end_column: l.end_column as u32,
-    }
-}
+pub(super) use netsmith_pipeline::power::api_location;
 
 /// A note of the build, at the instance it is about if it names one. A part not chosen is a
 /// warning, because the design has a hole; a relation not evaluated and a balance that is

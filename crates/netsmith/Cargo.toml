@@ -18,11 +18,13 @@ netsmith-core = { path = "../netsmith-core" }
 netsmith-dxf = { path = "../netsmith-dxf" }
 netsmith-editor = { path = "../netsmith-editor" }
 netsmith-fab = { path = "../netsmith-fab" }
+netsmith-fabricate = { path = "../netsmith-fabricate" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-design = { path = "../netsmith-design" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 netsmith-pcb = { path = "../netsmith-pcb" }
+netsmith-pipeline = { path = "../netsmith-pipeline" }
 netsmith-3d = { path = "../netsmith-3d" }
 netsmith-placer = { path = "../netsmith-placer" }
 netsmith-router = { path = "../netsmith-router" }
@@ -36,14 +38,12 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sha2 = "0.11.1"
 toml = "1.1.8"
-# `Libraries::sample()`, behind the `test-support` feature.
-netsmith-testkit = { path = "../netsmith-testkit", optional = true }
 
 [features]
 # What the tests of this crate and of netsmith-cli need from it (`Libraries::sample()`, over the
 # sample libraries of netsmith-testkit). Only dev-dependencies turn it on, so a release binary
 # carries no test helpers.
-test-support = ["dep:netsmith-testkit"]
+test-support = ["netsmith-pipeline/test-support", "netsmith-fabricate/test-support"]
 
 [dev-dependencies]
 automod = "1.0.17"
@@ -53,6 +53,3 @@ netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tungstenite = "0.30.0"
-# The CPU time of a thread, which a busy machine does not change as it does the time of the clock
-# (`precheck.rs`).
-rustix = { version = "1.1.6", default-features = false, features = ["time"] }

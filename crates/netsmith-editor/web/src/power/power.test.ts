@@ -135,7 +135,7 @@ describe('stages', () => {
 });
 
 describe('issues', () => {
-  // The server works the issues out (`issues_of` in crates/netsmith/src/editor/power.rs, with its
+  // The server works the issues out (`issues_of` in crates/netsmith-pipeline/src/power.rs, with its
   // tests); the page draws them, and does not look at the rails for more.
   const at = { file: 'src/main.nsm', line: 12, column: 1, endLine: 12, endColumn: 9 };
   const tree: PowerTree = {

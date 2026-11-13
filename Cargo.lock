@@ -721,17 +721,18 @@ dependencies = [
  "netsmith-dxf",
  "netsmith-editor",
  "netsmith-fab",
+ "netsmith-fabricate",
  "netsmith-kicad",
  "netsmith-lang",
  "netsmith-netlist",
  "netsmith-pcb",
+ "netsmith-pipeline",
  "netsmith-placer",
  "netsmith-quantity",
  "netsmith-router",
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-view",
- "rustix",
  "serde",
  "serde_json",
  "sha2",
@@ -873,6 +874,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "netsmith-fabricate"
+version = "0.1.0"
+dependencies = [
+ "automod",
+ "netsmith-3d",
+ "netsmith-catalog",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-fab",
+ "netsmith-fabricate",
+ "netsmith-kicad",
+ "netsmith-lang",
+ "netsmith-pcb",
+ "netsmith-pipeline",
+ "netsmith-placer",
+ "netsmith-quantity",
+ "netsmith-router",
+ "netsmith-solve",
+ "netsmith-testkit",
+ "netsmith-view",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml",
+ "zip",
+]
+
+[[package]]
 name = "netsmith-geom"
 version = "0.1.0"
 dependencies = [
@@ -926,6 +957,27 @@ dependencies = [
  "serde_json",
  "toml",
  "uuid",
+]
+
+[[package]]
+name = "netsmith-pipeline"
+version = "0.1.0"
+dependencies = [
+ "netsmith-3d",
+ "netsmith-catalog",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-editor",
+ "netsmith-fab",
+ "netsmith-kicad",
+ "netsmith-lang",
+ "netsmith-pcb",
+ "netsmith-pipeline",
+ "netsmith-quantity",
+ "netsmith-solve",
+ "netsmith-testkit",
+ "toml",
 ]
 
 [[package]]

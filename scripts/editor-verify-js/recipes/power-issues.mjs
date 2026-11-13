@@ -1,5 +1,5 @@
 // The issues strip and the badges of the power tree. The server works the issues out (`issues` of
-// the tree: `issues_of` in crates/netsmith/src/editor/power.rs, and `netsmith build` and the analysis
+// the tree: `issues_of` in crates/netsmith-pipeline/src/power.rs, and `netsmith build` and the analysis
 // report the same), and a board whose supply can be overdrawn does not build, so the answer is
 // changed in flight to show what the page draws from what the server sends.
 export const fixture = 'power_tree';

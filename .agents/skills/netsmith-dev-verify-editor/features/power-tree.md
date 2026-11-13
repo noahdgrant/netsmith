@@ -22,7 +22,7 @@ The Issues strip lists, worst first, a rail whose total can top its supply's lim
 
 ## Gotchas
 
-- Every number comes from the solved model (`Model`, `Balance`), not from text. A supply is a current range that ends at zero or below; the solver's end of a range that stops at zero can be a hair above it (`5e-324`), which `crates/netsmith/src/editor/power.rs` treats as zero (`NEGLIGIBLE`), or the supply would count as a load and its converter would have no edge.
+- Every number comes from the solved model (`Model`, `Balance`), not from text. A supply is a current range that ends at zero or below; the solver's end of a range that stops at zero can be a hair above it (`5e-324`), which `crates/netsmith-pipeline/src/power.rs` treats as zero (`NEGLIGIBLE`), or the supply would count as a load and its converter would have no edge.
 - A rail turns red only if the demand's top exceeds the capacity. A board that fails the solver's own check does not build, so you see it only on a stale drawing; the unit tests in `power.rs` cover it.
 - `/api/power` has no field for what a rail is for; the stage kind is read from its type name, and a type named otherwise is a plain "Converter" unless the voltage says buck or boost.
 - The graph is fitted to the section, which has the whole window unless the window is split. The tree opens fitted with 56 px of air round it, centred, at most 150 % (a two-node graph is not blown up to a window; a tree that would need less than 75 % to fit opens at 75 % from its top left, because below that its smallest text is under 8 px: the minimap, the scroll and Fit, which shows the whole tree whatever the scale, find the rest). Fit does the same as the opening view only for a tree that fits at 75 % or more; 1:1 is true size.
