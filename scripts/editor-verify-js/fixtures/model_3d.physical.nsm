@@ -1,0 +1,17 @@
+import std::pcb::Outline
+
+physical for Modelled {
+    case {
+        .outline: Outline {
+            .width &= 24mm
+            .height &= 16mm
+        }
+    }
+
+    // The header's own model (the launcher copies `model_3d.models/` to the project's
+    // `models/`), and its datasheet height, which the model's pins reach.
+    .power_in.model.file &= "../models/header.step"
+    .power_in.height &= 8.5mm
+    // A model that is not in the project: a warning, and the resistor keeps its shape.
+    .r1.model.file &= "../models/missing.step"
+}

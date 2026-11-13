@@ -58,13 +58,20 @@ export type Provenance = 'stated' | 'catalog' | 'standard' | 'unknown';
 
 /** The role a mesh is drawn in, from its material's name and, for a part's body, where the part's
  * height came from. A name the page does not know (a later file's) is null: it keeps the file's colour. */
-export function roleOf(material: string, provenance: Provenance | null): Role | null {
-  if (material === 'body') {
+export function roleOf(material: string, provenance: Provenance | null, fromModel = false): Role | null {
+  if (material === 'body' || modelColour(material) !== null) {
     if (provenance === 'catalog') return 'body-catalog';
     if (provenance === 'standard') return 'body-standard';
-    return provenance === 'unknown' ? 'body-unknown' : 'body';
+    // A part drawn from its STEP model is solid whatever its height (ADR 0108): never the hatch of an unknown one.
+    return provenance === 'unknown' && !fromModel ? 'body-unknown' : 'body';
   }
   return (FILE_MATERIALS as readonly string[]).includes(material) ? (material as Role) : null;
+}
+
+/** The colour of a piece of a part's STEP model, from its material's name (`model:#rrggbb`, ADR 0108); null for any other material. */
+export function modelColour(material: string): string | null {
+  const m = /^model:(#[0-9a-f]{6})$/.exec(material);
+  return m ? m[1] : null;
 }
 
 /** Every token the view reads, for the test that each theme has them. */

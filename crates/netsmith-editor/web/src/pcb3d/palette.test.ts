@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { contrast, parseHex } from '../contrast';
 import css from '../themes.css?raw';
-import { FILE_MATERIALS, LOOKS, allTokens, lit, roleOf } from './palette';
+import { FILE_MATERIALS, LOOKS, allTokens, lit, modelColour, roleOf } from './palette';
 
 const THEMES = {
   dark: ':root, :root[data-theme="dark"]',
@@ -36,6 +36,13 @@ describe('the 3D palette', () => {
     expect(roleOf('body', 'unknown')).toBe('body-unknown');
     expect(roleOf('body-unknown', 'unknown')).toBe('body-unknown');
     expect(roleOf('chrome', null)).toBeNull();
+    // A piece of a part's STEP model (ADR 0108): a body in the file's colour, never hatched.
+    expect(roleOf('model:#d91a1a', 'stated')).toBe('body');
+    expect(roleOf('model:#d91a1a', 'catalog')).toBe('body-catalog');
+    expect(roleOf('model:#d91a1a', 'unknown', true)).toBe('body');
+    expect(roleOf('body', 'unknown', true)).toBe('body');
+    expect(modelColour('model:#d91a1a')).toBe('#d91a1a');
+    expect(modelColour('body')).toBeNull();
     expect(LOOKS['body-unknown'].hatch).toBe(true);
     expect(LOOKS.limit.opacity).toBeLessThan(1);
     expect(LOOKS['limit-violated'].opacity).toBeLessThan(1);

@@ -749,11 +749,11 @@ The boards of a _System_ placed against each other by their _Mates_, in one scen
 _Avoid_: Assembly (that is `.assembly`, who solders the parts), stack, system model
 
 **STEP file**:
-The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_ and `netsmith fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). netsmith reads no STEP file.
+The board and its parts as exact solids for mechanical CAD (ISO 10303-21, AP214), that `netsmith board3d --step` writes from the _Scene_ and `netsmith fab` writes into the fab package as `<board>.step`: an assembly with the board and one product per part, named by its designator; a part of unknown height is its outline only, never a solid (ADR 0107). A part drawn from its _STEP model_ holds that model's own solids, copied in (ADR 0108).
 _Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D export, MCAD export
 
 **STEP model**:
-A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), to be drawn in the _Scene_ in place of its _Package shape_ (ADR 0108). It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape.
+A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), drawn in the _Scene_ in place of its _Package shape_ (ADR 0108): placed in KiCad's frame for a model, so a footprint's `(model ...)` numbers can be copied in, read by netsmith's own reader and copied exactly into the _STEP file_. It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape.
 _Avoid_: 3D model (KiCad's word, which also names VRML files), user model, CAD model
 
 **Case model**:

@@ -59,7 +59,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
 import type { ColourBy } from './inspectMode';
 import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
-import { LOOKS, type Role, lit, roleOf } from './palette';
+import { LOOKS, type Role, lit, modelColour, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
 import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole } from './tools';
 
@@ -508,8 +508,10 @@ export class Viewer {
       const name = (Array.isArray(o.material) ? o.material[0] : o.material)?.name ?? '';
       const part = info?.kind === 'part' ? (info as PartInfo3d) : null;
       // The silkscreen is drawn in a colour of its own: the `mark` of a body's pin-1 dot does not read on the mask in every theme.
-      const role = info?.kind === 'silk' && name === 'mark' ? 'silk' : roleOf(name, part ? part.provenance : null);
+      const role = info?.kind === 'silk' && name === 'mark' ? 'silk' : roleOf(name, part ? part.provenance : null, part?.model != null);
       o.userData.role = role;
+      // A piece of a STEP model keeps the file's colour, unless the view colours by kind or margin.
+      o.userData.modelColour = modelColour(name);
       if (role === 'body-unknown') planarUv(o);
       if (role && LOOKS[role].hatch) o.renderOrder = 2;
       if (role === 'limit' || role === 'limit-violated') o.renderOrder = 3;
@@ -1101,7 +1103,8 @@ export class Viewer {
       if (info?.kind === 'part') {
         const part = info as PartInfo3d;
         const state = this.stateOf(part.path);
-        o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest', tint: this.tintOf(part, role) });
+        const tint = this.tintOf(part, role) ?? ((o.userData.modelColour as string | null) || null);
+        o.material = this.surface(role, state, { xray, dim: netsOn && state === 'rest', tint });
       } else if (info?.kind === 'copper' || info?.kind === 'hole') {
         const net = this.netOf(info as CopperInfo);
         const state: State = (net !== null && nets.get(net)) || 'rest';

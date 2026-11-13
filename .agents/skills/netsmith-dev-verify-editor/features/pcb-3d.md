@@ -53,6 +53,15 @@ The handle also has `nets()` (the nets with copper in the scene), `previewCount(
 
 For a recipe the host carries a handle: `document.querySelector('[data-testid=pcb-3d]').view3d` with `project(path)` (a point of the window where a pick finds the part, found by raycasting over its bounds: a package shape has leads and a lower body, not a box; null when it is hidden), `sample()` (the share of the canvas that is not the background, and how many colours), `colourAt(x, y)`, `parts()`, `preset()`, `ortho()`, and for the tools `toScreen([x, y, z])` (a point of the scene's frame of docs/BOARD3D.md in the window), `snap(x, y)`, `slots()` (the stackup's layers and where each is now), `exploded()`, `command()` and `board()` (the root's extras).
 
+## A part drawn from its STEP model (recipe `pcb-3d-model`, fixture `model_3d`)
+
+`scripts/editor-verify launch --fixture model_3d`, then `drive pcb-3d-model`. The launcher copies `fixtures/model_3d.models/` to the project's `models/`: `header.step`, a model written by hand for the fixture (a black plastic block, two gold pins, a red mark by pin 1, in KiCad's frame for a model). The physical file names it for the header (`power_in`, 8.5 mm stated) and a file that is not there for the resistor (ADR 0108; docs/BOARD3D.md, "A part's STEP model").
+
+1. The header is the model's triangles in the file's colours (the `.glb`'s `model:#rrggbb` materials) in place of its generated shape, whatever its height's source; colour by kind or by margin still tints it, and hover, selection and x-ray treat it as any body. A part of unknown height drawn from a model is solid, never hatched.
+2. Hover: the tooltip adds `Drawn from ../models/header.step` under the height, which is still the part's own (`8.5 mm tall, stated in the design`).
+3. `Top` (`T`): the plastic fills the header's silkscreen outline and the pins stand on its pads. They do only when the model's y runs up the footprint, as KiCad's does: a wrong sign would put the plastic 2.54 mm off the outline.
+4. The problems dock (`Ctrl+J`) has the warning for the resistor's missing file (`... and there is no such file, so `r1` is drawn with its generated shape ...`); the resistor keeps its shape. A file the reader refuses is a warning too.
+
 ## Driven by an agent (recipe `pcb-3d-control`, fixture `height_limits`)
 
 `GET /api/view`, `POST /api/view` and `GET /api/view/picture` (docs/BOARD3D.md, "Driving the editor's 3D view") reach the page that had the focus last over its socket: the page must be open. `scripts/editor-verify launch --fixture height_limits`, then `drive pcb-3d-control`; it asks the routes over HTTP from the recipe (as an agent does, `X-Netsmith: 1` on the `POST`), not from the page.

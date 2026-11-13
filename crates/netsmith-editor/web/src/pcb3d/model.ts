@@ -58,6 +58,8 @@ export interface PartInfo3d {
   /** The least margin to a height limit over the part, and that limit; null when none is over it or its height is unknown. */
   marginMm: number | null;
   marginLimit: string | null;
+  /** The STEP model the part is drawn from (ADR 0108): a drawing, never its height. Null for a part drawn with its generated shape. */
+  model?: { file: string; sha256: string; topMm: number } | null;
 }
 
 /** A net's copper on one layer (`copper:<layer>:<net>`), or a via's barrel (`via:<net>`). A net of null is the copper with none. */
@@ -172,6 +174,7 @@ export function readInfo(userData: unknown): Info | null {
         category: typeof n.category === 'string' ? n.category : null,
         marginMm: numOrNull(n.margin_mm),
         marginLimit: typeof n.margin_limit === 'string' ? n.margin_limit : null,
+        ...(modelOf(n.model) ? { model: modelOf(n.model) } : {}),
       };
     }
     case 'copper':
@@ -232,6 +235,12 @@ export function systemLine(s: SystemInfo, members: MemberInfo[]): string {
   return `${plural(members.length, 'board')}${stacked}${apart ? `, ${apart} apart` : ''}`;
 }
 
+function modelOf(m: unknown): { file: string; sha256: string; topMm: number } | null {
+  if (!m || typeof m !== 'object') return null;
+  const r = m as Record<string, unknown>;
+  return typeof r.file === 'string' ? { file: r.file, sha256: str(r.sha256), topMm: num(r.top_mm) } : null;
+}
+
 /** A length in mm for a person: at most two decimals, no trailing zeros. */
 export const mm = (v: number): string => `${Number(v.toFixed(2))} mm`;
 
@@ -254,8 +263,8 @@ export const PROVENANCE_WORDS: Record<Provenance, string> = {
 };
 
 /** The height of a part and where it came from, in one line. */
-export function heightLine(p: Pick<PartInfo3d, 'heightMm' | 'provenance' | 'standard'>): string {
-  if (p.heightMm === null || p.provenance === 'unknown') return 'Height not known: drawn flat and hatched, not guessed';
+export function heightLine(p: Pick<PartInfo3d, 'heightMm' | 'provenance' | 'standard'> & { model?: PartInfo3d['model'] }): string {
+  if (p.heightMm === null || p.provenance === 'unknown') return p.model ? 'Height not known, not guessed: the model is a drawing' : 'Height not known: drawn flat and hatched, not guessed';
   const standard = p.provenance === 'standard' && p.standard ? ` (${p.standard.split(',')[0]})` : '';
   return `${mm(p.heightMm)} tall, ${PROVENANCE_WORDS[p.provenance]}${standard}`;
 }
@@ -263,6 +272,7 @@ export function heightLine(p: Pick<PartInfo3d, 'heightMm' | 'provenance' | 'stan
 /** What the hover tooltip says of a part: its designator (and value), its height and its source, its face, and the 3D findings about it. */
 export function partTip(p: PartInfo3d, findings: Finding3d[], value = ''): { title: string; lines: string[] } {
   const lines = [heightLine(p), `On the ${p.side} face${p.partKind ? ` · ${p.partKind}` : ''}`];
+  if (p.model) lines.push(`Drawn from ${p.model.file}`);
   if (p.marginMm !== null && p.marginMm >= 0 && p.marginLimit) lines.push(`${mm(p.marginMm)} under the limit ${p.marginLimit}`);
   for (const f of findings) {
     if (!f.parts.includes(p.path)) continue;
