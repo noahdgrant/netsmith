@@ -193,10 +193,10 @@ fn the_examples_draw_the_doc_comments_and_relations_they_state() {
             .find(|s| s.0 == name)
             .unwrap_or_else(|| panic!("{name}: {seen:?}"))
     };
-    // `led.nsm` has a doc comment on its header and no relation: its chain carries the LED's
-    // current (ADR 0113), and what the checker writes is not drawn.
+    // `led.nsm` has a doc comment on its header and writes no relation, but its chain across
+    // the rail has one (ADR 0113), which is drawn as a written one is.
     let led = find("LedExample");
-    assert_eq!((led.2, led.3), (1, 0), "{seen:?}");
+    assert_eq!((led.2, led.3), (1, 1), "{seen:?}");
     // A module's doc comment is the sheet's note, a doc comment on a rail is a note too.
     assert!(find("SchematicBench").2 >= 7, "{seen:?}");
 }
