@@ -54,8 +54,36 @@ impl<'a> Kinds<'a> {
 
     /// The kind of the definition that `name`, written in `from`, means.
     pub fn kind(&self, from: &File, name: &str) -> Option<DefKind> {
+        self.with_definition(from, name, |file, def| {
+            let _ = file;
+            def.kind
+        })
+    }
+
+    /// Whether `name`, written in `from`, is the type of a port or a process: an interface, or
+    /// a generic that interfaces provide (a process whose providers are its copper weights,
+    /// ADR 0113), which a provider in the generic's own file shows.
+    pub fn is_interface_like(&self, from: &File, name: &str) -> bool {
+        self.with_definition(from, name, |file, def| match def.kind {
+            DefKind::Interface => true,
+            DefKind::Generic => file
+                .definitions
+                .iter()
+                .any(|d| d.kind == DefKind::Interface && d.provides.iter().any(|p| p.name == name)),
+            _ => false,
+        })
+        .unwrap_or(false)
+    }
+
+    /// `f` of the definition that `name`, written in `from`, means, with the file it is in.
+    fn with_definition<T>(
+        &self,
+        from: &File,
+        name: &str,
+        f: impl Fn(&File, &netsmith_lang::ast::Definition) -> T,
+    ) -> Option<T> {
         if let Some(d) = from.definitions.iter().find(|d| d.name.name == name) {
-            return Some(d.kind);
+            return Some(f(from, d));
         }
         for import in &from.imports {
             let key = |n: usize| {
@@ -77,7 +105,7 @@ impl<'a> Kinds<'a> {
                 .definitions
                 .iter()
                 .find(|d| d.name.name == name)
-                .map(|d| d.kind);
+                .map(|d| f(&file, d));
         }
         None
     }
@@ -174,8 +202,8 @@ pub fn declaration_signature(decl: &Decl) -> String {
 
 /// A one-line signature of a definition: its keyword and name and the declarations that
 /// make its interface, `module LdoStage { .vin: Rail .vout: Rail ... }`. The declarations
-/// are those whose type is an interface (the ports of a module, a board's rails and
-/// process), or, where there are none or the type is not found, the declarations in
+/// are those whose type is an interface or a generic that interfaces provide (the ports of
+/// a module, a board's rails and process), or, where there are none or the type is not found, the declarations in
 /// source order; at most six, then `...` if the body has anything more. The same
 /// definition always gives the same line.
 pub fn definition_signature(def: &Definition, file: &File, kinds: &Kinds) -> String {
@@ -190,7 +218,7 @@ pub fn definition_signature(def: &Definition, file: &File, kinds: &Kinds) -> Str
     let ports: Vec<&Decl> = decls
         .iter()
         .copied()
-        .filter(|d| kinds.kind(file, &type_name(d)) == Some(DefKind::Interface))
+        .filter(|d| kinds.is_interface_like(file, &type_name(d)))
         .collect();
     // An interface or a part is its own declarations; so is any definition with no port.
     let shown = if ports.is_empty() || matches!(def.kind, DefKind::Interface | DefKind::Part) {
