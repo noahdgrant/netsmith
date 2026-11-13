@@ -18,6 +18,7 @@ import {
   shellWord,
   slabRole,
   type Snap,
+  spreadMembers,
 } from './tools';
 
 const two: StackLayer[] = [
@@ -127,6 +128,27 @@ describe('the exploded stackup', () => {
     expect(explodeGap(10, 8)).toBe(3);
     expect(explodeGap(60, 40)).toBeCloseTo(6);
     expect(explodeGap(400, 300)).toBe(12);
+  });
+  it("a system's boards move apart with their stackups: the base stays, a board above moves up by both halves", () => {
+    // The LED board 11 mm over the power board, the power board the base.
+    const two = spreadMembers(
+      [
+        { key: 'led', z: 11, half: 7.5 },
+        { key: 'power', z: 0, half: 9 },
+      ],
+      'power',
+    );
+    expect(Object.fromEntries(two)).toEqual({ power: 0, led: 16.5 });
+    // Based on the top board, the one under it moves down; a board beside the base (drawn apart) moves with it.
+    const three = spreadMembers(
+      [
+        { key: 'top', z: 11, half: 3 },
+        { key: 'bottom', z: 0, half: 4 },
+        { key: 'beside', z: 0.4, half: 6 },
+      ],
+      'top',
+    );
+    expect(Object.fromEntries(three)).toEqual({ bottom: -9, beside: -9, top: 0 });
   });
 });
 

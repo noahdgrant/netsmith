@@ -469,8 +469,13 @@ What it is:
   the 2D view has it placed). A chip says how many boards and the mated heights, and lists the
   findings across the boards; a click on one flies the camera to its parts. A part of another
   board picked here makes that board the page's (its 2D board and schematic follow) and selects
-  it there; the view stays on the system. The section and the layers apart are not for a system
-  (`render --board System --section` cuts it).
+  it there; the view stays on the system and the camera where it is. A net is its board's
+  (`led/GND`): the net picked on the page's board is lit on that board alone, and copper of
+  another board picked makes that board the page's and lights its net there. The section cuts
+  every board, each in its own stackup's bands; the layers apart pull each board's stackup apart
+  and move the boards apart with them, the base staying where it is, so that their layers do not
+  meet. A checkbox per board, under the chip, shows or hides it (the last one shown stays): a
+  hidden board is not drawn, picked, cut or framed.
 - **Findings in 3D.** A finding picked in the problems dock or the board's findings list flies
   the camera to its parts (or to its limit, when it names no part) and lights them; the limit it is
   about is lit too, and a broken limit's volume pulses once (not with reduced motion).

@@ -70,6 +70,8 @@ export interface CopperInfo {
   /** A pad's barrel (`hole:<refdes>.<pad>`): its part's path and its pad; its net is the pad's, which the file does not say. */
   path?: string;
   pad?: string;
+  /** In a system's file, the member it is on: its `net` and `path` are then `member/...` (the view names them so; the file does not). */
+  member?: string;
 }
 
 export interface LimitInfo {
