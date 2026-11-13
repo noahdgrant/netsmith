@@ -35,6 +35,9 @@
 //!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
 //!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
 //!   every report measure the body box.
+//! - A part's STEP model, where the design names one and its caller has read it
+//!   ([`Scene::draw_models`], ADR 0108): its triangles placed in KiCad's frame for a model
+//!   ([`model_frame`]), drawn in place of the package shape. A drawing only, like the shape.
 //! - The pins of a through-hole part below the far face, where the design states their
 //!   protrusion (ADR 0045 section 15); unknown otherwise.
 //! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, per face it
@@ -63,7 +66,12 @@
 //! pours and the vias in the order of [`netsmith_pcb::copper`] (the board's).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use crate::mesh::Mesh;
+use crate::mesh::trig::sin_cos_turns;
+use crate::step::read::model::Affine;
+use crate::step::read::{CHORD_TOLERANCE, ReadModel};
 use netsmith_pcb::board::{Board, PlacementProblem, Side};
 use netsmith_pcb::body3d::Solid;
 use netsmith_pcb::copper::{self, CopperError};
@@ -303,6 +311,53 @@ pub struct Body {
     /// record (a footprint read from a file, ADR 0105) or the height is unknown: the box, or the
     /// flat outline, is drawn instead.
     pub shape: Option<PlacedShape>,
+    /// Where the footprint's frame is in the scene's.
+    pub place: Placement,
+    /// The STEP model the part is drawn from in place of its shape (ADR 0108), once
+    /// [`Scene::draw_models`] has placed it. A drawing only: the height, the provenance, the
+    /// limits and the overlaps never read it.
+    pub model: Option<DrawnModel>,
+}
+
+/// A part's STEP model as read, for [`Scene::draw_models`] to place: what the caller that reads
+/// the file found (`netsmith::models`).
+#[derive(Debug, Clone)]
+pub struct ModelUse {
+    /// The part's path.
+    pub path: String,
+    /// The file as the design states it (`models/usb4105.step`).
+    pub file: String,
+    /// The SHA-256 of the file's bytes, in lower-case hex.
+    pub sha256: String,
+    /// `.model.x`, `.y`, `.z`, in mm.
+    pub offset: [f64; 3],
+    /// `.model.rx`, `.ry`, `.rz`, in degrees.
+    pub rotation: [f64; 3],
+    pub read: Arc<ReadModel>,
+}
+
+/// A part's STEP model where it is drawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawnModel {
+    /// The file as the design states it.
+    pub file: String,
+    pub sha256: String,
+    /// How far the model reaches out of the part's face, in mm: up from the top face, down
+    /// from the bottom one.
+    pub top: f64,
+    /// The map from the model's frame (mm, as the file places its solids) to the scene's:
+    /// [`model_frame`] of the part's placement and the model's rotation and offset. A rigid
+    /// motion, never a mirror.
+    pub to_scene: Affine,
+    /// The model's triangles in the scene's frame, one mesh per piece of [`ReadModel::mesh`],
+    /// id the part's path, material [`crate::mesh::Material::Body`] and the file's colour where
+    /// it has one.
+    pub meshes: Vec<Mesh>,
+    /// Whether the STEP export can copy the model's solids exactly: every place the file puts
+    /// a solid at is a rigid motion. A file that mirrors one is exported with the part's
+    /// generated shape.
+    pub exact: bool,
+    pub read: Arc<ReadModel>,
 }
 
 /// A part's _Package shape_ where it is on the board: its solids in the footprint's own frame
@@ -631,6 +686,10 @@ pub struct Scene {
     /// By name.
     pub limits: Vec<HeightLimit>,
     pub findings: Findings,
+    /// What drawing the parts' STEP models found ([`Scene::draw_models`]): a model whose top is
+    /// above its part's height, a model the STEP export cannot copy. Warnings, for the command
+    /// that built the scene to print. Empty from [`Scene::of`].
+    pub warnings: Vec<String>,
 }
 
 /// How far two boxes must share before they count as overlapping, in mm: what the placement
@@ -665,6 +724,65 @@ impl Scene {
             bodies,
             limits,
             findings,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Draws each part of `uses` from its STEP model, in place of its generated shape (ADR
+    /// 0108): the model's triangles are put at the footprint's origin, turned by the model's
+    /// rotation and moved by its offset ([`model_frame`]), and turned and mirrored with the
+    /// part. Nothing that is measured changes. A model whose top is above the part's known
+    /// height by more than the reader's chord tolerance is a warning naming both figures; a use
+    /// whose part has no body (a label) is left out.
+    pub fn draw_models(&mut self, uses: &[ModelUse]) {
+        for u in uses {
+            let Some(body) = self.bodies.iter_mut().find(|b| b.path == u.path) else {
+                continue;
+            };
+            let to_scene = model_frame(&body.place, u.offset, u.rotation);
+            let mut meshes = Vec::new();
+            let mut top = f64::MIN;
+            for piece in &u.read.mesh.pieces {
+                let mut m = piece.mesh.clone();
+                m.transform(to_scene.m, to_scene.t);
+                for p in &mut m.positions {
+                    *p = p.map(clean);
+                    top = top.max(body.place.out * (p[2] - body.z_face));
+                }
+                m.id = body.path.clone();
+                m.colour = piece.colour;
+                meshes.push(m);
+            }
+            let top = if top == f64::MIN { 0.0 } else { clean(top) };
+            if let Some(h) = body.height
+                && top > h + CHORD_TOLERANCE
+            {
+                // Rounded up to the hundredth, so that the height it suggests holds the model.
+                let suggest = (top * 100.0 - 1e-6).ceil() / 100.0;
+                self.warnings.push(format!(
+                    "the model of `{}` (`{}`) stands {top:.3} mm out of its face, above the part's height of {h:.3} mm ({}); the model is drawn and never gives a height, so if the model is right state `.{}.height &= {suggest:.2}mm`",
+                    u.path,
+                    u.file,
+                    body.provenance.word(),
+                    u.path,
+                ));
+            }
+            let exact = u.read.model.placed.iter().all(|p| rigid(&p.place.m));
+            if !exact {
+                self.warnings.push(format!(
+                    "the model of `{}` (`{}`) places a solid in a mirror, which a STEP assembly cannot hold, so the STEP export draws `{}` with its generated shape",
+                    u.path, u.file, u.path
+                ));
+            }
+            body.model = Some(DrawnModel {
+                file: u.file.clone(),
+                sha256: u.sha256.clone(),
+                top,
+                to_scene,
+                meshes,
+                exact,
+                read: u.read.clone(),
+            });
         }
     }
 
@@ -1052,12 +1170,13 @@ fn body(
             }
         }
     };
+    let place = placement(p, frame, z_face, out);
     let shape = (p.footprint.package.is_some() && height.is_some())
         .then(|| netsmith_pcb::body3d::package_shape(&p.footprint, height))
         .filter(|s| s.shaped && !s.solids.is_empty())
         .map(|s| PlacedShape {
             solids: s.solids,
-            place: placement(p, frame, z_face, out),
+            place,
         });
     Body {
         path: p.path.clone(),
@@ -1077,7 +1196,68 @@ fn body(
         standard,
         pins,
         shape,
+        place,
+        model: None,
     }
+}
+
+/// The map from a STEP model's frame to the scene's, for a part placed by `place` (ADR 0108).
+///
+/// The model's frame is KiCad's for a footprint's model, so that the numbers of a
+/// `(model ... (offset (xyz x y z)) (rotate (xyz rx ry rz)))` line can be copied into
+/// `.model.x` ... `.model.rz`: x along the footprint's x, **y up the footprint as the
+/// footprint editor shows it** (the footprint's own y runs down, so a model's y is the
+/// footprint's -y), z out of the part's face. A point `p` of the model is turned by
+/// `Rz(-rz) * Ry(-ry) * Rx(-rx)` (about x first; each angle turns clockwise seen from the
+/// axis's positive end, as KiCad turns a model), then moved by the offset, then put on the
+/// board as the footprint is: turned with the part, and for a part on the bottom face mirrored
+/// and hanging down. KiCad's 3D viewer and STEP exporter do the same (`render_3d_opengl.cpp`,
+/// `step_pcb_model.cpp`: "aOrientation is applied -Z*-Y*-X, b. aOffset is applied", the y of
+/// the footprint's position negated and the offset's not). The map is a rigid motion on
+/// both faces: the y flip and the bottom face's mirror and its z flip cancel out.
+pub fn model_frame(place: &Placement, offset: [f64; 3], rotation: [f64; 3]) -> Affine {
+    let turn = |deg: f64| sin_cos_turns(-deg / 360.0);
+    let (sx, cx) = turn(rotation[0]);
+    let (sy, cy) = turn(rotation[1]);
+    let (sz, cz) = turn(rotation[2]);
+    let rx = [[1.0, 0.0, 0.0], [0.0, cx, -sx], [0.0, sx, cx]];
+    let ry = [[cy, 0.0, sy], [0.0, 1.0, 0.0], [-sy, 0.0, cy]];
+    let rz = [[cz, -sz, 0.0], [sz, cz, 0.0], [0.0, 0.0, 1.0]];
+    let r = mul(rz, mul(ry, rx));
+    // The footprint's frame of the model's: y flipped.
+    let flip = [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]];
+    let lf = mul(place.linear(), flip);
+    let o = [0, 1, 2].map(|k| (0..3).map(|c| lf[k][c] * offset[c]).sum::<f64>());
+    Affine {
+        m: mul(lf, r),
+        t: [
+            place.origin.x + o[0],
+            place.origin.y + o[1],
+            place.z_face + o[2],
+        ],
+    }
+}
+
+fn mul(a: [[f64; 3]; 3], b: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    [0, 1, 2].map(|r| [0, 1, 2].map(|c| (0..3).map(|k| a[r][k] * b[k][c]).sum()))
+}
+
+/// Whether `m` is a rotation: its columns of unit length and at right angles, and no mirror.
+fn rigid(m: &[[f64; 3]; 3]) -> bool {
+    let col = |c: usize| [m[0][c], m[1][c], m[2][c]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let (x, y, z) = (col(0), col(1), col(2));
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    let near = |v: f64, want: f64| (v - want).abs() < 1e-9;
+    near(dot(x, x), 1.0)
+        && near(dot(y, y), 1.0)
+        && near(dot(z, z), 1.0)
+        && near(dot(x, y), 0.0)
+        && near(dot(y, z), 0.0)
+        && near(dot(x, z), 0.0)
+        && det > 0.0
 }
 
 /// Where the footprint's frame of `p` is in the scene: its origin, and its axes as

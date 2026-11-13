@@ -176,6 +176,7 @@ pub(super) fn with_placed_board<T>(
         return Err(ExitCode::from(2));
     }
     let libraries = timings::stage("libraries", "", || libraries(&target))?;
+    let places = netsmith::models::Places::of(&target);
     let mut errors = String::new();
     for source in &target.files {
         let text = fs::read_to_string(&source.path).map_err(|e| {
@@ -196,6 +197,7 @@ pub(super) fn with_placed_board<T>(
             layout: netsmith::layout::layout_path(&source.path),
             board,
             seeds: netsmith::layout::place_seeds(target.project.as_ref()),
+            models: Some(places.clone()),
         };
         match then(&placed) {
             Ok(done) => return Ok(done),

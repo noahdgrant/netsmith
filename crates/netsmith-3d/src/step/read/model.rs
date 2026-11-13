@@ -77,6 +77,8 @@ pub struct Solid {
     pub colour: Option<Rgb>,
     /// Millimetres a unit of length of the representation the solid is in.
     pub mm: f64,
+    /// Radians a unit of plane angle of that representation (a cone's angle is in it).
+    pub radians: f64,
 }
 
 /// A rigid motion (or a mirror): `p -> m * p + t`, `m` by rows, lengths in mm.
@@ -1264,6 +1266,7 @@ impl Reader<'_> {
             shells,
             colour: self.colours.get(&id).copied(),
             mm: units.mm,
+            radians: units.radians,
         });
         self.solids.insert(id, k);
         Ok(k)

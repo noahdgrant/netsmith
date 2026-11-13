@@ -135,6 +135,27 @@ impl StepMesh {
     }
 }
 
+/// A model file read for drawing and for copying: its instances (the STEP export copies the
+/// solids' entities from them, ADR 0108), its model and its triangles.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadModel {
+    pub exchange: Exchange,
+    pub model: Model,
+    pub mesh: StepMesh,
+}
+
+/// Reads a STEP file's bytes, keeping what each stage made.
+pub fn load(bytes: &[u8]) -> Result<ReadModel, StepError> {
+    let exchange = part21::parse(bytes)?;
+    let model = model::model(&exchange)?;
+    let mesh = mesh(&model)?;
+    Ok(ReadModel {
+        exchange,
+        model,
+        mesh,
+    })
+}
+
 /// Reads a STEP file's bytes into its model: the solids, where they are, and their faces.
 pub fn read_model(bytes: &[u8]) -> Result<Model, StepError> {
     let ex = part21::parse(bytes)?;
