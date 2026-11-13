@@ -1,19 +1,20 @@
-//! Arcs at a track's bends (issue #431, step 11): where two straight tracks of a net meet at a
-//! bend of 45 degrees or less, the corner is replaced by an arc tangent to both, so the copper
-//! has no corner at all. The router's search and its copper are as before; this runs on the
-//! finished board, after the parallel and the stitching vias, and keeps an arc only where it
-//! passes the same exact clearance check as the router's clean-up ([`Router::settled`] in
+//! Arcs at a track's bends (issue #431, step 11): where two straight tracks of a net meet at a bend
+//! of 45 degrees or less, the corner is replaced by an arc tangent to both, so the copper has no
+//! corner at all. The router's search and its copper are as before; this runs on the finished
+//! board, after the parallel and the stitching vias and the teardrops, and keeps an arc only where
+//! it passes the same exact clearance check as the router's clean-up ([`Router::settled`] in
 //! `route.rs`). A bend that no arc fits keeps its corner, which `track_angle` allows.
 //!
-//! **The radius.** For each bend the largest radius up to [`ARC_WIDTHS`] times the track's
-//! width is tried first, then three quarters of it, and so on down to one width; the first
-//! that keeps the rules' space from every other net's copper, the pads, the holes, the
-//! keepouts and the board edge is drawn. An arc takes at most half of each straight track it
-//! joins, so two arcs at the two ends of one track never meet, and the short diagonal of a cut
-//! right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs. Only a bend
-//! where exactly two straight tracks of one width end is rounded, outside the net's pads and
-//! vias, and where no other track of the net joins the corner it takes away, so an arc never
-//! breaks a join.
+//! **The radius.** For each bend the largest radius up to [`ARC_WIDTHS`] times the track's width is
+//! tried first, then three quarters of it, and so on down to one width; the first that keeps the
+//! rules' space from every other net's copper, the pads, the holes, the keepouts, the teardrops and
+//! the board edge is drawn. It runs after the teardrops and keeps them as they are: an arc never
+//! cuts into the part of a track a teardrop lies along. An arc takes at most half of each straight
+//! track it joins, so two arcs at the two ends of one track never meet, and the short diagonal of a
+//! cut right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs. Only a bend
+//! where exactly two straight tracks of one width end is rounded, outside the net's pads and vias,
+//! and where no other track of the net joins the corner it takes away, so an arc never breaks a
+//! join.
 //!
 //! An arc moves copper towards the inside of its bend (by about 0.08 of the radius at its
 //! middle) and away from the outside, which is why it is checked; it is checked as chords no
@@ -82,6 +83,8 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
             .collect()
     };
     let mut tracks: Vec<Vec<Obstacle>> = board.tracks.iter().map(copper).collect();
+    // The vias, and the teardrops as their edges: an arc starts on a track of its own net, so it
+    // reaches another net's teardrop only across an edge.
     let vias: Vec<Obstacle> = board
         .vias
         .iter()
@@ -91,7 +94,42 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
             form: Form::Circle(v.at, v.diameter / 2.0),
             clearance,
         })
+        .chain(board.teardrops.iter().flat_map(|d| {
+            let net = net_index(&d.net);
+            let layers = layers_of(d.layer);
+            let n = d.points.len();
+            (0..n).map(move |k| Obstacle {
+                net,
+                layers,
+                form: Form::Segment(d.points[k], d.points[(k + 1) % n], 0.0),
+                clearance,
+            })
+        }))
         .collect();
+    // How much of each track, from each end, a teardrop of its net lies along: an arc at the
+    // other end leaves that much straight.
+    let teardrop_on = |t: &Track, from: Pt| -> f64 {
+        let length = t.from.distance(t.to);
+        if length < 1e-9 {
+            return 0.0;
+        }
+        let u = Pt::new((t.to.x - t.from.x) / length, (t.to.y - t.from.y) / length);
+        board
+            .teardrops
+            .iter()
+            .filter(|d| d.net == t.net && d.layer == t.layer)
+            .flat_map(|d| d.points.iter())
+            .filter(|&&p| t.distance_to(p) <= t.width / 2.0 + 1e-3)
+            .map(|&p| {
+                let along = (p.x - t.from.x) * u.x + (p.y - t.from.y) * u.y;
+                if from == t.from {
+                    along
+                } else {
+                    length - along
+                }
+            })
+            .fold(0.0, f64::max)
+    };
 
     // The ends of the straight tracks, by net, layer and place.
     let key = |p: Pt| ((p.x * 1e4).round() as i64, (p.y * 1e4).round() as i64);
@@ -138,7 +176,13 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         let half_turn = (turn / 2.0).tan();
         // At most half of each track, less a few micrometres, so the arcs at its two ends stay
         // apart and neither is taken for a join on the other's corner.
-        let reach = (lengths[a].min(lengths[b]) / 2.0 - 0.005).min(widths * width * half_turn);
+        // Nor into a teardrop at a track's other end.
+        let room = |t: &Track, far: Pt, length: f64| {
+            (length / 2.0).min(length - teardrop_on(t, far)) - 0.005
+        };
+        let reach = room(ta, a_far, lengths[a])
+            .min(room(tb, b_far, lengths[b]))
+            .min(widths * width * half_turn);
         // The corner the arc takes away: no other track of the net may join it there, nor a pad
         // or a via of the net cover it, so the arc breaks no join.
         let (pa, pb) = (along(corner, u, reach), along(corner, v, reach));
@@ -394,6 +438,35 @@ mod tests {
         board.tracks[2].from.y -= 0.01;
         board.tracks[2].to.y -= 0.01;
         assert_eq!(round_bends(&mut board, ARC_WIDTHS), 1);
+    }
+
+    #[test]
+    fn an_arc_leaves_straight_the_part_of_a_track_a_teardrop_lies_along() {
+        let mut board = open_board();
+        let points = bend_at(&board);
+        bent(&mut board, "GND", points, 0.2);
+        // A teardrop on the first track, from its far end to 0.1 mm short of the corner.
+        let [a, corner, _] = points;
+        let tail = Pt::new(corner.x - 0.1, corner.y);
+        board.teardrops.push(netsmith_pcb::board::Teardrop {
+            net: "GND".into(),
+            layer: CopperLayer::Front,
+            points: vec![
+                Pt::new(a.x, a.y - 0.3),
+                Pt::new(tail.x, tail.y - 0.1),
+                Pt::new(tail.x, tail.y + 0.1),
+                Pt::new(a.x, a.y + 0.3),
+            ],
+        });
+        assert_eq!(round_bends(&mut board, ARC_WIDTHS), 1);
+        // The arc is smaller than four widths, and starts beyond the teardrop's tail.
+        let arc = board.tracks.iter().find_map(Track::arc).unwrap();
+        assert!(
+            arc.radius < ARC_WIDTHS * 0.2 && arc.radius >= 0.2,
+            "{}",
+            arc.radius
+        );
+        assert!(board.tracks[0].to.x >= tail.x, "{:?}", board.tracks[0].to);
     }
 
     #[test]

@@ -181,13 +181,18 @@ fn a_board_of_seventy_parts_is_checked_in_a_couple_of_seconds() {
 fn routed_boards_get_teardrops_that_change_no_track_and_pass_the_check() {
     let mut drops = 0;
     for (n, board) in hard_boards(6).into_iter().enumerate() {
+        // With no arcs, which keep clear of the teardrops (`routed_boards_bend_by_arcs_...`).
         let (mut with, mut without) = (board.clone(), board);
-        route_with(&mut with, RouteOptions::default());
+        let square = RouteOptions {
+            arcs: 0.0,
+            ..RouteOptions::default()
+        };
+        route_with(&mut with, square);
         route_with(
             &mut without,
             RouteOptions {
                 teardrops: false,
-                ..RouteOptions::default()
+                ..square
             },
         );
         assert_eq!(with.tracks, without.tracks, "board {n}");
@@ -243,9 +248,11 @@ fn routed_boards_bend_by_arcs_that_the_check_passes_and_the_same_lines_route() {
             },
         )
         .left;
-        // The arcs come after the search: the same lines route, with the same vias.
+        // The arcs come after the search: the same lines route, with the same vias, and after
+        // the teardrops, which they keep as they are.
         assert_eq!(left, left_square, "board {n}");
         assert_eq!(round.vias, square.vias, "board {n}");
+        assert_eq!(round.teardrops, square.teardrops, "board {n}");
         let drawn = round.tracks.iter().filter(|t| t.mid.is_some()).count();
         assert_eq!(round.tracks.len(), square.tracks.len() + drawn, "board {n}");
         assert!(square.tracks.iter().all(|t| t.mid.is_none()));
