@@ -8,8 +8,8 @@ use crate::checker::{Checker, Res};
 use std::collections::{HashMap, HashSet};
 
 use crate::model::{
-    Balance, Catalog, Chain, Draw, ExplicitJoin, FieldId, InstId, InstKind, Member, Net, RExpr,
-    Relation,
+    Balance, Catalog, Chain, DcKind, Draw, ExplicitJoin, FieldId, InstId, InstKind, Member, Net,
+    RExpr, Relation,
 };
 
 #[derive(Clone, Copy)]
@@ -229,7 +229,7 @@ impl Checker<'_> {
             };
             match op {
                 ConnectOp::Same => {
-                    self.finish_chain(&mut chain);
+                    self.finish_chain(&mut chain, c.span);
                     match (prev, next) {
                         (End::Pin(a), End::Pin(b)) => self.union(a, b),
                         (End::Iface(a), End::Iface(b)) => {
@@ -287,17 +287,21 @@ impl Checker<'_> {
                 }
             }
         }
-        self.finish_chain(&mut chain);
+        self.finish_chain(&mut chain, c.span);
     }
 
-    fn finish_chain(&mut self, chain: &mut Option<ChainBuilder>) {
+    fn finish_chain(&mut self, chain: &mut Option<ChainBuilder>, span: Span) {
         if let Some(b) = chain.take()
             && !b.parts.is_empty()
         {
+            let source = self.cur_source();
             self.model.chains.push(Chain {
                 start: b.start,
                 parts: b.parts,
                 end: b.end,
+                source,
+                span,
+                stopped_by: None,
             });
         }
     }
@@ -650,6 +654,7 @@ impl Checker<'_> {
         self.balance_currents();
         self.derive_bias();
         self.derive_chain_values();
+        self.chain_voltage_law();
         self.equate_bus_values();
         self.derive_bus_figures();
         self.derive_temperature_shift();
@@ -992,25 +997,7 @@ impl Checker<'_> {
             })
             .collect();
         for chain in self.model.chains.clone() {
-            let Some(scope) = self.model.instance(chain.parts[0]).parent else {
-                continue;
-            };
-            let start = self.find(chain.start.0);
-            let mut starts: Vec<(bool, String, InstId)> = Vec::new();
-            for &(rail, pos) in &rails {
-                let Some(owner) = self.model.owner_of(rail) else {
-                    continue;
-                };
-                let own = owner == scope;
-                if !own && self.model.instance(owner).parent != Some(scope) {
-                    continue;
-                }
-                if self.find(pos.0) == start {
-                    starts.push((!own, self.model.path_of(rail), rail));
-                }
-            }
-            starts.sort();
-            let rail = starts.first().map(|&(_, _, rail)| rail);
+            let rail = self.chain_rail(&chain, &rails);
             let peak = rail.and_then(|r| self.model.peak_of(r));
             let reverse = rail.and_then(|r| self.model.reverse_peak_of(r));
             let mut reverse_met = false;
@@ -1035,6 +1022,191 @@ impl Checker<'_> {
                 }
             }
         }
+    }
+
+    /// The rail a chain starts on: one of `rails` (each with its `pos`) whose `pos` is on the
+    /// chain's start net, among those the chain's scope can see (as for `derive_bias`). The
+    /// rails the scope declares itself come before the rails of what it holds, and then the
+    /// first by path stands, which keeps the choice independent of statement order.
+    fn chain_rail(&mut self, chain: &Chain, rails: &[(InstId, InstId)]) -> Option<InstId> {
+        let scope = self.model.instance(chain.parts[0]).parent?;
+        let start = self.find(chain.start.0);
+        let mut starts: Vec<(bool, String, InstId)> = Vec::new();
+        for &(rail, pos) in rails {
+            let Some(owner) = self.model.owner_of(rail) else {
+                continue;
+            };
+            let own = owner == scope;
+            if !own && self.model.instance(owner).parent != Some(scope) {
+                continue;
+            }
+            if self.find(pos.0) == start {
+                starts.push((!own, self.model.path_of(rail), rail));
+            }
+        }
+        starts.sort();
+        starts.first().map(|&(_, _, rail)| rail)
+    }
+
+    /// Kirchhoff's voltage law along each `~>` chain across a rail (ADR 0113): the relation
+    /// `I == (V - Vf1 - Vf2 ...) / (R1 + R2 ...)`, so the series current is known before the
+    /// parts are picked and a window on it (an LED's `.current`) picks them.
+    ///
+    /// The chain starts on a rail's `pos` (the rail `chain_rail` finds) and ends on a net with
+    /// the same rail's `neg`, and nothing taps it between its parts (no pin at all but the two
+    /// of the chain, where `chain_currents` counts only parts), so one current passes
+    /// through every part and the parts' drops add up to the rail's voltage. Each part is
+    /// what its `dc` statement says it is, the element the DC analysis after the pick solves
+    /// (ADR 0076): a `dc resistor` drops `I * R`, a `dc diode` that conducts drops its forward
+    /// voltage. The relation is that of every diode conducting; one that blocks makes the
+    /// right side negative, and a current window above zero refuses it, as the analysis would.
+    /// `I` is the through-current of the first part whose current a statement narrowed, or else
+    /// of the first part that has one; the others are equal to it (`chain_currents`).
+    ///
+    /// A part that is not a resistor or a diode the way the chain runs through it (no `dc`, a
+    /// MOSFET, a diode turned round) leaves the current free: the chain records it in
+    /// `stopped_by`, and the solver names it when it picks a part of the chain with nothing
+    /// limiting it. A chain with no resistor (a diode across a rail) has no current of its own
+    /// to say, and gets nothing.
+    fn chain_voltage_law(&mut self) {
+        let rails: Vec<(InstId, InstId)> = self
+            .model
+            .instances()
+            .filter_map(|(id, _)| Some((id, self.model.rail_of(id)?.1)))
+            .collect();
+        // Every pin on a net, not only the parts' terminals: a rail or a port on a junction can
+        // take current from the chain as a third part can.
+        let mut counts: HashMap<usize, usize> = HashMap::new();
+        for net in self.model.nets.clone() {
+            if let Some(pin) = net.pins.first() {
+                counts.insert(self.find(pin.0), net.pins.len());
+            }
+        }
+        for index in 0..self.model.chains.len() {
+            let chain = self.model.chains[index].clone();
+            let Some(rail) = self.chain_rail(&chain, &rails) else {
+                continue;
+            };
+            let (voltage, _, neg) = self.model.rail_of(rail).expect("a rail");
+            if self.find(neg.0) != self.find(chain.end.0) || self.is_tapped(&counts, &chain.parts) {
+                continue;
+            }
+            let mut resistances: Vec<FieldId> = Vec::new();
+            let mut drops: Vec<FieldId> = Vec::new();
+            let mut stopped_by = None;
+            for &part in &chain.parts {
+                let inst = self.model.instance(part);
+                let element = inst
+                    .dc
+                    .as_ref()
+                    .filter(|el| inst.bridge.is_some_and(|(a, b)| el.pins == [a, b]));
+                match element.map(|el| (el.kind, el.values[0])) {
+                    Some((DcKind::Resistor, r)) => resistances.push(r),
+                    Some((DcKind::Diode, vf)) => drops.push(vf),
+                    _ => {
+                        stopped_by = Some(part);
+                        break;
+                    }
+                }
+            }
+            if stopped_by.is_some() {
+                self.model.chains[index].stopped_by = stopped_by;
+                continue;
+            }
+            // The current a statement narrowed (an LED's window), so that a failure is said of
+            // the field the design wrote; else the first part's.
+            let currents: Vec<FieldId> = chain
+                .parts
+                .iter()
+                .filter_map(|&p| self.model.through_of(p))
+                .collect();
+            let Some(&current) = currents
+                .iter()
+                .find(|&&f| !self.model.field(f).narrowed_at.is_empty())
+                .or(currents.first())
+            else {
+                continue;
+            };
+            let sum = |fields: &[FieldId]| -> Option<RExpr> {
+                fields.iter().fold(None, |acc, &f| {
+                    Some(match acc {
+                        None => RExpr::Field(f),
+                        Some(e) => RExpr::Bin(BinOp::Add, Box::new(e), Box::new(RExpr::Field(f))),
+                    })
+                })
+            };
+            let Some(resistance) = sum(&resistances) else {
+                continue;
+            };
+            let across = drops.iter().fold(RExpr::Field(voltage), |acc, &vf| {
+                RExpr::Bin(BinOp::Sub, Box::new(acc), Box::new(RExpr::Field(vf)))
+            });
+            let written = self.chain_written(&chain, current, voltage, &drops, &resistances);
+            std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
+                lhs: RExpr::Field(current),
+                op: CmpOp::EqEq,
+                rhs: RExpr::Bin(BinOp::Div, Box::new(across), Box::new(resistance)),
+                source: chain.source,
+                span: chain.span,
+                written,
+                own: false,
+            });
+        }
+    }
+
+    /// The chain's relation as the board or module that writes the chain would write it by hand
+    /// (`.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`), at the
+    /// chain's line, so that it reaches the design's notes as a hand-written one does. A chain
+    /// in a part's definition or in the standard library has none, as a statement there has none.
+    fn chain_written(
+        &self,
+        chain: &Chain,
+        current: FieldId,
+        voltage: FieldId,
+        drops: &[FieldId],
+        resistances: &[FieldId],
+    ) -> Option<crate::model::Written> {
+        let scope = self.model.instance(chain.parts[0]).parent?;
+        if self.is_library(chain.source)
+            || !matches!(
+                self.model.instance(scope).kind,
+                InstKind::Board | InstKind::Module
+            )
+        {
+            return None;
+        }
+        let path = |f: FieldId| {
+            let field = self.model.field(f);
+            let owner = self.model.path_below(field.owner, scope);
+            if owner.is_empty() {
+                format!(".{}", field.name)
+            } else {
+                format!(".{owner}.{}", field.name)
+            }
+        };
+        let mut across = path(voltage);
+        for &vf in drops {
+            across = format!("{across} - {}", path(vf));
+        }
+        if !drops.is_empty() {
+            across = format!("({across})");
+        }
+        let mut resistance = resistances
+            .iter()
+            .map(|&r| path(r))
+            .collect::<Vec<_>>()
+            .join(" + ");
+        if resistances.len() > 1 {
+            resistance = format!("({resistance})");
+        }
+        let (file, line) = self.line_in(chain.source, chain.span);
+        Some(crate::model::Written {
+            scope,
+            text: format!("{} == {across} / {resistance}", path(current)),
+            file,
+            line,
+            chain: chain.parts.clone(),
+        })
     }
 
     /// The relation `field = value` that a chain gives a part, pointed at the statement that

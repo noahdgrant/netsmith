@@ -19,10 +19,11 @@ mod mates;
 pub use mates::{SystemMate, system_mates};
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use netsmith_check::{
-    Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
+    Board, Domain, FieldId, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System,
+    SystemBoard,
 };
 use netsmith_core::{
     Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember,
@@ -626,8 +627,26 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, Vec<String>>) -> Vec<Note> {
             }),
             anchors,
             result: None,
+            derived: false,
         });
     }
+    let fields_of = |relation: &netsmith_check::Relation| {
+        let mut fields = Vec::new();
+        relation.lhs.fields(&mut fields);
+        relation.rhs.fields(&mut fields);
+        fields
+    };
+    // The `==` relations the source writes, by the fields each names: a board that writes the
+    // relation of a `~>` chain by hand as well (ADR 0113) gets the one note it wrote.
+    let by_hand: HashSet<(InstId, BTreeSet<FieldId>)> = model
+        .relations()
+        .iter()
+        .filter(|r| r.op == netsmith_lang::ast::CmpOp::EqEq)
+        .filter_map(|r| {
+            let written = r.written.as_ref().filter(|w| w.chain.is_empty())?;
+            Some((written.scope, fields_of(r).into_iter().collect()))
+        })
+        .collect();
     for relation in model.relations() {
         let Some(written) = &relation.written else {
             continue;
@@ -635,15 +654,25 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, Vec<String>>) -> Vec<Note> {
         if relation.op != netsmith_lang::ast::CmpOp::EqEq {
             continue;
         }
-        let mut fields = Vec::new();
-        relation.lhs.fields(&mut fields);
-        relation.rhs.fields(&mut fields);
+        let fields = fields_of(relation);
         if fields.iter().any(|&f| model.is_place_field(f)) {
             continue;
         }
+        let derived = !written.chain.is_empty();
+        if derived && by_hand.contains(&(written.scope, fields.iter().copied().collect())) {
+            continue;
+        }
         let mut anchors: Vec<String> = Vec::new();
-        for f in &fields {
-            if let Some(part) = drawn_part_of(model, model.field(*f).owner, drawn) {
+        // A relation is about the parts whose fields it names, in the order it names them (the
+        // part whose current a chain's relation says comes first, as a hand-written one puts
+        // it). A chain's relation is about the chain's parts only: the rail it names is the
+        // chain's supply, whichever part gives it.
+        let owners = fields
+            .iter()
+            .map(|&f| model.field(f).owner)
+            .filter(|owner| !derived || written.chain.contains(owner));
+        for owner in owners {
+            if let Some(part) = drawn_part_of(model, owner, drawn) {
                 let path = model.path_of(part);
                 if !anchors.contains(&path) {
                     anchors.push(path);
@@ -711,6 +740,7 @@ fn notes_of(model: &Model, drawn: &HashMap<InstId, Vec<String>>) -> Vec<Note> {
             }),
             anchors,
             result,
+            derived,
         });
     }
     notes

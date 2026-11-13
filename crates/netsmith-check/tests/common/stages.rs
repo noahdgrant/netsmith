@@ -31,7 +31,7 @@ module LdoStage {
 
 module Indicator {
     .power: Rail
-    .power.current &= 5mA..15mA
+    .power.current &= 0.5mA..2mA
     .limit: Resistor { .resistance &= 1kohm +/- 1% }
     .led: Led {
         .color &= \"GREEN\"

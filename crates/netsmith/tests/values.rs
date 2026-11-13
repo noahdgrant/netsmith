@@ -57,6 +57,55 @@ fn a_board_that_states_nothing_gets_a_finding_for_each_cause() {
     );
 }
 
+/// A part with a bridge and a current, and no `dc` statement, in a chain across a rail.
+const UNMODELLED: &str = r#"import std::parts::passive::Resistor
+import std::sources::Rail
+
+part Lamp {
+    .designator &= "DS"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    .current: Current
+    bridge .a ~> .b
+}
+
+board Dim {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .lamp: Lamp { .current &= 5mA..15mA }
+    .r: Resistor
+    .supply.pos ~> .r ~> .lamp ~> .supply.neg
+}
+"#;
+
+#[test]
+fn a_chain_that_cannot_set_its_current_names_the_part_that_stops_it() {
+    // ADR 0113: the chain would give the resistor its value from the lamp's current, but the
+    // lamp states no DC element, so the current is free and the finding says which part.
+    // The lamp has no KiCad symbol, so the board is built with no library read, as the editor
+    // builds it.
+    let built = netsmith::outcome_with(
+        "values.nsm",
+        UNMODELLED,
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{}", netsmith::render_problems(&e)));
+    let warnings: Vec<String> = built
+        .boards
+        .iter()
+        .flat_map(|b| b.guideline_warnings())
+        .collect();
+    assert_eq!(
+        warnings,
+        [
+            "Dim: unconstrained pick guideline: `r` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 10Ω 1% 0402 C25077; the `~>` chain it is in sets no current, because `lamp` (Lamp) in it is not a `dc resistor` or a `dc diode` the way the chain runs: state it, `.r.resistance &= 4.7kohm +/- 5%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.r.resistance &= 10kohm..100kohm`",
+        ]
+    );
+}
+
 #[test]
 fn what_the_message_says_to_write_ends_the_finding() {
     let src = PLAIN

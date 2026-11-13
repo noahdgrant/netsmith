@@ -37,12 +37,14 @@ const INDICATOR = `//! A status light on a rail.
 import std::parts::passive::{Resistor, Led, Capacitor}
 import std::sources::Rail
 
-/// A light with its series resistor and a bypass capacitor.
+/// A light with its series resistor and a bypass capacitor. On a 3.3 V rail, 120 ohm puts 5 to 14 mA
+/// through the light at every corner, which the chain works out (ADR 0113), inside the rail's
+/// 5 to 15 mA.
 module Indicator {
     .power: Rail
     .power.current &= 5mA..15mA
 
-    .limit: Resistor { .resistance &= 1kohm +/- 1% }
+    .limit: Resistor { .resistance &= 120ohm +/- 1% }
     .led: Led {
         .color &= "GREEN"
         .forward_voltage &= 1.8V..2.5V

@@ -25,9 +25,10 @@
 /// of the part), so it carries the tolerance of the resistance and the window of the current, and
 /// the product is the largest power they admit; a current that flows the other way has a negative
 /// drop and gives the same power. The worst case is the current the circuit really carries:
-/// `.led.current &= 5mA..15mA` is a window the LED must stay in, and the equation `.led.current
-/// == (.input.voltage - .led.forward_voltage) / .r1.resistance` says what the current is for the
-/// resistor under test and narrows the window to that value, so the resistor is checked at about
+/// `.led.current &= 5mA..15mA` is a window the LED must stay in, and the relation of the `~>`
+/// chain across the rail, `.led.current == (.input.voltage - .led.forward_voltage) /
+/// .r1.resistance` (ADR 0113), says what the current is for the resistor under test and narrows
+/// the window to that value, so the resistor is checked at about
 /// 7 mA to 10.6 mA and 36 mW, not at 15 mA and 88 mW (the narrowing rule is in the guide's
 /// "Narrowing and relations", and in `propagate` in `crates/netsmith-solve/src/solve.rs`).
 ///
@@ -133,7 +134,9 @@ generic Capacitor {
     catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional }
 }
 
-/// A light-emitting diode. Current flows from anode to cathode.
+/// A light-emitting diode. Current flows from anode to cathode. At DC it is a diode that drops
+/// `.forward_voltage` (ADR 0113), so a `~>` chain from a rail through a resistor and the LED
+/// back to the rail sets the LED's current, and a window on `.current` picks the resistor.
 generic Led {
     .designator &= "D"
 
@@ -153,6 +156,7 @@ generic Led {
     .drop == .forward_voltage
     .current >= 0mA
     bridge .anode ~> .cathode
+    dc diode .anode .cathode .forward_voltage
 
     .package: Package
     catalog led { .color, .forward_voltage, .package }

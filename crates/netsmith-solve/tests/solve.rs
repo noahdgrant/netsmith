@@ -135,11 +135,15 @@ fn what_cannot_be_evaluated_is_deferred() {
     // the LED's, and the drop is worked out once a resistor is chosen. The current is the one
     // the chosen resistor lets through (the equation narrows the stated 8..12 mA window to
     // it), not the window.
+    // The DC analysis, which solves the LED as a diode (ADR 0113), widens its range outward by
+    // a rounding's worth, so the ends are compared to a millionth.
     let (_, s) = run(LED);
-    assert!(close(
-        range(&s, "r1.current"),
-        (0.008415841584158413, 0.01161616161616162)
-    ));
+    let (lo, hi) = range(&s, "r1.current");
+    let near = |x: f64, y: f64| (x - y).abs() <= 1e-6 * y;
+    assert!(
+        near(lo, 0.008415841584158413) && near(hi, 0.01161616161616162),
+        "{lo} {hi}"
+    );
     assert!(s.deferred.is_empty(), "{:?}", s.deferred);
     assert!(close(range(&s, "led.drop"), (1.8, 2.2)));
 
@@ -1964,13 +1968,12 @@ board Supply {
 fn a_part_current_is_not_set_from_a_balance_with_an_unmodelled_pin() {
     // The balance on the stage's output has two terms (the divider's first resistor and the
     // port, 0 to 2 A) and the inductor's pin, which is nobody's term. Setting the resistor to
-    // the port's whole current gave 2 A through 100 kohm and a power of 404 kW.
+    // the port's whole current gave 2 A through 100 kohm and a power of 404 kW. The divider is a
+    // chain across the stage's output, so its current is its own (ADR 0113): 3.3 V +/- 3% over
+    // 198 to 202 kohm, some 16 uA.
     let (_, s) = real(OUTLINE_STAGE);
-    assert!(
-        s.model
-            .domain_at("stage.r_top.current")
-            .is_none_or(|d| *d == Domain::Unset)
-    );
+    let (lo, hi) = range(&s, "stage.r_top.current");
+    assert!(lo > 15e-6 && hi < 18e-6, "{lo} {hi}");
     let shown: Vec<String> = s
         .deferred
         .iter()
@@ -2213,7 +2216,9 @@ fn a_candidate_whose_own_current_is_still_too_much_fails_with_the_numbers() {
 
 #[test]
 fn an_equation_that_does_not_fit_the_window_is_reported_against_the_window_as_written() {
-    // 330 ohm gives 7.05 to 10.56 mA: partly outside 5 to 8 mA, and wholly outside 20 to 30 mA.
+    // 330 ohm gives 7.05 to 10.56 mA over the stated forward voltage, and somewhat less over the
+    // row of the LED that is named as the closest: partly outside 5 to 8 mA, and wholly outside
+    // 20 to 30 mA.
     let fixed = |window: &str| {
         LED_EXAMPLE
             .replace(
@@ -2231,7 +2236,7 @@ fn an_equation_that_does_not_fit_the_window_is_reported_against_the_window_as_wr
         assert!(
             msgs.iter().any(
                 |m| m.contains(&format!("`led.current` must stay within {needle}"))
-                    && m.contains("works out to 7.05")
+                    && m.contains("works out to 7.")
             ),
             "{window}: {msgs:#?}"
         );

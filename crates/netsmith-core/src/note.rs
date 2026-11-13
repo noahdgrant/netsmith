@@ -43,4 +43,10 @@ pub struct Note {
     /// For a relation that gave a field its value, what the solver settled on
     /// (`led.current = 8.6mA`), when the model has it.
     pub result: Option<String>,
+    /// For a relation: the checker derived it from a `~>` chain across a rail (Kirchhoff's
+    /// voltage law, ADR 0113) and no statement writes it. Its text is the relation as a hand-
+    /// written one would say it, `at` is the chain's line, and its anchors are the chain's
+    /// parts, in the order its text names them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub derived: bool,
 }

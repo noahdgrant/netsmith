@@ -102,9 +102,10 @@ fn a_checker_error_written_inside_a_board_says_the_board() {
 
     // A statement of the board itself.
     let bad = LED.replace(
-        "    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance\n",
-        "    .supply.voltage &= 12V\n",
+        "    .supply.pos ~> .r1 ~> .led ~> .supply.neg\n",
+        "    .supply.voltage &= 12V\n    .supply.pos ~> .r1 ~> .led ~> .supply.neg\n",
     );
+    assert_ne!(bad, LED);
     let root = project("stage-check-board-level", &bad);
     let analysis = open(&root).analysis();
     let p = analysis

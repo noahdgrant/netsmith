@@ -29,13 +29,15 @@ fn close(a: (f64, f64), b: (f64, f64)) -> bool {
     near(a.0, b.0) && near(a.1, b.1)
 }
 
-/// The example with the LED board's LED run at `current` whatever its resistor says: the
-/// formula that ties the current to the resistor is dropped, so the board draws what is
-/// stated and the parts picked do not matter.
+/// The example with the LED board's LED run at `current` whatever its resistor says: a pin of
+/// the board on the LED's anode could take current from the chain, so the chain no longer
+/// ties the current to the resistor (ADR 0113), and the board draws what is stated and the
+/// parts picked do not matter. The chain is still whole for the balance, which counts the
+/// parts' pins (ADR 0014).
 fn led_draws(current: &str) -> String {
     changed(
-        ".led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance\n",
-        "",
+        "    .input.pos ~> .r1 ~> .led ~> .input.neg\n",
+        "    .input.pos ~> .r1 ~> .led ~> .input.neg\n    .probe: Pin\n    .probe ~ .led.anode\n",
     )
     .replace(".current &= 5mA..20mA", &format!(".current &= {current}"))
 }

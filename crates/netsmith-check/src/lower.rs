@@ -709,6 +709,7 @@ impl Checker<'_> {
                 .join(" "),
             file,
             line,
+            chain: Vec::new(),
         })
     }
 

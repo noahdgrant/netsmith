@@ -756,7 +756,8 @@
           "led",
           "r1"
         ],
-        "result": "led.current = 7.277mA..16.82mA"
+        "result": "led.current = 7.277mA..16.82mA",
+        "derived": true
       }
     ],
     "modules": []

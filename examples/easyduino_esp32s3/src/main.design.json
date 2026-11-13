@@ -4091,6 +4091,21 @@
           "en_100n_a"
         ],
         "result": null
+      },
+      {
+        "path": "",
+        "kind": "relation",
+        "text": ".power_led_resistor.current == (.vbus.voltage - .power_led.forward_voltage) / .power_led_resistor.resistance",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 170
+        },
+        "anchors": [
+          "power_led_resistor",
+          "power_led"
+        ],
+        "result": null,
+        "derived": true
       }
     ],
     "modules": [

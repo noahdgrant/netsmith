@@ -64,7 +64,7 @@ fn the_standard_parts_state_their_dc_element() {
         &'static [&'static str],
         &'static [&'static str],
     );
-    let cases: [Case; 9] = [
+    let cases: [Case; 10] = [
         (
             "passive::Resistor",
             "Resistor",
@@ -96,6 +96,13 @@ fn the_standard_parts_state_their_dc_element() {
         (
             "diode::Schottky",
             "Schottky",
+            DcKind::Diode,
+            &["anode", "cathode"],
+            &["forward_voltage"],
+        ),
+        (
+            "passive::Led",
+            "Led",
             DcKind::Diode,
             &["anode", "cathode"],
             &["forward_voltage"],
@@ -143,7 +150,6 @@ fn the_other_standard_parts_with_a_bridge_state_none_yet() {
     // decision of their own, and nothing here changes how they are solved.
     for (import, name) in [
         ("passive::Capacitor", "Capacitor"),
-        ("passive::Led", "Led"),
         ("passive::Switch", "Switch"),
         ("diode::Zener", "Zener"),
         ("diode::Tvs", "Tvs"),

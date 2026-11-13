@@ -12,6 +12,8 @@
 //!   not place, and the next ` ```text ` block is the findings as `fab` prints them.
 //! - ` ```nsm solve warns ` must build, and the next ` ```text ` block is the guideline
 //!   warnings (ADR 0036), one per line, as the command line prints them after `warning: `.
+//!   ` ```nsm evaluate warns ` is the same for a board of parts that have no KiCad symbol in the
+//!   sample libraries: it is built with no library read, as the editor builds.
 //! - ` generics ` on a ` ```nsm solve ` block offers generic parts after the catalogs' rows, as a
 //!   project does by default (ADR 0047, `series = "E24"`).
 //! - ` ```nsm solve notes ` must build, and the next ` ```text ` block is the notes that name a
@@ -567,6 +569,31 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
                         next.text
                     );
                 }
+            }
+        } else if b.has("evaluate") && b.has("warns") {
+            let outcome =
+                outcome_with(name, &b.text, loader, &catalogs, None).unwrap_or_else(|e| {
+                    panic!("{at}: should build:\n{}", netsmith::render_problems(&e))
+                });
+            let warnings: String = outcome
+                .boards
+                .iter()
+                .flat_map(|x| x.guideline_warnings())
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !warnings.is_empty(),
+                "{at}: this block should warn and does not"
+            );
+            let next = next_text();
+            if bless {
+                rewrites.push((next.body.0, next.body.1, warnings));
+            } else {
+                assert!(
+                    same(&next.text, &warnings),
+                    "{at}: the warnings differ.\n--- guide\n{}\n--- tool\n{warnings}",
+                    next.text
+                );
             }
         } else if b.has("evaluate") && b.has("picks") {
             let outcome =

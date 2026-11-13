@@ -252,7 +252,7 @@
         "refdes": "D1",
         "kind": "Led",
         "provides": [],
-        "value": "XL-1608UGC-04",
+        "value": "LTST-C190KGKT",
         "package": "0603",
         "path": "lights.led_a",
         "pins": [
@@ -282,7 +282,7 @@
         "refdes": "D2",
         "kind": "Led",
         "provides": [],
-        "value": "XL-1608UGC-04",
+        "value": "LTST-C190KGKT",
         "package": "0603",
         "path": "lights.led_b",
         "pins": [
@@ -312,7 +312,7 @@
         "refdes": "D3",
         "kind": "Led",
         "provides": [],
-        "value": "XL-1608UGC-04",
+        "value": "LTST-C190KGKT",
         "package": "0603",
         "path": "lights.led_c",
         "pins": [
@@ -1968,14 +1968,32 @@
       "net_currents": [
         {
           "net": "3V3",
-          "current": 0.10148936170212766,
-          "least_width": 0.016000590116961172,
+          "current": 0.11586034425492842,
+          "least_width": 0.019207288519237038,
           "vias": 1
         },
         {
           "net": "GND",
-          "current": 0.10148936170212766,
-          "least_width": 0.016000590116961172,
+          "current": 0.11586034425492842,
+          "least_width": 0.019207288519237038,
+          "vias": 1
+        },
+        {
+          "net": "net-lights.led_a.anode",
+          "current": 0.004790327523390573,
+          "least_width": 0.00023718880599675054,
+          "vias": 1
+        },
+        {
+          "net": "net-lights.led_b.anode",
+          "current": 0.004790327523390573,
+          "least_width": 0.00023718880599675054,
+          "vias": 1
+        },
+        {
+          "net": "net-lights.led_c.anode",
+          "current": 0.004790327523390573,
+          "least_width": 0.00023718880599675054,
           "vias": 1
         },
         {
@@ -3211,6 +3229,51 @@
         },
         "anchors": [],
         "result": null
+      },
+      {
+        "path": "lights",
+        "kind": "relation",
+        "text": ".r_a.current == (.power.voltage - .led_a.forward_voltage) / .r_a.resistance",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 142
+        },
+        "anchors": [
+          "lights.r_a",
+          "lights.led_a"
+        ],
+        "result": "r_a.current = 2.205mA..4.791mA",
+        "derived": true
+      },
+      {
+        "path": "lights",
+        "kind": "relation",
+        "text": ".r_b.current == (.power.voltage - .led_b.forward_voltage) / .r_b.resistance",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 143
+        },
+        "anchors": [
+          "lights.r_b",
+          "lights.led_b"
+        ],
+        "result": "r_b.current = 2.205mA..4.791mA",
+        "derived": true
+      },
+      {
+        "path": "lights",
+        "kind": "relation",
+        "text": ".r_c.current == (.power.voltage - .led_c.forward_voltage) / .r_c.resistance",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 144
+        },
+        "anchors": [
+          "lights.r_c",
+          "lights.led_c"
+        ],
+        "result": "r_c.current = 2.205mA..4.791mA",
+        "derived": true
       }
     ],
     "modules": [
