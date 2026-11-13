@@ -743,20 +743,6 @@
           "r1"
         ],
         "result": null
-      },
-      {
-        "path": "",
-        "kind": "relation",
-        "text": ".led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance",
-        "at": {
-          "file": "two_boards.nsm",
-          "line": 97
-        },
-        "anchors": [
-          "led",
-          "r1"
-        ],
-        "result": "led.current = 7.277mA..16.82mA"
       }
     ],
     "modules": []
