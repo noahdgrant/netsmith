@@ -7327,7 +7327,7 @@ physical for Ell {
 }
 ```
 
-The box round the edge has its top left at the board's origin, so the smallest x and y of the corners (and of an arc's bulge) are 0mm. The polygon is the whole edge: its box is the board's width and height, so `.width`, `.height` and `.corner_radius` are not stated beside it. Every value is a fixed length, the number the case drawing gives: a range, a tolerance or a value read from another field is refused. The placer keeps the parts inside the polygon and `fab` checks them against it; `Edge.Cuts` and the Gerbers carry its lines and arcs, and the editor draws it. The router routes inside the polygon's box (routing to the polygon's own edge is issue #495), and the design rules check holds the copper to the edge. `netsmith dxf import` writes a `polygon` for an outline that is not a rounded rectangle.
+The box round the edge has its top left at the board's origin, so the smallest x and y of the corners (and of an arc's bulge) are 0mm. The polygon is the whole edge: its box is the board's width and height, so `.width`, `.height` and `.corner_radius` are not stated beside it. Every value is a fixed length, the number the case drawing gives: a range, a tolerance or a value read from another field is refused. The placer keeps the parts inside the polygon and `fab` checks them against it; `Edge.Cuts`, the Gerbers and `board3d --step` carry its lines and arcs, and the editor draws it. The router routes inside the polygon's box (routing to the polygon's own edge is issue #495), and the design rules check holds the copper to the edge. `netsmith dxf import` writes a `polygon` for an outline that is not a rounded rectangle.
 
 Misuse: a size beside the polygon, and a corner that is a range.
 

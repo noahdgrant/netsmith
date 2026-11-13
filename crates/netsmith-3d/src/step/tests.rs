@@ -130,6 +130,7 @@ pub(crate) fn scene() -> Scene {
             height: 20.0,
             corner_radius: 2.0,
             outline: Vec::new(),
+            outline_edges: Vec::new(),
             thickness: 1.6,
             stack_thickness: 1.6,
             layers: vec![
@@ -292,6 +293,27 @@ fn check_solids(file: &str) -> BTreeMap<String, usize> {
         }
     }
     named
+}
+
+/// FNV-1a of the bytes: a fingerprint that is the same on every platform and Rust release.
+fn fingerprint(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+#[test]
+fn a_rounded_rectangle_board_is_written_as_before_polygon_outlines() {
+    // The bytes the writer gave this scene before a polygon outline was written as itself
+    // (issue #543): a rounded rectangle's board did not change. A change of the writer that
+    // moves them is reviewed in a STEP reader and this number updated.
+    let file = step(&scene(), "Demo");
+    assert_eq!(
+        fingerprint(&file),
+        12_552_831_323_492_200_493,
+        "{} bytes",
+        file.len()
+    );
 }
 
 #[test]

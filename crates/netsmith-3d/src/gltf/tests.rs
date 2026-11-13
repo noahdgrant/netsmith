@@ -75,6 +75,7 @@ fn scene() -> Scene {
             height: 20.0,
             corner_radius: 0.0,
             outline: Vec::new(),
+            outline_edges: Vec::new(),
             thickness: 1.6,
             stack_thickness: 1.6,
             layers: vec![

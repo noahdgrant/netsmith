@@ -347,7 +347,8 @@ netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
   height came from (`Resistor; height catalog`, _Height provenance_).
 - **Exact solids**: planes and cylinders, so a hole's diameter can be measured and its centre
   snapped to. The board runs through its chosen thickness (`board.thickness`, from `-thickness`
-  to 0) with its rounded outline, its cutouts and every drilled hole, round or a slot. A part is
+  to 0) with its outline (its rounded rectangle, or a `polygon`'s own lines and arcs, an arc a
+  cylinder), its cutouts and every drilled hole, round or a slot. A part is
   its _Package shape_, one solid per piece named `body`, `metal` or `mark`, or else its body box
   from its face to its far end (`body`); pins that stand out of the far face by a stated length
   are a box named `pins`. A BGA's balls are the one shape made of flat faces: the 3D view's
