@@ -830,7 +830,7 @@ pub fn fab_order(
         }
         let opened = match locks {
             OrderLocks::Ignored => {
-                // A picks file is refused even where the lock is left out (ADR 0121).
+                // A picks file is refused even where the lock is left out (ADR 0122).
                 netsmith_pipeline::picks::refuse(&source.path)?;
                 None
             }

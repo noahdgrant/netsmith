@@ -464,7 +464,7 @@ mod board {
     /// The parts whose pick is another row than the board's LCSC number: none. The design states
     /// a value, a package and what the rail needs, not a part number, and the solver picks the
     /// first row that fits; for 19 ceramics that is another row than the board's, and their
-    /// hand picks (`.lcsc &= ...` in `src/main.nsm`, ADR 0121) hold them to the board's numbers.
+    /// hand picks (`.lcsc &= ...` in `src/main.nsm`, ADR 0122) hold them to the board's numbers.
     const OTHER_ROW: &[&str] = &[];
 
     /// Every part of the board that has a number is sourced with that LCSC number.

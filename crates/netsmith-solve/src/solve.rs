@@ -1038,7 +1038,7 @@ impl Budget {
     }
 }
 
-/// A part's hand pick (ADR 0121): the `.lcsc` and `.mpn` the design narrowed it to, and where.
+/// A part's hand pick (ADR 0122): the `.lcsc` and `.mpn` the design narrowed it to, and where.
 #[derive(Debug, Clone)]
 struct HandPick {
     lcsc: Option<String>,
@@ -1086,7 +1086,7 @@ impl HandPick {
 }
 
 /// The hand picks of the parts of `model` that pick from a catalog, by path: each part whose
-/// `.lcsc` or `.mpn` holds one text (ADR 0121).
+/// `.lcsc` or `.mpn` holds one text (ADR 0122).
 fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
     let mut picks = BTreeMap::new();
     for (id, inst) in model.instances() {

@@ -213,7 +213,7 @@ designator (the members are named for what the part does: `.mcu` is U1, `.conver
   catalog row that fits the value, the package and the rail. For a 100 nF 0402 it would pick
   C1525 (16 V, Basic) where the board has C307331 (50 V), and for 1 uF, 4.7 uF, 2.2 uF and 10 uF
   parts the board's number is another row too. Each of those 19 ceramics states the board's number
-  in `src/main.nsm` (`.lcsc &= "C307331"`, a hand pick, ADR 0121), and the solver judges each by
+  in `src/main.nsm` (`.lcsc &= "C307331"`, a hand pick, ADR 0122), and the solver judges each by
   the design as it judges any row. The two Sunlord
   inductors, the shunts and every other part have the board's number. U2 is C89826, which is the
   LP2985**A**-33DBVR (1 % grade), where the board's value field says "LP2985-3.3"; C46550469

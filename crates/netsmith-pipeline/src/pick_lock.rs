@@ -96,7 +96,7 @@ pub fn read(file: &Path) -> Result<Option<PickLock>, String> {
 
 /// The catalogs to solve one source file with, and what to do with its lock afterwards: the
 /// catalogs hold the parts to the rows of the lock, when it exists. `None` when it does not. A
-/// picks file beside the source is an error that says how to move it into the source (ADR 0121).
+/// picks file beside the source is an error that says how to move it into the source (ADR 0122).
 pub fn open(
     source: &Path,
     catalogs: &Catalogs,

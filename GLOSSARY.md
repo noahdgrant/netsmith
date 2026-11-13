@@ -216,7 +216,7 @@ _Avoid_: Text, annotation, legend
 _Avoid_: Sidecar (the word for what it is, not its name), placement file (that is the pick-and-place file for the board house). The schematic has its own, the _Schematic layout file_.
 
 **Hand pick**:
-A narrowing of a part's `.lcsc` or `.mpn` in the source (`.c1.lcsc &= "C307331"`), members every part has: the part is held to the catalog row with that number, before the _Pick lock_, and the row is judged by everything the design says; a row that fails, or a number no row has, stops the run at the narrowing (ADR 0121). The lock then records the row.
+A narrowing of a part's `.lcsc` or `.mpn` in the source (`.c1.lcsc &= "C307331"`), members every part has: the part is held to the catalog row with that number, before the _Pick lock_, and the row is judged by everything the design says; a row that fails, or a number no row has, stops the run at the narrowing (ADR 0122). The lock then records the row.
 _Avoid_: picks file (`<stem>.picks.toml`, which held them once and is now refused), override, pinned (a _Pin_ is a part's lead)
 
 **Pick lock**:

@@ -1,4 +1,4 @@
-//! A hand pick (ADR 0121): a design that narrows a part's `.lcsc` or `.mpn` holds it to the
+//! A hand pick (ADR 0122): a design that narrows a part's `.lcsc` or `.mpn` holds it to the
 //! catalog row with that number, before the pick lock, and the row is judged by everything the
 //! design says. The rows are the standard resistor catalog's.
 

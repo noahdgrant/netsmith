@@ -1,4 +1,4 @@
-//! A hand pick end to end (ADR 0121): `.lcsc &= "..."` in the source holds a part to that row,
+//! A hand pick end to end (ADR 0122): `.lcsc &= "..."` in the source holds a part to that row,
 //! before the pick lock, and the lock records it; a picks file beside the source, which netsmith
 //! no longer reads, stops every command that solves with how to move its entries into the source.
 
@@ -135,7 +135,7 @@ fn a_picks_file_is_refused_with_the_narrowings_to_write() {
         let run = netsmith(&root, args);
         assert_eq!(run.status.code(), Some(2), "{args:?}: {}", stderr(&run));
         assert!(
-            stderr(&run).contains("main.picks.toml: netsmith no longer reads a picks file (ADR 0121)")
+            stderr(&run).contains("main.picks.toml: netsmith no longer reads a picks file (ADR 0122)")
                 && stderr(&run).contains("  in `board LedExample`:\n    .r1.lcsc &= \"C23151\""),
             "{args:?}: {}",
             stderr(&run)

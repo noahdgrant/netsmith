@@ -499,7 +499,7 @@ impl Workspace {
                 None => fs::read_to_string(&file.path),
             };
             // A picks file beside the source is refused with how to move it into the source
-            // (ADR 0121); the lock is not read here.
+            // (ADR 0122); the lock is not read here.
             if let Err(e) = netsmith_catalog::picks::refuse(&file.path) {
                 snapshot
                     .problems

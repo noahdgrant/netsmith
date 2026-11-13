@@ -9290,7 +9290,7 @@ The editor does not hold the parts to the lock: it solves from the source, as be
 
 ### A hand pick
 
-A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. The design then states the row's number on the part, and the part is held to that row (a hand pick, ADR 0121). Every part has two members for it, as it has `.designator`: `.lcsc`, the supplier's part number, and `.mpn`, the manufacturer's. Both are text, and a narrowing of either is the hand pick:
+A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. The design then states the row's number on the part, and the part is held to that row (a hand pick, ADR 0122). Every part has two members for it, as it has `.designator`: `.lcsc`, the supplier's part number, and `.mpn`, the manufacturer's. Both are text, and a narrowing of either is the hand pick:
 
 ```nsm evaluate
 import std::parts::passive::{Resistor, Led}

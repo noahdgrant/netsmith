@@ -1,4 +1,4 @@
-//! The picks file that netsmith no longer reads: `<stem>.picks.toml` (ADR 0121).
+//! The picks file that netsmith no longer reads: `<stem>.picks.toml` (ADR 0122).
 //!
 //! A hand pick is a narrowing in the source (`.c1.lcsc &= "C307331"`), so the file that once held
 //! them beside a source file is refused, and the message says what to write in its place: one
@@ -27,7 +27,7 @@ pub fn refuse(source: &Path) -> Result<(), String> {
 /// the entries it could read, by board, in the order board, part path.
 pub fn refusal(text: &str, name: &str) -> String {
     let mut message = format!(
-        "error: {name}: netsmith no longer reads a picks file (ADR 0121): a hand pick is a narrowing in the source. Write each entry as a narrowing in the body of its board, then delete the file"
+        "error: {name}: netsmith no longer reads a picks file (ADR 0122): a hand pick is a narrowing in the source. Write each entry as a narrowing in the body of its board, then delete the file"
     );
     let boards = moved(text);
     if boards.is_empty() {
@@ -88,7 +88,7 @@ mod tests {
         );
         assert_eq!(
             said,
-            "error: a.picks.toml: netsmith no longer reads a picks file (ADR 0121): a hand pick is a narrowing in the source. Write each entry as a narrowing in the body of its board, then delete the file:\n  in `board B`:\n    .c5.lcsc &= \"C307331\"\n    .stage.c1.mpn &= \"X-1\""
+            "error: a.picks.toml: netsmith no longer reads a picks file (ADR 0122): a hand pick is a narrowing in the source. Write each entry as a narrowing in the body of its board, then delete the file:\n  in `board B`:\n    .c5.lcsc &= \"C307331\"\n    .stage.c1.mpn &= \"X-1\""
         );
     }
 

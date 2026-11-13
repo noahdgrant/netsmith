@@ -146,7 +146,7 @@ impl Solver<'_> {
         }
     }
 
-    /// A part that the design holds to one row by its `.lcsc` or `.mpn` (a hand pick, ADR 0121)
+    /// A part that the design holds to one row by its `.lcsc` or `.mpn` (a hand pick, ADR 0122)
     /// is offered only that row, which every statement of the design and every relation then
     /// judge, as for a locked row. Returns `false` when the catalog has no such row, which it has
     /// reported at the narrowing.

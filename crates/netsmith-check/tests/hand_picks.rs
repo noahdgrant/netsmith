@@ -1,4 +1,4 @@
-//! `.lcsc` and `.mpn` are members of every part (ADR 0121): a board narrows them to hold a part to
+//! `.lcsc` and `.mpn` are members of every part (ADR 0122): a board narrows them to hold a part to
 //! a catalog row, and a part that declares `.mpn: String` declares what it already has.
 
 use netsmith_check::{Domain, Loader, check};
@@ -55,7 +55,7 @@ fn a_part_may_not_declare_them_as_anything_else() {
     let checked = check("main.nsm", &source(".lcsc: Voltage", ""), &Loader::std());
     assert!(
         checked.render().contains(
-            "`lcsc` is a member every part has, as text: the number of the catalog row it is (ADR 0121); declare it as `.lcsc: String` or not at all, and narrow it with `.lcsc &= \"...\"`"
+            "`lcsc` is a member every part has, as text: the number of the catalog row it is (ADR 0122); declare it as `.lcsc: String` or not at all, and narrow it with `.lcsc &= \"...\"`"
         ),
         "{}",
         checked.render()
