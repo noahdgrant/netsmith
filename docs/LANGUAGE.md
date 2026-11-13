@@ -218,7 +218,7 @@ Rules.
 - Statements end at a newline or at `;`.
 - A name that is not a plain identifier is written in single quotes: `.'1'`.
 
-Types you can declare: `Pin`; the quantities `Number`, `Voltage`, `Current`, `Resistance`, `Capacitance`, `Inductance`, `Frequency`, `Time`, `Length`, `Power`, `Charge`, `Temperature` (kelvin, `10K`, or Celsius, `25degC`: see Temperatures below; a rise is a difference, so it is kelvin too); the text types `String`, `Package`, `Color`; an `enum` that is in scope (Enums, below); and any definition you can name.
+Types you can declare: `Pin`; the quantities `Number`, `Voltage`, `Current`, `Resistance`, `Capacitance`, `Inductance`, `Frequency`, `Time`, `Length`, `Power`, `Charge`, `Temperature` (kelvin, `10K`, or Celsius, `25degC`: see Temperatures below; a rise is a difference, so it is kelvin too); the text types `String` and `Package` (a package's name, checked against the part's pin tables and its catalog: Pin tables, below); an `enum` that is in scope (Enums, below), such as `Color` of `std::parts::passive`, the colour of an LED; and any definition you can name.
 
 Misuse: a typo, a bare name where the dot belongs, and a name declared twice. A member name that is close to one the block has (the same letters in another case, or one or two edits away) gets the nearest as `did you mean`.
 
@@ -615,7 +615,7 @@ error: the currents on net `3V3` do not add up: `supply.current` must stay withi
 
 ## Enums: a value from a fixed list
 
-An `enum` names a type whose values are a fixed list of variants (ADR 0054). It is declared at the top of a file, like a definition, and a variant is written `Enum::Variant`:
+An `enum` names a type whose values are a fixed list of variants (ADR 0054). It is declared at the top of a file, like a definition, and a variant is written `Enum::Variant` where the enum is in scope, or bare where the variant itself is imported (ADR 0118):
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -652,8 +652,21 @@ board Lamps {
 - A value is stated with `&=` or given as a default with `?=` (ADR 0051), and two statements of one field must name the same variant, or the usual empty-intersection error names both: ``contradiction on `lamp.drive`: it is already Drive::Dimmed, which does not overlap Drive::Steady``.
 - `==` compares two values of one enum, a field and a variant or a field and a field, and is checked like any other relation: `.drive == Drive::Steady` fails when the field is `Drive::Dimmed`. Only `==` compares variants; they have no order.
 - `&=`, `?=` and `==` take only a variant of the field's own enum. Text is not one: `.drive &= "Dimmed"` is refused and the message says what to write.
-- A variant is written with its enum's name, so two enums may have a variant of one name, and a variant is never confused with a member or a net name. A file imports the enum, not its variants.
+- A variant follows the import system like any other name (ADR 0118). It is written with its enum's name (`Drive::Dimmed`) where the enum is in scope: declared in the file, imported, or in the prelude. It is written bare (`Dimmed`) only where the file imports the variant itself, `import src::lamp::Drive::Dimmed`, or several at once, `import src::lamp::Drive::{Steady, Dimmed}`. The rule is the same for every enum. A bare name that is not imported is a member of an enclosing block, as everywhere else; where there is none, the error says how the variant is written.
+- An LED's colour is the enum `Color` of `std::parts::passive` (`Red`, `Green`, `Blue`, `White`, `Yellow`): `import std::parts::passive::{Led, Color}` and `.led: Led { .color &= Color::Red }`. A colour is added to the enum with the catalog rows that have it.
 - `AssemblyMode` (variants `Fab`, `Hand`, `None` and `Consigned`) is the one enum that every file knows without an import, because every part has a built-in `.assembly` of that type (Who assembles a part, above). It is defined in `std/prelude.nsm`.
+
+A file that writes the same variants often imports them and writes them bare:
+
+```nsm
+import std::parts::passive::Led
+import std::parts::passive::Color::{Red, Green}
+
+board Signals {
+    .fault: Led { .color &= Red }
+    .ready: Led { .color &= Green }
+}
+```
 
 A variant the enum does not have is refused where it is written, with the variants listed and the nearest one named:
 
@@ -673,6 +686,24 @@ error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab
   |
 5 |         .assembly &= AssemblyMode::Hnad
   |                                    ^^^^
+```
+
+A bare variant that the file does not import is refused, with the two ways to write it:
+
+```nsm fails
+import std::parts::passive::Led
+
+board Lamp {
+    .led: Led { .color &= Gren }
+}
+```
+
+```text
+error: `Gren` is not defined here; a variant of `Color` is written `Color::Green`, or import the variant: `import std::parts::passive::Color::Green`
+  --> main.nsm:4:27
+  |
+4 |     .led: Led { .color &= Gren }
+  |                           ^^^^
 ```
 
 Text where an enum belongs is refused, and says which variant it was meant to be (this is what the quoted words of earlier versions, `.assembly &= "hand"`, now report):
@@ -2760,7 +2791,7 @@ Rules.
 - A pin that has no row but is joined inside the part to one that has (`.vout.neg` and `.vin.neg` above) is an alias and needs no pad. A pin with no row and no alias that is on a net is an error, once for the part.
 - A pad belongs to one pin, unless the part joins the pins that share it.
 - `optional` is for a `power` or `input` pin that may float; `required` is for an `output`, `bidirectional` or `passive` pin that may not. Neither is accepted where it changes nothing.
-- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= "UART1_TX"`. There is no default function. One function cannot be chosen on two pins of a part, except a class (`fn GPIO class` in a row, "Functions"; or a function that a peripheral is `on`, "A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
+- `fn` lists what a pin can be. A connected pin with more than one function needs the board to choose: `.u.pa2.function &= UART1_TX`. There is no default function. One function cannot be chosen on two pins of a part, except a class (`fn GPIO class` in a row, "Functions"; or a function that a peripheral is `on`, "A peripheral on any pin"). A function may carry its own kind, `fn GPIO:bidirectional UART1_TX:output` (next sections).
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects.
 - Two `power` pins that are both supplies on one net are not checked yet.
@@ -2889,7 +2920,7 @@ error: `u.sense` (`SENSE`) does not exist in package `SOT-23-5` of `Ldo9`, but t
   |     ^^^^^^^^
 ```
 
-Leave the sense pin out and the same board is fine in the SOT-23-5: the tie is skipped there. In a package the part has no table for, the message lists the tables it has:
+Leave the sense pin out and the same board is fine in the SOT-23-5: the tie is skipped there. A package is text, because a package's name has dashes and parentheses (`"SOT-23-5"`, `"VSON-10(2x3)"`) and a size is a number (`"0603"`), but it is checked (ADR 0118). In a package the part has no table for, the message is at the statement, lists the tables the part has and names the nearest:
 
 ```nsm fails
 import src::ldo9::Ldo9
@@ -2897,17 +2928,17 @@ import std::sources::Rail
 
 board UnknownPackage {
     .input: Rail { .pos.net &= "VIN" }
-    .u: Ldo9 { .package &= "QFN-9" }
+    .u: Ldo9 { .package &= "SOT23-5" }
     .input ~ .u.vin
 }
 ```
 
 ```text
-error: `u` is a `Ldo9` in package `QFN-9`, which has no pin table; its tables are for `DFN-8-EP`, `SOT-23-5`
-  --> main.nsm:6:5
+error: `u` is a `Ldo9` in package `SOT23-5`, which has no pin table; its tables are for `DFN-8-EP`, `SOT-23-5`; did you mean "SOT-23-5"?
+  --> main.nsm:6:16
   |
-6 |     .u: Ldo9 { .package &= "QFN-9" }
-  |     ^^^^^^^^
+6 |     .u: Ldo9 { .package &= "SOT23-5" }
+  |                ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Functions
@@ -2954,8 +2985,38 @@ board Uart {
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
     .u.pa2 ~ .load.a
+    .u.pa2.function &= UART1_TX
+}
+```
+
+A function is written as the pin table writes it after `fn`, a bare name with no quotes (ADR 0118): `.u.pa2.function &= UART1_TX`. A function is a name of the part's pin table, not a variant of an enum, so it needs no import. A module passes a choice on with an equation of two functions (below), never with text. A quoted function is refused, and the message says what to write:
+
+```nsm fails
+import src::mcu::Mcu32
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board QuotedFunction {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .load: Resistor
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+    .u.pa2 ~ .load.a
     .u.pa2.function &= "UART1_TX"
 }
+```
+
+```text
+error: the function of `u.pa2` is a name from the pin table of its part, not text: write `UART1_TX`, without quotes
+   --> main.nsm:16:24
+   |
+16 |     .u.pa2.function &= "UART1_TX"
+   |                        ^^^^^^^^^^
 ```
 
 ```nsm fails
@@ -2977,14 +3038,14 @@ board NoFunction {
 ```
 
 ```text
-error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= "GPIO"`
+error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= GPIO`
    --> main.nsm:10:5
    |
 10 |     .u: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^
 ```
 
-A function that the pin does not offer, and one function on two pins:
+A function that the pin does not offer, a misspelt one (the nearest function of the part is named), and one function on two pins:
 
 ```nsm fails
 import src::mcu::Mcu32
@@ -3001,7 +3062,7 @@ board WrongFunction {
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
     .u.pa2 ~ .load.a
-    .u.pa2.function &= "I2C1_SDA"
+    .u.pa2.function &= I2C1_SDA
 }
 ```
 
@@ -3009,8 +3070,36 @@ board WrongFunction {
 error: `u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK
    --> main.nsm:15:5
    |
-15 |     .u.pa2.function &= "I2C1_SDA"
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |     .u.pa2.function &= I2C1_SDA
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```nsm fails
+import src::mcu::Mcu32
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board MisspeltFunction {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .load: Resistor
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+    .u.pa2 ~ .load.a
+    .u.pa2.function &= UART1TX
+}
+```
+
+```text
+error: `u.pa2` cannot be `UART1TX`; its functions are GPIO, UART1_TX, SPI1_SCK; did you mean `UART1_TX`?
+   --> main.nsm:16:5
+   |
+16 |     .u.pa2.function &= UART1TX
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
@@ -3030,8 +3119,8 @@ board OneFunctionTwice {
     .u.nrst ~ .supply.pos
     .u.pa2 ~ .load.a
     .u.pb6 ~ .load2.a
-    .u.pa2.function &= "UART1_TX"
-    .u.pb6.function &= "UART1_TX"
+    .u.pa2.function &= UART1_TX
+    .u.pb6.function &= UART1_TX
 }
 ```
 
@@ -3039,8 +3128,8 @@ board OneFunctionTwice {
 error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
    --> main.nsm:18:5
    |
-18 |     .u.pb6.function &= "UART1_TX"
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |     .u.pb6.function &= UART1_TX
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A function can be chosen on any number of pins when the part says it is a **class**: the row writes `class` after the function, `fn GPIO class`. A microcontroller whose ADC inputs are also plain GPIOs lists `GPIO` on every such pin, and a board that uses all of them as GPIO chooses `GPIO` on each (a class is also what `peripheral NAME on CLASS` names, "A peripheral on any pin"; the two spellings make a function a class in the same way). A connected pin that lists `GPIO` and an ADC input still needs one of them chosen, and a function no row marks stays on one pin. A `class` right after a function's name (and its `:kind`) is always that function's marker, so a function that is itself called `class` is a name only as the first function after `fn` or right after a function that already has its marker (`fn GPIO class class`).
@@ -3066,8 +3155,8 @@ board GpioOnTwoPins {
     .b: Resistor
     .u.gpio1 ~ .a.a
     .u.gpio2 ~ .b.a
-    .u.gpio1.function &= "GPIO"
-    .u.gpio2.function &= "GPIO"
+    .u.gpio1.function &= GPIO
+    .u.gpio2.function &= GPIO
 }
 ```
 
@@ -3132,7 +3221,7 @@ board Forwarded {
     .load: Resistor
     .supply ~ .hub.supply
     .hub.scl ~ .load.a
-    .hub.scl.function &= "UART1_TX"
+    .hub.scl.function &= UART1_TX
 }
 ```
 
@@ -3152,12 +3241,12 @@ board Ignored {
     .load: Resistor
     .supply ~ .hub.supply
     .hub.scl ~ .load.a
-    .hub.scl.function &= "UART1_TX"
+    .hub.scl.function &= UART1_TX
 }
 ```
 
 ```text
-error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.mcu.pa2.function &= "GPIO"`
+error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.mcu.pa2.function &= GPIO`
    --> src/hub.nsm:19:5
    |
 19 |     .mcu: Mcu32 { .package &= "QFN-32" }
@@ -3165,8 +3254,8 @@ error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is con
 error: `hub.scl.function` is stated, but `hub.scl` is a pin of module `HubWithoutEquation` and nothing passes it to a pin of a part, so it has no effect; inside `HubWithoutEquation`, write `.mcu.pa2.function == .scl.function`
    --> main.nsm:14:5
    |
-14 |     .hub.scl.function &= "UART1_TX"
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |     .hub.scl.function &= UART1_TX
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The first message is the part's own pin, which still has several functions to choose from because nothing chose one. The second says where the choice went: nowhere. With one pin of a part on the module's pin, the message names it; with several, it says `.<part>.<pin>.function == .scl.function`. A pin that has no row in a part's pin table has no function to choose either, and the statement is refused for the same reason. A module in a module forwards the same way, one equation at each level (`.hub.scl.function == .scl.function` in the outer module).
@@ -3189,8 +3278,8 @@ board Link {
     .a: Mcu8
     .b: Mcu8
     .a.pa2 ~ .b.pa2
-    .a.pa2.function &= "UART1_TX"
-    .b.pa2.function &= "UART1_RX"
+    .a.pa2.function &= UART1_TX
+    .b.pa2.function &= UART1_RX
 }
 ```
 
@@ -3208,8 +3297,8 @@ board TwoTransmitters {
     .a: Mcu8
     .b: Mcu8
     .a.pa2 ~ .b.pa2
-    .a.pa2.function &= "UART1_TX"
-    .b.pa2.function &= "UART1_TX"
+    .a.pa2.function &= UART1_TX
+    .b.pa2.function &= UART1_TX
 }
 ```
 
@@ -3233,8 +3322,8 @@ board TwoReceivers {
     .a: Mcu8
     .b: Mcu8
     .a.pa2 ~ .b.pa2
-    .a.pa2.function &= "UART1_RX"
-    .b.pa2.function &= "UART1_RX"
+    .a.pa2.function &= UART1_RX
+    .b.pa2.function &= UART1_RX
 }
 ```
 
@@ -3292,10 +3381,10 @@ board Sensors {
     .u.p01 ~ .j.p2
     .u.p02 ~ .j.p3
     .u.p03 ~ .j.p4
-    .u.p00.function &= "UARTE0_TX"
-    .u.p01.function &= "UARTE0_RX"
-    .u.p02.function &= "TWIM1_SCL"
-    .u.p03.function &= "TWIM1_SDA"
+    .u.p00.function &= UARTE0_TX
+    .u.p01.function &= UARTE0_RX
+    .u.p02.function &= TWIM1_SCL
+    .u.p03.function &= TWIM1_SDA
 }
 ```
 
@@ -3312,10 +3401,10 @@ board Crowded {
     .u.p01 ~ .j.p2
     .u.p02 ~ .j.p3
     .u.p03 ~ .j.p4
-    .u.p00.function &= "UARTE0_TX"
-    .u.p01.function &= "UARTE0_RX"
-    .u.p02.function &= "TWIM0_SCL"
-    .u.p03.function &= "TWIM0_SDA"
+    .u.p00.function &= UARTE0_TX
+    .u.p01.function &= UARTE0_RX
+    .u.p02.function &= TWIM0_SCL
+    .u.p03.function &= TWIM0_SDA
 }
 ```
 
@@ -3323,8 +3412,8 @@ board Crowded {
 error: `u` (`Zmcu`) uses UARTE0 and TWIM0, which share `SERIAL0` and run one at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:11) and on `u.p01` as UARTE0_RX (main.nsm:12), TWIM0 on `u.p02` as TWIM0_SCL (main.nsm:13) and on `u.p03` as TWIM0_SDA (main.nsm:14); the other shared resources of `Zmcu`: `SERIAL1` has nothing in use
    --> main.nsm:13:5
    |
-13 |     .u.p02.function &= "TWIM0_SCL"
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |     .u.p02.function &= TWIM0_SCL
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A function counts as soon as it is chosen, also on a pin that nothing is connected to: the statement is deliberate. A function that no peripheral lists (`GPIO`) is never a use of one. The rule needs no package and no catalog row; it is judged for every `Zmcu` the board has, with its full path (`hub.mcu` for a part in a module), before the solver runs.
@@ -3433,11 +3522,11 @@ board Cores {
     .u.p03 ~ .j.p3
     .u.p04 ~ .j.p4
     .u.p05 ~ .j.p5
-    .u.p00.function &= "UARTE0_TX"
-    .u.p02.function &= "UARTE0_RX"
-    .u.p03.function &= "NETUART_TX"
-    .u.p04.function &= "HSSPI_SCK"
-    .u.p05.function &= "HSSPI_MOSI"
+    .u.p00.function &= UARTE0_TX
+    .u.p02.function &= UARTE0_RX
+    .u.p03.function &= NETUART_TX
+    .u.p04.function &= HSSPI_SCK
+    .u.p05.function &= HSSPI_MOSI
 }
 ```
 
@@ -3451,7 +3540,7 @@ board WrongPin {
     .u: Zmcu2
     .j: Header1x8
     .u.p01 ~ .j.p1
-    .u.p01.function &= "HSSPI_SCK"
+    .u.p01.function &= HSSPI_SCK
 }
 ```
 
@@ -3459,8 +3548,8 @@ board WrongPin {
 error: `u.p01` cannot be `HSSPI_SCK`; that function is offered only on `u.p04`; `u.p01` offers APP_GPIO, NET_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0, NETUART
   --> main.nsm:8:5
   |
-8 |     .u.p01.function &= "HSSPI_SCK"
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     .u.p01.function &= HSSPI_SCK
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
@@ -3471,7 +3560,7 @@ board WrongCore {
     .u: Zmcu2
     .j: Header1x8
     .u.p02 ~ .j.p1
-    .u.p02.function &= "NETUART_TX"
+    .u.p02.function &= NETUART_TX
 }
 ```
 
@@ -3479,8 +3568,8 @@ board WrongCore {
 error: `u.p02` cannot be `NETUART_TX`; that function is offered on every pin that lists `NET_GPIO`; `u.p02` offers APP_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0
   --> main.nsm:8:5
   |
-8 |     .u.p02.function &= "NETUART_TX"
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     .u.p02.function &= NETUART_TX
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A name that no pin offers is a slip, and the message names the nearest function (`did you mean`). A connected pin that lists only a class still has several functions, because its peripherals' lines are functions of it, and needs one chosen. Shared resources count the functions a class offers: a board that puts `UARTE0` and `TWIM0` on pins of this part gets the message of the previous section, though no row lists either.
@@ -3630,7 +3719,7 @@ board TooManyAnalog {
     .vin: .u.ANALOG
     .vbat: .u.ANALOG
     .u.p02 ~ .a.a
-    .u.p02.function &= "GPIO"
+    .u.p02.function &= GPIO
     .vin ~ .b.a
     .vbat ~ .c.a
 }
@@ -3781,7 +3870,7 @@ peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {
 }
 ```
 
-`as Spi SpiRole::Master` names the interface and the role (a bus with one role writes `as Uart`), and `as sclk` after a function names the line it is. A function that names no line (a data/command pin of a display) is not on the bus. The part is refused when the interface has no such role, when a line is not one the role has, when two functions are one line, and when the kind a function states disagrees with the line (`SPIM0_MISO:output as miso` for a master, whose `miso` is an input). The peripheral is the end of the bus (`u`, `SPIM0`), and a pin on which the board chose one of its functions is a pin of that line and role: the rules of the previous section read it as they read the pin of an interface, with the end named by the part and the peripheral. The board's `.u.p00.function &= "SPIM0_SCK"` is the statement that puts the pin on the bus, and a pin that the board leaves at `APP_GPIO` is a plain pin.
+`as Spi SpiRole::Master` names the interface and the role (a bus with one role writes `as Uart`), and `as sclk` after a function names the line it is. A function that names no line (a data/command pin of a display) is not on the bus. The part is refused when the interface has no such role, when a line is not one the role has, when two functions are one line, and when the kind a function states disagrees with the line (`SPIM0_MISO:output as miso` for a master, whose `miso` is an input). The peripheral is the end of the bus (`u`, `SPIM0`), and a pin on which the board chose one of its functions is a pin of that line and role: the rules of the previous section read it as they read the pin of an interface, with the end named by the part and the peripheral. The board's `.u.p00.function &= SPIM0_SCK` is the statement that puts the pin on the bus, and a pin that the board leaves at `APP_GPIO` is a plain pin.
 
 ```nsm module=src::zmcubus
 import std::bus::{Spi, SpiRole}
@@ -3825,10 +3914,10 @@ board AnyPin {
     .supply ~ .u.vdd
     .supply ~ .flash.vdd
 
-    .u.p00.function &= "SPIM0_SCK"
-    .u.p01.function &= "SPIM0_MOSI"
-    .u.p02.function &= "SPIM0_MISO"
-    .u.p03.function &= "APP_GPIO"
+    .u.p00.function &= SPIM0_SCK
+    .u.p01.function &= SPIM0_MOSI
+    .u.p02.function &= SPIM0_MISO
+    .u.p03.function &= APP_GPIO
     .u.p00 ~ .flash.spi.sclk
     .u.p01 ~ .flash.spi.mosi
     .u.p02 ~ .flash.spi.miso
@@ -3853,10 +3942,10 @@ board Crossed {
     .supply ~ .u.vdd
     .supply ~ .flash.vdd
 
-    .u.p00.function &= "SPIM0_SCK"
-    .u.p01.function &= "SPIM0_MOSI"
-    .u.p02.function &= "SPIM0_MISO"
-    .u.p03.function &= "APP_GPIO"
+    .u.p00.function &= SPIM0_SCK
+    .u.p01.function &= SPIM0_MOSI
+    .u.p02.function &= SPIM0_MISO
+    .u.p03.function &= APP_GPIO
     .u.p00 ~ .flash.spi.sclk
     .u.p01 ~ .flash.spi.miso
     .u.p02 ~ .flash.spi.mosi
@@ -3944,9 +4033,9 @@ board TwoUarts {
     .u.p00 ~ .j.p1
     .u.p01 ~ .j.p2
     .u.p10 ~ .j.p3
-    .u.p00.function &= "UARTE0_TX"
-    .u.p01.function &= "UARTE1_TX"
-    .u.p10.function &= "APP_GPIO"
+    .u.p00.function &= UARTE0_TX
+    .u.p01.function &= UARTE1_TX
+    .u.p10.function &= APP_GPIO
 }
 ```
 
@@ -3962,9 +4051,9 @@ board ThreeUarts {
     .u.p00 ~ .j.p1
     .u.p01 ~ .j.p2
     .u.p02 ~ .j.p3
-    .u.p00.function &= "UARTE0_TX"
-    .u.p01.function &= "UARTE1_TX"
-    .u.p02.function &= "UARTE2_TX"
+    .u.p00.function &= UARTE0_TX
+    .u.p01.function &= UARTE1_TX
+    .u.p02.function &= UARTE2_TX
 }
 ```
 
@@ -3972,8 +4061,8 @@ board ThreeUarts {
 error: `u` (`Zmcu3`) uses 3 of the peripherals of `UARTS`, which allows 2 at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:10), UARTE1 on `u.p01` as UARTE1_TX (main.nsm:11), UARTE2 on `u.p02` as UARTE2_TX (main.nsm:12); `UARTS` lists UARTE0, UARTE1 and UARTE2
    --> main.nsm:12:5
    |
-12 |     .u.p02.function &= "UARTE2_TX"
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |     .u.p02.function &= UARTE2_TX
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 Two pins that cannot both be used, each named with how it is in use:
@@ -3987,8 +4076,8 @@ board TwoReferences {
     .j: Header1x4
     .u.p10 ~ .j.p1
     .u.p11 ~ .j.p2
-    .u.p10.function &= "APP_GPIO"
-    .u.p11.function &= "UARTE0_TX"
+    .u.p10.function &= APP_GPIO
+    .u.p11.function &= UARTE0_TX
 }
 ```
 
@@ -3996,8 +4085,8 @@ board TwoReferences {
 error: `u.p10` and `u.p11` of `Zmcu3` are both in use, but they share `REFERENCE`, which allows 1 at a time: `u.p10` as APP_GPIO (main.nsm:9) and `u.p11` as UARTE0_TX (main.nsm:10)
    --> main.nsm:10:5
    |
-10 |     .u.p11.function &= "UARTE0_TX"
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     .u.p11.function &= UARTE0_TX
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A limit of 0, a fraction or a number with a unit is a parse error; a limit that is not fewer than the members is refused where it is written:
@@ -6966,6 +7055,24 @@ A ceramic capacitor's class (`C0G`, `X5R`, `X7R`) and its size (`"0402"`, `"0603
 - `.dielectric` has the enum type `Dielectric` of `std::parts::passive` (import it with the part). A design states it with `&=`, `.dielectric &= Dielectric::X7R`, or compares it with `==`. Every row of the standard capacitor catalog has one, read from the class that JLCPCB's record prints for the row; a generic capacitor (the project states an E-series) has none, so a design that states a class is given a row, never a generic part. A design that does not mention it picks as before.
 - `.package` is the size as text, `.package &= "0603"`. It narrows to the rows of that package, and a generic capacitor of that size. It names one size: a design that would take 0402 or 0603 leaves `.package` open and lets the catalog's order decide (Basic parts first, then the file's order), or states `.package` on the capacitors where the size matters.
 - A column is optional in a project's catalog file: a file that has no `dielectric` in its first line is read as empty there, and a design that states a class is offered no row of it.
+
+A package that no row of the part's catalog is in is refused at the statement that names it, with the catalog's packages listed and the nearest named (ADR 0118); no row is tried for the part:
+
+```nsm fails
+import std::parts::passive::Led
+
+board Lamp {
+    .led: Led { .package &= "603" }
+}
+```
+
+```text
+error: `led.package` is "603", and no row of the `led` catalog is in that package; its packages are "0402", "0603"; did you mean "0603"?
+  --> main.nsm:4:17
+  |
+4 |     .led: Led { .package &= "603" }
+  |                 ^^^^^^^^^^^^^^^^^
+```
 
 ```nsm solve report
 import std::parts::passive::{Capacitor, Dielectric}
@@ -10607,9 +10714,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:316:5
+    --> std/parts/passive.nsm:329:5
     |
-316 |     .current <= .rated_current
+329 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10633,9 +10740,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:198:5
+    --> std/parts/passive.nsm:211:5
     |
-198 |     .current <= .saturation_current
+211 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10699,9 +10806,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:317:5
+    --> std/parts/passive.nsm:330:5
     |
-317 |     .supply_peak <= .rated_voltage
+330 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -14067,7 +14174,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 |---|---|
 | `std::parts::passive::Resistor` | A resistor with `.resistance`, `.temperature_coefficient`, a through-current and a voltage drop tied by Ohm's law. Passive pins `a` and `b` (pads 1 and 2), bridge `a ~> b`. Requires `.drop * .current <= .max_power`. Catalog `resistor`: resistance, max_power, package, temperature_coefficient (a fraction per kelvin, empty in the standard rows). |
 | `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias`, `.max_voltage` `.count`, the number of identical capacitors in parallel (a bank; unset is one, a range is chosen by the solver) and `.dielectric` (a `Dielectric`, from the row, optional). Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
-| `std::parts::passive::Led` | A light-emitting diode with `.color`, `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
+| `std::parts::passive::Led` | A light-emitting diode with `.color` (a `Color`), `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
 | `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, a pin table for SOT-23 and one for SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`; `.quiescent_current` is the current it keeps for itself (default none), added to the input current. Catalog `ldo`. |
 | `std::parts::connector::Connector` | What a connector is: a generic with the letters `"J"` and no pins, no pads and no catalog, that every standard connector provides and a project's own connector provides to be one (ADR 0068). |
 | `std::parts::connector::Header1x2` | A single-row header with two pins `p1` and `p2`. Soldered by hand. |
@@ -14164,6 +14271,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::bus::SwdRole` | The role of a part on a debug port: `Probe` or `Target`. |
 | `std::bus::SpiMode` | The clock mode of an SPI bus: `Mode0` to `Mode3`. The type of `Spi`'s `.mode`, equated along the bus. |
 | `std::bus::UsbRole` | The role of a part on a USB port: `Host` or `Device`, or `Passthrough` for a connector that the bus goes through (no `lines`, no limit, judged from the end behind it). |
+| `std::parts::passive::Color` | The colour of an LED, `Red`, `Green`, `Blue`, `White` or `Yellow`: the type of `Led`'s `.color` and of the `color` column of the LED catalogs. Import it with the part (`.color &= Color::Red`), or import a variant to write it bare (ADR 0118). |
 | `std::parts::passive::Dielectric` | The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the type of `Capacitor`'s `.dielectric` and of the `dielectric` column of the capacitor catalog (ADR 0055). Import it with the part. |
 | `std::prelude::AssemblyMode` | Who puts a part on the board: `Fab`, `Hand` or `None`. The type of the built-in `.assembly` of every part and of the `.assembly_mode` a module offers. In scope in every file without an import (ADR 0054). |
 

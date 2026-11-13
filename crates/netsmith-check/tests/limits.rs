@@ -77,7 +77,7 @@ fn run(shares: &str, statements: &str) -> Checked {
 
 /// Pin `n`, connected to the probe and chosen as `function`.
 fn choose(n: u32, function: &str) -> String {
-    format!("    .u.p{n:02} ~ .probe.a{n:02}\n    .u.p{n:02}.function &= \"{function}\"\n")
+    format!("    .u.p{n:02} ~ .probe.a{n:02}\n    .u.p{n:02}.function &= {function}\n")
 }
 
 fn messages(c: &Checked) -> Vec<String> {
@@ -137,7 +137,7 @@ fn more_members_than_the_limit_names_every_use_and_the_members() {
         "`u` (`Zmcu`) uses 3 of the peripherals of `UARTS`, which allows 2 at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:52), UARTE1 on `u.p02` as UARTE1_TX (main.nsm:54), UARTE3 on `u.p04` as UARTE3_TX (main.nsm:56); `UARTS` lists UARTE0, UARTE1, UARTE2 and UARTE3",
     );
     // The error is at the third use, in path order.
-    assert_eq!(line_of(&c, 0), ".u.p04.function &= \"UARTE3_TX\"");
+    assert_eq!(line_of(&c, 0), ".u.p04.function &= UARTE3_TX");
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn two_pins_that_cannot_both_be_used_are_named_with_how_each_is() {
         &c,
         "`u.p10` and `u.p11` of `Zmcu` are both in use, but they share `REFERENCE`, which allows 1 at a time: `u.p10` as APP_GPIO (main.nsm:52) and `u.p11` as UARTE0_TX (main.nsm:54)",
     );
-    assert_eq!(line_of(&c, 0), ".u.p11.function &= \"UARTE0_TX\"");
+    assert_eq!(line_of(&c, 0), ".u.p11.function &= UARTE0_TX");
     // One of the two is fine, and a pin that nothing uses is not in use.
     let c = run(REFERENCE, &choose(10, "APP_GPIO"));
     assert!(c.is_ok(), "{}", c.render());
@@ -175,7 +175,7 @@ fn a_pin_is_in_use_when_it_is_connected_with_no_function_chosen() {
     // A function chosen on a pin that is not connected is a use too.
     let c = run(
         shares,
-        "    .u.q0 ~ .probe.a12\n    .u.q1.function &= \"NET_GPIO\"\n",
+        "    .u.q0 ~ .probe.a12\n    .u.q1.function &= NET_GPIO\n",
     );
     assert_eq!(messages(&c).len(), 1, "{}", c.render());
 }
@@ -308,8 +308,8 @@ module Hub {{
 }}
 board C {{
     .hub: Hub
-    .hub.a.function &= \"UARTE0_TX\"
-    .hub.b.function &= \"UARTE1_TX\"
+    .hub.a.function &= UARTE0_TX
+    .hub.b.function &= UARTE1_TX
 }}
 ",
         part("    shared PAIR { UARTE0 UARTE1 }")

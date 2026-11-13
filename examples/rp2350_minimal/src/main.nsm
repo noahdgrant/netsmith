@@ -193,10 +193,10 @@ board Rp2350Minimal {
     // The header carries them as GPIO pins (the nets are `GPIO26_ADC0` ...), so the board
     // chooses `GPIO`, which the part marks as a class and so may be chosen on all four. Nothing
     // else on the board reads which: the pad is on the pin either way.
-    .mcu.gpio26.function &= "GPIO"
-    .mcu.gpio27.function &= "GPIO"
-    .mcu.gpio28.function &= "GPIO"
-    .mcu.gpio29.function &= "GPIO"
+    .mcu.gpio26.function &= GPIO
+    .mcu.gpio27.function &= GPIO
+    .mcu.gpio28.function &= GPIO
+    .mcu.gpio29.function &= GPIO
 
     .header_low.p2 ~ .v3v3.pos
     .header_low.p4 ~ .mcu.gpio0

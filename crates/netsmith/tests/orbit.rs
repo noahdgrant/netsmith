@@ -1069,8 +1069,8 @@ board Ics {
     .rail.pos ~ .eeprom.a1
     .rail.neg ~ .eeprom.a2
     .rail.neg ~ .eeprom.wp
-    .mcu.pb6.function &= "I2C1_SCL"
-    .mcu.pb7.function &= "I2C1_SDA"
+    .mcu.pb6.function &= I2C1_SCL
+    .mcu.pb7.function &= I2C1_SDA
     .mcu.pb6 ~ .eeprom.scl
     .mcu.pb7 ~ .eeprom.sda
 
@@ -1081,8 +1081,8 @@ board Ics {
     .usb: Header1x2
     .bridge.d_plus ~ .usb.p1
     .bridge.d_minus ~ .usb.p2
-    .mcu.pa9.function &= "USART1_TX"
-    .mcu.pa10.function &= "USART1_RX"
+    .mcu.pa9.function &= USART1_TX
+    .mcu.pa10.function &= USART1_RX
     .mcu.pa9 ~ .bridge.rxd
     .mcu.pa10 ~ .bridge.txd
 }

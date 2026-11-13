@@ -10,7 +10,7 @@
 pub fn source(stages: usize) -> String {
     let mut text = String::from(
         "\
-import std::parts::passive::{Resistor, Led, Capacitor}
+import std::parts::passive::{Resistor, Led, Color, Capacitor}
 import std::parts::regulator::LinearRegulator
 import std::parts::connector::Header1x2
 import std::sources::Rail
@@ -34,7 +34,7 @@ module Indicator {
     .power.current &= 0.5mA..2mA
     .limit: Resistor { .resistance &= 1kohm +/- 1% }
     .led: Led {
-        .color &= \"GREEN\"
+        .color &= Color::Green
         .forward_voltage &= 1.8V..2.5V
     }
     .bypass: Capacitor { .capacitance &= 100nF +/- 20% }

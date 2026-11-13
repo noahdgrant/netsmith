@@ -496,7 +496,7 @@ the part's pin table.
   7 pages, SHA-256 `a4f1d15c5c37`, page 2): Vf 2.6 V to 3.2 V at 5 mA, operating temperature -40 to
   +85 C (the document does not say ambient). The datasheet has neither the polarity nor a land
   pattern, so the pads are the standard 0402's. The standard blue 0402 row (XL-1005UBC, 2.6 V to 3.4 V) comes
-  first in the solver's order, so a board that wants this part states `.color &= "BLUE"`,
+  first in the solver's order, so a board that wants this part states `.color &= Color::Blue`,
   `.package &= "0402"` and `.forward_voltage &= 2.6V..3.2V`, as the test's fixture does.
 
 ### The module, the bridge, the regulator, the transistors and the diodes (U1, U3, U5, Q1, Q2, D2, D3)

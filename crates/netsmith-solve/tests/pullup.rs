@@ -433,8 +433,10 @@ fn a_pullup_whose_package_nobody_states_is_picked_as_before() {
 fn a_package_that_no_row_has_is_refused_with_its_name() {
     let s = run(&pullup(".resistor.package &= \"0201\""));
     let all = messages(&s).join("\n");
+    // Refused at the statement before any row is tried, with the nearest package (ADR 0118).
     assert!(
-        all.contains("has nothing for `pull.resistor`") && all.contains("\"0201\""),
-        "the usual message names the part and the package: {all}"
+        all.contains("`pull.resistor.package` is \"0201\", and no row of the `resistor` catalog is in that package; its packages are ")
+            && all.ends_with("; did you mean \"0402\"?"),
+        "the message names the field, the package and the nearest: {all}"
     );
 }

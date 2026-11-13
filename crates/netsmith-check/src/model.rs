@@ -1112,11 +1112,7 @@ impl Model {
         let mut from = std::collections::HashMap::new();
         let mut read_by: std::collections::HashMap<FieldId, Vec<InstId>> =
             std::collections::HashMap::new();
-        let pin_function = |f: FieldId| {
-            let field = self.field(f);
-            (field.name == "function" && self.instance(field.owner).kind == InstKind::Pin)
-                .then_some(field.owner)
-        };
+        let pin_function = |f: FieldId| self.is_pin_function(f).then_some(self.field(f).owner);
         for r in self.relations.iter() {
             if let (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(g)) = (&r.lhs, r.op, &r.rhs) {
                 if let Some(owner) = pin_function(*g) {
@@ -1206,6 +1202,13 @@ impl Model {
             }
             _ => domain.to_string(),
         }
+    }
+
+    /// Whether a field is the `function` of a pin: a name from the pin table of its part
+    /// (`.u.pa9.function &= USART1_TX`), not text.
+    pub fn is_pin_function(&self, f: FieldId) -> bool {
+        let field = self.field(f);
+        field.name == "function" && self.instance(field.owner).kind == InstKind::Pin
     }
 
     /// The enum a field of kind `FieldKind::Enum` has the type of.

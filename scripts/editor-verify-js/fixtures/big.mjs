@@ -34,7 +34,7 @@ module LdoStage {
 
 const INDICATOR = `//! A status light on a rail.
 
-import std::parts::passive::{Resistor, Led, Capacitor}
+import std::parts::passive::{Resistor, Led, Color, Capacitor}
 import std::sources::Rail
 
 /// A light with its series resistor and a bypass capacitor. On a 3.3 V rail, 120 ohm puts 5 to 14 mA
@@ -46,7 +46,7 @@ module Indicator {
 
     .limit: Resistor { .resistance &= 120ohm +/- 1% }
     .led: Led {
-        .color &= "GREEN"
+        .color &= Color::Green
         .forward_voltage &= 1.8V..2.5V
     }
     .bypass: Capacitor { .capacitance &= 100nF +/- 20% }

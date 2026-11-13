@@ -31,7 +31,7 @@ import std::mfg::jlcpcb::FourLayer
 import std::parts::connector::ProgrammingPads6
 import std::parts::diode::Tvs
 import std::parts::mechanical::TestPoint
-import std::parts::passive::{Capacitor, FerriteBead, Fuse, Inductor, Led, Resistor}
+import std::parts::passive::{Capacitor, Color, FerriteBead, Fuse, Inductor, Led, Resistor}
 import std::sources::Rail
 
 board PowerManifoldCharger {
@@ -103,7 +103,7 @@ board PowerManifoldCharger {
     /// D2: ESDA25P35-1U1M
     .port_tvs: Tvs { .package &= "DFN1610-2" }
     /// D1: GREEN
-    .led: Led { .color &= "GREEN"; .package &= "0603" }
+    .led: Led { .color &= Color::Green; .package &= "0603" }
     /// TH1: NTC_CONV
     .ntc_converter: Antc1608Ntc
     /// TH2: NTC_PLUG

@@ -95,7 +95,7 @@ fn a_request_gets_the_first_pin_that_offers_the_capability() {
 fn requests_are_served_in_the_order_of_their_paths_and_a_named_pin_stays() {
     // `a` comes before `b`: the order of the lines never matters. `p00` is the source's.
     let c = run(
-        "    .b: .u.GPIO\n    .a: .u.GPIO\n    .u.p00 ~ .probe.a00\n    .u.p00.function &= \"GPIO\"\n    .a ~ .probe.a01\n    .b ~ .probe.a02\n",
+        "    .b: .u.GPIO\n    .a: .u.GPIO\n    .u.p00 ~ .probe.a00\n    .u.p00.function &= GPIO\n    .a ~ .probe.a01\n    .b ~ .probe.a02\n",
         None,
     );
     assert!(c.is_ok(), "{}", c.render());
@@ -147,13 +147,13 @@ fn a_class_may_be_chosen_on_two_pins_and_another_function_by_hand_may_not() {
     assert!(c.is_ok(), "{}", c.render());
     // A hand-written choice of GPIO on two pins is the same thing, not an error.
     let c = run(
-        "    .u.p00.function &= \"GPIO\"\n    .u.p01.function &= \"GPIO\"\n",
+        "    .u.p00.function &= GPIO\n    .u.p01.function &= GPIO\n",
         None,
     );
     assert!(c.is_ok(), "{}", c.render());
     // Two pins the source gives a function by hand are still two uses, class or not.
     let c = run(
-        "    .u.p02.function &= \"ANALOG\"\n    .u.p03.function &= \"ANALOG\"\n",
+        "    .u.p02.function &= ANALOG\n    .u.p03.function &= ANALOG\n",
         None,
     );
     assert_eq!(
@@ -242,7 +242,7 @@ fn a_locked_entry_that_no_longer_holds_is_an_error_at_its_line() {
     // The source now connects `p02` itself.
     let text = file(&[("status", entry("p02", "GPIO", true))]);
     let c = run(
-        "    .status: .u.GPIO\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        "    .status: .u.GPIO\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= GPIO\n",
         Some(&text),
     );
     let m = messages(&c);
@@ -264,7 +264,7 @@ fn a_locked_entry_that_no_longer_holds_is_an_error_at_its_line() {
 fn an_unlocked_entry_that_no_longer_holds_is_a_finding_and_the_pin_is_picked_again() {
     let text = file(&[("status", entry("p02", "GPIO", false))]);
     let c = run(
-        "    .status: .u.GPIO\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        "    .status: .u.GPIO\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= GPIO\n",
         Some(&text),
     );
     assert!(c.is_ok(), "{}", c.render());
@@ -357,7 +357,7 @@ fn every_pin_that_offers_it_is_taken() {
     // Both ANALOG pins are the source's and an entry's.
     let text = file(&[("x", entry("p03", "ANALOG", true))]);
     let c = run(
-        "    .vbat: .u.ANALOG\n    .x: .u.ANALOG\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        "    .vbat: .u.ANALOG\n    .x: .u.ANALOG\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= GPIO\n",
         Some(&text),
     );
     let m = messages(&c);
@@ -374,7 +374,7 @@ fn every_pin_that_offers_it_is_taken() {
 fn the_message_names_the_move_that_would_free_a_pin() {
     let text = file(&[("x", entry("p03", "ANALOG", false))]);
     let c = run(
-        "    .vbat: .u.ANALOG\n    .x: .u.ANALOG\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= \"GPIO\"\n",
+        "    .vbat: .u.ANALOG\n    .x: .u.ANALOG\n    .u.p02 ~ .probe.a02\n    .u.p02.function &= GPIO\n",
         Some(&text),
     );
     let m = messages(&c);
@@ -385,7 +385,7 @@ fn the_message_names_the_move_that_would_free_a_pin() {
     // A GPIO entry on a pin that the new request needs can move to a free pin.
     let text = file(&[("x", entry("p02", "GPIO", false))]);
     let c = run(
-        "    .vbat: .u.ANALOG\n    .x: .u.GPIO\n    .u.p03 ~ .probe.a03\n    .u.p03.function &= \"GPIO\"\n",
+        "    .vbat: .u.ANALOG\n    .x: .u.GPIO\n    .u.p03 ~ .probe.a03\n    .u.p03.function &= GPIO\n",
         Some(&text),
     );
     let m = messages(&c);
@@ -401,7 +401,7 @@ fn the_message_names_the_move_that_would_free_a_pin() {
 fn shared_hardware_limits_the_choice() {
     // UARTE0 is in use through a function the source chose, so UARTE1 cannot be asked for.
     let c = run(
-        "    .u.p00 ~ .probe.a00\n    .u.p00.function &= \"UARTE0_TX\"\n    .tx: .u.UARTE1_TX\n",
+        "    .u.p00 ~ .probe.a00\n    .u.p00.function &= UARTE0_TX\n    .tx: .u.UARTE1_TX\n",
         None,
     );
     let m = messages(&c);
@@ -491,7 +491,7 @@ fn two_requests_for_a_line_of_a_peripheral_are_still_refused() {
 fn a_request_goes_round_a_pin_the_source_chose_for_the_same_function() {
     // `p02` is the source's ANALOG; the request gets the other pin and the check has no fault.
     let c = run(
-        "    .u.p02 ~ .probe.a00\n    .u.p02.function &= \"ANALOG\"\n    .a: .u.ANALOG\n    .a ~ .probe.a01\n",
+        "    .u.p02 ~ .probe.a00\n    .u.p02.function &= ANALOG\n    .a: .u.ANALOG\n    .a ~ .probe.a01\n",
         None,
     );
     assert!(c.is_ok(), "{}", c.render());
@@ -537,7 +537,7 @@ fn requests_for_a_row_listed_line_that_no_peripheral_lists_each_get_a_pin() {
     // By hand it is refused, as it was.
     let by_hand = check(
         "main.nsm",
-        &text("    .u.p00.function &= \"UART1_TX\"\n    .u.p01.function &= \"UART1_TX\"\n"),
+        &text("    .u.p00.function &= UART1_TX\n    .u.p01.function &= UART1_TX\n"),
         &Loader::std(),
     );
     assert!(
@@ -635,7 +635,7 @@ fn the_pin_file_says_what_is_wrong_with_it() {
 fn the_pin_space_says_which_pins_each_request_may_have_and_what_a_choice_must_keep() {
     // `.tx` asks for UARTE0's line, `.rx` for UARTE1's: the part lets one of the two be in use.
     let c = run(
-        "    .tx: .u.UARTE0_TX\n    .rx: .u.UARTE0_RX\n    .a: .u.GPIO\n    .a ~ .probe.a00\n    .tx ~ .probe.a01\n    .rx ~ .probe.a02\n    .u.p03.function &= \"AIN1\"\n",
+        "    .tx: .u.UARTE0_TX\n    .rx: .u.UARTE0_RX\n    .a: .u.GPIO\n    .a ~ .probe.a00\n    .tx ~ .probe.a01\n    .rx ~ .probe.a02\n    .u.p03.function &= AIN1\n",
         None,
     );
     assert!(c.is_ok(), "{}", c.render());

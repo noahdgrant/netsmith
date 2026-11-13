@@ -3,7 +3,7 @@
 //! A board asks for a pin by capability, `.status: .u.GPIO`, and does not name the pin. This
 //! module gives each request a pin of the part, before the nets are made, so that every later
 //! check sees the board as if it had been written with the pin: the request's pin is joined to
-//! the part's pin, and the function is chosen on it (`.u.p02.function &= "GPIO"`).
+//! the part's pin, and the function is chosen on it (`.u.p02.function &= GPIO`).
 //!
 //! The choice is a search, and it is deterministic. A request that has an entry in the pin file
 //! that still holds keeps it. The others are searched in the byte order of their paths, each on

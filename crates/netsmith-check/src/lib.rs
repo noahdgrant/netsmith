@@ -38,6 +38,7 @@ pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
 pub use loader::Loader;
+pub use lower::closest;
 pub use model::{
     Balance, Bookmark, Catalog, Chain, Checkpoint, Contact, ContactSide, DcElement, DcKind, Domain,
     Draw, EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,

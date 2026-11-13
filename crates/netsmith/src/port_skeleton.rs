@@ -20,7 +20,7 @@
 //! | `R...` | `R_<size>_<metric>Metric...` | a resistance: `10k`, `4k7`, `R010`, `49.9`, `1Mohm` | `Resistor { .resistance &= <value> +/- 1%; .package &= "<size>" }` |
 //! | `C...` | `C_<size>_<metric>Metric...` | a capacitance with a prefix: `100n`, `4.7uF`, `4u7` | `Capacitor { .capacitance &= <value> +/- 10%; ... }` |
 //! | `L...` | `L_<size>_<metric>Metric...` | an inductance with a prefix: `1uH`, `470n` | `Inductor { .inductance &= <value> +/- 20%; ... }` |
-//! | `D...`, `LED...` | `LED_<size>_<metric>Metric...` | `LED`, or a colour: `RED`, `GREEN`, `BLUE`, `YELLOW`, `WHITE` | `Led { .color &= "<colour>"; ... }` |
+//! | `D...`, `LED...` | `LED_<size>_<metric>Metric...` | `LED`, or a colour: `RED`, `GREEN`, `BLUE`, `YELLOW`, `WHITE` | `Led { .color &= Color::<Colour>; ... }` (`Color::Green`, with `Color` imported) |
 //!
 //! `<size>` is the imperial size (`0402`), which is the package the standard catalogs name. The
 //! tolerances are the skeleton's, since a KiCad value states none: each such line ends in
@@ -144,6 +144,10 @@ pub fn skeleton(pcb: &str, file: &str, board: &str, src: &Path) -> Result<Skelet
             }
             Kind::Standard(s) => {
                 standard_kinds.insert(s.ty);
+                // A colour is a variant of `Color`, written with the enum (ADR 0118).
+                if s.fields.iter().any(|f| f.contains("Color::")) {
+                    standard_kinds.insert("Color");
+                }
             }
         }
     }
@@ -564,7 +568,10 @@ fn standard_part(refdes: &str, value: &str, footprint: &str, pads: &[&str]) -> O
             let colour = value.to_uppercase();
             let mut fields = Vec::new();
             if LED_COLOURS.contains(&colour.as_str()) {
-                fields.push(format!(".color &= \"{colour}\""));
+                // The variant of `Color`: the word with its first letter capital
+                // (`Color::Green`), and the file imports `Color`.
+                let (first, rest) = colour.split_at(1);
+                fields.push(format!(".color &= Color::{first}{}", rest.to_lowercase()));
             } else if colour != "LED" {
                 return None;
             }
@@ -858,7 +865,10 @@ mod tests {
             [".resistance &= 10kohm +/- 1%", ".package &= \"0402\""]
         );
         let led = standard_part("D1", "GREEN", "LED_SMD:LED_0603_1608Metric", &["1"]).unwrap();
-        assert_eq!(led.fields, [".color &= \"GREEN\"", ".package &= \"0603\""]);
+        assert_eq!(
+            led.fields,
+            [".color &= Color::Green", ".package &= \"0603\""]
+        );
         for (refdes, value, footprint) in [
             ("R1", "10k", "RPI_COMPILED:generic_resc1005x35"),
             ("C1", "100n", "Capacitor_SMD:CP_Elec_8x10"),

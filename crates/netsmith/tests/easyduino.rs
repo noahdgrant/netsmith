@@ -434,7 +434,7 @@ mod must_match_parts {
 import src::devkitc_headers::Esp32S3DevKitCHeaders
 import src::shouhan_type_c_16pin::ShouhanTypeC16Pin
 import src::xunpu_ts_1088::XunpuTs1088
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Resistor, Led, Color}
 import std::sources::Rail
 
 board InterfaceBare {
@@ -447,7 +447,7 @@ board InterfaceBare {
     .button: XunpuTs1088 { .mpn &= "TS-1088-AR02016" }
     .headers: Esp32S3DevKitCHeaders
     .led: Led {
-        .color &= "BLUE"
+        .color &= Color::Blue
         .package &= "0402"
         .forward_voltage &= 2.6V..3.2V
         .current &= 3mA..10mA

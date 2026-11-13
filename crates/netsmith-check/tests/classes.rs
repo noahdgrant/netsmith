@@ -80,7 +80,7 @@ fn run(statements: &str) -> Checked {
 
 /// Pin `n` of the part, connected to the probe and chosen as `function`.
 fn choose(n: u32, function: &str) -> String {
-    format!("    .u.p{n:02} ~ .probe.a{n:02}\n    .u.p{n:02}.function &= \"{function}\"\n")
+    format!("    .u.p{n:02} ~ .probe.a{n:02}\n    .u.p{n:02}.function &= {function}\n")
 }
 
 fn messages(c: &Checked) -> Vec<String> {
@@ -137,7 +137,7 @@ fn a_dedicated_function_is_offered_only_on_the_pins_whose_rows_list_it() {
     let text = &c.sources.get(d.source).text;
     assert_eq!(
         text.lines().nth(line - 1).unwrap().trim(),
-        ".u.p02.function &= \"HSSPI_SCK\""
+        ".u.p02.function &= HSSPI_SCK"
     );
 }
 
@@ -182,7 +182,7 @@ fn a_pin_that_lists_only_a_class_still_needs_a_choice_when_it_is_connected() {
     let c = run("    .u.p06 ~ .probe.a06\n");
     only(
         &c,
-        "`u.p06` has several functions (APP_GPIO and the lines of the peripherals on those pins) and is connected: choose one with `.u.p06.function &= \"APP_GPIO\"`",
+        "`u.p06` has several functions (APP_GPIO and the lines of the peripherals on those pins) and is connected: choose one with `.u.p06.function &= APP_GPIO`",
     );
     // A pin that nothing is connected to needs none.
     let c = run("");
@@ -193,7 +193,7 @@ fn a_pin_that_lists_only_a_class_still_needs_a_choice_when_it_is_connected() {
 fn a_class_function_takes_its_kind_from_the_peripheral() {
     // Two transmitters on one net are two outputs, though no row writes a kind.
     let c = run(
-        "    .u.p00 ~ .u.p01\n    .u.p00.function &= \"UARTE0_TX\"\n    .u.p01.function &= \"UARTE1_TX\"\n",
+        "    .u.p00 ~ .u.p01\n    .u.p00.function &= UARTE0_TX\n    .u.p01.function &= UARTE1_TX\n",
     );
     only(
         &c,
@@ -278,7 +278,7 @@ module Hub {{
         "{src}
 board C {{
     .hub: Hub
-    .hub.scl.function &= \"UARTE0_TX\"
+    .hub.scl.function &= UARTE0_TX
 }}
 "
     );
@@ -293,7 +293,7 @@ board C {{
         "{src}
 board C {{
     .hub: Hub
-    .hub.scl.function &= \"NETUART_TX\"
+    .hub.scl.function &= NETUART_TX
 }}
 "
     );

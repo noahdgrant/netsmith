@@ -277,7 +277,7 @@ fn a_board_with_no_request_gets_none_and_fab_removes_the_two_it_wrote_before() {
     }
     // The pins the requests had are chosen by hand now.
     let functions: String = (0..10)
-        .map(|p| format!("        .p{p:02}.function &= \"GPIO\"\n"))
+        .map(|p| format!("        .p{p:02}.function &= GPIO\n"))
         .collect();
     text = text.replace(
         "    .u: Zmcu { .assembly &= AssemblyMode::Hand }\n",

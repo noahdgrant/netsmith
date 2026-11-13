@@ -64,7 +64,7 @@ fn part_messages(body: &str) -> Vec<String> {
     ))
 }
 
-const GPIO_ON_FOUR: &str = "    .u.p00 ~ .probe.a00\n    .u.p01 ~ .probe.a01\n    .u.p02 ~ .probe.a02\n    .u.p03 ~ .probe.a03\n    .u.p00.function &= \"GPIO\"\n    .u.p01.function &= \"GPIO\"\n    .u.p02.function &= \"GPIO\"\n    .u.p03.function &= \"GPIO\"";
+const GPIO_ON_FOUR: &str = "    .u.p00 ~ .probe.a00\n    .u.p01 ~ .probe.a01\n    .u.p02 ~ .probe.a02\n    .u.p03 ~ .probe.a03\n    .u.p00.function &= GPIO\n    .u.p01.function &= GPIO\n    .u.p02.function &= GPIO\n    .u.p03.function &= GPIO";
 
 #[test]
 fn a_marked_function_may_be_chosen_on_every_pin_that_lists_it() {
@@ -91,12 +91,12 @@ fn a_connected_pin_with_a_class_and_another_function_needs_one_chosen() {
     let c = run_part("Zmcu5", "    .u.p02 ~ .probe.a02");
     only(
         &c,
-        "`u.p02` has several functions (GPIO, AIN0) and is connected: choose one with `.u.p02.function &= \"GPIO\"`",
+        "`u.p02` has several functions (GPIO, AIN0) and is connected: choose one with `.u.p02.function &= GPIO`",
     );
     // Either function is accepted, the other pins keep GPIO.
     let c = run_part(
         "Zmcu5",
-        "    .u.p02 ~ .probe.a02\n    .u.p03 ~ .probe.a03\n    .u.p02.function &= \"AIN0\"\n    .u.p03.function &= \"GPIO\"",
+        "    .u.p02 ~ .probe.a02\n    .u.p03 ~ .probe.a03\n    .u.p02.function &= AIN0\n    .u.p03.function &= GPIO",
     );
     assert!(c.is_ok(), "{}", c.render());
 }
@@ -107,7 +107,7 @@ fn a_request_for_a_marked_function_and_a_pin_chosen_by_hand_agree() {
     // offers GPIO, with no error from the class rule.
     let c = run_part(
         "Zmcu5",
-        "    .u.p00 ~ .probe.a00\n    .u.p00.function &= \"GPIO\"\n    .status: .u.GPIO\n    .status ~ .probe.a01",
+        "    .u.p00 ~ .probe.a00\n    .u.p00.function &= GPIO\n    .status: .u.GPIO\n    .status ~ .probe.a01",
     );
     assert!(c.is_ok(), "{}", c.render());
     let m = &c.board("B").unwrap().model;
@@ -162,8 +162,8 @@ board B {
     .probe: Probe2
     .u.p00 ~ .probe.a
     .u.p01 ~ .probe.b
-    .u.p00.function &= "GPIO"
-    .u.p01.function &= "GPIO"
+    .u.p00.function &= GPIO
+    .u.p01.function &= GPIO
 }
 "#;
     let c = check("main.nsm", by_peripheral, &Loader::std());

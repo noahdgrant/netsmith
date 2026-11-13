@@ -1027,7 +1027,7 @@ board B {
     .supply: Rail { .pos.net &= \"V\"
  .neg.net &= \"GND\" }
     .supply ~ .m.vdd
-    .m.pa2.function &= \"UART1_TX\"
+    .m.pa2.function &= UART1_TX
     .m.gnd.net &= \"GND\"
 }
 ";

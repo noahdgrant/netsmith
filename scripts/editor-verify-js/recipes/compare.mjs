@@ -561,11 +561,16 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('an error written to disk is a new problem, and the comparison follows the files');
   const file = path.join(project, 'src/main.nsm');
   const original = fs.readFileSync(file, 'utf8');
-  fs.writeFileSync(file, original.replace('.led: Led {', '.led: Led { .color &= "red"'));
+  // A colour the enum does not have (ADR 0118): `Color` is imported, so the only error is the variant.
+  const withError = original
+    .replace('import std::parts::passive::{Capacitor, Resistor, Led}', 'import std::parts::passive::{Capacitor, Color, Resistor, Led}')
+    .replace('.led: Led {', '.led: Led { .color &= Color::Rde');
+  expect(withError.includes('Color, Resistor') && withError.includes('Color::Rde'), 'the error is written into the source');
+  fs.writeFileSync(file, withError);
   await page.waitForSelector('[data-testid="cmp-head-errors"]');
   await tab('problems');
   await page.waitForSelector('.cr-kind.k-problem');
-  expect(/catalog has nothing/.test(await text('[data-testid="cmp-list"]')) && /New/.test(await text('[data-testid="cmp-list"]')), 'the new error is listed');
+  expect(/`Color` has no variant `Rde`/.test(await text('[data-testid="cmp-list"]')) && /New/.test(await text('[data-testid="cmp-list"]')), 'the new error is listed');
   expect(/\d+ new/.test(tile_text(await text('[data-testid="tile-problems"]'))), 'and the tile counts it');
   await shot('problems');
   fs.writeFileSync(file, original);

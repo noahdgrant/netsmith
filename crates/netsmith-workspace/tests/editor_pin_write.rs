@@ -40,7 +40,7 @@ part Probe {
 /// `p04` is the source's (it is connected and its function is chosen). The search gives `v` the
 /// only free `ANALOG` pin it can have first (`p02`), then `x` `p00` and `y` `p03`, because `y`
 /// on `p01` would use both pins of `PAIR`.
-const REQUESTS: &str = "    .v: .u.ANALOG\n    .x: .u.GPIO\n    .y: .u.GPIO\n    .v ~ .probe.a00\n    .x ~ .probe.a01\n    .y ~ .probe.a02\n    .u.p04 ~ .probe.a03\n    .u.p04.function &= \"GPIO\"\n";
+const REQUESTS: &str = "    .v: .u.ANALOG\n    .x: .u.GPIO\n    .y: .u.GPIO\n    .v ~ .probe.a00\n    .x ~ .probe.a01\n    .y ~ .probe.a02\n    .u.p04 ~ .probe.a03\n    .u.p04.function &= GPIO\n";
 
 fn source(requests: &str) -> String {
     format!("{MCU}\nboard B {{\n    .u: Zq\n    .probe: Probe\n{requests}}}\n")

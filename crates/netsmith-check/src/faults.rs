@@ -16,8 +16,8 @@
 //! | No-connect pin connected | a `no_connect` pin must have nothing else on its net | `` `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with ... `` |
 //! | Two outputs on one net | two `output` pins on one net; pins the part joins inside are one; an `output` and a `bidirectional` pin are allowed | ``net `X` has two outputs: `a.tx`, `b.tx` `` |
 //! | Output on a rail | an `output` pin on the net of a rail's `pos` or `neg` (#461); an output that is itself a rail's pin, or a rail of its own part, does not count | `` `d.out` (`Zdrv`) is an output on net `GND`, the net of rail `gnd` (`gnd.neg`): ... `` |
-//! | Function not chosen | a connected pin with more than one function needs `.function &=` from the board | `` `u.pa9` has several functions (GPIO, UART1_TX, SPI1_MOSI) and is connected: choose one with `.u.pa9.function &= "GPIO"` `` |
-//! | Function not offered | `.function &=` names a function the pin does not list | `` `u.pa9` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_MOSI `` |
+//! | Function not chosen | a connected pin with more than one function needs `.function &=` from the board | `` `u.pa9` has several functions (GPIO, UART1_TX, SPI1_MOSI) and is connected: choose one with `.u.pa9.function &= GPIO` `` |
+//! | Function not offered | `.function &=` names a function the pin does not list | `` `u.pa9` cannot be `UART1_TXX`; its functions are GPIO, UART1_TX, SPI1_MOSI; did you mean `UART1_TX`? `` |
 //! | Function used twice | one function on two pins of one part (requests for a function that rows list on several pins each get their own pin) | `` function `UART1_TX` is chosen on both `u.pa9` and `u.pb6` `` |
 //! | Pad given to two pins | two pins on one pad that the part does not join (decision 5, after the solve) | `` pad 3 is given to `sense` and `en` `` |
 //!
@@ -264,9 +264,19 @@ impl<'a> Run<'a> {
             Pinout::NoSuchPackage { package, packages } => {
                 let ty = &model.instance(part).type_name;
                 let packages: Vec<String> = packages.iter().map(|p| p.to_string()).collect();
-                let at = model.instance(part).at();
+                let hint = crate::lower::closest(&package, &packages)
+                    .map(|p| format!("; did you mean \"{p}\"?"))
+                    .unwrap_or_default();
+                // At the statement that names the package, where there is one (ADR 0118).
+                let at = match model.member(part, "package") {
+                    Some(crate::model::Member::Field(f)) => {
+                        model.field(f).narrowed_at.last().copied()
+                    }
+                    _ => None,
+                }
+                .unwrap_or_else(|| model.instance(part).at());
                 let message = format!(
-                    "`{}` is a `{ty}` in package `{package}`, which has no pin table; its tables are for {}",
+                    "`{}` is a `{ty}` in package `{package}`, which has no pin table; its tables are for {}{hint}",
                     model.path_of(part),
                     list(&packages)
                 );
@@ -384,8 +394,9 @@ impl<'a> Run<'a> {
                     if functions.is_empty() {
                         format!("`{name}` cannot be `{f}`; it has no functions to choose from")
                     } else {
+                        let hint = self.function_hint(part, &f, &functions);
                         format!(
-                            "`{name}` cannot be `{f}`; its functions are {}",
+                            "`{name}` cannot be `{f}`; its functions are {}{hint}",
                             functions.join(", ")
                         )
                     }
@@ -424,7 +435,7 @@ impl<'a> Run<'a> {
                 self.report(
                     at,
                     format!(
-                        "`{name}` has several functions ({shown}) and is connected: choose one with `.{relative}.function &= \"{}\"`",
+                        "`{name}` has several functions ({shown}) and is connected: choose one with `.{relative}.function &= {}`",
                         functions[0]
                     ),
                 );
@@ -503,6 +514,38 @@ impl<'a> Run<'a> {
             ));
         }
         message
+    }
+
+    /// For a function a pin does not offer, in a part with no peripherals: the pins that offer
+    /// it when it is spelt right, or the nearest function of the pin, else of the part, when it
+    /// is not.
+    fn function_hint(&self, part: InstId, function: &str, own: &[String]) -> String {
+        let model = self.model;
+        let rows = || {
+            model
+                .instance(part)
+                .tables
+                .iter()
+                .flat_map(|t| t.rows.iter())
+        };
+        let mut pins: Vec<String> = rows()
+            .filter(|r| r.functions.iter().any(|f| f.name == function))
+            .map(|r| format!("`{}`", model.path_of(r.pin)))
+            .collect();
+        pins.sort();
+        pins.dedup();
+        if !pins.is_empty() {
+            return format!("; that function is offered only on {}", pins.join(", "));
+        }
+        let mut known: Vec<String> = rows()
+            .flat_map(|r| r.functions.iter().map(|f| f.name.clone()))
+            .collect();
+        known.sort();
+        known.dedup();
+        crate::lower::closest(function, own)
+            .or_else(|| crate::lower::closest(function, &known))
+            .map(|n| format!("; did you mean `{n}`?"))
+            .unwrap_or_default()
     }
 
     /// Where the board chose a function: the statement, on the pin or on the pin of a module

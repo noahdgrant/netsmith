@@ -127,7 +127,7 @@ fn board(parts: &[(&str, &str)], body: &str) -> String {
 
 /// The master of the any-pin processor on SPIM0, joined to a flash the way a board does it: the
 /// functions are chosen on pins, and the pins are joined one at a time.
-const MASTER: &str = "    .u.p03.function &= \"APP_GPIO\"\n    .u.p00.function &= \"SPIM0_SCK\"\n    .u.p01.function &= \"SPIM0_MOSI\"\n    .u.p02.function &= \"SPIM0_MISO\"\n    .u.p00 ~ .flash.spi.sclk\n    .u.p01 ~ .flash.spi.mosi\n    .u.p02 ~ .flash.spi.miso\n    .u.p03 ~ .flash.spi.cs\n";
+const MASTER: &str = "    .u.p03.function &= APP_GPIO\n    .u.p00.function &= SPIM0_SCK\n    .u.p01.function &= SPIM0_MOSI\n    .u.p02.function &= SPIM0_MISO\n    .u.p00 ~ .flash.spi.sclk\n    .u.p01 ~ .flash.spi.mosi\n    .u.p02 ~ .flash.spi.miso\n    .u.p03 ~ .flash.spi.cs\n";
 
 fn with_master(replacing: &[(&str, &str)]) -> String {
     let mut body = MASTER.to_string();
@@ -163,7 +163,7 @@ fn mosi_of_the_any_pin_master_on_the_miso_of_a_slave_is_found() {
 fn the_master_function_chosen_on_a_pin_is_the_statement_that_puts_it_on_the_bus() {
     // The same joins with no function chosen: the pins are plain pins, and no rule reads them
     // as a bus. (The processor's pins that have several functions need one chosen.)
-    let src = with_master(&[]).replace("    .u.p00.function &= \"SPIM0_SCK\"\n    .u.p01.function &= \"SPIM0_MOSI\"\n    .u.p02.function &= \"SPIM0_MISO\"\n", "    .u.p00.function &= \"APP_GPIO\"\n    .u.p01.function &= \"APP_GPIO\"\n    .u.p02.function &= \"APP_GPIO\"\n");
+    let src = with_master(&[]).replace("    .u.p00.function &= SPIM0_SCK\n    .u.p01.function &= SPIM0_MOSI\n    .u.p02.function &= SPIM0_MISO\n", "    .u.p00.function &= APP_GPIO\n    .u.p01.function &= APP_GPIO\n    .u.p02.function &= APP_GPIO\n");
     let c = run(&src);
     let m = messages(&c);
     assert!(
@@ -198,7 +198,7 @@ fn two_peripherals_of_one_part_on_one_bus_are_two_masters() {
     // SPIM0 and SPIM1 both on the flash's lines.
     let src = board(
         &[("u", "Zmcu"), ("flash", "Zflash")],
-        &format!("{MASTER}    .u.p04.function &= \"SPIM1_SCK\"\n    .u.p04 ~ .flash.spi.sclk\n"),
+        &format!("{MASTER}    .u.p04.function &= SPIM1_SCK\n    .u.p04 ~ .flash.spi.sclk\n"),
     );
     let m = messages(&run(&src));
     assert_eq!(m.len(), 1, "{m:#?}");
@@ -213,7 +213,7 @@ fn two_peripherals_of_one_part_on_one_bus_are_two_masters() {
 fn the_selects_of_two_slave_units_on_one_net_are_refused() {
     let src = board(
         &[("u", "Zmcu"), ("v", "Zmcu")],
-        "    .u.p00.function &= \"SPIS0_CSN\"\n    .v.p00.function &= \"SPIS0_CSN\"\n    .u.p00 ~ .v.p00\n",
+        "    .u.p00.function &= SPIS0_CSN\n    .v.p00.function &= SPIS0_CSN\n    .u.p00 ~ .v.p00\n",
     );
     let m = messages(&run(&src));
     assert!(
@@ -227,7 +227,7 @@ fn the_selects_of_two_slave_units_on_one_net_are_refused() {
 fn a_slave_units_data_out_left_open_is_refused_once_the_unit_is_used() {
     let src = board(
         &[("u", "Zmcu"), ("host", "Zhost")],
-        "    .u.p00.function &= \"SPIS0_SCK\"\n    .u.p01.function &= \"SPIS0_MOSI\"\n    .u.p02.function &= \"SPIS0_MISO\"\n    .u.p00 ~ .host.spi.sclk\n    .u.p01 ~ .host.spi.mosi\n    .host.uart.rx ~ .host.uart.rx\n",
+        "    .u.p00.function &= SPIS0_SCK\n    .u.p01.function &= SPIS0_MOSI\n    .u.p02.function &= SPIS0_MISO\n    .u.p00 ~ .host.spi.sclk\n    .u.p01 ~ .host.spi.mosi\n    .host.uart.rx ~ .host.uart.rx\n",
     );
     let m = messages(&run(&src));
     assert!(
@@ -243,7 +243,7 @@ fn a_slave_units_data_out_left_open_is_refused_once_the_unit_is_used() {
 fn the_uart_units_cross_and_a_tx_on_a_tx_is_found() {
     let ok = board(
         &[("u", "Zmcu"), ("link", "Zlink")],
-        "    .u.p00.function &= \"UARTE0_TX\"\n    .u.p01.function &= \"UARTE0_RX\"\n    .u.p00 ~ .link.uart.rx\n    .u.p01 ~ .link.uart.tx\n",
+        "    .u.p00.function &= UARTE0_TX\n    .u.p01.function &= UARTE0_RX\n    .u.p00 ~ .link.uart.rx\n    .u.p01 ~ .link.uart.tx\n",
     );
     let c = run(&ok);
     assert!(c.is_ok(), "{}", c.render());
@@ -263,7 +263,7 @@ fn the_uart_units_cross_and_a_tx_on_a_tx_is_found() {
 fn a_third_uart_end_is_over_the_limit_whether_it_is_an_interface_or_a_peripheral() {
     let src = board(
         &[("u", "Zmcu"), ("link", "Zlink"), ("host", "Zhost")],
-        "    .u.p00.function &= \"UARTE0_TX\"\n    .u.p01.function &= \"UARTE0_RX\"\n    .u.p00 ~ .link.uart.rx\n    .u.p01 ~ .link.uart.tx\n    .host.uart.rx ~ .link.uart.tx\n    .host.spi.sclk ~ .host.spi.sclk\n",
+        "    .u.p00.function &= UARTE0_TX\n    .u.p01.function &= UARTE0_RX\n    .u.p00 ~ .link.uart.rx\n    .u.p01 ~ .link.uart.tx\n    .host.uart.rx ~ .link.uart.tx\n    .host.spi.sclk ~ .host.spi.sclk\n",
     );
     let m = messages(&run(&src));
     assert!(
@@ -402,9 +402,9 @@ board B {
     }
     .u: Zbare
     .supply ~ .u.vdd
-    .u.p00.function &= "SPIM0_SCK"
-    .u.p01.function &= "SPIM0_MOSI"
-    .u.p02.function &= "SPIM0_MISO"
+    .u.p00.function &= SPIM0_SCK
+    .u.p01.function &= SPIM0_MOSI
+    .u.p02.function &= SPIM0_MISO
 }
 "#;
 

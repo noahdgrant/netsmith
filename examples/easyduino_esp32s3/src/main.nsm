@@ -25,7 +25,7 @@ import std::bus::{PullDown, PullUp}
 import std::mfg::jlcpcb::FourLayer
 import std::parts::connector::UsbCSink
 import std::parts::diode::Schottky
-import std::parts::passive::{Capacitor, Led, Resistor}
+import std::parts::passive::{Capacitor, Color, Led, Resistor}
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
@@ -165,7 +165,7 @@ board EasyduinoEsp32s3 {
 
     /// D1: lit from VBUS through R6.
     .power_led: Led {
-        .color &= "BLUE"
+        .color &= Color::Blue
         .package &= "0402"
         .forward_voltage &= 2.6V..3.2V
     }
@@ -173,7 +173,7 @@ board EasyduinoEsp32s3 {
     .vbus.pos ~> .power_led_resistor ~> .power_led ~> .vbus.neg
     /// D4: GPIO38 through R9.
     .user_led: Led {
-        .color &= "BLUE"
+        .color &= Color::Blue
         .package &= "0402"
         .forward_voltage &= 2.6V..3.2V
     }

@@ -2,7 +2,7 @@
 //! own: a board whose schematic is a hierarchy of sheets.
 
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led, Capacitor}
+import std::parts::passive::{Resistor, Led, Color, Capacitor}
 import std::sources::Rail
 import std::logic::Logic
 import std::mfg::jlcpcb::TwoLayer
@@ -17,7 +17,7 @@ module Light {
     .current_limit: Resistor
     .current_limit.resistance &= .limit
     .led: Led {
-        .color &= "GREEN"
+        .color &= Color::Green
         .forward_voltage &= 1.8V..2.5V
     }
     .bypass: Capacitor {

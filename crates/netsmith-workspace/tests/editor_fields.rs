@@ -331,9 +331,9 @@ board Uart {
     .load: Resistor
     .supply ~ .u.vdd
     .u.pa2 ~ .load.a
-    .u.pa2.function &= "UART1_TX"
+    .u.pa2.function &= UART1_TX
     .u.pa3 ~ .load.b
-    .u.pa3.function &= "GPIO"
+    .u.pa3.function &= GPIO
 }
 "#;
 

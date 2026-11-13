@@ -161,8 +161,108 @@ impl Checker<'_> {
         }
     }
 
+    /// The right side of a statement whose other side is `beside`: a bare name (`USART1_TX`)
+    /// is a function when `beside` is the `function` of a pin (ADR 0118); a function is a name
+    /// of the part's pin table, which no import brings in. Anything else is lowered as it
+    /// always is.
+    fn lower_beside(&mut self, beside: &Typed, e: &Expr) -> Option<Typed> {
+        let function = matches!(beside.e, RExpr::Field(f) if self.model.is_pin_function(f));
+        if function {
+            if let Some(name) = bare_name(e) {
+                return Some(Typed {
+                    e: RExpr::Text(name.name.clone()),
+                    ty: VTy::Text,
+                });
+            }
+            if let Expr::Str(text, span) = e {
+                let RExpr::Field(f) = beside.e else {
+                    unreachable!("a function is a field")
+                };
+                let pin = self.model.path_of(self.model.field(f).owner);
+                let written = if is_plain_name(text) {
+                    format!("write `{text}`, without quotes")
+                } else {
+                    "write the name as its `fn` list has it, without quotes".to_string()
+                };
+                self.error(
+                    *span,
+                    format!(
+                        "the function of `{pin}` is a name from the pin table of its part, not text: {written}"
+                    ),
+                );
+                // The pin is still read as having that function, so the refusal is the one
+                // message about the line.
+                return Some(Typed {
+                    e: RExpr::Text(text.clone()),
+                    ty: VTy::Text,
+                });
+            }
+        }
+        // A bare name beside a field of an enum that is not in scope: say how the variant is
+        // written, by its enum or by importing it (ADR 0118).
+        if let VTy::Enum(id) = beside.ty
+            && let Some(name) = bare_name(e)
+            && self.imported_variant(&name.name).is_none()
+            && !self.outer_member(&name.name)
+            && let Some((m, i)) = self.enum_def(id)
+        {
+            let info = self.model.enum_info(id).clone();
+            let variant = closest(&name.name, &info.variants);
+            let message = match variant {
+                Some(v) => format!(
+                    "`{}` is not defined here; a variant of `{}` is written {}",
+                    name.name,
+                    info.name,
+                    self.variant_spellings(m, i, &v)
+                ),
+                None => {
+                    let listed: Vec<String> =
+                        info.variants.iter().map(|v| format!("`{v}`")).collect();
+                    format!(
+                        "`{}` is not defined here, and `{}` has no such variant: its variants are {}",
+                        name.name,
+                        info.name,
+                        list_of(&listed)
+                    )
+                }
+            };
+            self.error(name.span, message);
+            return None;
+        }
+        self.lower(e)
+    }
+
+    /// Whether a bare name is a member of an enclosing block.
+    fn outer_member(&self, name: &str) -> bool {
+        let outer = self.scope.len().saturating_sub(1);
+        self.scope[..outer]
+            .iter()
+            .any(|&s| self.model.member(s, name).is_some())
+    }
+
+    /// The definition of an enum the model has an id for.
+    fn enum_def(&self, id: EnumId) -> Option<(usize, usize)> {
+        self.enum_ids
+            .iter()
+            .find(|(_, e)| **e == id)
+            .map(|(&def, _)| def)
+    }
+
     fn module_def_kind(&self, module: usize, index: usize) -> &'static str {
         crate::providers::kind_word(&self.module_defs(module)[index])
+    }
+
+    /// A field as a value of its own kind.
+    fn typed_field(&self, f: FieldId) -> Typed {
+        let ty = match self.model.field(f).kind {
+            FieldKind::Quantity(d) => VTy::Q(d),
+            FieldKind::Text => VTy::Text,
+            FieldKind::Enum(e) => VTy::Enum(e),
+        };
+        Typed {
+            e: RExpr::Field(f),
+            ty,
+        }
     }
 
     pub fn lower(&mut self, e: &Expr) -> Option<Typed> {
@@ -182,18 +282,19 @@ impl Checker<'_> {
                 ty: VTy::Text,
             }),
             Expr::Variant { ty, variant, span } => self.lower_variant(ty, variant, *span),
+            // A variant imported by name (`import std::parts::passive::Color::Red`, ADR 0118).
+            Expr::Path(_)
+                if let Some(name) = bare_name(e)
+                    && let Some((m, i, variant)) = self.imported_variant(&name.name) =>
+            {
+                let id = self.enum_id(m, i);
+                Some(Typed {
+                    e: RExpr::Text(variant),
+                    ty: VTy::Enum(id),
+                })
+            }
             Expr::Path(p) => match self.resolve_path(p) {
-                Res::Field(f) => {
-                    let ty = match self.model.field(f).kind {
-                        FieldKind::Quantity(d) => VTy::Q(d),
-                        FieldKind::Text => VTy::Text,
-                        FieldKind::Enum(e) => VTy::Enum(e),
-                    };
-                    Some(Typed {
-                        e: RExpr::Field(f),
-                        ty,
-                    })
-                }
+                Res::Field(f) => Some(self.typed_field(f)),
                 Res::Inst(i) => {
                     let word = self.model.instance(i).kind.word();
                     self.error(
@@ -591,7 +692,13 @@ impl Checker<'_> {
         self.narrowing = c.op == CmpOp::Narrow;
         let target = self.resolve_path(p);
         self.narrowing = false;
-        let rhs = self.lower(&c.rhs);
+        let rhs = match target {
+            Res::Field(f) => {
+                let beside = self.typed_field(f);
+                self.lower_beside(&beside, &c.rhs)
+            }
+            _ => self.lower(&c.rhs),
+        };
         let stated = match target {
             Res::Field(f) => Some(f),
             _ => None,
@@ -787,8 +894,22 @@ impl Checker<'_> {
 
     fn relation_statement(&mut self, c: &ast::Constraint) -> Option<FieldId> {
         self.range_ends = matches!(c.op, CmpOp::Le | CmpOp::Ge);
-        let l = self.lower(&c.lhs);
-        let r = self.lower(&c.rhs);
+        // A bare name on one side is read beside the other side (ADR 0118).
+        let (l, r) = if bare_name(&c.lhs).is_some() && bare_name(&c.rhs).is_none() {
+            let r = self.lower(&c.rhs);
+            let l = match &r {
+                Some(r) => self.lower_beside(r, &c.lhs),
+                None => None,
+            };
+            (l, r)
+        } else {
+            let l = self.lower(&c.lhs);
+            let r = match &l {
+                Some(l) => self.lower_beside(l, &c.rhs),
+                None => self.lower(&c.rhs),
+            };
+            (l, r)
+        };
         self.range_ends = false;
         let (Some(l), Some(r)) = (l, r) else {
             return None;
@@ -1100,6 +1221,26 @@ impl Checker<'_> {
     }
 }
 
+/// The name written bare on one side of a statement (`Red`, `USART1_TX`): one plain segment
+/// with no leading dot.
+fn bare_name(e: &Expr) -> Option<&ast::Ident> {
+    match e {
+        Expr::Path(p) if !p.leading_dot && p.segments.len() == 1 && !p.segments[0].quoted => {
+            Some(&p.segments[0])
+        }
+        _ => None,
+    }
+}
+
+/// Whether a text could be written as a plain name.
+fn is_plain_name(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// `` `A`, `B` and `C` ``
 pub(crate) fn list_of(items: &[String]) -> String {
     match items.split_last() {
@@ -1111,7 +1252,7 @@ pub(crate) fn list_of(items: &[String]) -> String {
 
 /// The word of `options` that `word` is most likely a slip for: the same letters in another
 /// case, or at most two edits away (and fewer than half its length).
-pub(crate) fn closest(word: &str, options: &[String]) -> Option<String> {
+pub fn closest(word: &str, options: &[String]) -> Option<String> {
     let lower = word.to_lowercase();
     if let Some(same) = options.iter().find(|o| o.to_lowercase() == lower) {
         return Some(same.clone());
