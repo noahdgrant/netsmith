@@ -997,6 +997,80 @@ pub struct Model {
     journal: Vec<(FieldId, Domain)>,
     /// How many checkpoints are open.
     open_checkpoints: usize,
+    /// The equations that pass a pin's function on (`pinout.rs`), found once for a list of
+    /// relations.
+    pub(crate) forwards: ForwardCache,
+}
+
+/// The equations `.a.function == .b.function` between two pins' functions, by the field on
+/// each side, for the list of relations they were read from (ADR 0071, stage 0). The solver asks
+/// for a pin's kind, and so for its function, for every pin of every candidate it tries; a scan
+/// of all the relations each time made the picks of a board of 1,200 parts take half a minute
+/// (#561). The cache holds a [`Weak`](std::sync::Weak) of the list: it does not stop
+/// [`Arc::make_mut`] from changing the list in place, and any change leaves it stale. A clone of
+/// the model starts with none.
+#[derive(Default)]
+pub(crate) struct ForwardCache(std::sync::Mutex<Option<std::sync::Arc<Forwards>>>);
+
+/// What [`ForwardCache`] holds.
+pub(crate) struct Forwards {
+    relations: std::sync::Weak<Vec<Relation>>,
+    /// For a pin's `function` field, the pin of the first equation with it alone on the left
+    /// and another pin's `function` alone on the right.
+    pub(crate) from: std::collections::HashMap<FieldId, InstId>,
+    /// For a pin's `function` field, the pins of the equations with it alone on the right, in
+    /// the order of the relations.
+    pub(crate) read_by: std::collections::HashMap<FieldId, Vec<InstId>>,
+}
+
+impl Clone for ForwardCache {
+    fn clone(&self) -> Self {
+        ForwardCache::default()
+    }
+}
+
+impl std::fmt::Debug for ForwardCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ForwardCache(..)")
+    }
+}
+
+impl Model {
+    /// The forwarding equations of the relations as they are now.
+    pub(crate) fn forwards(&self) -> std::sync::Arc<Forwards> {
+        let mut held = self.forwards.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(f) = held.as_ref()
+            && std::sync::Weak::ptr_eq(&f.relations, &Arc::downgrade(&self.relations))
+            && f.relations.strong_count() > 0
+        {
+            return Arc::clone(f);
+        }
+        let mut from = std::collections::HashMap::new();
+        let mut read_by: std::collections::HashMap<FieldId, Vec<InstId>> =
+            std::collections::HashMap::new();
+        let pin_function = |f: FieldId| {
+            let field = self.field(f);
+            (field.name == "function" && self.instance(field.owner).kind == InstKind::Pin)
+                .then_some(field.owner)
+        };
+        for r in self.relations.iter() {
+            if let (RExpr::Field(l), CmpOp::EqEq, RExpr::Field(g)) = (&r.lhs, r.op, &r.rhs) {
+                if let Some(owner) = pin_function(*g) {
+                    from.entry(*l).or_insert(owner);
+                }
+                if let Some(owner) = pin_function(*l) {
+                    read_by.entry(*g).or_default().push(owner);
+                }
+            }
+        }
+        let made = Arc::new(Forwards {
+            relations: Arc::downgrade(&self.relations),
+            from,
+            read_by,
+        });
+        *held = Some(Arc::clone(&made));
+        made
+    }
 }
 
 /// A `polygon` statement of an `Outline` (issue #57): its corners in mm, in the order written.
@@ -1053,6 +1127,7 @@ impl Model {
             polygons: Vec::new(),
             journal: Vec::new(),
             open_checkpoints: 0,
+            forwards: ForwardCache::default(),
         }
     }
 
