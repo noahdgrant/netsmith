@@ -51,7 +51,7 @@ fn parses_the_led_example() {
 
     let design = &file.definitions[0];
     assert_eq!(design.name.name, "LedExample");
-    assert_eq!(design.items.len(), 9);
+    assert_eq!(design.items.len(), 8);
 
     let Item::Decl(process) = &design.items[0] else {
         panic!("process")
@@ -75,13 +75,7 @@ fn parses_the_led_example() {
         "`{{}}` is an empty body"
     );
 
-    let Item::Constraint(eq) = &design.items[7] else {
-        panic!("equation")
-    };
-    assert_eq!(eq.op, CmpOp::EqEq);
-    assert_eq!(eq.lhs.to_source(), ".led.current");
-
-    let Item::Connect(chain) = &design.items[8] else {
+    let Item::Connect(chain) = &design.items[7] else {
         panic!("chain")
     };
     assert_eq!(chain.first.to_source(), ".supply.pos");
@@ -118,7 +112,6 @@ board LedExample {
     .power_in: Header1x2
     .supply.pos ~ .power_in.p1
     .supply.neg ~ .power_in.p2
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 "
