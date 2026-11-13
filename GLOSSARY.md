@@ -631,8 +631,12 @@ A square of the board, 1 mm a side (ten cells of the router's grid), that the co
 _Avoid_: region, bin, gcell
 
 **Corridor**:
-The tiles of a line's coarse plan, on either layer, grown by one tile each way. A detailed search that follows the plan pays for each step outside its line's corridor; it is a cost, not a wall.
+The tiles of a line's coarse plan, on either layer. A detailed search that follows the plan pays for a step outside its line's corridor only on a tile the plan crowds; it is a cost, not a wall. A line of a pour's net, of a diff pair or of a net its current widens has none.
 _Avoid_: channel (the room between two rows of pads)
+
+**Crowding**:
+How full the coarse plan leaves a tile on a layer: the most of its four edges' planned tracks over what the edge holds. A step outside a line's corridor costs nothing on a tile crowded less than 70 %, and the whole crowding cost at 100 %.
+_Avoid_: congestion (the router's negotiation over cells), demand
 
 **Fabrication package**:
 The files a board house needs: Gerbers and drill files, a bill of materials, and a placement file. netsmith writes them itself from the board file (ADR 0034).
