@@ -1001,6 +1001,16 @@ async fn asset(request: Request<Body>) -> Response {
     let path = request.uri().path().trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
     match assets::find(path) {
+        // The placeholder of a binary built without Node: a page that says so, with a 503.
+        Some((mime, bytes)) if path == "index.html" && !assets::bundle_is_present() => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [
+                (header::CONTENT_TYPE, HeaderValue::from_static(mime)),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            ],
+            bytes,
+        )
+            .into_response(),
         Some((mime, bytes)) => (
             [
                 (header::CONTENT_TYPE, HeaderValue::from_static(mime)),
@@ -1009,9 +1019,6 @@ async fn asset(request: Request<Body>) -> Response {
             bytes,
         )
             .into_response(),
-        None if path == "index.html" => {
-            ApiError::new(503, assets::missing_bundle_message()).into_response()
-        }
         None => ApiError::not_found("not found").into_response(),
     }
 }

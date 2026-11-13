@@ -125,11 +125,6 @@ async function doctor() {
   const bin = netsmithBin();
   line(fs.existsSync(bin), 'netsmith binary', fs.existsSync(bin) ? bin : `${bin} is missing: run cargo build -p netsmith-cli (set CARGO_TARGET_DIR or NETSMITH_BIN if it is elsewhere)`);
 
-  // The committed bundle the binary embeds when `web/` has not changed (`web/dist` is only a
-  // build directory of a changed `web/`, which needs Node 20+).
-  const dist = path.join(repo, 'crates/netsmith-editor/web-dist/index.html');
-  line(fs.existsSync(dist), 'web bundle', fs.existsSync(dist) ? dist : 'crates/netsmith-editor/web-dist is missing: restore it from git, or `scripts/web-bundle update` with Node 20+');
-
   if (!has('no-browser')) {
     let playwright;
     try {
@@ -278,6 +273,22 @@ async function launch() {
       // Not up yet.
     }
     await new Promise((r) => setTimeout(r, 100));
+  }
+  // A binary built without Node embeds a placeholder page (ADR 0114), which answers 503: nothing
+  // can be driven, so stop with what to do instead of failing every recipe.
+  try {
+    const r = await fetch(url);
+    if (r.status === 503) {
+      try {
+        process.kill(child.pid);
+      } catch {
+        // Already gone.
+      }
+      console.error(`the editor's page is the placeholder: this binary was built without Node 20+. Install Node 20+ and run cargo build -p netsmith-cli again (scripts/web-bundle builds the page by hand), then cleanup and launch.`);
+      process.exit(1);
+    }
+  } catch {
+    // The log says why it did not start.
   }
   fs.writeFileSync(statePath, JSON.stringify({ pid: child.pid, endpointsPid, port, url, project, fixture, fixtureName: flag('file') ? 'file' : (flag('fixture') ?? 'two_boards'), git: has('git') }, null, 2));
   console.log(`launched ${url} (pid ${child.pid}) over ${project}\nlog: ${path.join(root, 'server.log')}`);

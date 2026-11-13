@@ -2206,7 +2206,7 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 ///
 /// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
 /// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
-/// a new field changes the generated types and the committed bundle; not built, issue #19).
+/// a new field changes the generated types; not built, issue #19).
 pub fn bom_entries(sourcing: &[Sourced], mapping: &Mapping) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
     for s in sourcing.iter().filter(|s| s.assembled()) {

@@ -5,8 +5,7 @@
 # The archive holds the binary, LICENSE, README.md and SHA256SUMS (the checksums of those three).
 #
 # Steps, each of which stops the script with its reason when it fails:
-#   1. the workspace version, the committed editor page (no Node is used or needed: the page in
-#      crates/netsmith-editor/web-dist must be of the sources in web/, see scripts/web-bundle);
+#   1. the workspace version and the target;
 #   2. `cargo build --release --locked -p netsmith-cli`, which must print no warning;
 #   3. `netsmith --version` must print the workspace version;
 #   4. a smoke test in a scratch directory: `netsmith init`, `build` and `fab` (which must end
@@ -18,6 +17,9 @@
 # NETSMITH_KICAD_FOOTPRINTS, else the binary looks beside kicad-cli and in the usual install
 # places, ADR 0021), so step 4 needs a KiCad install on the machine. Without one the script stops; NETSMITH_RELEASE_SKIP_KICAD_SMOKE=1 runs the rest and
 # says that build and fab were not tried.
+#
+# Needs Node 20 or newer to build the editor's page (and the npm registry, once): a release never
+# ships the placeholder page that a build without Node embeds (ADR 0114).
 #
 # RELEASE_TAG, when set (the workflow sets it to the tag), must be v<version>.
 # It builds for the host only (no cross compiling). Needs bash, cargo, curl, tar (zip, 7z or
@@ -52,13 +54,17 @@ sha256() {
     else fail "neither sha256sum nor shasum is installed"; fi
 }
 
-# 2. Build. A build warning is a failure: the one that matters says the page is not what the
-#    sources build to (or that there is none).
+# 2. Build. A build warning is a failure: the one that matters says the editor's page was not
+#    built (no Node 20 or newer, ADR 0114) and the binary has the placeholder page. A release
+#    always ships the real page, so it needs Node.
 step "building $name"
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 if ! cargo build --release --locked -p netsmith-cli --color never 2>&1 | tee "$log" >&2; then
     fail "cargo build failed"
+fi
+if grep -q "editor's page was not built" "$log"; then
+    fail "the editor's page was not built, so the binary has only the placeholder page: a release needs Node 20 or newer (reason above)"
 fi
 if grep -q "^warning" "$log"; then
     fail "the build printed warnings (above); a release is built with none"

@@ -40,9 +40,9 @@ To fix a stale lock, run `netsmith lock --update` in the example. To fix a stale
 
 For a change to the editor or to a view it shows, also run the browser check in `netsmith-dev-verify-editor` (`scripts/editor-verify`) and look at the screenshots.
 
-## The editor's committed page
+## The editor's page
 
-`crates/netsmith-editor/web-dist` is the built page, committed so netsmith builds without Node. `SOURCE-HASH` in it is a hash of the bytes of the sources in `web/`, and `build.rs` embeds it only when that is the sources' hash (never by file times). After any change under `web/`, with Node 20+, run `scripts/web-bundle update` and commit `web-dist`. `scripts/web-bundle check` rebuilds the page and fails, naming the files, if `web-dist` differs; `cargo test -p netsmith-editor --test main bundle::` fails without Node when a source changed and `update` was not run. To see a no-Node build, put a `PATH` and `HOME` without Node on a fresh `git clone` (`build_web.rs` also looks in `~/.nvm`): `cargo build -p netsmith` must print no warning and `netsmith editor` must serve the page.
+No built page is committed (ADR 0114). `crates/netsmith-editor/build.rs` builds the page from `web/` with Node 20+ when Node is there (`PATH`, else `~/.nvm`) and embeds it; without Node the binary embeds a placeholder page and `cargo build` prints a warning (`cargo:warning=the editor's page was not built...`). `scripts/web-bundle build` builds `web/dist` by hand, `scripts/web-bundle hash` prints the hash of the sources. `cargo test -p netsmith-editor --test main bundle::` checks the page the build embedded (complete, of the current sources, the 3D chunk within its budget); with no page in the build it skips with a message, and `NETSMITH_REQUIRE_BUNDLE_CHECK=1` (CI sets it) makes a placeholder fail it. To see a no-Node build, put a `PATH` and `HOME` without Node on the build (`build_web.rs` also looks in `~/.nvm`): `cargo build -p netsmith-cli` must succeed with that warning and `netsmith editor` must serve the placeholder (a 503 page). Never commit `web-dist`.
 
 ## Language guide
 

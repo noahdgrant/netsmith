@@ -191,6 +191,10 @@ while IFS= read -r path; do
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;
+        # The editor's page, its sources: the build script builds them into the binary (ADR 0114;
+        # no built page is committed), so the `build` job's archive and binary embed them and the
+        # recipes drive them.
+        crates/netsmith-editor/web/*) rust=true recipes=true no_kicad=true ;;
         crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/*) rust=true recipes=true no_kicad=true ;;
         # The test helpers: never linked into the binary, and every test builds with them.
         crates/netsmith-testkit/*) rust=true kicad=true ;;

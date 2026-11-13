@@ -18,6 +18,6 @@ The two halves are one thing to the person: what is selected (top bar chip), wha
 
 ## Gotchas
 
-- The editor in `launch` serves the committed bundle. To check source changes without rebuilding it (`scripts/web-bundle update` is the owner's), run `npx vite` in `crates/netsmith-editor/web` with `NETSMITH_EDITOR=http://127.0.0.1:<editor port>` and point the driver at it: set `url` in `$NETSMITH_VERIFY_DIR/state.json` to the Vite address.
+- The editor in `launch` serves the page its binary embedded (built from `web/` by `cargo build`). To check source changes without rebuilding the binary, run `npx vite` in `crates/netsmith-editor/web` with `NETSMITH_EDITOR=http://127.0.0.1:<editor port>` and point the driver at it: set `url` in `$NETSMITH_VERIFY_DIR/state.json` to the Vite address.
 - The chip's second line (`Resistor · r1`) is hidden below 1400 px; the name and the Source and clear buttons stay. For a net the line is "N pins on M modules" and stays at any width (`.selchip-sub.keep`), with ‹ › buttons while the Schematic is in use.
 - Two problems of one line count twice: F8 steps through rows, not lines.

@@ -28,9 +28,9 @@ pub fn run(args: Args) -> ExitCode {
 }
 
 fn run_editor(file: Option<&str>, port: u16) -> ExitCode {
+    // A binary built without Node serves a placeholder page that says so; the server still runs.
     if !netsmith_editor::bundle_is_present() {
-        eprintln!("{}", netsmith_editor::missing_bundle_message());
-        return ExitCode::from(2);
+        eprintln!("warning: {}", netsmith_editor::missing_bundle_message());
     }
     let listener = match TcpListener::bind((Ipv4Addr::LOCALHOST, port)) {
         Ok(l) => l,

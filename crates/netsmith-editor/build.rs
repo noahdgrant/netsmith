@@ -1,16 +1,17 @@
-//! Puts the editor's page into the binary. The page is the bundle built from `web/`
-//! (Preact and Vite). This script embeds, in this order of preference:
+//! Puts the editor's page into the binary. The page is the bundle built from `web/` (Preact and
+//! Vite), and no built page is committed (ADR 0114). This script embeds, in this order:
 //!
-//! 1. the committed bundle in `web-dist/`, when its `SOURCE-HASH` is the hash of the bytes of the
-//!    sources in `web/`: no Node is needed, which is the case for a checkout and for a package;
-//! 2. a bundle built from the sources (`npm ci` and `npm run build`, see `build_web.rs`), when
-//!    Node 20 or newer is installed: the case after a change to `web/`;
-//! 3. the committed bundle of older sources, with a build warning that says why nothing was built.
+//! 1. the page built from the sources (`npm ci` and `npm run build`, see `build_web.rs`), when
+//!    Node 20 or newer is installed (releases and CI always have it);
+//! 2. otherwise a small placeholder page that says the editor's page was not built and what to
+//!    do (use a release binary, or install Node and build again), with a build warning that says
+//!    why nothing was built. `cargo build` with no Node still succeeds.
 //!
-//! The finished bundle is copied into `OUT_DIR` and this script writes `assets.rs`: a table of
-//! its files embedded with `include_bytes!`, and `WEB_STATUS`, the reason there is no bundle when
-//! there is none. The editor prints that reason when it is started. `NETSMITH_SKIP_WEB=1` skips
-//! all of it. `scripts/web-bundle` makes the committed bundle and checks that it is current.
+//! The finished page is copied into `OUT_DIR` and this script writes `assets.rs`: a table of its
+//! files embedded with `include_bytes!`, `WEB_STATUS`, the reason there is no page when there is
+//! none, and `WEB_PLACEHOLDER`, whether the only page is the placeholder. The editor prints that
+//! reason when it is started. `NETSMITH_SKIP_WEB=1` skips the build and embeds the placeholder.
+//! `scripts/web-bundle` builds the page by hand.
 //!
 //! **Why Node is part of the build (ADR 0019).** The page's source editor is CodeMirror 6, which
 //! has done well the work of undo that survives a file switch, selections, search, a gutter
@@ -18,8 +19,8 @@
 //! `<textarea>` painted over by a `<pre>`) would have to do that work again, and the editor is
 //! the product. The grammar for `.nsm` is ours either way (`web/src/nsm.ts`). The cost is
 //! Node 20 or newer, found on `PATH` or in `~/.nvm/versions/node/*/bin` (`web/.nvmrc` says 22),
-//! for a change to `web/`; the committed bundle keeps every other build free of it. `web/dist`
-//! and `node_modules` are not committed. Packages are installed again when `node_modules` was
+//! for a build with the page; a build without it gets the placeholder. `web/dist` and
+//! `node_modules` are not committed. Packages are installed again when `node_modules` was
 //! not installed by this build, from this lockfile and under this Node major, or lacks `tsc` or
 //! `vite`. When a step fails, the reason (the command, the directory, the Node and npm versions,
 //! the start of `PATH`, the exit code and the last lines of its output) is printed as cargo
@@ -38,12 +39,10 @@ mod build_web;
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let web = manifest.join("web");
-    let committed = manifest.join("web-dist");
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     for source in build_web::SOURCES {
         println!("cargo:rerun-if-changed={}", web.join(source).display());
     }
-    println!("cargo:rerun-if-changed={}", committed.display());
     println!("cargo:rerun-if-changed=build_web.rs");
     println!("cargo:rerun-if-env-changed=NETSMITH_SKIP_WEB");
 
@@ -52,7 +51,8 @@ fn main() {
     let bundle = out_dir.join("dist");
     let mut status = String::new();
     let mut warning = String::new();
-    // The hash of the sources the embedded page was built from (`Project::bundle_hash`).
+    // The hash of the sources the embedded page was built from (`Project::bundle_hash`); empty
+    // for the placeholder.
     let mut bundle_hash = String::new();
     git_describe();
     if env::var_os("NETSMITH_SKIP_WEB").is_some() {
@@ -60,24 +60,23 @@ fn main() {
         status = "NETSMITH_SKIP_WEB was set when it was built".into();
     } else {
         let dirs = build_web::search_dirs(env::var_os("PATH"), env::var_os("HOME"));
-        match build_web::provide(&web, &committed, &dirs, build_web::LOCK_WAIT, &bundle) {
-            build_web::Provided::Committed => {
-                bundle_hash = stamp_of(&committed);
-            }
+        match build_web::provide(&web, &dirs, build_web::LOCK_WAIT, &bundle) {
             build_web::Provided::Built => {
                 bundle_hash = build_web::source_hash(&web);
             }
-            build_web::Provided::OutOfDate(reason) => {
-                bundle_hash = stamp_of(&committed);
-                warning = format!(
-                    "the editor's page is the committed one in crates/netsmith-editor/web-dist, which was built from older sources than crates/netsmith-editor/web: {reason}"
-                );
-            }
             build_web::Provided::Missing(reason) => {
                 status = reason.clone();
-                warning = format!("the editor's web app is not built: {reason}");
+                warning = format!(
+                    "the editor's page was not built, so this binary has a placeholder page instead: {reason}"
+                );
             }
         }
+    }
+    let placeholder = !status.is_empty();
+    if placeholder {
+        let _ = fs::remove_dir_all(&bundle);
+        fs::create_dir_all(&bundle).unwrap();
+        fs::write(bundle.join("index.html"), placeholder_page(&status)).unwrap();
     }
     if !warning.is_empty() {
         println!("cargo:warning={}", first_line(&warning));
@@ -85,7 +84,7 @@ fn main() {
             println!("cargo:warning={line}");
         }
         println!(
-            "cargo:warning=build it with: scripts/web-bundle update (needs Node 20 or newer), or by hand: cd crates/netsmith-editor/web && npm ci && npm run build"
+            "cargo:warning=use a release binary, or install Node 20 or newer and build again (scripts/web-bundle builds the page by hand)"
         );
         // A path that is never there makes cargo run this script again on the next build, so
         // installing Node (or fixing the source) is enough; no file in `web/` changes then.
@@ -107,16 +106,24 @@ fn main() {
     table.push_str("];\n");
     table.push_str(&format!("pub static WEB_STATUS: &str = {status:?};\n"));
     table.push_str(&format!(
+        "pub static WEB_PLACEHOLDER: bool = {placeholder};\n"
+    ));
+    table.push_str(&format!(
         "pub static BUNDLE_HASH: &str = {bundle_hash:?};\n"
     ));
     fs::write(out_dir.join("assets.rs"), table).unwrap();
 }
 
-/// The `SOURCE-HASH` a committed bundle carries, or nothing.
-fn stamp_of(committed: &Path) -> String {
-    fs::read_to_string(committed.join(build_web::BUNDLE_STAMP))
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default()
+/// The page of a binary with no editor page: it says so and what to do about it, with the reason
+/// the build recorded. Nothing in it is loaded from elsewhere.
+fn placeholder_page(reason: &str) -> String {
+    let reason = reason
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    format!(
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>netsmith editor: page not built</title>\n<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1rem}}pre{{white-space:pre-wrap;background:#8881;padding:.75rem}}</style></head>\n<body><h1>The editor's page was not built</h1>\n<p>This netsmith was built without Node, so it has no editor page to show. Use a release binary, or install Node 20 or newer and build netsmith again (<code>cargo build</code>).</p>\n<p>Why the page was not built:</p>\n<pre>{reason}</pre></body></html>\n"
+    )
 }
 
 /// Passes `git describe --tags --always` of the checkout to the crate as

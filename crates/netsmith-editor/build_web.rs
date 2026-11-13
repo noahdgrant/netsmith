@@ -9,12 +9,9 @@
 //! for a bundle.
 //!
 //! Whether a bundle is up to date is decided by a hash of the sources' bytes ([`source_hash`]),
-//! never by file times: a checkout, a package and a copy all give files arbitrary times. The
-//! bundle built from the sources is also committed, in `web-dist/` beside `web/` with a file
-//! `SOURCE-HASH` holding the hash of the sources it was built from. [`provide`] uses it when
-//! that hash is the sources' hash, so building netsmith from a checkout or a package needs no
-//! Node; only a change to the sources does, and `scripts/web-bundle` makes the new bundle and
-//! checks that the committed one is what the sources build to.
+//! never by file times: a checkout, a package and a copy all give files arbitrary times. No
+//! built page is committed (ADR 0114): [`provide`] builds it from the sources when Node is
+//! there, and says why when it cannot, and `build.rs` then embeds a placeholder page instead.
 
 use std::{
     env,
@@ -32,10 +29,6 @@ pub const NODE_MAJOR: u32 = 20;
 /// Written into `dist` when a build finished, and absent while one runs or after one failed. It
 /// holds the [`source_hash`] of the sources the bundle was built from.
 pub const DONE_MARKER: &str = ".netsmith-built";
-
-/// The file in the committed bundle (`web-dist`) that holds the [`source_hash`] of the sources
-/// it was built from. It is not part of the page and is not embedded.
-pub const BUNDLE_STAMP: &str = "SOURCE-HASH";
 
 /// Written into `node_modules` when `npm ci` finished: the Node major and a hash of the lockfile
 /// it installed from.
@@ -278,13 +271,6 @@ pub fn is_stale(web: &Path) -> bool {
     }
 }
 
-/// Whether `committed` is a finished bundle of exactly the sources in `web`.
-pub fn committed_matches(web: &Path, committed: &Path) -> bool {
-    page_is_complete(committed)
-        && fs::read_to_string(committed.join(BUNDLE_STAMP))
-            .is_ok_and(|stamp| stamp.trim() == source_hash(web))
-}
-
 /// A hash of a file's bytes (FNV-1a: it must not change between Rust versions).
 fn fingerprint(path: &Path) -> String {
     format!(
@@ -504,7 +490,7 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
         let target = to.join(entry.file_name());
         if entry.file_type()?.is_dir() {
             copy_dir(&entry.path(), &target)?;
-        } else if entry.file_name() != DONE_MARKER && entry.file_name() != BUNDLE_STAMP {
+        } else if entry.file_name() != DONE_MARKER {
             fs::copy(entry.path(), target)?;
         }
     }
@@ -514,34 +500,16 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 /// Where the page in the binary came from.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Provided {
-    /// The committed bundle, built from exactly these sources: no Node was needed.
-    Committed,
-    /// Built from the sources now (the committed bundle was not of them).
+    /// Built from the sources (or a fresh build of them was already there).
     Built,
-    /// The sources changed, nothing could build them, and the committed bundle of older sources
-    /// was taken. The page is not the one the sources describe. The reason is why nothing was built.
-    OutOfDate(String),
     /// There is no page in the binary. The reason is why.
     Missing(String),
 }
 
-/// Puts the page for the sources in `web` into `to`: the committed bundle when it is of these
-/// sources, else a fresh build (which needs Node), else the committed bundle of older sources
-/// as a last resort, else nothing.
-pub fn provide(
-    web: &Path,
-    committed: &Path,
-    dirs: &[PathBuf],
-    lock_wait: Duration,
-    to: &Path,
-) -> Provided {
+/// Puts the page for the sources in `web` into `to`: a build of them, which needs Node, else
+/// nothing and the reason.
+pub fn provide(web: &Path, dirs: &[PathBuf], lock_wait: Duration, to: &Path) -> Provided {
     let _ = fs::remove_dir_all(to);
-    if committed_matches(web, committed) {
-        return match copy_dir(committed, to) {
-            Ok(()) => Provided::Committed,
-            Err(e) => Provided::Missing(format!("cannot copy {}: {e}", committed.display())),
-        };
-    }
     let reason = match ensure(web, dirs, lock_wait) {
         Ok(_) => match copy_bundle(web, to) {
             Ok(true) => return Provided::Built,
@@ -552,64 +520,5 @@ pub fn provide(
         },
         Err(e) => e,
     };
-    if page_is_complete(committed) {
-        let _ = fs::remove_dir_all(to);
-        if copy_dir(committed, to).is_ok() {
-            return Provided::OutOfDate(reason);
-        }
-    }
     Provided::Missing(reason)
-}
-
-/// The files of `dist` (without the marker) that `committed` (without its stamp) has not, has
-/// differently, or has extra, one line each. Empty when the two are the same page.
-pub fn bundle_differences(dist: &Path, committed: &Path) -> Vec<String> {
-    let list = |root: &Path| {
-        let mut names = Vec::new();
-        files_under(root, root, &mut names);
-        names.retain(|n| n != DONE_MARKER && n != BUNDLE_STAMP);
-        names.sort();
-        names
-    };
-    let (built, kept) = (list(dist), list(committed));
-    let mut lines = Vec::new();
-    for name in &built {
-        if !kept.contains(name) {
-            lines.push(format!("{name}: built, but not in {}", committed.display()));
-        } else if fs::read(dist.join(name)).ok() != fs::read(committed.join(name)).ok() {
-            lines.push(format!("{name}: differs from the build"));
-        }
-    }
-    for name in &kept {
-        if !built.contains(name) {
-            lines.push(format!("{name}: committed, but the build does not make it"));
-        }
-    }
-    lines
-}
-
-/// Replaces the committed bundle with the finished one in `web/dist`, and stamps it with the
-/// hash of the sources it was built from. `web/dist` must be fresh (`ensure` just ran).
-pub fn commit_bundle(web: &Path, committed: &Path) -> Result<(), String> {
-    let _lock = lock(web, LOCK_WAIT)?;
-    let dist = web.join("dist");
-    if is_stale(web) {
-        return Err("web/dist is not a fresh bundle of the sources".into());
-    }
-    fs::remove_dir_all(committed)
-        .or_else(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                Ok(())
-            } else {
-                Err(e)
-            }
-        })
-        .map_err(|e| format!("cannot empty {}: {e}", committed.display()))?;
-    copy_dir(&dist, committed)
-        .map_err(|e| format!("cannot copy the bundle to {}: {e}", committed.display()))?;
-    fs::write(
-        committed.join(BUNDLE_STAMP),
-        format!("{}\n", source_hash(web)),
-    )
-    .map_err(|e| format!("cannot write {BUNDLE_STAMP}: {e}"))
 }
