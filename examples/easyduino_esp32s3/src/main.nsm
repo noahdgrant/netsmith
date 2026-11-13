@@ -200,20 +200,16 @@ board EasyduinoEsp32s3 {
     /// C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output
     /// capacitor (22 uF).
     .v3v3_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .v3v3_22u_a: Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18" }
-    .v3v3_22u_b: Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18" }
+    .v3v3_22u: 2 x Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18" }
     /// C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.
-    .en_100n_a: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
-    .en_100n_b: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
+    .en_100n: 2 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
     .boot_100n: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0402" }
     .vbus.pos ~> .vbus_1u ~> .vbus.neg
     .vbus.pos ~> .vbus_100n ~> .vbus.neg
     .vbus.pos ~> .vbus_22u ~> .vbus.neg
     .v3v3.pos ~> .v3v3_100n ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_22u_a ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_22u_b ~> .v3v3.neg
-    .module.en ~> .en_100n_a ~> .vbus.neg
-    .module.en ~> .en_100n_b ~> .vbus.neg
+    .v3v3.pos ~> .v3v3_22u ~> .v3v3.neg
+    .module.en ~> .en_100n ~> .vbus.neg
     .module.io0 ~> .boot_100n ~> .vbus.neg
 
     // ---- The headers (U2): Easyduino's pin map, joined pin by pin (fixed) ----

@@ -1,6 +1,6 @@
 //! Groups of identical members (ADR 0118). `.decoupling: 4 x Capacitor { ... }` is four
 //! members, `.decoupling[0]` to `.decoupling[3]`, each declared with the group's body, in
-//! index order where the group is declared. A chain with a group alone between its two ends
+//! index order where the group is declared. The group's doc comment goes with the first. A chain with a group alone between its two ends
 //! (`.v.pos ~> .decoupling ~> .v.neg`) is one chain for each member, so each stands in
 //! parallel between the ends. A group written in a chain (`~> 2 x Capacitor { ... } ~>`) is
 //! declared where the chain is, under the name the parser gave it.
@@ -122,6 +122,10 @@ fn expand_items(items: &mut Vec<Item>, errors: &mut Vec<ParseError>) {
                 for i in 0..count.n {
                     let mut member = d.clone();
                     member.count = None;
+                    // The group's documentation is one note, on its first member.
+                    if i > 0 {
+                        member.docs.clear();
+                    }
                     member.name.segments = vec![indexed(name, i)];
                     out.push(Item::Decl(member));
                 }

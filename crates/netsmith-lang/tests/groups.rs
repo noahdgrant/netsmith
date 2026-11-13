@@ -80,8 +80,9 @@ fn a_named_group_becomes_its_members_in_index_order_and_a_chain_for_each() {
             ".decoupling[2]: Capacitor {"
         ]
     );
-    // Each member keeps the group's documentation and body.
-    assert_eq!(printed.matches("/// The decoupling of the rail.").count(), 3);
+    // Each member has the group's body, and the first its documentation: one note.
+    assert_eq!(printed.matches("/// The decoupling of the rail.").count(), 1);
+    assert!(printed.contains("/// The decoupling of the rail.\n    .decoupling[0]"));
     assert_eq!(printed.matches(".capacitance &= 100nF +/- 10%").count(), 3);
     let chains: Vec<&str> = printed
         .lines()

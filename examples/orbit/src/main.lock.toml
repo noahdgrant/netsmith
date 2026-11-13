@@ -266,25 +266,25 @@ row = "1kΩ 1% 0603 C21190"
 lcsc = "C21190"
 mpn = "0603WAF1001T5E"
 
-[Orbit.parts."v3v3_100n_1"]
+[Orbit.parts."v3v3_100n[0]"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0603 C14663"
 lcsc = "C14663"
 mpn = "CC0603KRX7R9BB104"
 
-[Orbit.parts."v3v3_100n_2"]
+[Orbit.parts."v3v3_100n[1]"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0603 C14663"
 lcsc = "C14663"
 mpn = "CC0603KRX7R9BB104"
 
-[Orbit.parts."v3v3_100n_3"]
+[Orbit.parts."v3v3_100n[2]"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0603 C14663"
 lcsc = "C14663"
 mpn = "CC0603KRX7R9BB104"
 
-[Orbit.parts."v3v3_100n_4"]
+[Orbit.parts."v3v3_100n[3]"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0603 C14663"
 lcsc = "C14663"

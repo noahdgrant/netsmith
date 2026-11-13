@@ -106,15 +106,9 @@ board Orbit {
 
     /// C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.
     .v3v3_bulk: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603" }
-    .v3v3_100n_1: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
-    .v3v3_100n_2: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
-    .v3v3_100n_3: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
-    .v3v3_100n_4: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
+    .v3v3_100n: 4 x Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
     .v3v3.pos ~> .v3v3_bulk ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_1 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_2 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_3 ~> .v3v3.neg
-    .v3v3.pos ~> .v3v3_100n_4 ~> .v3v3.neg
+    .v3v3.pos ~> .v3v3_100n ~> .v3v3.neg
 
     // ---- The crystal (U10, C11, C12) ----
 
