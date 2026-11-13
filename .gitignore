@@ -6,3 +6,5 @@
 /examples/**/out/
 /examples/**/fab/
 /dist-release
+# The editor's built page (ADR 0114): built by crates/netsmith-editor/build.rs, never committed.
+/crates/netsmith-editor/web-dist/

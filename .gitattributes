@@ -1,7 +1,6 @@
-# The page's sources and its committed bundle are hashed byte for byte (crates/netsmith-editor/
+# The page's sources are hashed byte for byte (crates/netsmith-editor/
 # build_web.rs): git must not change their line endings on any system.
 crates/netsmith-editor/web/** -text
-crates/netsmith-editor/web-dist/** -text
 # Raspberry Pi's licence and board file are kept byte for byte as they ship them (CRLF line
 # endings): git must not change them on any system.
 examples/rp2350_minimal/LICENSE -text

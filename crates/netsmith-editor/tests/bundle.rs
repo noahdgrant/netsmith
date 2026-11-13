@@ -1,79 +1,89 @@
-//! The committed copy of the page (`web-dist`) cannot go stale. Always: it is a complete page,
-//! and it is stamped with the hash of the sources in `web/` as they are now (a change to a
-//! source without `scripts/web-bundle update` fails here, with no Node). With Node 20 or newer
-//! and the web app's packages installed (or `NETSMITH_REQUIRE_BUNDLE_CHECK=1`, which installs
-//! them): the page the sources build to is, byte for byte, the committed one.
+//! The page this build embeds (ADR 0114: no built page is committed; `build.rs` builds it from
+//! `web/` with Node 20 or newer, and embeds a placeholder when there is none). When the build had
+//! Node, the embedded page is complete and is the one of the sources in `web/` as they are now.
+//! When it had none these tests skip with a message, unless `NETSMITH_REQUIRE_BUNDLE_CHECK` is set
+//! (CI and releases always have Node), when a placeholder fails them.
 
 use crate::build_script as build_web;
 
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
 };
 
-fn dirs() -> (PathBuf, PathBuf) {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    (manifest.join("web"), manifest.join("web-dist"))
+fn web() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("web")
 }
 
-const FIX: &str = "run `scripts/web-bundle update` and commit crates/netsmith-editor/web-dist";
-
-#[test]
-fn the_committed_page_is_complete() {
-    let (_, committed) = dirs();
+/// Whether the real page is embedded. Without it: fails when `NETSMITH_REQUIRE_BUNDLE_CHECK` is
+/// set, else says so and lets the caller skip.
+fn have_page() -> bool {
+    if netsmith_editor::bundle_is_present() {
+        return true;
+    }
     assert!(
-        build_web::page_is_complete(&committed),
-        "{} has no complete page: {FIX}",
-        committed.display()
+        env::var_os("NETSMITH_REQUIRE_BUNDLE_CHECK").is_none(),
+        "NETSMITH_REQUIRE_BUNDLE_CHECK is set but this build embeds the placeholder page: {}",
+        netsmith_editor::missing_bundle_message()
     );
-    let page = fs::read_to_string(committed.join("index.html")).unwrap();
-    assert!(page.contains("<script"), "{page}");
-    assert!(
-        committed.join(build_web::BUNDLE_STAMP).is_file(),
-        "{} is missing: {FIX}",
-        build_web::BUNDLE_STAMP
+    eprintln!(
+        "skipped: this build has no editor page (no Node 20 or newer when it was built; scripts/web-bundle builds it)"
     );
+    false
+}
+
+fn text(path: &str) -> String {
+    let (_, bytes) = netsmith_editor::find_asset(path).unwrap_or_else(|| panic!("no {path}"));
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 #[test]
-fn the_committed_page_is_stamped_with_the_hash_of_the_current_sources() {
-    let (web, committed) = dirs();
-    let stamp = fs::read_to_string(committed.join(build_web::BUNDLE_STAMP)).unwrap_or_default();
-    let hash = build_web::source_hash(&web);
-    assert_eq!(
-        stamp.trim(),
-        hash,
-        "web-dist was built from other sources than crates/netsmith-editor/web has now; {FIX}"
-    );
-}
-
-#[test]
-fn the_committed_page_is_what_the_sources_build_to() {
-    let (web, committed) = dirs();
-    let required = env::var_os("NETSMITH_REQUIRE_BUNDLE_CHECK").is_some();
-    let node_dirs = build_web::search_dirs(env::var_os("PATH"), env::var_os("HOME"));
-    let Ok(tools) = build_web::find_node(&node_dirs) else {
+fn the_embedded_page_is_the_real_page_or_the_placeholder_that_says_so() {
+    let (_, page) =
+        netsmith_editor::find_asset("index.html").expect("every build has an index.html");
+    let page = String::from_utf8_lossy(page);
+    if netsmith_editor::bundle_is_present() {
+        assert!(page.contains("<div id=\"app\">"), "{page}");
+        assert!(!page.contains("was not built"), "{page}");
+        assert!(netsmith_editor::bundle_hash().is_some());
+    } else {
+        // The placeholder: one page that says what to do, and nothing loaded from elsewhere.
+        assert!(page.contains("The editor's page was not built"), "{page}");
         assert!(
-            !required,
-            "NETSMITH_REQUIRE_BUNDLE_CHECK is set but there is no Node 20"
+            page.contains("release binary") && page.contains("Node 20"),
+            "{page}"
         );
-        eprintln!("skipped: no Node 20 or newer (scripts/web-bundle check does this)");
-        return;
-    };
-    if !required && build_web::install_problem(&web, &tools).is_some() {
-        eprintln!(
-            "skipped: the web app's packages are not installed (scripts/web-bundle check installs them)"
-        );
+        assert!(!page.contains("<script"), "{page}");
+        assert_eq!(netsmith_editor::asset_paths().count(), 1);
+        assert_eq!(netsmith_editor::bundle_hash(), None);
+    }
+}
+
+#[test]
+fn the_embedded_page_is_complete_and_of_the_current_sources() {
+    if !have_page() {
         return;
     }
-    // A build from nothing: not the bundle that happens to be in web/dist.
-    let _ = fs::remove_file(web.join("dist").join(build_web::DONE_MARKER));
-    build_web::ensure(&web, &node_dirs, build_web::LOCK_WAIT).unwrap();
-    let differences = build_web::bundle_differences(&web.join("dist"), &committed);
-    assert!(
-        differences.is_empty(),
-        "web-dist is not what the sources build to:\n  {}\n{FIX}",
-        differences.join("\n  ")
+    let page = text("index.html");
+    assert!(page.contains("<script"), "{page}");
+    // Every file the page names is embedded.
+    let mut rest = page.as_str();
+    while let Some(at) = rest.find("assets/") {
+        rest = &rest[at..];
+        let end = rest
+            .find(|c: char| c == '"' || c == '\'' || c == ')' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        assert!(
+            netsmith_editor::find_asset(&rest[..end]).is_some(),
+            "index.html names {} and it is not embedded",
+            &rest[..end]
+        );
+        rest = &rest[end..];
+    }
+    assert_eq!(
+        netsmith_editor::bundle_hash(),
+        Some(build_web::source_hash(&web()).as_str()),
+        "the embedded page was built from other sources than crates/netsmith-editor/web has now"
     );
 }
 
@@ -95,15 +105,17 @@ fn gzipped(bytes: &[u8]) -> usize {
 /// three.js or of the view in it, only the dynamic import that fetches it.
 #[test]
 fn the_3d_view_is_a_chunk_of_its_own_within_its_budget() {
-    let (_, committed) = dirs();
-    let page = fs::read_to_string(committed.join("index.html")).unwrap();
+    if !have_page() {
+        return;
+    }
+    let page = text("index.html");
     let main = page
         .split("src=\"/")
         .skip(1)
         .filter_map(|rest| rest.split('"').next())
         .find(|src| src.ends_with(".js"))
         .unwrap_or_else(|| panic!("index.html loads no script: {page}"));
-    let main_js = fs::read_to_string(committed.join(main)).unwrap();
+    let main_js = text(main);
     for marker in ONLY_3D {
         assert!(
             !main_js.contains(marker),
@@ -111,15 +123,12 @@ fn the_3d_view_is_a_chunk_of_its_own_within_its_budget() {
         );
     }
     let mut chunks: Vec<(String, usize)> = Vec::new();
-    for entry in fs::read_dir(committed.join("assets")).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "js") {
-            let bytes = fs::read(&path).unwrap();
-            if String::from_utf8_lossy(&bytes).contains("WebGLRenderer") {
-                chunks.push((
-                    path.file_name().unwrap().to_string_lossy().into(),
-                    gzipped(&bytes),
-                ));
+    for path in netsmith_editor::asset_paths().filter(|p| p.starts_with("assets/")) {
+        if path.ends_with(".js") {
+            let (_, bytes) = netsmith_editor::find_asset(path).unwrap();
+            if String::from_utf8_lossy(bytes).contains("WebGLRenderer") {
+                let name = path.trim_start_matches("assets/");
+                chunks.push((name.to_string(), gzipped(bytes)));
             }
         }
     }

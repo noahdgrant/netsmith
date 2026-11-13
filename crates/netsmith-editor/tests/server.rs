@@ -602,8 +602,7 @@ fn the_project_carries_the_hash_of_the_embedded_page_and_the_checkout_it_was_bui
         Some(describe) => assert_eq!(json["gitDescribe"], describe),
         None => assert!(json.get("gitDescribe").is_none(), "{json}"),
     }
-    // With a page built in, the hash is the committed bundle's SOURCE-HASH or the hash of
-    // the sources it was built from: 16 hex digits.
+    // With a page built in, the hash is that of the sources it was built from: 16 hex digits.
     if let Some(hash) = netsmith_editor::bundle_hash() {
         assert!(
             hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit()),

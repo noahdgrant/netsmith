@@ -215,10 +215,9 @@ root?: string,
  */
 kicadPath?: string, 
 /**
- * The `SOURCE-HASH` of the page embedded in this binary: a hash of the sources in
- * `web/` that the page was built from. Absent when the binary has no page. It is the
- * hash of the page's sources, which is not the hash of `web/` as it is now if the
- * binary was built from a checkout whose `web-dist` was out of date.
+ * The hash of the page embedded in this binary: a hash of the sources in `web/` that the
+ * page was built from. Absent when the binary has only the placeholder page (it was
+ * built without Node).
  */
 bundleHash?: string, };
 

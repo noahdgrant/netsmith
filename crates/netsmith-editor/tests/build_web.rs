@@ -1,8 +1,7 @@
 //! `build_web.rs` (what `build.rs` runs) against fake `node` and `npm` scripts: the reason it
 //! gives when a step fails, when it installs again, what it takes for a bundle, and that two
-//! builds of one `web/` do not run at once, and which page a build takes: the committed bundle
-//! when it is of the sources, else a fresh build, judged by the sources' bytes and never by file
-//! times.
+//! builds of one `web/` do not run at once, and which page a build takes: a fresh build when Node
+//! is there, else none, judged by the sources' bytes and never by file times.
 
 #![cfg(unix)]
 
@@ -297,14 +296,6 @@ fn search_dirs_orders_nvm_versions_newest_first() {
     assert_eq!(names, ["v22.23.4", "v22.9.0", "v20.13.1"]);
 }
 
-/// A committed bundle (`web-dist`) of the fixture's sources as they are now.
-fn commit(f: &Fixture) -> PathBuf {
-    f.ensure().unwrap();
-    let committed = f.root.join("web-dist");
-    build_web::commit_bundle(&f.web, &committed).unwrap();
-    committed
-}
-
 #[test]
 fn the_hash_of_the_sources_follows_their_bytes_not_their_times() {
     let f = Fixture::new("v22.23.4");
@@ -357,105 +348,31 @@ fn a_bundle_is_stale_when_its_sources_changed_even_if_the_files_are_older() {
 }
 
 #[test]
-fn the_committed_bundle_of_the_sources_is_taken_without_node() {
+fn the_sources_are_built_into_the_page_when_node_is_there() {
     let f = Fixture::new("v22.23.4");
-    let committed = commit(&f);
-    let log = f.log().len();
     let to = f.root.join("embedded");
-    // Node is not found at all.
-    let got = build_web::provide(&f.web, &committed, &[], Duration::from_secs(1), &to);
-    assert_eq!(got, Provided::Committed);
+    let got = build_web::provide(&f.web, &f.dirs(), Duration::from_secs(30), &to);
+    assert_eq!(got, Provided::Built);
     assert!(to.join("index.html").is_file());
     assert!(to.join("assets/app.js").is_file());
-    // Neither the stamp nor the marker is part of the page.
-    assert!(!to.join(build_web::BUNDLE_STAMP).exists());
+    // The marker is not part of the page.
     assert!(!to.join(build_web::DONE_MARKER).exists());
-    assert_eq!(f.log().len(), log, "nothing ran");
-}
-
-#[test]
-fn changed_sources_are_built_when_node_is_there_and_fall_back_to_the_old_bundle_when_not() {
-    let f = Fixture::new("v22.23.4");
-    let committed = commit(&f);
+    // Changed sources are built again.
     change(&f.web.join("src/main.tsx"));
-    let to = f.root.join("embedded");
-
-    let no_node = build_web::provide(&f.web, &committed, &[], Duration::from_secs(1), &to);
-    match no_node {
-        Provided::OutOfDate(reason) => assert!(reason.contains("Node 20 or newer"), "{reason}"),
-        other => panic!("{other:?}"),
-    }
-    assert!(to.join("index.html").is_file(), "the old page is embedded");
-
-    let with_node = build_web::provide(&f.web, &committed, &f.dirs(), Duration::from_secs(30), &to);
-    assert_eq!(with_node, Provided::Built);
-    assert!(to.join("assets/app.js").is_file());
+    let log = f.log().len();
+    let again = build_web::provide(&f.web, &f.dirs(), Duration::from_secs(30), &to);
+    assert_eq!(again, Provided::Built);
+    assert!(f.log().len() > log, "the changed sources were built again");
 }
 
 #[test]
-fn no_bundle_and_no_node_gives_no_page_and_the_reason() {
+fn no_node_gives_no_page_and_the_reason() {
     let f = Fixture::new("v22.23.4");
     let to = f.root.join("embedded");
-    let got = build_web::provide(
-        &f.web,
-        &f.root.join("web-dist"),
-        &[],
-        Duration::from_secs(1),
-        &to,
-    );
+    let got = build_web::provide(&f.web, &[], Duration::from_secs(1), &to);
     match got {
         Provided::Missing(reason) => assert!(reason.contains("Node 20 or newer"), "{reason}"),
         other => panic!("{other:?}"),
     }
     assert!(!to.exists());
-}
-
-#[test]
-fn a_committed_bundle_that_is_incomplete_or_of_other_sources_is_not_of_these_sources() {
-    let f = Fixture::new("v22.23.4");
-    let committed = commit(&f);
-    assert!(build_web::committed_matches(&f.web, &committed));
-    fs::write(
-        committed.join(build_web::BUNDLE_STAMP),
-        "0000000000000000\n",
-    )
-    .unwrap();
-    assert!(!build_web::committed_matches(&f.web, &committed));
-    build_web::commit_bundle(&f.web, &committed).unwrap();
-    fs::remove_file(committed.join("assets/app.js")).unwrap();
-    assert!(!build_web::committed_matches(&f.web, &committed));
-}
-
-#[test]
-fn the_differences_between_a_build_and_the_committed_bundle_name_each_file() {
-    let f = Fixture::new("v22.23.4");
-    let committed = commit(&f);
-    let dist = f.web.join("dist");
-    assert_eq!(
-        build_web::bundle_differences(&dist, &committed),
-        Vec::<String>::new()
-    );
-    fs::write(committed.join("assets/app.js"), "old").unwrap();
-    fs::write(committed.join("assets/gone.js"), "old").unwrap();
-    fs::remove_file(committed.join("index.html")).unwrap();
-    let lines = build_web::bundle_differences(&dist, &committed);
-    assert_eq!(lines.len(), 3, "{lines:?}");
-    assert!(
-        lines
-            .iter()
-            .any(|l| l == "assets/app.js: differs from the build"),
-        "{lines:?}"
-    );
-    assert!(
-        lines
-            .iter()
-            .any(|l| l.starts_with("assets/gone.js: committed")),
-        "{lines:?}"
-    );
-    assert!(
-        lines
-            .iter()
-            .any(|l| l.starts_with("index.html: built, but not in")),
-        "{lines:?}"
-    );
 }

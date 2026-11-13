@@ -21,8 +21,16 @@
 # stock libraries skip themselves there (they print "skipped: ..."); the rest build with the
 # small libraries of `netsmith_testkit`. The `kicad` job installs KiCad 9 and runs the
 # tests that can ask for KiCad (scripts/ci-kicad-tests), so those tests really run; it starts once
-# `test` has passed. No Node either: the editor's page is the committed
-# bundle. `test` is four slices of cargo nextest that run side by side (one run of
+# `test` has passed.
+#
+# The editor's page (ADR 0114). No built page is committed: the build script builds it from
+# crates/netsmith-editor/web with Node, and embeds a placeholder page when there is none. The
+# `build` job installs Node 22, so its archive (`test`, `kicad`) and its binary (`no-kicad`,
+# `locks`, `designs`, `recipes`) have the real page, and `test` proves it
+# (NETSMITH_REQUIRE_BUNDLE_CHECK: a placeholder fails the page tests instead of skipping them).
+# No other job needs Node for the page. Releases build it too (release.yml).
+#
+# `test` is four slices of cargo nextest that run side by side (one run of
 # `cargo test` took fourteen minutes, three of them compiling, and runs one test binary after
 # the other), and `kicad` is three slices of the same kind (a slice installs KiCad 9, about
 # twenty seconds); scripts/ci-test-slices proves that the slices of each run every test once.
@@ -173,6 +181,8 @@ jobs:
   # slices of `test` and of `kicad` each run their tests exactly once (scripts/ci-test-slices, with
   # the slice counts of those two jobs' matrices: change both together), and the list of the tests
   # the `kicad` job selects, for the `test` slices' check. The Rust cache is this job's only.
+  # Node 22 is for the editor's page: the build script builds it from the sources and the archive
+  # and the binary embed it (ADR 0114), so the recipes drive the real page.
   build:
     needs: changes
     if: >-
@@ -196,6 +206,12 @@ jobs:
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: nextest@0.9.151
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: crates/netsmith-editor/web/package-lock.json
 
       - name: Build the tests into an archive
         run: cargo nextest archive --workspace --archive-file tests.tar.zst
@@ -274,9 +290,12 @@ jobs:
       # CRATES (from `changes`, issue #511): when the change is inside some crates only, the run is
       # their tests and their dependents' (`rdeps`); empty runs every test. A slice of a narrowed
       # run may hold no test, which passes.
+      # NETSMITH_REQUIRE_BUNDLE_CHECK: the editor's page in the archive must be the real one (the
+      # `build` job had Node to build it), not a placeholder that the page tests skip.
       - name: Test, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
         env:
           NETSMITH_KICAD_PROBE_LOG: ${{ runner.temp }}/kicad-probe.log
+          NETSMITH_REQUIRE_BUNDLE_CHECK: "1"
           CRATES: ${{ needs.changes.outputs.crates }}
         run: |
           filter=()
@@ -504,8 +523,9 @@ jobs:
       - name: Every example's design file is current
         run: scripts/check-example-designs.sh target/debug/netsmith
 
-  # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The page is
-  # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
+  # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The binary
+  # is the `build` job's, with the real page built from the sources (ADR 0114); `launch`
+  # fails on a placeholder. Node here is for the driver.
   # A slice runs its share of the recipes, session by session, and lists each one that failed;
   # scripts/ci-recipe-slices says which recipes are the slice's, by their seconds.
   recipes:

@@ -40,7 +40,8 @@ mod pages;
 mod server;
 
 pub use assets::{
-    bundle_hash, bundle_is_present, find as find_asset, git_describe, missing_bundle_message,
+    asset_paths, bundle_hash, bundle_is_present, find as find_asset, git_describe,
+    missing_bundle_message,
 };
 pub use backend::{
     AnalysisEvent, ApiError, Attachment, Backend, ErrorDetail, Observer, Pcb3d, Say, Work,

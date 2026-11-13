@@ -142,7 +142,8 @@ row "1 1 0 0 0 0" crates/netsmith-testkit/Cargo.toml
 # --- the editor and its views: the recipes, not KiCad ----------------------------------------
 # After the solver, so no `locks`: a pick lock is solver output.
 row "1 0 1 1 0 0" crates/netsmith-editor/src/api.rs
-row "1 0 1 1 0 0" crates/netsmith-editor/web/src/app.ts crates/netsmith-editor/web-dist/index.html
+# The page's sources: the `build` job builds them into the binary (ADR 0114), so the recipes run.
+row "1 0 1 1 0 0" crates/netsmith-editor/web/src/app.ts crates/netsmith-editor/web/package-lock.json
 row "1 0 1 1 0 0" crates/netsmith-view/src/layout.rs
 row "1 0 0 0 0 0" crates/netsmith-view/tests/layout.rs
 row "1 0 0 0 0 0" crates/netsmith-view/tests/asks.rs
@@ -233,6 +234,7 @@ crates_row() {
     fi
 }
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs
+crates_row "netsmith-editor" crates/netsmith-editor/web/src/app.ts
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs crates/netsmith-view/tests/layout.rs
 crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs crates/netsmith-solve/src/solve.rs
 crates_row "netsmith" crates/netsmith/tests/pure.rs

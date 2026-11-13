@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
-# The committed copy of the editor's page, crates/netsmith-editor/web-dist, which lets netsmith
-# be built from a checkout or a package without Node.
-#   scripts/web-bundle check    build the page from web/ afresh and fail, naming the files, if
-#                               web-dist is not what the sources build to
-#   scripts/web-bundle update   build it afresh and replace web-dist; commit the result
-#   scripts/web-bundle hash     print the hash of the sources
+# Builds the editor's page by hand. No built page is committed (ADR 0114): `cargo build` builds it
+# from crates/netsmith-editor/web by itself when Node is there, and embeds a placeholder when not.
+#   scripts/web-bundle build   build the page into crates/netsmith-editor/web/dist (not committed)
+#   scripts/web-bundle hash    print the hash of the sources
 # Needs Node 20 or newer (PATH, else the newest in ~/.nvm) and uses the cargo target directory of
-# the environment. Run `update` and commit web-dist whenever anything in crates/netsmith-editor/web
-# (src, index.html, package.json, package-lock.json, tsconfig.json, vite.config.ts) changes.
+# the environment.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 cd "$here/.."
 case "${1:-}" in
-    check | update | hash) ;;
-    *) echo "usage: scripts/web-bundle check | update | hash" >&2; exit 2 ;;
+    build | hash) ;;
+    *) echo "usage: scripts/web-bundle build | hash" >&2; exit 2 ;;
 esac
 exec cargo run --quiet -p netsmith-editor --example web_bundle -- "$1"
