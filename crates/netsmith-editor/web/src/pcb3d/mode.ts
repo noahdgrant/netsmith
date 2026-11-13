@@ -70,6 +70,8 @@ export interface View3dAgent {
   state(): Pick<ViewState, 'view' | 'camera' | 'ortho' | 'section' | 'exploded' | 'command'> & { limits: string[] };
   /** A PNG of the canvas, drawn for it. */
   picture(): Promise<Blob>;
+  /** The designator of a part of the scene by its path (`led/power_in` in a system's), else null. */
+  refdes(path: string): string | null;
 }
 
 /** A change or a question of `/api/view` the page refuses, with the HTTP status the route answers with. */

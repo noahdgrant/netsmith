@@ -135,7 +135,10 @@ export async function run(tools) {
   const after = (await get()).body;
   expect(after.view === before.view && JSON.stringify(after.camera) === JSON.stringify(before.camera) && JSON.stringify(after.selection) === JSON.stringify(before.selection), 'the camera and the selection did not move');
   r = await post({ board: 'NoSuchBoard' });
-  expect(r.status === 404 && r.body.includes(BOARD), `a board the project has not: ${r.status} ${r.body}`);
+  expect(r.status === 404 && r.body.includes(BOARD) && !r.body.includes('system'), `a board the project has not (it has no system to list): ${r.status} ${r.body}`);
+  // A member's id is a system's; on a board alone it is an id the board has not.
+  r = await post({ highlight: [`lid/${tall.refdes}`] });
+  expect(r.status === 400 && r.body.includes('that the board does not have') && r.body.includes(`\`lid/${tall.refdes}\``), `a member's id on a board alone: ${r.body}`);
   r = await post({ theme: 'dark' });
   expect(r.status === 400 && r.body.includes("person's own setting"), `the theme is not changed: ${r.body}`);
   r = await post({ view: 'top' }, {});

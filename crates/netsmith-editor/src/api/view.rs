@@ -67,7 +67,9 @@ pub enum PreviewSetting {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ViewChange {
-    /// The board, as `BoardSummary::name` has it (`Demo/main` for a board of a system).
+    /// The board, as `BoardSummary::name` has it (`Demo/main` for a board of a system), or a
+    /// system's name (`Demo`), which shows its System view (ADR 0110): every member placed by
+    /// its mates. The page's board is then a member of it: the one it is on, else the first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub board: Option<String>,
@@ -85,12 +87,15 @@ pub struct ViewChange {
     pub section: Option<String>,
     /// What is lit, as `render --highlight` names it (a designator, a path, `net:<name>`,
     /// `limit:<name>`; an item may be comma-separated): the parts and the net through the page's
-    /// selection, the limits in the view. It replaces what was lit; `[]` lights nothing.
+    /// selection, the limits in the view. It replaces what was lit; `[]` lights nothing. In the
+    /// System view a part and a net are a member's, `led/J1` and `net:led/GND` (`led/net:GND`
+    /// too); one of another member makes it the page's board.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub highlight: Option<Vec<String>>,
     /// The page's selection, as a click makes it: parts by designator or path, or one
-    /// `net:<name>`. The limits lit stay as they are; `[]` clears it.
+    /// `net:<name>` (in the System view, `led/J1` and `net:led/GND`, of one member). The limits
+    /// lit stay as they are; `[]` clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub select: Option<Vec<String>>,
@@ -125,8 +130,14 @@ pub struct ViewChange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewState {
-    /// The board the PCB section is on; none when the project has no board.
+    /// The board the PCB section is on, or the system whose System view the 3D view shows; none
+    /// when the project has no board.
     pub board: Option<String>,
+    /// In the System view, the member the page's board is (`led`): its parts and nets are named
+    /// `led/J1` and `net:led/GND`, as every member's are. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub member: Option<String>,
     /// The 3D view of `board` is on screen and drawn. When false, `view`, `camera`, `section`,
     /// `exploded` and `ortho` are absent.
     pub shown: bool,
@@ -148,7 +159,8 @@ pub struct ViewState {
     #[ts(optional)]
     pub exploded: Option<bool>,
     /// What is lit, as `render --highlight` would name it: the parts picked by designator, the
-    /// net picked as `net:<name>`, the limits lit as `limit:<name>`.
+    /// net picked as `net:<name>`, the limits lit as `limit:<name>` (in the System view, the
+    /// member first: `led/J1`, `net:led/GND`).
     pub highlight: Vec<String>,
     /// The page's selection: the parts by designator, or one `net:<name>`.
     pub selection: Vec<String>,

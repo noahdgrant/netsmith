@@ -14,7 +14,11 @@ pub struct Args {
     /// The editor's port.
     #[arg(long, default_value_t = DEFAULT_PORT, value_parser = clap::value_parser!(u16).range(1..))]
     pub port: u16,
-    /// The board (`Name`, or `System/member`).
+    /// The board (`Name`, or `System/member`), or a system (`System`) for its System view.
+    ///
+    /// A system's name shows every member placed by its mates (ADR 0110), as `render --board
+    /// System` draws it; the ids of `--highlight` and `--select` are then a member's (`led/J1`,
+    /// `net:led/GND`).
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Where the camera looks from.
@@ -24,11 +28,15 @@ pub struct Args {
     #[arg(long, value_name = "AXIS=MM|none", value_parser = parse_view_section)]
     pub section: Option<String>,
     /// Light a part, `net:<name>` or `limit:<name>` (comma-separated or repeated); `none` for nothing.
+    ///
+    /// In the System view a part and a net are a member's: `led/J1`, `net:led/GND`. An id the
+    /// board (or the system) does not have exits 2 with the list of the ones it has.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_ids, conflicts_with = "select")]
     pub highlight: Vec<Ids>,
     /// Select parts or one `net:<name>`, as a click does (comma-separated or repeated); `none` clears it.
     ///
-    /// The editor's selection holds parts or one net, so `--select` takes no limit.
+    /// The editor's selection holds parts or one net, so `--select` takes no limit; in the System
+    /// view, of one member (`led/J1`), which becomes the page's board.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_select)]
     pub select: Vec<Ids>,
     /// Draw everything see-through.

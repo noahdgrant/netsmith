@@ -19,7 +19,8 @@ pub struct Args {
     ///
     /// A system's name draws its _System scene_ (ADR 0110): every member placed against the
     /// others by its mates, framed as a whole, in the frame of its first member. `--highlight`
-    /// then names `member/<id>` (`led/J1`, `led/net:GND`), or a member alone.
+    /// then names `member/<id>` (`led/J1`, `led/net:GND`, also written `net:led/GND` as the
+    /// editor's 3D view names it), or a member alone.
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Where the camera looks from.

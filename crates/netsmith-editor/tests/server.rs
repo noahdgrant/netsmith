@@ -2052,6 +2052,7 @@ fn next_view_ask(socket: &mut Socket) -> ServerMessage {
 fn view_state(board: &str) -> ViewState {
     ViewState {
         board: Some(board.into()),
+        member: None,
         shown: true,
         view: Some(RenderView::Iso),
         camera: Some(CameraPlace {

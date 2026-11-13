@@ -216,7 +216,8 @@ exempt against each other, and a body wholly inside another board's cutout does 
   by an `ITEM_DEFINED_TRANSFORMATION` that is the member's motion.
 - **`render --board System`** draws every member moved into the system's frame and frames the
   whole. `--highlight` names `member/<id>` (`led/J1`, `led/net:GND`, `led/limit:lid`), or a
-  member alone for all of it. `--section` cuts in the system's frame; the cut faces are filled,
+  member alone for all of it. A net or a limit may also be written with the member after its
+  prefix, `net:led/GND` and `limit:led/lid`, as the editor's 3D view names them: the same id. `--section` cuts in the system's frame; the cut faces are filled,
   each board as one block, not its stackup.
 - **`fab` of a file with a system** makes each board as before and then the system scene, from
   the boards as routed, after all of its members are made: `<out>/<System>/<System>.glb` and
@@ -566,15 +567,16 @@ The others are not told.
 
 | Field | What it is |
 |---|---|
-| `board` | the board the PCB section is on (`BoardSummary.name`, `Demo/main` for a board of a system); null with none |
-| `shown` | the 3D view of that board is on screen and drawn; when false, the next five are absent |
+| `board` | the board the PCB section is on (`BoardSummary.name`, `Demo/main` for a board of a system), or the system (`Demo`) while the 3D view shows its [System view](#a-systems-boards-together-the-system-scene); null with none |
+| `member` | in the System view, the member the page's board is (`main`); absent otherwise |
+| `shown` | the 3D view of that board (or system) is on screen and drawn; when false, the next five are absent |
 | `view` | the view of `render` the camera is at (`top`, `bottom`, `front`, `back`, `left`, `right`, `iso`, `iso-bottom`), within a few degrees; absent when it is turned from all of them |
 | `camera` | `position` (the eye), `target` and `up` (the screen's up), each `[x, y, z]` in mm of [the frame](#the-frame); for an orthographic camera the eye is where a perspective one would show the same at the target |
 | `ortho` | true for the parallel projection |
 | `section` | the cut as `--section` writes it (`x=13`), absent with none |
 | `exploded` | the stackup pulled apart |
 | `command` | the `netsmith render` command that draws the view, as "Copy as command" gives it |
-| `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>` |
+| `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`; in the System view a part and a net are their member's, `led/J1` and `net:led/GND` |
 | `selection` | the page's selection: parts by designator, or one `net:<name>` |
 | `hover` | what the pointer (or a row of another view) lights: a designator or `net:<name>`; absent with nothing |
 | `xray`, `colourBy`, `heightPreview` | x-ray; `provenance`, `kind` or `margin`; the preview's height in mm while it is on, absent when off |
@@ -587,12 +589,19 @@ page is on (`{}` only opens it):
 
 | Field | What it does |
 |---|---|
-| `board` | the board to show; one the project does not have is `404` with the list |
+| `board` | the board to show, or a system's name for its System view (on the member the page is on, else the first); a name the project does not have is `404` with the list of its boards and systems |
 | `view` | a view of `render --view`: the camera looks at the board's middle from that side, framed to fit, as the view's bar and keys move it (`iso` is the key `I`'s view, a few degrees from render's corner; `iso-bottom`, which the bar does not have, is render's) |
 | `camera` | `{"position": [x, y, z], "target": [x, y, z]}` in mm of the frame (an `up` is not taken: the view keeps z up); not with `view` |
 | `section` | `x=13`, `y=8`, `z=-0.8` as `--section` reads it, or `none` |
 | `highlight` | `["J1", "net:GND", "limit:lid"]`, as `--highlight` reads it (an item may be comma-separated): the parts or the net become the page's selection, the limits are lit; it replaces what was lit, and `[]` lights nothing |
 | `select` | the page's selection alone, as a click makes it: parts, or one `net:<name>`; the limits lit stay; not with `highlight` |
+
+In the System view a part and a net are their member's: `led/J1` (or the path, `led/power_in`)
+and `net:led/GND` (`led/net:GND`, `render`'s spelling, is the same). The page's selection is one
+board's, so the ids of `highlight` and `select` are of one member, which becomes the page's board
+as a click on it does; ids of two members are refused (`render --board System` lights them all),
+and a designator without its member (`J1`) is an id the system does not have, refused with the
+list.
 | `xray`, `exploded` | true or false |
 | `ortho` or `perspective` | the lens: `"ortho": true` is `"perspective": false` |
 | `colourBy` | `provenance`, `kind` or `margin` |
@@ -648,7 +657,7 @@ page has drawn it, and prints the state that results. The page driven is the one
 
 | Flag | The route's field | Notes |
 |---|---|---|
-| `--board <name>` | `board` | `System/member` for a board of a system |
+| `--board <name>` | `board` | `System/member` for a board of a system, `System` for its System view (ids then `led/J1`, `net:led/GND`; the summary adds `member:`) |
 | `--view top\|bottom\|front\|back\|left\|right\|iso\|iso-bottom` | `view` | as `render --view`; the editor's `iso` is the key `I`'s view |
 | `--section x=<mm>\|y=<mm>\|z=<mm>\|none` | `section` | as `render --section` |
 | `--highlight <id>[,<id>...]`, repeatable | `highlight` | as `render --highlight`; `--highlight none` lights nothing |

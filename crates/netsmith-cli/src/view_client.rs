@@ -209,6 +209,12 @@ pub fn summary(state: &ViewState) -> String {
         "board",
         state.board.clone().unwrap_or_else(|| "none".into()),
     );
+    if let Some(member) = &state.member {
+        line(
+            "member",
+            format!("{member} (the page's board, in the System view)"),
+        );
+    }
     if !state.shown {
         line(
             "3D view",

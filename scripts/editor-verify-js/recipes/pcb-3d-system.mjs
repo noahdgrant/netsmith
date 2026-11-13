@@ -7,10 +7,18 @@
 // The camera stays where it is as the page's board changes. The tools work across the members: a
 // net is its member's (`led/<net>`) and is lit on that board alone; the section cuts every board;
 // the layers come apart board by board, the boards apart with them; and a board can be hidden.
+// An agent asks for the System view by the system's name (`/api/view`, `netsmith view --board
+// TwoBoards`) with a member's ids (`led/J1`, `net:led/GND`), and `render --board TwoBoards`
+// draws what the page's command says.
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
 import { openPcb } from '../pcb-helpers.mjs';
+
+const exec = promisify(execFile);
 
 export const fixture = 'two_boards';
 
@@ -41,7 +49,7 @@ async function settle(page) {
 /** Where a fixed point of the scene (the base's origin) is on screen: it moves when the camera does. */
 const origin = (page) => ask(page, 'toScreen', [0, 0, 0]);
 
-export async function run({ page, url, project, shot, step, expect }) {
+export async function run({ page, url, project, shot, step, expect, binary }) {
   const file = path.join(project, 'src/main.nsm');
   const original = fs.readFileSync(file, 'utf8');
   await page.goto(url);
@@ -93,6 +101,7 @@ export async function run({ page, url, project, shot, step, expect }) {
   await shot('system-picked');
 
   await tools(page, shot, step, expect);
+  await agent({ page, url, project, shot, step, expect, binary });
 
   step('a header too tall for the stack is a finding across the boards; a click flies the camera to it');
   fs.writeFileSync(file, original.replace('    .power_out: Header1x2\n', '    .power_out: Header1x2 { .height &= 12mm }\n'));
@@ -135,7 +144,7 @@ async function tools(page, shot, step, expect) {
   expect(report.layers.length > 0 && report.barrels >= 1, `its copper and its pads' barrels are lit (layers ${report.layers.join(', ')}, ${report.barrels} barrels)`);
   expect(report.dimmed > 0, `the rest is dimmed (${report.dimmed} pieces)`);
   const cmd = await ask(page, 'command');
-  expect(cmd.includes('--board TwoBoards') && cmd.includes('--highlight led/net:GND'), `the command lights the member's net: ${cmd}`);
+  expect(cmd.includes('--board TwoBoards') && cmd.includes('--highlight net:led/GND'), `the command lights the member's net: ${cmd}`);
   await page.mouse.move(5, 5);
   await page.waitForTimeout(300);
   await shot('system-net-lit');
@@ -194,4 +203,72 @@ async function tools(page, shot, step, expect) {
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.hidden().length === 0, HOST);
   await page.getByTestId('view-fit').click();
   await settle(page);
+}
+
+/** An agent drives the System view: `/api/view` and `netsmith view` with the system's name and a
+ * member's ids, and `netsmith render` of the command the page gives. */
+async function agent({ page, url, project, shot, step, expect, binary }) {
+  const api = new URL('/api/view', url).href;
+  const post = async (change) => {
+    const r = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Netsmith': '1' }, body: JSON.stringify(change) });
+    const text = await r.text();
+    try {
+      return { status: r.status, body: JSON.parse(text) };
+    } catch {
+      return { status: r.status, body: text };
+    }
+  };
+  const boardPicked = () => page.evaluate(() => document.querySelector('.boardpick select')?.value);
+  const shownIn3d = () => page.locator('[data-testid=view-system]').inputValue();
+
+  step('POST /api/view with a board of the system shows it alone; with the system\'s name, its System view');
+  let r = await post({ board: 'TwoBoards/power' });
+  expect(r.status === 200 && r.body.board === 'TwoBoards/power' && r.body.member === undefined && r.body.shown, `the board alone: ${JSON.stringify(r.body).slice(0, 200)}`);
+  expect((await shownIn3d()) === 'TwoBoards/power', 'the 3D view shows the board alone');
+  r = await post({ board: 'TwoBoards', view: 'iso', highlight: ['led/J1'] });
+  expect(r.status === 200 && r.body.board === 'TwoBoards' && r.body.member === 'led' && r.body.shown, `the System view, on the LED board: ${JSON.stringify(r.body).slice(0, 300)}`);
+  expect(JSON.stringify(r.body.selection) === '["led/J1"]' && JSON.stringify(r.body.highlight) === '["led/J1"]', `the socket, named as render names it: ${JSON.stringify(r.body.selection)}`);
+  expect((await boardPicked()) === 'TwoBoards/led' && (await shownIn3d()) === 'system:TwoBoards', 'the page is on the LED board, the 3D view on the system');
+  expect(r.body.command.includes('--board TwoBoards') && r.body.command.includes('--highlight led/J1'), `the command: ${r.body.command}`);
+  const command = r.body.command;
+
+  step("a net of the other member, selected, makes the power board the page's and lights power/GND alone");
+  r = await post({ select: ['net:power/GND'] });
+  expect(r.status === 200 && r.body.member === 'power' && JSON.stringify(r.body.selection) === '["net:power/GND"]', `the power board's ground: ${JSON.stringify(r.body).slice(0, 300)}`);
+  expect((await boardPicked()) === 'TwoBoards/power', 'the page is on the power board');
+  await page.waitForFunction((sel) => JSON.stringify(document.querySelector(sel).view3d.litNets()) === '["power/GND"]', HOST, { timeout: 10000 });
+  r = await post({ highlight: ['led/net:GND'] });
+  expect(r.status === 200 && JSON.stringify(r.body.selection) === '["net:led/GND"]', `render's spelling of a member's net is the same id: ${JSON.stringify(r.body.selection)}`);
+
+  step('an id of no member, and ids of two, are refused with the list; nothing changes');
+  const before = JSON.stringify(r.body.selection);
+  r = await post({ highlight: ['J1'] });
+  expect(r.status === 400 && r.body.includes('the system `TwoBoards` does not have: `J1`') && r.body.includes('led/J1 (led/power_in)') && r.body.includes('net:led/GND'), `a designator without its member: ${r.body}`);
+  r = await post({ highlight: ['led/J1', 'power/J1'] });
+  expect(r.status === 400 && r.body.includes('2 members'), `two members' parts: ${r.body}`);
+  r = await post({ board: 'Nope' });
+  expect(r.status === 404 && r.body.includes('its systems: TwoBoards'), `a name the project has not lists its boards and systems: ${r.body}`);
+  r = await post({});
+  expect(r.status === 200 && JSON.stringify(r.body.selection) === before && r.body.board === 'TwoBoards', `nothing moved: ${JSON.stringify(r.body.selection)}`);
+
+  step('a section and the layers apart of the system, through /api/view, read back as render writes them');
+  r = await post({ section: 'y=5.05', exploded: true });
+  expect(r.status === 200 && r.body.section === 'y=5.05' && r.body.exploded === true && r.body.command.includes('--section y=5.05'), `cut and apart: ${r.status} ${JSON.stringify(r.body).slice(0, 300)}`);
+  expect((await ask(page, 'caps')).length > 0 && (await ask(page, 'lifts')).led > 5, 'the page cuts both boards and pulls them apart');
+  r = await post({ section: 'none', exploded: false });
+  expect(r.status === 200 && r.body.section === undefined && r.body.exploded === false, `and back: ${JSON.stringify(r.body).slice(0, 200)}`);
+
+  step('netsmith view --board TwoBoards with a member\'s part saves the page\'s picture; render draws the command');
+  const port = new URL(url).port;
+  const dir = path.dirname(await shot('system-api'));
+  const viewPng = path.join(dir, 'pcb-3d-system-view-cli.png');
+  // No section here: a picture of a cut system takes seconds in a software renderer, near the read's 10 s (the section is driven above).
+  const v = await exec(binary, ['view', '--port', port, '--board', 'TwoBoards', '--view', 'front', '--highlight', 'led/J1', '--picture', viewPng], { timeout: 90000 });
+  expect(v.stdout.includes('board: TwoBoards') && v.stdout.includes('member: led') && v.stdout.includes('highlight: led/J1'), `the summary:\n${v.stdout}`);
+  expect(fs.readFileSync(viewPng).subarray(1, 4).toString() === 'PNG', 'the page\'s picture is saved');
+  const renderPng = path.join(dir, 'pcb-3d-system-render.png');
+  const args = command.split(' ').slice(2).filter((a) => a !== 'src/main.nsm');
+  const rr = await exec(binary, ['render', path.join(project, 'src/main.nsm'), ...args, '--size', '800x500', '--out', renderPng], { timeout: 90000, env: { ...process.env, NETSMITH_NO_KICAD: '1' } });
+  expect(rr.stdout.includes(renderPng) && fs.readFileSync(renderPng).subarray(1, 4).toString() === 'PNG', `render draws the page's command (${command})`);
+  await post({ select: [], section: 'none' });
 }

@@ -22,7 +22,7 @@ import { api } from '../client';
 import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart } from '../store';
 import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
 import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
-import { type Ids, litIds, planChange, sectionText } from './control';
+import { type Ids, litIds, memberSelection, planChange, sectionText } from './control';
 import { colourBy, focus3d, heightPreview, xray } from './inspectMode';
 import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
@@ -240,6 +240,7 @@ export function View3d({ board }: { board: string }) {
           };
         },
         picture: () => v.picture(),
+        refdes: (path) => v.partList().find((p) => p.path === path)?.refdes ?? null,
       },
     };
     return () => {
@@ -426,15 +427,18 @@ export function View3d({ board }: { board: string }) {
     const sel = sharedSelection.peek();
     const t = pageTheme.peek();
     if (shownRef.current.showSys) {
-      // `render --board System` lights a part as `member/path` and a net as `member/net:<name>`.
+      // `render --board System` lights a part as `member/<designator>` and a net as `net:member/<name>`, as `/api/view` names them.
       const sysFile = analysis.peek()?.systems.find((x) => x.name === shownRef.current.showSys)?.file ?? file;
-      const net = sel?.kind === 'net' ? `${shownRef.current.member}/net:${sel.key}` : null;
+      const net = sel?.kind === 'net' ? `net:${shownRef.current.member}/${sel.key}` : null;
       return renderCommand({
         file: sysFile,
         board: shownRef.current.showSys,
         view: nearestView(v.towardEye()).view,
         section: tools.current.cut,
-        highlight: net ? [net] : toScene(pcbSelection.peek()),
+        highlight: net ? [net] : toScene(pcbSelection.peek()).map((path) => {
+          const p = v.partList().find((x) => x.path === path);
+          return p?.member ? `${p.member}/${p.refdes}` : path;
+        }),
         dark: t === 'dark' || t === 'hc-dark',
         perspective: !v.isOrtho(),
       });
@@ -457,8 +461,14 @@ export function View3d({ board }: { board: string }) {
    * made with what the keys and the palette run, and ended once the view has drawn it. A camera
    * move is eased as a person's is, at once with reduced motion or in a window that draws no frames. */
   const applyChange = async (v: Viewer, change: ViewChange) => {
-    const have: Ids = { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name) };
+    // A system's scene: a part is `led/power_in` or `led/J1` (the designators repeat across its boards), a net `led/GND`.
+    const system = shownRef.current.showSys;
+    const have: Ids = system
+      ? { parts: v.partList().map((p) => ({ path: p.path, refdes: p.member ? `${p.member}/${p.refdes}` : p.refdes })), nets: v.netList(), limits: v.limitList().map((l) => l.name), system }
+      : { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name) };
     const plan = planChange(change, have, v.canExplode());
+    // The page's selection is one board's: a member's ids pick on its board, which becomes the page's.
+    const picked = plan.selection && system ? memberSelection(plan.selection, change.select !== undefined ? 'select' : 'highlight') : null;
     const still = v.still;
     if (document.hidden) v.still = true;
     try {
@@ -473,7 +483,8 @@ export function View3d({ board }: { board: string }) {
       if (plan.section !== undefined) changeCut(plan.section);
       if (plan.exploded !== undefined && plan.exploded !== v.isExploded()) view3d.current?.toggleExplode();
       if (plan.selection) {
-        const { parts: paths, net } = plan.selection;
+        const { parts: paths, net } = picked ?? plan.selection;
+        if (system && picked?.member && picked.member !== shownRef.current.member) chooseBoard(`${system}/${picked.member}`);
         if (net) pickNet(net);
         else {
           // A net picked goes first, and the views follow it before the parts are picked.
