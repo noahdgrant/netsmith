@@ -118,11 +118,17 @@ fn across(shapes: &[Shape], c: Pt, v: Pt) -> f64 {
     reach(v) + reach(v * -1.0)
 }
 
+/// A pad's solder mask opening on a face: the pad's net, the opening's shapes and their box.
+type Opening = (Option<String>, Vec<Shape>, Bounds);
+
+/// The straight tracks that end at a place, by net, layer and the place to 0.1 µm.
+type Ends<'a> = HashMap<(&'a str, &'a str, (i64, i64)), Vec<usize>>;
+
 /// What the planner checks a teardrop against.
 struct Fit<'m, 'a> {
     m: &'m Model<'a>,
     /// The solder mask openings of the pads of each face, with the pad's net.
-    openings: [Vec<(Option<String>, Vec<Shape>, Bounds)>; 2],
+    openings: [Vec<Opening>; 2],
     /// The teardrops kept so far, with their net, layer and shape.
     kept: Vec<(String, usize, Shape)>,
 }
@@ -240,7 +246,7 @@ pub fn teardrops(art: &Artwork, rules: &Rules, extras: &Extras) -> Vec<Teardrop>
         kept: Vec::new(),
     };
     // The straight tracks that end at each place, by net and layer.
-    let mut ends: HashMap<(&str, &str, (i64, i64)), Vec<usize>> = HashMap::new();
+    let mut ends: Ends<'_> = HashMap::new();
     for (i, t) in art.tracks.iter().enumerate() {
         let (Some(net), TrackShape::Line(a, b)) = (t.net.as_deref(), &t.shape) else {
             continue;
@@ -315,7 +321,7 @@ struct Planned {
 #[allow(clippy::too_many_arguments)]
 fn plan_one(
     m: &Model<'_>,
-    ends: &HashMap<(&str, &str, (i64, i64)), Vec<usize>>,
+    ends: &Ends<'_>,
     c: &Copper,
     k: usize,
     net: &str,
