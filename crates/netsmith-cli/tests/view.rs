@@ -16,7 +16,8 @@ use std::{
 use netsmith::editor::Workspace;
 use netsmith::project::Target;
 use netsmith_editor::api::{
-    CameraPlace, ClientMessage, ColourBy, RenderView, ServerMessage, ViewChange, ViewState,
+    CameraPlace, CaseMode, ClientMessage, ColourBy, RenderView, ServerMessage, ViewChange,
+    ViewState,
 };
 
 const LED: &str = include_str!("../../../examples/led.nsm");
@@ -89,6 +90,7 @@ fn state() -> ViewState {
         selection: vec!["J1".into()],
         hover: None,
         xray: false,
+        case: Some(CaseMode::SeeThrough),
         colour_by: ColourBy::Provenance,
         height_preview: None,
         theme: "dark".into(),
@@ -149,6 +151,7 @@ fn with_no_change_it_prints_the_state_as_a_summary_or_as_the_routes_json() {
         "highlight: J1, limit:lid",
         "selection: J1",
         "x-ray: off",
+        "case: see-through",
         "colour by: provenance",
         "height preview: off",
         "theme: dark",
@@ -223,6 +226,8 @@ fn a_change_reaches_the_page_with_renders_names_and_the_picture_is_saved() {
             "--highlight",
             "J1,net:GND",
             "--xray",
+            "--case",
+            "solid",
             "--perspective",
             "--colour-by",
             "kind",
@@ -245,7 +250,7 @@ fn a_change_reaches_the_page_with_renders_names_and_the_picture_is_saved() {
         json,
         serde_json::json!({
             "board": "Led", "view": "top", "section": "none",
-            "highlight": ["J1", "net:GND"], "xray": true, "ortho": false,
+            "highlight": ["J1", "net:GND"], "xray": true, "case": "solid", "ortho": false,
             "colourBy": "kind", "heightPreview": 2.0, "exploded": true,
         })
     );

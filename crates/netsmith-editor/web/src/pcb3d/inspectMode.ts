@@ -21,6 +21,30 @@ export const COLOUR_BY: { id: ColourBy; label: string; tip: string }[] = [
   { id: 'margin', label: 'Height margin', tip: 'A height map: each body by its margin to the height limit over it, green to amber to red; grey where no limit is over it' },
 ];
 
+/** How the case model (ADR 0109) is drawn, as `netsmith render --case` names it: not at all, see-through (the default) or solid. */
+export type CaseMode = 'hidden' | 'see-through' | 'solid';
+
+export const CASE_MODES: { id: CaseMode; label: string; tip: string }[] = [
+  { id: 'hidden', label: 'Hidden', tip: 'Hide the case model: the board alone' },
+  { id: 'see-through', label: 'See-through', tip: 'Draw the case model faint, so the board shows inside it' },
+  { id: 'solid', label: 'Solid', tip: 'Draw the case model solid: it hides the board inside it' },
+];
+
+/** The case after the Case button: hidden when it shows, and what it last showed as (see-through unless it was solid) when it is hidden. */
+export function caseAfterShowHide(mode: CaseMode, last: CaseMode): CaseMode {
+  return mode === 'hidden' ? (last === 'hidden' ? 'see-through' : last) : 'hidden';
+}
+
+/** The case after the Solid button: solid, or see-through again when it was solid. A hidden case shows, solid. */
+export function caseAfterSolid(mode: CaseMode): CaseMode {
+  return mode === 'solid' ? 'see-through' : 'solid';
+}
+
+/** The key's step: see-through, solid, hidden, and round again. */
+export function caseAfterStep(mode: CaseMode): CaseMode {
+  return mode === 'see-through' ? 'solid' : mode === 'solid' ? 'hidden' : 'see-through';
+}
+
 /** The preview's height: 1 mm unless changed, from 0.1 to 50 mm. */
 export const PREVIEW_DEFAULT_MM = 1;
 export const PREVIEW_MIN_MM = 0.1;
@@ -36,6 +60,29 @@ export function previewHeight(text: string): number | null {
 /** See-through board, mask and bodies. */
 export const xray = signal(false);
 export const colourBy = signal<ColourBy>('provenance');
+/** How the case is drawn, for the session (the tools of this view are kept nowhere, as x-ray is not), see-through at every start. */
+export const caseMode = signal<CaseMode>('see-through');
+/** What the case last showed as, for the button that hides and shows it again. */
+let caseLast: CaseMode = 'see-through';
+
+/** Draw the case in a mode. */
+export function setCase(mode: CaseMode) {
+  if (mode !== 'hidden') caseLast = mode;
+  caseMode.value = mode;
+}
+
+export function toggleCaseShown() {
+  setCase(caseAfterShowHide(caseMode.peek(), caseLast));
+}
+
+export function toggleCaseSolid() {
+  setCase(caseAfterSolid(caseMode.peek()));
+}
+
+export function stepCase() {
+  setCase(caseAfterStep(caseMode.peek()));
+}
+
 /** The height preview: off at every start (it is never stored), at `mm` when on. */
 export const heightPreview = signal<{ on: boolean; mm: number }>({ on: false, mm: PREVIEW_DEFAULT_MM });
 
@@ -96,6 +143,25 @@ export function inspectCommands(in3d: () => boolean, here: () => boolean): Comma
       run: () => {
         colourBy.value = c.id;
       },
+    })),
+    {
+      id: 'pcb.3d.case.next',
+      title: '3D view: Case model: step through see-through, solid and hidden',
+      group: 'PCB',
+      // Shift+C: C is the colouring's.
+      keys: 'Shift+C',
+      aliases: ['3d', 'case', 'enclosure', 'housing', 'box', 'lid', 'solid', 'see through', 'hide'],
+      keyFrom: here,
+      when: in3d,
+      run: stepCase,
+    },
+    ...CASE_MODES.map<Command>((c) => ({
+      id: `pcb.3d.case.${c.id}`,
+      title: `3D view: Case model: ${c.label.toLowerCase()}`,
+      group: 'PCB',
+      aliases: ['3d', 'case', 'enclosure', 'housing', 'box', 'lid', c.id === 'see-through' ? 'transparent' : c.id],
+      when: in3d,
+      run: () => setCase(c.id),
     })),
     {
       id: 'pcb.3d.preview',

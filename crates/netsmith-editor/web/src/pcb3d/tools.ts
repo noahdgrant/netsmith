@@ -6,6 +6,7 @@
 // outline's bottom-left corner on the board's top face. Nothing here touches three.js, and nothing
 // here is a check: the numbers are the file's, and the view decides nothing of its own.
 
+import type { CaseMode } from './inspectMode';
 import type { Face, LimitInfo, PartInfo3d, StackLayer } from './model';
 
 /** A point or a direction in the scene's frame (mm, z up). */
@@ -273,6 +274,8 @@ export interface RenderRequest {
   section?: { axis: Axis; at: number } | null;
   /** The designators of the parts picked. */
   highlight?: string[];
+  /** How the case model is drawn: named in the command (`--case`) when it is not see-through, the command's default. */
+  case?: CaseMode;
   dark?: boolean;
   perspective?: boolean;
 }
@@ -284,6 +287,7 @@ export function renderCommand(r: RenderRequest): string {
   if (r.section) words.push('--section', `${r.section.axis}=${Number(r.section.at.toFixed(3))}`);
   const lit = [...new Set(r.highlight ?? [])].filter(Boolean);
   if (lit.length) words.push('--highlight', shellWord(lit.join(',')));
+  if (r.case && r.case !== 'see-through') words.push('--case', r.case);
   if (r.dark) words.push('--theme', 'dark');
   if (r.perspective) words.push('--perspective');
   return words.join(' ');

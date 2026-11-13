@@ -23,7 +23,7 @@ import { analysis, chooseBoard, detail, pcbStamp, pickNet, pickPart } from '../s
 import { InspectBar, InspectLegend, PreviewLabel } from './InspectBar';
 import { KINDS, MARGIN_TOKENS, findingTargets, litNets } from './inspect';
 import { type Ids, litIds, memberSelection, planChange, sectionText } from './control';
-import { colourBy, focus3d, heightPreview, xray } from './inspectMode';
+import { caseMode, colourBy, focus3d, heightPreview, setCase, toggleCaseShown, toggleCaseSolid, xray } from './inspectMode';
 import { MeasurePanel, Overlay3d, type Readout, SectionPanel } from './Tools3d';
 import { type Axis, type Measurement, type Snap, axisRange, defaultCut, faceZ, nearestView, partReadout, renderCommand } from './tools';
 import { type LimitInfo, type MemberInfo, type PartInfo3d, type SystemInfo, coverageLine, limitTip, partTip, provenanceCounts, systemLine, unknownParts } from './model';
@@ -87,9 +87,9 @@ export function View3d({ board }: { board: string }) {
   const [status, setStatus] = useState<Status>({ state: 'loading' });
   const [parts, setParts] = useState<PartInfo3d[]>([]);
   const [limits, setLimits] = useState<LimitInfo[]>([]);
-  // The case models' solids (ADR 0109): whether the scene has any, and whether they are drawn.
+  // The case models' solids (ADR 0109): whether the scene has any. How they are drawn is `caseMode` (inspectMode.ts), as the keys and the palette set it.
   const [caseSolids, setCaseSolids] = useState(0);
-  const [caseOn, setCaseOn] = useState(true);
+  const cm = caseMode.value;
   const [coverage, setCoverage] = useState<{ known: number; total: number } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [preset, setPreset] = useState<Preset | null>('iso');
@@ -196,6 +196,7 @@ export function View3d({ board }: { board: string }) {
       focused: () => v.focusedList(),
       cases: () => v.caseList(),
       caseShown: () => v.caseShownState(),
+      caseMode: () => v.caseModeState(),
       focusedSolids: () => v.focusedSolidList(),
       litCases: () => v.litCaseList(),
       litReport: () => v.litReport(),
@@ -245,6 +246,7 @@ export function View3d({ board }: { board: string }) {
             command: commandText(),
             limits: litLimits(v),
             cases: v.litCaseList(),
+            case: v.caseList().length ? v.caseModeState() : undefined,
           };
         },
         picture: () => v.picture(),
@@ -276,7 +278,6 @@ export function View3d({ board }: { board: string }) {
         setParts(v.partList());
         setLimits(v.limitList());
         setCaseSolids(v.caseList().length);
-        setCaseOn(v.caseShownState());
         setCoverage(v.board?.coverage ?? null);
         setCanExplode(v.canExplode());
         setSysInfo(v.system ? { system: v.system, members: v.members } : null);
@@ -371,6 +372,14 @@ export function View3d({ board }: { board: string }) {
     setPreviewed(v.previewCount());
   }, [xr, cb, pv.on, pv.mm, parts]);
 
+  // How the case is drawn: the signal's, which the viewer follows; the viewer's own changes (a finding shows the case) are taken back.
+  useEffect(() => {
+    viewer.current?.setCaseMode(cm);
+  }, [cm]);
+  const syncCase = (v: Viewer) => {
+    if (v.caseModeState() !== caseMode.peek()) setCase(v.caseModeState());
+  };
+
   // A finding picked in the problems dock (or the findings list): fly to it and light it. One
   // asked before this view opened is the 2D board's.
   const asked = focus3d.value;
@@ -380,8 +389,8 @@ export function View3d({ board }: { board: string }) {
     focusSeen.current = asked.nonce;
     const t = findingTargets(asked.refs, asked.keepout, v.partList(), v.limitList());
     v.focusFinding(t.paths, t.limits, asked.caseSolid ? [asked.caseSolid] : [], asked.point);
-    // A finding about the case shows the case.
-    setCaseOn(v.caseShownState());
+    // A finding about the case shows the case, and one about what is inside a solid case sees through it.
+    syncCase(v);
   }, [asked?.nonce, parts]);
 
   // Asked to show the selection (go to anything, a click on the status chip): frame its parts.
@@ -462,6 +471,7 @@ export function View3d({ board }: { board: string }) {
       view: nearestView(v.towardEye()).view,
       section: tools.current.cut,
       highlight: lit.highlight,
+      case: v.caseList().length ? v.caseModeState() : undefined,
       dark: t === 'dark' || t === 'hc-dark',
       perspective: !v.isOrtho(),
     });
@@ -510,8 +520,9 @@ export function View3d({ board }: { board: string }) {
       if (plan.limits) v.lightLimits(plan.limits);
       if (plan.cases) {
         v.lightCases(plan.cases);
-        setCaseOn(v.caseShownState());
+        syncCase(v);
       }
+      if (plan.case) setCase(plan.case);
       if (plan.xray !== undefined) xray.value = plan.xray;
       if (plan.colourBy !== undefined) colourBy.value = plan.colourBy;
       if (plan.preview) heightPreview.value = { on: plan.preview.on, mm: plan.preview.mm ?? heightPreview.peek().mm };
@@ -872,21 +883,29 @@ export function View3d({ board }: { board: string }) {
               Layers apart
             </button>
             {caseSolids > 0 && (
-              <button
-                class={`tool ${caseOn ? 'on' : ''}`}
-                aria-pressed={caseOn}
-                data-tip={caseOn ? 'Hide the case model: the board alone' : 'Show the case model round the board, see-through'}
-                data-testid="tool-case"
-                onClick={() => {
-                  const v = viewer.current;
-                  if (!v) return;
-                  v.setCaseShown(!v.caseShownState());
-                  setCaseOn(v.caseShownState());
-                }}
-              >
-                <Icon name="cube" size={14} />
-                Case
-              </button>
+              <>
+                <button
+                  class={`tool ${cm !== 'hidden' ? 'on' : ''}`}
+                  aria-pressed={cm !== 'hidden'}
+                  data-tip={cm !== 'hidden' ? 'Hide the case model: the board alone' : 'Show the case model round the board'}
+                  data-tip-keys="Shift+C"
+                  data-testid="tool-case"
+                  onClick={() => toggleCaseShown()}
+                >
+                  <Icon name="cube" size={14} />
+                  Case
+                </button>
+                <button
+                  class={`tool ${cm === 'solid' ? 'on' : ''}`}
+                  aria-pressed={cm === 'solid'}
+                  data-tip={cm === 'solid' ? 'Draw the case model see-through again, so the board shows inside it' : 'Draw the case model solid: it hides the board inside it, and a click on it picks nothing'}
+                  data-testid="tool-case-solid"
+                  onClick={() => toggleCaseSolid()}
+                >
+                  <Icon name="cube-solid" size={14} />
+                  Solid
+                </button>
+              </>
             )}
             <span class="tb-sep" aria-hidden="true" />
             <Popover icon="more" tip="More: draw this view with netsmith render" class="v3-more">
@@ -1050,10 +1069,10 @@ export function View3d({ board }: { board: string }) {
                     Limit exceeded
                   </span>
                 )}
-                {caseSolids > 0 && caseOn && (
+                {caseSolids > 0 && cm !== 'hidden' && (
                   <span data-testid="case-legend">
-                    <i class="v3-sw v3-sw-case" aria-hidden="true" />
-                    Case
+                    <i class={`v3-sw ${cm === 'solid' ? 'v3-sw-case-solid' : 'v3-sw-case'}`} aria-hidden="true" />
+                    {cm === 'solid' ? 'Case (solid)' : 'Case'}
                   </span>
                 )}
               </div>

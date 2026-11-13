@@ -142,7 +142,7 @@ What is measured is what the height checks measure: each part's body box to its 
 | `case_boss` | A mounting hole whose ring (its body's box) has no case solid within `.boss_gap` (0.5 mm in std) above the top face or below the bottom face, in any case model. | No: a warning. |
 | `case_unchecked` | A part of unknown height with case material over its face; a part of standard height that collides (a part in that package may be lower); a solid whose shell is not closed (no body or board is tested for lying wholly inside it; its surface is still measured); a file that is not there. | With strict constraints (`--constraints error`, `constraints = "error"`). A file there that the reader cannot read stops `fab` always. |
 
-**Drawn.** The `.glb` holds each case model as a group `case:<name>` (`{kind: "case", name, file, sha256, triangles}`) with a node per solid `case:<name>:<solid>` (`{kind: "case_solid", case, solid, closed, triangles}`), material `case` (see-through); the root's `findings` list the fit's findings with `severity`, `case`, `solid` (the node) and `at_mm`. `render` draws the case see-through, `--highlight case:<name>` lights it, and `--section` cuts it with the rest. A case is one board's: a system's scene (`--board System`, the System view) draws and checks no member's case, as a case round a system is not modelled yet. The editor's 3D view draws it see-through with a `Case` toggle; the fit's findings are in the problems dock and the PCB findings, and picking one flies the camera to its part (or its point) and lights the solid.
+**Drawn.** The `.glb` holds each case model as a group `case:<name>` (`{kind: "case", name, file, sha256, triangles}`) with a node per solid `case:<name>:<solid>` (`{kind: "case_solid", case, solid, closed, triangles}`), material `case` (see-through); the root's `findings` list the fit's findings with `severity`, `case`, `solid` (the node) and `at_mm`. `render` draws the case see-through (`--case solid` draws it opaque, so it hides the board inside it; `--case hidden` leaves it out and frames the board alone), `--highlight case:<name>` lights it (a lit case model is see-through, in the highlight colour, whatever `--case` says, so what is inside shows), and `--section` cuts it with the rest. A case is one board's: a system's scene (`--board System`, the System view) draws and checks no member's case, as a case round a system is not modelled yet. The editor's 3D view draws it see-through with a `Case` toggle to hide and show it and a `Solid` toggle beside it to draw it opaque (the key `Shift+C` steps through see-through, solid and hidden; the choice is kept for the session, as x-ray is). A solid case hides the board, and is in the way of a pick: a click on it or a hover over it finds nothing behind it. A case model that a finding or `highlight` lights stays see-through, in its colour, and a finding about a part or a height limit inside a solid case makes the case see-through, so what it is about shows. The fit's findings are in the problems dock and the PCB findings, and picking one flies the camera to its part (or its point) and lights the solid.
 
 `fab` runs the check on the placement, before routing, and writes a note per case model read (its file, SHA-256, solids and triangles) and each warning to `fab-notes.txt`. The STEP export leaves the case out (the owner's choice, ADR 0109): the engineer who reads it has the case, and a copy would spread the maker's file.
 
@@ -498,6 +498,9 @@ What it is:
     rest) or _height margin_, a height map: each body by its `margin_mm` to the height limit over
     it, red when too tall, amber at no margin blending to green at 1 mm or more, grey where no limit
     is over it. Each has its legend. A part of unknown height stays hatched in all three.
+  - **Case** (on a board with a case model, in the tools beside _Layers apart_): `Case` hides and
+    shows it and `Solid` draws it opaque instead of see-through (`Shift+C` steps through
+    see-through, solid and hidden), as `render --case` does. It is see-through at every start.
   - **Height preview** (`H`), labelled "preview at N mm" (N from 0.1 to 50 mm, 1 mm unless
     changed): stands the parts of unknown height up at N mm, striped and see-through in a colour of
     its own, under a "Preview" label that says how many parts it stands up and that it is not a
@@ -620,6 +623,7 @@ The others are not told.
 | `highlight` | what is lit, as `--highlight` names it: the parts picked by designator, the net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as `case:<name>` (one lit by name, or the model of a solid a picked finding lights); in the System view a part and a net are their member's, `led/J1` and `net:led/GND` |
 | `selection` | the page's selection: parts by designator, or one `net:<name>` |
 | `hover` | what the pointer (or a row of another view) lights: a designator or `net:<name>`; absent with nothing |
+| `case` | how the case model is drawn, `hidden`, `see-through` or `solid`, as `--case` names it; absent when the board has no case model |
 | `xray`, `colourBy`, `heightPreview` | x-ray; `provenance`, `kind` or `margin`; the preview's height in mm while it is on, absent when off |
 | `theme` | `light` or `dark`, as `--theme` names the page's palette (read-only) |
 
@@ -637,6 +641,7 @@ page is on (`{}` only opens it):
 | `highlight` | `["J1", "net:GND", "limit:lid", "case:lid"]`, as `--highlight` reads it (an item may be comma-separated): the parts or the net become the page's selection, the limits are lit, and the case models (ADR 0109) are lit in the selection's colour and shown if the `Case` toggle hid them; it replaces what was lit, and `[]` lights nothing |
 | `select` | the page's selection alone, as a click makes it: parts, or one `net:<name>`; the limits and case models lit stay (a `limit:` or `case:` here is refused); not with `highlight` |
 | `xray`, `exploded` | true or false |
+| `case` | `hidden`, `see-through` or `solid`: how the case model is drawn; refused (`409`) on a board with no case model, and in the System view, which draws none |
 | `ortho` or `perspective` | the lens: `"ortho": true` is `"perspective": false` |
 | `colourBy` | `provenance`, `kind` or `margin` |
 | `heightPreview` | a height in mm (0.1 to 50) turns the preview on at it; true or false turns it on or off |
@@ -710,6 +715,7 @@ page has drawn it, and prints the state that results. The page driven is the one
 | `--colour-by provenance\|kind\|margin` | `colourBy` | `--color-by` too |
 | `--height-preview <mm>\|on\|off` | `heightPreview` | 0.1 to 50 mm |
 | `--layers-apart` \| `--no-layers-apart` | `exploded` | the stackup pulled apart or together |
+| `--case hidden\|see-through\|solid` | `case` | as `render --case`; a board with no case model refuses it |
 | `--json` | | print the JSON of the state, not the summary |
 | `--picture <file.png>` | `GET /api/view/picture` | after the change, save what the canvas shows; with no other change flag it opens the 3D view first, as `POST {}` does |
 
@@ -744,6 +750,7 @@ netsmith render examples/led.nsm --view top --out top.png     # straight down at
 netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
 netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
 netsmith render cased.nsm --highlight case:lid                # a case model, see-through, lit
+netsmith render cased.nsm --case solid                        # the case opaque, hiding the board inside it
 netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
 netsmith render examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
 netsmith render examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
@@ -762,6 +769,7 @@ open it): a picture to look at, with the numbers from `board3d --json` to quote.
 | `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
 | `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `board3d` names it) and `case:<name>` (a case model, ADR 0109). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets, limits and case models the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
+| `--case hidden\|see-through\|solid` | How a case model is drawn: `see-through` (the default), `solid` (opaque: it hides the board inside it; x-ray still sees through it) or `hidden` (left out, the picture framed on the board alone). A case model that `--highlight case:<name>` names is drawn see-through, in the highlight colour, in every mode. A board with no case model draws the same in each. |
 | `--theme light\|dark` | The palette; default `light`. |
 | `--ortho` \| `--perspective` | Parallel projection (the default, so lengths are comparable) or a pinhole with a 30° field of view. |
 

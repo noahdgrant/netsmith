@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, ValueEnum};
 
-use super::common::{DEFAULT_PORT, Ids, ViewName, parse_ids};
+use super::common::{CaseName, DEFAULT_PORT, Ids, ViewName, parse_ids};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -53,6 +53,12 @@ pub struct Args {
     /// The perspective projection.
     #[arg(long)]
     pub perspective: bool,
+    /// How the case model is drawn: `hidden`, `see-through` or `solid`.
+    ///
+    /// A solid case hides the board inside it, and a click on it picks nothing; a case model lit
+    /// with `--highlight case:<name>` stays see-through. A board with no case model refuses it.
+    #[arg(long, value_enum)]
+    pub case: Option<CaseName>,
     /// What the bodies are coloured by.
     #[arg(long = "colour-by", alias = "color-by", value_enum)]
     pub colour_by: Option<ColourByName>,
@@ -110,6 +116,7 @@ impl Args {
             select: joined_ids("--select", &self.select)?,
             xray: switch(self.xray, self.no_xray),
             ortho: switch(self.ortho, self.perspective),
+            case: self.case.map(CaseName::editor),
             colour_by: self.colour_by.map(ColourByName::editor),
             height_preview: self.height_preview,
             exploded: switch(self.layers_apart, self.no_layers_apart),
@@ -270,6 +277,8 @@ mod tests {
             "--highlight",
             "limit:lid,case:lid",
             "--xray",
+            "--case",
+            "solid",
             "--perspective",
             "--colour-by",
             "margin",
@@ -295,6 +304,7 @@ mod tests {
             ])
         );
         assert_eq!(change.xray, Some(true));
+        assert_eq!(change.case, Some(netsmith_editor::api::CaseMode::Solid));
         assert_eq!(change.ortho, Some(false));
         assert_eq!(change.colour_by, Some(ColourBy::Margin));
         assert_eq!(change.height_preview, Some(PreviewSetting::Mm(2.5)));
@@ -323,6 +333,18 @@ mod tests {
         assert_eq!(change.height_preview, Some(PreviewSetting::On(false)));
         assert_eq!(change.section.as_deref(), Some("none"));
         assert_eq!(change.select, Some(vec!["R1".into()]));
+        assert_eq!(change.case, None, "no --case leaves the case as it is");
+        // The three modes, by the names of `render --case`; any other is refused.
+        use netsmith_editor::api::CaseMode;
+        for (name, mode) in [
+            ("hidden", CaseMode::Hidden),
+            ("see-through", CaseMode::SeeThrough),
+            ("solid", CaseMode::Solid),
+        ] {
+            assert_eq!(view_request(&["--case", name]).change.case, Some(mode));
+        }
+        let e = parse(&["view", "--case", "opaque"]).unwrap_err();
+        assert!(e.contains("see-through") && e.contains("solid"), "{e}");
     }
 
     #[test]

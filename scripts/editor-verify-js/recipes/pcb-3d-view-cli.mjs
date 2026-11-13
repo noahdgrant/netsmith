@@ -77,6 +77,8 @@ export async function run(tools) {
   expect(after.view === before.view && JSON.stringify(after.camera) === JSON.stringify(before.camera), 'the camera did not move');
   r = await view('--board', 'NoSuchBoard');
   expect(r.code === 2 && r.err.includes(BOARD), `a board the project has not lists the ones it has: ${r.err.trim()}`);
+  r = await view('--case', 'solid');
+  expect(r.code === 2 && r.out === '' && r.err.includes('case: the board has no case model to draw'), `--case on a board with no case model is refused: ${r.err.trim()}`);
   r = await view('--theme', 'dark');
   expect(r.code === 2 && r.err.includes("person's own setting"), `--theme says why not: ${r.err.trim()}`);
 

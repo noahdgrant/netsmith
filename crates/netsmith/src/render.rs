@@ -23,6 +23,29 @@ pub const DEFAULT_VIEW: View = View::Iso;
 /// The vertical field of view of `--perspective`, in degrees.
 pub const FOV_DEG: f64 = 30.0;
 
+/// How a case model (ADR 0109) is drawn: not at all (the board alone), see-through (the default:
+/// the board shows inside its case), or solid (the case hides what is inside it). A case model
+/// that `--highlight` lights is drawn see-through, in the highlight colour, in every mode (so a
+/// hidden one shows when it is named, as the editor shows it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CaseMode {
+    Hidden,
+    #[default]
+    SeeThrough,
+    Solid,
+}
+
+impl CaseMode {
+    /// The name `--case` and the editor's `/api/view` write.
+    pub fn name(self) -> &'static str {
+        match self {
+            CaseMode::Hidden => "hidden",
+            CaseMode::SeeThrough => "see-through",
+            CaseMode::Solid => "solid",
+        }
+    }
+}
+
 /// What `netsmith render` was asked to draw.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
@@ -32,6 +55,8 @@ pub struct Request {
     /// As given: part paths, designators, `net:<name>`, `limit:<name>` and `case:<name>`.
     pub highlight: Vec<String>,
     pub xray: bool,
+    /// How the case models are drawn ([`CaseMode`]).
+    pub case: CaseMode,
     /// Fill the cut faces of a section ([`RenderOptions::caps`]); `--no-caps` leaves them open.
     pub caps: bool,
     pub dark: bool,
@@ -46,6 +71,7 @@ impl Default for Request {
             section: None,
             highlight: Vec::new(),
             xray: false,
+            case: CaseMode::SeeThrough,
             caps: true,
             dark: false,
             perspective: false,
@@ -227,6 +253,7 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
         .palette(),
         highlight,
         xray: request.xray,
+        case_solid: request.case == CaseMode::Solid,
         caps: request.caps,
         section: request.section.map(|(axis, at)| Section {
             axis,
@@ -237,6 +264,17 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
     }
 }
 
+/// The meshes with the case models dropped when the case is hidden (the picture is then framed
+/// on the board alone); one that `highlight` names is kept, to be lit.
+fn without_hidden_case(mut meshes: Vec<Mesh>, case: CaseMode, highlight: &[String]) -> Vec<Mesh> {
+    if case == CaseMode::Hidden {
+        meshes.retain(|m| {
+            m.material != netsmith_3d::mesh::Material::Case || highlight.contains(&m.id)
+        });
+    }
+    meshes
+}
+
 /// The meshes of `scene` drawn as `request` says, as the bytes of a PNG.
 pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
     let highlight = resolve_highlight(scene, &request.highlight)?;
@@ -245,6 +283,7 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
         Some((axis, at)) if request.caps => mesh::of_scene_section(scene, axis, at),
         _ => mesh::of_scene(scene),
     };
+    let meshes = without_hidden_case(meshes, request.case, &highlight);
     let options = options(request, highlight);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }

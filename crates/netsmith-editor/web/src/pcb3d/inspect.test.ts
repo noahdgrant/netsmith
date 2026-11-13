@@ -59,7 +59,7 @@ describe('the height map', () => {
 
 describe('x-ray', () => {
   it('makes the board, the mask and the bodies see-through, and leaves the copper, the gold and the unknowns as they are', () => {
-    for (const r of ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'mask-over-copper', 'body', 'body-catalog', 'body-standard', 'metal', 'mark', 'silk'] as Role[]) {
+    for (const r of ['substrate', 'prepreg', 'mask-top', 'mask-bottom', 'mask-over-copper', 'body', 'body-catalog', 'body-standard', 'metal', 'mark', 'silk', 'case-solid'] as Role[]) {
       const o = xrayOpacity(r);
       expect(o, r).not.toBeNull();
       expect(o!).toBeLessThan(0.5);
@@ -67,7 +67,7 @@ describe('x-ray', () => {
     // A case model's solids are see-through already (ADR 0109).
     for (const r of ['copper', 'finish', 'body-unknown', 'limit', 'limit-violated', 'case'] as Role[]) expect(xrayOpacity(r), r).toBeNull();
     // Every role the view draws is one of the two lists above.
-    expect(Object.keys(LOOKS).length).toBe(17);
+    expect(Object.keys(LOOKS).length).toBe(18);
     expect(DIM.opacity).toBeLessThan(1);
   });
 });
@@ -161,7 +161,7 @@ describe('the commands', () => {
       () => true,
     );
     const keys = cmds.map((c) => c.keys).filter(Boolean);
-    expect(keys).toEqual(['V', 'C', 'H']);
+    expect(keys).toEqual(['V', 'C', 'Shift+C', 'H']);
     // Not the 3D view's others, its tools' (measure M, section S and its axis X Y Z, layers apart E), the 2D board's (R F L K) or the schematic's (R M).
     for (const k of keys) expect(['D', 'T', 'B', 'I', 'P', 'F', 'M', 'S', 'X', 'Y', 'Z', 'E', 'R', 'L', 'K', '0']).not.toContain(k);
     expect(colourBy.value).toBe('provenance');

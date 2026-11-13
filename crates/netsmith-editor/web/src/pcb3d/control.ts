@@ -5,7 +5,7 @@
 // `--highlight` and its error. Nothing here touches three.js or the page.
 
 import type { ViewChange } from '../api';
-import type { ColourBy } from './inspectMode';
+import type { CaseMode, ColourBy } from './inspectMode';
 import { PREVIEW_MAX_MM, PREVIEW_MIN_MM } from './inspectMode';
 import { ViewRefusal } from './mode';
 import { type Axis, type P3, RENDER_VIEWS, type RenderView } from './tools';
@@ -127,6 +127,8 @@ export interface Plan {
   /** The case models lit, by name. */
   cases?: string[];
   xray?: boolean;
+  /** How the case model is drawn. */
+  case?: CaseMode;
   ortho?: boolean;
   colourBy?: ColourBy;
   preview?: { on: boolean; mm?: number };
@@ -166,6 +168,17 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
     plan.selection = selectable(n, 'select');
   }
   if (change.xray !== undefined) plan.xray = change.xray;
+  if (change.case !== undefined) {
+    if (!have.cases.length) {
+      throw new ViewRefusal(
+        have.system
+          ? `case: the system \`${have.system}\` draws no case model: a case model is one board's, so show that board (\`--board <System>/<member>\`)`
+          : 'case: the board has no case model to draw',
+        409,
+      );
+    }
+    plan.case = change.case;
+  }
   if (change.ortho !== undefined) plan.ortho = change.ortho;
   if (change.perspective !== undefined) plan.ortho = !change.perspective;
   if (change.colourBy !== undefined) plan.colourBy = change.colourBy;

@@ -40,6 +40,16 @@ pub enum ColourBy {
     Margin,
 }
 
+/// How the case model (ADR 0109) is drawn, as `netsmith render --case` names it: not at all, see-through
+/// (the default), or solid, which hides the board inside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum CaseMode {
+    Hidden,
+    SeeThrough,
+    Solid,
+}
+
 /// The camera as a place: where the eye is and the point it looks at, in the scene's frame. `up`
 /// is the screen's up, in the same frame; a change does not take it (the view keeps z up).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -110,6 +120,10 @@ pub struct ViewChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub perspective: Option<bool>,
+    /// How the case model is drawn. A board with no case model refuses it (409).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub case: Option<CaseMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub colour_by: Option<ColourBy>,
@@ -170,6 +184,10 @@ pub struct ViewState {
     #[ts(optional)]
     pub hover: Option<String>,
     pub xray: bool,
+    /// How the case model is drawn; absent when the board has none (or the view is not shown).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub case: Option<CaseMode>,
     pub colour_by: ColourBy,
     /// The height preview's height in mm while it is on, else none.
     #[serde(default, skip_serializing_if = "Option::is_none")]

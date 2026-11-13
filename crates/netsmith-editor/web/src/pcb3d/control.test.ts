@@ -119,6 +119,15 @@ describe('a change, checked before anything is done', () => {
     expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [], cases: [] });
     expect(planChange({ heightPreview: false }, have, true).preview).toEqual({ on: false });
   });
+  it('takes how the case is drawn, on a board that has one', () => {
+    for (const mode of ['hidden', 'see-through', 'solid'] as const) expect(planChange({ case: mode }, have, true).case).toBe(mode);
+    expect(planChange({}, have, true).case).toBeUndefined();
+    const none = refusal(() => planChange({ case: 'solid' }, { ...have, cases: [] }, true));
+    expect(none.message).toBe('case: the board has no case model to draw');
+    expect(none.status).toBe(409);
+    const sys = refusal(() => planChange({ case: 'hidden' }, { ...have, cases: [], system: 'TwoBoards' }, true)).message;
+    expect(sys).toContain('the system `TwoBoards` draws no case model');
+  });
   it('lights one net through the selection, and not with parts', () => {
     expect(planChange({ select: ['net:GND'] }, have, true).selection).toEqual({ parts: [], net: 'GND' });
     expect(refusal(() => planChange({ highlight: ['net:GND', 'net:VBUS'] }, have, true)).message).toContain('one net at a time');

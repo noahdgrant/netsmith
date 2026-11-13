@@ -247,8 +247,9 @@
   --pcb3d-silk: #d8d4c6;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
-  /* A case model's solids (ADR 0109), drawn see-through round the board. */
+  /* A case model's solids (ADR 0109), drawn see-through round the board, and opaque when the case is drawn solid. */
   --pcb3d-case: #a7b2c4;
+  --pcb3d-case-solid: #6f7c92;
   --pcb3d-edge: #06080b;
   /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
   --pcb3d-prepreg: #b3a374;
@@ -466,8 +467,9 @@
   --pcb3d-silk: #1f2b25;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
-  /* A case model's solids (ADR 0109), drawn see-through round the board. */
+  /* A case model's solids (ADR 0109), drawn see-through round the board, and opaque when the case is drawn solid. */
   --pcb3d-case: #5d6b80;
+  --pcb3d-case-solid: #9aa6b8;
   --pcb3d-edge: #16181c;
   /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
   --pcb3d-prepreg: #e2d096;
@@ -682,8 +684,9 @@
   --pcb3d-silk: #ffffff;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
-  /* A case model's solids (ADR 0109), drawn see-through round the board. */
+  /* A case model's solids (ADR 0109), drawn see-through round the board, and opaque when the case is drawn solid. */
   --pcb3d-case: #c8d2e2;
+  --pcb3d-case-solid: #98a6bc;
   --pcb3d-edge: #000000;
   /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
   --pcb3d-prepreg: #d8c27e;
@@ -898,8 +901,9 @@
   --pcb3d-silk: #000000;
   --pcb3d-limit: var(--pcb-height-limit);
   --pcb3d-limit-violated: var(--danger);
-  /* A case model's solids (ADR 0109), drawn see-through round the board. */
+  /* A case model's solids (ADR 0109), drawn see-through round the board, and opaque when the case is drawn solid. */
   --pcb3d-case: #3c4a5e;
+  --pcb3d-case-solid: #7d8ba3;
   --pcb3d-edge: #000000;
   /* the 3D view's tools (pcb3d/tools.ts): the second laminate tone of a section, the measure tool's lines, the section plane */
   --pcb3d-prepreg: #c9b26a;

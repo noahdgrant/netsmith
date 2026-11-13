@@ -83,6 +83,8 @@ export function xrayOpacity(role: Role): number | null {
   switch (role) {
     case 'substrate':
     case 'prepreg':
+    // A solid case is see-through in x-ray, as the see-through one is always.
+    case 'case-solid':
       return 0.16;
     case 'mask-top':
     case 'mask-bottom':
