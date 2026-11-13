@@ -3039,7 +3039,7 @@ board NoFunction {
 
 ```text
 error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= GPIO`
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
 10 |     .u: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^
@@ -3070,7 +3070,7 @@ board WrongFunction {
 error: `u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK
    --> main.nsm:15:5
    |
-16 |     .u.pa2.function &= I2C1_SDA
+15 |     .u.pa2.function &= I2C1_SDA
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -3128,7 +3128,7 @@ board OneFunctionTwice {
 error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
    --> main.nsm:18:5
    |
-19 |     .u.pb6.function &= UART1_TX
+18 |     .u.pb6.function &= UART1_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -3254,7 +3254,7 @@ error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is con
 error: `hub.scl.function` is stated, but `hub.scl` is a pin of module `HubWithoutEquation` and nothing passes it to a pin of a part, so it has no effect; inside `HubWithoutEquation`, write `.mcu.pa2.function == .scl.function`
    --> main.nsm:14:5
    |
-15 |     .hub.scl.function &= UART1_TX
+14 |     .hub.scl.function &= UART1_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
