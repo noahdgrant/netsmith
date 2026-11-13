@@ -39,9 +39,10 @@ pub(crate) fn run(out: &mut Out<'_>) {
 /// A place where tracks end: the net, the layer, and the place to the micrometre.
 type Joint = (String, String, (i64, i64));
 
-/// Where exactly two straight tracks of a net meet on a layer outside the net's pads, the
-/// bend: more than 45 degrees (a right angle, or sharper) is a finding; where three or more
-/// meet, an acute angle between any two is.
+/// Where exactly two tracks of a net meet on a layer outside the net's pads, the bend: more
+/// than 45 degrees (a right angle, or sharper) is a finding; where three or more meet, an acute
+/// angle between any two is. An arc meets at its tangent, so an arc tangent to the tracks it
+/// joins is no bend at all.
 fn track_angle(out: &mut Out<'_>) {
     use crate::artwork::TrackShape;
     use std::collections::HashMap;
@@ -55,18 +56,43 @@ fn track_angle(out: &mut Out<'_>) {
     for (k, c) in m.items.iter().enumerate() {
         let Kind::Track(i) = c.kind else { continue };
         let t = &m.art.tracks[i];
-        let TrackShape::Line(a, b) = t.shape else {
-            continue;
+        // Each end of the track and the way the track leaves it: an arc leaves along its
+        // tangent, so a tangent arc between two straight tracks is no corner.
+        let out_of: Vec<(crate::geom::Pt, crate::geom::Pt)> = match t.shape {
+            TrackShape::Line(a, b) => {
+                if a.dist(b) < 1e-6 {
+                    continue;
+                }
+                vec![(a, b - a), (b, a - b)]
+            }
+            TrackShape::Arc(arc) => {
+                let points = arc.points();
+                let [first, .., last] = points.as_slice() else {
+                    continue;
+                };
+                let (next, before) = (points[1], points[points.len() - 2]);
+                let tangent = |at: crate::geom::Pt, toward: crate::geom::Pt| {
+                    let r = at - arc.centre;
+                    let along = crate::geom::Pt::new(-r.y, r.x);
+                    let d = toward - at;
+                    if along.x * d.x + along.y * d.y < 0.0 {
+                        crate::geom::Pt::new(r.y, -r.x)
+                    } else {
+                        along
+                    }
+                };
+                vec![
+                    (*first, tangent(*first, next)),
+                    (*last, tangent(*last, before)),
+                ]
+            }
         };
-        if a.dist(b) < 1e-6 {
-            continue;
-        }
         let net = t.net.clone().unwrap_or_default();
-        for (at, to) in [(a, b), (b, a)] {
+        for (at, way) in out_of {
             ends.entry((net.clone(), t.layer.clone(), key(at)))
                 .or_insert((at, Vec::new(), k))
                 .1
-                .push(to - at);
+                .push(way);
         }
     }
     let angle = |u: crate::geom::Pt, v: crate::geom::Pt| {

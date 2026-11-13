@@ -285,3 +285,35 @@ fn a_bend_of_45_degrees_passes_and_a_right_or_acute_corner_does_not_outside_a_pa
         0
     );
 }
+
+#[test]
+fn a_tangent_arc_at_a_bend_is_no_corner_and_a_kinked_arc_is_one() {
+    let angles = Extras {
+        track_angle: true,
+        ..Extras::default()
+    };
+    // The 45 degree bend at (14, 10) of a track from (10, 10) to (20, 16), cut by an arc of
+    // radius 2 tangent to both straight pieces.
+    let (radius, half) = (2.0_f64, 22.5_f64.to_radians());
+    let cut = radius * half.tan();
+    let d = std::f64::consts::FRAC_1_SQRT_2;
+    let p = (14.0 - cut, 10.0);
+    let q = (14.0 + cut * d, 10.0 + cut * d);
+    let centre = (p.0, p.1 + radius);
+    let out = ((14.0 - centre.0), (10.0 - centre.1));
+    let n = out.0.hypot(out.1);
+    let mid = (centre.0 + out.0 / n * radius, centre.1 + out.1 / n * radius);
+    let count = |mid: (f64, f64)| {
+        let mut b = Pcb::new(2);
+        b.stub("A", 10.0, 10.0);
+        b.stub("A", 20.0, 16.0);
+        b.track("A", "F.Cu", (10.0, 10.0), p, 0.2);
+        b.track("A", "F.Cu", q, (20.0, 16.0), 0.2);
+        b.arc("A", "F.Cu", [p, mid, q], 0.2);
+        check(&mut b, &angles).count(Rule::TrackAngle)
+    };
+    assert_eq!(count(mid), 0, "a tangent arc");
+    // The same ends through a point well outside the bend: the arc leaves both straight
+    // pieces at about a right angle.
+    assert_eq!(count((14.5, 8.5)), 2, "a kinked arc");
+}
