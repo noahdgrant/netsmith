@@ -7610,7 +7610,7 @@
         "text": ".q_port_a.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 307
+          "line": 309
         },
         "anchors": [
           "q_port_a",
@@ -7624,7 +7624,7 @@
         "text": ".q_port_b.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 308
+          "line": 310
         },
         "anchors": [
           "q_port_b",
@@ -7638,7 +7638,7 @@
         "text": ".port_trip_current == .protector.ocp_threshold / .port_shunt.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 313
+          "line": 315
         },
         "anchors": [
           "protector",
