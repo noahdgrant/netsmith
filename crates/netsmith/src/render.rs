@@ -241,7 +241,9 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
 
 /// The ids of the meshes `requested` names in the system scene (ADR 0110): each is
 /// `member/<id>`, the id as [`resolve_highlight`] reads it for that member's board (`led/J1`,
-/// `led/net:GND`), or a member's name alone for the whole member.
+/// `led/net:GND`), or a member's name alone for the whole member. A net or a limit may also be
+/// named with the member after its prefix, as the editor's 3D view names it (`net:led/GND`,
+/// `limit:led/lid`), which is the same id.
 pub fn resolve_system_highlight(
     system: &SystemScene,
     requested: &[String],
@@ -249,7 +251,8 @@ pub fn resolve_system_highlight(
     let mut ids: Vec<String> = Vec::new();
     let mut errors = Vec::new();
     for want in requested {
-        let (member, id) = want.split_once('/').unwrap_or((want.as_str(), ""));
+        let (member, id) = system_id(want);
+        let (member, id) = (member.as_str(), id.as_str());
         let Some(m) = system.member(member) else {
             errors.push(format!(
                 "error: --highlight names `{want}`, and the system `{}` has no member `{member}`; its members are: {} (name a part as `member/<designator>`)",
@@ -290,6 +293,19 @@ pub fn resolve_system_highlight(
     } else {
         Err(errors.join("\n"))
     }
+}
+
+/// An id of the system scene as its member and the id in the member's board: `led/J1` and
+/// `led/net:GND` as they are written, `net:led/GND` and `limit:led/lid` with the member taken out
+/// of the name; a member alone has no id (`""`).
+fn system_id(want: &str) -> (String, String) {
+    for prefix in ["net:", "limit:"] {
+        if let Some((member, name)) = want.strip_prefix(prefix).and_then(|r| r.split_once('/')) {
+            return (member.to_string(), format!("{prefix}{name}"));
+        }
+    }
+    let (member, id) = want.split_once('/').unwrap_or((want, ""));
+    (member.to_string(), id.to_string())
 }
 
 /// The system scene drawn as `request` says, as the bytes of a PNG: every member's meshes moved

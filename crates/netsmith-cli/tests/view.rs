@@ -74,6 +74,7 @@ fn next_ask(page: &mut Socket) -> ServerMessage {
 fn state() -> ViewState {
     ViewState {
         board: Some("Led".into()),
+        member: None,
         shown: true,
         view: Some(RenderView::Iso),
         camera: Some(CameraPlace {
@@ -166,6 +167,41 @@ fn with_no_change_it_prints_the_state_as_a_summary_or_as_the_routes_json() {
     assert!(out.status.success(), "{}", text(&out.stderr));
     let read: ViewState = serde_json::from_str(&text(&out.stdout)).unwrap();
     assert_eq!(read, state());
+}
+
+/// `--board System` asks the page for the System view (ADR 0110) with a member's ids as they are
+/// written, and the summary says which member the page's board is.
+#[test]
+fn a_system_name_asks_for_the_system_view_and_the_summary_names_the_member() {
+    let editor = start();
+    let mut page = open_page(editor.port);
+
+    let child = view(
+        editor.port,
+        &["--board", "TwoBoards", "--select", "net:led/GND"],
+    );
+    let ServerMessage::View { id, change } = next_ask(&mut page) else {
+        unreachable!()
+    };
+    let change = change.expect("a change");
+    assert_eq!(change.board.as_deref(), Some("TwoBoards"));
+    assert_eq!(change.select, Some(vec!["net:led/GND".to_string()]));
+    let mut system = state();
+    system.board = Some("TwoBoards".into());
+    system.member = Some("led".into());
+    system.highlight = vec!["net:led/GND".into()];
+    system.selection = vec!["net:led/GND".into()];
+    answer(&mut page, id, system);
+    let out = finished(child);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let shown = text(&out.stdout);
+    for line in [
+        "board: TwoBoards",
+        "member: led (the page's board, in the System view)",
+        "selection: net:led/GND",
+    ] {
+        assert!(shown.contains(line), "no `{line}` in:\n{shown}");
+    }
 }
 
 #[test]

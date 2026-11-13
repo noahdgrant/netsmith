@@ -1787,7 +1787,8 @@ fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() 
 }
 
 /// `render --board System` draws the system scene, the same bytes each run, and lights a part
-/// named `member/<id>`; a member the system does not have is an error that names its members.
+/// named `member/<id>` (a net also `net:member/<name>`); a member the system does not have is an
+/// error that names its members.
 #[test]
 fn render_draws_the_system_and_lights_a_part_of_a_member() {
     let examples = repo().join("examples");
@@ -1828,6 +1829,24 @@ fn render_draws_the_system_and_lights_a_part_of_a_member() {
         String::from_utf8_lossy(&run.stderr)
     );
     assert_ne!(std::fs::read(&a).unwrap(), std::fs::read(&lit).unwrap());
+    // A member's net, named either way: `led/net:GND`, or `net:led/GND` as the editor names it.
+    let (run, net) = draw("net.png", &["--highlight", "led/net:GND"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let (run, same) = draw("same.png", &["--highlight", "net:led/GND"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_ne!(std::fs::read(&a).unwrap(), std::fs::read(&net).unwrap());
+    assert_eq!(std::fs::read(&net).unwrap(), std::fs::read(&same).unwrap());
+    let (run, _) = draw("bad.png", &["--highlight", "net:lamp/GND"]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("no member `lamp`"));
     let (run, _) = draw("bad.png", &["--highlight", "lamp/J1"]);
     assert_eq!(run.status.code(), Some(2));
     let err = String::from_utf8_lossy(&run.stderr);

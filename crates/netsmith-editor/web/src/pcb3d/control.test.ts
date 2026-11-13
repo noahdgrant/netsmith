@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Ids, ViewRefusal, litIds, parseSection, planChange, resolveIds, sectionText } from './control';
+import { type Ids, ViewRefusal, litIds, memberSelection, parseSection, planChange, resolveIds, sectionText } from './control';
 import { renderCommand } from './tools';
 
 const have: Ids = {
@@ -53,6 +53,39 @@ describe('the ids of --highlight', () => {
         'the limits: limit:lid',
     );
     expect(refusal(() => resolveIds(['x'], { parts: [], nets: [], limits: [] })).message).toContain('an id that the board does not have: `x`\nthe parts are: (none)');
+  });
+});
+
+describe("the ids of a system's scene (ADR 0110)", () => {
+  const system: Ids = {
+    parts: [
+      { path: 'power/power_out', refdes: 'power/J1' },
+      { path: 'led/power_in', refdes: 'led/J1' },
+    ],
+    nets: ['led/GND', 'power/GND'],
+    limits: [],
+    system: 'TwoBoards',
+  };
+  it("names a member's part and net, the net also as render writes it", () => {
+    expect(resolveIds(['led/J1', 'power/power_out'], system)).toEqual({ parts: ['led/power_in', 'power/power_out'], nets: [], limits: [] });
+    expect(resolveIds(['net:led/GND'], system).nets).toEqual(['led/GND']);
+    expect(resolveIds(['led/net:GND'], system).nets).toEqual(['led/GND']);
+  });
+  it('refuses a designator without its member, listing the members\' ids', () => {
+    const e = refusal(() => resolveIds(['J1', 'net:GND'], system));
+    expect(e.message).toBe(
+      'highlight names ids that the system `TwoBoards` does not have: `J1`, `net:GND`\n' +
+        'the parts are: power/J1 (power/power_out), led/J1 (led/power_in)\n' +
+        'the nets: net:led/GND, net:power/GND\n' +
+        'the limits: (none)\n' +
+        "(in the system, a part and a net are a member's: such as power/J1 and net:led/GND)",
+    );
+  });
+  it("picks on one member's board, by its own names", () => {
+    expect(memberSelection({ parts: ['led/power_in'], net: null }, 'select')).toEqual({ member: 'led', parts: ['power_in'], net: null });
+    expect(memberSelection({ parts: [], net: 'power/GND' }, 'select')).toEqual({ member: 'power', parts: [], net: 'GND' });
+    expect(memberSelection({ parts: [], net: null }, 'select')).toEqual({ member: null, parts: [], net: null });
+    expect(refusal(() => memberSelection({ parts: ['led/power_in', 'power/power_out'], net: null }, 'highlight')).message).toContain('highlight names ids of 2 members (led, power)');
   });
 });
 
