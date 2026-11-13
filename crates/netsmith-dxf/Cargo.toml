@@ -11,3 +11,6 @@ autotests = false
 [[test]]
 name = "main"
 path = "tests/main.rs"
+
+[dev-dependencies]
+automod = "1.0.17"

@@ -12,3 +12,6 @@ name = "main"
 path = "tests/main.rs"
 
 [dependencies]
+
+[dev-dependencies]
+automod = "1.0.17"

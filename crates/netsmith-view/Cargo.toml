@@ -17,4 +17,5 @@ netsmith-kicad = { path = "../netsmith-kicad" }
 toml = "1.1.8"
 
 [dev-dependencies]
+automod = "1.0.17"
 netsmith-testkit = { path = "../netsmith-testkit" }

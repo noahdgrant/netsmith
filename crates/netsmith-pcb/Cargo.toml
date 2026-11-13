@@ -25,6 +25,7 @@ toml = "1.1.8"
 uuid = { version = "1", features = ["v5"] }
 
 [dev-dependencies]
+automod = "1.0.17"
 netsmith-testkit = { path = "../netsmith-testkit" }
 # The tests resolve their processes with the check, the solver and the design stage, never with
 # the netsmith crate: a crate the tests depend on makes them dependents of every crate it

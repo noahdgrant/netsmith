@@ -74,6 +74,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "automod"
+version = "1.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a273e731a7fb8c2268fd2932c9e9a3469f4fd171d85d070d2687190229653bd3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -700,6 +711,7 @@ dependencies = [
 name = "netsmith"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith",
  "netsmith-3d",
  "netsmith-check",
@@ -731,6 +743,7 @@ dependencies = [
 name = "netsmith-3d"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "i_overlay",
  "netsmith-check",
  "netsmith-core",
@@ -747,6 +760,7 @@ dependencies = [
 name = "netsmith-check"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-core",
  "netsmith-lang",
  "netsmith-quantity",
@@ -757,6 +771,7 @@ dependencies = [
 name = "netsmith-cli"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "clap",
  "netsmith",
  "netsmith-3d",
@@ -790,6 +805,7 @@ dependencies = [
 name = "netsmith-design"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-check",
  "netsmith-core",
  "netsmith-lang",
@@ -801,11 +817,15 @@ dependencies = [
 [[package]]
 name = "netsmith-dxf"
 version = "0.1.0"
+dependencies = [
+ "automod",
+]
 
 [[package]]
 name = "netsmith-editor"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "axum",
  "flate2",
  "netsmith-core",
@@ -821,6 +841,7 @@ dependencies = [
 name = "netsmith-fab"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "i_overlay",
  "netsmith-core",
  "netsmith-kicad",
@@ -844,6 +865,9 @@ dependencies = [
 [[package]]
 name = "netsmith-lang"
 version = "0.1.0"
+dependencies = [
+ "automod",
+]
 
 [[package]]
 name = "netsmith-netlist"
@@ -857,6 +881,7 @@ dependencies = [
 name = "netsmith-pcb"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
@@ -875,6 +900,7 @@ dependencies = [
 name = "netsmith-place-route"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
@@ -890,11 +916,15 @@ dependencies = [
 [[package]]
 name = "netsmith-quantity"
 version = "0.1.0"
+dependencies = [
+ "automod",
+]
 
 [[package]]
 name = "netsmith-solve"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-check",
  "netsmith-core",
  "netsmith-lang",
@@ -909,6 +939,7 @@ version = "0.1.0"
 name = "netsmith-view"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-core",
  "netsmith-kicad",
  "netsmith-testkit",

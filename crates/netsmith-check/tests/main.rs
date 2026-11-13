@@ -1,70 +1,7 @@
 //! The crate's integration tests, one executable. Each file of this folder is a module of it
-//! (a file per subject, as before); a new file needs a `mod` line here, or its tests do not run.
+//! (a file per subject, as before); a new file is picked up by `automod::dir!` below, with no list to edit.
 //! Run one file's tests with `cargo test -p netsmith-check --test main <file>::`, or with
 //! `cargo nextest run -p netsmith-check <file>::`.
 
-mod bias;
-mod bus_peripherals;
-mod cancel;
-mod case_model;
-mod catalog_optional;
-mod class_marker;
-mod classes;
+automod::dir!("tests");
 mod common;
-mod dc;
-mod defaults;
-mod end_functions;
-mod enums;
-mod environment;
-mod errors;
-mod examples;
-mod functions;
-mod generics;
-mod library;
-mod limits;
-mod lines;
-mod loads;
-mod mate;
-mod nets;
-mod open_drain;
-mod optional;
-mod physical;
-mod pin_edit;
-mod pin_requests;
-mod pins;
-mod place;
-mod polygon;
-mod rail_alias;
-mod rail_outputs;
-mod row;
-mod shared;
-mod std_generics;
-mod step_model;
-mod supply_peak;
-mod system;
-mod tri_state;
-mod unused;
-mod usb_roles;
-
-/// A file in this folder without a `mod` line above is not part of the executable: its tests would
-/// never run, and nothing else would say so.
-#[test]
-fn every_test_file_is_declared_above() {
-    let declared = include_str!("main.rs");
-    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-    let mut missing = Vec::new();
-    for entry in std::fs::read_dir(folder).unwrap().flatten() {
-        let path = entry.path();
-        if path.extension().is_some_and(|e| e == "rs")
-            && let Some(name) = path.file_stem().and_then(|s| s.to_str())
-            && name != "main"
-            && !declared.lines().any(|l| l == format!("mod {name};"))
-        {
-            missing.push(name.to_string());
-        }
-    }
-    assert!(
-        missing.is_empty(),
-        "add `mod` lines to main.rs for: {missing:?}"
-    );
-}

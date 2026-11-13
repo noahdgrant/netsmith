@@ -45,6 +45,7 @@ netsmith-testkit = { path = "../netsmith-testkit", optional = true }
 test-support = ["dep:netsmith-testkit"]
 
 [dev-dependencies]
+automod = "1.0.17"
 # This crate with its `test-support` feature, for its integration tests.
 netsmith = { path = ".", features = ["test-support"] }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
