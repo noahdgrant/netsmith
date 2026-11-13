@@ -293,7 +293,10 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
     let mut poly = Vec::with_capacity(8);
     let mut tmp = Vec::with_capacity(8);
     for (mi, mesh) in meshes.iter().enumerate() {
-        let colour = palette.colour(mesh.material);
+        let colour = match mesh.colour {
+            Some([r, g, b]) => [r, g, b, 255],
+            None => palette.colour(mesh.material),
+        };
         let highlighted = lit.contains(mesh.id.as_str());
         let mut base = to_f(colour);
         let mut alpha = f64::from(colour[3]) / 255.0;

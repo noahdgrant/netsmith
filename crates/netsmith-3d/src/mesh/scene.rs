@@ -28,7 +28,9 @@
 //! 6. Per part, by path, id the part's path (every mesh of a part has it): a body of known
 //!    height whose footprint has a package record as its _Package shape_ (the solids of
 //!    [`netsmith_pcb::body3d`], each `body`, `metal` or `mark`, a solder ball `metal`, put where the
-//!    part is: turned, mirrored and hanging down for a bottom part; see `package.rs`); any other
+//!    part is: turned, mirrored and hanging down for a bottom part; see `package.rs`); a part
+//!    drawn from its STEP model (ADR 0108) as the model's triangles, one mesh per piece, `body`
+//!    with the file's colour where it has one, whatever its height; any other
 //!    body of known height as its turned body box from the face out to its far end (`body`); a
 //!    body of unknown height as its outline flat at [`UNKNOWN_LIFT`] mm off its face
 //!    (`body-unknown`), never a box or a shape (ADR 0105); the pins below the far face where
@@ -529,6 +531,10 @@ fn body(b: &Body) -> BodyPieces {
     let down = b.side == Side::Back;
     let mut body = Vec::new();
     match (b.z_far, &b.shape) {
+        // A part drawn from its STEP model, whatever its height (ADR 0108).
+        _ if b.model.is_some() => {
+            body.extend(b.model.iter().flat_map(|m| m.meshes.iter().cloned()));
+        }
         (Some(_), Some(shape)) => super::package::meshes(&b.path, shape, &mut body),
         (Some(far), None) => {
             let (z0, z1) = if far < b.z_face {

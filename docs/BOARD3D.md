@@ -271,7 +271,9 @@ A node whose shape has no area has no mesh, and is still there.
   (the lighter green of the mask over copper) and `prepreg` (the second laminate tone of a
   section picture: no mesh of the file uses it). All thirteen are always written, in this order,
   so a material's index does not move when one is added at the end. Their colours are the
-  rasterizer's light palette in linear light. No glTF extension is used.
+  rasterizer's light palette in linear light. After them comes one material per colour of a
+  part's STEP model, `model:#rrggbb`, in the order the colours are first used (none when no part
+  is drawn from a model). No glTF extension is used.
 - **Still schema 1.** The copper groups, the silk nodes, the mask's openings and the two
   materials `finish` and `mask-over-copper` were added; nothing was removed or changed in meaning.
 - **Layers in Z.** From the top: the silkscreen 0.015 mm above the mask, the mask's outside at
@@ -331,6 +333,16 @@ netsmith board3d examples/two_boards.nsm --board TwoBoards/led --step led.step
   height.
 - **A part of unknown height has no solid**: its body's outline is a closed polyline on its face,
   and its description says `height unknown: outline only`. Never a guessed height (ADR 0094).
+- **A part drawn from its STEP model** ([above](#a-parts-step-model)) holds the model's own
+  solids, copied from its file with no tessellation (ADR 0108): each solid's entities, the
+  styles that colour them and everything they refer to, renumbered in the order of their ids,
+  with every number as the file has it. Each solid is a child product of the part's
+  (`<path>:<solid name>`), in a representation with the model's own units (an inch model stays
+  in inches), placed where the scene draws it by an `ITEM_DEFINED_TRANSFORMATION`; a solid the
+  file places twice is copied once. The part's description names the file and its SHA-256
+  (`Header1x2; height standard; drawn from models/usb.step (sha256 ...)`). A model that places a
+  solid in a mirror, which an assembly cannot hold, is a warning, and the export draws that part
+  with its generated shape.
 - **Colours** are the 3D view's light palette: the board the top mask's green (the laminate's
   colour on a board with no mask), a body dark grey, metal light grey, a mark white, an unknown
   part's outline orange.
@@ -388,8 +400,14 @@ its bytes change, and draws its triangles at 0.01 mm.
 - **When it is not drawn.** A file that is not there, or that the reader refuses (an entity it
   does not read, a face it cannot cut into triangles: the message names the entity and its
   line), is a warning, and the part keeps its generated shape. A model is never half drawn.
-- **Where it shows.** `board3d --json` lists it per part (`parts[].model`), and the `.glb`
-  records its SHA-256 in the part's node.
+- **Where it shows.** `render`, the `.glb` (and so the editor's 3D view) and the STEP export
+  draw it, whatever the part's height. In the `.glb` and `render` it is the model's triangles,
+  one mesh per colour, each in the colour the file gives its faces (a material
+  `model:#rrggbb` after the thirteen) or `body` where it gives none; the STEP export copies its
+  solids exactly ([below](#the-step-file)). `board3d --json` lists it per part
+  (`parts[].model`), and the `.glb` records its SHA-256 in the part's node, so a changed model
+  shows in a diff. `fab-notes.txt` names the parts drawn from a model: the `.glb` and `.step` hold
+  the model, and are the user's to share only as its maker's license allows.
 
 ## The editor's 3D view
 

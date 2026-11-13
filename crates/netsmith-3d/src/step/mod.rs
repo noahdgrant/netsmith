@@ -22,6 +22,10 @@
 //!   far end, named `body`. A BGA's balls are the only solids made of flat facets, the polygons
 //!   of the 3D view's balls. Pins that stand out of the far face by a stated length are a box
 //!   named `pins`.
+//! - **A part drawn from its STEP model** (ADR 0108) holds the model's solids, copied from its
+//!   file ([`copy`]): one child product per solid, in the model's own units, placed by an
+//!   `ITEM_DEFINED_TRANSFORMATION` where the scene draws it; the part's description names the
+//!   file and its SHA-256.
 //! - **No height is invented** (ADR 0094, ADR 0105). A part of unknown height has no solid: it
 //!   is its body's outline as a closed polyline on its face (a wireframe, orange), and its
 //!   description says `height unknown: outline only`.
@@ -31,6 +35,7 @@
 //!   `1970-01-01T00:00:00`, the entities are numbered in the order they are made, a point or
 //!   a direction is written once, and a real is written to ten places.
 
+mod copy;
 pub mod read;
 mod writer;
 
@@ -43,7 +48,7 @@ use writer::{Id, Writer, cross, dot, list, polygon, real, string};
 use crate::mesh::package::{BALL_RINGS, ROUND_SEGMENTS, settled};
 use crate::mesh::trig::sin_cos_turns;
 use crate::raster3d::Theme;
-use crate::scene3d::{BoardSolid, Body, Pins, PlacedShape, Plan, Scene};
+use crate::scene3d::{BoardSolid, Body, DrawnModel, Pins, PlacedShape, Plan, Scene};
 use crate::system::SystemScene;
 use netsmith_pcb::body3d::{Axis, Material as Made, Primitive};
 use netsmith_pcb::stackup::LayerKind;
@@ -86,6 +91,11 @@ struct File {
     styles: Vec<(Colour, bool, Id)>,
     /// Every styled item, for the presentation at the end.
     styled: Vec<Id>,
+    /// The units of the context: mm, radians, steradians.
+    units: [Id; 3],
+    /// The context of a STEP model's solids, by its length unit in mm and its angle unit in
+    /// radians (the bits of each), made when first used.
+    model_contexts: Vec<((u64, u64), Id)>,
 }
 
 impl File {
@@ -115,7 +125,57 @@ impl File {
             definition_context,
             styles: Vec::new(),
             styled: Vec::new(),
+            units: [mm, rad, sr],
+            model_contexts: Vec::new(),
         }
+    }
+
+    /// The representation context of a model's solids whose unit of length is `mm` mm and of
+    /// angle `radians` radians: the file's own when they are mm and radians, else one with
+    /// those units, so that the copied entities keep the numbers the model has.
+    fn model_context(&mut self, mm: f64, radians: f64) -> Id {
+        if mm == 1.0 && radians == 1.0 {
+            return self.context;
+        }
+        let key = (mm.to_bits(), radians.to_bits());
+        if let Some(&(_, id)) = self.model_contexts.iter().find(|(k, _)| *k == key) {
+            return id;
+        }
+        let [mm_unit, rad, sr] = self.units;
+        let w = &mut self.w;
+        let length = if mm == 1.0 {
+            mm_unit
+        } else {
+            let m = w.add(format!(
+                "LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE({}),{mm_unit})",
+                copy::exact(mm)
+            ));
+            let d = w.add("DIMENSIONAL_EXPONENTS(1.,0.,0.,0.,0.,0.,0.)");
+            w.add(format!(
+                "(CONVERSION_BASED_UNIT('unit',{m})LENGTH_UNIT()NAMED_UNIT({d}))"
+            ))
+        };
+        let angle = if radians == 1.0 {
+            rad
+        } else {
+            let m = w.add(format!(
+                "PLANE_ANGLE_MEASURE_WITH_UNIT(PLANE_ANGLE_MEASURE({}),{rad})",
+                copy::exact(radians)
+            ));
+            let d = w.add("DIMENSIONAL_EXPONENTS(0.,0.,0.,0.,0.,0.,0.)");
+            w.add(format!(
+                "(CONVERSION_BASED_UNIT('unit',{m})NAMED_UNIT({d})PLANE_ANGLE_UNIT())"
+            ))
+        };
+        let tol = w.add(format!(
+            "UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE({}),{length},'distance_accuracy_value','confusion accuracy')",
+            copy::exact(1e-6 / mm)
+        ));
+        let id = w.add(format!(
+            "(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT(({tol}))GLOBAL_UNIT_ASSIGNED_CONTEXT(({length},{angle},{sr}))REPRESENTATION_CONTEXT('Context3D','3D context, the units of a STEP model'))"
+        ));
+        self.model_contexts.push((key, id));
+        id
     }
 
     /// A product and its shape: `(definition, shape definition)`.
@@ -189,10 +249,27 @@ impl File {
         rep: Id,
         child_axis: Id,
     ) {
-        let w = &mut self.w;
-        w.add(format!(
+        self.w.add(format!(
             "SHAPE_DEFINITION_REPRESENTATION({child_shape},{rep})"
         ));
+        self.link(id, name, root, root_rep, root_axis, child, rep, child_axis);
+    }
+
+    /// [`File::occurrence`] of a child whose shape is already defined: a product placed more
+    /// than once.
+    #[allow(clippy::too_many_arguments)]
+    fn link(
+        &mut self,
+        id: &str,
+        name: &str,
+        root: Id,
+        root_rep: Id,
+        root_axis: Id,
+        child: Id,
+        rep: Id,
+        child_axis: Id,
+    ) {
+        let w = &mut self.w;
         let nauo = w.add(format!(
             "NEXT_ASSEMBLY_USAGE_OCCURRENCE({},{},'',{root},{child},$)",
             string(id),
@@ -332,6 +409,10 @@ fn board_product(
 
     // The parts, by path.
     for b in &scene.bodies {
+        if let Some(model) = b.model.as_ref().filter(|m| m.exact) {
+            model_part(f, b, model, prefix, (root, root_rep, root_axis));
+            continue;
+        }
         let solids = part_solids(b);
         let known = !solids.is_empty();
         let description = if b.z_far.is_some() {
@@ -382,6 +463,129 @@ fn board_product(
         rep: root_rep,
         axis: root_axis,
     }
+}
+
+/// A part drawn from its STEP model (ADR 0108): its product holds one child product per solid
+/// of the model, the solid's entities copied from the model's file ([`copy`]) in the model's own
+/// units, each placed where the scene draws it by an `ITEM_DEFINED_TRANSFORMATION`. The
+/// product's description names the file and its SHA-256. Pins that stand out of the far face
+/// by a stated length are a box named `pins` in the part's own representation, as for any part.
+fn model_part(f: &mut File, b: &Body, model: &DrawnModel, prefix: &str, under: (Id, Id, Id)) {
+    let (root, root_rep, root_axis) = under;
+    let id = format!("{prefix}{}", b.path);
+    let height = match b.height {
+        Some(_) => b.provenance.word(),
+        None => "unknown",
+    };
+    let description = format!(
+        "{}; height {height}; drawn from {} (sha256 {})",
+        b.kind, model.file, model.sha256
+    );
+    let (part, part_shape) = f.product(&id, &b.refdes, &description);
+    let axis = f.origin();
+    let read = &model.read;
+    // Each solid once: its product, shape and representation, and the origin it is placed by.
+    let mut copies: Vec<Option<(Id, Id, Id)>> = vec![None; read.model.solids.len()];
+    let mut places: Vec<(Id, (Id, Id, Id))> = Vec::new();
+    for placed in &read.model.placed {
+        let solid = &read.model.solids[placed.solid];
+        let copied = match copies[placed.solid] {
+            Some(c) => c,
+            None => {
+                let (ids, styles) = copy::closure(&read.exchange, solid.id);
+                let map = copy::copy(&read.exchange, &ids, &mut f.w);
+                f.styled.extend(styles.iter().filter_map(|s| map.get(s)));
+                let new = map[&solid.id];
+                let name = if solid.name.is_empty() {
+                    format!("#{}", solid.id)
+                } else {
+                    solid.name.clone()
+                };
+                let (def, shape) = f.product(
+                    &format!("{id}:{name}"),
+                    &name,
+                    &format!("a solid of {}", model.file),
+                );
+                let ctx = f.model_context(solid.mm, solid.radians);
+                let origin = f.origin();
+                let kind = read
+                    .exchange
+                    .data
+                    .get(&solid.id)
+                    .map_or_else(String::new, |i| i.name());
+                let rep = match kind.as_str() {
+                    "MANIFOLD_SOLID_BREP" | "BREP_WITH_VOIDS" => {
+                        "ADVANCED_BREP_SHAPE_REPRESENTATION"
+                    }
+                    "FACETED_BREP" => "FACETED_BREP_SHAPE_REPRESENTATION",
+                    _ => "SHAPE_REPRESENTATION",
+                };
+                let rep =
+                    f.w.add(format!("{rep}({},({origin},{new}),{ctx})", string(&name)));
+                f.w.add(format!("SHAPE_DEFINITION_REPRESENTATION({shape},{rep})"));
+                let c = (def, rep, origin);
+                copies[placed.solid] = Some(c);
+                c
+            }
+        };
+        // The solid's frame, in mm, where the scene draws it: the file's place, then the
+        // part's (a rigid motion: `DrawnModel::exact`).
+        let motion = model.to_scene.then_after(&placed.place);
+        let col = |c: usize| [motion.m[0][c], motion.m[1][c], motion.m[2][c]];
+        let at = f.w.axis(motion.t, col(2), col(0));
+        places.push((at, copied));
+    }
+    let mut items = vec![axis];
+    items.extend(places.iter().map(|(at, _)| *at));
+    let ctx = f.context;
+    if let Some(pins) = pins_solid(b) {
+        let brep = f.w.extrusion("pins", &pins);
+        f.paint(brep, Colour::Metal, false);
+        items.push(brep);
+    }
+    let rep = f.w.add(format!(
+        "ADVANCED_BREP_SHAPE_REPRESENTATION({},{},{ctx})",
+        string(&b.refdes),
+        list(&items)
+    ));
+    f.occurrence(
+        &id, &b.refdes, root, root_rep, root_axis, part, part_shape, rep, axis,
+    );
+    for (k, (at, (def, child_rep, origin))) in places.into_iter().enumerate() {
+        f.link(
+            &format!("{id}:{}", k + 1),
+            &b.refdes,
+            part,
+            rep,
+            at,
+            def,
+            child_rep,
+            origin,
+        );
+    }
+}
+
+/// The box of a part's pins out of the far face, where their length is stated.
+fn pins_solid(b: &Body) -> Option<Extrusion> {
+    let Pins::Known {
+        at,
+        z_top,
+        z_bottom,
+        ..
+    } = &b.pins
+    else {
+        return None;
+    };
+    Extrusion {
+        origin: [0.0; 3],
+        u: X,
+        v: Y,
+        n: Z,
+        loops: vec![rounded(xy(at.min), xy(at.max), 0.0)],
+        from: *z_bottom,
+        to: *z_top,
+    }
+    .normalised()
 }
 
 /// A solid of a part.
@@ -518,27 +722,7 @@ fn part_solids(b: &Body) -> Vec<(&'static str, Colour, Solid)> {
             );
         }
     }
-    if let Pins::Known {
-        at,
-        z_top,
-        z_bottom,
-        ..
-    } = &b.pins
-    {
-        let e = Extrusion {
-            origin: [0.0; 3],
-            u: X,
-            v: Y,
-            n: Z,
-            loops: vec![rounded(xy(at.min), xy(at.max), 0.0)],
-            from: *z_bottom,
-            to: *z_top,
-        };
-        out.extend(
-            e.normalised()
-                .map(|e| ("pins", Colour::Metal, Solid::Extrusion(e))),
-        );
-    }
+    out.extend(pins_solid(b).map(|e| ("pins", Colour::Metal, Solid::Extrusion(e))));
     out
 }
 

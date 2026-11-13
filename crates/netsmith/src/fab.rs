@@ -1001,13 +1001,18 @@ fn fab_board(
 
         // The board's 3D scene, beside the other files that are not for the board house. A failure
         // to write it is a note, never a failed fab: the package does not need it.
-        let (glb_file, glb_note) = write_glb(&dir, name, built, &board, options.glb);
+        // One scene for both, its parts drawn from their STEP models (ADR 0108).
+        let scene = (options.glb || options.step).then(|| crate::board3d::scene(built, &board));
+        for w in scene.iter().flat_map(|s| &s.warnings) {
+            say(format!("{}: warning: {w}", built.label()));
+        }
+        let (glb_file, glb_note) = write_glb(&dir, name, built, scene.as_ref(), options.glb);
         if let Some(note) = &glb_note {
             say(format!("{}: warning: {note}", built.label()));
         }
 
         // The board as STEP, the same way: a failure is a note, never a failed fab.
-        let (step_file, step_note) = write_step(&dir, name, built, &board, options.step);
+        let (step_file, step_note) = write_step(&dir, name, built, scene.as_ref(), options.step);
         if let Some(note) = &step_note {
             say(format!("{}: warning: {note}", built.label()));
         }
@@ -1025,6 +1030,10 @@ fn fab_board(
         extras.splice(0..0, pin_notes.iter().cloned());
         extras.extend(glb_note.map(|n| format!("warning: {n}")));
         extras.extend(step_note.map(|n| format!("warning: {n}")));
+        if let Some(scene) = &scene {
+            extras.extend(scene.warnings.iter().map(|w| format!("warning: {w}")));
+            extras.extend(model_notes(scene));
+        }
         extras.extend(crate::no_supplier::note(&sourcing));
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
@@ -1238,7 +1247,7 @@ fn write_glb(
     dir: &Path,
     name: &str,
     built: &Built,
-    board: &Board,
+    scene: Option<&netsmith_3d::scene3d::Scene>,
     write: bool,
 ) -> (Option<PathBuf>, Option<String>) {
     let file = dir.join(format!("{name}.glb"));
@@ -1254,7 +1263,10 @@ fn write_glb(
             _ => (None, None),
         };
     }
-    match fs::write(&file, crate::board3d::glb(built, board)) {
+    let Some(scene) = scene.filter(|_| write) else {
+        return (None, None);
+    };
+    match fs::write(&file, netsmith_3d::gltf::glb(scene, &built.label())) {
         Ok(()) => (Some(file), None),
         Err(e) => (
             None,
@@ -1274,7 +1286,7 @@ fn write_step(
     dir: &Path,
     name: &str,
     built: &Built,
-    board: &Board,
+    scene: Option<&netsmith_3d::scene3d::Scene>,
     write: bool,
 ) -> (Option<PathBuf>, Option<String>) {
     let file = dir.join(format!("{name}.step"));
@@ -1290,7 +1302,13 @@ fn write_step(
             _ => (None, None),
         };
     }
-    match fs::write(&file, crate::board3d::step(built, board)) {
+    let Some(scene) = scene.filter(|_| write) else {
+        return (None, None);
+    };
+    match fs::write(
+        &file,
+        netsmith_3d::step::step(scene, &built.label()).into_bytes(),
+    ) {
         Ok(()) => (Some(file), None),
         Err(e) => (
             None,
@@ -1300,6 +1318,30 @@ fn write_step(
             )),
         ),
     }
+}
+
+/// The lines of `fab-notes.txt` that name the parts drawn from a STEP model (ADR 0108 "Cost"):
+/// the `.glb` and the `.step` hold the model, which its maker's license may keep from being
+/// shared.
+fn model_notes(scene: &netsmith_3d::scene3d::Scene) -> Vec<String> {
+    let drawn: Vec<String> = scene
+        .bodies
+        .iter()
+        .filter_map(|b| {
+            let m = b.model.as_ref()?;
+            Some(format!(
+                "{} (`{}`) from `{}` (sha256 {})",
+                b.refdes, b.path, m.file, m.sha256
+            ))
+        })
+        .collect();
+    if drawn.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "note: drawn from a STEP model in the .glb and the .step (never measured: heights are the parts' own): {}; share those two files only as the models' licenses allow",
+        drawn.join(", ")
+    )]
 }
 
 /// A board the router left connections of: the board as it was placed, for the pin optimizer,
