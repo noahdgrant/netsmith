@@ -104,6 +104,7 @@ pub fn hard_boards(count: usize) -> Vec<Board> {
                 pads.swap(i, j);
             }
             let design = Design {
+                modules: Vec::new(),
                 name: "Hard".into(),
                 process: Some(process()),
                 features: Default::default(),
@@ -539,6 +540,7 @@ fn synthetic_board_with(
         parts[0].pins = vec![power("vdd", supply), power("gnd", ground)];
     }
     let design = Design {
+        modules: Vec::new(),
         name: "Synthetic".into(),
         process: Some(four_layer_process()),
         features: Default::default(),
@@ -727,6 +729,7 @@ pub fn land_grid_board_sized(
         }],
     });
     let design = Design {
+        modules: Vec::new(),
         name: "LandGrid".into(),
         process: Some(four_layer_process_with(narrowings)),
         features: Default::default(),

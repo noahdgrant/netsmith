@@ -48,6 +48,7 @@ pub fn test_process() -> Process {
 /// The same circuit as `examples/led.nsm`.
 pub fn led_design() -> Design {
     Design {
+        modules: Vec::new(),
         name: "LedExample".into(),
         process: Some(test_process()),
         features: Default::default(),

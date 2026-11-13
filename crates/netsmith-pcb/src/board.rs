@@ -216,6 +216,11 @@ pub struct Placed {
     /// Whether the board house leaves it to be fitted by hand (or not at all), so that it
     /// can be put over cut pins. False when the design does not say.
     pub hand_fitted: bool,
+    /// Where its symbol is in the schematic the build writes ([`netsmith_kicad::Hierarchy`]),
+    /// so that KiCad's update of the board from the schematic finds the footprint of each
+    /// symbol. `None` for a label, which has no symbol.
+    #[serde(default)]
+    pub symbol: Option<netsmith_kicad::SymbolLink>,
 }
 
 impl Placed {
@@ -1432,7 +1437,8 @@ impl Board {
 
         let mut loaded: HashMap<String, Footprint> = HashMap::new();
         let mut parts = Vec::with_capacity(design.parts.len());
-        for part in &design.parts {
+        let links = netsmith_kicad::Hierarchy::of(design).links(design);
+        for (part, symbol) in design.parts.iter().zip(links) {
             // A label is text, not a footprint of a library.
             if part.kind == "Label" {
                 let height = design
@@ -1462,6 +1468,7 @@ impl Board {
                     height: None,
                     protrusion: None,
                     hand_fitted: true,
+                    symbol,
                 });
                 continue;
             }
@@ -1519,6 +1526,7 @@ impl Board {
                         source: t.source.clone(),
                     }),
                 hand_fitted: design.features.hand_fitted.contains(&part.path),
+                symbol,
             });
         }
         Ok(Loaded {
@@ -2697,6 +2705,7 @@ pub(crate) mod tests {
     /// The same circuit as `examples/led.nsm`.
     pub fn led_design() -> Design {
         Design {
+            modules: Vec::new(),
             name: "LedExample".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),

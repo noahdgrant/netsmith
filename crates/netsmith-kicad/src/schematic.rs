@@ -10,6 +10,12 @@
 //! Every UUID is derived from names, so regenerating a design yields identical
 //! files and keeps symbols linked to their PCB footprints.
 //!
+//! A design with modules is a hierarchy (issue #563, [`crate::hierarchy`]): the board's own parts
+//! and a sheet symbol for each module instance on the root sheet, and a file for each module
+//! definition, which each instance of the same circuit places with its own references. A net that
+//! leaves a sheet is a hierarchical label inside and a sheet pin with a label of the board's net
+//! outside. A design with no module is one sheet, byte for byte as before.
+//!
 //! The emitter reads from the symbol loader (ADR 0021): one net label for each distinct point
 //! and net (stacked pads share one), a `no_connect` flag on every pin that no net reaches, and the
 //! power-flag rule from the symbol's electrical types. The schematic is a grid of cells with
@@ -17,12 +23,12 @@
 //! was byte for byte what it was before, and passed KiCad's electrical rules check with no
 //! violation (`crates/netsmith/tests/erc.rs` runs it).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use netsmith_core::{Design, DesignError};
-use uuid::Uuid;
 
+use crate::hierarchy::{Hierarchy, SheetInstance, uuid_for};
 use crate::mapping::{MapError, Mapped, Mapping, POWER_FLAG_SYMBOL};
 use crate::resolve::part_symbols;
 use crate::sexp::Sexp;
@@ -44,9 +50,6 @@ const UNIT_GAP: f64 = 4.0 * GRID;
 /// A symbol with more pins than this reserves room for its labels; a small part keeps the
 /// grid and its labels may run over the next cell.
 const SMALL_SYMBOL_PINS: usize = 4;
-
-/// Fixed namespace so UUIDs are stable across runs and machines ("netsmith" in ASCII).
-const NAMESPACE: Uuid = Uuid::from_u128(0x6e65_7473_6d69_7468_0000_0000_0000_0001);
 
 #[derive(Debug)]
 pub enum EmitError {
@@ -91,10 +94,6 @@ impl From<DesignError> for EmitError {
     fn from(e: DesignError) -> Self {
         Self::Design(e)
     }
-}
-
-fn uuid_for(name: &str) -> String {
-    Uuid::new_v5(&NAMESPACE, name.as_bytes()).to_string()
 }
 
 fn snap_up(v: f64) -> f64 {
@@ -203,26 +202,83 @@ pub fn needs_power_flag(design: &Design, mapping: &Mapping, lib: &SymbolLib) -> 
     })
 }
 
+/// The files of a design's schematic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Schematic {
+    /// The root sheet, `<design>.kicad_sch`: the whole schematic of a design with no module.
+    pub root: String,
+    /// The sheet of each module file, as `(file name, text)`, in the order of
+    /// [`Hierarchy::files`]. Empty for a schematic of one sheet.
+    pub sheets: Vec<(String, String)>,
+}
+
+/// One sheet to draw: its parts and what its nets and symbols are called.
+struct SheetPlan<'a> {
+    /// Indices into the design's parts, in the order they are drawn.
+    parts: Vec<usize>,
+    /// For each instance of the sheet: the path of the instance as KiCad's `(instances ...)`
+    /// write it (`/<root>` or `/<root>/<sheet>`), and the reference of each of `parts` in it.
+    instances: Vec<(String, Vec<&'a str>)>,
+    /// What each part is called in the UUIDs of its labels and flags: its reference on the
+    /// root, `<file>:<path inside>` on a module's sheet.
+    part_ids: Vec<String>,
+    /// The net names inside the sheet, for a module's sheet.
+    names: Option<&'a std::collections::BTreeMap<String, String>>,
+    /// The nets that leave a module's sheet, by board name.
+    leaving: HashSet<&'a str>,
+}
+
+impl SheetPlan<'_> {
+    fn name<'n>(&'n self, net: &'n str) -> &'n str {
+        self.names
+            .and_then(|names| names.get(net))
+            .map_or(net, String::as_str)
+    }
+}
+
+/// What one sheet's drawing is made of.
+#[derive(Default)]
+struct Drawn {
+    lib_symbols: Vec<Sexp>,
+    no_connects: Vec<Sexp>,
+    labels: Vec<Sexp>,
+    hierarchical: Vec<Sexp>,
+    placed: Vec<Sexp>,
+    /// The top of the next row below the parts.
+    bottom: f64,
+}
+
+impl Drawn {
+    fn uses(&mut self, symbol: &Symbol) {
+        if !self.lib_symbols.iter().any(|s| s == symbol.definition()) {
+            self.lib_symbols.push(symbol.definition().clone());
+        }
+    }
+}
+
+/// A power flag to place on a sheet: its net's name on the sheet, the text its UUIDs
+/// are made from, and its reference in each instance of the sheet.
+struct Flag {
+    name: String,
+    key: String,
+    label_id: String,
+    references: Vec<String>,
+}
+
+/// The schematic of `design`: one sheet, or a root sheet and a sheet for each module of the
+/// board ([`crate::hierarchy`]). A design with no module is drawn as it always was.
 pub fn emit_schematic(
     design: &Design,
     mapping: &Mapping,
     lib: &SymbolLib,
-) -> Result<String, EmitError> {
+) -> Result<Schematic, EmitError> {
     design.validate()?;
-
-    let root = uuid_for(&design.name);
-    let mut lib_symbols: Vec<Sexp> = Vec::new();
-    let mut placed: Vec<Sexp> = Vec::new();
-    let mut labels: Vec<Sexp> = Vec::new();
-    let mut no_connects: Vec<Sexp> = Vec::new();
+    let hierarchy = Hierarchy::of(design);
+    let root = hierarchy.root_uuid.clone();
 
     let mut mapped: Vec<(Mapped, Arc<Symbol>)> = Vec::new();
     for drawn in part_symbols(design, mapping, lib) {
-        let (m, symbol) = drawn?;
-        if !lib_symbols.iter().any(|s| s == symbol.definition()) {
-            lib_symbols.push(symbol.definition().clone());
-        }
-        mapped.push((m, symbol));
+        mapped.push(drawn?);
     }
 
     // The pins each part's nets reach, and nets that take power in and have nothing on the
@@ -258,28 +314,11 @@ pub fn emit_schematic(
         }
     }
 
-    // Parts go in rows of `COLUMNS`; a cell is as big as the part needs, and no smaller
-    // than the grid.
-    let cells: Vec<Cell> = mapped
-        .iter()
-        .zip(&connections)
-        .map(|((_, symbol), c)| plan_cell(symbol, c))
-        .collect();
-    let mut origins: Vec<(f64, f64)> = Vec::new();
-    let mut row_top = ORIGIN.1 - ROW_PITCH / 2.0;
-    for row in cells.chunks(COLUMNS) {
-        let mut x = ORIGIN.0 - COLUMN_PITCH / 2.0;
-        for cell in row {
-            origins.push((x + cell.left, row_top + cell.up));
-            x += cell.left + cell.right;
-        }
-        row_top += row.iter().map(|c| c.up + c.down).fold(ROW_PITCH, f64::max);
-    }
-
     // A label is a connection by name, so a net with a label at one point only is connected
     // to nothing and KiCad calls the label dangling. Such a net is left unlabelled and its
     // pin is flagged like any pin that no net reaches, unless a power flag will be labelled
-    // on the net as well.
+    // on the net as well. A net that leaves a sheet has a point on each sheet it is on, so it
+    // is never alone.
     let mut label_points: HashMap<&str, usize> = HashMap::new();
     for (index, (_, symbol)) in mapped.iter().enumerate() {
         for unit in 1..=symbol.units() {
@@ -292,116 +331,102 @@ pub fn emit_schematic(
             }
         }
     }
+    unsupplied.sort_unstable();
     let lonely = |net: &str| label_points.get(net) == Some(&1) && !unsupplied.contains(&net);
 
-    for (index, part) in design.parts.iter().enumerate() {
-        let (m, symbol) = &mapped[index];
-        for unit in 1..=symbol.units() {
-            let origin = (
-                origins[index].0,
-                origins[index].1 + cells[index].unit_dy[unit as usize - 1],
-            );
-            let placement = Placement {
-                refdes: &part.refdes,
-                value: &part.value,
-                symbol,
-                footprint: &m.footprint,
-                unit,
-                hidden_reference: false,
-                real: true,
-            };
-            placed.push(placed_symbol(design, &placement, origin, &root));
+    // A net's power flag goes on the one sheet the net is on, or on the root when it is on the
+    // root's parts or leaves a sheet.
+    let index_of: HashMap<&str, usize> = design
+        .parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.refdes.as_str(), i))
+        .collect();
+    let home = |net: &str| -> Option<usize> {
+        let net = design.nets.iter().find(|n| n.name == net)?;
+        let mut sheets = net
+            .pins
+            .iter()
+            .map(|p| hierarchy.part_sheet[index_of[p.refdes.as_str()]]);
+        let first = sheets.next()?;
+        sheets.all(|s| s == first).then_some(first).flatten()
+    };
+    let flag_symbol = if unsupplied.is_empty() {
+        None
+    } else {
+        Some(
+            lib.symbol(POWER_FLAG_SYMBOL)
+                .map_err(|error| EmitError::Symbol {
+                    refdes: flag_refdes(0),
+                    error,
+                })?,
+        )
+    };
 
-            // One label for each distinct point and net: stacked pins share a point.
-            let mut labelled: Vec<(f64, f64, &str)> = Vec::new();
-            for c in connections[index]
+    // The root sheet.
+    let root_parts: Vec<usize> = (0..design.parts.len())
+        .filter(|&p| hierarchy.part_sheet[p].is_none())
+        .collect();
+    let plan = SheetPlan {
+        instances: vec![(
+            format!("/{root}"),
+            root_parts
                 .iter()
-                .filter(|c| drawn_in(c.pin, unit) && !lonely(c.net))
-            {
-                if labelled.contains(&(c.pin.x, c.pin.y, c.net)) {
-                    continue;
-                }
-                labelled.push((c.pin.x, c.pin.y, c.net));
-                labels.push(pin_label(
-                    c.net,
-                    origin,
-                    c.pin.geometry(),
-                    &format!("{}/{}/{}", c.net, part.refdes, c.pin.number),
-                ));
-            }
-            // A pin that no net reaches is left open on purpose, so the electrical rules
-            // check is told so. A pin the symbol already types "no connection" is not
-            // flagged: KiCad counts the flag as a connection to it and objects.
-            let mut flagged: Vec<(f64, f64)> = Vec::new();
-            for pin in symbol.pins_of_unit(unit) {
-                let at = (pin.x, pin.y);
-                if pin.kind == PinType::NoConnect
-                    || labelled.iter().any(|l| (l.0, l.1) == at)
-                    || flagged.contains(&at)
-                {
-                    continue;
-                }
-                flagged.push(at);
-                no_connects.push(no_connect(
-                    (origin.0 + pin.x, origin.1 - pin.y),
-                    &format!("{}/{}/{}/{unit}", design.name, part.refdes, pin.number),
-                ));
-            }
-        }
+                .map(|&p| design.parts[p].refdes.as_str())
+                .collect(),
+        )],
+        part_ids: root_parts
+            .iter()
+            .map(|&p| design.parts[p].refdes.clone())
+            .collect(),
+        parts: root_parts,
+        names: None,
+        leaving: HashSet::new(),
+    };
+    let ctx = Context {
+        design,
+        hierarchy: &hierarchy,
+        mapped: &mapped,
+        connections: &connections,
+        lonely: &lonely,
+    };
+    let mut drawn = ctx.draw(&plan);
+    let mut sheet_symbols = Vec::new();
+    let mut flags_top = drawn.bottom;
+    if !hierarchy.is_flat() {
+        flags_top = sheet_boxes(
+            design,
+            &hierarchy,
+            drawn.bottom,
+            &mut drawn,
+            &mut sheet_symbols,
+        );
     }
-
-    unsupplied.sort_unstable();
-    if !unsupplied.is_empty() {
-        let flag = lib
-            .symbol(POWER_FLAG_SYMBOL)
-            .map_err(|error| EmitError::Symbol {
-                refdes: flag_refdes(0),
-                error,
-            })?;
-        lib_symbols.push(flag.definition().clone());
-        let flags_top = row_top;
-        for (index, net) in unsupplied.iter().enumerate() {
+    let root_flags: Vec<Flag> = unsupplied
+        .iter()
+        .enumerate()
+        .filter(|(_, net)| home(net).is_none())
+        .map(|(index, net)| {
             let refdes = flag_refdes(index);
-            let origin = (
-                ORIGIN.0 + (index % COLUMNS) as f64 * COLUMN_PITCH,
-                flags_top + (index / COLUMNS) as f64 * ROW_PITCH + ROW_PITCH / 2.0,
-            );
-            let placement = Placement {
-                refdes: &refdes,
-                value: "PWR_FLAG",
-                symbol: &flag,
-                footprint: "",
-                unit: 1,
-                hidden_reference: true,
-                real: false,
-            };
-            placed.push(placed_symbol(design, &placement, origin, &root));
-            let geometry = flag
-                .pin_geometry("1")
-                .expect("the power flag symbol has a pin 1");
-            labels.push(pin_label(
-                net,
-                origin,
-                geometry,
-                &format!("{net}/{refdes}/1"),
-            ));
-        }
+            Flag {
+                name: net.to_string(),
+                key: format!("{}/{refdes}", design.name),
+                label_id: format!("{net}/{refdes}/1"),
+                references: vec![refdes],
+            }
+        })
+        .collect();
+    if let Some(flag) = &flag_symbol
+        && !root_flags.is_empty()
+    {
+        ctx.flags(&plan, flag, &root_flags, flags_top, &mut drawn);
     }
 
-    let mut items = vec![
-        Sexp::node("version", vec![Sexp::atom("20250114")]),
-        Sexp::node("generator", vec![Sexp::string("netsmith")]),
-        Sexp::node(
-            "generator_version",
-            vec![Sexp::string(env!("CARGO_PKG_VERSION"))],
-        ),
-        Sexp::node("uuid", vec![Sexp::string(root.clone())]),
-        Sexp::node("paper", vec![Sexp::string("A4")]),
-        Sexp::node("lib_symbols", lib_symbols),
-    ];
-    items.extend(no_connects);
-    items.extend(labels);
-    items.extend(placed);
+    let mut items = header(&root, drawn.lib_symbols);
+    items.extend(drawn.no_connects);
+    items.extend(drawn.labels);
+    items.extend(drawn.placed);
+    items.extend(sheet_symbols);
     items.push(Sexp::node(
         "sheet_instances",
         vec![Sexp::node(
@@ -413,8 +438,427 @@ pub fn emit_schematic(
         )],
     ));
     items.push(Sexp::node("embedded_fonts", vec![Sexp::atom("no")]));
+    let root_text = Sexp::node("kicad_sch", items).to_kicad_string();
 
-    Ok(Sexp::node("kicad_sch", items).to_kicad_string())
+    // The sheet of each module file, drawn from its first instance.
+    let mut sheets = Vec::new();
+    for file in &hierarchy.files {
+        let first = &hierarchy.instances[file.instances[0]];
+        let refs = |instance: &SheetInstance| -> Vec<&str> {
+            instance
+                .parts
+                .iter()
+                .map(|&p| design.parts[p].refdes.as_str())
+                .collect()
+        };
+        let plan = SheetPlan {
+            parts: first.parts.clone(),
+            instances: file
+                .instances
+                .iter()
+                .map(|&i| {
+                    let instance = &hierarchy.instances[i];
+                    (format!("/{root}/{}", instance.uuid), refs(instance))
+                })
+                .collect(),
+            part_ids: first
+                .parts
+                .iter()
+                .map(|&p| format!("{}:{}", file.name, hierarchy.local_path(design, p)))
+                .collect(),
+            names: Some(&first.names),
+            leaving: first.pins.iter().map(|(net, _)| net.as_str()).collect(),
+        };
+        let mut drawn = ctx.draw(&plan);
+        // The flags of the nets inside the sheet, by their name inside, in that order; each
+        // instance has its own reference for its own net.
+        let mut flags: Vec<Flag> = Vec::new();
+        for (net, name) in &first.names {
+            if !unsupplied.contains(&net.as_str()) || home(net) != Some(file.instances[0]) {
+                continue;
+            }
+            let references = file
+                .instances
+                .iter()
+                .map(|&i| {
+                    let theirs = hierarchy.instances[i]
+                        .names
+                        .iter()
+                        .find(|(_, n)| *n == name)
+                        .map(|(net, _)| net.as_str())
+                        .expect("an instance of the file has the same nets");
+                    let index = unsupplied
+                        .iter()
+                        .position(|n| *n == theirs)
+                        .expect("the same circuit is unsupplied in every instance");
+                    flag_refdes(index)
+                })
+                .collect();
+            flags.push(Flag {
+                name: name.clone(),
+                key: format!("{}/{}/flag/{name}", design.name, file.name),
+                label_id: format!("{name}/{}:flag/1", file.name),
+                references,
+            });
+        }
+        flags.sort_by(|a, b| a.name.cmp(&b.name));
+        if let Some(flag) = &flag_symbol
+            && !flags.is_empty()
+        {
+            let top = drawn.bottom;
+            ctx.flags(&plan, flag, &flags, top, &mut drawn);
+        }
+        let uuid = uuid_for(&format!("{}/file/{}", design.name, file.name));
+        let mut items = header(&uuid, drawn.lib_symbols);
+        items.extend(drawn.no_connects);
+        items.extend(drawn.labels);
+        items.extend(drawn.hierarchical);
+        items.extend(drawn.placed);
+        items.push(Sexp::node("embedded_fonts", vec![Sexp::atom("no")]));
+        sheets.push((
+            file.name.clone(),
+            Sexp::node("kicad_sch", items).to_kicad_string(),
+        ));
+    }
+
+    Ok(Schematic {
+        root: root_text,
+        sheets,
+    })
+}
+
+/// The first items of a `.kicad_sch`.
+fn header(uuid: &str, lib_symbols: Vec<Sexp>) -> Vec<Sexp> {
+    vec![
+        Sexp::node("version", vec![Sexp::atom("20250114")]),
+        Sexp::node("generator", vec![Sexp::string("netsmith")]),
+        Sexp::node(
+            "generator_version",
+            vec![Sexp::string(env!("CARGO_PKG_VERSION"))],
+        ),
+        Sexp::node("uuid", vec![Sexp::string(uuid)]),
+        Sexp::node("paper", vec![Sexp::string("A4")]),
+        Sexp::node("lib_symbols", lib_symbols),
+    ]
+}
+
+/// What drawing a sheet reads, the same for every sheet.
+struct Context<'a> {
+    design: &'a Design,
+    hierarchy: &'a Hierarchy,
+    mapped: &'a [(Mapped, Arc<Symbol>)],
+    connections: &'a [Vec<Connection<'a>>],
+    lonely: &'a dyn Fn(&str) -> bool,
+}
+
+impl Context<'_> {
+    /// The parts of a sheet in rows of `COLUMNS`, each with its labels and no-connect flags; a
+    /// cell is as big as the part needs, and no smaller than the grid.
+    fn draw(&self, plan: &SheetPlan) -> Drawn {
+        let design = self.design;
+        let mut drawn = Drawn::default();
+        for &p in &plan.parts {
+            drawn.uses(&self.mapped[p].1);
+        }
+        let cells: Vec<Cell> = plan
+            .parts
+            .iter()
+            .map(|&p| plan_cell(&self.mapped[p].1, &self.connections[p]))
+            .collect();
+        let mut origins: Vec<(f64, f64)> = Vec::new();
+        let mut row_top = ORIGIN.1 - ROW_PITCH / 2.0;
+        for row in cells.chunks(COLUMNS) {
+            let mut x = ORIGIN.0 - COLUMN_PITCH / 2.0;
+            for cell in row {
+                origins.push((x + cell.left, row_top + cell.up));
+                x += cell.left + cell.right;
+            }
+            row_top += row.iter().map(|c| c.up + c.down).fold(ROW_PITCH, f64::max);
+        }
+        drawn.bottom = row_top;
+
+        // A net that leaves the sheet has a hierarchical label at its first point, and plain
+        // labels of the same name at the others, which KiCad joins to it by name.
+        let mut hierarchical: HashSet<&str> = HashSet::new();
+        for (slot, &index) in plan.parts.iter().enumerate() {
+            let (m, symbol) = &self.mapped[index];
+            let part = &design.parts[index];
+            let part_id = &plan.part_ids[slot];
+            for unit in 1..=symbol.units() {
+                let origin = (
+                    origins[slot].0,
+                    origins[slot].1 + cells[slot].unit_dy[unit as usize - 1],
+                );
+                let placement = Placement {
+                    reference: plan.instances[0].1[slot],
+                    key: self.hierarchy.symbol_key(design, index),
+                    instances: plan
+                        .instances
+                        .iter()
+                        .map(|(path, refs)| (path.clone(), refs[slot].to_string()))
+                        .collect(),
+                    value: &part.value,
+                    symbol,
+                    footprint: &m.footprint,
+                    unit,
+                    hidden_reference: false,
+                    real: true,
+                };
+                drawn.placed.push(placed_symbol(design, &placement, origin));
+
+                // One label for each distinct point and net: stacked pins share a point.
+                let mut labelled: Vec<(f64, f64, &str)> = Vec::new();
+                for c in self.connections[index]
+                    .iter()
+                    .filter(|c| drawn_in(c.pin, unit) && !(self.lonely)(c.net))
+                {
+                    if labelled.contains(&(c.pin.x, c.pin.y, c.net)) {
+                        continue;
+                    }
+                    labelled.push((c.pin.x, c.pin.y, c.net));
+                    let name = plan.name(c.net);
+                    let id = format!("{name}/{part_id}/{}", c.pin.number);
+                    if plan.leaving.contains(c.net) && hierarchical.insert(c.net) {
+                        drawn.hierarchical.push(pin_hierarchical_label(
+                            name,
+                            origin,
+                            c.pin.geometry(),
+                            &id,
+                        ));
+                    } else {
+                        drawn
+                            .labels
+                            .push(pin_label(name, origin, c.pin.geometry(), &id));
+                    }
+                }
+                // A pin that no net reaches is left open on purpose, so the electrical rules
+                // check is told so. A pin the symbol already types "no connection" is not
+                // flagged: KiCad counts the flag as a connection to it and objects.
+                let mut flagged: Vec<(f64, f64)> = Vec::new();
+                for pin in symbol.pins_of_unit(unit) {
+                    let at = (pin.x, pin.y);
+                    if pin.kind == PinType::NoConnect
+                        || labelled.iter().any(|l| (l.0, l.1) == at)
+                        || flagged.contains(&at)
+                    {
+                        continue;
+                    }
+                    flagged.push(at);
+                    drawn.no_connects.push(no_connect(
+                        (origin.0 + pin.x, origin.1 - pin.y),
+                        &format!("{}/{part_id}/{}/{unit}", design.name, pin.number),
+                    ));
+                }
+            }
+        }
+        drawn
+    }
+
+    /// The power flags of a sheet, in a row from `top`, each labelled with its net.
+    fn flags(&self, plan: &SheetPlan, flag: &Symbol, flags: &[Flag], top: f64, drawn: &mut Drawn) {
+        drawn.lib_symbols.push(flag.definition().clone());
+        for (index, f) in flags.iter().enumerate() {
+            let origin = (
+                ORIGIN.0 + (index % COLUMNS) as f64 * COLUMN_PITCH,
+                top + (index / COLUMNS) as f64 * ROW_PITCH + ROW_PITCH / 2.0,
+            );
+            let placement = Placement {
+                reference: &f.references[0],
+                key: f.key.clone(),
+                instances: plan
+                    .instances
+                    .iter()
+                    .zip(&f.references)
+                    .map(|((path, _), r)| (path.clone(), r.clone()))
+                    .collect(),
+                value: "PWR_FLAG",
+                symbol: flag,
+                footprint: "",
+                unit: 1,
+                hidden_reference: true,
+                real: false,
+            };
+            drawn
+                .placed
+                .push(placed_symbol(self.design, &placement, origin));
+            let geometry = flag
+                .pin_geometry("1")
+                .expect("the power flag symbol has a pin 1");
+            drawn
+                .labels
+                .push(pin_label(&f.name, origin, geometry, &f.label_id));
+        }
+    }
+}
+
+/// The height of a sheet symbol's pin pitch, and of the room for its name above and its file
+/// below, in mm.
+const SHEET_PIN_PITCH: f64 = 2.0 * GRID;
+
+/// The sheet symbols of the root, in rows below its parts from `top`, each with its pins on its
+/// left side and a label of the pin's net on each; returns the top of the next row below them.
+fn sheet_boxes(
+    design: &Design,
+    hierarchy: &Hierarchy,
+    top: f64,
+    drawn: &mut Drawn,
+    symbols: &mut Vec<Sexp>,
+) -> f64 {
+    let chars = |s: &str| s.chars().count() as f64;
+    let right_edge = ORIGIN.0 - COLUMN_PITCH / 2.0 + COLUMNS as f64 * COLUMN_PITCH;
+    let mut x = ORIGIN.0 - COLUMN_PITCH / 2.0;
+    let mut row_top = top;
+    let mut row_height: f64 = 0.0;
+    for instance in &hierarchy.instances {
+        let file = &hierarchy.files[instance.file].name;
+        let room = snap_up(
+            instance
+                .pins
+                .iter()
+                .map(|(net, _)| chars(net))
+                .fold(0.0, f64::max)
+                * LABEL_CHAR
+                + 2.0 * PAD,
+        );
+        let inside = instance
+            .pins
+            .iter()
+            .map(|(_, name)| chars(name))
+            .fold(0.0, f64::max)
+            * LABEL_CHAR
+            + PAD;
+        let width = snap_up(
+            inside
+                .max(chars(&instance.path).max(chars(file)) * LABEL_CHAR)
+                .max(8.0 * GRID),
+        );
+        let height = snap_up(
+            ((instance.pins.len() + 1) as f64 * SHEET_PIN_PITCH).max(4.0 * SHEET_PIN_PITCH),
+        );
+        if x + room + width > right_edge && x > ORIGIN.0 - COLUMN_PITCH / 2.0 {
+            x = ORIGIN.0 - COLUMN_PITCH / 2.0;
+            row_top += row_height;
+            row_height = 0.0;
+        }
+        let corner = (x + room, row_top + 2.0 * SHEET_PIN_PITCH);
+        let mut items = vec![
+            Sexp::node("at", vec![Sexp::num(corner.0), Sexp::num(corner.1)]),
+            Sexp::node("size", vec![Sexp::num(width), Sexp::num(height)]),
+            Sexp::node("exclude_from_sim", vec![Sexp::atom("no")]),
+            Sexp::node("in_bom", vec![Sexp::atom("yes")]),
+            Sexp::node("on_board", vec![Sexp::atom("yes")]),
+            Sexp::node("dnp", vec![Sexp::atom("no")]),
+            Sexp::node("fields_autoplaced", vec![Sexp::atom("yes")]),
+            Sexp::node(
+                "stroke",
+                vec![
+                    Sexp::node("width", vec![Sexp::num(0.1524)]),
+                    Sexp::node("type", vec![Sexp::atom("solid")]),
+                ],
+            ),
+            Sexp::node(
+                "fill",
+                vec![Sexp::node(
+                    "color",
+                    vec![
+                        Sexp::num(0.0),
+                        Sexp::num(0.0),
+                        Sexp::num(0.0),
+                        Sexp::atom("0.0000"),
+                    ],
+                )],
+            ),
+            Sexp::node("uuid", vec![Sexp::string(&instance.uuid)]),
+            justified_property(
+                "Sheetname",
+                &instance.path,
+                (corner.0, corner.1 - 0.7116),
+                "bottom",
+            ),
+            justified_property(
+                "Sheetfile",
+                file,
+                (corner.0, corner.1 + height + 0.5846),
+                "top",
+            ),
+        ];
+        for (k, (net, name)) in instance.pins.iter().enumerate() {
+            let pin_at = (corner.0, corner.1 + (k + 1) as f64 * SHEET_PIN_PITCH);
+            items.push(Sexp::node(
+                "pin",
+                vec![
+                    Sexp::string(name),
+                    Sexp::atom("passive"),
+                    at(pin_at.0, pin_at.1, 180.0),
+                    Sexp::node(
+                        "uuid",
+                        vec![Sexp::string(uuid_for(&format!(
+                            "{}/sheet/{}/pin/{name}",
+                            design.name, instance.path
+                        )))],
+                    ),
+                    Sexp::node(
+                        "effects",
+                        vec![
+                            Sexp::node(
+                                "font",
+                                vec![Sexp::node("size", vec![Sexp::num(1.27), Sexp::num(1.27)])],
+                            ),
+                            Sexp::node("justify", vec![Sexp::atom("left")]),
+                        ],
+                    ),
+                ],
+            ));
+            drawn.labels.push(label(
+                net,
+                pin_at,
+                180.0,
+                &format!("sheet/{}/{name}", instance.path),
+            ));
+        }
+        items.push(Sexp::node(
+            "instances",
+            vec![Sexp::node(
+                "project",
+                vec![
+                    Sexp::string(&design.name),
+                    Sexp::node(
+                        "path",
+                        vec![
+                            Sexp::string(format!("/{}", hierarchy.root_uuid)),
+                            Sexp::node("page", vec![Sexp::string(instance.page.to_string())]),
+                        ],
+                    ),
+                ],
+            )],
+        ));
+        symbols.push(Sexp::node("sheet", items));
+        x += room + width + 2.0 * PAD;
+        row_height = row_height.max(height + 4.0 * SHEET_PIN_PITCH);
+    }
+    row_top + row_height
+}
+
+/// A shown property with a justification, as the name and the file of a sheet are.
+fn justified_property(name: &str, value: &str, pos: (f64, f64), vertical: &str) -> Sexp {
+    Sexp::node(
+        "property",
+        vec![
+            Sexp::string(name),
+            Sexp::string(value),
+            at(pos.0, pos.1, 0.0),
+            Sexp::node(
+                "effects",
+                vec![
+                    Sexp::node(
+                        "font",
+                        vec![Sexp::node("size", vec![Sexp::num(1.27), Sexp::num(1.27)])],
+                    ),
+                    Sexp::node("justify", vec![Sexp::atom("left"), Sexp::atom(vertical)]),
+                ],
+            ),
+        ],
+    )
 }
 
 /// The electrical types in the order of the rows and the columns of KiCad's ERC pin map.
@@ -601,9 +1045,49 @@ fn no_connect(at: (f64, f64), uuid_name: &str) -> Sexp {
     )
 }
 
+/// A hierarchical label on a pin's connection point, running away from the symbol body: the
+/// pin's net leaves the sheet through the sheet pin of the same name.
+fn pin_hierarchical_label(
+    net: &str,
+    origin: (f64, f64),
+    geometry: PinGeometry,
+    uuid_name: &str,
+) -> Sexp {
+    let at_pin = (origin.0 + geometry.x, origin.1 - geometry.y);
+    let away = (geometry.angle + 180.0).rem_euclid(360.0);
+    let justify = if away >= 180.0 { "right" } else { "left" };
+    Sexp::node(
+        "hierarchical_label",
+        vec![
+            Sexp::string(net),
+            Sexp::node("shape", vec![Sexp::atom("passive")]),
+            at(at_pin.0, at_pin.1, away),
+            Sexp::node(
+                "effects",
+                vec![
+                    Sexp::node(
+                        "font",
+                        vec![Sexp::node("size", vec![Sexp::num(1.27), Sexp::num(1.27)])],
+                    ),
+                    Sexp::node("justify", vec![Sexp::atom(justify)]),
+                ],
+            ),
+            Sexp::node(
+                "uuid",
+                vec![Sexp::string(uuid_for(&format!("hierarchical/{uuid_name}")))],
+            ),
+        ],
+    )
+}
+
 /// One symbol instance on the sheet: one unit of a part from the design, or a power flag.
 struct Placement<'a> {
-    refdes: &'a str,
+    /// The reference the symbol shows: that of its first instance.
+    reference: &'a str,
+    /// The text its UUIDs are made from ([`Hierarchy::symbol_key`]).
+    key: String,
+    /// Each instance of the sheet as `(instance path, reference)`.
+    instances: Vec<(String, String)>,
     value: &'a str,
     symbol: &'a Symbol,
     footprint: &'a str,
@@ -615,14 +1099,14 @@ struct Placement<'a> {
     real: bool,
 }
 
-fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64), root: &str) -> Sexp {
+fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64)) -> Sexp {
     // The first unit keeps the names it had when every symbol had one unit.
     let unit_key = if placement.unit == 1 {
         String::new()
     } else {
         format!("u{}/", placement.unit)
     };
-    let key = |suffix: &str| uuid_for(&format!("{}/{}/{suffix}", design.name, placement.refdes));
+    let key = |suffix: &str| uuid_for(&format!("{}/{suffix}", placement.key));
     let unit_suffix = |suffix: &str| match placement.unit {
         1 => suffix.to_string(),
         n => format!("{suffix}/u{n}"),
@@ -664,7 +1148,7 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64), roo
         Sexp::node("dnp", vec![Sexp::atom("no")]),
         Sexp::node("fields_autoplaced", vec![Sexp::atom("yes")]),
         Sexp::node("uuid", vec![Sexp::string(key(&unit_suffix("symbol")))]),
-        field("Reference", placement.refdes, placement.hidden_reference),
+        field("Reference", placement.reference, placement.hidden_reference),
         field("Value", placement.value, false),
         property("Footprint", placement.footprint, (x, y), true),
         property("Datasheet", "~", (x, y), true),
@@ -682,22 +1166,20 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64), roo
             ],
         ));
     }
+    let mut project = vec![Sexp::string(&design.name)];
+    for (path, reference) in &placement.instances {
+        project.push(Sexp::node(
+            "path",
+            vec![
+                Sexp::string(path),
+                Sexp::node("reference", vec![Sexp::string(reference)]),
+                Sexp::node("unit", vec![Sexp::atom(placement.unit.to_string())]),
+            ],
+        ));
+    }
     items.push(Sexp::node(
         "instances",
-        vec![Sexp::node(
-            "project",
-            vec![
-                Sexp::string(&design.name),
-                Sexp::node(
-                    "path",
-                    vec![
-                        Sexp::string(format!("/{root}")),
-                        Sexp::node("reference", vec![Sexp::string(placement.refdes)]),
-                        Sexp::node("unit", vec![Sexp::atom(placement.unit.to_string())]),
-                    ],
-                ),
-            ],
-        )],
+        vec![Sexp::node("project", project)],
     ));
     Sexp::node("symbol", items)
 }
@@ -752,6 +1234,349 @@ mod tests {
         assert!(text.contains("\"pin_map\": ["), "{text}");
     }
 
+    /// The schematic of a design with no module: one sheet.
+    fn emit(design: &Design, mapping: &Mapping, lib: &SymbolLib) -> Result<String, EmitError> {
+        emit_schematic(design, mapping, lib).map(|s| {
+            assert!(s.sheets.is_empty(), "a design with no module is one sheet");
+            s.root
+        })
+    }
+
+    #[test]
+    fn a_design_with_no_module_is_drawn_byte_for_byte_as_before_sheets() {
+        // The files are what the writer made before it drew modules as sheets (issue #563),
+        // with the version of the generator taken out.
+        let version = env!("CARGO_PKG_VERSION");
+        for (name, design, want) in [
+            (
+                "led",
+                led_design(),
+                include_str!("../testdata/flat/led.kicad_sch"),
+            ),
+            (
+                "regulator",
+                regulator_design(),
+                include_str!("../testdata/flat/regulator.kicad_sch"),
+            ),
+            (
+                "two_drawn_regulators",
+                two_drawn_regulators("OUT", "5V"),
+                include_str!("../testdata/flat/two_drawn_regulators.kicad_sch"),
+            ),
+        ] {
+            let text = emit(&design, &mapping(), &sample()).unwrap();
+            assert!(
+                text.replace(version, "VERSION") == want,
+                "{name}: the schematic of a design with no module changed"
+            );
+        }
+    }
+
+    /// Two instances `s1` and `s2` of a module `Stage` (a capacitor and a regulator whose input
+    /// is a net inside the module, which nothing on the board drives), each with its output on a
+    /// header of the board, and ground through the module's member `ground`.
+    fn staged_design() -> Design {
+        let part =
+            |refdes: &str, kind: &str, value: &str, package: Option<&str>, path: &str| Part {
+                provides: Vec::new(),
+                refdes: refdes.into(),
+                kind: kind.into(),
+                value: value.into(),
+                package: package.map(str::to_string),
+                path: path.into(),
+                pins: Vec::new(),
+            };
+        let member = |name: &str, net: &str| netsmith_core::InterfaceMember {
+            name: name.into(),
+            net: net.into(),
+        };
+        let mut d = design(
+            vec![
+                part("J1", "Header1x2", "Conn_01x02", None, "out1"),
+                part("J2", "Header1x2", "Conn_01x02", None, "out2"),
+                part("C1", "Capacitor", "1u", Some("0402"), "s1.c"),
+                part("U1", "Ldo", "XC6206", Some("SOT-23"), "s1.u"),
+                part("C2", "Capacitor", "1u", Some("0402"), "s2.c"),
+                part("U2", "Ldo", "XC6206", Some("SOT-23"), "s2.u"),
+            ],
+            &[
+                ("net-s1.c.p1", &[("C1", "1"), ("U1", "3")]),
+                ("net-s2.c.p1", &[("C2", "1"), ("U2", "3")]),
+                (
+                    "GND",
+                    &[
+                        ("J1", "2"),
+                        ("C1", "2"),
+                        ("U1", "1"),
+                        ("C2", "2"),
+                        ("U2", "1"),
+                        ("J2", "2"),
+                    ],
+                ),
+                ("OUT1", &[("U1", "2"), ("J1", "1")]),
+                ("OUT2", &[("U2", "2"), ("J2", "1")]),
+            ],
+        );
+        d.modules = ["1", "2"]
+            .iter()
+            .map(|n| netsmith_core::ModuleInstance {
+                path: format!("s{n}"),
+                type_name: "Stage".into(),
+                ports: vec![
+                    member("vout.pos", &format!("OUT{n}")),
+                    member("ground", "GND"),
+                ],
+            })
+            .collect();
+        d
+    }
+
+    /// The references of each instance path of the placed symbols of a sheet, by the value of
+    /// the symbol's `Reference` field.
+    fn instance_references(sheet: &Sexp) -> Vec<(String, Vec<(String, String)>)> {
+        sheet
+            .find_all("symbol")
+            .map(|s| {
+                let reference = s
+                    .find_all("property")
+                    .find(|p| p.args()[0].text() == Some("Reference"))
+                    .and_then(|p| p.args()[1].text())
+                    .unwrap()
+                    .to_string();
+                let paths = s
+                    .find("instances")
+                    .unwrap()
+                    .find("project")
+                    .unwrap()
+                    .find_all("path")
+                    .map(|p| {
+                        (
+                            p.args()[0].text().unwrap().to_string(),
+                            p.find("reference").unwrap().args()[0]
+                                .text()
+                                .unwrap()
+                                .to_string(),
+                        )
+                    })
+                    .collect();
+                (reference, paths)
+            })
+            .collect()
+    }
+
+    fn texts(sheet: &Sexp, head: &str) -> Vec<String> {
+        let mut v: Vec<String> = sheet
+            .find_all(head)
+            .map(|n| n.args()[0].text().unwrap().to_string())
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn two_instances_of_one_circuit_are_one_sheet_file_placed_twice() {
+        let d = staged_design();
+        let schematic = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let names: Vec<&str> = schematic.sheets.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["Stage.kicad_sch"]);
+        let root = Sexp::parse(&schematic.root).unwrap();
+        let stage = Sexp::parse(&schematic.sheets[0].1).unwrap();
+        let root_uuid = uuid_for("gadgets");
+        let sheet_uuid = |path: &str| uuid_for(&format!("gadgets/sheet/{path}"));
+
+        // The root has the headers, the ground's flag and a sheet symbol for each instance,
+        // each with a pin for each net that leaves it, in the order of the module's members,
+        // and a label of the board's net on each pin.
+        let sheets: Vec<&Sexp> = root.find_all("sheet").collect();
+        assert_eq!(sheets.len(), 2);
+        for (sheet, path, page) in [(sheets[0], "s1", "2"), (sheets[1], "s2", "3")] {
+            let property = |name: &str| {
+                sheet
+                    .find_all("property")
+                    .find(|p| p.args()[0].text() == Some(name))
+                    .and_then(|p| p.args()[1].text())
+                    .unwrap()
+                    .to_string()
+            };
+            assert_eq!(property("Sheetname"), path);
+            assert_eq!(property("Sheetfile"), "Stage.kicad_sch");
+            assert_eq!(
+                sheet.find("uuid").unwrap().args()[0].text(),
+                Some(sheet_uuid(path).as_str())
+            );
+            let pins: Vec<&str> = sheet
+                .find_all("pin")
+                .map(|p| p.args()[0].text().unwrap())
+                .collect();
+            assert_eq!(pins, ["vout.pos", "ground"]);
+            let instance = sheet.find("instances").unwrap().find("project").unwrap();
+            let at = instance.find("path").unwrap();
+            assert_eq!(at.args()[0].text(), Some(format!("/{root_uuid}").as_str()));
+            assert_eq!(at.find("page").unwrap().args()[0].text(), Some(page));
+        }
+        assert_eq!(
+            texts(&root, "label"),
+            [
+                "GND", "GND", "GND", "GND", "GND", "OUT1", "OUT1", "OUT2", "OUT2"
+            ]
+        );
+        assert_eq!(flags(&root), [("#FLG01".to_string(), "GND".to_string())]);
+        let on_root: Vec<String> = instance_references(&root)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        assert_eq!(on_root, ["J1", "J2", "#FLG01"]);
+
+        // The file draws the module once, with each symbol's reference in each instance, its
+        // nets by their names inside, and the flag of its own input net, a reference for each.
+        let s1 = format!("/{root_uuid}/{}", sheet_uuid("s1"));
+        let s2 = format!("/{root_uuid}/{}", sheet_uuid("s2"));
+        let placed = instance_references(&stage);
+        let pair =
+            |a: &str, b: &str| vec![(s1.clone(), a.to_string()), (s2.clone(), b.to_string())];
+        assert_eq!(
+            placed,
+            [
+                ("C1".to_string(), pair("C1", "C2")),
+                ("U1".to_string(), pair("U1", "U2")),
+                ("#FLG02".to_string(), pair("#FLG02", "#FLG03")),
+            ]
+        );
+        assert_eq!(texts(&stage, "hierarchical_label"), ["ground", "vout.pos"]);
+        assert_eq!(
+            texts(&stage, "label"),
+            ["ground", "net-c.p1", "net-c.p1", "net-c.p1"]
+        );
+        assert!(stage.find("sheet_instances").is_none());
+        assert!(stage.find("sheet").is_none());
+
+        // The same bytes on a second run.
+        assert_eq!(
+            schematic,
+            emit_schematic(&d, &mapping(), &sample()).unwrap()
+        );
+    }
+
+    #[test]
+    fn an_instance_of_another_value_has_a_file_of_its_own() {
+        let mut d = staged_design();
+        d.parts[4].value = "2u2".into();
+        let schematic = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let names: Vec<&str> = schematic.sheets.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["Stage.kicad_sch", "Stage_2.kicad_sch"]);
+        for (_, text) in &schematic.sheets {
+            let sheet = Sexp::parse(text).unwrap();
+            for (_, paths) in instance_references(&sheet) {
+                assert_eq!(paths.len(), 1, "{paths:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_footprint_links_name_the_symbols_and_sheets_the_schematic_draws() {
+        let d = staged_design();
+        let schematic = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let root = Sexp::parse(&schematic.root).unwrap();
+        let stage = Sexp::parse(&schematic.sheets[0].1).unwrap();
+        let links = Hierarchy::of(&d).links(&d);
+        let uuid_of = |sheet: &Sexp, reference: &str, path: &str| -> String {
+            sheet
+                .find_all("symbol")
+                .find(|s| {
+                    s.find("instances")
+                        .unwrap()
+                        .find("project")
+                        .unwrap()
+                        .find_all("path")
+                        .any(|p| {
+                            p.args()[0].text() == Some(path)
+                                && p.find("reference").unwrap().args()[0].text() == Some(reference)
+                        })
+                })
+                .and_then(|s| s.find("uuid"))
+                .and_then(|u| u.args()[0].text())
+                .unwrap_or_else(|| panic!("no symbol {reference} at {path}"))
+                .to_string()
+        };
+        let root_uuid = uuid_for("gadgets");
+        for (part, link) in d.parts.iter().zip(&links) {
+            let link = link.as_ref().unwrap();
+            match link.path.split('/').collect::<Vec<_>>()[..] {
+                ["", symbol] => {
+                    assert_eq!(link.sheet_name, "/");
+                    assert_eq!(link.sheet_file, "gadgets.kicad_sch");
+                    assert_eq!(
+                        uuid_of(&root, &part.refdes, &format!("/{root_uuid}")),
+                        symbol
+                    );
+                }
+                ["", sheet, symbol] => {
+                    let module = part.path.split('.').next().unwrap();
+                    assert_eq!(link.sheet_name, format!("/{module}/"));
+                    assert_eq!(link.sheet_file, "Stage.kicad_sch");
+                    assert_eq!(sheet, uuid_for(&format!("gadgets/sheet/{module}")));
+                    let at = format!("/{root_uuid}/{sheet}");
+                    assert_eq!(uuid_of(&stage, &part.refdes, &at), symbol);
+                }
+                _ => panic!("{link:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_sheet_whose_names_inside_would_meet_keeps_the_boards_names() {
+        // The board names the input net of `s1` `ground`, the name of the module's member.
+        let mut d = staged_design();
+        d.nets[0].name = "ground".into();
+        let hierarchy = Hierarchy::of(&d);
+        let s1 = &hierarchy.instances[0];
+        assert_eq!(s1.names["ground"], "ground");
+        assert_eq!(s1.names["GND"], "GND");
+        assert_eq!(s1.names["OUT1"], "OUT1");
+        assert_eq!(
+            s1.pins,
+            [
+                ("OUT1".to_string(), "OUT1".to_string()),
+                ("GND".to_string(), "GND".to_string())
+            ]
+        );
+        // `s2` keeps the module's names, so the two are two files.
+        assert_eq!(hierarchy.instances[1].names["GND"], "ground");
+        assert_eq!(hierarchy.files.len(), 2);
+    }
+
+    #[test]
+    fn a_name_inside_a_sheet_that_differs_from_another_only_in_case_is_the_boards() {
+        // The module calls its ground `gnd` and the board calls the net `GND`: KiCad's rules
+        // check would report the two labels, so the sheets say `GND`.
+        let mut d = staged_design();
+        for module in &mut d.modules {
+            module.ports[1].name = "gnd".into();
+        }
+        let hierarchy = Hierarchy::of(&d);
+        for instance in &hierarchy.instances {
+            assert_eq!(instance.names["GND"], "GND");
+            assert_eq!(instance.pins[1], ("GND".to_string(), "GND".to_string()));
+            assert_eq!(instance.pins[0].1, "vout.pos");
+        }
+        assert_eq!(hierarchy.files.len(), 1);
+    }
+
+    #[test]
+    fn a_module_with_no_part_and_a_design_with_no_module_are_one_sheet() {
+        let mut d = staged_design();
+        for part in &mut d.parts {
+            part.path = part.path.replace('.', "_");
+        }
+        assert!(Hierarchy::of(&d).is_flat());
+        let links = Hierarchy::of(&d).links(&d);
+        assert_eq!(
+            links[0].as_ref().unwrap().path,
+            format!("/{}", uuid_for("gadgets/J1/symbol"))
+        );
+        emit(&d, &mapping(), &sample()).unwrap();
+    }
+
     /// The sample libraries of `testlib`, which hold what the standard mapping names.
     fn sample() -> SymbolLib {
         SymbolLib::at(testlib::sample_symbols())
@@ -784,6 +1609,7 @@ mod tests {
             pin: pin.into(),
         };
         Design {
+            modules: Vec::new(),
             name: "led".into(),
             process: None,
             features: Default::default(),
@@ -812,7 +1638,7 @@ mod tests {
     }
 
     fn parsed(design: &Design) -> Sexp {
-        Sexp::parse(&emit_schematic(design, &mapping(), &sample()).unwrap()).unwrap()
+        Sexp::parse(&emit(design, &mapping(), &sample()).unwrap()).unwrap()
     }
 
     fn label_at(root: &Sexp, net: &str, nth: usize) -> Sexp {
@@ -837,7 +1663,7 @@ mod tests {
 
     #[test]
     fn the_mapping_supplies_the_symbol_and_the_footprint() {
-        let text = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
+        let text = emit(&led_design(), &mapping(), &sample()).unwrap();
         assert!(text.contains("(lib_id \"Device:R\")"));
         assert!(text.contains("(lib_id \"Device:LED\")"));
         assert!(text.contains("\"Resistor_SMD:R_0402_1005Metric\""));
@@ -863,14 +1689,14 @@ mod tests {
 
     #[test]
     fn output_is_byte_for_byte_stable() {
-        let a = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
-        let b = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
+        let a = emit(&led_design(), &mapping(), &sample()).unwrap();
+        let b = emit(&led_design(), &mapping(), &sample()).unwrap();
         assert_eq!(a, b);
     }
 
     #[test]
     fn printing_the_output_again_changes_nothing() {
-        let text = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
+        let text = emit(&led_design(), &mapping(), &sample()).unwrap();
         assert_eq!(Sexp::parse(&text).unwrap().to_kicad_string(), text);
     }
 
@@ -895,9 +1721,9 @@ mod tests {
     #[test]
     fn uuids_depend_only_on_names() {
         let mut d = led_design();
-        let before = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let before = emit(&d, &mapping(), &sample()).unwrap();
         d.parts[0].value = "330".into();
-        let after = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let after = emit(&d, &mapping(), &sample()).unwrap();
         let uuids = |t: &str| -> Vec<String> {
             t.lines()
                 .filter(|l| l.trim_start().starts_with("(uuid"))
@@ -913,7 +1739,7 @@ mod tests {
         let mut d = led_design();
         d.parts[0].kind = "Nope".into();
         assert!(matches!(
-            emit_schematic(&d, &mapping(), &sample()),
+            emit(&d, &mapping(), &sample()),
             Err(EmitError::Map {
                 error: MapError::UnknownPart(_),
                 ..
@@ -926,7 +1752,7 @@ mod tests {
         let mut d = led_design();
         d.parts[0].package = None;
         assert!(matches!(
-            emit_schematic(&d, &mapping(), &sample()),
+            emit(&d, &mapping(), &sample()),
             Err(EmitError::Map {
                 error: MapError::NeedsPackage(_),
                 ..
@@ -939,7 +1765,7 @@ mod tests {
         let mut d = led_design();
         d.nets[1].pins[1].pin = "9".into();
         assert!(matches!(
-            emit_schematic(&d, &mapping(), &sample()),
+            emit(&d, &mapping(), &sample()),
             Err(EmitError::UnknownPin { .. })
         ));
     }
@@ -961,6 +1787,7 @@ mod tests {
             pin: pin.into(),
         };
         Design {
+            modules: Vec::new(),
             name: "regulator".into(),
             process: None,
             features: Default::default(),
@@ -1052,14 +1879,14 @@ mod tests {
     fn nets_of_passive_pins_get_no_flag() {
         let root = parsed(&led_design());
         assert!(flags(&root).is_empty());
-        let text = emit_schematic(&led_design(), &mapping(), &sample()).unwrap();
+        let text = emit(&led_design(), &mapping(), &sample()).unwrap();
         assert!(!text.contains("PWR_FLAG"));
     }
 
     #[test]
     fn flags_sit_below_the_parts_and_the_symbol_is_embedded_once() {
         let d = regulator_design();
-        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let text = emit(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
         let y_of = |s: &Sexp| -> f64 {
             s.find("at").unwrap().args()[1]
@@ -1134,7 +1961,7 @@ mod tests {
     fn an_ic_is_drawn_from_its_pin_table_and_its_symbol_is_embedded_once_in_the_library_netsmith() {
         let d = drawn_regulator_design();
         // The sample library has `Regulator_Linear`; the generated symbol must not read it.
-        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let text = emit(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
         assert!(text.contains("(lib_id \"netsmith:IcLdo_SOT-23\")"));
         assert!(!text.contains("Regulator_Linear"));
@@ -1166,7 +1993,7 @@ mod tests {
         flagged.sort();
         assert_eq!(flagged, ["3V3", "GND", "VIN"]);
         // The same bytes every time.
-        assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+        assert_eq!(text, emit(&d, &mapping(), &sample()).unwrap());
     }
 
     #[test]
@@ -1179,7 +2006,7 @@ mod tests {
                 _ => {}
             }
         }
-        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let text = emit(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
         // One more symbol than for the same part with no direction: the output is another type.
         assert!(
@@ -1218,7 +2045,7 @@ mod tests {
         flagged.sort();
         assert_eq!(flagged, ["GND", "VIN"]);
         // The same bytes every time.
-        assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+        assert_eq!(text, emit(&d, &mapping(), &sample()).unwrap());
     }
 
     /// The electrical type the embedded symbol of the placed part `refdes` gives its pin `pad`.
@@ -1296,7 +2123,7 @@ mod tests {
     #[test]
     fn two_parts_of_one_kind_and_package_with_different_pin_tables_are_two_symbols_with_two_ids() {
         let d = two_drawn_regulators("VOUT", "5V");
-        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let text = emit(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
         let names = embedded_names(&root);
         let mut unique = names.clone();
@@ -1328,15 +2155,14 @@ mod tests {
         // The ids do not depend on the order the parts are in.
         let mut swapped = d.clone();
         swapped.parts.swap(2, 3);
-        let other = Sexp::parse(&emit_schematic(&swapped, &mapping(), &sample()).unwrap()).unwrap();
+        let other = Sexp::parse(&emit(&swapped, &mapping(), &sample()).unwrap()).unwrap();
         let mut left = embedded_names(&root);
         let mut right = embedded_names(&other);
         left.sort();
         right.sort();
         assert_eq!(left, right);
         // The same two parts with one table keep the name they always had.
-        let same =
-            emit_schematic(&two_drawn_regulators("OUT", "5V"), &mapping(), &sample()).unwrap();
+        let same = emit(&two_drawn_regulators("OUT", "5V"), &mapping(), &sample()).unwrap();
         assert_eq!(
             embedded_names(&Sexp::parse(&same).unwrap())
                 .iter()
@@ -1345,7 +2171,7 @@ mod tests {
             ["netsmith:IcLdo_SOT-23"]
         );
         // Every id that is generated has the same bytes every time.
-        assert_eq!(text, emit_schematic(&d, &mapping(), &sample()).unwrap());
+        assert_eq!(text, emit(&d, &mapping(), &sample()).unwrap());
     }
 
     #[test]
@@ -1360,7 +2186,7 @@ mod tests {
                 }
             }
         }
-        let text = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let text = emit(&d, &mapping(), &sample()).unwrap();
         let root = Sexp::parse(&text).unwrap();
         // KiCad's pin matrix reports two outputs on one net: the first (by designator) stays
         // the output and the other is typed as an input, which an output may drive.
@@ -1375,7 +2201,7 @@ mod tests {
         // The order of the parts does not choose the output.
         let mut swapped = d.clone();
         swapped.parts.swap(2, 3);
-        let other = Sexp::parse(&emit_schematic(&swapped, &mapping(), &sample()).unwrap()).unwrap();
+        let other = Sexp::parse(&emit(&swapped, &mapping(), &sample()).unwrap()).unwrap();
         assert_eq!(type_written(&other, "U1", "2"), "power_out");
         assert_eq!(type_written(&other, "U2", "2"), "power_in");
         // The design is not changed by the choice.
@@ -1410,7 +2236,7 @@ mod tests {
                 refdes: "U1".into(),
                 pin: "4".into(),
             });
-        let root = Sexp::parse(&emit_schematic(&d, &mapping(), &sample()).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping(), &sample()).unwrap()).unwrap();
         assert_eq!(type_written(&root, "U1", "2"), "power_out");
         assert_eq!(type_written(&root, "U1", "4"), "power_in");
     }
@@ -1444,7 +2270,7 @@ mod tests {
                 refdes: "U0".into(),
                 pin: "2".into(),
             });
-        let root = Sexp::parse(&emit_schematic(&d, &mapping(), &sample()).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping(), &sample()).unwrap()).unwrap();
         assert_eq!(type_written(&root, "U0", "2"), "power_out");
         assert_eq!(type_written(&root, "U1", "2"), "power_in");
     }
@@ -1461,6 +2287,7 @@ mod tests {
             pins: Vec::new(),
         };
         let d = Design {
+            modules: Vec::new(),
             name: "mechanical".into(),
             process: None,
             features: Default::default(),
@@ -1497,7 +2324,7 @@ mod tests {
             }],
         };
         let lib = SymbolLib::at(testlib::sample_symbols()).with_generators();
-        let root = Sexp::parse(&emit_schematic(&d, &mapping(), &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping(), &lib).unwrap()).unwrap();
         let flags_of = |refdes: &str| -> (String, String) {
             let placed = root
                 .find_all("symbol")
@@ -1530,7 +2357,7 @@ mod tests {
 
     #[test]
     fn a_part_with_no_symbol_in_its_row_and_no_pin_table_is_refused_by_name() {
-        let e = emit_schematic(&regulator_design_with("IcLdo"), &mapping(), &sample())
+        let e = emit(&regulator_design_with("IcLdo"), &mapping(), &sample())
             .unwrap_err()
             .to_string();
         assert!(
@@ -1547,15 +2374,15 @@ mod tests {
 
     #[test]
     fn flag_output_is_byte_for_byte_stable() {
-        let a = emit_schematic(&regulator_design(), &mapping(), &sample()).unwrap();
-        let b = emit_schematic(&regulator_design(), &mapping(), &sample()).unwrap();
+        let a = emit(&regulator_design(), &mapping(), &sample()).unwrap();
+        let b = emit(&regulator_design(), &mapping(), &sample()).unwrap();
         assert_eq!(a, b);
         assert_eq!(Sexp::parse(&a).unwrap().to_kicad_string(), a);
     }
 
     #[test]
     fn a_flags_uuids_come_from_its_name_and_its_net() {
-        let text = emit_schematic(&regulator_design(), &mapping(), &sample()).unwrap();
+        let text = emit(&regulator_design(), &mapping(), &sample()).unwrap();
         assert!(text.contains(&uuid_for("regulator/#FLG01/symbol")));
         assert!(text.contains(&uuid_for("regulator/#FLG01/pin/1")));
         assert!(text.contains(&uuid_for("label/GND/#FLG01/1")));
@@ -1563,7 +2390,7 @@ mod tests {
         // Changing a part's value moves no UUID, flags included.
         let mut d = regulator_design();
         d.parts[1].value = "2u2".into();
-        let other = emit_schematic(&d, &mapping(), &sample()).unwrap();
+        let other = emit(&d, &mapping(), &sample()).unwrap();
         assert!(other.contains(&uuid_for("regulator/#FLG02/symbol")));
     }
 
@@ -1602,6 +2429,7 @@ mod tests {
 
     fn design(parts: Vec<Part>, nets: &[(&str, &[(&str, &str)])]) -> Design {
         Design {
+            modules: Vec::new(),
             name: "gadgets".into(),
             process: None,
             features: Default::default(),
@@ -1652,7 +2480,7 @@ mod tests {
                 ("IN", &[("U1", "4"), ("U2", "4")]),
             ],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         let out: Vec<_> = root
             .find_all("label")
             .filter(|l| l.args()[0].text() == Some("OUT"))
@@ -1679,7 +2507,7 @@ mod tests {
                 ("B", &[("U1", "2"), ("U2", "2")]),
             ],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         assert_eq!(root.find_all("label").count(), 4);
     }
 
@@ -1693,7 +2521,7 @@ mod tests {
                 ("OUT", &[("U1", "2"), ("U2", "2")]),
             ],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         let flags: Vec<_> = root.find_all("no_connect").collect();
         assert_eq!(flags.len(), 2, "only pin 1 of each is open");
         // Pin 1 is at (0, -7.62) in the symbol, below the origin of the sheet's first cell.
@@ -1707,7 +2535,7 @@ mod tests {
         // KiCad counts a no-connect flag on such a pin as a connection and objects to it.
         let (_dir, mapping, lib) = acme(&["Types"]);
         let d = design(vec![gadget("U1", "Types")], &[]);
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         assert_eq!(root.find_all("no_connect").count(), 11, "all but pin 12");
         assert_eq!(root.find_all("label").count(), 0);
     }
@@ -1725,7 +2553,7 @@ mod tests {
                 ("D", &[("U2", "2")]),
             ],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         let labelled = |net: &str| {
             root.find_all("label")
                 .filter(|l| l.args()[0].text() == Some(net))
@@ -1748,7 +2576,7 @@ mod tests {
                 ("GND", &[("U1", "1"), ("U2", "1")]),
             ],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         // The pin and the power flag that supplies the net.
         assert_eq!(
             root.find_all("label")
@@ -1822,7 +2650,7 @@ mod tests {
                 ("GND", &[("U1", "5"), ("U2", "5")]),
             ],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         assert_eq!(root.find_all("no_connect").count(), 0);
     }
 
@@ -1833,7 +2661,7 @@ mod tests {
             vec![gadget("U1", "Dual")],
             &[("N", &[("U1", "1"), ("U1", "6")]), ("V", &[("U1", "8")])],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         let units = placed_of(&root, "U1");
         assert_eq!(units.len(), 3);
         let unit_no = |s: &Sexp| {
@@ -1915,7 +2743,7 @@ mod tests {
     fn the_symbol_is_embedded_once_however_many_units_it_has() {
         let (_dir, mapping, lib) = acme(&["Dual"]);
         let d = design(vec![gadget("U1", "Dual"), gadget("U2", "Dual")], &[]);
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         assert_eq!(
             root.find("lib_symbols").unwrap().find_all("symbol").count(),
             1
@@ -1933,7 +2761,7 @@ mod tests {
             vec![gadget("U1", "Types"), gadget("U2", "Reg")],
             &[("A_RATHER_LONG_NET_NAME", &[("U1", "1")])],
         );
-        let root = Sexp::parse(&emit_schematic(&d, &mapping, &lib).unwrap()).unwrap();
+        let root = Sexp::parse(&emit(&d, &mapping, &lib).unwrap()).unwrap();
         let (u1, u2) = (placed_of(&root, "U1")[0], placed_of(&root, "U2")[0]);
         // Types' pins reach 7.62 to the left of its origin; its label runs 22 characters
         // further left, and must stay inside its own cell, which starts half a pitch
@@ -1958,7 +2786,7 @@ mod tests {
     fn a_symbol_library_that_is_missing_stops_the_emit_naming_the_part() {
         let d = led_design();
         let lib = SymbolLib::at("/nonexistent/symbols");
-        let e = emit_schematic(&d, &Mapping::standard(), &lib)
+        let e = emit(&d, &Mapping::standard(), &lib)
             .unwrap_err()
             .to_string();
         assert!(

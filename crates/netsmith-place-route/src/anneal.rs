@@ -2879,6 +2879,7 @@ mod tests {
             })
             .collect();
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::testlib::test_process()),
             features: Default::default(),

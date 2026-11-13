@@ -113,6 +113,7 @@ fn design(case: &Case) -> Design {
         side_source: String::new(),
     };
     Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Protrusion".into(),

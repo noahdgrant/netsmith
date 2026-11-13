@@ -78,6 +78,7 @@ fn board(pad: &str, whole: &str) -> (Board, f64) {
         ],
     };
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Local".into(),

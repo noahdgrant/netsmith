@@ -129,6 +129,7 @@ impl Canon {
             .collect();
         Canon {
             design: Design {
+                modules: design.modules.clone(),
                 name: design.name.clone(),
                 parts: parts.iter().map(|&p| design.parts[p].clone()).collect(),
                 nets: canon_nets,

@@ -619,7 +619,7 @@ fn kicads_erc_accepts_the_symbol_drawn_from_the_pin_table() {
     let dir = TempDir::new("lt8641-erc");
     let libraries = libraries(&dir);
     let b = built(&libraries);
-    let Some(found) = crate::erc::erc(&b.design.name, &b.schematic) else {
+    let Some(found) = crate::erc::erc_built(&b) else {
         return;
     };
     // The passives are our sample libraries' and differ from the installed copies: that is
@@ -655,8 +655,11 @@ fn kicads_erc_accepts_two_pins_that_give_power_to_one_net() {
         refdes: "U99".into(),
         pin: "8".into(),
     });
-    let schematic =
-        netsmith_kicad::emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    // One sheet, so that every symbol is in its `lib_symbols`.
+    design.modules.clear();
+    let schematic = netsmith_kicad::emit_schematic(&design, &libraries.mapping, &libraries.symbols)
+        .unwrap()
+        .root;
     // Without KiCad: the pin types written are one output and one input on that net.
     let root = netsmith_kicad::sexp::Sexp::parse(&schematic).unwrap();
     let outputs = root

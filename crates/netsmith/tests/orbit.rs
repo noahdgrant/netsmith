@@ -2614,12 +2614,21 @@ board ChargerFixture {
     #[test]
     fn the_electrical_rules_check_of_kicad_passes_on_the_schematic() {
         let built = built();
-        let Some(found) = crate::erc::erc(&built.design.name, &built.schematic) else {
+        let Some(found) = crate::erc::erc_built(&built) else {
             return;
         };
         assert_eq!(
             crate::erc::with_the_machines_libraries(found),
             Vec::<String>::new()
         );
+    }
+    /// The board's modules are sheets of its schematic (issue #563), and KiCad reads the same
+    /// netlist from them as from the board drawn as one sheet.
+    #[test]
+    fn kicads_netlist_of_the_sheets_is_that_of_one_sheet() {
+        let built = built();
+        let files: Vec<&str> = built.sheets.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(files.contains(&"Charger.kicad_sch"), "{files:?}");
+        crate::module_sheets::sheets_are_one_sheet_to_kicad(&built, &libraries());
     }
 }

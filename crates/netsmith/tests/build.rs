@@ -255,12 +255,13 @@ fn the_regulator_stage_builds_with_its_catalog_pinout() {
         "{}",
         b.report
     );
-    // The regulator is drawn from its pin table, with the datasheet's names (ADR 0097).
-    assert!(
-        b.schematic
-            .contains("(lib_id \"netsmith:LinearRegulator_SOT-23_out2\")")
-    );
-    assert!(!b.schematic.contains("Regulator_Linear"));
+    // The regulator is drawn from its pin table, with the datasheet's names (ADR 0097), on the
+    // sheet of the module it is in (issue #563).
+    let names: Vec<&str> = b.sheets.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["LdoStage.kicad_sch"]);
+    let stage = &b.sheets[0].1;
+    assert!(stage.contains("(lib_id \"netsmith:LinearRegulator_SOT-23_out2\")"));
+    assert!(!stage.contains("Regulator_Linear") && !b.schematic.contains("Regulator_Linear"));
 }
 
 #[test]

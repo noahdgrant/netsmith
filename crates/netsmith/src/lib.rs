@@ -80,8 +80,12 @@ pub struct Built {
     /// board is built: `rechecks.get(catalogs)` makes the solves, for the one who shows the result.
     /// Empty if every generic part has a row.
     pub rechecks: resolve::Rechecks,
-    /// The text of the `.kicad_sch`.
+    /// The text of the `.kicad_sch`: the whole schematic of a board with no module, and the
+    /// root sheet of one with modules (issue #563).
     pub schematic: String,
+    /// The sheet of each module file of the schematic, as `(file name, text)`: the files
+    /// beside the root sheet. Empty for a board with no module.
+    pub sheets: Vec<(String, String)>,
     /// The text of the `.kicad_pro`.
     pub project: String,
     /// What was decided, for a person to read.
@@ -340,13 +344,16 @@ impl Built {
         }
     }
 
-    /// Write the KiCad schematic and project file into this board's directory under `out`,
-    /// and return the directory.
+    /// Write the KiCad schematic (the root sheet and the sheet of each module file) and the
+    /// project file into this board's directory under `out`, and return the directory.
     pub fn write(&self, out: &Path) -> std::io::Result<PathBuf> {
         let dir = self.dir(out);
         std::fs::create_dir_all(&dir)?;
         let name = &self.design.name;
         std::fs::write(dir.join(format!("{name}.kicad_sch")), &self.schematic)?;
+        for (file, text) in &self.sheets {
+            std::fs::write(dir.join(file), text)?;
+        }
         std::fs::write(dir.join(format!("{name}.kicad_pro")), &self.project)?;
         Ok(dir)
     }
@@ -1238,8 +1245,8 @@ fn export(
     constraints::name_model_sources(&mut design, &designed.model_sites, sources);
     constraints::name_case_model_sources(&mut design, &designed.case_model_sites, sources);
     let mut sourcing = designed.sourcing;
-    let (schematic, project) = match libraries {
-        None => (String::new(), String::new()),
+    let (schematic, sheets, project) = match libraries {
+        None => (String::new(), Vec::new(), String::new()),
         Some(libraries) => {
             // A through-hole footprint is soldered by hand, whatever kind of part it is,
             // unless the design or the catalog says who assembles it (ADR 0024); the
@@ -1340,7 +1347,7 @@ fn export(
                         .on_board(&label),
                     ]
                 })?;
-            (schematic, project_file(&design.name))
+            (schematic.root, schematic.sheets, project_file(&design.name))
         }
     };
     // The parts the board house does not fit, for the rule that a part over protruding pins is
@@ -1369,6 +1376,7 @@ fn export(
         catalog_heights: Vec::new(),
         rechecks: resolve::Rechecks::none(),
         schematic,
+        sheets,
         notes,
         note_causes,
         providers: Vec::new(),

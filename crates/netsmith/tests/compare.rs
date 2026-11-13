@@ -54,6 +54,9 @@ fn write_board(source: &str, dir: &Path) -> (PathBuf, PathBuf) {
     let b = &built[0];
     let sch = dir.join(format!("{}.kicad_sch", b.design.name));
     fs::write(&sch, &b.schematic).unwrap();
+    for (file, text) in &b.sheets {
+        fs::write(dir.join(file), text).unwrap();
+    }
     let libraries = Libraries::sample();
     let mut board = netsmith_place_route::board_from_design(
         &b.design,

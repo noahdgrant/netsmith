@@ -300,6 +300,7 @@ pub fn layout_sheets_hinted_findings(
             notes.push(note);
         }
         let sub = Design {
+            modules: Vec::new(),
             name: cluster.name.clone(),
             parts: cluster
                 .parts

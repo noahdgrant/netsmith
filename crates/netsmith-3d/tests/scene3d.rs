@@ -70,6 +70,7 @@ pub(crate) fn board_with(process: netsmith_core::Process) -> Board {
     let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
         .with_library("t", folder.path());
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Scene".into(),

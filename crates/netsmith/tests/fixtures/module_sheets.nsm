@@ -1,0 +1,86 @@
+//! Three status lights, two the same and one brighter, and a pair of them in a module of its
+//! own: a board whose schematic is a hierarchy of sheets.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::{Resistor, Led, Capacitor}
+import std::sources::Rail
+import std::logic::Logic
+import std::mfg::jlcpcb::TwoLayer
+
+/// A status light with a logic input and its own bypass capacitor.
+module Light {
+    .power: Rail
+    .enable: Logic
+    .enable.reference ~ .power
+
+    .limit: Resistance
+    .current_limit: Resistor
+    .current_limit.resistance &= .limit
+    .led: Led {
+        .color &= "GREEN"
+        .forward_voltage &= 1.8V..2.5V
+    }
+    .bypass: Capacitor {
+        .capacitance &= 100nF +/- 20%
+    }
+
+    .enable.line ~> .current_limit ~> .led ~> .power.neg
+    .power.pos   ~> .bypass        ~> .power.neg
+}
+
+/// Two lights on one enable.
+module Pair {
+    .power: Rail
+    .enable: Logic
+    .one: Light {
+        .limit &= 1kohm +/- 1%
+    }
+    .two: Light {
+        .limit &= 1kohm +/- 1%
+    }
+    .power ~ .one.power
+    .power ~ .two.power
+    .enable ~ .one.enable
+    .enable ~ .two.enable
+}
+
+board Sheets {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+
+    .power_3v3: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .enable: Logic
+
+    .a: Light {
+        .limit &= 1kohm +/- 1%
+    }
+    .b: Light {
+        .limit &= 1kohm +/- 1%
+    }
+    .c: Light {
+        .limit &= 330ohm +/- 1%
+    }
+    .pair: Pair
+
+    .power_in: Header1x2
+    .enable_in: Header1x2
+
+    .power_3v3 ~ .enable.reference
+    .power_3v3 ~ .a.power
+    .power_3v3 ~ .b.power
+    .power_3v3 ~ .c.power
+    .power_3v3 ~ .pair.power
+    .enable ~ .a.enable
+    .enable ~ .b.enable
+    .enable ~ .c.enable
+    .enable ~ .pair.enable
+    .power_3v3.pos ~ .power_in.p1
+    .power_3v3.neg ~ .power_in.p2
+    .enable.line ~ .enable_in.p1
+    .power_3v3.neg ~ .enable_in.p2
+}

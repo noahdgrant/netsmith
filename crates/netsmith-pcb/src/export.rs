@@ -2,8 +2,10 @@
 //!
 //! Each footprint is the library's own file with its position, reference, value and nets
 //! filled in, so the pads, drawings and 3D model are exactly what KiCad's library holds.
-//! Net names are written as the design has them (`VCC`), with no sheet prefix: a board
-//! written directly has no sheets.
+//! Net names are written as the design has them (`VCC`), with no sheet prefix. Each footprint
+//! names the symbol it is drawn by in the schematic that `build` writes (`(path ...)`,
+//! `(sheetname ...)`, `(sheetfile ...)`, from [`netsmith_kicad::Hierarchy`]), so KiCad's update
+//! of the board from the schematic matches every part, on the root sheet or a module's.
 
 use std::collections::HashMap;
 
@@ -305,6 +307,19 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
             path
         },
     );
+    // Where its symbol is in the schematic (KiCad's link from a footprint to its symbol), after
+    // the properties as KiCad writes it.
+    if let Some(link) = &part.symbol {
+        let at = after + 1;
+        items.splice(
+            at..at,
+            [
+                Sexp::node("path", vec![Sexp::string(link.path.clone())]),
+                Sexp::node("sheetname", vec![Sexp::string(link.sheet_name.clone())]),
+                Sexp::node("sheetfile", vec![Sexp::string(link.sheet_file.clone())]),
+            ],
+        );
+    }
     Sexp::List(items)
 }
 

@@ -493,7 +493,7 @@ mod board {
     #[test]
     fn the_electrical_rules_check_of_kicad_passes_on_the_schematic() {
         let built = built();
-        let Some(found) = crate::erc::erc(&built.design.name, &built.schematic) else {
+        let Some(found) = crate::erc::erc_built(&built) else {
             return;
         };
         // The design ties PA9 and PA10 of the microcontroller (U1 pads 29 and 32) to ground. The

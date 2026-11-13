@@ -34,6 +34,7 @@ fn board(count: usize, size: (f64, f64)) -> Result<Board, netsmith_pcb::BoardErr
         })
         .collect();
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Wall".into(),

@@ -305,6 +305,7 @@ mod tests {
     fn a_net_of_n_pads_needs_n_minus_one_lines_and_they_are_the_shortest() {
         // Four resistors in a row on one net: the tree is the chain of neighbours.
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
@@ -347,6 +348,7 @@ mod tests {
         // net of that pad number and one resistor needs two lines: the resistor to the
         // nearer of the two, and that one to the other.
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),
@@ -548,6 +550,7 @@ mod tests {
     #[test]
     fn a_net_of_one_pad_has_no_lines() {
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::rules::test_process()),
             features: Default::default(),

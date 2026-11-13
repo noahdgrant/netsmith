@@ -32,6 +32,7 @@ pub fn design(
     nets: &[(&str, &[&str])],
 ) -> Design {
     Design {
+        modules: Vec::new(),
         name: name.into(),
         process: None,
         features: Default::default(),
@@ -250,6 +251,7 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
     });
     (
         Design {
+            modules: Vec::new(),
             name: "Big".into(),
             parts,
             nets,

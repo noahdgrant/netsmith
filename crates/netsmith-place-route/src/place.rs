@@ -1761,6 +1761,7 @@ mod tests {
 
     fn board_of(parts: Vec<Part>) -> Board {
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::testlib::test_process()),
             features: Default::default(),
@@ -1873,6 +1874,7 @@ mod tests {
         options: &PlaceOptions,
     ) -> Result<Board, netsmith_pcb::board::BoardError> {
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::testlib::test_process()),
             features: Default::default(),
@@ -2324,6 +2326,7 @@ mod tests {
 
     fn board_from(parts: Vec<Part>, nets: Vec<Net>, options: &PlaceOptions) -> Board {
         let design = Design {
+            modules: Vec::new(),
             name: "T".into(),
             process: Some(crate::testlib::test_process()),
             features: Default::default(),
