@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use netsmith_core::Design;
 use netsmith_core::design_file::{read, to_json};
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 /// Every `*.design.json` under examples/.
 fn design_files() -> Vec<PathBuf> {
