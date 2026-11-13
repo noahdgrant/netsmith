@@ -82,12 +82,28 @@ A track drawn narrower for a short run where the board's wider track does not fi
 The face of the board a part is on, front or back. A part on the back is its footprint seen in a mirror, with its surface-mount pads on the back copper.
 
 **Stackup**:
-The layers a board is built from: the number of copper layers, the finished thickness, the copper weight and, for a board with inner layers, the prepreg and core between them. It is a member of a process, `.process.stackup`.
+The layers a board is built from: the number of copper layers, the finished thickness, the copper weight and, for a board with inner layers, its _Build-up_. It is a member of a process, `.process.stackup`.
 _Avoid_: Layer stack
 
+**Build-up**:
+How a board of more than two layers is pressed together, the fabricator's named build (`JLC06161H-3313`): the inner copper and each _Dielectric layer_ from the top, `.stackup.dielectric1` to `.dielectricN` (ADR 0111).
+_Avoid_: Lamination, stack-up (for this; the _Stackup_ is the whole)
+
+**Dielectric layer**:
+One prepreg or core of a _Build-up_, a `DielectricLayer` with its kind, glass style, thickness and relative permittivity. Not a capacitor's _Dielectric_.
+_Avoid_: Dielectric (that is a capacitor's class), substrate
+
+**Inner layer**:
+A copper layer between the outer two, `.process.inner1` counted from the top: a _Plane_ or a _Signal layer_, as the board says (ADR 0111).
+_Avoid_: Internal layer, mid layer
+
 **Plane**:
-An inner copper layer that is one sheet of copper on one net, such as ground. The board names the net (`.process.inner1.net &= "GND"`); a through-hole pad or a via on that net joins it where it stands, and any other pad is joined by a via. The router draws signals on the outer layers only.
+An inner copper layer that is one sheet of copper on one net, such as ground. The board names the net (`.process.inner1.net &= "GND"`); a through-hole pad or a via on that net joins it where it stands, and any other pad is joined by a via. KiCad's type for its layer is `power`.
 _Avoid_: Copper fill, power layer (a pour is a different thing)
+
+**Signal layer**:
+An inner layer for tracks, which names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so it holds only the copper of through-hole pads for now; it is plotted and checked like the outer layers.
+_Avoid_: Routing layer, mixed layer
 
 **Pour**:
 Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, KiCad fills it, and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net.

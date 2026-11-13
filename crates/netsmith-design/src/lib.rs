@@ -25,8 +25,8 @@ use netsmith_check::{
     Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
 };
 use netsmith_core::{
-    Design, InnerLayers, InterfaceInstance, InterfaceMember, Net, Note, NoteAt, NoteKind,
-    PanelRules, PanelSpec, Part, PartPin, PinRef, PowerFlow, Process, Stackup,
+    Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember, Net, Note,
+    NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartPin, PinRef, PowerFlow, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -752,43 +752,77 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         },
     };
     // A board of more than two layers has inner layers, each a plane on a net the board
-    // names, and the build-up round them.
+    // names or a signal layer the board says it is (ADR 0111), and the build-up round them.
     if layers > 2 {
-        let mut planes = Vec::new();
+        let mut uses = Vec::new();
         for n in 1..=layers - 2 {
             let name = format!("inner{n}");
-            let net = match model.field_at(&format!("process.{name}.net")) {
-                None => {
-                    problems.borrow_mut().push(format!(
-                        "`process` is a `{kind}` with {layers} copper layers and has no `{name}` plane, which each inner layer needs"
-                    ));
-                    continue;
-                }
-                Some(f) => match &model.field(f).domain {
-                    Domain::Text(net) => net.clone(),
-                    _ => {
-                        problems.borrow_mut().push(format!(
-                            "`process.{name}` is an inner layer of a {layers}-layer board and has no net: the board says which, for example `.process.{name}.net &= \"GND\"`"
-                        ));
-                        continue;
-                    }
-                },
-            };
-            if !nets.contains(&net) {
+            if model.field_at(&format!("process.{name}.net")).is_none() {
                 problems.borrow_mut().push(format!(
-                    "`process.{name}` is a plane on the net `{net}`, but the board has no net of that name (its nets: {})",
-                    nets.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
+                    "`process` is a `{kind}` with {layers} copper layers and has no `{name}` layer, which each inner layer needs"
                 ));
+                continue;
             }
-            planes.push(net);
+            let field = |f: &str| {
+                model
+                    .field_at(&format!("process.{name}.{f}"))
+                    .and_then(|f| match &model.field(f).domain {
+                        Domain::Text(t) => Some(t.clone()),
+                        _ => None,
+                    })
+            };
+            let net = field("net");
+            match (field("use").as_deref().unwrap_or("plane"), net) {
+                ("plane", Some(net)) => {
+                    if !nets.contains(&net) {
+                        problems.borrow_mut().push(format!(
+                            "`process.{name}` is a plane on the net `{net}`, but the board has no net of that name (its nets: {})",
+                            nets.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
+                        ));
+                    }
+                    uses.push(InnerUse::Plane(net));
+                }
+                ("plane", None) => problems.borrow_mut().push(format!(
+                    "`process.{name}` is an inner layer of a {layers}-layer board and has no net: the board says which, for example `.process.{name}.net &= \"GND\"`, or that it is a signal layer, `.process.{name}.use &= \"signal\"`"
+                )),
+                ("signal", None) => uses.push(InnerUse::Signal),
+                ("signal", Some(net)) => problems.borrow_mut().push(format!(
+                    "`process.{name}` is a signal layer and names the net `{net}`: a signal layer carries the tracks of any net, so it names none; for a plane on `{net}`, leave out `.use &= \"signal\"`"
+                )),
+                (other, _) => problems.borrow_mut().push(format!(
+                    "`process.{name}.use` is `{other}`, but an inner layer is `\"plane\"` or `\"signal\"`"
+                )),
+            }
+        }
+        let mut dielectrics = Vec::new();
+        for n in 1..layers {
+            let at = format!("stackup.dielectric{n}");
+            let kind = text(find(&format!("{at}.kind")));
+            if kind != "prepreg" && kind != "core" {
+                if !kind.is_empty() {
+                    problems.borrow_mut().push(format!(
+                        "`process.{at}.kind` is `{kind}`, but a dielectric layer is `\"prepreg\"` or `\"core\"`"
+                    ));
+                }
+                continue;
+            }
+            let core = kind == "core";
+            dielectrics.push(DielectricLayer {
+                core,
+                glass: if core {
+                    String::new()
+                } else {
+                    text(find(&format!("{at}.glass")))
+                },
+                thickness: mm(find(&format!("{at}.thickness"))),
+                epsilon: number(find(&format!("{at}.epsilon"))),
+            });
         }
         built.stackup.inner = Some(InnerLayers {
-            planes,
+            layers: uses,
             copper: mm(find("stackup.inner_copper")),
-            prepreg: mm(find("stackup.prepreg")),
-            core: mm(find("stackup.core")),
-            prepreg_epsilon: number(find("stackup.prepreg_epsilon")),
-            core_epsilon: number(find("stackup.core_epsilon")),
+            dielectrics,
+            build: text(find("stackup.build")),
             hole_clearance: mm(find("min_plane_hole_clearance")),
         });
     }

@@ -83,7 +83,7 @@ fn setup(board: &Board) -> Sexp {
         layer("F.Paste", "Top Solder Paste", vec![]),
     ];
     for l in crate::stackup::layers(board) {
-        let material = || text("material", l.material.unwrap_or_default());
+        let material = || text("material", l.material.as_deref().unwrap_or_default());
         let epsilon = || Sexp::node("epsilon_r", vec![Sexp::num(l.epsilon.unwrap_or_default())]);
         body.push(match l.kind {
             LayerKind::Mask => {
@@ -120,7 +120,16 @@ fn setup(board: &Board) -> Sexp {
     body.extend([
         layer("B.Paste", "Bottom Solder Paste", vec![]),
         silk("B.SilkS", "Bottom Silk Screen"),
-        text("copper_finish", "HAL lead-free"),
+        // JLCPCB makes no HASL board of six layers or more (its capabilities page, "Surface
+        // Finish", fetched 2026-11-12).
+        text(
+            "copper_finish",
+            if board.process.stackup.layers >= 6 {
+                "ENIG"
+            } else {
+                "HAL lead-free"
+            },
+        ),
         Sexp::node("dielectric_constraints", vec![Sexp::atom("no")]),
     ]);
     Sexp::node(
@@ -154,10 +163,19 @@ fn copper_number(layer: &str) -> u32 {
 }
 
 fn layer_table(board: &Board) -> Sexp {
+    // A plane is KiCad's `power` layer, any other copper layer a `signal` one (ADR 0111).
+    let inner = board.inner_layers();
     let copper: Vec<(u32, &str, &str, Option<&str>)> = std::iter::once("F.Cu")
-        .chain(board.planes.iter().map(|p| p.layer.as_str()))
+        .chain(inner.iter().map(String::as_str))
         .chain(["B.Cu"])
-        .map(|name| (copper_number(name), name, "signal", None))
+        .map(|name| {
+            let kind = if board.planes.iter().any(|p| p.layer == name) {
+                "power"
+            } else {
+                "signal"
+            };
+            (copper_number(name), name, kind, None)
+        })
         .collect();
     let rows: [(u32, &str, &str, Option<&str>); 18] = [
         (9, "F.Adhes", "user", Some("F.Adhesive")),
@@ -1110,6 +1128,88 @@ mod tests {
         let two = parsed(&led());
         assert!(!kicad_pcb(&led()).contains("In1.Cu"));
         assert_eq!(two.find("layers").unwrap().args().len(), 20);
+    }
+
+    fn six() -> Board {
+        crate::board::tests::placed(&crate::board::tests::six_layer_design())
+    }
+
+    #[test]
+    fn a_six_layer_board_lists_its_planes_as_power_and_the_rest_as_signal_layers() {
+        let pcb = parsed(&six());
+        let layers = pcb.find("layers").unwrap();
+        let rows: Vec<(&str, &str, &str)> = layers
+            .args()
+            .iter()
+            .take(6)
+            .map(|l| {
+                (
+                    l.head().unwrap(),
+                    l.args()[0].text().unwrap(),
+                    l.args()[1].text().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("0", "F.Cu", "signal"),
+                ("4", "In1.Cu", "power"),
+                ("6", "In2.Cu", "signal"),
+                ("8", "In3.Cu", "signal"),
+                ("10", "In4.Cu", "power"),
+                ("2", "B.Cu", "signal")
+            ]
+        );
+        // A zone on each plane, none on a signal layer.
+        let text = kicad_pcb(&six());
+        assert_eq!(text.matches("(zone").count(), 2);
+        let setup = pcb.find("setup").unwrap().find("stackup").unwrap();
+        assert_eq!(
+            setup.find("copper_finish").unwrap().args()[0].text(),
+            Some("ENIG"),
+            "JLCPCB makes no HASL board of six layers"
+        );
+    }
+
+    #[test]
+    fn a_six_layer_stackup_is_the_build_up_the_process_states() {
+        let pcb = parsed(&six());
+        let stackup = pcb.find("setup").unwrap().find("stackup").unwrap();
+        let rows: Vec<(&str, f64, Option<&str>)> = stackup
+            .args()
+            .iter()
+            .filter(|l| l.head() == Some("layer"))
+            .filter_map(|l| {
+                let name = l.args()[0].text()?;
+                (name.ends_with(".Cu") || name.starts_with("dielectric")).then(|| {
+                    (
+                        name,
+                        numbers(l, "thickness")[0],
+                        l.find("material").and_then(|m| m.args()[0].text()),
+                    )
+                })
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("F.Cu", 0.035, None),
+                ("dielectric 1", 0.0994, Some("3313")),
+                ("In1.Cu", 0.0152, None),
+                ("dielectric 2", 0.55, Some("FR4")),
+                ("In2.Cu", 0.0152, None),
+                ("dielectric 3", 0.1088, Some("2116")),
+                ("In3.Cu", 0.0152, None),
+                ("dielectric 4", 0.55, Some("FR4")),
+                ("In4.Cu", 0.0152, None),
+                ("dielectric 5", 0.0994, Some("3313")),
+                ("B.Cu", 0.035, None),
+            ]
+        );
+        let total: f64 = rows.iter().map(|r| r.1).sum();
+        assert!((total - 1.5384).abs() < 1e-9, "{total}");
+        assert!((total - 1.6).abs() <= crate::stackup::thickness_tolerance(1.6));
     }
 
     #[test]

@@ -32,7 +32,7 @@ A catalog is not a level; it is how a `part` becomes a real component. A part li
 
 - **A module is configured only through its interface.** From outside you may use a module's interfaces, pins and declared values. The parts and modules inside it are private (ADR 0004). A board therefore cannot narrow a capacitor inside a module unless the module exposes it.
 - **Only a board names nets.** A net name is board-wide; a module or part that named a net would give every instance the same name (ADR 0005). Unnamed nets get a name from the instance path.
-- **A process belongs to a board.** `.process: TwoLayer` or `FourLayer` is a member of the board, so its rules and stackup travel with it (ADR 0008).
+- **A process belongs to a board.** `.process: TwoLayer`, `FourLayer` or `SixLayer` is a member of the board, so its rules and stackup travel with it (ADR 0008).
 - **A system joins ports only.** A port is an interface declared directly on a board. A system says which ports meet and checks that voltages and currents agree (ADR 0010), or mates two connectors, contact N to contact N, which checks that the pinouts fit and derives the ports they carry (ADR 0040). Each board keeps its own ground net, and is still made and ordered on its own.
 - **A part states what is always true; the design narrows the rest.** A library part never fixes a value a design might need to change (ADR 0002).
 

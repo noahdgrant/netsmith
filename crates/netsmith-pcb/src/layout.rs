@@ -622,7 +622,7 @@ fn round(v: f64) -> f64 {
 /// The copper layers of a board by name, top first: `top`, `inner1`..., `bottom`.
 pub fn copper_layers(board: &Board) -> Vec<String> {
     let mut layers = vec!["top".to_string()];
-    layers.extend((1..=board.planes.len()).map(|n| format!("inner{n}")));
+    layers.extend((1..=board.inner_layers().len()).map(|n| format!("inner{n}")));
     layers.push("bottom".to_string());
     layers
 }

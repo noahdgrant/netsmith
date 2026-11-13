@@ -165,6 +165,11 @@ fn the_planes_of_the_four_layer_example_are_its_gerbers_copper() {
 }
 
 #[test]
+fn the_planes_and_empty_signal_layers_of_the_six_layer_example_are_its_gerbers_copper() {
+    compare("six_layer", "");
+}
+
+#[test]
 fn outer_pours_with_stitching_vias_are_the_gerbers_copper() {
     compare(
         "four_layer",

@@ -2726,7 +2726,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 12] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 14] = [
         (
             "hole_plating",
             "the track width check rates a via for current by it (issue #431); the counts it gives are the router's",
@@ -2739,8 +2739,10 @@ mod tests {
             "min_plane_hole_clearance",
             "kept by the plane's fill, which the check does not judge (ADR 0037)",
         ),
-        ("inner1", "a plane, which the board names the net of"),
-        ("inner2", "a plane, which the board names the net of"),
+        ("inner1", "a plane or a signal layer, which the board says"),
+        ("inner2", "a plane or a signal layer, which the board says"),
+        ("inner3", "a plane or a signal layer, which the board says"),
+        ("inner4", "a plane or a signal layer, which the board says"),
         ("fabricator", "a name, for the notes"),
         ("source", "where the numbers are published, for the notes"),
         (
@@ -2794,9 +2796,13 @@ mod tests {
     /// The process of a board that states each of `narrowings` inside `.process { }`.
     fn process(name: &str, narrowings: &[String]) -> netsmith_core::Process {
         let mut lines: Vec<String> = narrowings.to_vec();
-        let nets = if name == "FourLayer" {
+        let nets = if name == "FourLayer" || name == "SixLayer" {
             lines.push(".inner1.net &= \"GND\"".into());
             lines.push(".inner2.net &= \"3V3\"".into());
+            if name == "SixLayer" {
+                lines.push(".inner3.use &= \"signal\"".into());
+                lines.push(".inner4.use &= \"signal\"".into());
+            }
             "        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n"
         } else {
             lines.push(".stackup.thickness &= 1.6mm".into());
@@ -2848,7 +2854,7 @@ mod tests {
     /// a rule is listed with its reason (issue #431).
     #[test]
     fn every_rule_a_process_states_reaches_the_router_and_the_check() {
-        for name in ["TwoLayer", "FourLayer"] {
+        for name in ["TwoLayer", "FourLayer", "SixLayer"] {
             let base = what_is_kept(&process(name, &[])).unwrap();
             for (field, value) in process_fields(name) {
                 if NOT_A_COPPER_RULE.iter().any(|(f, _)| *f == field) {

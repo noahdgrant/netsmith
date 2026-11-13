@@ -470,7 +470,7 @@ pub fn plan_tracks(
         .stackup
         .inner
         .iter()
-        .flat_map(|i| i.planes.iter().map(String::as_str))
+        .flat_map(|i| i.planes().map(|(_, net)| net))
         .chain(features.pours.iter().map(|p| p.net.as_str()))
         .collect();
 

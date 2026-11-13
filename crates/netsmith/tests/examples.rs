@@ -386,6 +386,27 @@ fn the_four_layer_example_has_planes_and_routes_completely_on_the_outer_layers()
     assert!(picture.contains("In1.Cu: plane GND") && picture.contains("In2.Cu: plane 3V3"));
 }
 
+#[test]
+fn the_six_layer_example_has_two_planes_two_empty_signal_layers_and_routes_on_the_outer_layers() {
+    let mut board = board("six_layer", &fixtures());
+    assert_eq!(board.planes.len(), 2);
+    assert_eq!(board.inner_layers().len(), 4);
+    assert_eq!(board.check_placement(), vec![]);
+    let left = route(&mut board);
+    assert!(left.is_empty(), "{} lines unrouted", left.len());
+    assert_eq!(Ratsnest::of(&board).len(), 0);
+    let text = kicad_pcb(&board);
+    assert_eq!(text.matches("(zone").count(), 2);
+    // Every track is on an outer layer.
+    assert!(
+        !text
+            .lines()
+            .any(|l| l.contains("(segment") && l.contains("\"In")),
+        "a track on an inner layer"
+    );
+    assert_eq!(own_findings(&board), Vec::<String>::new());
+}
+
 /// What netsmith's own design rules check (ADR 0037) finds on a routed board the placer made:
 /// nothing, with no KiCad needed. `kicad_drc.rs` compares the two checks where KiCad is here.
 fn own_findings(board: &Board) -> Vec<String> {

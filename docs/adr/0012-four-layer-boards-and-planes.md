@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0111
 ---
 
 # Four-layer boards have planes on their inner layers

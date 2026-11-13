@@ -274,26 +274,52 @@ pub struct Stackup {
     pub inner: Option<InnerLayers>,
 }
 
-/// The inner copper layers of a board of more than two layers: planes, and how the board is
-/// built up round them. Lengths are in mm. From the top the board is outer copper, a
-/// prepreg, the first inner layer, the core, the last inner layer, a prepreg and outer
-/// copper; only that build of four layers is described so far.
+/// The inner copper layers of a board of more than two layers and how the board is built up
+/// round them (ADR 0111). Lengths are in mm.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InnerLayers {
-    /// The net each inner layer is a plane of, from the top: `["GND", "3V3"]` makes `In1.Cu`
-    /// a ground plane and `In2.Cu` a 3.3 V plane.
-    pub planes: Vec<String>,
+    /// What each inner layer is, from the top: the first is `In1.Cu`.
+    pub layers: Vec<InnerUse>,
     /// The copper of an inner layer.
     pub copper: f64,
-    /// The prepreg between an outer layer and the inner layer beside it.
-    pub prepreg: f64,
-    /// The core between the inner layers.
-    pub core: f64,
-    /// Relative permittivity of the prepreg and of the core.
-    pub prepreg_epsilon: f64,
-    pub core_epsilon: f64,
+    /// The dielectric layers between the copper layers, from the top: one fewer than the
+    /// copper layers.
+    pub dielectrics: Vec<DielectricLayer>,
+    /// The name the fabricator gives the build-up, such as `JLC04161H-7628`.
+    pub build: String,
     /// The least space between a plane and the hole of a via or pad that is not on its net.
     pub hole_clearance: f64,
+}
+
+/// What an inner copper layer is.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum InnerUse {
+    /// One sheet of copper on the net.
+    Plane(String),
+    /// A layer for tracks. The router does not draw on inner layers yet, so it is empty.
+    Signal,
+}
+
+/// One dielectric layer of a build-up.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DielectricLayer {
+    /// A core, or else a prepreg.
+    pub core: bool,
+    /// The glass style of a prepreg (`7628`), empty for a core.
+    pub glass: String,
+    pub thickness: f64,
+    /// The relative permittivity.
+    pub epsilon: f64,
+}
+
+impl InnerLayers {
+    /// The planes, each as its layer's number from the top (1 for `In1.Cu`) and its net.
+    pub fn planes(&self) -> impl Iterator<Item = (usize, &str)> {
+        self.layers.iter().enumerate().filter_map(|(i, u)| match u {
+            InnerUse::Plane(net) => Some((i + 1, net.as_str())),
+            InnerUse::Signal => None,
+        })
+    }
 }
 
 impl Stackup {

@@ -325,6 +325,17 @@ fn the_routed_four_layer_example_passes_with_its_planes_filled() {
 }
 
 #[test]
+fn the_routed_six_layer_example_passes_with_its_planes_filled_and_its_signal_layers_empty() {
+    let mut b = board("six_layer");
+    assert!(route(&mut b).is_empty());
+    let Some(counts) = plane_drc("six", &b) else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    assert_eq!(counts, Default::default(), "violations, unconnected pads");
+}
+
+#[test]
 fn kicad_finds_exactly_the_pads_the_ratsnest_says_have_no_way_to_their_plane() {
     // Take the vias and tracks of the two plane nets off a routed board: every pad that
     // is not through-hole is then cut off from its plane, and the ratsnest says so.

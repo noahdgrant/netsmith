@@ -16,6 +16,7 @@ use netsmith_solve::Catalogs;
 const LED: &str = include_str!("../../../examples/led.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
+const SIX_LAYER: &str = include_str!("../../../examples/six_layer.nsm");
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const OUTLINE_AND_POURS: &str = include_str!("../../../examples/outline_and_pours.nsm");
 const OUTLINE_AND_POURS_PHYSICAL: &str =
@@ -329,6 +330,59 @@ fn the_four_layer_board_becomes_a_package_with_its_inner_layers() {
     // The board file holds the zones unfilled, as netsmith writes them.
     let pcb = read(&dir, "FourLayerExample", "FourLayerExample.kicad_pcb");
     assert!(pcb.contains("(zone") && !pcb.contains("filled_polygon"));
+}
+
+#[test]
+fn the_six_layer_board_becomes_a_package_with_no_kicad_and_the_notes_say_what_each_layer_is() {
+    let dir = out("six-layer");
+    let made = fab(
+        "six.nsm",
+        SIX_LAYER,
+        &dir,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(made[0].board, "SixLayerExample");
+    let notes = read(&dir, "SixLayerExample", "fab-notes.txt");
+    assert!(notes.contains("design rules check: passed"), "{notes}");
+    assert!(
+        notes.contains("copper layers: 6 (F.Cu, In1.Cu, In2.Cu, In3.Cu, In4.Cu, B.Cu)"),
+        "{notes}"
+    );
+    assert!(
+        notes.contains(
+            "6 layers (In1.Cu is a plane on GND, In2.Cu is a signal layer, with no tracks yet, In3.Cu is a signal layer, with no tracks yet, In4.Cu is a plane on 3V3), 1.6 mm thick, 1 oz copper, build-up JLC06161H-3313"
+        ),
+        "{notes}"
+    );
+    for layer in ["F_Cu", "In1_Cu", "In2_Cu", "In3_Cu", "In4_Cu", "B_Cu"] {
+        assert!(
+            made[0]
+                .gerber_files
+                .iter()
+                .any(|f| f.ends_with(&format!("-{layer}.gbr"))),
+            "no {layer} in {:?}",
+            made[0].gerber_files
+        );
+    }
+    // The planes hold their pour; a signal layer holds no pour and no track, only the
+    // through-hole pads' copper.
+    let gnd = from_zip(&dir, "SixLayerExample", "SixLayerExample-In1_Cu.gbr");
+    assert!(gnd.contains("G36*") && gnd.contains("%TO.N,GND*%"), "{gnd}");
+    let signal = from_zip(&dir, "SixLayerExample", "SixLayerExample-In2_Cu.gbr");
+    assert!(
+        signal.contains("%TF.FileFunction,Copper,L3,Inr*%") && !signal.contains("G36*"),
+        "{signal}"
+    );
+    let pcb = read(&dir, "SixLayerExample", "SixLayerExample.kicad_pcb");
+    assert!(pcb.contains("(10 \"In4.Cu\" power)") && pcb.contains("(6 \"In2.Cu\" signal)"));
+}
+
+#[test]
+fn the_six_layer_example_agrees_with_kicads_own_plot() {
+    cross_checked("six_layer", SIX_LAYER);
 }
 
 #[test]

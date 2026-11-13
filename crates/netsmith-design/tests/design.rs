@@ -1,7 +1,7 @@
 //! The design stage: solved boards into the tool-independent design.
 
 use netsmith_check::{Loader, check};
-use netsmith_core::{Design, PartPin, PinKind, PowerFlow};
+use netsmith_core::{Design, DielectricLayer, InnerUse, PartPin, PinKind, PowerFlow};
 use netsmith_design::{Assembly, Designed, design_board, design_system_board, system_mates};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Candidate, Catalog, Catalogs, Library, Value, solve, solve_system};
@@ -10,6 +10,7 @@ const LED: &str = include_str!("../../../examples/led.nsm");
 const STATUS: &str = include_str!("../../../examples/status_indicator.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
+const SIX_LAYER: &str = include_str!("../../../examples/six_layer.nsm");
 
 fn designed_with_sourcing(src: &str) -> Result<Designed, Vec<String>> {
     let c = check("t.nsm", src, &Loader::std());
@@ -658,14 +659,118 @@ fn a_four_layer_process_arrives_with_its_planes_and_build_up() {
         .stackup
         .inner
         .expect("a four-layer board has inner layers");
-    assert_eq!(inner.planes, ["GND", "3V3"]);
-    // JLC04161H-7628, from the impedance page.
     assert_eq!(
-        (inner.copper, inner.prepreg, inner.core),
-        (0.0152, 0.2104, 1.065)
+        inner.layers,
+        [InnerUse::Plane("GND".into()), InnerUse::Plane("3V3".into())]
     );
-    assert_eq!((inner.prepreg_epsilon, inner.core_epsilon), (4.4, 4.6));
+    // JLC04161H-7628, from the impedance page.
+    assert_eq!(inner.build, "JLC04161H-7628");
+    assert_eq!(inner.copper, 0.0152);
+    assert_eq!(
+        inner.dielectrics,
+        [
+            prepreg("7628", 0.2104, 4.4),
+            core(1.065, 4.6),
+            prepreg("7628", 0.2104, 4.4)
+        ]
+    );
     assert_eq!(inner.hole_clearance, 0.3);
+}
+
+fn prepreg(glass: &str, thickness: f64, epsilon: f64) -> DielectricLayer {
+    DielectricLayer {
+        core: false,
+        glass: glass.into(),
+        thickness,
+        epsilon,
+    }
+}
+
+fn core(thickness: f64, epsilon: f64) -> DielectricLayer {
+    DielectricLayer {
+        core: true,
+        glass: String::new(),
+        thickness,
+        epsilon,
+    }
+}
+
+#[test]
+fn a_six_layer_process_arrives_with_its_planes_signal_layers_and_build_up() {
+    let p = designed(SIX_LAYER).unwrap().process.unwrap();
+    assert_eq!(p.name, "SixLayer");
+    // The multilayer rows of the capabilities page, as for four layers.
+    assert_eq!((p.min_track, p.min_clearance), (0.09, 0.1));
+    assert_eq!((p.min_drill, p.min_via_diameter), (0.15, 0.25));
+    assert_eq!((p.min_annular_ring, p.min_plated_slot), (0.15, 0.35));
+    assert_eq!(p.stackup.layers, 6);
+    assert_eq!(p.stackup.chosen_thickness(), Some(1.6));
+    let inner = p.stackup.inner.expect("a six-layer board has inner layers");
+    assert_eq!(
+        inner.layers,
+        [
+            InnerUse::Plane("GND".into()),
+            InnerUse::Signal,
+            InnerUse::Signal,
+            InnerUse::Plane("3V3".into())
+        ]
+    );
+    assert_eq!(inner.planes().collect::<Vec<_>>(), [(1, "GND"), (4, "3V3")]);
+    // JLC06161H-3313, from the impedance page.
+    assert_eq!(inner.build, "JLC06161H-3313");
+    assert_eq!(inner.copper, 0.0152);
+    assert_eq!(
+        inner.dielectrics,
+        [
+            prepreg("3313", 0.0994, 4.1),
+            core(0.55, 4.6),
+            prepreg("2116", 0.1088, 4.16),
+            core(0.55, 4.6),
+            prepreg("3313", 0.0994, 4.1)
+        ]
+    );
+    assert_eq!(inner.hole_clearance, 0.3);
+}
+
+#[test]
+fn a_six_layer_process_offers_only_the_sourced_thickness() {
+    let source = SIX_LAYER.replace(
+        "        .inner1.net &= \"GND\"\n",
+        "        .inner1.net &= \"GND\"\n        .stackup.thickness &= 2mm\n",
+    );
+    let c = check("t.nsm", &source, &Loader::std());
+    assert!(
+        c.render()
+            .contains("contradiction on `process.stackup.thickness`"),
+        "{}",
+        c.render()
+    );
+}
+
+#[test]
+fn a_signal_layer_that_names_a_net_is_refused_and_told_why() {
+    let source = SIX_LAYER.replace(
+        ".inner2.use &= \"signal\"",
+        ".inner2.use &= \"signal\"\n        .inner2.net &= \"GND\"",
+    );
+    let text = designed(&source).unwrap_err().join("\n");
+    assert!(
+        text.contains("`process.inner2` is a signal layer and names the net `GND`")
+            && text.contains("leave out `.use &= \"signal\"`"),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_inner_layer_that_is_neither_plane_nor_signal_is_refused() {
+    let source = SIX_LAYER.replace(".inner3.use &= \"signal\"", ".inner3.use &= \"mixed\"");
+    let text = designed(&source).unwrap_err().join("\n");
+    assert!(
+        text.contains(
+            "`process.inner3.use` is `mixed`, but an inner layer is `\"plane\"` or `\"signal\"`"
+        ),
+        "{text}"
+    );
 }
 
 #[test]
@@ -681,7 +786,8 @@ fn an_inner_layer_with_no_net_is_refused_and_told_how_to_name_it() {
     let text = errors.join("\n");
     assert!(
         text.contains("`process.inner2` is an inner layer of a 4-layer board and has no net")
-            && text.contains(".process.inner2.net &= \"GND\""),
+            && text.contains(".process.inner2.net &= \"GND\"")
+            && text.contains(".process.inner2.use &= \"signal\""),
         "{text}"
     );
     assert!(!text.contains("inner1"), "the named layer is fine: {text}");
@@ -772,11 +878,14 @@ fn a_board_of_a_system_can_be_four_layer_and_its_planes_are_checked_against_its_
             .stackup
             .inner
             .as_ref()
-            .map(|i| i.planes.clone())
+            .map(|i| i.layers.clone())
     };
     assert_eq!(
         planes(&designs[0]),
-        Some(vec!["GND".to_string(), "3V3".to_string()])
+        Some(vec![
+            InnerUse::Plane("GND".to_string()),
+            InnerUse::Plane("3V3".to_string())
+        ])
     );
     assert_eq!(
         planes(&designs[1]),
