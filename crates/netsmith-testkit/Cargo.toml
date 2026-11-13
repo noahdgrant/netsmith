@@ -1,0 +1,12 @@
+[package]
+name = "netsmith-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Helpers for tests across the workspace: temporary folders that remove themselves, and small
+# symbol and footprint libraries of our own. Only `[dev-dependencies]` name this crate (and the
+# `test-support` features, which only dev-dependencies turn on), so a release binary carries
+# none of it. It depends on no netsmith crate.
+[dependencies]

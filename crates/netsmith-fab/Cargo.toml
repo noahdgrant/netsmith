@@ -21,3 +21,6 @@ i_overlay = "9.1.0"
 netsmith-kicad = { path = "../netsmith-kicad" }
 # The PNG writer of the debug pictures (`netsmith_core::png`).
 netsmith-core = { path = "../netsmith-core" }
+
+[dev-dependencies]
+netsmith-testkit = { path = "../netsmith-testkit" }

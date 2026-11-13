@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/editor-verify-js/fixtures")

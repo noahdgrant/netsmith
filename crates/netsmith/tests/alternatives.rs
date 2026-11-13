@@ -11,8 +11,8 @@ use netsmith::project::{Project, Target};
 use netsmith::refresh::Network;
 use netsmith::{Built, outcome_with};
 use netsmith_editor::Backend;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 /// A resistor in series with an LED on 5 V.
 const LED: &str = include_str!("../../../examples/led.nsm");

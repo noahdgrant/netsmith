@@ -13,9 +13,9 @@ use std::fs;
 use std::path::Path;
 
 use netsmith::Libraries;
-use netsmith_kicad::testlib::{TempDir, sample_footprints, sample_symbols};
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::FootprintLibrary;
+use netsmith_testkit::{TempDir, sample_footprints, sample_symbols};
 
 pub const KICAD_TOML: &str = "\
 [[library]]
@@ -263,13 +263,10 @@ pub fn netsmith(root: &Path, args: &[&str]) -> std::process::Output {
         .args(args)
         .current_dir(root)
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
+        .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())
         .env(
             "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
+            netsmith_testkit::sample_footprints(),
         )
         .output()
         .unwrap()

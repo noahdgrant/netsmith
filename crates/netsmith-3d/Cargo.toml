@@ -20,6 +20,7 @@ i_overlay = "9.1.0"
 serde_json = "1.0.154"
 
 [dev-dependencies]
+netsmith-testkit = { path = "../netsmith-testkit" }
 # Not the netsmith crate, as in netsmith-pcb's tests (see there).
 netsmith-check = { path = "../netsmith-check" }
 netsmith-design = { path = "../netsmith-design" }

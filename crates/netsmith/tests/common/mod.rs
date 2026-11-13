@@ -6,7 +6,6 @@ use std::fs;
 use std::path::Path;
 
 use netsmith::Libraries;
-use netsmith_kicad::testlib;
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::FootprintLibrary;
 
@@ -114,13 +113,13 @@ const SHARED5: &str = "(footprint \"Shared-5\" (layer \"F.Cu\") \
 pub fn project_libraries(dir: &Path) -> Libraries {
     fs::create_dir_all(dir.join("libs/acme.pretty")).unwrap();
     fs::write(dir.join("kicad.toml"), KICAD_TOML).unwrap();
-    fs::write(dir.join("libs/acme.kicad_sym"), testlib::acme()).unwrap();
+    fs::write(dir.join("libs/acme.kicad_sym"), netsmith_testkit::acme()).unwrap();
     fs::write(dir.join("libs/acme.pretty/DIP-8.kicad_mod"), DIP8).unwrap();
     fs::write(dir.join("libs/acme.pretty/Shared-5.kicad_mod"), SHARED5).unwrap();
     Libraries::with_mapping(
         Mapping::for_project(Some(dir)).unwrap_or_else(|e| panic!("{e}")),
-        SymbolLib::at(testlib::sample_symbols()),
-        FootprintLibrary::at(testlib::sample_footprints()),
+        SymbolLib::at(netsmith_testkit::sample_symbols()),
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()),
     )
 }
 
@@ -265,8 +264,8 @@ pub fn chip_libraries(dir: &Path, symbol: &str, footprint: &str) -> Libraries {
     fs::write(dir.join("libs/tiny.pretty/SOT-6.kicad_mod"), footprint).unwrap();
     Libraries::with_mapping(
         Mapping::for_project(Some(dir)).unwrap_or_else(|e| panic!("{e}")),
-        SymbolLib::at(testlib::sample_symbols()),
-        FootprintLibrary::at(testlib::sample_footprints()),
+        SymbolLib::at(netsmith_testkit::sample_symbols()),
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()),
     )
 }
 

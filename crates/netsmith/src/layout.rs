@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn the_seed_is_written_to_the_layout_file_and_the_rest_is_kept() {
-        let dir = netsmith_kicad::testlib::TempDir::new("write-seed");
+        let dir = netsmith_testkit::TempDir::new("write-seed");
         let file = dir.path().join("main.pcb.toml");
         // No file: one is made with the seed alone.
         write_seed(&file, "Board", 4).unwrap();

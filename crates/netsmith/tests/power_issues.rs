@@ -6,7 +6,7 @@
 //! rail nothing supplies, a rail with a load whose current the solver did not settle, and a
 //! converter whose efficiency it did not settle.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::editor::Workspace;

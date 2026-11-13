@@ -3,7 +3,7 @@
 //! sticks out of the bottom edge by a stated requirement, and 30 small parts. The libraries
 //! are our sample ones plus an invented project library for the plug, so no KiCad is needed.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 use std::time::Instant;
 
@@ -11,7 +11,7 @@ use netsmith::Libraries;
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith_check::Loader;
 use netsmith_fab::KicadCliExe;
-use netsmith_kicad::{Mapping, SymbolLib, testlib};
+use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::{Board, FootprintLibrary, Overhang, place_options};
 use netsmith_solve::Catalogs;
 
@@ -71,8 +71,8 @@ fn libraries(dir: &std::path::Path, footprint: &str) -> Libraries {
     fs::write(dir.join("libs/wide.pretty/WidePlug-4.kicad_mod"), footprint).unwrap();
     Libraries::with_mapping(
         Mapping::for_project(Some(dir)).unwrap_or_else(|e| panic!("{e}")),
-        SymbolLib::at(testlib::sample_symbols()),
-        FootprintLibrary::at(testlib::sample_footprints()),
+        SymbolLib::at(netsmith_testkit::sample_symbols()),
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()),
     )
 }
 

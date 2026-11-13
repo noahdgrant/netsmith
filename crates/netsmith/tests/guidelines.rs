@@ -2,7 +2,7 @@
 //! `guidelines = "error"` in `netsmith.toml` or `--strict` for one run, shown by the
 //! command line, the fab notes and the editor.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::editor::Workspace;

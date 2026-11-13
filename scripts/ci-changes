@@ -11,7 +11,9 @@
 #            and the netsmith-cli crate, the binary and the tests that start it),
 #            the crates that make the files those tests check
 #            (netsmith-core, -design, -netlist), and the data the tests read: std/ (kicad.toml maps
-#            kinds to KiCad's footprints), examples/ (the boards they build) and data/.
+#            kinds to KiCad's footprints), examples/ (the boards they build) and data/, and the
+#            test helpers (netsmith-testkit: its sample libraries are what those tests build
+#            with). The testkit is a dev-dependency only, so a change to it needs no other job.
 #   recipes  the `recipes` job: the editor's browser recipes. They drive the `netsmith` binary
 #            (its editor, and the build, fab and order pipeline behind it, with KiCad 9 installed)
 #            against fixtures, so what is linked into that binary, the page, and the boards and
@@ -170,6 +172,8 @@ while IFS= read -r path; do
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;
         crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/*) rust=true recipes=true no_kicad=true ;;
+        # The test helpers: never linked into the binary, and every test builds with them.
+        crates/netsmith-testkit/*) rust=true kicad=true ;;
         crates/*/tests/*) rust=true ;;
         crates/*) rust=true no_kicad=true locks=true ;;
         Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;

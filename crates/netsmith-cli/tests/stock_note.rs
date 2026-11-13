@@ -3,7 +3,7 @@
 //! says so in its notes, and the editor shows the same line. The board and the parts are
 //! invented, except that the one LCSC number in `data/jlcpcb/considered.csv` is a real one.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::{fs, process::Command};
 
 const BOARD: &str = r#"
@@ -59,13 +59,10 @@ fn netsmith_build_prints_the_note_and_still_builds() {
         .args(["build"])
         .current_dir(&*root)
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
+        .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())
         .env(
             "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
+            netsmith_testkit::sample_footprints(),
         )
         .output()
         .unwrap();

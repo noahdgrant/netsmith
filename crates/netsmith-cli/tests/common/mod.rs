@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use netsmith::parity::{DesignatorMap, Tolerances, check_text};
-use netsmith_kicad::testlib;
 
 /// What a gate on the parity of a ported board says: where the project is, and what to expect
 /// of it.
@@ -42,7 +41,7 @@ pub fn fab_matches_the_reference(gate: &ParityGate) {
     let reference = gate.project.join("reference");
     let parts = netsmith::port::PortParts::read(&reference.join("parts.toml"))
         .unwrap_or_else(|e| panic!("{e}"));
-    let out = testlib::TempDir::unused(gate.tag);
+    let out = netsmith_testkit::TempDir::unused(gate.tag);
     // `--locked` ends the run when the pick lock is not current and never writes it, so the test
     // leaves the project's folder as it was; it also means `--pins locked`.
     let output = Command::new(env!("CARGO_BIN_EXE_netsmith"))

@@ -6,7 +6,7 @@
 use crate::common;
 
 use netsmith_core::{Design, Note, NoteAt, NoteKind};
-use netsmith_kicad::{Mapping, SymbolLib, testlib};
+use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_view::check::check;
 use netsmith_view::geom::{Pt, Rect};
 use netsmith_view::layout::{Layout, layout_rails};
@@ -16,7 +16,7 @@ use netsmith_view::{Group, Rails, layout_sheets_rails, render_svg_with};
 fn lib() -> (Mapping, SymbolLib) {
     (
         Mapping::standard(),
-        SymbolLib::at(testlib::sample_symbols()),
+        SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
 }
 

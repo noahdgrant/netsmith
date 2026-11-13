@@ -3,7 +3,7 @@
 //! and nothing listening. The page here answers as the browser's does; the editor's own tests
 //! (`crates/netsmith-editor/tests/server.rs`) pin the routes, these pin the command.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::{
     fs,
     net::{Ipv4Addr, TcpListener, TcpStream},

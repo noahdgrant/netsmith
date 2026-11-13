@@ -21,7 +21,6 @@ use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
 use netsmith_core::PinKind;
 use netsmith_kicad::install::Search;
-use netsmith_kicad::testlib;
 use netsmith_pcb::{Footprint, PadKind, PadShape};
 use netsmith_solve::Catalogs;
 
@@ -175,7 +174,7 @@ board GenericRows {
 
 /// A machine with no KiCad install, and the project's own `kicad.toml` and libraries.
 fn libraries() -> Libraries {
-    let nowhere = testlib::TempDir::new("power-manifold-parts-no-kicad");
+    let nowhere = netsmith_testkit::TempDir::new("power-manifold-parts-no-kicad");
     Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
         .unwrap_or_else(|e| panic!("{e}"))
 }

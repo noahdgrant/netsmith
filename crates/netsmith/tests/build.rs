@@ -564,14 +564,14 @@ fn a_system_with_no_boards_is_refused() {
 use crate::common;
 
 use netsmith_kicad::Mapping;
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 #[test]
 fn a_build_without_the_symbol_library_stops_once_and_names_the_path_and_the_variable() {
     let libraries = Libraries::with_mapping(
         Mapping::standard(),
         netsmith_kicad::SymbolLib::at("/nonexistent/symbols"),
-        netsmith_pcb::FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints()),
+        netsmith_pcb::FootprintLibrary::at(netsmith_testkit::sample_footprints()),
     );
     let e = build_with(
         "t.nsm",
@@ -592,7 +592,7 @@ fn a_build_without_the_symbol_library_stops_once_and_names_the_path_and_the_vari
 fn a_build_without_the_footprint_library_names_the_path_and_the_variable() {
     let libraries = Libraries::with_mapping(
         Mapping::standard(),
-        netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols()),
+        netsmith_kicad::SymbolLib::at(netsmith_testkit::sample_symbols()),
         netsmith_pcb::FootprintLibrary::at("/nonexistent/footprints"),
     );
     let e = build_with(
@@ -1017,11 +1017,8 @@ fn sample_install() -> (TempDir, netsmith_kicad::install::Search) {
     use netsmith_kicad::install::{FOOTPRINTS_VARIABLE, SYMBOLS_VARIABLE, Search};
     let nowhere = TempDir::new("installed-sample");
     let machine = Search::under(nowhere.path())
-        .with_var(SYMBOLS_VARIABLE, netsmith_kicad::testlib::sample_symbols())
-        .with_var(
-            FOOTPRINTS_VARIABLE,
-            netsmith_kicad::testlib::sample_footprints(),
-        );
+        .with_var(SYMBOLS_VARIABLE, netsmith_testkit::sample_symbols())
+        .with_var(FOOTPRINTS_VARIABLE, netsmith_testkit::sample_footprints());
     (nowhere, machine)
 }
 
@@ -1043,7 +1040,7 @@ fn an_installed_kicad_that_lacks_the_symbol_is_not_told_to_install_kicad() {
         .err()
         .unwrap_or_else(|| panic!("the build should fail: {id} is not in the install"));
         assert!(e.contains(&format!("needs KiCad's symbol `{id}`")), "{e}");
-        let installed = netsmith_kicad::testlib::sample_symbols();
+        let installed = netsmith_testkit::sample_symbols();
         assert!(
             e.contains(&format!(
                 "KiCad is installed at {} but has no `{id}`: check the spelling",
@@ -1073,7 +1070,7 @@ fn an_installed_kicad_that_lacks_the_footprint_is_not_told_to_install_kicad() {
     )
     .err()
     .expect("the build should fail: the footprint is not in the install");
-    let installed = netsmith_kicad::testlib::sample_footprints();
+    let installed = netsmith_testkit::sample_footprints();
     assert!(
         e.contains(&format!("needs KiCad's footprint `{id}`")),
         "{e}"

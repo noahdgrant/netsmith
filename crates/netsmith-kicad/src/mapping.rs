@@ -831,7 +831,7 @@ SENSE = "SNS"
 
     #[test]
     fn a_project_without_a_kicad_toml_has_the_standard_mapping() {
-        let dir = crate::testlib::TempDir::new("nokicad");
+        let dir = netsmith_testkit::TempDir::new("nokicad");
         assert_eq!(Mapping::for_project(Some(dir.path())).unwrap(), standard());
         assert_eq!(Mapping::for_project(None).unwrap(), standard());
         std::fs::write(dir.path().join(PROJECT_FILE), PROJECT).unwrap();

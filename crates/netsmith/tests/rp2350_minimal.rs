@@ -23,7 +23,6 @@ use netsmith::reference_table::placements_toml;
 use netsmith::{Libraries, build_with, outcome_with};
 use netsmith_core::PinKind;
 use netsmith_kicad::install::Search;
-use netsmith_kicad::testlib;
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::{Footprint, FootprintLibrary, PadKind, PadShape};
 
@@ -353,7 +352,7 @@ mod regulator_inductor_switch {
 
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::{Mapping, SymbolLib, testlib};
+    use netsmith_kicad::{Mapping, SymbolLib};
     use netsmith_pcb::FootprintLibrary;
 
     use super::{pad_differences, parsed, project, read, tables};
@@ -413,8 +412,8 @@ board Fixture {
         let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
         Libraries::with_mapping(
             mapping,
-            SymbolLib::at(testlib::sample_symbols()),
-            FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+            SymbolLib::at(netsmith_testkit::sample_symbols()),
+            FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_generators(),
         )
     }
 
@@ -751,8 +750,8 @@ fn built_bare() -> netsmith::Built {
     let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
     let libraries = Libraries::with_mapping(
         mapping,
-        SymbolLib::at(testlib::sample_symbols()),
-        FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+        SymbolLib::at(netsmith_testkit::sample_symbols()),
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_generators(),
     );
     build_with(
         "bare.nsm",
@@ -962,7 +961,7 @@ fn the_footprint_has_the_pitch_the_pad_count_and_the_exposed_pad_of_the_datashee
         mapped.footprint,
         "Package_DFN_QFN:QFN-60-1EP_7x7mm_P0.4mm_EP3.4x3.4mm"
     );
-    let footprint = FootprintLibrary::at(testlib::sample_footprints())
+    let footprint = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_generators()
         .load(&mapped.footprint)
         .unwrap();
@@ -1003,7 +1002,6 @@ mod flash_and_crystal {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_core::PinKind;
-    use netsmith_kicad::testlib;
     use netsmith_kicad::{Mapping, SymbolLib};
     use netsmith_pcb::FootprintLibrary;
 
@@ -1055,8 +1053,8 @@ board FlashAndCrystal {
         let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
         let libraries = Libraries::with_mapping(
             mapping,
-            SymbolLib::at(testlib::sample_symbols()),
-            FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+            SymbolLib::at(netsmith_testkit::sample_symbols()),
+            FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_generators(),
         );
         build_with(
             "small.nsm",
@@ -1093,7 +1091,7 @@ board FlashAndCrystal {
             mapped.lib_id, None,
             "the symbol is drawn from the pin table"
         );
-        FootprintLibrary::at(testlib::sample_footprints())
+        FootprintLibrary::at(netsmith_testkit::sample_footprints())
             .with_generators()
             .load(&mapped.footprint)
             .unwrap_or_else(|e| panic!("{}: {e}", mapped.footprint))
@@ -1462,7 +1460,7 @@ board ConnectorsBare {
 
 /// A machine with no KiCad install, and the project's own `kicad.toml` and libraries.
 fn libraries_without_kicad() -> Libraries {
-    let nowhere = testlib::TempDir::new("rp2350-no-kicad");
+    let nowhere = netsmith_testkit::TempDir::new("rp2350-no-kicad");
     Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
         .unwrap_or_else(|e| panic!("{e}"))
 }
@@ -1766,7 +1764,7 @@ fn the_comparison_of_pads_says_what_differs() {
     )
     .unwrap()
     .id();
-    let generated = FootprintLibrary::at(testlib::sample_footprints())
+    let generated = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_generators()
         .load(&id)
         .unwrap();

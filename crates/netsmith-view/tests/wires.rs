@@ -885,7 +885,7 @@ fn the_reference_and_value_of_a_part_stay_clear_of_the_wires_to_its_symbols() {
     let mut rails = Rails::default();
     rails.ground.insert("GND".into());
     rails.positive.insert("VCC".into());
-    let lib = netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols());
+    let lib = netsmith_kicad::SymbolLib::at(netsmith_testkit::sample_symbols());
     let l = layout_marked(
         &d,
         &rails,

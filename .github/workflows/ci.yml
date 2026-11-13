@@ -18,7 +18,7 @@
 #
 # `test` has no KiCad on its runner, so it stays fast. The tests that need `kicad-cli` or KiCad's
 # stock libraries skip themselves there (they print "skipped: ..."); the rest build with the
-# small libraries of `netsmith_kicad::testlib`. The `kicad` job installs KiCad 9 and runs the
+# small libraries of `netsmith_testkit`. The `kicad` job installs KiCad 9 and runs the
 # tests that can ask for KiCad (scripts/ci-kicad-tests), so those tests really run; it starts once
 # `test` has passed. No Node either: the editor's page is the committed
 # bundle. `test` is four slices of cargo nextest that run side by side (one run of

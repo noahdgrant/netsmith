@@ -6,8 +6,8 @@ use netsmith::editor::Workspace;
 use netsmith::project::Target;
 use netsmith_check::Loader;
 use netsmith_editor::Backend;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 const SRC: &str = r#"

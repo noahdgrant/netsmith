@@ -436,7 +436,7 @@ pub fn kicad_findings(
     use std::sync::atomic::{AtomicUsize, Ordering};
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
-    let dir = netsmith_kicad::testlib::TempDir::new(&format!(
+    let dir = netsmith_testkit::TempDir::new(&format!(
         "drc-{name}-{}",
         RUNS.fetch_add(1, Ordering::SeqCst)
     ));

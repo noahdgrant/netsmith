@@ -15,3 +15,6 @@ path = "tests/main.rs"
 netsmith-core = { path = "../netsmith-core" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 toml = "1.1.8"
+
+[dev-dependencies]
+netsmith-testkit = { path = "../netsmith-testkit" }

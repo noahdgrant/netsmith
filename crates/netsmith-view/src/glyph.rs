@@ -1442,7 +1442,7 @@ pub fn used_pads(design: &Design) -> Vec<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use netsmith_kicad::PowerFlow;
-    use netsmith_kicad::testlib::{self, TempDir};
+    use netsmith_testkit::TempDir;
 
     use super::*;
 
@@ -1461,7 +1461,7 @@ mod tests {
     fn sample() -> (Mapping, SymbolLib) {
         (
             Mapping::standard(),
-            SymbolLib::at(testlib::sample_symbols()),
+            SymbolLib::at(netsmith_testkit::sample_symbols()),
         )
     }
 
@@ -1470,7 +1470,7 @@ mod tests {
     fn acme(symbol: &str) -> (TempDir, Mapping, SymbolLib) {
         let dir = TempDir::new("glyph");
         let file = dir.path().join("acme.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let rows = format!(
             "[[part]]\nkind = \"Gadget\"\npackage = \"P\"\nsymbol = \"acme:{symbol}\"\nfootprint = \"acme:F\"\n"
         );

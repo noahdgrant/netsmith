@@ -12,7 +12,7 @@ use netsmith_editor::{
     AnalysisEvent, Backend,
     api::{ProblemStage, Severity},
 };
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const LED: &str = include_str!("../../../examples/led.nsm");

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::board::tests::SAMPLE;
-use netsmith_kicad::testlib::TempFile;
+use netsmith_testkit::TempFile;
 
 fn entry(designators: &[&str], value: &str, lcsc: Option<&str>) -> BomEntry {
     BomEntry {

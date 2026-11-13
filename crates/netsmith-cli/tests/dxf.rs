@@ -1,7 +1,7 @@
 //! `netsmith dxf import` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
 //! cutout and mounting holes that the fab pipeline accepts. The DXF is written here by hand.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 fn pair(code: i32, value: impl std::fmt::Display) -> String {

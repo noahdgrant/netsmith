@@ -22,5 +22,5 @@ ts-rs = "12.0.1"
 
 [dev-dependencies]
 flate2 = "1"
-netsmith-kicad = { path = "../netsmith-kicad" }
+netsmith-testkit = { path = "../netsmith-testkit" }
 tungstenite = "0.30.0"

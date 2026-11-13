@@ -2348,7 +2348,7 @@ mod tests {
 
     #[test]
     fn a_seed_that_moved_is_written_to_the_layout_file_and_said() {
-        let dir = netsmith_kicad::testlib::TempDir::new("settle-seed");
+        let dir = netsmith_testkit::TempDir::new("settle-seed");
         let file = dir.path().join("main.pcb.toml");
         std::fs::write(&file, "version = 1\n\n[Board]\nseed = 3\n").unwrap();
         let options = FabOptions {
@@ -2378,7 +2378,7 @@ mod tests {
 
     #[test]
     fn an_order_or_the_editors_release_stops_on_a_seed_that_moved_and_writes_nothing() {
-        let dir = netsmith_kicad::testlib::TempDir::new("settle-seed-order");
+        let dir = netsmith_testkit::TempDir::new("settle-seed-order");
         let file = dir.path().join("main.pcb.toml");
         std::fs::write(&file, "version = 1\n\n[Board]\nseed = 3\n").unwrap();
         let name = file.display();
@@ -2414,7 +2414,7 @@ mod tests {
 
     #[test]
     fn with_locked_a_seed_that_moved_is_an_error_and_nothing_is_written() {
-        let dir = netsmith_kicad::testlib::TempDir::new("settle-seed-locked");
+        let dir = netsmith_testkit::TempDir::new("settle-seed-locked");
         let file = dir.path().join("main.pcb.toml");
         let options = FabOptions {
             layout: Some(file.clone()),
@@ -2524,7 +2524,7 @@ mod tests {
 
     #[test]
     fn the_files_set_aside_come_back_whole() {
-        let root = netsmith_kicad::testlib::TempDir::new("fab-set-aside");
+        let root = netsmith_testkit::TempDir::new("fab-set-aside");
         let dir = root.join("Board");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("Board.kicad_pcb"), "earlier").unwrap();
@@ -2789,7 +2789,7 @@ mod tests {
 
     #[test]
     fn an_incomplete_board_writes_its_report_and_the_error_says_where_everything_is() {
-        let dir = netsmith_kicad::testlib::TempDir::new("incomplete");
+        let dir = netsmith_testkit::TempDir::new("incomplete");
         let incomplete = Incomplete {
             message: "1 connections could not be routed (after 4 tries):\n  net A: U1.1 to R1.1"
                 .into(),

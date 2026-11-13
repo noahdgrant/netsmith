@@ -13,7 +13,7 @@ use std::sync::Arc;
 use netsmith_core::Design;
 use netsmith_kicad::install::Search;
 use netsmith_kicad::mapping::Mapped;
-use netsmith_kicad::{Mapping, Symbol, SymbolError, SymbolLib, stdlib, testlib};
+use netsmith_kicad::{Mapping, Symbol, SymbolError, SymbolLib, stdlib};
 use netsmith_pcb::{FootprintError, FootprintLibrary};
 
 /// What `build`, `fab` and `view` read from KiCad. `check` and `solve` need none of it.
@@ -227,13 +227,14 @@ impl Libraries {
         ))
     }
 
-    /// Our own small libraries (`netsmith_kicad::testlib`) with the standard mapping, for
-    /// tests that need no KiCad.
+    /// Our own small libraries (`netsmith_testkit`) with the standard mapping, for tests that
+    /// need no KiCad. Behind the `test-support` feature, which only dev-dependencies turn on.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn sample() -> Libraries {
         Libraries::with_mapping(
             Mapping::standard(),
-            SymbolLib::at(testlib::sample_symbols()),
-            FootprintLibrary::at(testlib::sample_footprints()),
+            SymbolLib::at(netsmith_testkit::sample_symbols()),
+            FootprintLibrary::at(netsmith_testkit::sample_footprints()),
         )
     }
 

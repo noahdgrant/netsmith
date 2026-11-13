@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use netsmith::symbol_gallery::{EXAMPLE_ICS, example_ics, render};
-use netsmith_kicad::{SymbolLib, generate, passives, testlib};
+use netsmith_kicad::{SymbolLib, generate, passives};
 
 fn examples() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
@@ -124,7 +124,7 @@ fn with_no_kicad_every_stock_side_says_so_and_the_page_still_builds() {
 #[test]
 fn a_library_that_has_the_symbol_is_drawn_beside_netsmiths_and_one_that_has_not_says_so() {
     // The sample library of the tests is a few symbols of our own, not KiCad's.
-    let lib = SymbolLib::at(testlib::sample_symbols());
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols());
     let page = render(Some(&lib), &[]);
     assert_well_formed(&page);
     let drawn = page.matches("data-side=\"kicad\"").count();

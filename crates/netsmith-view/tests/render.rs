@@ -2,14 +2,14 @@
 
 use crate::common;
 
-use netsmith_kicad::{Mapping, SymbolLib, testlib};
+use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_view::render_svg;
 
 fn svg(d: &netsmith_core::Design) -> String {
     render_svg(
         d,
         &Mapping::standard(),
-        &SymbolLib::at(testlib::sample_symbols()),
+        &SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
     .unwrap()
 }
@@ -97,7 +97,7 @@ fn names_are_on_symbols_and_flags_and_a_generated_name_is_never_shown() {
         &d,
         &rails,
         &netsmith_kicad::Mapping::standard(),
-        &netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols()),
+        &netsmith_kicad::SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
     .unwrap();
     assert!(
@@ -162,7 +162,7 @@ fn an_inconsistent_design_is_an_error() {
     let e = render_svg(
         &d,
         &Mapping::standard(),
-        &SymbolLib::at(testlib::sample_symbols()),
+        &SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
     .unwrap_err();
     assert!(e.to_string().contains("R9"), "{e}");

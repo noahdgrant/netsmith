@@ -7,8 +7,8 @@ use std::{fs, path::Path};
 
 use netsmith::models::{Located, Places, locate};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 const LED: &str = include_str!("../../../examples/led.nsm");
 

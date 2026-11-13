@@ -159,7 +159,6 @@ fn outputs_to_give_up(design: &Design, drawn: &[PartSymbol]) -> Vec<(usize, Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testlib;
     use netsmith_core::{Net, PartPin, PinKind, PinRef, PowerFlow};
 
     fn pin(name: &str, datasheet: &str, pad: &str, flow: Option<PowerFlow>) -> PartPin {
@@ -237,7 +236,7 @@ mod tests {
 
     #[test]
     fn a_design_with_no_clash_keeps_the_plain_names_and_the_clash_is_settled_whatever_the_order() {
-        let lib = SymbolLib::at(testlib::sample_symbols());
+        let lib = SymbolLib::at(netsmith_testkit::sample_symbols());
         let nets = vec![("A", vec![("U1", "2")]), ("B", vec![("U2", "2")])];
         let alone = design(vec![ldo("U1", "OUT")], vec![("A", vec![("U1", "2")])]);
         assert_eq!(
@@ -265,7 +264,7 @@ mod tests {
 
     #[test]
     fn a_drawing_may_not_take_a_name_that_the_library_file_holds() {
-        let lib = SymbolLib::at(testlib::sample_symbols());
+        let lib = SymbolLib::at(netsmith_testkit::sample_symbols());
         let d = design(vec![ldo("U1", "OUT")], vec![("A", vec![("U1", "2")])]);
         let drawn = settle(
             &d,
@@ -281,7 +280,7 @@ mod tests {
 
     #[test]
     fn of_two_outputs_on_a_net_the_first_stays_and_the_design_is_not_changed() {
-        let lib = SymbolLib::at(testlib::sample_symbols());
+        let lib = SymbolLib::at(netsmith_testkit::sample_symbols());
         let d = design(
             vec![ldo("U2", "OUT"), ldo("U1", "OUT")],
             vec![("RAIL", vec![("U2", "2"), ("U1", "2")])],
@@ -295,7 +294,7 @@ mod tests {
 
     #[test]
     fn an_output_alone_on_its_net_stays_an_output() {
-        let lib = SymbolLib::at(testlib::sample_symbols());
+        let lib = SymbolLib::at(netsmith_testkit::sample_symbols());
         let d = design(
             vec![ldo("U1", "OUT"), ldo("U2", "OUT")],
             vec![("A", vec![("U1", "2")]), ("B", vec![("U2", "2")])],

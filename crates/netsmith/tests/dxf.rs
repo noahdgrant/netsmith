@@ -1,7 +1,7 @@
 //! `netsmith dxf import` (ADR 0045, C0 piece 3): an enclosure's DXF becomes an outline, a
 //! cutout and mounting holes that the fab pipeline accepts. The DXF is written here by hand.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::Libraries;
@@ -497,7 +497,7 @@ fn imported_physical(dir: &std::path::Path) -> String {
 
 #[test]
 fn a_board_with_the_imported_outline_goes_through_fab_with_the_holes_where_the_case_has_them() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let dir = temp("fab");

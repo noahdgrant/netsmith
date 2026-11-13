@@ -3,7 +3,7 @@
 //! this shell cannot start (no `cmd.exe`, as under `systemd-run --user`); the
 //! rest need no KiCad.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 use std::path::{Path, PathBuf};
 

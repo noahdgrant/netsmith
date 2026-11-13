@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn skills_are_copied_where_a_symlink_cannot_be_made() {
-        let dir = netsmith_kicad::testlib::TempDir::new("init-copy");
+        let dir = netsmith_testkit::TempDir::new("init-copy");
         let said = link_skills(&dir, |_, _| Err(io::ErrorKind::PermissionDenied.into())).unwrap();
         assert!(
             said.contains("copy") && said.contains("symlinks are not available"),

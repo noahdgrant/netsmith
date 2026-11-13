@@ -7,8 +7,8 @@ use std::fs;
 
 use netsmith::outcome_with;
 use netsmith::project::Target;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 const RF: &str = "\
 generic CoaxReceptacle {

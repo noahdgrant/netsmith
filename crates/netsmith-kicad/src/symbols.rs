@@ -35,7 +35,7 @@
 //!
 //! The bundled copies of KiCad's libraries (`crates/netsmith-kicad/symbols/` and
 //! `crates/netsmith-pcb/fixtures/`) are gone. Tests write small libraries of their own
-//! (`netsmith_kicad::testlib`), and the tests that want the stock libraries skip without KiCad.
+//! (`netsmith_testkit`), and the tests that want the stock libraries skip without KiCad.
 //! The licensing reading is in `docs/research/kicad-library-licensing.md`.
 
 use std::collections::HashMap;
@@ -832,12 +832,16 @@ fn read_pin(pin: &Sexp, unit: u32) -> Result<SymbolPin, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testlib::{self, TempDir};
+    use netsmith_testkit::TempDir;
 
     fn lib() -> (TempDir, SymbolLib) {
         let dir = TempDir::new("symbols");
-        std::fs::write(dir.path().join("Device.kicad_sym"), testlib::device()).unwrap();
-        std::fs::write(dir.path().join("acme.kicad_sym"), testlib::acme()).unwrap();
+        std::fs::write(
+            dir.path().join("Device.kicad_sym"),
+            netsmith_testkit::device(),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("acme.kicad_sym"), netsmith_testkit::acme()).unwrap();
         let lib = SymbolLib::at(dir.path());
         (dir, lib)
     }
@@ -1036,7 +1040,7 @@ mod tests {
     fn a_project_library_is_found_by_its_name() {
         let dir = TempDir::new("project");
         let file = dir.path().join("mine.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let lib = SymbolLib::at("/nonexistent/symbols").with_library("proj", &file);
         assert_eq!(lib.symbol("proj:Reg").unwrap().pin_numbers().len(), 3);
         // A project library that is not there says where kicad.toml pointed.
@@ -1056,7 +1060,7 @@ mod tests {
         // A project's own library needs no install.
         let dir = TempDir::new("project-only");
         let file = dir.path().join("mine.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let lib = lib.with_library("proj", &file);
         assert_eq!(lib.symbol("proj:Reg").unwrap().pin_numbers().len(), 3);
         // A stock library says what was looked for, every place, and the variables.
@@ -1075,7 +1079,7 @@ mod tests {
         let root = TempDir::new("fake-linux");
         let symbols = root.path().join("usr/share/kicad/symbols");
         std::fs::create_dir_all(&symbols).unwrap();
-        std::fs::write(symbols.join("Device.kicad_sym"), testlib::device()).unwrap();
+        std::fs::write(symbols.join("Device.kicad_sym"), netsmith_testkit::device()).unwrap();
         let lib = SymbolLib::installed_by(&install::Search::under(root.path()));
         assert_eq!(lib.root(), symbols);
         // A symbol the generators do not make is read from the install.
@@ -1092,7 +1096,7 @@ mod tests {
         let root = TempDir::new("fake-linux-generated");
         let symbols = root.path().join("usr/share/kicad/symbols");
         std::fs::create_dir_all(&symbols).unwrap();
-        std::fs::write(symbols.join("Device.kicad_sym"), testlib::device()).unwrap();
+        std::fs::write(symbols.join("Device.kicad_sym"), netsmith_testkit::device()).unwrap();
         let lib = SymbolLib::installed_by(&install::Search::under(root.path()));
         let drawn = lib.symbol("Device:C").unwrap();
         assert_eq!(drawn.lib_id(), "netsmith:C");
@@ -1102,7 +1106,7 @@ mod tests {
         assert_eq!(read.pin("1").unwrap().length, 1.27);
         // A project's library named like a generated one is read, not shadowed.
         let file = root.path().join("device.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let lib = SymbolLib::at("/nonexistent/symbols")
             .with_generators()
             .with_library("Device", &file);
@@ -1115,7 +1119,7 @@ mod tests {
     fn a_project_library_cannot_shadow_an_installed_one() {
         let (dir, _) = lib();
         let file = dir.path().join("elsewhere.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let lib = SymbolLib::at(dir.path()).with_library("Device", &file);
         let text = lib.symbol("Device:R").unwrap_err().to_string();
         assert!(text.contains("both installed"), "{text}");
@@ -1128,7 +1132,7 @@ mod tests {
         // the working directory does when the root is `""`. It is no installed library.
         let (dir, _) = lib();
         let file = dir.path().join("elsewhere.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let mut lib = SymbolLib::at(dir.path()).with_library("Device", &file);
         lib.no_install = Some(
             install::Search::under(dir.path())

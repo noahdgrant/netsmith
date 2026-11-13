@@ -16,7 +16,7 @@ use netsmith_editor::{
     AnalysisEvent, ApiError, Backend, Observer,
     api::{BoardStatus, Compare, CompareBoard, GitRefKind, Severity, SourceStatus},
 };
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const MODULE: &str = "//! A module.\n\nimport std::sources::Rail\n\n/// A supply.\ninterface Supply {\n    .rail: Rail\n}\n";

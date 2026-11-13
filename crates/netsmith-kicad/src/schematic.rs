@@ -1205,8 +1205,8 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64)) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testlib::{self, TempDir};
     use netsmith_core::{Net, Part, PartPin, PinKind, PinRef};
+    use netsmith_testkit::TempDir;
 
     #[test]
     fn the_erc_pin_map_is_kicads_but_for_the_pairs_netsmith_accepts() {
@@ -1595,9 +1595,9 @@ mod tests {
         emit(&d, &mapping(), &sample()).unwrap();
     }
 
-    /// The sample libraries of `testlib`, which hold what the standard mapping names.
+    /// The sample libraries of `netsmith_testkit`, which hold what the standard mapping names.
     fn sample() -> SymbolLib {
-        SymbolLib::at(testlib::sample_symbols())
+        SymbolLib::at(netsmith_testkit::sample_symbols())
     }
 
     /// The standard mapping and two regulators: `Ldo`, drawn with the sample library's AP1117
@@ -2358,7 +2358,7 @@ mod tests {
                 ],
             }],
         };
-        let lib = SymbolLib::at(testlib::sample_symbols()).with_generators();
+        let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_generators();
         let root = Sexp::parse(&emit(&d, &mapping(), &lib).unwrap()).unwrap();
         let flags_of = |refdes: &str| -> (String, String) {
             let placed = root
@@ -2434,7 +2434,7 @@ mod tests {
     fn acme(symbols: &[&str]) -> (TempDir, Mapping, SymbolLib) {
         let dir = TempDir::new("emit");
         let file = dir.path().join("acme.kicad_sym");
-        std::fs::write(&file, testlib::acme()).unwrap();
+        std::fs::write(&file, netsmith_testkit::acme()).unwrap();
         let rows: String = symbols
             .iter()
             .map(|s| {
@@ -2446,7 +2446,7 @@ mod tests {
         let mapping = Mapping::standard()
             .merged(Mapping::parse(&rows, "kicad.toml", dir.path()).unwrap())
             .unwrap();
-        let lib = SymbolLib::at(testlib::sample_symbols()).with_library("acme", file);
+        let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("acme", file);
         (dir, mapping, lib)
     }
 

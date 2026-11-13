@@ -7,8 +7,8 @@ use std::fs;
 use std::process::{Command, Output};
 
 use netsmith::port_tables::{Source, sha256_hex};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_netlist::Netlist;
+use netsmith_testkit::TempDir;
 
 const BOARD: &str = r#"(kicad_pcb (version 20240108)
   (footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu") (at 10 10)

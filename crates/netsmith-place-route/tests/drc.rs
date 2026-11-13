@@ -3,7 +3,7 @@
 //! connections as the ratsnest, a 70-part board must be checked in a couple of seconds, and
 //! where KiCad is installed its check must agree with ours on a sample of them.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::time::Instant;
 
 use netsmith_fab::drc::{self, Extras, Report, kicad};

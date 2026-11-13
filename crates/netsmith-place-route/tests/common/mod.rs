@@ -2,8 +2,8 @@
 #![allow(dead_code)] // each test file uses some of these
 
 use netsmith_core::{Design, Net, Part, PinRef};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, Pt, Rect};
+use netsmith_testkit::TempDir;
 
 /// The least distance from any pad, track or via to the board edge, from the board model.
 pub fn edge_gap(board: &Board) -> f64 {
@@ -81,7 +81,7 @@ pub fn process() -> netsmith_core::Process {
 }
 
 pub fn fixtures() -> FootprintLibrary {
-    FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    FootprintLibrary::at(netsmith_testkit::sample_footprints())
 }
 
 /// The boards of a seeded series: eight 0402 resistors in two rows of four on a 13 by 7 mm

@@ -3,7 +3,7 @@
 //! `fab`. The board is invented: two rows of sockets that a datasheet puts 17.5 mm apart (in
 //! a module), and an aligned pair across another module.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::Libraries;

@@ -15,7 +15,7 @@ use std::{
 
 use crate::build_script as build_web;
 use build_web::{Done, INSTALL_STAMP, Provided};
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 /// A scratch directory with a `web/` (sources and a lockfile) and a `bin/` with a fake `node`
 /// and `npm`. The fake npm appends each command to `log`; `ci` makes `node_modules`; `run build`

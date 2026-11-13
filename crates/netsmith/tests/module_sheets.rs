@@ -11,9 +11,9 @@ use netsmith::{Built, Libraries, build_with};
 use netsmith_check::Loader;
 use netsmith_fab::{KicadCli, KicadCliExe};
 use netsmith_kicad::sexp::Sexp;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare};
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 const SHEETS: &str = include_str!("fixtures/module_sheets.nsm");
 

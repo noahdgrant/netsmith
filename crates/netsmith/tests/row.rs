@@ -3,7 +3,7 @@
 //! finding that names the statement's line and the two neighbours. The board is invented: a
 //! module of twelve one-pin-pair headers that stand for a row of test pads.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
@@ -127,7 +127,7 @@ fn a_pad_moved_by_hand_is_a_finding_with_the_row_s_line_and_the_two_neighbours()
 
 #[test]
 fn parts_are_numbered_in_natural_order_so_the_names_and_the_labels_agree() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let loader = Loader::std().with_physical("widget.nsm", "widget.physical.nsm", PHYSICAL);

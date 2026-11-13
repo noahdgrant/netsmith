@@ -9,3 +9,11 @@ netsmith-core = { path = "../netsmith-core" }
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.8"
 uuid = { version = "1", features = ["v5"] }
+
+[features]
+# The KiCad-library check for tests (`install::skip_without_kicad_libraries`). Only
+# dev-dependencies turn it on, so a release binary does not carry it.
+test-support = []
+
+[dev-dependencies]
+netsmith-testkit = { path = "../netsmith-testkit" }

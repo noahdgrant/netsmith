@@ -2,7 +2,7 @@
 
 use crate::common;
 
-use netsmith_kicad::{Mapping, SymbolLib, testlib};
+use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_view::geom::{Dir, Pt};
 use netsmith_view::layout::{Layout, layout};
 
@@ -10,7 +10,7 @@ fn lay(d: &netsmith_core::Design) -> Layout {
     layout(
         d,
         &Mapping::standard(),
-        &SymbolLib::at(testlib::sample_symbols()),
+        &SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
     .unwrap()
 }
@@ -226,7 +226,7 @@ fn a_ground_symbol_is_below_its_pins_and_a_supply_symbol_above() {
         &d,
         &rails,
         &Mapping::standard(),
-        &SymbolLib::at(testlib::sample_symbols()),
+        &SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
     .unwrap();
     assert!(!l.symbols.is_empty());
@@ -359,7 +359,7 @@ fn a_broken_design_is_an_error() {
         layout(
             &d,
             &Mapping::standard(),
-            &SymbolLib::at(testlib::sample_symbols())
+            &SymbolLib::at(netsmith_testkit::sample_symbols())
         )
         .is_err()
     );

@@ -6,7 +6,7 @@ use std::fs;
 use netsmith::editor::Workspace;
 use netsmith::project::Target;
 use netsmith_editor::Backend;
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 

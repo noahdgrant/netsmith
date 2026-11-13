@@ -4,14 +4,14 @@
 use crate::common;
 
 use netsmith_core::Design;
-use netsmith_kicad::{Mapping, SymbolLib, testlib};
+use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_view::geom::Rect;
 use netsmith_view::layout::{Layout, layout};
 use netsmith_view::render_svg_by_module;
 use netsmith_view::sheets::{Group, MAX_SHEET_PARTS, layout_sheets};
 
 fn lib() -> SymbolLib {
-    SymbolLib::at(testlib::sample_symbols())
+    SymbolLib::at(netsmith_testkit::sample_symbols())
 }
 
 fn lay(d: &Design, groups: &[Group]) -> Layout {

@@ -218,7 +218,7 @@ pub fn scratch_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_kicad::testlib::TempFile;
+    use netsmith_testkit::TempFile;
     use std::collections::HashSet;
     use std::sync::atomic::AtomicUsize;
 

@@ -5,7 +5,7 @@ use netsmith_core::{Design, Net, Part, PinRef, Process};
 use netsmith_pcb::FootprintLibrary;
 
 pub fn fixtures() -> FootprintLibrary {
-    FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    FootprintLibrary::at(netsmith_testkit::sample_footprints())
 }
 
 fn part(refdes: &str, kind: &str, value: &str, package: Option<&str>) -> Part {

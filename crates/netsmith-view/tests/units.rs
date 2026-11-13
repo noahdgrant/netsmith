@@ -7,8 +7,8 @@
 use crate::common;
 
 use netsmith_core::Design;
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::check::check;
 use netsmith_view::geom::Orient;
 use netsmith_view::layout::{Layout, PlacedPart};
@@ -83,7 +83,7 @@ fn setup(grounds: u32, per_side: u32) -> (TempDir, Mapping, SymbolLib) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("units", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("units", file);
     (dir, mapping, lib)
 }
 
@@ -320,7 +320,7 @@ fn a_symbol_with_one_unit_is_drawn_as_before() {
     let design = common::led();
     let (mapping, lib) = (
         Mapping::standard(),
-        SymbolLib::at(testlib::sample_symbols()),
+        SymbolLib::at(netsmith_testkit::sample_symbols()),
     );
     let l = layout_rails(&design, &Rails::default(), &mapping, &lib).unwrap();
     assert_eq!(l.parts.len(), design.parts.len());
@@ -404,7 +404,7 @@ fn a_unit_whose_pins_are_off_the_grid_by_different_amounts_is_drawn_with_its_pin
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("crooked", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("crooked", file);
     let design = common::design(
         "Crooked",
         &[("U1", "Crooked", "X", Some("M"))],

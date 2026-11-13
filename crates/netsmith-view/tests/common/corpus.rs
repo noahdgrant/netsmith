@@ -6,8 +6,8 @@
 #![allow(dead_code)]
 
 use netsmith_core::Design;
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::layout::Layout;
 use netsmith_view::sheets::layout_sheets_rails;
 use netsmith_view::{Group, Rails};
@@ -63,7 +63,7 @@ fn sample(design: Design, rails: Rails) -> Case {
         groups: Vec::new(),
         rails,
         mapping: Mapping::standard(),
-        lib: SymbolLib::at(testlib::sample_symbols()),
+        lib: SymbolLib::at(netsmith_testkit::sample_symbols()),
         dir: None,
     }
 }
@@ -82,7 +82,7 @@ pub fn corpus() -> Vec<Case> {
             groups,
             rails: rails(&["GND"], &["VIN"]),
             mapping: Mapping::standard(),
-            lib: SymbolLib::at(testlib::sample_symbols()),
+            lib: SymbolLib::at(netsmith_testkit::sample_symbols()),
             dir: None,
         });
     }
@@ -135,7 +135,7 @@ pub fn corpus() -> Vec<Case> {
         groups,
         rails: rails(&["GND"], &["VIN"]),
         mapping: Mapping::standard(),
-        lib: SymbolLib::at(testlib::sample_symbols()),
+        lib: SymbolLib::at(netsmith_testkit::sample_symbols()),
         dir: None,
     });
     // The bus boards of ADR 0067 come last: tests count into the list by position.

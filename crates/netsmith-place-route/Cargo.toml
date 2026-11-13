@@ -21,6 +21,7 @@ netsmith-pcb = { path = "../netsmith-pcb" }
 serde = { version = "1.0.229", features = ["derive"] }
 
 [dev-dependencies]
+netsmith-testkit = { path = "../netsmith-testkit" }
 # Not the netsmith crate, as in netsmith-pcb's tests (see there): a test of this crate would then
 # be a dependent of every crate the netsmith crate links, netsmith-3d among them (issue #518).
 netsmith-check = { path = "../netsmith-check" }
