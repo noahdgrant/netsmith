@@ -37,6 +37,7 @@ mod rail_outputs;
 mod row;
 mod shared;
 mod std_generics;
+mod step_model;
 mod supply_peak;
 mod system;
 mod tri_state;

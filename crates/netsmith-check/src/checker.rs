@@ -885,6 +885,10 @@ impl<'a> Checker<'a> {
                     .add_field(id, "pin_protrusion", FieldKind::Quantity(Dimension::LENGTH));
             self.model
                 .add_member(id, "pin_protrusion", Member::Field(field));
+            // And one for the STEP model it is drawn from (ADR 0108), of the prelude's
+            // `StepModel`: the part or the board states it, and the design stage reads it.
+            // A part that states no file is drawn with its generated shape.
+            self.add_step_model(id);
         }
         // Every part and module has a `.place` for the requirements on where it goes on the
         // board (ADR 0045): the board narrows its fields like any others.
@@ -1045,6 +1049,20 @@ impl<'a> Checker<'a> {
     /// `top` and `bottom` of its edges), the turn in degrees and the face. A module's has
     /// no `rotation`: the placer does not turn a module as a block. Its `side` is a hard
     /// requirement on every part of it (ADR 0048, "Syntax decisions" 5).
+    /// The built-in `.model` of a part (ADR 0108): an instance of the prelude's `StepModel`,
+    /// made in the prelude's own file like any member of that type.
+    fn add_step_model(&mut self, part: InstId) {
+        let (m, i) = self
+            .prelude_def("StepModel")
+            .expect("the prelude defines StepModel");
+        let def = self.modules[m].defs[i].clone();
+        let saved = self.use_site.take();
+        if let Some(model) = self.instantiate(&def, (m, i), "model", Some(part)) {
+            self.model.add_member(part, "model", Member::Inst(model));
+        }
+        self.use_site = saved;
+    }
+
     fn add_place(&mut self, owner: InstId, span: Span) {
         let source = self.model.instance(owner).source;
         let place = self.model.add_instance(Instance {
@@ -1719,8 +1737,8 @@ impl Checker<'_> {
     }
 
     /// Whether a statement of a board may mention these fields. A physical file may set and
-    /// compare only physical things: a part's `.place`, a part's `.height` and `.pin_protrusion`, and what the
-    /// file declared itself. A board's circuit source may mention none of a `.place`
+    /// compare only physical things: a part's `.place`, a part's `.height`, `.pin_protrusion` and `.model`, and
+    /// what the file declared itself. A board's circuit source may mention none of a `.place`
     /// (ADR 0048 decision 10). Reports it when not.
     pub(crate) fn physical_gate(&mut self, fields: &[crate::model::FieldId], span: Span) -> bool {
         if let Some(phys) = &self.phys {
@@ -1730,7 +1748,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source"
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source"
                         ),
                     );
                     return false;
@@ -1763,6 +1781,9 @@ impl Checker<'_> {
         if (f.name == "height" || f.name == "pin_protrusion")
             && self.model.instance(f.owner).kind == InstKind::Part
         {
+            return true;
+        }
+        if self.model.is_step_model(f.owner) {
             return true;
         }
         let mut cur = Some(f.owner);

@@ -93,6 +93,7 @@ mod std_kinds;
 mod std_logic;
 mod std_models;
 mod std_zener;
+mod step_model;
 mod stock_note;
 mod supply;
 mod symbol_gallery;

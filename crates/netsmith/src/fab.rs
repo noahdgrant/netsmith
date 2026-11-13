@@ -175,6 +175,10 @@ pub struct FabOptions {
     /// `step = false` in `netsmith.toml`. When it is `false`, a `<board>.step` that an earlier run
     /// left in the folder is removed, as the `.glb` is.
     pub step: bool,
+    /// Where the files of the target are, to find the STEP models its parts are drawn from
+    /// (ADR 0108): a path outside the project stops `fab`, a file that is not there is a
+    /// warning. `None` finds none, and every part is drawn with its generated shape.
+    pub models: Option<crate::models::Places>,
 }
 
 /// Whether `fab` may move pins by itself, and where the pin file is.
@@ -275,6 +279,7 @@ impl Default for FabOptions {
             glb: true,
             save_placed: false,
             step: true,
+            models: None,
         }
     }
 }
@@ -375,7 +380,24 @@ pub fn fab_detailed(
         }
     }
     let mut pin_state = PinState::new(&outcome.pins);
-    let (built_boards, panels) = (outcome.boards, outcome.panels);
+    let (mut built_boards, panels) = (outcome.boards, outcome.panels);
+    // The STEP models parts are drawn from, found on disk (ADR 0108).
+    if let Some(places) = &options.models {
+        let mut errors = String::new();
+        for built in &mut built_boards {
+            let label = built.label();
+            let found = crate::models::locate(&mut built.design, places);
+            for warning in found.warnings {
+                say(format!("warning: {label}: {warning}"));
+            }
+            for error in found.errors {
+                errors.push_str(&format!("error: {label}: {error}\n"));
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors.into());
+        }
+    }
     let board_names: Vec<String> = built_boards.iter().map(|b| b.design.name.clone()).collect();
     // The layout file beside the source, if there is one: it says which face each part is on
     // and where things are, and a wrong entry stops fab before anything is placed.

@@ -6862,7 +6862,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`) and the outline, cutouts, keepouts, holes, fiducials and labels it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= AssemblyMode::Hand
@@ -7318,7 +7318,7 @@ error: Open: `k` allows tracks, vias, copper and parts, and forbids nothing
 
 **Height limits (ADR 0045).** A board that fits in plan view can still hit a lid, a bracket or a neighbouring board. A part states how tall its body stands with the built-in member `.height` (one value, from the face of the board it is on to the top of its body; the board's physical file may narrow it for the board), and a `Keepout` in the physical file states the tallest a part may stand where it is with `.max_height`. A keepout that states `.max_height` and none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else: it only limits height. `.layers` says which face it limits (`"top"` for the parts on the top face, `"bottom"` for the parts on the bottom, `"all"` for both), so a part on the back has its own limit: two keepouts over the same area, one for each face.
 
-A part that states no `.height` has the `height` cell of the catalog row it was picked as, if the row has one (ADR 0094): a catalog file's `height` is one length that a datasheet or a drawing gives, the greatest it allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. A height that the design states wins, whatever the row says, and the row's height is never an input of the pick: no row is chosen or refused for it. For a board that has a height limit, `fab-notes.txt` says how many parts have a known height and names the row each catalog height was read from. A part with neither may have the _Standard height_ of its footprint (ADR 0106): the greatest height its package's JEDEC outline allows, for the generated footprints a maker's drawing of that outline was read for (`SOIC-8_3.9x4.9mm_P1.27mm` is 1.75 mm, MS-012; the list and the drawings are in `crates/netsmith-pcb/src/standard_height.rs`; chip passives and QFNs have none). It is never the part's `.height`: where it fits a limit, the part passes and `fab` and `fab-notes.txt` say that the pass rests on the standard (`note: U1 (`u1`) fits the 4.00 mm the keepout `lid` allows on the top face by its package standard ...`); where it does not, the part is unchecked, as below, with the standard's figure in the message, because a part in that package may be lower. A part with none of the three has no height: it is not taken as flat and not guessed. Where a limit covers its body, `fab` and the editor print a warning that names it (`height of R3 (`r3`) is unchecked ...`), and `fab` writes it in `fab-notes.txt`. With `constraints = "error"` in `netsmith.toml`, or `fab --constraints error`, it is an error that stops `fab` instead (`--constraints warn` wins over the manifest, and `--allow-drc-violations` does not waive it). A part that does state one is kept out from under a zone it is too tall for by the placer, and the placement check names it, with the numbers, if it stands there anyway. A zone a part carries (a `Keepout` member of a part, in the part's own frame) is kept clear of the same way, wherever the part ends up and however it is turned: the placer keeps the other parts out of it, and the check measures it against every part but the one that carries it. The footprint's 3D model is not read.
+A part that states no `.height` has the `height` cell of the catalog row it was picked as, if the row has one (ADR 0094): a catalog file's `height` is one length that a datasheet or a drawing gives, the greatest it allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. A height that the design states wins, whatever the row says, and the row's height is never an input of the pick: no row is chosen or refused for it. For a board that has a height limit, `fab-notes.txt` says how many parts have a known height and names the row each catalog height was read from. A part with neither may have the _Standard height_ of its footprint (ADR 0106): the greatest height its package's JEDEC outline allows, for the generated footprints a maker's drawing of that outline was read for (`SOIC-8_3.9x4.9mm_P1.27mm` is 1.75 mm, MS-012; the list and the drawings are in `crates/netsmith-pcb/src/standard_height.rs`; chip passives and QFNs have none). It is never the part's `.height`: where it fits a limit, the part passes and `fab` and `fab-notes.txt` say that the pass rests on the standard (`note: U1 (`u1`) fits the 4.00 mm the keepout `lid` allows on the top face by its package standard ...`); where it does not, the part is unchecked, as below, with the standard's figure in the message, because a part in that package may be lower. A part with none of the three has no height: it is not taken as flat and not guessed. Where a limit covers its body, `fab` and the editor print a warning that names it (`height of R3 (`r3`) is unchecked ...`), and `fab` writes it in `fab-notes.txt`. With `constraints = "error"` in `netsmith.toml`, or `fab --constraints error`, it is an error that stops `fab` instead (`--constraints warn` wins over the manifest, and `--allow-drc-violations` does not waive it). A part that does state one is kept out from under a zone it is too tall for by the placer, and the placement check names it, with the numbers, if it stands there anyway. A zone a part carries (a `Keepout` member of a part, in the part's own frame) is kept clear of the same way, wherever the part ends up and however it is turned: the placer keeps the other parts out of it, and the check measures it against every part but the one that carries it. The footprint's 3D model is not read, and a part's own STEP model (`.model`, see _A part's STEP model_) is drawn and never gives a height.
 
 ```nsm solve place
 import std::parts::passive::Resistor
@@ -7599,6 +7599,65 @@ error: j.pin_protrusion must always be at most 3mm, but 5mm is not always below 
 8 |     .pin_protrusion <= 3mm
   |     ^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+### A part's STEP model
+
+**A part may be drawn from a STEP model of the project (ADR 0108).** Every part has the built-in member `.model`, of the prelude's interface `StepModel` (in scope everywhere, no import). `.model.file` names a STEP file of the project, relative to the file that states it; `render`, the `.glb`, the editor's 3D view and the STEP export are to draw it in place of the part's _Package shape_ (the drawing is not done yet: today the model is found and carried with the design, and nothing draws it). It is stated where `.height` is: a part's definition states it once for every use of the part, and a board or its physical file states it for one part. The model is placed at the footprint's origin, on the part's face, turned with the part and mirrored on the bottom face. `.model.rx`, `.ry` and `.rz` turn it, in degrees about x, then y, then z, and `.model.x`, `.y` and `.z` then move it, in the footprint's frame, so that the numbers of a KiCad footprint's `(model ... (offset (xyz ...)) (rotate (xyz ...)))` line can be copied in. Each is one value, and an unstated one is zero. netsmith never bundles a model and never downloads one.
+
+```nsm
+import std::parts::connector::Header1x2
+
+/// An invented two-pin receptacle, drawn from its maker's model.
+part Receptacle {
+    .designator &= "J"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+    // The maker's model stands on its own origin, turned a quarter and sunk 0.2 mm.
+    .model.file &= "models/receptacle.step"
+    .model.rz &= 90
+    .model.z &= -0.2mm
+}
+
+board Charger {
+    .usb: Receptacle
+    .header: Header1x2
+    .usb.a ~ .header.p1
+    .usb.b ~ .header.p2
+}
+```
+
+The model is a drawing, never a height: the part's `.height` still comes from what _Height limits_ lists, and a part of unknown height drawn from a model stays unknown to the checks. A maker's license often keeps its model out of a public repository, so a file that is not there is a warning, from `build`, `check` and `fab`, and the part is drawn with its generated shape:
+
+```text
+warning: Charger: `usb.model.file` names `src/models/receptacle.step` (src/charger.nsm:11), and there is no such file, so `usb` is drawn with its generated shape; add the file, or leave it out on a machine that may not have it
+```
+
+A path outside the project (the folder of `netsmith.toml`, or the folder of a file that has none) is an error, and so is an absolute path, and a path stated in two files of two folders that names a different file from each. Two statements of two files are the usual contradiction:
+
+```nsm fails
+part Plug {
+    .designator &= "J"
+    .p1: Pin
+    .model.file &= "models/plug.step"
+}
+
+board Two {
+    .plug: Plug
+    .plug.model.file &= "models/other.step"
+}
+```
+
+```text
+error: contradiction on `plug.model.file`: it is already "models/plug.step", which does not overlap "models/other.step"
+  --> main.nsm:9:5
+  |
+9 |     .plug.model.file &= "models/other.step"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+An offset or a rotation with no file is refused, as there is nothing to place, and so is a rotation or an offset that is a range.
 
 ### Labels
 
@@ -13261,6 +13320,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
 | `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`), and `.qualification`, the qualification it requires of every fitted part (`Qualification::Aec`). Every fitted part is checked against it (ADR 0099). |
 | `std::prelude::Qualification` (in scope everywhere, no import) | The family of qualification a part claims: `None` (its datasheet says the ordering code is not qualified) and `Aec` (AEC-Q100, Q101 or Q200). The type of the built-in `.qualification` of every part, of the catalog column `qualification` and of `.environment.qualification` (ADR 0099). See Qualification, under The environment of a board. |
+| `std::prelude::StepModel` (in scope everywhere, no import) | The STEP model a part is drawn from, the type of the built-in `.model` of every part (ADR 0108): `.file`, relative to the file that states it and inside the project, the offset `.x`, `.y`, `.z` and the rotation `.rx`, `.ry`, `.rz` in degrees, applied before the offset. See A part's STEP model. |
 | `std::env::Automotive` | A named environment: AEC-Q100 Grade 1, -40degC..125degC (AEC-Q100-REV-J, Table 1, ambient operating temperature range), offered so a board narrows it. See Named environments. |
 | `std::env::AutomotiveGrade0` | AEC-Q100 Grade 0, -40degC..150degC, the same table. |
 | `std::env::AutomotiveGrade2` | AEC-Q100 Grade 2, -40degC..105degC, the same table. |

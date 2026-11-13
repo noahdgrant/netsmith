@@ -218,7 +218,40 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 eprintln!("note: {note}");
             }
         }
-        let boards = outcome.boards;
+        let mut boards = outcome.boards;
+        // The STEP models parts are drawn from, found on disk (ADR 0108): a path outside the
+        // project stops the file, a file that is not there is a warning.
+        let places = netsmith::models::Places::of(&target);
+        let mut misplaced = false;
+        for b in &mut boards {
+            let label = b.label();
+            let found = netsmith::models::locate(&mut b.design, &places);
+            for warning in &found.warnings {
+                if json {
+                    report.findings.push(Finding {
+                        board: Some(label.clone()),
+                        ..Finding::plain(Severity::Warning, "design", warning.clone())
+                    });
+                } else {
+                    eprintln!("warning: {label}: {warning}");
+                }
+            }
+            for error in &found.errors {
+                misplaced = true;
+                fail(
+                    &mut report,
+                    Finding {
+                        board: Some(label.clone()),
+                        ..Finding::plain(Severity::Error, "design", error.clone())
+                    },
+                    &format!("error: {label}: {error}\n"),
+                );
+            }
+        }
+        if misplaced {
+            code = ExitCode::FAILURE;
+            continue;
+        }
         // What the requirements prove cannot be placed is said now, with no placing
         // (ADR 0045 section 14); the layout file's locks count.
         let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
