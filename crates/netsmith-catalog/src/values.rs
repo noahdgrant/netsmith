@@ -81,7 +81,7 @@ fn places(sources: &Sources, at: &[(netsmith_check::SourceId, netsmith_lang::Spa
 
 /// The picks that nothing limited, as findings (stage 1a). For one board of a system, only its
 /// parts.
-pub(crate) fn unconstrained_pick_findings(
+pub fn unconstrained_pick_findings(
     solution: &Solution,
     sources: &Sources,
     board: Option<InstId>,
@@ -224,7 +224,7 @@ pub(crate) fn unconstrained_pick_findings(
 
 /// The values that nothing states and a check waits for, as findings (stage 1b). For one board
 /// of a system, only those declared inside it.
-pub(crate) fn unstated_value_findings(
+pub fn unstated_value_findings(
     solution: &Solution,
     sources: &Sources,
     board: Option<InstId>,

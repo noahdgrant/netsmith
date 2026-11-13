@@ -11,7 +11,7 @@ use netsmith_solve::{Catalogs, SoldOut};
 
 /// The notes of a designed board, one for each part (a bank is one part) that a file says is
 /// out of stock, in the order of the design.
-pub(crate) fn notes(designed: &Designed, catalogs: &Catalogs) -> Vec<String> {
+pub fn notes(designed: &Designed, catalogs: &Catalogs) -> Vec<String> {
     // Each part of a bank has the same pick: one note, naming every reference designator.
     let mut found: Vec<(netsmith_check::InstId, Vec<&str>, usize, SoldOut)> = Vec::new();
     for (i, (sourced, origin)) in designed.sourcing.iter().zip(&designed.origins).enumerate() {

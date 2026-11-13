@@ -1,0 +1,27 @@
+[package]
+name = "netsmith-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
+[dependencies]
+netsmith-check = { path = "../netsmith-check" }
+netsmith-core = { path = "../netsmith-core" }
+netsmith-design = { path = "../netsmith-design" }
+netsmith-lang = { path = "../netsmith-lang" }
+netsmith-quantity = { path = "../netsmith-quantity" }
+netsmith-solve = { path = "../netsmith-solve" }
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+toml = "1.1.8"
+ureq = "3"
+
+[dev-dependencies]
+automod = "1.0.17"
+netsmith-testkit = { path = "../netsmith-testkit" }

@@ -714,6 +714,7 @@ dependencies = [
  "automod",
  "netsmith",
  "netsmith-3d",
+ "netsmith-catalog",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
@@ -735,7 +736,6 @@ dependencies = [
  "sha2",
  "toml",
  "tungstenite 0.30.0",
- "ureq",
  "zip",
 ]
 
@@ -754,6 +754,23 @@ dependencies = [
  "netsmith-solve",
  "netsmith-testkit",
  "serde_json",
+]
+
+[[package]]
+name = "netsmith-catalog"
+version = "0.1.0"
+dependencies = [
+ "automod",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-lang",
+ "netsmith-quantity",
+ "netsmith-solve",
+ "netsmith-testkit",
+ "serde_json",
+ "toml",
+ "ureq",
 ]
 
 [[package]]

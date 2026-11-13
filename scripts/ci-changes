@@ -42,8 +42,8 @@
 #   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith lock --check` over every
 #            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
-#            are linked into the binary (the solver is netsmith-solve, and the checker and the
-#            design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
+#            are linked into the binary (the solver is netsmith-solve, the catalogs and the supply
+#            logic are netsmith-catalog, and the checker and the design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
 #            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
 #            Not the crates after the solver either: `lock` reads no KiCad library, no footprint and
 #            no board, so a change to netsmith-geom, -pcb, -place-route, -fab, -netlist, -3d, -view or
@@ -69,9 +69,9 @@
 # crate (the shared `tests/common`, `tests/main.rs`, fixtures) counts as KiCad-backed. The same
 # holds for the `tests.rs` of a module in `src/`. A change in the source of a crate (even in
 # crates/netsmith/src/lib.rs, which builds the design and exports its KiCad files) is not
-# narrowed: it is the code those tests run. The one exception is crates/netsmith/src/refresh/*
-# (the catalog refresh: CSV and HTTP, nothing of KiCad), which keeps `recipes` (the editor
-# refreshes catalogs) and drops `kicad`.
+# narrowed: it is the code those tests run. The one exception is the catalog refresh (crates/netsmith-catalog/src/refresh/*
+# and crates/netsmith/src/refresh.rs: CSV and HTTP, nothing of KiCad), which keeps `recipes` (the
+# editor refreshes catalogs) and drops `kicad`.
 #
 # A change to the workflows, the actions (.github/actions) or to scripts/ runs everything, and so does a path nothing here knows:
 # when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
@@ -183,7 +183,9 @@ while IFS= read -r path; do
         .claude/*) rust=true ;;
         .agents/*) ;;
 
-        crates/netsmith/src/refresh/*) rust=true recipes=true ;;
+        # The catalog refresh (library in netsmith-catalog, the targets of a command in netsmith): it
+        # runs from `catalog refresh` and the editor's button, never in a build.
+        crates/netsmith/src/refresh.rs | crates/netsmith-catalog/src/refresh/*) rust=true recipes=true ;;
         # The leaves netsmith-core and netsmith-sexp (the reader of the mapping and the libraries)
         # are linked into the binary and are read by every stage, the solver's among them.
         crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-sexp/*) kicad_crate "${path#crates/*/}" "$path" ;;

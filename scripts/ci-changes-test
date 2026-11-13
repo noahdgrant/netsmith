@@ -57,7 +57,7 @@ file crates/netsmith-place-route/tests/pure.rs "$pure"
 file crates/netsmith-place-route/tests/asks.rs "$pure
 KicadCliExe::locate_runnable()"
 file crates/netsmith-design/tests/pure.rs "$pure"
-file crates/netsmith/src/supply/tests.rs "$pure"
+file crates/netsmith/src/editor/tests.rs "$pure"
 file crates/netsmith-fab/src/tests.rs "$pure"
 file crates/netsmith/tests/main.rs "mod pure;"
 i=0
@@ -81,7 +81,7 @@ use netsmith::{Built, build_with};"
 file crates/netsmith/tests/common/mod.rs "$pure"
 file crates/netsmith/tests/fixtures/board.nsm "board B {}"
 file crates/netsmith-view/tests/asks.rs "KicadCliExe::locate()"
-file crates/netsmith/src/refresh/mod.rs "KicadCliExe::locate()"
+file crates/netsmith-catalog/src/refresh/mod.rs "KicadCliExe::locate()"
 
 # --- prose and files nothing reads: no job -------------------------------------------------
 row "0 0 0 0 0 0" README.md
@@ -133,6 +133,9 @@ row "1 0 0 1 1 1" crates/netsmith-solve/src/solve.rs
 row "1 0 0 1 1 1" crates/netsmith-check/src/checker.rs
 row "1 0 0 1 1 1" crates/netsmith-lang/src/parse.rs crates/netsmith-quantity/src/lib.rs
 row "1 0 0 1 1 1" crates/netsmith-dxf/src/lib.rs
+# The catalog sits beside the solver: a pick moves with it, so `locks` and `designs` run.
+row "1 0 0 1 1 1" crates/netsmith-catalog/src/picks.rs crates/netsmith-catalog/src/supply/mod.rs crates/netsmith-catalog/Cargo.toml
+row "1 0 0 0 0 0" crates/netsmith-catalog/tests/main.rs crates/netsmith-catalog/tests/supply.rs
 row "1 0 0 0 0 0" crates/netsmith-solve/tests/main.rs
 
 # --- the test helpers: a dev-dependency, so the tests (with KiCad), never the binary ----------
@@ -159,7 +162,7 @@ row "1 1 1 1 1 1" examples/notes.txt
 row "1 1 1 1 1 1" crates/netsmith/src/lib.rs
 row "1 1 1 1 1 1" crates/netsmith/src/fab.rs crates/netsmith/src/order.rs crates/netsmith/src/compare.rs
 row "1 1 1 1 1 1" crates/netsmith/src/editor/analysis.rs
-row "1 1 1 1 1 1" crates/netsmith/src/supply/mod.rs
+row "1 1 1 1 1 1" crates/netsmith/src/pick_lock.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/src/main.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/src/commands/mod.rs
 row "1 1 1 1 1 1" crates/netsmith-cli/Cargo.toml
@@ -198,13 +201,13 @@ row "1 0 1 1 0 0" crates/netsmith-3d/Cargo.toml
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/scene3d.rs
 row "1 0 0 0 0 0" crates/netsmith-3d/tests/main.rs
 row "1 1 0 0 0 0" crates/netsmith-kicad/examples/locate.rs crates/netsmith-fab/examples/drc.rs
-row "1 0 1 0 0 0" crates/netsmith/src/refresh/mod.rs
-row "1 0 1 0 0 0" crates/netsmith/src/refresh/http.rs crates/netsmith/src/refresh/csvfile.rs
+row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/mod.rs crates/netsmith/src/refresh.rs
+row "1 0 1 0 0 0" crates/netsmith-catalog/src/refresh/http.rs crates/netsmith-catalog/src/refresh/csvfile.rs
 
 # --- test files of those crates: KiCad only when the file can ask; never the recipes ----------
 row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs
 row "1 0 0 0 0 0" crates/netsmith-fab/tests/pure.rs crates/netsmith-pcb/tests/pure.rs crates/netsmith-design/tests/pure.rs
-row "1 0 0 0 0 0" crates/netsmith/src/supply/tests.rs crates/netsmith-fab/src/tests.rs
+row "1 0 0 0 0 0" crates/netsmith/src/editor/tests.rs crates/netsmith-fab/src/tests.rs
 row "1 0 0 0 0 0" crates/netsmith/tests/pure.rs crates/netsmith-pcb/tests/pure.rs
 row "1 0 0 0 0 0" crates/netsmith/tests/message.rs crates/netsmith/tests/mapping.rs
 for n in $(seq 1 "$i"); do
@@ -246,6 +249,7 @@ crates_row "netsmith-editor" crates/netsmith-editor/web/src/app.ts
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs crates/netsmith-view/tests/layout.rs
 crates_row "netsmith-view netsmith-solve" crates/netsmith-view/src/layout.rs crates/netsmith-solve/src/solve.rs
 crates_row "netsmith" crates/netsmith/tests/pure.rs
+crates_row "netsmith-catalog" crates/netsmith-catalog/src/picks.rs crates/netsmith-catalog/tests/supply.rs
 crates_row "netsmith-cli" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/tests/pure.rs
 crates_row "netsmith-pcb" crates/netsmith-pcb/src/footprint.rs
 crates_row "netsmith-geom" crates/netsmith-geom/src/geom.rs
@@ -307,7 +311,7 @@ for f in crates/*/tests/*.rs crates/*/src/tests.rs crates/*/src/*/tests.rs; do
     if grep -qE 'skip_without_kicad_libraries|kicad_libraries_installed|locate_runnable|KicadCliExe::locate|skipped: no KiCad' "$f"; then
         checked=$((checked + 1))
         case "$f" in
-            crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-solve/* | crates/netsmith-check/* | crates/netsmith-lang/* | crates/netsmith-quantity/* | crates/netsmith-dxf/*) continue ;;
+            crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-solve/* | crates/netsmith-catalog/* | crates/netsmith-check/* | crates/netsmith-lang/* | crates/netsmith-quantity/* | crates/netsmith-dxf/*) continue ;;
         esac
         got="$(printf '%s\n' "$f" | "$script" | awk -F= '$1 == "kicad" { print $2 }')"
         if [ "$got" != true ]; then
