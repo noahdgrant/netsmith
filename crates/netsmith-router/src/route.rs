@@ -198,7 +198,7 @@
 //!
 //! When a board is routed, after the meanders (below), the vias beside vias and the stitching
 //! of pours, each track that ends in a pad or a via gets a teardrop where it leaves the copper
-//! (`netsmith_pcb::teardrop::add`, unless [`RouteOptions::teardrops`] is off), where it keeps every
+//! (`crate::teardrop::add`, unless [`RouteOptions::teardrops`] is off), where it keeps every
 //! space the design rules check asks of a track. They are drawn round the copper the search
 //! settled, before the arcs at the bends ([`crate::arcs`]), which keep clear of them, and the
 //! router never searches round them; a board's vias are the same with them or without.
@@ -208,7 +208,7 @@
 //!
 //! # Length-matching meanders (issue #431, S11)
 //!
-//! **What is built** (`netsmith_pcb::meander::add`). When the best try routed every line, its
+//! **What is built** (`crate::meander::add`). When the best try routed every line, its
 //! copper is on the board and before the vias beside vias, the stitching of pours, the
 //! teardrops and the arcs, the shorter net of each diff pair whose two nets' track lengths
 //! differ by more than 0.1 mm gets a meander sized to add the difference: bumps with 45 degree corners on one side of
@@ -5031,13 +5031,13 @@ pub struct RouteOptions {
     /// Which tries route the lines' classes in turn, with their protection ([`LineClasses`]).
     pub classes: LineClasses,
     /// Whether the routed board gets teardrops where its tracks meet pads and vias
-    /// (`netsmith_pcb::teardrop`); on by default.
+    /// (`crate::teardrop`); on by default.
     pub teardrops: bool,
     /// The largest radius of the arc drawn at each bend once the board is routed, in widths of
     /// its track ([`crate::arcs`]); 0 draws none, and the bends keep their corners.
     pub arcs: f64,
     /// Whether the shorter net of each diff pair gets a meander that matches the pair's lengths
-    /// (`netsmith_pcb::meander`), on a board routed completely; on by default.
+    /// (`crate::meander`), on a board routed completely; on by default.
     pub meanders: bool,
 }
 
@@ -5241,9 +5241,9 @@ pub struct Routing {
     /// With [`RouteOptions::snapshots`], what the try that gave the result had routed after
     /// each stage it ran, in order, the last [`SnapshotStage::Final`]; empty otherwise.
     pub stages: Vec<Snapshot>,
-    /// Each diff pair's skew before and after its meanders (`netsmith_pcb::meander`); empty
+    /// Each diff pair's skew before and after its meanders (`crate::meander`); empty
     /// when the board was left with lines or [`RouteOptions::meanders`] is off.
-    pub pairs: Vec<netsmith_pcb::meander::Matched>,
+    pub pairs: Vec<crate::meander::Matched>,
 }
 
 /// Route as much of the ratsnest as the router can, adding tracks and vias to the board.
@@ -5310,7 +5310,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // Diff pairs matched in length, on a board routed completely (issue #431, S11).
     let meanders = options.meanders && complete;
     let mut pairs = if meanders {
-        netsmith_pcb::meander::add(board)
+        crate::meander::add(board)
     } else {
         Vec::new()
     };
@@ -5320,7 +5320,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     crate::stitch::stitch(board);
     // Teardrops round the copper the search settled (issue #431, S11).
     if options.teardrops {
-        netsmith_pcb::teardrop::add(board);
+        crate::teardrop::add(board);
     }
     // The bends become arcs where they keep the rules' space, clear of the teardrops.
     crate::arcs::round_bends(board, options.arcs);
@@ -5328,7 +5328,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // topped up with another meander, whose bends are rounded in turn.
     if meanders && options.arcs > 0.0 {
         for _ in 0..MEANDER_TOP_UPS {
-            let again = netsmith_pcb::meander::add(board);
+            let again = crate::meander::add(board);
             for (p, a) in pairs.iter_mut().zip(&again) {
                 p.after = a.after;
             }
@@ -5336,7 +5336,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
                 break;
             }
             crate::arcs::round_bends(board, options.arcs);
-            for (p, skew) in pairs.iter_mut().zip(netsmith_pcb::meander::skews(board)) {
+            for (p, skew) in pairs.iter_mut().zip(crate::meander::skews(board)) {
                 p.after = skew;
             }
         }

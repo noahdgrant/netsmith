@@ -85,3 +85,51 @@ fn process_of(source: &str) -> Process {
         .process
         .expect("the board has a process")
 }
+
+/// The board with the inner layers `body` says, over a resistor that ties
+/// GND to 3V3, as `netsmith-pcb`'s `rules::four_layer_process` and its siblings resolve it.
+fn layered_process(module: &str, name: &str, body: &str) -> Process {
+    process_of(&format!(
+        "import std::mfg::{module}::{name}\nimport std::parts::passive::Resistor\nboard T {{\n    .process: {name} {{\n{body}    }}\n    .r: Resistor {{\n        .a.net &= \"GND\"\n        .b.net &= \"3V3\"\n    }}\n}}\n"
+    ))
+}
+
+/// The LED board on four layers: ground and 3.3 V planes, and the supply net called `3V3`.
+pub fn four_layer_design() -> Design {
+    let mut design = led_design();
+    design.process = Some(layered_process(
+        "jlcpcb",
+        "FourLayer",
+        "        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n",
+    ));
+    design.nets[1].name = "3V3".into();
+    design
+}
+
+/// The LED board on six layers: GND on the first inner layer, 3V3 on the last, two signal
+/// layers between them.
+pub fn six_layer_design() -> Design {
+    let mut design = led_design();
+    design.process = Some(layered_process(
+        "jlcpcb",
+        "SixLayer",
+        "        .inner1.net &= \"GND\"\n        .inner2.use &= \"signal\"\n        .inner3.use &= \"signal\"\n        .inner4.net &= \"3V3\"\n",
+    ));
+    design.nets[1].name = "3V3".into();
+    design
+}
+
+/// The LED board on ACME's ten layers: ground on the first inner layer, 3.3 V on the last.
+pub fn ten_layer_design() -> Design {
+    let mut design = led_design();
+    let body: String = (1..=8)
+        .map(|n| match n {
+            1 => format!("        .inner{n}.net &= \"GND\"\n"),
+            8 => format!("        .inner{n}.net &= \"3V3\"\n"),
+            _ => format!("        .inner{n}.use &= \"signal\"\n"),
+        })
+        .collect();
+    design.process = Some(layered_process("acme", "TenLayer", &body));
+    design.nets[1].name = "3V3".into();
+    design
+}

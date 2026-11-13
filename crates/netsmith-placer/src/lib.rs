@@ -21,6 +21,8 @@ mod fit;
 mod place;
 
 #[cfg(test)]
+mod pcb_fixtures;
+#[cfg(test)]
 mod testlib;
 
 // The measure of a placement and the decoupling pairs, which the router uses as well: in
@@ -28,9 +30,5 @@ mod testlib;
 use netsmith_pcb::quality;
 
 pub use board::{board_from_design, board_from_design_placed, precheck};
-/// The board model this crate places. A caller can name the very types the functions here take
-/// through it; `netsmith-pcb`'s own tests, which compile another copy of that crate, read a
-/// placed board back into theirs through it (`board::tests::placed` there).
-pub use netsmith_pcb;
 pub use netsmith_pcb::quality::{DecouplingDistance, Quality, crossings};
 pub use place::{PlaceError, place_subset};

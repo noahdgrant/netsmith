@@ -215,7 +215,7 @@ fn routed_boards_get_teardrops_that_change_no_track_and_pass_the_check() {
         );
         // The same board gives the same teardrops.
         let mut again = without.clone();
-        netsmith_pcb::teardrop::add(&mut again);
+        netsmith_router::teardrop::add(&mut again);
         assert_eq!(again.teardrops, with.teardrops, "board {n}");
         let mine = ours(&with);
         if Ratsnest::of(&with).is_empty() {

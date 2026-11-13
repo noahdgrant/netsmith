@@ -960,7 +960,7 @@ fn fab_board(
         });
         // A diff pair whose meanders could not match it says the skew it keeps (issue #431, S11).
         for p in &routing.pairs {
-            if p.after > netsmith_router::netsmith_pcb::meander::SKEW_TARGET {
+            if p.after > netsmith_router::meander::SKEW_TARGET {
                 say(format!(
                     "{}: diff pair {}/{} keeps a skew of {:.2} mm (from {:.2} mm): no straight run of its shorter net has room for more meander",
                     built.label(),

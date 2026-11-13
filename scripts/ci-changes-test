@@ -196,6 +196,10 @@ row "1 1 1 1 0 0" crates/netsmith-placer/Cargo.toml
 row "1 1 1 1 0 0" crates/netsmith-router/src/route.rs
 row "1 1 1 1 0 0" crates/netsmith-router/Cargo.toml
 row "1 1 1 1 0 0" crates/netsmith-placer/src/place.rs crates/netsmith-router/src/route.rs
+# The router's steps that lived in netsmith-pcb until issue #608 (meanders, teardrops): after the design
+# stage now, so they move no design. The placed boards netsmith-pcb's tests start from are test files.
+row "1 1 1 1 0 0" crates/netsmith-router/src/meander.rs crates/netsmith-router/src/teardrop.rs
+row "1 1 0 0 0 0" crates/netsmith-pcb/tests/fixtures/led.board.json
 # ... until the change reaches something the solver reads.
 row "1 1 1 1 1 1" crates/netsmith-router/src/route.rs crates/netsmith-solve/src/solve.rs
 row "1 1 1 1 1 1" crates/netsmith-router/src/route.rs crates/netsmith-kicad/src/symbols.rs
@@ -270,6 +274,7 @@ crates_row "netsmith-3d" crates/netsmith-3d/src/gltf.rs
 crates_row "netsmith-router" crates/netsmith-router/src/route.rs
 crates_row "netsmith-placer" crates/netsmith-placer/src/place.rs
 crates_row "netsmith-placer netsmith-router" crates/netsmith-placer/src/place.rs crates/netsmith-router/src/route.rs
+crates_row "netsmith-router" crates/netsmith-router/src/meander.rs
 # The synthetic boards the tests share are netsmith-placer's: its dependents (netsmith-router,
 # netsmith-3d, the netsmith crate) run too.
 crates_row "netsmith-placer" crates/netsmith-placer/tests/common/mod.rs

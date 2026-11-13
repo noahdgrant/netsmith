@@ -26,3 +26,4 @@ netsmith-design = { path = "../netsmith-design" }
 netsmith-solve = { path = "../netsmith-solve" }
 # The fab design rules check, which `hole_faces` runs on the placed board.
 netsmith-fab = { path = "../netsmith-fab" }
+serde_json = "1.0.154"

@@ -39,7 +39,6 @@ pub mod footprint;
 pub mod generate;
 pub mod geometry;
 pub mod layout;
-pub mod meander;
 pub mod origin;
 pub mod overhang;
 pub mod placement;
@@ -52,7 +51,6 @@ pub mod shape;
 pub mod stackup;
 pub mod standard_height;
 pub mod svg;
-pub mod teardrop;
 pub mod validate;
 
 pub use board::{

@@ -442,11 +442,10 @@ fn net_of(art: &Artwork, tag: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::tests::four_layer_design;
     use crate::board::{BoardPour, CopperLayer, Placed, Side, Track, Via};
 
     fn four() -> Board {
-        crate::board::tests::placed(&four_layer_design())
+        crate::board::tests::four_layer_board()
     }
 
     fn part<'a>(board: &'a mut Board, refdes: &str) -> &'a mut Placed {

@@ -110,7 +110,7 @@ mod tests {
         // mm) is x -1.6 to 0.6 and y -2.4 to 2.4. On the back x is negated, and turned 90
         // degrees the body is x -2.4 to 2.4 and y -1.6 to 0.6 from the origin: its centre is
         // 0.5 mm above it.
-        let mut board = crate::board::tests::placed(&crate::board::tests::led_design());
+        let mut board = crate::board::tests::led_board();
         let o = board.outline.min;
         let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
         r1.footprint = crate::footprint::Footprint::parse(

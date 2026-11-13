@@ -271,7 +271,6 @@ fn spanning_tree(
 mod tests {
     use netsmith_core::{Design, Net, Part, PinRef};
 
-    use crate::board::tests::{four_layer_design, led_design};
     use crate::board::{CopperLayer, Track, Via};
     use crate::geometry::Pt;
 
@@ -279,7 +278,7 @@ mod tests {
 
     #[test]
     fn the_led_board_has_one_line_per_two_pad_net() {
-        let board = crate::board::tests::placed(&led_design());
+        let board = crate::board::tests::led_board();
         let rats = Ratsnest::of(&board);
         assert_eq!(rats.len(), 3);
         let nets: Vec<&str> = rats.lines.iter().map(|l| l.net.as_str()).collect();
@@ -332,7 +331,7 @@ mod tests {
                     .collect(),
             }],
         };
-        let mut board = crate::board::tests::placed(&design);
+        let mut board = crate::board::tests::unplaced_board(&design);
         for (i, p) in board.parts.iter_mut().enumerate() {
             p.at = Pt::new(i as f64 * 10.0, 0.0);
             p.rotation = 0.0;
@@ -388,7 +387,7 @@ mod tests {
                 ],
             }],
         };
-        let mut board = crate::board::tests::placed(&design);
+        let mut board = crate::board::tests::unplaced_board(&design);
         board.parts[0].at = Pt::new(0.0, 0.0);
         board.parts[1].at = Pt::new(10.0, 0.0);
         board.parts[0].rotation = 0.0;
@@ -402,7 +401,7 @@ mod tests {
 
     #[test]
     fn copper_that_joins_two_pads_removes_their_line() {
-        let mut board = crate::board::tests::placed(&led_design());
+        let mut board = crate::board::tests::led_board();
         assert_eq!(Ratsnest::of(&board).len(), 3);
         let ends = |board: &Board, refdes: &str, pad: &str| {
             let part = board.part(refdes).unwrap();
@@ -427,7 +426,7 @@ mod tests {
 
     #[test]
     fn a_via_joins_copper_on_both_layers() {
-        let mut board = crate::board::tests::placed(&led_design());
+        let mut board = crate::board::tests::led_board();
         let part = board.part("J1").unwrap();
         let j1_1 = part.pad_centre(part.footprint.pads_numbered("1").next().unwrap());
         let part = board.part("R1").unwrap();
@@ -463,7 +462,7 @@ mod tests {
     #[test]
     fn a_plane_joins_its_nets_through_hole_pads_and_leaves_each_surface_mount_pad_a_line() {
         // GND is D1.1 (surface mount) and J1.2 (through hole); 3V3 is J1.1 and R1.1.
-        let board = crate::board::tests::placed(&four_layer_design());
+        let board = crate::board::tests::four_layer_board();
         let rats = Ratsnest::of(&board);
         let summary: Vec<(&str, String, bool)> = rats
             .lines
@@ -482,15 +481,12 @@ mod tests {
         assert_eq!(plane_line.from, plane_line.to);
         assert_eq!(plane_line.length(), 0.0);
         // The same nets on two layers want a line between pads.
-        assert_eq!(
-            Ratsnest::of(&crate::board::tests::placed(&led_design())).len(),
-            3
-        );
+        assert_eq!(Ratsnest::of(&crate::board::tests::led_board()).len(), 3);
     }
 
     #[test]
     fn a_via_beside_the_pad_with_a_track_to_it_joins_the_pad_to_the_plane() {
-        let mut board = crate::board::tests::placed(&four_layer_design());
+        let mut board = crate::board::tests::four_layer_board();
         let d1 = pad_at(&board, "D1", "1");
         let via_at = Pt::new(d1.x, d1.y + 1.5);
         let via = |net: &str, at| Via {
@@ -521,7 +517,7 @@ mod tests {
 
     #[test]
     fn a_line_says_what_it_joins() {
-        let board = crate::board::tests::placed(&four_layer_design());
+        let board = crate::board::tests::four_layer_board();
         let lines: Vec<String> = Ratsnest::of(&board)
             .lines
             .iter()
@@ -539,7 +535,7 @@ mod tests {
 
     #[test]
     fn a_via_on_the_pad_joins_it_to_the_plane() {
-        let mut board = crate::board::tests::placed(&four_layer_design());
+        let mut board = crate::board::tests::four_layer_board();
         let r1 = pad_at(&board, "R1", "1");
         board.vias.push(Via {
             net: "3V3".into(),
@@ -576,13 +572,13 @@ mod tests {
                 }],
             }],
         };
-        let board = crate::board::tests::placed(&design);
+        let board = crate::board::tests::unplaced_board(&design);
         assert!(Ratsnest::of(&board).is_empty());
     }
 
     #[test]
     fn the_ratsnest_is_the_same_every_time() {
-        let board = crate::board::tests::placed(&led_design());
+        let board = crate::board::tests::led_board();
         assert_eq!(Ratsnest::of(&board), Ratsnest::of(&board));
     }
 }
