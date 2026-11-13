@@ -136,8 +136,8 @@ row "1 0 0 1 1 1" crates/netsmith-dxf/src/lib.rs
 row "1 0 0 0 0 0" crates/netsmith-solve/tests/main.rs
 
 # --- the test helpers: a dev-dependency, so the tests (with KiCad), never the binary ----------
-row "1 1 0 0 0" crates/netsmith-testkit/src/lib.rs
-row "1 1 0 0 0" crates/netsmith-testkit/Cargo.toml
+row "1 1 0 0 0 0" crates/netsmith-testkit/src/lib.rs
+row "1 1 0 0 0 0" crates/netsmith-testkit/Cargo.toml
 
 # --- the editor and its views: the recipes, not KiCad ----------------------------------------
 # After the solver, so no `locks`: a pick lock is solver output.
