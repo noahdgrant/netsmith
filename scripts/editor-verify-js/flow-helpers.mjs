@@ -1,5 +1,6 @@
 // Checks shared by the recipes of the drawings that route edges in free channels (the power tree
 // and the system view). A helper, not a recipe: only recipes/ holds recipes.
+import { whenIdle } from './settle.mjs';
 
 /** Every node (card) of the drawing in `scope` with its box in canvas pixels. */
 export function nodesOf(page, scope) {
@@ -78,7 +79,7 @@ export async function sizeSteps({ page, expect, step, section, id }) {
     await page.waitForSelector('.app');
     await section(id);
     await page.waitForSelector(`${scope} .pt-node`);
-    await page.waitForTimeout(900);
+    await whenIdle(page);
     const nodes = await nodesOf(page, scope);
     const edges = await edgesOf(page, scope);
     const m = await page.evaluate((s) => {

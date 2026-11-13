@@ -1,4 +1,5 @@
 // What the schematic recipes share (this file is not a recipe: recipes are in recipes/).
+import { whenIdle } from './settle.mjs';
 
 /** The sheet the toolbar's picker names: `light1`. */
 export const activeSheet = (page) => page.locator('.sheetpick .crumb-sheet').innerText();
@@ -15,7 +16,7 @@ export async function sheetNames(page) {
 export async function openSheet(page, name) {
   await page.locator('.sheetpick .pick-btn').click();
   await page.locator('.pick-pop .sl-row', { has: page.locator('.sl-name', { hasText: new RegExp(`^${name.replace(/[()/]/g, '\\$&')}$`) }) }).first().click();
-  await page.waitForTimeout(250);
+  await whenIdle(page);
 }
 
 /** The zoom the zoom bar shows, in percent. */
@@ -105,7 +106,7 @@ export const overlaps = (a, b, slack = 0.5) => a.x + a.w - slack > b.x && b.x + 
 /** The halos of the parts on show that have a fill or a stroke now, by designator of the part they stand behind. */
 export const visibleHalos = async (page) => {
   // A halo's fill and stroke are CSS transitions: read after they have run, not on the frame of the pick (CI saw `none`).
-  await page.waitForFunction(() => [...document.querySelectorAll('svg.schematic .part-halo')].every((h) => h.getAnimations().length === 0), null, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(() => [...document.querySelectorAll('svg.schematic .part-halo')].every((h) => h.getAnimations().length === 0));
   return page.evaluate(() =>
     [...document.querySelectorAll('svg.schematic g.part[data-ref]')]
       .filter((p) => p.getClientRects().length > 0)

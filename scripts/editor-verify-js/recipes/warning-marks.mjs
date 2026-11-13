@@ -1,6 +1,7 @@
 // The warning triangle everywhere warnings are shown: the file tree, a file's tab, the outline, the status bar, the Problems dock (its toggle
 // and its rows) and the source's gutter and overview ruler. One icon (the same drawing), one colour (the `--warning` token, in every theme),
 // one meaning (a name that says `warning`) for a screen reader.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -15,9 +16,9 @@ export async function run({ page, shot, step, expect, project, section }) {
   await section('source');
   await page.waitForSelector('.cm-editor');
   await page.keyboard.press('Control+j');
-  await page.waitForSelector('.dock .problem.warning', { timeout: 15000 });
-  await page.waitForSelector('.ft-row .sev-mark', { timeout: 10000 });
-  await page.waitForSelector('.cm-sev.warning', { timeout: 10000 });
+  await page.waitForSelector('.dock .problem.warning');
+  await page.waitForSelector('.ft-row .sev-mark');
+  await page.waitForSelector('.cm-sev.warning');
   await page.waitForSelector('.tabbar.files .tab .sev-mark');
 
   const spots = {
@@ -65,7 +66,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   step('in every theme: the same triangle, the token\'s colour, and a name that says warning');
   for (const id of THEMES) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, id);
-    await page.waitForTimeout(250);
+    await whenIdle(page);
     const r = await audit();
     for (const [name, s] of Object.entries(r.spots)) {
       expect(!s.missing, `${id}: ${name} is on screen`);
@@ -96,7 +97,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   const good = fs.readFileSync(file, 'utf8');
   try {
     fs.writeFileSync(file, good.replace('.supply: Header1x2', '.supply: Header1x2 {\n        .nonsense &= 1V\n    }'));
-    await page.waitForSelector('.ft-row .sev-mark.error', { timeout: 20000 });
+    await page.waitForSelector('.ft-row .sev-mark.error');
     const e = await page.evaluate(() => {
       const probe = document.createElement('i');
       probe.style.color = 'var(--danger)';
@@ -118,6 +119,6 @@ export async function run({ page, shot, step, expect, project, section }) {
     await shot('with-error');
   } finally {
     fs.writeFileSync(file, good);
-    await page.waitForFunction(() => !document.querySelector('.ft-row .sev-mark.error'), null, { timeout: 20000 });
+    await page.waitForFunction(() => !document.querySelector('.ft-row .sev-mark.error'), null);
   }
 }

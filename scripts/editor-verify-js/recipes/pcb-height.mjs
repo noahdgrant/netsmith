@@ -2,6 +2,7 @@
 // the limit under it allows, a finding that names a limit lights the limit's zone when it is
 // picked, and a drag will not put a part that is too tall under a limit (it stops at the edge and
 // says why), while a part that is not too tall, or states no height, goes where it likes.
+import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drag, fresh, labelOf, openPcb, partAt, partOf, scene, screenAt, settled } from '../pcb-helpers.mjs';
@@ -18,7 +19,7 @@ export async function run(tools) {
   // The whole board in the window, so that every drag below starts and ends on screen.
   const fit = async () => {
     await page.getByRole('button', { name: 'Fit' }).click();
-    await page.waitForTimeout(250);
+    await whenIdle(page);
   };
   await fit();
   const lidOf = (s) => s.keepouts.find((k) => k.name === 'lid');

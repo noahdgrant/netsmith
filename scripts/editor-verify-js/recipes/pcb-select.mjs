@@ -1,5 +1,6 @@
 // The PCB canvas: select a part by click and from the list, see its pads and nets, the
 // ratsnest lines to it, hover tooltips, the grid, zoom.
+import { whenIdle } from '../settle.mjs';
 import { BOARD, PART, drag, emptySpot, fresh, labelOf, openPcb, partAt, partOf, screenAt } from '../pcb-helpers.mjs';
 
 export const fixture = 'outline_and_pours';
@@ -48,7 +49,7 @@ export async function run(tools) {
 
   step('box select: drag a rectangle over the capacitors and what lies between them');
   await page.getByRole('button', { name: 'Fit' }).click();
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   const s = c2.scene;
   const c1 = partOf(s, PART.inputCap).courtyard;
   const c2c = partOf(s, PART.outputCap).courtyard;
@@ -63,7 +64,7 @@ export async function run(tools) {
   const before = await page.locator('.pcb-host .zoombar span').innerText();
   await page.mouse.move(c2.centre.x, c2.centre.y);
   await page.mouse.wheel(0, -600);
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await page.locator('.pcb-host .zoombar span').innerText()) !== before, 'the zoom changed');
   await drag(page, { x: 600, y: 700 }, { x: 500, y: 650 }, { button: 'right' });
   await shot('zoomed');

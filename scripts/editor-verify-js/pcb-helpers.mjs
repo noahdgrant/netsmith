@@ -1,4 +1,5 @@
 // What the PCB recipes share (this file is not a recipe: recipes are in recipes/).
+import { waitFor, whenIdle } from './settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,8 +15,12 @@ export async function fresh({ page, url, project }, original = path.join(here, '
   fs.copyFileSync(original, layout);
   await page.goto(url);
   await page.waitForSelector('.app');
-  // Give the server's watcher the moment it needs to notice the file.
-  await page.waitForTimeout(700);
+  // The server's watcher has noticed the file when the scene it serves carries the file's stamp (the file's modified time in
+  // nanoseconds and its size, files.rs `stamp_of`).
+  const on = fs.statSync(layout, { bigint: true });
+  const want = `${on.mtimeNs}-${on.size}`;
+  const board = (await (await fetch(`${url}api/analysis`)).json()).boards[0].name;
+  await waitFor('the server to have read the layout file back', async () => (await scene(page, board)).layoutStamp === want);
   await page.reload();
   await page.waitForSelector('.app');
 }
@@ -104,10 +109,8 @@ export async function drag(page, from, to, options = {}) {
 
 /** Wait until the board has been placed again after an edit: the scene's stamp moved on. */
 export async function settled(page, before, board = BOARD) {
-  for (let i = 0; i < 50; i++) {
+  return waitFor('the layout file to be written (the scene stamp moves on)', async () => {
     const s = await scene(page, board);
-    if (s.layoutStamp !== before) return s;
-    await page.waitForTimeout(100);
-  }
-  throw new Error('the layout file was not written');
+    return s.layoutStamp !== before ? s : null;
+  });
 }

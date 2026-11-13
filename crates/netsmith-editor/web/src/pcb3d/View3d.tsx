@@ -31,6 +31,7 @@ import { systemShown, view3d } from './mode';
 import { LOOKS, type Role, TOKENS } from './palette';
 import { PRESETS, type Preset } from './presets';
 import { type Colours, type Hit, type PadPoint, Viewer } from './viewer';
+import { hold, watchMoving } from '../idle';
 import './view3d.css';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -253,7 +254,9 @@ export function View3d({ board }: { board: string }) {
         refdes: (path) => v.partList().find((p) => p.path === path)?.refdes ?? null,
       },
     };
+    const stopWatching = watchMoving(() => v.busy());
     return () => {
+      stopWatching();
       view3d.current = null;
       watch.disconnect();
       v.canvas.removeEventListener('webglcontextlost', lost);
@@ -268,6 +271,7 @@ export function View3d({ board }: { board: string }) {
     const v = viewer.current;
     if (!v) return;
     const ask = new AbortController();
+    const release = hold();
     void (async () => {
       try {
         const r = await fetch(`/api/pcb/3d?board=${encodeURIComponent(shown)}`, { cache: 'no-store', signal: ask.signal });
@@ -292,6 +296,8 @@ export function View3d({ board }: { board: string }) {
           failure.current = e instanceof Error ? e.message : String(e);
           setStatus({ state: 'error', message: failure.current });
         }
+      } finally {
+        release();
       }
     })();
     return () => ask.abort();

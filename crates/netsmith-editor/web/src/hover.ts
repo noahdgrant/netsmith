@@ -12,6 +12,7 @@
 import { signal } from '@preact/signals';
 
 import type { BoardDetail } from './api';
+import { after } from './idle';
 import { partByPath, refdesOf, under } from './selection';
 
 export type HoverKind = 'part' | 'net' | 'module' | 'bus';
@@ -36,35 +37,35 @@ export const sameHover = (a: Hover | null, b: Hover | null): boolean => a === b 
 export const HOVER_DELAY_MS = 70;
 export const HOVER_LEAVE_MS = 90;
 
-let enterTimer: ReturnType<typeof setTimeout> | undefined;
-let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+let cancelEnter: (() => void) | undefined;
+let cancelLeave: (() => void) | undefined;
 
 /** Set the hover now. */
 export function setHover(h: Hover | null) {
-  clearTimeout(enterTimer);
-  clearTimeout(leaveTimer);
+  cancelEnter?.();
+  cancelLeave?.();
   if (!sameHover(hover.peek(), h)) hover.value = h;
 }
 
 /** The pointer or focus came to `h`: it lights after a short rest, at once when something is lit already. */
 export function hoverEnter(h: Hover) {
-  clearTimeout(leaveTimer);
-  clearTimeout(enterTimer);
+  cancelLeave?.();
+  cancelEnter?.();
   if (sameHover(hover.peek(), h)) {
     // The same thing, maybe with other sets: take them.
     if (hover.peek() !== h) hover.value = h;
     return;
   }
   if (hover.peek()) hover.value = h;
-  else enterTimer = setTimeout(() => (hover.value = h), HOVER_DELAY_MS);
+  else cancelEnter = after(HOVER_DELAY_MS, () => (hover.value = h));
 }
 
 /** The pointer or focus left (what it was on, when given): the light goes out after a moment unless it came to another thing. */
 export function hoverLeave(h?: Hover) {
-  clearTimeout(enterTimer);
+  cancelEnter?.();
   if (h && !sameHover(hover.peek(), h)) return;
-  clearTimeout(leaveTimer);
-  leaveTimer = setTimeout(() => (hover.value = null), HOVER_LEAVE_MS);
+  cancelLeave?.();
+  cancelLeave = after(HOVER_LEAVE_MS, () => (hover.value = null));
 }
 
 /** Put the light out at once (Escape, a view change). */

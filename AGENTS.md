@@ -14,6 +14,7 @@ A language and tools for designing electronics as code. `README.md` says what it
 ## Tests
 
 - A test that needs a folder takes it from `netsmith_testkit::TempDir` (or `TempFile`; the crate `netsmith-testkit` is a `[dev-dependencies]` entry only), which removes it when the test ends, also on a panic. Bind the guard to a name, never to `_`. `NETSMITH_KEEP_TEST_DIRS=1` keeps the folders of a failing run.
+- No test passes or fails by the speed of the machine it runs on. A browser recipe (`scripts/editor-verify-js/recipes`) waits on what the page signals (`whenIdle(page)` from `settle.mjs`, which waits on the page's own `window.__netsmith.idle()`, `crates/netsmith-editor/web/src/idle.ts`) or on the thing the step expects, never for a time: no `waitForTimeout`, no `timeout:` of its own. A timeout is a hang guard only (`HANG_MS` in `settle.mjs`, the default of every wait, set once) and its failure says the page hung. No assertion compares a duration with a limit: a duration that is useful is printed. Where the page gives no signal, add one in the page. `scripts/editor-verify waits` checks the recipes' text and CI runs it.
 - A test should take under about 2 minutes on CI (nextest names a test past a minute as SLOW, `.config/nextest.toml`). A board that needs longer becomes several tests, one per seed or case, or a `measured` test that is `#[ignore]`d, as `mixed::measured` is.
 - `docs/LANGUAGE.md` is the language guide, and `crates/netsmith/tests/guide.rs` runs its examples. Change the guide with the language.
 

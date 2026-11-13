@@ -28,6 +28,18 @@ With a session running, `netsmith view` (the command an agent uses, `docs/BOARD3
 
 `features/README.md` indexes one page per feature: how to get to it, how to drive it with expected results, and the gotchas. Recipes are in `scripts/editor-verify-js/recipes/<name>.mjs`; to cover a new feature, add a recipe and a page, and run the recipe until it passes and the screenshot is right.
 
+## How a recipe waits
+
+No recipe passes or fails by the speed of the machine. This is the rule for every recipe and helper in `scripts/editor-verify-js`:
+
+- **Wait on a signal, never for a time.** After an action, `await whenIdle(page)` (`settle.mjs`): it waits for the page's own `window.__netsmith.idle()` (`crates/netsmith-editor/web/src/idle.ts`), which resolves when no request, analysis, debounce, hover rest or transition is under way and the 3D camera is still, for three frames in a row. Otherwise wait for the thing the step expects (`waitForSelector`, `waitForFunction`), for the page to have taken the analysis of a file the recipe wrote (`pageVersion` before the change, `analysedSince` after; the page says its version in `<html data-analysis>`), or, for something outside the page (a file, a server), `waitFor(what, check)`.
+- **`whenIdle` while a request is held hangs on purpose**: the page is busy until it is answered. A recipe that holds a request with `page.route` uses `gate()` (`await g.opened` in the handler, `g.open()` when the step has seen what the held request shows) and waits for that state, not for idle. No `setTimeout` in a route.
+- **A missing signal is added to the page**, in `crates/netsmith-editor/web/src` (`hold()`, `held()` and `after()` in `idle.ts` mark a request or a pause as busy; `watchMoving()` a motion only the page can ask about), never covered by a longer pause.
+- **A timeout is a hang guard only.** `HANG_MS` (300 s, `NETSMITH_VERIFY_HANG_MS` shortens it while a recipe is written) is the default of every wait of every page, set once in `cli.mjs`: no wait names a time of its own. A wait that reaches it fails the recipe as `HUNG: the page never reached the state this step waits for`, which says the page hung, not that it was slow.
+- **No assertion compares a duration with a limit.** A duration that is useful (how long a cancel took) is printed with `console.log` and never judged. A step that claims a time ("gone within a second") asserts the state instead (it is gone, it ran no animation).
+- `scripts/editor-verify waits` reads the recipes and helpers and fails on `waitForTimeout`, a `timeout:`, `setTimeout`/`setInterval`, `performance.now` and a `Date.now()` that is not just read for printing. `scripts/ci-recipe-slices N` runs it (CI runs that first in every `recipes` slice), so run it locally too.
+- A recipe that fails now and then has a race: in the recipe (it read before the page had settled: wait on the condition) or in the page (it gives no signal: add one). It is fixed there, never rerun.
+
 ## Rules
 
 - Node: the default `node` here may be 18. Use `source ~/.nvm/nvm.sh && nvm use 22`; the wrapper does it for you if it finds `~/.nvm`.

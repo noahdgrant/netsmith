@@ -16,7 +16,7 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('make the order');
   await page.locator('button', { hasText: 'Make order' }).click();
-  await page.waitForSelector('.build .chip:has-text("order made"), .build .chip:has-text("stopped")', { timeout: 240000 });
+  await page.waitForSelector('.build .chip:has-text("order made"), .build .chip:has-text("stopped")');
   const text = await page.locator('.build').innerText();
   expect(text.includes('order made'), `the order was made: ${text.slice(-400)}`);
   expect(text.includes('order demo: 2 board designs, 7 boards in all'), 'the summary counts the boards');

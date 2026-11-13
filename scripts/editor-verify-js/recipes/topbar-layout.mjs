@@ -4,6 +4,7 @@
 // three bars, in each combination, with nothing picked, with a part picked (its chip is the widest thing on the left) and with a net picked
 // in the Schematic (the chip has its pin steppers), and asserts that no two boxes of a bar meet, that none is cut by the window or by a
 // box that clips it, and that the chip does not shorten the name it has room for.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 const WIDTHS = [760, 880, 1000, 1100, 1200, 1280, 1366, 1440, 1600, 1920];
@@ -102,7 +103,7 @@ export async function run({ page, shot, step, expect, url, section }) {
     await page.keyboard.press('Enter');
     await page.waitForSelector('.qp', { state: 'detached' });
     await page.waitForSelector('.selchip');
-    await page.waitForTimeout(400);
+    await whenIdle(page);
   };
 
   const failures = [];
@@ -110,7 +111,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   const sweep = async (tag, widths = WIDTHS) => {
     for (const w of widths) {
       await page.setViewportSize({ width: w, height: 800 });
-      await page.waitForTimeout(60);
+      await whenIdle(page);
       const r = await page.evaluate(audit, [w, 800]);
       measured++;
       for (const p of r.problems) failures.push(`${tag} ${w}px: ${p}`);
@@ -127,7 +128,7 @@ export async function run({ page, shot, step, expect, url, section }) {
       await page.waitForSelector('.boardpick select option', { state: 'attached' });
       await page.selectOption('.boardpick select', board);
       await section('schematic');
-      await page.waitForTimeout(500);
+      await whenIdle(page);
       const tag = `${scale} % ${density}`;
       await sweep(`${tag}, nothing picked,`);
       await pick(part.refdes.toLowerCase());
@@ -150,7 +151,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   await page.waitForSelector('.boardpick select option', { state: 'attached' });
   await page.selectOption('.boardpick select', board);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   await shot('125-compact-1280');
   await pick(part.refdes.toLowerCase());
   await shot('125-compact-1280-picked');

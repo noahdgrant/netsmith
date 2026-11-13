@@ -1,6 +1,7 @@
 // Arranging by keyboard (ADR 0061, stage 4): with a part selected the arrow keys nudge its block one grid step (Shift: ten), `r` turns
 // it, `m` mirrors it, Backspace or Delete clears its entry. They are commands of the registry (palette, cheat sheet), and a press while
 // a write is on its way waits behind it. With nothing selected, or the sheet's reference part, the arrows pan as before.
+import { waitFor, whenIdle } from '../settle.mjs';
 import { POWER, bodyPoint, entries, layoutFile, onGrid, openBoard, partStates, viewOf } from '../layout-helpers.mjs';
 
 export const fixture = 'two_boards';
@@ -19,17 +20,13 @@ async function body({ page, shot, step, expect, project }) {
   layout.remove();
   await page.setViewportSize({ width: 1400, height: 900 });
   const parts = await openBoard(page, POWER);
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   const referencePart = parts['stage.regulator'];
   const mover = parts['stage.input_cap'];
   const canvas = () => page.locator('.schematic-host').click({ position: { x: 6, y: 6 } });
   const waitFile = async (test, what) => {
-    const until = Date.now() + 20000;
-    while (Date.now() < until) {
-      if (test(layout.text())) return layout.text();
-      await page.waitForTimeout(100);
-    }
-    throw new Error(`expected ${what}; the file is ${JSON.stringify(layout.text())}`);
+    await waitFor(`${what} (the file is ${JSON.stringify(layout.text())})`, () => test(layout.text()));
+    return layout.text();
   };
   /** The write is over: the page has redrawn (the part is somewhere else than `from` on the screen, if given) and no redraw is on. */
   const settle = async (from) => {
@@ -37,10 +34,10 @@ async function body({ page, shot, step, expect, project }) {
       await page.waitForFunction(([r, x, y]) => {
         const b = document.querySelector(`svg.schematic g.part[data-ref="${r}"]`)?.getBoundingClientRect();
         return b && (Math.abs(b.left + b.width / 2 - x) > 1 || Math.abs(b.top + b.height / 2 - y) > 1);
-      }, [mover, from.x, from.y], { timeout: 20000 });
+      }, [mover, from.x, from.y]);
     }
-    await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached', timeout: 20000 });
-    await page.waitForTimeout(500);
+    await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached' });
+    await whenIdle(page);
   };
   const entry = () => Object.values(entries(layout.text()))[0] ?? {};
   const pick = async (ref) => {
@@ -53,14 +50,14 @@ async function body({ page, shot, step, expect, project }) {
   await canvas();
   const t0 = (await viewOf(page)).transform;
   await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect((await viewOf(page)).transform !== t0, 'ArrowRight pans');
   expect(!layout.exists(), 'and writes nothing');
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp');
   await page.keyboard.press('Control+a');
   await page.keyboard.type('>nudge');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await page.locator('.qp-row').count()) === 0, 'no "Nudge" row with no part selected');
   await page.keyboard.press('Escape');
 
@@ -68,7 +65,7 @@ async function body({ page, shot, step, expect, project }) {
   await pick(referencePart);
   const t1 = (await viewOf(page)).transform;
   await page.keyboard.press('ArrowDown');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect((await viewOf(page)).transform !== t1 && !layout.exists(), 'ArrowDown pans: the reference part is not nudged');
   await page.keyboard.press('Escape');
 
@@ -78,7 +75,7 @@ async function body({ page, shot, step, expect, project }) {
   await page.waitForSelector('.qp');
   await page.keyboard.press('Control+a');
   await page.keyboard.type('>');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   const rows = (await page.locator('.qp-row').allInnerTexts()).map((r) => r.replace(/\n/g, ' '));
   for (const title of ['Nudge the selected part left one grid step', 'Nudge the selected part down ten grid steps', 'Rotate the selected part a quarter turn', 'Mirror the selected part']) {
     expect(rows.some((r) => r.includes(title)), `the palette has "${title}"`);
@@ -117,7 +114,7 @@ async function body({ page, shot, step, expect, project }) {
   await page.keyboard.press('ArrowLeft');
   await waitFile((t) => t !== null && /dx = -1.27/.test(t), 'dx = -1.27: one step back, then one more');
   await settle();
-  await page.waitForTimeout(800);
+  await whenIdle(page);
   const e2 = entry();
   expect(Number(e2.dx) === -1.27 && Number(e2.dy) === 12.7, `both nudges were made (${JSON.stringify(e2)})`);
 

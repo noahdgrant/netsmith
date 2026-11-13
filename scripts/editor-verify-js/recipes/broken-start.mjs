@@ -31,7 +31,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     step('fix the file: the views come back without a reload');
     fs.writeFileSync(file, good);
     await section('schematic');
-    await page.waitForSelector('.schematic', { timeout: 10000 });
+    await page.waitForSelector('.schematic');
     expect(true, 'the schematic is drawn again');
   } finally {
     fs.writeFileSync(file, good);

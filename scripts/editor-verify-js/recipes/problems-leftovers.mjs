@@ -1,6 +1,7 @@
 // The Problems dock's small leftovers: the place of every problem is a button (Tab reaches it, Enter and a click open the source there, and
 // the row's own click still picks the thing), the row that is picked stays in view when the list moves under it, a fixed order of groups
 // (severity, stage), and a count for each severity in the dock's head and in the status bar.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -16,7 +17,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     await section('source');
     await page.waitForSelector('.cm-editor');
     await page.keyboard.press('Control+j');
-    await page.waitForSelector('.dock .problem.warning', { timeout: 15000 });
+    await page.waitForSelector('.dock .problem.warning');
 
     step('the place of a row is a button with a name: Tab reaches it, Enter opens the source on that line');
     const first = page.locator('.dock .problem').first();
@@ -34,7 +35,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     await page.locator('.dock .problem').first().focus();
     await page.keyboard.press('Tab');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => /Ln 12/.test(document.querySelector('.statusbar .cursor')?.textContent ?? ''), null, { timeout: 5000 });
+    await page.waitForFunction(() => /Ln 12/.test(document.querySelector('.statusbar .cursor')?.textContent ?? ''), null);
     expect(true, 'the cursor is on line 12 of the file (the status bar says Ln 12)');
     expect((await page.locator('.dock .problem.active').count()) === 1, 'and the row is the picked one');
     await shot('place-focus');
@@ -43,7 +44,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     await page.evaluate(() => document.querySelector('.cm-content')?.focus());
     await page.keyboard.press('Control+Home');
     await place.click();
-    await page.waitForFunction(() => /Ln 12/.test(document.querySelector('.statusbar .cursor')?.textContent ?? ''), null, { timeout: 5000 });
+    await page.waitForFunction(() => /Ln 12/.test(document.querySelector('.statusbar .cursor')?.textContent ?? ''), null);
     expect(true, 'the cursor is on line 12 again');
 
     step('arrows move between rows from the place\'s button too (not back to the first row)');
@@ -68,7 +69,7 @@ export async function run({ page, shot, step, expect, project, section }) {
 
     step('many warnings: F8 steps through them and the picked row is always in view');
     fs.writeFileSync(file, `${header}\n${many}`);
-    await page.waitForFunction(() => document.querySelectorAll('.dock .problem.warning').length >= 24, null, { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelectorAll('.dock .problem.warning').length >= 24, null);
     const inView = () =>
       page.evaluate(() => {
         const row = document.querySelector('.dock .problem.active');
@@ -84,21 +85,21 @@ export async function run({ page, shot, step, expect, project, section }) {
     let ok = true;
     for (let i = 0; i < 14; i++) {
       await page.keyboard.press('F8');
-      await page.waitForTimeout(80);
+      await whenIdle(page);
       ok = ok && (await inView());
     }
     expect(ok, 'after each of fourteen F8 the picked row is inside the list\'s box');
     await shot('f8-in-view');
     // the list moves under the picked row: another grouping, a filter, a smaller dock
     await page.locator('.dock-group').selectOption('stage');
-    await page.waitForTimeout(150);
+    await whenIdle(page);
     expect(await inView(), 'grouped by stage: still in view');
     await page.locator('.dock-group').selectOption('severity');
-    await page.waitForTimeout(150);
+    await whenIdle(page);
     expect(await inView(), 'grouped by severity: still in view');
     const active = await page.locator('.dock .problem.active .msg').innerText();
     await page.locator('.dock-search input').fill('Heater0');
-    await page.waitForTimeout(200);
+    await whenIdle(page);
     const still = await page.locator('.dock .problem.active').count();
     expect(still === 0 || (await inView()), 'a filter that keeps the picked row keeps it in view');
     await page.locator('.dock-search input').fill('');
@@ -106,7 +107,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     // shrink the dock: the picked row is still seen
     await page.locator('.dock-resize').focus();
     for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowDown');
-    await page.waitForTimeout(250);
+    await whenIdle(page);
     expect(await inView(), 'a smaller dock: still in view');
     expect(active.length > 0, 'the picked row has a message');
     await shot('smaller-dock');
@@ -114,7 +115,7 @@ export async function run({ page, shot, step, expect, project, section }) {
     step('in every theme the place reads at 4.5:1 or more, at rest and with the focus on it');
     for (const id of ['dark', 'light', 'hc-dark', 'hc-light']) {
       await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, id);
-      await page.waitForTimeout(200);
+      await whenIdle(page);
       const r = await page.evaluate(() => {
         const lum = (c) => {
           const m = c.match(/[\d.]+/g).map(Number);
@@ -135,6 +136,6 @@ export async function run({ page, shot, step, expect, project, section }) {
     await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
   } finally {
     fs.writeFileSync(file, good);
-    await page.locator('.dock-resize').dblclick().catch(() => {});
+    if (await page.locator('.dock-resize').count()) await page.locator('.dock-resize').dblclick();
   }
 }

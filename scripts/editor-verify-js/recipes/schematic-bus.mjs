@@ -11,6 +11,7 @@
 //   c. go to anything finds a bus (`#uart`): it is picked and framed.
 //   d. a module on screen is not boxed: opening `brain` from the navigator (the pointer stays on its row) or from the overview's card (which selects the
 //      module) leaves every part without a halo; a part picked in it has exactly its own; in the overview a selected module's parts are marked in its card.
+import { whenIdle } from '../settle.mjs';
 import { activeSheet, openSheet, visibleHalos } from '../schematic-helpers.mjs';
 
 export const fixture = 'bus_bench';
@@ -65,14 +66,14 @@ export async function run({ page, shot, step, expect }) {
   expect((await page.locator('svg.schematic > g.sheet-slot:not([style*="none"]) .bus-flag').count()) === 1, 'one flag, not four');
   expect((await page.locator('svg.schematic > g.sheet-slot:not([style*="none"]) .port').count()) === 0, 'and no flag for a single member');
   await page.keyboard.press('f');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await shot('brain');
 
   step('the pointer over the line lights the four member nets and the line, not a net beside them');
   const onLine = await pointOn(page, '.bus[data-bus="brain.uart0"] .hit');
   expect(!!onLine, 'a point on the line is on screen');
   await page.mouse.move(onLine.x, onLine.y);
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(JSON.stringify(await litNets()) === JSON.stringify(MEMBERS), `the four members are lit (${(await litNets()).join(', ')})`);
   expect(await busLit('brain.uart0'), 'and the thick line');
   expect((await page.locator('.selchip').count()) === 0, 'nothing is selected by hovering');
@@ -88,7 +89,7 @@ export async function run({ page, shot, step, expect }) {
   // Round 7: the chip kept `bus uar… (4 ne…` at 1280 px with room to spare beside it; it is as wide as its words, and shortens them only when the bar has no room (go to anything gives up its width first).
   for (const [w, h] of [[1920, 1080], [1600, 900], [1280, 800]]) {
     await page.setViewportSize({ width: w, height: h });
-    await page.waitForTimeout(150);
+    await whenIdle(page);
     const fit = await page.evaluate(() => {
       const chip = document.querySelector('.selchip');
       const room = chip.closest('.tb-left').getBoundingClientRect().right - chip.getBoundingClientRect().right;
@@ -100,7 +101,7 @@ export async function run({ page, shot, step, expect }) {
     expect(!(fit.cut.length && (fit.room > 12 || fit.spare > 2)), `at ${w} px the bus chip shortens its words only when the bar has no room (${fit.text}; ${Math.round(fit.room)} px beside it, go to anything ${Math.round(fit.spare)} px over its least, cut: ${fit.cut.join(' | ') || 'nothing'})`);
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect(JSON.stringify(await litNets()) === JSON.stringify(MEMBERS), 'all four members are lit');
   expect(await busLit('brain.uart0'), 'and the line');
   expect(await page.evaluate(() => document.querySelector('svg.schematic').classList.contains('has-on')), 'the rest of the drawing is dimmed');
@@ -123,11 +124,11 @@ export async function run({ page, shot, step, expect }) {
 
   step('in a window of 1280 x 800 the chip still says the count (the usual chip drops its second line there)');
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect(/bus uart0 \(4 nets\)/.test(await chip()), `the chip at 1280 px: ${await chip()}`);
   await shot('narrow');
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
 
   step('the other views have the first member net as their selection: the bill of materials lights the parts on it');
   await page.locator('.pane-strip [data-section="bom"]').first().click();
@@ -180,7 +181,7 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('svg.schematic > g.sheet-slot:not([style*="none"]) .bus-group[data-bus="aux.spi"]');
   expect((await page.locator('svg.schematic > g.sheet-slot:not([style*="none"]) .bus-flag').count()) === 0, 'no flag: both ends are here');
   await page.keyboard.press('f');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const spi = await pointOn(page, '.bus[data-bus="aux.spi"] .hit');
   expect(!!spi, 'a point on the SPI trunk is on screen');
   await page.mouse.click(spi.x, spi.y);
@@ -207,7 +208,7 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForFunction(() => document.querySelector('.sheetpick .crumb-sheet')?.textContent === 'brain');
   expect(/bus uart0 \(4 nets\)/.test(await chip()), `the bus is picked and its module opened (${await chip()})`);
   expect(await busLit('brain.uart0'), 'and lit');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   await shot('found');
   // The pointer is where the list's row was, over the drawing: moved off it, or it would light what it is over.
   await page.mouse.move(5, 5);
@@ -223,10 +224,10 @@ export async function run({ page, shot, step, expect }) {
   step('opening a module from the navigator: its parts have no halo while the pointer rests on its row');
   await openSheet(page, 'link');
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await page.locator('.sheetnav .sl-row', { has: page.locator('.sl-name', { hasText: /^brain$/ }) }).click();
   await page.waitForFunction(() => document.querySelector('.sheetpick .crumb-sheet')?.textContent === 'brain');
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   const brainParts = await partsOnShow();
   expect(brainParts.length === 8, `brain draws its ${brainParts.length} parts`);
   expect((await visibleHalos(page)).length === 0, 'no part has a halo with a fill or a stroke (the computed style of each), the pointer still on the row');
@@ -241,7 +242,7 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForFunction(() => /module/i.test(document.querySelector('.selchip')?.textContent ?? ''));
   expect(/brain/.test(await chip()), `the module is the selection: the chip says so (${(await chip()).replace(/\n/g, ' ')})`);
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   expect((await visibleHalos(page)).length === 0, 'no part has a halo');
   expect((await classesOnShow()).every((c) => !/\bmark\b|\bon\b/.test(c)), 'none is marked, and the drawing is not dimmed');
   expect(!(await page.evaluate(() => document.querySelector('svg.schematic > g.sheet-slot:not([style*="none"])').closest('svg').classList.contains('has-on'))), 'nothing is dimmed (has-on is off)');
@@ -252,7 +253,7 @@ export async function run({ page, shot, step, expect }) {
   await page.locator(`svg.schematic > g.sheet-slot:not([style*="none"]) g.part[data-ref="${one}"]`).click();
   await page.waitForFunction((r) => document.querySelector('.selchip')?.textContent.includes(r), one);
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   const halos = await visibleHalos(page);
   expect(halos.length === 1 && halos[0].ref === one, `exactly one halo shows, ${one}'s (${halos.map((h) => h.ref).join(',')})`);
   await shot('brain-part-picked');
@@ -265,7 +266,7 @@ export async function run({ page, shot, step, expect }) {
   await openSheet(page, 'All modules');
   await page.waitForSelector('.sheet-overview .ov-card');
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   const cards = await page.evaluate(() =>
     [...document.querySelectorAll('.sheet-overview .ov-card')].map((card) => {
       const name = card.querySelector('.ov-name')?.textContent;
@@ -280,7 +281,7 @@ export async function run({ page, shot, step, expect }) {
   await shot('overview-module-selected');
   await openSheet(page, 'link');
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect((await visibleHalos(page)).length === 0 && (await classesOnShow()).every((c) => c === 'part'), 'link, another sheet, shows no mark of the selection of brain');
   await page.keyboard.press('Escape');
 }

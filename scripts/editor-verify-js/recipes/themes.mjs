@@ -2,6 +2,7 @@
 // console error, no horizontal overflow and no text under 4.5:1, a screenshot of each; the choice
 // is kept and applied before the first paint; the palette and the status bar menu choose it;
 // storage that throws does not break the page; a 200 % zoom, the keyboard and reduced motion.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 const THEMES = [
@@ -83,7 +84,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   const choose = async (label) => {
     await page.click('.theme-item');
     await page.locator('.theme-option', { hasText: new RegExp(`^\\s*●?\\s*${label}$`) }).first().click();
-    await page.waitForTimeout(200);
+    await whenIdle(page);
   };
 
   step('the page was themed before its first paint, from the stored choice');
@@ -108,7 +109,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   await shot('menu');
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await attr()) === 'hc-light', 'ArrowUp then Enter chose High contrast light');
   expect((await page.locator('.status-popover').count()) === 0, 'the menu closed');
 
@@ -120,7 +121,7 @@ export async function run({ page, shot, step, expect, url, section }) {
     expect((await stored()) === `"${id}"`, `${label} is kept`);
     for (const view of VIEWS) {
       await section(view);
-      await page.waitForTimeout(450);
+      await whenIdle(page);
       const r = await page.evaluate(audit);
       if (r.overflow) failures.push(`${id} ${view}: horizontal overflow`);
       for (const l of r.low) failures.push(`${id} ${view}: contrast ${l}`);
@@ -135,7 +136,7 @@ export async function run({ page, shot, step, expect, url, section }) {
     await choose(label);
     for (const view of ['schematic', 'power']) {
       await section(view);
-      await page.waitForTimeout(450);
+      await whenIdle(page);
       await shot(`wide-${id}-${view}`);
     }
   }
@@ -145,16 +146,16 @@ export async function run({ page, shot, step, expect, url, section }) {
   await page.keyboard.press('Control+Shift+p');
   await page.waitForSelector('.qp');
   await page.keyboard.type('theme: high contrast dark');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   await shot('palette');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(350);
+  await whenIdle(page);
   expect((await attr()) === 'hc-dark', 'the command set hc-dark');
   expect((await page.locator('.toast', { hasText: 'Theme: High contrast dark' }).count()) === 1, 'a toast says which theme');
   await page.keyboard.press('Control+Shift+p');
   await page.keyboard.type('toggle light and dark');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await attr()) === 'light', 'Toggle light and dark from a dark theme gives light');
 
   step('the choice survives a reload; System follows the browser, live');
@@ -164,19 +165,19 @@ export async function run({ page, shot, step, expect, url, section }) {
   expect((await attr()) === 'dark', 'dark after a reload');
   await choose('System');
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await attr()) === 'light', 'System is light when the browser asks for light');
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await attr()) === 'dark', 'System follows the browser to dark without a reload');
   await page.emulateMedia({ contrast: 'more' });
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await attr()) === 'hc-dark', 'System is high contrast when the browser asks for more contrast');
   await page.emulateMedia({ colorScheme: 'light', contrast: 'more' });
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await attr()) === 'hc-light', 'and high contrast light with a light scheme');
   await page.emulateMedia({ contrast: 'no-preference', colorScheme: 'light' });
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   await shot('system-light');
   await page.reload();
   await page.waitForSelector('.app');
@@ -197,11 +198,11 @@ export async function run({ page, shot, step, expect, url, section }) {
   p2.on('pageerror', (e) => errors.push(e.message));
   await p2.goto(url);
   await p2.waitForSelector('.app');
-  await p2.waitForTimeout(500);
+  await whenIdle(p2);
   expect((await p2.evaluate(() => document.documentElement.dataset.theme)) === 'light', 'light, from the system, with no storage');
   await p2.click('.theme-item');
   await p2.locator('.theme-option', { hasText: /^\s*●?\s*Dark$/ }).click();
-  await p2.waitForTimeout(300);
+  await whenIdle(p2);
   expect((await p2.evaluate(() => document.documentElement.dataset.theme)) === 'dark', 'the theme still changes for this visit');
   expect((await p2.locator('.toast.bad', { hasText: 'not remembered' }).count()) === 1, 'a toast says it is not remembered');
   expect(errors.length === 0, `no page error without storage (${errors.join('; ')})`);
@@ -212,14 +213,14 @@ export async function run({ page, shot, step, expect, url, section }) {
   await page.setViewportSize({ width: 640, height: 400 });
   for (const view of ['source', 'schematic', 'power', 'bom']) {
     await section(view);
-    await page.waitForTimeout(300);
+    await whenIdle(page);
     const r = await page.evaluate(audit);
     expect(!r.overflow, `${view}: no horizontal overflow at 640 px`);
     await shot(`zoom200-${view}`);
   }
   await page.keyboard.press('Control+j');
   await page.waitForSelector('[data-testid=dock]');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect(!(await page.evaluate(audit)).overflow, 'the dock: no horizontal overflow at 640 px');
   await shot('zoom200-dock');
   await page.keyboard.press('Control+j');
@@ -228,7 +229,7 @@ export async function run({ page, shot, step, expect, url, section }) {
   step('keyboard: a skip link first, the tab strip takes arrow keys, every stop shows a focus ring');
   await page.reload();
   await page.waitForSelector('.app');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   await page.keyboard.press('Tab');
   expect((await page.evaluate(() => document.activeElement?.className)).includes('skip-link'), 'the first Tab stop is the skip link');
   const noRing = [];
@@ -253,14 +254,14 @@ export async function run({ page, shot, step, expect, url, section }) {
   await section('source');
   await page.locator('.tab[role=tab][aria-selected=true][data-section]').focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const sel = await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section');
   expect(sel === 'schematic', 'ArrowRight on the Source tab shows the Schematic');
   await page.keyboard.press('End');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'compare', 'End goes to the last section');
   await page.keyboard.press('Home');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   expect((await page.locator('.tab[role=tab][aria-selected=true][data-section]').getAttribute('data-section')) === 'source', 'Home goes to the first');
   await shot('focus-tabs');
 

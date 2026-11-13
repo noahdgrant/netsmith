@@ -1,5 +1,6 @@
 // The chip `+N` of the PCB view: planes whose label has no room at this zoom. It is a button pinned to the corner of the canvas (the same
 // size at every zoom, in the page's tokens), it names the planes, opens a list a keyboard reaches and zooms the board to the plane chosen.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'four_layer';
 
 const THEMES = ['dark', 'light', 'hc-dark', 'hc-light'];
@@ -9,9 +10,9 @@ export async function run({ page, shot, step, expect, section }) {
   const zoomOut = async (n) => {
     for (let i = 0; i < n; i++) {
       await zoomBtn('−').click();
-      await page.waitForTimeout(120);
+      await whenIdle(page);
     }
-    await page.waitForTimeout(300);
+    await whenIdle(page);
   };
   const chip = () => page.locator('.sec-pcb [data-testid="plane-more"]');
   const hiddenNames = () => page.evaluate(() => [...document.querySelectorAll('.sec-pcb .pcb-host svg .l-plane-labels > text.plane-label.plane-label-off')].map((t) => t.textContent));
@@ -21,7 +22,7 @@ export async function run({ page, shot, step, expect, section }) {
   await section('pcb');
   await page.waitForSelector('.pcb-host svg .l-plane-labels');
   await zoomBtn('Fit').click();
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect((await chip().count()) === 0, 'no chip while every label has its place');
   expect((await page.locator('.pcb-host svg .plane-label-more').count()) === 0, 'and no mark inside the drawing (the tag moved out of it)');
 
@@ -48,7 +49,7 @@ export async function run({ page, shot, step, expect, section }) {
     });
   const far = await geo();
   await zoomBtn('−').click();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const farther = await geo();
   expect(Math.abs(far.w - farther.w) < 0.5 && Math.abs(far.h - farther.h) < 0.5, `the same size at two zooms (${far.w}x${far.h}, ${farther.w}x${farther.h})`);
   expect(far.fs >= 11 && far.h >= 24, `readable and a target of at least 24 px (${far.fs}px type, ${far.h}px high)`);
@@ -78,7 +79,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect(await page.evaluate(() => document.activeElement?.matches('[data-testid="plane-more-item"]:last-of-type')), 'End goes to the last row');
   expect((await page.locator('[data-testid="undo"]').isDisabled()) === undoBefore, 'no part was nudged by an arrow');
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="plane-more-list"]').count()) === 0, 'Escape closed the list');
   expect(await page.evaluate(() => document.activeElement?.matches('[data-testid="plane-more"]')), 'the focus is back on the chip');
   expect((await page.locator('.pcb-host svg rect.plane-peek').count()) === 0, 'and no plane is outlined any more');
@@ -91,7 +92,7 @@ export async function run({ page, shot, step, expect, section }) {
   const choice = items[0];
   await page.keyboard.press('Home');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(700);
+  await whenIdle(page);
   const after = await percent();
   expect(after > before, `the zoom grew (${before}% to ${after}%)`);
   const back = await page.evaluate((net) => {
@@ -104,16 +105,16 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('with the planes layer switched off no label is hidden for want of room: no chip, no labels');
   await zoomBtn('Fit').click();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await zoomOut(6);
   await chip().waitFor();
   await page.locator('.sec-pcb details.layers summary').click();
   await page.locator('.sec-pcb .layer-list label', { hasText: 'Planes' }).locator('input').uncheck();
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect((await chip().count()) === 0, 'the chip is gone');
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('.sec-pcb .pcb-host svg .l-plane-labels')).display === 'none'), 'and the labels with the planes');
   await page.locator('.sec-pcb .layer-list label', { hasText: 'Planes' }).locator('input').check();
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   await page.locator('.sec-pcb details.layers summary').click();
   await chip().waitFor();
   expect(true, 'switched on again, the chip is back');
@@ -123,7 +124,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('[data-testid="plane-more-list"]');
   for (const id of THEMES) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, id);
-    await page.waitForTimeout(200);
+    await whenIdle(page);
     const r = await page.evaluate(() => {
       const lum = (c) => {
         const m = c.match(/[\d.]+/g).map(Number);

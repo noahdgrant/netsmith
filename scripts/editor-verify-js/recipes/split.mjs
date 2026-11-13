@@ -1,6 +1,7 @@
 // Two panes side by side: the Split right button, a drag of a tab onto a half of the window, the
 // right-click menu, the divider (drag, keys, double click), closing the pane, the layout kept across
 // a reload, and the single pane in a narrow window.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -101,17 +102,17 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('a narrow window shows one pane and keeps the layout');
   await page.setViewportSize({ width: 1366, height: 768 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await page.locator('.divider').count()) === 0 && (await strips()).length === 1, 'one pane at 1366 px');
   const tip = await page.getByRole('button', { name: /Split right/ }).getAttribute('title');
   expect(tip.includes('1366') && tip.includes('saved split comes back'), `the Split right tooltip says why (${tip.slice(-120)})`);
   await shot('narrow');
   await page.setViewportSize({ width: 2000, height: 1000 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   expect((await strips()).length === 2, 'the split is back in a wide window');
 
   await page.setViewportSize({ width: 2000, height: 1000 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
 
   step('a click-through changes the pane that was clicked, and makes no second pane');
   await page.getByRole('button', { name: /Close pane/ }).click();

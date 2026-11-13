@@ -2,6 +2,7 @@
 // connection) at three widths, the top bar's dialogs over the chip, the marks of the comparison that share an element with the
 // hover and the selection, the diff view beside the source editor's own Escape, hover card and outline, the size and the density
 // on the Compare section, the keys, and a board whose planes are layers. It needs `launch --git` (see compare.mjs).
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 export const needs = 'git';
 
@@ -11,16 +12,15 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.reload();
   await page.waitForSelector('.sidebar > *', { state: 'attached' });
   await page.setViewportSize({ width: 1920, height: 1080 });
-  const settle = (ms = 300) => page.waitForTimeout(ms);
   const text = (sel) => page.locator(sel).first().innerText();
   const visible = (sel) => page.locator(`.section:not(.away) ${sel}`);
   const palette = async (what) => {
     await page.keyboard.press('Control+Shift+P');
     await page.waitForSelector('.qp-row');
     await page.keyboard.type(what);
-    await settle(250);
+    await whenIdle(page);
     await page.keyboard.press('Enter');
-    await settle(400);
+    await whenIdle(page);
   };
 
   // ------------------------------------------------------------------ the comparison to work with
@@ -29,9 +29,9 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.waitForSelector('[data-testid="cmp-start"]');
   await visible('[data-testid="ref-button"]').click();
   await page.locator('[data-testid="ref-item"][data-name="main"]').click();
-  await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 60000 });
+  await page.waitForSelector('[data-testid="cmp-summary"]');
   await page.selectOption('[data-testid="cmp-board"]', 'TwoBoards/led');
-  await settle();
+  await whenIdle(page);
   await palette('show changes vs');
   expect(await page.evaluate(() => document.documentElement.classList.contains('cmp-on')), 'the marks are on');
 
@@ -58,7 +58,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
     step(`the status bar at ${width} px in the Source: nothing runs into another and nothing is cut off`);
     await page.setViewportSize({ width, height: width <= 1000 ? 700 : 900 });
     await section('source');
-    await settle(500);
+    await whenIdle(page);
     const s = await bar();
     expect(s.overlaps.length === 0, `no two items overlap (${s.overlaps.join(', ') || 'none'}; shown: ${s.names.join(', ')})`);
     expect(s.out.length === 0 && !s.scrolls, `nothing leaves the bar (${s.out.join(', ') || 'none'})`);
@@ -70,21 +70,21 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
       await page.locator('.sec-source .cm-content').click();
       await page.keyboard.press('Control+End');
       await page.keyboard.type('x');
-      await settle(300);
+      await whenIdle(page);
       const busy = await bar();
       expect(busy.names.includes('unsaved'), `an unsaved file is in the bar (${busy.names.join(', ')})`);
       expect(busy.overlaps.length === 0 && busy.out.length === 0 && !busy.scrolls && busy.gap >= 0, `and still nothing overlaps or leaves it (${busy.overlaps.join(', ') || 'none'}; ${busy.out.join(', ') || 'none'}; gap ${busy.gap})`);
       expect(busy.chip, 'with the chip');
       await shot(`statusbar-${width}-unsaved`);
       await page.keyboard.press('Control+Z');
-      await settle(200);
+      await whenIdle(page);
     }
   }
 
   for (const width of [800, 1000]) {
     step(`the chip's menu at ${width} px opens upward from the chip, inside the window, above the bar`);
     await page.setViewportSize({ width, height: 700 });
-    await settle(300);
+    await whenIdle(page);
     await page.click('[data-testid="compare-chip"]');
     await page.waitForSelector('.cmp-chip-menu');
     const menu = await page.evaluate(() => {
@@ -100,7 +100,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
 
   step('the settings panel and About open over the chip and the chip does not show through; opening one closes the other');
   await page.setViewportSize({ width: 1280, height: 800 });
-  await settle(300);
+  await whenIdle(page);
   await page.click('[data-testid="compare-chip"]');
   await page.waitForSelector('.cmp-chip-menu');
   await page.click('[data-testid="menu-settings"]');
@@ -111,7 +111,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.click('[data-testid="menu-help"]');
   await page.click('[data-testid="help-about"]');
   await page.waitForSelector('[data-testid="about"], .about, [role="dialog"][aria-label*="About"]');
-  await settle(300);
+  await whenIdle(page);
   const over = await page.evaluate(() => {
     const chip = document.querySelector('[data-testid="compare-chip"]').getBoundingClientRect();
     const top = document.elementFromPoint(chip.left + chip.width / 2, chip.top + chip.height / 2);
@@ -120,8 +120,8 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   expect(over, 'what is on top at the chip is not the status bar: the dialog\'s backdrop covers it');
   await shot('about-over-chip');
   await page.keyboard.press('Escape');
-  await page.waitForSelector('[data-testid="about"], .about', { state: 'detached' }).catch(() => undefined);
-  await settle(200);
+  await page.waitForSelector('[data-testid="about"], .about', { state: 'hidden' });
+  await whenIdle(page);
   expect((await page.locator('.statusbar [data-testid="compare-chip"]').count()) === 1, 'the chip is back in the bar');
 
   // ------------------------------------------------------------------ (b) marks, hover and selection on the same elements
@@ -165,7 +165,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   expect(plain.cmpStroke === (await token('--cmp-changed')), `a changed part's mark is the rectangle outside the symbol, in the mark's colour (${plain.cmpStroke})`);
   await page.mouse.move(5, 5);
   await part.hover();
-  await settle(400);
+  await whenIdle(page);
   const hovered = await look(css);
   expect(/hover-lit/.test(hovered.classes) && /cmp-changed/.test(hovered.classes), `hovering keeps the mark's class (${hovered.classes})`);
   expect(hovered.haloFill !== plain.haloFill, `the hover lights the halo (${plain.haloFill} -> ${hovered.haloFill})`);
@@ -175,7 +175,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   step('schematic: a part that is marked and picked shows it is picked, and still shows it changed; its strokes stay as drawn');
   await part.click();
   await page.mouse.move(5, 5);
-  await settle(400);
+  await whenIdle(page);
   const picked = await look(css);
   expect(/\bmark\b/.test(picked.classes) && /cmp-changed/.test(picked.classes), `picked and marked (${picked.classes})`);
   expect(picked.haloStroke === (await token('--sel')), `the pick is the halo in the selection's colour (${picked.haloStroke})`);
@@ -187,13 +187,13 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   step('the power tree: a card that is marked, hovered and picked keeps each signal');
   await section('power');
   await page.waitForSelector('.pt-node.cmp-changed');
-  await settle(400);
+  await whenIdle(page);
   // the cards that a click picks (a rail of the other board is shown but the board in front picks its own)
   const marked = await page.evaluate(() => [...document.querySelectorAll('.pt-node[class*="cmp-"]')].map((e) => e.getAttribute('data-node')));
   let probe = null;
   for (const id of marked) {
     await page.locator(`.pt-node[data-node="${id}"] .pt-head`).first().click();
-    await settle(250);
+    await whenIdle(page);
     // (a click on a rail of the board that is not in front picks the same net on the board that is)
     probe = await page.evaluate(() => document.querySelector('.pt-node.selected[class*="cmp-"]')?.getAttribute('data-node') ?? null);
     if (probe) break;
@@ -201,7 +201,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   expect(probe !== null, `a marked card can be picked (${marked.join(', ')} -> ${probe})`);
   await page.keyboard.press('Escape');
   await page.mouse.move(5, 5);
-  await settle(300);
+  await whenIdle(page);
   const sel = `.pt-node[data-node="${probe}"]`;
   const cardLook = () =>
     page.evaluate((q) => {
@@ -212,12 +212,12 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   const cardPlain = await cardLook();
   expect(/cmp-/.test(cardPlain.classes) && !/selected/.test(cardPlain.classes), `it is marked and not picked (${cardPlain.classes})`);
   await page.locator(sel).first().hover();
-  await settle(400);
+  await whenIdle(page);
   const cardHover = await cardLook();
   expect(/hover-lit/.test(cardHover.classes) && /cmp-/.test(cardHover.classes) && cardHover.shadow !== cardPlain.shadow, `hovered it keeps its mark and adds the hover's ring (${cardHover.classes})`);
   await page.locator(`${sel} .pt-head`).first().click();
   await page.mouse.move(5, 5);
-  await settle(400);
+  await whenIdle(page);
   const cardPick = await cardLook();
   const pickColour = await token('--sel');
   expect(/selected/.test(cardPick.classes) && /cmp-changed|cmp-added/.test(cardPick.classes), `picked, the card is rendered again and the mark is put back (${cardPick.classes})`);
@@ -229,7 +229,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   step('the board: a marked part has a crisp outline, hovered it has the hover\'s light too');
   await section('pcb');
   await page.waitForSelector('.pcb-host svg g[data-ref]');
-  await settle(500);
+  await whenIdle(page);
   const pcbRef = await page.evaluate(() => {
     const e = document.querySelector('.pcb-host svg g[data-ref].cmp-changed') ?? document.querySelector('.pcb-host svg g[data-ref].cmp-added');
     return e ? e.getAttribute('data-ref') : null;
@@ -243,7 +243,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   const glowPlain = await glow();
   expect(glowPlain === 'none', `the mark is no glow (${glowPlain})`);
   await page.locator(pcbSel).first().hover({ force: true });
-  await settle(400);
+  await whenIdle(page);
   const lit = await page.evaluate((s) => document.querySelector(s).classList.contains('hover-lit'), pcbSel);
   const glowHover = await glow();
   expect(lit && glowHover !== glowPlain, `hover adds its light to the part (${glowPlain} -> ${glowHover})`);
@@ -255,7 +255,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await section('schematic');
   await page.waitForSelector('svg.schematic .part.cmp-changed');
   await page.locator(css).hover();
-  await settle(300);
+  await whenIdle(page);
   await palette('hide changes');
   const partOnly = `svg.schematic .part[data-ref="${changed}"]`;
   const afterOff = await page.evaluate((s) => ({ lit: document.querySelector(s).classList.contains('hover-lit'), marks: document.querySelectorAll('[class*="cmp-changed"], [class*="cmp-added"], [class*="cmp-renumbered"], [class*="cmp-net-"], [data-cmp-delta]').length }), partOnly);
@@ -273,24 +273,24 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   const row = page.locator('[data-testid="cmp-row"]', { has: page.locator('.cr-title', { hasText: /^r1$/ }) });
   await row.locator('[data-testid="link-head"]').click();
   await page.waitForSelector('.section.sec-source:not(.away) .cm-editor');
-  await settle(500);
+  await whenIdle(page);
   const backFrom = await page.evaluate(() => location.hash || document.title);
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('show changes in source');
-  await settle(250);
+  await whenIdle(page);
   await page.keyboard.press('Enter');
   await page.waitForSelector('.sec-source .diff-panel .cm-editor');
-  await settle(400);
+  await whenIdle(page);
   await shot('diff-over-source');
   await page.locator('.sec-source .diff-panel').focus();
   await page.keyboard.press('Escape');
   await page.waitForSelector('.diff-panel', { state: 'detached' });
-  await settle(300);
+  await whenIdle(page);
   expect(await page.evaluate(() => !document.querySelector('.section.sec-source')?.classList.contains('away')), `the diff closed and the Source is still on show (${backFrom})`);
 
   step('the diff view has no hover cards, hints, outline or breadcrumbs of its own; the editor under it keeps its own');
-  await page.locator('[data-testid="source-changes"]').click().catch(() => undefined);
+  await page.locator('[data-testid="source-changes"]').click();
   await page.waitForSelector('.sec-source .diff-panel .cm-editor');
   const own = await page.evaluate(() => {
     const d = document.querySelector('.diff-panel');
@@ -298,7 +298,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   });
   expect(own.cards === 0 && own.hints === 0 && own.outline === 0 && own.readonly === 'true', `the diff view is plain text, read only (${JSON.stringify(own)})`);
   await page.locator('.sec-source .diff-panel .cm-content').first().hover();
-  await settle(900);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'hovering in the diff view opens no hover card');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.diff-panel', { state: 'detached' });
@@ -309,11 +309,11 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.keyboard.press('Home');
   for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Control+Alt+i');
-  await page.waitForSelector('[data-testid="hover-card"]', { timeout: 3000 });
+  await page.waitForSelector('[data-testid="hover-card"]');
   expect(true, 'a hover card opens at the cursor');
   await shot('card-after-diff');
   await page.keyboard.press('Escape');
-  await settle(300);
+  await whenIdle(page);
   expect((await page.locator('[data-testid="hover-card"]').count()) === 0, 'Escape closes the card first');
   expect(await page.evaluate(() => !document.querySelector('.section.sec-source')?.classList.contains('away')), 'and the Source stays on show, though a click-through came from the Compare section');
 
@@ -329,7 +329,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
     });
   await section('compare');
   await page.selectOption('[data-testid="cmp-board"]', 'all');
-  await settle(400);
+  await whenIdle(page);
   await page.evaluate(() => localStorage.setItem('netsmith.settings', JSON.stringify({ density: 'comfortable', scale: 100, motion: 'system' })));
   await page.reload();
   await page.waitForSelector('.app');
@@ -362,7 +362,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   const openBase = async () => {
     await page.locator('[data-testid="cmp-row"] [data-testid="link-base"]:not([disabled])').first().click();
     await page.waitForSelector('[data-testid="diff-panel"] .cm-editor');
-    await settle(400);
+    await whenIdle(page);
   };
   await openBase();
   const dCompact = await diffLook();
@@ -392,7 +392,7 @@ export async function run({ page, shot, step, expect, section, resetRepo }) {
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp-row');
   await page.keyboard.type('compare');
-  await settle(250);
+  await whenIdle(page);
   const rows = await page.locator('.qp-row').allInnerTexts();
   expect(rows.some((r) => /Compare/i.test(r) && /\b8\b/.test(r)), `the palette lists the Compare section with its key (${rows.slice(0, 4).map((r) => r.replace(/\s+/g, ' ')).join(' | ')})`);
   await page.keyboard.press('Escape');

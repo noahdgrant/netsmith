@@ -1,13 +1,13 @@
 // The keyboard and screen reader audit (round 8): landmarks, a name for every control, the order of Tab from the top of the page, every layer reachable and
 // closed by Escape from the topmost down, the focus given back to what opened it (never to the page's body), and no layer left open behind the focus.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect, section }) {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.reload();
   await page.waitForSelector('.app');
-  await page.waitForTimeout(600);
-  const settle = (ms = 300) => page.waitForTimeout(ms);
+  await whenIdle(page);
   const active = () =>
     page.evaluate(() => {
       const a = document.activeElement;
@@ -30,7 +30,7 @@ export async function run({ page, shot, step, expect, section }) {
   const unnamed = [];
   for (const id of ['source', 'schematic', 'power', 'system', 'bom', 'pcb', 'build', 'compare']) {
     await section(id);
-    await settle(500);
+    await whenIdle(page);
     unnamed.push(
       ...(await page.evaluate((s) =>
         [...document.querySelectorAll(`.section.sec-${s} :is(button, [role=button], a[href], input, select, textarea, [role=tab], [role=switch], [role=checkbox], [role=radio])`)]
@@ -44,7 +44,7 @@ export async function run({ page, shot, step, expect, section }) {
   await section('schematic');
   await page.reload();
   await page.waitForSelector('.app');
-  await settle(600);
+  await whenIdle(page);
   await page.evaluate(() => document.activeElement?.blur?.());
   const stops = [];
   for (let i = 0; i < 14; i++) {
@@ -62,40 +62,40 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.qp');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.qp', { state: 'detached' });
-  await settle();
+  await whenIdle(page);
   expect(/Settings/.test(await active()), `the palette gives the focus back to the control it was opened from (${await active()})`);
   await gear.click();
-  await settle();
+  await whenIdle(page);
   await page.keyboard.press('Control+Shift+p');
   await page.waitForSelector('.qp');
   await page.keyboard.press('Escape');
-  await settle();
+  await whenIdle(page);
   expect(!(await visible('.qp')) && (await visible('.theme-option')), 'the first Escape closes the palette and leaves the settings panel');
   await page.keyboard.press('Escape');
-  await settle();
+  await whenIdle(page);
   expect(!(await visible('.theme-option')) && /Settings/.test(await active()), `the second closes the panel, and the focus is on its button (${await active()})`);
 
   step('a dialog opened from a menu gives the focus back to the menu\'s button when it closes, not to the body');
   await page.getByRole('button', { name: /^Help/ }).first().click();
   await page.locator('.menu-row', { hasText: 'About netsmith' }).click();
   await page.waitForSelector('[data-testid="about"]');
-  await settle();
+  await whenIdle(page);
   await page.keyboard.press('Escape');
-  await settle();
+  await whenIdle(page);
   expect(/Help/.test(await active()), `About: Escape returns to the Help button (${await active()})`);
   await page.getByRole('button', { name: /^Help/ }).first().click();
   await page.locator('.menu-row', { hasText: 'Keyboard shortcuts' }).click();
   await page.waitForSelector('.cheat');
-  await settle();
+  await whenIdle(page);
   await page.keyboard.press('Escape');
-  await settle();
+  await whenIdle(page);
   expect(/Help/.test(await active()), `the shortcuts: Escape returns to the Help button (${await active()})`);
 
   step('a menu that the focus leaves by Tab closes: no panel stays open behind the focus');
   await page.getByRole('button', { name: /^Help/ }).first().click();
   await page.waitForSelector('.top-pop-help');
   for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
-  await settle(200);
+  await whenIdle(page);
   expect(!(await visible('.top-pop-help')), `Tab out of the Help menu closes it (focus ${await active()})`);
 
   step('the ref picker and a status popover close on Escape and give the focus back');
@@ -106,7 +106,7 @@ export async function run({ page, shot, step, expect, section }) {
     await page.keyboard.press('Enter');
     await page.waitForSelector('.ref-pop');
     await page.keyboard.press('Escape');
-    await settle();
+    await whenIdle(page);
     expect(!(await visible('.ref-pop')) && /Compare/.test(await active()), `the ref picker (${await active()})`);
   }
   await shot('a11y-end');

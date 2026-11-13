@@ -1,5 +1,6 @@
 // The sections fill the window one at a time: the number keys switch them, nothing overflows at a
 // laptop's 1366 x 768 or a large screen's 2000 x 1000, and the layout is kept across a reload.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 const KEYS = [['1', 'source'], ['2', 'schematic'], ['3', 'power'], ['4', 'system'], ['5', 'bom'], ['6', 'pcb'], ['7', 'build'], ['8', 'compare']];
@@ -14,7 +15,7 @@ export async function run({ page, shot, step, expect }) {
     for (const [key, id] of KEYS) {
       await page.keyboard.press(key);
       await page.waitForSelector(`.section.sec-${id}:not(.away)`);
-      await page.waitForTimeout(400);
+      await whenIdle(page);
       expect((await active()).join() === id, `key ${key} opens ${id}`);
       const box = await page.locator(`.section.sec-${id}`).boundingBox();
       // The sheet is set into the frame by its gap, 8 px on each side.
@@ -30,7 +31,7 @@ export async function run({ page, shot, step, expect }) {
   await page.locator('.pane-strip .tab[data-section="schematic"]').focus();
   await page.keyboard.press('8');
   await page.waitForSelector('.section.sec-compare:not(.away)');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const where = await page.evaluate(() => ({ section: document.activeElement?.getAttribute('data-section'), active: document.activeElement?.classList.contains('active'), ring: [...document.querySelectorAll('.pane-strip .tab:focus-visible')].map((t) => t.dataset.section) }));
   expect(where.section === 'compare' && where.active === true, `the focus is on the Compare tab, the one on show (${JSON.stringify(where)})`);
   expect(where.ring.every((s) => s === 'compare'), 'no other tab has a focus ring');

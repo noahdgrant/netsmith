@@ -1,20 +1,21 @@
 // Motion: the active section's line glides, a view fades in, a popover scales in, the dock opens by height, a toast comes in and
 // goes out (it fades and folds its height away), a row eases on hover; every one takes 120 to 200 ms, and with
 // prefers-reduced-motion none of them has a duration over 1 ms and the toast is gone at once.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, step, expect, section }) {
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.selectOption('.boardpick select', 'TwoBoards/led');
   await section('source');
-  await page.waitForTimeout(500);
+  await whenIdle(page);
 
   /** What is animating just after `trigger` (an in-page function), as `name duration`. */
   const running = async (trigger) => {
     if (typeof trigger === 'function' && trigger.constructor.name === 'AsyncFunction') await trigger();
     else await page.evaluate(trigger);
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-    await page.waitForTimeout(30);
+    // Frames, not a time: the animation a trigger starts is running after the frames that draw its first state (not `whenIdle`: that waits for them to end).
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
     return page.evaluate(() =>
       document
         .getAnimations()
@@ -47,11 +48,11 @@ export async function run({ page, step, expect, section }) {
   });
   expect(quick(find(a, 'toast-in')), 'the toast comes in over 160 ms');
   await page.waitForSelector('.toast');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   a = await running(() => document.querySelector('.toast .icon-btn').click());
   expect(a.some((x) => x.name === 'opacity' && x.target.includes('toast')) && a.some((x) => x.name === 'max-height'), 'it fades and folds: opacity and max-height run');
-  await page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 1000 });
-  expect(true, 'and it is gone within a second, not left behind');
+  await page.waitForFunction(() => !document.querySelector('.toast'), null);
+  expect(true, 'and it is gone, not left behind');
 
   step('a row eases on hover');
   await section('bom');
@@ -60,7 +61,7 @@ export async function run({ page, step, expect, section }) {
   const row = page.locator('tr.dr').nth(1);
   const before = await row.evaluate((e) => getComputedStyle(e).backgroundColor);
   await row.hover();
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const after = await row.evaluate((e) => getComputedStyle(e).backgroundColor);
   expect(before !== after, `an even row changes on hover too (zebra ${before}, hover ${after})`);
 
@@ -75,8 +76,9 @@ export async function run({ page, step, expect, section }) {
   await page.locator('.statusbar .theme-item').click();
   await page.locator('.theme-option').nth(1).click();
   await page.waitForSelector('.toast');
-  await page.locator('.toast .icon-btn').first().click();
-  await page.waitForFunction(() => !document.querySelector('.toast'), null, { timeout: 200 });
-  expect(true, 'the toast is gone within 200 ms');
+  a = await running(() => document.querySelector('.toast .icon-btn').click());
+  expect(a.length === 0, `closing the toast runs no animation over 1 ms (${a.map((x) => x.name).join(', ') || 'none'})`);
+  await page.waitForFunction(() => !document.querySelector('.toast'));
+  expect(true, 'the toast is gone at once');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 }

@@ -1,5 +1,6 @@
 // The source editor's keys and settings, one step for each: Ctrl+/ comments the lines (the shortcuts stay on `?`),
 // autosave writes a file after a pause, comments can be set in another font, Vim keys can be turned on, imports are sorted by Shift+Alt+O and on save, and the project is rebuilt by hand.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -64,18 +65,18 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Control+Home');
   await page.keyboard.type('// typed once\n');
   await page.waitForSelector('.tab .dot');
-  await page.waitForTimeout(2200);
+  await whenIdle(page);
   expect(!fs.readFileSync(file, 'utf8').includes('typed once'), 'nothing written while autosave is off');
   await openOptions();
   expect((await page.locator('[data-testid="opt-autosave"]').getAttribute('aria-checked')) === 'false', 'the menu shows it off');
   await page.locator('[data-testid="opt-autosave"]').click();
-  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
   expect(fs.readFileSync(file, 'utf8').includes('typed once'), 'the waiting edit was written when autosave went on');
   await page.keyboard.press('Escape');
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+Home');
   await page.keyboard.type('// typed twice\n');
-  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
   expect(fs.readFileSync(file, 'utf8').includes('typed twice'), 'the next edit was written by itself');
   await shot('autosaved');
   await openOptions();
@@ -123,7 +124,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.waitForFunction((n) => document.querySelectorAll('.cm-line').length === n - 1, before);
   expect(true, 'dd removed a line in normal mode');
   await page.keyboard.type(':w\n');
-  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
   expect(true, ':w saved the file');
   await shot('vim');
   await openOptions();
@@ -154,7 +155,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Home');
   await page.keyboard.type('import src::yyy::Y\n');
   await page.keyboard.press('Control+s');
-  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
   const saved = fs.readFileSync(file, 'utf8');
   expect(saved.indexOf('import src::yyy::Y') > saved.indexOf('import std::mfg'), 'the src import was written after the std ones');
   for (let i = 0; i < 6; i++) await page.keyboard.press('Control+z');
@@ -171,13 +172,13 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+Home');
   await page.keyboard.type('// not analysed yet\n');
-  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null, { timeout: 8000 });
+  await page.waitForFunction(() => !document.querySelector('.tab .dot'), null);
   expect(fs.readFileSync(file, 'utf8').includes('not analysed yet'), 'the file was saved by autosave');
-  await page.waitForSelector('.statusbar .unbuilt', { timeout: 10000 });
+  await page.waitForSelector('.statusbar .unbuilt');
   expect(true, 'the status bar says the project was not rebuilt');
   await shot('not-rebuilt');
   await page.locator('[data-testid="rebuild"]').click();
-  await page.waitForSelector('.statusbar .unbuilt', { state: 'detached', timeout: 20000 });
+  await page.waitForSelector('.statusbar .unbuilt', { state: 'detached' });
   expect(true, 'Rebuild read the project again and the notice went');
   await openOptions();
   await page.locator('[data-testid="opt-rebuild"]').click();

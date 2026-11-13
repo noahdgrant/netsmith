@@ -3,6 +3,7 @@
 // the one that closes a cycle round under the drawing), the loads at 0 A in one line that opens on
 // a click, a click on any card lighting what feeds it and what it feeds, a hover on a load with a
 // link to the source, and the issues at the top.
+import { whenIdle } from '../settle.mjs';
 import { edgesOf, nodesOf, routeProblems, sizeSteps } from '../flow-helpers.mjs';
 
 export const fixture = 'power_tree';
@@ -12,11 +13,11 @@ export async function run({ page, shot, step, expect, section }) {
   // sit on the cards): zoom in to see it, then fit again.
   const zoomIn = async (scope) => {
     for (let i = 0; i < 2; i++) await page.locator(`${scope} .zoombar button[title^="Zoom in"]`).click();
-    await page.waitForTimeout(250);
+    await whenIdle(page);
   };
   const fitAgain = async (scope) => {
     await page.locator(`${scope} .zoombar button`, { hasText: 'Fit' }).click();
-    await page.waitForTimeout(250);
+    await whenIdle(page);
   };
   const nodes = () => nodesOf(page, '.sec-power');
   const lit = async () => (await nodes()).filter((n) => !/\bdim\b/.test(n.cls)).map((n) => n.id).sort();
@@ -26,7 +27,7 @@ export async function run({ page, shot, step, expect, section }) {
     step(`the tree at ${w} x ${h}`);
     await section('power');
     await page.waitForSelector('.sec-power .pt-node');
-    await page.waitForTimeout(400);
+    await whenIdle(page);
     const all = await nodes();
     const rails = all.filter((n) => n.kind === 'rail');
     const stages = all.filter((n) => n.kind === 'stage');
@@ -110,7 +111,7 @@ export async function run({ page, shot, step, expect, section }) {
   const opened = await page.evaluate(() => Number(document.querySelector('.sec-power .zoombar span')?.textContent?.replace('%', '')));
   expect(opened >= 75, `the tree opens at 75 % or more (${opened} %)`);
   await page.locator('.sec-power .zoombar button', { hasText: 'Fit' }).click();
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   expect((await page.locator('.sec-power .pt-minimap').count()) === 0, 'no overview while the whole tree is in the window: it would only cover cards');
   await zoomIn('.sec-power');
   expect((await page.locator('.sec-power .pt-minimap rect[class*="hot-down"]').count()) >= total - 1, 'zoomed in, the minimap shows them');
@@ -155,7 +156,7 @@ export async function run({ page, shot, step, expect, section }) {
   step('hover a load: which part and pin it is, with "Show in source"');
   await page.setViewportSize({ width: 2000, height: 1000 });
   await page.getByRole('button', { name: '1:1' }).click();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await v3.scrollIntoViewIfNeeded();
   const row = v3.locator('.pt-list .pt-row', { hasText: 'radio.power' });
   await row.hover();

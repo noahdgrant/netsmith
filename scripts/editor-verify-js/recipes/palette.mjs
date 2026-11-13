@@ -1,6 +1,7 @@
 // One selection in every view, go to anything (Ctrl+P), the command palette (Ctrl+Shift+P, Ctrl+K)
 // and the keyboard cheat sheet (?). Parts are found by their instance path from /api/board, never
 // by a designator typed in the recipe.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect }) {
@@ -26,7 +27,7 @@ export async function run({ page, shot, step, expect }) {
   expect((await page.locator('.qp-row .qp-hit').count()) > 0, 'the matched letters are marked');
   await shot('goto-part');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(700);
+  await whenIdle(page);
   expect((await page.locator('.qp').count()) === 0, 'the window closes');
   expect((await chip()).includes(part.refdes), `the top bar chip shows ${part.refdes}`);
   expect(await lit(part.refdes), 'the schematic marks the part');
@@ -38,7 +39,7 @@ export async function run({ page, shot, step, expect }) {
   expect((await page.locator('.bom tr.sel').count()) >= 1, 'a BOM row is lit');
   await page.keyboard.press('6');
   await page.waitForSelector('.pcb-overlay');
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   expect((await page.locator('[data-testid=part-inspector]').count()) === 1, 'the PCB inspector shows the part');
   await shot('selected-pcb');
   await page.keyboard.press('3');
@@ -53,12 +54,12 @@ export async function run({ page, shot, step, expect }) {
   await page.waitForSelector('.qp-row');
   expect((await page.locator('.qp-row').first().innerText()).startsWith(net.name), `${net.name} is the first net`);
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(500);
+  await whenIdle(page);
   expect((await chip()).includes(net.name), 'the chip shows the net');
   expect(await page.evaluate(() => document.querySelector('svg.schematic')?.classList.contains('has-on')), 'the schematic dims what is not on the net');
   await shot('selected-net');
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await chip()) === '', 'Esc clears the selection');
 
   step('Ctrl+Shift+P and Ctrl+K are the command palette: keys at the right, a command runs, recent first');

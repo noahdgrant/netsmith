@@ -4,6 +4,7 @@
 // symbol is only at the end of a wire, no wire crosses a text, a module is one sheet, every pin
 // with nothing on it has an X, a symbol of several units is a box for each unit and a symbol of more than
 // sixty pins is a table. Screenshots are taken to be looked at.
+import { whenIdle } from '../settle.mjs';
 import { openSheet, sheetNames } from '../schematic-helpers.mjs';
 
 export const fixture = 'schematic_bench';
@@ -116,10 +117,10 @@ export async function run({ page, shot, step, expect }) {
     await page.setViewportSize({ width: w, height: h });
     for (const name of SHEETS) {
       await openSheet(page, name);
-      await page.waitForTimeout(700);
+      await whenIdle(page);
       m[name] = await page.evaluate(measure, name);
       await page.keyboard.press('f');
-      await page.waitForTimeout(300);
+      await whenIdle(page);
       await shot(`${name}-${w}`);
     }
   }

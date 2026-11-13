@@ -1,6 +1,7 @@
 // A big board drawn by module: one sheet at a time, large; an "All sheets" overview with a box
 // for each module instance; the sheets by tab, button, key and the Modules list; the zoom of
 // each sheet remembered; nets between modules are stubs with names.
+import { whenIdle } from '../settle.mjs';
 import { activeSheet, openSheet, sheetNames, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'big';
@@ -77,7 +78,7 @@ export async function run({ page, shot, step, expect }) {
   const opened = await zoom();
   await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2);
   await page.mouse.wheel(0, -500);
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const zoomed = await zoom();
   expect(zoomed > opened, `zoomed in (${opened}% to ${zoomed}%)`);
   await page.getByRole('button', { name: 'Next module' }).click();

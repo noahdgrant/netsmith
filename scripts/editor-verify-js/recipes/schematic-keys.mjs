@@ -2,6 +2,7 @@
 // cheat sheet under a "Schematic" group with their chords, working only while the Schematic is the
 // view in use and no text field has the focus; the toolbar's `?` opens the cheat sheet scrolled to
 // the group, and the view has no key list of its own.
+import { whenIdle } from '../settle.mjs';
 import { activeSheet, zoomPercent } from '../schematic-helpers.mjs';
 
 export const fixture = 'schematic_bench';
@@ -39,12 +40,12 @@ export async function run({ page, shot, step, expect, section }) {
   await page.keyboard.press('Control+Shift+P');
   await page.waitForSelector('.qp');
   await page.keyboard.type('Schematic');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const rows = await page.locator('.qp-row').allInnerTexts();
   console.log(`    palette rows for "Schematic": ${rows.map((r) => r.replace(/\n/g, ' ')).join(' | ')}`);
   await page.keyboard.press('Control+a');
   await page.keyboard.type('>');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const all = (await page.locator('.qp-row').allInnerTexts()).map((r) => r.replace(/\n/g, ' '));
   // A net is not selected here, so the commands that need one are not offered.
   for (const [title] of TITLES.filter(([t]) => !/selected|selection/.test(t))) {
@@ -52,7 +53,7 @@ export async function run({ page, shot, step, expect, section }) {
   }
   expect(!all.some((r) => r.includes('Next pin of the selected net')), 'the pin commands are not offered with no net selected');
   await page.keyboard.type('fit the module');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const fit = (await page.locator('.qp-row').first().innerText()).replace(/\n/g, ' ');
   expect(fit.includes('Fit the module') && /\bF\b/.test(fit), `with its chord (${fit})`);
   await shot('palette-fit');
@@ -76,7 +77,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.sheetbar [aria-label="Keyboard shortcuts"]').count()) === 1, 'the toolbar has the ? button');
   await page.locator('.sheetbar [aria-label="Keyboard shortcuts"]').click();
   await page.waitForSelector('.cheat[role=dialog]');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const inside = await page.evaluate(() => {
     const box = document.querySelector('.cheat-cols').getBoundingClientRect();
     const h = document.querySelector('.cheat section[data-group="Schematic"]').getBoundingClientRect();
@@ -100,36 +101,36 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForFunction((s) => document.querySelector('.sheetpick .crumb-sheet')?.textContent === s, first);
   expect((await activeSheet(page)) === first, '[ goes back');
   await page.keyboard.press('Shift+1');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   expect((await zoomPercent(page)) === 100, 'Shift+1 is 100%');
   await page.keyboard.press('f');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const fitted = await zoomPercent(page);
   expect(fitted !== 100, `F fits (${fitted}%)`);
   await page.keyboard.press('Shift+1');
   await page.keyboard.press('0');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   expect((await zoomPercent(page)) === fitted, '0 fits too');
   await page.keyboard.press('w');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const wide = await zoomPercent(page);
   expect(wide > 0, `W fits the width (${wide}%)`);
   await page.keyboard.press('f');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const z0 = await zoomPercent(page);
   await page.keyboard.press('+');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const z1 = await zoomPercent(page);
   expect(z1 > z0, `+ zooms in, once (${z0}% to ${z1}%)`);
   await page.keyboard.press('-');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   expect((await zoomPercent(page)) === z0, '- zooms out by the same');
   const t0 = await transform();
   await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const t1 = await transform();
   await page.keyboard.press('ArrowDown');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   expect(t1 !== t0 && (await transform()) !== t1, 'the arrow keys pan');
 
   step('Tab and Shift+Tab walk the pins of a selected net; Shift+2 zooms to it');
@@ -164,14 +165,14 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForFunction((was) => { const p = document.querySelector('svg.schematic .pin.cur'); return p && `${p.getAttribute('data-ref')}.${p.getAttribute('data-pin')}` === was; }, a);
   expect((await pinNow()) === a, 'Shift+Tab goes back');
   await page.keyboard.press('f');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const zf = await zoomPercent(page);
   await page.keyboard.press('Shift+2');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   expect((await zoomPercent(page)) !== zf, 'Shift+2 zooms to the net');
   await page.keyboard.press('Control+Shift+P');
   await page.keyboard.type('pin of the selected');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const pinRows = (await page.locator('.qp-row').allInnerTexts()).map((r) => r.replace(/\n/g, ' '));
   expect(pinRows.length === 2 && pinRows.some((r) => r.includes('Next pin') && r.includes('Tab')), `with a net selected the palette offers the pin commands (${pinRows.join(' | ')})`);
   await page.keyboard.press('Escape');
@@ -183,11 +184,11 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await field.count()) === 1, 'the inspector has a filter field');
   await canvas();
   await page.keyboard.press('Shift+1');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   const z100 = await zoomPercent(page);
   await field.click();
   await page.keyboard.type('fw+-[]');
-  await page.waitForTimeout(100);
+  await whenIdle(page);
   expect((await field.inputValue()) === 'fw+-[]', `the letters went into the field (${await field.inputValue()})`);
   expect((await zoomPercent(page)) === z100, 'the zoom did not change');
   expect((await activeSheet(page)) === first, 'nor the module');
@@ -197,7 +198,7 @@ export async function run({ page, shot, step, expect, section }) {
   await section('bom');
   await page.keyboard.press('Control+Shift+P');
   await page.keyboard.type('fit the module');
-  await page.waitForTimeout(150);
+  await whenIdle(page);
   const left = (await page.locator('.qp-row').allInnerTexts()).map((r) => r.replace(/\n/g, ' '));
   expect(!left.some((r) => r.includes('Fit the module')), `the palette has no Fit the module in the BOM (${left.join(' | ')})`);
   await page.keyboard.press('Escape');
@@ -207,10 +208,10 @@ export async function run({ page, shot, step, expect, section }) {
 
   step('at 1920 x 1080 the ? button shows the Schematic group in view');
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   await page.locator('.sheetbar [aria-label="Keyboard shortcuts"]').click();
   await page.waitForSelector('.cheat[role=dialog]');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const visible = await page.evaluate(() => {
     const box = document.querySelector('.cheat-cols').getBoundingClientRect();
     const h = document.querySelector('.cheat section[data-group="Schematic"]').getBoundingClientRect();

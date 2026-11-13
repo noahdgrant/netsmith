@@ -2,6 +2,7 @@
 // and a readout beside the pointer; the drop writes `<stem>.sch.toml` through `PUT /api/schematic-hints`; Esc cancels; Alt pins;
 // a press that does not move is a click; the sheet's reference part cannot be dragged; a drop the drawing refuses, or that moves
 // nothing, is put back and said; the selection and the zoom survive the redraw. Parts are found by their path, never by designator.
+import { waitFor, whenIdle } from '../settle.mjs';
 import { LED, POWER, bodyPoint, entries, layoutFile, onGrid, openBoard, partStates, pixelsPerStep, viewOf } from '../layout-helpers.mjs';
 
 export const fixture = 'two_boards';
@@ -22,23 +23,19 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   const parts = await openBoard(page, POWER);
   const [input, output, regulator, header] = [parts['stage.input_cap'], parts['stage.output_cap'], parts['stage.regulator'], parts.power_out];
   expect(!!input && !!output && !!regulator && !!header, `the power board has its capacitors, regulator and headers (${JSON.stringify(parts)})`);
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   const waitFile = async (test, what) => {
-    const until = Date.now() + 20000;
-    while (Date.now() < until) {
-      if (test(layout.text())) return layout.text();
-      await page.waitForTimeout(100);
-    }
-    throw new Error(`expected ${what}; the file is ${JSON.stringify(layout.text())}`);
+    await waitFor(`${what} (the file is ${JSON.stringify(layout.text())})`, () => test(layout.text()));
+    return layout.text();
   };
   /** The drawing has come back from a write: `ref` is somewhere else on the screen than `from`, and no redraw is on. */
   const redrawn = async (ref, from) => {
     await page.waitForFunction(([r, x, y]) => {
       const b = document.querySelector(`svg.schematic g.part[data-ref="${r}"]`)?.getBoundingClientRect();
       return b && (Math.abs(b.left + b.width / 2 - x) > 3 || Math.abs(b.top + b.height / 2 - y) > 3);
-    }, [ref, from.x, from.y], { timeout: 20000 });
-    await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached', timeout: 20000 });
-    await page.waitForTimeout(500);
+    }, [ref, from.x, from.y]);
+    await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached' });
+    await whenIdle(page);
   };
   /** Press on a part's body and move it `sx`, `sy` grid steps, leaving the button down. */
   const grab = async (ref, sx, sy, { alt = false } = {}) => {
@@ -66,7 +63,7 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   const movable = Object.values(before).filter((s) => !s.reference);
   expect(movable.length === 3 && movable.every((s) => s.movable && s.origin && /^[01] [0-3]$/.test(s.orient)), 'the others can be dragged, and say their origin and turn');
   expect(!Object.values(before).some((s) => s.hinted), 'no part wears the hand-arranged outline: there is no file');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   await shot('before');
 
   step('a drag shows the block moving on the grid, a ghost where it was and a readout; nothing is written while the pointer moves');
@@ -88,7 +85,7 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   step('Esc cancels: the block and the readout go, nothing is written, and Esc does not clear the pick');
   await page.keyboard.press('Escape');
   await release();
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const after = await page.evaluate(() => ({ ghosts: document.querySelectorAll('.drag-ghost').length, dragging: document.querySelectorAll('.dragging').length, readout: !!document.querySelector('[data-testid="drag-readout"]'), dragClass: document.querySelector('svg.schematic.is-dragging') !== null }));
   expect(after.ghosts === 0 && after.dragging === 0 && !after.readout && !after.dragClass, 'ghost, lift and readout are gone');
   expect(!layout.exists(), 'and no file was written');
@@ -149,13 +146,13 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   await page.mouse.move(refAt.x + 40, refAt.y + 25, { steps: 6 });
   expect((await page.locator('.drag-ghost').count()) === 0, 'no ghost');
   await page.mouse.up();
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await viewOf(page)).transform !== t0, 'the canvas panned');
   expect(layout.text() === fileNow, 'the file is as it was');
 
   step('a note can be dragged too: it writes its offset under `notes`, and a click on it still opens the source');
   await page.keyboard.press('f');
-  await page.waitForTimeout(250);
+  await whenIdle(page);
   const notePoint = () =>
     page.evaluate(() => {
       const n = [...document.querySelectorAll('svg.schematic g.note.note-doc')].find((e) => e.getClientRects().length);
@@ -177,13 +174,13 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   await page.waitForFunction(([n, x, y]) => {
     const f = document.querySelector(`svg.schematic g.note[data-n="${n}"] .note-frame`)?.getBoundingClientRect();
     return f && (Math.abs(f.left + f.width / 2 - x) > 3 || Math.abs(f.top + f.height / 2 - y) > 3);
-  }, [note0.n, note0.x, note0.y], { timeout: 20000 });
-  await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached', timeout: 20000 });
-  await page.waitForTimeout(500);
+  }, [note0.n, note0.x, note0.y]);
+  await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached' });
+  await whenIdle(page);
   await shot('note-moved');
   const note1 = await notePoint();
   await page.mouse.click(note1.x, note1.y);
-  await page.waitForSelector('.cm-content', { timeout: 10000 });
+  await page.waitForSelector('.cm-content');
   expect((await page.locator('.cm-content').count()) === 1, 'a click on the note opens the source, as before');
   await page.locator('.pane-strip [data-section="schematic"]').first().click();
   await page.waitForSelector('svg.schematic .part[data-ref]');
@@ -191,7 +188,7 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
 
   step('a drop the drawing refuses is put back, and the toast names the reason');
   await page.keyboard.press('f');
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   const quiet = layout.text();
   const from = (await partStates(page))[input];
   const onto = (await partStates(page))[regulator];
@@ -199,11 +196,11 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   // Drop the capacitor's block on the body of the regulator.
   await grab(input, Math.round((onto.x - from.x) / step1), Math.round((onto.y - from.y) / step1));
   await release();
-  await page.waitForSelector('.toast >> text=cannot put it there', { timeout: 20000 });
+  await page.waitForSelector('.toast >> text=cannot put it there');
   const toastText = (await page.locator('.toast', { hasText: 'cannot put it there' }).first().innerText()).replace(/\n/g, ' ');
   expect(/cannot put it there/.test(toastText) && /lie on|outside|rule/.test(toastText) && /back where it was/.test(toastText), `the toast names the reason (${toastText})`);
-  await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached', timeout: 20000 });
-  await page.waitForTimeout(600);
+  await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached' });
+  await whenIdle(page);
   expect(layout.text() === quiet, 'the file is as it was before the drop');
   const home = (await partStates(page))[input];
   expect(Math.abs(home.x - from.x) < 2 && Math.abs(home.y - from.y) < 2, 'and the block is where it was');
@@ -219,26 +216,26 @@ async function body({ page, shot, step, expect, project, allowConsole }) {
   await page.mouse.move(at2.x + step1 * 3, at2.y + step1 * 2, { steps: 6 });
   layout.write(alt);
   await page.mouse.up();
-  await page.waitForSelector('.toast >> text=changed on disk', { timeout: 20000 });
-  await page.waitForTimeout(800);
+  await page.waitForSelector('.toast >> text=changed on disk');
+  await whenIdle(page);
   expect(layout.text() === alt, 'the other program’s file is still there, untouched by the page');
   layout.remove();
 
   step('a block that holds the sheet’s reference part moves nothing: it is put back, and the file the drop made goes');
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   await openBoard(page, LED);
-  await page.waitForTimeout(600);
+  await whenIdle(page);
   expect(!layout.exists(), 'there is no file');
   const led = await partStates(page);
   const connector = Object.values(led).find((s) => !s.reference);
   const ledAt = connector.ref;
   await grab(ledAt, 5, 3);
   await release();
-  await page.waitForSelector('.toast >> text=nothing was arranged', { timeout: 20000 });
+  await page.waitForSelector('.toast >> text=nothing was arranged');
   const inert = (await page.locator('.toast', { hasText: 'nothing was arranged' }).first().innerText()).replace(/\n/g, ' ');
   expect(/nothing was arranged/.test(inert) && /reference part/.test(inert) && /back where it was/.test(inert), `the toast says it (${inert})`);
-  await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached', timeout: 20000 });
-  await page.waitForTimeout(1200);
+  await page.waitForSelector('[data-testid="redrawing"]', { state: 'detached' });
+  await whenIdle(page);
   expect(!layout.exists(), 'the file the drop made is gone: it was not there before');
   await shot('nothing-arranged');
 }

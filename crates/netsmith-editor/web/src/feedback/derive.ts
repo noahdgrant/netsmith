@@ -21,6 +21,7 @@ import {
   shown,
   visible,
 } from '../store';
+import { after } from '../idle';
 import { covers } from '../util';
 import { activeRow, dock, filter, group, notify, setDockOpen } from './state';
 import {
@@ -106,8 +107,7 @@ effect(() => {
   void analysis.value?.version;
   const withPcb = dock.value.open || scene.value?.board === name;
   if (!name || boardStale.value || !withPcb) return;
-  const timer = setTimeout(() => void loadExtras(name), 500);
-  return () => clearTimeout(timer);
+  return after(500, () => void loadExtras(name));
 });
 
 // ---- what a row does

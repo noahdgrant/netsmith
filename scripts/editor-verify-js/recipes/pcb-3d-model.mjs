@@ -6,6 +6,7 @@
 // resistor keeps its shape. Seen from the top, the plastic fills the header's silkscreen outline
 // and the pins stand on its pads, which they do only if the model's y runs up the footprint, as
 // KiCad's does.
+import { whenIdle } from '../settle.mjs';
 import { openPcb, partOf, scene } from '../pcb-helpers.mjs';
 
 export const fixture = 'model_3d';
@@ -16,7 +17,6 @@ const HOST = '[data-testid=pcb-3d]';
 const ask = (page, what, ...args) => page.evaluate(([sel, w, a]) => document.querySelector(sel).view3d[w](...a), [HOST, what, args]);
 
 /** Let the view draw what changed (a frame, and a camera move of 180 ms). */
-const settle = (page) => page.waitForTimeout(350);
 
 /** The red, green and blue of `#rrggbb`. */
 const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
@@ -29,11 +29,11 @@ export async function run(tools) {
   const s = await scene(page, BOARD);
   const header = partOf(s, 'power_in');
   await page.getByTestId('pcb-3d-toggle').click();
-  await page.waitForSelector(`${HOST}[data-ready]`, { timeout: 30000 });
+  await page.waitForSelector(`${HOST}[data-ready]`);
   await page.locator(HOST).focus();
   await page.keyboard.press('+');
   await page.keyboard.press('+');
-  await settle(page);
+  await whenIdle(page);
 
   step('the header is drawn from its model: the hover names the file, and the height is the stated one');
   const at = await ask(page, 'project', header.path);
@@ -50,7 +50,7 @@ export async function run(tools) {
 
   step("seen from the top, the model's colours: the gold pins on the pads, the black plastic round them");
   await page.keyboard.press('t');
-  await settle(page);
+  await whenIdle(page);
   const top = await ask(page, 'project', header.path);
   const centre = await ask(page, 'colourAt', top.x, top.y);
   expect(centre !== null, 'the view draws the header');
@@ -63,11 +63,11 @@ export async function run(tools) {
   await page.keyboard.press('Control+j');
   await page.waitForSelector('[data-testid=dock]');
   const missing = page.locator('[data-testid=problem]', { hasText: 'missing.step' }).first();
-  await missing.waitFor({ timeout: 20000 });
+  await missing.waitFor();
   const text = await missing.innerText();
   expect(text.includes('drawn with its generated shape'), `the warning says what is drawn: ${text}`);
   await page.keyboard.press('Control+j');
   await page.keyboard.press('i');
-  await settle(page);
+  await whenIdle(page);
   await shot('model-iso');
 }

@@ -44,6 +44,7 @@ import {
   selection,
   setSelection,
 } from './selection';
+import { after } from './idle';
 import { covers } from './util';
 import { EMPTY, type History, forget, leaving, stepBack, stepForward, visit } from './source/navhistory';
 import { reorder } from './source/tabs';
@@ -577,22 +578,22 @@ export function edit(path: string, text: string) {
 
 /** The pause after the last edit of a file before autosave writes it. */
 export const AUTOSAVE_MS = 1200;
-const autosaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const autosaveTimers = new Map<string, () => void>();
 
 /** With autosave on, a file that has been left alone for a moment is saved, with no toast: the same write as Ctrl+S. A file whose
  * disk copy changed under it (a conflict) is not written over; the person decides. */
 function scheduleAutosave(path: string) {
-  clearTimeout(autosaveTimers.get(path));
+  autosaveTimers.get(path)?.();
   autosaveTimers.delete(path);
   if (!autosave.peek()) return;
   autosaveTimers.set(
     path,
-    setTimeout(() => {
+    after(AUTOSAVE_MS, () => {
       autosaveTimers.delete(path);
       const f = openFiles.peek()[path];
       if (!autosave.peek() || !f || f.readonly || f.conflict || !dirty(f)) return;
       void save(path, true);
-    }, AUTOSAVE_MS),
+    }),
   );
 }
 
@@ -602,16 +603,16 @@ effect(() => {
   for (const [path, f] of Object.entries(openFiles.peek())) if (dirty(f)) scheduleAutosave(path);
 });
 
-let timer: ReturnType<typeof setTimeout> | undefined;
+let cancelCheck: (() => void) | undefined;
 
 function scheduleCheck(path: string) {
-  clearTimeout(timer);
-  timer = setTimeout(() => {
+  cancelCheck?.();
+  cancelCheck = after(350, () => {
     const f = openFiles.value[path];
     if (!f || f.readonly) return;
     const id = events?.check(path, f.text);
     if (id != null) track({ type: 'check-sent', id, now: Date.now() });
-  }, 350);
+  });
 }
 
 export async function openFile(path: string): Promise<void> {

@@ -4,6 +4,7 @@
 // fixtures/gitrepo.mjs). The earlier design on `main` has a 30 mA output, so the system's port and the LED board's input differ.
 // The PCB needs a layout file: the recipe commits one on a branch of its own, `pcb-layout`, puts the resistor somewhere else in
 // the work tree, and removes the branch at the end, so the other recipes see the repository they expect.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -43,11 +44,10 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     await page.reload();
     await page.waitForSelector('.sidebar > *', { state: 'attached' });
     await page.setViewportSize({ width: 1920, height: 1080 });
-    const settle = (ms = 300) => page.waitForTimeout(ms);
     const text = (sel) => page.locator(sel).first().innerText();
     const visible = (sel) => page.locator(`.section:not(.away) ${sel}`);
     const summary = async () => {
-      await page.waitForSelector('[data-testid="cmp-summary"]', { timeout: 60000 });
+      await page.waitForSelector('[data-testid="cmp-summary"]');
       return text('[data-testid="cmp-summary"]');
     };
     const choose = async (slot, name) => {
@@ -58,7 +58,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     };
     const tab = async (id) => {
       await page.click(`.cmp-tab[data-tab="${id}"]`);
-      await settle(150);
+      await whenIdle(page);
     };
     const tile = async (id) => (await text(`[data-testid="tile-${id}"]`)).replace(/\s+/g, ' ');
     const rows = () => page.locator('[data-testid="cmp-row"]');
@@ -80,7 +80,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
     step('the Systems tab: the port that changed, with the current before and after, and what the system joins');
     await page.click('[data-testid="tile-systems"]');
-    await settle(200);
+    await whenIdle(page);
     expect((await page.getAttribute('.cmp-tab[data-tab="systems"]', 'aria-selected')) === 'true', 'a click on the tile opens the tab');
     const port = await rowText('power.output');
     expect(/current/.test(port) && /30/.test(port) && /50/.test(port) && /Changed/.test(port), `the port row says current 30 to 50 (${port})`);
@@ -97,7 +97,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
     step('pcb-layout: one part moved on the PCB, with where it was and where it is');
     await choose('base', 'pcb-layout');
-    await page.waitForFunction(() => /1 part moved on the PCB/.test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), null, { timeout: 60000 });
+    await page.waitForFunction(() => /1 part moved on the PCB/.test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), null);
     const pcbSentence = await text('[data-testid="cmp-summary"]');
     expect(pcbSentence.trim() === '1 part moved on the PCB', `the whole sentence is the PCB's (${pcbSentence})`);
     expect(/PCB 1/.test(await tile('pcb')) && /1 part moved/.test(await tile('pcb')), `the PCB tile counts it (${await tile('pcb')})`);
@@ -112,7 +112,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     await shot('pcb');
     await rows().first().locator('[data-testid="link-base"]').click();
     await page.waitForSelector('[data-testid="diff-panel"]');
-    await settle(500);
+    await whenIdle(page);
     expect((await text('[data-testid="diff-path"]')).trim() === 'src/main.pcb.toml', 'Base opens the layout file at the ref beside the file on disk');
     const layoutDiff = await page.locator('[data-testid="diff-side"]').innerText();
     expect(/5\.0, 2\.0/.test(layoutDiff), 'the old position is in the file at the ref');
@@ -123,9 +123,9 @@ export async function run({ page, shot, step, expect, section, project, resetRep
 
     step('two refs: the systems of the commits are compared too');
     await choose('base', 'main');
-    await page.waitForFunction(() => /system port/.test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), null, { timeout: 60000 });
+    await page.waitForFunction(() => /system port/.test(document.querySelector('[data-testid="cmp-summary"]')?.textContent ?? ''), null);
     await choose('against', 'feature');
-    await page.waitForSelector('[data-testid="cmp-against"]', { timeout: 60000 });
+    await page.waitForSelector('[data-testid="cmp-against"]');
     expect(/system port/.test(await summary()), 'the sentence of two refs has the system');
     await tab('systems');
     expect(/power\.output/.test(await rowText('power.output')), 'the port row is there for two refs');
@@ -142,6 +142,5 @@ export async function run({ page, shot, step, expect, section, project, resetRep
     tryGit('branch', '-D', 'pcb-layout');
     resetRepo();
     await page.goto(url).catch(() => {});
-    await page.waitForSelector('.sidebar > *', { state: 'attached' }).catch(() => {});
   }
 }

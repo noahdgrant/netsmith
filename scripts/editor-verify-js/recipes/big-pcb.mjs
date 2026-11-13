@@ -1,11 +1,12 @@
 // The PCB of a big board: the board fills the canvas, the nets are in a list at the side, a
 // hover on a net lights it, and routing shows its stages and time while the editor stays usable.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'big';
 
 export async function run({ page, shot, step, expect, section }) {
   step('open the PCB tab');
   await section('pcb');
-  await page.waitForSelector('.pcb-host svg', { timeout: 60000 });
+  await page.waitForSelector('.pcb-host svg');
   expect((await page.locator('.pcb-host svg .l-key').count()) === 0, 'no key under the board');
   const host = await page.locator('.pcb-host').boundingBox();
   const board = await page.locator('.pcb-host svg .l-outline rect').boundingBox();
@@ -27,7 +28,7 @@ export async function run({ page, shot, step, expect, section }) {
   await shot('hover-net');
   await page.locator('.net-row', { hasText: 'RAIL3' }).click();
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(200);
+  await whenIdle(page);
   expect((await page.locator('.pcb-host svg.has-hl').count()) === 1, 'the picked net stays lit');
 
   step('collapse the panel');
@@ -48,7 +49,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.waitForSelector('.schematic');
   expect(true, 'another tab opens while the router runs');
   await section('pcb');
-  await page.waitForSelector('.took', { timeout: 120000 });
+  await page.waitForSelector('.took');
   const took = await page.locator('.toolbar .took').innerText();
   expect(/took \d/.test(took), `the time it took (${took})`);
   await shot('routed');

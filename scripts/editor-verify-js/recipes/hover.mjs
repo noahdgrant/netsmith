@@ -2,6 +2,7 @@
 // lights the same thing, softly (`.hover-lit`), in the others; it goes out when the pointer leaves, on Escape,
 // and a touch never sets it. Only a class is toggled: no drawing is replaced. The board is in the left pane
 // and another view in the right one, so that both are on show.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -11,21 +12,20 @@ export async function run({ page, shot, step, expect, section }) {
   const detail = await page.evaluate(async (b) => (await fetch(`/api/board?name=${encodeURIComponent(b)}`)).json(), board);
   const part = detail.parts.find((p) => p.path.includes('.') && p.kind !== 'Header') ?? detail.parts[0];
   const lit = (sel) => page.locator(`${sel}.hover-lit`).count();
-  const settle = () => page.waitForTimeout(260);
   const away = async () => {
     await page.mouse.move(5, 600);
-    await settle();
+    await whenIdle(page);
   };
   const right = async (id) => {
     await page.locator(`.pane-strip[data-pane="1"] [data-section="${id}"]`).click();
     await page.waitForSelector(`.section.sec-${id}:not(.away)`);
-    await page.waitForTimeout(450);
+    await whenIdle(page);
   };
   const pcbPart = `.sec-pcb .pcb-host svg g[data-ref="${part.refdes}"]`;
 
   step('the board on the left, another view on the right');
   await section('pcb');
-  await page.waitForSelector(pcbPart, { timeout: 60000 });
+  await page.waitForSelector(pcbPart);
   await page.getByRole('button', { name: /Split right/ }).click();
   await page.waitForSelector('.divider');
 
@@ -41,7 +41,7 @@ export async function run({ page, shot, step, expect, section }) {
   await right('bom');
   const row = page.locator(`tr.dr[data-hv-ref~="${part.refdes}"]`).first();
   await row.hover();
-  await settle();
+  await whenIdle(page);
   expect((await lit(pcbPart)) === 1, 'the part is lit on the board');
   expect((await lit('.sec-pcb .pcb-host svg g[data-ref]')) === 1, 'and only that part');
   expect((await lit(`.sec-pcb .part-row[data-hv-ref="${part.refdes}"]`)) === 1, "its row in the board's panel is lit");
@@ -57,13 +57,13 @@ export async function run({ page, shot, step, expect, section }) {
   step('hover a part of the schematic: its BOM row and the board show it');
   await right('schematic');
   await page.locator(`.sec-schematic svg g.part[data-ref="${part.refdes}"]`).first().hover();
-  await settle();
+  await whenIdle(page);
   expect((await lit(pcbPart)) === 1, 'the part is lit on the board');
   expect((await lit(`.sec-schematic svg g.part[data-ref="${part.refdes}"]`)) === 1, 'and in the schematic itself');
   expect((await lit(`.sec-bom tr.dr[data-hv-ref~="${part.refdes}"]`)) >= 1, 'its row in the bill of materials is lit, shown or not');
   await shot('schematic-part');
   await page.keyboard.press('Escape');
-  await settle();
+  await whenIdle(page);
   expect((await page.locator('.hover-lit').count()) === 0, 'Escape puts the light out');
 
   step('hover a net chip of the board\'s inspector: the net is lit in the schematic and on the board, and no part is');
@@ -72,7 +72,7 @@ export async function run({ page, shot, step, expect, section }) {
   const chip = page.locator('.sec-pcb .pin-chip[data-hv^="net:"]').first();
   const netName = (await chip.getAttribute('data-hv')).slice(4);
   await chip.hover();
-  await settle();
+  await whenIdle(page);
   expect((await lit(`.sec-schematic svg [data-net="${netName}"]:not(.pin)`)) >= 1, `the net ${netName} is lit in the schematic`);
   expect((await lit(`.sec-pcb svg [data-net="${netName}"]`)) >= 1, 'the net is lit on the board');
   expect((await lit('.sec-pcb .pcb-host svg g[data-ref]')) === 0, 'no part of the board is lit by a net');
@@ -83,30 +83,30 @@ export async function run({ page, shot, step, expect, section }) {
   await right('power');
   const rail = page.locator('.sec-power .pt-node[data-hv^="net:"]').first();
   await rail.hover();
-  await settle();
+  await whenIdle(page);
   const railNet = (await rail.getAttribute('data-hv')).slice(4);
   expect((await lit(`.sec-pcb svg [data-net="${railNet}"]`)) >= 1, `the rail ${railNet} is lit on the board`);
   await shot('power-card');
   await away();
   const prow = page.locator(`.sec-pcb .part-row[data-hv-ref="${part.refdes}"]`);
   await prow.hover();
-  await settle();
+  await whenIdle(page);
   expect((await lit('.sec-power .pt-node')) >= 1, 'a card is lit in the power tree');
   await away();
 
   step('the keyboard does the same as the pointer: a BOM row that has the focus lights the part');
   await right('bom');
   await page.locator(`tr.dr[data-hv-ref~="${part.refdes}"]`).first().focus();
-  await settle();
+  await whenIdle(page);
   expect((await lit(pcbPart)) === 1, 'focus lights the part on the board');
   await page.locator('body').click({ position: { x: 5, y: 500 } });
-  await settle();
+  await whenIdle(page);
   expect((await page.locator('.hover-lit').count()) === 0, 'focus gone, the light is gone');
 
   step('a touch sets nothing');
   await page.evaluate((r) => {
     document.querySelector(`tr.dr[data-hv-ref~="${r}"]`).dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'touch' }));
   }, part.refdes);
-  await settle();
+  await whenIdle(page);
   expect((await page.locator('.hover-lit').count()) === 0, 'nothing is lit by a touch');
 }

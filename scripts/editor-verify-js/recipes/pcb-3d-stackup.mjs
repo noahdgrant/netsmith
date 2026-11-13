@@ -4,6 +4,7 @@
 // tones, as `netsmith render --section` colours them); "copy as command" gives the exact
 // `netsmith render` command of the view; E pulls the layers apart, each labelled with its name and
 // thickness from the scene file, and puts them back.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'four_layer';
 
 const HOST = '[data-testid=pcb-3d]';
@@ -22,7 +23,7 @@ export async function run(tools) {
   await page.waitForSelector('.pcb-host svg');
   await theme(page, 'Dark', 'dark');
   await page.getByTestId('pcb-3d-toggle').click();
-  await page.waitForSelector(`${HOST}[data-ready]`, { timeout: 30000 });
+  await page.waitForSelector(`${HOST}[data-ready]`);
   await page.locator(HOST).focus();
   const info = await ask(page, 'board');
   const board = info.board;
@@ -44,15 +45,15 @@ export async function run(tools) {
   await page.getByTestId('view-front').click();
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.preset() === 'front', HOST);
   await page.keyboard.press('p');
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   // Zoom at the cut's left part until the board's 1.6 mm fill a good part of the window.
   for (let i = 0; i < 9; i++) {
     const p = await ask(page, 'toScreen', [W * 0.05, at, -0.8]);
     await page.mouse.move(p.x, p.y);
     await page.mouse.wheel(0, -400);
-    await page.waitForTimeout(60);
+    await whenIdle(page);
   }
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const colourOf = async (z) => {
     const p = await ask(page, 'toScreen', [W * 0.05, at, z]);
     return ask(page, 'colourAt', p.x, p.y);
@@ -86,9 +87,9 @@ export async function run(tools) {
   await page.keyboard.press('e');
   await page.waitForFunction((sel) => document.querySelector(sel).view3d.exploded(), HOST);
   // Apart in full: each layer at its place plus its offset (the ease's last frame), not after a fixed time.
-  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - ((s.zTop + s.zBottom) / 2 + s.offset)) < 1e-6), HOST, { timeout: 15000 });
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - ((s.zTop + s.zBottom) / 2 + s.offset)) < 1e-6), HOST);
   await page.keyboard.press('f');
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   const labels = await page.locator('[data-testid=stack-label]').allInnerTexts();
   expect(labels.length === slots.length, `a label per layer (${labels.length} of ${slots.length})`);
   expect(
@@ -101,7 +102,7 @@ export async function run(tools) {
 
   step('the light theme');
   await theme(page, 'Light', 'light');
-  await page.waitForTimeout(1200);
+  await whenIdle(page);
   await shot('exploded-light');
 
   step('E again puts the layers back');
@@ -109,7 +110,7 @@ export async function run(tools) {
   await page.waitForFunction((sel) => !document.querySelector(sel).view3d.exploded(), HOST);
   // The layers ease back over 420 ms of frames; after a theme change the first frames compile the
   // shaders again and come late (SwiftShader in CI), so wait for the layers, not for a time.
-  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), HOST, { timeout: 15000 });
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.slots().every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), HOST);
   expect((await page.locator('[data-testid=stack-label]').count()) === 0, 'no labels once the layers are back');
   const back = await ask(page, 'slots');
   expect(back.every((s) => Math.abs(s.now - (s.zTop + s.zBottom) / 2) < 1e-6), 'every layer is back in its place');

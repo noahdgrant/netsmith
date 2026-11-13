@@ -1,4 +1,5 @@
 // The PCB: placed at once, routed on demand, with layers that can be hidden.
+import { whenIdle } from '../settle.mjs';
 export const fixture = 'two_boards';
 
 export async function run({ page, shot, step, expect, section }) {
@@ -19,7 +20,7 @@ export async function run({ page, shot, step, expect, section }) {
   expect((await page.locator('.pcb-bar [data-testid="changes-switch"]').count()) === 1, 'the PCB toolbar has the Changes switch, as the other views do');
   await page.mouse.move(500, 400);
   await page.mouse.wheel(0, -600);
-  await page.waitForTimeout(300);
+  await whenIdle(page);
   const zoomed = await onScreen();
   expect(zoomed.every((h) => h >= 9 && h <= 14), `and after a zoom they are still small on the screen (${zoomed.map((h) => h.toFixed(1)).join(', ')})`);
   await page.locator('.pcb-host .zoombar button', { hasText: 'Fit' }).click();

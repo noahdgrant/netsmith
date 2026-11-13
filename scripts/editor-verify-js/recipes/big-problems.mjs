@@ -59,7 +59,7 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+End');
   await page.keyboard.type('\n.oops: NoSuchPart\n');
-  await page.waitForSelector('.problem.error', { timeout: 20000 });
+  await page.waitForSelector('.problem.error');
   expect(Number(await page.locator('.sev-toggle.error .n').innerText()) >= 1, 'the error is counted in the dock header');
   await shot('error');
 }

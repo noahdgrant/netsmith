@@ -1,5 +1,6 @@
 // Moving, rotating, flipping and locking parts on the PCB canvas, snapped to the grid and
 // written to the layout file, with undo and redo.
+import { whenIdle } from '../settle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PART, drag, fresh, openPcb, partAt, partOf, scene, settled } from '../pcb-helpers.mjs';
@@ -61,7 +62,7 @@ export async function run(tools) {
   expect(text().includes('lock = true'), 'the file says lock = true');
   c = await partAt(page, CAP);
   await drag(page, c.centre, { x: c.centre.x + 60, y: c.centre.y + 40 });
-  await page.waitForTimeout(400);
+  await whenIdle(page);
   const still = entry(await scene(page), CAP);
   expect(still.x === entry(s, CAP).x && still.y === entry(s, CAP).y, 'a locked part does not move');
   await page.waitForSelector('.toast');
@@ -95,7 +96,7 @@ export async function run(tools) {
 
   step('grid setting: 2.54 mm; a drag ends on it');
   // A toast of an earlier step can sit over the part (the board fills the whole window now).
-  await page.waitForSelector('.toast', { state: 'detached', timeout: 10000 });
+  await page.waitForSelector('.toast', { state: 'detached' });
   await page.selectOption('[data-testid=grid]', '2.54');
   c = await partAt(page, CAP);
   await page.mouse.click(c.centre.x, c.centre.y);
