@@ -70,6 +70,8 @@ are netsmith's** (MIT, like the rest of the repository).
 - `src/main.physical.nsm`: the board's physical file: the outline, the mounting holes and the
   places of J1 to J4, SW1 and SW2, each number read from their board (see The physical file).
 - `src/main.pcb.toml`: the layout file, with only a placer seed (see The physical file).
+- `case/base.step`, `case/lid.step`, `case/make_case.py`, `case/LICENSE`: a case of our own
+  (MIT), which the physical file names, and the script that writes it (see The case).
 - `libs/rp2350_minimal.pretty/MountingHole_2.75mm_M2.5.kicad_mod` and its row in `kicad.toml`:
   the 2.75 mm non-plated hole with the 3.15 mm mask opening of Raspberry Pi's (the standard rows
   have only M2 and M3; the parity checker compares the pad's size).
@@ -390,6 +392,31 @@ Two more files were needed to make the board route, and neither states a require
   and never a requirement; it locks no part). Seeds 0, 2 and 3 route completely (97 s, 43 s and
   35 s of routing); seeds 1 and 4 leave two connections unrouted after 120 s. The seed does not
   move the six parts above, only the others.
+
+## The case
+
+`case/` holds a simple two-part case of our own (MIT, `case/LICENSE`; not Raspberry Pi's), so
+the example shows the case fit check (ADR 0109). `case/make_case.py` writes both STEP files
+(Python 3's standard library only, the same bytes on every run): change a figure there and run
+it again. Every solid is a box. The physical file names the two files as `CaseModel`s, `.base`
+and `.lid`, placed at x and y -2.5 mm, and z -7.6 mm and 6.5 mm.
+
+- **The base**: a tray with a 2 mm floor and 2 mm walls 0.5 mm off the outline, and four 6 mm
+  square bosses, 4 mm tall with a 2.2 mm bore for an M2.5 thread-forming screw, under the
+  mounting holes. The board's bottom face rests on them: 4 mm leaves the headers' tails (about
+  1.6 mm out of the bottom face) 2 mm over the floor. The top wall has a notch at J1, 15 mm wide
+  and from 3.4 mm under the board's top face up, for a micro-B plug's overmould; the bottom wall
+  has one at J4 for its cable.
+- **The lid**: a 2 mm plate whose underside is 6.5 mm above the board's top face, which keeps it
+  clear of J1 (2.99 mm) and the plug's overmould. J2 and J3 (8.38 mm) stand through slots 1 mm
+  round their bodies, and a 2 mm hole over SW1 and SW2 lets a pin press them.
+
+`netsmith board3d --json` (`case_findings`) and `fab` find no `case_collision`. The parts whose
+catalog rows have no height yet are `case_unchecked` warnings under the lid, until their heights
+are filled in. With those heights, J2 and J3 get a `case_reach` warning: the check measures a
+connector at the board's edge as one plugged in from the side, and these two are plugged in
+from above, through the lid's slots. `netsmith render --highlight case:lid` and
+`--section y=25.5 --view front` draw the fit.
 
 ## The result
 
