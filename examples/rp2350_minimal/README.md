@@ -512,9 +512,38 @@ The standard catalogs have no 10 uF 0805 capacitor and no 0 ohm link. Both are r
 project with their sources: `catalogs/capacitor.csv` (Murata GRM21BR61C106KE15L, LCSC C77075, the
 JLCPCB page and the LCSC page read on 2026-11-10; no bias curve and no temperature range, as no
 datasheet was read) and `catalogs/resistor.csv` (Yageo RC0402JR-070RL, C60485: the 0.05 ohm
-upper end of its range is their board's `+50mR`, not read from the Yageo datasheet, which was
-not fetched). Both are Extended. Their part numbers are those of Raspberry Pi's board
-(its `lcsc_pn` property) and the JLCPCB and LCSC pages returned the same part for each.
+upper end of its range is their board's `+50mR`, not read from the Yageo datasheet; the datasheet
+was read later for the height only). Both are Extended. Their part numbers are those of Raspberry
+Pi's board (its `lcsc_pn` property) and the JLCPCB and LCSC pages returned the same part for each.
+
+### Heights
+
+Every part has a height (`netsmith board3d --json`: 43 of 43 known, 22 before), so the 3D view
+draws each body to it and a height limit or a case checks every part. 38 come from the `height`
+cell of the picked row (17 before), 4 are stated in the source and 1 is a package standard's. The
+cells were read on 2026-11-13, each
+with a `height:` entry in the row's `source` that names the document, its revision, its SHA-256,
+the page and the table or view. The cell is the greatest the document allows:
+
+| Parts | Row | Height | Document |
+|---|---|---|---|
+| R1, R2, R3, R4, R7, R8, R9 | UNI-ROYAL 0402WGF (std) | 0.4 mm | Thick Film Chip Resistors V3, page 4/9, H 0.35 +/-0.05 |
+| R5, R6 | Yageo RC0402JR-070RL | 0.4 mm | RC_L series V.12, page 4, Table 1, RC0402 H 0.35 +/-0.05 |
+| C18, C19 | Fenghua 0402CG150J500NT (std) | 0.55 mm | General Series A0001, pages 4/27 and 3/27, code CA, T 0.50 +/-0.05 |
+| C2, C3, C4 | Murata GRM21BR61C106KE15L | 1.35 mm | Murata catalog C02E, page 104, T max. |
+| U1 | RP2350A | 0.9 mm | RP2350 Datasheet, page 1324, Figure 147, A max. |
+| U3 | W25Q128JVSIQ | 2.16 mm | W25Q128JV Revision F, page 67, 10.1, A max. |
+| X1 | ABM8-272-T3 | 0.8 mm | ABM8 series sheet, Table 2, 0.80 max. (the part's drawing says "See Table 2") |
+| J1 | Amphenol 10103594-0001LF | 2.99 mm | drawing 10103594 rev A, front view, (2.99) REF |
+| J4 | JST SM03B-SRSS-TB | 2.9 mm | SR/SZ catalog, page 3, side entry, 2.9 |
+| J2, J3 | Samtec TSW-118-07-L-D | 8.38 mm | catalog page F-226, lead style -07, A - B = .330 in |
+
+Three connector figures have **no tolerance** in their document, so the cell is the printed
+figure and not a maximum: J1's (2.99) is a reference dimension, outside the drawing's general
+tolerances; the JST page and Samtec's catalog page print none. The Samtec figure is the tip of the
+post above the board (the body .100 in and the post .230 in), as the standard headers' height is;
+the series print, which has the tolerances, carries a notice of confidentiality and is not used.
+J1's drawing carries Amphenol's reproduction notice (see J1 above).
 
 ## Parts
 
