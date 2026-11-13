@@ -30,7 +30,7 @@
 //! mistake shows as the nets and pins around it and not as every component being unlike
 //! its counterpart.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::model::{Component, Netlist};
 use crate::value::normalize_value;
@@ -511,18 +511,6 @@ impl<'n> Joint<'n> {
         }
     }
 
-    /// Whether every colour has as many components and nets in A as in B.
-    fn balanced(&self, comp: &[u32], net: &[u32]) -> bool {
-        let count = |colors: &[u32], split: usize| {
-            let mut m: HashMap<u32, i64> = HashMap::new();
-            for (g, c) in colors.iter().enumerate() {
-                *m.entry(*c).or_default() += if g < split { 1 } else { -1 };
-            }
-            m.values().all(|&n| n == 0)
-        };
-        count(comp, self.ca) && count(net, self.na)
-    }
-
     /// Components grouped by colour: `(in A, in B)`.
     fn cells(&self, comp: &[u32]) -> BTreeMap<u32, (Vec<usize>, Vec<usize>)> {
         cells_split(comp, self.ca)
@@ -535,45 +523,50 @@ impl<'n> Joint<'n> {
 
     /// Search for a pairing of the components and nets that is an isomorphism,
     /// individualizing where refinement leaves a choice: among components first, then among
-    /// nets (which only the pads of a part that may be turned leave alike).
+    /// nets (which only the pads of a part that may be turned leave alike). The choice is the
+    /// group with the fewest members in A, the one with the lowest-numbered member when
+    /// several have as few; its lowest-numbered member in A is tried with each of its members
+    /// in B in turn.
+    ///
+    /// The search keeps one [`Partition`] and refines it in place as it goes down, undoing
+    /// each step as it comes back (#570): refining after an individualization looks only at
+    /// the neighbours of the groups that split, so a path from the root to a pairing costs
+    /// about `m log n` for a graph of `m` pins and `n` nodes, where refining every node again
+    /// at each level cost `m` times the depth, and the depth grows with the number of parts
+    /// that are interchangeable (one for each copy of a repeated circuit and more).
+    /// Refinement reaches the same groups whatever order it splits them in, so the groups,
+    /// and with them every choice, are those the full refinement gives.
     fn search(
         &self,
-        mut comp: Vec<u32>,
-        mut net: Vec<u32>,
+        part: &mut Partition,
         budget: &mut Budget,
     ) -> Result<Option<Pairing>, Undecided> {
         budget.used += 1;
-        self.refine(&mut comp, &mut net, |_| {});
-        if !self.balanced(&comp, &net) {
+        part.refine();
+        if part.unbalanced > 0 {
             return Ok(None);
         }
-        let cells = self.cells(&comp);
-        let net_cells = self.net_cells(&net);
-        let smallest = |cells: &BTreeMap<u32, (Vec<usize>, Vec<usize>)>| {
-            cells
-                .values()
-                .filter(|(a, _)| a.len() > 1)
-                .min_by_key(|(a, _)| a.len())
-                .cloned()
-        };
-        let (is_net, (cell_a, cell_b)) = match smallest(&cells) {
-            Some(cell) => (false, cell),
-            None => match smallest(&net_cells) {
-                Some(cell) => (true, cell),
-                None => return Ok(self.read_pairing(&cells, &net_cells)),
-            },
+        let choice = part
+            .open
+            .first()
+            .map(|&(is_net, _, _, cell)| (is_net, cell));
+        let Some((is_net, cell)) = choice else {
+            let (comp, net) = part.colours();
+            return Ok(self.read_pairing(&self.cells(&comp), &self.net_cells(&net)));
         };
         if budget.used > budget.max {
-            return Err(self.stopped(&cells, &net_cells, budget));
+            let (comp, net) = part.colours();
+            return Err(self.stopped(&self.cells(&comp), &self.net_cells(&net), budget));
         }
-        let x = cell_a[0];
-        for &y in &cell_b {
-            let (mut c, mut n) = (comp.clone(), net.clone());
-            let colors = if is_net { &mut n } else { &mut c };
-            let fresh = colors.iter().max().map_or(0, |m| m + 1);
-            colors[x] = fresh;
-            colors[y] = fresh;
-            if let Some(mut pairing) = self.search(c, n, budget)? {
+        let members = &part.cells[cell as usize].members;
+        let x = *members.first().expect("a cell is not empty");
+        let candidates: Vec<u32> = members.iter().copied().filter(|&v| !part.in_a(v)).collect();
+        for y in candidates {
+            let mark = part.trail.len();
+            part.individualize(x, y);
+            let found = self.search(part, budget)?;
+            part.undo(mark);
+            if let Some(mut pairing) = found {
                 pairing.interchangeable += usize::from(!is_net);
                 return Ok(Some(pairing));
             }
@@ -762,6 +755,287 @@ fn distinct(colors: &[u32]) -> usize {
     colors.iter().collect::<BTreeSet<_>>().len()
 }
 
+/// A colouring of the joint graph as groups of nodes (cells) that the search refines and
+/// undoes in place. Nodes are the components, then the nets, numbered as in [`Joint`]; a cell
+/// holds only components or only nets.
+struct Partition {
+    /// `(neighbour, edge label)` of each node.
+    adj: Vec<Vec<(u32, u32)>>,
+    comps: usize,
+    ca: usize,
+    na: usize,
+    cell_of: Vec<u32>,
+    cells: Vec<Cell>,
+    /// How many cells have not as many nodes in A as in B.
+    unbalanced: usize,
+    /// The cells with more than one node in A, as `(of nets, nodes in A, first node, cell)`:
+    /// the first is the search's choice.
+    open: BTreeSet<(bool, usize, u32, u32)>,
+    /// `(cell, the cell it split from)`, in the order the cells were made.
+    trail: Vec<(u32, u32)>,
+    /// The cells whose neighbours refinement has still to split by.
+    queue: VecDeque<u32>,
+    queued: Vec<bool>,
+    /// For each node, the labels of its edges into the cell being split by.
+    sig: Vec<Vec<u32>>,
+    touched: Vec<u32>,
+}
+
+#[derive(Default)]
+struct Cell {
+    members: BTreeSet<u32>,
+    a: usize,
+    b: usize,
+}
+
+impl Partition {
+    /// The starting colouring: the components by their starting colour, the nets together,
+    /// every cell still to refine by.
+    fn new(joint: &Joint) -> Partition {
+        let comps = joint.total_comps();
+        let total = comps + joint.total_nets();
+        let mut adj = vec![Vec::new(); total];
+        for (g, pins) in joint.comp_pins.iter().enumerate() {
+            for &(p, n) in pins {
+                let label = joint.label(g, p);
+                adj[g].push(((comps + n) as u32, label));
+                adj[comps + n].push((g as u32, label));
+            }
+        }
+        let mut part = Partition {
+            adj,
+            comps,
+            ca: joint.ca,
+            na: joint.na,
+            cell_of: vec![0; total],
+            cells: Vec::new(),
+            unbalanced: 0,
+            open: BTreeSet::new(),
+            trail: Vec::new(),
+            queue: VecDeque::new(),
+            queued: Vec::new(),
+            sig: vec![Vec::new(); total],
+            touched: Vec::new(),
+        };
+        let mut index: HashMap<u32, u32> = HashMap::new();
+        let colours = joint
+            .init
+            .iter()
+            .copied()
+            .chain((0..joint.total_nets()).map(|_| u32::MAX));
+        for (v, colour) in colours.enumerate() {
+            let next = part.cells.len() as u32;
+            let cell = *index.entry(colour).or_insert_with(|| {
+                part.cells.push(Cell::default());
+                part.queued.push(true);
+                part.queue.push_back(next);
+                next
+            });
+            part.cell_of[v] = cell;
+            part.put(v as u32, cell);
+        }
+        for cell in 0..part.cells.len() as u32 {
+            part.attach(cell);
+        }
+        part
+    }
+
+    fn in_a(&self, v: u32) -> bool {
+        let v = v as usize;
+        if v < self.comps {
+            v < self.ca
+        } else {
+            v - self.comps < self.na
+        }
+    }
+
+    /// The cell of each component and of each net.
+    fn colours(&self) -> (Vec<u32>, Vec<u32>) {
+        let (comp, net) = self.cell_of.split_at(self.comps);
+        (comp.to_vec(), net.to_vec())
+    }
+
+    fn key(&self, cell: u32) -> Option<(bool, usize, u32, u32)> {
+        let c = &self.cells[cell as usize];
+        let first = *c.members.first()?;
+        (c.a > 1).then_some((first as usize >= self.comps, c.a, first, cell))
+    }
+
+    /// Take a cell out of the counts, before its members change.
+    fn detach(&mut self, cell: u32) {
+        if let Some(key) = self.key(cell) {
+            self.open.remove(&key);
+        }
+        let c = &self.cells[cell as usize];
+        if c.a != c.b {
+            self.unbalanced -= 1;
+        }
+    }
+
+    /// Put a cell back in the counts, after its members changed.
+    fn attach(&mut self, cell: u32) {
+        if let Some(key) = self.key(cell) {
+            self.open.insert(key);
+        }
+        let c = &self.cells[cell as usize];
+        if c.a != c.b {
+            self.unbalanced += 1;
+        }
+    }
+
+    fn put(&mut self, v: u32, cell: u32) {
+        let in_a = self.in_a(v);
+        let c = &mut self.cells[cell as usize];
+        c.members.insert(v);
+        if in_a {
+            c.a += 1;
+        } else {
+            c.b += 1;
+        }
+    }
+
+    fn take(&mut self, v: u32, cell: u32) {
+        let in_a = self.in_a(v);
+        let c = &mut self.cells[cell as usize];
+        c.members.remove(&v);
+        if in_a {
+            c.a -= 1;
+        } else {
+            c.b -= 1;
+        }
+    }
+
+    fn enqueue(&mut self, cell: u32) {
+        if !self.queued[cell as usize] {
+            self.queued[cell as usize] = true;
+            self.queue.push_back(cell);
+        }
+    }
+
+    /// Split each of `groups` off `cell` into a cell of its own; `rest` is how many members
+    /// of `cell` are in none of them. Of the pieces, refinement must split by all but one: a
+    /// cell refinement had already split by was stable, so the last piece's edges are the
+    /// whole cell's less the others' (Hopcroft's rule; the largest is left out).
+    fn split(&mut self, cell: u32, mut groups: Vec<Vec<u32>>, rest: usize) {
+        if rest == 0 {
+            let largest = (0..groups.len())
+                .max_by_key(|&i| groups[i].len())
+                .unwrap_or(0);
+            groups.swap_remove(largest);
+        }
+        if groups.is_empty() {
+            return;
+        }
+        self.detach(cell);
+        let mut pieces = Vec::with_capacity(groups.len() + 1);
+        for group in groups {
+            let new = self.cells.len() as u32;
+            self.cells.push(Cell::default());
+            self.queued.push(false);
+            self.trail.push((new, cell));
+            for &v in &group {
+                self.take(v, cell);
+                self.put(v, new);
+                self.cell_of[v as usize] = new;
+            }
+            self.attach(new);
+            pieces.push((group.len(), new));
+        }
+        self.attach(cell);
+        if self.queued[cell as usize] {
+            for (_, piece) in pieces {
+                self.enqueue(piece);
+            }
+        } else {
+            pieces.push((self.cells[cell as usize].members.len(), cell));
+            let largest = (0..pieces.len()).max_by_key(|&i| pieces[i].0).unwrap_or(0);
+            for (i, &(_, piece)) in pieces.iter().enumerate() {
+                if i != largest {
+                    self.enqueue(piece);
+                }
+            }
+        }
+    }
+
+    /// Give `x` and `y`, of one cell, a cell of their own.
+    fn individualize(&mut self, x: u32, y: u32) {
+        let cell = self.cell_of[x as usize];
+        let rest = self.cells[cell as usize].members.len() - 2;
+        self.split(cell, vec![vec![x, y]], rest);
+    }
+
+    /// Split cells until every node of a cell has as many edges of each label into each cell
+    /// as the others of its cell: the coarsest such colouring finer than this one.
+    fn refine(&mut self) {
+        while let Some(s) = self.queue.pop_front() {
+            self.queued[s as usize] = false;
+            let mut touched = std::mem::take(&mut self.touched);
+            for &u in &self.cells[s as usize].members {
+                for &(w, label) in &self.adj[u as usize] {
+                    let sig = &mut self.sig[w as usize];
+                    if sig.is_empty() {
+                        touched.push(w);
+                    }
+                    sig.push(label);
+                }
+            }
+            for &w in &touched {
+                self.sig[w as usize].sort_unstable();
+            }
+            touched.sort_unstable_by(|&x, &y| {
+                let (cx, cy) = (self.cell_of[x as usize], self.cell_of[y as usize]);
+                cx.cmp(&cy)
+                    .then_with(|| self.sig[x as usize].cmp(&self.sig[y as usize]))
+            });
+            let mut i = 0;
+            while i < touched.len() {
+                let cell = self.cell_of[touched[i] as usize];
+                let mut groups = Vec::new();
+                let mut j = i;
+                while j < touched.len() && self.cell_of[touched[j] as usize] == cell {
+                    let k = j;
+                    while j < touched.len()
+                        && self.cell_of[touched[j] as usize] == cell
+                        && self.sig[touched[j] as usize] == self.sig[touched[k] as usize]
+                    {
+                        j += 1;
+                    }
+                    groups.push(touched[k..j].to_vec());
+                }
+                let rest = self.cells[cell as usize].members.len() - (j - i);
+                if rest > 0 || groups.len() > 1 {
+                    self.split(cell, groups, rest);
+                }
+                i = j;
+            }
+            for &w in &touched {
+                self.sig[w as usize].clear();
+            }
+            touched.clear();
+            self.touched = touched;
+        }
+    }
+
+    /// Merge back every cell made since the trail was `mark` long.
+    fn undo(&mut self, mark: usize) {
+        while self.trail.len() > mark {
+            let Some((new, parent)) = self.trail.pop() else {
+                break;
+            };
+            self.detach(new);
+            self.detach(parent);
+            let members = std::mem::take(&mut self.cells[new as usize].members);
+            for v in members {
+                self.put(v, parent);
+                self.cell_of[v as usize] = parent;
+            }
+            self.attach(parent);
+            self.cells.pop();
+            self.queued.pop();
+        }
+    }
+}
+
 struct Budget {
     used: usize,
     max: usize,
@@ -790,9 +1064,8 @@ pub fn compare(a: &Netlist, b: &Netlist, options: &Options) -> Result<Outcome, S
         used: 0,
         max: options.refinement_bound(joint.total_comps()),
     };
-    let comp = joint.init.clone();
-    let net = vec![0; joint.total_nets()];
-    match joint.search(comp, net, &mut budget) {
+    let mut part = Partition::new(&joint);
+    match joint.search(&mut part, &mut budget) {
         Err(stop) => Ok(Outcome::Undecided(stop)),
         Ok(Some(pairing)) => {
             let mut differences = class_differences(&joint, &pairing.partner, options);
