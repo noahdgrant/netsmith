@@ -112,7 +112,7 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
         .iter()
         .map(|f| {
             let refdes = match &f.subject {
-                Subject::Part { refdes, .. } => Some(refdes.clone()),
+                Subject::Part { refdes, .. } | Subject::Pins { refdes, .. } => Some(refdes.clone()),
                 _ => None,
             };
             // The scene's frame is y up from the outline's bottom-left corner; the sheet's is
@@ -128,6 +128,10 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
                 .unwrap_or_else(|| Rect::new(at, at));
             let subject = refdes
                 .clone()
+                .map(|r| match f.subject {
+                    Subject::Pins { .. } => format!("{r}:pins"),
+                    _ => r,
+                })
                 .or_else(|| (!f.solid.is_empty()).then(|| f.solid.clone()))
                 .unwrap_or_else(|| f.case.clone());
             let id = ids.id(format!("case:{}:{subject}", f.kind.word()));

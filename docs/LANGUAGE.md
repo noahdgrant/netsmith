@@ -7899,10 +7899,10 @@ physical for Boxed {
 
 A case model is a drawing and a check, never a height, an outline or a hole: the outline, the cutouts, the mounting holes and the height limits stay statements of the `case { }` section (by hand or with `netsmith dxf import`), and the check says where they disagree with the model. The STEP export leaves the case out. netsmith never bundles a case model and never downloads one.
 
-**The fit check.** `fab`, `board3d` and the editor read each file with netsmith's own STEP reader, place it and measure the board against its solids: each part's body box to its height (stated, catalog or the package standard's), and the board's own solid. The findings, each with its numbers, the part and the solid (`docs/BOARD3D.md`, _The case model's fit_, has the table):
+**The fit check.** `fab`, `board3d` and the editor read each file with netsmith's own STEP reader, place it and measure the board against its solids: each part's body box to its height (stated, catalog or the package standard's), the pins of a part that states how far they protrude (`.pin_protrusion`, a box under its plated pads out to that length), and the board's own solid. The findings, each with its numbers, the part and the solid (`docs/BOARD3D.md`, _The case model's fit_, has the table):
 
-- `case_collision`: a body or the board inside a case solid by more than 0.01 mm. Touching is contact, so a board resting on a boss is fine. For a part of a stated or catalog height, and for the board, it is an error that stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it, as a part too tall for a height limit is.
-- `case_clearance`: a body nearer a case surface than `.clearance`, a warning.
+- `case_collision`: a body, stated pins or the board inside a case solid by more than 0.01 mm. Touching is contact, so a board resting on a boss is fine. For a part of a stated or catalog height, for stated pins, and for the board, it is an error that stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it, as a part too tall for a height limit is.
+- `case_clearance`: a body or stated pins nearer a case surface than `.clearance`, a warning.
 - `case_reach`: a connector at the board's edge with the case between its face and the outside, or its face more than `.reach` inside the wall's outer face, a warning.
 - `case_boss`: a mounting hole with no case solid within `.boss_gap` above or below its ring, a warning.
 - `case_unchecked`: a part of unknown height under the case, a part of standard height that collides (a part in that package may be lower), or a solid whose shell is not closed, which gets no test for a body wholly inside it. A warning, and an error with strict constraints.

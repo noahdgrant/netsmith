@@ -1,6 +1,7 @@
 //! A board's fit in its case models (ADR 0109): each `CaseModel` file the design names and
 //! [`crate::models::locate`] found is read by netsmith's STEP reader, placed in the scene's
-//! frame and measured against the board and its parts' bodies (`netsmith_3d::case`).
+//! frame and measured against the board, its parts' bodies and their stated pins
+//! (`netsmith_3d::case`).
 //!
 //! **Reading.** A file is read as a part's model is ([`crate::models::read`]): once per path
 //! and SHA-256 of its bytes, so the editor and a `fab` of several boards read a case once, and
@@ -8,9 +9,9 @@
 //! (ADR 0109 measured up to 6 s for one file); the check itself is milliseconds.
 //!
 //! **What each finding stops** (the owner's answers on #430):
-//! - `case_collision` (a body of a stated or catalog height, or the board, in a case solid) is
-//!   an error: `fab` refuses, and neither `--allow-drc-violations` nor `--constraints warn`
-//!   waives it, as `too_tall` is.
+//! - `case_collision` (a body of a stated or catalog height, stated pins, or the board, in a
+//!   case solid) is an error: `fab` refuses, and neither `--allow-drc-violations` nor
+//!   `--constraints warn` waives it, as `too_tall` is.
 //! - `case_unchecked` (a part of unknown height under the case, a standard height that
 //!   collides, a shell that is not closed, a file that is not there) is a warning, and an error
 //!   when constraints are strict, as `height_unchecked` is. A file that is there and that the

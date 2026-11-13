@@ -491,3 +491,96 @@ fn a_case_model_is_turned_about_x_then_y_then_z_and_then_moved() {
     assert_eq!(placed.triangle_count(), 2);
     assert_eq!(placed.solids[0].triangles[0][1], [1.0, 0.0, 8.0]);
 }
+
+/// A through-hole part on the top face whose pins, under its pads from `min` to `max`, stand
+/// `length` mm out of the bottom face, as the design states.
+fn pinned(min: [f64; 2], max: [f64; 2], length: f64) -> Body {
+    let mut b = body("j1", min, max, Some(2.0));
+    b.pins = Pins::Known {
+        at: PlanBox {
+            min: Plan {
+                x: min[0],
+                y: min[1],
+            },
+            max: Plan {
+                x: max[0],
+                y: max[1],
+            },
+        },
+        length,
+        source: "a test".into(),
+        z_top: -T,
+        z_bottom: -T - length,
+    };
+    b
+}
+
+#[test]
+fn stated_pins_into_a_boss_collide_as_an_error() {
+    // A boss that stands 2 mm under the board's bottom face, from y 8 to 16.
+    let base = || {
+        case(
+            "base",
+            vec![cube("rib", [10.0, 8.0, -6.0], [14.0, 16.0, -T - 2.0])],
+        )
+    };
+    let found = check(
+        &board(vec![]),
+        &[pinned([11.0, 10.0], [13.0, 14.0], 2.5)],
+        &[base()],
+    );
+    assert_eq!(
+        kinds(&found),
+        [(FitKind::Collision, "j1".into(), "rib".into())]
+    );
+    let f = &found[0];
+    assert!(
+        matches!(f.subject, Subject::Pins { length, .. } if length == 2.5),
+        "{f:?}"
+    );
+    assert!(
+        matches!(f.why, Why::Collision { depth: Some(d), .. } if (d - 0.5).abs() < 1e-9),
+        "{f:?}"
+    );
+    assert_eq!(f.weight(), Weight::Error);
+    assert_eq!(f.severity(false), "error");
+    let text = f.to_string();
+    assert!(
+        text.starts_with("the pins of U_j1 (`j1`), stated to stand 2.50 mm out of the far face, are inside the solid `rib` of the case model `base` by 0.50 mm"),
+        "{text}"
+    );
+    // Pins that end 0.3 mm above it are near it, a warning; 1.5 mm, nothing.
+    let found = check(
+        &board(vec![]),
+        &[pinned([11.0, 10.0], [13.0, 14.0], 1.7)],
+        &[base()],
+    );
+    assert_eq!(
+        kinds(&found),
+        [(FitKind::Clearance, "j1".into(), "rib".into())]
+    );
+    assert!(matches!(found[0].subject, Subject::Pins { .. }));
+    assert!(matches!(found[0].why, Why::Clearance { gap, .. } if (gap - 0.3).abs() < 1e-4));
+    assert!(
+        check(
+            &board(vec![]),
+            &[pinned([11.0, 10.0], [13.0, 14.0], 0.5)],
+            &[base()]
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn pins_of_no_stated_protrusion_are_not_measured() {
+    let base = case(
+        "base",
+        vec![cube("rib", [10.0, 8.0, -6.0], [14.0, 16.0, -T - 0.2])],
+    );
+    let mut j1 = pinned([11.0, 10.0], [13.0, 14.0], 2.5);
+    let Pins::Known { at, .. } = j1.pins else {
+        unreachable!()
+    };
+    j1.pins = Pins::Unknown { at };
+    assert!(check(&board(vec![]), &[j1], &[base]).is_empty());
+}
