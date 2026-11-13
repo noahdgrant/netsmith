@@ -743,7 +743,7 @@ board Converter {
     let u = &model.uses[0];
     let names: Vec<&str> = u.candidates.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names, ["Zbk2Buck", "Zbk9Buck"]);
-    assert!(u.candidates.iter().all(|p| p.module_shaped));
+    assert!(u.candidates.iter().all(|p| p.kind == InstKind::Module));
     // The generic's relation is on the module provider's rail.
     let shown: Vec<String> = model
         .relations()
@@ -806,7 +806,7 @@ fn providers_of_one_generic_are_all_parts_or_all_modules() {
     assert!(
         m.iter().any(|m| m
             .contains("`BModule` is a module, but `APart`, which provides `Thing` too, is a part")
-            && m.contains("all providers of a generic are parts, or all are modules")),
+            && m.contains("all providers of a generic are parts, all are modules, or all are interfaces")),
         "{m:?}"
     );
 }
@@ -1271,4 +1271,148 @@ fn two_providers_of_one_generic_cannot_share_a_name() {
         c.sources.get(c.diagnostics[0].source).name,
         "src/vendor_b.nsm"
     );
+}
+
+/// A manufacturing process as a generic (ADR 0113): values only, provided by interfaces. Every
+/// number here is invented.
+const FAB: &str = "\
+generic Fab {
+    .fabricator: String
+    .fabricator &= \"Acme\"
+    .min_track: Length
+    .weight: Number
+}
+";
+
+const FAB_PROVIDERS: &str = "\
+import src::fab::Fab
+
+interface FabOne provides Fab {
+    .min_track &= 0.1mm..1m
+    .weight &= 1
+}
+
+interface FabTwo provides Fab {
+    .min_track &= 0.2mm..1m
+    .weight &= 2
+}
+";
+
+#[test]
+fn an_interface_provides_a_generic_of_values_and_a_use_is_made_as_an_interface() {
+    let board = "\
+import src::fab::Fab
+import src::fabs::FabOne
+
+board B {
+    .process: Fab {}
+}
+";
+    let c = run(board, &[("src::fab", FAB), ("src::fabs", FAB_PROVIDERS)]);
+    ok(&c);
+    let model = &c.board("B").unwrap().model;
+    let process = model.instance(model.inst_at("process").unwrap());
+    assert_eq!(process.kind, InstKind::Interface);
+    assert_eq!(process.type_name, "FabOne");
+    assert_eq!(process.placed_as.as_deref(), Some("Fab"));
+    let u = &model.uses[0];
+    let names: Vec<&str> = u.candidates.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["FabOne", "FabTwo"]);
+    assert!(u.candidates.iter().all(|p| p.kind == InstKind::Interface));
+    // The generic's statement reaches the provider.
+    let f = model.field_at("process.fabricator").unwrap();
+    assert!(matches!(&model.field(f).domain, Domain::Text(t) if t == "Acme"));
+    assert!(model.provider_conflicts.is_empty());
+}
+
+#[test]
+fn an_interface_does_not_provide_a_generic_with_pins() {
+    let generic = "generic Thing {\n    pins {\n        .a passive\n    }\n}\n";
+    let c = run(
+        "import src::g::Thing\ninterface IThing provides Thing {\n}\n",
+        &[("src::g", generic)],
+    );
+    let m = messages(&c);
+    assert!(
+        m.iter().any(|m| m.contains(
+            "`IThing` is an interface, and `Thing` has a `pins` table or a catalog, which only a part provides"
+        )),
+        "{m:?}"
+    );
+}
+
+#[test]
+fn providers_of_one_generic_are_not_interfaces_and_modules_together() {
+    let generic = "generic Thing {\n    .size: Number\n}\n";
+    let iface = "import src::g::Thing\ninterface AThing provides Thing {\n    .size &= 1\n}\n";
+    let module = "import src::g::Thing\nmodule BModule provides Thing {\n    .size &= 2\n}\n";
+    let board = "import src::g::Thing\nimport src::a::AThing\nimport src::b::BModule\nboard B {\n .t: Thing\n}\n";
+    let c = run(
+        board,
+        &[("src::g", generic), ("src::a", iface), ("src::b", module)],
+    );
+    let m = messages(&c);
+    assert!(
+        m.iter().any(|m| m.contains(
+            "`BModule` is a module, but `AThing`, which provides `Thing` too, is an interface"
+        )),
+        "{m:?}"
+    );
+}
+
+#[test]
+fn a_narrowing_of_a_use_that_its_first_provider_contradicts_is_a_provider_conflict() {
+    let board = "\
+import src::fab::Fab
+import src::fabs::FabOne
+
+board B {
+    .process: Fab { .weight &= 2 }
+}
+";
+    let c = run(board, &[("src::fab", FAB), ("src::fabs", FAB_PROVIDERS)]);
+    let m = messages(&c);
+    assert!(
+        m.iter()
+            .any(|m| m.contains("contradiction on `process.weight`")),
+        "{m:?}"
+    );
+    // The same diagnostic, kept apart: another provider may not have it, so the build tries
+    // the others (ADR 0113).
+    let model = &c.board("B").unwrap().model;
+    assert_eq!(model.provider_conflicts.len(), 1, "{m:?}");
+    assert_eq!(c.diagnostics.len(), 1, "{m:?}");
+    // With the second provider, nothing contradicts.
+    let mut assign = Assignment::new();
+    assign.insert(
+        "B".to_string(),
+        [("process".to_string(), "src::fabs::FabTwo".to_string())]
+            .into_iter()
+            .collect(),
+    );
+    let c = check_with(
+        "test.nsm",
+        board,
+        &loader(&[("src::fab", FAB), ("src::fabs", FAB_PROVIDERS)]),
+        &assign,
+    );
+    ok(&c);
+}
+
+#[test]
+fn a_contradiction_outside_a_use_with_several_providers_is_not_a_provider_conflict() {
+    let board = "\
+import src::fab::Fab
+import src::fabs::FabOne
+
+board B {
+    .process: Fab {}
+    .n: Number
+    .n &= 1
+    .n &= 2
+}
+";
+    let c = run(board, &[("src::fab", FAB), ("src::fabs", FAB_PROVIDERS)]);
+    assert!(!c.is_ok());
+    assert!(c.board("B").unwrap().model.provider_conflicts.is_empty());
 }

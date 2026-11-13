@@ -16,7 +16,7 @@ use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
 use crate::checker::{Checker, Res, Ty};
 use crate::diag::SourceId;
 use crate::model::{
-    Domain, EnumId, FieldId, FieldKind, InstKind, Member, RExpr, RangeEnd, Relation,
+    Domain, EnumId, FieldId, FieldKind, InstId, InstKind, Member, RExpr, RangeEnd, Relation,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -910,6 +910,24 @@ impl Checker<'_> {
         }
     }
 
+    /// Whether `inst` is, or lies inside, a use of a generic that has more than one provider
+    /// in scope (ADR 0113).
+    fn in_varied_use(&self, inst: InstId) -> bool {
+        let mut cur = Some(inst);
+        while let Some(at) = cur {
+            if self
+                .uses
+                .iter()
+                // A use being made has `InstId(0)`, the root's, until its instance exists.
+                .any(|u| u.inst == at && u.inst != InstId(0) && u.candidates.len() > 1)
+            {
+                return true;
+            }
+            cur = self.model.instance(at).parent;
+        }
+        false
+    }
+
     /// ` (stated at file:line)` for the first statement that narrowed `field`, or nothing.
     fn stated_at(&self, field: FieldId) -> String {
         let Some((src, sp)) = self.model.field(field).narrowed_at.first().copied() else {
@@ -983,13 +1001,19 @@ impl Checker<'_> {
                     self.model.show_value(field, &old),
                     self.model.show_value(field, &new),
                 );
-                self.report(
-                    source,
-                    span,
-                    format!(
-                        "contradiction on `{path}`: it is already {old}, which does not overlap {new}"
-                    ),
+                let message = format!(
+                    "contradiction on `{path}`: it is already {old}, which does not overlap {new}"
                 );
+                // Inside a use with several providers, another provider may not state what
+                // this one does: the build tries them before it stops (ADR 0113).
+                if self.in_varied_use(self.model.field(field).owner) {
+                    self.provider_conflicts.push(crate::diag::Diagnostic {
+                        source,
+                        span,
+                        message: message.clone(),
+                    });
+                }
+                self.report(source, span, message);
             }
         }
     }

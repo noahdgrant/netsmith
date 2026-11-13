@@ -288,8 +288,8 @@ pub struct Provider {
     /// The generic itself, which is its own provider when it has a pin table with pads or a
     /// catalog.
     pub own: bool,
-    /// Whether it is a module, not a part.
-    pub module_shaped: bool,
+    /// What it is made as: a part, a module, or an interface (a process, ADR 0113).
+    pub kind: InstKind,
 }
 
 /// A member declared with the type of a generic (`.rf: CoaxReceptacle { ... }`): what
@@ -1010,6 +1010,10 @@ pub struct Model {
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
     pub uses: Vec<GenericUse>,
+    /// The contradictions on a field inside a use that has more than one provider (also among
+    /// the check's diagnostics): another provider may not have them, so the build tries the
+    /// others before it stops on them (ADR 0113).
+    pub provider_conflicts: Vec<crate::diag::Diagnostic>,
     /// The `lines` of the bus interfaces in use, by the module and index of their definition
     /// (ADR 0064).
     pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
@@ -1148,6 +1152,7 @@ impl Model {
             unused: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
+            provider_conflicts: Vec::new(),
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
             polygons: Vec::new(),
