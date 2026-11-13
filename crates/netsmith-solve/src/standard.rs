@@ -3,7 +3,7 @@
 //!
 //! The catalogs `resistor`, `capacitor`, `inductor` and `led` have, besides their rows, a
 //! provider with no supplier, the synthesized one of ADR 0047. How it makes its parts (the
-//! packages, the tolerance classes, the package's power rating, a capacitance with no bias
+//! packages, the tolerance kinds, the package's power rating, a capacitance with no bias
 //! curve) is a property of the catalog, not of a definition, and the language cannot say it,
 //! so it is Rust, and this is the one place that names the four catalogs. Any part that lists
 //! one of them in its `catalog` statement gets these parts, a project's own part too.

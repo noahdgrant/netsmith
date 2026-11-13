@@ -44,7 +44,7 @@
 
 /// A mounting hole with no copper: a drill for a screw that touches no net. It has no pins,
 /// so it is on no net.
-#[class(mounting_hole)]
+#[kind(mounting_hole)]
 part MountingHole {
     .designator &= "H"
     .height &= 0mm
@@ -55,7 +55,7 @@ part MountingHole {
 /// A mounting hole plated through, with a pad that a screw bonds to a net (the chassis, or
 /// ground). Its one pin `p1` is the plating: the board joins it to a net, or leaves it open
 /// for a hole whose pad floats.
-#[class(plated_hole)]
+#[kind(plated_hole)]
 part PlatedHole {
     .designator &= "H"
     .height &= 0mm
@@ -70,7 +70,7 @@ part PlatedHole {
 
 /// A fiducial: a bare copper mark that the pick-and-place machine locates the board by. It
 /// has no pins, so it is on no net.
-#[class(fiducial)]
+#[kind(fiducial)]
 part Fiducial {
     .designator &= "FID"
     .height &= 0mm
@@ -95,7 +95,7 @@ part TestPoint {
 /// A line of text printed on the silkscreen: a revision, a name, a polarity mark. It has no
 /// pins, is fitted by nobody, and is placed like any other part. Its `.text_height` is at least the
 /// process's smallest text; unset, it is that.
-#[class(label)]
+#[kind(label)]
 part Label {
     .designator &= "LBL"
     .assembly &= AssemblyMode::None

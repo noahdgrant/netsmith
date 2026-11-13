@@ -96,7 +96,7 @@ mod tests {
     fn part(refdes: &str) -> Part {
         Part {
             provides: Vec::new(),
-            class: Some(crate::PartClass::Resistor),
+            declared_kind: Some(crate::PartKind::Resistor),
             refdes: refdes.into(),
             kind: "Resistor".into(),
             value: "1k".into(),
@@ -107,17 +107,17 @@ mod tests {
     }
 
     #[test]
-    fn a_connector_is_a_part_of_the_connector_class() {
+    fn a_connector_is_a_part_of_the_connector_kind() {
         let mut p = part("J1");
         p.kind = "MolexPicoBlade".into();
-        p.class = None;
+        p.declared_kind = None;
         assert!(!p.is_connector());
-        p.class = Some(crate::PartClass::Connector);
+        p.declared_kind = Some(crate::PartKind::Connector);
         assert!(p.is_connector());
         // A name that starts like a connector's, or letters `J`, do not make one.
         let mut p = part("J2");
         p.kind = "HeaderBuffer".into();
-        p.class = None;
+        p.declared_kind = None;
         assert!(!p.is_connector());
     }
 

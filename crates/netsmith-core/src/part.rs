@@ -12,10 +12,10 @@ pub struct Part {
     /// with a name of its own is treated as the kind it provides. A generic of a project is
     /// not listed. Empty for a part that provides no standard generic.
     pub provides: Vec<String>,
-    /// What the tools treat the part as, from the `#[class(...)]` of its definition or of a
+    /// What the tools treat the part as, from the `#[kind(...)]` of its definition or of a
     /// generic it provides (ADR 0123). `None` for a part whose definitions state none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub class: Option<PartClass>,
+    pub declared_kind: Option<PartKind>,
     /// What a schematic shows as the part's value: `300`.
     pub value: String,
     /// The package the part was chosen in, such as `0402`, if it was chosen.
@@ -31,21 +31,21 @@ pub struct Part {
 }
 
 impl Part {
-    /// Whether the part is a connector, the way in and out of a board: its class is
-    /// `connector` (ADR 0123). It is the class that says so, never the part's name or its
+    /// Whether the part is a connector, the way in and out of a board: its kind is
+    /// `connector` (ADR 0123). It is the kind that says so, never the part's name or its
     /// reference designator, which is a label that counts parts and may change (issue #166).
     pub fn is_connector(&self) -> bool {
-        self.class == Some(PartClass::Connector)
+        self.declared_kind == Some(PartKind::Connector)
     }
 }
 
-/// What the tools treat a part as: the word of a definition's `#[class(...)]` (ADR 0123). A
+/// What the tools treat a part as: the word of a definition's `#[kind(...)]` (ADR 0123). A
 /// tool that draws, places or routes a kind of part in its own way reads this, never the
 /// name of the part's definition, so a project's own part is treated the same way when its
-/// definition, or a generic it provides, states the class.
+/// definition, or a generic it provides, states the kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PartClass {
+pub enum PartKind {
     Resistor,
     Capacitor,
     Inductor,
@@ -65,8 +65,8 @@ pub enum PartClass {
     Label,
 }
 
-impl PartClass {
-    pub const ALL: [PartClass; 15] = [
+impl PartKind {
+    pub const ALL: [PartKind; 15] = [
         Self::Resistor,
         Self::Capacitor,
         Self::Inductor,
@@ -84,7 +84,7 @@ impl PartClass {
         Self::Label,
     ];
 
-    /// The word in `#[class(...)]` and in the design file: `ferrite_bead`.
+    /// The word in `#[kind(...)]` and in the design file: `ferrite_bead`.
     pub fn word(self) -> &'static str {
         match self {
             Self::Resistor => "resistor",
@@ -109,19 +109,19 @@ impl PartClass {
         Self::ALL.into_iter().find(|c| c.word() == word)
     }
 
-    /// Whether a part of the class hangs in series on the wire it is in rather than across it,
+    /// Whether a part of the kind hangs in series on the wire it is in rather than across it,
     /// as a schematic draws it: an inductor, a ferrite bead or a fuse.
     pub fn hangs_in_series(self) -> bool {
         matches!(self, Self::Inductor | Self::FerriteBead | Self::Fuse)
     }
 
-    /// Whether a part of the class is a mechanical item that belongs in the corners of a fixed
+    /// Whether a part of the kind is a mechanical item that belongs in the corners of a fixed
     /// outline: a hole or a fiducial. A test point is on a net and is placed with the circuit.
     pub fn is_mechanical(self) -> bool {
         matches!(self, Self::MountingHole | Self::PlatedHole | Self::Fiducial)
     }
 
-    /// Whether a part of the class is a hole that a case's screw may pass (a mounting hole or a
+    /// Whether a part of the kind is a hole that a case's screw may pass (a mounting hole or a
     /// plated hole).
     pub fn is_hole(self) -> bool {
         matches!(self, Self::MountingHole | Self::PlatedHole)

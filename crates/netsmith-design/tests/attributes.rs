@@ -1,9 +1,9 @@
 //! What the attributes of a project's own definition do in the design (ADR 0123): a `#[bank]`
-//! is one part for each of its count, and `#[class(...)]` and `#[value(...)]` reach the
+//! is one part for each of its count, and `#[kind(...)]` and `#[value(...)]` reach the
 //! design's parts. The parts are invented for these tests.
 
 use netsmith_check::{Loader, check};
-use netsmith_core::PartClass;
+use netsmith_core::PartKind;
 use netsmith_design::{Designed, design_board};
 use netsmith_solve::{Catalogs, solve};
 
@@ -16,7 +16,7 @@ fn designed(src: &str) -> Designed {
 
 const CELL: &str = "\
 #[bank]
-#[class(capacitor)]
+#[kind(capacitor)]
 #[value(\"cell\")]
 generic Cell {
     .designator &= \"C\"
@@ -46,7 +46,7 @@ fn a_project_bank_is_one_part_for_each_of_its_count() {
         l.design
             .parts
             .iter()
-            .all(|p| p.class == Some(PartClass::Capacitor))
+            .all(|p| p.declared_kind == Some(PartKind::Capacitor))
     );
 }
 

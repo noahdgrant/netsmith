@@ -147,8 +147,8 @@ pub fn hard_boards(count: usize) -> Vec<Board> {
                 parts: (1..=8)
                     .map(|i| Part {
                         provides: Vec::new(),
-                        class: netsmith_testkit::std_class("Resistor")
-                            .and_then(netsmith_core::PartClass::from_word),
+                        declared_kind: netsmith_testkit::std_kind("Resistor")
+                            .and_then(netsmith_core::PartKind::from_word),
                         refdes: format!("R{i}"),
                         kind: "Resistor".into(),
                         value: "1k".into(),
@@ -439,7 +439,8 @@ fn synthetic_board_with(
     };
     let mut parts = vec![Part {
         provides: Vec::new(),
-        class: netsmith_testkit::std_class("Quad").and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind("Quad")
+            .and_then(netsmith_core::PartKind::from_word),
         refdes: "U1".into(),
         kind: "Quad".into(),
         value: "QUAD".into(),
@@ -457,12 +458,13 @@ fn synthetic_board_with(
         let refdes = format!("{}{}", &kind[..1], i + 1);
         parts.push(Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                 vec!["Connector".to_string()]
             } else {
                 Vec::new()
             },
-            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.clone(),
             kind: kind.into(),
             value: value.into(),
@@ -476,8 +478,8 @@ fn synthetic_board_with(
         let refdes = format!("Q{}", i + 1);
         parts.push(Part {
             provides: Vec::new(),
-            class: netsmith_testkit::std_class("LinearRegulator")
-                .and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind("LinearRegulator")
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.clone(),
             kind: "LinearRegulator".into(),
             value: "reg".into(),
@@ -556,8 +558,8 @@ fn synthetic_board_with(
             let refdes = format!("Cd{}", k + 1);
             parts.push(Part {
                 provides: Vec::new(),
-                class: netsmith_testkit::std_class("Capacitor")
-                    .and_then(netsmith_core::PartClass::from_word),
+                declared_kind: netsmith_testkit::std_kind("Capacitor")
+                    .and_then(netsmith_core::PartKind::from_word),
                 refdes: refdes.clone(),
                 kind: "Capacitor".into(),
                 value: "100n".into(),
@@ -720,7 +722,8 @@ pub fn land_grid_board_sized(
     let inner: Vec<usize> = (1..=side * side).filter(|&p| inside(p)).collect();
     let mut parts = vec![Part {
         provides: Vec::new(),
-        class: netsmith_testkit::std_class("Lga").and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind("Lga")
+            .and_then(netsmith_core::PartKind::from_word),
         refdes: "U1".into(),
         kind: "Lga".into(),
         value: "LGA".into(),
@@ -735,8 +738,8 @@ pub fn land_grid_board_sized(
         let refdes = format!("R{}", k + 1);
         parts.push(Part {
             provides: Vec::new(),
-            class: netsmith_testkit::std_class("Resistor")
-                .and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind("Resistor")
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.clone(),
             kind: "Resistor".into(),
             value: "10k".into(),
@@ -771,8 +774,8 @@ pub fn land_grid_board_sized(
     // A capacitor between the planes.
     parts.push(Part {
         provides: Vec::new(),
-        class: netsmith_testkit::std_class("Capacitor")
-            .and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind("Capacitor")
+            .and_then(netsmith_core::PartKind::from_word),
         refdes: "C1".into(),
         kind: "Capacitor".into(),
         value: "100n".into(),

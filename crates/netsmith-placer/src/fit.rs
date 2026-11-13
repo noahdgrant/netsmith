@@ -4,7 +4,7 @@
 //! the arrangement is centred in the outline. If the outline is too small for it, the
 //! error says by how much. Mounting holes and fiducials go in the corners of the outline.
 
-use netsmith_core::{Outline, PartClass};
+use netsmith_core::{Outline, PartKind};
 
 use crate::place::{self, Context};
 use netsmith_pcb::{
@@ -78,7 +78,7 @@ pub(crate) fn fit(
         pours,
     };
     let (mechanical, movable): (Vec<usize>, Vec<usize>) =
-        (0..parts.len()).partition(|&i| is_mechanical(parts[i].class));
+        (0..parts.len()).partition(|&i| is_mechanical(parts[i].declared_kind));
     let originals: Vec<Placed> = movable.iter().map(|&i| parts[i].clone()).collect();
     let group = || originals.clone();
 
@@ -228,13 +228,14 @@ pub(crate) fn fit(
 /// inner corner nearest it.
 fn corners(parts: &mut [Placed], mechanical: &[usize], r: Rect, shape: &BoardEdge, rules: &Rules) {
     let mut order = mechanical.to_vec();
-    let rank = |class: Option<PartClass>| match class {
-        Some(PartClass::MountingHole) => 0,
-        Some(PartClass::PlatedHole) => 1,
+    let rank = |declared_kind: Option<PartKind>| match declared_kind {
+        Some(PartKind::MountingHole) => 0,
+        Some(PartKind::PlatedHole) => 1,
         _ => 2,
     };
     order.sort_by(|&a, &b| {
-        (rank(parts[a].class), &parts[a].refdes).cmp(&(rank(parts[b].class), &parts[b].refdes))
+        (rank(parts[a].declared_kind), &parts[a].refdes)
+            .cmp(&(rank(parts[b].declared_kind), &parts[b].refdes))
     });
     // How far from the side edge each corner has been used, counting the gap after it.
     let mut used = [0.0f64; 4];

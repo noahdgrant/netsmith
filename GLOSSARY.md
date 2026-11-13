@@ -287,16 +287,16 @@ Identical capacitors in parallel that stand in one place of the design, a `Capac
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
 **Attribute**:
-`#[name]` or `#[name(argument, ...)]` above a `generic`, a `part` or a member of one, which says what it is to the checker, the solver and the tools (ADR 0123): `#[bank]`, `#[series(E24, E96)]`, `#[class(resistor)]`, `#[value("LED")]`, `#[assembly(hand)]` on a definition, `#[role(bias)]` on a member. The standard library states its own with the same attributes; no list in Rust names its definitions. A part has those of its definition and of the generics it provides.
+`#[name]` or `#[name(argument, ...)]` above a `generic`, a `part` or a member of one, which says what it is to the checker, the solver and the tools (ADR 0123): `#[bank]`, `#[series(E24, E96)]`, `#[kind(resistor)]`, `#[value("LED")]`, `#[assembly(hand)]` on a definition, `#[role(bias)]` on a member. The standard library states its own with the same attributes; no list in Rust names its definitions. A part has those of its definition and of the generics it provides.
 _Avoid_: Annotation, decorator, marker, pragma, tag
 
 **Member role**:
 What a member is to the checker and the solver, written `#[role(bias)]` above it (ADR 0123): `bias`, `bridge_voltage`, `current`, `supply_peak`, `supply_reverse_peak`, `limit_current`, `supply_fault_current` or `count`. The role, not the member's name, gives the member its value. Not a **Role** of a bus end (`SpiRole::Slave`).
 _Avoid_: Magic name, special member, well-known field
 
-**Part class**:
-What the tools treat a part as, written `#[class(capacitor)]` on its definition or a generic it provides (ADR 0123, `netsmith_core::PartClass`): the placer decouples with a `capacitor`, the schematic draws a `fuse` in series, the 3D view colours by it. A closed list of words; the tools read it, never the name of the kind. Not a **Class** of pin functions (ADR 0071).
-_Avoid_: Category (that is the 3D view's colouring, which it gives), kind (that is the definition's name), type
+**Declared kind**:
+What the tools treat a part as, written `#[kind(capacitor)]` on its definition or a generic it provides (ADR 0123, `netsmith_core::PartKind`, the design file's `declared_kind`): the placer decouples with a `capacitor`, the schematic draws a `fuse` in series, the 3D view colours by it. A closed list of words; the tools read it, never the name of the part's definition (its kind, `Resistor`).
+_Avoid_: Class (that is a class of pin functions, ADR 0071), category (that is the 3D view's colouring, which it gives), type
 
 **Group**:
 Several identical members declared in one statement, `.decoupling: 4 x Capacitor { ... }` (ADR 0119): the members `.decoupling[0]` to `.decoupling[3]`, each with the group's block, a path of its own and a designator of its own, numbered in index order. A chain with the group alone between its ends puts each member in parallel between them; a group written in a chain (`.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`) is named from its kind and the ends. Not a **Bank**, whose count the solver may choose and whose capacitors have no paths a board narrows.

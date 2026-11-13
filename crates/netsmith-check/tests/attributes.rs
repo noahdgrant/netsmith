@@ -3,7 +3,7 @@
 //! for these tests.
 
 use netsmith_check::*;
-use netsmith_core::PartClass;
+use netsmith_core::PartKind;
 
 const HEAD: &str = "import std::sources::Rail\n";
 
@@ -104,11 +104,11 @@ fn a_member_named_like_a_role_without_the_attribute_is_a_plain_member() {
 }
 
 #[test]
-fn a_class_and_a_value_reach_the_instance_and_its_providers() {
-    let src = "#[class(fuse)]\n#[value(\"PTC\")]\ngeneric Guard {\n    .rated: Current\n}\npart AcmeGuard provides Guard {\n    .designator &= \"F\"\n    pins {\n        .a passive \"A\" \"1\"\n        .b passive \"B\" \"2\"\n    }\n}\nboard B {\n    .g: AcmeGuard\n}\n";
+fn a_kind_and_a_value_reach_the_instance_and_its_providers() {
+    let src = "#[kind(fuse)]\n#[value(\"PTC\")]\ngeneric Guard {\n    .rated: Current\n}\npart AcmeGuard provides Guard {\n    .designator &= \"F\"\n    pins {\n        .a passive \"A\" \"1\"\n        .b passive \"B\" \"2\"\n    }\n}\nboard B {\n    .g: AcmeGuard\n}\n";
     let c = ok(src);
     let marks = &c.boards[0].model.instance(instance(&c, "g")).marks;
-    assert_eq!(marks.class, Some(PartClass::Fuse));
+    assert_eq!(marks.declared_kind, Some(PartKind::Fuse));
     assert_eq!(marks.value.as_deref(), Some("PTC"));
 }
 
@@ -121,17 +121,17 @@ fn a_series_is_kept_as_written() {
 }
 
 #[test]
-fn the_standard_generics_state_their_classes_and_series() {
+fn the_standard_generics_state_their_kinds_and_series() {
     let c = ok(
         "import std::parts::passive::{Capacitor, Led, Resistor}\nimport std::parts::connector::Header1x2\nboard B {\n    .r: Resistor\n    .c: Capacitor\n    .d: Led\n    .j: Header1x2\n}\n",
     );
     let m = &c.boards[0].model;
     let marks = |p: &str| m.instance(instance(&c, p)).marks.clone();
-    assert_eq!(marks("r").class, Some(PartClass::Resistor));
+    assert_eq!(marks("r").declared_kind, Some(PartKind::Resistor));
     assert_eq!(marks("r").series, ["E12", "E24", "E96"]);
     assert_eq!(marks("c").series, ["E12", "E24"]);
     assert_eq!(marks("d").value.as_deref(), Some("LED"));
-    assert_eq!(marks("j").class, Some(PartClass::Connector));
+    assert_eq!(marks("j").declared_kind, Some(PartKind::Connector));
     assert_eq!(marks("j").assembly.as_deref(), Some("hand"));
 }
 
@@ -160,7 +160,7 @@ fn an_unknown_role_is_refused_with_did_you_mean() {
 }
 
 #[test]
-fn an_unknown_series_or_class_is_refused_with_did_you_mean() {
+fn an_unknown_series_or_kind_is_refused_with_did_you_mean() {
     let message = refused(
         "#[series(E25)]\ngeneric G {\n    .r: Resistance\n    catalog g { .r }\n}\n",
     );
@@ -168,9 +168,9 @@ fn an_unknown_series_or_class_is_refused_with_did_you_mean() {
         message.contains("there is no E-series `E25` (did you mean `E24`?)"),
         "{message}"
     );
-    let message = refused(&part("#[class(resistr)]", ""));
+    let message = refused(&part("#[kind(resistr)]", ""));
     assert!(
-        message.contains("there is no class `resistr` (did you mean `resistor`?)"),
+        message.contains("there is no kind `resistr` (did you mean `resistor`?)"),
         "{message}"
     );
     let message = refused(&part("#[assembly(hnd)]", ""));
@@ -224,9 +224,9 @@ fn a_role_on_a_member_of_another_type_is_refused() {
 
 #[test]
 fn an_attribute_written_twice_or_with_wrong_arguments_is_refused() {
-    let message = refused(&part("#[class(fuse)]\n#[class(fuse)]", ""));
+    let message = refused(&part("#[kind(fuse)]\n#[kind(fuse)]", ""));
     assert!(
-        message.contains("`#[class]` is written twice on `Thing`; write it once"),
+        message.contains("`#[kind]` is written twice on `Thing`; write it once"),
         "{message}"
     );
     let message = refused(&part("#[bank(3)]", ""));

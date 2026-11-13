@@ -8,7 +8,7 @@ use netsmith_quantity::{Dimension, Quantity};
 
 use std::sync::Arc;
 
-use netsmith_core::PartClass;
+use netsmith_core::PartKind;
 
 use crate::attrs::{Marks, MemberRole};
 use crate::diag::{SourceId, Sources};
@@ -1598,14 +1598,14 @@ impl Model {
     }
 
     /// The two ends of a series passive for `unused` (the pins of its `bridge`, ADR 0083): a part
-    /// of the class `resistor`, `fuse` or `ferrite_bead` (ADR 0123), whatever its provider names
+    /// of the kind `resistor`, `fuse` or `ferrite_bead` (ADR 0123), whatever its provider names
     /// its pins. The narrowest reading; a capacitor, an inductor, a diode and a switch are not in
     /// it (a decision of the owner's). None for any other part.
     pub fn series_ends(&self, part: InstId) -> Option<(InstId, InstId)> {
         let inst = self.instance(part);
         let series = matches!(
-            inst.marks.class,
-            Some(PartClass::Resistor | PartClass::Fuse | PartClass::FerriteBead)
+            inst.marks.declared_kind,
+            Some(PartKind::Resistor | PartKind::Fuse | PartKind::FerriteBead)
         );
         if inst.kind != InstKind::Part || !series {
             return None;

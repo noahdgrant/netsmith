@@ -70,7 +70,7 @@ interface Mating {
 /// provides Connector { ... }`, ADR 0068). The schematic and the placer ask a part for this
 /// generic to know that it is a connector, never its name or its designator. It has no pads and
 /// no catalog, so it is no part until a provider stands for it.
-#[class(connector)]
+#[kind(connector)]
 generic Connector {
     .designator &= "J"
 

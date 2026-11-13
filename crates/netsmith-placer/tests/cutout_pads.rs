@@ -26,7 +26,7 @@ fn tight_board(count: usize, size: (f64, f64), cutout: Cutout) -> Board {
     let parts: Vec<Part> = (1..=count)
         .map(|i| Part {
             provides: Vec::new(),
-            class: netsmith_testkit::std_class("Resistor").and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind("Resistor").and_then(netsmith_core::PartKind::from_word),
             refdes: format!("R{i}"),
             kind: "Resistor".into(),
             value: "10k".into(),

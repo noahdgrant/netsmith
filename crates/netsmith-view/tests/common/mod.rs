@@ -11,11 +11,11 @@ pub mod rowcol;
 
 use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef, PowerFlow};
 
-/// What the design stage records as the class of a standard kind (ADR 0123): a fixture that
+/// What the design stage records as the kind of a standard kind (ADR 0123): a fixture that
 /// names a kind of the standard library gives it the same, so that the layout finds the
 /// connectors and the parts in series the way it does on a real board.
-pub fn class_of(kind: &str) -> Option<netsmith_core::PartClass> {
-    netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word)
+pub fn declared_kind_of(kind: &str) -> Option<netsmith_core::PartKind> {
+    netsmith_testkit::std_kind(kind).and_then(netsmith_core::PartKind::from_word)
 }
 
 pub fn design(
@@ -34,12 +34,12 @@ pub fn design(
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
                 // What the design stage records for a standard connector (ADR 0068).
-                provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                     vec!["Connector".to_string()]
                 } else {
                     Vec::new()
                 },
-                class: class_of(kind),
+                declared_kind: declared_kind_of(kind),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),
@@ -175,12 +175,12 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
         ] {
             parts.push(Part {
                 // What the design stage records for a standard connector (ADR 0068).
-                provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                     vec!["Connector".to_string()]
                 } else {
                     Vec::new()
                 },
-                class: class_of(kind),
+                declared_kind: declared_kind_of(kind),
                 refdes,
                 kind: kind.into(),
                 value: value.into(),

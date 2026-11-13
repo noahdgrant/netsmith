@@ -34,12 +34,12 @@ const ROW: &str = "(footprint \"Row2\" (version 20241229) (generator \"netsmith-
 fn part(refdes: &str, kind: &str, path: &str) -> Part {
     Part {
         // What the design stage records for a standard connector (ADR 0068).
-        provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+        provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
             vec!["Connector".to_string()]
         } else {
             Vec::new()
         },
-        class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind(kind).and_then(netsmith_core::PartKind::from_word),
         refdes: refdes.into(),
         kind: kind.into(),
         value: kind.into(),

@@ -956,13 +956,13 @@ mod split_tests {
     }
 }
 
-/// The class word (`netsmith_core::PartClass`, ADR 0123) that the standard library's
-/// definition of `kind` states with `#[class(...)]`, for a test that builds a design's part by
+/// The kind word (`netsmith_core::PartKind`, ADR 0123) that the standard library's
+/// definition of `kind` states with `#[kind(...)]`, for a test that builds a design's part by
 /// hand from the name of a standard kind and wants it treated as the design stage would treat
 /// it (a `Capacitor` decouples, a `Header1x2` is a connector). `None` for a kind that states
 /// none or is not the standard library's. This crate depends on no netsmith crate, so it gives
-/// the word, and the caller reads it with `PartClass::from_word`.
-pub fn std_class(kind: &str) -> Option<&'static str> {
+/// the word, and the caller reads it with `PartKind::from_word`.
+pub fn std_kind(kind: &str) -> Option<&'static str> {
     let connector = kind.starts_with("Header")
         || kind.starts_with("Socket")
         || kind.starts_with("UsbC")

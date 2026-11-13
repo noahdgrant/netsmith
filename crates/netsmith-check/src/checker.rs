@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
-use netsmith_core::PartClass;
+use netsmith_core::PartKind;
 use netsmith_lang::ast::{Decl, DefKind, Definition, Import, Item, Path, Physical, TypePath};
 use netsmith_lang::{Span, parse};
 use netsmith_quantity::Dimension;
@@ -2132,10 +2132,10 @@ impl Checker<'_> {
             (DefKind::Interface, "Cutout") => ("a cutout", true),
             (DefKind::Interface, "CaseModel") => ("a case model", true),
             (DefKind::Interface, "Keepout") => ("a keepout that a board draws", false),
-            (DefKind::Part, _) => match self.marks_of(def, &[]).class {
-                Some(PartClass::MountingHole) => ("a mounting hole", true),
-                Some(PartClass::Fiducial) => ("a fiducial", true),
-                Some(PartClass::Label) => ("a label", true),
+            (DefKind::Part, _) => match self.marks_of(def, &[]).declared_kind {
+                Some(PartKind::MountingHole) => ("a mounting hole", true),
+                Some(PartKind::Fiducial) => ("a fiducial", true),
+                Some(PartKind::Label) => ("a label", true),
                 _ => return None,
             },
             _ => return None,

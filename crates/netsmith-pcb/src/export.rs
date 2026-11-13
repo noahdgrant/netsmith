@@ -1260,8 +1260,8 @@ mod tests {
         let mut design = led_design();
         design.parts.push(netsmith_core::Part {
             provides: Vec::new(),
-            class: netsmith_testkit::std_class("LinearRegulator")
-                .and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind("LinearRegulator")
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: "U1".into(),
             kind: "LinearRegulator".into(),
             value: "LDO".into(),

@@ -8,7 +8,7 @@
         "provides": [
           "Connector"
         ],
-        "class": "connector",
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "enable_in",
@@ -41,7 +41,7 @@
         "provides": [
           "Connector"
         ],
-        "class": "connector",
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "power_in",
@@ -72,7 +72,7 @@
         "refdes": "C1",
         "kind": "Capacitor",
         "provides": [],
-        "class": "capacitor",
+        "declared_kind": "capacitor",
         "value": "100n",
         "package": "0402",
         "path": "status_indicator.bypass",
@@ -103,7 +103,7 @@
         "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
-        "class": "resistor",
+        "declared_kind": "resistor",
         "value": "1k",
         "package": "0402",
         "path": "status_indicator.current_limit",
@@ -134,7 +134,7 @@
         "refdes": "D1",
         "kind": "Led",
         "provides": [],
-        "class": "led",
+        "declared_kind": "led",
         "value": "LTST-C190KGKT",
         "package": "0603",
         "path": "status_indicator.led",

@@ -55,7 +55,7 @@
 
 use std::fmt;
 
-use netsmith_core::{CaseFigures, PartClass};
+use netsmith_core::{CaseFigures, PartKind};
 use netsmith_pcb::Side;
 
 use crate::mesh::{Aabb, Material, Mesh, rounded_rect, trig};
@@ -1295,7 +1295,7 @@ fn bosses(board: &BoardSolid, bodies: &[Body], cases: &[PlacedCase]) -> Vec<FitF
         };
         let Some(b) = bodies
             .iter()
-            .find(|b| &b.path == path && b.class.is_some_and(PartClass::is_hole))
+            .find(|b| &b.path == path && b.declared_kind.is_some_and(PartKind::is_hole))
         else {
             continue;
         };

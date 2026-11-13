@@ -41,7 +41,7 @@
 ///
 /// The rule "never offered" for an unrated part is accepted as built by the owner,
 /// 2026-11-11.
-#[class(resistor)]
+#[kind(resistor)]
 #[series(E12, E24, E96)]
 generic Resistor {
     .designator &= "R"
@@ -102,7 +102,7 @@ enum Dielectric {
 /// and stated by a design only when it needs one. A generic capacitor (no catalog row) has
 /// none, so a design that states it is given a row. The package is `.package`, a text such as
 /// `"0603"`: a design that needs a size states it (`.package &= "0603"`).
-#[class(capacitor)]
+#[kind(capacitor)]
 #[series(E12, E24)]
 generic Capacitor {
     .designator &= "C"
@@ -199,7 +199,7 @@ enum Color {
 /// A light-emitting diode. Current flows from anode to cathode. At DC it is a diode that drops
 /// `.forward_voltage` (ADR 0113), so a `~>` chain from a rail through a resistor and the LED
 /// back to the rail sets the LED's current, and a window on `.current` picks the resistor.
-#[class(led)]
+#[kind(led)]
 #[value("LED")]
 generic Led {
     .designator &= "D"
@@ -240,7 +240,7 @@ generic Led {
 /// part warms by the rise it states. The rise is the datasheet's own and differs between
 /// makers, so a row records it in its notes. Nothing in the library checks it: a design that
 /// needs one states `.rms_current >= 2A` itself, and a row with no value there is refused.
-#[class(inductor)]
+#[kind(inductor)]
 #[series(E12, E24)]
 generic Inductor {
     .designator &= "L"
@@ -276,7 +276,7 @@ generic Inductor {
 /// A ferrite bead: a lossy inductor that blocks high frequencies. `.impedance` is the
 /// magnitude at `.impedance_frequency`, where the datasheet gives it, and `.rated_current` is
 /// the largest DC current. The bead's DC resistance drops `.current * .dc_resistance`.
-#[class(ferrite_bead)]
+#[kind(ferrite_bead)]
 generic FerriteBead {
     .designator &= "FB"
 
@@ -312,7 +312,7 @@ generic FerriteBead {
 /// are the design's, and they are not tied to `.load_capacitance`: the stray capacitance of the
 /// layout is not a datasheet number. Only two-pad footprints are mapped in `std/kicad.toml`, so
 /// the four-pad crystals that are most common (3.2 x 2.5 mm) are not (ADR 0023).
-#[class(crystal)]
+#[kind(crystal)]
 generic Crystal {
     .designator &= "Y"
 
@@ -360,7 +360,7 @@ generic Crystal {
 /// built. `Diode` has no power rating in std (`.max_power` is a Zener's), so the forward drop
 /// times the fault current is not checked. `Switch` and `Inductor` are not given
 /// `.supply_fault_current`; it is one line each when a board needs it (the convention: ADR 0105).
-#[class(fuse)]
+#[kind(fuse)]
 generic Fuse {
     .designator &= "F"
 

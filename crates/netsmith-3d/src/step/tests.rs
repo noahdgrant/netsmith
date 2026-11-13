@@ -15,7 +15,8 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         path: path.into(),
         refdes: refdes.into(),
         kind: "Thing".into(),
-        class: netsmith_testkit::std_class("Thing").and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind("Thing")
+            .and_then(netsmith_core::PartKind::from_word),
         category: crate::scene3d::PartCategory::of(None, refdes),
         side: Side::Front,
         layout_at: (0.0, 0.0),

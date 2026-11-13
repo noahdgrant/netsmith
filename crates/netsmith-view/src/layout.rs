@@ -1658,10 +1658,10 @@ fn levels(part_nets: &[Vec<usize>], connector: &[bool], ground: &[bool]) -> Vec<
 // Columns
 
 /// Whether a part hangs in series on the wire it is in rather than across it: an inductor, a
-/// ferrite bead or a fuse by its class (ADR 0123), whatever its own name.
+/// ferrite bead or a fuse by its kind (ADR 0123), whatever its own name.
 pub(crate) fn is_series_kind(part: &netsmith_core::Part) -> bool {
-    part.class
-        .is_some_and(netsmith_core::PartClass::hangs_in_series)
+    part.declared_kind
+        .is_some_and(netsmith_core::PartKind::hangs_in_series)
 }
 
 /// A part with two pins on one axis, facing opposite ways, can stand in a stack.
@@ -2386,23 +2386,26 @@ mod tests {
     }
 
     #[test]
-    fn a_part_of_a_series_class_hangs_in_series_whatever_its_name() {
-        use netsmith_core::PartClass;
-        let part = |class: Option<PartClass>| netsmith_core::Part {
+    fn a_part_of_a_series_kind_hangs_in_series_whatever_its_name() {
+        use netsmith_core::PartKind;
+        let part = |declared_kind: Option<PartKind>| netsmith_core::Part {
             refdes: "L1".into(),
             kind: "AcmeChoke".into(),
             provides: Vec::new(),
-            class,
+            declared_kind,
             value: String::new(),
             package: None,
             path: String::new(),
             pins: Vec::new(),
         };
-        for class in [PartClass::Inductor, PartClass::FerriteBead, PartClass::Fuse] {
-            assert!(is_series_kind(&part(Some(class))), "{class:?}");
+        for declared_kind in [PartKind::Inductor, PartKind::FerriteBead, PartKind::Fuse] {
+            assert!(
+                is_series_kind(&part(Some(declared_kind))),
+                "{declared_kind:?}"
+            );
         }
         assert!(!is_series_kind(&part(None)));
-        assert!(!is_series_kind(&part(Some(PartClass::Resistor))));
+        assert!(!is_series_kind(&part(Some(PartKind::Resistor))));
     }
 
     #[test]

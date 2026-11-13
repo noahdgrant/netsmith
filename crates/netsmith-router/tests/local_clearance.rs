@@ -57,7 +57,7 @@ fn board(pad: &str, whole: &str) -> (Board, f64) {
     .unwrap();
     let part = |refdes: &str, package: &str| Part {
         provides: Vec::new(),
-        class: netsmith_testkit::std_class("Resistor").and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind("Resistor").and_then(netsmith_core::PartKind::from_word),
         refdes: refdes.into(),
         kind: "Resistor".into(),
         value: "10k".into(),

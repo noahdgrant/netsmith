@@ -6,7 +6,7 @@
         "refdes": "D1",
         "kind": "Led",
         "provides": [],
-        "class": "led",
+        "declared_kind": "led",
         "value": "KT-0603R",
         "package": "0603",
         "path": "led",
@@ -39,7 +39,7 @@
         "provides": [
           "Connector"
         ],
-        "class": "connector",
+        "declared_kind": "connector",
         "value": "Conn_01x02",
         "package": null,
         "path": "power_in",
@@ -70,7 +70,7 @@
         "refdes": "R1",
         "kind": "Resistor",
         "provides": [],
-        "class": "resistor",
+        "declared_kind": "resistor",
         "value": "330",
         "package": "0402",
         "path": "r1",

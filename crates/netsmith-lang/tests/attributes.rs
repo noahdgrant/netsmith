@@ -6,7 +6,7 @@ use netsmith_lang::parse;
 
 const CAPACITOR: &str = "\
 /// A capacitor.
-#[class(capacitor)]
+#[kind(capacitor)]
 #[series(E24, E96)]
 generic Capacitor {
     /// The voltage across it.
@@ -44,7 +44,7 @@ fn a_definition_and_a_member_carry_their_attributes_in_order() {
     assert_eq!(
         attrs,
         [
-            ("class".to_string(), vec!["capacitor".to_string()]),
+            ("kind".to_string(), vec!["capacitor".to_string()]),
             ("series".to_string(), vec!["E24".to_string(), "E96".to_string()]),
         ]
     );
@@ -76,7 +76,7 @@ fn attributes_print_back_to_their_source() {
     let file = parse(CAPACITOR).unwrap();
     let printed = file.to_source();
     assert!(
-        printed.contains("#[class(capacitor)]\n#[series(E24, E96)]\ngeneric Capacitor {"),
+        printed.contains("#[kind(capacitor)]\n#[series(E24, E96)]\ngeneric Capacitor {"),
         "{printed}"
     );
     assert!(

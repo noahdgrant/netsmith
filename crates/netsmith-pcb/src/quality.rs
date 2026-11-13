@@ -31,9 +31,9 @@ pub struct DecouplingPair {
     pub nets: [PairNet; 2],
 }
 
-/// A capacitor by its class (ADR 0123), whatever its own name.
+/// A capacitor by its kind (ADR 0123), whatever its own name.
 fn is_capacitor(part: &Placed) -> bool {
-    part.class == Some(netsmith_core::PartClass::Capacitor)
+    part.declared_kind == Some(netsmith_core::PartKind::Capacitor)
 }
 
 /// The number of leading segments two instance paths share, not counting the part's own

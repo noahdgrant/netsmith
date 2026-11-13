@@ -5802,7 +5802,7 @@ board Reference {
 r1 is a Resistor: picked PrecisionThinFilm; passed over Resistor (the `resistor` catalog has nothing for `r1`, which needs resistance within 9.99kΩ..10.01kΩ)
 ```
 
-`r2` is served by a standard row, so it says nothing. The provider needs the same three things as a part written by hand: its catalog file in `catalogs/`, its entry in `kicad.toml` (`kind = "PrecisionThinFilm"`), and the recorded source of its row. The other tools see what the generic says of it, not its name: a provider has the attributes of the generics it provides (see Attributes), so it is drawn in series as an inductor is when it provides `Inductor`, `FerriteBead` or `Fuse` (their `#[class(...)]`), and the placer takes it for a decoupling capacitor when it provides `Capacitor`, and a provider of `Capacitor` is a bank when its `.count` says so. The rules of a provider apply (above), and two more follow from the generic being a part with its own pads:
+`r2` is served by a standard row, so it says nothing. The provider needs the same three things as a part written by hand: its catalog file in `catalogs/`, its entry in `kicad.toml` (`kind = "PrecisionThinFilm"`), and the recorded source of its row. The other tools see what the generic says of it, not its name: a provider has the attributes of the generics it provides (see Attributes), so it is drawn in series as an inductor is when it provides `Inductor`, `FerriteBead` or `Fuse` (their `#[kind(...)]`), and the placer takes it for a decoupling capacitor when it provides `Capacitor`, and a provider of `Capacitor` is a bank when its `.count` says so. The rules of a provider apply (above), and two more follow from the generic being a part with its own pads:
 
 - A provider's pin table has a row of the generic's kind for each of the generic's pins: `.a` and `.b` for a resistor, `.anode` and `.cathode` for an LED or a diode, `.gate`, `.source` and `.drain` for a MOSFET, `.vin.pos`, `.vin.neg` and `.vout.pos` for a linear regulator.
 - The generic's statements hold for the provider, so a provider cannot state other designator letters than the generic's (`.designator &= "RN"` is a contradiction of `"R"`).
@@ -5818,7 +5818,7 @@ An attribute says what a definition or a member is to the checker, the solver an
 |---|---|---|
 | `#[bank]` | a generic or a part | A part of it stands for a number of identical parts in parallel, its `#[role(count)]` member (see "A bank of capacitors in parallel"). |
 | `#[series(E12, E24, E96)]` | a generic or a part with a `catalog` | The E-series the solver may make values from when no row serves (ADR 0047). The project's `series` picks one: itself when offered, else the finest offered series below it, so a capacitor that offers E12 and E24 gets E24 values in an E96 project. |
-| `#[class(resistor)]` | a generic or a part | What the tools treat it as: `resistor`, `capacitor`, `inductor`, `ferrite_bead`, `fuse`, `led`, `diode`, `transistor`, `crystal`, `ic`, `connector`, `mounting_hole`, `plated_hole`, `fiducial` or `label`. The placer decouples with a `capacitor`, the schematic draws an `inductor`, a `ferrite_bead` and a `fuse` in series, the placer keeps a `connector` at the edge and a `mounting_hole` in a corner, and `unused` follows a `resistor`, a `fuse` and a `ferrite_bead` (ADR 0083). |
+| `#[kind(resistor)]` | a generic or a part | What the tools treat it as, its declared kind: `resistor`, `capacitor`, `inductor`, `ferrite_bead`, `fuse`, `led`, `diode`, `transistor`, `crystal`, `ic`, `connector`, `mounting_hole`, `plated_hole`, `fiducial` or `label`. The placer decouples with a `capacitor`, the schematic draws an `inductor`, a `ferrite_bead` and a `fuse` in series, the placer keeps a `connector` at the edge and a `mounting_hole` in a corner, and `unused` follows a `resistor`, a `fuse` and a `ferrite_bead` (ADR 0083). |
 | `#[value("LED")]` | a generic or a part | What a schematic shows as its value when the solver chose no row. Without it, the name of the kind. |
 | `#[assembly(hand)]` | a generic or a part | Who assembles it when the design, its catalog row and the project say nothing (ADR 0024): `fab`, `hand`, `none` or `consigned`. The standard headers and sockets are `hand`. |
 | `#[role(bias)]` | a member of a generic or a part | Where the member's value comes from, whatever its name: `bias`, the voltage of the rail the part is across (ADR 0013); `bridge_voltage`, the same with its sign (ADR 0088); `current`, the current through its `bridge` (ADR 0014); `supply_peak` (ADR 0086), `supply_reverse_peak`, `limit_current` and `supply_fault_current` (ADR 0091), from the chain it is in; `count`, the number of a `#[bank]`. |
@@ -5831,7 +5831,7 @@ A project's thermistor that the solver may give any E24 value when no row of its
 import std::sources::Rail
 
 /// An NTC thermistor, invented for this example.
-#[class(resistor)]
+#[kind(resistor)]
 #[series(E12, E24)]
 generic Thermistor {
     .designator &= "RT"

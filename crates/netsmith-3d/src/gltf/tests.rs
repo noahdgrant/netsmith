@@ -14,7 +14,8 @@ fn body(path: &str, refdes: &str, min: Plan, max: Plan, height: Option<f64>) -> 
         path: path.into(),
         refdes: refdes.into(),
         kind: "Thing".into(),
-        class: netsmith_testkit::std_class("Thing").and_then(netsmith_core::PartClass::from_word),
+        declared_kind: netsmith_testkit::std_kind("Thing")
+            .and_then(netsmith_core::PartKind::from_word),
         category: crate::scene3d::PartCategory::of(None, refdes),
         side: Side::Front,
         layout_at: (0.0, 0.0),
@@ -294,8 +295,8 @@ fn a_part_says_its_sort_and_its_margin_to_the_limit_over_it() {
     // A resistor of 0.5 mm under the lid as well, and the lid's list of the parts under it.
     let mut r = body("r1", "R1", plan(2.0, 2.0), plan(4.0, 3.0), Some(0.5));
     r.kind = "Resistor".into();
-    r.class = Some(netsmith_core::PartClass::Resistor);
-    r.category = crate::scene3d::PartCategory::of(r.class, "R1");
+    r.declared_kind = Some(netsmith_core::PartKind::Resistor);
+    r.category = crate::scene3d::PartCategory::of(r.declared_kind, "R1");
     sc.bodies.push(r);
     sc.limits[0].faces[0].under = vec!["u1".into(), "r1".into()];
     let doc = json_chunk(&glb(&sc, "Demo")).unwrap();
@@ -314,18 +315,18 @@ fn a_part_says_its_sort_and_its_margin_to_the_limit_over_it() {
 }
 
 #[test]
-fn a_part_is_sorted_by_its_class_before_its_letters() {
+fn a_part_is_sorted_by_its_kind_before_its_letters() {
     use crate::scene3d::PartCategory as C;
-    use netsmith_core::PartClass;
-    assert_eq!(C::of(Some(PartClass::Connector), "J1"), C::Connector);
-    // A connector is one by its class only: the letters J say nothing.
+    use netsmith_core::PartKind;
+    assert_eq!(C::of(Some(PartKind::Connector), "J1"), C::Connector);
+    // A connector is one by its kind only: the letters J say nothing.
     assert_eq!(C::of(None, "J2"), C::Other);
     assert_eq!(C::of(None, "U3"), C::Ic);
-    assert_eq!(C::of(Some(PartClass::Transistor), "Q1"), C::Transistor);
-    assert_eq!(C::of(Some(PartClass::Led), "D4"), C::Diode);
-    assert_eq!(C::of(Some(PartClass::Capacitor), "X1"), C::Capacitor);
+    assert_eq!(C::of(Some(PartKind::Transistor), "Q1"), C::Transistor);
+    assert_eq!(C::of(Some(PartKind::Led), "D4"), C::Diode);
+    assert_eq!(C::of(Some(PartKind::Capacitor), "X1"), C::Capacitor);
     assert_eq!(C::of(None, "H1"), C::Mechanical);
-    assert_eq!(C::of(Some(PartClass::MountingHole), "H2"), C::Mechanical);
+    assert_eq!(C::of(Some(PartKind::MountingHole), "H2"), C::Mechanical);
 }
 
 #[test]

@@ -214,7 +214,7 @@ pub fn board(
             .iter()
             .map(|p| Part {
                 provides: Vec::new(),
-                class: netsmith_testkit::std_class(if p.hole { "MountingHole" } else { "Module" }).and_then(netsmith_core::PartClass::from_word),
+                declared_kind: netsmith_testkit::std_kind(if p.hole { "MountingHole" } else { "Module" }).and_then(netsmith_core::PartKind::from_word),
                 refdes: p.refdes.clone(),
                 kind: if p.hole { "MountingHole" } else { "Module" }.into(),
                 value: p.package(),

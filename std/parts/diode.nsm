@@ -53,7 +53,7 @@
 /// would contradict the analysis for every blocking diode). A diode between two rails (an
 /// OR-ing diode) is across no rail and is not checked. The name, and the field-name convention
 /// (ADR 0105), are accepted as built (the owner, 2026-11-11).
-#[class(diode)]
+#[kind(diode)]
 part Diode {
     .designator &= "D"
 
@@ -108,7 +108,7 @@ part Diode {
 /// same fields and ratings, and is its own kind because it is a different symbol and a
 /// different catalog, and because a design says which it needs ("a Schottky for the
 /// reverse-polarity drop").
-#[class(diode)]
+#[kind(diode)]
 generic Schottky {
     .designator &= "D"
 
@@ -256,7 +256,7 @@ generic Schottky {
 ///
 /// The unit of the coefficient, the name and kind of the shift, which marker guards what, and the
 /// relation's form are accepted as built by the owner, 2026-11-11.
-#[class(diode)]
+#[kind(diode)]
 generic Zener {
     .designator &= "D"
 
@@ -375,7 +375,7 @@ generic Zener {
 ///
 /// The written record, the rejected alternatives and the placement of the optional-column rule are
 /// accepted as built by the owner, 2026-11-11.
-#[class(diode)]
+#[kind(diode)]
 generic Tvs {
     .designator &= "D"
 
@@ -463,7 +463,7 @@ generic Tvs {
 /// ESD arrays are not covered; each is its own part. The Littelfuse rows are Extended parts;
 /// no Basic bidirectional row was read. The name, the pin names and the member-or-generic
 /// choice are accepted as built (the owner, 2026-11-11).
-#[class(diode)]
+#[kind(diode)]
 generic TvsBidirectional {
     .designator &= "D"
 

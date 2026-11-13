@@ -27,7 +27,7 @@ use netsmith_check::{
 };
 use netsmith_core::{
     Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember,
-    ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartClass, PartPin,
+    ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartKind, PartPin,
     PinRef, PowerFlow, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
@@ -1232,8 +1232,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         let kind = &kinds[id];
         let pick = solution.picks.iter().find(|p| p.part == *id);
         // A label's value is the text it prints.
-        let value = match (inst.marks.class, text_of(model, *id, "text")) {
-            (Some(PartClass::Label), Some(text)) => text,
+        let value = match (inst.marks.declared_kind, text_of(model, *id, "text")) {
+            (Some(PartKind::Label), Some(text)) => text,
             _ => pick
                 .map(|p| p.label.clone())
                 .unwrap_or_else(|| default_value(inst, kind)),
@@ -1300,7 +1300,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 // Only the generics of the standard library: a tool reads them by name, and a
                 // project's own generic of the same name is not that one.
                 provides: provides.clone(),
-                class: inst.marks.class,
+                declared_kind: inst.marks.declared_kind,
                 value: value.clone(),
                 package: package.clone(),
                 path,
@@ -1635,7 +1635,7 @@ mod tests {
         }
     }
 
-    /// The layout and the placer find connectors by the class `connector`, which the standard
+    /// The layout and the placer find connectors by the kind `connector`, which the standard
     /// `Connector` states (ADR 0123), not by a name or by the letters of a designator: every
     /// standard kind that has the letters `J` provides it, and no other does.
     #[test]

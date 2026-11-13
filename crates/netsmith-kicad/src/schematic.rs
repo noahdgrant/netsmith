@@ -1297,8 +1297,8 @@ mod tests {
         let part =
             |refdes: &str, kind: &str, value: &str, package: Option<&str>, path: &str| Part {
                 provides: Vec::new(),
-                class: netsmith_testkit::std_class(kind)
-                    .and_then(netsmith_core::PartClass::from_word),
+                declared_kind: netsmith_testkit::std_kind(kind)
+                    .and_then(netsmith_core::PartKind::from_word),
                 refdes: refdes.into(),
                 kind: kind.into(),
                 value: value.into(),
@@ -1617,12 +1617,13 @@ mod tests {
     fn led_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                 vec!["Connector".to_string()]
             } else {
                 Vec::new()
             },
-            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: value.into(),
@@ -1818,12 +1819,13 @@ mod tests {
     fn regulator_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                 vec!["Connector".to_string()]
             } else {
                 Vec::new()
             },
-            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: value.into(),
@@ -2303,7 +2305,8 @@ mod tests {
         // U0 sorts before U1, so a rule that only looked at the order would keep U0's pin.
         d.parts.push(Part {
             provides: Vec::new(),
-            class: netsmith_testkit::std_class("Ldo").and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind("Ldo")
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: "U0".into(),
             kind: "Ldo".into(),
             value: "XC6206".into(),
@@ -2329,12 +2332,13 @@ mod tests {
     fn a_placed_part_is_on_the_bill_of_materials_as_its_symbol_says_and_a_flag_is_on_neither() {
         let part = |refdes: &str, kind: &str, package: Option<&str>| Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                 vec!["Connector".to_string()]
             } else {
                 Vec::new()
             },
-            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: String::new(),
@@ -2474,12 +2478,13 @@ mod tests {
     fn gadget(refdes: &str, kind: &str) -> Part {
         Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            provides: if netsmith_testkit::std_kind(kind) == Some("connector") {
                 vec!["Connector".to_string()]
             } else {
                 Vec::new()
             },
-            class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
+            declared_kind: netsmith_testkit::std_kind(kind)
+                .and_then(netsmith_core::PartKind::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
             value: kind.into(),

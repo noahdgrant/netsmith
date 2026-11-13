@@ -1,4 +1,4 @@
-//! Attributes (ADR 0123): `#[bank]`, `#[series(E24, E96)]`, `#[class(resistor)]`,
+//! Attributes (ADR 0123): `#[bank]`, `#[series(E24, E96)]`, `#[kind(resistor)]`,
 //! `#[value("LED")]` and `#[assembly(hand)]` on a `generic` or a `part`, and `#[role(bias)]` on a member of one. They
 //! say what a definition or a member is to the checker, the solver and the tools, in a way a
 //! project's own definition can say too, so that no list in Rust names a definition of the
@@ -11,7 +11,7 @@
 
 use std::rc::Rc;
 
-use netsmith_core::PartClass;
+use netsmith_core::PartKind;
 use netsmith_lang::ast::{AttrArg, Attribute, DefKind, Definition, Item};
 use netsmith_quantity::Dimension;
 
@@ -20,7 +20,7 @@ use crate::diag::SourceId;
 use crate::model::{FieldKind, InstId, InstKind, Member};
 
 /// The attributes a definition may carry, with what each takes.
-const DEFINITION_ATTRIBUTES: [&str; 5] = ["bank", "series", "class", "value", "assembly"];
+const DEFINITION_ATTRIBUTES: [&str; 5] = ["bank", "series", "kind", "value", "assembly"];
 
 /// The words of `#[assembly(...)]`: who assembles a part (ADR 0024), as the catalog files and
 /// the manifest write it.
@@ -119,8 +119,8 @@ pub struct Marks {
     /// `#[series(E24, E96)]`: the E-series its catalog's synthesized parts may take their
     /// values from (ADR 0047), by name, as written. Empty for none.
     pub series: Vec<String>,
-    /// `#[class(resistor)]`: what the tools treat it as.
-    pub class: Option<PartClass>,
+    /// `#[kind(resistor)]`: what the tools treat it as.
+    pub declared_kind: Option<PartKind>,
     /// `#[value("LED")]`: what a schematic shows as its value when the solver did not choose one.
     pub value: Option<String>,
     /// `#[assembly(hand)]`: who assembles a part of it when neither the design, its catalog row
@@ -234,7 +234,7 @@ impl Checker<'_> {
                     }
                 }
                 "series" => self.check_series(source, def, attr),
-                "class" => self.check_class(source, attr),
+                "kind" => self.check_kind(source, attr),
                 "assembly" => {
                     let known = names(&ASSEMBLY_WORDS);
                     match attr.args.as_slice() {
@@ -327,11 +327,8 @@ impl Checker<'_> {
         }
     }
 
-    fn check_class(&mut self, source: SourceId, attr: &Attribute) {
-        let known: Vec<String> = PartClass::ALL
-            .iter()
-            .map(|c| c.word().to_string())
-            .collect();
+    fn check_kind(&mut self, source: SourceId, attr: &Attribute) {
+        let known: Vec<String> = PartKind::ALL.iter().map(|c| c.word().to_string()).collect();
         let args = match name_args(attr) {
             Ok(a) => a,
             Err((span, message)) => {
@@ -340,11 +337,11 @@ impl Checker<'_> {
             }
         };
         match args.as_slice() {
-            [(word, span)] if PartClass::from_word(word).is_none() => self.report(
+            [(word, span)] if PartKind::from_word(word).is_none() => self.report(
                 source,
                 *span,
                 format!(
-                    "there is no class `{word}`{}; the classes are {}",
+                    "there is no kind `{word}`{}; the kinds are {}",
                     did_you_mean(word, &known),
                     list(&known)
                 ),
@@ -354,7 +351,7 @@ impl Checker<'_> {
                 source,
                 attr.span,
                 format!(
-                    "`#[class(...)]` names one class, such as `#[class(resistor)]`; the classes are {}",
+                    "`#[kind(...)]` names one kind, such as `#[kind(resistor)]`; the kinds are {}",
                     list(&known)
                 ),
             ),
@@ -448,7 +445,7 @@ impl Checker<'_> {
     }
 
     /// What the attributes of `def` and of the generics it provides say, for an instance of it.
-    /// The definition's own come first; a class or a value it does not state is the first
+    /// The definition's own come first; a kind or a value it does not state is the first
     /// provided generic's that does. Attributes the file pass refused are left out.
     pub(crate) fn marks_of(&self, def: &Definition, generics: &[Rc<Definition>]) -> Marks {
         let mut marks = Marks::default();
@@ -471,9 +468,9 @@ impl Checker<'_> {
                             })
                             .collect();
                     }
-                    "class" if marks.class.is_none() => {
-                        marks.class = match attr.args.as_slice() {
-                            [AttrArg::Name(i)] => PartClass::from_word(&i.name),
+                    "kind" if marks.declared_kind.is_none() => {
+                        marks.declared_kind = match attr.args.as_slice() {
+                            [AttrArg::Name(i)] => PartKind::from_word(&i.name),
                             _ => None,
                         };
                     }
