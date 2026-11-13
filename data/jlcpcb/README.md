@@ -64,7 +64,7 @@ Row counts: `catalog/resistor.csv` 219 rows, `catalog/capacitor.csv` 61, `catalo
 
 ### Heights (ADR 0094)
 
-94 rows have a `height` (read 2026-11-09, each from the manufacturer's document, with the document, its revision or version and the page in the `source` after `height:`; the cell is the greatest the document allows, so a nominal with a printed tolerance is added up):
+99 rows have a `height` (94 read 2026-11-09 and 5 read 2026-11-13, each from the manufacturer's document, with the document, its revision or version and the page in the `source` after `height:`; the cell is the greatest the document allows, so a nominal with a printed tolerance is added up):
 
 - `header.csv`, all 8 rows: the JXTCONN PH2.54-1XnP-H25 drawing and Hanxia's HX PZ2.54-1x8P sheet (body 2.50 mm and a 6.00 +/-0.2 mm pin end above it, 8.9 mm; the 3.00 +/-0.2 mm end is the tail, and 8.9 mm is also the greatest of the two ways of mounting it), the JXTCONN PM2.54 sockets (8.50 +/-0.15 mm, 8.65 mm).
 - `inductor.csv`, all 4 rows: Chilisin MHCD322512 1.2 mm maximum (the MHCD series page of Chilisin's catalog, shape and dimensions, column C), Murata LQH32PN 1.55 +/-0.15 mm (1.7 mm; JELF243A-0061M-01, page 2).
@@ -72,8 +72,9 @@ Row counts: `catalog/resistor.csv` 219 rows, `catalog/capacitor.csv` 61, `catalo
 - `fuse.csv`, all 8 rows: Ruilon SMD1206 and SMD0603 (column C, thickness), prosemi 1206HV 0.60 +/-0.25 mm, Walter 1206T 0.60 +/-0.15 mm.
 - `crystal.csv`, all 4 rows: Epson FC-135 0.8 +/-0.1 mm, YXC YSX530GA 1.2 +/-0.15 mm.
 - `ferrite_bead.csv`, all 3 rows: Murata BLM18 0.8 +/-0.15 mm, BLM31PG 1.1 +/-0.2 mm.
-- `capacitor.csv`: the 39 Samsung rows, the Thickness of the part's page in Samsung Electro-Mechanics' component library (weblib.samsungsem.com, the Specifications table), nominal plus tolerance.
-- **Left empty, no figure was read:** the 219 resistors, the 14 LEDs (the datasheet links of the KT-0603R and the two LTST rows return a web page and not the PDF, the KT-0603W sheet's drawing was not read, and the XINGLIGHT drawings give a nominal height and a general tolerance that was not added up for them), the XC6206 (SOT-23, no package drawing read), the AO3400A (the AOS datasheet has no package drawing), the Yageo, Fenghua and Murata capacitors (no document cited), and the P-channel, level-translator and LT8641 catalogs (no rows).
+- `capacitor.csv`: the 39 Samsung rows, the Thickness of the part's page in Samsung Electro-Mechanics' component library (weblib.samsungsem.com, the Specifications table), nominal plus tolerance; the Fenghua 15 pF C0G 0402 C1548, 0.55 mm (read 2026-11-13: the size code CA of the 'Capacitance Range and Voltage' table, page 4/27 of the product specification A0001, and T 0.50 +/-0.05 mm for CA in the 'Product Dimensions' table, page 3/27).
+- `resistor.csv` has a `height` column since 2026-11-13: the four UNI-ROYAL 0402WGF rows of the RP2350A Minimal example (1 k C11702, 10 k C25744, 27 R C25100, 33 R C25105), 0.4 mm (H 0.35 +/-0.05 mm, the 5. Dimension table, page 4/9, of the data sheet their `temp_min` cells cite). The table holds for every 0402 row of that data sheet; the other rows were not filled in that change.
+- **Left empty, no figure was read:** the other 215 resistors, the 14 LEDs (the datasheet links of the KT-0603R and the two LTST rows return a web page and not the PDF, the KT-0603W sheet's drawing was not read, and the XINGLIGHT drawings give a nominal height and a general tolerance that was not added up for them), the XC6206 (SOT-23, no package drawing read), the AO3400A (the AOS datasheet has no package drawing), the Yageo and Murata capacitors and the other Fenghua ones (no document cited), and the P-channel, level-translator and LT8641 catalogs (no rows).
 
 ### How the rows were found
 

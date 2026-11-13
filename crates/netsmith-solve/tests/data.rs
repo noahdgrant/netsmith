@@ -216,7 +216,7 @@ fn every_standard_file_reads_and_every_part_in_it_has_its_source() {
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 94;
+const ROWS_WITH_HEIGHT: usize = 99;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
