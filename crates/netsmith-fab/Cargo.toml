@@ -23,4 +23,5 @@ netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-core = { path = "../netsmith-core" }
 
 [dev-dependencies]
+automod = "1.0.17"
 netsmith-testkit = { path = "../netsmith-testkit" }

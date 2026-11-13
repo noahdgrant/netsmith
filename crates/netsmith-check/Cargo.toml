@@ -16,3 +16,6 @@ netsmith-core = { path = "../netsmith-core" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-quantity = { path = "../netsmith-quantity" }
 toml = "1.1.8"
+
+[dev-dependencies]
+automod = "1.0.17"

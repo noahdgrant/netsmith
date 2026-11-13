@@ -18,5 +18,6 @@ netsmith-lang = { path = "../netsmith-lang" }
 netsmith-solve = { path = "../netsmith-solve" }
 
 [dev-dependencies]
+automod = "1.0.17"
 netsmith-quantity = { path = "../netsmith-quantity" }
 netsmith-testkit = { path = "../netsmith-testkit" }
