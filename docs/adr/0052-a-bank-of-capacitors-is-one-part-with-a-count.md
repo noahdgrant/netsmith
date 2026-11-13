@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0123
 ---
 
 # A bank of capacitors is one part with a count

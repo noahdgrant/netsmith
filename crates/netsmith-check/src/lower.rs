@@ -746,10 +746,10 @@ impl Checker<'_> {
     }
 
     /// A whole number written as the `.count` of a board's own `CapacitorBank` is `N x Capacitor`
-    /// written another way (ADR 0119, ADR 0122): the board has a group for a number it knows. A
+    /// written another way (ADR 0119, ADR 0123): the board has a group for a number it knows. A
     /// count the solver chooses (a range), one that reads another field, and one a module passes
     /// through its interface (`.reg.output_count`, or a bank inside a module) stay. Proposed, for
-    /// the owner: ADR 0122.
+    /// the owner: ADR 0123.
     fn refuse_fixed_count(&mut self, field: FieldId, path: &ast::Path, e: &RExpr, span: Span) {
         let RExpr::Const(q) = e else { return };
         if !self.in_board() || self.is_library(self.cur_source()) || q.lo() != q.hi() {

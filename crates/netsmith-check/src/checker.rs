@@ -1966,7 +1966,7 @@ impl<'a> Checker<'a> {
         })
     }
 
-    /// What to add to "has no member `count`" for a `Capacitor` (ADR 0122): a capacitor is one
+    /// What to add to "has no member `count`" for a `Capacitor` (ADR 0123): a capacitor is one
     /// part, and several are a `CapacitorBank` or `N x Capacitor`. Empty for any other name or
     /// part.
     fn count_hint(&self, inst: InstId, name: &str) -> &'static str {

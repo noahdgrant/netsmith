@@ -271,7 +271,7 @@ fn all_efforts() -> Vec<String> {
 /// The lines this printed when the twelve were `part`s (the keyword of `std/parts/*.nsm` was
 /// the only difference), recorded before the conversion. `two_boards` was 72 trials until the
 /// search left out candidates that a trial would refuse (issue #184): its picks are the same.
-/// A plain `Capacitor` is no longer searched as a bank (ADR 0122), so `ldo` (62), `two_boards`
+/// A plain `Capacitor` is no longer searched as a bank (ADR 0123), so `ldo` (62), `two_boards`
 /// (67) and `behind` (28) try fewer candidates, and pick the same parts.
 const BEFORE: &str = "\
 led/LedExample: trials 3 picks [led=KT-0603R RED LED 0603 C2286x1, power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, r1=330Ω 1% 0402 C25104x1] findings 0\n\

@@ -228,7 +228,7 @@ fn the_capacitors_have_the_effective_capacitance_the_ic_asks_for() {
     let m = messages(&s);
     assert!(
         m.iter().any(|m| m.contains("no `capacitor` candidate satisfies `stage.output_cap`")
-            && m.contains("(stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.ic.min_output_capacitance")
+            && m.contains("stage.output_cap.total_effective_capacitance must always be at least stage.ic.min_output_capacitance")
             && m.contains("is not always above 1mF")),
         "{m:#?}"
     );

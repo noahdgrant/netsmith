@@ -1,5 +1,5 @@
 //! A `Capacitor` is one part and has no `.count`; several are a `CapacitorBank` or `N x
-//! Capacitor` (ADR 0122, ADR 0119). A whole number written as the `.count` of a board's own
+//! Capacitor` (ADR 0123, ADR 0119). A whole number written as the `.count` of a board's own
 //! bank is refused and points at `N x Capacitor`; a count the solver chooses and one a module
 //! passes through its interface are banks and stay.
 
@@ -96,9 +96,10 @@ fn a_count_the_solver_chooses_is_a_bank_and_stays() {
 }
 
 #[test]
-fn a_default_range_and_a_bank_with_no_count_stay() {
+fn a_bank_with_no_count_has_the_default_range_and_a_total_a_board_may_read() {
+    // The bank's own `?=` is its count's one default: a board that states a range narrows it.
     let source = board(
-        "    .bulk: CapacitorBank { .count ?= 1..4 }\n    .bulk.count * .bulk.effective_capacitance >= 20uF\n",
+        "    .bulk: CapacitorBank\n    .bulk.total_effective_capacitance >= 20uF\n    .bulk.total_capacitance >= 22uF\n",
     );
     let c = check("t.nsm", &source, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());

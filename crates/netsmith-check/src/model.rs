@@ -61,7 +61,7 @@ pub enum Member {
     Poison,
 }
 
-/// The standard generics that are banks (ADR 0052, ADR 0122): a number of identical parts that
+/// The standard generics that are banks (ADR 0052, ADR 0123): a number of identical parts that
 /// stand in parallel in one place, chosen by the design or by the solver through the part's
 /// `.count`, and the generic each of those parts is (`CapacitorBank` is `Capacitor`s). This is
 /// the one list; [`Model::bank`] is the one place that reads it, and the rest of the tools
@@ -1603,7 +1603,7 @@ impl Model {
         inst.bridge
     }
 
-    /// The bank a part is (ADR 0052, ADR 0122), or none for a part that is not one: the field that
+    /// The bank a part is (ADR 0052, ADR 0123), or none for a part that is not one: the field that
     /// holds how many identical parts stand in this place, and the kind each of them is. The
     /// one place that decides which parts are banks.
     pub fn bank(&self, part: InstId) -> Option<Bank> {

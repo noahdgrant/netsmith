@@ -1233,7 +1233,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         netsmith_core::job::checkpoint();
         let inst = model.instance(*id);
         let (letters, first, bank) = lettered[id].clone();
-        // What each part the design makes is: the part's own kind, or for a bank (ADR 0122) the
+        // What each part the design makes is: the part's own kind, or for a bank (ADR 0123) the
         // generic its parts are, so a member of a `CapacitorBank` is drawn, mapped to a footprint
         // and listed as the `Capacitor` it is.
         let kind = &kinds[id];
@@ -1266,7 +1266,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             banks.insert(model.path_of(*id), bank);
         }
         // What a part of the design provides, of the standard generics: a provider of a bank
-        // makes parts that provide what the bank's parts are (ADR 0122).
+        // makes parts that provide what the bank's parts are (ADR 0123).
         let provides: Vec<String> = match model.bank(*id) {
             Some(b) if inst.type_name != b.generic => vec![b.member],
             _ => inst

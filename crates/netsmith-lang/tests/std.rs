@@ -32,7 +32,7 @@ fn passive_parts_parse() {
     let file = parse(PASSIVE).unwrap();
     // Ten parts, the enum `Dielectric` of the capacitor (ADR 0055) and the enum `Color` of the
     // LED (ADR 0118). Nine of the parts are generics that are their own first provider (ADR 0068
-    // stage 2), `CapacitorBank` (ADR 0122) and `NtcThermistor` (#473) among them; `Switch` has
+    // stage 2), `CapacitorBank` (ADR 0123) and `NtcThermistor` (#473) among them; `Switch` has
     // no catalog and stays a `part`.
     assert_eq!(file.definitions.len(), 12);
     assert_eq!(

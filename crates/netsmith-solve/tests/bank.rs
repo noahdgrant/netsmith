@@ -88,13 +88,68 @@ fn a_bank_of_one_picks_what_a_part_with_no_count_picks() {
 }
 
 #[test]
-fn a_bank_with_no_count_stated_is_one_part() {
+fn a_bank_with_no_count_stated_is_chosen_from_one_to_eight_fewest_first() {
+    // The bank's own default is `1..8` (ADR 0123); nothing asks for more than one capacitor.
     let s = solved(&board("", "    .bulk.effective_capacitance >= 4uF\n"));
     assert_eq!(s.picks[0].count, 1);
-    assert!(matches!(
-        s.model.domain_at("bulk.count"),
-        Some(Domain::Unset)
+    assert_eq!(number(&s, "bulk.count"), 1.0);
+}
+
+/// The same board as `board`, asking for the bank's total and not for the count times a value.
+const NEED_TOTAL: &str =
+    "    .bulk.total_effective_capacitance >= 60uF\n    .bulk.max_voltage >= 6V\n";
+
+#[test]
+fn a_board_that_narrows_the_total_gets_a_count_picked() {
+    let by_total = solved(&board("", NEED_TOTAL));
+    assert!(messages(&by_total).is_empty(), "{:?}", messages(&by_total));
+    let n = number(&by_total, "bulk.count");
+    assert!(n > 1.0, "one capacitor cannot give 60 uF at 5 V, not {n}");
+    // The count is the fewest, and the total is what the circuit keeps: the same pick as the
+    // relation written out with the count.
+    let total = match by_total.model.domain_at("bulk.total_effective_capacitance") {
+        Some(Domain::Quantity(q)) => *q,
+        other => panic!("{other:?}"),
+    };
+    assert!(total.lo() >= 60e-6 - 1e-12, "{total}");
+    let by_count = solved(&board("", NEED));
+    assert_eq!(by_total.picks[0].candidate, by_count.picks[0].candidate);
+    assert_eq!(by_total.picks[0].count, by_count.picks[0].count);
+}
+
+#[test]
+fn the_marked_total_is_the_count_times_the_marked_value() {
+    // 66 uF of marked capacitance from 22 uF parts is three of them, whatever they keep at 5 V.
+    let s = solved(&board(
+        ".capacitance &= 22uF +/- 20%",
+        "    .bulk.total_capacitance >= 66uF\n    .bulk.max_voltage >= 6V\n",
     ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert!(number(&s, "bulk.count") >= 3.0);
+}
+
+#[test]
+fn an_impossible_total_is_refused_at_its_line() {
+    let src = board(
+        ".count &= 1..2",
+        "    .bulk.total_effective_capacitance >= 10mF\n",
+    );
+    let s = solved(&src);
+    let m = messages(&s);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].contains("no `capacitor` candidate satisfies `bulk`")
+            && m[0].contains("bulk.total_effective_capacitance must always be at least 10mF")
+            && m[0].contains("is not always above 10mF"),
+        "{}",
+        m[0]
+    );
+    // The line it points at is the board's statement of the total.
+    let at = s.diagnostics[0].span;
+    assert_eq!(
+        &src[at.start..at.end],
+        ".bulk.total_effective_capacitance >= 10mF"
+    );
 }
 
 /// A count a module passes through its interface: a board cannot write a whole number as the

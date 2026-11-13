@@ -7130,7 +7130,7 @@ An `Inductor` has an optional `.rms_current`, the heating (RMS) current, as a ca
 
 ### A bank of capacitors in parallel
 
-A `Capacitor` is one part. A requirement that no single capacitor meets is met by several in parallel (ADR 0052, ADR 0122), and `CapacitorBank` is the type for that: the same capacitor, with the number of them in `.count`, a whole number the solver chooses or a module passes in. A number the board knows is `3 x Capacitor` (A group of identical members), not a bank. A `.count` on a `Capacitor` is an error that says so. Only the standard `CapacitorBank` has this meaning: a part of your own with a member named `count` (the segments of an LED bar, say) is one part, and its `.count` is a plain number. Left unset it is one. A range (`.count &= 1..8`) lets the solver choose: it takes the fewest of the range for which every check that mentions the part holds, together with the catalog row, trying one capacitor of every row before two of any, so a part that one capacitor can serve is picked as before. Every other field of the part is the value of one capacitor, so a requirement on the whole bank multiplies by the count (`.count * .effective_capacitance`), and a rating (`.max_voltage`) holds for each.
+A `Capacitor` is one part. A requirement that no single capacitor meets is met by several in parallel (ADR 0052, ADR 0123), and `CapacitorBank` is the type for that: the same capacitor, with the number of them in `.count`, a whole number the solver chooses or a module passes in. A number the board knows is `3 x Capacitor` (A group of identical members), not a bank. A `.count` on a `Capacitor` is an error that says so. Only the standard `CapacitorBank` has this meaning: a part of your own with a member named `count` (the segments of an LED bar, say) is one part, and its `.count` is a plain number. Left unset the solver chooses it from 1 to 8; a range (`.count &= 1..4`) limits the choice. It takes the fewest of the range for which every check that mentions the part holds, together with the catalog row, trying one capacitor of every row before two of any, so a part that one capacitor can serve is picked as before. `.capacitance`, `.effective_capacitance`, `.package` and the rest are the value of one capacitor, and a rating (`.max_voltage`) holds for each. What the bank is as a whole is read from its totals: `.total_effective_capacitance`, the count times what one capacitor keeps at the voltage across it, and `.total_capacitance`, the count times the marked value. The effective total is the one that means what the circuit can use, so it is what a requirement on the bank states (`.bulk.total_effective_capacitance >= 60uF`) and what `Buck` reads; a ceramic keeps a fraction of its marked value at a few volts, so the marked total is the bill of materials' figure (`4 x 22uF`) and not a capacitance to design with. A board may read and narrow either total, and the solver chooses the count and the row to meet it.
 
 ```nsm solve report
 import std::parts::passive::CapacitorBank
@@ -7142,7 +7142,7 @@ board Bank {
         .pos.net &= "5V"
     }
     .bulk: CapacitorBank { .count &= 1..8 }
-    .bulk.count * .bulk.effective_capacitance >= 60uF
+    .bulk.total_effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
     .supply.pos ~> .bulk ~> .supply.neg
 }
@@ -7174,17 +7174,17 @@ board Short {
         .pos.net &= "5V"
     }
     .bulk: CapacitorBank { .count &= 1..2 }
-    .bulk.count * .bulk.effective_capacitance >= 10mF
+    .bulk.total_effective_capacitance >= 10mF
     .supply.pos ~> .bulk ~> .supply.neg
 }
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `bulk`: the closest of the 34 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+error: no `capacitor` candidate satisfies `bulk`: the closest of the 34 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.total_effective_capacitance must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
    --> main.nsm:10:5
    |
-10 |     .bulk.count * .bulk.effective_capacitance >= 10mF
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     .bulk.total_effective_capacitance >= 10mF
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A bank is one choice: the capacitors of a bank are identical, and the ripple current each takes is not modelled (the catalog has no ripple rating), so it is not divided between them.
@@ -10203,7 +10203,7 @@ board Converter {
 
 The solver picks the inductor (a 2.2 uH 1210 part saturating at 3.6 A, over the IC's 3 A, with 85 mohm, under its 0.1 ohm, and a tolerance that still leaves 1.76 uH, over the IC's 1.5 uH), a capacitor for each side that keeps the effective capacitance the IC asks for at the voltage across it, and the two divider resistors. The supply draws 0 to 459 mA for the 0 to 1 A load. The ripple current is `(vin - vout) * vout / (vin * L * fsw)`, 0.30 A to 0.67 A here, and the inductor must carry the load plus half of it: 1.33 A of 3.6 A.
 
-Each side of the converter is a `CapacitorBank` of identical capacitors (the section on capacitors above): `.input_cap` and `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The solver chooses the row and the count together, from 1 to 8, so that `count * effective_capacitance` meets what the IC asks for (the capacitance the datasheet states is for the whole side) and each capacitor is rated for its rail. With the IC of this guide changed to ask for 47 uF at the output and 40 uF at the input, the converter takes two capacitors at the 1.8 V output (the 47 uF row keeps 26 uF of its value there) and four at the 5 V input (it keeps 10 uF). The board states the count when it wants one (`.reg.output_cap.count &= 3`, which the checks then hold to), or limits what the solver may choose (`.reg.output_cap.count &= 1..3`), by the path into the converter (ADR 0116). A bank of one is a single capacitor, as the converter had before.
+Each side of the converter is a `CapacitorBank` of identical capacitors (the section on capacitors above): `.input_cap` and `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The solver chooses the row and the count together, from 1 to 8, so that the bank's `total_effective_capacitance` meets what the IC asks for (the capacitance the datasheet states is for the whole side) and each capacitor is rated for its rail. With the IC of this guide changed to ask for 47 uF at the output and 40 uF at the input, the converter takes two capacitors at the 1.8 V output (the 47 uF row keeps 26 uF of its value there) and four at the 5 V input (it keeps 10 uF). The board states the count when it wants one (`.reg.output_cap.count &= 3`, which the checks then hold to), or limits what the solver may choose (`.reg.output_cap.count &= 1..3`), by the path into the converter (ADR 0116). A bank of one is a single capacitor, as the converter had before.
 
 ```nsm-fragment
 .reg: Buck<Zbk2> {
@@ -10285,9 +10285,9 @@ error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 
 198 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 6.402uA..3A is not always below 2A (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..-6.402uA) add up to zero; net `1V8` in `reg`: -reg.inductor.current (6.402uA..3A) + -reg.vout.current (-3A..-6.402uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3A..-6.402uA) + reg.inductor.current (6.402uA..3A) add up to zero)
-    --> std/parts/regulator.nsm:467:5
+    --> std/parts/regulator.nsm:465:5
     |
-467 |     -.vout.current <= .ic.max_output_current
+465 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10349,15 +10349,15 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:478:5
+    --> std/parts/regulator.nsm:476:5
     |
-478 |     .on_time >= .ic.min_on_time
+476 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
 
-The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * n * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `n` the output bank's count (`.output_cap.count`), `C` one capacitor's effective capacitance and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the converter, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
+The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `C` the output bank's effective capacitance (`.output_cap.total_effective_capacitance`), `n` its count (`.output_cap.count`) and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR is the board's own figure, since the standard capacitor catalog has no ESR column (a column needs the maker's number with its conditions as the recorded source, `data/jlcpcb/README.md`): `.output_esr` is `optional` (ADR 0074), and the board states the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end. The solver picks the capacitor without checking its own ESR against the figure. The member and where the board states it (on the converter, or on the capacitor as a catalog column) are provisional, the owner's to confirm.
 
 ```nsm evaluate
 import src::zbk2::Zbk2
@@ -10413,11 +10413,11 @@ board TooQuiet {
 ```
 
 ```text
-error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because (reg.output_cap.count * reg.output_cap.effective_capacitance) must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-    --> std/parts/regulator.nsm:485:5
+error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 34 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
+    --> std/parts/regulator.nsm:483:5
     |
-485 |     .output_cap.count * .output_cap.effective_capacitance >= .ic.min_output_capacitance
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+483 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A board that states a limit and no ESR is not judged: the relation that reads `.output_esr` is skipped (ADR 0074), so `.output_ripple` has no value and the limit is listed as not evaluated, never passed. The capacitor's term alone would pass a limit that the ESR's would break, so it is not used. A board that states neither has no ripple check and the build says nothing about it.
@@ -10749,9 +10749,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:359:5
+    --> std/parts/passive.nsm:372:5
     |
-359 |     .current <= .rated_current
+372 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10775,9 +10775,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:241:5
+    --> std/parts/passive.nsm:254:5
     |
-241 |     .current <= .saturation_current
+254 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10841,9 +10841,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:360:5
+    --> std/parts/passive.nsm:373:5
     |
-360 |     .supply_peak <= .rated_voltage
+373 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -14209,7 +14209,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 |---|---|
 | `std::parts::passive::Resistor` | A resistor with `.resistance`, `.temperature_coefficient`, a through-current and a voltage drop tied by Ohm's law. Passive pins `a` and `b` (pads 1 and 2), bridge `a ~> b`. Requires `.drop * .current <= .max_power`. Catalog `resistor`: resistance, max_power, package, temperature_coefficient (a fraction per kelvin, empty in the standard rows). |
 | `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias`, `.max_voltage` and `.dielectric` (a `Dielectric`, from the row, optional). Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
-| `std::parts::passive::CapacitorBank` | Identical capacitors in parallel, whose number the solver chooses or a module passes in (ADR 0122): the fields of `Capacitor` for one capacitor, and `.count`, a whole number (unset is one, a range is chosen by the solver). Its members are `Capacitor`s, `bulk[0]` to `bulk[n-1]`. A number the board knows is `N x Capacitor`. Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
+| `std::parts::passive::CapacitorBank` | Identical capacitors in parallel, whose number the solver chooses or a module passes in (ADR 0123): the fields of `Capacitor` for one capacitor, and `.count`, a whole number (unset: the solver chooses from 1 to 8; a range limits it), `.total_capacitance` and `.total_effective_capacitance`, the count times the marked and the bias-derated value. Its members are `Capacitor`s, `bulk[0]` to `bulk[n-1]`. A number the board knows is `N x Capacitor`. Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
 | `std::parts::passive::Led` | A light-emitting diode with `.color` (a `Color`), `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
 | `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, a pin table for SOT-23 and one for SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`; `.quiescent_current` is the current it keeps for itself (default none), added to the input current. Catalog `ldo`. |
 | `std::parts::connector::Connector` | What a connector is: a generic with the letters `"J"` and no pins, no pads and no catalog, that every standard connector provides and a project's own connector provides to be one (ADR 0068). |
