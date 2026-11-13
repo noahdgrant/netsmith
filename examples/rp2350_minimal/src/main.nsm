@@ -38,18 +38,18 @@ board Rp2350Minimal {
     // ---- The connectors: J1 to J4 ----
 
     /// The micro-USB B receptacle: the only supply of the board, and its USB port.
-    .usb: Amphenol10103594 { .mpn &= "10103594-0001LF" }
+    .usb: Amphenol10103594
     /// J2: ground, +3V3 and GPIO0 to GPIO15, as Raspberry Pi's header has them.
-    .header_low: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
+    .header_low: SamtecTsw11807LD
     /// J3: GPIO29 down to GPIO16, RUN, SWD and SWCLK.
-    .header_high: SamtecTsw11807LD { .mpn &= "TSW-118-07-L-D" }
+    .header_high: SamtecTsw11807LD
     /// J4: the debug port, a JST-SH with SWCLK, ground and SWD.
-    .debug: JstSm03bSrssTb { .mpn &= "SM03B-SRSS-TB(LF)(SN)" }
+    .debug: JstSm03bSrssTb
 
     // ---- The chips: U1 to U3 ----
 
     /// The microcontroller. Every pin that a header or a part uses is named here, so none moves.
-    .mcu: Rp2350A { .mpn &= "RP2350A" }
+    .mcu: Rp2350A
     /// The 3.3 V regulator, an NCP1117 in a SOT-223 (a row of the project's catalog).
     .regulator: LinearRegulator {
         .package &= "SOT-223"
@@ -57,7 +57,7 @@ board Rp2350Minimal {
         .quiescent_current &= 0mA..10mA
     }
     /// The QSPI flash that holds the program: 16 MB.
-    .flash: W25Q128Jv { .mpn &= "W25Q128JVSIQ" }
+    .flash: W25Q128Jv
 
     // ---- The rails ----
 
@@ -194,13 +194,13 @@ board Rp2350Minimal {
 
     /// BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots
     /// from USB.
-    .bootsel: TactileSwitch { .mpn &= "434133025816" }
+    .bootsel: TactileSwitch
     .bootsel_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
     .mcu.qspi_ss ~ .bootsel_series.a
     .bootsel_series.b ~ .bootsel.b
     .bootsel.a ~ .vbus.neg
     /// RESET: pulls RUN to ground through 1 kohm.
-    .reset: TactileSwitch { .mpn &= "434133025816" }
+    .reset: TactileSwitch
     .reset_series: Resistor { .resistance &= 1kohm +/- 1%; .package &= "0402" }
     .mcu.run ~ .reset.b
     .reset.a ~ .reset_series.a

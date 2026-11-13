@@ -58,7 +58,7 @@ board Name {
 
 ## Catalogs
 
-A part with `catalog X { .a, .b }` gets its real part from the rows of `X.csv`, first fitting row first. Your project adds files in its `catalogs/` folder (`catalogs/ldo.csv`, named after the catalog; every `*.csv` there is read, `catalog_dirs` in `netsmith.toml` can name more folders). A header of the field names without the dot plus `lcsc`, `mpn`, `library`, `price`, `stock`, `date`, `source`; cells like `3.3V +/- 2%`, text bare. A row that names a part needs a `source`. A keyed catalog (`by .mpn`) is chosen with `.mpn &= "..."`. See the guide's Catalog files.
+A part with `catalog X { .a, .b }` gets its real part from the rows of `X.csv`, first fitting row first. Your project adds files in its `catalogs/` folder (`catalogs/ldo.csv`, named after the catalog; every `*.csv` there is read, `catalog_dirs` in `netsmith.toml` can name more folders). A header of the field names without the dot plus `lcsc`, `mpn`, `library`, `price`, `stock`, `date`, `source`; cells like `3.3V +/- 2%`, text bare. A row that names a part needs a `source`. A keyed catalog (`by .mpn`) with one row that fits needs no name; with several, choose with `.mpn &= "..."`. See the guide's Catalog files.
 
 ## Capacitors
 

@@ -128,6 +128,54 @@ fn without_a_name_the_message_lists_the_rows_of_the_file() {
 }
 
 #[test]
+fn a_keyed_file_with_one_row_needs_no_name() {
+    let one = format!(
+        "{HEADER}\
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n"
+    );
+    let c = catalogs(&[("zz9", &one)]).unwrap();
+    let s = solved("", &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks.len(), 1);
+    assert_eq!(s.picks[0].candidate, "ZZ9-33-S");
+    assert_eq!(s.picks[0].mpn.as_deref(), Some("ZZ9-33-S"));
+    match s.model.domain_at("u.mpn") {
+        Some(netsmith_check::Domain::Text(t)) => assert_eq!(t, "ZZ9-33-S"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_narrowing_that_leaves_one_row_of_a_keyed_file_picks_it() {
+    let c = catalogs(&[("zz9", &file())]).unwrap();
+    let s = solved(r#".package &= "DFN-6""#, &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks.len(), 1);
+    assert_eq!(s.picks[0].candidate, "ZZ9-33-D");
+    // A narrowing that leaves both rows still asks for a name, listing both.
+    let s = solved(r#".vout.voltage &= 3.3V +/- 5%"#, &c);
+    let msgs = messages(&s);
+    assert_eq!(msgs.len(), 1, "{msgs:#?}");
+    assert!(
+        msgs[0].contains("name the part with .mpn: ZZ9-33-S, ZZ9-33-D"),
+        "{}",
+        msgs[0]
+    );
+}
+
+#[test]
+fn a_keyed_file_with_one_row_that_does_not_fit_is_not_picked() {
+    let one = format!(
+        "{HEADER}\
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n"
+    );
+    let c = catalogs(&[("zz9", &one)]).unwrap();
+    let s = solved(r#".package &= "DFN-6""#, &c);
+    assert!(s.picks.is_empty());
+    assert!(!messages(&s).is_empty());
+}
+
+#[test]
 fn the_order_of_the_rows_is_the_order_they_are_tried_in() {
     // Not keyed, the first row that fits is taken. Narrow nothing but the package.
     let swapped = file()

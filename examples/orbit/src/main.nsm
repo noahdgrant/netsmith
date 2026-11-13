@@ -43,9 +43,9 @@ board Orbit {
     // ---- The connectors: USB1, BAT1, J1, J2 ----
 
     /// The mini USB B receptacle: the supply and the programming port.
-    .usb: ShouHanMini5ptp { .mpn &= "MINI 5PTP" }
+    .usb: ShouHanMini5ptp
     /// The battery connector, a JST PH with two contacts: pin 1 is ground, pin 2 the battery's plus.
-    .battery: JstB2bPhSm4Tb { .mpn &= "B2B-PH-SM4-TB(LF)(SN)" }
+    .battery: JstB2bPhSm4Tb
     /// J1, the west header: ground, SWDIO, SWCLK, NRST, PC14, PA2, PA3 and 3.3 V.
     .header_west: Header1x8
     /// J2, the east header: ground, PB11, PB10, PB2, PB1, PB0, PA7 and PA6.
@@ -86,7 +86,7 @@ board Orbit {
     .charger.vbatt ~ .vbatt
 
     /// PWR1: the slide switch between the battery connector and the `+BATT` rail.
-    .power_switch: HroK3_1270 { .mpn &= "K3-1270S-F2" }
+    .power_switch: HroK3_1270
     .battery.p1 ~ .vbus.neg
     .battery.p2 ~ .power_switch.a
     .power_switch.com ~ .vbatt.pos
@@ -98,7 +98,7 @@ board Orbit {
     // ---- The microcontroller ----
 
     /// U16, the STM32F030C8. Every pin that a header or a part uses is named here, so none moves.
-    .mcu: Stm32F030C8 { .mpn &= "STM32F030C8T6" }
+    .mcu: Stm32F030C8
     .mcu.vdd ~ .v3v3.pos
     .mcu.vdda ~ .v3v3.pos
     .mcu.vss ~ .vbus.neg
@@ -128,7 +128,7 @@ board Orbit {
     // ---- Reset (SW1, C9) ----
 
     /// SW1, RESET: pulls NRST to ground.
-    .reset_button: XkbTs1187a { .mpn &= "TS-1187A-B-A-B" }
+    .reset_button: XkbTs1187a
     /// C9, on NRST.
     .reset_cap: Capacitor { .capacitance &= 100nF +/- 10%; .package &= "0603" }
     .mcu.nrst ~ .reset_button.a
@@ -140,7 +140,7 @@ board Orbit {
 
     /// BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1
     /// on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.
-    .boot_switch: HroK3_1270 { .mpn &= "K3-1270S-F2" }
+    .boot_switch: HroK3_1270
     /// R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its
     /// pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a
     /// `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of
@@ -155,7 +155,7 @@ board Orbit {
 
     /// SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor
     /// and a 100 nF capacitor take it to the MCU's pin.
-    .user_button: XkbTs1187a { .mpn &= "TS-1187A-B-A-B" }
+    .user_button: XkbTs1187a
     /// R12.
     .user_pulldown: PullDown { .resistance &= 100kohm +/- 1%; .package &= "0603" }
     /// C18.
@@ -201,7 +201,7 @@ board Orbit {
     // ---- The EEPROM on the I2C bus (U17, R9, R10) ----
 
     /// U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.
-    .eeprom: At24C128C { .mpn &= "AT24C128C-SSHM-T" }
+    .eeprom: At24C128C
     .eeprom.vcc ~ .v3v3.pos
     .eeprom.gnd ~ .vbus.neg
     .eeprom.a0 ~ .v3v3.pos

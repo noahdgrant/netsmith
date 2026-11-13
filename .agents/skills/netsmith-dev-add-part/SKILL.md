@@ -21,7 +21,7 @@ One file for each catalog, named by it (`resistor.csv`, `capacitor.csv`, `led.cs
 - Every row in a file is offered, whatever its `stock` cell says (the solver does not read stock, ADR 0047). The standard files ship no `price`, `stock`, `date` or `checked`: leave them empty in a row you add to `data/jlcpcb/catalog/` (a project's own file may state them; the `source` cell says when the record was read).
 - `name` is what a message calls the row (`10kΩ 1% 0402 C25744`) and `label` the schematic's value field (`10k`). Both default to the `mpn`.
 - A part you looked at and decided against goes in `data/jlcpcb/considered.csv` with its reason, not in a catalog.
-- A catalog keyed by a column (`catalog mcu by .mpn`) has one row per orderable part, and the design names it with `.mpn`.
+- A catalog keyed by a column (`catalog mcu by .mpn`) has one row per orderable part, and the design names it with `.mpn` when several rows fit (one fitting row is taken without a name).
 
 ## Starting a row
 

@@ -3301,10 +3301,12 @@ impl Solver<'_> {
         reach
     }
 
-    /// A keyed catalog (`catalog mcu by .mpn`) is not searched: the design names the row.
-    /// If it has not, say which rows it could name. True if the key was missing and
-    /// reported. A key that no row fits is left to the search, whose message says what the
-    /// design asks for.
+    /// A keyed catalog (`catalog mcu by .mpn`) is not searched for a choice among rows: when
+    /// several rows fit, the design names the row. If it has not, say which rows it could
+    /// name. True if the key was missing and reported. Exactly one row that fits (a catalog
+    /// with one row, or narrowings that leave one) needs no name: the search takes it, since
+    /// there is nothing to choose. A key that no row fits is left to the search, whose message
+    /// says what the design asks for.
     fn unnamed_key(
         &mut self,
         part: InstId,
@@ -3322,12 +3324,16 @@ impl Solver<'_> {
             .find(|(f, _)| *f == key)
             .map(|(_, k)| k.clone())
             .unwrap_or_default();
-        let mut names: Vec<String> = Vec::new();
-        for c in cat
+        let fitting: Vec<&Candidate> = cat
             .candidates
             .iter()
             .filter(|c| self.fits(part, columns, c))
-        {
+            .collect();
+        if fitting.len() == 1 {
+            return false;
+        }
+        let mut names: Vec<String> = Vec::new();
+        for c in fitting {
             if let Some(Value::Text(t)) = c.column(&key_name)
                 && !names.contains(t)
             {

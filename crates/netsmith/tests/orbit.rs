@@ -2399,8 +2399,8 @@ mod board {
                 "    .pin_for_header: .mcu.GPIO\n    .header_east.p2 ~ .pin_for_header\n",
             )
             .replace(
-                ".mcu: Stm32F030C8 { .mpn &= \"STM32F030C8T6\" }",
-                ".mcu: Stm32F030C8 { .mpn &= \"STM32F030C8T6\"; .package &= \"LQFP-48(7x7)\" }",
+                ".mcu: Stm32F030C8\n",
+                ".mcu: Stm32F030C8 { .package &= \"LQFP-48(7x7)\" }\n",
             );
         assert_ne!(asked, text);
         let moved =

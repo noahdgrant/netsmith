@@ -649,7 +649,7 @@ no generator answers it and `std/kicad.toml` stops at 0805), a row of `catalogs/
 
 The project's own `TactileSwitch` (`src/tactile_switch.nsm`): the standard `Switch` has two pins
 on one pad each, and a four-pad footprint is not a footprint of it. A row of
-`catalogs/tactile_switch.csv`, keyed by `.mpn` (a board names it: `.mpn &= "434133025816"`).
+`catalogs/tactile_switch.csv`, keyed by `.mpn` (one row, so a board needs no `.mpn`).
 
 - Document: Wurth Elektronik 434133025816, "WS-TASV J-Bend SMT Tact Switch", REVISION 001.001
   of 2021-01-25, 7 pages (<https://www.we-online.com/components/products/datasheet/434133025816.pdf>;

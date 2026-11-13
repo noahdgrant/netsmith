@@ -20,7 +20,7 @@ module Charger {
 
     /// U1: the MCP73831T-2ACI/OT (4.2 V, LCSC C424093; ORBIT's schematic writes the value as
     /// `MCP73031`).
-    .ic: Mcp73831 { .mpn &= "MCP73831T-2ACI/OT" }
+    .ic: Mcp73831
     /// R3, from `PROG` to ground: 2 kohm sets 500 mA.
     .rprog: Resistor { .resistance &= 2kohm +/- 1%; .package &= "0603" }
     /// R1, the status LED's series resistor.
