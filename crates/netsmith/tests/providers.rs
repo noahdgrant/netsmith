@@ -228,7 +228,7 @@ fn the_part_number_finds_the_provider_whose_catalog_has_it() {
     assert!(
         b.providers[0].passed_over[0]
             .1
-            .contains("catalog has nothing for `rf`"),
+            .contains("the catalog has no row with the manufacturer part number BETA-2"),
         "{}",
         b.providers[0].passed_over[0].1
     );
