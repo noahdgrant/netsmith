@@ -28,7 +28,8 @@
 //! so two vias at one place cannot hide a corner. The search queue breaks ties of cost toward
 //! the state that has come farthest. The design rules check's `track_angle` (netsmith's own)
 //! refuses a corner of more than 45 degrees outside a pad or a via of the net. Once the board is
-//! routed, each bend of 45 degrees becomes a tangent arc where one keeps the rules' space
+//! routed and has its teardrops, each bend of 45 degrees becomes a tangent arc where one keeps the
+//! rules' space
 //! ([`crate::arcs`], [`RouteOptions::arcs`]); the search and the copper it settles know nothing
 //! of arcs.
 //!
@@ -191,8 +192,9 @@
 //! When a board is routed, after the vias beside vias and the stitching of pours, each track
 //! that ends in a pad or a via gets a teardrop where it leaves the copper
 //! (`netsmith_pcb::teardrop::add`, unless [`RouteOptions::teardrops`] is off), where it keeps every
-//! space the design rules check asks of a track. They are drawn round the final copper and the
-//! router never searches round them; a board's tracks and vias are the same with them or without.
+//! space the design rules check asks of a track. They are drawn round the copper the search
+//! settled, before the arcs at the bends ([`crate::arcs`]), which keep clear of them, and the
+//! router never searches round them; a board's vias are the same with them or without.
 //! netsmith draws them itself, with the check's geometry, and writes them as KiCad 9's teardrop
 //! zones (decided by the implementing agent under the owner's delegation, 2026-11-13); the sizes,
 //! the rules and why are in the header of `netsmith_fab::drc::teardrop`.
@@ -5006,7 +5008,11 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);
-    // The bends become arcs where they keep the rules' space.
+    // Teardrops round the copper the search settled (issue #431, S11).
+    if options.teardrops {
+        netsmith_pcb::teardrop::add(board);
+    }
+    // The bends become arcs where they keep the rules' space, clear of the teardrops.
     crate::arcs::round_bends(board, options.arcs);
     let mut stages = stages;
     if let Some(last) = stages.last_mut()
@@ -5014,10 +5020,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     {
         // The end is the board's own copper, with its arcs.
         last.tracks.clone_from(&board.tracks);
-    }
-    // Teardrops last, round the copper that is now final (issue #431, S11).
-    if options.teardrops {
-        netsmith_pcb::teardrop::add(board);
     }
     Routing {
         left: Ratsnest::of(board),
