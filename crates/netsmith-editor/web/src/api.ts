@@ -1552,6 +1552,8 @@ export type AutoBuild = { auto: boolean, };
 
 export type RenderView = "top" | "bottom" | "front" | "back" | "left" | "right" | "iso" | "iso-bottom";
 
+export type CaseMode = "hidden" | "see-through" | "solid";
+
 export type ColourBy = "provenance" | "kind" | "margin";
 
 export type CameraPlace = { position: [number, number, number], target: [number, number, number], up?: [number, number, number], };
@@ -1595,7 +1597,11 @@ select?: Array<string>, xray?: boolean,
 /**
  * `true` for the parallel projection; `perspective: true` is the same as `ortho: false`.
  */
-ortho?: boolean, perspective?: boolean, colourBy?: ColourBy, heightPreview?: PreviewSetting, 
+ortho?: boolean, perspective?: boolean, 
+/**
+ * How the case model is drawn. A board with no case model refuses it (409).
+ */
+case?: CaseMode, colourBy?: ColourBy, heightPreview?: PreviewSetting, 
 /**
  * The stackup pulled apart (`true`) or together.
  */
@@ -1638,7 +1644,11 @@ selection: Array<string>,
 /**
  * What the pointer (or a row of another view) lights now: a designator or `net:<name>`.
  */
-hover?: string, xray: boolean, colourBy: ColourBy, 
+hover?: string, xray: boolean, 
+/**
+ * How the case model is drawn; absent when the board has none (or the view is not shown).
+ */
+case?: CaseMode, colourBy: ColourBy, 
 /**
  * The height preview's height in mm while it is on, else none.
  */

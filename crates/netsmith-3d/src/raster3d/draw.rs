@@ -8,7 +8,7 @@ use super::{
     Basis, CREASE_DEG, Camera, Image, Lens, RenderOptions, Rgba, Shading, XRAY_ALPHA, cross, dot,
     normalise, sub,
 };
-use crate::mesh::{Mesh, bounds_of, trig};
+use crate::mesh::{Material, Mesh, bounds_of, trig};
 
 /// Fixed-point steps per sample in the coverage test.
 const SUB: i64 = 256;
@@ -308,8 +308,11 @@ pub(super) fn render(meshes: &[Mesh], camera: &Camera, options: &RenderOptions) 
                 alpha *= 0.5;
             }
         }
-        let see_through = mesh.material.is_translucent() || (options.xray && !highlighted);
-        if options.xray && !mesh.material.is_translucent() && !highlighted {
+        // A case drawn solid (not while lit) is opaque, as a body is; x-ray sees through it too.
+        let translucent = mesh.material.is_translucent()
+            && !(options.case_solid && mesh.material == Material::Case && !highlighted);
+        let see_through = translucent || (options.xray && !highlighted);
+        if options.xray && !translucent && !highlighted {
             alpha = XRAY_ALPHA;
         }
         // The cap of a closed mesh; when the section does not close up the mesh is drawn open.

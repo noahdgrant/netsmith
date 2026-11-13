@@ -2066,6 +2066,7 @@ fn view_state(board: &str) -> ViewState {
         selection: vec!["J1".into()],
         hover: None,
         xray: false,
+        case: None,
         colour_by: ColourBy::Provenance,
         height_preview: None,
         theme: "dark".into(),

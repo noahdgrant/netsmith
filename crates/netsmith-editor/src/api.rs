@@ -1718,6 +1718,7 @@ pub fn typescript() -> String {
         CancelAnswer,
         AutoBuild,
         RenderView,
+        CaseMode,
         ColourBy,
         CameraPlace,
         PreviewSetting,

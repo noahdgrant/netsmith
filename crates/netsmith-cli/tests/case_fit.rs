@@ -469,3 +469,57 @@ fn stated_pins_below_the_far_face_are_measured_against_the_case() {
     assert_eq!(pins[0]["severity"], "warning");
     assert_eq!(pins[0]["gap"], 0.4);
 }
+
+/// `render --case` draws the case model hidden, see-through (the default) or solid (a solid one
+/// hides the board inside it), and names the same modes as `view --case`.
+#[test]
+fn render_draws_the_case_hidden_see_through_or_solid() {
+    let dir = project("case-fit-render", |p| p);
+    let draw = |name: &str, extra: &[&str]| {
+        let out = format!("{name}.png");
+        let mut args = vec![
+            "render",
+            "case_fit.nsm",
+            "--size",
+            "320x200",
+            "--out",
+            out.as_str(),
+        ];
+        args.extend_from_slice(extra);
+        let run = netsmith(&dir, &args);
+        assert!(
+            run.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        std::fs::read(dir.join(&out)).unwrap()
+    };
+    let default = draw("default", &[]);
+    let see_through = draw("see-through", &["--case", "see-through"]);
+    let hidden = draw("hidden", &["--case", "hidden"]);
+    let solid = draw("solid", &["--case", "solid"]);
+    assert_eq!(default, see_through, "see-through is the default");
+    assert_ne!(solid, see_through);
+    assert_ne!(hidden, see_through);
+    assert_ne!(hidden, solid);
+    // The same options give the same bytes.
+    assert_eq!(solid, draw("solid-again", &["--case", "solid"]));
+    // A case model that is named is drawn when the case is hidden, see-through in the
+    // highlight colour: a picture of its own.
+    let lit = draw("lit", &["--case", "hidden", "--highlight", "case:lid"]);
+    assert_ne!(lit, hidden);
+    // A case model the board does not have is still refused, whatever the mode.
+    let run = netsmith(
+        &dir,
+        &[
+            "render",
+            "case_fit.nsm",
+            "--case",
+            "solid",
+            "--highlight",
+            "case:box",
+        ],
+    );
+    assert_eq!(run.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("the case models: case:base, case:lid"));
+}

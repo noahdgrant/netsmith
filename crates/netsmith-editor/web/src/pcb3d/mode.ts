@@ -67,7 +67,7 @@ export interface View3dAgent {
    * once the view has drawn it. A change it refuses (a `ViewRefusal`) changes nothing. */
   apply(change: ViewChange): Promise<void>;
   /** The camera, the cut, the stackup and what is lit, as `/api/view` answers them. */
-  state(): Pick<ViewState, 'view' | 'camera' | 'ortho' | 'section' | 'exploded' | 'command'> & { limits: string[]; cases: string[] };
+  state(): Pick<ViewState, 'view' | 'camera' | 'ortho' | 'section' | 'exploded' | 'command' | 'case'> & { limits: string[]; cases: string[] };
   /** A PNG of the canvas, drawn for it. */
   picture(): Promise<Blob>;
   /** The designator of a part of the scene by its path (`led/power_in` in a system's), else null. */

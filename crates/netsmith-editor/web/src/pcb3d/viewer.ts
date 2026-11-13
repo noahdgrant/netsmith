@@ -57,7 +57,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { DIM, type KindSwatch, type MarginBand, type NetState, extrudeFlat, kindSwatch, litReport, marginColour, pieceNet, xrayOpacity } from './inspect';
-import type { ColourBy } from './inspectMode';
+import type { CaseMode, ColourBy } from './inspectMode';
 import { type BoardInfo, type CaseSolidInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
 import { LOOKS, type Role, lit, modelColour, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
@@ -268,9 +268,9 @@ export class Viewer {
   private edges = new Group();
   private parts = new Map<string, PartEntry>();
   private limits: { info: LimitInfo; mesh: Mesh; lines: LineSegments[] }[] = [];
-  /** The case models' solids (ADR 0109), see-through, shown or hidden together. */
+  /** The case models' solids (ADR 0109), drawn together as `caseMode` says: not at all, see-through (a faint tint) or solid. */
   private cases: { info: CaseSolidInfo; mesh: Mesh; lines: LineSegments[] }[] = [];
-  private caseShown = true;
+  private caseMode: CaseMode = 'see-through';
   /** The case solids a finding lit, as `case:<model>:<solid>`. */
   private focusedSolids = new Set<string>();
   /** The case models `/api/view` lit (`highlight: ["case:<name>"]`), by name: in the selection's colour, as `render --highlight` lights them. */
@@ -606,12 +606,12 @@ export class Viewer {
         this.copper.push({ mesh: o, info: info as CopperInfo, exposed: role === 'finish' });
         this.infoOf.set(o, info);
       } else if (info?.kind === 'case_solid') {
-        // Not picked: a click or a hover goes through the case to the board inside it.
+        // Not picked while it is see-through: a click or a hover goes through the case to the board inside it. A solid case is in the way (`pick`).
         this.cases.push({ info: info as CaseSolidInfo, mesh: o, lines });
         this.infoOf.set(o, info);
       }
     });
-    this.setCaseShown(this.caseShown);
+    this.setCaseMode(this.caseMode);
   }
 
   /** The case models' solids (ADR 0109), in the file's order. */
@@ -619,19 +619,31 @@ export class Viewer {
     return this.cases.map((c) => c.info);
   }
 
-  /** Whether the case is drawn. */
+  /** Whether the case is drawn (see-through or solid). */
   caseShownState(): boolean {
-    return this.caseShown;
+    return this.caseMode !== 'hidden';
   }
 
-  /** Show or hide every case model's solids, and their edges. */
-  setCaseShown(on: boolean) {
-    this.caseShown = on;
+  /** How the case is drawn. */
+  caseModeState(): CaseMode {
+    return this.caseMode;
+  }
+
+  /** Draw every case model's solids, and their edges, as `mode` says: hidden, see-through, or solid (opaque, so it hides the board inside it). */
+  setCaseMode(mode: CaseMode) {
+    this.caseMode = mode;
+    const on = mode !== 'hidden';
     for (const c of this.cases) {
       c.mesh.visible = on;
       for (const l of c.lines) l.visible = on;
     }
+    this.restyle();
     this.request();
+  }
+
+  /** Whether a case solid is drawn solid now: the case is solid, and the solid is not lit (a case model lit by name or by a finding stays see-through, in its colour, so the part inside shows). */
+  private solidNow(c: CaseSolidInfo): boolean {
+    return this.caseMode === 'solid' && !this.focusedSolids.has(`case:${c.case}:${c.solid}`) && !this.litCases.has(c.case);
   }
 
   /** The net of a piece of copper or a barrel: its own, or its pad's. */
@@ -1259,7 +1271,7 @@ export class Viewer {
         o.material = this.focusedLimits.has(`${l.name}:${l.face}`) ? this.limitFocus(role) : this.surface(role, 'rest');
       } else if (info?.kind === 'case_solid') {
         const c = info as CaseSolidInfo;
-        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.litCases.has(c.case) ? this.caseLit() : this.surface(role, 'rest');
+        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.litCases.has(c.case) ? this.caseLit() : this.solidNow(c) ? this.surface('case-solid', 'rest', { xray }) : this.surface(role, 'rest');
       } else {
         o.material = this.surface(role, 'rest', { xray, dim: netsOn });
       }
@@ -1425,7 +1437,11 @@ export class Viewer {
     this.focusedLimits = new Set(limitKeys);
     this.litCases.clear();
     this.focusedSolids = new Set(this.cases.map((c) => `case:${c.info.case}:${c.info.solid}`).filter((k) => solids.some((s) => k === s || k.startsWith(`${s}:`))));
-    if (this.focusedSolids.size && !this.caseShown) this.setCaseShown(true);
+    // A finding shows what it is about: the case it names, if it was hidden; the parts and limits inside it, if it was solid.
+    if (this.cases.length) {
+      if (this.caseMode === 'hidden' && this.focusedSolids.size) this.setCaseMode('see-through');
+      else if (this.caseMode === 'solid' && (paths.length || limitKeys.length)) this.setCaseMode('see-through');
+    }
     this.restyle();
     const box = new Box3();
     // The parts, where it names some (a limit's volume may be half the board); else the point; else the limit; else the solid.
@@ -1498,11 +1514,14 @@ export class Viewer {
     // The copper is picked where it is bare (a pad, the gold), and anywhere while it is seen through the board.
     const seeThrough = this.look.xray || this.look.nets.size > 0;
     const copper = this.copper.filter((c) => this.netOf(c.info) !== null && (c.exposed || seeThrough)).map((c) => c.mesh);
-    const hits = this.ray.intersectObjects([...this.pickable, ...copper], false);
+    // A solid case is in the way: what is behind it is not seen, so it is not picked (a click on it picks nothing, a hover lights nothing).
+    const solidCase = this.cases.filter((c) => this.solidNow(c.info)).map((c) => c.mesh);
+    const hits = this.ray.intersectObjects([...this.pickable, ...copper, ...solidCase], false);
     let limit: LimitInfo | null = null;
     for (const h of hits) {
       if (!this.kept(h.point) || !shown(h.object)) continue;
       const info = this.infoOf.get(h.object);
+      if (info?.kind === 'case_solid') return limit ? { kind: 'limit', info: limit } : null;
       if (info?.kind === 'part') return { kind: 'part', info: info as PartInfo3d };
       if (info?.kind === 'copper' || info?.kind === 'hole') {
         const net = this.netOf(info as CopperInfo);
@@ -1745,12 +1764,12 @@ export class Viewer {
     this.request();
   }
 
-  /** Light case models by name (every solid of each), with no camera move, showing the case if it was hidden; none clears them. What a finding lit goes. */
+  /** Light case models by name (every solid of each), with no camera move, showing the case if it was hidden (a lit solid is see-through, in the selection's colour, even when the case is solid); none clears them. What a finding lit goes. */
   lightCases(names: string[]) {
     const want = new Set(names);
     this.litCases = new Set(this.cases.map((c) => c.info.case).filter((n) => want.has(n)));
     this.focusedSolids.clear();
-    if (this.litCases.size && !this.caseShown) this.setCaseShown(true);
+    if (this.litCases.size && this.caseMode === 'hidden') this.setCaseMode('see-through');
     this.restyle();
     this.request();
   }

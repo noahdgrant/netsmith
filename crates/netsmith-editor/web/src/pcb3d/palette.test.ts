@@ -54,6 +54,12 @@ describe('the 3D palette', () => {
         for (const token of allTokens()) expect(parseHex(colour(t, token) ?? ''), `${token} in ${theme}`).not.toBeNull();
       });
       const c = (token: string) => colour(t, token);
+      it('a solid case stands out from the background (1.8:1), and is not the see-through case\'s tint', () => {
+        expect(contrast(c('--pcb3d-case-solid'), c('--pcb3d-bg'))!, `the solid case on the background in ${theme}`).toBeGreaterThanOrEqual(1.8);
+        expect(c('--pcb3d-case-solid')).not.toBe(c('--pcb3d-case'));
+        expect(LOOKS['case-solid'].opacity).toBe(1);
+        expect(LOOKS.case.opacity).toBeLessThan(1);
+      });
       it('a body, an unknown outline and a picked part stand out from the board (3:1)', () => {
         for (const token of ['--pcb3d-body', '--pcb3d-body-catalog', '--pcb3d-body-standard', '--pcb3d-unknown', '--sel']) {
           expect(contrast(c(token), c('--pcb3d-mask'))!, `${token} on the mask in ${theme}`).toBeGreaterThanOrEqual(3);

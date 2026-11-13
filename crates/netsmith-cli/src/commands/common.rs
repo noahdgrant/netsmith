@@ -259,6 +259,37 @@ impl ViewName {
     }
 }
 
+/// `--case` of `render` and `view`: how a case model (ADR 0109) is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CaseName {
+    /// Not drawn: the board alone.
+    Hidden,
+    /// Drawn faint, so the board shows inside it.
+    SeeThrough,
+    /// Drawn opaque: the case hides what is inside it.
+    Solid,
+}
+
+impl CaseName {
+    pub(super) fn render(self) -> netsmith::render::CaseMode {
+        use netsmith::render::CaseMode;
+        match self {
+            CaseName::Hidden => CaseMode::Hidden,
+            CaseName::SeeThrough => CaseMode::SeeThrough,
+            CaseName::Solid => CaseMode::Solid,
+        }
+    }
+
+    pub(super) fn editor(self) -> netsmith_editor::api::CaseMode {
+        use netsmith_editor::api::CaseMode;
+        match self {
+            CaseName::Hidden => CaseMode::Hidden,
+            CaseName::SeeThrough => CaseMode::SeeThrough,
+            CaseName::Solid => CaseMode::Solid,
+        }
+    }
+}
+
 /// The ids of one `--highlight` or `--select`, split at commas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ids(pub Vec<String>);

@@ -240,6 +240,48 @@ fn a_limit_is_see_through_over_a_body_and_hidden_behind_one() {
 }
 
 #[test]
+fn a_solid_case_hides_the_body_inside_it_and_a_lit_or_x_rayed_one_does_not() {
+    let o = plain(100, 100);
+    let solid = RenderOptions {
+        case_solid: true,
+        ..o.clone()
+    };
+    let body = Mesh::axis_box("U1", Material::Body, [-2.0, -2.0, 0.0], [2.0, 2.0, 1.0]);
+    let case = Mesh::axis_box(
+        "case:lid",
+        Material::Case,
+        [-4.0, -4.0, -0.5],
+        [4.0, 4.0, 3.0],
+    );
+    let both = [case.clone(), body.clone()];
+    let cam = top_camera(5.0);
+    let at = |o: &RenderOptions, meshes: &[Mesh]| render(meshes, &cam, o).pixel(50, 50);
+    // See-through (the default): the body shows through, so the picture is not the case alone.
+    let see_through = at(&o, &both);
+    assert_ne!(see_through, at(&o, std::slice::from_ref(&case)));
+    assert_ne!(see_through, at(&o, std::slice::from_ref(&body)));
+    // Solid: the case is opaque, so the body is not in the picture at all.
+    let hides = at(&solid, &both);
+    assert_eq!(hides, at(&solid, std::slice::from_ref(&case)));
+    assert_ne!(hides, see_through);
+    assert_eq!(hides[3], 255);
+    // Highlighted, a case stays see-through whatever the mode, in the highlight colour.
+    let lit = |o: &RenderOptions| RenderOptions {
+        highlight: vec!["case:lid".into()],
+        ..o.clone()
+    };
+    assert_eq!(at(&lit(&solid), &both), at(&lit(&o), &both));
+    assert_ne!(at(&lit(&solid), &both), hides);
+    // X-ray sees through it too, so the body is back.
+    let xray = RenderOptions {
+        xray: true,
+        ..solid.clone()
+    };
+    assert_ne!(at(&xray, &both), hides);
+    assert_ne!(at(&xray, &both), at(&xray, std::slice::from_ref(&case)));
+}
+
+#[test]
 fn x_ray_shows_what_is_hidden_and_highlight_lights_one_mesh() {
     let o = plain(100, 100);
     let near = Mesh::axis_box("U1", Material::Body, [-4.0, -4.0, 0.0], [4.0, 4.0, 1.0]);

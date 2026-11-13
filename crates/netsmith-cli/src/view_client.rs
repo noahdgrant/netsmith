@@ -255,6 +255,15 @@ pub fn summary(state: &ViewState) -> String {
         line("hover", hover.clone());
     }
     line("x-ray", yes_no(state.xray));
+    if let Some(case) = &state.case {
+        line(
+            "case",
+            serde_json::to_value(case)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+        );
+    }
     line(
         "colour by",
         serde_json::to_value(state.colour_by)

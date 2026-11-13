@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, ValueEnum};
 
-use super::common::{Ids, ViewName, parse_ids, with_placed_board};
+use super::common::{CaseName, Ids, ViewName, parse_ids, with_placed_board};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -50,6 +50,13 @@ pub struct Args {
     /// Draw everything see-through.
     #[arg(long)]
     pub xray: bool,
+    /// How a case model is drawn: `hidden`, `see-through` (the default) or `solid`.
+    ///
+    /// A solid case hides the board inside it; a case model that `--highlight case:<name>` lights
+    /// stays see-through, in the highlight colour, so what is inside shows. `hidden` frames the
+    /// board alone. A board with no case model draws the same in each.
+    #[arg(long, value_enum, default_value = "see-through")]
+    pub case: CaseName,
     /// Leave the cut faces of a section open.
     #[arg(long)]
     pub no_caps: bool,
@@ -76,6 +83,7 @@ impl Args {
                 .flat_map(|ids| ids.0.clone())
                 .collect(),
             xray: self.xray,
+            case: self.case.render(),
             caps: !self.no_caps,
             dark: self.theme == Theme::Dark,
             perspective: self.perspective,
@@ -183,6 +191,8 @@ mod tests {
             "--highlight",
             "limit:lid",
             "--xray",
+            "--case",
+            "solid",
             "--no-caps",
             "--theme",
             "dark",
@@ -193,6 +203,17 @@ mod tests {
         assert_eq!(r.section, Some((netsmith_3d::mesh::Axis::Z, -0.8)));
         assert_eq!(r.highlight, vec!["J1", "net:GND", "limit:lid"]);
         assert!(r.xray && !r.caps && r.dark && r.perspective);
+        assert_eq!(r.case, netsmith::render::CaseMode::Solid);
+        for (name, mode) in [
+            ("hidden", netsmith::render::CaseMode::Hidden),
+            ("see-through", netsmith::render::CaseMode::SeeThrough),
+            ("solid", netsmith::render::CaseMode::Solid),
+        ] {
+            assert_eq!(render(&["--case", name]).case, mode, "{name}");
+            assert_eq!(mode.name(), name);
+        }
+        let e = parse(&["render", "--case", "opaque"]).unwrap_err();
+        assert!(e.contains("see-through") && e.contains("solid"), "{e}");
         assert!(!render(&["--ortho"]).perspective);
         assert_eq!(
             kind(&["render", "--ortho", "--perspective"]),

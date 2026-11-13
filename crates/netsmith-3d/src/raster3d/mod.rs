@@ -405,6 +405,10 @@ pub struct RenderOptions {
     pub highlight: Vec<String>,
     /// Every mesh see-through.
     pub xray: bool,
+    /// Draw a case model's solids ([`Material::Case`]) solid, so they hide the board inside:
+    /// opaque, in the case's colour. A case solid that is lit by the highlight stays see-through
+    /// (in the highlight colour), so what is inside shows.
+    pub case_solid: bool,
     pub section: Option<Section>,
     /// With a section: fill the cut faces of closed meshes, in the colour of the mesh's
     /// material, so that the cut reads as a solid section; false leaves them open.
@@ -422,6 +426,7 @@ impl Default for RenderOptions {
             outlines: true,
             highlight: Vec::new(),
             xray: false,
+            case_solid: false,
             section: None,
             caps: true,
         }

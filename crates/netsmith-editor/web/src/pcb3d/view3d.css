@@ -210,6 +210,10 @@ button.chip.v3-cov:hover:not(.ok) {
   background: color-mix(in srgb, var(--pcb3d-case) 30%, var(--pcb3d-bg));
   box-shadow: inset 0 0 0 1px var(--pcb3d-case);
 }
+.v3-sw-case-solid {
+  background: var(--pcb3d-case-solid);
+  box-shadow: inset 0 0 0 1px var(--pcb3d-case);
+}
 
 .v3-note {
   position: absolute;

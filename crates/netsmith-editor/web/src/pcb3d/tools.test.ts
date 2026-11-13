@@ -171,6 +171,11 @@ describe('copy the view as a netsmith render command', () => {
     expect(
       renderCommand({ file: 'src/main.nsm', board: 'Lidded', view: 'front', section: { axis: 'x', at: 12.34567 }, highlight: ['J1', 'U2', 'J1'], dark: true, perspective: true }),
     ).toBe('netsmith render src/main.nsm --board Lidded --view front --section x=12.346 --highlight J1,U2 --theme dark --perspective');
+    // The case is named when it is not the command's default, see-through.
+    const cased = { file: 'src/main.nsm', board: 'Cased', view: 'iso' as const };
+    expect(renderCommand({ ...cased, case: 'see-through' })).toBe('netsmith render src/main.nsm --board Cased --view iso');
+    expect(renderCommand({ ...cased, case: 'solid', highlight: ['case:lid'] })).toBe('netsmith render src/main.nsm --board Cased --view iso --highlight case:lid --case solid');
+    expect(renderCommand({ ...cased, case: 'hidden', dark: true })).toBe('netsmith render src/main.nsm --board Cased --view iso --case hidden --theme dark');
     expect(renderCommand({ file: 'boards/a b.nsm', board: 'Sys/led', view: 'top', section: { axis: 'z', at: -0.8 } })).toBe(
       "netsmith render 'boards/a b.nsm' --board Sys/led --view top --section z=-0.8",
     );

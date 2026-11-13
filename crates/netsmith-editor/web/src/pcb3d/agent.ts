@@ -105,7 +105,7 @@ export function viewState(): ViewState {
     board: name,
     ...(sys ? { member: sys.member } : {}),
     shown: on,
-    ...(s3 ? { view: s3.view, camera: s3.camera, ortho: s3.ortho, section: s3.section, exploded: s3.exploded, command: s3.command } : {}),
+    ...(s3 ? { view: s3.view, camera: s3.camera, ortho: s3.ortho, section: s3.section, exploded: s3.exploded, case: s3.case, command: s3.command } : {}),
     highlight: [...selection, ...(s3?.limits ?? []).map((l) => `limit:${l}`), ...(s3?.cases ?? []).map((c) => `case:${c}`)],
     selection,
     hover: h?.kind === 'part' ? refdes(h.key) : h?.kind === 'net' ? `net:${prefix}${h.key}` : undefined,

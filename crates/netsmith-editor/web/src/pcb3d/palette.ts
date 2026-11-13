@@ -6,7 +6,7 @@
 // three.js: the view reads the table and the tokens, and a test holds the tokens to their contrast.
 
 /** What the view draws: a material of the file, or a body by its height's provenance. */
-export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-standard' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper' | 'silk' | 'case';
+export type Role = 'substrate' | 'prepreg' | 'mask-top' | 'mask-bottom' | 'copper' | 'body' | 'body-catalog' | 'body-standard' | 'body-unknown' | 'metal' | 'mark' | 'limit' | 'limit-violated' | 'finish' | 'mask-over-copper' | 'silk' | 'case' | 'case-solid';
 
 /** The material names of the file's contract (schema 1), in its order: the ten of the first file,
  * then `finish` and `mask-over-copper` (added with the copper), then `case` (a case model's
@@ -45,6 +45,8 @@ export const LOOKS: Record<Role, Look> = {
   'mask-over-copper': { token: '--pcb3d-mask-copper', metalness: 0, roughness: 0.5, opacity: 1 },
   // A case model's solids (ADR 0109): see-through, so the board shows inside its case.
   case: { token: '--pcb3d-case', metalness: 0, roughness: 0.9, opacity: 0.16 },
+  // The same solids drawn solid (the `Solid` case, ADR 0109): not a material of the file, a second look for `case`, opaque, so the case hides the board inside it.
+  'case-solid': { token: '--pcb3d-case-solid', metalness: 0, roughness: 0.75, opacity: 1 },
 };
 
 /** The tokens the view reads besides the materials'. */

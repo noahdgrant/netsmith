@@ -285,6 +285,13 @@ export const P: Record<string, ComponentChildren> = {
   grid: <path d="M2.5 5.8h11M2.5 10.2h11M5.8 2.5v11M10.2 2.5v11" />,
   flip: <path d="M2.5 8h11M5 4.8L2.5 8 5 11.2M11 4.8L13.5 8 11 11.2" />,
   cube: <path d="M8 1.8l5.6 3.1v6.2L8 14.2l-5.6-3.1V4.9zM2.4 4.9L8 8l5.6-3.1M8 8v6.2" />,
+  // The cube filled in: a solid one.
+  'cube-solid': (
+    <>
+      <path d="M8 1.8l5.6 3.1v6.2L8 14.2l-5.6-3.1V4.9z" fill="currentColor" fill-opacity="0.35" />
+      <path d="M2.4 4.9L8 8l5.6-3.1M8 8v6.2" />
+    </>
+  ),
   lock: (
     <>
       <rect x="3.5" y="7.2" width="9" height="6.3" rx="1.6" />
