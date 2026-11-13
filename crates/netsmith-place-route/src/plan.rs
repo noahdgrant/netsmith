@@ -135,6 +135,21 @@ const CROWDED: f64 = 1.0;
 const ROUNDS: usize = 10;
 const PRESENT_START: u64 = 50;
 
+/// What a line pays, before congestion, for each line of another net it crosses in a tile on
+/// a layer, or whose place on a tile's edge it takes: more than the two vias that take it under
+/// the other line and back.
+const CROSS_COST: u64 = 400;
+
+/// The most places a tile's edge is cut into (see [`Tiles::slots`]).
+const MOST_SLOTS: usize = 12;
+
+/// The sides of a tile a line enters or leaves it by: toward the lower and the higher column,
+/// the lower and the higher row.
+const LOW_X: usize = 0;
+const HIGH_X: usize = 1;
+const LOW_Y: usize = 2;
+const HIGH_Y: usize = 3;
+
 /// A tile on a layer: its column, its row and the layer.
 pub(crate) type Node = (usize, usize, usize);
 
@@ -269,6 +284,24 @@ impl Tiles {
         }
     }
 
+    /// How many places a line may take on the edge `u` (its capacity, at most [`MOST_SLOTS`]):
+    /// the tracks across an edge are in the order of their places along it, the same from the
+    /// tiles on both sides, which is what makes a crossing in a tile something to count.
+    fn slots(&self, u: Use) -> usize {
+        (self.capacity(u) as usize).min(MOST_SLOTS)
+    }
+
+    /// The edge of tile `(a, b)` on `layer` on `side`, if the board goes on past it.
+    fn edge(&self, (a, b, layer): Node, side: usize) -> Option<Use> {
+        let t = b * self.nx + a;
+        match side {
+            LOW_X => (a > 0).then(|| Use::X(layer, t - 1)),
+            HIGH_X => (a + 1 < self.nx).then_some(Use::X(layer, t)),
+            LOW_Y => (b > 0).then(|| Use::Y(layer, t - self.nx)),
+            _ => (b + 1 < self.ny).then_some(Use::Y(layer, t)),
+        }
+    }
+
     fn uses(&self) -> usize {
         5 * self.nx * self.ny
     }
@@ -293,6 +326,8 @@ impl Tiles {
 pub(crate) struct Ends {
     pub(crate) from: Vec<Node>,
     pub(crate) to: Vec<Node>,
+    /// The line's net: lines of one net may cross and share a place on an edge.
+    pub(crate) net: usize,
 }
 
 /// The plan: for each line, the tiles its global route passes, in order, from one end to the
@@ -301,6 +336,8 @@ pub(crate) struct Plan {
     pub(crate) paths: Vec<Option<Vec<Node>>>,
     /// The sum over every edge and tile of how far its use passes its capacity.
     pub(crate) overuse: u32,
+    /// How many pairs of lines cross in a tile on a layer: one straight across it each way.
+    pub(crate) crossings: u32,
     /// The rounds negotiated.
     pub(crate) rounds: usize,
     /// How many planned tracks or vias use each resource, by [`Tiles::index`].
@@ -353,23 +390,176 @@ pub(crate) fn crowding_cost(fill: f64, cost: i64) -> i64 {
     (share * cost as f64).round() as i64
 }
 
+/// Where a line meets the rim of a tile: inside it (the line ends there or changes layer), or
+/// at a place on one of its sides.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Rim {
+    Inside,
+    At { side: usize, slot: usize },
+}
+
+impl Rim {
+    /// How far round the rim a place is, counterclockwise from the corner of the lowest column
+    /// and row. The places on an edge are in one order, seen from either tile, so two lines
+    /// through a tile cross when their places alternate round its rim.
+    fn around(self) -> Option<u32> {
+        match self {
+            Rim::Inside => None,
+            Rim::At { side, slot } => {
+                let slot = slot as u32;
+                Some(match side {
+                    LOW_Y => slot,
+                    HIGH_X => 100 + slot,
+                    HIGH_Y => 300 - slot,
+                    _ => 400 - slot,
+                })
+            }
+        }
+    }
+
+    /// The state's number of this place, from 0.
+    fn index(self) -> usize {
+        match self {
+            Rim::Inside => 0,
+            Rim::At { side, slot } => 1 + side * MOST_SLOTS + slot,
+        }
+    }
+
+    fn from_index(k: usize) -> Rim {
+        if k == 0 {
+            Rim::Inside
+        } else {
+            Rim::At {
+                side: (k - 1) / MOST_SLOTS,
+                slot: (k - 1) % MOST_SLOTS,
+            }
+        }
+    }
+}
+
+/// How many places a state of the search tells apart in a tile: inside, or one of the places
+/// on its four sides.
+const RIMS: usize = 1 + 4 * MOST_SLOTS;
+
+/// The side across from a side: a line leaving a tile by one enters the next by the other.
+fn facing(side: usize) -> usize {
+    match side {
+        LOW_X => HIGH_X,
+        HIGH_X => LOW_X,
+        LOW_Y => HIGH_Y,
+        _ => LOW_Y,
+    }
+}
+
+/// A line's way through a tile on a layer: the places it enters and leaves by round the rim
+/// ([`Rim::around`]), `None` for inside, and its net.
+#[derive(Clone, Copy)]
+struct Chord {
+    from: Option<u32>,
+    to: Option<u32>,
+    net: usize,
+}
+
+impl Chord {
+    /// Whether two ways through one tile must cross: both go rim to rim, and their places
+    /// alternate round it. A way that ends inside the tile can always go round the other.
+    fn crosses(&self, other: &Chord) -> bool {
+        let (Some(p), Some(q), Some(r), Some(s)) = (self.from, self.to, other.from, other.to)
+        else {
+            return false;
+        };
+        let (lo, hi) = (p.min(q), p.max(q));
+        let inside = |x: u32| lo < x && x < hi;
+        let ends = [p, q];
+        if ends.contains(&r) || ends.contains(&s) {
+            return false;
+        }
+        inside(r) != inside(s)
+    }
+}
+
+/// What the lines routed so far in a round leave for the next, and the history of the rounds
+/// before.
+struct Congestion<'a> {
+    occupied: &'a [u32],
+    history: &'a [u64],
+    /// The nets on each place of each edge, at `index(edge) * MOST_SLOTS + slot`.
+    taken: &'a [Vec<usize>],
+    /// The ways lines take through each tile on each layer, at `layer * tiles + tile`.
+    chords: &'a [Vec<Chord>],
+    /// How often lines of different nets crossed, or shared a place, in each tile on each
+    /// layer, over the rounds before.
+    cross_history: &'a [u64],
+    present: u64,
+}
+
+/// A planned line: each tile it passes, and where it enters that tile.
+type Steps = Vec<(Node, Rim)>;
+
+/// Count a planned line in what it occupies: the edges and vias it uses, the places it takes on
+/// edges and its ways through tiles.
+fn occupy(
+    tiles: &Tiles,
+    steps: &Steps,
+    net: usize,
+    occupied: &mut [u32],
+    taken: &mut [Vec<usize>],
+    chords: &mut [Vec<Chord>],
+) {
+    let n = tiles.nx * tiles.ny;
+    for (i, &(here, enter)) in steps.iter().enumerate() {
+        let leave = match steps.get(i + 1) {
+            Some(&(next, Rim::At { side, slot })) => {
+                let (u, _) = tiles.between(here, next);
+                occupied[tiles.index(u)] += 1;
+                taken[tiles.index(u) * MOST_SLOTS + slot].push(net);
+                Rim::At {
+                    side: facing(side),
+                    slot,
+                }
+            }
+            Some(&(next, Rim::Inside)) => {
+                let (u, _) = tiles.between(here, next);
+                occupied[tiles.index(u)] += 1;
+                Rim::Inside
+            }
+            None => Rim::Inside,
+        };
+        chords[here.2 * n + here.1 * tiles.nx + here.0].push(Chord {
+            from: enter.around(),
+            to: leave.around(),
+            net,
+        });
+    }
+}
+
 /// Route every line of `ends` on the tiles by negotiated congestion (see the module's header),
 /// in `order`.
 pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -> Plan {
     let n = tiles.uses();
+    let tiles_n = tiles.nx * tiles.ny;
     let mut history = vec![0u64; n];
+    let mut cross_history = vec![0u64; 2 * tiles_n];
     let mut paths: Vec<Option<Vec<Node>>> = vec![None; ends.len()];
     let mut best: Option<Plan> = None;
     let mut present = PRESENT_START;
     for round in 1..=ROUNDS {
         let mut occupied = vec![0u32; n];
+        let mut taken: Vec<Vec<usize>> = vec![Vec::new(); n * MOST_SLOTS];
+        let mut chords: Vec<Vec<Chord>> = vec![Vec::new(); 2 * tiles_n];
         for &line in order {
             let Some(e) = &ends[line] else { continue };
-            let path = search(tiles, e, &occupied, &history, present);
-            for w in path.windows(2) {
-                occupied[tiles.index(tiles.between(w[0], w[1]).0)] += 1;
-            }
-            paths[line] = Some(path);
+            let congestion = Congestion {
+                occupied: &occupied,
+                history: &history,
+                taken: &taken,
+                chords: &chords,
+                cross_history: &cross_history,
+                present,
+            };
+            let steps = search(tiles, e, &congestion);
+            occupy(tiles, &steps, e.net, &mut occupied, &mut taken, &mut chords);
+            paths[line] = Some(steps.into_iter().map(|(node, _)| node).collect());
         }
         let mut overuse = 0;
         for u in all_uses(tiles) {
@@ -378,15 +568,45 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
             overuse += over;
             history[k] += u64::from(over);
         }
-        if best.as_ref().is_none_or(|b| overuse < b.overuse) {
+        let mut crossings = 0;
+        for (t, ways) in chords.iter().enumerate() {
+            let mut here = 0;
+            for (i, c) in ways.iter().enumerate() {
+                here += ways[i + 1..]
+                    .iter()
+                    .filter(|d| d.net != c.net && c.crosses(d))
+                    .count() as u32;
+            }
+            crossings += here;
+            cross_history[t] += u64::from(here);
+        }
+        for u in all_uses(tiles) {
+            let (Use::X(layer, e) | Use::Y(layer, e)) = u else {
+                continue;
+            };
+            for slot in 0..MOST_SLOTS {
+                let nets = &taken[tiles.index(u) * MOST_SLOTS + slot];
+                let mut shared = 0;
+                for (i, a) in nets.iter().enumerate() {
+                    shared += nets[i + 1..].iter().filter(|b| *b != a).count() as u32;
+                }
+                crossings += shared;
+                cross_history[layer * tiles_n + e] += u64::from(shared);
+            }
+        }
+        if best
+            .as_ref()
+            .is_none_or(|b| overuse + crossings < b.overuse + b.crossings)
+        {
             best = Some(Plan {
                 paths: paths.clone(),
                 overuse,
+                crossings,
                 rounds: round,
                 occupied: occupied.clone(),
             });
         }
-        if overuse == 0 {
+        if overuse == 0 && crossings == 0 {
             break;
         }
         present = (present * 2).min(1 << 20);
@@ -394,6 +614,7 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
     let mut plan = best.unwrap_or(Plan {
         paths,
         overuse: 0,
+        crossings: 0,
         rounds: 0,
         occupied: vec![0; n],
     });
@@ -409,18 +630,18 @@ fn all_uses(tiles: &Tiles) -> impl Iterator<Item = Use> + '_ {
         .chain((0..n).map(Use::Via))
 }
 
-/// The cheapest path of tiles between a line's ends, given what the lines routed this round
-/// occupy and the history: A* with the Manhattan distance in steps.
-fn search(
-    tiles: &Tiles,
-    ends: &Ends,
-    occupied: &[u32],
-    history: &[u64],
-    present: u64,
-) -> Vec<Node> {
+/// The cheapest path of tiles between a line's ends, given the congestion: A* with the
+/// Manhattan distance in steps, over states of a tile, a layer and the place the line entered
+/// the tile by, so that a line pays for each line of another net it crosses in a tile and for
+/// a place on an edge another net has taken.
+fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
     let (nx, ny) = (tiles.nx, tiles.ny);
-    let id = |(a, b, l): Node| (l * ny + b) * nx + a;
-    let node = |s: usize| (s % nx, (s / nx) % ny, s / (nx * ny));
+    let tiles_n = nx * ny;
+    let id = |(a, b, l): Node, rim: Rim| ((l * ny + b) * nx + a) * RIMS + rim.index();
+    let state = |s: usize| {
+        let (k, rim) = (s / RIMS, Rim::from_index(s % RIMS));
+        ((k % nx, (k / nx) % ny, k / tiles_n), rim)
+    };
     let heuristic = |(a, b, _): Node| -> u64 {
         ends.to
             .iter()
@@ -450,18 +671,42 @@ fn search(
         let d = ((x - p.0 - t * dx).powi(2) + (y - p.1 - t * dy).powi(2)).sqrt();
         (d * DEVIATION as f64).round() as u64
     };
+    let present = congestion.present;
     let cost_of = |u: Use, base: u64| -> u64 {
         let k = tiles.index(u);
-        let over = u64::from((occupied[k] + 1).saturating_sub(tiles.capacity(u)));
-        base * (1 + history[k]) * (100 + present * over) / 100
+        let over = u64::from((congestion.occupied[k] + 1).saturating_sub(tiles.capacity(u)));
+        base * (1 + congestion.history[k]) * (100 + present * over) / 100
     };
-    let states = 2 * nx * ny;
+    // What crossing `n` lines of other nets, or sharing a place with them, costs in a tile.
+    let disorder = |(a, b, l): Node, n: usize| -> u64 {
+        if n == 0 {
+            return 0;
+        }
+        let t = l * tiles_n + b * nx + a;
+        CROSS_COST * n as u64 * (1 + congestion.cross_history[t]) * (100 + present) / 100
+    };
+    let crossed = |here: Node, enter: Rim, leave: Rim| -> usize {
+        let way = Chord {
+            from: enter.around(),
+            to: leave.around(),
+            net: ends.net,
+        };
+        if way.from.is_none() || way.to.is_none() {
+            return 0;
+        }
+        congestion.chords[here.2 * tiles_n + here.1 * nx + here.0]
+            .iter()
+            .filter(|c| c.net != ends.net && way.crosses(c))
+            .count()
+    };
+    let states = 2 * tiles_n * RIMS;
     let mut cost = vec![u64::MAX; states];
     let mut came = vec![usize::MAX; states];
+    let mut done = vec![false; states];
     let mut queue = BinaryHeap::new();
     let mut sequence = 0u64;
     for &s in &ends.from {
-        let k = id(s);
+        let k = id(s, Rim::Inside);
         if cost[k] != 0 {
             cost[k] = 0;
             queue.push(Reverse((heuristic(s), sequence, k)));
@@ -469,46 +714,67 @@ fn search(
         }
     }
     while let Some(Reverse((_, _, k))) = queue.pop() {
-        let here = node(k);
+        if done[k] {
+            continue;
+        }
+        done[k] = true;
+        let (here, entered) = state(k);
         if ends.to.contains(&here) {
-            let mut path = vec![here];
+            let mut steps = vec![(here, entered)];
             let mut at = k;
             while came[at] != usize::MAX {
                 at = came[at];
-                path.push(node(at));
+                steps.push(state(at));
             }
-            path.reverse();
-            return path;
+            steps.reverse();
+            return steps;
         }
         let (a, b, l) = here;
-        let mut next = Vec::with_capacity(5);
-        if a + 1 < nx {
-            next.push((a + 1, b, l));
-        }
-        if b + 1 < ny {
-            next.push((a, b + 1, l));
-        }
-        if a > 0 {
-            next.push((a - 1, b, l));
-        }
-        if b > 0 {
-            next.push((a, b - 1, l));
-        }
-        next.push((a, b, 1 - l));
-        for to in next {
-            let (u, base) = tiles.between(here, to);
-            let c = cost[k] + cost_of(u, base) + off_line(to);
-            let t = id(to);
+        let so_far = cost[k];
+        let mut relax = |to: Node, rim: Rim, c: u64, queue: &mut BinaryHeap<_>| {
+            let t = id(to, rim);
             if c < cost[t] {
                 cost[t] = c;
                 came[t] = k;
                 queue.push(Reverse((c + heuristic(to), sequence, t)));
                 sequence += 1;
             }
+        };
+        for side in [HIGH_X, HIGH_Y, LOW_X, LOW_Y] {
+            let Some(u) = tiles.edge(here, side) else {
+                continue;
+            };
+            let to = match side {
+                LOW_X => (a - 1, b, l),
+                HIGH_X => (a + 1, b, l),
+                LOW_Y => (a, b - 1, l),
+                _ => (a, b + 1, l),
+            };
+            let step = so_far + cost_of(u, STEP_COST) + off_line(to);
+            for slot in 0..tiles.slots(u).max(1) {
+                let others = congestion.taken[tiles.index(u) * MOST_SLOTS + slot]
+                    .iter()
+                    .filter(|&&net| net != ends.net)
+                    .count();
+                let leave = Rim::At { side, slot };
+                let c = step + disorder(here, others + crossed(here, entered, leave));
+                let enter = Rim::At {
+                    side: facing(side),
+                    slot,
+                };
+                relax(to, enter, c, &mut queue);
+            }
         }
+        let to = (a, b, 1 - l);
+        let c = so_far + cost_of(Use::Via(b * nx + a), VIA_COST) + off_line(to);
+        relax(to, Rim::Inside, c, &mut queue);
     }
     // The graph is connected, so this is not reached; an end with no way is planned as itself.
-    ends.from.iter().take(1).copied().collect()
+    ends.from
+        .iter()
+        .take(1)
+        .map(|&node| (node, Rim::Inside))
+        .collect()
 }
 
 /// The tiles of a line's corridor: those of its plan, on either layer, grown by `grow` tiles
@@ -581,6 +847,7 @@ mod tests {
             Some(Ends {
                 from: vec![(0, 0, 0)],
                 to: vec![(2, 0, 0)],
+                net: 0,
             })
         };
         let plan = negotiate(&tiles, &[line(), line()], &[0, 1]);
@@ -599,6 +866,96 @@ mod tests {
         assert_eq!(plan.paths, again.paths);
     }
 
+    /// A grid of `n` by `n` tiles with room for many tracks on every edge and many vias.
+    fn roomy(n: usize) -> Tiles {
+        Tiles {
+            cells: 10,
+            nx: n,
+            ny: n,
+            across_x: [vec![8; n * n], vec![8; n * n]],
+            across_y: [vec![8; n * n], vec![8; n * n]],
+            vias: vec![8; n * n],
+        }
+    }
+
+    /// The vias of a planned path: its moves to the other layer in the same tile.
+    fn vias_of(path: &Option<Vec<Node>>) -> Vec<(usize, usize)> {
+        path.as_ref()
+            .unwrap()
+            .windows(2)
+            .filter(|w| w[0].2 != w[1].2)
+            .map(|w| (w[0].0, w[0].1))
+            .collect()
+    }
+
+    #[test]
+    fn two_lines_that_must_cross_in_a_tile_are_planned_with_a_via() {
+        // On a grid of 5 by 5 tiles, a line runs across the middle row on the front and another
+        // down the middle column, from the front to a pad on both layers. They must cross in
+        // the middle tile (a way round the first line's end is four tiles longer), so the plan
+        // gives one of them one via, and no tile on a layer has a line straight across it each
+        // way.
+        let tiles = roomy(5);
+        let across = Some(Ends {
+            from: vec![(0, 2, 0)],
+            to: vec![(4, 2, 0)],
+            net: 0,
+        });
+        let down = Some(Ends {
+            from: vec![(2, 0, 0)],
+            to: vec![(2, 4, 0), (2, 4, 1)],
+            net: 1,
+        });
+        let plan = negotiate(&tiles, &[across.clone(), down], &[0, 1]);
+        assert_eq!(plan.crossings, 0);
+        assert_eq!(
+            vias_of(&plan.paths[0]).len() + vias_of(&plan.paths[1]).len(),
+            1
+        );
+        // With both ends of both lines on the front, the line that changes layer comes back:
+        // two vias, one on each side of the crossing.
+        let down_front = Some(Ends {
+            from: vec![(2, 0, 0)],
+            to: vec![(2, 4, 0)],
+            net: 1,
+        });
+        let plan = negotiate(&tiles, &[across, down_front], &[0, 1]);
+        assert_eq!(plan.crossings, 0);
+        assert_eq!(
+            vias_of(&plan.paths[0]).len() + vias_of(&plan.paths[1]).len(),
+            2
+        );
+    }
+
+    #[test]
+    fn lines_that_need_not_cross_are_planned_without_a_via() {
+        // Two lines side by side across the grid, and two that turn away from each other in
+        // the middle tile (one in from the west and up, one in from the east and down): no
+        // line crosses another, so none changes layer.
+        let tiles = roomy(3);
+        let line = |from: Node, to: Node, net: usize| {
+            Some(Ends {
+                from: vec![from],
+                to: vec![to],
+                net,
+            })
+        };
+        let plan = negotiate(
+            &tiles,
+            &[line((0, 1, 0), (2, 1, 0), 0), line((0, 0, 0), (2, 0, 0), 1)],
+            &[0, 1],
+        );
+        assert_eq!(plan.crossings, 0);
+        assert!(plan.paths.iter().all(|p| vias_of(p).is_empty()));
+        let plan = negotiate(
+            &tiles,
+            &[line((0, 1, 0), (1, 0, 0), 0), line((2, 1, 0), (1, 2, 0), 1)],
+            &[0, 1],
+        );
+        assert_eq!(plan.crossings, 0);
+        assert!(plan.paths.iter().all(|p| vias_of(p).is_empty()));
+    }
+
     #[test]
     fn a_tile_is_as_full_as_its_fullest_edge_on_its_layer() {
         // Two tiles side by side whose edge holds two tracks on the front and none on the back;
@@ -615,6 +972,7 @@ mod tests {
             Some(Ends {
                 from: vec![(0, 0, 0)],
                 to: vec![(1, 0, 0)],
+                net: 0,
             })
         };
         let plan = negotiate(&tiles, &[line(), line()], &[0, 1]);

@@ -4436,6 +4436,7 @@ impl<'a> Router<'a> {
                     crate::plan::Ends {
                         from: at(from),
                         to: at(to),
+                        net: self.nets[l],
                     }
                 })
             })
@@ -4443,12 +4444,14 @@ impl<'a> Router<'a> {
         let plan = crate::plan::negotiate(&tiles, &ends, order);
         self.report(true, || {
             format!(
-                "coarse plan: {} by {} tiles of {} mm, {} rounds, {} tracks over capacity",
+                "coarse plan: {} by {} tiles of {} mm, {} rounds, {} tracks over capacity, {} \
+                 crossings",
                 tiles.nx,
                 tiles.ny,
                 tile_cells as f64 * PITCH,
                 plan.rounds,
-                plan.overuse
+                plan.overuse,
+                plan.crossings
             )
         });
         // The plan steers a line of the narrowest track only: the capacities are counted in it,
