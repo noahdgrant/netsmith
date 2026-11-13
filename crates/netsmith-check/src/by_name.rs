@@ -276,6 +276,7 @@ impl Checker<'_> {
             let c = ast::Connect {
                 first: extend(&left.path, &name, span),
                 rest: vec![(ConnectOp::Same, extend(&right.path, &partner, span))],
+                groups: Vec::new(),
                 span,
             };
             self.connect(&c);
