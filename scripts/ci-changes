@@ -26,8 +26,9 @@
 #            std/, examples/, data/) and the script itself; not a test file, a crate's examples
 #            folder, the catalog refresh, or prose.
 #   crates   the crates whose tests, and their dependents' tests, are all that `test` and `kicad`
-#            run (issue #511): the folder names under crates/ the change touches, space-separated,
-#            for a nextest filter of `rdeps(<crate>) | ...`. A path outside crates/ that turns
+#            run (issue #511), and that `build` compiles and `clippy` lints (issue #618): the
+#            folder names under crates/ the change touches, space-separated; scripts/ci-rdeps works
+#            out the dependents from them. A path outside crates/ that turns
 #            `rust` on names the crates whose tests read it, when only some do: docs/LANGUAGE.md,
 #            docs/symbol-gallery.html and the skills in .agents/skills are read by the netsmith
 #            crate's tests and by init.rs (`include_str!`), so they name `netsmith` (its

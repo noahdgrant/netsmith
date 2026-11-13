@@ -139,9 +139,13 @@ filterset() {
     echo "${terms[*]}" | sed 's/)|(/) | (/g'
 }
 
-# "binary test" for each test the filterset selects, sorted.
+# "binary test" for each test the filterset selects, sorted. CI_PACKAGE_ARGS (`-p a -p b`, as
+# scripts/ci-rdeps --args prints it) limits it to the packages the build archived; unset, the
+# whole workspace.
 list() {
-    cargo nextest list --workspace --message-format json -E "$(filterset)" "$@" |
+    local select
+    read -r -a select <<< "${CI_PACKAGE_ARGS:---workspace}"
+    cargo nextest list "${select[@]}" --message-format json -E "$(filterset)" "$@" |
         jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
                | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' |
         sort
