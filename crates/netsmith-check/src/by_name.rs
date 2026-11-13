@@ -72,7 +72,7 @@ impl Checker<'_> {
         except_list: &[Ident],
         span: Span,
     ) -> bool {
-        // Each side is an end of a join (ADR 0119).
+        // Each side is an end of a join (ADR 0120).
         self.joining = true;
         let sides = (self.resolve_path(left), self.resolve_path(right));
         self.joining = false;

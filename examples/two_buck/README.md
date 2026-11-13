@@ -4,7 +4,7 @@ An invented 12 V board with two buck stages (5 V and 3.3 V), a linear post-regul
 the 5 V rail), a reverse-polarity Schottky diode and a TVS diode on the input, and the parts
 around them: bulk and decoupling capacitors, a bootstrap capacitor and an enable divider for each
 buck (the IC's own `support` section, ADR 0115), a power-good pull-up and test point for each buck
-(joined to the IC's `PG`, which `BuckIc` does not declare, through `.stage.ic.pg`, ADR 0119), a
+(joined to the IC's `PG`, which `BuckIc` does not declare, through `.stage.ic.pg`, ADR 0120), a
 power light for every rail, test points, and a header for the input and
 one for each output. It has 59 parts in the bill of materials (the two stages' capacitor banks
 count: each input takes two capacitors). It is not a design to build. It exists to time the

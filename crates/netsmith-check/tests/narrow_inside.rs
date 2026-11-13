@@ -29,7 +29,7 @@ fn a_board_narrows_a_support_part_of_the_ic_a_parametric_module_holds() {
 
 #[test]
 fn a_join_reaches_the_named_ic_but_not_its_support_parts() {
-    // A join reaches the named IC's own pins (ADR 0119), and not the parts of its support
+    // A join reaches the named IC's own pins (ADR 0120), and not the parts of its support
     // section, which only a narrowing reaches.
     let c = check(
         "t.nsm",

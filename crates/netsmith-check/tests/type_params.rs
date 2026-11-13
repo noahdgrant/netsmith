@@ -283,7 +283,7 @@ fn a_support_part_is_placed_with_its_part_wherever_it_is() {
     );
 }
 
-// ---- a join to the pins of a named IC (ADR 0119) ----
+// ---- a join to the pins of a named IC (ADR 0120) ----
 
 /// A board around `Buck<Zbk2>` with `lines` added.
 fn named(lines: &str) -> String {
@@ -353,4 +353,63 @@ fn a_relation_does_not_reach_the_named_ic() {
         m.iter().any(|m| m.contains("only narrowing (`&=`) reaches inside a module")),
         "{m:#?}"
     );
+}
+
+#[test]
+fn a_join_follows_the_parameter_into_a_module_given_it() {
+    // `Converter<Ic>` gives its parameter to `.buck: Buck<Ic>`, so a board that names
+    // `Converter<Zbk2>` named the IC at `.reg.buck.ic` too (ADR 0120).
+    let board = format!(
+        "import src::converter::Converter\nimport src::zbk2::Zbk2\nimport std::parts::mechanical::TestPoint\nimport std::sources::Rail\n\nboard B {{\n{RAILS}    .reg: Converter<Zbk2> {{ .vout.voltage &= 1.8V +/- 3% }}\n    .tp: TestPoint\n    .input ~ .reg.vin\n    .reg.vout ~ .output\n    .reg.buck.ic.pg ~ .tp.p1\n}}\n"
+    );
+    let c = run(&board);
+    ok(&c);
+    let model = &c.board("B").unwrap().model;
+    let pg = model.inst_at("reg.buck.ic.pg").unwrap();
+    let tp = model.inst_at("tp.p1").unwrap();
+    assert!(
+        model
+            .nets()
+            .iter()
+            .any(|n| n.pins.contains(&pg) && n.pins.contains(&tp))
+    );
+}
+
+#[test]
+fn a_join_through_a_module_given_the_parameter_reaches_only_the_ic() {
+    // The module given the parameter is entered only on the way to its IC.
+    let board = format!(
+        "import src::converter::Converter\nimport src::zbk2::Zbk2\nimport std::parts::mechanical::TestPoint\nimport std::sources::Rail\n\nboard B {{\n{RAILS}    .reg: Converter<Zbk2> {{ .vout.voltage &= 1.8V +/- 3% }}\n    .tp: TestPoint\n    .input ~ .reg.vin\n    .reg.vout ~ .output\n    .reg.buck.divider.rtop.a ~ .tp.p1\n}}\n"
+    );
+    let m = messages(&run(&board));
+    assert!(
+        m.iter().any(|m| m.starts_with("`divider` is inside `Buck<Zbk2>` and is not part of its interface: only narrowing (`&=`) reaches inside a module")),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_module_that_passes_its_parameter_on_reaches_only_the_bound() {
+    // Its own parameter stands for no part it named, so its text does not join the IC's pins.
+    let module = "import std::parts::regulator::{Buck, BuckIc}\nimport std::sources::Rail\n\nmodule Watched<Ic: BuckIc> {\n    .good: Rail\n    .stage: Buck<Ic>\n    .stage.ic.pg ~ .good.pos\n}\n";
+    let m = messages(&run(module));
+    assert_eq!(
+        m,
+        ["`ic` is inside `Buck<BuckIc>`, and the part it holds was not named here: a join reaches the pins of a module's IC only where its user names the part (`.reg: Buck<Lt8641>`), and a module's own text reaches only its parameter's bound"],
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_part_named_inside_a_module_is_not_named_by_the_board() {
+    // `Supply` named `Zbk2`, so it joins `.stage.ic.pg`; the board that places `Supply` did not.
+    let src = format!(
+        "import src::zbk2::Zbk2\nimport std::parts::mechanical::TestPoint\nimport std::parts::regulator::Buck\nimport std::sources::Rail\n\nmodule Supply {{\n    .vin: Rail\n    .vout: Rail\n    .stage: Buck<Zbk2>\n    .probe: TestPoint\n    .vin ~ .stage.vin\n    .stage.vout ~ .vout\n    .stage.ic.pg ~ .probe.p1\n}}\n\nboard B {{\n{RAILS}    .s: Supply {{ .vout.voltage &= 1.8V +/- 3% }}\n    .tp: TestPoint\n    .input ~ .s.vin\n    .s.vout ~ .output\n    .s.stage.ic.pg ~ .tp.p1\n}}\n"
+    );
+    let m = messages(&run(&src));
+    assert!(
+        m.iter().any(|m| m.starts_with("`stage` is inside `Supply`, and the part it holds was not named here")),
+        "{m:#?}"
+    );
+    assert!(!m.iter().any(|m| m.contains("`ic`")), "{m:#?}");
 }

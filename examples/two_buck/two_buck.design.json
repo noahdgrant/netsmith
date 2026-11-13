@@ -3156,7 +3156,7 @@
       {
         "path": "buck_5v",
         "kind": "doc",
-        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0119).",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).",
         "at": {
           "file": "two_buck.nsm",
           "line": 71
@@ -3180,7 +3180,7 @@
       {
         "path": "buck_3v3",
         "kind": "doc",
-        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0119).",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0120).",
         "at": {
           "file": "two_buck.nsm",
           "line": 71
