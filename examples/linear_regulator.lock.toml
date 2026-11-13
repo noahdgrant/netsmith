@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[RegulatorExample.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [RegulatorExample.parts."power_in"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"

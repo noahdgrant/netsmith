@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[Rp2350Minimal.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [Rp2350Minimal.parts."avdd_filter"]
 catalog = "resistor"
 row = "33Ω 1% 0402 C25105"

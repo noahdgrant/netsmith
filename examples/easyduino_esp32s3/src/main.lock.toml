@@ -4,6 +4,14 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[EasyduinoEsp32s3.providers."usb_native.receptacle"]
+generic = "UsbCSinkReceptacle"
+provider = "src::shouhan_type_c_16pin::ShouhanTypeC16Pin"
+
+[EasyduinoEsp32s3.providers."usb_uart.receptacle"]
+generic = "UsbCSinkReceptacle"
+provider = "src::shouhan_type_c_16pin::ShouhanTypeC16Pin"
+
 [EasyduinoEsp32s3.parts."auto_reset.q_boot"]
 catalog = "ss8050"
 row = "SS8050"

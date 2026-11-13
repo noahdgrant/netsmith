@@ -4,6 +4,18 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[CarrierAndCards.providers."carrier.process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
+[CarrierAndCards.providers."sensor.process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
+[CarrierAndCards.providers."serial.process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [CarrierAndCards.parts."carrier.fuse"]
 catalog = "fuse"
 row = "SMD1206P100TF 1A 6V resettable fuse 1206 C20800"
