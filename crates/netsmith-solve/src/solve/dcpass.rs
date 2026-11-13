@@ -26,7 +26,7 @@
 //!   and writes voltages only. `enclose_regulator_loads` first writes a regulator's load as the
 //!   sum of the loads behind it when every load has one. A stated window is used as stated.
 //! - Between two searches: a component with a part that reads such a voltage is picked after
-//!   the others (`run_groups`, `run_early` in `solve.rs`, `waiting_jobs`); the picks of the
+//!   the others (`run_groups`, `run_early` in `solve/pick.rs`, `waiting_jobs`); the picks of the
 //!   early ones lean on an assumed window for each regulator input (`assumed_windows`), which is
 //!   taken out again before they are kept.
 //! - Inside a search, when the last part of a group is chosen: `network_trial` solves the small

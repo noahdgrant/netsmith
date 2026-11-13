@@ -17,7 +17,7 @@ The owner decided on 2026-11-13 (issue #627, epic #638, pull request #684) that 
   - A bare name that is not imported is a member of an enclosing block, as always. Where there is none, the error names the qualified form and the import (`` write `Color::Red`, or import the variant: `import std::parts::passive::Color::Red` ``), for the nearest variant of the field's enum, or of an enum the file sees.
 - **Package.** A package stays quoted text. A bare form for simple names was rejected: `"0603"` is not a name, so packages would have two spellings by their shape. It is checked in two places, each at the statement that names the package, with the nearest name:
   - the checker refuses a package that is none of the part's `pins "..."` headers;
-  - the solver refuses a package that no row of the part's catalog is in, before any row is tried (`unknown_package` in `crates/netsmith-solve/src/solve.rs`).
+  - the solver refuses a package that no row of the part's catalog is in, before any row is tried (`unknown_package` in `crates/netsmith-solve/src/solve/verify.rs`).
 - **Old spellings are errors, not silent changes.** A quoted function says `write USART1_TX, without quotes`, and the pin is still read as having that function, so that message is the only one about the line. A quoted colour says `write Color::Red`, the message every enum gives text (ADR 0054). One run of `netsmith build` lists every line to change.
 
 ## Rejected
