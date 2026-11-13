@@ -78,7 +78,6 @@ module BuckSupply {
 
     .vin ~ .stage.vin
     .stage.vout ~ .vout
-    .light.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance
     .vout.pos ~> .light_resistor ~> .light ~> .vout.neg
     .vout.pos ~> .decoupling ~> .vout.neg
     .vout.pos ~> .bulk ~> .vout.neg
@@ -170,9 +169,6 @@ board TwoBuck {
     .buck_3v3.vout ~ .out_3v3
     .out_5v ~ .ldo.vin
     .ldo.vout ~ .out_3v3a
-
-    .input_light.current == (.vin.voltage - .input_light.forward_voltage) / .input_light_resistor.resistance
-    .ldo_light.current == (.out_3v3a.voltage - .ldo_light.forward_voltage) / .ldo_light_resistor.resistance
 
     .vin.pos ~> .input_light_resistor ~> .input_light ~> .vin.neg
     .out_5v.pos ~> .ldo_in ~> .out_5v.neg

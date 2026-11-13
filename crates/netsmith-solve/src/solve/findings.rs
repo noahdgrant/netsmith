@@ -126,6 +126,10 @@ pub struct UnconstrainedPick {
     /// output voltage fixes the ratio of its two resistors and not either of them). Where each
     /// is written. The pick is unconstrained in size all the same.
     pub ratio: Vec<(SourceId, Span)>,
+    /// The part that keeps the `~>` chain this part is in from setting its current (ADR 0113),
+    /// where there is one: the chain runs across a rail, and this part in it is not a
+    /// `dc resistor` or a `dc diode` the way the chain runs.
+    pub stopped_by: Option<InstId>,
 }
 
 /// The member a part's value is held to.
@@ -533,6 +537,12 @@ impl Solver<'_> {
                 row: pick.candidate.clone(),
                 held_by: s.held_by.clone(),
                 ratio,
+                stopped_by: self
+                    .model
+                    .chains()
+                    .iter()
+                    .filter(|c| c.parts.contains(&s.part))
+                    .find_map(|c| c.stopped_by),
             });
         }
         out

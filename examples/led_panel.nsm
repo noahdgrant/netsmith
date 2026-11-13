@@ -35,8 +35,6 @@ board LedTile {
     .supply.pos ~ .power_in.p1
     .supply.neg ~ .power_in.p2
 
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
-
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 

@@ -88,7 +88,10 @@ module Stage {
     .vin.pos ~ .loose.a
     .loose.b ~ .vout.pos
     .vin.neg ~ .vout.neg
-    .vout.pos ~> .r_top ~> .r_bottom ~> .vout.neg
+    // The divider's chain ends on its middle, so it sets no current of its own (ADR 0113) and
+    // the top resistor's current is the balance's to set.
+    .vout.pos ~> .r_top ~> .r_bottom.a
+    .r_bottom.b ~ .vout.neg
 }
 
 board Supply {

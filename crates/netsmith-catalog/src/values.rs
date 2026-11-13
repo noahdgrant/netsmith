@@ -150,6 +150,20 @@ pub fn unconstrained_pick_findings(
                 if many { "were" } else { "was" },
                 if ratio.is_empty() { "" } else { " in size" },
             );
+            // A `~>` chain across a rail would set the current, and with it the value, but for
+            // one part in it (ADR 0113).
+            let head = match picks.iter().find_map(|u| u.stopped_by) {
+                Some(part) => {
+                    let inst = whole.instance(part);
+                    let ty = inst.placed_as.clone().unwrap_or_else(|| inst.type_name.clone());
+                    format!(
+                        "{head}; the `~>` chain {} in sets no current, because `{}` ({ty}) in it is not a `dc resistor` or a `dc diode` the way the chain runs",
+                        if many { "they are" } else { "it is" },
+                        model.path_of(part),
+                    )
+                }
+                None => head,
+            };
             let head = if ratio.is_empty() {
                 head
             } else {

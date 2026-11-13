@@ -808,6 +808,23 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     // with (a stated `.output_count` of a stage, tied by `==` to the capacitor's `.count`),
     // so it says nothing more (ADR 0052).
     let refused = std::mem::take(&mut s.refused_counts);
+    // The relation a `~>` chain across a rail gives its current (ADR 0113) waits when the rail
+    // has no voltage, and so, often, do the parts' own checks that read the current. When one of
+    // them waits and says so, the chain's relation is not said as well.
+    let chain_currents: HashMap<_, HashSet<FieldId>> = s
+        .model
+        .chains()
+        .iter()
+        .map(|c| {
+            let currents = c
+                .parts
+                .iter()
+                .filter_map(|&p| s.model.through_of(p))
+                .collect();
+            ((c.source, c.span), currents)
+        })
+        .collect();
+    let mut chains_waiting: Vec<usize> = Vec::new();
     s.add_transfers();
     for (i, r) in s.model.relations().to_vec().iter().enumerate() {
         job::checkpoint();
@@ -817,6 +834,9 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         match s.verify(r) {
             Verdict::Pass => {}
             Verdict::Unknown if own || between_parts.contains(&i) => {}
+            Verdict::Unknown if chain_currents.contains_key(&(r.source, r.span)) => {
+                chains_waiting.push(i);
+            }
             Verdict::Unknown => deferred.push(i),
             Verdict::Fail { .. } if relation_mentions_any(r, &refused) => {}
             Verdict::Fail { message, .. } => {
@@ -832,6 +852,17 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         }
     }
     s.drop_transfers();
+    for i in chains_waiting {
+        let r = &s.model.relations()[i];
+        let currents = &chain_currents[&(r.source, r.span)];
+        let said = deferred
+            .iter()
+            .any(|&j| relation_mentions_any(&s.model.relations()[j], currents));
+        if !said {
+            deferred.push(i);
+        }
+    }
+    deferred.sort_unstable();
     // A check that waits on a current that is not known is made when Ohm's law bounds the
     // current and the bound proves it (never otherwise).
     let (deferred, current_bounds) = s.prove_by_ohm(deferred);
@@ -1168,15 +1199,20 @@ fn equations_of(model: &Model) -> HashMap<FieldId, Vec<usize>> {
 }
 
 /// The fields on the left of more than one `==` (counting a field and the fields joined to it as
-/// one).
+/// one), not counting the relation of a `~>` chain where the design writes an equation of its
+/// own (see `equations`).
 fn several_equations(model: &Model) -> HashSet<FieldId> {
-    let sole = sole_equations(model);
+    let eq = equations(model);
     model
         .relations()
         .iter()
-        .zip(sole)
-        .filter_map(|(r, sole)| match (&r.op, &r.lhs) {
-            (CmpOp::EqEq, RExpr::Field(f)) if !sole => Some(*f),
+        .zip(&eq.sides)
+        .filter_map(|(r, side)| match (&r.op, &r.lhs, side) {
+            (CmpOp::EqEq, RExpr::Field(f), Some(root))
+                if eq.written[*root] >= 2 || (eq.written[*root] == 0 && eq.count[*root] >= 2) =>
+            {
+                Some(*f)
+            }
             _ => None,
         })
         .collect()
@@ -1184,7 +1220,45 @@ fn several_equations(model: &Model) -> HashSet<FieldId> {
 
 /// For each relation, whether it is the only `==` whose left side is its field or a field
 /// that holds the same value (`~` joins interfaces and so their fields, ADR 0007).
+///
+/// The relation a `~>` chain across a rail gives its current (ADR 0113) is the equation of
+/// that current only where the design writes none: an equation the design writes about the
+/// same current (`.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`)
+/// stays the one that narrows it, as it was before the chain had one, and the chain's is checked
+/// against it. Counted as a second equation, it would make the current a value that two
+/// equations state (ADR 0065, 9.1), whose window a member link (`.led.current &= .current`)
+/// does not hold.
 fn sole_equations(model: &Model) -> Vec<bool> {
+    let eq = equations(model);
+    eq.sides
+        .iter()
+        .zip(&eq.chain_law)
+        .map(|(side, &law)| {
+            side.is_some_and(|r| {
+                if law {
+                    eq.written[r] == 0 && eq.count[r] == 1
+                } else {
+                    eq.written[r] == 1
+                }
+            })
+        })
+        .collect()
+}
+
+/// The `==` relations of a model by the field on their left, a field and the fields joined to
+/// it counting as one.
+struct Equations {
+    /// For each relation, the root of its left side's field when it is an `==` with a field on
+    /// the left.
+    sides: Vec<Option<usize>>,
+    /// For each relation, whether it is the relation of a `~>` chain (ADR 0113).
+    chain_law: Vec<bool>,
+    /// For each root, how many `==` have it on the left, and how many of them are not a chain's.
+    count: Vec<usize>,
+    written: Vec<usize>,
+}
+
+fn equations(model: &Model) -> Equations {
     let mut parent: Vec<usize> = (0..model.fields().count()).collect();
     fn find(parent: &mut [usize], mut x: usize) -> usize {
         while parent[x] != x {
@@ -1197,22 +1271,32 @@ fn sole_equations(model: &Model) -> Vec<bool> {
         let (ra, rb) = (find(&mut parent, a.0), find(&mut parent, b.0));
         parent[ra] = rb;
     }
+    let chains: HashSet<_> = model.chains().iter().map(|c| (c.source, c.span)).collect();
     let mut count = vec![0_usize; parent.len()];
-    let sides: Vec<Option<usize>> = model
-        .relations()
-        .iter()
-        .map(|r| match (&r.op, &r.lhs) {
+    let mut written = vec![0_usize; parent.len()];
+    let mut sides = Vec::new();
+    let mut chain_law = Vec::new();
+    for r in model.relations().iter() {
+        let side = match (&r.op, &r.lhs) {
             (CmpOp::EqEq, RExpr::Field(f)) => Some(find(&mut parent, f.0)),
             _ => None,
-        })
-        .collect();
-    for root in sides.iter().flatten() {
-        count[*root] += 1;
+        };
+        let law = side.is_some() && chains.contains(&(r.source, r.span));
+        if let Some(root) = side {
+            count[root] += 1;
+            if !law {
+                written[root] += 1;
+            }
+        }
+        sides.push(side);
+        chain_law.push(law);
     }
-    sides
-        .iter()
-        .map(|root| root.is_some_and(|r| count[r] == 1))
-        .collect()
+    Equations {
+        sides,
+        chain_law,
+        count,
+        written,
+    }
 }
 
 fn merge(a: &Domain, b: &Domain) -> Option<Domain> {

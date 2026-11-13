@@ -712,6 +712,13 @@ pub struct Chain {
     pub start: InstId,
     pub parts: Vec<InstId>,
     pub end: InstId,
+    /// The `~>` statement.
+    pub source: SourceId,
+    pub span: Span,
+    /// For a chain from a rail's `pos` to the same rail's `neg` with no tap, whose current
+    /// Kirchhoff's voltage law would set (ADR 0113): the first part in it that is not a
+    /// `dc resistor` or a `dc diode` the way the chain runs, which leaves the current free.
+    pub stopped_by: Option<InstId>,
 }
 
 /// One current as it appears in a [`Balance`]: a rail's, or the through-current of the first

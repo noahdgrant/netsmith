@@ -51,8 +51,6 @@ board LedExample {
     .supply.pos ~ .power_in.p1
     .supply.neg ~ .power_in.p2
 
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
-
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
@@ -76,10 +74,9 @@ Read it from the top.
 - `.led: Led { .current &= 5mA..15mA }` is an LED that must carry 5 mA to 15 mA.
 - `.r1: Resistor {}` is a resistor with nothing stated. The solver picks its value.
 - `.supply.pos ~ .power_in.p1` puts two pins on one net.
-- `.led.current == ...` is a relation. It ties the LED current to the resistor the solver will pick.
-- `.supply.pos ~> .r1 ~> .led ~> .supply.neg` is a series chain: positive pin, resistor, LED, negative pin.
+- `.supply.pos ~> .r1 ~> .led ~> .supply.neg` is a series chain: positive pin, resistor, LED, negative pin. One current passes through it, and the supply's voltage is shared between the resistor and the LED, so the chain ties the LED current to the resistor the solver will pick (see Chains).
 
-The report shows what the solver chose: a 330 ohm resistor and a red LED, both from JLCPCB's Basic library. The relation decides it. With the supply at 4.75 V to 5.25 V, a forward voltage of 1.8 V to 2.4 V and a 1% 330 ohm resistor, the current stays between 5 mA and 15 mA (about 7.05 mA to 10.56 mA, in fact). The resistor is a 0402 part: its 62.5 mW rating holds for the current it really carries (see Resistor power).
+The report shows what the solver chose: a 330 ohm resistor and a red LED, both from JLCPCB's Basic library. The chain decides it. With the supply at 4.75 V to 5.25 V, a forward voltage of 1.8 V to 2.4 V and a 1% 330 ohm resistor, the current stays between 5 mA and 15 mA (about 7.05 mA to 10.56 mA, in fact). The resistor is a 0402 part: its 62.5 mW rating holds for the current it really carries (see Resistor power).
 
 The rest of this guide explains each construct. Statement order never matters to what a design means, so you may write the statements of a block in any order. The one thing it shows in is the number of a part's designator (see Designators).
 
@@ -794,7 +791,6 @@ module Lamp {
     .led: Led
     .r1: Resistor
     .led.current &= .current
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 
@@ -972,7 +968,7 @@ A pick is limited when at least one of these holds, and the checks it names are 
 
 - the value, or a member it is held to or a field a `~` joins it to, has a value, a range or a tolerance: a `&=`, a `?=` default that applied, or a range that a member carries in. Any range counts, however wide;
 - a bound (`>=` or `<=`) has the value, or such a member, alone on one side. A bound on a member that a part is held to counts once it reaches the part (see the end of "Catalogs and how the solver picks parts");
-- a check that the pick decides: a bound, or an equation or `&=` whose left side has a range of its own, that names a value worked out from the pick (an LED's stated current in `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`);
+- a check that the pick decides: a bound, or an equation or `&=` whose left side has a range of its own, that names a value worked out from the pick (an LED's stated current, which the relation of its `~>` chain ties to the resistor: see "The current of a chain");
 - a current stated on a net that a value worked out from the pick is a term of (a budget, ADR 0038), when the pick changes whether the budget holds: a load that the module states on the same supply, and that the pick does not feed, is not a limit on the pick.
 
 What does not limit a pick: a bound on a rating (`.r.max_power >= 0.25W`, a `max_voltage`, the package); a relation that a part's own definition states (a resistor's `drop * current <= max_power`, a diode's `current >= 0mA`); and the catalog being filtered, because a filter on the package says nothing about the value. A bound that waits for a value that nothing sets is not judged, so it does not limit the pick, and the finding is made unless an open circle finding already names that check (one finding for one cause). A part with no row for its requirements is reported by its own message and not by this one.
@@ -1763,8 +1759,67 @@ Rules.
 - `~` joins pin to pin, or interface to interface when both are the same definition. It does not join a pin and an interface.
 - `~>` starts at a pin. A part in the chain is entered at the first pin of its bridge and left at the second. Chains may continue from a part, `.a ~> .b`, and may end at a pin.
 - `a ~> pin ~> b` puts `a`, the pin and `b` on one net.
-- A chain is a statement about nets. It does not model the physics of the series current. Write the equation yourself, as `examples/led.nsm` does.
+- A chain across a rail sets its own current (below). Any other chain is a statement about nets and about which currents are equal.
 - A system joins ports with `~` only (see Systems).
+
+### The current of a chain
+
+A chain that starts on a rail's `pos`, ends on the same rail's `neg` and has nothing else on the nets between its parts passes one current, and the rail's voltage is shared between its parts (Kirchhoff's voltage law). When every part in it states a `dc resistor` or a `dc diode` (a DC element, see "What a part is at DC"), the checker writes that law as a relation on the chain's current, before anything is picked:
+
+```nsm-fragment
+.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
+```
+
+The current is the one a statement of the design narrowed (here the LED's window), or the first part's: the chain passes one current, so they are the same.
+
+A resistor drops its current times its resistance, and a diode or an LED its forward voltage. The relation is that of every diode conducting. A supply that could fall below the forward voltages makes the current negative at that end, and an LED's `.current >= 0mA` refuses it: an LED that may stay dark is a fault. So an LED's current window picks its resistor, and the board writes no equation:
+
+```nsm solve report
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+import std::mfg::jlcpcb::TwoLayer
+
+board Indicator {
+    .process: TwoLayer
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor {}
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+```
+
+```text
+board Indicator
+  D1   Led             KT-0603R        LED_SMD:LED_0603_1608Metric                                C2286 Basic
+  R1   Resistor        120             Resistor_SMD:R_0603_1608Metric                             C22787 Basic
+  net GND: D1.1
+  net VCC: R1.1
+  net net-led.anode: D1.2, R1.2
+```
+
+The 120 ohm resistor keeps the LED between 5 mA and 15 mA with the supply anywhere in 3.135 V to 3.465 V and the LED's forward voltage anywhere in its row's range. Two resistors in the chain share the drop: the relation divides by the sum of their resistances. A relation the design writes itself about the same current is allowed, and both must hold.
+
+A part that is not a `dc resistor` or a `dc diode` the way the chain runs through it (a part with no `dc` statement, a MOSFET, a diode turned round) leaves the current free, because the chain cannot say what it drops. A part of the chain whose value nothing else limits is then an unconstrained pick, and the finding names the part that stopped the chain:
+
+```nsm evaluate warns
+import std::parts::passive::Resistor
+import std::parts::diode::Zener
+import std::sources::Rail
+
+board Reference {
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .r1: Resistor
+    /// A shunt reference: the resistor sets the current the Zener breaks down at.
+    .zener: Zener { .current &= 1mA..5mA }
+    .supply.pos ~> .r1 ~> .zener ~> .supply.neg
+}
+```
+
+```text
+Reference: unconstrained pick guideline: `r1` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; the `~>` chain it is in sets no current, because `zener` (Zener) in it is not a `dc resistor` or a `dc diode` the way the chain runs: state it, `.r1.resistance &= 4.7kohm +/- 5%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.r1.resistance &= 10kohm..100kohm`
+```
+
+A Zener in breakdown is not a DC element yet (a decision of its own, ADR 0076), so here the board writes the relation itself, `.zener.current == (.supply.voltage - .zener.zener_voltage) / .r1.resistance`. A part of a project's own that has a resistance or a forward drop at DC states it with a `dc` statement, and the chain reads it. A chain that starts on a signal (a logic pin that drives an LED) has no rail voltage to share, and gets no relation: write it yourself, with the pin's levels. After the pick, the DC analysis solves the whole network of the picked parts, this chain with the rest (see "DC analysis").
 
 Misuse.
 
@@ -2031,7 +2086,6 @@ module Indicator {
     .r1: Resistor
     .led.assembly &= .assembly_mode
     .r1.assembly &= .assembly_mode
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 
@@ -5043,7 +5097,6 @@ module Indicator {
     .supply: Rail
     .led: Led { .current &= 5mA..15mA }
     .r1: Resistor
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 
@@ -5158,7 +5211,6 @@ board Lamp {
     .in_header: Header1x2
     .input.pos ~ .in_header.p1
     .input.neg ~ .in_header.p2
-    .led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance
     // The LED is a part, so the board states what it takes from its input.
     .input.current == -.led.current
     .input.pos ~> .r1 ~> .led ~> .input.neg
@@ -5854,7 +5906,6 @@ board Tile {
     .power_in: Header1x2
     .supply.pos ~ .power_in.p1
     .supply.neg ~ .power_in.p2
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 
@@ -6724,7 +6775,6 @@ board Probe {
     }
     .led: Led { .current &= 5mA..15mA }
     .r1: Resistor {}
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
@@ -6752,7 +6802,6 @@ board Warm {
     .led.temp_min &= -40degC
     .led.temp_max &= 75degC
     .r1: Resistor {}
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
@@ -9295,7 +9344,7 @@ error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above
 
 A `Resistor` has a power rating, `.max_power`, and states that the power it dissipates, `.drop * .current`, is at most that rating, in the worst case over the ranges of its current and its resistance. The rating is a column of the `resistor` catalog (JLCPCB lists it for every part: 62.5 mW for the 0402 parts, 100 mW for the 0603 and 250 mW for the KOA 0805 parts), so the solver picks a resistor that is big enough as well as one of the right value. A design that needs more says so with the rating or the package: `.r.max_power >= 250mW`.
 
-The worst case is over the current the circuit really carries. `.led.current &= 5mA..15mA` is a window the LED must stay in, and `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance` says what the current is for the resistor that was tried: once the resistor is known, the current is the equation's range (7.05 mA to 10.56 mA for 330 ohm), and the resistor is checked at that, not at the 15 mA that ends the window. A window that is not tied to the circuit by an equation (`.current &= 45mA..49mA` on a resistor alone) is still taken at its upper end.
+The worst case is over the current the circuit really carries. `.led.current &= 5mA..15mA` is a window the LED must stay in, and the relation of the `~>` chain, `.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance` (see "The current of a chain"), says what the current is for the resistor that was tried: once the resistor is known, the current is the equation's range (7.05 mA to 10.56 mA for 330 ohm), and the resistor is checked at that, not at the 15 mA that ends the window. A window that is not tied to the circuit by an equation (`.current &= 45mA..49mA` on a resistor alone) is still taken at its upper end.
 
 A resistor whose current nothing states has no power to check, unless Ohm's law bounds it: when the voltage at each end of the resistor lies in a range the solver knows (a rail's stated range, `0 V` up to the supply of a `Logic` line that drives it, the ends of the resistors beside it, the ground), the current is at most the largest difference between the two ends over the least resistance, and the power at most the square of that difference over the least resistance. A check that this bound proves (a 10 kohm pull-down on a 3.3 V line carries at most 350 uA and 1.2 mW against 62.5 mW) is made, and its note goes. A check that the bound does not prove is left not evaluated, as before, and nothing says it failed: the bound does not know what the pins on the line draw, so it is far above the real current for a 100 ohm resistor in series with an input, and the real current may well pass. The bound is never given to the part as its current: a value that nothing states is still not known, and no pick, range or track width reads the bound as a current. It needs a range at both ends: a line that a pin drives that is not the `line` of a `Logic` is held to the supplies of that pin's own part, and a net with a connector pin, a part whose pins conduct, or a rail with no voltage on it has no range and so no bound. A catalog row with no `max_power` (an empty cell) is an unrated part: it is never offered to any design, and the "nothing for it" message says how many rows were left out for that reason. Fill the cell from the datasheet or leave the part out.
 
@@ -9314,9 +9363,9 @@ board Hot {
 
 ```text
 error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Ω 1% 0805 C317221, fails because (r.drop * r.current) must always be at most r.max_power, but 99kW..101kW is not always below 250mW
-   --> std/parts/passive.nsm:64:5
+   --> std/parts/passive.nsm:65:5
    |
-64 |     .drop * .current <= .max_power
+65 |     .drop * .current <= .max_power
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10062,9 +10111,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:312:5
+    --> std/parts/passive.nsm:316:5
     |
-312 |     .current <= .rated_current
+316 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10089,9 +10138,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:194:5
+    --> std/parts/passive.nsm:198:5
     |
-194 |     .current <= .saturation_current
+198 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10159,9 +10208,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:313:5
+    --> std/parts/passive.nsm:317:5
     |
-313 |     .supply_peak <= .rated_voltage
+317 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10398,7 +10447,7 @@ dc source .vbatt
 - `dc linear_regulator <input rail> <output rail> [<quiescent current>]` and `dc switching_regulator <input rail> <output rail> <efficiency> [<quiescent current>]` (ADR 0076, amendment 3; the optional operand, ADR 0096): a regulator. The first two operands are the part's rails (a rail inside an interface is named through it: `.out.sw`), not pins. The output rail is an ideal source over the range of its `.voltage`; the input rail draws what the output asks. A linear regulator draws what it supplies and its quiescent current, a range of currents that is not negative, taken at both ends (amendment 9): the third operand is optional, a field of the part that is a current, and a linear regulator that leaves it out draws what it supplies alone. A switching one draws `Pout / (efficiency * Vin)`, with the efficiency a number (a range, `0.85..0.95`, is taken at both ends); an efficiency has to be above 0 and at most 1 (ADR 0076, amendment 14), and one that is not (`85..95` for `85%..95%`, a converter that makes power) is an error that names the part and the value, and the regulator is not modelled. A switching regulator draws its quiescent current too when its statement names one, as a fourth operand that is optional in the same way (ADR 0096); with the output unloaded it still draws that current. A quiescent current that the part names and leaves with no value (or a negative one) is a number nothing can model with: the regulator is not modelled and the island in front of it is left alone, as for a regulator that states no `dc`.
 - `dc source <supply rail>` (ADR 0076, amendment 5): the part gives this rail from outside the board, as a connector gives the supply of a vehicle. The operand is a rail of the part. Its `pos` net is held over the range of the rail's `.voltage` that the design states, and its `neg` net at zero, as a `Rail` that the board declares itself is (see "Supplies" below). A part with a rail it takes its supply from (what a load is) does not state it.
 
-The standard `Resistor`, `Fuse`, `FerriteBead`, `NtcThermistor` (over the range of its maker's resistance-temperature table), `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `NMosfet`, `PMosfet`, `LinearRegulator`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does; the statement is a power balance that assumes no topology, so a buck-boost or boost IC states it the same way on its own input and output rails), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Led`, `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
+The standard `Resistor`, `Fuse`, `FerriteBead`, `NtcThermistor` (over the range of its maker's resistance-temperature table), `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `Led` (a diode that drops its `.forward_voltage`, ADR 0113), `NMosfet`, `PMosfet`, `LinearRegulator`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does; the statement is a power balance that assumes no topology, so a buck-boost or boost IC states it the same way on its own input and output rails), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
 
 The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator` and `source`; the pins are pins of the part (the rails of a regulator or a source are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
@@ -11001,7 +11050,7 @@ board Clamped {
 }
 ```
 
-A divider with an LED on its middle. The top resistor carries what the bottom one and the LED take; nothing states it, and the checks of both resistors are made:
+A divider with an LED on its middle. The LED holds the middle at its forward voltage, so it takes 1.36 mA to 2.34 mA, inside the window the board states. The top resistor carries what the bottom one and the LED take; nothing states it, and the checks of both resistors are made:
 
 ```nsm solve
 import std::parts::passive::{Resistor, Led}
@@ -11015,7 +11064,7 @@ board Lit {
     }
     .top: Resistor { .resistance &= 1kohm +/- 1% }
     .bottom: Resistor { .resistance &= 2kohm +/- 1% }
-    .led: Led { .current &= 1mA..2mA; .forward_voltage &= 1.8V..2.4V }
+    .led: Led { .current &= 1mA..3mA; .forward_voltage &= 1.8V..2.4V }
     .supply.pos ~ .top.a
     .top.b ~ .bottom.a
     .top.b ~ .led.anode
@@ -11145,11 +11194,16 @@ board Claim {
 ```
 
 ```text
-error: `load.vin.voltage` is stated 1.7V..3.6V, but the DC analysis of the circuit around it finds 9.98V..11.01V: at most 11.01V at the high end with r at 99Ω, load.led at 10mA
-   --> main.nsm:18:19
+error: `load.led.current` is stated 10mA..20mA, but the DC analysis of the circuit around it finds 95.04mA..103.1mA: at most 103mA at the high end with r at 99Ω, load.led conducting at 1.8V
+  --> main.nsm:7:17
+  |
+7 |     .led: Led { .current &= 10mA..20mA }
+  |                 ^^^^^^^^^^^^^^^^^^^^^^
+error: `r.current` is inconsistent: the solver worked it out as 10mA..20mA, but the DC analysis of the circuit around it finds 95.04mA..103.1mA, and the two share no value (the least the circuit gives, with r at 101Ω, load.led conducting at 2.4V)
+   --> main.nsm:17:5
    |
-18 |     .load: Load { .vin.voltage &= 1.7V..3.6V }
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 |     .r: Resistor { .resistance &= 100ohm +/- 1% }
+   |     ^^^^^^^^^^^^
 ```
 
 A source that cannot give what a regulator asks. The link is invented, and so is the regulator (a part that states `dc switching_regulator`, as a buck converter's IC does):

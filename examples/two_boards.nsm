@@ -94,8 +94,6 @@ board LedBoard {
     .input.pos ~ .power_in.p1
     .input.neg ~ .power_in.p2
 
-    .led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance
-
     .input.pos ~> .r1 ~> .led ~> .input.neg
 }
 

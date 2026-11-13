@@ -28,21 +28,21 @@ mpn = "XC6206P332MR-G"
 
 [EnclosureSensor.parts."lights.led_a"]
 catalog = "led"
-row = "XL-1608UGC-04 GREEN LED 0603 C965804"
-lcsc = "C965804"
-mpn = "XL-1608UGC-04"
+row = "LTST-C190KGKT GREEN LED 0603 C125094"
+lcsc = "C125094"
+mpn = "LTST-C190KGKT"
 
 [EnclosureSensor.parts."lights.led_b"]
 catalog = "led"
-row = "XL-1608UGC-04 GREEN LED 0603 C965804"
-lcsc = "C965804"
-mpn = "XL-1608UGC-04"
+row = "LTST-C190KGKT GREEN LED 0603 C125094"
+lcsc = "C125094"
+mpn = "LTST-C190KGKT"
 
 [EnclosureSensor.parts."lights.led_c"]
 catalog = "led"
-row = "XL-1608UGC-04 GREEN LED 0603 C965804"
-lcsc = "C965804"
-mpn = "XL-1608UGC-04"
+row = "LTST-C190KGKT GREEN LED 0603 C125094"
+lcsc = "C125094"
+mpn = "LTST-C190KGKT"
 
 [EnclosureSensor.parts."lights.r_a"]
 catalog = "resistor"

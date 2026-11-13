@@ -17,9 +17,10 @@ Status: early (v0.1). The examples in `examples/` build and pass KiCad's checks 
 
 ## An example
 
-`examples/led.nsm` is a board with a 5 V supply, a resistor and an LED. The `==` line states
-the circuit's equation; netsmith picks a resistor and an LED from a catalog so that it holds in
-the worst case, for every tolerance.
+`examples/led.nsm` is a board with a 5 V supply, a resistor and an LED. The `~>` line is the
+series circuit, and it carries its own equation: the supply's voltage less the LED's forward
+voltage, over the resistance, is the LED's current. netsmith picks a resistor and an LED from a
+catalog so that the current stays in the LED's window in the worst case, for every tolerance.
 
 ```nsm
 board LedExample {
@@ -41,7 +42,6 @@ board LedExample {
     .supply.pos ~ .power_in.p1
     .supply.neg ~ .power_in.p2
 
-    .led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```

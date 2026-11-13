@@ -129,13 +129,23 @@ fn an_unstated_rail_takes_the_analysis_range() {
 fn claim(extra: &str, stated: &str) -> String {
     format!(
         r#"import std::sources::Rail
-import std::parts::passive::{{Resistor, Led}}
+import std::parts::passive::Resistor
 import std::parts::connector::Header1x2
+
+/// A part that takes a stated current and states no `dc`: a load of the analysis.
+part Sink {{
+    pins {{
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }}
+    .current: Current
+    bridge .a ~> .b
+}}
 
 module Load {{
     .vin: Rail
-    .led: Led {{ .current &= 10mA..20mA }}
-    .vin.pos ~> .led ~> .vin.neg
+    .sink: Sink {{ .current &= 10mA..20mA }}
+    .vin.pos ~> .sink ~> .vin.neg
 }}
 
 board B {{

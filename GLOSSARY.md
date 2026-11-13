@@ -487,7 +487,7 @@ All the pins joined at one electrical node, with its name. Only a board names a 
 The two terminals of a part that a series chain enters and leaves by.
 
 **Chain**:
-A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014).
+A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014). A chain from a rail's `pos` to the same rail's `neg`, untapped, whose parts are each a `dc resistor` or a `dc diode` the way it runs, also has its current set by Kirchhoff's voltage law before the pick: the rail's voltage less the forward voltages, over the resistances (ADR 0113).
 
 **DC element**:
 What a part is in a DC analysis, stated once by a `dc` statement in the part or its generic: `dc resistor .a .b .resistance`, `dc diode .anode .cathode .forward_voltage`, `dc nmos` or `dc pmos` with a gate, a drain, a source, a threshold and an on resistance. Its pins are the pins its `bridge` joins. A provider of a generic has the generic's; a module has none, and the elements of the parts inside it make its network. The checker records it (ADR 0076, amendment 1); the DC analysis solves a resistor and a diode, and a MOSFET is recorded and not solved yet (ADR 0076, amendment 2).

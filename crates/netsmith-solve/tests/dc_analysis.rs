@@ -23,6 +23,16 @@ part Supplier {{
     .out: Rail
 }}
 
+/// A part with a bridge and a current and no `dc` statement: a boundary of the analysis.
+part Sink {{
+    pins {{
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }}
+    .current: Current
+    bridge .a ~> .b
+}}
+
 board B {{
     .supply: Rail {{
         .voltage &= {SUPPLY}
@@ -85,13 +95,13 @@ fn waiting(s: &Solution) -> Vec<String> {
         .collect()
 }
 
-/// A divider off a rail, with an LED on its middle: the top resistor carries what the bottom
-/// one takes and what the LED draws. The equations cannot say it (the middle net has two
+/// A divider off a rail, with a load on its middle that states its current: the top resistor
+/// carries what the bottom one takes and what the load draws. The equations cannot say it (the middle net has two
 /// currents that nothing states, ADR 0026); the network can.
 #[test]
 fn a_boundary_with_a_stated_current_is_a_load_on_a_divider() {
     let src = board(
-        "    .top: Resistor { .resistance &= 1kohm +/- 1% }\n    .bottom: Resistor { .resistance &= 2kohm +/- 1% }\n    .led: Led { .current &= 1mA..2mA; .forward_voltage &= 1.8V..2.4V }\n    .supply.pos ~ .top.a\n    .top.b ~ .bottom.a\n    .top.b ~ .led.anode\n    .bottom.b ~ .supply.neg\n    .led.cathode ~ .supply.neg\n",
+        "    .top: Resistor { .resistance &= 1kohm +/- 1% }\n    .bottom: Resistor { .resistance &= 2kohm +/- 1% }\n    .load: Sink { .current &= 1mA..2mA }\n    .supply.pos ~ .top.a\n    .top.b ~ .bottom.a\n    .top.b ~ .load.a\n    .bottom.b ~ .supply.neg\n    .load.b ~ .supply.neg\n",
     )
     .replace(SUPPLY, "5V");
     let s = solved(&src);
