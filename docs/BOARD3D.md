@@ -195,6 +195,36 @@ exempt against each other, and a body wholly inside another board's cutout does 
 | `system_unchecked` | A collision in which a height is a package standard's maximum (a part in that package may be lower), or a part of unknown height whose face looks at another member's board over it. | warning, an error with strict constraints |
 | `system_apart` | A member drawn apart, with the reason. | warning, an error with strict constraints |
 
+### The system's files
+
+- **`board3d --board System --glb <file>`**: the root node is `system` (`extras.netsmith`:
+  `kind: "system"`, `schema`, `system`, `base`, `mates` with `mated_height_mm`, `residual_mm`
+  and `gap_mm`, and `findings` as in the report), with one child per member in the order the
+  system declares them, named by the member: `kind: "member"`, `member`, `board`
+  (`System/member`), `placed`, `base`, `mate` (the index of the mate that placed it), `apart`
+  (the reason, or `null`), `turn_deg`, `flip`, `offset_mm`. The member node carries the motion
+  as its glTF `matrix`, in glTF's frame (metres, y up), the one node of the file that has a
+  transform. Under it is the board's subtree as the board's own file has it, with every node's
+  name starting with the member (`led/board`, `led/J1`, `led/copper:F.Cu:GND`) and `member` in
+  the `extras` of the board and each part; the vertex data are in the member's own frame. A
+  board's own file is unchanged, byte for byte.
+- **`board3d --board System --step <file>`**: the root product is the system; its children, in
+  order, are one product per member (id `System/member`), each the board's assembly as the
+  board's own STEP file has it (its parts' ids `member/path`, its board `member/board`), placed
+  by an `ITEM_DEFINED_TRANSFORMATION` that is the member's motion.
+- **`render --board System`** draws every member moved into the system's frame and frames the
+  whole. `--highlight` names `member/<id>` (`led/J1`, `led/net:GND`, `led/limit:lid`), or a
+  member alone for all of it. `--section` cuts in the system's frame; the cut faces are filled,
+  each board as one block, not its stackup.
+- **`fab` of a file with a system** makes each board as before and then the system scene, from
+  the boards as routed, after all of its members are made: `<out>/<System>/<System>.glb` and
+  `<System>.step`, beside the members' folders. `--no-glb` and `glb = false`, `--no-step` and
+  `step = false` leave them out as they leave out a board's, and remove an earlier run's. A
+  file that cannot be written is a warning. A `system_collision` or a `mate_misaligned` stops
+  the run (exit 1) and no system file is written, and `--allow-drc-violations` does not waive
+  it; `system_unchecked` and `system_apart` are warnings, errors with `--constraints error`
+  or `constraints = "error"`. The boards' own packages are written first, as for a panel.
+
 Not checked yet: a clearance between members (ADR 0110's `system_clearance`, which waits for its
 std figure), right-angle and edge connectors, cables, and a case round a system. Each such member
 is drawn apart until it is modelled.
@@ -213,7 +243,8 @@ The contract, schema 1 (a viewer is written against it: a field removed or chang
 raises `schema`, a field added does not):
 
 - **Units and axes are glTF's**: metres, right-handed, Y up. A scene point `(x, y, z)` in mm is
-  `(x, z, -y) * 0.001` in the file, in the vertex data (no node has a transform): the top face is
+  `(x, z, -y) * 0.001` in the file, in the vertex data (no node has a transform, but a member of
+  a [system's file](#the-systems-files)): the top face is
   `y = 0`, the outline's bottom-left corner the origin, its top edge toward `-z`. The numbers in
   the `extras` stay in the frame above, in mm, as in the JSON report (their names end in `_mm`).
 - **The same scene gives the same bytes.** The order of nodes, meshes, materials and accessors is

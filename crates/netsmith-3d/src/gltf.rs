@@ -10,7 +10,8 @@
 //!
 //! - **Units and axes are glTF's**: metres, right-handed, Y up. A point `(x, y, z)` of the scene
 //!   (mm, Z up, the top face at `z = 0`, [`crate::scene3d`]) is written as
-//!   `(x, z, -y) * 0.001`, in the vertex data itself: no node has a transform. The board's
+//!   `(x, z, -y) * 0.001`, in the vertex data itself: no node has a transform (but a member
+//!   of a system's file, [`system_glb`], whose `matrix` is its motion). The board's
 //!   top face is `y = 0`, its outline's bottom-left corner the origin, its top edge toward `-z`.
 //!   The numbers in the `extras` are in the scene's frame and in mm, as `board3d --json` has
 //!   them (their names end in `_mm`).
@@ -82,6 +83,7 @@ use serde_json::{Map, Value, json};
 use crate::mesh::{BodyPieces, Material, Mesh, NO_NET, pieces};
 use crate::raster3d::Theme;
 use crate::scene3d::{HoleOwner, Pins, Scene};
+use crate::system::{Finding, Motion, Place, SystemScene};
 use netsmith_pcb::board::Side;
 
 /// The version of the file's contract (the module's header).
@@ -123,6 +125,8 @@ struct Builder {
 struct Node {
     name: String,
     mesh: Option<usize>,
+    /// The node's transform, column by column, as glTF writes it; `None` for none.
+    matrix: Option<[f64; 16]>,
     extras: Value,
     children: Vec<Node>,
 }
@@ -132,6 +136,7 @@ impl Node {
         Node {
             name: name.into(),
             mesh: None,
+            matrix: None,
             extras,
             children: Vec::new(),
         }
@@ -235,6 +240,9 @@ impl Builder {
         });
         if let Some(mesh) = node.mesh {
             out["mesh"] = json!(mesh);
+        }
+        if let Some(matrix) = node.matrix {
+            out["matrix"] = json!(matrix);
         }
         if !children.is_empty() {
             out["children"] = json!(children);
@@ -364,18 +372,28 @@ fn margin_of<'a>(scene: &'a Scene, body: &crate::scene3d::Body) -> Option<(f64, 
 
 /// The scene as a `.glb` file, for the board labelled `board` (its name, or `system/member`).
 pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
-    let pieces = pieces(scene);
     let mut b = Builder::default();
+    let root = board_node(&mut b, scene, board, None);
+    finish(b, root, board)
+}
+
+/// The `board` node of `scene` and its children, their meshes added to `b`. For a member of a
+/// system (`member`), every node's and mesh's name starts with `member/` and the board and each
+/// part say which member they are of; with none the names are the board's own.
+fn board_node(b: &mut Builder, scene: &Scene, board: &str, member: Option<&str>) -> Node {
+    let prefix = member.map(|m| format!("{m}/")).unwrap_or_default();
+    let named = |name: &str| format!("{prefix}{name}");
+    let pieces = pieces(scene);
     let solid = &scene.board;
     let coverage = scene.coverage();
 
     // The substrate, its masks and its barrels.
-    let mut substrate = Node::new("substrate", json!({ "kind": "substrate" }));
+    let mut substrate = Node::new(named("substrate"), json!({ "kind": "substrate" }));
     let laminate: Vec<&Mesh> = pieces.board.iter().collect();
-    substrate.mesh = b.mesh("substrate", &laminate);
+    substrate.mesh = b.mesh(&named("substrate"), &laminate);
     for m in &pieces.masks {
         let side = face(m.side);
-        let name = format!("mask:{side}");
+        let name = named(&format!("mask:{side}"));
         let mut node = Node::new(&name, json!({ "kind": "mask", "face": side }));
         let parts: Vec<&Mesh> = m.bare.iter().chain(&m.over_copper).collect();
         node.mesh = b.mesh(&name, &parts);
@@ -387,10 +405,13 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
         }
         let (name, extras) = match &h.owner {
             HoleOwner::Pad { path, refdes, pad } => (
-                format!("hole:{refdes}.{pad}"),
+                named(&format!("hole:{refdes}.{pad}")),
                 json!({ "kind": "hole", "path": path, "refdes": refdes, "pad": pad }),
             ),
-            HoleOwner::Via { net } => (format!("via:{net}"), json!({ "kind": "hole", "net": net })),
+            HoleOwner::Via { net } => (
+                named(&format!("via:{net}")),
+                json!({ "kind": "hole", "net": net }),
+            ),
         };
         let mut node = Node::new(&name, extras);
         node.mesh = wall.as_ref().and_then(|w| b.mesh(&name, &[w]));
@@ -398,14 +419,14 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
     }
     for s in &pieces.silk {
         let side = face(s.side);
-        let name = format!("silk:{side}");
+        let name = named(&format!("silk:{side}"));
         let mut node = Node::new(&name, json!({ "kind": "silk", "face": side }));
         node.mesh = s.mesh.as_ref().and_then(|m| b.mesh(&name, &[m]));
         substrate.children.push(node);
     }
 
     let mut root = Node::new(
-        "board",
+        named("board"),
         json!({
             "kind": "board",
             "schema": SCHEMA,
@@ -433,8 +454,9 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
         let piece = pieces.bodies.get(i).unwrap_or(&empty);
         let (z_bottom, z_top) = body.z_range();
         let margin = margin_of(scene, body);
+        let name = named(&body.refdes);
         let mut node = Node::new(
-            &body.refdes,
+            &name,
             json!({
                 "kind": "part",
                 "path": body.path,
@@ -451,12 +473,15 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                 "margin_limit": margin.map(|(_, name)| name),
             }),
         );
-        node.mesh = b.mesh(&body.refdes, &piece.body.iter().collect::<Vec<_>>());
+        if let Some(member) = member {
+            node.extras["member"] = json!(member);
+        }
+        node.mesh = b.mesh(&name, &piece.body.iter().collect::<Vec<_>>());
         root.children.push(node);
     }
 
     // The height limits, one node per face.
-    let mut limits = Node::new("limits", json!({ "kind": "limits" }));
+    let mut limits = Node::new(named("limits"), json!({ "kind": "limits" }));
     for (i, limit) in scene.limits.iter().enumerate() {
         for (k, f) in limit.faces.iter().enumerate() {
             let violated = scene
@@ -464,7 +489,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
                 .too_tall
                 .iter()
                 .any(|t| t.keepout == limit.name && t.side == f.side);
-            let name = format!("limit:{}:{}", limit.name, face(f.side));
+            let name = named(&format!("limit:{}:{}", limit.name, face(f.side)));
             let mut node = Node::new(
                 &name,
                 json!({
@@ -491,12 +516,12 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
     root.children.push(limits);
 
     // The pins out of the far face, where their length is stated.
-    let mut protrusions = Node::new("protrusions", json!({ "kind": "protrusions" }));
+    let mut protrusions = Node::new(named("protrusions"), json!({ "kind": "protrusions" }));
     for (i, body) in scene.bodies.iter().enumerate() {
         let Pins::Known { length, .. } = &body.pins else {
             continue;
         };
-        let name = format!("pins:{}", body.refdes);
+        let name = named(&format!("pins:{}", body.refdes));
         let mut node = Node::new(
             &name,
             json!({ "kind": "protrusion", "path": body.path, "length_mm": length }),
@@ -513,7 +538,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
     // The copper, a group per layer and a node per net on it.
     if let Ok(copper) = &scene.copper {
         for (l, layer) in copper.layers.iter().zip(&pieces.copper) {
-            let group_name = format!("copper:{}", l.name);
+            let group_name = named(&format!("copper:{}", l.name));
             let mut group = Node::new(
                 &group_name,
                 json!({
@@ -525,7 +550,7 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
             );
             for n in &layer.nets {
                 let label = n.net.as_deref().unwrap_or(NO_NET);
-                let name = format!("copper:{}:{label}", l.name);
+                let name = named(&format!("copper:{}:{label}", l.name));
                 let mut node = Node::new(
                     &name,
                     json!({ "kind": "copper", "layer": l.name, "net": n.net }),
@@ -538,11 +563,120 @@ pub fn glb(scene: &Scene, board: &str) -> Vec<u8> {
         }
     }
 
+    if let Some(member) = member {
+        root.extras["member"] = json!(member);
+    }
+    root
+}
+
+/// The _System scene_ as a `.glb` file (ADR 0110): the one root `system`, and under it one node
+/// per member, named by the member, that carries the member's motion as its `matrix` (in glTF's
+/// frame) and holds that board's `board` subtree as [`glb`] writes it, every name starting with
+/// `member/` (`led/J1`).
+pub fn system_glb(system: &SystemScene) -> Vec<u8> {
+    let mut b = Builder::default();
+    let mut root = Node::new(
+        "system",
+        json!({
+            "kind": "system",
+            "schema": SCHEMA,
+            "system": system.name,
+            "base": system.members.first().map(|m| m.name.clone()),
+            "mates": system.mates.iter().map(|m| json!({
+                "a": m.input.a,
+                "b": m.input.b,
+                "a_member": m.input.a_member,
+                "b_member": m.input.b_member,
+                "contacts": m.contacts,
+                "mated_height_mm": m.input.mated_height.map(|(lo, hi)| json!({ "min": lo, "max": hi })),
+                "residual_mm": m.residual,
+                "gap_mm": m.gap,
+            })).collect::<Vec<_>>(),
+            "findings": system.findings.iter().map(system_finding).collect::<Vec<_>>(),
+        }),
+    );
+    for m in &system.members {
+        let label = format!("{}/{}", system.name, m.name);
+        let (placed, mate, apart) = match &m.place {
+            Place::Base => (true, None, None),
+            Place::Mated { mate } => (true, Some(*mate), None),
+            Place::Apart { reason } => (false, None, Some(reason.clone())),
+        };
+        let mut node = Node::new(
+            &m.name,
+            json!({
+                "kind": "member",
+                "member": m.name,
+                "board": label,
+                "placed": placed,
+                "base": m.place == Place::Base,
+                "mate": mate,
+                "apart": apart,
+                "turn_deg": m.motion.turn,
+                "flip": m.motion.flip,
+                "offset_mm": m.motion.offset,
+            }),
+        );
+        node.matrix = Some(gltf_matrix(&m.motion));
+        node.children
+            .push(board_node(&mut b, &m.scene, &label, Some(&m.name)));
+        root.children.push(node);
+    }
+    finish(b, root, &system.name)
+}
+
+/// A finding of the system scene, as the `system` root lists it.
+fn system_finding(f: &Finding) -> Value {
+    json!({
+        "code": f.code.word(),
+        "severity": f.code.severity(),
+        "message": f.message,
+        "members": f.members,
+        "parts": f.parts,
+        "mate": f.mate.as_ref().map(|(a, b)| json!([a, b])),
+        "z_bottom_mm": f.z.map(|z| z.0),
+        "z_top_mm": f.z.map(|z| z.1),
+        "distance_mm": f.distance,
+    })
+}
+
+/// A member's motion (mm, Z up) as a glTF node's matrix (m, Y up), column by column: the same
+/// motion seen through [`position`], `(x, y, z) -> (x, z, -y) * 0.001`.
+fn gltf_matrix(motion: &Motion) -> [f64; 16] {
+    // The scene's axes in glTF's: P, and its inverse, the transpose.
+    let p = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]];
+    let l = motion.linear();
+    let mul = |a: [[f64; 3]; 3], b: [[f64; 3]; 3]| {
+        [0, 1, 2].map(|r| [0, 1, 2].map(|c| (0..3).map(|k| a[r][k] * b[k][c]).sum::<f64>()))
+    };
+    let pt = [0, 1, 2].map(|r| [0, 1, 2].map(|c| p[c][r]));
+    let g = mul(mul(p, l), pt);
+    let o = motion.offset;
+    let t = [0, 1, 2].map(|r| (0..3).map(|k| p[r][k] * o[k]).sum::<f64>() * 0.001);
+    let clean = |v: f64| {
+        let f = f64::from(f32_of(v));
+        if f == 0.0 { 0.0 } else { f }
+    };
+    let mut out = [0.0; 16];
+    for c in 0..3 {
+        for r in 0..3 {
+            out[c * 4 + r] = clean(g[r][c]);
+        }
+    }
+    for r in 0..3 {
+        out[12 + r] = clean(t[r]);
+    }
+    out[15] = 1.0;
+    out
+}
+
+/// The file of `b` with the one root `root`, the scene named `name`.
+fn finish(mut b: Builder, root: Node, name: &str) -> Vec<u8> {
     let root = b.node(root);
     let mut doc = json!({
         "asset": { "version": "2.0", "generator": "netsmith" },
         "scene": 0,
-        "scenes": [{ "name": board, "nodes": [root] }],
+        "scenes": [{ "name": name, "nodes": [root] }],
         "nodes": b.nodes,
         "materials": materials(),
     });

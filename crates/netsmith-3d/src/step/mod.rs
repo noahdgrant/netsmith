@@ -44,6 +44,7 @@ use crate::mesh::package::{BALL_RINGS, ROUND_SEGMENTS, settled};
 use crate::mesh::trig::sin_cos_turns;
 use crate::raster3d::Theme;
 use crate::scene3d::{BoardSolid, Body, Pins, PlacedShape, Plan, Scene};
+use crate::system::SystemScene;
 use netsmith_pcb::body3d::{Axis, Material as Made, Primitive};
 use netsmith_pcb::stackup::LayerKind;
 
@@ -217,6 +218,85 @@ impl File {
 /// The scene as a STEP file, for the board labelled `board` (its name, or `system/member`).
 pub fn step(scene: &Scene, board: &str) -> String {
     let mut f = File::new();
+    board_product(&mut f, scene, board, "", true);
+    finish(
+        f,
+        &format!("the board {board} and its parts, from netsmith"),
+        board,
+    )
+}
+
+/// The _System scene_ as a STEP file (ADR 0110, ADR 0107's assembly a level deeper): the root
+/// product is the system; its children, in the order the system declares them, are one product
+/// per member, each the board's assembly as [`step`] writes it (its id `System/member`, its
+/// parts' ids `member/path`), placed by an `ITEM_DEFINED_TRANSFORMATION` that is the member's
+/// motion.
+pub fn system_step(system: &SystemScene) -> String {
+    let mut f = File::new();
+    let name = &system.name;
+    let (root, root_shape) = f.product(name, name, "the system's boards, from netsmith");
+    let root_axis = f.origin();
+    let ctx = f.context;
+    let root_rep = f.w.add(format!(
+        "SHAPE_REPRESENTATION({},({root_axis}),{ctx})",
+        string(name)
+    ));
+    f.w.add(format!(
+        "SHAPE_DEFINITION_REPRESENTATION({root_shape},{root_rep})"
+    ));
+    for m in &system.members {
+        let label = format!("{name}/{}", m.name);
+        let made = board_product(&mut f, &m.scene, &label, &format!("{}/", m.name), false);
+        let l = m.motion.linear();
+        let column = |c: usize| [l[0][c], l[1][c], l[2][c]];
+        let placed = f.w.axis(m.motion.offset, column(2), column(0));
+        f.occurrence(
+            &label, &m.name, root, root_rep, placed, made.root, made.shape, made.rep, made.axis,
+        );
+    }
+    finish(
+        f,
+        &format!("the system {name} and its boards, from netsmith"),
+        name,
+    )
+}
+
+/// The file of `f`, its header describing it as `description` and naming it `name`.
+fn finish(f: File, description: &str, name: &str) -> String {
+    let mut f = f;
+    if !f.styled.is_empty() {
+        let styled = list(&f.styled);
+        let ctx = f.context;
+        f.w.add(format!(
+            "MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',{styled},{ctx})"
+        ));
+    }
+    let header = format!(
+        "FILE_DESCRIPTION(({}),'2;1');\nFILE_NAME({},'1970-01-01T00:00:00',(''),(''),'netsmith','netsmith','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN {{ 1 0 10303 214 1 1 1 1 }}'));\n",
+        string(description),
+        string(name)
+    );
+    f.w.file(&header)
+}
+
+/// A board's assembly product, made in `f`: its definition, shape definition, representation and
+/// that representation's axis. With `tie` its shape definition is tied to its representation (a
+/// file of the board alone); without, a system's occurrence of it ties them. Every child
+/// product's id starts with `prefix`.
+struct BoardProduct {
+    root: Id,
+    shape: Id,
+    rep: Id,
+    axis: Id,
+}
+
+fn board_product(
+    f: &mut File,
+    scene: &Scene,
+    board: &str,
+    prefix: &str,
+    tie: bool,
+) -> BoardProduct {
     let (root, root_shape) = f.product(board, board, "the board and its parts, from netsmith");
     let root_axis = f.origin();
     let ctx = f.context;
@@ -224,9 +304,11 @@ pub fn step(scene: &Scene, board: &str) -> String {
         "SHAPE_REPRESENTATION({},({root_axis}),{ctx})",
         string(board)
     ));
-    f.w.add(format!(
-        "SHAPE_DEFINITION_REPRESENTATION({root_shape},{root_rep})"
-    ));
+    if tie {
+        f.w.add(format!(
+            "SHAPE_DEFINITION_REPRESENTATION({root_shape},{root_rep})"
+        ));
+    }
 
     // The board.
     if let Some(e) = board_solid(&scene.board) {
@@ -235,11 +317,8 @@ pub fn step(scene: &Scene, board: &str) -> String {
         } else {
             Colour::Substrate
         };
-        let (child, shape) = f.product(
-            "board",
-            "board",
-            "the board, its outline, cutouts and holes",
-        );
+        let id = format!("{prefix}board");
+        let (child, shape) = f.product(&id, "board", "the board, its outline, cutouts and holes");
         let axis = f.origin();
         let brep = f.w.extrusion("board", &e);
         f.paint(brep, colour, false);
@@ -247,7 +326,7 @@ pub fn step(scene: &Scene, board: &str) -> String {
             "ADVANCED_BREP_SHAPE_REPRESENTATION('board',({axis},{brep}),{ctx})"
         ));
         f.occurrence(
-            "board", "board", root, root_rep, root_axis, child, shape, rep, axis,
+            &id, "board", root, root_rep, root_axis, child, shape, rep, axis,
         );
     }
 
@@ -260,7 +339,8 @@ pub fn step(scene: &Scene, board: &str) -> String {
         } else {
             format!("{}; height unknown: outline only", b.kind)
         };
-        let (child, shape) = f.product(&b.path, &b.refdes, &description);
+        let id = format!("{prefix}{}", b.path);
+        let (child, shape) = f.product(&id, &b.refdes, &description);
         let axis = f.origin();
         let rep = if known {
             let mut items = vec![axis];
@@ -293,22 +373,15 @@ pub fn step(scene: &Scene, board: &str) -> String {
             ))
         };
         f.occurrence(
-            &b.path, &b.refdes, root, root_rep, root_axis, child, shape, rep, axis,
+            &id, &b.refdes, root, root_rep, root_axis, child, shape, rep, axis,
         );
     }
-
-    if !f.styled.is_empty() {
-        let styled = list(&f.styled);
-        f.w.add(format!(
-            "MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',{styled},{ctx})"
-        ));
+    BoardProduct {
+        root,
+        shape: root_shape,
+        rep: root_rep,
+        axis: root_axis,
     }
-    let header = format!(
-        "FILE_DESCRIPTION(({}),'2;1');\nFILE_NAME({},'1970-01-01T00:00:00',(''),(''),'netsmith','netsmith','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN {{ 1 0 10303 214 1 1 1 1 }}'));\n",
-        string(&format!("the board {board} and its parts, from netsmith")),
-        string(board)
-    );
-    f.w.file(&header)
 }
 
 /// A solid of a part.

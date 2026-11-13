@@ -403,7 +403,7 @@ pub fn fab_detailed(
         }
     }
     let mut pin_state = PinState::new(&outcome.pins);
-    let (mut built_boards, panels) = (outcome.boards, outcome.panels);
+    let (mut built_boards, panels, systems) = (outcome.boards, outcome.panels, outcome.systems);
     // The STEP models parts are drawn from and the case models, found on disk (ADR 0108,
     // ADR 0109).
     if let Some(places) = &options.models {
@@ -455,6 +455,8 @@ pub fn fab_detailed(
     if !collisions.is_empty() {
         return Err(collisions.into());
     }
+    // Each board as made, routed, by label: a system's scene is made of its members'.
+    let mut routed: BTreeMap<String, Board> = BTreeMap::new();
     for built in &built_boards {
         if let Some(only) = &options.only
             && !only.contains(&built.label())
@@ -473,7 +475,19 @@ pub fn fab_detailed(
             catalogs,
             &say,
         )?;
+        routed.insert(built.label(), run.board);
         made.push(run.fabricated);
+    }
+    // The system scene of each system whose boards were all made (ADR 0110): checked across
+    // boards, and written beside them.
+    for system in &systems {
+        let members = crate::system3d::members(system, &built_boards);
+        let boards: Option<Vec<(&Built, &Board)>> = members
+            .iter()
+            .map(|b| routed.get(&b.label()).map(|board| (*b, board)))
+            .collect();
+        let Some(boards) = boards else { continue };
+        fab_system(system, &boards, out, options, &say)?;
     }
     // The panels of the file (ADR 0040): each repeats a board of it, which is made again, in
     // the panel's own folder.
@@ -1140,6 +1154,80 @@ fn fab_board(
             pcb: pcb_path,
         })
     }
+}
+
+/// The system scene of `system` from its members as made (ADR 0110): its findings across
+/// boards, and `<out>/<System>/<System>.glb` and `.step` with the switches of a board's. A
+/// collision of known heights and a misaligned mate stop the run, and `--allow-drc-violations`
+/// does not waive them; a collision through a package standard's height, a part of unknown height
+/// facing another board and a member drawn apart are warnings, errors with strict constraints.
+fn fab_system(
+    system: &crate::SolvedSystem,
+    members: &[(&Built, &Board)],
+    out: &Path,
+    options: &FabOptions,
+    say: &dyn Fn(String),
+) -> Result<(), String> {
+    let name = &system.name;
+    let scene = timings::stage("fab.system", name, || {
+        crate::system3d::scene(system, members)
+    });
+    let strict = options.strict_heights;
+    let mut errors = String::new();
+    for f in &scene.findings {
+        if f.code.is_error(strict) {
+            let why = if f.code.error() {
+                "it stops `fab`, and `--allow-drc-violations` does not waive it"
+            } else {
+                "it is an error because constraints are strict (`--constraints error` or `constraints = \"error\"`); run with `--constraints warn` to list it instead"
+            };
+            errors.push_str(&format!(
+                "error: {name}: {}: {}; {why}\n",
+                f.code.word(),
+                f.message
+            ));
+        } else {
+            say(format!("{name}: warning: {}: {}", f.code.word(), f.message));
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let dir = out.join(name);
+    fs::create_dir_all(&dir).map_err(|e| format!("error: {name}: {}: {e}\n", dir.display()))?;
+    for (write, extension, what) in [
+        (options.glb, "glb", "3D scene"),
+        (options.step, "step", "STEP file"),
+    ] {
+        let file = dir.join(format!("{name}.{extension}"));
+        if !write {
+            if let Err(e) = fs::remove_file(&file)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                say(format!(
+                    "{name}: warning: {}: {e}; an earlier run's {what} stays in the package",
+                    file.display()
+                ));
+            }
+            continue;
+        }
+        let bytes = if extension == "glb" {
+            netsmith_3d::gltf::system_glb(&scene)
+        } else {
+            netsmith_3d::step::system_step(&scene).into_bytes()
+        };
+        match fs::write(&file, bytes) {
+            Ok(()) => say(format!(
+                "{name}: wrote the system's {what} {}",
+                file.display()
+            )),
+            Err(e) => say(format!(
+                "{name}: warning: the system's {what} {} was not written ({e}); the boards' packages are complete without it",
+                file.display()
+            )),
+        }
+    }
+    Ok(())
 }
 
 /// The board's 3D scene as `<name>.glb` in `dir` (or, with `write` false, the removal of one an

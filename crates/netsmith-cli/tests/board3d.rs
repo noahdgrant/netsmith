@@ -1615,3 +1615,269 @@ fn the_two_boards_are_mated_at_the_height_their_seats_give() {
         "{summary}"
     );
 }
+
+/// A point of the scene (mm, z up) as glTF writes it (m, y up).
+fn gltf_point(p: [f64; 3]) -> [f64; 3] {
+    [p[0] * 0.001, p[2] * 0.001, -p[1] * 0.001]
+}
+
+/// The system scene's `.glb` (ADR 0110): the root `system`, one node per member carrying its
+/// motion as a matrix in glTF's frame, and under it the board's subtree with every name starting
+/// with the member. The STEP has a product per member, placed by a transformation. Both are the
+/// same bytes each run.
+#[test]
+fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() {
+    let examples = repo().join("examples");
+    let dir = netsmith_kicad::testlib::TempDir::new("system-glb");
+    let (glb, step) = (dir.join("s.glb"), dir.join("s.step"));
+    let write = |glb: &Path, step: &Path| {
+        let run = board3d(
+            &examples,
+            &[
+                "two_boards.nsm",
+                "--board",
+                "TwoBoards",
+                "--glb",
+                glb.to_str().unwrap(),
+                "--step",
+                step.to_str().unwrap(),
+            ],
+        );
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        // A file asked for, and nothing printed.
+        assert!(run.stdout.is_empty());
+    };
+    write(&glb, &step);
+    let bytes = std::fs::read(&glb).unwrap();
+    let doc = glb_json(&bytes);
+    let nodes = doc["nodes"].as_array().unwrap();
+    let root = &nodes[doc["scenes"][0]["nodes"][0].as_u64().unwrap() as usize];
+    assert_eq!(root["name"], "system");
+    assert_eq!(root["extras"]["netsmith"]["kind"], "system");
+    assert_eq!(root["extras"]["netsmith"]["base"], "power");
+    assert_eq!(
+        root["extras"]["netsmith"]["mates"][0]["mated_height_mm"]["min"],
+        10.65
+    );
+    let members: Vec<&serde_json::Value> = root["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| &nodes[i.as_u64().unwrap() as usize])
+        .collect();
+    assert_eq!(
+        members
+            .iter()
+            .map(|m| m["name"].clone())
+            .collect::<Vec<_>>(),
+        ["power", "led"]
+    );
+    assert_eq!(members[1]["extras"]["netsmith"]["kind"], "member");
+    assert_eq!(members[1]["extras"]["netsmith"]["flip"], true);
+    // The matrix is the motion in glTF's frame: a point of the LED board's own frame, moved by
+    // the node's matrix, is where the motion puts it, written as glTF writes a point.
+    let m: Vec<f64> = members[1]["matrix"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let apply = |p: [f64; 3]| {
+        [0, 1, 2].map(|r| (0..3).map(|c| m[c * 4 + r] * p[c]).sum::<f64>() + m[12 + r])
+    };
+    // The motion is a half turn with a flip, offset (25, 2.1, 10.65) mm: (x, y, z) goes to
+    // (25 - x, 2.1 + y, 10.65 - z).
+    for p in [[0.0, 0.0, 0.0], [13.0, 8.0, -1.6], [7.5, 2.75, 0.0]] {
+        let want = gltf_point([25.0 - p[0], 2.1 + p[1], 10.65 - p[2]]);
+        let got = apply(gltf_point(p));
+        for k in 0..3 {
+            assert!(
+                (got[k] - want[k]).abs() < 1e-6,
+                "{p:?}: {got:?} != {want:?}"
+            );
+        }
+    }
+    // Under the member, its board's subtree as the board alone has it, every name prefixed.
+    let board = &nodes[members[1]["children"][0].as_u64().unwrap() as usize];
+    assert_eq!(board["name"], "led/board");
+    assert_eq!(board["extras"]["netsmith"]["board"], "TwoBoards/led");
+    let part = glb_node(&doc, "led/J1");
+    assert_eq!(part["extras"]["netsmith"]["member"], "led");
+    assert_eq!(part["extras"]["netsmith"]["path"], "power_in");
+    assert!(glb_node(&doc, "power/J2")["extras"]["netsmith"]["member"] == "power");
+
+    let text = std::fs::read_to_string(&step).unwrap();
+    for product in [
+        "PRODUCT('TwoBoards','TwoBoards'",
+        "PRODUCT('TwoBoards/power','TwoBoards/power'",
+        "PRODUCT('TwoBoards/led','TwoBoards/led'",
+        "PRODUCT('led/power_in','J1'",
+        "PRODUCT('power/board','board'",
+    ] {
+        assert!(text.contains(product), "no {product}");
+    }
+    // One transformation per member, and one per part and board inside each.
+    let placements = text.matches("ITEM_DEFINED_TRANSFORMATION").count();
+    let parts = text.matches("NEXT_ASSEMBLY_USAGE_OCCURRENCE").count();
+    assert_eq!(placements, parts);
+    assert!(text.contains("NEXT_ASSEMBLY_USAGE_OCCURRENCE('TwoBoards/led','led'"));
+
+    // The same bytes each run.
+    let (glb2, step2) = (dir.join("t.glb"), dir.join("t.step"));
+    write(&glb2, &step2);
+    assert_eq!(bytes, std::fs::read(&glb2).unwrap());
+    assert_eq!(text, std::fs::read_to_string(&step2).unwrap());
+}
+
+/// `render --board System` draws the system scene, the same bytes each run, and lights a part
+/// named `member/<id>`; a member the system does not have is an error that names its members.
+#[test]
+fn render_draws_the_system_and_lights_a_part_of_a_member() {
+    let examples = repo().join("examples");
+    let dir = netsmith_kicad::testlib::TempDir::new("system-render");
+    let draw = |name: &str, extra: &[&str]| {
+        let out = dir.join(name);
+        let mut args = vec![
+            "render",
+            "two_boards.nsm",
+            "--board",
+            "TwoBoards",
+            "--size",
+            "320x200",
+            "--out",
+            out.to_str().unwrap(),
+        ];
+        args.extend_from_slice(extra);
+        let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+            .args(&args)
+            .current_dir(&examples)
+            .env("NETSMITH_NO_KICAD", "1")
+            .output()
+            .unwrap();
+        (run, out)
+    };
+    let (run, a) = draw("a.png", &[]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let (_, b) = draw("b.png", &[]);
+    assert_eq!(std::fs::read(&a).unwrap(), std::fs::read(&b).unwrap());
+    let (run, lit) = draw("lit.png", &["--highlight", "led/J1"]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_ne!(std::fs::read(&a).unwrap(), std::fs::read(&lit).unwrap());
+    let (run, _) = draw("bad.png", &["--highlight", "lamp/J1"]);
+    assert_eq!(run.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        err.contains("no member `lamp`") && err.contains("power, led"),
+        "{err}"
+    );
+}
+
+/// `fab` of a system writes the system's `.glb` and `.step` into the system's folder, from its
+/// boards as routed (so a via is a hole in the STEP's board, which `board3d` does not route), the
+/// same bytes each run and the same products as `board3d --step`; `--no-glb` and `--no-step`
+/// leave them out and remove an earlier run's.
+#[test]
+fn fab_writes_the_system_scene_beside_its_boards_and_the_switches_leave_it_out() {
+    let examples = repo().join("examples");
+    let dir = netsmith_kicad::testlib::TempDir::new("system-fab");
+    let out = dir.join("out");
+    let made = |extra: &[&str]| {
+        let mut args = vec!["two_boards.nsm", "--out", out.to_str().unwrap(), "--locked"];
+        args.extend_from_slice(extra);
+        let run = fab(&examples, &args);
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    };
+    made(&[]);
+    let folder = out.join("TwoBoards");
+    let glb = std::fs::read(folder.join("TwoBoards.glb")).expect("fab writes the system's .glb");
+    assert_eq!(glb_json(&glb)["nodes"][0]["name"], "system");
+    let step = std::fs::read_to_string(folder.join("TwoBoards.step")).expect("and its .step");
+    made(&[]);
+    assert_eq!(glb, std::fs::read(folder.join("TwoBoards.glb")).unwrap());
+    assert_eq!(
+        step,
+        std::fs::read_to_string(folder.join("TwoBoards.step")).unwrap()
+    );
+
+    let by_board3d = dir.join("b.step");
+    let run = board3d(
+        &examples,
+        &[
+            "two_boards.nsm",
+            "--board",
+            "TwoBoards",
+            "--step",
+            by_board3d.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let products = |text: &str| -> Vec<String> {
+        text.lines()
+            .filter_map(|l| l.split_once("=PRODUCT(").map(|(_, p)| p.to_string()))
+            .collect()
+    };
+    assert_eq!(
+        products(&step),
+        products(&std::fs::read_to_string(&by_board3d).unwrap())
+    );
+
+    made(&["--no-glb", "--no-step"]);
+    assert!(!folder.join("TwoBoards.glb").exists());
+    assert!(!folder.join("TwoBoards.step").exists());
+}
+
+/// A header too tall for the stack reaches into the board mated on it: `system_collision`, an
+/// error that stops `fab` whatever `--allow-drc-violations` says, and no system file is written.
+#[test]
+fn a_header_taller_than_the_mated_height_stops_fab_of_the_system() {
+    let dir = netsmith_kicad::testlib::TempDir::new("system-collision");
+    let source = std::fs::read_to_string(repo().join("examples/two_boards.nsm"))
+        .unwrap()
+        .replacen(
+            "    .power_out: Header1x2\n",
+            "    .power_out: Header1x2 { .height &= 12mm }\n",
+            1,
+        );
+    std::fs::write(dir.join("c.nsm"), source).unwrap();
+    let report = board3d(&dir, &["c.nsm", "--board", "TwoBoards", "--json"]);
+    assert!(report.status.success());
+    let r: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
+    let f = &r["findings"][0];
+    assert_eq!(f["code"], "system_collision");
+    assert_eq!(f["severity"], "error");
+    assert_eq!(f["parts"], serde_json::json!(["power/power_out", "led/"]));
+    assert_eq!(
+        (f["z_bottom"].as_f64(), f["z_top"].as_f64()),
+        (Some(10.65), Some(12.0))
+    );
+
+    let run = fab(&dir, &["c.nsm", "--out", "out", "--allow-drc-violations"]);
+    assert_eq!(run.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        err.contains("error: TwoBoards: system_collision: the body of J2 (`power/power_out`) and the board `led`")
+            && err.contains("does not waive it"),
+        "{err}"
+    );
+    assert!(!dir.join("out/TwoBoards/TwoBoards.glb").exists());
+}

@@ -66,13 +66,14 @@ pub struct Args {
     /// Leave the board's 3D scene (`<board>.glb`) out of the package.
     ///
     /// `glb = false` in netsmith.toml does it for a project; a stale `<board>.glb` of an earlier
-    /// run is removed.
+    /// run is removed. A system's scene (`<System>/<System>.glb`, its boards placed against each
+    /// other by their mates, ADR 0110) is left out with it.
     #[arg(long)]
     pub no_glb: bool,
     /// Leave the board as STEP (`<board>.step`) out of the package.
     ///
     /// `step = false` in netsmith.toml does it for a project; a stale `<board>.step` of an
-    /// earlier run is removed.
+    /// earlier run is removed. A system's STEP (`<System>/<System>.step`) is left out with it.
     #[arg(long)]
     pub no_step: bool,
     /// Also write `<board>.placed.json`, the board before routing, for `netsmith route`.

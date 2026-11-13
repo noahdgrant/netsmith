@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use netsmith_3d::mesh::{self, Mesh};
 use netsmith_3d::raster3d::{self, Axis, Lens, RenderOptions, Section, Theme, View};
 use netsmith_3d::scene3d::Scene;
+use netsmith_3d::system::SystemScene;
 
 /// The picture's size unless `--size` says one.
 pub const DEFAULT_SIZE: (usize, usize) = (1600, 1000);
@@ -228,6 +229,75 @@ pub fn draw(scene: &Scene, request: &Request) -> Result<Vec<u8>, String> {
         Some((axis, at)) if request.caps => mesh::of_scene_section(scene, axis, at),
         _ => mesh::of_scene(scene),
     };
+    let options = options(request, highlight);
+    let lens = if request.perspective {
+        Lens::Perspective { fov_y_deg: FOV_DEG }
+    } else {
+        Lens::Orthographic { half_height: 1.0 }
+    };
+    let camera = raster3d::fit_view(&meshes, request.view, &options, lens);
+    Ok(raster3d::render(&meshes, &camera, &options).to_png())
+}
+
+/// The ids of the meshes `requested` names in the system scene (ADR 0110): each is
+/// `member/<id>`, the id as [`resolve_highlight`] reads it for that member's board (`led/J1`,
+/// `led/net:GND`), or a member's name alone for the whole member.
+pub fn resolve_system_highlight(
+    system: &SystemScene,
+    requested: &[String],
+) -> Result<Vec<String>, String> {
+    let mut ids: Vec<String> = Vec::new();
+    let mut errors = Vec::new();
+    for want in requested {
+        let (member, id) = want.split_once('/').unwrap_or((want.as_str(), ""));
+        let Some(m) = system.member(member) else {
+            errors.push(format!(
+                "error: --highlight names `{want}`, and the system `{}` has no member `{member}`; its members are: {} (name a part as `member/<designator>`)",
+                system.name,
+                system
+                    .members
+                    .iter()
+                    .map(|m| m.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            continue;
+        };
+        let found = if id.is_empty() {
+            // The whole member: every id of its meshes.
+            mesh::of_scene(&m.scene)
+                .into_iter()
+                .map(|mesh| mesh.id)
+                .collect()
+        } else {
+            match resolve_highlight(&m.scene, &[id.to_string()]) {
+                Ok(found) => found,
+                Err(e) => {
+                    errors.push(format!("{e}\n(of the member `{member}`)"));
+                    continue;
+                }
+            }
+        };
+        for id in found {
+            let id = format!("{member}/{id}");
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(ids)
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
+/// The system scene drawn as `request` says, as the bytes of a PNG: every member's meshes moved
+/// into the system's frame ([`netsmith_3d::system::meshes`]), framed as a whole. A section cuts in
+/// the system's frame; its cut faces are filled, each board as one block (not its stackup).
+pub fn draw_system(system: &SystemScene, request: &Request) -> Result<Vec<u8>, String> {
+    let highlight = resolve_system_highlight(system, &request.highlight)?;
+    let meshes = netsmith_3d::system::meshes(system);
     let options = options(request, highlight);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }

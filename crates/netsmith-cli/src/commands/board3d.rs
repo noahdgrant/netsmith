@@ -19,7 +19,8 @@ pub struct Args {
     ///
     /// A system's name gives its _System scene_ (ADR 0110): each member placed against the others
     /// by its mates, in the frame of the first member; the report has each member's motion and
-    /// report, the mates with their mated heights, and the findings across boards.
+    /// report, the mates with their mated heights, and the findings across boards. `--glb` and
+    /// `--step` write it.
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Print the report an agent reads: bodies, heights and where they came from, limits, overlaps.
@@ -32,14 +33,17 @@ pub struct Args {
     pub json: bool,
     /// Write the scene as glTF 2.0 binary, in place of the summary.
     ///
-    /// It is the file the editor's 3D view shows (docs/BOARD3D.md).
+    /// It is the file the editor's 3D view shows (docs/BOARD3D.md). For a system, the root is
+    /// `system` with one node per member carrying its motion, and the ids gain the member
+    /// (`led/J1`).
     #[arg(long, value_name = "FILE.GLB")]
     pub glb: Option<PathBuf>,
     /// Write the board and its parts as a STEP file (AP214), in place of the summary.
     ///
     /// For mechanical CAD: the board through its thickness with its cutouts and holes, each part a
     /// product named by its designator, as exact solids; a part of unknown height is its outline
-    /// only, never a guessed solid (ADR 0107; docs/BOARD3D.md).
+    /// only, never a guessed solid (ADR 0107; docs/BOARD3D.md). For a system, a product per
+    /// member, each placed by its motion.
     #[arg(long, value_name = "FILE.STEP")]
     pub step: Option<PathBuf>,
 }
@@ -74,17 +78,20 @@ fn run_board3d(
     let (report, scene) = match made {
         netsmith::board3d::Made::Board(made) => *made,
         netsmith::board3d::Made::System(made) => {
-            let (report, _) = *made;
-            if glb.is_some() || step.is_some() {
-                eprintln!(
-                    "error: {}: a system scene is reported as numbers only; write a member's file with `--board {}/<member>`",
-                    report.system, report.system
-                );
-                return ExitCode::from(2);
+            let (report, scene) = *made;
+            let files = [
+                glb.map(|out| (out, netsmith_3d::gltf::system_glb(&scene))),
+                step.map(|out| (out, netsmith_3d::step::system_step(&scene).into_bytes())),
+            ];
+            for (out, bytes) in files.into_iter().flatten() {
+                if let Err(e) = fs::write(out, bytes) {
+                    eprintln!("error: {}: {e}", out.display());
+                    return ExitCode::from(2);
+                }
             }
             if json {
                 print!("{}", report.json());
-            } else {
+            } else if glb.is_none() && step.is_none() {
                 print!("{}", report.summary());
             }
             return ExitCode::SUCCESS;
