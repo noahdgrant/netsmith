@@ -72,8 +72,9 @@ For a recipe the host carries a handle: `document.querySelector('[data-testid=pc
 
 1. The case's solids (`case:<model>:<solid>` nodes, material `case`) are drawn see-through in `--pcb3d-case` with their edges; a click or a hover goes through them to the board. The tool `Case` (`[data-testid=tool-case]`, `aria-pressed`, shown only when the scene has a case) hides and shows them, and the legend has `Case` (`case-legend`) while they show.
 2. The problems dock lists the fit (`Placement` stage): the collision is the one error, the clearance, the reach, the unknown height under the lid and the hole with no boss are warnings. A click on the collision flies to the header, selects it and lights the lid in the danger colour (the selection's ink is the part's), and shows the case if it was hidden; a click on the boss flies to the hole (its point, `point3d`), with no solid lit.
+3. `POST /api/view` `{"highlight":["case:lid"]}` (with the case hidden) lights every solid of the lid in the selection's colour, not the danger colour, shows the case and presses `Case`; the state's `highlight` and `command` name `case:lid`. `{"highlight":["case:box"]}` is `400` and lists `the case models: case:base, case:lid`, changing nothing; `[]` lights nothing.
 
-The handle has `cases()` (the solids, `{case, solid, closed}`), `caseShown()` and `focusedSolids()` (`case:<model>:<solid>`).
+The handle has `cases()` (the solids, `{case, solid, closed}`), `caseShown()`, `focusedSolids()` (`case:<model>:<solid>`, lit by a finding) and `litCases()` (the models lit by name, or a lit solid's model).
 
 ## Driven by an agent (recipe `pcb-3d-control`, fixture `height_limits`)
 

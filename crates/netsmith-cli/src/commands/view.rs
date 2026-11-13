@@ -27,16 +27,18 @@ pub struct Args {
     /// Cut the scene as `render --section` does, or `none` for no cut.
     #[arg(long, value_name = "AXIS=MM|none", value_parser = parse_view_section)]
     pub section: Option<String>,
-    /// Light a part, `net:<name>` or `limit:<name>` (comma-separated or repeated); `none` for nothing.
+    /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` (a case model), comma-separated
+    /// or repeated; `none` for nothing.
     ///
-    /// In the System view a part and a net are a member's: `led/J1`, `net:led/GND`. An id the
-    /// board (or the system) does not have exits 2 with the list of the ones it has.
+    /// In the System view a part and a net are a member's: `led/J1`, `net:led/GND`; a case model
+    /// is one board's, and the System view refuses `case:`. An id the board (or the system) does
+    /// not have exits 2 with the list of the ones it has.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_ids, conflicts_with = "select")]
     pub highlight: Vec<Ids>,
     /// Select parts or one `net:<name>`, as a click does (comma-separated or repeated); `none` clears it.
     ///
-    /// The editor's selection holds parts or one net, so `--select` takes no limit; in the System
-    /// view, of one member (`led/J1`), which becomes the page's board.
+    /// The editor's selection holds parts or one net, so `--select` takes no limit and no case
+    /// model; in the System view, of one member (`led/J1`), which becomes the page's board.
     #[arg(long, value_name = "ID[,ID...]|none", value_parser = parse_select)]
     pub select: Vec<Ids>,
     /// Draw everything see-through.
@@ -150,11 +152,14 @@ fn run_view(request: &crate::view_client::Request) -> ExitCode {
 
 fn parse_select(given: &str) -> Result<Ids, String> {
     let ids = parse_ids(given)?;
-    if ids.0.iter().any(|id| id.starts_with("limit:")) {
-        return Err(
-            "takes parts or one net, as a click does; a `limit:` is lit with --highlight"
-                .to_string(),
-        );
+    if let Some(kind) = ids
+        .0
+        .iter()
+        .find_map(|id| ["limit:", "case:"].into_iter().find(|k| id.starts_with(k)))
+    {
+        return Err(format!(
+            "takes parts or one net, as a click does; a `{kind}` is lit with --highlight"
+        ));
     }
     Ok(ids)
 }
@@ -263,7 +268,7 @@ mod tests {
             "--highlight",
             "J1,net:GND",
             "--highlight",
-            "limit:lid",
+            "limit:lid,case:lid",
             "--xray",
             "--perspective",
             "--colour-by",
@@ -282,7 +287,12 @@ mod tests {
         assert_eq!(change.section.as_deref(), Some("x=12.5"));
         assert_eq!(
             change.highlight,
-            Some(vec!["J1".into(), "net:GND".into(), "limit:lid".into()])
+            Some(vec![
+                "J1".into(),
+                "net:GND".into(),
+                "limit:lid".into(),
+                "case:lid".into()
+            ])
         );
         assert_eq!(change.xray, Some(true));
         assert_eq!(change.ortho, Some(false));
@@ -367,6 +377,10 @@ mod tests {
                 "cannot be used with",
             ),
             (&["--select", "limit:lid"], "--highlight"),
+            (
+                &["--select", "J1,case:lid"],
+                "a `case:` is lit with --highlight",
+            ),
             (&["--colour-by", "shade"], "provenance"),
             (&["--height-preview", "0"], "0.1 to 50"),
             (&["--height-preview", "51"], "0.1 to 50"),

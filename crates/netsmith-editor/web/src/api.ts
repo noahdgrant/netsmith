@@ -1580,16 +1580,17 @@ camera?: CameraPlace,
 section?: string, 
 /**
  * What is lit, as `render --highlight` names it (a designator, a path, `net:<name>`,
- * `limit:<name>`; an item may be comma-separated): the parts and the net through the page's
- * selection, the limits in the view. It replaces what was lit; `[]` lights nothing. In the
- * System view a part and a net are a member's, `led/J1` and `net:led/GND` (`led/net:GND`
- * too); one of another member makes it the page's board.
+ * `limit:<name>`, `case:<name>`; an item may be comma-separated): the parts and the net
+ * through the page's selection, the limits and the case models in the view. It replaces what
+ * was lit; `[]` lights nothing. In the System view a part and a net are a member's, `led/J1`
+ * and `net:led/GND` (`led/net:GND` too); one of another member makes it the page's board; a
+ * case model is one board's, so `case:` there is refused.
  */
 highlight?: Array<string>, 
 /**
  * The page's selection, as a click makes it: parts by designator or path, or one
  * `net:<name>` (in the System view, `led/J1` and `net:led/GND`, of one member). The limits
- * lit stay as they are; `[]` clears it.
+ * and the case models lit stay as they are; `[]` clears it.
  */
 select?: Array<string>, xray?: boolean, 
 /**
@@ -1627,8 +1628,8 @@ view?: RenderView, camera?: CameraPlace, ortho?: boolean,
 section?: string, exploded?: boolean, 
 /**
  * What is lit, as `render --highlight` would name it: the parts picked by designator, the
- * net picked as `net:<name>`, the limits lit as `limit:<name>` (in the System view, the
- * member first: `led/J1`, `net:led/GND`).
+ * net picked as `net:<name>`, the limits lit as `limit:<name>`, the case models lit as
+ * `case:<name>` (in the System view, the member first: `led/J1`, `net:led/GND`).
  */
 highlight: Array<string>, 
 /**

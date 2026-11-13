@@ -197,6 +197,7 @@ export function View3d({ board }: { board: string }) {
       cases: () => v.caseList(),
       caseShown: () => v.caseShownState(),
       focusedSolids: () => v.focusedSolidList(),
+      litCases: () => v.litCaseList(),
       litReport: () => v.litReport(),
       caps: () => v.capList(),
       hidden: () => v.hiddenList(),
@@ -243,6 +244,7 @@ export function View3d({ board }: { board: string }) {
             exploded: v.isExploded(),
             command: commandText(),
             limits: litLimits(v),
+            cases: v.litCaseList(),
           };
         },
         picture: () => v.picture(),
@@ -433,7 +435,7 @@ export function View3d({ board }: { board: string }) {
     if (!v) return '';
     const name = boardRef.current;
     const file = analysis.peek()?.boards.find((b) => b.name === name)?.file ?? '<file.nsm>';
-    // What is lit, named as `/api/view` and `render --highlight` name it: the parts picked, the net picked, the limits lit.
+    // What is lit, named as `/api/view` and `render --highlight` name it: the parts picked, the net picked, the limits and the case models lit.
     const sel = sharedSelection.peek();
     const t = pageTheme.peek();
     if (shownRef.current.showSys) {
@@ -453,7 +455,7 @@ export function View3d({ board }: { board: string }) {
         perspective: !v.isOrtho(),
       });
     }
-    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList());
+    const lit = litIds(pcbSelection.peek(), sel?.kind === 'net' ? sel.key : null, litLimits(v), v.partList(), v.litCaseList());
     return renderCommand({
       file,
       board: name,
@@ -474,8 +476,8 @@ export function View3d({ board }: { board: string }) {
     // A system's scene: a part is `led/power_in` or `led/J1` (the designators repeat across its boards), a net `led/GND`.
     const system = shownRef.current.showSys;
     const have: Ids = system
-      ? { parts: v.partList().map((p) => ({ path: p.path, refdes: p.member ? `${p.member}/${p.refdes}` : p.refdes })), nets: v.netList(), limits: v.limitList().map((l) => l.name), system }
-      : { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name) };
+      ? { parts: v.partList().map((p) => ({ path: p.path, refdes: p.member ? `${p.member}/${p.refdes}` : p.refdes })), nets: v.netList(), limits: v.limitList().map((l) => l.name), cases: [], system }
+      : { parts: v.partList(), nets: v.netList(), limits: v.limitList().map((l) => l.name), cases: [...new Set(v.caseList().map((c) => c.case))] };
     const plan = planChange(change, have, v.canExplode());
     // The page's selection is one board's: a member's ids pick on its board, which becomes the page's.
     const picked = plan.selection && system ? memberSelection(plan.selection, change.select !== undefined ? 'select' : 'highlight') : null;
@@ -506,6 +508,10 @@ export function View3d({ board }: { board: string }) {
         }
       }
       if (plan.limits) v.lightLimits(plan.limits);
+      if (plan.cases) {
+        v.lightCases(plan.cases);
+        setCaseOn(v.caseShownState());
+      }
       if (plan.xray !== undefined) xray.value = plan.xray;
       if (plan.colourBy !== undefined) colourBy.value = plan.colourBy;
       if (plan.preview) heightPreview.value = { on: plan.preview.on, mm: plan.preview.mm ?? heightPreview.peek().mm };
