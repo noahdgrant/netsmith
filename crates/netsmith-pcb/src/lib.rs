@@ -39,6 +39,7 @@ pub mod footprint;
 pub mod generate;
 pub mod geometry;
 pub mod layout;
+pub mod meander;
 pub mod origin;
 pub mod overhang;
 pub mod placement;
