@@ -521,7 +521,10 @@ fn the_pcb_is_placed_at_once_and_routed_on_demand() {
             && heard.contains("routed in"),
         "the stages are told: {heard}"
     );
-    assert!(!routed.stopped && routed.elapsed_ms < 600_000);
+    assert!(
+        !routed.stopped,
+        "the route hit its hang guard (the router's time limit): it hung"
+    );
     assert!(
         routed.routed && routed.unrouted.is_empty() && routed.placement_problems.is_empty(),
         "{routed:?}"

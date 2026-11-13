@@ -1,6 +1,7 @@
 //! netsmith's own design rules check on the boards the placer and the router make (ADR 0037):
 //! boards routed from many seeds must have no error, the check must see the same missing
-//! connections as the ratsnest, a 70-part board must be checked in a couple of seconds, and
+//! connections as the ratsnest, a 70-part board must pass it (how long the check takes is
+//! printed by `measured`, not asserted: no test passes or fails by the speed of the machine), and
 //! where KiCad is installed its check must agree with ours on a sample of them.
 
 use netsmith_testkit::TempDir;
@@ -154,27 +155,39 @@ fn boards_from_the_synthetic_generator_route_clean_and_agree_with_kicad() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-#[test]
-fn a_board_of_seventy_parts_is_checked_in_a_couple_of_seconds() {
+/// The routed board of seventy parts (`synthetic_board(7, ...)`), and the files `fab` writes for it.
+fn seventy_parts() -> (Board, String, String) {
     let mut board = synthetic_board(7, 52, 17, 20, 72, 36);
     assert_eq!(board.parts.len(), 70);
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty());
-    let text = kicad_pcb(&board);
-    let pro = kicad_pro(&board);
+    let (text, pro) = (kicad_pcb(&board), kicad_pro(&board));
+    (board, text, pro)
+}
+
+#[test]
+fn a_board_of_seventy_parts_passes_the_check() {
+    let (_, text, pro) = seventy_parts();
+    let report = drc::check(&text, Some(&pro), &Extras::default()).unwrap();
+    assert!(report.is_clean(), "{report}");
+}
+
+/// Prints how long the check of the board of seventy parts takes (a release build takes a
+/// fraction of a second): `cargo test --release -p netsmith-router --test main drc::measured --
+/// --ignored --nocapture`.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn measured() {
+    let (board, text, pro) = seventy_parts();
     let started = Instant::now();
     let report = drc::check(&text, Some(&pro), &Extras::default()).unwrap();
-    let took = started.elapsed();
     eprintln!(
-        "70 parts, {} tracks, {} vias: checked in {took:?}, {} finding(s)",
+        "70 parts, {} tracks, {} vias: checked in {:?}, {} finding(s)",
         board.tracks.len(),
         board.vias.len(),
+        started.elapsed(),
         report.findings.len()
     );
-    assert!(report.is_clean(), "{report}");
-    // Generous for an unoptimised build; a release build takes a fraction of a second.
-    let limit = if cfg!(debug_assertions) { 20.0 } else { 2.0 };
-    assert!(took.as_secs_f64() < limit, "took {took:?}");
 }
 
 #[test]

@@ -2,6 +2,7 @@
 //! both faces in a small area, round a module of 80 pads of 0.6 mm on a 1.1 mm pitch.
 
 use crate::common;
+use crate::guard;
 
 use std::time::{Duration, Instant};
 
@@ -57,40 +58,40 @@ fn the_tight_board_has_a_module_of_eighty_fine_pitch_pads_and_parts_on_both_face
 fn a_tight_board_that_the_router_finishes_passes_the_design_rules_check() {
     // Seed 10 routes completely; most seeds of this size leave lines (see `measured`).
     let mut board = tight_board(10, AREA_TIGHT);
-    let started = Instant::now();
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(120)),
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
-    assert!(!routing.stopped);
+    guard::not_hung(&routing);
     assert!(
         routing.left.is_empty(),
         "unrouted: {:#?}",
         routing.left.lines
     );
     assert_eq!(drc_errors(&board), Vec::<String>::new());
-    assert!(
-        started.elapsed() < Duration::from_secs(60),
-        "{:?}",
-        started.elapsed()
-    );
 }
 
 #[test]
 fn a_tight_board_the_router_cannot_finish_leaves_named_lines_and_only_copper_that_keeps_the_rules()
 {
-    // Seed 2 leaves lines on the module. Stopped early, what was routed must still pass.
+    // Seed 2 leaves lines on the module when the router tries no other order and does no rip-up or negotiation
+    // (a fixed amount of work, so that what is left is the same on every machine: a time limit
+    // would leave what a machine got done in it). What was routed must still pass the rules.
     let mut board = tight_board(2, AREA_TIGHT);
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(8)),
+            retry_orders: false,
+            rip_up: false,
+            negotiate: false,
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
+    guard::not_hung(&routing);
     assert!(!routing.left.is_empty());
     // Every order is one more time through the board: never more than four.
     assert!(routing.tries <= 4, "{} tries", routing.tries);
@@ -113,11 +114,11 @@ fn the_lines_that_end_deep_in_the_fine_pitch_module_are_routed_first_so_an_easy_
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(120)),
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
-    assert!(!routing.stopped);
+    guard::not_hung(&routing);
     assert!(
         routing.left.is_empty(),
         "unrouted: {:#?}",
@@ -155,7 +156,7 @@ fn measured() {
         let routing = route_with(
             &mut board,
             RouteOptions {
-                time_limit: Some(Duration::from_secs(300)),
+                time_limit: Some(guard::GUARD),
                 ..RouteOptions::default()
             },
         );

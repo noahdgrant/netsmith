@@ -1244,7 +1244,6 @@ fn while_the_first_analysis_runs_the_page_and_the_files_are_served_and_a_request
 fn a_request_that_does_not_ask_waits_for_the_first_analysis_and_is_then_answered() {
     let s = start_pending();
     let port = s.port;
-    let asked = Instant::now();
     let waiting = thread::spawn(move || {
         let s = Server {
             port,
@@ -1268,7 +1267,6 @@ fn a_request_that_does_not_ask_waits_for_the_first_analysis_and_is_then_answered
     let r = waiting.join().unwrap();
     assert_eq!(r.status, 200, "{}", r.body);
     assert!(r.body.contains("\"version\":1"), "{}", r.body);
-    assert!(asked.elapsed() >= Duration::from_millis(400));
 }
 
 /// What the page that was there from the start hears, and what a page that connects in the
@@ -2290,8 +2288,24 @@ fn the_page_focused_last_is_the_one_driven() {
     // The first page gets the focus: it is driven now.
     say(&mut first, &ClientMessage::Focus);
     // The focus message and the next request race; a read answered by the second page would
-    // fail the test, so wait for the server to have read the focus.
-    thread::sleep(Duration::from_millis(500));
+    // fail the test. The server handles the messages of one socket in order, so when the answer
+    // to a check sent after the focus comes back, the focus has been handled.
+    say(
+        &mut first,
+        &ClientMessage::Check {
+            id: 1,
+            path: "a.nsm".into(),
+            text: "abc".into(),
+        },
+    );
+    loop {
+        if matches!(
+            next_message(&mut first, "the answer to a check sent after the focus"),
+            ServerMessage::Checked { id: 1, .. }
+        ) {
+            break;
+        }
+    }
     ask(&s, &mut first);
     // A page that closes is passed over.
     drop(first);

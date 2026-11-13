@@ -621,9 +621,10 @@ fn the_golden_pictures_have_not_changed() {
 }
 
 #[test]
-fn a_thousand_parts_draw_quickly() {
-    // Not a benchmark (the example `raster3d_bench` is, in release): a guard against a
-    // slow path, generous enough for a loaded machine.
+fn a_thousand_parts_are_drawn() {
+    // Not a benchmark and not a time: the speed of the machine is not the drawing's (the example
+    // `raster3d_bench` measures, in release). This is the picture of a board of a thousand parts
+    // at the size a page asks for: it ends, and it is the size asked.
     let mut meshes = board();
     for i in 0..1000 {
         let (x, y) = (f64::from(i % 40), f64::from(i / 40));
@@ -639,8 +640,10 @@ fn a_thousand_parts_draw_quickly() {
         height: 250,
         ..RenderOptions::default()
     };
-    let t = std::time::Instant::now();
     let img = render_view(&meshes, View::Iso, &o);
-    assert!(t.elapsed().as_secs_f64() < 20.0);
     assert_eq!(img.rgba.len(), 400 * 250 * 4);
+    assert!(
+        img.rgba.chunks(4).any(|px| px != &img.rgba[..4]),
+        "the picture is one colour: nothing was drawn"
+    );
 }

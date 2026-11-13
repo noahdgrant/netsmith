@@ -47,6 +47,5 @@ netsmith-fabricate = { path = ".", features = ["test-support"] }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-# The CPU time of a thread, which a busy machine does not change as it does the time of the clock
-# (`precheck.rs`).
+# The CPU time of a thread, for the `measured` test of the placer's pre-check (`precheck.rs`).
 rustix = { version = "1.1.6", default-features = false, features = ["time"] }

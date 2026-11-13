@@ -1,7 +1,11 @@
 //! The placer and router on boards the size of a real one, made from seeds so that no
-//! design's data is needed: how long they take, and that what they cannot do is said.
+//! design's data is needed: that they finish, and that what they cannot do is said. No test
+//! here compares a time with a limit (a machine's speed is not the code's); the router's time
+//! limits below are hang guards of two minutes, and `the_placement_of_the_big_boards_is_measured`
+//! prints the times.
 
 use crate::common;
+use crate::guard;
 
 use netsmith_testkit::TempDir;
 use std::time::{Duration, Instant};
@@ -13,7 +17,7 @@ use netsmith_router::{RouteOptions, route_with};
 use common::{land_grid_board, land_grid_board_with, synthetic_board, synthetic_board_structured};
 
 #[test]
-fn a_board_of_seventy_parts_and_a_package_of_eighty_pads_is_placed_and_routed_in_bounded_time() {
+fn a_board_of_seventy_parts_and_a_package_of_eighty_pads_is_placed_and_routed_completely() {
     let started = Instant::now();
     let mut board = synthetic_board(7, 52, 17, 20, 72, 36);
     let placed = started.elapsed();
@@ -30,7 +34,7 @@ fn a_board_of_seventy_parts_and_a_package_of_eighty_pads_is_placed_and_routed_in
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(120)),
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );
@@ -41,18 +45,16 @@ fn a_board_of_seventy_parts_and_a_package_of_eighty_pads_is_placed_and_routed_in
         routing.left.len(),
         routing.tries
     );
-    assert!(!routing.stopped, "the router ran out of time");
+    guard::not_hung(&routing);
     assert!(
         routing.left.is_empty(),
         "unrouted: {:#?}",
         routing.left.lines
     );
-    assert!(total < Duration::from_secs(60), "took {total:?}");
 }
 
 #[test]
 fn a_small_board_is_placed_and_routed_completely() {
-    let started = Instant::now();
     let mut board = synthetic_board(3, 10, 3, 8, 10, 4);
     assert_eq!(board.check_placement(), vec![]);
     let routing = route_with(&mut board, RouteOptions::default());
@@ -63,25 +65,24 @@ fn a_small_board_is_placed_and_routed_completely() {
     );
     assert!(!routing.stopped);
     assert!(Ratsnest::of(&board).is_empty());
-    assert!(started.elapsed() < Duration::from_secs(20));
 }
 
 #[test]
 fn a_time_limit_stops_the_router_and_leaves_the_lines_it_did_not_reach() {
     let mut board = synthetic_board(7, 52, 17, 20, 72, 36);
-    let started = Instant::now();
+    // A limit that has passed before the router begins: it stops at its first look at the
+    // time, whatever the speed of the machine.
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_millis(1)),
+            time_limit: Some(Duration::ZERO),
             ..RouteOptions::default()
         },
     );
     assert!(routing.stopped);
     assert!(!routing.left.is_empty());
-    // Every line left is named, and the router stopped soon after the limit.
+    // Every line left is named.
     assert!(routing.left.lines.iter().all(|l| !l.net.is_empty()));
-    assert!(started.elapsed() < Duration::from_secs(10));
     // What was routed before the stop is kept, and joins what the ratsnest says it does.
     assert_eq!(Ratsnest::of(&board).len(), routing.left.len());
 }
@@ -100,15 +101,13 @@ fn the_same_seed_makes_the_same_board_and_the_same_routing() {
 }
 
 #[test]
-fn pads_walled_in_by_their_neighbours_are_left_unrouted_at_once_and_named() {
-    let started = Instant::now();
+fn pads_walled_in_by_their_neighbours_are_left_unrouted_and_named() {
     // The board refuses vias in pads, which would reach them.
     let (mut board, walled) = land_grid_board_with(7, 12, &[".via_in_pad &= 0mm"]);
     assert_eq!(board.check_placement(), vec![]);
     assert!(!walled.is_empty());
     let routing = route_with(&mut board, RouteOptions::default());
-    let took = started.elapsed();
-    eprintln!("land grid: {:?}, left {:#?}", took, routing.left.lines);
+    eprintln!("land grid: left {:#?}", routing.left.lines);
     assert!(!routing.stopped);
     assert!(
         !routing.left.is_empty(),
@@ -126,16 +125,13 @@ fn pads_walled_in_by_their_neighbours_are_left_unrouted_at_once_and_named() {
     }
     // The pads on the ring are all joined, and only the walled in ones are left.
     assert_eq!(routing.left.len(), walled.len());
-    assert!(took < Duration::from_secs(30), "took {took:?}");
 }
 
 #[test]
 fn pads_walled_in_by_their_neighbours_are_reached_by_a_via_in_the_pad_when_the_process_has_them() {
-    let started = Instant::now();
     let (mut board, walled) = land_grid_board(7, 12);
     assert!(board.rules.via_in_pad);
     let routing = route_with(&mut board, RouteOptions::default());
-    eprintln!("land grid with vias in pads: {:?}", started.elapsed());
     assert!(
         routing.left.is_empty(),
         "unrouted: {:#?}",
@@ -164,7 +160,6 @@ fn pads_walled_in_by_their_neighbours_are_reached_by_a_via_in_the_pad_when_the_p
         );
     }
     assert!(Ratsnest::of(&board).is_empty());
-    assert!(started.elapsed() < Duration::from_secs(30));
 
     // The fabrication notes say so, with the count and the pads.
     let in_pads = board.vias_in_pads();
@@ -237,8 +232,10 @@ fn a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad() {
 /// Prints the numbers the header of `anneal.rs` quotes (ADR 0033): `cargo test --release -p netsmith-router --test main
 /// synthetic::the_placement_of_the_big_boards_is_measured -- --nocapture`. With
 /// `NETSMITH_WRITE_BOARDS` set to a folder it writes the routed boards there, for
-/// `crates/netsmith-pcb/scripts/check-kicad.sh`.
+/// `crates/netsmith-pcb/scripts/check-kicad.sh`. (`-- --ignored` too: it is a measurement, and
+/// what it checks the other tests of this file check.)
 #[test]
+#[ignore = "a measurement, not a check"]
 fn the_placement_of_the_big_boards_is_measured() {
     for (name, structured) in [("plain", false), ("structured", true)] {
         let started = Instant::now();
@@ -325,7 +322,7 @@ fn the_board_of_seventy_parts_agrees_with_kicads_plot() {
     let routing = route_with(
         &mut board,
         RouteOptions {
-            time_limit: Some(Duration::from_secs(120)),
+            time_limit: Some(guard::GUARD),
             ..RouteOptions::default()
         },
     );

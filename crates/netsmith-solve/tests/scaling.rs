@@ -1,11 +1,13 @@
-//! The solver's time grows with the board: `n` copies of a regulator stage and a lamp, each
+//! The solver's work grows with the board: `n` copies of a regulator stage and a lamp, each
 //! with a few generic picks, on one input rail.
 //!
 //! The first test checks what the search chooses for a small board, twice, as an invariant
-//! of the picks (they are the same each time and each stage got its parts). The second is a
-//! timing aid, not a check (a time is not asserted, a machine's is not the next one's): run
-//! it with `cargo test --release -p netsmith-solve --test main scaling:: -- --ignored --nocapture`
-//! and see the time for 10, 20 and 40 stages. Every name and number here is invented.
+//! of the picks (they are the same each time and each stage got its parts). The second compares
+//! the trials the search reports (`Solution::trials`, a count that is the same on every
+//! machine) between two sizes. The third, `measured`, prints the time, which is no check
+//! (a time is not asserted, a machine's is not the next one's): run it with `cargo test --release
+//! -p netsmith-solve --test main scaling::measured -- --ignored --nocapture` and see the time for
+//! 10, 20 and 40 stages. Every name and number here is invented.
 
 use std::time::Instant;
 
@@ -115,9 +117,31 @@ fn every_stage_gets_its_parts_and_the_picks_are_the_same_each_time() {
     assert_eq!(picked(&first), picked(&second));
 }
 
+/// Twice the stages, about twice the trials: the stages share nothing but the input rail, so the
+/// search over them is a search for each and not one search over all of them (which tries
+/// combinations, and grows with their product). A count, so a busy runner cannot fail it. The work
+/// is printed and not bounded: a trial copies the model and propagates, so what a trial costs
+/// grows with the board and the work with the square of it by design (`netsmith_core::job`).
 #[test]
-#[ignore = "a timing aid: prints the time of the solver for 10, 20 and 40 stages"]
-fn time_by_the_number_of_stages() {
+fn the_trials_of_the_search_grow_with_the_stages_and_not_with_their_combinations() {
+    let catalogs = Catalogs::jlcpcb();
+    let (small, big) = (run(10, &catalogs), run(20, &catalogs));
+    let trials = big.trials as f64 / small.trials.max(1) as f64;
+    eprintln!(
+        "10 stages: {} trials, {} work; 20 stages: {} trials, {} work; ratio of the trials {trials:.2}",
+        small.trials, small.work, big.trials, big.work
+    );
+    assert!(
+        trials < 2.5,
+        "twice the stages took {trials:.2} times the trials ({} and {})",
+        small.trials,
+        big.trials
+    );
+}
+
+#[test]
+#[ignore = "a measurement, not a check: prints the time of the solver for 10, 20 and 40 stages"]
+fn measured() {
     let catalogs = Catalogs::jlcpcb();
     for n in [10, 20, 40] {
         let c = check("synthetic.nsm", &board(n), &Loader::std());
