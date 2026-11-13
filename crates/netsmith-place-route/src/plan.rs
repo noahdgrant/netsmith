@@ -16,8 +16,21 @@
 //! line would take it past its capacity. After each round every edge still over its capacity
 //! adds its overuse to its history and `present` doubles, and every line is routed again, in
 //! the same order. Nothing is random: the order is fixed, the costs are integers, and the
-//! search queue breaks ties by when a state was queued. The round with the least overuse is
-//! kept (the first of equals).
+//! search queue breaks ties by when a state was queued. The round with the least overuse and
+//! crossings is kept (the first of equals).
+//!
+//! **Crossings** ([`Rim`], [`Chord`]). A line takes a numbered place on every tile edge it
+//! crosses (as many places as the edge holds tracks, at most [`MOST_SLOTS`]), and the places on
+//! an edge are in one order seen from the tiles on both sides. So a line's way through a tile
+//! on a layer is a chord between two places round its rim, and two lines of different nets
+//! cross in the tile when their places alternate round it (a way that ends in the tile, at a
+//! pad or a via, can always go round the other). The search's state is a tile, a layer and the
+//! place the line entered by; leaving by a place costs [`CROSS_COST`] (400, more than the two
+//! vias that take a line under another and back) for each line it crosses there and for each
+//! line of another net already on that place, negotiated like an edge (a history per tile and
+//! layer, times `1 + present`). Lines of one net may cross and share places. A plan with no
+//! crossings has planned the vias its layer changes need, and paid for them against the tiles'
+//! via capacities.
 //!
 //! **The corridor** ([`corridor`]) of a line is the tiles of its plan, on both layers. The
 //! detailed search pays for a step outside it by how crowded the plan leaves that tile on that
@@ -34,80 +47,83 @@
 //! second try, as the escape lanes do, so a board that routes on its first try is unchanged.
 //! `netsmith route --plan every|later` turns it on for experiments.
 //!
-//! # Measured (issue #431, S10, 2026-11-12)
+//! # Measured (issue #431, S10, 2026-11-13)
 //!
-//! Main at d07d6e8 (#557), placements saved by main's `fab`. The robustness runs are one try
-//! with no time limit: `netsmith route <placed> --tries 1 --route-timeout 0 --turn T`, at the
-//! least track (`--margin 1`) and at the board's own margin. Lines left and vias at
-//! T = 24 / 25 / 26 / 27:
-//!
-//! | | RP2350 | Orbit | EasyDuino |
-//! |---|---|---|---|
-//! | main, least track | 0/0/0/1, 137/137/151/162 | 0/0/0/0, 93/91/93/93 | 0/0/0/0, 106/105/105/105 |
-//! | plan, least track | **0/0/0/0**, 159/159/159/166 | 0/0/0/0, 100/100/106/106 | 0/0/0/0, 103/103/103/103 |
-//! | main, own margin | 0/0/0/1, 137/137/151/162 | 0/0/0/0, 87/87/90/96 | 0/0/0/0, 106/105/105/105 |
-//! | plan, own margin | **0/0/0/0**, 147/**130**/159/166 | 0/0/0/0, 100/100/106/106 | 0/0/0/0, 113/109/109/109 |
-//!
-//! At T = 25, routed length over the spanning tree, least track: RP2350 1.34x against 1.40x,
-//! Orbit 1.24x against 1.27x, EasyDuino 1.22x against 1.21x; own margin: 1.42x against 1.40x,
-//! 1.27x against 1.28x, 1.18x against 1.22x. At its own margin RP2350 routes completely in the
-//! margin pass at 24 and 25 (signals at 0.15 mm), which main never does. Other nets' track on
-//! the GND pour at the own margin: RP2350 731 mm against 646, Orbit 418 against 466,
-//! EasyDuino F 429 against 504, B 399 against 352. Pair coupling: RP2350's mcu.usb 75 %
-//! against 69 %, Orbit's usb 91 % against 0 %, EasyDuino's bridge 20 % against 54 %.
-//!
-//! As `fab` routes (`netsmith route <placed>`, fab's tries and time, one at a time on one
-//! machine, main and the plan in turn, twice):
+//! Main at 713126c (#566, with the pour pass of #565): this branch with the plan off, whose
+//! search is main's; placements saved by its `fab`. One try with no time limit: `netsmith
+//! route <placed> --tries 1 --route-timeout 0 --turn T`, at the least track (`--margin 1`)
+//! and the board's own margin. The plan counts crossings, its corridor is on both layers.
+//! Lines left and vias at T = 24 / 25 / 26 / 27 (RP2350 falls back to the least track at its
+//! own margin on main and with the plan, so its two rows are alike):
 //!
 //! | | RP2350 | Orbit | EasyDuino |
 //! |---|---|---|---|
-//! | main | 121 and 123 s, 137 vias, 1.40x, 0.1 mm | 11 and 13 s, 87, 1.28x | 2.4 and 2.3 s, 105, 1.22x |
-//! | plan | **73 s, 130 vias, 1.42x, 0.15 mm; then 152 s, 159, 1.34x, 0.1 mm** | 13 and 13 s, 100, 1.27x | 1.8 and 1.6 s, 109, 1.18x |
+//! | main, least track | 0/0/0/1, 129/129/141/162 | 0/0/0/0, 94/94/94/94 | 0/0/0/0, 106/105/105/105 |
+//! | plan, least track | **0/0/0/0**, 152/156/156/156 | **1/1**/0/0, 96/96/109/109 | 0/0/0/0, 103/103/103/103 |
+//! | main, own margin | 0/0/0/1, 129/129/141/162 | 0/0/0/0, 87/87/90/99 | 0/0/0/0, 106/105/105/105 |
+//! | plan, own margin | **0/0/0/0**, 152/156/153/153 | 0/0/0/0, 92/92/94/94 | 0/0/0/0, 105/105/105/105 |
 //!
-//! With the plan, one try of RP2350 at its margin takes 73 s of the margin pass's 75: the first
-//! run finished it, the second ran out and routed again at the least track. So `fab`'s result
-//! with the plan would hang on the machine's speed, which main's does not.
+//! At T = 25: routed length over the spanning tree, RP2350 1.34x against 1.29x, Orbit 1.21x and
+//! 1.22x against 1.23x and 1.22x, EasyDuino 1.21x and 1.23x against 1.21x and 1.22x. Other nets'
+//! track on the GND pour: RP2350 466 mm against 423, Orbit 383 (least track, the try that leaves
+//! a line) and 272 against 268 and 304, EasyDuino B.Cu 379 against 352 at its margin. Pair
+//! coupling: RP2350's mcu.usb 56 % against 69 %, Orbit's usb 79 % against 0 % at its margin,
+//! EasyDuino's bridge 23 % against 54 % at its margin.
 //!
-//! So the plan makes every board route at every turn cost and can take RP2350 through its
-//! margin pass, but not reliably within its time, and costs Orbit 10 to 18 % more vias in every form tried, RP2350 16 % at the least
-//! track and EasyDuino 4 to 8 % at its margin: it misses the bar (no more than main's vias and
-//! 5 %), and is off.
+//! The router's measured boards, seeds 0 to 5, `fab`'s 300 s (`tight::measured`,
+//! `mixed::measured`, with the plan on every try against off; – for a seed left incomplete):
+//! tight_board 5 of 6 complete both ways (seed 4 leaves 3 lines against 2), tries
+//! 1/1/1/2/3/2 against 1/1/1/4/4/1, vias 209/211/217/201/–/190 against 199/199/196/205/–/182;
+//! mixed_board 5 of 6 both ways (the plan leaves a line on seed 2, main on seed 5), tries
+//! 3/1/5/1/1/1 against 3/2/2/3/1/5, vias 271/266/–/260/234/277 against 267/256/262/248/230/–.
 //!
-//! **Why the vias.** On two layers the plan does not count crossings, and a cost that differs
-//! by layer makes a line change to the emptier one: Orbit's extra vias are about two on each of
-//! a dozen signal nets, one layer change each, and six on GND. A cost on both layers (the
-//! fuller or the mean of the two) does not help: the mean is almost never 70 % (main's copper),
-//! the fuller leaves a line on RP2350 and Orbit.
+//! So the plan with crossings makes RP2350 route at every turn cost, but it misses the bar
+//! (vias no more than main's and 5 %): RP2350 +18 to +21 % at T = 24 and 25, the tight board +4
+//! to +11 %, and Orbit leaves a line at the least track at 24 and 25. It stays off.
 //!
-//! **Tried and not kept** (RP2350 at T = 25 and the least track unless said; main 137 vias,
-//! 1.40x):
+//! **Why.** The plan's crossings are not the detailed search's. With no crossings left the
+//! plan of RP2350 has 78 vias, and it puts them on nets main routes with none (header_high.p25
+//! 1 against 0, flash.do_io1 2 against 0): the detailed search finds ways round a line's end or
+//! between a pad's neighbours that a tile cannot show, while the corridor and the crowding cost
+//! still pull it onto the plan's way, and where the plan's layer is crowded the cheapest way is a
+//! via to the other layer. Counting crossings fixed the plan's topology, not the detailed
+//! search's vias.
 //!
-//! - The plan of #556: a flat cost of 10 on every step outside a corridor grown by one tile:
-//!   209 vias (Orbit 109, EasyDuino 115). Costs of 2 or 4, corridors grown by two, tiles of
-//!   2 mm and the plan in the first pass only: 150 to 202. Pads counted as closed and no pull
-//!   toward the straight line: L-shaped corridors and worse on every board.
-//! - The corridor on the plan's layer only, grown by one there (both layers where it changes
-//!   layer): 163 to 165 vias, but 1.30x and only 291 to 323 mm of other nets' track on the
-//!   GND pour against 646, the best length and pour of anything tried; grown by two, 206 vias.
-//!   A lead for a plan that counts crossings.
-//! - The crowding cost at 10: 154 to 157 vias; at 30 or 50: 161; from 30 % or 50 % full:
-//!   160 to 170; charged once where a step enters a tile instead of on every cell (50 to
-//!   200, as `fab` routes): 147 to 177 vias, and 140 s against 66 at 50. The thresholds 60 % to 95 % give the same
-//!   copper at 20 (a tile's fullness takes few values).
-//! - Corridors grown by one, with the pour's net steered: 145 to 147 vias at every turn cost
-//!   at the least track (the best RP2350 there), but Orbit 108 to 110 and EasyDuino 121 at
-//!   its margin. With a diff pair steered too, Orbit leaves its USB pair unrouted at every
-//!   turn cost.
-//! - No corridor for a net whose current needs a cluster of vias: no change (at the least
-//!   track every net needs one). The plan's via cost at 300 or 600 against 150: no better.
-//! - From the second try: the margin pass has a quarter of the route time and one try of
-//!   RP2350 takes most of it, so the second try never finishes there and `fab` is main's.
+//! **Tried with crossings and not kept** (RP2350 at T = 25 and the least track, main 129
+//! vias; Orbit and EasyDuino at T = 25, least track / own margin, main 94 / 87 and 105 / 105):
 //!
-//! **What to try next.** A plan that counts crossings: the order of tracks across each tile
-//! edge, so that two lines that must cross are planned as a crossing with a via that the plan
-//! pays for and the tile's vias count, and then the corridor on the plan's layer (above, the
-//! best length and pour). And a measure of more than three boards before a choice: one
-//! placement and one variant moves a board's vias by 10 % either way.
+//! - The corridor on the plan's layer only (`CORRIDOR_ON_PLAN_LAYER`): Orbit 107 / 107 (its
+//!   margin pass fails), EasyDuino 103 / 116; grown by one tile, 109 / 93 and 105 / 119.
+//! - A via outside the tiles where the line's plan changes layer (grown by one) paying 150 or
+//!   300 more: Orbit 75 to 101 vias, the fewest of anything (300: 80 / 75), but RP2350 leaves a
+//!   line (125 vias at 150, 158 at 300, 171 with the via tiles grown by two), EasyDuino 106 to
+//!   114 at 1.23x to 1.29x, and every try twice as slow.
+//! - The crowding cost at 10: RP2350 150 vias and 1.27x, the best length, but Orbit leaves a line
+//!   at both margins; at 30: RP2350 162, Orbit 113. The corridor on the plan's layer with the
+//!   cost at 10: RP2350 150, Orbit 109 / 109.
+//! - The crossing cost at 200 or 800: as at 400 on Orbit and EasyDuino; RP2350 161 (200 leaves a
+//!   line).
+//!
+//! **Before crossings** (main at d07d6e8, #557, without the pour pass; main 137 vias on RP2350,
+//! 87 to 93 on Orbit, 105 to 106 on EasyDuino): the crowding cost of 20 from 70 % full, with
+//! corridors on both layers, routed every board at every turn cost with RP2350 147 to 166 vias,
+//! Orbit 100 to 106, EasyDuino 103 to 113, and took RP2350 through its margin pass in 73 s of
+//! its 75 only on a fast run. The plan of #556 (a flat cost of 10 outside corridors grown by
+//! one): 209 vias on RP2350. Not kept then either: costs of 2 to 50, thresholds of 30 % to
+//! 95 %, a cost charged once per tile, a cost that ignores the layer (the mean gives main's
+//! copper, the fuller leaves lines), corridors grown by one or two, tiles of 2 mm, the plan's
+//! own via cost at 300 or 600, the plan in the first pass only, steering pours' nets and diff
+//! pairs (Orbit leaves its USB pair), and the plan from the second try only (which never runs
+//! within RP2350's time).
+//!
+//! **What to try next.** Make the detailed search agree with the plan on where vias go, not
+//! only on tiles: tiles that see their pads (a pad's position in its tile as a place on the
+//! rim, so a line that ends in a tile can no longer go round anything for free), or a plan
+//! made from the first try's copper (the detailed search's own topology) and used from the
+//! second. The via cost outside planned via tiles is the lead on via counts (Orbit 75 against
+//! 87) if a plan that matches the detailed topology keeps RP2350 complete. And measure each
+//! variant on the tight and mixed boards too: one variant moves a board's vias by 10 % either
+//! way.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -117,6 +133,10 @@ pub(crate) const TILE_CELLS: usize = 10;
 
 /// How many tiles a line's corridor reaches past its plan: none, the plan's own tiles.
 pub(crate) const CORRIDOR_GROW: usize = 0;
+
+/// Whether a line's corridor is on the layer its plan takes only (both layers where it changes
+/// layer), rather than on both: measured, not kept (the header).
+pub(crate) const CORRIDOR_ON_PLAN_LAYER: bool = false;
 
 /// What a step to the next tile costs before congestion, and a via.
 const STEP_COST: u64 = 100;
@@ -134,6 +154,21 @@ const CROWDED: f64 = 1.0;
 /// doubles each round).
 const ROUNDS: usize = 10;
 const PRESENT_START: u64 = 50;
+
+/// What a line pays, before congestion, for each line of another net it crosses in a tile on
+/// a layer, or whose place on a tile's edge it takes: more than the two vias that take it under
+/// the other line and back.
+const CROSS_COST: u64 = 400;
+
+/// The most places a tile's edge is cut into (see [`Tiles::slots`]).
+const MOST_SLOTS: usize = 12;
+
+/// The sides of a tile a line enters or leaves it by: toward the lower and the higher column,
+/// the lower and the higher row.
+const LOW_X: usize = 0;
+const HIGH_X: usize = 1;
+const LOW_Y: usize = 2;
+const HIGH_Y: usize = 3;
 
 /// A tile on a layer: its column, its row and the layer.
 pub(crate) type Node = (usize, usize, usize);
@@ -269,6 +304,24 @@ impl Tiles {
         }
     }
 
+    /// How many places a line may take on the edge `u` (its capacity, at most [`MOST_SLOTS`]):
+    /// the tracks across an edge are in the order of their places along it, the same from the
+    /// tiles on both sides, which is what makes a crossing in a tile something to count.
+    fn slots(&self, u: Use) -> usize {
+        (self.capacity(u) as usize).min(MOST_SLOTS)
+    }
+
+    /// The edge of tile `(a, b)` on `layer` on `side`, if the board goes on past it.
+    fn edge(&self, (a, b, layer): Node, side: usize) -> Option<Use> {
+        let t = b * self.nx + a;
+        match side {
+            LOW_X => (a > 0).then(|| Use::X(layer, t - 1)),
+            HIGH_X => (a + 1 < self.nx).then_some(Use::X(layer, t)),
+            LOW_Y => (b > 0).then(|| Use::Y(layer, t - self.nx)),
+            _ => (b + 1 < self.ny).then_some(Use::Y(layer, t)),
+        }
+    }
+
     fn uses(&self) -> usize {
         5 * self.nx * self.ny
     }
@@ -293,6 +346,8 @@ impl Tiles {
 pub(crate) struct Ends {
     pub(crate) from: Vec<Node>,
     pub(crate) to: Vec<Node>,
+    /// The line's net: lines of one net may cross and share a place on an edge.
+    pub(crate) net: usize,
 }
 
 /// The plan: for each line, the tiles its global route passes, in order, from one end to the
@@ -301,6 +356,8 @@ pub(crate) struct Plan {
     pub(crate) paths: Vec<Option<Vec<Node>>>,
     /// The sum over every edge and tile of how far its use passes its capacity.
     pub(crate) overuse: u32,
+    /// How many pairs of lines cross in a tile on a layer: one straight across it each way.
+    pub(crate) crossings: u32,
     /// The rounds negotiated.
     pub(crate) rounds: usize,
     /// How many planned tracks or vias use each resource, by [`Tiles::index`].
@@ -353,23 +410,176 @@ pub(crate) fn crowding_cost(fill: f64, cost: i64) -> i64 {
     (share * cost as f64).round() as i64
 }
 
+/// Where a line meets the rim of a tile: inside it (the line ends there or changes layer), or
+/// at a place on one of its sides.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Rim {
+    Inside,
+    At { side: usize, slot: usize },
+}
+
+impl Rim {
+    /// How far round the rim a place is, counterclockwise from the corner of the lowest column
+    /// and row. The places on an edge are in one order, seen from either tile, so two lines
+    /// through a tile cross when their places alternate round its rim.
+    fn around(self) -> Option<u32> {
+        match self {
+            Rim::Inside => None,
+            Rim::At { side, slot } => {
+                let slot = slot as u32;
+                Some(match side {
+                    LOW_Y => slot,
+                    HIGH_X => 100 + slot,
+                    HIGH_Y => 300 - slot,
+                    _ => 400 - slot,
+                })
+            }
+        }
+    }
+
+    /// The state's number of this place, from 0.
+    fn index(self) -> usize {
+        match self {
+            Rim::Inside => 0,
+            Rim::At { side, slot } => 1 + side * MOST_SLOTS + slot,
+        }
+    }
+
+    fn from_index(k: usize) -> Rim {
+        if k == 0 {
+            Rim::Inside
+        } else {
+            Rim::At {
+                side: (k - 1) / MOST_SLOTS,
+                slot: (k - 1) % MOST_SLOTS,
+            }
+        }
+    }
+}
+
+/// How many places a state of the search tells apart in a tile: inside, or one of the places
+/// on its four sides.
+const RIMS: usize = 1 + 4 * MOST_SLOTS;
+
+/// The side across from a side: a line leaving a tile by one enters the next by the other.
+fn facing(side: usize) -> usize {
+    match side {
+        LOW_X => HIGH_X,
+        HIGH_X => LOW_X,
+        LOW_Y => HIGH_Y,
+        _ => LOW_Y,
+    }
+}
+
+/// A line's way through a tile on a layer: the places it enters and leaves by round the rim
+/// ([`Rim::around`]), `None` for inside, and its net.
+#[derive(Clone, Copy)]
+struct Chord {
+    from: Option<u32>,
+    to: Option<u32>,
+    net: usize,
+}
+
+impl Chord {
+    /// Whether two ways through one tile must cross: both go rim to rim, and their places
+    /// alternate round it. A way that ends inside the tile can always go round the other.
+    fn crosses(&self, other: &Chord) -> bool {
+        let (Some(p), Some(q), Some(r), Some(s)) = (self.from, self.to, other.from, other.to)
+        else {
+            return false;
+        };
+        let (lo, hi) = (p.min(q), p.max(q));
+        let inside = |x: u32| lo < x && x < hi;
+        let ends = [p, q];
+        if ends.contains(&r) || ends.contains(&s) {
+            return false;
+        }
+        inside(r) != inside(s)
+    }
+}
+
+/// What the lines routed so far in a round leave for the next, and the history of the rounds
+/// before.
+struct Congestion<'a> {
+    occupied: &'a [u32],
+    history: &'a [u64],
+    /// The nets on each place of each edge, at `index(edge) * MOST_SLOTS + slot`.
+    taken: &'a [Vec<usize>],
+    /// The ways lines take through each tile on each layer, at `layer * tiles + tile`.
+    chords: &'a [Vec<Chord>],
+    /// How often lines of different nets crossed, or shared a place, in each tile on each
+    /// layer, over the rounds before.
+    cross_history: &'a [u64],
+    present: u64,
+}
+
+/// A planned line: each tile it passes, and where it enters that tile.
+type Steps = Vec<(Node, Rim)>;
+
+/// Count a planned line in what it occupies: the edges and vias it uses, the places it takes on
+/// edges and its ways through tiles.
+fn occupy(
+    tiles: &Tiles,
+    steps: &Steps,
+    net: usize,
+    occupied: &mut [u32],
+    taken: &mut [Vec<usize>],
+    chords: &mut [Vec<Chord>],
+) {
+    let n = tiles.nx * tiles.ny;
+    for (i, &(here, enter)) in steps.iter().enumerate() {
+        let leave = match steps.get(i + 1) {
+            Some(&(next, Rim::At { side, slot })) => {
+                let (u, _) = tiles.between(here, next);
+                occupied[tiles.index(u)] += 1;
+                taken[tiles.index(u) * MOST_SLOTS + slot].push(net);
+                Rim::At {
+                    side: facing(side),
+                    slot,
+                }
+            }
+            Some(&(next, Rim::Inside)) => {
+                let (u, _) = tiles.between(here, next);
+                occupied[tiles.index(u)] += 1;
+                Rim::Inside
+            }
+            None => Rim::Inside,
+        };
+        chords[here.2 * n + here.1 * tiles.nx + here.0].push(Chord {
+            from: enter.around(),
+            to: leave.around(),
+            net,
+        });
+    }
+}
+
 /// Route every line of `ends` on the tiles by negotiated congestion (see the module's header),
 /// in `order`.
 pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -> Plan {
     let n = tiles.uses();
+    let tiles_n = tiles.nx * tiles.ny;
     let mut history = vec![0u64; n];
+    let mut cross_history = vec![0u64; 2 * tiles_n];
     let mut paths: Vec<Option<Vec<Node>>> = vec![None; ends.len()];
     let mut best: Option<Plan> = None;
     let mut present = PRESENT_START;
     for round in 1..=ROUNDS {
         let mut occupied = vec![0u32; n];
+        let mut taken: Vec<Vec<usize>> = vec![Vec::new(); n * MOST_SLOTS];
+        let mut chords: Vec<Vec<Chord>> = vec![Vec::new(); 2 * tiles_n];
         for &line in order {
             let Some(e) = &ends[line] else { continue };
-            let path = search(tiles, e, &occupied, &history, present);
-            for w in path.windows(2) {
-                occupied[tiles.index(tiles.between(w[0], w[1]).0)] += 1;
-            }
-            paths[line] = Some(path);
+            let congestion = Congestion {
+                occupied: &occupied,
+                history: &history,
+                taken: &taken,
+                chords: &chords,
+                cross_history: &cross_history,
+                present,
+            };
+            let steps = search(tiles, e, &congestion);
+            occupy(tiles, &steps, e.net, &mut occupied, &mut taken, &mut chords);
+            paths[line] = Some(steps.into_iter().map(|(node, _)| node).collect());
         }
         let mut overuse = 0;
         for u in all_uses(tiles) {
@@ -378,15 +588,45 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
             overuse += over;
             history[k] += u64::from(over);
         }
-        if best.as_ref().is_none_or(|b| overuse < b.overuse) {
+        let mut crossings = 0;
+        for (t, ways) in chords.iter().enumerate() {
+            let mut here = 0;
+            for (i, c) in ways.iter().enumerate() {
+                here += ways[i + 1..]
+                    .iter()
+                    .filter(|d| d.net != c.net && c.crosses(d))
+                    .count() as u32;
+            }
+            crossings += here;
+            cross_history[t] += u64::from(here);
+        }
+        for u in all_uses(tiles) {
+            let (Use::X(layer, e) | Use::Y(layer, e)) = u else {
+                continue;
+            };
+            for slot in 0..MOST_SLOTS {
+                let nets = &taken[tiles.index(u) * MOST_SLOTS + slot];
+                let mut shared = 0;
+                for (i, a) in nets.iter().enumerate() {
+                    shared += nets[i + 1..].iter().filter(|b| *b != a).count() as u32;
+                }
+                crossings += shared;
+                cross_history[layer * tiles_n + e] += u64::from(shared);
+            }
+        }
+        if best
+            .as_ref()
+            .is_none_or(|b| overuse + crossings < b.overuse + b.crossings)
+        {
             best = Some(Plan {
                 paths: paths.clone(),
                 overuse,
+                crossings,
                 rounds: round,
                 occupied: occupied.clone(),
             });
         }
-        if overuse == 0 {
+        if overuse == 0 && crossings == 0 {
             break;
         }
         present = (present * 2).min(1 << 20);
@@ -394,6 +634,7 @@ pub(crate) fn negotiate(tiles: &Tiles, ends: &[Option<Ends>], order: &[usize]) -
     let mut plan = best.unwrap_or(Plan {
         paths,
         overuse: 0,
+        crossings: 0,
         rounds: 0,
         occupied: vec![0; n],
     });
@@ -409,18 +650,18 @@ fn all_uses(tiles: &Tiles) -> impl Iterator<Item = Use> + '_ {
         .chain((0..n).map(Use::Via))
 }
 
-/// The cheapest path of tiles between a line's ends, given what the lines routed this round
-/// occupy and the history: A* with the Manhattan distance in steps.
-fn search(
-    tiles: &Tiles,
-    ends: &Ends,
-    occupied: &[u32],
-    history: &[u64],
-    present: u64,
-) -> Vec<Node> {
+/// The cheapest path of tiles between a line's ends, given the congestion: A* with the
+/// Manhattan distance in steps, over states of a tile, a layer and the place the line entered
+/// the tile by, so that a line pays for each line of another net it crosses in a tile and for
+/// a place on an edge another net has taken.
+fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
     let (nx, ny) = (tiles.nx, tiles.ny);
-    let id = |(a, b, l): Node| (l * ny + b) * nx + a;
-    let node = |s: usize| (s % nx, (s / nx) % ny, s / (nx * ny));
+    let tiles_n = nx * ny;
+    let id = |(a, b, l): Node, rim: Rim| ((l * ny + b) * nx + a) * RIMS + rim.index();
+    let state = |s: usize| {
+        let (k, rim) = (s / RIMS, Rim::from_index(s % RIMS));
+        ((k % nx, (k / nx) % ny, k / tiles_n), rim)
+    };
     let heuristic = |(a, b, _): Node| -> u64 {
         ends.to
             .iter()
@@ -450,18 +691,42 @@ fn search(
         let d = ((x - p.0 - t * dx).powi(2) + (y - p.1 - t * dy).powi(2)).sqrt();
         (d * DEVIATION as f64).round() as u64
     };
+    let present = congestion.present;
     let cost_of = |u: Use, base: u64| -> u64 {
         let k = tiles.index(u);
-        let over = u64::from((occupied[k] + 1).saturating_sub(tiles.capacity(u)));
-        base * (1 + history[k]) * (100 + present * over) / 100
+        let over = u64::from((congestion.occupied[k] + 1).saturating_sub(tiles.capacity(u)));
+        base * (1 + congestion.history[k]) * (100 + present * over) / 100
     };
-    let states = 2 * nx * ny;
+    // What crossing `n` lines of other nets, or sharing a place with them, costs in a tile.
+    let disorder = |(a, b, l): Node, n: usize| -> u64 {
+        if n == 0 {
+            return 0;
+        }
+        let t = l * tiles_n + b * nx + a;
+        CROSS_COST * n as u64 * (1 + congestion.cross_history[t]) * (100 + present) / 100
+    };
+    let crossed = |here: Node, enter: Rim, leave: Rim| -> usize {
+        let way = Chord {
+            from: enter.around(),
+            to: leave.around(),
+            net: ends.net,
+        };
+        if way.from.is_none() || way.to.is_none() {
+            return 0;
+        }
+        congestion.chords[here.2 * tiles_n + here.1 * nx + here.0]
+            .iter()
+            .filter(|c| c.net != ends.net && way.crosses(c))
+            .count()
+    };
+    let states = 2 * tiles_n * RIMS;
     let mut cost = vec![u64::MAX; states];
     let mut came = vec![usize::MAX; states];
+    let mut done = vec![false; states];
     let mut queue = BinaryHeap::new();
     let mut sequence = 0u64;
     for &s in &ends.from {
-        let k = id(s);
+        let k = id(s, Rim::Inside);
         if cost[k] != 0 {
             cost[k] = 0;
             queue.push(Reverse((heuristic(s), sequence, k)));
@@ -469,56 +734,85 @@ fn search(
         }
     }
     while let Some(Reverse((_, _, k))) = queue.pop() {
-        let here = node(k);
+        if done[k] {
+            continue;
+        }
+        done[k] = true;
+        let (here, entered) = state(k);
         if ends.to.contains(&here) {
-            let mut path = vec![here];
+            let mut steps = vec![(here, entered)];
             let mut at = k;
             while came[at] != usize::MAX {
                 at = came[at];
-                path.push(node(at));
+                steps.push(state(at));
             }
-            path.reverse();
-            return path;
+            steps.reverse();
+            return steps;
         }
         let (a, b, l) = here;
-        let mut next = Vec::with_capacity(5);
-        if a + 1 < nx {
-            next.push((a + 1, b, l));
-        }
-        if b + 1 < ny {
-            next.push((a, b + 1, l));
-        }
-        if a > 0 {
-            next.push((a - 1, b, l));
-        }
-        if b > 0 {
-            next.push((a, b - 1, l));
-        }
-        next.push((a, b, 1 - l));
-        for to in next {
-            let (u, base) = tiles.between(here, to);
-            let c = cost[k] + cost_of(u, base) + off_line(to);
-            let t = id(to);
+        let so_far = cost[k];
+        let mut relax = |to: Node, rim: Rim, c: u64, queue: &mut BinaryHeap<_>| {
+            let t = id(to, rim);
             if c < cost[t] {
                 cost[t] = c;
                 came[t] = k;
                 queue.push(Reverse((c + heuristic(to), sequence, t)));
                 sequence += 1;
             }
+        };
+        for side in [HIGH_X, HIGH_Y, LOW_X, LOW_Y] {
+            let Some(u) = tiles.edge(here, side) else {
+                continue;
+            };
+            let to = match side {
+                LOW_X => (a - 1, b, l),
+                HIGH_X => (a + 1, b, l),
+                LOW_Y => (a, b - 1, l),
+                _ => (a, b + 1, l),
+            };
+            let step = so_far + cost_of(u, STEP_COST) + off_line(to);
+            for slot in 0..tiles.slots(u).max(1) {
+                let others = congestion.taken[tiles.index(u) * MOST_SLOTS + slot]
+                    .iter()
+                    .filter(|&&net| net != ends.net)
+                    .count();
+                let leave = Rim::At { side, slot };
+                let c = step + disorder(here, others + crossed(here, entered, leave));
+                let enter = Rim::At {
+                    side: facing(side),
+                    slot,
+                };
+                relax(to, enter, c, &mut queue);
+            }
         }
+        let to = (a, b, 1 - l);
+        let c = so_far + cost_of(Use::Via(b * nx + a), VIA_COST) + off_line(to);
+        relax(to, Rim::Inside, c, &mut queue);
     }
     // The graph is connected, so this is not reached; an end with no way is planned as itself.
-    ends.from.iter().take(1).copied().collect()
+    ends.from
+        .iter()
+        .take(1)
+        .map(|&node| (node, Rim::Inside))
+        .collect()
 }
 
-/// The tiles of a line's corridor: those of its plan, on either layer, grown by `grow` tiles
-/// each way (see the module's header), row by row.
-pub(crate) fn corridor(tiles: &Tiles, path: &[Node], grow: usize) -> Vec<bool> {
-    let mut inside = vec![false; tiles.nx * tiles.ny];
-    for &(a, b, _) in path {
+/// The tiles of a line's corridor on each layer, row by row: those of its plan grown by `grow`
+/// tiles each way, on the layer the plan takes there (both layers in a tile where it changes
+/// layer) if `layered`, else on both (see the module's header).
+pub(crate) fn corridor(tiles: &Tiles, path: &[Node], grow: usize, layered: bool) -> [Vec<bool>; 2] {
+    let mut inside = [
+        vec![false; tiles.nx * tiles.ny],
+        vec![false; tiles.nx * tiles.ny],
+    ];
+    for &(a, b, l) in path {
         for d in b.saturating_sub(grow)..=(b + grow).min(tiles.ny - 1) {
             for c in a.saturating_sub(grow)..=(a + grow).min(tiles.nx - 1) {
-                inside[d * tiles.nx + c] = true;
+                for (layer, inside) in inside.iter_mut().enumerate() {
+                    if !layered || layer == l {
+                        inside[d * tiles.nx + c] = true;
+                    }
+                }
             }
         }
     }
@@ -581,6 +875,7 @@ mod tests {
             Some(Ends {
                 from: vec![(0, 0, 0)],
                 to: vec![(2, 0, 0)],
+                net: 0,
             })
         };
         let plan = negotiate(&tiles, &[line(), line()], &[0, 1]);
@@ -599,6 +894,96 @@ mod tests {
         assert_eq!(plan.paths, again.paths);
     }
 
+    /// A grid of `n` by `n` tiles with room for many tracks on every edge and many vias.
+    fn roomy(n: usize) -> Tiles {
+        Tiles {
+            cells: 10,
+            nx: n,
+            ny: n,
+            across_x: [vec![8; n * n], vec![8; n * n]],
+            across_y: [vec![8; n * n], vec![8; n * n]],
+            vias: vec![8; n * n],
+        }
+    }
+
+    /// The vias of a planned path: its moves to the other layer in the same tile.
+    fn vias_of(path: &Option<Vec<Node>>) -> Vec<(usize, usize)> {
+        path.as_ref()
+            .unwrap()
+            .windows(2)
+            .filter(|w| w[0].2 != w[1].2)
+            .map(|w| (w[0].0, w[0].1))
+            .collect()
+    }
+
+    #[test]
+    fn two_lines_that_must_cross_in_a_tile_are_planned_with_a_via() {
+        // On a grid of 5 by 5 tiles, a line runs across the middle row on the front and another
+        // down the middle column, from the front to a pad on both layers. They must cross in
+        // the middle tile (a way round the first line's end is four tiles longer), so the plan
+        // gives one of them one via, and no tile on a layer has a line straight across it each
+        // way.
+        let tiles = roomy(5);
+        let across = Some(Ends {
+            from: vec![(0, 2, 0)],
+            to: vec![(4, 2, 0)],
+            net: 0,
+        });
+        let down = Some(Ends {
+            from: vec![(2, 0, 0)],
+            to: vec![(2, 4, 0), (2, 4, 1)],
+            net: 1,
+        });
+        let plan = negotiate(&tiles, &[across.clone(), down], &[0, 1]);
+        assert_eq!(plan.crossings, 0);
+        assert_eq!(
+            vias_of(&plan.paths[0]).len() + vias_of(&plan.paths[1]).len(),
+            1
+        );
+        // With both ends of both lines on the front, the line that changes layer comes back:
+        // two vias, one on each side of the crossing.
+        let down_front = Some(Ends {
+            from: vec![(2, 0, 0)],
+            to: vec![(2, 4, 0)],
+            net: 1,
+        });
+        let plan = negotiate(&tiles, &[across, down_front], &[0, 1]);
+        assert_eq!(plan.crossings, 0);
+        assert_eq!(
+            vias_of(&plan.paths[0]).len() + vias_of(&plan.paths[1]).len(),
+            2
+        );
+    }
+
+    #[test]
+    fn lines_that_need_not_cross_are_planned_without_a_via() {
+        // Two lines side by side across the grid, and two that turn away from each other in
+        // the middle tile (one in from the west and up, one in from the east and down): no
+        // line crosses another, so none changes layer.
+        let tiles = roomy(3);
+        let line = |from: Node, to: Node, net: usize| {
+            Some(Ends {
+                from: vec![from],
+                to: vec![to],
+                net,
+            })
+        };
+        let plan = negotiate(
+            &tiles,
+            &[line((0, 1, 0), (2, 1, 0), 0), line((0, 0, 0), (2, 0, 0), 1)],
+            &[0, 1],
+        );
+        assert_eq!(plan.crossings, 0);
+        assert!(plan.paths.iter().all(|p| vias_of(p).is_empty()));
+        let plan = negotiate(
+            &tiles,
+            &[line((0, 1, 0), (1, 0, 0), 0), line((2, 1, 0), (1, 2, 0), 1)],
+            &[0, 1],
+        );
+        assert_eq!(plan.crossings, 0);
+        assert!(plan.paths.iter().all(|p| vias_of(p).is_empty()));
+    }
+
     #[test]
     fn a_tile_is_as_full_as_its_fullest_edge_on_its_layer() {
         // Two tiles side by side whose edge holds two tracks on the front and none on the back;
@@ -615,6 +1000,7 @@ mod tests {
             Some(Ends {
                 from: vec![(0, 0, 0)],
                 to: vec![(1, 0, 0)],
+                net: 0,
             })
         };
         let plan = negotiate(&tiles, &[line(), line()], &[0, 1]);
@@ -645,10 +1031,17 @@ mod tests {
             across_y: [vec![1; 15], vec![1; 15]],
             vias: vec![1; 15],
         };
-        let inside = corridor(&tiles, &[(0, 0, 0), (1, 0, 1)], 1);
+        let [inside, back] = corridor(&tiles, &[(0, 0, 0), (1, 0, 1)], 1, false);
+        assert_eq!(inside, back);
         let row = |b: usize| inside[b * 5..b * 5 + 5].to_vec();
         assert_eq!(row(0), vec![true, true, true, false, false]);
         assert_eq!(row(1), vec![true, true, true, false, false]);
         assert_eq!(row(2), vec![false; 5]);
+        // On the plan's layer: the front where it runs on the front, the back where it runs on
+        // the back, and both in the tile where it changes layer.
+        let path = [(0, 0, 0), (1, 0, 0), (1, 0, 1), (2, 0, 1)];
+        let [front, back] = corridor(&tiles, &path, 0, true);
+        assert_eq!(front[..5], [true, true, false, false, false]);
+        assert_eq!(back[..5], [false, true, true, false, false]);
     }
 }
