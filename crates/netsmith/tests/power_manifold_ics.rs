@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
 use netsmith_core::PinKind;
-use netsmith_kicad::install::Search;
+use netsmith_kicad::{Search};
 use netsmith_pcb::Footprint;
 
 fn project() -> PathBuf {
@@ -357,7 +357,7 @@ fn the_symbols_are_drawn_from_the_pin_tables() {
         assert_eq!(mapped.lib_id, None, "{kind}: no KiCad symbol is named");
         let name = format!(
             "netsmith:{}",
-            netsmith_kicad::generate::symbol_name(kind, Some(package))
+            netsmith_kicad::symbol_name(kind, Some(package))
         );
         assert!(
             built.schematic.contains(&format!("(lib_id \"{name}")),

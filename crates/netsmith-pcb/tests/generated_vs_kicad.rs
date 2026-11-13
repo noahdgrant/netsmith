@@ -295,7 +295,7 @@ fn radii(fp: &Footprint, layer: &str) -> Vec<f64> {
 /// What a pad's comparison does not see: the mask margin, the clearance and whether the
 /// plating stays on the inner layers, as the file says them (`None`: it says nothing).
 fn pad_extras(fp: &Footprint) -> Vec<(String, Option<String>, Option<String>, bool)> {
-    let value = |pad: &netsmith_kicad::sexp::Sexp, key: &str| {
+    let value = |pad: &netsmith_kicad::Sexp, key: &str| {
         pad.find(key)
             .and_then(|n| n.args().first())
             .and_then(|a| a.text())

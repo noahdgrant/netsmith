@@ -54,7 +54,7 @@ No built page is committed (ADR 0114). `crates/netsmith-editor/build.rs` builds 
 
 `netsmith fab`, the editor and the tests find `kicad-cli` in this order: `$KICAD_CLI`, `kicad-cli` on `PATH`, then under WSL the newest Windows KiCad in `/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe` (ADR 0021). The shell scripts (`scripts/check-kicad.sh`) still default to the 9.0 path. Tests that need KiCad skip themselves when it is absent. Say so in your report when they skipped.
 
-`build` and `fab` find KiCad's `symbols` and `footprints` folders with `netsmith_kicad::install` (ADR 0021): `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`, then beside `kicad-cli`, then the usual install places. A test of the lookup builds a fake install tree with `install::Search::under(<temp dir>)`; do not rely on this machine's KiCad.
+`build` and `fab` find KiCad's `symbols` and `footprints` folders with `netsmith_kicad::Search` (ADR 0021): `NETSMITH_KICAD_SYMBOLS` and `NETSMITH_KICAD_FOOTPRINTS`, then beside `kicad-cli`, then the usual install places. A test of the lookup builds a fake install tree with `Search::under(<temp dir>)`; do not rely on this machine's KiCad.
 
 No run needs KiCad (ADR 0097): `NETSMITH_NO_KICAD=1` makes the search find nothing, and `scripts/check-no-kicad.sh [path/to/netsmith]` builds and fabs every example with the libraries and `kicad-cli` hidden (the `no-kicad` CI job runs it). Run it after a change to the exporters, `std/kicad.toml` or the libraries. A `Libraries` of a test that must not see this machine's KiCad is `Libraries::for_project_by(root, &Search::under(<temp dir>).with_no_kicad())`.
 

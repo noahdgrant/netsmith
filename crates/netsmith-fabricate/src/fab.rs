@@ -57,11 +57,11 @@ pub struct Fabricated {
 /// `--cross-check`, which plots the boards and runs KiCad's design rules check to compare with
 /// netsmith's own (ADR 0034, ADR 0037). `scripts/check-no-kicad.sh` greps for either lead
 /// ("KiCad is switched off", "KiCad is not installed") as the proof that KiCad was hidden.
-pub fn no_kicad_note(search: &netsmith_kicad::install::Search) -> String {
+pub fn no_kicad_note(search: &netsmith_kicad::Search) -> String {
     let why = if search.is_off() {
         format!(
             "KiCad is switched off ({} is set)",
-            netsmith_kicad::install::NO_KICAD_VARIABLE
+            netsmith_kicad::NO_KICAD_VARIABLE
         )
     } else {
         "KiCad is not installed".to_string()
@@ -75,12 +75,12 @@ pub fn no_kicad_note(search: &netsmith_kicad::install::Search) -> String {
 /// a command that needs one: the search then finds none whatever `KICAD_CLI` says, so a message
 /// that says "set KICAD_CLI" would send a person to a setting that changes nothing. `None` when
 /// KiCad is not switched off.
-pub fn kicad_switched_off(search: &netsmith_kicad::install::Search) -> Option<String> {
+pub fn kicad_switched_off(search: &netsmith_kicad::Search) -> Option<String> {
     search.is_off().then(|| {
         format!(
             "{} is set, which hides every KiCad program and install (kicad-cli too, whatever {} says): unset it to use KiCad",
-            netsmith_kicad::install::NO_KICAD_VARIABLE,
-            netsmith_kicad::install::CLI_VARIABLE
+            netsmith_kicad::NO_KICAD_VARIABLE,
+            netsmith_kicad::CLI_VARIABLE
         )
     })
 }
@@ -2554,7 +2554,7 @@ mod tests {
     }
     #[test]
     fn the_note_without_kicad_says_netsmiths_own_check_still_runs() {
-        let note = super::no_kicad_note(&netsmith_kicad::install::Search::under("/nowhere"));
+        let note = super::no_kicad_note(&netsmith_kicad::Search::under("/nowhere"));
         assert!(note.contains("KiCad is not installed"), "{note}");
         assert!(note.contains("--cross-check"), "{note}");
         assert!(
@@ -2566,9 +2566,7 @@ mod tests {
 
     #[test]
     fn the_note_says_when_kicad_is_switched_off_and_not_that_it_is_not_installed() {
-        let note = super::no_kicad_note(
-            &netsmith_kicad::install::Search::under("/nowhere").with_no_kicad(),
-        );
+        let note = super::no_kicad_note(&netsmith_kicad::Search::under("/nowhere").with_no_kicad());
         assert!(
             note.contains("KiCad is switched off (NETSMITH_NO_KICAD is set)"),
             "{note}"

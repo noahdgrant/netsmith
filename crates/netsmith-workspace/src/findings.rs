@@ -598,7 +598,7 @@ pub fn run_kicad(board: &Board, routed: bool, say: &Say) -> KicadResult {
     };
     let Some(cli) = KicadCliExe::locate() else {
         let note = match netsmith_fabricate::fab::kicad_switched_off(
-            &netsmith_kicad::install::Search::machine(),
+            &netsmith_kicad::Search::machine(),
         ) {
             Some(off) => format!("KiCad is switched off: {off} (only netsmith's own checks ran)"),
             None => {

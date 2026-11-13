@@ -254,7 +254,7 @@ fn scene_of(source: &str) -> netsmith_3d::scene3d::Scene {
     let catalogs = target.catalogs().unwrap();
     let (held, _) = netsmith::pick_lock::open(&file.path, &catalogs, false).unwrap();
     let nowhere = netsmith_testkit::TempDir::new("render-no-kicad");
-    let search = netsmith_kicad::install::Search::under(nowhere.path()).with_no_kicad();
+    let search = netsmith_kicad::Search::under(nowhere.path()).with_no_kicad();
     let root = target.project.as_ref().map(|p| p.root.as_path());
     let libraries = netsmith::Libraries::for_project_by(root, &search).unwrap();
     netsmith::board3d::scene_of(

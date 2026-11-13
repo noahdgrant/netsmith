@@ -350,7 +350,7 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
 #[test]
 fn holes_and_fiducials_go_in_the_corners_of_a_fixed_outline() {
     // The sample libraries have no fiducial footprint; the stock one comes with KiCad.
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let mut b = regulator_with(&format!(

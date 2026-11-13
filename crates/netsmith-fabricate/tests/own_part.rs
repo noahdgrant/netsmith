@@ -10,8 +10,7 @@ use std::path::Path;
 
 use netsmith_pipeline::Libraries;
 use netsmith_fabricate::fab::fab;
-use netsmith_kicad::install::Search;
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::{Search, Sexp};
 use netsmith_pcb::generate::generate;
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;

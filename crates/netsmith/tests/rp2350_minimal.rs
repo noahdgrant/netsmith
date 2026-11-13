@@ -22,8 +22,7 @@ use netsmith::project::Target;
 use netsmith::reference_table::placements_toml;
 use netsmith::{Libraries, build_with, outcome_with};
 use netsmith_core::PinKind;
-use netsmith_kicad::install::Search;
-use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_kicad::{Search, Mapping, SymbolLib};
 use netsmith_pcb::{Footprint, FootprintLibrary, PadKind, PadShape};
 
 fn project() -> PathBuf {
@@ -918,7 +917,7 @@ fn a_board_with_the_part_builds_a_schematic_with_a_symbol_drawn_from_the_pin_tab
     // build), and the symbol is netsmith's own: no KiCad symbol library is named.
     let name = format!(
         "netsmith:{}",
-        netsmith_kicad::generate::symbol_name("Rp2350A", Some("QFN-60-EP(7x7)"))
+        netsmith_kicad::symbol_name("Rp2350A", Some("QFN-60-EP(7x7)"))
     );
     assert!(
         built.schematic.contains(&format!("(lib_id \"{name}")),
@@ -1350,7 +1349,7 @@ board FlashAndCrystal {
         let drawn = |kind: &str, package: &str| {
             format!(
                 "netsmith:{}",
-                netsmith_kicad::generate::symbol_name(kind, Some(package))
+                netsmith_kicad::symbol_name(kind, Some(package))
             )
         };
         for (kind, package) in [("W25Q128Jv", "SOIC-8-208mil"), ("Abm8272T3", "SMD3225-4P")] {
@@ -1759,7 +1758,7 @@ fn the_comparison_of_pads_says_what_differs() {
     // Not vacuous: a header of netsmith's generator has other pads (1.778 mm, and the pins run
     // down a column), and the comparison names them.
     let table = parsed(&read("reference/placements.toml"));
-    let id = netsmith_kicad::footprint_spec::FootprintSpec::parse(
+    let id = netsmith_kicad::FootprintSpec::parse(
         "gen:PinHeader(rows=2, pins=18, pitch=2.54mm)",
     )
     .unwrap()

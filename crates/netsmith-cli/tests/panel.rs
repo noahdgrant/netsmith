@@ -41,7 +41,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 
 #[test]
 fn an_order_may_name_a_panel_and_its_quantity_counts_panels() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let root = project("order", "\n[order.run.boards]\nLedPanel = 3\n");
@@ -70,7 +70,7 @@ fn an_order_may_name_a_panel_and_its_quantity_counts_panels() {
 
 #[test]
 fn a_board_and_a_panel_may_both_be_ordered_and_a_plain_fab_makes_both() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let root = project(

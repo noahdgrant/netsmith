@@ -109,7 +109,7 @@ pub fn validate_pinout(
     let footprint_name = &mapped.footprint;
     // A generated footprint (`gen:`, ADR 0104) is written in a row of a `kicad.toml`: say which,
     // and how many pads it makes, so that the fix (the part's pins or the parameters) is plain.
-    let from = netsmith_kicad::footprint_spec::FootprintSpec::from_id(&mapped.footprint)
+    let from = netsmith_kicad::FootprintSpec::from_id(&mapped.footprint)
         .map(|spec| {
             format!(
                 "; the footprint is `{}` of {}, and it makes {} pads",

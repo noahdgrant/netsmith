@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
 use netsmith_core::PinKind;
-use netsmith_kicad::install::Search;
+use netsmith_kicad::{Search};
 use netsmith_pcb::{Footprint, PadKind, PadShape};
 use netsmith_solve::Catalogs;
 

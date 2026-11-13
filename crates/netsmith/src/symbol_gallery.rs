@@ -9,13 +9,13 @@
 //! symbol of the id it stands for on the right, at one scale and in one frame, so the two can be
 //! laid over one another by eye:
 //!
-//! - every symbol of [`netsmith_kicad::passives`], in the order of `passives::ids()`: the page
+//! - every symbol of [`netsmith_kicad::passive_symbol_ids`], in the order of `passive_symbol_ids()`: the page
 //!   has no list of its own, so a symbol added there is in the gallery, and the test of this
 //!   module fails if it is not;
-//! - a few boxes of ICs that [`netsmith_kicad::generate`] draws from the pin table of a part of
+//! - a few boxes of ICs that [`netsmith_kicad::generated_symbol`] draws from the pin table of a part of
 //!   `examples/` ([`EXAMPLE_ICS`]), with KiCad's symbol of the same part where its library has
 //!   one;
-//! - where KiCad's symbol library is not installed (found as `netsmith_kicad::install`
+//! - where KiCad's symbol library is not installed (found as `netsmith_kicad::Search`
 //!   describes), a note in the place of every stock symbol.
 //!
 //! Both sides are drawn by the one function [`draw_symbol`] from the symbol's S-expression, as
@@ -33,7 +33,10 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use netsmith_core::Part;
-use netsmith_kicad::{Symbol, SymbolLib, generate, install, passives, sexp::Sexp};
+use netsmith_kicad::{
+    InstallKind, Sexp, Symbol, SymbolLib, generated_symbol, locate_install, passive_symbol,
+    passive_symbol_ids,
+};
 
 /// How the page is written again, said on the page.
 pub const REGENERATE: &str =
@@ -115,12 +118,12 @@ pub struct IcSection {
 
 /// The sections of the passives: the id of each symbol `passives` draws, in its order.
 pub fn passive_ids() -> Vec<&'static str> {
-    passives::ids().collect()
+    passive_symbol_ids().collect()
 }
 
 /// Where KiCad's symbol library is on this machine, as the other tools find it, or none.
 pub fn installed_kicad() -> Option<SymbolLib> {
-    match install::locate(install::Kind::Symbols) {
+    match locate_install(InstallKind::Symbols) {
         // `at` and not `installed`: the generators are left out, so that `Device:R` is KiCad's.
         Ok(found) => Some(SymbolLib::at(found.dir)),
         Err(_) => None,
@@ -139,7 +142,7 @@ pub fn example_ics(examples: &Path) -> Result<Vec<IcSection>, String> {
             .find(|p| p.kind == ic.kind && !p.pins.is_empty())
             .ok_or_else(|| format!("no part `{}` in {}{}", ic.kind, ic.project, ic.file))?;
         let ours =
-            generate::symbol(part, "").ok_or_else(|| format!("`{}` has no pin table", ic.kind))?;
+            generated_symbol(part, "").ok_or_else(|| format!("`{}` has no pin table", ic.kind))?;
         out.push(IcSection {
             title: ic.title.to_string(),
             note: ic.note.to_string(),
@@ -1040,8 +1043,8 @@ pub fn render(kicad: Option<&SymbolLib>, ics: &[IcSection]) -> String {
             anchor_of(group),
             escape(group)
         );
-        for id in passives::ids().filter(|id| group_of(id) == group) {
-            let Some(ours) = passives::symbol(id) else {
+        for id in passive_symbol_ids().filter(|id| group_of(id) == group) {
+            let Some(ours) = passive_symbol(id) else {
                 continue;
             };
             let bare = id.split_once(':').map_or(id, |(_, n)| n);

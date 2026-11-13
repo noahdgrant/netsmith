@@ -418,7 +418,7 @@ fn cancelling(token: &Cancel) -> (Say, Arc<Mutex<usize>>) {
 
 #[test]
 fn build_cancels_before_it_writes_a_schematic_and_a_later_build_is_whole() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let (root, editor, _probe) = project("build");

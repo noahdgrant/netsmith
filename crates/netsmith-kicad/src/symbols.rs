@@ -46,7 +46,7 @@ use crate::install::{self, NotFound};
 use crate::sexp::Sexp;
 
 /// The environment variable that names the folder holding the `.kicad_sym` libraries.
-pub const ROOT_VARIABLE: &str = install::SYMBOLS_VARIABLE;
+pub(crate) const ROOT_VARIABLE: &str = install::SYMBOLS_VARIABLE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolError {

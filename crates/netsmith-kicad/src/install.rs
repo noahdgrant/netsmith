@@ -91,10 +91,10 @@ pub const NO_KICAD_VARIABLE: &str = "NETSMITH_NO_KICAD";
 /// to, as `binary<TAB>test` (nextest's `NEXTEST_BINARY_ID` and `NEXTEST_TEST_NAME`, which a
 /// process the test starts inherits). The `test` job sets it, and `scripts/ci-kicad-tests --check`
 /// fails if a test that looked for KiCad is not one the `kicad` job runs. Unset, nothing is written.
-pub const PROBE_LOG_VARIABLE: &str = "NETSMITH_KICAD_PROBE_LOG";
+pub(crate) const PROBE_LOG_VARIABLE: &str = "NETSMITH_KICAD_PROBE_LOG";
 
 /// The KiCad versions looked for in the install places that carry one, the preferred first.
-pub const VERSIONS: [&str; 2] = ["9.0", "8.0"];
+pub(crate) const VERSIONS: [&str; 2] = ["9.0", "8.0"];
 
 /// Which of KiCad's two library folders is wanted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,7 +246,7 @@ pub struct Search {
 
 /// Where Windows KiCad's `<version>/bin/kicad-cli.exe` are, seen from WSL: the program
 /// folders of 64-bit and 32-bit Windows programs.
-pub const WSL_PROGRAM_FOLDERS: [&str; 2] = [
+pub(crate) const WSL_PROGRAM_FOLDERS: [&str; 2] = [
     "/mnt/c/Program Files/KiCad",
     "/mnt/c/Program Files (x86)/KiCad",
 ];

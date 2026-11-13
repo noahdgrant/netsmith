@@ -279,7 +279,7 @@ fn run_fab(
     let kicad = KicadCliExe::locate();
     if kicad.is_none() {
         if cross_check {
-            match netsmith::fab::kicad_switched_off(&netsmith_kicad::install::Search::machine()) {
+            match netsmith::fab::kicad_switched_off(&netsmith_kicad::Search::machine()) {
                 Some(off) => eprintln!(
                     "error: --cross-check compares with KiCad's own files and needs kicad-cli, and {off}"
                 ),
@@ -291,7 +291,7 @@ fn run_fab(
         }
         eprintln!(
             "{}",
-            netsmith::fab::no_kicad_note(&netsmith_kicad::install::Search::machine())
+            netsmith::fab::no_kicad_note(&netsmith_kicad::Search::machine())
         );
     }
     let options = FabOptions {

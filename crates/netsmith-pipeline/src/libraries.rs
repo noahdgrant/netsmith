@@ -11,9 +11,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use netsmith_core::Design;
-use netsmith_kicad::install::Search;
-use netsmith_kicad::mapping::Mapped;
-use netsmith_kicad::{Mapping, Symbol, SymbolError, SymbolLib, stdlib};
+use netsmith_kicad::{
+    Mapped, Mapping, Search, Symbol, SymbolError, SymbolLib, is_library_id, stdlib_files,
+};
 use netsmith_pcb::{FootprintError, FootprintLibrary};
 
 /// What `build`, `fab` and `view` read from KiCad. `check` and `solve` need none of it.
@@ -28,7 +28,7 @@ pub struct Libraries {
 /// refusal is the error.
 pub fn check_generated_footprints(mapping: &Mapping) -> Result<(), String> {
     for row in mapping.rows() {
-        if let Some(spec) = netsmith_kicad::footprint_spec::FootprintSpec::from_id(&row.footprint)
+        if let Some(spec) = netsmith_kicad::FootprintSpec::from_id(&row.footprint)
             && let Err(why) = netsmith_pcb::generate::generate_spec(&spec)
         {
             return Err(format!(
@@ -119,7 +119,7 @@ impl Libraries {
     /// Whether `id` (`Library:Name`) is KiCad's: its library is neither one the project lists in
     /// `kicad.toml` nor netsmith's own (`std/libs/`), whose errors say what is wrong with them.
     fn is_kicads(&self, id: &str) -> bool {
-        !stdlib::is_library_id(id)
+        !is_library_id(id)
             && !id.split_once(':').is_some_and(|(library, _)| {
                 self.mapping.libraries().iter().any(|l| l.name == library)
             })
@@ -199,7 +199,7 @@ impl Libraries {
         })
     }
 
-    /// The installed KiCad libraries (found as `netsmith_kicad::install` describes, ADR 0021)
+    /// The installed KiCad libraries (found as `netsmith_kicad::Search` describes, ADR 0021)
     /// with the standard mapping, and nothing of a project.
     pub fn standard() -> Libraries {
         Libraries::with_mapping(
@@ -261,27 +261,23 @@ impl Libraries {
 
     /// The symbols netsmith draws for `design`'s parts (ADR 0097): from the pin table, for a
     /// row of the mapping that has no `symbol`, and, for an id it makes (`Device:R`), the
-    /// symbol of its own that answers it (`netsmith_kicad::passives`). One for each distinct
+    /// symbol of its own that answers it (`netsmith_kicad::passive_symbol_ids`). One for each distinct
     /// id, in the order of the parts, and the power flag after them when the schematic places
     /// one ([`netsmith_kicad::needs_power_flag`]).
     pub fn generated_symbols(&self, design: &Design) -> Vec<Arc<Symbol>> {
         let mut symbols: Vec<Arc<Symbol>> = Vec::new();
-        // The same symbols the schematic embeds ([`netsmith_kicad::resolve`]), so that its ids and
+        // The same symbols the schematic embeds ([`netsmith_kicad::part_symbols`]), so that its ids and
         // the library file's agree.
-        for (part, drawn) in design
-            .parts
-            .iter()
-            .zip(netsmith_kicad::resolve::part_symbols(
-                design,
-                &self.mapping,
-                &self.symbols,
-            ))
-        {
+        for (part, drawn) in design.parts.iter().zip(netsmith_kicad::part_symbols(
+            design,
+            &self.mapping,
+            &self.symbols,
+        )) {
             if part.kind == "Label" {
                 continue;
             }
             if let Ok((_, symbol)) = drawn
-                && stdlib::is_library_id(symbol.lib_id())
+                && is_library_id(symbol.lib_id())
                 && !symbols.iter().any(|s| s.lib_id() == symbol.lib_id())
             {
                 symbols.push(symbol);
@@ -289,7 +285,7 @@ impl Libraries {
         }
         if netsmith_kicad::needs_power_flag(design, &self.mapping, &self.symbols)
             && let Ok(flag) = self.symbols.symbol(netsmith_kicad::POWER_FLAG_SYMBOL)
-            && stdlib::is_library_id(flag.lib_id())
+            && is_library_id(flag.lib_id())
         {
             symbols.push(flag);
         }
@@ -306,7 +302,7 @@ impl Libraries {
             || design.parts.iter().any(|part| {
                 self.mapping
                     .map(&part.kind, part.package.as_deref())
-                    .is_ok_and(|m| stdlib::is_library_id(&m.footprint))
+                    .is_ok_and(|m| is_library_id(&m.footprint))
             })
     }
 
@@ -317,7 +313,7 @@ impl Libraries {
     pub fn write_tables(&self, dir: &Path, design: &Design) -> std::io::Result<()> {
         let with_std = self.uses_std_library(design);
         if with_std {
-            for (path, text) in stdlib::files(&self.generated_symbols(design)) {
+            for (path, text) in stdlib_files(&self.generated_symbols(design)) {
                 let file = dir.join(path);
                 if let Some(parent) = file.parent() {
                     std::fs::create_dir_all(parent)?;

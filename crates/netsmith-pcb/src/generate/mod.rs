@@ -204,7 +204,7 @@ mod tab;
 
 use std::sync::OnceLock;
 
-use netsmith_kicad::footprint_spec::{self, FootprintSpec};
+use netsmith_kicad::{FootprintSpec, GENERATED_FOOTPRINT_LIBRARY};
 
 use crate::body3d::{Lead, Package};
 use crate::footprint::Footprint;
@@ -242,9 +242,9 @@ pub const GENERATORS: [&str; 8] = [
 pub fn generate_spec(spec: &FootprintSpec) -> Result<Footprint, String> {
     let id = spec.id();
     let name = id
-        .strip_prefix(&format!("{}:", footprint_spec::LIBRARY))
+        .strip_prefix(&format!("{}:", GENERATED_FOOTPRINT_LIBRARY))
         .expect("an id starts with its library");
-    let library = footprint_spec::LIBRARY;
+    let library = GENERATED_FOOTPRINT_LIBRARY;
     let param_names = |known: &[&str]| params::Params::new(spec, known);
     let made = match spec.generator.as_str() {
         "QFN" | "DFN" => {

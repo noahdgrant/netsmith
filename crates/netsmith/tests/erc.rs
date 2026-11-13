@@ -261,7 +261,7 @@ fn a_net_with_a_single_pin_passes_erc_without_a_label() {
 /// `.name kind "NAME" "pad"...` lines) in a `gen:SOT23(pins=<pad count>)` footprint, with no
 /// KiCad library and every pin left on no net.
 fn probe_schematic(pad_count: usize, pins: &str) -> String {
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
 
     let dir = TempDir::new("erc-probe");
     let empty = TempDir::new("erc-probe-no-kicad");
@@ -294,7 +294,7 @@ fn probe_schematic(pad_count: usize, pins: &str) -> String {
 /// KiCad's ERC (where there is KiCad).
 fn probe_passes_erc(name: &str, pad_count: usize, pins: &str, markers: usize) {
     let schematic = probe_schematic(pad_count, pins);
-    let root = netsmith_kicad::sexp::Sexp::parse(&schematic).unwrap();
+    let root = netsmith_kicad::Sexp::parse(&schematic).unwrap();
     let mut points: Vec<String> = root
         .find_all("no_connect")
         .map(|m| {

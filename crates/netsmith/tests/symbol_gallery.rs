@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use netsmith::symbol_gallery::{EXAMPLE_ICS, example_ics, render};
-use netsmith_kicad::{SymbolLib, generate, passives};
+use netsmith_kicad::{overlapping_names, passive_symbol, passive_symbol_ids, SymbolLib};
 
 fn examples() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
@@ -78,10 +78,10 @@ fn the_page_has_one_section_for_each_symbol_passives_draws_and_for_each_ic() {
     let ics = example_ics(&examples()).unwrap_or_else(|e| panic!("{e}"));
     let page = render(None, &ics);
     assert_well_formed(&page);
-    // The list of the gallery is `passives::ids()`: a symbol added there and not drawn here
+    // The list of the gallery is `passive_symbol_ids()`: a symbol added there and not drawn here
     // (or the other way) fails this.
     let sections = attribute_values(&page, "data-symbol");
-    let ids: Vec<String> = passives::ids().map(str::to_string).collect();
+    let ids: Vec<String> = passive_symbol_ids().map(str::to_string).collect();
     assert_eq!(sections, ids, "one section for each id, in its order");
     assert_eq!(
         sections.iter().collect::<BTreeSet<_>>().len(),
@@ -109,13 +109,13 @@ fn with_no_kicad_every_stock_side_says_so_and_the_page_still_builds() {
     let page = render(None, &ics);
     assert_eq!(
         page.matches("data-side=\"kicad-absent\"").count(),
-        passives::ids().count() + ics.len()
+        passive_symbol_ids().count() + ics.len()
     );
     assert_eq!(page.matches("data-side=\"kicad\"").count(), 0);
     assert_eq!(
         page.matches("KiCad library not found: no stock counterpart drawn")
             .count(),
-        passives::ids().count() + ics.len()
+        passive_symbol_ids().count() + ics.len()
     );
     // The same inputs give the same page.
     assert_eq!(page, render(None, &ics));
@@ -130,7 +130,7 @@ fn a_library_that_has_the_symbol_is_drawn_beside_netsmiths_and_one_that_has_not_
     let drawn = page.matches("data-side=\"kicad\"").count();
     let absent = page.matches("data-side=\"kicad-absent\"").count();
     assert!(drawn > 0, "the sample library has `Device:R`");
-    assert_eq!(drawn + absent, passives::ids().count());
+    assert_eq!(drawn + absent, passive_symbol_ids().count());
     assert!(
         page.contains("KiCad&#39;s library has no symbol")
             || page.contains("KiCad's library has no symbol")
@@ -142,7 +142,7 @@ fn the_committed_page_has_a_section_for_every_symbol_so_it_is_written_again_when
     let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/symbol-gallery.html");
     let page = std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
     assert_well_formed(&page);
-    let ids: Vec<String> = passives::ids().map(str::to_string).collect();
+    let ids: Vec<String> = passive_symbol_ids().map(str::to_string).collect();
     assert_eq!(
         attribute_values(&page, "data-symbol"),
         ids,
@@ -169,7 +169,7 @@ fn no_pin_name_of_an_ic_box_is_over_another_and_a_value_is_not_the_internal_name
     let page = render(None, &ics);
     for ic in &ics {
         assert_eq!(
-            generate::overlapping_names(&ic.ours),
+            overlapping_names(&ic.ours),
             Vec::<(String, String)>::new(),
             "{}",
             ic.title
@@ -208,7 +208,7 @@ fn no_pin_name_of_an_ic_box_is_over_another_and_a_value_is_not_the_internal_name
 #[test]
 fn a_fet_s_fields_start_clear_of_its_body_and_it_draws_its_body_diode() {
     for id in ["Transistor_FET:Q_NMOS_GSD", "Transistor_FET:Q_PMOS_GSD"] {
-        let fet = passives::symbol(id).unwrap();
+        let fet = passive_symbol(id).unwrap();
         for name in ["Reference", "Value"] {
             assert_eq!(fet.field_justify(name), ["left"], "{id} {name}");
             let (x, _, _) = fet.field_offset(name).unwrap();

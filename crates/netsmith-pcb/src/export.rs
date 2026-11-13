@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::Sexp;
 use uuid::Uuid;
 
 use crate::board::{Board, KeepoutArea, Placed, Plane};
@@ -1198,7 +1198,7 @@ mod tests {
     }
 
     fn fmt(v: f64) -> String {
-        netsmith_kicad::sexp::fmt_num(v)
+        netsmith_kicad::fmt_num(v)
     }
 
     #[test]

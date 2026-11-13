@@ -1302,7 +1302,8 @@ pub fn ids() -> impl Iterator<Item = &'static str> {
 }
 
 /// Whether some id of `library` is made here.
-pub fn covers_library(library: &str) -> bool {
+#[cfg(test)]
+pub(crate) fn covers_library(library: &str) -> bool {
     specs()
         .iter()
         .any(|s| s.id.split_once(':').is_some_and(|(l, _)| l == library))

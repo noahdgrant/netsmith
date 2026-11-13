@@ -138,7 +138,7 @@ impl DesignatorMap {
     /// that the board does not have is unmapped, which the check reports. A board with no
     /// `netsmith_path` on any footprint was written before the property existed, and is refused.
     pub fn from_parts(parts: &crate::port::PortParts, pcb: &str) -> Result<DesignatorMap, String> {
-        let root = netsmith_kicad::sexp::Sexp::parse(pcb).map_err(|e| format!("the board: {e}"))?;
+        let root = netsmith_kicad::Sexp::parse(pcb).map_err(|e| format!("the board: {e}"))?;
         let mut map = BTreeMap::new();
         let mut with_path = 0;
         for footprint in root.find_all("footprint") {
@@ -368,7 +368,7 @@ fn origin_lines(
     let Ok(art) = netsmith_fab::artwork::Artwork::parse(pcb) else {
         return Vec::new();
     };
-    let paths: BTreeMap<String, String> = netsmith_kicad::sexp::Sexp::parse(pcb)
+    let paths: BTreeMap<String, String> = netsmith_kicad::Sexp::parse(pcb)
         .map(|root| {
             root.find_all("footprint")
                 .filter_map(|f| {

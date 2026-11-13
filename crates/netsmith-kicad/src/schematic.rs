@@ -927,7 +927,7 @@ const ACCEPTED: [(PinType, PinType); 3] = [
 
 /// The ERC pin map of the exported project: KiCad's default with the pairs of [`ACCEPTED`]
 /// made 0, both ways round.
-pub fn erc_pin_map() -> [[u8; 12]; 12] {
+pub(crate) fn erc_pin_map() -> [[u8; 12]; 12] {
     let mut map = KICAD_PIN_MAP;
     let index = |t: PinType| {
         PIN_MAP_TYPES

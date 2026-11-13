@@ -33,12 +33,13 @@ pub struct FootprintSpec {
 }
 
 /// Whether `text` is written as a generated footprint: it starts with `gen:`.
-pub fn is_spelling(text: &str) -> bool {
+pub(crate) fn is_spelling(text: &str) -> bool {
     text.starts_with("gen:")
 }
 
 /// Whether `id` is the id of a generated footprint, `gen:Name_...`.
-pub fn is_id(id: &str) -> bool {
+#[cfg(test)]
+pub(crate) fn is_id(id: &str) -> bool {
     id.split_once(':').is_some_and(|(l, _)| l == LIBRARY)
 }
 

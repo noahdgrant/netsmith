@@ -2,13 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-use netsmith_kicad::install::{self, NotFound};
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::{FOOTPRINTS_VARIABLE, InstallKind, NotFound, Search, Sexp};
 
 use crate::geometry::{Pt, Rect};
 
 /// The environment variable that names the folder holding the `.pretty` libraries.
-pub const ROOT_VARIABLE: &str = install::FOOTPRINTS_VARIABLE;
+pub const ROOT_VARIABLE: &str = FOOTPRINTS_VARIABLE;
 
 // Space added around the pads when a footprint draws no courtyard: the fab check's own, so
 // that the placer and the check measure one body (#457).
@@ -122,7 +121,7 @@ impl std::fmt::Display for FootprintError {
             Self::NoStdFootprint { name, known } => write!(
                 f,
                 "footprint `{name}` not found in the standard library `{}` (std/libs/); it has {}",
-                netsmith_kicad::stdlib::NAME,
+                netsmith_kicad::STDLIB_NAME,
                 known.join(", ")
             ),
             Self::Unreadable { path, reason } => write!(f, "{}: {reason}", path.display()),
@@ -827,7 +826,7 @@ fn read_graphic(item: &Sexp) -> Result<Option<Graphic>, String> {
 /// `Name` of the id `netsmith:Name`, the standard library's own footprints (ADR 0087).
 fn std_name(id: &str) -> Option<&str> {
     let (library, name) = id.split_once(':')?;
-    (library == netsmith_kicad::stdlib::NAME && !name.is_empty() && !name.contains(':'))
+    (library == netsmith_kicad::STDLIB_NAME && !name.is_empty() && !name.contains(':'))
         .then_some(name)
 }
 
@@ -872,12 +871,12 @@ impl FootprintLibrary {
     /// fails, naming every place looked at, when a footprint of an installed library is
     /// asked for. [`FootprintLibrary::root`] is then the first place looked at.
     pub fn installed() -> Self {
-        Self::installed_by(&install::Search::machine())
+        Self::installed_by(&Search::machine())
     }
 
     /// [`FootprintLibrary::installed`] over another machine, for tests.
-    pub fn installed_by(search: &install::Search) -> Self {
-        match search.find(install::Kind::Footprints) {
+    pub fn installed_by(search: &Search) -> Self {
+        match search.find(InstallKind::Footprints) {
             Ok(found) => Self::at(found.dir),
             Err(lookup) => {
                 let mut lib = Self::at(lookup.first_dir().unwrap_or(Path::new("")));
@@ -914,7 +913,7 @@ impl FootprintLibrary {
         // shadowed.
         let is_installed = self.no_install.is_none() && installed.is_dir();
         match self.project.iter().find(|(n, _)| n == library) {
-            Some((_, folder)) if library == netsmith_kicad::stdlib::NAME => {
+            Some((_, folder)) if library == netsmith_kicad::STDLIB_NAME => {
                 Err(FootprintError::AmbiguousStd {
                     library: library.to_string(),
                     project: folder.clone(),
@@ -946,7 +945,7 @@ impl FootprintLibrary {
         if let Some(footprint) = std_name(name) {
             return Ok(PathBuf::from(format!(
                 "std/libs/{}/{footprint}.kicad_mod",
-                netsmith_kicad::stdlib::FOOTPRINT_FOLDER
+                netsmith_kicad::FOOTPRINT_FOLDER
             )));
         }
         let (path, project) = self.locate(name)?;
@@ -975,7 +974,7 @@ impl FootprintLibrary {
     pub fn load(&self, name: &str) -> Result<Footprint, FootprintError> {
         // A footprint asked for by generator and parameters needs no library and no setting
         // (ADR 0104): the id carries the parameters.
-        if let Some(spec) = netsmith_kicad::footprint_spec::FootprintSpec::from_id(name) {
+        if let Some(spec) = netsmith_kicad::FootprintSpec::from_id(name) {
             return crate::generate::generate_spec(&spec).map_err(|reason| {
                 FootprintError::BadGenerated {
                     name: spec.spelling(),
@@ -989,14 +988,14 @@ impl FootprintLibrary {
             if self
                 .project
                 .iter()
-                .any(|(n, _)| n == netsmith_kicad::stdlib::NAME)
+                .any(|(n, _)| n == netsmith_kicad::STDLIB_NAME)
             {
-                self.folder_of(netsmith_kicad::stdlib::NAME)?;
+                self.folder_of(netsmith_kicad::STDLIB_NAME)?;
             }
-            let text = netsmith_kicad::stdlib::footprint(footprint).ok_or_else(|| {
+            let text = netsmith_kicad::stdlib_footprint(footprint).ok_or_else(|| {
                 FootprintError::NoStdFootprint {
                     name: name.to_string(),
-                    known: netsmith_kicad::stdlib::footprint_names()
+                    known: netsmith_kicad::stdlib_footprint_names()
                         .map(str::to_string)
                         .collect(),
                 }
@@ -1036,6 +1035,7 @@ impl FootprintLibrary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netsmith_kicad::SYMBOLS_VARIABLE;
 
     fn fixtures() -> FootprintLibrary {
         FootprintLibrary::at(netsmith_testkit::sample_footprints())
@@ -1621,7 +1621,7 @@ mod tests {
     #[test]
     fn no_install_is_an_error_only_when_an_installed_footprint_is_asked_for() {
         let empty = netsmith_testkit::TempDir::new("no-kicad-fp");
-        let library = FootprintLibrary::installed_by(&install::Search::under(empty.path()));
+        let library = FootprintLibrary::installed_by(&Search::under(empty.path()));
         // A name a generator makes needs no install.
         assert!(library.load("Resistor_SMD:R_0402_1005Metric").is_ok());
         // A project's own library needs none either.
@@ -1650,8 +1650,8 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("usr/share/kicad/footprints"), "{text}");
-        assert!(text.contains(install::SYMBOLS_VARIABLE), "{text}");
-        assert!(text.contains(install::FOOTPRINTS_VARIABLE), "{text}");
+        assert!(text.contains(SYMBOLS_VARIABLE), "{text}");
+        assert!(text.contains(FOOTPRINTS_VARIABLE), "{text}");
     }
 
     #[test]
@@ -1659,7 +1659,7 @@ mod tests {
         // `path_of` is about files (see its doc): a generated footprint has none, and the install
         // that would hold one is not there.
         let empty = netsmith_testkit::TempDir::new("no-kicad-path-of");
-        let library = FootprintLibrary::installed_by(&install::Search::under(empty.path()));
+        let library = FootprintLibrary::installed_by(&Search::under(empty.path()));
         let name = "Resistor_SMD:R_0402_1005Metric";
         assert!(library.load(name).is_ok());
         let text = library.path_of(name).unwrap_err().to_string();
@@ -1685,9 +1685,9 @@ mod tests {
         let text = library.path_of("own:X").unwrap_err().to_string();
         assert!(text.contains("both installed"), "{text}");
         // No install found: no clash, the project's own library answers.
-        let lookup = install::Search::under(dir.path())
+        let lookup = Search::under(dir.path())
             .with_no_kicad()
-            .find(install::Kind::Footprints)
+            .find(InstallKind::Footprints)
             .unwrap_err();
         library.no_install = Some(lookup);
         assert_eq!(
@@ -1705,7 +1705,7 @@ mod tests {
         let footprints = share.join("footprints");
         std::fs::create_dir_all(&footprints).unwrap();
         copy_dir(&netsmith_testkit::sample_footprints(), &footprints);
-        let library = FootprintLibrary::installed_by(&install::Search::under(root.path()));
+        let library = FootprintLibrary::installed_by(&Search::under(root.path()));
         assert_eq!(library.root(), footprints);
     }
 

@@ -5,7 +5,7 @@
 //!
 //! The page is `gallery.html` in the folder, one self-contained file (inline SVG, no script,
 //! no network, a light and a dark theme). KiCad's stock symbols are drawn where its symbol
-//! library is installed (`NETSMITH_KICAD_SYMBOLS`, or the usual places, as `netsmith_kicad::install`
+//! library is installed (`NETSMITH_KICAD_SYMBOLS`, or the usual places, as `netsmith_kicad::Search`
 //! says); where it is not, each stock side says so. `--no-kicad` leaves them out on purpose.
 //! The committed copy is `docs/symbol-gallery.html` (`--out docs --file symbol-gallery.html`).
 //!

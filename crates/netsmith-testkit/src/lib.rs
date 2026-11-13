@@ -10,7 +10,7 @@
 //!   fiducial (the footprints of those three are generated, `netsmith_pcb::generate`). They are
 //!   written to a folder in the system's temporary directory the first time a process asks. A
 //!   test that wants the stock libraries uses `netsmith_kicad::SymbolLib::installed` and skips
-//!   itself without KiCad (`netsmith_kicad::install::skip_without_kicad_libraries`, behind
+//!   itself without KiCad (`netsmith_kicad::skip_without_kicad_libraries`, behind
 //!   netsmith-kicad's `test-support` feature).
 //! - [`split_physical`]: a source written before the physical file, split into the two files.
 

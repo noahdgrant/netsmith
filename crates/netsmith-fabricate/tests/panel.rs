@@ -65,7 +65,7 @@ fn holes(drill: &str) -> usize {
 
 #[test]
 fn a_panel_of_six_boards_has_six_times_the_holes_parts_and_one_outline() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("six");
@@ -190,7 +190,7 @@ fn changed(from: &str, to: &str) -> String {
 
 #[test]
 fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("refused");
@@ -254,7 +254,7 @@ fn a_panel_that_the_board_house_would_refuse_says_why_with_the_numbers() {
 
 #[test]
 fn the_panel_definition_is_checked_like_the_rest_of_the_language() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("language");

@@ -247,7 +247,7 @@ fn compare_as_json_says_match_and_the_pairs() {
 /// (`netsmith_path`, #456), so that `netsmith parity` pairs a port's parts by it, with no build.
 #[test]
 fn fab_writes_the_member_path_of_each_footprint() {
-    use netsmith_kicad::sexp::Sexp;
+    use netsmith_kicad::{Sexp};
     let root = led("output-fab-path");
     let run = netsmith(&root, &["fab", "--quiet"]);
     assert!(run.status.success(), "{}", stderr(&run));

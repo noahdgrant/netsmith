@@ -901,7 +901,7 @@ fn crystal(body: (f64, f64), h: f64) -> Vec<Solid> {
 mod tests {
     use super::*;
     use crate::generate::generate;
-    use netsmith_kicad::footprint_spec::FootprintSpec;
+    use netsmith_kicad::FootprintSpec;
 
     const EPS: f64 = 1e-9;
 

@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use netsmith_kicad::footprint_spec::FootprintSpec;
+use netsmith_kicad::FootprintSpec;
 
 use super::ipc::Size;
 use crate::footprint::{Footprint, PadKind};
