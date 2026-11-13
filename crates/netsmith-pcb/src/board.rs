@@ -1323,6 +1323,15 @@ pub struct Track {
     pub width: f64,
 }
 
+/// Copper that widens a track where it meets a pad or a via (issue #431, S11): a polygon on
+/// the track's layer and net, drawn by [`crate::teardrop::add`] once the board is routed.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Teardrop {
+    pub net: String,
+    pub layer: CopperLayer,
+    pub points: Vec<Pt>,
+}
+
 /// A plated hole that joins the two copper layers.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Via {
@@ -1362,6 +1371,10 @@ pub struct Board {
     /// Routed copper. Empty until the board is routed.
     pub tracks: Vec<Track>,
     pub vias: Vec<Via>,
+    /// The teardrops where tracks meet pads and vias; empty until the board is routed, and
+    /// after it when they are switched off.
+    #[serde(default)]
+    pub teardrops: Vec<Teardrop>,
     /// The narrowest track of the nets whose rails ask for one (ADR 0020), by net name.
     /// Every other net is routed at the rules' track width.
     pub net_widths: Vec<(String, f64)>,
@@ -2581,6 +2594,7 @@ impl Unplaced {
             planes,
             tracks: Vec::new(),
             vias: Vec::new(),
+            teardrops: Vec::new(),
             net_widths: design.features.net_widths.clone(),
             net_currents: design.features.net_currents.clone(),
             overhang,

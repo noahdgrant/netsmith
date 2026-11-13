@@ -50,6 +50,7 @@ pub mod shape;
 pub mod stackup;
 pub mod standard_height;
 pub mod svg;
+pub mod teardrop;
 pub mod validate;
 
 pub use board::{

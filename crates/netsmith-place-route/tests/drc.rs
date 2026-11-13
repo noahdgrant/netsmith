@@ -176,3 +176,55 @@ fn a_board_of_seventy_parts_is_checked_in_a_couple_of_seconds() {
     let limit = if cfg!(debug_assertions) { 20.0 } else { 2.0 };
     assert!(took.as_secs_f64() < limit, "took {took:?}");
 }
+
+#[test]
+fn routed_boards_get_teardrops_that_change_no_track_and_pass_the_check() {
+    let mut drops = 0;
+    for (n, board) in hard_boards(6).into_iter().enumerate() {
+        let (mut with, mut without) = (board.clone(), board);
+        route_with(&mut with, RouteOptions::default());
+        route_with(
+            &mut without,
+            RouteOptions {
+                teardrops: false,
+                ..RouteOptions::default()
+            },
+        );
+        assert_eq!(with.tracks, without.tracks, "board {n}");
+        assert_eq!(with.vias, without.vias, "board {n}");
+        assert!(without.teardrops.is_empty());
+        drops += with.teardrops.len();
+        // Every teardrop is on a net of a track it widens, and in the board file as KiCad's mark.
+        for d in &with.teardrops {
+            assert!(
+                with.tracks
+                    .iter()
+                    .any(|t| t.net == d.net && t.layer == d.layer),
+                "board {n}: {d:?}"
+            );
+        }
+        let text = kicad_pcb(&with);
+        assert_eq!(
+            text.matches("(teardrop (type padvia))").count(),
+            with.teardrops.len()
+        );
+        // The same board gives the same teardrops.
+        let mut again = without.clone();
+        netsmith_pcb::teardrop::add(&mut again);
+        assert_eq!(again.teardrops, with.teardrops, "board {n}");
+        let mine = ours(&with);
+        if Ratsnest::of(&with).is_empty() {
+            let errors: Vec<_> = mine.errors().map(ToString::to_string).collect();
+            assert_eq!(errors, Vec::<String>::new(), "board {n}");
+        }
+        if let Some(c) = against_kicad(&format!("teardrops-{n}"), &with, &mine) {
+            assert!(
+                c.only_netsmith.is_empty() && c.only_kicad.is_empty(),
+                "board {n}: {:?} {:?}",
+                c.only_netsmith,
+                c.only_kicad
+            );
+        }
+    }
+    assert!(drops > 0, "no routed board got a teardrop");
+}
