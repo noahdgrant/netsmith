@@ -326,22 +326,22 @@ const SOT89_BODY: (f64, f64) = (2.5, 4.5);
 /// are the recorded ones (the tab's pad is as wide as D1, the same figure).
 mod sot89_package {
     /// Across the row of pins (x), then along it (y).
-    pub const BODY: (f64, f64) = super::SOT89_BODY;
+    pub(super) const BODY: (f64, f64) = super::SOT89_BODY;
     /// Pin pitch.
-    pub const PITCH: f64 = 1.50;
-    pub const OUTER_PIN_WIDTH: f64 = 0.48;
-    pub const CENTRE_PIN_WIDTH: f64 = 0.56;
+    pub(super) const PITCH: f64 = 1.50;
+    pub(super) const OUTER_PIN_WIDTH: f64 = 0.48;
+    pub(super) const CENTRE_PIN_WIDTH: f64 = 0.56;
     /// How far a pin reaches beyond the body (L), and the length of its foot: the same.
-    pub const PIN_LENGTH: f64 = 1.05;
-    pub const TAB_WIDTH: f64 = 1.733;
+    pub(super) const PIN_LENGTH: f64 = 1.05;
+    pub(super) const TAB_WIDTH: f64 = 1.733;
     /// Overall, pin tips to tab tip (H).
-    pub const OVERALL: f64 = 4.10;
+    pub(super) const OVERALL: f64 = 4.10;
     /// How far the wide part of the tab runs in under the body (E2).
-    pub const TAB_UNDER: f64 = 2.20;
+    pub(super) const TAB_UNDER: f64 = 2.20;
     /// How far the tab reaches beyond the body, derived: H - E - L.
-    pub const TAB_REACH: f64 = OVERALL - BODY.0 - PIN_LENGTH;
+    pub(super) const TAB_REACH: f64 = OVERALL - BODY.0 - PIN_LENGTH;
     /// How far in under the body the centre lead runs to meet the tab: E - E2.
-    pub const CENTRE_UNDER: f64 = BODY.0 - TAB_UNDER;
+    pub(super) const CENTRE_UNDER: f64 = BODY.0 - TAB_UNDER;
 }
 
 /// The shape of SOT-89-3: pins 1 and 3 and the narrow end of pin 2 on the left, pin 2's tab
@@ -518,7 +518,7 @@ fn tab_package(s: &TabShape) -> Package {
 }
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     DPAK.iter()
         .map(|d| d.name)
         .chain(SOT89.iter().map(|s| s.name))
@@ -527,7 +527,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is a package of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     if library != LIBRARY {
         return None;
     }

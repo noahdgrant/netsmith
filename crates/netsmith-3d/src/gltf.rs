@@ -98,7 +98,7 @@ use crate::mesh::{BodyPieces, Material, Mesh, NO_NET, pieces};
 use crate::raster3d::Theme;
 use crate::scene3d::{HoleOwner, Pins, Scene};
 use crate::system::{Finding, Motion, Place, SystemScene};
-use netsmith_pcb::board::Side;
+use netsmith_pcb::Side;
 
 /// The version of the file's contract (the module's header).
 pub(crate) const SCHEMA: u32 = 1;

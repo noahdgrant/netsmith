@@ -1,12 +1,11 @@
-//! The copper as data (`netsmith_pcb::copper`, ADR 0105) is the copper of the Gerbers: for
+//! The copper as data (`netsmith_pcb::copper_of`, ADR 0105) is the copper of the Gerbers: for
 //! routed example boards, each copper layer drawn from the data and the layer fab writes are
 //! rasterised and compared, and so are the pours alone against the filler's own output.
 
 use netsmith_fab::gbr::{Contour, Gerber};
 use netsmith_fab::geom::Pt as FabPt;
 use netsmith_fab::raster::{self, Image, View};
-use netsmith_pcb::copper::{self, Area, Copper};
-use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
+use netsmith_pcb::{copper_of, Area, Copper, Board, kicad_pcb, kicad_pro};
 use netsmith_router::route;
 
 use crate::common;
@@ -102,7 +101,7 @@ fn suffix(layer: &str) -> String {
 /// Compares every copper layer of the board, whole and pours alone.
 fn compare(example: &str, pours: &[&str]) {
     let board = routed(example, pours);
-    let c = copper::copper(&board).unwrap();
+    let c = copper_of(&board).unwrap();
     let art = netsmith_fab::artwork::Artwork::parse(&kicad_pcb(&board)).unwrap();
     let rules = netsmith_fab::plot_rules_of(Some(&kicad_pro(&board)));
     let plot = netsmith_fab::plot::plot(&art, "b", &rules).unwrap();

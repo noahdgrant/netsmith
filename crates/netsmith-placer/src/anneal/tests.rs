@@ -3,23 +3,23 @@
 use netsmith_core::{Design, Net, Part, PinRef};
 
 use crate::testlib::fixtures;
-use netsmith_pcb::board::Board;
+use netsmith_pcb::Board;
 
 use super::*;
 
 #[test]
 fn a_shortfall_that_is_real_is_never_shown_as_zero() {
-    assert_eq!(short(0.8), "0.80");
-    assert_eq!(short(0.05), "0.05");
-    assert_eq!(short(0.004), "0.004");
-    assert_eq!(short(0.0004), "0.0004");
+    assert_eq!(short_mm(0.8), "0.80");
+    assert_eq!(short_mm(0.05), "0.05");
+    assert_eq!(short_mm(0.004), "0.004");
+    assert_eq!(short_mm(0.0004), "0.0004");
     // Below what the placement check itself ignores there is nothing to show.
-    assert_eq!(short(2e-6), "<0.0001");
+    assert_eq!(short_mm(2e-6), "<0.0001");
     for v in [0.0123, 0.0049, 0.00051, 0.00011] {
         assert!(
-            short(v).parse::<f64>().is_ok_and(|shown| shown > 0.0),
+            short_mm(v).parse::<f64>().is_ok_and(|shown| shown > 0.0),
             "{v} is shown as {}",
-            short(v)
+            short_mm(v)
         );
     }
 }
@@ -191,7 +191,7 @@ fn two_parts_that_hang_over_the_same_edge_may_overlap_beyond_it() {
     let outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(20.0, 20.0));
     let fixed = [false; 2];
     let mut bottom = Edges::default();
-    bottom.set(netsmith_pcb::overhang::Edge::Bottom);
+    bottom.set(netsmith_pcb::Edge::Bottom);
     let run = |board: &mut Board, overhangs: &[Edges]| {
         let problem = Problem {
             nets: &board.nets.clone(),
@@ -306,7 +306,7 @@ fn lid_beside_a_strip() -> (Board, Rect) {
 
 fn run_beside_strip(
     board: &mut Board,
-    zones: &[netsmith_pcb::placement::HeightZone],
+    zones: &[netsmith_pcb::HeightZone],
     keepouts: &[Rect],
 ) -> bool {
     let fixed = [false; 4];
@@ -331,8 +331,8 @@ fn run_beside_strip(
     anneal(&mut board.parts, &problem, 1.0).feasible
 }
 
-fn lid(rect: Rect) -> netsmith_pcb::placement::HeightZone {
-    netsmith_pcb::placement::HeightZone {
+fn lid(rect: Rect) -> netsmith_pcb::HeightZone {
+    netsmith_pcb::HeightZone {
         name: "lid".into(),
         rect,
         front: true,
@@ -392,13 +392,10 @@ fn a_keepout_for_parts_still_keeps_the_whole_courtyard_out() {
 /// Four resistors on a 26 by 12 mm board, the first (`a`) carrying a keepout of
 /// 12 by 10 mm in its own frame, from 2 mm right of its origin; the others are named `b`,
 /// `c` and `d`. Returns the board and the zone, as the annealer is told.
-fn carrier_with_a_zone(
-    parts: bool,
-    limit: Option<f64>,
-) -> (Board, netsmith_pcb::placement::CarriedZone) {
+fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, netsmith_pcb::CarriedZone) {
     let mut board = resistors(&["a", "b", "c", "d"]);
     board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(26.0, 12.0));
-    let zone = netsmith_pcb::placement::CarriedZone {
+    let zone = netsmith_pcb::CarriedZone {
         name: "shadow".into(),
         part: "a".into(),
         local: Rect::new(Pt::new(2.0, -5.0), Pt::new(14.0, 5.0)),
@@ -407,7 +404,7 @@ fn carrier_with_a_zone(
         back: true,
         limit,
     };
-    board.keepouts.push(netsmith_pcb::board::BoardKeepout {
+    board.keepouts.push(netsmith_pcb::BoardKeepout {
         name: zone.name.clone(),
         part: Some("a".into()),
         at: Some(zone.local.min),
@@ -423,7 +420,7 @@ fn carrier_with_a_zone(
     (board, zone)
 }
 
-fn run_with_carried(board: &mut Board, carried: &[netsmith_pcb::placement::CarriedZone]) -> bool {
+fn run_with_carried(board: &mut Board, carried: &[netsmith_pcb::CarriedZone]) -> bool {
     let fixed = [false; 4];
     let problem = Problem {
         nets: &board.nets.clone(),
@@ -457,7 +454,7 @@ fn a_keepout_for_parts_that_a_part_carries_keeps_the_other_parts_out_where_the_p
         blind
             .check_placement()
             .iter()
-            .any(|p| matches!(p, netsmith_pcb::board::PlacementProblem::InKeepout { .. })),
+            .any(|p| matches!(p, netsmith_pcb::PlacementProblem::InKeepout { .. })),
         "without the zone told to the placer a part stands in it, so the test says something"
     );
     let (mut board, zone) = carrier_with_a_zone(true, None);
@@ -479,7 +476,7 @@ fn a_height_limit_that_a_part_carries_keeps_out_the_parts_too_tall_for_it() {
         board
             .check_placement()
             .iter()
-            .any(|p| matches!(p, netsmith_pcb::board::PlacementProblem::TooTall { .. }))
+            .any(|p| matches!(p, netsmith_pcb::PlacementProblem::TooTall { .. }))
     };
     let (mut blind, _) = carrier_with_a_zone(false, Some(3.0));
     for part in &mut blind.parts[1..] {

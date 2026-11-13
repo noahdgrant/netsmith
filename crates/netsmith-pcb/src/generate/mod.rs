@@ -192,7 +192,7 @@ mod diode;
 mod draw;
 mod gullwing;
 pub(crate) mod header;
-pub mod ipc;
+pub(crate) mod ipc;
 mod mechanical;
 mod outline;
 mod params;
@@ -225,7 +225,7 @@ fn leads_of(pads: &[draw::PadSpec], body: (f64, f64)) -> Vec<Lead> {
 }
 
 /// The generators a project can ask for by name and parameters (`gen:QFN(...)`, ADR 0104).
-pub const GENERATORS: [&str; 8] = [
+pub(crate) const GENERATORS: [&str; 8] = [
     "QFN",
     "DFN",
     "QFP",
@@ -331,7 +331,7 @@ pub fn names() -> &'static [String] {
 }
 
 /// Whether some generated name belongs to the library `library`.
-pub fn covers_library(library: &str) -> bool {
+pub(crate) fn covers_library(library: &str) -> bool {
     names()
         .iter()
         .any(|n| n.split_once(':').is_some_and(|(l, _)| l == library))

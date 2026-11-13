@@ -179,7 +179,7 @@ pub fn clip(court: &Rect, outline: &Rect) -> Rect {
 }
 
 /// How far `court` is past each edge of `outline`, in mm, for the edges it is past.
-pub fn past(court: &Rect, outline: &Rect) -> Vec<(Edge, f64)> {
+pub(crate) fn past(court: &Rect, outline: &Rect) -> Vec<(Edge, f64)> {
     [
         (Edge::Left, outline.min.x - court.min.x),
         (Edge::Right, court.max.x - outline.max.x),

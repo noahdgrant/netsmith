@@ -29,7 +29,7 @@ pub struct Libraries {
 pub fn check_generated_footprints(mapping: &Mapping) -> Result<(), String> {
     for row in mapping.rows() {
         if let Some(spec) = netsmith_kicad::FootprintSpec::from_id(&row.footprint)
-            && let Err(why) = netsmith_pcb::generate::generate_spec(&spec)
+            && let Err(why) = netsmith_pcb::generate_footprint_spec(&spec)
         {
             return Err(format!(
                 "{}:{}: part `{}` in package `{}`: footprint `{}`: {why}",

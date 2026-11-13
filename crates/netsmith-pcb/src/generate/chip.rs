@@ -171,7 +171,7 @@ const FAMILIES: [Family; 6] = [
 ];
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     let mut out = Vec::new();
     for family in &FAMILIES {
         for size in family.sizes {
@@ -187,7 +187,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is a chip of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     let family = FAMILIES.iter().find(|f| f.library == library)?;
     let rest = name.strip_prefix(family.prefix)?.strip_prefix('_')?;
     let dimensions = family

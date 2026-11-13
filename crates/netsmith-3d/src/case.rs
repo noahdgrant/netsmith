@@ -56,7 +56,7 @@
 use std::fmt;
 
 use netsmith_core::CaseFigures;
-use netsmith_pcb::board::Side;
+use netsmith_pcb::Side;
 
 use crate::mesh::{Aabb, Material, Mesh, rounded_rect, trig};
 use crate::scene3d::{BoardSolid, Body, HeightProvenance, HoleOwner, PartCategory, Pins, Plan};

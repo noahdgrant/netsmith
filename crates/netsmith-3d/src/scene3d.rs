@@ -22,7 +22,7 @@
 //! # What it holds
 //!
 //! - The board solid: the rounded outline, the cutouts, every drilled hole (pads and vias,
-//!   plated or not) and the layers of [`netsmith_pcb::stackup::layers`], the list the KiCad board file's
+//!   plated or not) and the layers of [`netsmith_pcb::stackup_layers`], the list the KiCad board file's
 //!   stackup is written from, each at its Z.
 //! - One [`Body`] per part with a body (a label has none): the body box (the footprint's
 //!   `F.Fab` drawing, else its courtyard, as a placement requirement and the height check measure
@@ -31,8 +31,8 @@
 //!   part with no height of its own whose footprint has a _Standard height_ stands to the
 //!   package standard's maximum, labelled `standard` (ADR 0106).
 //!   Where the footprint has a package record (or is a pin header read from a file,
-//!   [`netsmith_pcb::body3d::package_of`]) and the height is known, the body also carries
-//!   its _Package shape_ ([`PlacedShape`]): the solids of [`netsmith_pcb::body3d::package_shape`] in the
+//!   [`netsmith_pcb::package_of`]) and the height is known, the body also carries
+//!   its _Package shape_ ([`PlacedShape`]): the solids of [`netsmith_pcb::package_shape`] in the
 //!   footprint's frame and the map that puts them where the box is, mirrored and hanging down
 //!   for a part on the bottom face. Only the meshes draw it: the height limits, the overlaps and
 //!   every report measure the body box.
@@ -41,7 +41,7 @@
 //!   ([`model_frame`]), drawn in place of the package shape. A drawing only, like the shape.
 //! - The pins of a through-hole part below the far face, where the design states their
 //!   protrusion (ADR 0045 section 15); unknown otherwise. A pin header's or socket's are its
-//!   pins one by one ([`netsmith_pcb::body3d::pin_tails`], drawn from the far end up through the
+//!   pins one by one ([`netsmith_pcb::pin_tails`], drawn from the far end up through the
 //!   board to the part's face); another part's are the box of its plated pads. The case fit
 //!   measures the box.
 //! - The height limits ([`HeightLimit`]): every placed keepout with `.max_height`, per face it
@@ -55,7 +55,7 @@
 //!   the tracks (each a straight piece with round ends, an arc as such pieces), the planes and the pours as polygons
 //!   with holes; the vias as barrels from the top copper to the bottom copper; and the
 //!   openings of the solder mask and the silkscreen of each face. It is the output of
-//!   [`netsmith_pcb::copper`], the copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
+//!   [`netsmith_pcb::copper_of`], the copper of the Gerbers, moved into this frame, not computed again. Its ids are the net
 //!   names of [`Board::nets`], and a pad also has its part's path and number. A board whose
 //!   copper cannot be drawn (its board file would not plot either) has the reason in place of
 //!   the copper, and the rest of the scene is as it is.
@@ -67,7 +67,7 @@
 //! Everything is in a fixed order: bodies by part path, holes by part path then pad order then
 //! vias in the board's order, limits by name, findings by path; copper layers from the top
 //! face down, a layer's pads by part path then the footprint's pad order, and its tracks,
-//! pours and the vias in the order of [`netsmith_pcb::copper`] (the board's).
+//! pours and the vias in the order of [`netsmith_pcb::copper_of`] (the board's).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -76,13 +76,10 @@ use crate::mesh::Mesh;
 use crate::mesh::trig::sin_cos_turns;
 use crate::step::read::model::Affine;
 use crate::step::read::{CHORD_TOLERANCE, ReadModel};
-use netsmith_pcb::board::{Board, PlacementProblem, Side};
-use netsmith_pcb::body3d::Solid;
-use netsmith_pcb::copper::{self, CopperError};
-use netsmith_pcb::footprint::{Drill, PadKind};
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::shape::Edge;
-use netsmith_pcb::stackup::{LayerKind, StackLayer};
+use netsmith_pcb::{
+    Area, Board, BodySolid, Copper, CopperError, Drill, LayerKind, PadKind, PlacementProblem, Pt,
+    Rect, ShapeEdge, Side, StackLayer, copper_of,
+};
 
 /// Where a part's height came from (the glossary's _Height provenance_), strongest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -92,7 +89,7 @@ pub enum HeightProvenance {
     /// The `height` cell of the catalog row the part was picked as (ADR 0094).
     Catalog,
     /// Neither, and the footprint has a _Standard height_: the greatest its package standard
-    /// allows (ADR 0106, [`netsmith_pcb::standard_height`]), not a figure of the part.
+    /// allows (ADR 0106, [`netsmith_pcb::StandardHeight`]), not a figure of the part.
     Standard,
     /// None of these: the part has no height.
     Unknown,
@@ -299,10 +296,10 @@ pub enum Pins {
         z_top: f64,
         z_bottom: f64,
         /// Each pin's tail, where the package's pins are known (a pin header or socket,
-        /// [`netsmith_pcb::body3d::pin_tails`]): in the footprint's frame, placed by the
+        /// [`netsmith_pcb::pin_tails`]): in the footprint's frame, placed by the
         /// body's [`Body::place`], from the far end of the protrusion up through the board to
         /// the part's face. Empty otherwise: the box at `at` is drawn. Drawing only.
-        tails: Vec<Solid>,
+        tails: Vec<BodySolid>,
     },
 }
 
@@ -334,11 +331,11 @@ pub struct Body {
     pub height: Option<f64>,
     pub provenance: HeightProvenance,
     /// The package standard the height is from, for a `standard` height (ADR 0106).
-    pub standard: Option<netsmith_pcb::standard_height::StandardHeight>,
+    pub standard: Option<netsmith_pcb::StandardHeight>,
     pub pins: Pins,
     /// The package shape, drawn in place of the box. `None` when the footprint has no package
     /// record (a footprint read from a file, ADR 0105, that is not a pin header,
-    /// [`netsmith_pcb::body3d::header_of_file`]) or the height is unknown: the box, or the
+    /// [`netsmith_pcb::header_of_file`]) or the height is unknown: the box, or the
     /// flat outline, is drawn instead.
     pub shape: Option<PlacedShape>,
     /// Where the footprint's frame is in the scene's.
@@ -391,10 +388,10 @@ pub struct DrawnModel {
 }
 
 /// A part's _Package shape_ where it is on the board: its solids in the footprint's own frame
-/// ([`netsmith_pcb::body3d`]: y down, z up from the face the part is on) and the map to the scene's.
+/// ([`netsmith_pcb::package_shape`]: y down, z up from the face the part is on) and the map to the scene's.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlacedShape {
-    pub solids: Vec<Solid>,
+    pub solids: Vec<BodySolid>,
     pub place: Placement,
 }
 
@@ -693,7 +690,7 @@ pub struct MaskFace {
     pub areas: Vec<PlanArea>,
 }
 
-/// The silkscreen of a face: the ink of its legend Gerber ([`netsmith_pcb::copper::SilkInk`]), as
+/// The silkscreen of a face: the ink of its legend Gerber ([`netsmith_pcb::SilkInk`]), as
 /// printed on the outside of the face's mask (`z`, the mask layer's outer side of the stackup;
 /// the outer copper's where the stackup has no mask).
 #[derive(Debug, Clone, PartialEq)]
@@ -741,8 +738,8 @@ impl Scene {
             .chosen_thickness()
             .expect("a board is only made once its thickness is chosen");
         let solid = solid(board, &frame, thickness);
-        let copper = copper::copper(board).and_then(|c| scene_copper(&c, &solid.layers, &frame));
-        let mut parts: Vec<&netsmith_pcb::board::Placed> =
+        let copper = copper_of(board).and_then(|c| scene_copper(&c, &solid.layers, &frame));
+        let mut parts: Vec<&netsmith_pcb::Placed> =
             board.parts.iter().filter(|p| p.kind != "Label").collect();
         parts.sort_by(|a, b| a.path.cmp(&b.path));
         let bodies: Vec<Body> = parts
@@ -925,14 +922,14 @@ impl Frame {
         ring.iter().rev().map(|p| self.point(*p)).collect()
     }
 
-    fn area(&self, a: &copper::Area) -> PlanArea {
+    fn area(&self, a: &Area) -> PlanArea {
         PlanArea {
             outer: self.ring(&a.outer),
             holes: a.holes.iter().map(|h| self.ring(h)).collect(),
         }
     }
 
-    fn areas(&self, areas: &[copper::Area]) -> Vec<PlanArea> {
+    fn areas(&self, areas: &[Area]) -> Vec<PlanArea> {
         areas.iter().map(|a| self.area(a)).collect()
     }
 
@@ -954,12 +951,12 @@ impl Frame {
 /// A length to a nanometre, with no negative zero, so a report prints the same bytes on every
 /// machine.
 fn clean(v: f64) -> f64 {
-    let r = netsmith_pcb::stackup::round(v);
+    let r = netsmith_pcb::round_nm(v);
     if r == 0.0 { 0.0 } else { r }
 }
 
 fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
-    let stack: Vec<StackLayer> = netsmith_pcb::stackup::layers(board);
+    let stack: Vec<StackLayer> = netsmith_pcb::stackup_layers(board);
     let mut z = 0.0;
     let layers = stack
         .into_iter()
@@ -984,7 +981,7 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
             radius: c.radius,
         })
         .collect::<Vec<_>>();
-    let mut parts: Vec<&netsmith_pcb::board::Placed> = board.parts.iter().collect();
+    let mut parts: Vec<&netsmith_pcb::Placed> = board.parts.iter().collect();
     parts.sort_by(|a, b| a.path.cmp(&b.path));
     let mut holes = Vec::new();
     for p in parts {
@@ -1030,11 +1027,11 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
                 p.edges()
                     .iter()
                     .map(|e| match *e {
-                        Edge::Line(from, to) => OutlineEdge::Line {
+                        ShapeEdge::Line(from, to) => OutlineEdge::Line {
                             from: frame.point(from),
                             to: frame.point(to),
                         },
-                        Edge::Arc { start, mid, end } => OutlineEdge::Arc {
+                        ShapeEdge::Arc { start, mid, end } => OutlineEdge::Arc {
                             start: frame.point(start),
                             mid: frame.point(mid),
                             end: frame.point(end),
@@ -1053,7 +1050,7 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
 
 /// The copper of `c` in the scene: each layer at its Z of the stackup `layers`.
 fn scene_copper(
-    c: &copper::Copper,
+    c: &Copper,
     layers: &[SceneLayer],
     frame: &Frame,
 ) -> Result<SceneCopper, CopperError> {
@@ -1180,7 +1177,7 @@ fn scene_copper(
 }
 
 fn body(
-    p: &netsmith_pcb::board::Placed,
+    p: &netsmith_pcb::Placed,
     frame: &Frame,
     thickness: f64,
     provenance: &BTreeMap<String, HeightProvenance>,
@@ -1235,7 +1232,7 @@ fn body(
                         source: t.source.clone(),
                         z_top: near.max(far),
                         z_bottom: near.min(far),
-                        tails: netsmith_pcb::body3d::pin_tails(&p.footprint, thickness + t.length),
+                        tails: netsmith_pcb::pin_tails(&p.footprint, thickness + t.length),
                     }
                 }
             }
@@ -1244,7 +1241,7 @@ fn body(
     let place = placement(p, frame, z_face, out);
     let shape = height
         .is_some()
-        .then(|| netsmith_pcb::body3d::package_shape(&p.footprint, height))
+        .then(|| netsmith_pcb::package_shape(&p.footprint, height))
         .filter(|s| s.shaped && !s.solids.is_empty())
         .map(|s| PlacedShape {
             solids: s.solids,
@@ -1333,8 +1330,8 @@ fn rigid(m: &[[f64; 3]; 3]) -> bool {
 }
 
 /// Where the footprint's frame of `p` is in the scene: its origin, and its axes as
-/// [`netsmith_pcb::board::Placed::to_board`] turns and mirrors them, with the sheet's y flipped.
-fn placement(p: &netsmith_pcb::board::Placed, frame: &Frame, z_face: f64, out: f64) -> Placement {
+/// [`netsmith_pcb::Placed::to_board`] turns and mirrors them, with the sheet's y flipped.
+fn placement(p: &netsmith_pcb::Placed, frame: &Frame, z_face: f64, out: f64) -> Placement {
     // `to_board` less the move, without the rounding of adding and taking away `p.at`.
     let axis = |local: Pt| {
         let local = if p.mirrored() {
@@ -1355,7 +1352,7 @@ fn placement(p: &netsmith_pcb::board::Placed, frame: &Frame, z_face: f64, out: f
 }
 
 fn limits(board: &Board, frame: &Frame, thickness: f64, bodies: &[Body]) -> Vec<HeightLimit> {
-    let parts: BTreeMap<&str, &netsmith_pcb::board::Placed> =
+    let parts: BTreeMap<&str, &netsmith_pcb::Placed> =
         board.parts.iter().map(|p| (p.path.as_str(), p)).collect();
     let mut limits: Vec<HeightLimit> = board
         .keepout_areas()

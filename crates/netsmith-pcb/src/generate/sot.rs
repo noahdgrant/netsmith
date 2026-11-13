@@ -95,7 +95,7 @@ const SOT_223: [(&str, &str); 2] = [("SOT-223-3_TabPin2", "2"), ("SOT-223", "4")
 const LIBRARY: &str = "Package_TO_SOT_SMD";
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     SOT_23
         .iter()
         .map(|s| s.name)
@@ -106,7 +106,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is a package of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     if library != LIBRARY {
         return None;
     }
@@ -235,12 +235,12 @@ fn sot23(s: &Sot23, library: &str, name: &str) -> Footprint {
 /// the KiCad library's (ADR 0043) and not these dimensions: a pad is wider than the lead on it.
 mod sot223_package {
     /// Across the columns of pads (x), then along them (y).
-    pub const BODY: (f64, f64) = (3.50, 6.50);
+    pub(super) const BODY: (f64, f64) = (3.50, 6.50);
     /// Tip to tip over the pins on one side and the tab on the other.
-    pub const SPAN: f64 = 7.00;
-    pub const PIN_WIDTH: f64 = 0.70;
-    pub const TAB_WIDTH: f64 = 3.00;
-    pub const FOOT: f64 = 0.95;
+    pub(super) const SPAN: f64 = 7.00;
+    pub(super) const PIN_WIDTH: f64 = 0.70;
+    pub(super) const TAB_WIDTH: f64 = 3.00;
+    pub(super) const FOOT: f64 = 0.95;
 }
 
 /// Three 2.0 x 1.5 mm pads 2.3 mm apart on the left; the tab, 2.0 x 3.8 mm, on the right.
@@ -335,14 +335,14 @@ struct Sc70 {
 /// drawing was found).
 mod sc70_package {
     /// Across the pins (x), then along them (y).
-    pub const BODY: (f64, f64) = (1.25, 2.00);
+    pub(super) const BODY: (f64, f64) = (1.25, 2.00);
     /// Tip to tip over the leads of the two sides.
-    pub const SPAN: f64 = 2.10;
+    pub(super) const SPAN: f64 = 2.10;
     /// The foot of a lead.
-    pub const FOOT: f64 = 0.36;
+    pub(super) const FOOT: f64 = 0.36;
     /// Width of a lead: three-lead package, then five- and six-lead packages.
-    pub const WIDTH_3: f64 = 0.30;
-    pub const WIDTH_5_6: f64 = 0.20;
+    pub(super) const WIDTH_3: f64 = 0.30;
+    pub(super) const WIDTH_5_6: f64 = 0.20;
 }
 
 /// The shape of an SC-70 with three, five or six leads; the other variants are boxes.

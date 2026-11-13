@@ -7,7 +7,7 @@
 //!
 //! This module reads the text and spells it as an id; it does not know the generators. What a
 //! generator calls its parameters, which it needs and which ranges it takes is the generators'
-//! (`netsmith_pcb::generate`), which check a [`FootprintSpec`] when the mapping is used
+//! (`netsmith_pcb::generated_footprint`), which check a [`FootprintSpec`] when the mapping is used
 //! (`Libraries::for_project`).
 //!
 //! The id is what the rest of netsmith passes round where it passes `Library:Name`: the

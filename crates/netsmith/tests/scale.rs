@@ -22,8 +22,7 @@ use netsmith_check::Loader;
 use netsmith_editor::Backend;
 use netsmith_kicad::{Search};
 use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare};
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::{Board, PlaceOptions, kicad_pcb};
+use netsmith_pcb::{Pt, Rect, Board, PlaceOptions, kicad_pcb};
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;
 

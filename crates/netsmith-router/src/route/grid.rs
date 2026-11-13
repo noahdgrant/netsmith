@@ -416,7 +416,7 @@ impl Counts {
     pub(super) fn stamp(
         &mut self,
         grid: &Grid,
-        rules: &netsmith_pcb::rules::Rules,
+        rules: &netsmith_pcb::Rules,
         o: &Obstacle,
         reach: Reach,
         up: bool,

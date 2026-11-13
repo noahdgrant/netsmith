@@ -670,7 +670,7 @@ fn holes_test_points_and_a_fiducial_are_fabricated_with_no_kicad_footprint_libra
             .find(|f| f.args().first().and_then(|a| a.text()) == Some(id))
             .unwrap_or_else(|| panic!("the board has no {id}"));
         let written = Footprint::parse(id, &node.to_kicad_string()).unwrap();
-        let made = netsmith_pcb::generate::generate(id).unwrap();
+        let made = netsmith_pcb::generated_footprint(id).unwrap();
         assert_eq!(written.pads.len(), made.pads.len(), "{id}");
         for (w, m) in written.pads.iter().zip(&made.pads) {
             assert_eq!(

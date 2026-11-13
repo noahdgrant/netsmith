@@ -471,7 +471,7 @@ fn the_full_list_has_every_part_with_its_place_and_state() {
             .find(|l| {
                 l.starts_with(&format!(
                     "{} (",
-                    netsmith_pcb::board::member(&p.path, &p.part)
+                    netsmith_pcb::board_member(&p.path, &p.part)
                 ))
             })
             .unwrap_or_else(|| panic!("no line for {}: {report}", p.part));

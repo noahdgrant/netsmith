@@ -110,14 +110,10 @@
 use std::collections::VecDeque;
 
 use crate::anneal::{self, Outcome, Problem};
-use netsmith_pcb::board::{Board, BoardNet, Placed, ReferenceSide, Side};
-use netsmith_pcb::constraints::Want;
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::overhang::{self, Overhang};
-use netsmith_pcb::placement::{
-    DoesNotFit, Ended, ORIGIN, PartState, PlaceOptions, inside, oversize,
+use netsmith_pcb::{
+    Board, BoardNet, DoesNotFit, Edges, Ended, ORIGIN, Overhang, PartState, PlaceOptions, Placed,
+    Pt, Rect, ReferenceSide, Rules, Side, Want, check_oversize, fit_inside, overhang_needs,
 };
-use netsmith_pcb::rules::Rules;
 
 /// Space kept between courtyards side by side.
 const GAP_X: f64 = 1.5;
@@ -536,7 +532,7 @@ fn restore(parts: &mut [Placed], saved: Vec<(Pt, f64, ReferenceSide)>) {
 
 /// The want of each part, in the order of `parts`.
 /// The edges each part's requirements say it may hang over.
-fn overhangs_of(parts: &[Placed], options: &PlaceOptions) -> Vec<overhang::Edges> {
+fn overhangs_of(parts: &[Placed], options: &PlaceOptions) -> Vec<Edges> {
     parts
         .iter()
         .map(|p| {
@@ -795,7 +791,7 @@ pub(crate) fn arrange_best(
 /// over an edge stay as they are.
 fn turn_to_fit(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
     let Some(fit) = options.fit else { return };
-    let (width, height) = inside(fit, options);
+    let (width, height) = fit_inside(fit, options);
     for (i, part) in parts.iter_mut().enumerate() {
         if fixed[i] || options.overhang.contains_key(&part.refdes) {
             continue;
@@ -808,7 +804,7 @@ fn turn_to_fit(parts: &mut [Placed], fixed: &[bool], options: &PlaceOptions) {
         let want = options.wants.get(&part.refdes);
         let allowed = |angle: f64| {
             want.is_none_or(|w| {
-                netsmith_pcb::constraints::quarter(angle).is_some_and(|q| w.reach[q].is_some())
+                netsmith_pcb::constraint_quarter(angle).is_some_and(|q| w.reach[q].is_some())
             })
         };
         let turned = [90.0, 270.0]
@@ -884,8 +880,8 @@ fn could_fit(parts: &[Placed], fit: (f64, f64), options: &PlaceOptions) -> bool 
             // (`Placed::room_on`; the pads' own area is what is certainly taken).
             for (k, face) in [Side::Front, Side::Back].into_iter().enumerate() {
                 // Pins with a stated protrusion may be stood over: nothing is certainly taken
-                // there (`netsmith_pcb::protrusion`).
-                if netsmith_pcb::protrusion::may_be_covered(p, face) {
+                // there (`netsmith_pcb::judge_protrusion`).
+                if netsmith_pcb::may_be_covered(p, face) {
                     continue;
                 }
                 load[k] += p
@@ -938,7 +934,7 @@ fn fixed_needs(parts: &[Placed], fixed: &[bool], options: &PlaceOptions) -> Opti
             let court = p.courtyard();
             match (&outline, options.overhang.get(&p.refdes)) {
                 (Some(outline), Some(declared)) => {
-                    overhang::needs(&court, outline, declared.edges(), options.wall())
+                    overhang_needs(&court, outline, declared.edges(), options.wall())
                 }
                 _ => (
                     court.max.x - ORIGIN.x + options.wall(),
@@ -1206,7 +1202,7 @@ fn refine(
     outcome.ended.tries = tries;
     if !outcome.feasible {
         if let (Some(fit), false) = (options.fit, rows_fit) {
-            let room = inside(fit, options);
+            let room = fit_inside(fit, options);
             let area = parts
                 .iter()
                 .filter(|p| !options.overhang.contains_key(&p.refdes))
@@ -1219,7 +1215,7 @@ fn refine(
                 wall: options.wall(),
                 needs: rows.needs,
                 outline: fit,
-                oversize: oversize(parts, fixed, options, fit),
+                oversize: check_oversize(parts, fixed, options, fit),
                 area: (area, 2.0 * room.0 * room.1),
                 parts: part_states(parts, fixed, &outcome.ended).into_boxed_slice(),
                 requirements: None,
@@ -1348,7 +1344,7 @@ impl std::fmt::Display for PlaceError {
                             .map(String::as_str)
                             .chain(std::iter::repeat(""))
                     )
-                    .map(|(r, p)| netsmith_pcb::board::member(p, r))
+                    .map(|(r, p)| netsmith_pcb::board_member(p, r))
                     .collect::<Vec<_>>()
                     .join(", "),
                 region.width(),
@@ -1402,7 +1398,7 @@ pub fn place_subset(
     let planes: Vec<String> = board.planes.iter().map(|p| p.net.clone()).collect();
     let zones = board.height_zones();
     let carried = board.carried_zones();
-    let overhangs: Vec<overhang::Edges> = board
+    let overhangs: Vec<Edges> = board
         .parts
         .iter()
         .map(|p| {
@@ -1527,10 +1523,10 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use netsmith_pcb::placement::Fixed;
+    use netsmith_pcb::Fixed;
 
     use crate::testlib::{fixtures, led_design};
-    use netsmith_pcb::board::Board;
+    use netsmith_pcb::Board;
 
     use super::*;
 
@@ -1541,7 +1537,7 @@ mod tests {
             ended: Some(Box::new(Ended {
                 tries,
                 outside: 1,
-                outside_parts: vec![netsmith_pcb::placement::OutsideAt {
+                outside_parts: vec![netsmith_pcb::OutsideAt {
                     part: "U1".into(),
                     why: vec!["0.004 mm inside the 0.75 mm margin at the left edge".into()],
                     worst: 0.004,
@@ -1588,7 +1584,7 @@ mod tests {
             ended: Some(Box::new(Ended {
                 overlaps: 1,
                 outside: 1,
-                overlapping: vec![netsmith_pcb::placement::OverlapAt {
+                overlapping: vec![netsmith_pcb::OverlapAt {
                     a: "J2".into(),
                     b: "C37".into(),
                     area: 0.42,
@@ -1596,7 +1592,7 @@ mod tests {
                     at: (1.0, 1.0),
                     nearest: ("left", 1.0),
                 }],
-                outside_parts: vec![netsmith_pcb::placement::OutsideAt {
+                outside_parts: vec![netsmith_pcb::OutsideAt {
                     part: "R3".into(),
                     why: vec!["0.80 mm outside the left edge".into()],
                     worst: 0.8,
@@ -1645,7 +1641,7 @@ mod tests {
     #[test]
     fn the_refusal_lists_and_the_full_report_name_members_by_path() {
         let ended = Ended {
-            overlapping: vec![netsmith_pcb::placement::OverlapAt {
+            overlapping: vec![netsmith_pcb::OverlapAt {
                 a: "J2".into(),
                 b: "C37".into(),
                 area: 0.42,
@@ -1653,7 +1649,7 @@ mod tests {
                 at: (1.0, 1.0),
                 nearest: ("left", 1.0),
             }],
-            outside_parts: vec![netsmith_pcb::placement::OutsideAt {
+            outside_parts: vec![netsmith_pcb::OutsideAt {
                 part: "R3".into(),
                 why: vec!["0.80 mm outside the left edge".into()],
                 worst: 0.8,
@@ -1669,7 +1665,7 @@ mod tests {
             "outside the outline or inside its margin, by mm past what is kept clear: `stage.r3` (R3) 0.80; courtyards overlapping, by mm2: `usb` (J2) and `vbus.c37` (C37) 0.42"
         );
         assert_eq!(
-            netsmith_pcb::placement::Oversize {
+            netsmith_pcb::Oversize {
                 part: "J3".into(),
                 path: "edge".into(),
                 kind: "Connector".into(),
@@ -1701,7 +1697,7 @@ mod tests {
         }
         let (a, b) = (board.parts[0].refdes.clone(), board.parts[1].refdes.clone());
         let ended = Ended {
-            overlapping: vec![netsmith_pcb::placement::OverlapAt {
+            overlapping: vec![netsmith_pcb::OverlapAt {
                 a: a.clone(),
                 b: b.clone(),
                 area: 1.0,
@@ -1873,7 +1869,7 @@ mod tests {
     fn placed_with(
         parts: Vec<Part>,
         options: &PlaceOptions,
-    ) -> Result<Board, netsmith_pcb::board::BoardError> {
+    ) -> Result<Board, netsmith_pcb::BoardError> {
         let design = Design {
             modules: Vec::new(),
             name: "T".into(),
@@ -2088,7 +2084,7 @@ mod tests {
         options.fit = Some((20.0, 30.0));
         turn_to_fit(&mut again, &[false; 3], &options);
         assert_eq!(again[0].rotation, 0.0);
-        let found = oversize(&again, &[false; 3], &options, (20.0, 30.0));
+        let found = check_oversize(&again, &[false; 3], &options, (20.0, 30.0));
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].part, "R1");
         assert_eq!(found[0].tried.len(), 4);
@@ -2144,8 +2140,8 @@ mod tests {
         );
         // Stated for the bottom edge, it needs the board to its edge and no margin there; the
         // side that is on the board keeps its margin.
-        let mut edges = netsmith_pcb::overhang::Edges::default();
-        edges.set(netsmith_pcb::overhang::Edge::Bottom);
+        let mut edges = netsmith_pcb::Edges::default();
+        edges.set(netsmith_pcb::Edge::Bottom);
         options.overhang.insert(
             "J1".into(),
             Overhang::Stated {
@@ -2160,8 +2156,8 @@ mod tests {
             "{needs:?}"
         );
         // Stated for another edge, nothing is waived.
-        edges = netsmith_pcb::overhang::Edges::default();
-        edges.set(netsmith_pcb::overhang::Edge::Left);
+        edges = netsmith_pcb::Edges::default();
+        edges.set(netsmith_pcb::Edge::Left);
         options.overhang.insert(
             "J1".into(),
             Overhang::Stated {
@@ -2207,11 +2203,7 @@ mod tests {
         };
         let pairs = after("courtyards overlapping (");
         let described: Vec<&&str> = pairs.iter().filter(|l| l.contains(" mm2 (")).collect();
-        assert_eq!(
-            described.len(),
-            netsmith_pcb::placement::DESCRIBED,
-            "{text}"
-        );
+        assert_eq!(described.len(), netsmith_pcb::DESCRIBED, "{text}");
         assert!(
             described[0].contains(" and R") && described[0].contains(" mm from the "),
             "{}",
@@ -2223,7 +2215,7 @@ mod tests {
             rest.split(" mm2").next().unwrap().parse().unwrap()
         };
         assert!(
-            area(described[0]) >= area(described[netsmith_pcb::placement::DESCRIBED - 1]),
+            area(described[0]) >= area(described[netsmith_pcb::DESCRIBED - 1]),
             "{text}"
         );
         // The rest are named, so that the message holds the whole list.
@@ -2236,7 +2228,7 @@ mod tests {
         assert!(
             more.contains(&format!(
                 "and {} more: R",
-                counted - netsmith_pcb::placement::DESCRIBED
+                counted - netsmith_pcb::DESCRIBED
             )),
             "{more}"
         );
@@ -2400,7 +2392,7 @@ mod tests {
         // width to the next.
         let (parts, nets) = chain("R", "m", 14);
         let board = board_from(parts, nets, &PlaceOptions::default());
-        let q = crate::quality::Quality::of(&board);
+        let q = netsmith_pcb::Quality::of(&board);
         assert!(q.ratsnest < 14.0 * 3.5, "ratsnest {:.1} mm", q.ratsnest);
         assert!(q.crossings <= 1, "{} crossings", q.crossings);
     }
@@ -2459,7 +2451,7 @@ mod tests {
         nets.push(wire("IN", &[("U1", "3"), ("C1", "1"), ("R1", "1")]));
         nets.push(wire("GND", &[("U1", "1"), ("C1", "2"), ("R30", "2")]));
         let board = board_from(parts, nets, &PlaceOptions::default());
-        let q = crate::quality::Quality::of(&board);
+        let q = netsmith_pcb::Quality::of(&board);
         assert_eq!(q.decoupling.len(), 1);
         assert_eq!(q.decoupling[0].cap, "C1");
         assert_eq!(q.decoupling[0].part, "U1");
@@ -2477,7 +2469,7 @@ mod tests {
             wire("GND", &[("U1", "1"), ("U2", "1"), ("C1", "2"), ("C2", "2")]),
         ];
         let board = board_from(parts, nets, &PlaceOptions::default());
-        let pairs = crate::quality::decoupling_pairs(&board.parts, &board.nets);
+        let pairs = netsmith_pcb::decoupling_pairs(&board.parts, &board.nets);
         let named: Vec<(&str, &str)> = pairs
             .iter()
             .map(|p| {
@@ -2500,7 +2492,7 @@ mod tests {
             wire("B", &[("C1", "2"), ("U1", "2")]),
         ];
         let board = board_from(parts, nets, &PlaceOptions::default());
-        assert!(crate::quality::decoupling_pairs(&board.parts, &board.nets).is_empty());
+        assert!(netsmith_pcb::decoupling_pairs(&board.parts, &board.nets).is_empty());
     }
 
     #[test]

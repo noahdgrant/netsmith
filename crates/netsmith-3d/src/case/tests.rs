@@ -5,7 +5,7 @@ use super::*;
 use crate::mesh::{Material, Mesh};
 use crate::scene3d::{Hole, Pins};
 use crate::step::read::Piece;
-use netsmith_pcb::standard_height::StandardHeight;
+use netsmith_pcb::StandardHeight;
 
 const W: f64 = 40.0;
 const H: f64 = 24.0;

@@ -1195,7 +1195,7 @@ pub struct PcbCutout {
 #[serde(rename_all = "camelCase")]
 pub struct PcbScene {
     pub board: String,
-    /// The drawing (`netsmith_pcb::svg::render_view`): its groups, `data-ref`, `data-path`,
+    /// The drawing (`netsmith_pcb::render_svg_view`): its groups, `data-ref`, `data-path`,
     /// `data-pad`, `data-net`, `data-keepout` and `data-cutout` tie it to the rest.
     pub svg: String,
     /// The outline's top left corner on the sheet: a position in the layout file is this far

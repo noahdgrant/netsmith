@@ -1057,7 +1057,7 @@ fn section_picture(
 #[test]
 fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_bottom() {
     use netsmith_3d::{Material, Rgba, Theme};
-    use netsmith_pcb::stackup::LayerKind;
+    use netsmith_pcb::{LayerKind};
     let scene = scene_of("examples/four_layer.nsm");
     // Across J1 (a header 8.9 mm tall; the layout file has it 3.25 mm from the top edge of the
     // 7 mm board, so at y = 3.75 mm from the bottom edge): a section through a part.
@@ -1587,7 +1587,7 @@ fn the_stackup_adds_up_to_the_nominal_thickness_within_the_fabricators_tolerance
             (board["stack_thickness"].as_f64().unwrap() - sum).abs() < 1e-9,
             "{file}: stack_thickness is the sum of the layers"
         );
-        let tolerance = netsmith_pcb::stackup::thickness_tolerance(nominal);
+        let tolerance = netsmith_pcb::thickness_tolerance(nominal);
         assert!(
             (sum - nominal).abs() <= tolerance,
             "{file}: the layers add up to {sum} mm, more than {tolerance} mm from {nominal} mm"

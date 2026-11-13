@@ -14,9 +14,7 @@
 use netsmith_fab::artwork::{HAlign, Text, VAlign};
 use netsmith_fab::raster::{Canvas, Point, disc};
 
-use netsmith_pcb::board::{Board, CopperLayer};
-use netsmith_pcb::copper::{self, CopperError};
-use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::{Board, CopperError, CopperLayer, Pt, Rect, copper_of};
 use netsmith_router::{Crowding, Snapshot, SnapshotStage};
 
 /// The pixels along the long side of a picture.
@@ -93,7 +91,7 @@ impl Painter {
         pads_only.vias.clear();
         pads_only.pours.clear();
         pads_only.planes.clear();
-        let copper = copper::copper(&pads_only)?;
+        let copper = copper_of(&pads_only)?;
         let mut pads = Vec::new();
         let outer = [copper.layers.first(), copper.layers.last()];
         for layer in outer.into_iter().flatten() {

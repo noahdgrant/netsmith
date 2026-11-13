@@ -60,7 +60,7 @@ use crate::geometry::{Pt, Rect};
 use crate::placement::{CarriedZone, Fixed, HeightZone, ORIGIN, PlaceOptions};
 
 /// The version of the file format this reads and writes.
-pub const VERSION: u32 = 1;
+pub(crate) const VERSION: u32 = 1;
 
 /// Which face of the board a part is on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -445,7 +445,7 @@ impl Layout {
 /// forbids parts, wherever the source or the layout file puts it (the source wins; a layout
 /// entry for one the source places is an error that [`apply_layout`] reports). A keepout a
 /// part carries moves with the part and is left out.
-pub fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
+pub(crate) fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
     let entries = layout.and_then(|l| l.boards.get(&design.name));
     let rect = |at: (f64, f64), size: (f64, f64)| {
         let min = ORIGIN + Pt::new(at.0, at.1);
@@ -481,7 +481,7 @@ pub fn clear_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
 /// the source or the layout file puts them, in the placer's coordinates. A keepout a part
 /// carries moves with the part and is left out, as in [`clear_of`]: the placement check
 /// still measures it.
-pub fn height_zones(design: &Design, layout: Option<&Layout>) -> Vec<HeightZone> {
+pub(crate) fn height_zones(design: &Design, layout: Option<&Layout>) -> Vec<HeightZone> {
     let entries = layout.and_then(|l| l.boards.get(&design.name));
     design
         .features
@@ -510,7 +510,7 @@ pub fn height_zones(design: &Design, layout: Option<&Layout>) -> Vec<HeightZone>
 /// The keepouts that parts carry, each in its part's own frame: they move and turn with the
 /// part, so the placer keeps the other parts out of them where the part is (ADR 0045
 /// section 11). One that has no `at` has no place and is left out (the check names it).
-pub fn carried_zones(design: &Design) -> Vec<CarriedZone> {
+pub(crate) fn carried_zones(design: &Design) -> Vec<CarriedZone> {
     design
         .features
         .keepouts
@@ -539,7 +539,7 @@ pub fn carried_zones(design: &Design) -> Vec<CarriedZone> {
 /// them: the part of [`clear_of`] to which a pad keeps the process's distance from copper to
 /// an edge as well as the courtyards keeping out. The part of a polygon outline's box that
 /// is outside the polygon (issue #57) is among them: board edge, as a cutout's is.
-pub fn cutouts_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
+pub(crate) fn cutouts_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
     let entries = layout.and_then(|l| l.boards.get(&design.name));
     let outside = design
         .features

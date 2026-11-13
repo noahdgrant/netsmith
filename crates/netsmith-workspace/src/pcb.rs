@@ -15,7 +15,7 @@
 //! edit turned round. The server answers 409 when the file, or an entry, is not as the page
 //! last saw it, and 400 when the board does not take the result: it is placed with the new
 //! layout first, and the file is written only then, atomically. `GET /api/pcb/scene` has the
-//! drawing (`svg::render_view`, with `data-ref`, `data-path`, `data-pad`, `data-net`,
+//! drawing (`render_svg_view`, with `data-ref`, `data-path`, `data-pad`, `data-net`,
 //! `data-keepout`, `data-cutout`, and `data-from` and `data-to` on the ratsnest lines) and
 //! the data that finds things in it. An edit throws the routed copper away (there is no
 //! routes cache), and a flip changes what the derived placer is told, so parts nobody placed
@@ -49,9 +49,8 @@ use netsmith_editor::{
     },
 };
 use netsmith_pcb::{
-    Board, Layout, Rect, Side,
-    layout::{BoardLayout, Face, KeepoutPlace, PartPlace, copper_layers},
-    svg,
+    Board, BoardLayout, KeepoutPlace, Layout, LayoutFace, PartPlace, Rect, Side, copper_layers,
+    render_svg_view,
 };
 use netsmith_router::{RouteOptions, route_with};
 
@@ -546,7 +545,7 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
         .map_or(String::new(), |n| n.to_string_lossy().into_owned());
     PcbScene {
         board: name.to_string(),
-        svg: svg::render_view(board),
+        svg: render_svg_view(board),
         origin_x: board.outline.min.x,
         origin_y: board.outline.min.y,
         outline: sheet_box(board.outline),
@@ -569,7 +568,7 @@ fn same_part(before: Option<&PartPlacement>, now: Option<&PartPlace>) -> bool {
             (b.x - n.at[0]).abs() < 0.006
                 && (b.y - n.at[1]).abs() < 0.006
                 && turn_between(b.rotation, n.rotation) < 0.006
-                && (b.side == PcbSide::Bottom) == (n.side == Face::Bottom)
+                && (b.side == PcbSide::Bottom) == (n.side == LayoutFace::Bottom)
                 && b.locked == n.lock
         }
         _ => false,
@@ -597,9 +596,9 @@ fn part_place(after: &PartPlacement, old: Option<&PartPlace>) -> Result<PartPlac
         at: [round(after.x), round(after.y)],
         rotation: round(after.rotation.rem_euclid(360.0)),
         side: if after.side == PcbSide::Bottom {
-            Face::Bottom
+            LayoutFace::Bottom
         } else {
-            Face::Top
+            LayoutFace::Top
         },
         text: old.map(|o| o.text).unwrap_or_default(),
         lock: after.locked,

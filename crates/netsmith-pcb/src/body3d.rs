@@ -66,40 +66,40 @@ use crate::footprint::{Footprint, PadKind};
 use crate::geometry::{Pt, Rect};
 
 /// Drawing only: the thickness of a gull-wing lead, in mm, at most a quarter of the height.
-pub const LEAD_THICKNESS: f64 = 0.15;
+pub(crate) const LEAD_THICKNESS: f64 = 0.15;
 /// Drawing only: where a gull-wing lead leaves the body, as a share of the height.
-pub const LEAD_EXIT: f64 = 0.4;
+pub(crate) const LEAD_EXIT: f64 = 0.4;
 /// Drawing only: the gap under the body of a leaded package, in mm, at most a tenth of the height.
-pub const GULL_WING_STANDOFF: f64 = 0.1;
+pub(crate) const GULL_WING_STANDOFF: f64 = 0.1;
 /// Drawing only: the thickness of a QFN's or DFN's terminals and exposed pad, in mm, at most a
 /// quarter of the height.
-pub const NO_LEAD_TERMINAL_THICKNESS: f64 = 0.2;
+pub(crate) const NO_LEAD_TERMINAL_THICKNESS: f64 = 0.2;
 /// Drawing only: how far a QFN's terminal shows past the side of the body, in mm (it is inside
 /// the pad, which reaches further).
-pub const NO_LEAD_TERMINAL_EXPOSURE: f64 = 0.02;
+pub(crate) const NO_LEAD_TERMINAL_EXPOSURE: f64 = 0.02;
 /// Drawing only: the gap under a QFN's or DFN's plastic, so that its metal shows from below, in
 /// mm, at most a tenth of the height.
-pub const NO_LEAD_STANDOFF: f64 = 0.02;
+pub(crate) const NO_LEAD_STANDOFF: f64 = 0.02;
 /// Drawing only: a BGA ball's diameter over its pad's.
-pub const BALL_PER_PAD: f64 = 1.25;
+pub(crate) const BALL_PER_PAD: f64 = 1.25;
 /// Drawing only: a soldered ball's height over its diameter, at most half the part's height.
-pub const BALL_HEIGHT_PER_DIAMETER: f64 = 0.8;
+pub(crate) const BALL_HEIGHT_PER_DIAMETER: f64 = 0.8;
 /// Drawing only: how deep a socket's opening is drawn below its top, in mm, at most half the
 /// height.
-pub const SOCKET_OPENING_DEPTH: f64 = 0.05;
+pub(crate) const SOCKET_OPENING_DEPTH: f64 = 0.05;
 /// Drawing only: the thickness of a crystal's metal lid, in mm, at most a quarter of the height.
-pub const CRYSTAL_LID_THICKNESS: f64 = 0.1;
+pub(crate) const CRYSTAL_LID_THICKNESS: f64 = 0.1;
 /// Drawing only: how far a crystal's lid stays in from the edge of its base, in mm, at most a
 /// quarter of the shorter side.
-pub const CRYSTAL_LID_INSET: f64 = 0.2;
+pub(crate) const CRYSTAL_LID_INSET: f64 = 0.2;
 /// Drawing only: the radius of the dot that marks pin 1, as a share of the body's shorter side
 /// (between 0.1 and 0.5 mm).
-pub const PIN1_MARK_RADIUS: f64 = 0.08;
+pub(crate) const PIN1_MARK_RADIUS: f64 = 0.08;
 /// Drawing only: how deep the pin 1 dot and the cathode band are drawn below the top, in mm, at
 /// most half the height.
-pub const PIN1_MARK_DEPTH: f64 = 0.02;
+pub(crate) const PIN1_MARK_DEPTH: f64 = 0.02;
 /// Drawing only: the width of a cathode band, as a share of the body's length.
-pub const CATHODE_BAND: f64 = 0.15;
+pub(crate) const CATHODE_BAND: f64 = 0.15;
 
 /// What a generator knows of a package's shape, kept on the footprint it made, in the
 /// footprint's frame. The first of `leads`, `balls` or `pins` is pin 1.

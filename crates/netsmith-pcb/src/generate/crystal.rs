@@ -226,7 +226,7 @@ const PACKAGES: &[Crystal] = &[
 ];
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     PACKAGES
         .iter()
         .map(|c| format!("{LIBRARY}:{}", c.name))
@@ -234,7 +234,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is a package of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     if library != LIBRARY {
         return None;
     }

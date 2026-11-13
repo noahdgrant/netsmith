@@ -4,7 +4,7 @@
 //! use the installed KiCad libraries and are skipped when there are none. (The router's
 //! `examples` take these boards on to routed copper.)
 
-use netsmith_pcb::{Board, FootprintLibrary, Ratsnest, kicad_pcb, svg};
+use netsmith_pcb::{render_svg, Board, FootprintLibrary, Ratsnest, kicad_pcb};
 
 use crate::common;
 
@@ -56,7 +56,7 @@ fn each_example_writes_the_same_files_every_time() {
         let a = board(example, &fixtures());
         let b = board(example, &fixtures());
         assert_eq!(kicad_pcb(&a), kicad_pcb(&b), "{example}");
-        assert_eq!(svg::render(&a), svg::render(&b), "{example}");
+        assert_eq!(render_svg(&a), render_svg(&b), "{example}");
     }
 }
 

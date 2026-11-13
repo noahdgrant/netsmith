@@ -5,7 +5,7 @@
 //! - [`artwork`]: the board read from its `.kicad_pcb` (pads, tracks, vias, zones, drawings,
 //!   text), with [`geom`]'s points and arcs and [`edge`]'s outline.
 //! - [`plot`], [`drill`], [`fill`], [`pads`], [`font`], [`gbr`], [`polygons`]: the drawing of
-//!   each layer, as Gerber X2 and Excellon text or as polygons. `netsmith_pcb::copper` draws
+//!   each layer, as Gerber X2 and Excellon text or as polygons. `netsmith_pcb::copper_of` draws
 //!   the copper as data with the same code the Gerbers are drawn with (ADR 0105), so they agree.
 //! - [`drc`]: netsmith's own design rules check (ADR 0037), and the room and teardrops the
 //!   router and the meanders measure with.
@@ -36,7 +36,7 @@ pub struct Output {
 }
 
 /// The rules the plot needs, from the text of the project file beside the board (`.kicad_pro`):
-/// what `fab` plots with, and what `netsmith_pcb::copper` fills the pours with.
+/// what `fab` plots with, and what `netsmith_pcb::copper_of` fills the pours with.
 pub fn plot_rules_of(pro: Option<&str>) -> plot::Rules {
     let pro = pro.unwrap_or_default();
     let number = |key: &str| -> Option<f64> {

@@ -7,7 +7,7 @@ use netsmith_kicad::{FOOTPRINTS_VARIABLE, InstallKind, NotFound, Search, Sexp};
 use crate::geometry::{Pt, Rect};
 
 /// The environment variable that names the folder holding the `.pretty` libraries.
-pub const ROOT_VARIABLE: &str = FOOTPRINTS_VARIABLE;
+pub(crate) const ROOT_VARIABLE: &str = FOOTPRINTS_VARIABLE;
 
 // Space added around the pads when a footprint draws no courtyard: the fab check's own, so
 // that the placer and the check measure one body (#457).

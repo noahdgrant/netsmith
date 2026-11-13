@@ -721,7 +721,7 @@ fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
     // a project: its `kicad.toml` maps a coaxial jack to a KiCad stock footprint that netsmith
     // neither generates nor has in `std/libs`.
     let id = "Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal";
-    assert!(netsmith_pcb::generate::generate(id).is_none());
+    assert!(netsmith_pcb::generated_footprint(id).is_none());
     assert!(!netsmith_kicad::is_library_id(id));
     let project = TempDir::new("no-install-project");
     std::fs::write(

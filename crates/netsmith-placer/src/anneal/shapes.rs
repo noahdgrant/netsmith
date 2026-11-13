@@ -39,15 +39,15 @@ pub(super) fn shape_of(
         .footprint
         .graphics
         .iter()
-        .filter(|g| g.layer == netsmith_pcb::footprint::Layer::Silk)
+        .filter(|g| g.layer == netsmith_pcb::Layer::Silk)
         .flat_map(|g| {
             let pieces: Vec<Vec<Pt>> = match &g.shape {
-                netsmith_pcb::footprint::Shape::Line { a, b } => vec![vec![*a, *b]],
-                netsmith_pcb::footprint::Shape::Rect { a, b } => {
+                netsmith_pcb::Shape::Line { a, b } => vec![vec![*a, *b]],
+                netsmith_pcb::Shape::Rect { a, b } => {
                     let (c, d) = (Pt::new(b.x, a.y), Pt::new(a.x, b.y));
                     vec![vec![*a, c], vec![c, *b], vec![*b, d], vec![d, *a]]
                 }
-                netsmith_pcb::footprint::Shape::Poly { points } => {
+                netsmith_pcb::Shape::Poly { points } => {
                     points.windows(2).map(|w| vec![w[0], w[1]]).collect()
                 }
                 other => vec![other.extent_points()],

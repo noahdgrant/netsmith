@@ -85,7 +85,7 @@
 
 use std::collections::BTreeMap;
 
-use netsmith_core::{Design, PlaceField, Placement};
+use netsmith_core::{Design, PlaceField};
 
 use crate::board::{Placed, Side};
 use crate::geometry::{Pt, Rect};
@@ -97,7 +97,7 @@ pub(crate) const GRID: f64 = 0.05;
 
 /// The tolerance with which a position meets a window, in mm: half a micrometre, as the
 /// design rules check measures (ADR 0037).
-pub const TOLERANCE: f64 = 5e-4;
+pub(crate) const TOLERANCE: f64 = 5e-4;
 
 /// Where the origin of a part's footprint may be, in sheet coordinates, for one turn. An end
 /// is infinite when nothing bounds it. A range narrower than the grid is one value (its
@@ -958,45 +958,4 @@ fn offset_cannot_be_met(
         }
         (None, None) => None,
     }
-}
-
-/// Where the body's centre may be, in the frame of the outline, if the requirements on
-/// `part` bound it: the intersection over all turns allowed, as boxes. Used to draw a
-/// requirement. `None` for a part with no positional requirement.
-pub fn centre_window(design: &Design, part: &Placed) -> Option<Rect> {
-    let (reqs, side_req) = requirements(design, &part.path);
-    let side = match &side_req {
-        Some((s, _)) if s == "bottom" => Side::Back,
-        Some(_) => Side::Front,
-        None => part.side,
-    };
-    let q = quarter(part.rotation)
-        .filter(|&q| turns_allowed(&reqs)[q])
-        .or_else(|| turns_allowed(&reqs).iter().position(|&a| a))?;
-    let body = body_at(part, q as f64 * 90.0, side);
-    let c = body.centre();
-    let x = interval(&reqs, 0, body)?;
-    let y = interval(&reqs, 1, body)?;
-    if reqs.iter().all(|r| axis_of(r.field).is_none()) {
-        return None;
-    }
-    let finite = |v: f64, fallback: f64| if v.is_finite() { v } else { fallback };
-    // An unbounded end is drawn to where the part is now.
-    let here = part.at;
-    let (x0, x1) = (finite(x.0, here.x), finite(x.1, here.x));
-    let (y0, y1) = (finite(y.0, here.y), finite(y.1, here.y));
-    Some(Rect::new(
-        Pt::new(x0 + c.x - ORIGIN.x, y0 + c.y - ORIGIN.y),
-        Pt::new(x1 + c.x - ORIGIN.x, y1 + c.y - ORIGIN.y),
-    ))
-}
-
-/// The placements of a design that apply to the part at `path`, own or by module.
-pub fn placements_of<'a>(design: &'a Design, path: &str) -> Vec<&'a Placement> {
-    design
-        .features
-        .constraints
-        .iter()
-        .filter(|p| p.path == path || (p.module && path.starts_with(&format!("{}.", p.path))))
-        .collect()
 }

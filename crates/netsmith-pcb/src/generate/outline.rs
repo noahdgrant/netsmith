@@ -11,18 +11,18 @@ use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
 /// How far silkscreen keeps from copper, centre line to pad edge.
-pub const SILK_TO_COPPER: f64 = 0.26;
+pub(super) const SILK_TO_COPPER: f64 = 0.26;
 
 /// The body of a two-column package: `width` across the columns (x), `length` along them (y).
 #[derive(Debug, Clone, Copy)]
-pub struct Body {
+pub(super) struct Body {
     pub width: f64,
     pub length: f64,
 }
 
 /// A footprint from its pads (pin 1 first) and body, with `courtyard` mm round the larger of
 /// the pads and the body.
-pub fn two_columns(
+pub(super) fn two_columns(
     library: &str,
     name: &str,
     description: &str,
@@ -53,7 +53,7 @@ fn pad_bounds(pads: &[PadSpec]) -> (f64, f64, f64, f64) {
 
 /// Like [`two_columns`], with the courtyard given as its half width and half height instead
 /// of a margin: for the packages whose courtyard is recorded, not computed.
-pub fn two_columns_in(
+pub(super) fn two_columns_in(
     library: &str,
     name: &str,
     description: &str,
@@ -114,7 +114,7 @@ pub fn two_columns_in(
 
 /// The pads of a package with `per_side` pins in each of two columns, numbered down the left
 /// column and up the right one, as the land `land` asks for at `pitch`.
-pub fn dual_pads(per_side: usize, pitch: f64, land: &ipc::Land) -> Vec<PadSpec> {
+pub(super) fn dual_pads(per_side: usize, pitch: f64, land: &ipc::Land) -> Vec<PadSpec> {
     let mut pads = Vec::with_capacity(per_side * 2);
     let top = (per_side as f64 - 1.0) / 2.0 * pitch;
     for i in 0..per_side {
@@ -140,7 +140,7 @@ pub fn dual_pads(per_side: usize, pitch: f64, land: &ipc::Land) -> Vec<PadSpec> 
 /// been added to `drawing`. Adds the courtyard, `courtyard` mm round the larger of the pads
 /// and the `body`, the body outline with pin 1's corner cut, the silkscreen corners and a
 /// marker at pin 1, and returns the footprint.
-pub fn quad_frame(
+pub(super) fn quad_frame(
     mut drawing: Drawing,
     pads: &[PadSpec],
     n_down: usize,

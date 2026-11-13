@@ -36,7 +36,7 @@ impl<'a> Engine<'a> {
     /// Where along its axis the measure `field` of part `i`'s body is, on the sheet.
     pub(super) fn measure_of(&self, i: usize, field: PlaceField, axis: usize) -> f64 {
         let at = self.pos(i);
-        (if axis == 0 { at.x } else { at.y }) + offset(field, self.shape(i).body)
+        (if axis == 0 { at.x } else { at.y }) + constraint_offset(field, self.shape(i).body)
     }
 
     /// The measure of `b` minus that of `a` for relation `k`.
@@ -75,11 +75,11 @@ impl<'a> Engine<'a> {
                 // b = a + t, in the measures: origin_b + off_b = origin_a + off_a + t.
                 let a = l.a;
                 let at = self.measure_of(a, l.fa, ax);
-                (a, at + t - offset(l.fb, self.shape(f).body))
+                (a, at + t - constraint_offset(l.fb, self.shape(f).body))
             } else {
                 let b = l.b;
                 let at = self.measure_of(b, l.fb, ax);
-                (b, at - t - offset(l.fa, self.shape(f).body))
+                (b, at - t - constraint_offset(l.fa, self.shape(f).body))
             };
             debug_assert_ne!(leader, f);
             let grid = if ax == 0 {
@@ -129,7 +129,7 @@ impl<'a> Engine<'a> {
             (l.b, l.fb, l.fa, -1.0)
         };
         let target = self.measure_of(other, f_other, ax) + sign * t;
-        let origin = target - offset(f_j, self.shape(j).body);
+        let origin = target - constraint_offset(f_j, self.shape(j).body);
         let sub = if ax == 0 {
             self.sub[j].x
         } else {

@@ -316,7 +316,7 @@ impl OriginLine {
     /// `part J2 (`usb`, J4 on the board) top, turned 90: origin (97.405, 12), body centre
     /// (96.9, 12), dx 0.505 dy 0; the reference's origin is (97.405, 12): write ...`.
     pub fn line(&self) -> String {
-        use netsmith_pcb::origin::mm;
+        use netsmith_pcb::mm_text;
         let b = &self.board;
         let path = if b.path.is_empty() { "<path>" } else { &b.path };
         let mut s = format!(
@@ -325,23 +325,23 @@ impl OriginLine {
             path,
             b.refdes,
             b.side,
-            mm(b.rotation),
-            mm(b.origin[0]),
-            mm(b.origin[1]),
-            mm(b.body_centre[0]),
-            mm(b.body_centre[1]),
-            mm(b.offset[0]),
-            mm(b.offset[1]),
-            mm(self.reference_origin[0]),
-            mm(self.reference_origin[1]),
+            mm_text(b.rotation),
+            mm_text(b.origin[0]),
+            mm_text(b.origin[1]),
+            mm_text(b.body_centre[0]),
+            mm_text(b.body_centre[1]),
+            mm_text(b.offset[0]),
+            mm_text(b.offset[1]),
+            mm_text(self.reference_origin[0]),
+            mm_text(self.reference_origin[1]),
         );
         match self.place {
             Some([x, y]) => {
                 let _ = write!(
                     s,
                     ": `.{path}.place.x &= {}mm` and `.{path}.place.y &= {}mm` put it there",
-                    mm(x),
-                    mm(y)
+                    mm_text(x),
+                    mm_text(y)
                 );
             }
             None => {
@@ -349,7 +349,7 @@ impl OriginLine {
                     s,
                     ", on the {} turned {}: put the part on that face and turned so, and run fab and parity again for its offset there",
                     self.reference_side,
-                    mm(self.reference_rotation)
+                    mm_text(self.reference_rotation)
                 );
             }
         }

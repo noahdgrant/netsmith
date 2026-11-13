@@ -5,12 +5,9 @@ use super::*;
 /// The pad a ratsnest line ends on, and the part it is of.
 pub(super) fn pad_of<'a>(
     board: &'a Board,
-    pad: &'a netsmith_pcb::board::PadRef,
+    pad: &'a netsmith_pcb::PadRef,
     at: Pt,
-) -> (
-    &'a netsmith_pcb::board::Placed,
-    &'a netsmith_pcb::footprint::Pad,
-) {
+) -> (&'a netsmith_pcb::Placed, &'a netsmith_pcb::Pad) {
     let part = board
         .part(&pad.refdes)
         .expect("a ratsnest line names a part");
@@ -25,7 +22,7 @@ pub(super) fn pad_of<'a>(
 /// The copper layers a pad of this footprint has, and its centre.
 pub(super) fn pad_spots(
     board: &Board,
-    pad: &netsmith_pcb::board::PadRef,
+    pad: &netsmith_pcb::PadRef,
     at: Pt,
     grid: &Grid,
 ) -> Vec<Spot> {
@@ -53,7 +50,7 @@ pub(super) struct InPad {
 
 pub(super) fn in_pad(
     board: &Board,
-    pad: &netsmith_pcb::board::PadRef,
+    pad: &netsmith_pcb::PadRef,
     at: Pt,
     grid: &Grid,
 ) -> Option<InPad> {
@@ -82,15 +79,15 @@ pub(super) fn in_pad(
 /// fine-pitch grid (fewer than eight surface-mount pads, or none within the room a via and the
 /// rules' spaces need between pads). Such a pad can leave only through the gaps between its
 /// neighbours, and the deeper it is the fewer ways out it has.
-pub(super) fn pad_depth(board: &Board, pad: &netsmith_pcb::board::PadRef, at: Pt) -> f64 {
+pub(super) fn pad_depth(board: &Board, pad: &netsmith_pcb::PadRef, at: Pt) -> f64 {
     let rules = &board.rules;
     let (part, found) = pad_of(board, pad, at);
     let (front, back) = part.pad_layers(found);
-    let on_face = |p: &netsmith_pcb::footprint::Pad| {
+    let on_face = |p: &netsmith_pcb::Pad| {
         let (f, b) = part.pad_layers(p);
         (front && f) || (back && b)
     };
-    let pads: Vec<&netsmith_pcb::footprint::Pad> = part
+    let pads: Vec<&netsmith_pcb::Pad> = part
         .footprint
         .pads
         .iter()
@@ -256,8 +253,8 @@ impl Lanes {
 /// Whether a part gets escape lanes ([`Lanes`]): at least 16 surface-mount pads, two of them
 /// 0.55 mm apart or nearer (pads at one centre, the pieces of an exposed pad, are not counted
 /// apart), facing at least three sides. A connector's single row is not ringed by other parts.
-pub(super) fn fine_pitch(part: &netsmith_pcb::board::Placed, faces: usize) -> bool {
-    let pads: Vec<&netsmith_pcb::footprint::Pad> = part
+pub(super) fn fine_pitch(part: &netsmith_pcb::Placed, faces: usize) -> bool {
+    let pads: Vec<&netsmith_pcb::Pad> = part
         .footprint
         .pads
         .iter()
@@ -294,7 +291,7 @@ pub(super) fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
     let reach = LANE_LENGTH;
     let mut any = false;
     for part in &board.parts {
-        let pads: Vec<&netsmith_pcb::footprint::Pad> = part
+        let pads: Vec<&netsmith_pcb::Pad> = part
             .footprint
             .pads
             .iter()
@@ -431,7 +428,7 @@ pub(super) fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Cl
         .map(|(n, net)| (net.name.as_str(), n))
         .collect();
     let pair = |net: &str| index.get(net).is_some_and(|&n| partners[n].is_some());
-    let crystal = |part: &netsmith_pcb::board::Placed| {
+    let crystal = |part: &netsmith_pcb::Placed| {
         part.kind.starts_with("Crystal") || part.provides.iter().any(|g| g == "Crystal")
     };
     let clock_nets: Vec<&str> = board
@@ -459,7 +456,7 @@ pub(super) fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Cl
             .iter()
             .any(|c| c.net == net && c.current >= POWER_CURRENT)
     };
-    let decoupling = crate::quality::decoupling_pairs(&board.parts, &board.nets);
+    let decoupling = netsmith_pcb::decoupling_pairs(&board.parts, &board.nets);
     let decouples = |l: &Ratline| crate::decouple::decouples(board, &decoupling, l);
     lines
         .iter()

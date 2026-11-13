@@ -325,7 +325,7 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
     let part = &mut b.parts[0];
     let c = part.footprint.courtyard;
     part.at = Pt::new(hole.min.x - c.min.x, hole.min.y - c.min.y);
-    let r = netsmith_pcb::board::member(&part.path, &part.refdes);
+    let r = netsmith_pcb::board_member(&part.path, &part.refdes);
     let found = problems(&b);
     assert!(
         found.contains(&format!("{r} overlaps the cutout `slot`")),
@@ -552,7 +552,7 @@ fn a_part_or_a_pad_in_a_keepout_is_found_and_named() {
     let p = &mut b.parts[0];
     let cy = p.footprint.courtyard.centre();
     p.at = Pt::new(c.x - cy.x, c.y - cy.y);
-    let r = netsmith_pcb::board::member(&p.path, &p.refdes);
+    let r = netsmith_pcb::board_member(&p.path, &p.refdes);
     let found = problems(&b);
     assert!(
         found.contains(&format!(
@@ -832,7 +832,7 @@ fn a_part_the_layout_puts_on_the_bottom_is_on_the_back_and_nothing_else_moves_th
     assert_eq!(problems(&b), Vec::<String>::new());
     // Captured again, the layout says bottom.
     let kept = netsmith_pcb::Layout::capture(&b, None);
-    assert_eq!(kept.parts[&path].side, netsmith_pcb::layout::Face::Bottom);
+    assert_eq!(kept.parts[&path].side, netsmith_pcb::LayoutFace::Bottom);
 }
 
 #[test]

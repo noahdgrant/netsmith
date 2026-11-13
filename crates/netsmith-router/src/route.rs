@@ -618,9 +618,7 @@ use std::collections::{BinaryHeap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use netsmith_pcb::board::{Board, CopperLayer, Track, Via};
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::ratsnest::{Ratline, Ratsnest};
+use netsmith_pcb::{Board, CopperLayer, Pt, Ratline, Ratsnest, Rect, Track, Via};
 
 mod lines;
 mod order;
@@ -853,7 +851,7 @@ fn keeps_fewer_vias(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool
 }
 
 /// The faces whose solder mask a pad opens, on the board: front first.
-fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint::Pad) -> [bool; 2] {
+fn mask_sides(part: &netsmith_pcb::Placed, pad: &netsmith_pcb::Pad) -> [bool; 2] {
     let has = |name: &str| pad.layers.iter().any(|l| l == name || l == "*.Mask");
     let (front, back) = (has("F.Mask"), has("B.Mask"));
     if part.mirrored() {

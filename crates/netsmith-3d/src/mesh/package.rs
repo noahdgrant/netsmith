@@ -1,4 +1,4 @@
-//! A part's _Package shape_ as meshes: each solid of [`netsmith_pcb::body3d`] triangulated in the
+//! A part's _Package shape_ as meshes: each solid of [`netsmith_pcb::package_shape`] triangulated in the
 //! footprint's frame, then put where the part is by its [`Placement`].
 //!
 //! The solids of a package touch and sit in one another (a mark in the top of the body, a pin
@@ -10,7 +10,7 @@
 
 use crate::mesh::{Material, Mesh, Polygon, circle};
 use crate::scene3d::PlacedShape;
-use netsmith_pcb::body3d::{Axis, Material as Made, Primitive, Solid};
+use netsmith_pcb::{BodyAxis, BodyMaterial as Made, BodyPrimitive, BodySolid};
 
 /// Drawing only: how far below a level mark or pin a body's top is drawn at most, in mm.
 pub(crate) const TOP_GAP: f64 = 0.02;
@@ -47,9 +47,9 @@ fn material(m: Made) -> Material {
 }
 
 /// Solid `k` as drawn: a body box lowered under whatever is level with its top and over it.
-pub(crate) fn settled(solids: &[Solid], k: usize) -> Primitive {
+pub(crate) fn settled(solids: &[BodySolid], k: usize) -> BodyPrimitive {
     let s = &solids[k];
-    let Primitive::Box { min, max } = s.primitive else {
+    let BodyPrimitive::Box { min, max } = s.primitive else {
         return s.primitive.clone();
     };
     if s.material != Made::Body {
@@ -68,19 +68,19 @@ pub(crate) fn settled(solids: &[Solid], k: usize) -> Primitive {
     }
     // Never lower than half the body.
     let top = top.max(min[2] + 0.5 * (max[2] - min[2]));
-    Primitive::Box {
+    BodyPrimitive::Box {
         min,
         max: [max[0], max[1], top],
     }
 }
 
 /// A primitive triangulated in the footprint's frame, `None` where it has no volume.
-fn local(id: &str, material: Material, p: &Primitive) -> Option<Mesh> {
+fn local(id: &str, material: Material, p: &BodyPrimitive) -> Option<Mesh> {
     match p {
-        Primitive::Box { min, max } => (0..3)
+        BodyPrimitive::Box { min, max } => (0..3)
             .all(|k| min[k] < max[k])
             .then(|| Mesh::axis_box(id, material, *min, *max)),
-        Primitive::Prism {
+        BodyPrimitive::Prism {
             axis,
             profile,
             from,
@@ -90,16 +90,16 @@ fn local(id: &str, material: Material, p: &Primitive) -> Option<Mesh> {
             let mut m = Mesh::prism(id, material, &Polygon::new(profile.clone()), lo, hi).ok()?;
             // The prism is built across z; its profile's (a, b) and its length go to the axes.
             let linear = match axis {
-                Axis::Z => return Some(m),
+                BodyAxis::Z => return Some(m),
                 // (a, b, along) is (x, z, y).
-                Axis::Y => [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]],
+                BodyAxis::Y => [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]],
                 // (a, b, along) is (y, z, x).
-                Axis::X => [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                BodyAxis::X => [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             };
             m.transform(linear, [0.0; 3]);
             Some(m)
         }
-        Primitive::Cylinder {
+        BodyPrimitive::Cylinder {
             centre,
             radius,
             z0,
@@ -112,7 +112,7 @@ fn local(id: &str, material: Material, p: &Primitive) -> Option<Mesh> {
             *z1,
         )
         .ok(),
-        Primitive::Spheroid {
+        BodyPrimitive::Spheroid {
             centre,
             radius,
             z0,
@@ -133,20 +133,20 @@ fn local(id: &str, material: Material, p: &Primitive) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_pcb::geometry::Pt;
+    use netsmith_pcb::Pt;
 
     #[test]
     fn a_body_is_drawn_under_a_level_mark_and_a_lead_across_x_keeps_its_box() {
-        let body = Solid {
+        let body = BodySolid {
             material: Made::Body,
-            primitive: Primitive::Box {
+            primitive: BodyPrimitive::Box {
                 min: [-1.0, -0.5, 0.0],
                 max: [1.0, 0.5, 1.0],
             },
         };
-        let dot = Solid {
+        let dot = BodySolid {
             material: Made::Mark,
-            primitive: Primitive::Cylinder {
+            primitive: BodyPrimitive::Cylinder {
                 centre: Pt::new(-0.5, 0.0),
                 radius: 0.1,
                 z0: 0.98,
@@ -156,15 +156,15 @@ mod tests {
         let solids = [body.clone(), dot];
         assert_eq!(
             settled(&solids, 0),
-            Primitive::Box {
+            BodyPrimitive::Box {
                 min: [-1.0, -0.5, 0.0],
                 max: [1.0, 0.5, 0.98]
             }
         );
         assert_eq!(settled(&solids[..1], 0), body.primitive);
         // A lead's profile across x: (y, z) from x = 0.2 to 0.4.
-        let lead = Primitive::Prism {
-            axis: Axis::X,
+        let lead = BodyPrimitive::Prism {
+            axis: BodyAxis::X,
             profile: vec![[1.0, 0.0], [1.5, 0.0], [1.5, 0.1], [1.0, 0.1]],
             from: 0.2,
             to: 0.4,

@@ -4,9 +4,7 @@ use super::*;
 use crate::scene3d::{
     Findings, HeightProvenance, Hole, HoleOwner, Placement, PlanBox, SceneCutout, SceneLayer,
 };
-use netsmith_pcb::board::Side;
-use netsmith_pcb::body3d::{Material as Made, Solid as Made3d};
-use netsmith_pcb::geometry::Pt;
+use netsmith_pcb::{BodyMaterial as Made, BodySolid as Made3d, Pt, Side};
 
 fn plan(x: f64, y: f64) -> Plan {
     Plan { x, y }
@@ -52,15 +50,15 @@ fn package() -> Vec<Made3d> {
     vec![
         Made3d {
             material: Made::Body,
-            primitive: Primitive::Box {
+            primitive: BodyPrimitive::Box {
                 min: [-1.0, -0.5, 0.0],
                 max: [1.0, 0.5, 0.8],
             },
         },
         Made3d {
             material: Made::Metal,
-            primitive: Primitive::Prism {
-                axis: Axis::Y,
+            primitive: BodyPrimitive::Prism {
+                axis: BodyAxis::Y,
                 profile: vec![[1.0, 0.0], [1.4, 0.0], [1.4, 0.2], [1.0, 0.2]],
                 from: -0.2,
                 to: 0.2,
@@ -68,7 +66,7 @@ fn package() -> Vec<Made3d> {
         },
         Made3d {
             material: Made::Mark,
-            primitive: Primitive::Cylinder {
+            primitive: BodyPrimitive::Cylinder {
                 centre: Pt::new(-0.6, -0.2),
                 radius: 0.1,
                 z0: 0.7,
@@ -77,7 +75,7 @@ fn package() -> Vec<Made3d> {
         },
         Made3d {
             material: Made::Ball,
-            primitive: Primitive::Spheroid {
+            primitive: BodyPrimitive::Spheroid {
                 centre: Pt::new(0.0, 0.0),
                 radius: 0.15,
                 z0: -0.2,
@@ -369,7 +367,7 @@ fn a_headers_stated_pins_are_one_closed_solid_each_where_the_tails_are() {
     *tails = [1.0, 3.0]
         .map(|x| Made3d {
             material: Made::Metal,
-            primitive: Primitive::Box {
+            primitive: BodyPrimitive::Box {
                 min: [x - 0.32, -0.32, -3.1],
                 max: [x + 0.32, 0.32, 0.0],
             },

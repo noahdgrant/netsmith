@@ -110,7 +110,7 @@ impl Item {
 }
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     ITEMS
         .iter()
         .map(|i| format!("{}:{}", i.library(), i.name()))
@@ -118,7 +118,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is one of this module's.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     let item = ITEMS
         .iter()
         .find(|i| i.library() == library && i.name() == name)?;

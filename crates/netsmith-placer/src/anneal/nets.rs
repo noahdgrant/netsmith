@@ -90,7 +90,7 @@ impl<'a> Engine<'a> {
             let mut n = 0;
             for &(p, q) in a {
                 for &(r, s) in b {
-                    if crate::quality::segments_cross(p, q, r, s) {
+                    if netsmith_pcb::segments_cross(p, q, r, s) {
                         n += 1;
                     }
                 }

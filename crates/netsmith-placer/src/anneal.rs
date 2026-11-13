@@ -21,7 +21,7 @@
 //! - **Cohesion**: the half perimeter of the box round the parts of each module instance
 //!   (each prefix of the instance path), so a module stays together.
 //! - **Decoupling**: the distance from a capacitor's pads to the power pins it decouples
-//!   ([`crate::quality::decoupling_pairs`]).
+//!   ([`netsmith_pcb::decoupling_pairs`]).
 //! - **Edge**: a connector toward the nearest edge, a hole or fiducial toward a corner.
 //! - **Area**: the half perimeter of the box round everything, so the board is no larger
 //!   than it must be; and a small cost on every turned part, so a tie goes to the upright
@@ -121,7 +121,7 @@
 //! completely since. A pull of the parts of a module to their centre, squared, made the wire
 //! longer than the box round them does.
 //!
-//! **Decoupling pairs** are derived ([`crate::quality::decoupling_pairs`]), not written: a
+//! **Decoupling pairs** are derived ([`netsmith_pcb::decoupling_pairs`]), not written: a
 //! two-pad capacitor (kind `Capacitor...`) whose pads are on two different nets, such that one
 //! same other part has a `power` pin on each. The parts that share most of the capacitor's
 //! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
@@ -195,14 +195,13 @@
 //! block of the language (P3 of ADR 0030) is not built (issues #58 and #59).
 
 use netsmith_core::PlaceField;
-use netsmith_pcb::board::{BoardNet, Placed, ReferenceSide, Side, rect_distance};
-use netsmith_pcb::constraints::{PlanOffset, Want, axis_of, offset, quarter};
+use netsmith_pcb::{
+    BoardNet, Placed, PlanOffset, ReferenceSide, Side, Want, constraint_axis_of, constraint_offset,
+    constraint_quarter, rect_distance,
+};
 
-use crate::quality::{DecouplingPair, decoupling_pairs};
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::overhang::Edges;
-use netsmith_pcb::placement::{Ended, OutsideAt, OverlapAt, short};
-use netsmith_pcb::rules::Rules;
+use netsmith_pcb::{DecouplingPair, decoupling_pairs};
+use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm};
 
 mod build;
 mod cost;
@@ -331,10 +330,10 @@ pub(crate) struct Problem<'a> {
     pub outline: Rect,
     /// The areas that limit how tall a part may stand (ADR 0045, "Height limits"): a part
     /// with a stated height over a zone's limit, on a face the zone limits, is kept out of it.
-    pub zones: &'a [netsmith_pcb::placement::HeightZone],
+    pub zones: &'a [netsmith_pcb::HeightZone],
     /// The keepouts that parts carry: each moves and turns with its part, and keeps the other
     /// parts out as a keepout for parts (`parts`) and as a height zone (`limit`) do.
-    pub carried: &'a [netsmith_pcb::placement::CarriedZone],
+    pub carried: &'a [netsmith_pcb::CarriedZone],
 }
 
 /// What a run ended with.
@@ -516,7 +515,7 @@ struct Model {
     side: Side,
     hole: bool,
     /// How far its pins protrude out of the opposite face, and the facts a part
-    /// that stands over them is judged by (`netsmith_pcb::protrusion`).
+    /// that stands over them is judged by (`netsmith_pcb::judge_protrusion`).
     protrusion: Option<f64>,
     height: Option<f64>,
     hand_fitted: bool,
@@ -595,7 +594,7 @@ impl Limits {
         };
         let mut turns = [None; 4];
         for (t, slot) in turns.iter_mut().enumerate() {
-            *slot = quarter(base + 90.0 * t as f64)
+            *slot = constraint_quarter(base + 90.0 * t as f64)
                 .and_then(|q| want.reach[q])
                 .map(|r| Turn {
                     x: at(r.x),
@@ -719,7 +718,7 @@ pub(crate) fn anneal(parts: &mut [Placed], p: &Problem, effort: f64) -> Outcome 
     let names: Vec<String> = parts.iter().map(|part| part.refdes.clone()).collect();
     let shown: Vec<String> = parts
         .iter()
-        .map(|part| netsmith_pcb::board::member(&part.path, &part.refdes))
+        .map(|part| netsmith_pcb::board_member(&part.path, &part.refdes))
         .collect();
     let mut e = Engine::new(parts, p);
     let mut rng = Rng::new(p.seed);

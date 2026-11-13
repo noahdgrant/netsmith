@@ -21,7 +21,7 @@ use netsmith_design::{Assembly, Sourced};
 use netsmith_fab::panel::{CellFacts, CellInput, Spec};
 use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
 use netsmith_kicad::Mapping;
-use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, svg};
+use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, render_svg};
 use netsmith_router::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
@@ -618,7 +618,7 @@ fn requirement_failure(
     for p in &board.parts {
         text.push_str(&format!(
             "{} ({}) {} at ({:.2}, {:.2}) turned {}\n",
-            netsmith_pcb::board::member(&p.path, &p.refdes),
+            netsmith_pcb::board_member(&p.path, &p.refdes),
             p.kind,
             p.side.word(),
             p.at.x - board.outline.min.x,
@@ -1033,7 +1033,7 @@ fn fab_board(
         for (file, contents) in [
             (pcb_path.clone(), kicad_pcb(&board)),
             (dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)),
-            (dir.join(format!("{name}.svg")), svg::render(&board)),
+            (dir.join(format!("{name}.svg")), render_svg(&board)),
         ] {
             fs::write(&file, contents).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }

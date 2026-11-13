@@ -10,7 +10,7 @@
 //! `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
 //! ([`teardrop`]) are steps of it too; they were in `netsmith-pcb` until issue #608.
 //!
-//! The board model and the decoupling pairs ([`netsmith_pcb::quality`]) are in `netsmith-pcb`,
+//! The board model and the decoupling pairs ([`netsmith_pcb::Quality`]) are in `netsmith-pcb`,
 //! the placer in `netsmith-placer`. This crate depends on `netsmith-pcb`, never the reverse
 //! (issue #518), and not on the placer (issue #607): only its tests place their boards with
 //! it.
@@ -26,10 +26,6 @@ pub mod teardrop;
 
 #[cfg(test)]
 mod testlib;
-
-// The decoupling pairs the router routes first, which the placer derives as well: in
-// `netsmith-pcb`, below both.
-use netsmith_pcb::quality;
 
 // The placer, for the unit tests' boards (`crate::board_from_design`).
 #[cfg(test)]

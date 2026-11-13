@@ -7,7 +7,7 @@
 //!   [`sample_footprints`]). They hold the five kinds the standard mapping (`std/kicad.toml`)
 //!   names, with the geometry the stock KiCad libraries give those footprints, so that a test
 //!   of the whole pipeline needs no KiCad, and the symbols of a hole, a test point and a
-//!   fiducial (the footprints of those three are generated, `netsmith_pcb::generate`). They are
+//!   fiducial (the footprints of those three are generated, `netsmith_pcb::generated_footprint`). They are
 //!   written to a folder in the system's temporary directory the first time a process asks. A
 //!   test that wants the stock libraries uses `netsmith_kicad::SymbolLib::installed` and skips
 //!   itself without KiCad (`netsmith_kicad::skip_without_kicad_libraries`, behind

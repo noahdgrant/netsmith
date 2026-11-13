@@ -170,7 +170,7 @@ fn the_l_is_six_lines_on_edge_cuts_and_a_path_on_the_sheet() {
     // The inner corner of the L is a corner of the edge.
     let inner = format!("{} {}", o.x + 16.0, o.y + 12.0);
     assert!(pcb.contains(&inner), "{inner}");
-    let svg = netsmith_pcb::svg::render_view(&b);
+    let svg = netsmith_pcb::render_svg_view(&b);
     assert!(svg.contains(r#"data-outline="polygon""#), "{svg}");
 }
 

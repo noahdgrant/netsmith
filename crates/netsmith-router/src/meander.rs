@@ -40,8 +40,7 @@
 use netsmith_geom::drc::{self, Room, shape::Shape};
 use netsmith_geom::geom::Pt as FPt;
 
-use netsmith_pcb::board::{Board, Track};
-use netsmith_pcb::geometry::Pt;
+use netsmith_pcb::{Board, Pt, Track};
 
 /// The skew a diff pair is matched to, in mm: a pair whose nets' track lengths differ by more
 /// gets a meander on its shorter net.
@@ -155,11 +154,10 @@ struct Plan {
 
 /// Add up to `want` mm of track to `net` with meanders on its straight runs.
 fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
-    let Ok(art) = netsmith_pcb::copper::artwork(board) else {
+    let Ok(art) = netsmith_pcb::copper_artwork(board) else {
         return;
     };
-    let rules =
-        drc::Rules::from_project(&netsmith_pcb::export::kicad_pro(board)).unwrap_or_default();
+    let rules = drc::Rules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap_or_default();
     let extras = crate::teardrop::extras(board);
     let room = Room::new(&art, &rules, &extras);
     let mut runs: Vec<usize> = (0..board.tracks.len())
@@ -221,7 +219,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
 }
 
 /// The least distance from `p` to a track of `tracks` on `layer`, centre line to centre line.
-fn distance_to(tracks: &[Track], layer: netsmith_pcb::board::CopperLayer, p: Pt) -> f64 {
+fn distance_to(tracks: &[Track], layer: netsmith_pcb::CopperLayer, p: Pt) -> f64 {
     tracks
         .iter()
         .filter(|t| t.layer == layer)
@@ -404,8 +402,7 @@ fn plan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_pcb::board::{BoardNet, CopperLayer};
-    use netsmith_pcb::geometry::Rect;
+    use netsmith_pcb::{BoardNet, CopperLayer, Rect};
 
     /// The LED board grown to the right, with the nets `usb.dp` and `usb.dm` and no tracks.
     fn board() -> Board {
@@ -450,8 +447,8 @@ mod tests {
     /// The check's findings on the pair's copper, as rule and message, but for the ends that
     /// touch nothing (these tracks join no pads).
     fn findings(board: &Board) -> Vec<String> {
-        let art = netsmith_pcb::copper::artwork(board).unwrap();
-        let rules = drc::Rules::from_project(&netsmith_pcb::export::kicad_pro(board)).unwrap();
+        let art = netsmith_pcb::copper_artwork(board).unwrap();
+        let rules = drc::Rules::from_project(&netsmith_pcb::kicad_pro(board)).unwrap();
         let mut extras = crate::teardrop::extras(board);
         extras.track_angle = true;
         drc::check_artwork(&art, &rules, &extras, false)

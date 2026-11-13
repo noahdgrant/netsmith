@@ -10,8 +10,7 @@ use netsmith_testkit::TempDir;
 use std::collections::BTreeMap;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
-use netsmith_pcb::board::PlacementProblem;
-use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, Pt, Side};
+use netsmith_pcb::{PlacementProblem, Board, FootprintLibrary, PlaceOptions, Pt, Side};
 
 use common::process;
 

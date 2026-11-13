@@ -533,7 +533,7 @@ pub struct Extras {
     pub via_in_pad: Option<f64>,
     /// Pairs of parts, by designator, whose courtyards may overlap because one stands over
     /// the other's pins, which the design cuts short after soldering and which the rule of
-    /// `netsmith_pcb::protrusion` excuses (ADR 0045 section 15). The check does not judge that
+    /// `netsmith_pcb::judge_protrusion` excuses (ADR 0045 section 15). The check does not judge that
     /// rule; the caller that has the design does, and says which pairs it excused.
     pub excused_courtyards: Vec<(String, String)>,
     /// The process's rules that a KiCad project file cannot say (issue #431), each `None` when it

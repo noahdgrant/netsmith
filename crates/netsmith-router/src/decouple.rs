@@ -3,7 +3,7 @@
 //! The ratsnest joins a net's pads by the shortest spanning tree, so an IC's power pin may be
 //! joined to the rail by a line to a neighbour pin or another part, and its capacitor hang off
 //! somewhere else: the current the pin draws then does not pass the capacitor. For each
-//! decoupling pair the placer derives ([`crate::quality::decoupling_pairs`]), the router takes
+//! decoupling pair the placer derives ([`netsmith_pcb::decoupling_pairs`]), the router takes
 //! the capacitor's supply pad and the nearest power pin it decouples, at most [`NEAR`] away, and
 //! makes the line between them the first of the net's tree; the rest of the tree is the
 //! shortest over all the net's pads as before, so the rest of the rail joins at the capacitor
@@ -25,10 +25,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use netsmith_pcb::board::{Board, PadRef};
-use netsmith_pcb::ratsnest::{Node, Ratline, nodes_of};
+use netsmith_pcb::{Board, PadRef, RatNode, Ratline, ratsnest_nodes_of};
 
-use crate::quality::{DecouplingPair, decoupling_pairs};
+use netsmith_pcb::{DecouplingPair, decoupling_pairs};
 
 /// The farthest a capacitor's pad is from the power pin it decouples for the line between them
 /// to be made first, in mm: a capacitor farther off is a bulk capacitor of the rail, and its
@@ -145,10 +144,13 @@ pub(crate) fn return_lines(board: &Board) -> Vec<Ratline> {
         let Some(n) = board.nets.iter().find(|n| n.name == net) else {
             continue;
         };
-        for node in nodes_of(&board.parts, n).iter().filter(|n| n.pad == pad) {
+        for node in ratsnest_nodes_of(&board.parts, n)
+            .iter()
+            .filter(|n| n.pad == pad)
+        {
             let on_pour = pours.iter().any(|p| match p.layer {
-                netsmith_pcb::board::CopperLayer::Front => node.front,
-                netsmith_pcb::board::CopperLayer::Back => node.back,
+                netsmith_pcb::CopperLayer::Front => node.front,
+                netsmith_pcb::CopperLayer::Back => node.back,
             });
             if on_pour {
                 continue;
@@ -218,7 +220,13 @@ pub(crate) fn lines(board: &Board, lines: Vec<Ratline>) -> Vec<Ratline> {
             .collect();
         remade.insert(
             net.name.as_str(),
-            tree(&net.name, &nodes_of(&board.parts, net), caps, plane, own),
+            tree(
+                &net.name,
+                &ratsnest_nodes_of(&board.parts, net),
+                caps,
+                plane,
+                own,
+            ),
         );
     }
     // Each remade net's lines take the place of its old ones, in board order.
@@ -237,7 +245,7 @@ pub(crate) fn lines(board: &Board, lines: Vec<Ratline>) -> Vec<Ratline> {
     out
 }
 
-fn line(net: &str, a: &Node, b: &Node) -> Ratline {
+fn line(net: &str, a: &RatNode, b: &RatNode) -> Ratline {
     Ratline {
         net: net.to_string(),
         from: a.pad.clone(),
@@ -253,7 +261,7 @@ fn line(net: &str, a: &Node, b: &Node) -> Ratline {
 /// plane net's lines to the plane.
 fn tree(
     net: &str,
-    nodes: &[Node],
+    nodes: &[RatNode],
     caps: &[(PadRef, Vec<PadRef>)],
     plane: bool,
     own: Vec<Ratline>,
@@ -330,9 +338,7 @@ fn tree(
 #[cfg(test)]
 pub(crate) mod tests {
     use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef};
-    use netsmith_pcb::board::{Board, BoardPour, CopperLayer};
-    use netsmith_pcb::geometry::Pt;
-    use netsmith_pcb::ratsnest::Ratsnest;
+    use netsmith_pcb::{Board, BoardPour, CopperLayer, Pt, Ratsnest};
 
     use super::*;
 
@@ -412,7 +418,7 @@ pub(crate) mod tests {
             p.rotation = rotation;
         };
         let o = board.outline.min;
-        board.outline = netsmith_pcb::geometry::Rect::new(o, Pt::new(o.x + 24.0, o.y + 20.0));
+        board.outline = netsmith_pcb::Rect::new(o, Pt::new(o.x + 24.0, o.y + 20.0));
         place(&mut board, "U1", Pt::new(o.x + 10.0, o.y + 10.0), 0.0);
         place(&mut board, "R1", Pt::new(o.x + 10.0, o.y + 7.0), 0.0);
         place(&mut board, "C1", Pt::new(o.x + 14.0, o.y + 10.0), 90.0);
@@ -504,10 +510,10 @@ pub(crate) mod tests {
             refdes: refdes.into(),
             number: number.into(),
         };
-        let node = |p: PadRef, x: f64| Node {
+        let node = |p: PadRef, x: f64| RatNode {
             pad: p,
             centre: Pt::new(x, 0.0),
-            bounds: netsmith_pcb::geometry::Rect::new(Pt::new(x, 0.0), Pt::new(x, 0.0)),
+            bounds: netsmith_pcb::Rect::new(Pt::new(x, 0.0), Pt::new(x, 0.0)),
             front: true,
             back: false,
         };
@@ -516,7 +522,7 @@ pub(crate) mod tests {
             node(pad("U1", "2"), -3.0),
             node(pad("C1", "1"), 1.5),
         ];
-        let to_plane = |n: &Node| Ratline {
+        let to_plane = |n: &RatNode| Ratline {
             net: "3V3".into(),
             from: n.pad.clone(),
             to: n.pad.clone(),

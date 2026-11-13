@@ -232,8 +232,8 @@ fn a_line_of_the_pours_net_or_of_a_diff_pair_has_no_corridor() {
     steered.dedup();
     assert!(steered.len() >= 3, "{steered:?}");
     let (poured, paired) = (steered[0], steered[1]);
-    board.pours.push(netsmith_pcb::board::BoardPour {
-        layer: netsmith_pcb::board::CopperLayer::Back,
+    board.pours.push(netsmith_pcb::BoardPour {
+        layer: netsmith_pcb::CopperLayer::Back,
         net: board.nets[poured].name.clone(),
         stitch_pitch: None,
     });

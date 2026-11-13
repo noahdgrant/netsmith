@@ -22,7 +22,7 @@ fn a_placed_board_read_back_is_equal_and_routes_to_the_same_copper() {
     let mut generated = common::hard_boards(1).remove(0);
     for part in &mut generated.parts {
         part.footprint =
-            netsmith_pcb::generate::generate("Resistor_SMD:R_0402_1005Metric").unwrap();
+            netsmith_pcb::generated_footprint("Resistor_SMD:R_0402_1005Metric").unwrap();
     }
     boards.push(generated);
     assert!(

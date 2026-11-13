@@ -32,8 +32,7 @@
 use std::collections::HashMap;
 
 use netsmith_geom::geom::ARC_ERROR;
-use netsmith_pcb::board::{Board, CopperLayer, Track};
-use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Track};
 
 use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, initial_obstacles};
 
@@ -448,7 +447,7 @@ mod tests {
         // A teardrop on the first track, from its far end to 0.1 mm short of the corner.
         let [a, corner, _] = points;
         let tail = Pt::new(corner.x - 0.1, corner.y);
-        board.teardrops.push(netsmith_pcb::board::Teardrop {
+        board.teardrops.push(netsmith_pcb::Teardrop {
             net: "GND".into(),
             layer: CopperLayer::Front,
             points: vec![

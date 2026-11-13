@@ -82,7 +82,7 @@ const fn row(
 }
 
 /// Every footprint with a standard height, by its whole `Library:Name`.
-pub const TABLE: &[(&str, StandardHeight)] = &[
+pub(crate) const TABLE: &[(&str, StandardHeight)] = &[
     row(
         "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
         "JEDEC MS-012",
@@ -201,7 +201,7 @@ pub const TABLE: &[(&str, StandardHeight)] = &[
 
 /// The standard height of the footprint `library_id` (`Package_SO:SOIC-8_3.9x4.9mm_P1.27mm`),
 /// if the table has it.
-pub fn of(library_id: &str) -> Option<&'static StandardHeight> {
+pub(crate) fn of(library_id: &str) -> Option<&'static StandardHeight> {
     TABLE
         .iter()
         .find(|(name, _)| *name == library_id)

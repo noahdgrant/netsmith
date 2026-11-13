@@ -8,11 +8,7 @@ use crate::common;
 
 use netsmith_3d::{SceneCopperLayer as CopperLayer3, SceneCopperPad, HeightProvenance, ScenePins, ScenePlan, ScenePlanArea, Scene, SceneCopper};
 use netsmith_core::{Design, Features, Net, Outline, OutlineVertex, Part, PinRef};
-use netsmith_pcb::protrusion::Protrusion;
-use netsmith_pcb::{
-    Board, BoardKeepout, BoardPour, CopperLayer, FootprintLibrary, PlaceOptions, Pt, Side, Track,
-    Via,
-};
+use netsmith_pcb::{Protrusion, Board, BoardKeepout, BoardPour, CopperLayer, FootprintLibrary, PlaceOptions, Pt, Side, Track, Via};
 use netsmith_testkit::TempDir;
 
 /// A box 4 mm along x and 2 mm along y, its origin at its centre, a pad at each end.
@@ -365,7 +361,7 @@ fn a_header_read_from_a_file_has_its_posts_and_its_tails_through_the_board() {
     let body: Vec<_> = shape
         .solids
         .iter()
-        .filter(|s| s.material == netsmith_pcb::body3d::Material::Body)
+        .filter(|s| s.material == netsmith_pcb::BodyMaterial::Body)
         .map(|s| s.bounds())
         .collect();
     assert_eq!(body.len(), 1);
@@ -373,7 +369,7 @@ fn a_header_read_from_a_file_has_its_posts_and_its_tails_through_the_board() {
     let posts = shape
         .solids
         .iter()
-        .filter(|s| s.material == netsmith_pcb::body3d::Material::Metal)
+        .filter(|s| s.material == netsmith_pcb::BodyMaterial::Metal)
         .count();
     assert_eq!(posts, 2);
     // The case fit's box is as before; each tail runs from 1.5 mm under the bottom face up
@@ -815,7 +811,7 @@ fn shaped(id: &str, height: Option<f64>) -> Board {
     let mut board = board();
     for path in ["a", "under"] {
         let p = board.parts.iter_mut().find(|p| p.path == path).unwrap();
-        p.footprint = netsmith_pcb::generate::generate(id).unwrap();
+        p.footprint = netsmith_pcb::generated_footprint(id).unwrap();
         p.rotation = 90.0;
         p.height = height;
     }

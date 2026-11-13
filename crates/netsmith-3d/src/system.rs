@@ -49,8 +49,7 @@
 //! findings by code in the order above and then as they are found, member by member, body by
 //! body. Lengths are rounded to a nanometre.
 
-use netsmith_pcb::Board;
-use netsmith_pcb::board::Side;
+use netsmith_pcb::{Board, Side};
 
 use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_centres};
 

@@ -819,7 +819,7 @@ mod tests {
         assert_eq!(placement_findings(&board), []);
         let (a, b) = (board.parts[0].refdes.clone(), board.parts[1].refdes.clone());
         let named =
-            |i: usize| netsmith_pcb::board::member(&board.parts[i].path, &board.parts[i].refdes);
+            |i: usize| netsmith_pcb::board_member(&board.parts[i].path, &board.parts[i].refdes);
         let (name_a, name_b) = (named(0), named(1));
         board.parts[1].at = board.parts[0].at;
         let found = placement_findings(&board);
