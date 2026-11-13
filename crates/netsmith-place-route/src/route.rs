@@ -338,6 +338,39 @@
 //! of 300 mm on RP2350: what is left is round U1, whose front is full, and the soft search
 //! for the nets in a line's way finds none whose rip-up would free it.
 //!
+//! # Decoupling: pin, capacitor, via (issue #431, S7)
+//!
+//! **What is built** (`decouple.rs`). The router's lines are the ratsnest's with, on each supply
+//! net, the line from a decoupled power pin to its capacitor's pad made first (the pin is the
+//! nearest power pin the placer's decoupling pair names, within 5 mm), so the pin's current
+//! passes the capacitor. These are the lines of [`Class::Decoupling`]. Then, after a complete try
+//! and the two passes above, [`Router::to_the_pours`] gives each such capacitor's pad on a return
+//! net poured on the other outer layer (ground on the back of RP2350 and Orbit) a via of its own,
+//! on at most [`RETURN_TRACK`] 1.5 mm of track, unless a via of the net is that near already. It
+//! never moves other copper or leaves a line. EasyDuino's ground is a plane, so its capacitors
+//! had their vias already; its 3.3 V plane pins now reach the plane through the capacitor's via.
+//!
+//! **Measured** (2026-11-13, main at 19861713 against this, `netsmith fab` back to back, the same
+//! placements; the scorecard's decoupling track from the capacitor to the part's nearest pad, mean
+//! / max, and from its ground pad to the nearest via, mean / max; length over the spanning length,
+//! vias, other nets' track on the GND pour, pair coupling):
+//!
+//! | | RP2350 | Orbit | EasyDuino |
+//! |---|---|---|---|
+//! | main | 11.0 / 37.5, 2.3 / 7.8 mm; 1.29x, 129 vias, 423 mm, 69 % | 10.3 / 38.5, 8.1 / 29.6 mm; 1.22x, 87, 304 mm, 0 % | 21.0 / 56.4, 0.7 / 1.0 mm; 1.22x, 105, 54 % |
+//! | **built** | **6.3 / 22.4, 1.3 / 4.0 mm**; 1.33x, 142 vias, 433 mm, 85 % | 10.4 / 40.9, **2.6 / 12.8 mm**; 1.20x, 94, 303 mm, 72 % | = main |
+//! | the pin a leaf too (not kept) | 7.0 / 25.3; 1.42x, 162 vias, 480 mm | 10.5 / 45.8; 1.18x, 91 | 24.9 / 56.4; 1.23x, 107 |
+//!
+//! The vias added are mostly the capacitors' own (about 6 on RP2350 and 7 on Orbit). RP2350's
+//! length and vias at turn cost 25 are inside the spread main shows over turn costs 24 to 27
+//! (1.29 to 1.43x, 129 to 162 vias; built 1.33 to 1.36x, 129 to 157). Robustness (one try at turn
+//! costs 24 / 25 / 26 / 27, the default margin and `--margin 1`): main leaves 0 / 0 / 0 / 1 on
+//! RP2350 at both, this leaves 0 / 0 / 0 / 0; Orbit and EasyDuino 0 / 0 / 0 / 0 on both. `fab`
+//! took 120 / 127 s on RP2350 against main's 122 / 124 s, 14 / 12 s on Orbit against 17 / 17 s,
+//! 7 s on EasyDuino as main; each board gives the same copper on both runs. The scorecard's
+//! decoupling counts every two-pad capacitor between a pour and a part of 8 pads or more, some of
+//! them bulk or crystal capacitors the placer does not pair, which keep their length.
+//!
 //! # Classes of lines (issue #416, S5 of #431)
 //!
 //! Every line has a [`Class`], derived from the board with nothing in the source, in a fixed
