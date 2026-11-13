@@ -11,6 +11,7 @@ const have: Ids = {
   ],
   nets: ['VBUS', 'GND', 'GND'],
   limits: ['lid', 'lid'],
+  cases: ['base', 'base', 'top'],
 };
 
 const refusal = (f: () => unknown): ViewRefusal => {
@@ -41,22 +42,35 @@ describe('the section, as render --section reads and writes it', () => {
 
 describe('the ids of --highlight', () => {
   it('finds a part by designator or path, a net and a limit, each once, comma-separated or not', () => {
-    expect(resolveIds(['J1', 'status.led,net:GND', 'limit:lid', 'power_in'], have)).toEqual({ parts: ['power_in', 'status.led'], nets: ['GND'], limits: ['lid'] });
+    expect(resolveIds(['J1', 'status.led,net:GND', 'limit:lid', 'power_in'], have)).toEqual({ parts: ['power_in', 'status.led'], nets: ['GND'], limits: ['lid'], cases: [] });
+  });
+  it('finds a case model by name, as render --highlight case:<name> does', () => {
+    expect(resolveIds(['case:base,case:top', 'case:base'], have)).toEqual({ parts: [], nets: [], limits: [], cases: ['base', 'top'] });
   });
   it('names the ids the board does not have and lists what it has, as render does', () => {
-    const e = refusal(() => resolveIds(['J9', 'net:NOPE', 'R1'], have));
+    const e = refusal(() => resolveIds(['J9', 'net:NOPE', 'R1', 'case:lid'], have));
     expect(e.status).toBe(400);
     expect(e.message).toBe(
-      'highlight names ids that the board does not have: `J9`, `net:NOPE`\n' +
+      'highlight names ids that the board does not have: `J9`, `net:NOPE`, `case:lid`\n' +
         'the parts are: J1 (power_in), D1 (status.led), R1 (r1)\n' +
         'the nets: net:GND, net:VBUS\n' +
-        'the limits: limit:lid',
+        'the limits: limit:lid\n' +
+        'the case models: case:base, case:top',
     );
-    expect(refusal(() => resolveIds(['x'], { parts: [], nets: [], limits: [] })).message).toContain('an id that the board does not have: `x`\nthe parts are: (none)');
+    const none = refusal(() => resolveIds(['x'], { parts: [], nets: [], limits: [], cases: [] })).message;
+    expect(none).toContain('an id that the board does not have: `x`\nthe parts are: (none)');
+    expect(none).toContain('the case models: (none)');
   });
 });
 
 describe("the ids of a system's scene (ADR 0110)", () => {
+  it('refuses a case model: a case is one board\'s, and the system draws none (ADR 0109)', () => {
+    const sys: Ids = { parts: [], nets: [], limits: [], cases: [], system: 'TwoBoards' };
+    const why = refusal(() => resolveIds(['case:lid'], sys)).message;
+    expect(why).toContain('names `case:lid`, a case model, and the system `TwoBoards` draws none');
+    expect(why).toContain('--board <System>/<member>');
+  });
+
   const system: Ids = {
     parts: [
       { path: 'power/power_out', refdes: 'power/J1' },
@@ -64,10 +78,11 @@ describe("the ids of a system's scene (ADR 0110)", () => {
     ],
     nets: ['led/GND', 'power/GND'],
     limits: [],
+    cases: [],
     system: 'TwoBoards',
   };
   it("names a member's part and net, the net also as render writes it", () => {
-    expect(resolveIds(['led/J1', 'power/power_out'], system)).toEqual({ parts: ['led/power_in', 'power/power_out'], nets: [], limits: [] });
+    expect(resolveIds(['led/J1', 'power/power_out'], system)).toEqual({ parts: ['led/power_in', 'power/power_out'], nets: [], limits: [], cases: [] });
     expect(resolveIds(['net:led/GND'], system).nets).toEqual(['led/GND']);
     expect(resolveIds(['led/net:GND'], system).nets).toEqual(['led/GND']);
   });
@@ -101,7 +116,7 @@ describe('a change, checked before anything is done', () => {
   });
   it('leaves alone what a change does not name', () => {
     expect(planChange({}, have, true)).toEqual({});
-    expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [] });
+    expect(planChange({ section: 'none', highlight: [] }, have, true)).toEqual({ section: null, selection: { parts: [], net: null }, limits: [], cases: [] });
     expect(planChange({ heightPreview: false }, have, true).preview).toEqual({ on: false });
   });
   it('lights one net through the selection, and not with parts', () => {
@@ -109,6 +124,8 @@ describe('a change, checked before anything is done', () => {
     expect(refusal(() => planChange({ highlight: ['net:GND', 'net:VBUS'] }, have, true)).message).toContain('one net at a time');
     expect(refusal(() => planChange({ select: ['J1', 'net:GND'] }, have, true)).message).toContain('parts or one net');
     expect(refusal(() => planChange({ select: ['limit:lid'] }, have, true)).message).toContain('use highlight');
+    expect(refusal(() => planChange({ select: ['case:base'] }, have, true)).message).toContain('a case model is not selected');
+    expect(planChange({ highlight: ['J1', 'case:top'] }, have, true)).toMatchObject({ selection: { parts: ['power_in'] }, limits: [], cases: ['top'] });
   });
   it('refuses a camera that is not a place, a preview out of range and a stackup the board has not', () => {
     expect(refusal(() => planChange({ camera: { position: [1, 2, 3], target: [1, 2, 3] } }, have, true)).message).toContain('the same point');
@@ -127,9 +144,10 @@ describe('what is lit, as the state and the copied command name it', () => {
     expect(litIds([], 'GND', [], have.parts)).toEqual({ selection: ['net:GND'], highlight: ['net:GND'] });
   });
   it('gives the ids a change takes back: the copied command and a change agree', () => {
-    const lit = litIds(['status.led'], null, ['lid'], have.parts);
+    const lit = litIds(['status.led'], null, ['lid'], have.parts, ['base', 'base']);
+    expect(lit.highlight).toEqual(['D1', 'limit:lid', 'case:base']);
     const cmd = renderCommand({ file: 'src/main.nsm', board: 'B', view: 'iso', highlight: lit.highlight });
-    expect(cmd).toContain("--highlight D1,limit:lid");
-    expect(planChange({ highlight: lit.highlight }, have, true)).toMatchObject({ selection: { parts: ['status.led'] }, limits: ['lid'] });
+    expect(cmd).toContain("--highlight D1,limit:lid,case:base");
+    expect(planChange({ highlight: lit.highlight }, have, true)).toMatchObject({ selection: { parts: ['status.led'] }, limits: ['lid'], cases: ['base'] });
   });
 });

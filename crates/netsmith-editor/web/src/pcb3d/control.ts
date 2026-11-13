@@ -10,21 +10,25 @@ import { PREVIEW_MAX_MM, PREVIEW_MIN_MM } from './inspectMode';
 import { ViewRefusal } from './mode';
 import { type Axis, type P3, RENDER_VIEWS, type RenderView } from './tools';
 
-/** What the view has, to check a change's ids against: its parts, the nets with copper in it and
- * its height limits by name. In a system's scene (ADR 0110) `system` is its name, and a part's
- * path and designator and a net are its member's: `led/power_in`, `led/J1`, `led/GND`. */
+/** What the view has, to check a change's ids against: its parts, the nets with copper in it,
+ * its height limits by name and its case models (ADR 0109) by name. In a system's scene (ADR
+ * 0110) `system` is its name, a part's path and designator and a net are its member's
+ * (`led/power_in`, `led/J1`, `led/GND`), and there is no case model: a case is one board's. */
 export interface Ids {
   parts: { path: string; refdes: string }[];
   nets: string[];
   limits: string[];
+  cases: string[];
   system?: string;
 }
 
-/** What `--highlight` (or `select`) named, sorted out: the parts by path, the nets, the limits. */
+/** What `--highlight` (or `select`) named, sorted out: the parts by path, the nets, the limits,
+ * the case models. */
 export interface Named {
   parts: string[];
   nets: string[];
   limits: string[];
+  cases: string[];
 }
 
 /** `x=13`, `y=8`, `z=-0.8` as `render --section` reads it; `none` is no cut. */
@@ -43,10 +47,10 @@ export function parseSection(text: string): { axis: Axis; at: number } | null {
 export const sectionText = (cut: { axis: Axis; at: number } | null): string | null => (cut ? `${cut.axis}=${Number(cut.at.toFixed(3))}` : null);
 
 /** The ids as `render --highlight` reads them: a part by designator or path, `net:<name>`,
- * `limit:<name>`; an item may hold several, comma-separated. An id the board does not have is an
+ * `limit:<name>`, `case:<name>` (a case model); an item may hold several, comma-separated. An id the board does not have is an
  * error that names it and lists what the board has, as `render` words it. */
 export function resolveIds(requested: string[], have: Ids, what = 'highlight'): Named {
-  const out: Named = { parts: [], nets: [], limits: [] };
+  const out: Named = { parts: [], nets: [], limits: [], cases: [] };
   const unknown: string[] = [];
   const add = (list: string[], v: string) => list.includes(v) || list.push(v);
   for (const asked of requested.flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)) {
@@ -60,6 +64,16 @@ export function resolveIds(requested: string[], have: Ids, what = 'highlight'): 
     } else if (want.startsWith('limit:')) {
       const name = want.slice(6);
       if (have.limits.includes(name)) add(out.limits, name);
+      else unknown.push(asked);
+    } else if (want.startsWith('case:')) {
+      // A case model is one board's (ADR 0109): a system's scene draws none, so there is nothing to light.
+      if (have.system) {
+        throw new ViewRefusal(
+          `${what} names \`${asked}\`, a case model, and the system \`${have.system}\` draws none: a case model is one board's, so show that board (\`--board <System>/<member>\`) to light its case`,
+        );
+      }
+      const name = want.slice(5);
+      if (have.cases.includes(name)) add(out.cases, name);
       else unknown.push(asked);
     } else {
       const part = have.parts.find((p) => p.path === want) ?? have.parts.find((p) => p.refdes === want);
@@ -76,6 +90,7 @@ export function resolveIds(requested: string[], have: Ids, what = 'highlight'): 
       `the parts are: ${list(have.parts.map((p) => `${p.refdes} (${p.path})`))}\n` +
       `the nets: ${list([...new Set(have.nets)].sort().map((n) => `net:${n}`))}\n` +
       `the limits: ${list([...new Set(have.limits)].map((l) => `limit:${l}`))}` +
+      (have.system ? '' : `\nthe case models: ${list([...new Set(have.cases)].map((c) => `case:${c}`))}`) +
       hint,
   );
 }
@@ -109,6 +124,8 @@ export interface Plan {
   section?: { axis: Axis; at: number } | null;
   selection?: { parts: string[]; net: string | null };
   limits?: string[];
+  /** The case models lit, by name. */
+  cases?: string[];
   xray?: boolean;
   ortho?: boolean;
   colourBy?: ColourBy;
@@ -140,10 +157,12 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
     const n = resolveIds(change.highlight, have, 'highlight');
     plan.selection = selectable(n, 'highlight');
     plan.limits = n.limits;
+    plan.cases = n.cases;
   }
   if (change.select !== undefined) {
     const n = resolveIds(change.select, have, 'select');
     if (n.limits.length) throw new ViewRefusal('select names a limit: a limit is not selected, it is lit (use highlight)');
+    if (n.cases.length) throw new ViewRefusal('select names a case model: a case model is not selected, it is lit (use highlight)');
     plan.selection = selectable(n, 'select');
   }
   if (change.xray !== undefined) plan.xray = change.xray;
@@ -164,9 +183,15 @@ export function planChange(change: ViewChange, have: Ids, canExplode: boolean): 
 }
 
 /** What is lit and picked, as `render --highlight` names it: the parts by designator, the net as
- * `net:<name>`, the limits as `limit:<name>`. */
-export function litIds(selected: string[], net: string | null, limits: string[], parts: { path: string; refdes: string }[]): { highlight: string[]; selection: string[] } {
+ * `net:<name>`, the limits as `limit:<name>`, the case models as `case:<name>`. */
+export function litIds(
+  selected: string[],
+  net: string | null,
+  limits: string[],
+  parts: { path: string; refdes: string }[],
+  cases: string[] = [],
+): { highlight: string[]; selection: string[] } {
   const refs = selected.map((path) => parts.find((p) => p.path === path)?.refdes ?? path);
   const selection = net ? [`net:${net}`] : refs;
-  return { selection, highlight: [...selection, ...[...new Set(limits)].map((l) => `limit:${l}`)] };
+  return { selection, highlight: [...selection, ...[...new Set(limits)].map((l) => `limit:${l}`), ...[...new Set(cases)].map((c) => `case:${c}`)] };
 }

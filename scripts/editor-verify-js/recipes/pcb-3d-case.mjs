@@ -1,7 +1,9 @@
 // A board's case model in the 3D view (features/pcb-3d.md, "A case model"; ADR 0109): the case's
 // solids are drawn see-through round the board, a toggle hides and shows them, the problems dock
 // lists the fit check's findings, and picking one flies the camera to it and lights the case solid
-// it is about (showing the case if it was hidden). The fixture's case is two STEP files written by
+// it is about (showing the case if it was hidden), and an agent lights a case model by name over
+// `/api/view` (`highlight: ["case:<name>"]`, as `render --highlight` names it), with an unknown
+// name refused with the list. The fixture's case is two STEP files written by
 // hand: a box with a boss under one hole, and a lid 8 mm over the board that a 9 mm header goes
 // into.
 import path from 'node:path';
@@ -20,7 +22,7 @@ const ask = (page, what, ...args) => page.evaluate(([sel, w, a]) => document.que
 const settle = (page) => page.waitForTimeout(350);
 
 export async function run(tools) {
-  const { page, shot, step, expect } = tools;
+  const { page, shot, step, expect, url } = tools;
   await fresh(tools, path.join(here, '../fixtures/case_fit.pcb.toml'));
   await openPcb(page, BOARD);
   const s = await scene(page, BOARD);
@@ -77,4 +79,36 @@ export async function run(tools) {
   const text2 = await boss.innerText();
   expect(text2.includes(hole.refdes), `the boss finding names the hole: ${text2.replace(/\n/g, ' | ')}`);
   await shot('boss-focused');
+
+  step('/api/view lights a case model by name, shows the case if it was hidden, and names it as render does');
+  const api = new URL('/api/view', url).href;
+  const post = async (change) => {
+    const r = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Netsmith': '1' }, body: JSON.stringify(change) });
+    const text = await r.text();
+    let body = text;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // A refusal is text.
+    }
+    return { status: r.status, body };
+  };
+  await toggle.click();
+  await settle(page);
+  expect(!(await ask(page, 'caseShown')), 'the case is hidden before the change');
+  let r = await post({ view: 'iso', highlight: ['case:lid'] });
+  expect(r.status === 200, `the change is made: ${r.status} ${JSON.stringify(r.body).slice(0, 300)}`);
+  expect(JSON.stringify(r.body.highlight) === JSON.stringify(['case:lid']), `what is lit, named as render names it: ${JSON.stringify(r.body.highlight)}`);
+  expect(JSON.stringify(await ask(page, 'litCases')) === JSON.stringify(['lid']) && (await ask(page, 'focusedSolids')).length === 0, 'the lid is lit by name, and no finding is');
+  expect(await ask(page, 'caseShown'), 'lighting a case model shows the case');
+  expect((await toggle.getAttribute('aria-pressed')) === 'true', 'and the toggle says so');
+  expect(r.body.command.includes('--highlight case:lid'), `the copied command and the API agree: ${r.body.command}`);
+  await shot('case-lit-by-name');
+
+  step('an unknown case model is refused with the list, and changes nothing; [] lights nothing');
+  r = await post({ highlight: ['case:box'] });
+  expect(r.status === 400 && String(r.body).includes('`case:box`') && String(r.body).includes('the case models: case:base, case:lid'), `refused with the list: ${r.status} ${r.body}`);
+  expect(JSON.stringify(await ask(page, 'litCases')) === JSON.stringify(['lid']), 'the lid is still lit');
+  r = await post({ highlight: [] });
+  expect(r.status === 200 && r.body.highlight.length === 0 && (await ask(page, 'litCases')).length === 0, `nothing is lit: ${JSON.stringify(r.body.highlight)}`);
 }

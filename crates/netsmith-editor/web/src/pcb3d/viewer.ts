@@ -273,6 +273,8 @@ export class Viewer {
   private caseShown = true;
   /** The case solids a finding lit, as `case:<model>:<solid>`. */
   private focusedSolids = new Set<string>();
+  /** The case models `/api/view` lit (`highlight: ["case:<name>"]`), by name: in the selection's colour, as `render --highlight` lights them. */
+  private litCases = new Set<string>();
   private pickable: Mesh[] = [];
   private infoOf = new Map<Object3D, Info>();
   private materials = new Map<string, Material>();
@@ -1257,7 +1259,7 @@ export class Viewer {
         o.material = this.focusedLimits.has(`${l.name}:${l.face}`) ? this.limitFocus(role) : this.surface(role, 'rest');
       } else if (info?.kind === 'case_solid') {
         const c = info as CaseSolidInfo;
-        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.surface(role, 'rest');
+        o.material = this.focusedSolids.has(`case:${c.case}:${c.solid}`) ? this.caseFocus() : this.litCases.has(c.case) ? this.caseLit() : this.surface(role, 'rest');
       } else {
         o.material = this.surface(role, 'rest', { xray, dim: netsOn });
       }
@@ -1386,6 +1388,17 @@ export class Viewer {
   }
 
   /** A limit lit for a finding: its volume brighter, pulsed once when it is first lit. */
+  /** A case model lit by name: see-through in the selection's colour (a finding's solid is in the danger colour). */
+  private caseLit(): Material {
+    const c = this.colours!;
+    return this.material('lit:case', () => {
+      const ink = new Color(c.select);
+      const m = new MeshStandardMaterial({ name: 'case-lit', color: ink, metalness: 0, roughness: 1, transparent: true, opacity: 0.3, depthWrite: false, side: DoubleSide });
+      m.emissive = ink.clone().multiplyScalar(0.25);
+      return m;
+    });
+  }
+
   private limitFocus(role: Role): Material {
     const c = this.colours!;
     return this.material(`focus:${role}`, () => {
@@ -1410,6 +1423,7 @@ export class Viewer {
   /** Fly to a finding's parts and limits and light them: the parts through the selection (the dock picks them), the limits here. The violated limit's volume pulses once; with reduced motion it does not. A finding of the case fit (ADR 0109) also names its case solid (`case:<model>:<solid>`, or `case:<model>` for every solid of the model), which is lit and shown, and the point to look at, in mm in the scene's frame. */
   focusFinding(paths: string[], limitKeys: string[], solids: string[] = [], point: [number, number, number] | null = null) {
     this.focusedLimits = new Set(limitKeys);
+    this.litCases.clear();
     this.focusedSolids = new Set(this.cases.map((c) => `case:${c.info.case}:${c.info.solid}`).filter((k) => solids.some((s) => k === s || k.startsWith(`${s}:`))));
     if (this.focusedSolids.size && !this.caseShown) this.setCaseShown(true);
     this.restyle();
@@ -1458,10 +1472,11 @@ export class Viewer {
   }
 
   clearFocus() {
-    if (!this.focusedLimits.size && !this.focusedSolids.size) return;
+    if (!this.focusedLimits.size && !this.focusedSolids.size && !this.litCases.size) return;
     cancelAnimationFrame(this.pulseAnim);
     this.focusedLimits.clear();
     this.focusedSolids.clear();
+    this.litCases.clear();
     this.restyle();
     this.request();
   }
@@ -1728,6 +1743,22 @@ export class Viewer {
     this.focusedLimits = new Set(this.limits.filter((l) => want.has(l.info.name)).map((l) => `${l.info.name}:${l.info.face}`));
     this.restyle();
     this.request();
+  }
+
+  /** Light case models by name (every solid of each), with no camera move, showing the case if it was hidden; none clears them. What a finding lit goes. */
+  lightCases(names: string[]) {
+    const want = new Set(names);
+    this.litCases = new Set(this.cases.map((c) => c.info.case).filter((n) => want.has(n)));
+    this.focusedSolids.clear();
+    if (this.litCases.size && !this.caseShown) this.setCaseShown(true);
+    this.restyle();
+    this.request();
+  }
+
+  /** The case models lit, by name: by `/api/view`, or the model of a solid a finding lit. */
+  litCaseList(): string[] {
+    const solids = [...this.focusedSolids].map((k) => this.cases.find((c) => `case:${c.info.case}:${c.info.solid}` === k)?.info.case);
+    return [...new Set([...this.litCases, ...solids.filter((n): n is string => !!n)])];
   }
 
   /** A camera move or the stackup moving is under way. */
