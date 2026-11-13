@@ -22,6 +22,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     classes: netsmith_place_route::LineClasses::FromSecondTry,
     teardrops: true,
     arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    meanders: true,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -38,6 +39,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     classes: netsmith_place_route::LineClasses::FromSecondTry,
     teardrops: true,
     arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    meanders: true,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -54,6 +56,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     classes: netsmith_place_route::LineClasses::FromSecondTry,
     teardrops: true,
     arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    meanders: true,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -71,6 +74,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     classes: netsmith_place_route::LineClasses::FromSecondTry,
     teardrops: true,
     arcs: netsmith_place_route::arcs::ARC_WIDTHS,
+    meanders: true,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {

@@ -141,17 +141,17 @@ pub mod constraints;
 mod fab_rules;
 pub mod kicad;
 mod model;
+mod room;
 mod rules;
 pub mod shape;
-mod room;
 mod teardrop;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
 pub(crate) use model::outline_shapes;
+pub use room::Room;
 pub(crate) use rules::matches_pattern;
 pub use rules::{Class, Rules};
-pub use room::Room;
 pub use teardrop::{LENGTH_RATIO, MAX_LENGTH, MAX_WIDTH, Teardrop, WIDTH_RATIO, teardrops};
 
 /// How bad a finding is. A rule the project file says to ignore produces none.

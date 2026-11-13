@@ -451,7 +451,11 @@ mod tests {
             .findings
             .iter()
             .filter(|f| f.rule != drc::Rule::TrackDangling)
-            .filter(|f| f.items.iter().any(|i| i.net.as_deref().is_some_and(|n| n.starts_with("usb"))))
+            .filter(|f| {
+                f.items
+                    .iter()
+                    .any(|i| i.net.as_deref().is_some_and(|n| n.starts_with("usb")))
+            })
             .map(|f| format!("{:?}: {}", f.rule, f.message))
             .collect()
     }
@@ -485,14 +489,20 @@ mod tests {
         assert_eq!(matched.len(), 1, "{matched:?}");
         let m = &matched[0];
         assert_eq!((m.p.as_str(), m.n.as_str()), ("usb.dp", "usb.dm"));
-        assert!((m.before - 4.0 * (2.0f64.sqrt() - 1.0)).abs() < 1e-6, "{m:?}");
+        assert!(
+            (m.before - 4.0 * (2.0f64.sqrt() - 1.0)).abs() < 1e-6,
+            "{m:?}"
+        );
         assert!(m.after <= SKEW_TARGET, "{m:?}");
         // The meander is on the shorter net, below it (away from its partner), and between the
         // coupled runs.
         let dp: Vec<&Track> = board.tracks.iter().filter(|t| t.net == "usb.dp").collect();
         assert!(dp.len() > 3, "{dp:?}");
         let y = dp[0].from.y;
-        assert!(dp.iter().all(|t| t.from.y >= y - 1e-9 && t.to.y >= y - 1e-9));
+        assert!(
+            dp.iter()
+                .all(|t| t.from.y >= y - 1e-9 && t.to.y >= y - 1e-9)
+        );
         let x0 = dp[0].from.x;
         assert!(
             dp.iter()
@@ -524,8 +534,16 @@ mod tests {
         // `usb.dm` 2 mm longer, far off.
         let gap = board.rules.track_width + board.rules.clearance + 0.01;
         path(&mut board, "usb.dp", &[(x, y), (x + 20.0, y)]);
-        path(&mut board, "GND", &[(x - 1.0, y + gap), (x + 21.0, y + gap)]);
-        path(&mut board, "GND", &[(x - 1.0, y - gap), (x + 21.0, y - gap)]);
+        path(
+            &mut board,
+            "GND",
+            &[(x - 1.0, y + gap), (x + 21.0, y + gap)],
+        );
+        path(
+            &mut board,
+            "GND",
+            &[(x - 1.0, y - gap), (x + 21.0, y - gap)],
+        );
         path(&mut board, "usb.dm", &[(x, y - 6.0), (x + 22.0, y - 6.0)]);
         let tracks = board.tracks.clone();
         let matched = add(&mut board);
