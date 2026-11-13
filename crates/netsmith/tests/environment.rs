@@ -362,7 +362,7 @@ fn a_junction_range_is_the_parts_range_and_a_range_that_covers_the_environment_p
 // ---- the manifest's default (ADR 0099) -------------------------------------------------
 
 use netsmith::project::{Manifest, Target};
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 /// A project's own environment: -40 C to 85 C, offered, so that a board can replace it.

@@ -8,9 +8,9 @@ use netsmith_solve::{Catalogs, solve};
 
 /// `check` of a source that states its board's physical intent inside the board, as the
 /// language took it before ADR 0048: split into the circuit source and the physical file
-/// that the language takes now (`netsmith_kicad::testlib::split_physical`).
+/// that the language takes now (`netsmith_testkit::split_physical`).
 fn check_split(src: &str) -> netsmith_check::Checked {
-    let (circuit, physical) = netsmith_kicad::testlib::split_physical(src);
+    let (circuit, physical) = netsmith_testkit::split_physical(src);
     let mut loader = Loader::std();
     if let Some(physical) = physical {
         loader.attach_physical("t.nsm", "t.physical.nsm", &physical);

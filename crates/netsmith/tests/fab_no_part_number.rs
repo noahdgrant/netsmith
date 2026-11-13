@@ -4,8 +4,8 @@
 
 use netsmith::Libraries;
 use netsmith::fab::fab;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 /// Two resistors of a value that only the project's own row has, and the row has a
@@ -87,7 +87,7 @@ fn run(source: &str, dir: &std::path::Path) -> Result<Vec<netsmith::fab::Fabrica
 
 #[test]
 fn every_part_with_no_part_number_is_named_together_with_what_to_write() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let dir = TempDir::unused("fab-no-part-number");
@@ -118,7 +118,7 @@ fn every_part_with_no_part_number_is_named_together_with_what_to_write() {
 
 #[test]
 fn marking_the_parts_hand_soldered_gets_past_it_and_the_notes_say_so() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let dir = TempDir::unused("fab-no-part-number-hand");
@@ -145,7 +145,7 @@ fn marking_the_parts_hand_soldered_gets_past_it_and_the_notes_say_so() {
 
 #[test]
 fn a_part_inside_a_module_is_named_by_path_with_the_ways_the_module_allows() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let dir = TempDir::unused("fab-no-part-number-module");
@@ -168,7 +168,7 @@ fn a_part_inside_a_module_is_named_by_path_with_the_ways_the_module_allows() {
 
 #[test]
 fn a_part_that_is_not_assembled_by_the_board_house_needs_no_number() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     // The row's own `assembly` column is the third way: the pick carries it.
@@ -195,7 +195,7 @@ fn a_part_that_is_not_assembled_by_the_board_house_needs_no_number() {
 
 #[test]
 fn the_module_way_the_message_names_gets_past_it() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let dir = TempDir::unused("fab-no-part-number-offer");

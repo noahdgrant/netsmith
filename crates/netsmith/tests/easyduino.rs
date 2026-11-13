@@ -423,7 +423,6 @@ mod must_match_parts {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::testlib;
     use netsmith_pcb::{Footprint, PadKind, PadShape};
 
     use super::{number, parsed, project, read, tables};
@@ -469,7 +468,7 @@ board InterfaceBare {
 
     /// A machine with no KiCad install, and the project's own `kicad.toml` and libraries.
     fn libraries() -> Libraries {
-        let nowhere = testlib::TempDir::new("easyduino-no-kicad");
+        let nowhere = netsmith_testkit::TempDir::new("easyduino-no-kicad");
         Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
             .unwrap_or_else(|e| panic!("{e}"))
     }
@@ -1045,8 +1044,8 @@ mod ics {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_core::PinKind;
+    use netsmith_kicad::Mapping;
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::{Mapping, testlib};
     use netsmith_pcb::Footprint;
 
     /// A small board of our own, never built by the project: every part of this module with the
@@ -1125,7 +1124,7 @@ board IcsFixture {
 
     /// A machine with no KiCad install, and the project's own `kicad.toml` and libraries.
     fn libraries() -> Libraries {
-        let nowhere = testlib::TempDir::new("easyduino-ics-no-kicad");
+        let nowhere = netsmith_testkit::TempDir::new("easyduino-ics-no-kicad");
         Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
             .unwrap_or_else(|e| panic!("{e}"))
     }
@@ -1902,7 +1901,6 @@ mod board {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::testlib;
     use netsmith_netlist::{Outcome, normalize_value, report};
 
     use crate::common::port::{Pad, Port, Reading};
@@ -1928,7 +1926,7 @@ mod board {
     };
 
     fn libraries() -> Libraries {
-        let nowhere = testlib::TempDir::new("easyduino-board-no-kicad");
+        let nowhere = netsmith_testkit::TempDir::new("easyduino-board-no-kicad");
         Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
             .unwrap_or_else(|e| panic!("{e}"))
     }

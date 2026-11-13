@@ -4,7 +4,7 @@
 
 use netsmith_core::PowerFlow;
 use netsmith_kicad::sexp::Sexp;
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 use crate::lt8641::{built, libraries};
 

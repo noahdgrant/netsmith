@@ -10,9 +10,9 @@
 
 use netsmith_core::{Design, Net, PinRef};
 use netsmith_kicad::sexp::Sexp;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_kicad::{Mapping, PinType, Symbol, SymbolLib, emit_schematic, passives, stdlib};
 use netsmith_pcb::{FootprintLibrary, Subject, validate_pinout};
+use netsmith_testkit::TempDir;
 
 use crate::kicad_rows::{part_of, pinout_of};
 use netsmith::Libraries;
@@ -485,7 +485,7 @@ fn body_tolerance(id: &str) -> f64 {
 
 #[test]
 fn generated_symbols_agree_with_the_installed_kicad_symbols() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let root = Libraries::standard().symbols.root().to_path_buf();

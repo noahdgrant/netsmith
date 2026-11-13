@@ -69,7 +69,7 @@ fn no_wire_goes_through_a_symbol() {
 fn the_smallest_case_of_a_wire_through_a_symbol() {
     let (design, groups) = common::supplies(1);
     let mapping = netsmith_kicad::Mapping::standard();
-    let lib = netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols());
+    let lib = netsmith_kicad::SymbolLib::at(netsmith_testkit::sample_symbols());
     let l = netsmith_view::layout_sheets(&design, &groups, &mapping, &lib).unwrap();
     let found = check(&design, &l);
     assert!(found.is_empty(), "{found:?}");

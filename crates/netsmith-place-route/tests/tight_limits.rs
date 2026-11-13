@@ -13,8 +13,8 @@ use netsmith_core::{
     Design, Features, Keepout, Net, Outline, Part, PartHeight, PinRef, PlaceBound, PlaceField,
     Placement,
 };
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, FootprintLibrary, PlaceOptions};
+use netsmith_testkit::TempDir;
 
 use common::process;
 
@@ -227,7 +227,7 @@ pub fn board(
     let mapping = netsmith_kicad::Mapping::parse(&mapping, "tight", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     // The mapping above names the library `t`.
     let options = PlaceOptions {

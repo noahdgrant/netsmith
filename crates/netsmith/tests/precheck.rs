@@ -13,9 +13,9 @@ use std::cell::Cell;
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, Precheck, place_options};
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 /// A board of `parts` resistors and `headers`, in a 40 x 30 mm outline unless `size` says.
 fn source(parts: usize, headers: &str) -> String {

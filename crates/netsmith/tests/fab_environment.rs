@@ -5,8 +5,8 @@
 
 use netsmith::Libraries;
 use netsmith::fab::fab;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 /// The board: a header, a supply and `parts`, in `environment`.

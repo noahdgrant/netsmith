@@ -3,7 +3,7 @@
 
 use std::{fs, path::Path, process::Command};
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const LED: &str = include_str!("../../../examples/led.nsm");
 
@@ -21,13 +21,10 @@ fn build(cwd: &Path, timings: Option<&str>) -> std::process::Output {
         .arg("build")
         .current_dir(cwd)
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
+        .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())
         .env(
             "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
+            netsmith_testkit::sample_footprints(),
         )
         .env_remove("NETSMITH_TIMINGS");
     if let Some(value) = timings {

@@ -8,8 +8,8 @@
 use crate::common;
 
 use netsmith_core::Design;
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::check::check;
 use netsmith_view::geom::Pt;
 use netsmith_view::layout::{Layout, PowerKind};
@@ -60,7 +60,7 @@ fn setup() -> (TempDir, Mapping, SymbolLib) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("tuning", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("tuning", file);
     (dir, mapping, lib)
 }
 
@@ -291,7 +291,7 @@ fn a_board_with_no_part_across_two_supplies_has_no_place_for_that_choice() {
         &led,
         &Rails::default(),
         &Mapping::standard(),
-        &SymbolLib::at(testlib::sample_symbols()),
+        &SymbolLib::at(netsmith_testkit::sample_symbols()),
         Tuning::default(),
     )
     .map(|(l, t)| (l.parts.len(), t))

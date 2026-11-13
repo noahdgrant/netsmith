@@ -423,7 +423,6 @@ mod small_parts {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::testlib;
     use netsmith_pcb::{Footprint, PadKind, PadShape};
 
     use super::{number, parsed, project, read, tables};
@@ -481,7 +480,7 @@ board SmallPartsFixture {
 "#;
 
     fn libraries() -> Libraries {
-        let nowhere = testlib::TempDir::new("orbit-no-kicad");
+        let nowhere = netsmith_testkit::TempDir::new("orbit-no-kicad");
         Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
             .unwrap_or_else(|e| panic!("{e}"))
     }
@@ -990,7 +989,7 @@ mod ics {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_core::PinKind;
-    use netsmith_kicad::{Mapping, SymbolLib, testlib};
+    use netsmith_kicad::{Mapping, SymbolLib};
     use netsmith_pcb::{Footprint, FootprintLibrary};
 
     /// A small board of our own, never built by the project: the five parts with their
@@ -1093,8 +1092,8 @@ board Ics {
         let mapping = Mapping::for_project(Some(&project())).unwrap_or_else(|e| panic!("{e}"));
         Libraries::with_mapping(
             mapping,
-            SymbolLib::at(testlib::sample_symbols()),
-            FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+            SymbolLib::at(netsmith_testkit::sample_symbols()),
+            FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_generators(),
         )
     }
 
@@ -1928,7 +1927,6 @@ mod board {
 
     use netsmith::{Libraries, build_with};
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::testlib;
     use netsmith_netlist::{Options, Outcome, compare, normalize_value, report};
 
     use crate::common::port::{Pad, Port, Reading};
@@ -1955,7 +1953,7 @@ mod board {
     };
 
     fn libraries() -> Libraries {
-        let nowhere = testlib::TempDir::new("orbit-board-no-kicad");
+        let nowhere = netsmith_testkit::TempDir::new("orbit-board-no-kicad");
         Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
             .unwrap_or_else(|e| panic!("{e}"))
     }

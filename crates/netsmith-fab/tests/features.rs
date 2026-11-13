@@ -102,7 +102,7 @@ fn the_board_agrees_with_kicads_own_plot() {
         eprintln!("skipped: no KiCad");
         return;
     };
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-features");
+    let dir = netsmith_testkit::TempDir::new("fab-features");
     std::fs::write(dir.join("features.kicad_pcb"), BOARD).unwrap();
     std::fs::write(
         dir.join("features.kicad_pro"),

@@ -4,7 +4,7 @@
 
 use std::fs;
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const PART: &str = r#"
 /// Zmcu4, an invented microcontroller.

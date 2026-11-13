@@ -2729,7 +2729,7 @@ pub(crate) mod tests {
     use super::*;
 
     pub fn fixtures() -> FootprintLibrary {
-        FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+        FootprintLibrary::at(netsmith_testkit::sample_footprints())
     }
 
     fn part(refdes: &str, kind: &str, value: &str, package: Option<&str>) -> Part {
@@ -2778,7 +2778,7 @@ pub(crate) mod tests {
 
     fn placed_as(design: &Design, layout: Option<&str>) -> Board {
         use netsmith_place_route::netsmith_pcb as theirs;
-        let library = theirs::FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints());
+        let library = theirs::FootprintLibrary::at(netsmith_testkit::sample_footprints());
         let mapping = netsmith_kicad::Mapping::standard();
         let board = match layout {
             None => netsmith_place_route::board_from_design(design, &mapping, &library),

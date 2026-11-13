@@ -1038,7 +1038,7 @@ mod tests {
     use super::*;
 
     fn fixtures() -> FootprintLibrary {
-        FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+        FootprintLibrary::at(netsmith_testkit::sample_footprints())
     }
 
     const UDC: &str = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA";
@@ -1620,16 +1620,16 @@ mod tests {
 
     #[test]
     fn no_install_is_an_error_only_when_an_installed_footprint_is_asked_for() {
-        let empty = netsmith_kicad::testlib::TempDir::new("no-kicad-fp");
+        let empty = netsmith_testkit::TempDir::new("no-kicad-fp");
         let library = FootprintLibrary::installed_by(&install::Search::under(empty.path()));
         // A name a generator makes needs no install.
         assert!(library.load("Resistor_SMD:R_0402_1005Metric").is_ok());
         // A project's own library needs none either.
-        let mine = netsmith_kicad::testlib::TempDir::new("mine-fp");
+        let mine = netsmith_testkit::TempDir::new("mine-fp");
         let pretty = mine.path().join("mine.pretty");
         std::fs::create_dir_all(&pretty).unwrap();
         std::fs::copy(
-            netsmith_kicad::testlib::sample_footprints()
+            netsmith_testkit::sample_footprints()
                 .join("Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod"),
             pretty.join("Mine.kicad_mod"),
         )
@@ -1658,7 +1658,7 @@ mod tests {
     fn with_no_install_path_of_says_no_install_for_a_generated_name_that_load_still_makes() {
         // `path_of` is about files (see its doc): a generated footprint has none, and the install
         // that would hold one is not there.
-        let empty = netsmith_kicad::testlib::TempDir::new("no-kicad-path-of");
+        let empty = netsmith_testkit::TempDir::new("no-kicad-path-of");
         let library = FootprintLibrary::installed_by(&install::Search::under(empty.path()));
         let name = "Resistor_SMD:R_0402_1005Metric";
         assert!(library.load(name).is_ok());
@@ -1677,7 +1677,7 @@ mod tests {
     fn a_project_library_is_not_shadowing_a_folder_of_the_guessed_root_when_no_kicad_is_found() {
         // With no install the root is a guess: here a folder that has a `own.pretty`, as the
         // working directory does when the root is `""`. It is no installed library.
-        let dir = netsmith_kicad::testlib::TempDir::new("no-kicad-shadow-fp");
+        let dir = netsmith_testkit::TempDir::new("no-kicad-shadow-fp");
         let pretty = dir.path().join("own.pretty");
         std::fs::create_dir_all(&pretty).unwrap();
         let mut library = FootprintLibrary::at(dir.path()).with_library("own", &pretty);
@@ -1698,13 +1698,13 @@ mod tests {
 
     #[test]
     fn an_install_found_by_the_search_is_read() {
-        let root = netsmith_kicad::testlib::TempDir::new("fake-mac-fp");
+        let root = netsmith_testkit::TempDir::new("fake-mac-fp");
         let share = root
             .path()
             .join("Applications/KiCad/KiCad.app/Contents/SharedSupport");
         let footprints = share.join("footprints");
         std::fs::create_dir_all(&footprints).unwrap();
-        copy_dir(&netsmith_kicad::testlib::sample_footprints(), &footprints);
+        copy_dir(&netsmith_testkit::sample_footprints(), &footprints);
         let library = FootprintLibrary::installed_by(&install::Search::under(root.path()));
         assert_eq!(library.root(), footprints);
     }

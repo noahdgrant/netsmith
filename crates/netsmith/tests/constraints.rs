@@ -3,7 +3,7 @@
 //! file with every number, and a violation stops `fab` unless the project says `warn`.
 //! The numbers are an invented case drawing.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::Libraries;

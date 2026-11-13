@@ -2,7 +2,7 @@
 //! `guidelines = "error"` in `netsmith.toml` or `--strict` for one run, shown by the
 //! command line, the fab notes and the editor.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::{fs, path::Path, process::Command};
 
 /// A 2 A supply and load on a `5V` / `GND` pair, with the rail drawn `width` wide.
@@ -60,13 +60,10 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
         .args(args)
         .current_dir(cwd)
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
+        .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())
         .env(
             "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
+            netsmith_testkit::sample_footprints(),
         )
         .output()
         .unwrap()

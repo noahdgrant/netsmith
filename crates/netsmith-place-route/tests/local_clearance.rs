@@ -6,9 +6,9 @@ use crate::common;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
 use netsmith_fab::drc::{self, Extras};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, FootprintLibrary, Pt, Rect, kicad_pcb, kicad_pro};
 use netsmith_place_route::route;
+use netsmith_testkit::TempDir;
 
 use common::process;
 
@@ -112,7 +112,7 @@ fn board(pad: &str, whole: &str) -> (Board, f64) {
     )
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     let mut board = netsmith_place_route::board_from_design(&design, &mapping, &library).unwrap();
     let at = [(4.0, 6.0), (10.0, 6.0), (16.0, 6.0), (10.0, 10.0)];

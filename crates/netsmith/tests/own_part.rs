@@ -12,9 +12,9 @@ use netsmith::Libraries;
 use netsmith::fab::fab;
 use netsmith_kicad::install::Search;
 use netsmith_kicad::sexp::Sexp;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::generate::generate;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 /// The fenced blocks of the guide's section, as (words after the fence, text).
 fn section() -> Vec<(Vec<String>, String)> {

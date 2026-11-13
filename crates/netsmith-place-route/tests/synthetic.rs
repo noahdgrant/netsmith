@@ -3,7 +3,7 @@
 
 use crate::common;
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::time::{Duration, Instant};
 
 use netsmith_pcb::{PlaceOptions, Ratsnest};

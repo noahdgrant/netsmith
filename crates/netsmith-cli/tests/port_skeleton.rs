@@ -6,7 +6,7 @@ use std::fs;
 use std::process::Command;
 
 use netsmith::port::PortParts;
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 /// A board of a resistor and a part with a file of its own, and a part with none.
 const SMALL: &str = r#"(kicad_pcb (version 20240108)

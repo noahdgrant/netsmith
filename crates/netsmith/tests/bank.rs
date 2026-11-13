@@ -2,7 +2,7 @@
 //! `fab` writes: the row once, with its quantity, and one real part for each capacitor in the
 //! schematic, the board and the placement file. The values here are invented.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::Libraries;

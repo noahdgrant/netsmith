@@ -8,8 +8,8 @@ use netsmith_fab::{KicadCli, KicadCliExe};
 const BOARD: &str = include_str!("data/known_differences.kicad_pcb");
 const PROJECT: &str = include_str!("data/known_differences.kicad_pro");
 
-fn board_in(name: &str) -> (netsmith_kicad::testlib::TempDir, std::path::PathBuf) {
-    let dir = netsmith_kicad::testlib::TempDir::new(name);
+fn board_in(name: &str) -> (netsmith_testkit::TempDir, std::path::PathBuf) {
+    let dir = netsmith_testkit::TempDir::new(name);
     let pcb = dir.join("known_differences.kicad_pcb");
     std::fs::write(&pcb, BOARD).unwrap();
     std::fs::write(dir.join("known_differences.kicad_pro"), PROJECT).unwrap();

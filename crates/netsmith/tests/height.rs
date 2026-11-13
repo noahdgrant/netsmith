@@ -9,9 +9,9 @@ use std::fs;
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, PlacementProblem, Pt, Side, place_options};
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 /// The board: a rail and `parts` resistors between its nets.
 fn source(parts: usize) -> String {

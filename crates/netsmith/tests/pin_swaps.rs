@@ -20,12 +20,12 @@ use netsmith::pin_swap::{Budget, Clock};
 
 use netsmith::Libraries;
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::{TempDir, sample_footprints, sample_symbols};
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::{FootprintLibrary, place_options};
 use netsmith_place_route::Quality;
 use netsmith_place_route::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
+use netsmith_testkit::{TempDir, sample_footprints, sample_symbols};
 
 pub const KICAD_TOML: &str = "\
 [[library]]

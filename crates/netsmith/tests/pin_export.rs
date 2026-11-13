@@ -8,7 +8,7 @@ use std::path::Path;
 
 use netsmith::pin_export::{PinMap, render};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const PART: &str = r#"
 /// Zmcu4, an invented microcontroller: the datasheet names of its pins differ in how they end.

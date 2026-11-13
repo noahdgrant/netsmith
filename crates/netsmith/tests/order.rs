@@ -1,7 +1,7 @@
 //! Orders (ADR 0035): `[order.*]` in `netsmith.toml` and `netsmith fab --order`. The mistakes
 //! and the listing and the orders themselves need no KiCad (ADR 0037).
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 use std::path::Path;
 

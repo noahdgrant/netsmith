@@ -1035,7 +1035,7 @@ mod tests {
         }
     }
 
-    use netsmith_kicad::testlib::TempDir;
+    use netsmith_testkit::TempDir;
 
     fn dead_pid() -> u32 {
         // A process id above any the system hands out: no folder of it can be of a live process.

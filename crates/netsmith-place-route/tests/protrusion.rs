@@ -14,8 +14,8 @@ use netsmith_core::{
     Design, Features, Keepout, Outline, Part, PartHeight, PinProtrusion, PlaceBound, PlaceField,
     Placement,
 };
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, FootprintLibrary, PlaceOptions, PlacementProblem};
+use netsmith_testkit::TempDir;
 
 use common::process;
 
@@ -183,7 +183,7 @@ fn board(case: &Case) -> Result<Board, BoardError> {
     let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     netsmith_place_route::board_from_design_placed(
         &design(case),
@@ -348,7 +348,7 @@ fn the_placer_moves_a_free_cover_off_pins_it_may_not_stand_over() {
     let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     let placed = netsmith_place_route::board_from_design_placed(
         &d,
@@ -444,7 +444,7 @@ fn small(case: &Case) -> Result<Board, BoardError> {
     let mapping = netsmith_kicad::Mapping::parse(mapping, "protrusions", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     netsmith_place_route::board_from_design_placed(&d, &mapping, &library, &PlaceOptions::default())
 }

@@ -2,7 +2,7 @@
 //! the `[supply]` table to the bill of materials, `fab` and `catalog age`. Every part, number
 //! and file here is invented; no test reaches a supplier.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 use std::path::Path;
 

@@ -5,8 +5,8 @@
 use crate::common;
 
 use netsmith_core::Design;
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::geom::{Dir, Orient, Pt};
 use netsmith_view::glyph::{Glyph, used_pads};
 
@@ -45,7 +45,7 @@ fn glyph() -> (TempDir, Glyph, Design) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("t", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("t", file);
     let d = common::design(
         "Pins",
         &[("U1", "Ic", "IC", Some("QFP"))],

@@ -42,7 +42,7 @@ fn crossing(n: u32) -> (Design, Vec<netsmith_view::Group>) {
     (design, Vec::new())
 }
 
-fn drawn(n: u32) -> (Design, Layout, netsmith_kicad::testlib::TempDir) {
+fn drawn(n: u32) -> (Design, Layout, netsmith_testkit::TempDir) {
     let (dir, mapping, lib) = setup(n.max(9));
     let (design, groups) = crossing(n);
     let l = layout_sheets(&design, &groups, &mapping, &lib).unwrap();
@@ -193,7 +193,7 @@ fn a_sheet_with_many_parts_is_a_page_and_not_a_strip() {
     let l = netsmith_view::layout(
         &d,
         &netsmith_kicad::Mapping::standard(),
-        &netsmith_kicad::SymbolLib::at(netsmith_kicad::testlib::sample_symbols()),
+        &netsmith_kicad::SymbolLib::at(netsmith_testkit::sample_symbols()),
     )
     .unwrap();
     let aspect = l.bounds.width() / l.bounds.height();

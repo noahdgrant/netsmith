@@ -4,8 +4,8 @@
 
 use netsmith::build_with;
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 use crate::common;
 

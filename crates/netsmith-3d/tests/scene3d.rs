@@ -11,12 +11,12 @@ use netsmith_3d::scene3d::{
     SceneCopper,
 };
 use netsmith_core::{Design, Features, Net, Outline, OutlineVertex, Part, PinRef};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::protrusion::Protrusion;
 use netsmith_pcb::{
     Board, BoardKeepout, BoardPour, CopperLayer, FootprintLibrary, PlaceOptions, Pt, Side, Track,
     Via,
 };
+use netsmith_testkit::TempDir;
 
 /// A box 4 mm along x and 2 mm along y, its origin at its centre, a pad at each end.
 const BOX: &str = "(footprint \"Box\" (version 20241229) (generator \"netsmith-test\") (layer \"F.Cu\") \
@@ -73,7 +73,7 @@ fn board_outlined(process: netsmith_core::Process, polygon: Option<Vec<OutlineVe
     let mapping = netsmith_kicad::Mapping::parse(mapping, "scene3d", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     let design = Design {
         modules: Vec::new(),

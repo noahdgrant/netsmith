@@ -20,8 +20,8 @@ use netsmith_editor::{
     AnalysisEvent, Backend, Cancel, Say,
     api::{Analysis, Severity},
 };
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::FootprintLibrary;
+use netsmith_testkit::TempDir;
 
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 
@@ -425,7 +425,7 @@ fn cancelling(token: &Cancel) -> (Say, Arc<Mutex<usize>>) {
 
 #[test]
 fn build_cancels_before_it_writes_a_schematic_and_a_later_build_is_whole() {
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let (root, editor, _probe) = project("build");

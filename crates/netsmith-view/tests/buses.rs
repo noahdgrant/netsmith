@@ -18,7 +18,7 @@ struct Drawn {
     layout: Layout,
     mapping: netsmith_kicad::Mapping,
     lib: netsmith_kicad::SymbolLib,
-    _dir: netsmith_kicad::testlib::TempDir,
+    _dir: netsmith_testkit::TempDir,
 }
 
 fn draw(lines: usize, caps: usize) -> Drawn {

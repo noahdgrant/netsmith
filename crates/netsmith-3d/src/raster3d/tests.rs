@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::mesh::{Polygon, circle, rounded_rect};
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::collections::BTreeSet;
 
 fn plain(width: usize, height: usize) -> RenderOptions {

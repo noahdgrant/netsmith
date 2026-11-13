@@ -11,7 +11,7 @@ use netsmith_editor::{
     Backend,
     api::{PinLock, PinMove, PinRequestInfo},
 };
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 /// An invented part: `p00` and `p01` may not both be in use (`PAIR`), `p02` and `p03` offer
 /// `ANALOG` too.

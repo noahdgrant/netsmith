@@ -584,13 +584,35 @@ pub fn locate(kind: Kind) -> Result<Found, NotFound> {
     Search::machine().find(kind)
 }
 
+/// Whether KiCad's stock symbol and footprint libraries are installed on this machine (found
+/// as this module describes). A test that builds a board from the stock libraries
+/// (`Libraries::standard()`) cannot run without them.
+#[cfg(feature = "test-support")]
+pub fn kicad_libraries_installed() -> bool {
+    locate(Kind::Symbols).is_ok() && locate(Kind::Footprints).is_ok()
+}
+
+/// For a test that needs KiCad's stock libraries: `true` when they are not here, after
+/// printing why, so that the test starts with
+/// `if skip_without_kicad_libraries() { return; }` and the run says it was skipped
+/// (`cargo test -- --nocapture` shows the line). Behind the `test-support` feature, which only
+/// dev-dependencies turn on.
+#[cfg(feature = "test-support")]
+pub fn skip_without_kicad_libraries() -> bool {
+    if kicad_libraries_installed() {
+        return false;
+    }
+    eprintln!("skipped: no KiCad symbol and footprint libraries are installed");
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
 
-    fn tree() -> crate::testlib::TempDir {
-        crate::testlib::TempDir::new("install")
+    fn tree() -> netsmith_testkit::TempDir {
+        netsmith_testkit::TempDir::new("install")
     }
 
     /// A fake `share/kicad` at `share`: one symbol library and one footprint library.

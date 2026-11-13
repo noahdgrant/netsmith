@@ -12,8 +12,8 @@ use netsmith::Libraries;
 use netsmith::fab::{FabOptions, fab_with_options};
 use netsmith_check::Loader;
 use netsmith_fab::KicadCliExe;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 use std::fs;
 use std::path::PathBuf;
 

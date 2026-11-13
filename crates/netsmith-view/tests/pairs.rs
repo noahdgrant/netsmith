@@ -7,8 +7,8 @@
 use crate::common;
 
 use netsmith_core::Design;
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::check::check;
 use netsmith_view::geom::{Dir, Pt, Rect};
 use netsmith_view::layout::{Layout, PowerKind, PowerSymbol, Wire};
@@ -67,7 +67,7 @@ fn setup() -> (TempDir, Mapping, SymbolLib) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("pairs", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("pairs", file);
     (dir, mapping, lib)
 }
 

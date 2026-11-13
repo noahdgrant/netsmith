@@ -11,7 +11,7 @@ use netsmith_editor::{
     Backend,
     api::{PickLockInfo, PinRequestInfo},
 };
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 /// An invented microcontroller whose pins offer `GPIO`, two of them `ANALOG` as well.
 const MCU: &str = r#"

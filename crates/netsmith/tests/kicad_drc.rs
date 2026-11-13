@@ -10,13 +10,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use netsmith_core::{Design, Net, Part, PinRef};
 use netsmith_fab::KicadCliExe;
 use netsmith_kicad::Mapping;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{
     Board, BoardKeepout, CopperLayer, FootprintLibrary, Layout, PlaceOptions, Pt, Ratsnest, Rect,
     Track, Via, apply_layout, kicad_pcb, kicad_pro,
 };
 use netsmith_place_route::route;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 use crate::boards as common;
 
@@ -112,16 +112,16 @@ fn loader(path: &str, physical: Option<&str>) -> netsmith_check::Loader {
 }
 
 /// A source that states its physical intent inside the board (see
-/// `netsmith_kicad::testlib::split_physical`) as the circuit source and its physical file.
+/// `netsmith_testkit::split_physical`) as the circuit source and its physical file.
 fn split(path: &str, text: &str) -> (String, netsmith_check::Loader) {
-    let (circuit, physical) = netsmith_kicad::testlib::split_physical(text);
+    let (circuit, physical) = netsmith_testkit::split_physical(text);
     let loader = loader(path, physical.as_deref());
     (circuit, loader)
 }
 
 /// A board from source text.
 fn board_from(path: &str, text: &str) -> Board {
-    let (circuit, physical) = netsmith_kicad::testlib::split_physical(text);
+    let (circuit, physical) = netsmith_testkit::split_physical(text);
     board_with(path, &circuit, physical.as_deref())
 }
 
@@ -430,8 +430,8 @@ fn tiny() -> (TempDir, Mapping, FootprintLibrary) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(&rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
-        .with_library("tiny", pretty);
+    let library =
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_library("tiny", pretty);
     (dir, mapping, library)
 }
 
@@ -912,7 +912,7 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
 #[test]
 fn holes_and_fiducials_go_in_the_corners_of_a_fixed_outline() {
     // The sample libraries have no fiducial footprint; the stock one comes with KiCad.
-    if netsmith_kicad::testlib::skip_without_kicad_libraries() {
+    if netsmith_kicad::install::skip_without_kicad_libraries() {
         return;
     }
     let mut b = regulator_with(&format!(

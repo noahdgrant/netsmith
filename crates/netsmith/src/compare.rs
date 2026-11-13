@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn a_schematic_without_kicad_says_how_to_find_it() {
-        let dir = netsmith_kicad::testlib::TempDir::new("compare");
+        let dir = netsmith_testkit::TempDir::new("compare");
         let sch = dir.join("x.kicad_sch");
         fs::write(&sch, "(kicad_sch)").unwrap();
         let e = load(sch.to_str().unwrap(), None, None).unwrap_err();

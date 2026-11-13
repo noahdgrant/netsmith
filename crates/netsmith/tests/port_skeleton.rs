@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 
 use netsmith::port::PortParts;
 use netsmith::port_skeleton::skeleton;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_lang::ast::{DefKind, Item};
 use netsmith_netlist::Netlist;
+use netsmith_testkit::TempDir;
 
 fn examples() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")

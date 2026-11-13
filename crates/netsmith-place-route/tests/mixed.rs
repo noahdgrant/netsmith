@@ -13,9 +13,9 @@ use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
 use netsmith_core::{Design, Features, Keepout, Net, Outline, Part, PartHeight, PinRef};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, FootprintLibrary, PlaceOptions, Side};
 use netsmith_place_route::{RouteOptions, route_with};
+use netsmith_testkit::TempDir;
 
 use common::four_layer_process;
 
@@ -370,7 +370,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
     let mapping = netsmith_kicad::Mapping::parse(&mapping, "mixed", std::path::Path::new("."))
         .unwrap_or_else(|e| panic!("{e}"));
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
 
     let design = Design {

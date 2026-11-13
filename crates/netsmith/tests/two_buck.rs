@@ -12,9 +12,9 @@ use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
 use netsmith_check::{Domain, check};
 use netsmith_kicad::install::Search;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_quantity::Quantity;
 use netsmith_solve::solve;
+use netsmith_testkit::TempDir;
 
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/two_buck")

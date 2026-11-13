@@ -6,7 +6,7 @@ use std::{fs, path::Path};
 
 use netsmith::{editor::Workspace, project::Target};
 use netsmith_editor::{Backend, api::FileRole};
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 const MAIN: &str = "//! The top level.\n\nimport std::mfg::jlcpcb::TwoLayer\n\nboard Top {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n}\n";
 const MODULE: &str =

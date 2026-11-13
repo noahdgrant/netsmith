@@ -12,8 +12,9 @@ use std::fs;
 use netsmith::Libraries;
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::{TempDir, skip_without_kicad_libraries};
+use netsmith_kicad::install::skip_without_kicad_libraries;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 const CIRCUIT: &str = "\
 import std::parts::connector::Socket1x10

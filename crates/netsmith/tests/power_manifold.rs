@@ -219,7 +219,6 @@ mod board {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_kicad::install::Search;
-    use netsmith_kicad::testlib;
     use netsmith_netlist::normalize_value;
 
     use crate::common::port::{Pad, Port};
@@ -239,7 +238,7 @@ mod board {
     };
 
     fn libraries() -> Libraries {
-        let nowhere = testlib::TempDir::new("power-manifold-board-no-kicad");
+        let nowhere = netsmith_testkit::TempDir::new("power-manifold-board-no-kicad");
         Libraries::for_project_by(Some(&project()), &Search::under(nowhere.path()))
             .unwrap_or_else(|e| panic!("{e}"))
     }
@@ -304,7 +303,7 @@ mod board {
     #[test]
     fn the_derived_netlist_is_the_board_files_as_the_nets_proof_sees_it() {
         use netsmith::port_tables::{Mode, reference_netlist, write};
-        let dir = testlib::TempDir::new("power-manifold-derived-tables");
+        let dir = netsmith_testkit::TempDir::new("power-manifold-derived-tables");
         std::fs::copy(
             project().join("reference/must_match.toml"),
             dir.join("must_match.toml"),

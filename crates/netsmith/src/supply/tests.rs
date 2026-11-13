@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 use super::*;
 

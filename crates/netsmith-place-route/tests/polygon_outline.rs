@@ -6,8 +6,8 @@
 use crate::common;
 
 use netsmith_core::{Design, Features, Net, Outline, OutlineVertex, Part, PinRef};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, FootprintLibrary, PlaceOptions, PlacementProblem, Pt, Rect};
+use netsmith_testkit::TempDir;
 
 use common::process;
 
@@ -92,7 +92,7 @@ fn board(count: usize, polygon: Vec<OutlineVertex>, size: (f64, f64)) -> Result<
     )
     .unwrap();
     let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
-    let library = FootprintLibrary::at(netsmith_kicad::testlib::sample_footprints())
+    let library = FootprintLibrary::at(netsmith_testkit::sample_footprints())
         .with_library("t", folder.path());
     netsmith_place_route::board_from_design_placed(
         &design,

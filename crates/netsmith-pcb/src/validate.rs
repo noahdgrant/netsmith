@@ -205,7 +205,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use netsmith_kicad::SymbolLib;
-    use netsmith_kicad::testlib::TempDir;
+    use netsmith_testkit::TempDir;
 
     use super::*;
     use crate::footprint::FootprintLibrary;

@@ -31,6 +31,11 @@ serde_json = "1.0.154"
 ureq = "3"
 
 [dev-dependencies]
+# The test helpers, and the `test-support` features that only tests turn on (a release build of
+# the binary has none of them).
+netsmith = { path = "../netsmith", features = ["test-support"] }
+netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
+netsmith-testkit = { path = "../netsmith-testkit" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-netlist = { path = "../netsmith-netlist" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }

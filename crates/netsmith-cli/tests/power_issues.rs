@@ -6,7 +6,7 @@
 //! rail nothing supplies, a rail with a load whose current the solver did not settle, and a
 //! converter whose efficiency it did not settle.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::{fs, path::Path, process::Command};
 
 /// The parts of the boards: a load, and a converter that makes `5V` of what it is given. The
@@ -124,13 +124,10 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
         .args(args)
         .current_dir(cwd)
         .env("KICAD_CLI", "/nonexistent/kicad-cli")
-        .env(
-            "NETSMITH_KICAD_SYMBOLS",
-            netsmith_kicad::testlib::sample_symbols(),
-        )
+        .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())
         .env(
             "NETSMITH_KICAD_FOOTPRINTS",
-            netsmith_kicad::testlib::sample_footprints(),
+            netsmith_testkit::sample_footprints(),
         )
         .output()
         .unwrap()

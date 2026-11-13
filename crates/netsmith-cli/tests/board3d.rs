@@ -253,7 +253,7 @@ fn scene_of(source: &str) -> netsmith_3d::scene3d::Scene {
     let text = std::fs::read_to_string(&file.path).unwrap();
     let catalogs = target.catalogs().unwrap();
     let (held, _) = netsmith::pick_lock::open(&file.path, &catalogs, false).unwrap();
-    let nowhere = netsmith_kicad::testlib::TempDir::new("render-no-kicad");
+    let nowhere = netsmith_testkit::TempDir::new("render-no-kicad");
     let search = netsmith_kicad::install::Search::under(nowhere.path()).with_no_kicad();
     let root = target.project.as_ref().map(|p| p.root.as_path());
     let libraries = netsmith::Libraries::for_project_by(root, &search).unwrap();
@@ -317,7 +317,7 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
             mine.iter().map(|m| m.material).collect::<Vec<_>>()
         );
     }
-    let dir = netsmith_kicad::testlib::TempDir::new("render-led");
+    let dir = netsmith_testkit::TempDir::new("render-led");
     let a = render(&scene, "led", dir.path());
     let b = render(&scene_of("examples/led.nsm"), "led", dir.path());
     assert_eq!(a, b);
@@ -429,7 +429,7 @@ fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
             b.path
         );
     }
-    let dir = netsmith_kicad::testlib::TempDir::new("render-four-layer");
+    let dir = netsmith_testkit::TempDir::new("render-four-layer");
     let a = render(&scene, "four_layer", dir.path());
     assert_eq!(
         a,
@@ -491,7 +491,7 @@ fn a_limit_a_part_breaks_is_drawn_as_broken() {
         scene.limits
     );
     assert!(meshes.iter().any(|m| m.material == Material::BodyUnknown));
-    let dir = netsmith_kicad::testlib::TempDir::new("render-lidded");
+    let dir = netsmith_testkit::TempDir::new("render-lidded");
     render(&scene, "lidded", dir.path());
 }
 
@@ -513,7 +513,7 @@ fn glb_node<'a>(doc: &'a serde_json::Value, name: &str) -> &'a serde_json::Value
 fn glb_writes_the_scene_as_gltf_and_prints_nothing_else() {
     let examples = repo().join("examples");
     let before = std::fs::read_dir(&examples).unwrap().count();
-    let out = netsmith_kicad::testlib::TempDir::new("board3d-glb");
+    let out = netsmith_testkit::TempDir::new("board3d-glb");
     let (a, b) = (out.join("a.glb"), out.join("b.glb"));
     for file in [&a, &b] {
         let run = board3d(
@@ -560,7 +560,7 @@ fn glb_writes_the_scene_as_gltf_and_prints_nothing_else() {
 
 #[test]
 fn an_unknown_height_is_flat_in_the_glb_and_the_limit_it_breaks_is_marked() {
-    let out = netsmith_kicad::testlib::TempDir::new("board3d-glb-lid");
+    let out = netsmith_testkit::TempDir::new("board3d-glb-lid");
     let file = out.join("lid.glb");
     let run = board3d(
         &fixtures(),
@@ -595,7 +595,7 @@ fn an_unknown_height_is_flat_in_the_glb_and_the_limit_it_breaks_is_marked() {
 #[test]
 fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() {
     let examples = repo().join("examples");
-    let out = netsmith_kicad::testlib::TempDir::new("board3d-step");
+    let out = netsmith_testkit::TempDir::new("board3d-step");
     let (a, b) = (out.join("a.step"), out.join("b.step"));
     for file in [&a, &b] {
         let run = board3d(
@@ -666,7 +666,7 @@ fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() 
 
 #[test]
 fn an_unknown_height_is_an_outline_in_the_step_and_never_a_solid() {
-    let out = netsmith_kicad::testlib::TempDir::new("board3d-step-lid");
+    let out = netsmith_testkit::TempDir::new("board3d-step-lid");
     let file = out.join("lid.step");
     let run = board3d(
         &fixtures(),
@@ -706,7 +706,7 @@ fn http_bytes(port: u16, target: &str) -> (u16, String, Vec<u8>) {
 
 #[test]
 fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() {
-    let dir = netsmith_kicad::testlib::TempDir::new("board3d-editor-glb");
+    let dir = netsmith_testkit::TempDir::new("board3d-editor-glb");
     for name in [
         "height_limits.nsm",
         "height_limits.pcb.toml",
@@ -763,7 +763,7 @@ fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() 
 /// System --glb` writes, each member placed as the 2D view has it, and the members' stamps.
 #[test]
 fn the_editor_serves_the_system_scene_that_board3d_writes() {
-    let dir = netsmith_kicad::testlib::TempDir::new("board3d-editor-system");
+    let dir = netsmith_testkit::TempDir::new("board3d-editor-system");
     std::fs::copy(
         repo().join("examples/two_boards.nsm"),
         dir.join("two_boards.nsm"),
@@ -861,7 +861,7 @@ fn led() -> PathBuf {
 
 #[test]
 fn render_gives_the_same_bytes_twice_and_names_its_file_after_board_and_view() {
-    let cwd = netsmith_kicad::testlib::TempDir::new("render-default-name");
+    let cwd = netsmith_testkit::TempDir::new("render-default-name");
     let run = || render_cmd(cwd.path(), &[led().to_str().unwrap(), "--size", "320x200"]);
     let first = run();
     assert!(first.status.success(), "{:?}", first.stderr);
@@ -899,7 +899,7 @@ fn render_gives_the_same_bytes_twice_and_names_its_file_after_board_and_view() {
 
 #[test]
 fn every_view_writes_a_png_of_the_size_asked_for_and_they_differ() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-views");
+    let dir = netsmith_testkit::TempDir::new("render-views");
     let mut seen: Vec<Vec<u8>> = Vec::new();
     for view in netsmith_3d::raster3d::View::ALL {
         let out = dir.path().join(format!("{}.png", view.name()));
@@ -925,7 +925,7 @@ fn every_view_writes_a_png_of_the_size_asked_for_and_they_differ() {
 
 #[test]
 fn a_highlight_by_designator_or_path_lights_that_part_and_an_unknown_id_is_an_error() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-highlight");
+    let dir = netsmith_testkit::TempDir::new("render-highlight");
     let (size, out) = (["--size", "256x160"], dir.path().join("h.png"));
     let plain = picture(&led(), &out, &size);
     let by_refdes = picture(&led(), &out, &[&size[..], &["--highlight", "J1"]].concat());
@@ -974,7 +974,7 @@ fn a_highlight_by_designator_or_path_lights_that_part_and_an_unknown_id_is_an_er
 
 #[test]
 fn a_limit_and_a_net_can_be_highlighted() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-highlight-limit");
+    let dir = netsmith_testkit::TempDir::new("render-highlight-limit");
     let lidded = fixtures().join("height_limits.nsm");
     let out = dir.path().join("l.png");
     let args = ["--size", "256x160"];
@@ -995,7 +995,7 @@ fn a_limit_and_a_net_can_be_highlighted() {
 
 #[test]
 fn a_section_cuts_the_picture_and_is_checked() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-section");
+    let dir = netsmith_testkit::TempDir::new("render-section");
     let out = dir.path().join("s.png");
     let args = ["--size", "256x160", "--view", "iso"];
     let whole = picture(&led(), &out, &args);
@@ -1158,7 +1158,7 @@ fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_
 
 #[test]
 fn the_cli_fills_a_section_and_no_caps_leaves_it_open() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-caps");
+    let dir = netsmith_testkit::TempDir::new("render-caps");
     let src = repo().join("examples/four_layer.nsm");
     let args = ["--view", "right", "--section", "x=13", "--size", "400x300"];
     let capped = picture(&src, &dir.path().join("a.png"), &args);
@@ -1177,7 +1177,7 @@ fn the_cli_fills_a_section_and_no_caps_leaves_it_open() {
 
 #[test]
 fn a_size_out_of_bounds_or_a_wrong_view_is_a_usage_error() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-usage");
+    let dir = netsmith_testkit::TempDir::new("render-usage");
     for (args, word) in [
         (&["--size", "63x200"][..], "--size"),
         (&["--size", "9000x200"], "--size"),
@@ -1201,7 +1201,7 @@ fn a_size_out_of_bounds_or_a_wrong_view_is_a_usage_error() {
 
 #[test]
 fn a_file_of_several_boards_needs_board_and_a_board_that_does_not_build_is_exit_one() {
-    let dir = netsmith_kicad::testlib::TempDir::new("render-boards");
+    let dir = netsmith_testkit::TempDir::new("render-boards");
     let two = repo().join("examples/two_boards.nsm");
     let result = render_cmd(dir.path(), &[two.to_str().unwrap(), "--out", "x.png"]);
     assert_eq!(result.status.code(), Some(1));
@@ -1276,7 +1276,7 @@ fn fab(dir: &Path, args: &[&str]) -> Output {
 
 #[test]
 fn fab_writes_the_scene_as_a_glb_beside_the_notes_and_not_in_the_gerber_zip() {
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-default");
+    let dir = netsmith_testkit::TempDir::new("fab-glb-default");
     std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
     let run = fab(&dir, &["a.nsm", "--out", "out"]);
     assert!(
@@ -1312,7 +1312,7 @@ fn fab_writes_the_scene_as_a_glb_beside_the_notes_and_not_in_the_gerber_zip() {
 #[test]
 fn fab_draws_the_routed_copper_in_its_glb() {
     let examples = repo().join("examples");
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-routed");
+    let dir = netsmith_testkit::TempDir::new("fab-glb-routed");
     let run = fab(
         &examples,
         &["led.nsm", "--out", dir.to_str().unwrap(), "--locked"],
@@ -1343,7 +1343,7 @@ fn fab_draws_the_routed_copper_in_its_glb() {
 
 #[test]
 fn no_glb_and_the_manifest_key_leave_the_scene_out_and_remove_an_old_one() {
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-off");
+    let dir = netsmith_testkit::TempDir::new("fab-glb-off");
     std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
     let glb = dir.join("out/Lonely/Lonely.glb");
     let ok = |run: Output| {
@@ -1403,7 +1403,7 @@ fn no_glb_and_the_manifest_key_leave_the_scene_out_and_remove_an_old_one() {
 
 #[test]
 fn fab_writes_the_board_as_step_beside_the_glb_and_not_in_the_gerber_zip() {
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-default");
+    let dir = netsmith_testkit::TempDir::new("fab-step-default");
     std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
     let run = fab(&dir, &["a.nsm", "--out", "out"]);
     assert!(
@@ -1441,7 +1441,7 @@ fn the_step_of_a_routed_board_is_the_step_board3d_writes_for_it() {
     // The STEP holds no copper, so the routing does not change it: a board that fab routes has
     // the bytes of `board3d --step`, which routes nothing.
     let examples = repo().join("examples");
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-routed");
+    let dir = netsmith_testkit::TempDir::new("fab-step-routed");
     let run = fab(
         &examples,
         &["led.nsm", "--out", dir.to_str().unwrap(), "--locked"],
@@ -1463,7 +1463,7 @@ fn the_step_of_a_routed_board_is_the_step_board3d_writes_for_it() {
 
 #[test]
 fn no_step_and_the_manifest_key_leave_the_step_out_and_remove_an_old_one() {
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-off");
+    let dir = netsmith_testkit::TempDir::new("fab-step-off");
     std::fs::write(dir.join("a.nsm"), NOTHING_TO_ROUTE).unwrap();
     let step = dir.join("out/Lonely/Lonely.step");
     let ok = |run: Output| {
@@ -1528,7 +1528,7 @@ fn no_step_and_the_manifest_key_leave_the_step_out_and_remove_an_old_one() {
 
 #[test]
 fn a_manifest_step_that_is_not_a_boolean_is_an_error() {
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-step-bad-key");
+    let dir = netsmith_testkit::TempDir::new("fab-step-bad-key");
     std::fs::create_dir(dir.join("src")).unwrap();
     std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
     std::fs::write(
@@ -1557,7 +1557,7 @@ fn walk(dir: &Path) -> Vec<String> {
 
 #[test]
 fn a_manifest_glb_that_is_not_a_boolean_is_an_error() {
-    let dir = netsmith_kicad::testlib::TempDir::new("fab-glb-bad-key");
+    let dir = netsmith_testkit::TempDir::new("fab-glb-bad-key");
     std::fs::create_dir(dir.join("src")).unwrap();
     std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
     std::fs::write(
@@ -1681,7 +1681,7 @@ fn gltf_point(p: [f64; 3]) -> [f64; 3] {
 #[test]
 fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() {
     let examples = repo().join("examples");
-    let dir = netsmith_kicad::testlib::TempDir::new("system-glb");
+    let dir = netsmith_testkit::TempDir::new("system-glb");
     let (glb, step) = (dir.join("s.glb"), dir.join("s.step"));
     let write = |glb: &Path, step: &Path| {
         let run = board3d(
@@ -1792,7 +1792,7 @@ fn the_system_is_written_as_glb_and_step_with_a_node_and_a_product_per_member() 
 #[test]
 fn render_draws_the_system_and_lights_a_part_of_a_member() {
     let examples = repo().join("examples");
-    let dir = netsmith_kicad::testlib::TempDir::new("system-render");
+    let dir = netsmith_testkit::TempDir::new("system-render");
     let draw = |name: &str, extra: &[&str]| {
         let out = dir.join(name);
         let mut args = vec![
@@ -1863,7 +1863,7 @@ fn render_draws_the_system_and_lights_a_part_of_a_member() {
 #[test]
 fn fab_writes_the_system_scene_beside_its_boards_and_the_switches_leave_it_out() {
     let examples = repo().join("examples");
-    let dir = netsmith_kicad::testlib::TempDir::new("system-fab");
+    let dir = netsmith_testkit::TempDir::new("system-fab");
     let out = dir.join("out");
     let made = |extra: &[&str]| {
         let mut args = vec!["two_boards.nsm", "--out", out.to_str().unwrap(), "--locked"];
@@ -1922,7 +1922,7 @@ fn fab_writes_the_system_scene_beside_its_boards_and_the_switches_leave_it_out()
 /// error that stops `fab` whatever `--allow-drc-violations` says, and no system file is written.
 #[test]
 fn a_header_taller_than_the_mated_height_stops_fab_of_the_system() {
-    let dir = netsmith_kicad::testlib::TempDir::new("system-collision");
+    let dir = netsmith_testkit::TempDir::new("system-collision");
     let source = std::fs::read_to_string(repo().join("examples/two_boards.nsm"))
         .unwrap()
         .replacen(

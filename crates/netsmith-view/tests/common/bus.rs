@@ -5,8 +5,8 @@
 #![allow(dead_code)]
 
 use netsmith_core::{Design, InterfaceInstance, InterfaceMember, PartPin, PinKind};
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::{Group, Rails};
 
 fn pin(kind: &str, x: f64, y: f64, angle: u32, name: &str, number: u32) -> String {
@@ -72,7 +72,7 @@ pub fn setup() -> (TempDir, Mapping, SymbolLib) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("bus", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("bus", file);
     (dir, mapping, lib)
 }
 

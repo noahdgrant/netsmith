@@ -3,7 +3,7 @@
 
 use crate::common;
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;

@@ -12,7 +12,6 @@ pub mod schematic;
 pub mod sexp;
 pub mod stdlib;
 pub mod symbols;
-pub mod testlib;
 
 pub use hierarchy::{Hierarchy, SymbolLink};
 pub use mapping::{

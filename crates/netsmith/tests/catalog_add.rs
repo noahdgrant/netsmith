@@ -10,8 +10,8 @@ use std::path::Path;
 
 use common::endpoints::Fake;
 use netsmith::refresh::{AddError, add, render_added};
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::parse_csv;
+use netsmith_testkit::TempDir;
 
 /// 2026-11-02 12:00 UTC.
 const NOW: u64 = 1_793_620_800;

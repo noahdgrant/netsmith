@@ -1,34 +1,21 @@
-//! Small symbol and footprint libraries of our own, for tests across the workspace.
+//! Helpers for tests across the workspace, in a crate that only `[dev-dependencies]` name, so
+//! that a release binary carries none of it. It depends on no netsmith crate.
 //!
-//! They hold the five kinds the standard mapping (`std/kicad.toml`) names, with the
-//! geometry the stock KiCad libraries give those footprints, so that a test of the whole
-//! pipeline needs no KiCad, and the symbols of a hole, a test point and a fiducial (the
-//! footprints of those three are generated, `netsmith_pcb::generate`). They are written to a folder in the system's temporary
-//! directory the first time a process asks. A test that wants the stock libraries uses
-//! [`SymbolLib::installed`](crate::SymbolLib::installed) and skips itself without KiCad.
+//! - [`TempDir`] and [`TempFile`]: a folder or file in the temporary directory that is removed
+//!   when the test ends, also on a panic.
+//! - Small symbol and footprint libraries of our own ([`sample_symbols`],
+//!   [`sample_footprints`]). They hold the five kinds the standard mapping (`std/kicad.toml`)
+//!   names, with the geometry the stock KiCad libraries give those footprints, so that a test
+//!   of the whole pipeline needs no KiCad, and the symbols of a hole, a test point and a
+//!   fiducial (the footprints of those three are generated, `netsmith_pcb::generate`). They are
+//!   written to a folder in the system's temporary directory the first time a process asks. A
+//!   test that wants the stock libraries uses `netsmith_kicad::SymbolLib::installed` and skips
+//!   itself without KiCad (`netsmith_kicad::install::skip_without_kicad_libraries`, behind
+//!   netsmith-kicad's `test-support` feature).
+//! - [`split_physical`]: a source written before the physical file, split into the two files.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-/// Whether KiCad's stock symbol and footprint libraries are installed on this machine
-/// (found as [`crate::install`] describes). A test that builds a board from the stock
-/// libraries (`Libraries::standard()`) cannot run without them.
-pub fn kicad_libraries_installed() -> bool {
-    use crate::install::{Kind, locate};
-    locate(Kind::Symbols).is_ok() && locate(Kind::Footprints).is_ok()
-}
-
-/// For a test that needs KiCad's stock libraries: `true` when they are not here, after
-/// printing why, so that the test starts with
-/// `if skip_without_kicad_libraries() { return; }` and the run says it was skipped
-/// (`cargo test -- --nocapture` shows the line).
-pub fn skip_without_kicad_libraries() -> bool {
-    if kicad_libraries_installed() {
-        return false;
-    }
-    eprintln!("skipped: no KiCad symbol and footprint libraries are installed");
-    true
-}
 
 /// The environment variable that keeps the folders of [`TempDir`] after a test, so that a
 /// failure can be inspected: set `NETSMITH_KEEP_TEST_DIRS=1`.

@@ -7,16 +7,16 @@
 //!
 //! The solver tests build nothing and need no KiCad. The last tests build a board around the
 //! IC and export it (schematic, library tables, `.kicad_pcb`) with the sample libraries of
-//! `netsmith_kicad::testlib`, the generators and netsmith's own footprint library
+//! `netsmith_testkit`, the generators and netsmith's own footprint library
 //! (`std/libs/`, ADR 0087): they need no KiCad either.
 
 use netsmith::{Libraries, build_with};
 use netsmith_check::{Domain, Loader, check};
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::{FootprintLibrary, kicad_pcb};
 use netsmith_quantity::Quantity;
 use netsmith_solve::{Catalogs, Solution, solve};
+use netsmith_testkit::TempDir;
 
 const REGULATOR: &str = include_str!("../../../std/parts/regulator.nsm");
 const STANDARD_CATALOG: &str = include_str!("../../../data/jlcpcb/catalog/lt8641.csv");
@@ -430,7 +430,7 @@ fn the_pins_the_datasheet_asks_for_must_be_connected() {
 
 const OWN_FOOTPRINT: &str = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA";
 
-/// The stock-like `Device:L` that `testlib`'s sample `Device` library lacks: a vertical
+/// The stock-like `Device:L` that `netsmith_testkit`'s sample `Device` library lacks: a vertical
 /// two-pin passive, as KiCad draws it.
 const INDUCTOR_SYMBOL: &str = "(symbol \"L\" (pin_numbers (hide yes)) (pin_names (offset 0)) \
     (exclude_from_sim no) (in_bom yes) (on_board yes) \
@@ -447,13 +447,13 @@ const INDUCTOR_SYMBOL: &str = "(symbol \"L\" (pin_numbers (hide yes)) (pin_names
     (pin passive line (at 0 -3.81 90) (length 1.27) (name \"~\" (effects (font (size 1.27 1.27)))) \
     (number \"2\" (effects (font (size 1.27 1.27)))))))";
 
-/// The sample symbols of `testlib` and an inductor, the generators for the passives and
+/// The sample symbols of `netsmith_testkit` and an inductor, the generators for the passives and
 /// netsmith's own library, which is in the binary: no KiCad is read. The folder is the
 /// test's, removed when `TempDir` goes.
 pub(crate) fn libraries(dir: &TempDir) -> Libraries {
     let symbols = dir.path().join("symbols");
     std::fs::create_dir_all(&symbols).unwrap();
-    for entry in std::fs::read_dir(testlib::sample_symbols()).unwrap() {
+    for entry in std::fs::read_dir(netsmith_testkit::sample_symbols()).unwrap() {
         let path = entry.unwrap().path();
         let file = symbols.join(path.file_name().unwrap());
         let mut text = std::fs::read_to_string(&path).unwrap();
@@ -472,7 +472,7 @@ pub(crate) fn libraries(dir: &TempDir) -> Libraries {
     Libraries::with_mapping(
         Mapping::standard(),
         SymbolLib::at(symbols),
-        FootprintLibrary::at(testlib::sample_footprints()).with_generators(),
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_generators(),
     )
 }
 

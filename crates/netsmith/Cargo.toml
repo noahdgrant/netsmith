@@ -35,8 +35,20 @@ serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sha2 = "0.11.1"
 toml = "1.1.8"
 ureq = "3"
+# `Libraries::sample()`, behind the `test-support` feature.
+netsmith-testkit = { path = "../netsmith-testkit", optional = true }
+
+[features]
+# What the tests of this crate and of netsmith-cli need from it (`Libraries::sample()`, over the
+# sample libraries of netsmith-testkit). Only dev-dependencies turn it on, so a release binary
+# carries no test helpers.
+test-support = ["dep:netsmith-testkit"]
 
 [dev-dependencies]
+# This crate with its `test-support` feature, for its integration tests.
+netsmith = { path = ".", features = ["test-support"] }
+netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
+netsmith-testkit = { path = "../netsmith-testkit" }
 zip = { version = "6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tungstenite = "0.30.0"
 # The CPU time of a thread, which a busy machine does not change as it does the time of the clock

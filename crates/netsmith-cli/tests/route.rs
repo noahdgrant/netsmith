@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")

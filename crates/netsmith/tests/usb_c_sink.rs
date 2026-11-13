@@ -6,8 +6,8 @@ use netsmith::{Built, Libraries, Outcome, build_with, outcome_with};
 use netsmith_check::{Loader, check};
 use netsmith_core::{Net, PinKind};
 use netsmith_kicad::install::Search;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::{Catalogs, solve};
+use netsmith_testkit::TempDir;
 
 /// A device board with one receptacle: 5 V +/- 5 % from the host and a load of 100 mA to 300 mA.
 fn board(jack: &str, extra: &str) -> String {

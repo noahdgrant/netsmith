@@ -15,8 +15,8 @@ use netsmith_editor::{
     Backend,
     api::{Cause as ApiCause, ProblemStage, Severity},
 };
-use netsmith_kicad::testlib::TempDir;
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 fn built(src: &str, catalogs: &Catalogs) -> Built {
     let outcome = outcome_with("invented.nsm", src, &Loader::std(), catalogs, None)

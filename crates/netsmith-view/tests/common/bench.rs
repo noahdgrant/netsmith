@@ -7,8 +7,8 @@
 #![allow(dead_code)]
 
 use netsmith_core::{Design, Net, Part, PinRef};
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 use netsmith_view::{Group, Rails};
 
 pub struct Bench {
@@ -203,7 +203,7 @@ pub fn bench() -> Bench {
     )
     .unwrap();
     let acme = dir.path().join("acme.kicad_sym");
-    std::fs::write(&acme, testlib::acme()).unwrap();
+    std::fs::write(&acme, netsmith_testkit::acme()).unwrap();
     let rows = "[[part]]\nkind = \"Patch\"\npackage = \"P\"\nsymbol = \"bench:Patch\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"Mcu\"\npackage = \"P\"\nsymbol = \"bench:Mcu\"\nfootprint = \"bench:F\"\n\
                 [[part]]\nkind = \"Buck\"\npackage = \"P\"\nsymbol = \"bench:Buck\"\nfootprint = \"bench:F\"\n\
@@ -215,7 +215,7 @@ pub fn bench() -> Bench {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols())
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols())
         .with_library("bench", file)
         .with_library("acme", acme);
 

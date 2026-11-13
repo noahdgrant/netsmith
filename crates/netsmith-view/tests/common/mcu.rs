@@ -3,8 +3,8 @@
 #![allow(dead_code)]
 
 use netsmith_core::Design;
-use netsmith_kicad::testlib::{self, TempDir};
 use netsmith_kicad::{Mapping, SymbolLib};
+use netsmith_testkit::TempDir;
 
 /// A symbol of 30 pins, 15 down each side, named `P1` to `P30` and numbered 1 to 30; the
 /// first of the right-hand side stacks three hidden duplicates on its point.
@@ -45,7 +45,7 @@ pub fn setup() -> (TempDir, Mapping, SymbolLib) {
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
         .unwrap();
-    let lib = SymbolLib::at(testlib::sample_symbols()).with_library("big", file);
+    let lib = SymbolLib::at(netsmith_testkit::sample_symbols()).with_library("big", file);
     (dir, mapping, lib)
 }
 

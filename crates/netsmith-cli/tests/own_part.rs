@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::Path;
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 
 /// The fenced blocks of the guide's section, as (words after the fence, text).
 fn section() -> Vec<(Vec<String>, String)> {

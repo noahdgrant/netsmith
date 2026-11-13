@@ -13,9 +13,9 @@
 use netsmith::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
-use netsmith_kicad::testlib::TempDir;
 use netsmith_pcb::{Board, BoardError, PlacementProblem, Pt, RequirementReport, place_options};
 use netsmith_solve::Catalogs;
+use netsmith_testkit::TempDir;
 
 /// A board of `parts` resistors and the physical file of `extra` on a 40 x 30 mm outline.
 fn source(parts: usize, headers: &str) -> String {

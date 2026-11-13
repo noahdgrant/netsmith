@@ -2,7 +2,7 @@
 //! materials and `fab` (ADR 0047). Every part and number here is invented or
 //! stated by the design itself; no test reaches a supplier.
 
-use netsmith_kicad::testlib::TempDir;
+use netsmith_testkit::TempDir;
 use std::fs;
 
 use netsmith::editor::Workspace;
