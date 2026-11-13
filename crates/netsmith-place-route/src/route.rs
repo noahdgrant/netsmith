@@ -2328,6 +2328,10 @@ enum Unsettled {
     Corner,
 }
 
+/// How many times a board's diff pairs are topped up with meanders after the arcs have rounded
+/// the bends (and shortened them) of the meanders before.
+const MEANDER_TOP_UPS: usize = 3;
+
 /// How far from a right angle, in mm, the clean-up tries to cut it, the farthest first.
 const CHAMFERS: [f64; 4] = [0.3, 0.2, 0.1, 0.05];
 
@@ -5048,7 +5052,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         board.vias.extend(r.vias);
     }
     // Diff pairs matched in length, on a board routed completely (issue #431, S11).
-    let pairs = if options.meanders && complete {
+    let meanders = options.meanders && complete;
+    let mut pairs = if meanders {
         netsmith_pcb::meander::add(board)
     } else {
         Vec::new()
@@ -5063,6 +5068,23 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     }
     // The bends become arcs where they keep the rules' space, clear of the teardrops.
     crate::arcs::round_bends(board, options.arcs);
+    // An arc shortens its bend, the meanders' too: a pair the arcs moved off its target is
+    // topped up with another meander, whose bends are rounded in turn.
+    if meanders && options.arcs > 0.0 {
+        for _ in 0..MEANDER_TOP_UPS {
+            let again = netsmith_pcb::meander::add(board);
+            for (p, a) in pairs.iter_mut().zip(&again) {
+                p.after = a.after;
+            }
+            if again.iter().all(|a| a.after == a.before) {
+                break;
+            }
+            crate::arcs::round_bends(board, options.arcs);
+            for (p, skew) in pairs.iter_mut().zip(netsmith_pcb::meander::skews(board)) {
+                p.after = skew;
+            }
+        }
+    }
     let mut stages = stages;
     if let Some(last) = stages.last_mut()
         && last.after == SnapshotStage::Final

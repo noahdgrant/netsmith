@@ -99,8 +99,24 @@ fn length(board: &Board, net: &str) -> f64 {
         .tracks
         .iter()
         .filter(|t| t.net == net)
-        .map(|t| t.from.distance(t.to))
+        .map(track_length)
         .sum()
+}
+
+/// The length of a track's centre line, an arc's along its chords of at most 2 µm error.
+fn track_length(t: &Track) -> f64 {
+    t.centre_line()
+        .windows(2)
+        .map(|w| w[0].distance(w[1]))
+        .sum()
+}
+
+/// The skew of each diff pair of the board, in mm, in the order [`add`] takes them.
+pub fn skews(board: &Board) -> Vec<f64> {
+    pairs(board)
+        .iter()
+        .map(|(p, n)| (length(board, p) - length(board, n)).abs())
+        .collect()
 }
 
 /// Lengthen the shorter net of each diff pair of the routed board with a meander, where it has
@@ -145,7 +161,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
     let extras = crate::teardrop::extras(board);
     let room = Room::new(&art, &rules, &extras);
     let mut runs: Vec<usize> = (0..board.tracks.len())
-        .filter(|&i| board.tracks[i].net == net)
+        .filter(|&i| board.tracks[i].net == net && board.tracks[i].mid.is_none())
         .collect();
     runs.sort_by(|&a, &b| {
         let len = |i: usize| board.tracks[i].from.distance(board.tracks[i].to);
@@ -196,13 +212,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
         let pieces: Vec<Track> = path
             .windows(2)
             .filter(|w| w[0].distance(w[1]) > 1e-9)
-            .map(|w| Track {
-                net: t.net.clone(),
-                layer: t.layer,
-                from: w[0],
-                to: w[1],
-                width: t.width,
-            })
+            .map(|w| Track::straight(&t.net, t.layer, w[0], w[1], t.width))
             .collect();
         board.tracks.splice(i..i, pieces);
     }
@@ -213,16 +223,7 @@ fn distance_to(tracks: &[Track], layer: crate::board::CopperLayer, p: Pt) -> f64
     tracks
         .iter()
         .filter(|t| t.layer == layer)
-        .map(|t| {
-            let d = t.to - t.from;
-            let l2 = d.x * d.x + d.y * d.y;
-            let f = if l2 < 1e-18 {
-                0.0
-            } else {
-                (((p.x - t.from.x) * d.x + (p.y - t.from.y) * d.y) / l2).clamp(0.0, 1.0)
-            };
-            p.distance(Pt::new(t.from.x + d.x * f, t.from.y + d.y * f))
-        })
+        .map(|t| t.distance_to(p))
         .fold(f64::INFINITY, f64::min)
 }
 
@@ -423,13 +424,13 @@ mod tests {
     }
 
     fn track(net: &str, from: (f64, f64), to: (f64, f64), width: f64) -> Track {
-        Track {
-            net: net.into(),
-            layer: CopperLayer::Front,
-            from: Pt::new(from.0, from.1),
-            to: Pt::new(to.0, to.1),
+        Track::straight(
+            net,
+            CopperLayer::Front,
+            Pt::new(from.0, from.1),
+            Pt::new(to.0, to.1),
             width,
-        }
+        )
     }
 
     /// A path of tracks of `net` through `points`.
