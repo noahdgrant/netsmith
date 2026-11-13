@@ -6966,6 +6966,19 @@ netsmith's router bends a track by 45 degrees only (issue #415). Its first pass 
 
 When the router's first try leaves connections on a board with a fine-pitch part (at least 16 surface-mount pads, two of them 0.55 mm apart or nearer, on at least three sides, such as a QFN or a QFP), its second try routes the lines in the same order again with an escape lane in front of each of the part's pads (issue #431): the 1.5 mm straight out from the pad, on its layer, which other nets' tracks pay a little to use and where any via pays a lot, except the pad's own via at the lane's end. A lane is a cost and not a wall, so a line with no other way still crosses one. It keeps the part's lines from closing each other's way out with vias against its pins. A board that routes on its first try is routed as before, and a board with such a part may have one try more.
 
+### How the router orders the nets
+
+Every connection the router draws has a class, derived from the board with nothing written in the source (issue #416). In the order the router routes them:
+
+1. **Escape**: a connection that must reach a plane, or that ends on a pad deep in a fine-pitch grid of pads, which has the fewest ways out.
+2. **Decoupling**: a decoupling capacitor's pad to the power pin it decouples, the pair the route scorecard measures.
+3. **Pair**: a net of a diff pair (see Diff pairs).
+4. **Clock**: a net on a crystal (a part of the kind `Crystal`, or that provides it), or whose name has `clk`, `xin`, `xout` or `xtal` in it, but not a net with a plane or a pour (a crystal's ground).
+5. **Power**: a net that carries at least 100 mA.
+6. Everything else.
+
+The order is fixed. When the router's first try leaves connections, its second try routes the lines of the first try again with the classes in turn, each class in the order it had, and every later try keeps the classes in turn too. On those tries the copper of a decoupling, pair or clock connection is never ripped up for a connection of a later class: a later connection goes round it or is left, and the pass that takes track off the pours (see Pours) leaves it where it is too. An escape or power connection keeps its place in the order but may be ripped up and routed again (a power net at its full width). The first try is the router's own order with no classes, so a board that routes on its first try is routed exactly as before. This was decided by the agent under the owner's delegation of 2026-11-13: protecting every class left a dense board with a QFN unrouted, and routing the classes in turn on every try made one try of such a board finish less often (issue #431).
+
 ### Diff pairs
 
 Two nets whose names differ only in a pair of suffixes, such as `dp` and `dm`, `D+` and `D-`, `_P` and `_N`, or `.p` and `.n`, are a diff pair, so the fields of `std::bus::Usb2` make one with nothing more said. When a try of the router has routed every connection, it routes each net of a pair again with a step within 0.5 mm of its partner's track (centre line to centre line) costing half, and keeps the new copper only where more of the net runs coupled and it is no longer (by more than 0.2 mm) and has no more vias. So a pair runs side by side where that costs nothing, and a board routes exactly as completely as before. It does not yet hold a fixed gap, mirror the pads' exits or tune the skew (issue #431). The route scorecard reports each pair's lengths, skew and the share of its track that runs coupled.

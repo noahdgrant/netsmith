@@ -44,8 +44,9 @@
 //! whole board is routed again with the lines in another order (shortest first, longest
 //! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all; on a board with a
 //! fine-pitch part, the second try is the first order again with **escape lanes** reserved
-//! softly round the part's pads, and every later try has them too (see "Escape lanes"). The first
-//! complete result is kept, or failing that the one that leaves fewest lines. There is no
+//! softly round the part's pads, and every later try has them too (see "Escape lanes"). From the
+//! second try on, every order also keeps the lines' classes in turn (see "Classes of lines").
+//! The first complete result is kept, or failing that the one that leaves fewest lines. There is no
 //! push-and-shove, so a board can still end partly routed, and what is left is returned.
 //!
 //! The work is bounded. A line is searched for in a window round its pads first, and in a
@@ -312,6 +313,46 @@
 //! move ripping up the nets in its way moved no line. The pass does not reach the epic's target
 //! of 300 mm on RP2350: what is left is round U1, whose front is full, and the soft search
 //! for the nets in a line's way finds none whose rip-up would free it.
+//!
+//! # Classes of lines (issue #416, S5 of #431)
+//!
+//! Every line has a [`Class`], derived from the board with nothing in the source, in a fixed
+//! order: escape (to a plane, or a pad deep in a fine-pitch grid, [`pad_depth`]), decoupling (a
+//! capacitor's pad to the pin it decouples, [`crate::quality`]), pair (a net of a diff pair),
+//! clock (a crystal's net, or one named `clk`, `xin`, `xout`, `xtal`, but no plane's or pour's),
+//! power (at least [`POWER_CURRENT`]) and the rest.
+//!
+//! **What is built** ([`RouteOptions::classes`], [`LineClasses::FromSecondTry`] by default).
+//! The first try is the router's own, with no classes, so a board that routes on it has the
+//! copper of main byte for byte. From the second try on, which routes the first order again (as
+//! the escape lanes do), every order keeps the classes in turn and each class in its own order
+//! ([`Router::classed_order`]), and the copper of a decoupling, pair or clock line is never
+//! ripped up for a line of a later class: in the soft searches for the lines in a line's way it is
+//! hard, and its net is never named ([`Router::protected`], [`Class::protected`]); the pass off
+//! the pours leaves those lines too. Escape and power lines keep their place in the order only.
+//! **Decided** by the agent under the owner's delegation of 2026-11-13 (option 2 of the S5
+//! comment): protecting every class left RP2350 unrouted or cost Orbit a line at every turn cost,
+//! and the classes on the first try made RP2350's one try less robust.
+//!
+//! **Measured** (2026-11-13, main at 0e05e4d9 with S7, the placed boards of `fab`; lines left at
+//! turn cost 24 / 25 / 26 / 27, `netsmith route --route-timeout 0 --tries N --turn T`, at the
+//! default margin and at `--margin 1`; `every` is [`LineClasses::EveryTry`]):
+//!
+//! | | RP2350 one try, default / margin 1 | RP2350 two tries, default / margin 1 | Orbit, EasyDuino |
+//! |---|---|---|---|
+//! | main | 0/0/0/1, 0/0/0/1 | 0/0/0/0, 0/0/0/0 | 0/0/0/0 everywhere |
+//! | **from the second try (built)** | = main, the same copper | 0/0/0/0, 0/0/0/**1** | = main, the same copper |
+//! | every try | **1/1**/0/0, **1/1**/0/1 | 0/**1**/0/0, 0/**1**/0/**1** | 0/0/0/0; EasyDuino 108 vias against 105 |
+//!
+//! `fab` writes the same board as main for all three (each routes on its first try), and
+//! `netsmith route --margin 1` at `fab`'s 300 s routes all three; with classes on every try it
+//! leaves RP2350 a line at the timeout. Where the second try ran (RP2350, default margin, two
+//! tries, T = 26 and 27), it routed the board at its track margin (signals at 0.15 mm, where main
+//! falls back to 0.1 mm), with the longest decoupling track 22.1 mm against 36.1 and 35.3 mm (mean
+//! 7.3 against 10.4 and 9.2), 1.28x the spanning length against 1.33x and 1.30x, `mcu.usb` 75 %
+//! coupled against 80 and 86 % (skew 12.2 mm against 13.9 and 12.7), and 143 vias against 141 and
+//! 130. At `--margin 1` and T = 27 the second try leaves a line that main's (lanes only) routes;
+//! with three tries it routes (129 vias against main's 130).
 //!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
