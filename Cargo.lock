@@ -715,6 +715,7 @@ dependencies = [
  "netsmith-quantity",
  "netsmith-solve",
  "netsmith-view",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
