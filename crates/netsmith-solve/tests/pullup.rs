@@ -410,7 +410,7 @@ fn package_of(s: &Solution, path: &str) -> String {
 
 #[test]
 fn a_board_states_the_package_of_the_resistor_inside_a_pullup() {
-    let s = run(&pullup(".package &= \"0402\""));
+    let s = run(&pullup(".resistor.package &= \"0402\""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(package_of(&s, "pull.resistor.package"), "0402");
     assert_eq!(picked(&s, "pull.resistor"), "10k");
@@ -420,7 +420,7 @@ fn a_board_states_the_package_of_the_resistor_inside_a_pullup() {
 fn a_pullup_whose_package_nobody_states_is_picked_as_before() {
     let s = run(&pullup(""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    // The solver chooses, and does not state it: no `.package` was written by the board.
+    // The solver chooses, and does not state it: no `.resistor.package` was written by the board.
     assert_eq!(package_of(&s, "pull.resistor.package"), "0603");
     assert!(
         !not_evaluated(&s).iter().any(|r| r.contains("package")),
@@ -431,7 +431,7 @@ fn a_pullup_whose_package_nobody_states_is_picked_as_before() {
 
 #[test]
 fn a_package_that_no_row_has_is_refused_with_its_name() {
-    let s = run(&pullup(".package &= \"0201\""));
+    let s = run(&pullup(".resistor.package &= \"0201\""));
     let all = messages(&s).join("\n");
     assert!(
         all.contains("has nothing for `pull.resistor`") && all.contains("\"0201\""),
