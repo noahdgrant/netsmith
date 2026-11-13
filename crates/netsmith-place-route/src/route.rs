@@ -217,22 +217,28 @@
 //! allows a few mm, so the target is no constraint on where a meander fits, only on how long it
 //! is; the sizes and why are in that module's header.
 //!
-//! **Measured** (2026-11-13, main at 88a62705, `scripts/route-scorecard` without and with the
-//! pass, the same binary and placements; skew, coupled share):
+//! The arcs (`arcs.rs`) run after it and round the meander's turns too, which shortens it, so a
+//! pair the arcs move back over the target gets another meander and its bends are rounded in
+//! turn, at most [`MEANDER_TOP_UPS`] times.
+//!
+//! **Measured** (2026-11-13, main at fa8737dc with the arcs, `scripts/route-scorecard` without
+//! and with the pass, the same binary and placements; skew, coupled share):
 //!
 //! | | RP2350 `mcu.usb` / `usb` | Orbit `usb` | EasyDuino `bridge` |
 //! |---|---|---|---|
-//! | without | 12.37 mm, 85 % / 0.86 mm, 0 % | 0.19 mm, 72 % | 0.85 mm, 54 % |
-//! | **with (built)** | 12.37 mm, 85 % / **0.00 mm**, 0 % | **0.00 mm**, 71 % | **0.00 mm**, 52 % |
+//! | without | 12.37 mm, 85 % / 0.92 mm, 0 % | 0.17 mm, 72 % | 0.87 mm, 51 % |
+//! | **with (built)** | 12.33 mm, 85 % / **0.05 mm**, 0 % | **0.04 mm**, 70 % | **0.10 mm**, 47 % |
 //!
-//! Track grows by the meanders' own length only (1, 0.2 and 0.8 mm), vias, other nets' track on
-//! the pours, and the check (0 errors) are unchanged, every bend is still 45 degrees, and the
-//! coupled share falls only by the meander's own track. The pass takes 8 to 23 ms; `fab` took
-//! 97 / 117 s on RP2350 against 119 / 115 s without, 18 / 18 s on Orbit against 14 / 17 s, 8 s on
-//! 8 / 8 s on EasyDuino against 10 / 11 s (a loaded machine). Each board wrote the same copper on both runs.
-//! RP2350's `mcu.usb` keeps its skew: its `dp` is 5.8 mm long, its one run of more than 2 mm
-//! runs 0.4 mm from `dm` the whole way, and `dm` reaches a pad 10 mm further off, so the skew is
-//! the pair's pads', for the placement to close.
+//! Before the arcs merged (main at 88a62705) the same three pairs ended at 0.00 mm. Track grows
+//! by the meanders' own length only (about 1, 0.2 and 0.8 mm); vias, other nets' track on the
+//! pours, `fab-notes.txt` and the check (0 errors) are unchanged; the arcs round the meanders'
+//! turns (arcs 284 to 302, 188 to 192, 154 to 162), and the coupled share falls only by the
+//! meander's own track. The pass takes 8 to 23 ms; `fab` took 112 / 107 s on RP2350 against
+//! 119 / 121 s without, 13 / 13 s on Orbit against 15 / 14 s, 7 / 7 s on EasyDuino against
+//! 8 / 9 s. Each board wrote the same copper on both runs. RP2350's `mcu.usb` keeps its skew:
+//! its `dp` is 5.8 mm long, its one run of more than 2 mm runs 0.4 mm from `dm` the whole way,
+//! and `dm` reaches a pad 10 mm further off, so the skew is the pair's pads', for the placement
+//! to close.
 //!
 //! # What a try costs (issue #431)
 //!

@@ -32,9 +32,10 @@
 //! no room keeps the skew it has, and [`add`] says what each pair was left with.
 //!
 //! The router draws them (`netsmith_place_route::route::route_with`) once the board is routed,
-//! before the vias beside vias, the stitching of pours and the teardrops, so those are drawn
-//! round the meander. The same board gives the same meanders: pairs, runs and places are taken
-//! in a fixed order.
+//! before the vias beside vias, the stitching of pours, the arcs at bends and the teardrops, so
+//! those are drawn round the meander and its turns are rounded; it measures an arc along its
+//! curve and draws meanders on straight tracks only, so it can top a pair up after the arcs. The
+//! same board gives the same meanders: pairs, runs and places are taken in a fixed order.
 
 use netsmith_fab::drc::{self, Room, shape::Shape};
 use netsmith_fab::geom::Pt as FPt;
