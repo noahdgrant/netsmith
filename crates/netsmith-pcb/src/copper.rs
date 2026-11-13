@@ -107,6 +107,9 @@ pub struct LayerCopper {
     /// with thermal reliefs round its own net's pads. The pads, tracks and vias themselves are
     /// not in it (they are drawn over it, as in the file).
     pub pours: Vec<Pour>,
+    /// The fills the board file holds as they are, as the Gerbers draw them: netsmith's
+    /// teardrops (issue #431, S11), which the filler does not make but writes into the file.
+    pub fills: Vec<Pour>,
     /// What footprints draw on this copper layer that is not a pad (lines, shapes, text).
     pub drawings: Vec<Area>,
 }
@@ -342,6 +345,25 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
             }));
         }
 
+        // A fill the board file holds already, drawn as the plotter draws it.
+        let fills = art
+            .zones
+            .iter()
+            .filter(|z| z.keepout.is_none())
+            .flat_map(|z| {
+                z.filled
+                    .iter()
+                    .filter(|(l, poly)| l == layer && poly.len() >= 3)
+                    .map(|(_, poly)| Pour {
+                        net: z.net.clone(),
+                        area: Area {
+                            outer: poly.iter().copied().map(pt).collect(),
+                            holes: Vec::new(),
+                        },
+                    })
+            })
+            .collect();
+
         let mut pen = Polygons::new();
         plot::drawings(&mut pen, &art, layer, None, &mut notes);
         layers.push(LayerCopper {
@@ -349,6 +371,7 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
             pads: pads_here,
             tracks,
             pours,
+            fills,
             drawings: areas(&pen),
         });
     }

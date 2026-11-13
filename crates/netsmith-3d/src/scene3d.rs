@@ -1054,6 +1054,8 @@ fn scene_copper(
             pours: l
                 .pours
                 .iter()
+                // The fills the file holds (teardrops) are copper of their net, as a pour is.
+                .chain(&l.fills)
                 .map(|p| CopperPour {
                     net: p.net.clone(),
                     area: frame.area(&p.area),
