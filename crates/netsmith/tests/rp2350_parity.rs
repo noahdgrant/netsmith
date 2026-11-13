@@ -1152,7 +1152,7 @@ fn the_report_says_what_each_verdict_compared() {
         "compared  outline: the bounding box, the corner radius, the number of Edge.Cuts lines and arcs and each arc's radius",
         "compared  hole: place, drill, plated or not, the pad's size, the pad's net",
         "compared  part: position, rotation, layer",
-        "compared  pad: number, centre, size and angle in the footprint's frame, shape, the extent of a custom pad's polygon, drill (both sides of a slot), type",
+        "compared  pad: number, centre, size and angle in the footprint's frame, shape, the extent of a custom pad's polygon, drill (both sides of a slot), type, copper layers",
         "compared  net: each pad's own net, by its name or, where a name is made up, by the pads on it",
         "not compared",
     ] {
@@ -1164,7 +1164,10 @@ fn the_report_says_what_each_verdict_compared() {
         "{text}"
     );
     let svg = run(&Spec::default()).overlay_svg();
-    assert!(svg.contains("size, shape, drill and net"), "{svg}");
+    assert!(
+        svg.contains("size, shape, drill, copper layers and net"),
+        "{svg}"
+    );
 }
 
 /// Raspberry Pi's own board file, against the table made from it, with every part mapped to
@@ -1338,4 +1341,40 @@ fn a_part_turned_otherwise_than_the_references_is_told_to_match_the_turn_first()
         "{}",
         sw1.line()
     );
+}
+
+/// SW1 on the bottom face, its two pads on `pads` (the copper layer the board text writes).
+fn sw1_on_the_back(pads: &str) -> Spec {
+    let header = "(footprint \"Lib:SW1\"\n\t\t(layer \"F.Cu\")";
+    let back = "(footprint \"Lib:SW1\"\n\t\t(layer \"B.Cu\")";
+    let pad = |x: &str| format!("(at {x} 0 0) (size 1.6 1.2) (drill 1) (layers \"*.Cu\")");
+    let on = |x: &str| format!("(at {x} 0 0) (size 1.6 1.2) (drill 1) (layers \"{pads}\")");
+    Spec {
+        edits: vec![
+            (header.to_string(), back.to_string()),
+            (pad("-2"), on("-2")),
+            (pad("2"), on("2")),
+        ],
+        ..Spec::default()
+    }
+}
+
+#[test]
+fn a_bottom_face_part_whose_pads_are_on_the_wrong_face_fails() {
+    // #537: a footprint flipped to the back has its pads on B.Cu; one whose pads stayed on F.Cu
+    // has its copper on the wrong face, though every place and size is the reference's.
+    let reference = sw1_on_the_back("B.Cu");
+    let table = placements_toml(&pcb(&reference), "synthetic.kicad_pcb").unwrap();
+    assert!(table.contains(r#"layers = ["B.Cu"]"#), "{table}");
+    let good = run_pair(&reference, &reference);
+    assert!(good.passed(), "{}", good.text());
+    let report = run_pair(&reference, &sw1_on_the_back("F.Cu"));
+    for pad in ["1", "2"] {
+        differs_in(
+            &report,
+            &format!("part SW1 pad {pad}"),
+            "layers (the board's F.Cu, the reference's B.Cu)",
+        );
+    }
+    assert_eq!(item(&report, "part SW1 layer").verdict, Verdict::Ok);
 }

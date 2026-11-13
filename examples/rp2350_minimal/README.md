@@ -281,7 +281,8 @@ failure):
 - each pad, one by one: number, centre in its footprint, size and angle in the footprint's frame
   (a pad turned by 90 degrees has its width and height swapped, so the same copper written two
   ways is equal and a turned pad is not), shape, the box of a custom pad's polygon, drill (both
-  sides of a slot, round against slot), type, and net. The pads of one number (J1's shell has a
+  sides of a slot, round against slot), type, copper layers (as sets: a pad on the other face
+  fails), and net. The pads of one number (J1's shell has a
   surface pad and a plated slot for each of 6, 7, 9 and 10) are paired by the nearest centre in
   the footprint, and each pair is judged.
 
@@ -290,7 +291,7 @@ footprint of KiCad's library (its drilled pad is the hole; a ring of vias round 
 compared); a connector with a peg is still a part and the peg is a pad of it. Reported, never a failure (`info`): the same figures of every other
 part (MCU, flash, crystal, regulator, inductor, decoupling), pads reported as one line per part.
 Not compared, because the table does not hold it: a rounded rectangle's corner ratio, a custom
-pad's anchor shape and its polygon's shape inside the box, a pad's layers, mask and paste, the
+pad's anchor shape and its polygon's shape inside the box, a pad's mask and paste layers, the
 silkscreen, the courtyard and the routing. A table with no part, a part with no `must_match` or an
 outline with no count of lines or arcs is an error, not a pass.
 

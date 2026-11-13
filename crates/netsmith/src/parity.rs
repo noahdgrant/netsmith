@@ -4,9 +4,9 @@
 //!
 //! What must match (`must_match = true` in the table): the outline and the mounting holes, and
 //! the connectors, buttons and header pins: each one's place, rotation, layer, and every pad's
-//! number, centre, size, shape, angle, drill and net. Everything else (the MCU, flash, crystal,
-//! regulator, decoupling, the routing) is measured and reported with the verdict `info`, never
-//! `fail`. What each verdict compared is printed at the head of the report ([`WHAT_IS_COMPARED`]).
+//! number, centre, size, shape, angle, drill, copper layers and net. Everything else (the MCU,
+//! flash, crystal, regulator, decoupling, the routing) is measured and reported with the verdict
+//! `info`, never `fail`. What each verdict compared is printed at the head of the report ([`WHAT_IS_COMPARED`]).
 //!
 //! **Pads** are judged one by one: the pads of one number (a connector's shell has a surface pad
 //! and a plated slot of the same number) are paired by the nearest centre in the footprint's own
@@ -102,13 +102,13 @@ pub const WHAT_IS_COMPARED: [&str; 5] = [
     "hole: place, drill, plated or not, the pad's size, the pad's net",
     "part: position, rotation, layer",
     "pad: number, centre, size and angle in the footprint's frame, shape, the extent of a \
-     custom pad's polygon, drill (both sides of a slot), type",
+     custom pad's polygon, drill (both sides of a slot), type, copper layers",
     "net: each pad's own net, by its name or, where a name is made up, by the pads on it",
 ];
 
 /// What no verdict covers: the table does not hold it.
 pub const NOT_COMPARED: &str = "not compared: a rounded rectangle's corner ratio, a custom pad's \
-     anchor shape and the shape of its polygon inside the extent, a pad's layers, mask and paste, \
+     anchor shape and the shape of its polygon inside the extent, a pad's mask and paste layers, \
      the silkscreen, the courtyard, text and the routing";
 
 /// Raspberry Pi's references mapped to those of the board `fab` wrote.
@@ -1097,6 +1097,11 @@ fn pad_frame(part: &Part, pad: &Pad, tol: &Tolerances) -> PadFrame {
     }
 }
 
+/// A pad's copper layers as a set.
+fn faces(pad: &Pad) -> BTreeSet<&str> {
+    pad.layers.iter().map(String::as_str).collect()
+}
+
 /// What two paired pads of the parts `rp` and `ap` differ by.
 fn judge_pair(rp: &Part, pad: &Pad, ap: &Part, q: &Pad, tol: &Tolerances) -> PadMeasure {
     let (dx, dy) = (q.x - pad.x, q.y - pad.y);
@@ -1180,6 +1185,21 @@ fn judge_pair(rp: &Part, pad: &Pad, ap: &Part, q: &Pad, tol: &Tolerances) -> Pad
         why.push(format!(
             "type (the board's {}, the reference's {})",
             q.kind, pad.kind
+        ));
+    }
+    // The copper faces, as sets: a pad on the wrong face is the wrong copper (#537).
+    if faces(pad) != faces(q) {
+        let names = |p: &Pad| {
+            if p.layers.is_empty() {
+                "none".to_string()
+            } else {
+                faces(p).into_iter().collect::<Vec<_>>().join(" ")
+            }
+        };
+        why.push(format!(
+            "layers (the board's {}, the reference's {})",
+            names(q),
+            names(pad)
         ));
     }
     let good = why.is_empty();
@@ -1656,7 +1676,7 @@ fn overlay(rep: &ParityReport) -> String {
          <text x=\"34\" y=\"{}\" fill=\"{RED}\">red: a must-match item that fails</text>\
          <text x=\"0\" y=\"{}\" fill=\"#4a5568\">both from the upper-left corner of the outline's box, 1 unit = 1 mm</text>\
          <text x=\"0\" y=\"{}\" fill=\"#4a5568\">a part is judged on position, rotation and layer, each pad on number, centre, \
-         size, shape, drill and net, the outline on its box, radius and elements</text></g>",
+         size, shape, drill, copper layers and net, the outline on its box, radius and elements</text></g>",
         num(ly),
         num(ly),
         num(ly),

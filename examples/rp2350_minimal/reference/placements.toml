@@ -18,8 +18,9 @@
 #   file has none; `size` is [width, height]; `drill` is the diameter of a round hole, and
 #   `drill_slot` the [width, height] of an oval one; `extent` (a custom pad only) is the box
 #   [min_x, min_y, max_x, max_y] that its polygons, lines, arcs and circles span, in the pad's
-#   own frame and with each stroke's half width added; `net` is the net's name and is left out
-#   for a pad no net names.
+#   own frame and with each stroke's half width added; `layers` are the pad's copper layers as
+#   the file writes them (a footprint on the back has them on the other face already); `net` is
+#   the net's name and is left out for a pad no net names.
 # must_match = true marks what a copy of the board must reproduce (the outline, the holes,
 #   J1 to J4, SW1, SW2); false is reported, not required.
 
@@ -86,8 +87,8 @@ y = 76.5
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], net = "VBUS" },
-    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], layers = ["F.Cu"], net = "VBUS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -99,8 +100,8 @@ y = 82.83
 rotation = 180
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -112,8 +113,8 @@ y = 109
 rotation = 180
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "/XIN" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "/XIN" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -125,8 +126,8 @@ y = 109
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "Net-(C4-Pad1)" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "Net-(C4-Pad1)" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -138,8 +139,8 @@ y = 89
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -151,8 +152,8 @@ y = 95.39
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.515, y = 0, size = [0.47, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.515, y = 0, size = [0.47, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.515, y = 0, size = [0.47, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.515, y = 0, size = [0.47, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -164,8 +165,8 @@ y = 94.45
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.515, y = 0, size = [0.47, 0.55], net = "+1V1" },
-    { number = "2", type = "smd", shape = "rect", x = 0.515, y = 0, size = [0.47, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.515, y = 0, size = [0.47, 0.55], layers = ["F.Cu"], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.515, y = 0, size = [0.47, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -177,8 +178,8 @@ y = 99
 rotation = 180
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+1V1" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -190,8 +191,8 @@ y = 94.95
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/VREG_AVDD" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/VREG_AVDD" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -203,8 +204,8 @@ y = 106.88
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+1V1" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -216,8 +217,8 @@ y = 99.4
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+1V1" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -229,8 +230,8 @@ y = 92.6
 rotation = 90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 90, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 90, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 90, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 90, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -242,8 +243,8 @@ y = 96.6
 rotation = 180
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -255,8 +256,8 @@ y = 100.4
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -268,8 +269,8 @@ y = 101.4
 rotation = 180
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 180, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -281,8 +282,8 @@ y = 104
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -294,8 +295,8 @@ y = 97
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -307,8 +308,8 @@ y = 106.08
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -320,8 +321,8 @@ y = 78
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.9, y = 0, size = [1, 1.4], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.9, y = 0, size = [1, 1.4], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -333,21 +334,21 @@ y = 71.7
 rotation = 180
 must_match = true
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -1.3, y = -2.825, angle = 180, size = [0.4, 1.75], net = "VBUS" },
-    { number = "2", type = "smd", shape = "rect", x = -0.65, y = -2.825, angle = 180, size = [0.4, 1.75], net = "/USB_D-" },
-    { number = "3", type = "smd", shape = "rect", x = 0, y = -2.825, angle = 180, size = [0.4, 1.75], net = "/USB_D+" },
-    { number = "4", type = "smd", shape = "rect", x = 0.65, y = -2.825, angle = 180, size = [0.4, 1.75], net = "unconnected-(J1-ID-Pad4)" },
-    { number = "5", type = "smd", shape = "rect", x = 1.3, y = -2.825, angle = 180, size = [0.4, 1.75], net = "GND" },
-    { number = "6", type = "smd", shape = "rect", x = -2.9, y = -3.03, angle = 180, size = [2, 1.45], net = "GND" },
-    { number = "6", type = "thru_hole", shape = "oval", x = -2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], net = "GND" },
-    { number = "7", type = "smd", shape = "custom", x = -2.725, y = -1.4, angle = 180, size = [1.3, 1.3], extent = [-1.175, -0.65, 0.65, 2.5], net = "GND" },
-    { number = "7", type = "thru_hole", shape = "oval", x = -2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], net = "GND" },
-    { number = "8", type = "smd", shape = "rect", x = -0.95, y = 0.05, angle = 180, size = [1.425, 2.1], net = "GND" },
-    { number = "9", type = "thru_hole", shape = "oval", x = 2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], net = "GND" },
-    { number = "9", type = "smd", shape = "rect", x = 2.9, y = -3.03, angle = 180, size = [2, 1.45], net = "GND" },
-    { number = "10", type = "smd", shape = "custom", x = 2.725, y = -1.4, angle = 180, size = [1.3, 1.3], extent = [-0.65, -0.65, 1.175, 2.5], net = "GND" },
-    { number = "10", type = "thru_hole", shape = "oval", x = 2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], net = "GND" },
-    { number = "11", type = "smd", shape = "rect", x = 0.95, y = 0.05, angle = 180, size = [1.425, 2.1], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -1.3, y = -2.825, angle = 180, size = [0.4, 1.75], layers = ["F.Cu"], net = "VBUS" },
+    { number = "2", type = "smd", shape = "rect", x = -0.65, y = -2.825, angle = 180, size = [0.4, 1.75], layers = ["F.Cu"], net = "/USB_D-" },
+    { number = "3", type = "smd", shape = "rect", x = 0, y = -2.825, angle = 180, size = [0.4, 1.75], layers = ["F.Cu"], net = "/USB_D+" },
+    { number = "4", type = "smd", shape = "rect", x = 0.65, y = -2.825, angle = 180, size = [0.4, 1.75], layers = ["F.Cu"], net = "unconnected-(J1-ID-Pad4)" },
+    { number = "5", type = "smd", shape = "rect", x = 1.3, y = -2.825, angle = 180, size = [0.4, 1.75], layers = ["F.Cu"], net = "GND" },
+    { number = "6", type = "smd", shape = "rect", x = -2.9, y = -3.03, angle = 180, size = [2, 1.45], layers = ["F.Cu"], net = "GND" },
+    { number = "6", type = "thru_hole", shape = "oval", x = -2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], layers = ["*.Cu"], net = "GND" },
+    { number = "7", type = "smd", shape = "custom", x = -2.725, y = -1.4, angle = 180, size = [1.3, 1.3], extent = [-1.175, -0.65, 0.65, 2.5], layers = ["F.Cu"], net = "GND" },
+    { number = "7", type = "thru_hole", shape = "oval", x = -2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], layers = ["*.Cu"], net = "GND" },
+    { number = "8", type = "smd", shape = "rect", x = -0.95, y = 0.05, angle = 180, size = [1.425, 2.1], layers = ["F.Cu"], net = "GND" },
+    { number = "9", type = "thru_hole", shape = "oval", x = 2.425, y = -3.03, angle = 180, size = [1.05, 1.45], drill_slot = [0.65, 1.05], layers = ["*.Cu"], net = "GND" },
+    { number = "9", type = "smd", shape = "rect", x = 2.9, y = -3.03, angle = 180, size = [2, 1.45], layers = ["F.Cu"], net = "GND" },
+    { number = "10", type = "smd", shape = "custom", x = 2.725, y = -1.4, angle = 180, size = [1.3, 1.3], extent = [-0.65, -0.65, 1.175, 2.5], layers = ["F.Cu"], net = "GND" },
+    { number = "10", type = "thru_hole", shape = "oval", x = 2.725, y = 0, angle = 180, size = [1.1, 1.8], drill_slot = [0.7, 1.2], layers = ["*.Cu"], net = "GND" },
+    { number = "11", type = "smd", shape = "rect", x = 0.95, y = 0.05, angle = 180, size = [1.425, 2.1], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -359,42 +360,42 @@ y = 95.59
 rotation = -90
 must_match = true
 pads = [
-    { number = "1", type = "thru_hole", shape = "rect", x = -21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "2", type = "thru_hole", shape = "circle", x = -21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "+3V3" },
-    { number = "3", type = "thru_hole", shape = "circle", x = -19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "4", type = "thru_hole", shape = "circle", x = -19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO0" },
-    { number = "5", type = "thru_hole", shape = "circle", x = -16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "6", type = "thru_hole", shape = "circle", x = -16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO1" },
-    { number = "7", type = "thru_hole", shape = "circle", x = -13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "8", type = "thru_hole", shape = "circle", x = -13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO2" },
-    { number = "9", type = "thru_hole", shape = "circle", x = -11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "10", type = "thru_hole", shape = "circle", x = -11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO3" },
-    { number = "11", type = "thru_hole", shape = "circle", x = -8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "12", type = "thru_hole", shape = "circle", x = -8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO4" },
-    { number = "13", type = "thru_hole", shape = "circle", x = -6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "14", type = "thru_hole", shape = "circle", x = -6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO5" },
-    { number = "15", type = "thru_hole", shape = "circle", x = -3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "16", type = "thru_hole", shape = "circle", x = -3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO6" },
-    { number = "17", type = "thru_hole", shape = "circle", x = -1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "18", type = "thru_hole", shape = "circle", x = -1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO7" },
-    { number = "19", type = "thru_hole", shape = "circle", x = 1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "20", type = "thru_hole", shape = "circle", x = 1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO8" },
-    { number = "21", type = "thru_hole", shape = "circle", x = 3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "22", type = "thru_hole", shape = "circle", x = 3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO9" },
-    { number = "23", type = "thru_hole", shape = "circle", x = 6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "24", type = "thru_hole", shape = "circle", x = 6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO10" },
-    { number = "25", type = "thru_hole", shape = "circle", x = 8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "26", type = "thru_hole", shape = "circle", x = 8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO11" },
-    { number = "27", type = "thru_hole", shape = "circle", x = 11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "28", type = "thru_hole", shape = "circle", x = 11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO12" },
-    { number = "29", type = "thru_hole", shape = "circle", x = 13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "30", type = "thru_hole", shape = "circle", x = 13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO13" },
-    { number = "31", type = "thru_hole", shape = "circle", x = 16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "32", type = "thru_hole", shape = "circle", x = 16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO14" },
-    { number = "33", type = "thru_hole", shape = "circle", x = 19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "34", type = "thru_hole", shape = "circle", x = 19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO15" },
-    { number = "35", type = "thru_hole", shape = "circle", x = 21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "36", type = "thru_hole", shape = "circle", x = 21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "1", type = "thru_hole", shape = "rect", x = -21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "2", type = "thru_hole", shape = "circle", x = -21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "+3V3" },
+    { number = "3", type = "thru_hole", shape = "circle", x = -19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "4", type = "thru_hole", shape = "circle", x = -19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO0" },
+    { number = "5", type = "thru_hole", shape = "circle", x = -16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "6", type = "thru_hole", shape = "circle", x = -16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO1" },
+    { number = "7", type = "thru_hole", shape = "circle", x = -13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "8", type = "thru_hole", shape = "circle", x = -13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO2" },
+    { number = "9", type = "thru_hole", shape = "circle", x = -11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "10", type = "thru_hole", shape = "circle", x = -11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO3" },
+    { number = "11", type = "thru_hole", shape = "circle", x = -8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "12", type = "thru_hole", shape = "circle", x = -8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO4" },
+    { number = "13", type = "thru_hole", shape = "circle", x = -6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "14", type = "thru_hole", shape = "circle", x = -6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO5" },
+    { number = "15", type = "thru_hole", shape = "circle", x = -3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "16", type = "thru_hole", shape = "circle", x = -3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO6" },
+    { number = "17", type = "thru_hole", shape = "circle", x = -1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "18", type = "thru_hole", shape = "circle", x = -1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO7" },
+    { number = "19", type = "thru_hole", shape = "circle", x = 1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "20", type = "thru_hole", shape = "circle", x = 1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO8" },
+    { number = "21", type = "thru_hole", shape = "circle", x = 3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "22", type = "thru_hole", shape = "circle", x = 3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO9" },
+    { number = "23", type = "thru_hole", shape = "circle", x = 6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "24", type = "thru_hole", shape = "circle", x = 6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO10" },
+    { number = "25", type = "thru_hole", shape = "circle", x = 8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "26", type = "thru_hole", shape = "circle", x = 8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO11" },
+    { number = "27", type = "thru_hole", shape = "circle", x = 11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "28", type = "thru_hole", shape = "circle", x = 11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO12" },
+    { number = "29", type = "thru_hole", shape = "circle", x = 13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "30", type = "thru_hole", shape = "circle", x = 13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO13" },
+    { number = "31", type = "thru_hole", shape = "circle", x = 16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "32", type = "thru_hole", shape = "circle", x = 16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO14" },
+    { number = "33", type = "thru_hole", shape = "circle", x = 19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "34", type = "thru_hole", shape = "circle", x = 19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO15" },
+    { number = "35", type = "thru_hole", shape = "circle", x = 21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "36", type = "thru_hole", shape = "circle", x = 21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -406,42 +407,42 @@ y = 95.59
 rotation = -90
 must_match = true
 pads = [
-    { number = "1", type = "thru_hole", shape = "rect", x = -21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO29_ADC3" },
-    { number = "2", type = "thru_hole", shape = "circle", x = -21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "3", type = "thru_hole", shape = "circle", x = -19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO28_ADC2" },
-    { number = "4", type = "thru_hole", shape = "circle", x = -19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "5", type = "thru_hole", shape = "circle", x = -16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO27_ADC1" },
-    { number = "6", type = "thru_hole", shape = "circle", x = -16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "7", type = "thru_hole", shape = "circle", x = -13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO26_ADC0" },
-    { number = "8", type = "thru_hole", shape = "circle", x = -13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "9", type = "thru_hole", shape = "circle", x = -11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO25" },
-    { number = "10", type = "thru_hole", shape = "circle", x = -11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "11", type = "thru_hole", shape = "circle", x = -8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO24" },
-    { number = "12", type = "thru_hole", shape = "circle", x = -8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "13", type = "thru_hole", shape = "circle", x = -6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO23" },
-    { number = "14", type = "thru_hole", shape = "circle", x = -6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "15", type = "thru_hole", shape = "circle", x = -3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO22" },
-    { number = "16", type = "thru_hole", shape = "circle", x = -3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "17", type = "thru_hole", shape = "circle", x = -1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO21" },
-    { number = "18", type = "thru_hole", shape = "circle", x = -1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "19", type = "thru_hole", shape = "circle", x = 1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO20" },
-    { number = "20", type = "thru_hole", shape = "circle", x = 1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "21", type = "thru_hole", shape = "circle", x = 3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO19" },
-    { number = "22", type = "thru_hole", shape = "circle", x = 3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "23", type = "thru_hole", shape = "circle", x = 6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO18" },
-    { number = "24", type = "thru_hole", shape = "circle", x = 6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "25", type = "thru_hole", shape = "circle", x = 8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO17" },
-    { number = "26", type = "thru_hole", shape = "circle", x = 8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "27", type = "thru_hole", shape = "circle", x = 11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/GPIO16" },
-    { number = "28", type = "thru_hole", shape = "circle", x = 11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "29", type = "thru_hole", shape = "circle", x = 13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/RUN" },
-    { number = "30", type = "thru_hole", shape = "circle", x = 13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "31", type = "thru_hole", shape = "circle", x = 16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/SWD" },
-    { number = "32", type = "thru_hole", shape = "circle", x = 16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "33", type = "thru_hole", shape = "circle", x = 19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "/SWCLK" },
-    { number = "34", type = "thru_hole", shape = "circle", x = 19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "35", type = "thru_hole", shape = "circle", x = 21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
-    { number = "36", type = "thru_hole", shape = "circle", x = 21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, net = "GND" },
+    { number = "1", type = "thru_hole", shape = "rect", x = -21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO29_ADC3" },
+    { number = "2", type = "thru_hole", shape = "circle", x = -21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "3", type = "thru_hole", shape = "circle", x = -19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO28_ADC2" },
+    { number = "4", type = "thru_hole", shape = "circle", x = -19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "5", type = "thru_hole", shape = "circle", x = -16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO27_ADC1" },
+    { number = "6", type = "thru_hole", shape = "circle", x = -16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "7", type = "thru_hole", shape = "circle", x = -13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO26_ADC0" },
+    { number = "8", type = "thru_hole", shape = "circle", x = -13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "9", type = "thru_hole", shape = "circle", x = -11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO25" },
+    { number = "10", type = "thru_hole", shape = "circle", x = -11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "11", type = "thru_hole", shape = "circle", x = -8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO24" },
+    { number = "12", type = "thru_hole", shape = "circle", x = -8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "13", type = "thru_hole", shape = "circle", x = -6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO23" },
+    { number = "14", type = "thru_hole", shape = "circle", x = -6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "15", type = "thru_hole", shape = "circle", x = -3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO22" },
+    { number = "16", type = "thru_hole", shape = "circle", x = -3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "17", type = "thru_hole", shape = "circle", x = -1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO21" },
+    { number = "18", type = "thru_hole", shape = "circle", x = -1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "19", type = "thru_hole", shape = "circle", x = 1.27, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO20" },
+    { number = "20", type = "thru_hole", shape = "circle", x = 1.27, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "21", type = "thru_hole", shape = "circle", x = 3.81, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO19" },
+    { number = "22", type = "thru_hole", shape = "circle", x = 3.81, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "23", type = "thru_hole", shape = "circle", x = 6.35, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO18" },
+    { number = "24", type = "thru_hole", shape = "circle", x = 6.35, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "25", type = "thru_hole", shape = "circle", x = 8.89, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO17" },
+    { number = "26", type = "thru_hole", shape = "circle", x = 8.89, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "27", type = "thru_hole", shape = "circle", x = 11.43, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/GPIO16" },
+    { number = "28", type = "thru_hole", shape = "circle", x = 11.43, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "29", type = "thru_hole", shape = "circle", x = 13.97, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/RUN" },
+    { number = "30", type = "thru_hole", shape = "circle", x = 13.97, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "31", type = "thru_hole", shape = "circle", x = 16.51, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/SWD" },
+    { number = "32", type = "thru_hole", shape = "circle", x = 16.51, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "33", type = "thru_hole", shape = "circle", x = 19.05, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "/SWCLK" },
+    { number = "34", type = "thru_hole", shape = "circle", x = 19.05, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "35", type = "thru_hole", shape = "circle", x = 21.59, y = 1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
+    { number = "36", type = "thru_hole", shape = "circle", x = 21.59, y = -1.27, angle = 270, size = [1.6, 1.6], drill = 1, layers = ["*.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -453,11 +454,11 @@ y = 115.375
 rotation = 0
 must_match = true
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -1, y = -4.575, angle = 180, size = [0.6, 1.55], net = "/SWCLK" },
-    { number = "2", type = "smd", shape = "rect", x = 0, y = -4.575, angle = 180, size = [0.6, 1.55], net = "GND" },
-    { number = "3", type = "smd", shape = "rect", x = 1, y = -4.575, angle = 180, size = [0.6, 1.55], net = "/SWD" },
-    { number = "4", type = "smd", shape = "rect", x = -2.3, y = -0.7, angle = 180, size = [1.2, 1.8], net = "GND" },
-    { number = "5", type = "smd", shape = "rect", x = 2.3, y = -0.7, angle = 180, size = [1.2, 1.8], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -1, y = -4.575, angle = 180, size = [0.6, 1.55], layers = ["F.Cu"], net = "/SWCLK" },
+    { number = "2", type = "smd", shape = "rect", x = 0, y = -4.575, angle = 180, size = [0.6, 1.55], layers = ["F.Cu"], net = "GND" },
+    { number = "3", type = "smd", shape = "rect", x = 1, y = -4.575, angle = 180, size = [0.6, 1.55], layers = ["F.Cu"], net = "/SWD" },
+    { number = "4", type = "smd", shape = "rect", x = -2.3, y = -0.7, angle = 180, size = [1.2, 1.8], layers = ["F.Cu"], net = "GND" },
+    { number = "5", type = "smd", shape = "rect", x = 2.3, y = -0.7, angle = 180, size = [1.2, 1.8], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -469,8 +470,8 @@ y = 92.8
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.7, y = 0, size = [0.7, 1.7], net = "+1V1" },
-    { number = "2", type = "smd", shape = "rect", x = 0.7, y = 0, size = [0.7, 1.7], net = "/VREG_LX" },
+    { number = "1", type = "smd", shape = "rect", x = -0.7, y = 0, size = [0.7, 1.7], layers = ["F.Cu"], net = "+1V1" },
+    { number = "2", type = "smd", shape = "rect", x = 0.7, y = 0, size = [0.7, 1.7], layers = ["F.Cu"], net = "/VREG_LX" },
 ]
 
 [[part]]
@@ -482,7 +483,7 @@ y = 74
 rotation = 0
 must_match = true
 pads = [
-    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75, layers = [] },
 ]
 
 [[part]]
@@ -494,7 +495,7 @@ y = 74
 rotation = 0
 must_match = true
 pads = [
-    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75, layers = [] },
 ]
 
 [[part]]
@@ -506,7 +507,7 @@ y = 117.18
 rotation = 0
 must_match = true
 pads = [
-    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75, layers = [] },
 ]
 
 [[part]]
@@ -518,7 +519,7 @@ y = 117.18
 rotation = 0
 must_match = true
 pads = [
-    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75 },
+    { number = "", type = "np_thru_hole", shape = "circle", x = 0, y = 0, size = [3.15, 3.15], drill = 2.75, layers = [] },
 ]
 
 [[part]]
@@ -530,8 +531,8 @@ y = 82.2
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/FLASH_SS" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/FLASH_SS" },
 ]
 
 [[part]]
@@ -543,8 +544,8 @@ y = 106.9
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/XOUT" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(C4-Pad1)" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/XOUT" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "Net-(C4-Pad1)" },
 ]
 
 [[part]]
@@ -556,8 +557,8 @@ y = 93.1
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/VREG_AVDD" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/VREG_AVDD" },
 ]
 
 [[part]]
@@ -569,8 +570,8 @@ y = 109.1
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(R4-Pad1)" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "Net-(R4-Pad1)" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -582,8 +583,8 @@ y = 81.3
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "/QSPI_SS" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "/~{USB_BOOT}" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "/QSPI_SS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "/~{USB_BOOT}" },
 ]
 
 [[part]]
@@ -595,8 +596,8 @@ y = 92.6
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/USB_D+" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(U1-USB_DP)" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/USB_D+" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "Net-(U1-USB_DP)" },
 ]
 
 [[part]]
@@ -608,8 +609,8 @@ y = 92.6
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/USB_D-" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "Net-(U1-USB_DM)" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/USB_D-" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "Net-(U1-USB_DM)" },
 ]
 
 [[part]]
@@ -621,8 +622,8 @@ y = 82.2
 rotation = -90
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/GPIO0" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], net = "/FLASH_SS" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/GPIO0" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, angle = 270, size = [0.55, 0.55], layers = ["F.Cu"], net = "/FLASH_SS" },
 ]
 
 [[part]]
@@ -634,8 +635,8 @@ y = 82.7
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], net = "/QSPI_SS" },
-    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], net = "/FLASH_SS" },
+    { number = "1", type = "smd", shape = "rect", x = -0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "/QSPI_SS" },
+    { number = "2", type = "smd", shape = "rect", x = 0.475, y = 0, size = [0.55, 0.55], layers = ["F.Cu"], net = "/FLASH_SS" },
 ]
 
 [[part]]
@@ -647,10 +648,10 @@ y = 75.2
 rotation = -90
 must_match = true
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -2.075, y = -1.075, angle = 270, size = [1.05, 0.65], net = "GND" },
-    { number = "2", type = "smd", shape = "rect", x = 2.075, y = -1.075, angle = 270, size = [1.05, 0.65], net = "GND" },
-    { number = "3", type = "smd", shape = "rect", x = -2.075, y = 1.075, angle = 270, size = [1.05, 0.65], net = "/~{USB_BOOT}" },
-    { number = "4", type = "smd", shape = "rect", x = 2.075, y = 1.075, angle = 270, size = [1.05, 0.65], net = "/~{USB_BOOT}" },
+    { number = "1", type = "smd", shape = "rect", x = -2.075, y = -1.075, angle = 270, size = [1.05, 0.65], layers = ["F.Cu"], net = "GND" },
+    { number = "2", type = "smd", shape = "rect", x = 2.075, y = -1.075, angle = 270, size = [1.05, 0.65], layers = ["F.Cu"], net = "GND" },
+    { number = "3", type = "smd", shape = "rect", x = -2.075, y = 1.075, angle = 270, size = [1.05, 0.65], layers = ["F.Cu"], net = "/~{USB_BOOT}" },
+    { number = "4", type = "smd", shape = "rect", x = 2.075, y = 1.075, angle = 270, size = [1.05, 0.65], layers = ["F.Cu"], net = "/~{USB_BOOT}" },
 ]
 
 [[part]]
@@ -662,10 +663,10 @@ y = 107.475
 rotation = 180
 must_match = true
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -2.075, y = -1.075, angle = 180, size = [1.05, 0.65], net = "Net-(R4-Pad1)" },
-    { number = "2", type = "smd", shape = "rect", x = 2.075, y = -1.075, angle = 180, size = [1.05, 0.65], net = "Net-(R4-Pad1)" },
-    { number = "3", type = "smd", shape = "rect", x = -2.075, y = 1.075, angle = 180, size = [1.05, 0.65], net = "/RUN" },
-    { number = "4", type = "smd", shape = "rect", x = 2.075, y = 1.075, angle = 180, size = [1.05, 0.65], net = "/RUN" },
+    { number = "1", type = "smd", shape = "rect", x = -2.075, y = -1.075, angle = 180, size = [1.05, 0.65], layers = ["F.Cu"], net = "Net-(R4-Pad1)" },
+    { number = "2", type = "smd", shape = "rect", x = 2.075, y = -1.075, angle = 180, size = [1.05, 0.65], layers = ["F.Cu"], net = "Net-(R4-Pad1)" },
+    { number = "3", type = "smd", shape = "rect", x = -2.075, y = 1.075, angle = 180, size = [1.05, 0.65], layers = ["F.Cu"], net = "/RUN" },
+    { number = "4", type = "smd", shape = "rect", x = 2.075, y = 1.075, angle = 180, size = [1.05, 0.65], layers = ["F.Cu"], net = "/RUN" },
 ]
 
 [[part]]
@@ -677,76 +678,76 @@ y = 100
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -3.45, y = -2.8, size = [0.7, 0.23], net = "+3V3" },
-    { number = "2", type = "smd", shape = "rect", x = -3.45, y = -2.4, size = [0.7, 0.23], net = "/GPIO0" },
-    { number = "3", type = "smd", shape = "rect", x = -3.45, y = -2, size = [0.7, 0.23], net = "/GPIO1" },
-    { number = "4", type = "smd", shape = "rect", x = -3.45, y = -1.6, size = [0.7, 0.23], net = "/GPIO2" },
-    { number = "5", type = "smd", shape = "rect", x = -3.45, y = -1.2, size = [0.7, 0.23], net = "/GPIO3" },
-    { number = "6", type = "smd", shape = "rect", x = -3.45, y = -0.8, size = [0.7, 0.23], net = "+1V1" },
-    { number = "7", type = "smd", shape = "rect", x = -3.45, y = -0.4, size = [0.7, 0.23], net = "/GPIO4" },
-    { number = "8", type = "smd", shape = "rect", x = -3.45, y = 0, size = [0.7, 0.23], net = "/GPIO5" },
-    { number = "9", type = "smd", shape = "rect", x = -3.45, y = 0.4, size = [0.7, 0.23], net = "/GPIO6" },
-    { number = "10", type = "smd", shape = "rect", x = -3.45, y = 0.8, size = [0.7, 0.23], net = "/GPIO7" },
-    { number = "11", type = "smd", shape = "rect", x = -3.45, y = 1.2, size = [0.7, 0.23], net = "+3V3" },
-    { number = "12", type = "smd", shape = "rect", x = -3.45, y = 1.6, size = [0.7, 0.23], net = "/GPIO8" },
-    { number = "13", type = "smd", shape = "rect", x = -3.45, y = 2, size = [0.7, 0.23], net = "/GPIO9" },
-    { number = "14", type = "smd", shape = "rect", x = -3.45, y = 2.4, size = [0.7, 0.23], net = "/GPIO10" },
-    { number = "15", type = "smd", shape = "rect", x = -3.45, y = 2.8, size = [0.7, 0.23], net = "/GPIO11" },
-    { number = "16", type = "smd", shape = "rect", x = -2.8, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO12" },
-    { number = "17", type = "smd", shape = "rect", x = -2.4, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO13" },
-    { number = "18", type = "smd", shape = "rect", x = -2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO14" },
-    { number = "19", type = "smd", shape = "rect", x = -1.6, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO15" },
-    { number = "20", type = "smd", shape = "rect", x = -1.2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "+3V3" },
-    { number = "21", type = "smd", shape = "rect", x = -0.8, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/XIN" },
-    { number = "22", type = "smd", shape = "rect", x = -0.4, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/XOUT" },
-    { number = "23", type = "smd", shape = "rect", x = 0, y = 3.45, angle = 90, size = [0.7, 0.23], net = "+1V1" },
-    { number = "24", type = "smd", shape = "rect", x = 0.4, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/SWCLK" },
-    { number = "25", type = "smd", shape = "rect", x = 0.8, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/SWD" },
-    { number = "26", type = "smd", shape = "rect", x = 1.2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/RUN" },
-    { number = "27", type = "smd", shape = "rect", x = 1.6, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO16" },
-    { number = "28", type = "smd", shape = "rect", x = 2, y = 3.45, angle = 90, size = [0.7, 0.23], net = "/GPIO17" },
-    { number = "29", type = "smd", shape = "rect", x = 2.4, y = 3.45, angle = 270, size = [0.7, 0.23], net = "/GPIO18" },
-    { number = "30", type = "smd", shape = "rect", x = 2.8, y = 3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
-    { number = "31", type = "smd", shape = "rect", x = 3.45, y = 2.8, angle = 180, size = [0.7, 0.23], net = "/GPIO19" },
-    { number = "32", type = "smd", shape = "rect", x = 3.45, y = 2.4, angle = 180, size = [0.7, 0.23], net = "/GPIO20" },
-    { number = "33", type = "smd", shape = "rect", x = 3.45, y = 2, angle = 180, size = [0.7, 0.23], net = "/GPIO21" },
-    { number = "34", type = "smd", shape = "rect", x = 3.45, y = 1.6, angle = 180, size = [0.7, 0.23], net = "/GPIO22" },
-    { number = "35", type = "smd", shape = "rect", x = 3.45, y = 1.2, angle = 180, size = [0.7, 0.23], net = "/GPIO23" },
-    { number = "36", type = "smd", shape = "rect", x = 3.45, y = 0.8, angle = 180, size = [0.7, 0.23], net = "/GPIO24" },
-    { number = "37", type = "smd", shape = "rect", x = 3.45, y = 0.4, angle = 180, size = [0.7, 0.23], net = "/GPIO25" },
-    { number = "38", type = "smd", shape = "rect", x = 3.45, y = 0, angle = 180, size = [0.7, 0.23], net = "+3V3" },
-    { number = "39", type = "smd", shape = "rect", x = 3.45, y = -0.4, angle = 180, size = [0.7, 0.23], net = "+1V1" },
-    { number = "40", type = "smd", shape = "rect", x = 3.45, y = -0.8, angle = 180, size = [0.7, 0.23], net = "/GPIO26_ADC0" },
-    { number = "41", type = "smd", shape = "rect", x = 3.45, y = -1.2, angle = 180, size = [0.7, 0.23], net = "/GPIO27_ADC1" },
-    { number = "42", type = "smd", shape = "rect", x = 3.45, y = -1.6, angle = 180, size = [0.7, 0.23], net = "/GPIO28_ADC2" },
-    { number = "43", type = "smd", shape = "rect", x = 3.45, y = -2, angle = 180, size = [0.7, 0.23], net = "/GPIO29_ADC3" },
-    { number = "44", type = "smd", shape = "rect", x = 3.45, y = -2.4, angle = 180, size = [0.7, 0.23], net = "+3V3" },
-    { number = "45", type = "smd", shape = "rect", x = 3.45, y = -2.8, angle = 180, size = [0.7, 0.23], net = "+3V3" },
-    { number = "46", type = "smd", shape = "rect", x = 2.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/VREG_AVDD" },
-    { number = "47", type = "smd", shape = "rect", x = 2.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "GND" },
-    { number = "48", type = "smd", shape = "rect", x = 2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/VREG_LX" },
-    { number = "49", type = "smd", shape = "rect", x = 1.6, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
-    { number = "50", type = "smd", shape = "rect", x = 1.2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+1V1" },
-    { number = "51", type = "smd", shape = "rect", x = 0.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "Net-(U1-USB_DM)" },
-    { number = "52", type = "smd", shape = "rect", x = 0.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "Net-(U1-USB_DP)" },
-    { number = "53", type = "smd", shape = "rect", x = 0, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
-    { number = "54", type = "smd", shape = "rect", x = -0.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "+3V3" },
-    { number = "55", type = "smd", shape = "rect", x = -0.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD3" },
-    { number = "56", type = "smd", shape = "rect", x = -1.2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SCLK" },
-    { number = "57", type = "smd", shape = "rect", x = -1.6, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD0" },
-    { number = "58", type = "smd", shape = "rect", x = -2, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD2" },
-    { number = "59", type = "smd", shape = "rect", x = -2.4, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SD1" },
-    { number = "60", type = "smd", shape = "rect", x = -2.8, y = -3.45, angle = 270, size = [0.7, 0.23], net = "/QSPI_SS" },
-    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = -1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = 0, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = 1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = -1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = 0, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "smd", shape = "rect", x = 0, y = 0, size = [3.4, 3.4], net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = 1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = -1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = 0, size = [0.6, 0.6], drill = 0.25, net = "GND" },
-    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = 1.2, size = [0.6, 0.6], drill = 0.25, net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -3.45, y = -2.8, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "2", type = "smd", shape = "rect", x = -3.45, y = -2.4, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO0" },
+    { number = "3", type = "smd", shape = "rect", x = -3.45, y = -2, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO1" },
+    { number = "4", type = "smd", shape = "rect", x = -3.45, y = -1.6, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO2" },
+    { number = "5", type = "smd", shape = "rect", x = -3.45, y = -1.2, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO3" },
+    { number = "6", type = "smd", shape = "rect", x = -3.45, y = -0.8, size = [0.7, 0.23], layers = ["F.Cu"], net = "+1V1" },
+    { number = "7", type = "smd", shape = "rect", x = -3.45, y = -0.4, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO4" },
+    { number = "8", type = "smd", shape = "rect", x = -3.45, y = 0, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO5" },
+    { number = "9", type = "smd", shape = "rect", x = -3.45, y = 0.4, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO6" },
+    { number = "10", type = "smd", shape = "rect", x = -3.45, y = 0.8, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO7" },
+    { number = "11", type = "smd", shape = "rect", x = -3.45, y = 1.2, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "12", type = "smd", shape = "rect", x = -3.45, y = 1.6, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO8" },
+    { number = "13", type = "smd", shape = "rect", x = -3.45, y = 2, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO9" },
+    { number = "14", type = "smd", shape = "rect", x = -3.45, y = 2.4, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO10" },
+    { number = "15", type = "smd", shape = "rect", x = -3.45, y = 2.8, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO11" },
+    { number = "16", type = "smd", shape = "rect", x = -2.8, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO12" },
+    { number = "17", type = "smd", shape = "rect", x = -2.4, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO13" },
+    { number = "18", type = "smd", shape = "rect", x = -2, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO14" },
+    { number = "19", type = "smd", shape = "rect", x = -1.6, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO15" },
+    { number = "20", type = "smd", shape = "rect", x = -1.2, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "21", type = "smd", shape = "rect", x = -0.8, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/XIN" },
+    { number = "22", type = "smd", shape = "rect", x = -0.4, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/XOUT" },
+    { number = "23", type = "smd", shape = "rect", x = 0, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "+1V1" },
+    { number = "24", type = "smd", shape = "rect", x = 0.4, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/SWCLK" },
+    { number = "25", type = "smd", shape = "rect", x = 0.8, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/SWD" },
+    { number = "26", type = "smd", shape = "rect", x = 1.2, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/RUN" },
+    { number = "27", type = "smd", shape = "rect", x = 1.6, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO16" },
+    { number = "28", type = "smd", shape = "rect", x = 2, y = 3.45, angle = 90, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO17" },
+    { number = "29", type = "smd", shape = "rect", x = 2.4, y = 3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO18" },
+    { number = "30", type = "smd", shape = "rect", x = 2.8, y = 3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "31", type = "smd", shape = "rect", x = 3.45, y = 2.8, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO19" },
+    { number = "32", type = "smd", shape = "rect", x = 3.45, y = 2.4, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO20" },
+    { number = "33", type = "smd", shape = "rect", x = 3.45, y = 2, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO21" },
+    { number = "34", type = "smd", shape = "rect", x = 3.45, y = 1.6, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO22" },
+    { number = "35", type = "smd", shape = "rect", x = 3.45, y = 1.2, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO23" },
+    { number = "36", type = "smd", shape = "rect", x = 3.45, y = 0.8, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO24" },
+    { number = "37", type = "smd", shape = "rect", x = 3.45, y = 0.4, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO25" },
+    { number = "38", type = "smd", shape = "rect", x = 3.45, y = 0, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "39", type = "smd", shape = "rect", x = 3.45, y = -0.4, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "+1V1" },
+    { number = "40", type = "smd", shape = "rect", x = 3.45, y = -0.8, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO26_ADC0" },
+    { number = "41", type = "smd", shape = "rect", x = 3.45, y = -1.2, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO27_ADC1" },
+    { number = "42", type = "smd", shape = "rect", x = 3.45, y = -1.6, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO28_ADC2" },
+    { number = "43", type = "smd", shape = "rect", x = 3.45, y = -2, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "/GPIO29_ADC3" },
+    { number = "44", type = "smd", shape = "rect", x = 3.45, y = -2.4, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "45", type = "smd", shape = "rect", x = 3.45, y = -2.8, angle = 180, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "46", type = "smd", shape = "rect", x = 2.8, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/VREG_AVDD" },
+    { number = "47", type = "smd", shape = "rect", x = 2.4, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "GND" },
+    { number = "48", type = "smd", shape = "rect", x = 2, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/VREG_LX" },
+    { number = "49", type = "smd", shape = "rect", x = 1.6, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "50", type = "smd", shape = "rect", x = 1.2, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "+1V1" },
+    { number = "51", type = "smd", shape = "rect", x = 0.8, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "Net-(U1-USB_DM)" },
+    { number = "52", type = "smd", shape = "rect", x = 0.4, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "Net-(U1-USB_DP)" },
+    { number = "53", type = "smd", shape = "rect", x = 0, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "54", type = "smd", shape = "rect", x = -0.4, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "+3V3" },
+    { number = "55", type = "smd", shape = "rect", x = -0.8, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/QSPI_SD3" },
+    { number = "56", type = "smd", shape = "rect", x = -1.2, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/QSPI_SCLK" },
+    { number = "57", type = "smd", shape = "rect", x = -1.6, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/QSPI_SD0" },
+    { number = "58", type = "smd", shape = "rect", x = -2, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/QSPI_SD2" },
+    { number = "59", type = "smd", shape = "rect", x = -2.4, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/QSPI_SD1" },
+    { number = "60", type = "smd", shape = "rect", x = -2.8, y = -3.45, angle = 270, size = [0.7, 0.23], layers = ["F.Cu"], net = "/QSPI_SS" },
+    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = -1.2, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = 0, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = -1.2, y = 1.2, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = -1.2, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = 0, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "smd", shape = "rect", x = 0, y = 0, size = [3.4, 3.4], layers = ["F.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 0, y = 1.2, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = -1.2, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = 0, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
+    { number = "61", type = "thru_hole", shape = "circle", x = 1.2, y = 1.2, size = [0.6, 0.6], drill = 0.25, layers = ["*.Cu"], net = "GND" },
 ]
 
 [[part]]
@@ -758,10 +759,10 @@ y = 82.85
 rotation = 180
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -2.3, y = 3.15, angle = 180, size = [1.5, 2], net = "GND" },
-    { number = "2", type = "smd", shape = "rect", x = 0, y = 3.15, angle = 180, size = [1.5, 2], net = "+3V3" },
-    { number = "3", type = "smd", shape = "rect", x = 2.3, y = 3.15, angle = 180, size = [1.5, 2], net = "VBUS" },
-    { number = "4", type = "smd", shape = "rect", x = 0, y = -3.15, angle = 180, size = [3.8, 2], net = "+3V3" },
+    { number = "1", type = "smd", shape = "rect", x = -2.3, y = 3.15, angle = 180, size = [1.5, 2], layers = ["F.Cu"], net = "GND" },
+    { number = "2", type = "smd", shape = "rect", x = 0, y = 3.15, angle = 180, size = [1.5, 2], layers = ["F.Cu"], net = "+3V3" },
+    { number = "3", type = "smd", shape = "rect", x = 2.3, y = 3.15, angle = 180, size = [1.5, 2], layers = ["F.Cu"], net = "VBUS" },
+    { number = "4", type = "smd", shape = "rect", x = 0, y = -3.15, angle = 180, size = [3.8, 2], layers = ["F.Cu"], net = "+3V3" },
 ]
 
 [[part]]
@@ -773,14 +774,14 @@ y = 87.275
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -3.6, y = -1.905, size = [1.7, 0.65], net = "/FLASH_SS" },
-    { number = "2", type = "smd", shape = "rect", x = -3.6, y = -0.635, size = [1.7, 0.65], net = "/QSPI_SD1" },
-    { number = "3", type = "smd", shape = "rect", x = -3.6, y = 0.635, size = [1.7, 0.65], net = "/QSPI_SD2" },
-    { number = "4", type = "smd", shape = "rect", x = -3.6, y = 1.905, size = [1.7, 0.65], net = "GND" },
-    { number = "5", type = "smd", shape = "rect", x = 3.6, y = 1.905, size = [1.7, 0.65], net = "/QSPI_SD0" },
-    { number = "6", type = "smd", shape = "rect", x = 3.6, y = 0.635, size = [1.7, 0.65], net = "/QSPI_SCLK" },
-    { number = "7", type = "smd", shape = "rect", x = 3.6, y = -0.635, size = [1.7, 0.65], net = "/QSPI_SD3" },
-    { number = "8", type = "smd", shape = "rect", x = 3.6, y = -1.905, size = [1.7, 0.65], net = "+3V3" },
+    { number = "1", type = "smd", shape = "rect", x = -3.6, y = -1.905, size = [1.7, 0.65], layers = ["F.Cu"], net = "/FLASH_SS" },
+    { number = "2", type = "smd", shape = "rect", x = -3.6, y = -0.635, size = [1.7, 0.65], layers = ["F.Cu"], net = "/QSPI_SD1" },
+    { number = "3", type = "smd", shape = "rect", x = -3.6, y = 0.635, size = [1.7, 0.65], layers = ["F.Cu"], net = "/QSPI_SD2" },
+    { number = "4", type = "smd", shape = "rect", x = -3.6, y = 1.905, size = [1.7, 0.65], layers = ["F.Cu"], net = "GND" },
+    { number = "5", type = "smd", shape = "rect", x = 3.6, y = 1.905, size = [1.7, 0.65], layers = ["F.Cu"], net = "/QSPI_SD0" },
+    { number = "6", type = "smd", shape = "rect", x = 3.6, y = 0.635, size = [1.7, 0.65], layers = ["F.Cu"], net = "/QSPI_SCLK" },
+    { number = "7", type = "smd", shape = "rect", x = 3.6, y = -0.635, size = [1.7, 0.65], layers = ["F.Cu"], net = "/QSPI_SD3" },
+    { number = "8", type = "smd", shape = "rect", x = 3.6, y = -1.905, size = [1.7, 0.65], layers = ["F.Cu"], net = "+3V3" },
 ]
 
 [[part]]
@@ -792,8 +793,8 @@ y = 112.4
 rotation = 0
 must_match = false
 pads = [
-    { number = "1", type = "smd", shape = "rect", x = -1.1, y = 0.85, size = [1.4, 1.2], net = "/XIN" },
-    { number = "2", type = "smd", shape = "rect", x = 1.1, y = 0.85, size = [1.4, 1.2], net = "GND" },
-    { number = "3", type = "smd", shape = "rect", x = 1.1, y = -0.85, size = [1.4, 1.2], net = "Net-(C4-Pad1)" },
-    { number = "4", type = "smd", shape = "rect", x = -1.1, y = -0.85, size = [1.4, 1.2], net = "GND" },
+    { number = "1", type = "smd", shape = "rect", x = -1.1, y = 0.85, size = [1.4, 1.2], layers = ["F.Cu"], net = "/XIN" },
+    { number = "2", type = "smd", shape = "rect", x = 1.1, y = 0.85, size = [1.4, 1.2], layers = ["F.Cu"], net = "GND" },
+    { number = "3", type = "smd", shape = "rect", x = 1.1, y = -0.85, size = [1.4, 1.2], layers = ["F.Cu"], net = "Net-(C4-Pad1)" },
+    { number = "4", type = "smd", shape = "rect", x = -1.1, y = -0.85, size = [1.4, 1.2], layers = ["F.Cu"], net = "GND" },
 ]
