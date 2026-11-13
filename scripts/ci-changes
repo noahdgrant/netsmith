@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Which of CI's jobs a change needs. Reads the changed paths (one per line, from the repository's
-# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=` and `locks=` as `true` or `false`, and `crates=`; the
+# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=`, `locks=` and `designs=` as `true` or `false`, and `crates=`; the
 # `changes` job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has
 # no flag.
 #   rust     clippy and the tests: anything a build or a test reads.
@@ -47,6 +47,14 @@
 #            no board, so a change to netsmith-pcb, -place-route, -fab, -netlist, -3d, -view or
 #            -editor cannot move a pick (the netsmith-kicad crate keeps `locks`: the umbrella's
 #            design stage still reads its mapping).
+#   designs  the `designs` job: scripts/check-example-designs.sh builds every example with
+#            `--emit-design` and compares the designs with the committed `<stem>.design.json`
+#            (issue #609). A design is what the checker, the solver and the design stage make of an
+#            example, std/ and the catalogs, so it follows `locks`, and also netsmith-pcb and
+#            netsmith-fab, which `locks` leaves out: the design stage loads each part's footprint
+#            (netsmith-pcb, which uses netsmith-fab's geometry), and a through-hole one makes the
+#            part fitted by hand. Not the router (netsmith-place-route), netsmith-netlist, -3d,
+#            -view or -editor: none of them runs before the design is made.
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -89,11 +97,11 @@ root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # mapping only, and `build_with` takes the libraries as an argument.)
 KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith::build\b|netsmith::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
-rust=false kicad=false recipes=false no_kicad=false locks=false
+rust=false kicad=false recipes=false no_kicad=false locks=false designs=false
 # The crates the change touches, for `crates=`; `wide` once a path outside the crates turns `rust` on
 # and names no crate. `mapped` is the crates a path outside crates/ names (worked out for each path).
 crates="" wide=false mapped=""
-all() { rust=true kicad=true recipes=true no_kicad=true locks=true; }
+all() { rust=true kicad=true recipes=true no_kicad=true locks=true designs=true; }
 
 # Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
 asks_for_kicad() {
@@ -117,11 +125,18 @@ kicad_crate() {
     esac
 }
 
-# A crate after the solver (netsmith-pcb, -place-route, -fab, -netlist): as `kicad_crate`, but
-# `netsmith lock` runs none of it, so the change does not start `locks`.
-after_solver() {
+# A crate after the solver that the design stage still runs (netsmith-pcb, -fab: the footprints): as
+# `kicad_crate`, but `netsmith lock` runs none of it, so the change does not start `locks`.
+before_design() {
     kicad_crate "$@"
     locks=false
+}
+
+# A crate after the design stage (netsmith-place-route, -netlist): as `before_design`, and no design
+# depends on it either, so the change does not start `designs`.
+after_solver() {
+    before_design "$@"
+    designs=false
 }
 
 # The crates whose tests read an example (`$1`: a path under examples/): the file of a board or a
@@ -147,8 +162,10 @@ while IFS= read -r path; do
     [ -n "$path" ] || continue
     # A Markdown file in the root (README.md, AGENTS.md, ...) is prose.
     case "$path" in */*) ;; *.md) continue ;; esac
-    # `rust` and `locks` are worked out for this path alone, then added to what the others gave.
+    # `rust`, `locks` and `designs` are worked out for this path alone, then added to what the
+    # others gave.
     rust_before="$rust" rust=false locks_before="$locks" locks=false mapped=""
+    designs_before="$designs" designs=false
     case "$path" in
         .github/workflows/* | .github/actions/* | scripts/*) all ;;
 
@@ -166,8 +183,10 @@ while IFS= read -r path; do
         crates/netsmith/src/refresh/*) rust=true recipes=true ;;
         crates/netsmith-kicad/* | crates/netsmith-core/*) kicad_crate "${path#crates/*/}" "$path" ;;
         crates/netsmith-design/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
-        # After the solver: no pick of `netsmith lock` depends on them.
-        crates/netsmith-fab/* | crates/netsmith-pcb/* | crates/netsmith-place-route/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
+        # After the solver: no pick of `netsmith lock` depends on them. The design stage loads the
+        # footprints (netsmith-pcb, on netsmith-fab's geometry); the router and the netlist come after it.
+        crates/netsmith-fab/* | crates/netsmith-pcb/*) before_design "${path#crates/*/}" "$path" ;;
+        crates/netsmith-place-route/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;
@@ -175,7 +194,7 @@ while IFS= read -r path; do
         # The test helpers: never linked into the binary, and every test builds with them.
         crates/netsmith-testkit/*) rust=true kicad=true ;;
         crates/*/tests/*) rust=true ;;
-        crates/*) rust=true no_kicad=true locks=true ;;
+        crates/*) rust=true no_kicad=true locks=true designs=true ;;
         Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;
         std/*) all ;;
         examples/*) all; mapped="$(example_readers "$path")" ;;
@@ -199,6 +218,7 @@ while IFS= read -r path; do
     fi
     [ "$rust_before" = true ] && rust=true
     [ "$locks_before" = true ] && locks=true
+    [ "$designs_before" = true ] && designs=true
 done
 [ "$wide" = false ] || crates=""
 
@@ -207,4 +227,5 @@ echo "kicad=$kicad"
 echo "recipes=$recipes"
 echo "no_kicad=$no_kicad"
 echo "locks=$locks"
+echo "designs=$designs"
 echo "crates=$crates"

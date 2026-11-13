@@ -7,6 +7,9 @@ license.workspace = true
 [dependencies]
 # A placed board is saved as JSON (`netsmith fab --save-placed`), and it holds the process.
 serde = { version = "1.0.229", features = ["derive"] }
+# A design is saved as JSON (`netsmith build --emit-design`, the examples' `<stem>.design.json`);
+# `float_roundtrip` reads each number back as the same `f64`.
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 
 [dev-dependencies]
 # An inflater that is not ours, to check the PNG writer's deflate.

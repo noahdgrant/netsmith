@@ -37,6 +37,16 @@ pub struct Args {
     /// gone (see _The pick lock_ in docs/LANGUAGE.md).
     #[arg(long)]
     pub locked: bool,
+    /// Also write the design of each board to this file, as JSON.
+    ///
+    /// The design is what the design stage hands the placer: the board's parts with their pins,
+    /// its nets, its process and what its physical file states. The file is a JSON array with one
+    /// design per board, in the order they are built, and the same design is always the same
+    /// bytes. Nothing is written when a board fails. Each example keeps the file of its source
+    /// beside it (`<stem>.design.json`), and scripts/check-example-designs.sh fails when one is
+    /// stale.
+    #[arg(long, value_name = "FILE")]
+    pub emit_design: Option<PathBuf>,
     #[command(flatten)]
     pub output: common::Output,
 }
@@ -57,6 +67,7 @@ pub fn run(args: Args) -> ExitCode {
             format: args.output.format.into(),
             notes: args.output.notes.into(),
             write: true,
+            emit_design: args.emit_design.as_deref(),
         })
     })
 }
@@ -71,6 +82,8 @@ pub(super) struct BuildRun<'a> {
     pub(super) notes: NotesMode,
     /// `build` writes the schematic, the lock and the libraries' tables; `check` writes nothing.
     pub(super) write: bool,
+    /// The file to write the boards' designs to (`build --emit-design`).
+    pub(super) emit_design: Option<&'a Path>,
 }
 
 /// What a board said that did not stop it: printed as text, or kept for the JSON report.
@@ -114,6 +127,8 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     }
     let out = run.out.unwrap_or(&target.build_out);
     let mut code = ExitCode::SUCCESS;
+    // The designs of the boards built, for `--emit-design`.
+    let mut designs = Vec::new();
     // An error that stops a file, printed or kept.
     let fail = |report: &mut Report, finding: Finding, text: &str| {
         if json {
@@ -326,6 +341,19 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 dir: written.map(|d| d.display().to_string()),
                 parts: Vec::new(),
             });
+            if run.emit_design.is_some() {
+                designs.push(b.design);
+            }
+        }
+    }
+    if let Some(file) = run.emit_design {
+        if code != ExitCode::SUCCESS {
+            eprintln!("note: {} is not written, as a board failed", file.display());
+        } else if let Err(e) = fs::write(file, netsmith_core::design_file::to_json(&designs)) {
+            eprintln!("{}: {e}", file.display());
+            return ExitCode::from(2);
+        } else if !json {
+            println!("wrote {}", file.display());
         }
     }
     if json {
@@ -346,6 +374,7 @@ mod tests {
             out: None,
             strict: false,
             locked: false,
+            emit_design: None,
             output: output(),
         }
     }

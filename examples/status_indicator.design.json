@@ -1,0 +1,443 @@
+[
+  {
+    "name": "IndicatorExample",
+    "parts": [
+      {
+        "refdes": "J2",
+        "kind": "Header1x2",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x02",
+        "package": null,
+        "path": "enable_in",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J1",
+        "kind": "Header1x2",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x02",
+        "package": null,
+        "path": "power_in",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C1",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "status_indicator.bypass",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R1",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "1k",
+        "package": "0402",
+        "path": "status_indicator.current_limit",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D1",
+        "kind": "Led",
+        "provides": [],
+        "value": "LTST-C190KGKT",
+        "package": "0603",
+        "path": "status_indicator.led",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "name": "net-enable_in.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "1"
+          },
+          {
+            "refdes": "R1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-enable_in.p2",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "2"
+          },
+          {
+            "refdes": "D1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "2"
+          },
+          {
+            "refdes": "J2",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-power_in.p1",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-status_indicator.current_limit.b",
+        "pins": [
+          {
+            "refdes": "D1",
+            "pin": "2"
+          },
+          {
+            "refdes": "R1",
+            "pin": "2"
+          }
+        ]
+      }
+    ],
+    "process": {
+      "name": "TwoLayer",
+      "fabricator": "JLCPCB",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "min_track": 0.1,
+      "min_clearance": 0.1,
+      "min_drill": 0.15,
+      "min_via_diameter": 0.25,
+      "min_annular_ring": 0.18,
+      "min_via_ring": 0.05,
+      "min_hole_clearance": 0.2,
+      "min_plated_hole_clearance": 0.28,
+      "min_pad_to_pad": 0.15,
+      "min_mask_to_track": 0.09,
+      "min_npth_drill": 0.5,
+      "min_plated_slot": 0.5,
+      "min_npth_slot": 1.0,
+      "via_drill": 0.2,
+      "via_diameter": 0.45,
+      "min_hole_to_hole": 0.45,
+      "min_via_hole_to_hole": 0.2,
+      "min_edge_clearance": 0.2,
+      "min_silk_width": 0.15,
+      "min_text_height": 1.0,
+      "min_silk_to_pad": 0.15,
+      "min_mask_bridge": 0.13,
+      "via_in_pad": 0.55,
+      "max_temperature_rise": null,
+      "track_width_tolerance": 0.2,
+      "hole_plating": 0.018,
+      "stackup": {
+        "layers": 2,
+        "thickness": [
+          1.6,
+          1.6
+        ],
+        "copper_weight": 1.0,
+        "inner": null
+      }
+    },
+    "features": {
+      "net_widths": [],
+      "net_currents": [],
+      "outline": null,
+      "cutouts": [],
+      "pours": [],
+      "keepouts": [],
+      "heights": [
+        {
+          "path": "enable_in",
+          "height": 8.9
+        },
+        {
+          "path": "power_in",
+          "height": 8.9
+        },
+        {
+          "path": "status_indicator.bypass",
+          "height": 0.55
+        },
+        {
+          "path": "status_indicator.current_limit",
+          "height": 0.4
+        }
+      ],
+      "protrusions": [],
+      "models": [],
+      "case_models": [],
+      "hand_fitted": [
+        "enable_in",
+        "power_in"
+      ],
+      "labels": [],
+      "constraints": [],
+      "offsets": [],
+      "line_texts": {}
+    },
+    "interfaces": [
+      {
+        "path": "power_3v3",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "net-power_in.p1"
+          },
+          {
+            "name": "neg",
+            "net": "net-enable_in.p2"
+          }
+        ]
+      },
+      {
+        "path": "status_enable",
+        "type_name": "Logic",
+        "members": [
+          {
+            "name": "line",
+            "net": "net-enable_in.p1"
+          }
+        ]
+      },
+      {
+        "path": "status_enable.reference",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "net-power_in.p1"
+          },
+          {
+            "name": "neg",
+            "net": "net-enable_in.p2"
+          }
+        ]
+      },
+      {
+        "path": "status_indicator.enable",
+        "type_name": "Logic",
+        "members": [
+          {
+            "name": "line",
+            "net": "net-enable_in.p1"
+          }
+        ]
+      },
+      {
+        "path": "status_indicator.enable.reference",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "net-power_in.p1"
+          },
+          {
+            "name": "neg",
+            "net": "net-enable_in.p2"
+          }
+        ]
+      },
+      {
+        "path": "status_indicator.power",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "net-power_in.p1"
+          },
+          {
+            "name": "neg",
+            "net": "net-enable_in.p2"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "path": "power_3v3",
+        "kind": "doc",
+        "text": "The board runs from a 3.3 V rail and exposes one logic input.",
+        "at": {
+          "file": "status_indicator.nsm",
+          "line": 38
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "status_indicator",
+        "kind": "doc",
+        "text": "A reusable status light indicator with a logic input and local power filtering.",
+        "at": {
+          "file": "status_indicator.nsm",
+          "line": 10
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "power_in",
+        "kind": "doc",
+        "text": "The rail comes in through one header, and the enable signal through another.",
+        "at": {
+          "file": "status_indicator.nsm",
+          "line": 45
+        },
+        "anchors": [
+          "power_in"
+        ],
+        "result": null
+      }
+    ],
+    "modules": [
+      {
+        "path": "status_indicator",
+        "type_name": "StatusIndicator",
+        "ports": [
+          {
+            "name": "power.pos",
+            "net": "net-power_in.p1"
+          },
+          {
+            "name": "power.neg",
+            "net": "net-enable_in.p2"
+          },
+          {
+            "name": "enable.line",
+            "net": "net-enable_in.p1"
+          },
+          {
+            "name": "enable.reference.pos",
+            "net": "net-power_in.p1"
+          },
+          {
+            "name": "enable.reference.neg",
+            "net": "net-enable_in.p2"
+          }
+        ]
+      }
+    ]
+  }
+]

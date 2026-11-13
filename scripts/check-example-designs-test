@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Tests scripts/check-example-designs.sh over a fake examples folder with a stub `netsmith`: for
+# `build --emit-design <file>` it writes $STUB_DESIGN (default `[]`) to the file and exits with
+# $STUB_CODE (default 0). The script must pass for boards whose design files are current, and fail
+# for no board at all, for a missing, a stale and an orphan design file (naming the file), and
+# for a board that does not build; `--update` must write what is missing or stale. It needs
+# nothing but bash.
+#   scripts/check-example-designs-test
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/check-example-designs.sh"
+
+tree="$(mktemp -d)"
+trap 'rm -rf "$tree"' EXIT
+
+stub="$tree/netsmith"
+cat > "$stub" <<'STUB'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = --emit-design ]; then
+        [ "${STUB_CODE:-0}" -ne 0 ] || printf '%s\n' "${STUB_DESIGN:-[]}" > "$2"
+        shift
+    fi
+    shift
+done
+exit "${STUB_CODE:-0}"
+STUB
+chmod +x "$stub"
+
+failed=0
+
+# fresh: an empty examples folder.
+fresh() {
+    rm -rf "$tree/examples"
+    mkdir -p "$tree/examples"
+}
+
+# run <name> <want exit> <text the output must hold or ''> [script arguments...]: the script over
+# the folder, with the stub.
+run() {
+    local name="$1" want="$2" text="$3" code=0 out
+    shift 3
+    out="$(NETSMITH_EXAMPLES_DIR="$tree/examples" "$script" "$@" "$stub" 2>&1)" || code=$?
+    if [ "$code" -ne "$want" ]; then
+        echo "FAIL  $name: exit $code, wanted $want"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failed=1
+    elif [ -n "$text" ] && ! printf '%s' "$out" | grep -qF -- "$text"; then
+        echo "FAIL  $name: the output does not say: $text"
+        printf '%s\n' "$out" | sed 's/^/      /'
+        failed=1
+    else
+        echo "ok    $name"
+    fi
+}
+
+fresh
+run "no board at all fails" 1 "found no board"
+
+# A board that is one file, its physical file (not a board), a project with a top_level list, and
+# the board that cannot build.
+fresh
+touch "$tree/examples/led.nsm" "$tree/examples/led.physical.nsm" "$tree/examples/carrier_and_cards.nsm"
+printf '[]\n' > "$tree/examples/led.design.json"
+mkdir -p "$tree/examples/proj/src"
+printf '[project]\nname = "proj"\ntop_level = ["src/main.nsm"]\n' > "$tree/examples/proj/netsmith.toml"
+touch "$tree/examples/proj/src/main.nsm"
+printf '[]\n' > "$tree/examples/proj/src/main.design.json"
+run "boards with current design files pass" 0 "2 boards, every design file is current"
+run "the board that cannot build is skipped with its reason" 0 "skip  examples/carrier_and_cards.nsm"
+
+# A folder with no netsmith.toml is not a board.
+mkdir -p "$tree/examples/notes"
+run "a folder that is no project is not counted" 0 "2 boards"
+
+STUB_DESIGN='[{"name": "Moved"}]' run "a stale design file fails and names the file" 1 "led.design.json is stale"
+
+rm "$tree/examples/proj/src/main.design.json"
+run "a missing design file fails and names the file" 1 "proj/src/main.design.json is missing"
+run "--update writes the missing file" 0 "wrote proj/src/main.design.json" --update
+run "and then it is current" 0 "every design file is current"
+
+touch "$tree/examples/gone.design.json"
+run "an orphan design file beside the boards fails and names the file" 1 "gone.design.json: an orphan design file"
+rm "$tree/examples/gone.design.json"
+
+touch "$tree/examples/proj/src/old.design.json"
+run "an orphan design file inside a project fails and names the file" 1 "proj/src/old.design.json: an orphan design file"
+rm "$tree/examples/proj/src/old.design.json"
+
+printf '[project]\nname = "proj"\n' > "$tree/examples/proj/netsmith.toml"
+run "a project with no top_level list fails" 1 "found no file in the top_level list"
+printf '[project]\nname = "proj"\ntop_level = ["src/main.nsm"]\n' > "$tree/examples/proj/netsmith.toml"
+
+rm "$tree/examples/carrier_and_cards.nsm"
+run "a skipped board that is gone fails" 1 "carrier_and_cards.nsm is named in no_design"
+touch "$tree/examples/carrier_and_cards.nsm"
+
+STUB_CODE=1 run "a board that does not build fails" 1 "the board does not build (exit 1)"
+
+if [ "$failed" -ne 0 ]; then
+    echo "check-example-designs-test: FAILED"
+    exit 1
+fi
+echo "check-example-designs-test: ok"

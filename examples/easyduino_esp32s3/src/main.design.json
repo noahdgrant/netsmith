@@ -1,0 +1,4219 @@
+[
+  {
+    "name": "EasyduinoEsp32s3",
+    "parts": [
+      {
+        "refdes": "Q2",
+        "kind": "Ss8050",
+        "provides": [],
+        "value": "SS8050",
+        "package": "SOT-23",
+        "path": "auto_reset.q_boot",
+        "pins": [
+          {
+            "name": "base",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "emitter",
+            "datasheet": "E",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "collector",
+            "datasheet": "C",
+            "kind": "passive",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "Q1",
+        "kind": "Ss8050",
+        "provides": [],
+        "value": "SS8050",
+        "package": "SOT-23",
+        "path": "auto_reset.q_en",
+        "pins": [
+          {
+            "name": "base",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "emitter",
+            "datasheet": "E",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "collector",
+            "datasheet": "C",
+            "kind": "passive",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R7",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "10k",
+        "package": "0402",
+        "path": "auto_reset.r_dtr",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R8",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "10k",
+        "package": "0402",
+        "path": "auto_reset.r_rts",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "SW2",
+        "kind": "XunpuTs1088",
+        "provides": [],
+        "value": "TS-1088-AR02016",
+        "package": "SMD,4x3mm",
+        "path": "boot",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C10",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "boot_100n",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U2",
+        "kind": "Cp2102n",
+        "provides": [],
+        "value": "CP2102N-A02-GQFN28",
+        "package": "QFN-28-EP(5x5)",
+        "path": "bridge",
+        "pins": [
+          {
+            "name": "dcd",
+            "datasheet": "DCD",
+            "kind": "input",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "ri_clk",
+            "datasheet": "RI/CLK",
+            "kind": "bidirectional",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gnd",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "3",
+              "29"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dp",
+            "datasheet": "D+",
+            "kind": "bidirectional",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dm",
+            "datasheet": "D-",
+            "kind": "bidirectional",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vdd",
+            "datasheet": "VDD",
+            "kind": "power",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vregin",
+            "datasheet": "VREGIN",
+            "kind": "power",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vbus",
+            "datasheet": "VBUS",
+            "kind": "input",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "rstb",
+            "datasheet": "RSTb",
+            "kind": "bidirectional",
+            "pads": [
+              "9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "nc",
+            "datasheet": "NC",
+            "kind": "no_connect",
+            "pads": [
+              "10"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "suspendb",
+            "datasheet": "SUSPENDb",
+            "kind": "output",
+            "pads": [
+              "11"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "suspend",
+            "datasheet": "SUSPEND",
+            "kind": "output",
+            "pads": [
+              "12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "chren",
+            "datasheet": "CHREN",
+            "kind": "output",
+            "pads": [
+              "13"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "chr1",
+            "datasheet": "CHR1",
+            "kind": "output",
+            "pads": [
+              "14"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "chr0",
+            "datasheet": "CHR0",
+            "kind": "output",
+            "pads": [
+              "15"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio3",
+            "datasheet": "GPIO.3/WAKEUP",
+            "kind": "bidirectional",
+            "pads": [
+              "16"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio2",
+            "datasheet": "GPIO.2/RS485",
+            "kind": "bidirectional",
+            "pads": [
+              "17"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio1",
+            "datasheet": "GPIO.1/RXT",
+            "kind": "bidirectional",
+            "pads": [
+              "18"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio0",
+            "datasheet": "GPIO.0/TXT",
+            "kind": "bidirectional",
+            "pads": [
+              "19"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio6",
+            "datasheet": "GPIO.6",
+            "kind": "bidirectional",
+            "pads": [
+              "20"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio5",
+            "datasheet": "GPIO.5",
+            "kind": "bidirectional",
+            "pads": [
+              "21"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio4",
+            "datasheet": "GPIO.4",
+            "kind": "bidirectional",
+            "pads": [
+              "22"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cts",
+            "datasheet": "CTS",
+            "kind": "input",
+            "pads": [
+              "23"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "rts",
+            "datasheet": "RTS",
+            "kind": "output",
+            "pads": [
+              "24"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "rxd",
+            "datasheet": "RXD",
+            "kind": "input",
+            "pads": [
+              "25"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "txd",
+            "datasheet": "TXD",
+            "kind": "output",
+            "pads": [
+              "26"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dsr",
+            "datasheet": "DSR",
+            "kind": "input",
+            "pads": [
+              "27"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dtr",
+            "datasheet": "DTR",
+            "kind": "output",
+            "pads": [
+              "28"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R5",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0402",
+        "path": "bridge_reset_pullup.resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C1",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "bridge_vdd_cap",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C8",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "en_100n_a",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C9",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "en_100n_b",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R9",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "10k",
+        "package": "0402",
+        "path": "en_pullup.resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J3",
+        "kind": "Esp32S3DevKitCHeaders",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Esp32S3DevKitCHeaders",
+        "package": "2x22,P=2.54mm",
+        "path": "headers",
+        "pins": [
+          {
+            "name": "v3v3",
+            "datasheet": "3V3",
+            "kind": "passive",
+            "pads": [
+              "1",
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "en",
+            "datasheet": "EN",
+            "kind": "passive",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio4",
+            "datasheet": "GPIO4",
+            "kind": "passive",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio5",
+            "datasheet": "GPIO5",
+            "kind": "passive",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio6",
+            "datasheet": "GPIO6",
+            "kind": "passive",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio7",
+            "datasheet": "GPIO7",
+            "kind": "passive",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio15",
+            "datasheet": "GPIO15",
+            "kind": "passive",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio16",
+            "datasheet": "GPIO16",
+            "kind": "passive",
+            "pads": [
+              "9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio17",
+            "datasheet": "GPIO17",
+            "kind": "passive",
+            "pads": [
+              "10"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio18",
+            "datasheet": "GPIO18",
+            "kind": "passive",
+            "pads": [
+              "11"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio8",
+            "datasheet": "GPIO8",
+            "kind": "passive",
+            "pads": [
+              "12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio3",
+            "datasheet": "GPIO3",
+            "kind": "passive",
+            "pads": [
+              "13"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio46",
+            "datasheet": "GPIO46",
+            "kind": "passive",
+            "pads": [
+              "14"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio9",
+            "datasheet": "GPIO9",
+            "kind": "passive",
+            "pads": [
+              "15"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio10",
+            "datasheet": "GPIO10",
+            "kind": "passive",
+            "pads": [
+              "16"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio11",
+            "datasheet": "GPIO11",
+            "kind": "passive",
+            "pads": [
+              "17"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio12",
+            "datasheet": "GPIO12",
+            "kind": "passive",
+            "pads": [
+              "18"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio13",
+            "datasheet": "GPIO13",
+            "kind": "passive",
+            "pads": [
+              "19"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio14",
+            "datasheet": "GPIO14",
+            "kind": "passive",
+            "pads": [
+              "20"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vbus",
+            "datasheet": "5V",
+            "kind": "passive",
+            "pads": [
+              "21"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gnd",
+            "datasheet": "GND",
+            "kind": "passive",
+            "pads": [
+              "22",
+              "23",
+              "24",
+              "44"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio19",
+            "datasheet": "GPIO19",
+            "kind": "passive",
+            "pads": [
+              "25"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio20",
+            "datasheet": "GPIO20",
+            "kind": "passive",
+            "pads": [
+              "26"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio21",
+            "datasheet": "GPIO21",
+            "kind": "passive",
+            "pads": [
+              "27"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio47",
+            "datasheet": "GPIO47",
+            "kind": "passive",
+            "pads": [
+              "28"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio48",
+            "datasheet": "GPIO48",
+            "kind": "passive",
+            "pads": [
+              "29"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio45",
+            "datasheet": "GPIO45",
+            "kind": "passive",
+            "pads": [
+              "30"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio0",
+            "datasheet": "GPIO0",
+            "kind": "passive",
+            "pads": [
+              "31"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio35",
+            "datasheet": "GPIO35",
+            "kind": "passive",
+            "pads": [
+              "32"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio36",
+            "datasheet": "GPIO36",
+            "kind": "passive",
+            "pads": [
+              "33"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio37",
+            "datasheet": "GPIO37",
+            "kind": "passive",
+            "pads": [
+              "34"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio38",
+            "datasheet": "GPIO38",
+            "kind": "passive",
+            "pads": [
+              "35"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio39",
+            "datasheet": "GPIO39",
+            "kind": "passive",
+            "pads": [
+              "36"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio40",
+            "datasheet": "GPIO40",
+            "kind": "passive",
+            "pads": [
+              "37"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio41",
+            "datasheet": "GPIO41",
+            "kind": "passive",
+            "pads": [
+              "38"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio42",
+            "datasheet": "GPIO42",
+            "kind": "passive",
+            "pads": [
+              "39"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio2",
+            "datasheet": "GPIO2",
+            "kind": "passive",
+            "pads": [
+              "40"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio1",
+            "datasheet": "GPIO1",
+            "kind": "passive",
+            "pads": [
+              "41"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio44",
+            "datasheet": "GPIO44",
+            "kind": "passive",
+            "pads": [
+              "42"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "gpio43",
+            "datasheet": "GPIO43",
+            "kind": "passive",
+            "pads": [
+              "43"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U1",
+        "kind": "Esp32S3Wroom1",
+        "provides": [],
+        "value": "ESP32-S3-WROOM-1-N4",
+        "package": "SMD, 25.5x18mm",
+        "path": "module",
+        "pins": [
+          {
+            "name": "vdd.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "1",
+              "40",
+              "41"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vdd.pos",
+            "datasheet": "3V3",
+            "kind": "power",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "en",
+            "datasheet": "EN",
+            "kind": "input",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io4",
+            "datasheet": "IO4",
+            "kind": "bidirectional",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io5",
+            "datasheet": "IO5",
+            "kind": "bidirectional",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io6",
+            "datasheet": "IO6",
+            "kind": "bidirectional",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io7",
+            "datasheet": "IO7",
+            "kind": "bidirectional",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io15",
+            "datasheet": "IO15",
+            "kind": "bidirectional",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io16",
+            "datasheet": "IO16",
+            "kind": "bidirectional",
+            "pads": [
+              "9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io17",
+            "datasheet": "IO17",
+            "kind": "bidirectional",
+            "pads": [
+              "10"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io18",
+            "datasheet": "IO18",
+            "kind": "bidirectional",
+            "pads": [
+              "11"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io8",
+            "datasheet": "IO8",
+            "kind": "bidirectional",
+            "pads": [
+              "12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io19",
+            "datasheet": "IO19",
+            "kind": "bidirectional",
+            "pads": [
+              "13"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io20",
+            "datasheet": "IO20",
+            "kind": "bidirectional",
+            "pads": [
+              "14"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io3",
+            "datasheet": "IO3",
+            "kind": "bidirectional",
+            "pads": [
+              "15"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io46",
+            "datasheet": "IO46",
+            "kind": "bidirectional",
+            "pads": [
+              "16"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io9",
+            "datasheet": "IO9",
+            "kind": "bidirectional",
+            "pads": [
+              "17"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io10",
+            "datasheet": "IO10",
+            "kind": "bidirectional",
+            "pads": [
+              "18"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io11",
+            "datasheet": "IO11",
+            "kind": "bidirectional",
+            "pads": [
+              "19"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io12",
+            "datasheet": "IO12",
+            "kind": "bidirectional",
+            "pads": [
+              "20"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io13",
+            "datasheet": "IO13",
+            "kind": "bidirectional",
+            "pads": [
+              "21"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io14",
+            "datasheet": "IO14",
+            "kind": "bidirectional",
+            "pads": [
+              "22"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io21",
+            "datasheet": "IO21",
+            "kind": "bidirectional",
+            "pads": [
+              "23"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io47",
+            "datasheet": "IO47",
+            "kind": "bidirectional",
+            "pads": [
+              "24"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io48",
+            "datasheet": "IO48",
+            "kind": "bidirectional",
+            "pads": [
+              "25"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io45",
+            "datasheet": "IO45",
+            "kind": "bidirectional",
+            "pads": [
+              "26"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io0",
+            "datasheet": "IO0",
+            "kind": "bidirectional",
+            "pads": [
+              "27"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io35",
+            "datasheet": "IO35",
+            "kind": "bidirectional",
+            "pads": [
+              "28"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io36",
+            "datasheet": "IO36",
+            "kind": "bidirectional",
+            "pads": [
+              "29"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io37",
+            "datasheet": "IO37",
+            "kind": "bidirectional",
+            "pads": [
+              "30"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io38",
+            "datasheet": "IO38",
+            "kind": "bidirectional",
+            "pads": [
+              "31"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io39",
+            "datasheet": "IO39",
+            "kind": "bidirectional",
+            "pads": [
+              "32"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io40",
+            "datasheet": "IO40",
+            "kind": "bidirectional",
+            "pads": [
+              "33"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io41",
+            "datasheet": "IO41",
+            "kind": "bidirectional",
+            "pads": [
+              "34"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io42",
+            "datasheet": "IO42",
+            "kind": "bidirectional",
+            "pads": [
+              "35"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "rxd0",
+            "datasheet": "RXD0",
+            "kind": "bidirectional",
+            "pads": [
+              "36"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "txd0",
+            "datasheet": "TXD0",
+            "kind": "bidirectional",
+            "pads": [
+              "37"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io2",
+            "datasheet": "IO2",
+            "kind": "bidirectional",
+            "pads": [
+              "38"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "io1",
+            "datasheet": "IO1",
+            "kind": "bidirectional",
+            "pads": [
+              "39"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D3",
+        "kind": "Led",
+        "provides": [],
+        "value": "SZYY0402B",
+        "package": "0402",
+        "path": "power_led",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R10",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0402",
+        "path": "power_led_resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U3",
+        "kind": "LinearRegulator",
+        "provides": [],
+        "value": "AMS1117-3.3",
+        "package": "SOT-223",
+        "path": "regulator",
+        "pins": [
+          {
+            "name": "vin.pos",
+            "datasheet": "IN",
+            "kind": "power",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": "takes"
+          },
+          {
+            "name": "vin.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vout.pos",
+            "datasheet": "OUT",
+            "kind": "power",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": "gives"
+          }
+        ]
+      },
+      {
+        "refdes": "SW1",
+        "kind": "XunpuTs1088",
+        "provides": [],
+        "value": "TS-1088-AR02016",
+        "package": "SMD,4x3mm",
+        "path": "reset",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R6",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "10k",
+        "package": "0402",
+        "path": "suspend_pulldown.resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R3",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0402",
+        "path": "usb_native.cc1_rd",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R4",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0402",
+        "path": "usb_native.cc2_rd",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J2",
+        "kind": "ShouhanTypeC16Pin",
+        "provides": [
+          "UsbCSinkReceptacle",
+          "Connector"
+        ],
+        "value": "TYPE-C 16PIN 2MD(073)",
+        "package": "SMD",
+        "path": "usb_native.receptacle",
+        "pins": [
+          {
+            "name": "vbus.pos",
+            "datasheet": "VBUS",
+            "kind": "power",
+            "pads": [
+              "A4",
+              "A9",
+              "B4",
+              "B9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vbus.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "A1",
+              "A12",
+              "B1",
+              "B12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cc1",
+            "datasheet": "CC1",
+            "kind": "passive",
+            "pads": [
+              "A5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cc2",
+            "datasheet": "CC2",
+            "kind": "passive",
+            "pads": [
+              "B5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dp",
+            "datasheet": "D+",
+            "kind": "bidirectional",
+            "pads": [
+              "A6",
+              "B6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dm",
+            "datasheet": "D-",
+            "kind": "bidirectional",
+            "pads": [
+              "A7",
+              "B7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "sbu1",
+            "datasheet": "SBU1",
+            "kind": "passive",
+            "pads": [
+              "A8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "sbu2",
+            "datasheet": "SBU2",
+            "kind": "passive",
+            "pads": [
+              "B8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "shield",
+            "datasheet": "SHIELD",
+            "kind": "passive",
+            "pads": [
+              "S1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D2",
+        "kind": "Schottky",
+        "provides": [],
+        "value": "RB161QS-40T18R",
+        "package": "SMD1006",
+        "path": "usb_native_diode",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R1",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0402",
+        "path": "usb_uart.cc1_rd",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R2",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0402",
+        "path": "usb_uart.cc2_rd",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J1",
+        "kind": "ShouhanTypeC16Pin",
+        "provides": [
+          "UsbCSinkReceptacle",
+          "Connector"
+        ],
+        "value": "TYPE-C 16PIN 2MD(073)",
+        "package": "SMD",
+        "path": "usb_uart.receptacle",
+        "pins": [
+          {
+            "name": "vbus.pos",
+            "datasheet": "VBUS",
+            "kind": "power",
+            "pads": [
+              "A4",
+              "A9",
+              "B4",
+              "B9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vbus.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "A1",
+              "A12",
+              "B1",
+              "B12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cc1",
+            "datasheet": "CC1",
+            "kind": "passive",
+            "pads": [
+              "A5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cc2",
+            "datasheet": "CC2",
+            "kind": "passive",
+            "pads": [
+              "B5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dp",
+            "datasheet": "D+",
+            "kind": "bidirectional",
+            "pads": [
+              "A6",
+              "B6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "dm",
+            "datasheet": "D-",
+            "kind": "bidirectional",
+            "pads": [
+              "A7",
+              "B7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "sbu1",
+            "datasheet": "SBU1",
+            "kind": "passive",
+            "pads": [
+              "A8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "sbu2",
+            "datasheet": "SBU2",
+            "kind": "passive",
+            "pads": [
+              "B8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "shield",
+            "datasheet": "SHIELD",
+            "kind": "passive",
+            "pads": [
+              "S1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D1",
+        "kind": "Schottky",
+        "provides": [],
+        "value": "RB161QS-40T18R",
+        "package": "SMD1006",
+        "path": "usb_uart_diode",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D4",
+        "kind": "Led",
+        "provides": [],
+        "value": "SZYY0402B",
+        "package": "0402",
+        "path": "user_led",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R11",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "2.4k",
+        "package": "0402",
+        "path": "user_led_resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C5",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "v3v3_100n",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C6",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "22u",
+        "package": "CASE-A-3216-18",
+        "path": "v3v3_22u_a",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C7",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "22u",
+        "package": "CASE-A-3216-18",
+        "path": "v3v3_22u_b",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C3",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "vbus_100n",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C2",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "1u",
+        "package": "0402",
+        "path": "vbus_1u",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C4",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "22u",
+        "package": "CASE-A-3216-18",
+        "path": "vbus_22u",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "name": "+3.3V",
+        "pins": [
+          {
+            "refdes": "C5",
+            "pin": "1"
+          },
+          {
+            "refdes": "C6",
+            "pin": "1"
+          },
+          {
+            "refdes": "C7",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R9",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "2"
+          },
+          {
+            "refdes": "U3",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "GND",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "2"
+          },
+          {
+            "refdes": "C10",
+            "pin": "2"
+          },
+          {
+            "refdes": "C2",
+            "pin": "2"
+          },
+          {
+            "refdes": "C3",
+            "pin": "2"
+          },
+          {
+            "refdes": "C4",
+            "pin": "2"
+          },
+          {
+            "refdes": "C5",
+            "pin": "2"
+          },
+          {
+            "refdes": "C6",
+            "pin": "2"
+          },
+          {
+            "refdes": "C7",
+            "pin": "2"
+          },
+          {
+            "refdes": "C8",
+            "pin": "2"
+          },
+          {
+            "refdes": "C9",
+            "pin": "2"
+          },
+          {
+            "refdes": "D3",
+            "pin": "1"
+          },
+          {
+            "refdes": "D4",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "A1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J1",
+            "pin": "S1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "A1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J2",
+            "pin": "S1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "22"
+          },
+          {
+            "refdes": "J3",
+            "pin": "23"
+          },
+          {
+            "refdes": "J3",
+            "pin": "24"
+          },
+          {
+            "refdes": "J3",
+            "pin": "44"
+          },
+          {
+            "refdes": "R1",
+            "pin": "2"
+          },
+          {
+            "refdes": "R2",
+            "pin": "2"
+          },
+          {
+            "refdes": "R3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R4",
+            "pin": "2"
+          },
+          {
+            "refdes": "R6",
+            "pin": "2"
+          },
+          {
+            "refdes": "SW1",
+            "pin": "1"
+          },
+          {
+            "refdes": "SW2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "40"
+          },
+          {
+            "refdes": "U1",
+            "pin": "41"
+          },
+          {
+            "refdes": "U2",
+            "pin": "29"
+          },
+          {
+            "refdes": "U2",
+            "pin": "3"
+          },
+          {
+            "refdes": "U3",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "VBUS",
+        "pins": [
+          {
+            "refdes": "C2",
+            "pin": "1"
+          },
+          {
+            "refdes": "C3",
+            "pin": "1"
+          },
+          {
+            "refdes": "C4",
+            "pin": "1"
+          },
+          {
+            "refdes": "D1",
+            "pin": "1"
+          },
+          {
+            "refdes": "D2",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "21"
+          },
+          {
+            "refdes": "R10",
+            "pin": "1"
+          },
+          {
+            "refdes": "R5",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "7"
+          },
+          {
+            "refdes": "U2",
+            "pin": "8"
+          },
+          {
+            "refdes": "U3",
+            "pin": "3"
+          }
+        ]
+      },
+      {
+        "name": "VBUS1",
+        "pins": [
+          {
+            "refdes": "D1",
+            "pin": "2"
+          },
+          {
+            "refdes": "J1",
+            "pin": "A4"
+          },
+          {
+            "refdes": "J1",
+            "pin": "A9"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B4"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B9"
+          }
+        ]
+      },
+      {
+        "name": "VBUS2",
+        "pins": [
+          {
+            "refdes": "D2",
+            "pin": "2"
+          },
+          {
+            "refdes": "J2",
+            "pin": "A4"
+          },
+          {
+            "refdes": "J2",
+            "pin": "A9"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B4"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B9"
+          }
+        ]
+      },
+      {
+        "name": "net-auto_reset.q_boot.base",
+        "pins": [
+          {
+            "refdes": "Q2",
+            "pin": "1"
+          },
+          {
+            "refdes": "R8",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-auto_reset.q_boot.collector",
+        "pins": [
+          {
+            "refdes": "Q2",
+            "pin": "3"
+          },
+          {
+            "refdes": "R7",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "28"
+          }
+        ]
+      },
+      {
+        "name": "net-auto_reset.q_boot.emitter",
+        "pins": [
+          {
+            "refdes": "C10",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "31"
+          },
+          {
+            "refdes": "Q2",
+            "pin": "2"
+          },
+          {
+            "refdes": "SW2",
+            "pin": "2"
+          },
+          {
+            "refdes": "U1",
+            "pin": "27"
+          }
+        ]
+      },
+      {
+        "name": "net-auto_reset.q_en.base",
+        "pins": [
+          {
+            "refdes": "Q1",
+            "pin": "1"
+          },
+          {
+            "refdes": "R7",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-auto_reset.q_en.collector",
+        "pins": [
+          {
+            "refdes": "Q1",
+            "pin": "3"
+          },
+          {
+            "refdes": "R8",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "24"
+          }
+        ]
+      },
+      {
+        "name": "net-auto_reset.q_en.emitter",
+        "pins": [
+          {
+            "refdes": "C8",
+            "pin": "1"
+          },
+          {
+            "refdes": "C9",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "3"
+          },
+          {
+            "refdes": "Q1",
+            "pin": "2"
+          },
+          {
+            "refdes": "R9",
+            "pin": "2"
+          },
+          {
+            "refdes": "SW1",
+            "pin": "2"
+          },
+          {
+            "refdes": "U1",
+            "pin": "3"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.dm",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "A7"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B7"
+          },
+          {
+            "refdes": "U2",
+            "pin": "5"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.dp",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "A6"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B6"
+          },
+          {
+            "refdes": "U2",
+            "pin": "4"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.rstb",
+        "pins": [
+          {
+            "refdes": "R5",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "9"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.rxd",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "43"
+          },
+          {
+            "refdes": "U1",
+            "pin": "37"
+          },
+          {
+            "refdes": "U2",
+            "pin": "25"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.suspendb",
+        "pins": [
+          {
+            "refdes": "R6",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "11"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.txd",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "42"
+          },
+          {
+            "refdes": "U1",
+            "pin": "36"
+          },
+          {
+            "refdes": "U2",
+            "pin": "26"
+          }
+        ]
+      },
+      {
+        "name": "net-bridge.vdd",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "6"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio1",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "41"
+          },
+          {
+            "refdes": "U1",
+            "pin": "39"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio10",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "16"
+          },
+          {
+            "refdes": "U1",
+            "pin": "18"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio11",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "17"
+          },
+          {
+            "refdes": "U1",
+            "pin": "19"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio12",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "18"
+          },
+          {
+            "refdes": "U1",
+            "pin": "20"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio13",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "19"
+          },
+          {
+            "refdes": "U1",
+            "pin": "21"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio14",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "20"
+          },
+          {
+            "refdes": "U1",
+            "pin": "22"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio15",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "8"
+          },
+          {
+            "refdes": "U1",
+            "pin": "8"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio16",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "9"
+          },
+          {
+            "refdes": "U1",
+            "pin": "9"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio17",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "10"
+          },
+          {
+            "refdes": "U1",
+            "pin": "10"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio18",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "11"
+          },
+          {
+            "refdes": "U1",
+            "pin": "11"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio19",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "A7"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B7"
+          },
+          {
+            "refdes": "J3",
+            "pin": "25"
+          },
+          {
+            "refdes": "U1",
+            "pin": "13"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio2",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "40"
+          },
+          {
+            "refdes": "U1",
+            "pin": "38"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio20",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "A6"
+          },
+          {
+            "refdes": "J2",
+            "pin": "B6"
+          },
+          {
+            "refdes": "J3",
+            "pin": "26"
+          },
+          {
+            "refdes": "U1",
+            "pin": "14"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio21",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "27"
+          },
+          {
+            "refdes": "U1",
+            "pin": "23"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio3",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "13"
+          },
+          {
+            "refdes": "U1",
+            "pin": "15"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio35",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "32"
+          },
+          {
+            "refdes": "U1",
+            "pin": "28"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio36",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "33"
+          },
+          {
+            "refdes": "U1",
+            "pin": "29"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio37",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "34"
+          },
+          {
+            "refdes": "U1",
+            "pin": "30"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio38",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "35"
+          },
+          {
+            "refdes": "R11",
+            "pin": "2"
+          },
+          {
+            "refdes": "U1",
+            "pin": "31"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio39",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "36"
+          },
+          {
+            "refdes": "U1",
+            "pin": "32"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio4",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "4"
+          },
+          {
+            "refdes": "U1",
+            "pin": "4"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio40",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "37"
+          },
+          {
+            "refdes": "U1",
+            "pin": "33"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio41",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "38"
+          },
+          {
+            "refdes": "U1",
+            "pin": "34"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio42",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "39"
+          },
+          {
+            "refdes": "U1",
+            "pin": "35"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio45",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "30"
+          },
+          {
+            "refdes": "U1",
+            "pin": "26"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio46",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "14"
+          },
+          {
+            "refdes": "U1",
+            "pin": "16"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio47",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "28"
+          },
+          {
+            "refdes": "U1",
+            "pin": "24"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio48",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "29"
+          },
+          {
+            "refdes": "U1",
+            "pin": "25"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio5",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "5"
+          },
+          {
+            "refdes": "U1",
+            "pin": "5"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio6",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "6"
+          },
+          {
+            "refdes": "U1",
+            "pin": "6"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio7",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "7"
+          },
+          {
+            "refdes": "U1",
+            "pin": "7"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio8",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "12"
+          },
+          {
+            "refdes": "U1",
+            "pin": "12"
+          }
+        ]
+      },
+      {
+        "name": "net-headers.gpio9",
+        "pins": [
+          {
+            "refdes": "J3",
+            "pin": "15"
+          },
+          {
+            "refdes": "U1",
+            "pin": "17"
+          }
+        ]
+      },
+      {
+        "name": "net-power_led.anode",
+        "pins": [
+          {
+            "refdes": "D3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R10",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-usb_native.cc1_rd.a",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "A5"
+          },
+          {
+            "refdes": "R3",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-usb_native.cc2_rd.a",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "B5"
+          },
+          {
+            "refdes": "R4",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-usb_uart.cc1_rd.a",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "A5"
+          },
+          {
+            "refdes": "R1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-usb_uart.cc2_rd.a",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "B5"
+          },
+          {
+            "refdes": "R2",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-user_led.anode",
+        "pins": [
+          {
+            "refdes": "D4",
+            "pin": "2"
+          },
+          {
+            "refdes": "R11",
+            "pin": "1"
+          }
+        ]
+      }
+    ],
+    "process": {
+      "name": "FourLayer",
+      "fabricator": "JLCPCB",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "min_track": 0.09,
+      "min_clearance": 0.1,
+      "min_drill": 0.15,
+      "min_via_diameter": 0.25,
+      "min_annular_ring": 0.15,
+      "min_via_ring": 0.05,
+      "min_hole_clearance": 0.2,
+      "min_plated_hole_clearance": 0.28,
+      "min_pad_to_pad": 0.15,
+      "min_mask_to_track": 0.09,
+      "min_npth_drill": 0.5,
+      "min_plated_slot": 0.35,
+      "min_npth_slot": 1.0,
+      "via_drill": 0.2,
+      "via_diameter": 0.45,
+      "min_hole_to_hole": 0.45,
+      "min_via_hole_to_hole": 0.2,
+      "min_edge_clearance": 0.2,
+      "min_silk_width": 0.15,
+      "min_text_height": 1.0,
+      "min_silk_to_pad": 0.15,
+      "min_mask_bridge": 0.13,
+      "via_in_pad": 0.55,
+      "max_temperature_rise": null,
+      "track_width_tolerance": 0.2,
+      "hole_plating": 0.018,
+      "stackup": {
+        "layers": 4,
+        "thickness": [
+          1.6,
+          1.6
+        ],
+        "copper_weight": 1.0,
+        "inner": {
+          "layers": [
+            {
+              "Plane": "GND"
+            },
+            {
+              "Plane": "+3.3V"
+            }
+          ],
+          "copper": 0.0152,
+          "dielectrics": [
+            {
+              "core": false,
+              "glass": "7628",
+              "thickness": 0.2104,
+              "epsilon": 4.4
+            },
+            {
+              "core": true,
+              "glass": "",
+              "thickness": 1.065,
+              "epsilon": 4.6
+            },
+            {
+              "core": false,
+              "glass": "7628",
+              "thickness": 0.2104,
+              "epsilon": 4.4
+            }
+          ],
+          "build": "JLC04161H-7628",
+          "hole_clearance": 0.3
+        }
+      }
+    },
+    "features": {
+      "net_widths": [
+        [
+          "VBUS",
+          0.15
+        ]
+      ],
+      "net_currents": [
+        {
+          "net": "VBUS",
+          "current": 0.511,
+          "least_width": 0.14873472849391914,
+          "vias": 1
+        },
+        {
+          "net": "net-auto_reset.q_en.emitter",
+          "current": 0.00034333333333333335,
+          "least_width": 6.255581026994644e-6,
+          "vias": 1
+        }
+      ],
+      "outline": {
+        "width": [
+          25.86,
+          25.86
+        ],
+        "height": [
+          63.8972,
+          63.8972
+        ],
+        "corner_radius": 0.0,
+        "polygon": null
+      },
+      "cutouts": [],
+      "pours": [
+        {
+          "layer": "top",
+          "net": "GND",
+          "stitch_pitch": null
+        },
+        {
+          "layer": "bottom",
+          "net": "GND",
+          "stitch_pitch": null
+        }
+      ],
+      "keepouts": [],
+      "heights": [
+        {
+          "path": "auto_reset.r_dtr",
+          "height": 0.4
+        },
+        {
+          "path": "auto_reset.r_rts",
+          "height": 0.4
+        },
+        {
+          "path": "boot_100n",
+          "height": 0.55
+        },
+        {
+          "path": "bridge_vdd_cap",
+          "height": 0.55
+        },
+        {
+          "path": "en_100n_a",
+          "height": 0.55
+        },
+        {
+          "path": "en_100n_b",
+          "height": 0.55
+        },
+        {
+          "path": "en_pullup.resistor",
+          "height": 0.4
+        },
+        {
+          "path": "suspend_pulldown.resistor",
+          "height": 0.4
+        },
+        {
+          "path": "usb_native_diode",
+          "height": 0.23
+        },
+        {
+          "path": "usb_uart_diode",
+          "height": 0.23
+        },
+        {
+          "path": "v3v3_100n",
+          "height": 0.55
+        },
+        {
+          "path": "vbus_100n",
+          "height": 0.55
+        },
+        {
+          "path": "vbus_1u",
+          "height": 0.6
+        }
+      ],
+      "protrusions": [],
+      "models": [],
+      "case_models": [],
+      "hand_fitted": [
+        "headers"
+      ],
+      "labels": [],
+      "constraints": [
+        {
+          "path": "boot",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 16.795,
+              "hi": 16.795,
+              "source": "src/main.physical.nsm:58"
+            },
+            {
+              "field": "y",
+              "lo": 34.5486,
+              "hi": 34.5486,
+              "source": "src/main.physical.nsm:59"
+            },
+            {
+              "field": "rotation",
+              "lo": 180.0,
+              "hi": 180.0,
+              "source": "src/main.physical.nsm:60"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:61"
+        },
+        {
+          "path": "headers",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 12.93,
+              "hi": 12.93,
+              "source": "src/main.physical.nsm:68"
+            },
+            {
+              "field": "y",
+              "lo": 27.76996,
+              "hi": 27.76996,
+              "source": "src/main.physical.nsm:69"
+            },
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:70"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:71"
+        },
+        {
+          "path": "reset",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 9.195,
+              "hi": 9.195,
+              "source": "src/main.physical.nsm:54"
+            },
+            {
+              "field": "y",
+              "lo": 34.5486,
+              "hi": 34.5486,
+              "source": "src/main.physical.nsm:55"
+            },
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:56"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:57"
+        },
+        {
+          "path": "usb_native.receptacle",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 19.845,
+              "hi": 19.845,
+              "source": "src/main.physical.nsm:47"
+            },
+            {
+              "field": "y",
+              "lo": 60.0236,
+              "hi": 60.0236,
+              "source": "src/main.physical.nsm:48"
+            },
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:49"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:50"
+        },
+        {
+          "path": "usb_uart.receptacle",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 5.975,
+              "hi": 5.975,
+              "source": "src/main.physical.nsm:43"
+            },
+            {
+              "field": "y",
+              "lo": 60.0236,
+              "hi": 60.0236,
+              "source": "src/main.physical.nsm:44"
+            },
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:45"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:46"
+        }
+      ],
+      "offsets": [],
+      "line_texts": {
+        "src/main.physical.nsm:43": ".usb_uart.receptacle.place.x &= 5.975mm",
+        "src/main.physical.nsm:44": ".usb_uart.receptacle.place.y &= 60.0236mm",
+        "src/main.physical.nsm:45": ".usb_uart.receptacle.place.rotation &= 0",
+        "src/main.physical.nsm:46": ".usb_uart.receptacle.place.side &= \"top\"",
+        "src/main.physical.nsm:47": ".usb_native.receptacle.place.x &= 19.845mm",
+        "src/main.physical.nsm:48": ".usb_native.receptacle.place.y &= 60.0236mm",
+        "src/main.physical.nsm:49": ".usb_native.receptacle.place.rotation &= 0",
+        "src/main.physical.nsm:50": ".usb_native.receptacle.place.side &= \"top\"",
+        "src/main.physical.nsm:54": ".reset.place.x &= 9.195mm",
+        "src/main.physical.nsm:55": ".reset.place.y &= 34.5486mm",
+        "src/main.physical.nsm:56": ".reset.place.rotation &= 0",
+        "src/main.physical.nsm:57": ".reset.place.side &= \"top\"",
+        "src/main.physical.nsm:58": ".boot.place.x &= 16.795mm",
+        "src/main.physical.nsm:59": ".boot.place.y &= 34.5486mm",
+        "src/main.physical.nsm:60": ".boot.place.rotation &= 180",
+        "src/main.physical.nsm:61": ".boot.place.side &= \"top\"",
+        "src/main.physical.nsm:68": ".headers.place.x &= 12.93mm",
+        "src/main.physical.nsm:69": ".headers.place.y &= 27.76996mm",
+        "src/main.physical.nsm:70": ".headers.place.rotation &= 0",
+        "src/main.physical.nsm:71": ".headers.place.side &= \"top\""
+      }
+    },
+    "interfaces": [
+      {
+        "path": "bridge_reset_pullup.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "en_pullup.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "+3.3V"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "module.vdd",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "+3.3V"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "regulator.vin",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "regulator.vout",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "+3.3V"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "suspend_pulldown.reference",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "usb_native.receptacle.vbus",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS2"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "usb_native.vbus",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS2"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "usb_uart.receptacle.vbus",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS1"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "usb_uart.vbus",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS1"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "v3v3",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "+3.3V"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "vbus",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "path": "module",
+        "kind": "doc",
+        "text": "The module (U1): 4 MB of flash, PCB antenna.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 47
+        },
+        "anchors": [
+          "module"
+        ],
+        "result": null
+      },
+      {
+        "path": "bridge",
+        "kind": "doc",
+        "text": "The USB-UART bridge (U3), on the first receptacle.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 49
+        },
+        "anchors": [
+          "bridge"
+        ],
+        "result": null
+      },
+      {
+        "path": "regulator",
+        "kind": "doc",
+        "text": "The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 51
+        },
+        "anchors": [
+          "regulator"
+        ],
+        "result": null
+      },
+      {
+        "path": "usb_uart",
+        "kind": "doc",
+        "text": "J1: the receptacle of the bridge.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 64
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "usb_native",
+        "kind": "doc",
+        "text": "J2: the receptacle of the module's own USB.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 66
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "headers",
+        "kind": "doc",
+        "text": "The development board's two 22-pin headers (U2), hand-soldered.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 68
+        },
+        "anchors": [
+          "headers"
+        ],
+        "result": null
+      },
+      {
+        "path": "reset",
+        "kind": "doc",
+        "text": "SW1, RESET: pulls EN to ground.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 70
+        },
+        "anchors": [
+          "reset"
+        ],
+        "result": null
+      },
+      {
+        "path": "boot",
+        "kind": "doc",
+        "text": "SW2, BOOT: pulls GPIO0 to ground.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 72
+        },
+        "anchors": [
+          "boot"
+        ],
+        "result": null
+      },
+      {
+        "path": "vbus",
+        "kind": "doc",
+        "text": "VBUS behind the two diodes: the bridge's supply, the regulator's input and the header's 5 V pin.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 86
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "v3v3",
+        "kind": "doc",
+        "text": "The 3.3 V of the regulator: the module's supply and the header's 3.3 V pins.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 91
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "usb_uart_diode",
+        "kind": "doc",
+        "text": "D2 and D3: each receptacle's VBUS reaches VBUS through a Schottky diode (anode on the receptacle), so the two supplies cannot feed each other. ROHM RB161QS-40.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 101
+        },
+        "anchors": [
+          "usb_uart_diode"
+        ],
+        "result": null
+      },
+      {
+        "path": "bridge_vdd_cap",
+        "kind": "doc",
+        "text": "C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a supply (the author's notes: it gives 100 mA only).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 130
+        },
+        "anchors": [
+          "bridge_vdd_cap"
+        ],
+        "result": null
+      },
+      {
+        "path": "bridge_reset_pullup",
+        "kind": "doc",
+        "text": "R11: pulls the bridge's reset line up to VBUS.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 134
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "suspend_pulldown",
+        "kind": "doc",
+        "text": "R10: holds the bridge's SUSPENDb output low.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 138
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "auto_reset",
+        "kind": "doc",
+        "text": "The auto-reset pair. `.dtr` and `.rts` go to the bridge's DTR and RTS, `.en` to the module's EN and `.boot` to its GPIO0.",
+        "at": {
+          "file": "src/auto_reset.nsm",
+          "line": 17
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "en_pullup",
+        "kind": "doc",
+        "text": "R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 157
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "power_led",
+        "kind": "doc",
+        "text": "D1: lit from VBUS through R6.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 164
+        },
+        "anchors": [
+          "power_led"
+        ],
+        "result": null
+      },
+      {
+        "path": "user_led",
+        "kind": "doc",
+        "text": "D4: GPIO38 through R9.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 172
+        },
+        "anchors": [
+          "user_led"
+        ],
+        "result": null
+      },
+      {
+        "path": "vbus_1u",
+        "kind": "doc",
+        "text": "C1 and C2: the bridge's VBUS input, 1 uF and 100 nF (CP2102N datasheet, as the author's notes say).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 186
+        },
+        "anchors": [
+          "vbus_1u"
+        ],
+        "result": null
+      },
+      {
+        "path": "vbus_22u",
+        "kind": "doc",
+        "text": "C6: the regulator's input, 22 uF tantalum.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 189
+        },
+        "anchors": [
+          "vbus_22u"
+        ],
+        "result": null
+      },
+      {
+        "path": "v3v3_100n",
+        "kind": "doc",
+        "text": "C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output capacitor (22 uF).",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 192
+        },
+        "anchors": [
+          "v3v3_100n"
+        ],
+        "result": null
+      },
+      {
+        "path": "en_100n_a",
+        "kind": "doc",
+        "text": "C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.",
+        "at": {
+          "file": "src/main.nsm",
+          "line": 196
+        },
+        "anchors": [
+          "en_100n_a"
+        ],
+        "result": null
+      }
+    ],
+    "modules": [
+      {
+        "path": "usb_uart",
+        "type_name": "UsbCSink",
+        "ports": [
+          {
+            "name": "vbus.pos",
+            "net": "VBUS1"
+          },
+          {
+            "name": "vbus.neg",
+            "net": "GND"
+          },
+          {
+            "name": "dp",
+            "net": "net-bridge.dp"
+          },
+          {
+            "name": "dm",
+            "net": "net-bridge.dm"
+          }
+        ]
+      },
+      {
+        "path": "usb_native",
+        "type_name": "UsbCSink",
+        "ports": [
+          {
+            "name": "vbus.pos",
+            "net": "VBUS2"
+          },
+          {
+            "name": "vbus.neg",
+            "net": "GND"
+          },
+          {
+            "name": "dp",
+            "net": "net-headers.gpio20"
+          },
+          {
+            "name": "dm",
+            "net": "net-headers.gpio19"
+          }
+        ]
+      },
+      {
+        "path": "bridge_reset_pullup",
+        "type_name": "PullUp",
+        "ports": [
+          {
+            "name": "supply.pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "line",
+            "net": "net-bridge.rstb"
+          }
+        ]
+      },
+      {
+        "path": "suspend_pulldown",
+        "type_name": "PullDown",
+        "ports": [
+          {
+            "name": "reference.pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "reference.neg",
+            "net": "GND"
+          },
+          {
+            "name": "line",
+            "net": "net-bridge.suspendb"
+          }
+        ]
+      },
+      {
+        "path": "auto_reset",
+        "type_name": "AutoReset",
+        "ports": [
+          {
+            "name": "dtr",
+            "net": "net-auto_reset.q_boot.collector"
+          },
+          {
+            "name": "rts",
+            "net": "net-auto_reset.q_en.collector"
+          },
+          {
+            "name": "en",
+            "net": "net-auto_reset.q_en.emitter"
+          },
+          {
+            "name": "boot",
+            "net": "net-auto_reset.q_boot.emitter"
+          }
+        ]
+      },
+      {
+        "path": "en_pullup",
+        "type_name": "PullUp",
+        "ports": [
+          {
+            "name": "supply.pos",
+            "net": "+3.3V"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "line",
+            "net": "net-auto_reset.q_en.emitter"
+          }
+        ]
+      }
+    ]
+  }
+]

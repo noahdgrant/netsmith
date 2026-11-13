@@ -128,7 +128,9 @@ what changed, and `netsmith lock --check` fails when it is not current, for CI.
 The boards in `examples/` carry their locks, committed beside the sources, and CI runs
 `netsmith lock --check` over every one of them (`scripts/check-example-locks.sh`, the `locks` job). A
 change to a catalog, `std/` or the solver that would move a pick of an example fails the job until
-someone runs `netsmith lock --update` in the example and the diff of the lock is reviewed.
+someone runs `netsmith lock --update` in the example and the diff of the lock is reviewed. Each
+example also commits its design, `<stem>.design.json` (`netsmith build --emit-design`), which the
+`designs` job checks the same way (`scripts/check-example-designs.sh`, whose `--update` rewrites it).
 `NETSMITH_TIMINGS=1` prints how long each stage took.
 
 **Read `fab-notes.txt` before you order.** It lists what netsmith could not verify, for

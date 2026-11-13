@@ -25,6 +25,17 @@ cargo run -p netsmith-cli -- fab examples/linear_regulator.nsm --out /tmp/fab-<b
 
 The examples in `examples/*.nsm` must still build, except `examples/carrier_and_cards.nsm`, whose invented parts have no KiCad symbol: it is checked and solved (`cargo run -p netsmith-solve --example solve -- examples/carrier_and_cards.nsm`) and its tests are in `crates/netsmith-check/tests/mate.rs` and `crates/netsmith-solve/tests/mate.rs`.
 
+## The examples' committed files
+
+Each example commits its pick lock (`<stem>.lock.toml`) and its design (`<stem>.design.json`, what the design stage hands the placer) beside its source. A change to the checker, the solver, the design stage, `std/` or a catalog can move them. Check both after such a change:
+
+```sh
+scripts/check-example-locks.sh
+scripts/check-example-designs.sh
+```
+
+To fix a stale lock, run `netsmith lock --update` in the example. To fix a stale design file, run `scripts/check-example-designs.sh --update`. Read the diff of each file before you commit it: a moved pick or design is a change to the board.
+
 ## The editor
 
 For a change to the editor or to a view it shows, also run the browser check in `netsmith-dev-verify-editor` (`scripts/editor-verify`) and look at the screenshots.

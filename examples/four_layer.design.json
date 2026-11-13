@@ -1,0 +1,493 @@
+[
+  {
+    "name": "FourLayerExample",
+    "parts": [
+      {
+        "refdes": "J1",
+        "kind": "Header1x2",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x02",
+        "package": null,
+        "path": "power_in",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J2",
+        "kind": "Header1x2",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x02",
+        "package": null,
+        "path": "power_out",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C1",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "10u",
+        "package": "0402",
+        "path": "stage.input_cap",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C2",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "22u",
+        "package": "0603",
+        "path": "stage.output_cap",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U1",
+        "kind": "LinearRegulator",
+        "provides": [],
+        "value": "XC6206P332MR-G",
+        "package": "SOT-23",
+        "path": "stage.regulator",
+        "pins": [
+          {
+            "name": "vin.pos",
+            "datasheet": "IN",
+            "kind": "power",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": "takes"
+          },
+          {
+            "name": "vin.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vout.pos",
+            "datasheet": "OUT",
+            "kind": "power",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": "gives"
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "name": "3V3",
+        "pins": [
+          {
+            "refdes": "C2",
+            "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "GND",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "2"
+          },
+          {
+            "refdes": "C2",
+            "pin": "2"
+          },
+          {
+            "refdes": "J1",
+            "pin": "2"
+          },
+          {
+            "refdes": "J2",
+            "pin": "2"
+          },
+          {
+            "refdes": "U1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "VIN",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "3"
+          }
+        ]
+      }
+    ],
+    "process": {
+      "name": "FourLayer",
+      "fabricator": "JLCPCB",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "min_track": 0.09,
+      "min_clearance": 0.1,
+      "min_drill": 0.15,
+      "min_via_diameter": 0.25,
+      "min_annular_ring": 0.15,
+      "min_via_ring": 0.05,
+      "min_hole_clearance": 0.2,
+      "min_plated_hole_clearance": 0.28,
+      "min_pad_to_pad": 0.15,
+      "min_mask_to_track": 0.09,
+      "min_npth_drill": 0.5,
+      "min_plated_slot": 0.35,
+      "min_npth_slot": 1.0,
+      "via_drill": 0.2,
+      "via_diameter": 0.45,
+      "min_hole_to_hole": 0.45,
+      "min_via_hole_to_hole": 0.2,
+      "min_edge_clearance": 0.2,
+      "min_silk_width": 0.15,
+      "min_text_height": 1.0,
+      "min_silk_to_pad": 0.15,
+      "min_mask_bridge": 0.13,
+      "via_in_pad": 0.55,
+      "max_temperature_rise": null,
+      "track_width_tolerance": 0.2,
+      "hole_plating": 0.018,
+      "stackup": {
+        "layers": 4,
+        "thickness": [
+          1.6,
+          1.6
+        ],
+        "copper_weight": 1.0,
+        "inner": {
+          "layers": [
+            {
+              "Plane": "GND"
+            },
+            {
+              "Plane": "3V3"
+            }
+          ],
+          "copper": 0.0152,
+          "dielectrics": [
+            {
+              "core": false,
+              "glass": "7628",
+              "thickness": 0.2104,
+              "epsilon": 4.4
+            },
+            {
+              "core": true,
+              "glass": "",
+              "thickness": 1.065,
+              "epsilon": 4.6
+            },
+            {
+              "core": false,
+              "glass": "7628",
+              "thickness": 0.2104,
+              "epsilon": 4.4
+            }
+          ],
+          "build": "JLC04161H-7628",
+          "hole_clearance": 0.3
+        }
+      }
+    },
+    "features": {
+      "net_widths": [],
+      "net_currents": [
+        {
+          "net": "VIN",
+          "current": 0.05,
+          "least_width": 0.006026516109918563,
+          "vias": 1
+        }
+      ],
+      "outline": null,
+      "cutouts": [],
+      "pours": [],
+      "keepouts": [],
+      "heights": [
+        {
+          "path": "power_in",
+          "height": 8.9
+        },
+        {
+          "path": "power_out",
+          "height": 8.9
+        },
+        {
+          "path": "stage.input_cap",
+          "height": 0.7
+        },
+        {
+          "path": "stage.output_cap",
+          "height": 1.0
+        }
+      ],
+      "protrusions": [],
+      "models": [],
+      "case_models": [],
+      "hand_fitted": [
+        "power_in",
+        "power_out"
+      ],
+      "labels": [],
+      "constraints": [],
+      "offsets": [],
+      "line_texts": {}
+    },
+    "interfaces": [
+      {
+        "path": "input",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VIN"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "output",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "stage.regulator.vin",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VIN"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "stage.regulator.vout",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "stage.vin",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VIN"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "stage.vout",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "path": "input",
+        "kind": "doc",
+        "text": "The input rail is supplied from outside the board.",
+        "at": {
+          "file": "four_layer.nsm",
+          "line": 41
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "stage",
+        "kind": "doc",
+        "text": "A linear regulator with a capacitor on its input and on its output.",
+        "at": {
+          "file": "four_layer.nsm",
+          "line": 11
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "output",
+        "kind": "doc",
+        "text": "What the outside world draws from the output.",
+        "at": {
+          "file": "four_layer.nsm",
+          "line": 52
+        },
+        "anchors": [],
+        "result": null
+      }
+    ],
+    "modules": [
+      {
+        "path": "stage",
+        "type_name": "LdoStage",
+        "ports": [
+          {
+            "name": "vin.pos",
+            "net": "VIN"
+          },
+          {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vout.pos",
+            "net": "3V3"
+          },
+          {
+            "name": "vout.neg",
+            "net": "GND"
+          }
+        ]
+      }
+    ]
+  }
+]

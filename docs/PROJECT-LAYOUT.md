@@ -44,6 +44,8 @@ Modules are shared by importing them: `import src::modules::power::LdoStage` wor
 
 A board's physical intent (its outline, cutouts, mounting holes, keepouts and where its parts must be, ADR 0048) is in a file beside its source with the same stem and the suffix `.physical.nsm`: `src/unit/unit.nsm` has `src/unit/unit.physical.nsm`, as the layout file is `unit.pcb.toml`. The file holds `physical for Board { ... }` units, is optional, and is not a module: nothing imports it.
 
+Beside a source, with the same stem, are also the files a run writes for it and you commit: the pick lock, `<stem>.lock.toml` (ADR 0100), and the pin file, `<stem>.pins.toml`, when the board requests pins. The examples of netsmith's own repository also commit a design file, `<stem>.design.json`: the designs of the file's boards as the design stage hands them to the placer, written by `netsmith build --emit-design`. The tests of the placer, the router and fab start from it, and CI fails when it is stale (`scripts/check-example-designs.sh`, which `--update` rewrites; read the diff before you commit it). A project of your own needs none.
+
 ## Example: a development kit and a production unit
 
 A repo with a development kit (a carrier board and plug-in boards, joined as a system) and a production unit that reuses the same regulator and sensor circuits:
