@@ -1,6 +1,6 @@
 # The reference designators of ORBIT's board file that a copy of the board must reproduce
 # (`must_match = true` in placements.toml); read by
-#   cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml <file>
+#   cargo run -p netsmith-tools --example reference_table -- --must-match reference/must_match.toml <file>
 # The outline and every hole are always must-match. Everything not listed (the ICs, the
 # crystal, the inductor, the LEDs, the resistors, the capacitors, the logo) and the routing are
 # reported, not required.

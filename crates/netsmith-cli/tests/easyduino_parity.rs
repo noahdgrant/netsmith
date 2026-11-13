@@ -1,7 +1,7 @@
 //! The gate of the Easyduino ESP32-S3 port: the board `netsmith fab` writes for the project in
 //! `examples/easyduino_esp32s3` must match Easyduino's where the owner said it must (the
 //! outline, the holes and the parts of `reference/must_match.toml`), as judged by the parity
-//! checker (`netsmith::parity`, which `rp2350_parity.rs` tests against synthetic boards).
+//! checker (`netsmith_tools::parity`, which `rp2350_parity.rs` tests against synthetic boards).
 //! Everything else of the board is reported by the checker and not gated.
 
 use std::path::PathBuf;

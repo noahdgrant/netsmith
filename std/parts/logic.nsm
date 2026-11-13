@@ -164,7 +164,7 @@ part Sn74lvc1g04 {
 /// project writes `level_translator.csv` and lists it in `netsmith.toml`, and nothing in the
 /// generic changes the day a first real row is added. A design that uses it with no project row
 /// and no provider is refused at the first use, in the same words as for a resistor no row
-/// serves. `crates/netsmith/tests/std_additions.rs` asserts that the file is header-only; when a
+/// serves. `crates/netsmith-pipeline/tests/std_additions.rs` asserts that the file is header-only; when a
 /// row is added, the file goes into the `CATALOGS` list of
 /// `every_standard_file_reads_and_every_part_in_it_has_its_source`
 /// (`crates/netsmith-solve/tests/data.rs`, which leaves the two out on purpose) and that

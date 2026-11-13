@@ -78,7 +78,7 @@ pub fn four_layer_design() -> Design {
 }
 
 /// The process of the one board of `source`, as the check, the solver and the design stage
-/// resolve it: what `netsmith::build_with` gives, without the netsmith crate.
+/// resolve it: what `netsmith_pipeline::build_with` gives, without the netsmith crate.
 fn process_of(source: &str) -> Process {
     let checked = netsmith_check::check("t.nsm", source, &netsmith_check::Loader::std());
     assert!(checked.is_ok(), "{}", checked.render());

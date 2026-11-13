@@ -28,7 +28,7 @@
 //!   `mechanical_specs`) and of the glyph functions' extents, equal to those of the symbol with
 //!   the same id in KiCad 9's stock libraries (the test
 //!   `generated_symbols_agree_with_the_installed_kicad_symbols` of
-//!   `crates/netsmith/tests/passives.rs` proves it where KiCad is installed). A pin that moved
+//!   `crates/netsmith-pipeline/tests/passives.rs` proves it where KiCad is installed). A pin that moved
 //!   by a grid step would move every wire the schematic view draws to it.
 //! - **The look**: what is drawn inside that extent. It is the glyph function of one symbol
 //!   ([`resistor`], [`capacitor`], [`usb_c`], ...), which returns its [`Shape`]s, and the three
@@ -820,7 +820,7 @@ const BASE: Spec = Spec {
 /// The passives and discrete parts. The numbers are those of KiCad 9's stock symbol of the same
 /// id, measured with `kicad-cli`'s libraries, and the test
 /// `generated_symbols_agree_with_the_installed_kicad_symbols`
-/// (`crates/netsmith/tests/passives.rs`) proves each against the installed library.
+/// (`crates/netsmith-pipeline/tests/passives.rs`) proves each against the installed library.
 fn passive_specs() -> Vec<Spec> {
     vec![
         Spec {
@@ -1484,7 +1484,7 @@ mod tests {
 
     #[test]
     fn only_the_holes_and_the_fiducial_are_left_out_of_a_bill_of_materials() {
-        // KiCad's own symbols say the same (`crates/netsmith/tests/passives.rs` compares them):
+        // KiCad's own symbols say the same (`crates/netsmith-pipeline/tests/passives.rs` compares them):
         // a test point and a power flag are `in_bom yes`, and the flag is no part because its
         // placed instance is not (`#FLG` and `in_bom no` in the schematic).
         let out: Vec<&str> = ids().filter(|id| !symbol(id).unwrap().in_bom()).collect();

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use common::endpoints::{Fake, Reply};
-use netsmith::refresh::{self};
+use netsmith_fabricate::refresh::{self};
 
 /// An empty directory of its own.
 fn dir(name: &str) -> TempDir {

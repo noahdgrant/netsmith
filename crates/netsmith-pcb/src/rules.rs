@@ -365,7 +365,7 @@ pub(crate) fn test_process() -> Process {
 }
 
 /// The process of the one board of `source`, as the check, the solver and the design stage
-/// resolve it: what `netsmith::build_with` gives. This crate's tests do not depend on the netsmith
+/// resolve it: what `netsmith_pipeline::build_with` gives. This crate's tests do not depend on the netsmith
 /// crate, so that they are not among the dependents of every crate it links (issue #518).
 #[cfg(test)]
 fn process_of(source: &str) -> netsmith_core::Process {

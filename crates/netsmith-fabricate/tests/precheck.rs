@@ -481,7 +481,7 @@ fn the_precheck_of_a_board_of_a_hundred_parts_finds_nothing_wrong_with_windows_t
 
 /// Prints the CPU time of the pre-check of 25 and of 100 parts, and their ratio (about 4.5 when
 /// the pre-check grows with the parts, as it did when this was measured on a 10-core machine;
-/// 16 would be the square): `cargo test -p netsmith --test main precheck::measured -- --ignored
+/// 16 would be the square): `cargo test -p netsmith-fabricate --test main precheck::measured -- --ignored
 /// --nocapture`.
 #[test]
 #[ignore = "a measurement, not a check"]

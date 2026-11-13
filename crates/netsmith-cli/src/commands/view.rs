@@ -188,7 +188,7 @@ fn parse_view_section(given: &str) -> Result<String, String> {
     if given.trim() == "none" {
         return Ok("none".to_string());
     }
-    netsmith::render::parse_section(given)?;
+    netsmith_3d::parse_render_section(given)?;
     Ok(given.trim().to_string())
 }
 

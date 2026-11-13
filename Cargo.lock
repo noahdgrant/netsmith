@@ -708,41 +708,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "netsmith"
-version = "0.1.0"
-dependencies = [
- "automod",
- "netsmith",
- "netsmith-3d",
- "netsmith-catalog",
- "netsmith-check",
- "netsmith-core",
- "netsmith-design",
- "netsmith-dxf",
- "netsmith-editor",
- "netsmith-fab",
- "netsmith-fabricate",
- "netsmith-geom",
- "netsmith-kicad",
- "netsmith-lang",
- "netsmith-netlist",
- "netsmith-pcb",
- "netsmith-pipeline",
- "netsmith-placer",
- "netsmith-quantity",
- "netsmith-router",
- "netsmith-solve",
- "netsmith-testkit",
- "netsmith-view",
- "netsmith-workspace",
- "serde",
- "serde_json",
- "sha2",
- "toml",
- "zip",
-]
-
-[[package]]
 name = "netsmith-3d"
 version = "0.1.0"
 dependencies = [
@@ -793,7 +758,6 @@ version = "0.1.0"
 dependencies = [
  "automod",
  "clap",
- "netsmith",
  "netsmith-3d",
  "netsmith-catalog",
  "netsmith-check",
@@ -801,12 +765,16 @@ dependencies = [
  "netsmith-dxf",
  "netsmith-editor",
  "netsmith-fab",
+ "netsmith-fabricate",
  "netsmith-kicad",
  "netsmith-lang",
  "netsmith-netlist",
  "netsmith-pcb",
+ "netsmith-pipeline",
  "netsmith-solve",
  "netsmith-testkit",
+ "netsmith-tools",
+ "netsmith-workspace",
  "serde_json",
  "tungstenite 0.30.0",
  "ureq",
@@ -966,20 +934,24 @@ dependencies = [
 name = "netsmith-pipeline"
 version = "0.1.0"
 dependencies = [
+ "automod",
  "netsmith-3d",
  "netsmith-catalog",
  "netsmith-check",
  "netsmith-core",
  "netsmith-design",
  "netsmith-editor",
+ "netsmith-fab",
  "netsmith-geom",
  "netsmith-kicad",
  "netsmith-lang",
  "netsmith-pcb",
  "netsmith-pipeline",
+ "netsmith-placer",
  "netsmith-quantity",
  "netsmith-solve",
  "netsmith-testkit",
+ "serde_json",
  "toml",
 ]
 
@@ -1047,6 +1019,37 @@ dependencies = [
 [[package]]
 name = "netsmith-testkit"
 version = "0.1.0"
+
+[[package]]
+name = "netsmith-tools"
+version = "0.1.0"
+dependencies = [
+ "automod",
+ "netsmith-check",
+ "netsmith-core",
+ "netsmith-design",
+ "netsmith-dxf",
+ "netsmith-editor",
+ "netsmith-fab",
+ "netsmith-fabricate",
+ "netsmith-geom",
+ "netsmith-kicad",
+ "netsmith-lang",
+ "netsmith-netlist",
+ "netsmith-pcb",
+ "netsmith-pipeline",
+ "netsmith-placer",
+ "netsmith-router",
+ "netsmith-solve",
+ "netsmith-testkit",
+ "netsmith-view",
+ "netsmith-workspace",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml",
+ "zip",
+]
 
 [[package]]
 name = "netsmith-view"

@@ -146,7 +146,7 @@ with, the parts you solder yourself (`hand-solder:`) and the parts you ship to t
 - `docs/CONCEPTS.md`: how parts, modules, boards and systems combine.
   `docs/PROJECT-LAYOUT.md`: a repository with several boards.
 - `docs/symbol-gallery.html` (open it in a browser): every symbol netsmith draws, beside the KiCad
-  symbol it replaces. `cargo run -p netsmith --example symbol_gallery -- --out docs --file
+  symbol it replaces. `cargo run -p netsmith-tools --example symbol_gallery -- --out docs --file
   symbol-gallery.html` writes it again.
 - `GLOSSARY.md`: the vocabulary. `docs/DESIGN-RULES.md`: the rules the language follows.
   `docs/adr/`: the decisions behind the design.

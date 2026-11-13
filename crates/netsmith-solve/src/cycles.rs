@@ -67,7 +67,7 @@
 //! # Severity and wording (ADR 0057)
 //!
 //! The open circle finding is a warning by default (`open_circle_findings` in
-//! `crates/netsmith/src/lib.rs`), and an error under `--strict`. The wording of the finding for a
+//! `crates/netsmith-pipeline/src/lib.rs`), and an error under `--strict`. The wording of the finding for a
 //! net, and the root fix for a zero term (`Model::draw_is_zero`), are as built. Accepted as
 //! built by the owner, 2026-11-11.
 

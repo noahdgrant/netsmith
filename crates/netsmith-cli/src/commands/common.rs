@@ -5,10 +5,10 @@ use std::fs;
 use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, ValueEnum};
-use netsmith::Libraries;
-use netsmith::project::Target;
 use netsmith_check::Loader;
 use netsmith_core::timings;
+use netsmith_fabricate::project::Target;
+use netsmith_pipeline::Libraries;
 use netsmith_solve::Catalogs;
 
 /// The port `netsmith editor` listens on unless told otherwise.
@@ -49,11 +49,11 @@ pub enum Format {
     Json,
 }
 
-impl From<Format> for netsmith::findings::Format {
+impl From<Format> for netsmith_tools::findings::Format {
     fn from(format: Format) -> Self {
         match format {
-            Format::Text => netsmith::findings::Format::Text,
-            Format::Json => netsmith::findings::Format::Json,
+            Format::Text => netsmith_tools::findings::Format::Text,
+            Format::Json => netsmith_tools::findings::Format::Json,
         }
     }
 }
@@ -69,12 +69,12 @@ pub enum Notes {
     None,
 }
 
-impl From<Notes> for netsmith::findings::NotesMode {
+impl From<Notes> for netsmith_tools::findings::NotesMode {
     fn from(notes: Notes) -> Self {
         match notes {
-            Notes::All => netsmith::findings::NotesMode::All,
-            Notes::Summary => netsmith::findings::NotesMode::Summary,
-            Notes::None => netsmith::findings::NotesMode::None,
+            Notes::All => netsmith_tools::findings::NotesMode::All,
+            Notes::Summary => netsmith_tools::findings::NotesMode::Summary,
+            Notes::None => netsmith_tools::findings::NotesMode::None,
         }
     }
 }
@@ -95,7 +95,7 @@ pub(super) fn sync_pins(file: Option<&str>, locked: bool) -> Option<ExitCode> {
         let Ok(text) = fs::read_to_string(&source.path) else {
             return None;
         };
-        match netsmith::pins::sync(&source.name, &source.path, &text, &loader, locked) {
+        match netsmith_fabricate::pins::sync(&source.name, &source.path, &text, &loader, locked) {
             Ok(synced) => {
                 for note in synced.notes {
                     eprintln!("note: {note}");
@@ -162,7 +162,7 @@ pub(super) fn no_boards(target: &Target) -> bool {
 pub(super) fn with_placed_board<T>(
     file: Option<&str>,
     board: Option<&str>,
-    then: impl Fn(&netsmith::board3d::Placed) -> Result<T, String>,
+    then: impl Fn(&netsmith_fabricate::board3d::Placed) -> Result<T, String>,
 ) -> Result<T, ExitCode> {
     let (target, loader, catalogs) = target(file, false)?;
     if no_boards(&target) {
@@ -176,7 +176,7 @@ pub(super) fn with_placed_board<T>(
         return Err(ExitCode::from(2));
     }
     let libraries = timings::stage("libraries", "", || libraries(&target))?;
-    let places = netsmith::models::Places::of(&target);
+    let places = netsmith_fabricate::models::Places::of(&target);
     let mut errors = String::new();
     for source in &target.files {
         let text = fs::read_to_string(&source.path).map_err(|e| {
@@ -184,19 +184,20 @@ pub(super) fn with_placed_board<T>(
             ExitCode::from(2)
         })?;
         // The pick lock holds the parts it names to their rows, as for `fab`; it is not written.
-        let (held, _) = netsmith::pick_lock::open(&source.path, &catalogs, false).map_err(|e| {
-            eprintln!("{e}");
-            ExitCode::from(2)
-        })?;
-        let placed = netsmith::board3d::Placed {
+        let (held, _) = netsmith_pipeline::pick_lock::open(&source.path, &catalogs, false)
+            .map_err(|e| {
+                eprintln!("{e}");
+                ExitCode::from(2)
+            })?;
+        let placed = netsmith_fabricate::board3d::Placed {
             name: &source.name,
             text: &text,
             loader: &loader,
             catalogs: held.as_ref().unwrap_or(&catalogs),
             libraries: &libraries,
-            layout: netsmith::layout::layout_path(&source.path),
+            layout: netsmith_fabricate::layout::layout_path(&source.path),
             board,
-            seeds: netsmith::layout::place_seeds(target.project.as_ref()),
+            seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
             models: Some(places.clone()),
         };
         match then(&placed) {
@@ -271,8 +272,8 @@ pub enum CaseName {
 }
 
 impl CaseName {
-    pub(super) fn render(self) -> netsmith::render::CaseMode {
-        use netsmith::render::CaseMode;
+    pub(super) fn render(self) -> netsmith_3d::RenderCaseMode {
+        use netsmith_3d::RenderCaseMode as CaseMode;
         match self {
             CaseName::Hidden => CaseMode::Hidden,
             CaseName::SeeThrough => CaseMode::SeeThrough,

@@ -58,8 +58,8 @@ not required. Which parts must match is `reference/must_match.toml` (see below).
   outline, the holes and, for every footprint, its place, rotation and pads. The header of the
   file says what the origin and axes are, and which entries must match (`must_match = true`).
   Regenerate it with
-  `cargo run -p netsmith --example reference_table -- --must-match reference/must_match.toml reference/ORBIT.kicad_pcb > reference/placements.toml`
-  (run from this folder); a test (`crates/netsmith/tests/orbit.rs`) checks that the file is
+  `cargo run -p netsmith-tools --example reference_table -- --must-match reference/must_match.toml reference/ORBIT.kicad_pcb > reference/placements.toml`
+  (run from this folder); a test (`crates/netsmith-tools/tests/orbit.rs`) checks that the file is
   what the program prints.
 
 ## What must match
@@ -178,7 +178,7 @@ a part is; which signal is on which pin, where each stands and the designators o
 (`U10` is the crystal, `L1`, `D1` to `D3`, `USB1`, `BAT1`, `SW1`, `SW2`, `BOOT0`, `PWR1`) are
 the board's (the standard crystal's letter is `Y`, the standard connector's `J`). Each
 must-match footprint is compared pad for pad with `reference/placements.toml` by a test
-(`crates/netsmith/tests/orbit.rs`, module `small_parts`): number, centre in the footprint's own
+(`crates/netsmith-tools/tests/orbit.rs`, module `small_parts`): number, centre in the footprint's own
 frame (0.05 mm), size, shape, kind, drill and angle; the fixture board of the tests builds with
 all the parts and no KiCad install. The footprints are files of the project's own library,
 `libs/orbit_small_parts.pretty`, listed in `kicad.toml`. **No dimension was guessed**: what is
@@ -341,7 +341,7 @@ drawn from the pin table (no `symbol` key, ADR 0097). Every document was fetched
 2026-11-10. No std interface fits any of them (`Buck` is a step-down regulator, `LinearRegulator`
 a linear one, and std has no charger, microcontroller, memory or bridge), so none `provides`
 one: they are the project's own kinds, and, with no model, boundaries of the design (the checks
-that need a number are listed as not evaluated). The tests are in `crates/netsmith/tests/orbit.rs`
+that need a number are listed as not evaluated). The tests are in `crates/netsmith-tools/tests/orbit.rs`
 (module `ics`) and build a small board of their own with all five parts and no KiCad.
 
 | Ref. | Part | Document | Pins read from | Package |
@@ -462,8 +462,8 @@ with no error and no warning; what the build prints are notes (below).
 
 ### Same nets
 
-Tests in `crates/netsmith/tests/orbit.rs`, module `board` (no KiCad; run
-`cargo test -p netsmith --test main orbit::board`):
+Tests in `crates/netsmith-tools/tests/orbit.rs`, module `board` (no KiCad; run
+`cargo test -p netsmith-tools --test main orbit::board`):
 
 - `every_pad_has_the_same_pads_on_its_net_as_in_orbits_board`: the netlist of the committed
   `reference/ORBIT.kicad_pcb`, read as a file with netsmith's own reader
@@ -560,13 +560,13 @@ fab` writes (in `fab/Orbit/`) with their board, as `reference/placements.toml` s
 compares, the tolerances (outline and holes 0.05 mm, positions of parts 0.1 mm, rotation exact,
 pad numbers and nets equal), the origin (the upper-left corner of the outline) and the meaning of
 the verdicts are those of the RP2350A Minimal's checker, described in
-`examples/rp2350_minimal/README.md` ("Parity"); the checker is `netsmith::parity`. Without
+`examples/rp2350_minimal/README.md` ("Parity"); the checker is `netsmith_tools::parity`. Without
 `--table` and `--parts` the command reads those of the project's `reference/` folder. The test
-`orbit_pcb_matches_the_original` (`crates/netsmith/tests/orbit_parity.rs`) runs `netsmith fab
+`orbit_pcb_matches_the_original` (`crates/netsmith-cli/tests/orbit_parity.rs`) runs `netsmith fab
 --locked --route-timeout 20` with no KiCad, accepts a complete or an INCOMPLETE board (only a
 failure that says `INCOMPLETE:`), fails when a must-match item is not `ok`, and fails when
 `reference/parity-overlay.svg` is not the overlay of the board it got. It shares its code with
-the RP2350A Minimal's test (`crates/netsmith/tests/common/mod.rs`).
+the RP2350A Minimal's test (`crates/netsmith-tools/tests/common/mod.rs`).
 
 **The map.** ORBIT's references and netsmith's differ (netsmith numbers a kind's parts in the
 order of declaration: ORBIT's USB1 is J1 here, its J1 is J3, its U10 is Y1), so the checker pairs
@@ -582,7 +582,7 @@ with a ring of eight vias, all pads numbered 1. The table has each as a `[[hole]
 vias, which the owner does not require, would have failed it; it now judges a plated hole as a
 hole and not as a part, as it does a non-plated one: the same place and drill (0.05 mm), the same
 plating, the same pad (size 0.05 mm; theirs are 5 mm and 4.4 mm, twice the drill) and the same net
-(none), and not the ring of vias (`crates/netsmith/src/parity.rs`, tests in `orbit_parity.rs`: a
+(none), and not the ring of vias (`crates/netsmith-tools/src/parity.rs`, tests in `orbit_parity.rs`: a
 copy of their board with no vias passes; a hole moved by 0.1 mm, with another drill, with a
 2.6 mm pad, or drawn as the standard non-plated `MountingHole` does, fails).
 

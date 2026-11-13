@@ -282,7 +282,7 @@ fn fab_writes_the_member_path_of_each_footprint() {
 /// on its footprint, as `fab` writes it: the board that `netsmith parity` pairs part by part.
 fn charger_reference_with_paths() -> String {
     let reference = examples().join("power_manifold_charger/reference");
-    let parts = netsmith::port::PortParts::read(&reference.join("parts.toml")).unwrap();
+    let parts = netsmith_tools::port::PortParts::read(&reference.join("parts.toml")).unwrap();
     let mut pcb = fs::read_to_string(reference.join("charger-module.kicad_pcb")).unwrap();
     for (path, designator) in parts.iter() {
         let at = format!("(property \"Reference\" \"{designator}\"");

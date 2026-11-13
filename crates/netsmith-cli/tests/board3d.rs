@@ -248,22 +248,22 @@ fn a_two_layer_board_has_two_copper_layers_and_the_same_bytes_every_run() {
 fn scene_of(source: &str) -> netsmith_3d::Scene {
     let path = repo().join(source);
     let target =
-        netsmith::project::Target::resolve_from(&repo(), Some(path.to_str().unwrap())).unwrap();
+        netsmith_fabricate::project::Target::resolve_from(&repo(), Some(path.to_str().unwrap())).unwrap();
     let file = &target.files[0];
     let text = std::fs::read_to_string(&file.path).unwrap();
     let catalogs = target.catalogs().unwrap();
-    let (held, _) = netsmith::pick_lock::open(&file.path, &catalogs, false).unwrap();
+    let (held, _) = netsmith_pipeline::pick_lock::open(&file.path, &catalogs, false).unwrap();
     let nowhere = netsmith_testkit::TempDir::new("render-no-kicad");
     let search = netsmith_kicad::Search::under(nowhere.path()).with_no_kicad();
     let root = target.project.as_ref().map(|p| p.root.as_path());
-    let libraries = netsmith::Libraries::for_project_by(root, &search).unwrap();
-    netsmith::board3d::scene_of(
+    let libraries = netsmith_pipeline::Libraries::for_project_by(root, &search).unwrap();
+    netsmith_fabricate::board3d::scene_of(
         &file.name,
         &text,
         &target.loader().unwrap(),
         held.as_ref().unwrap_or(&catalogs),
         &libraries,
-        Some(&netsmith::layout::layout_path(&file.path)),
+        Some(&netsmith_fabricate::layout::layout_path(&file.path)),
         None,
     )
     .unwrap()
@@ -729,12 +729,12 @@ fn the_editor_serves_the_bytes_that_board3d_writes_for_the_placement_it_draws() 
     );
     let written = std::fs::read(&file).unwrap();
 
-    let target = netsmith::project::Target::resolve_from(
+    let target = netsmith_fabricate::project::Target::resolve_from(
         dir.path(),
         Some(dir.join("height_limits.nsm").to_str().unwrap()),
     )
     .unwrap();
-    let editor = netsmith::editor::Workspace::open(target).unwrap();
+    let editor = netsmith_workspace::Workspace::open(target).unwrap();
     let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
     std::thread::spawn(move || netsmith_editor::serve(listener, std::sync::Arc::new(editor)));
@@ -787,12 +787,12 @@ fn the_editor_serves_the_system_scene_that_board3d_writes() {
     );
     let written = std::fs::read(&file).unwrap();
 
-    let target = netsmith::project::Target::resolve_from(
+    let target = netsmith_fabricate::project::Target::resolve_from(
         dir.path(),
         Some(dir.join("two_boards.nsm").to_str().unwrap()),
     )
     .unwrap();
-    let editor = netsmith::editor::Workspace::open(target).unwrap();
+    let editor = netsmith_workspace::Workspace::open(target).unwrap();
     let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
     std::thread::spawn(move || netsmith_editor::serve(listener, std::sync::Arc::new(editor)));

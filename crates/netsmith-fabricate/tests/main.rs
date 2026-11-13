@@ -3,4 +3,9 @@
 //! Run one file's tests with `cargo test -p netsmith-fabricate --test main <file>::`, or with
 //! `cargo nextest run -p netsmith-fabricate <file>::`.
 
+mod common;
+// KiCad's design rule check of a board, which netsmith-router's `kicad_drc` shares with `kicad_drc`.
+#[path = "../../netsmith-router/tests/drc_kit/mod.rs"]
+mod drc_kit;
+
 automod::dir!("tests");

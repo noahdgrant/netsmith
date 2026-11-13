@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith::init::init;
+use netsmith_tools::init::init;
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(

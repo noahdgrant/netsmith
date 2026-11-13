@@ -44,7 +44,7 @@ footprint = "power_manifold_ics:QFN-18-1EP_3.5x3.5mm_P0.5mm_EP2.2x2.2mm_ST"
 # and what was read, derived or assumed. J2 (the Tag-Connect pads) is the standard
 # `ProgrammingPads6` and the test pads J1, J5 and J6 the standard `TestPoint` (D1.5mm): their
 # standard footprints are compared with the reference's pads by
-# `crates/netsmith/tests/power_manifold_parts.rs`.
+# `crates/netsmith-fabricate/tests/power_manifold_parts.rs`.
 [[library]]
 name = "power_manifold_must_match"
 footprints = "libs/power_manifold_must_match.pretty"

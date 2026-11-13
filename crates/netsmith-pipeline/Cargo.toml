@@ -3,6 +3,13 @@ name = "netsmith-pipeline"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# The tests are one executable, tests/main.rs, with the other files of the folder as its modules
+# (#190): without this, cargo builds and links every file of the folder as well.
+autotests = false
+
+[[test]]
+name = "main"
+path = "tests/main.rs"
 
 [dependencies]
 netsmith-3d = { path = "../netsmith-3d" }
@@ -27,6 +34,10 @@ netsmith-testkit = { path = "../netsmith-testkit", optional = true }
 test-support = ["dep:netsmith-testkit"]
 
 [dev-dependencies]
+automod = "1.0.17"
+netsmith-fab = { path = "../netsmith-fab" }
+netsmith-placer = { path = "../netsmith-placer" }
+serde_json = "1.0.154"
 netsmith-pipeline = { path = ".", features = ["test-support"] }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }

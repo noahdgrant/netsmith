@@ -1,7 +1,7 @@
 //! `netsmith port skeleton` (#452): the first source of a port of a KiCad board, and its parts
-//! file. The logic is `netsmith::port_skeleton`. `netsmith port tables` (#560): the derived
+//! file. The logic is `netsmith_tools::port_skeleton`. `netsmith port tables` (#560): the derived
 //! tables of an original too large to commit, held against its `source.toml`; the logic is
-//! `netsmith::port_tables`.
+//! `netsmith_tools::port_tables`.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -63,7 +63,7 @@ pub fn run(args: Args) -> ExitCode {
 
 /// Write or check the tables and print what they hold.
 fn tables(args: &TablesArgs) -> ExitCode {
-    use netsmith::port_tables::{Mode, TablesError, write};
+    use netsmith_tools::port_tables::{Mode, TablesError, write};
     let mode = if args.check { Mode::Check } else { Mode::Write };
     match write(&args.original, &args.reference, args.url.as_deref(), mode) {
         Ok(w) => {
@@ -99,7 +99,7 @@ fn tables(args: &TablesArgs) -> ExitCode {
 
 /// Write the two files and print the counts, the lines marked `TODO tolerance` and the gaps.
 fn skeleton(args: &SkeletonArgs) -> ExitCode {
-    match netsmith::port_skeleton::write(&args.original, args.out.as_deref()) {
+    match netsmith_tools::port_skeleton::write(&args.original, args.out.as_deref()) {
         Ok((skeleton, parts)) => {
             let out = args.out.as_deref().unwrap_or(Path::new("src/main.nsm"));
             println!(

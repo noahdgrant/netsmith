@@ -7,9 +7,9 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use netsmith::build_with;
-use netsmith::editor::Workspace;
-use netsmith::project::{Manifest, Project, Target};
+use netsmith_pipeline::build_with;
+use netsmith_workspace::Workspace;
+use netsmith_fabricate::project::{Manifest, Project, Target};
 use netsmith_editor::Backend;
 use netsmith_solve::Catalogs;
 
@@ -36,7 +36,7 @@ fn read(root: &Path, file: &str) -> String {
 
 // ---- several files ----------------------------------------------------------------------
 
-fn build_project(root: &Path) -> Result<Vec<netsmith::Built>, String> {
+fn build_project(root: &Path) -> Result<Vec<netsmith_pipeline::Built>, String> {
     let target = Target::resolve_from(root, None)?;
     let mut all = Vec::new();
     for f in &target.files {
@@ -46,7 +46,7 @@ fn build_project(root: &Path) -> Result<Vec<netsmith::Built>, String> {
             &text,
             &target.loader()?,
             &Catalogs::jlcpcb(),
-            &netsmith::Libraries::sample(),
+            &netsmith_pipeline::Libraries::sample(),
         )?);
     }
     Ok(all)

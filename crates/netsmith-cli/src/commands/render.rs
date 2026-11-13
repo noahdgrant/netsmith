@@ -32,14 +32,14 @@ pub struct Args {
     #[arg(long, value_name = "FILE.PNG")]
     pub out: Option<PathBuf>,
     /// The picture's size in pixels, 64 to 8192 a side.
-    #[arg(long, value_name = "WxH", default_value = "1600x1000", value_parser = netsmith::render::parse_size)]
+    #[arg(long, value_name = "WxH", default_value = "1600x1000", value_parser = netsmith_3d::parse_render_size)]
     pub size: (usize, usize),
     /// Cut the scene at a position in mm, such as `x=12.5`, and keep the far side.
     ///
     /// The position is in the scene's frame: y up from the outline's bottom-left corner, z up from
     /// the board's top face. The cut faces are filled as a section of the stackup, each layer at
     /// its true thickness in its own colour, unless `--no-caps` leaves them open.
-    #[arg(long, value_name = "AXIS=MM", value_parser = netsmith::render::parse_section)]
+    #[arg(long, value_name = "AXIS=MM", value_parser = netsmith_3d::parse_render_section)]
     pub section: Option<(netsmith_3d::Axis, f64)>,
     /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` and dim the rest (comma-separated or repeated).
     ///
@@ -72,8 +72,8 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn request(&self) -> netsmith::render::Request {
-        netsmith::render::Request {
+    pub fn request(&self) -> netsmith_3d::RenderRequest {
+        netsmith_3d::RenderRequest {
             view: self.view.raster(),
             size: self.size,
             section: self.section,
@@ -110,27 +110,27 @@ fn run_render(
     file: Option<&str>,
     board: Option<&str>,
     out: Option<&Path>,
-    request: &netsmith::render::Request,
+    request: &netsmith_3d::RenderRequest,
 ) -> ExitCode {
     let scene = match with_placed_board(file, board, |placed| placed.any_scene()) {
         Ok(made) => made,
         Err(code) => return code,
     };
     let (drawn, label) = match scene {
-        netsmith::board3d::AnyScene::Board(scene, label) => {
+        netsmith_fabricate::board3d::AnyScene::Board(scene, label) => {
             for w in &scene.warnings {
                 eprintln!("warning: {label}: {w}");
             }
-            (netsmith::render::draw(&scene, request), label)
+            (netsmith_3d::render_png(&scene, request), label)
         }
-        netsmith::board3d::AnyScene::System(system) => {
+        netsmith_fabricate::board3d::AnyScene::System(system) => {
             for m in &system.members {
                 for w in &m.scene.warnings {
                     eprintln!("warning: {}/{}: {w}", system.name, m.name);
                 }
             }
             (
-                netsmith::render::draw_system(&system, request),
+                netsmith_3d::render_system_png(&system, request),
                 system.name.clone(),
             )
         }
@@ -143,7 +143,7 @@ fn run_render(
         }
     };
     let out = out.map_or_else(
-        || netsmith::render::default_out(&label, request.view),
+        || netsmith_3d::default_render_out(&label, request.view),
         Path::to_path_buf,
     );
     if let Err(e) = fs::write(&out, png) {
@@ -167,7 +167,7 @@ mod tests {
     use crate::commands::common::testing::{kind, parse};
     use clap::error::ErrorKind;
 
-    fn render(args: &[&str]) -> netsmith::render::Request {
+    fn render(args: &[&str]) -> netsmith_3d::RenderRequest {
         let mut line = vec!["render"];
         line.extend_from_slice(args);
         match parse(&line) {
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn render_has_the_defaults_of_a_request_and_takes_its_flags() {
-        assert_eq!(render(&[]), netsmith::render::Request::default());
+        assert_eq!(render(&[]), netsmith_3d::RenderRequest::default());
         let r = render(&[
             "--view",
             "top",
@@ -203,11 +203,11 @@ mod tests {
         assert_eq!(r.section, Some((netsmith_3d::Axis::Z, -0.8)));
         assert_eq!(r.highlight, vec!["J1", "net:GND", "limit:lid"]);
         assert!(r.xray && !r.caps && r.dark && r.perspective);
-        assert_eq!(r.case, netsmith::render::CaseMode::Solid);
+        assert_eq!(r.case, netsmith_3d::RenderCaseMode::Solid);
         for (name, mode) in [
-            ("hidden", netsmith::render::CaseMode::Hidden),
-            ("see-through", netsmith::render::CaseMode::SeeThrough),
-            ("solid", netsmith::render::CaseMode::Solid),
+            ("hidden", netsmith_3d::RenderCaseMode::Hidden),
+            ("see-through", netsmith_3d::RenderCaseMode::SeeThrough),
+            ("solid", netsmith_3d::RenderCaseMode::Solid),
         ] {
             assert_eq!(render(&["--case", name]).case, mode, "{name}");
             assert_eq!(mode.name(), name);

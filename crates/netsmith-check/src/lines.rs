@@ -47,7 +47,7 @@
 //!   and `tri_state` for an `output` and the reverse; on a line that is `bidirectional` (I2C)
 //!   any signal kind. A `bidirectional` row on a line whose role gives a plain direction is
 //!   accepted with a warning of the `bus role` guideline of
-//!   `netsmith build` (`crates/netsmith/src/bus_roles.rs`), so an old table moves to honest kinds without
+//!   `netsmith build` (`crates/netsmith-pipeline/src/bus_roles.rs`), so an old table moves to honest kinds without
 //!   breaking its build. For a function that states no kind of its own, the pin's kind decides
 //!   and the advice names the function and the place to write the kind (the peripheral).
 //! - `~` leaves out two pins that no part describes: a device without flow control gives no row
@@ -94,7 +94,7 @@
 //!   asking the receptacle for `Host` or `Device` (a false statement that counts toward the
 //!   limit of one host). A peripheral cannot be a pass-through. `Uart` stays without roles.
 //! - **The `bus role` guideline** (`busnets::joined_without_role` and
-//!   `crates/netsmith/src/bus_roles.rs`): a warning in `netsmith build`, an error with `--strict` or
+//!   `crates/netsmith-pipeline/src/bus_roles.rs`): a warning in `netsmith build`, an error with `--strict` or
 //!   `guidelines = "error"`, also in the editor's problems list and in `fab-notes.txt`. An
 //!   interface is joined when some net joins a pin of it to a pin of the same interface
 //!   definition on another end, however the board joined them: the condition the note of rule

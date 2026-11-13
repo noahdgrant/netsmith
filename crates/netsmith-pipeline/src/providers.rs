@@ -40,7 +40,7 @@
 //!
 //! Cost. A trial is a whole solve: for an invented board of 58 parts, release build, `check` 2
 //! ms, `solve` 215 to 250 ms, so the bound is about 14 s on such a board (an example,
-//! `crates/netsmith/examples/trial_cost.rs`). Not changed: every use with a second provider is
+//! `crates/netsmith-tools/examples/trial_cost.rs`). Not changed: every use with a second provider is
 //! still varied alone, one solve each, up to the bound; varying only the uses a diagnostic
 //! names would give up designs whose cause the diagnostic does not name (a rail's voltage a
 //! provider sets). For a use whose first provider is the generic itself, an open value after the

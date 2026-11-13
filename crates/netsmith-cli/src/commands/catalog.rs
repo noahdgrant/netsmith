@@ -1,10 +1,10 @@
-use netsmith::project::Project;
+use netsmith_fabricate::project::Project;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, time::Duration};
 
 use clap::{Args as ClapArgs, Subcommand};
-use netsmith::supply::Supply;
+use netsmith_pipeline::supply::Supply;
 
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Args {
@@ -84,7 +84,7 @@ pub struct AgeArgs {
     #[arg(value_name = "CATALOG.CSV|DIR")]
     pub paths: Vec<PathBuf>,
     /// The age in days from which a row is old.
-    #[arg(long, value_name = "N", default_value_t = netsmith::refresh::STALE_DAYS)]
+    #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::refresh::STALE_DAYS)]
     pub days: u32,
     /// Only this catalog (repeatable).
     #[arg(long, value_name = "CATALOG")]
@@ -104,7 +104,7 @@ pub fn run(args: Args) -> ExitCode {
 /// `netsmith catalog add` (#454): exit 0 when the row is written (or the record printed), 1
 /// when LCSC has no record or the file already has the number, 2 when the run could not be made.
 fn run_catalog_add(lcsc: &str, to: Option<&Path>, offline: bool, no_cache: bool) -> ExitCode {
-    use netsmith::refresh::{self, AddError, Network};
+    use netsmith_fabricate::refresh::{self, AddError, Network};
     let mut network = Network {
         offline,
         ..Network::default()
@@ -130,7 +130,7 @@ fn run_catalog_add(lcsc: &str, to: Option<&Path>, offline: bool, no_cache: bool)
 }
 
 fn run_catalog_refresh(request: &RefreshArgs) -> ExitCode {
-    use netsmith::refresh::{self, Network};
+    use netsmith_fabricate::refresh::{self, Network};
     let fail = |e: String| {
         eprintln!("error: {e}");
         ExitCode::from(2)
@@ -181,7 +181,7 @@ fn run_catalog_refresh(request: &RefreshArgs) -> ExitCode {
 }
 
 fn run_catalog_age(paths: &[std::path::PathBuf], only: &[String], days: u32) -> ExitCode {
-    use netsmith::refresh;
+    use netsmith_fabricate::refresh;
     let fail = |e: String| {
         eprintln!("error: {e}");
         ExitCode::from(2)

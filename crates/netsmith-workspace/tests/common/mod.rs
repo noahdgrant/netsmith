@@ -1,5 +1,5 @@
-//! Helpers the tests share with the umbrella crate's and the command line's.
+//! Helpers the tests share with the other crates' (`netsmith-fabricate`, `netsmith-cli`).
 
-// The fake LCSC endpoint, which `netsmith` and `netsmith-cli` tests use as well.
-#[path = "../../../netsmith/tests/common/endpoints.rs"]
+// The fake LCSC endpoint, which `netsmith-fabricate`, `netsmith-workspace` and `netsmith-cli` tests use.
+#[path = "../../../netsmith-fabricate/tests/common/endpoints.rs"]
 pub mod endpoints;

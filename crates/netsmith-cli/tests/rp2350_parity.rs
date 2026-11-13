@@ -1,4 +1,4 @@
-//! The parity checker of the RP2350A Minimal port (`netsmith::parity`): small boards written as
+//! The parity checker of the RP2350A Minimal port (`netsmith_tools::parity`): small boards written as
 //! KiCad text stand for what `fab` writes, and the checker must pass a copy of the reference's
 //! must-match items and fail, naming the item, each way that a board can differ. One test runs
 //! the checker on Raspberry Pi's own board against itself, which proves that it reads a real

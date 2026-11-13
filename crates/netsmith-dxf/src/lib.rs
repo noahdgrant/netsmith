@@ -41,7 +41,7 @@
 //! own footprints, and no catalog data is added without a source (the options, a `.diameter`
 //! member, more stock sizes with a source or a generated hole footprint, are issue #89).
 //! Tests: `crates/netsmith-dxf/tests/read.rs` (hand-written files for each of the cases) and
-//! `crates/netsmith/tests/dxf.rs` (a rounded case with a slot and four holes through `fab`).
+//! `crates/netsmith-tools/tests/dxf.rs` (a rounded case with a slot and four holes through `fab`).
 //! An outline that is not a rounded rectangle is returned as it is; `netsmith dxf import` prints
 //! it as a `polygon` (issue #57). Not done: datums other than mounting holes (a `PlatedHole`,
 //! fiducials, the screw-head clearance), and `--json` output.

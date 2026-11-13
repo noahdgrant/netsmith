@@ -13,7 +13,7 @@
 //! the card edge.
 //!
 //! Its nets are the design's, and the proof is the test `board` of
-//! `crates/netsmith/tests/power_manifold.rs` (`README.md`, "Same nets"). Every pin of the edge
+//! `crates/netsmith-tools/tests/power_manifold.rs` (`README.md`, "Same nets"). Every pin of the edge
 //! connector and of the microcontroller is joined to the pin the design joins it to: the
 //! board states no request that the pin optimizer (ADR 0101) could move.
 

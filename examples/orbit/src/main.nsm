@@ -5,7 +5,7 @@
 //! connectors, switches and buttons are in the physical file, `main.physical.nsm`.
 //!
 //! Its nets are theirs, and the proof is the test
-//! `every_pad_has_the_same_pads_on_its_net_as_in_orbits_board` (`crates/netsmith/tests/orbit.rs`,
+//! `every_pad_has_the_same_pads_on_its_net_as_in_orbits_board` (`crates/netsmith-tools/tests/orbit.rs`,
 //! module `board`), which compares the wiring alone with the netlist of their board file.
 //! The pin-to-signal mapping of the two 1 x 8 headers is theirs too, and it is FIXED: each
 //! header pin is joined to a named pin of the MCU (`.mcu.pb11`) and never to a request for

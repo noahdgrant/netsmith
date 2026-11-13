@@ -59,7 +59,7 @@ fn run_lock(file: Option<&str>, mode: LockMode) -> ExitCode {
                 return ExitCode::from(2);
             }
         };
-        let found = match netsmith::pick_lock::refresh(
+        let found = match netsmith_pipeline::pick_lock::refresh(
             &source.path,
             &source.name,
             &text,

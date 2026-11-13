@@ -77,7 +77,7 @@ command line only.
 
 ## The ERC test
 
-`cargo test -p netsmith --test main erc::the_two_buck_example_passes_erc` builds the example and
+`cargo test -p netsmith-fabricate --test main two_buck::the_two_buck_example_passes_erc` builds the example and
 runs KiCad's ERC on its schematic; it passes with no violation. KiCad 9 for Windows is installed
 on this machine (found through WSL), so the ERC ran: the test finished in 2.4 s and 5.9 s on two
 runs, nearly all of it `kicad-cli` starting. For comparison `erc::every_example_passes_erc_with_kicads_own_symbols`
