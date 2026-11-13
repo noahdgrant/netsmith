@@ -47,6 +47,7 @@ pcb-3d 12
 pcb-3d-control 12
 pcb-3d-measure 10
 pcb-3d-stackup 12
+pcb-3d-system 12
 pcb-3d-inspect 14
 pcb-constraints 5
 pcb-edit 15

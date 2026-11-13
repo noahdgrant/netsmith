@@ -346,6 +346,43 @@ impl Workspace {
     }
 
     /// The state, built again first if a watched file changed since it was last read.
+    /// The system scene of `system` as a `.glb` (ADR 0110): each member placed as `pcb_3d` of
+    /// `System/member` has it (routed, if it was routed since the files were read), and the
+    /// members' layout stamps joined with `,` in the system's order.
+    fn system_3d(&self, system: &analysis::SystemData) -> Result<netsmith_editor::Pcb3d, ApiError> {
+        let name = &system.solved.name;
+        let mut members = Vec::new();
+        for (member, _, _) in &system.solved.boards {
+            let label = format!("{name}/{member}");
+            let (version, data) = {
+                let state = self.fresh();
+                let data = state.snapshot.board_handle(&label)?;
+                if let Some(entry) = state.pcb.get(&label) {
+                    members.push((data, entry.board.clone(), entry.layout_stamp().to_string()));
+                    continue;
+                }
+                (state.version, data)
+            };
+            let entry = pcb::place(&data, &label)?;
+            members.push((data, entry.board.clone(), entry.layout_stamp().to_string()));
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.version == version {
+                state.pcb.entry(label).or_insert(entry);
+            }
+        }
+        let pairs: Vec<(&crate::Built, &netsmith_pcb::Board)> =
+            members.iter().map(|(d, b, _)| (&d.built, b)).collect();
+        let scene = crate::system3d::scene(&system.solved, &pairs);
+        Ok(netsmith_editor::Pcb3d {
+            glb: netsmith_3d::gltf::system_glb(&scene),
+            layout_stamp: members
+                .iter()
+                .map(|(_, _, s)| s.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+        })
+    }
+
     fn fresh(&self) -> MutexGuard<'_, State> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         // A layout file changed by another program: the boards are placed again, and the page
@@ -762,6 +799,19 @@ impl Backend for Workspace {
     }
 
     fn pcb_3d(&self, board: &str) -> Result<netsmith_editor::Pcb3d, ApiError> {
+        // A system's name: its system scene (ADR 0110), each member as the 2D view has it.
+        let system = {
+            let state = self.fresh();
+            state
+                .snapshot
+                .systems
+                .iter()
+                .find(|(s, _)| s.solved.name == board)
+                .map(|(s, _)| Arc::clone(s))
+        };
+        if let Some(system) = system {
+            return self.system_3d(&system);
+        }
         // The placement `pcb_scene` draws, kept in `state.pcb`: placed here only when the board
         // has not been placed since the files were read, and then kept for the 2D view too.
         let (version, data) = {
