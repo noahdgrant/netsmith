@@ -2087,21 +2087,7 @@ fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Class> {
             .any(|c| c.net == net && c.current >= POWER_CURRENT)
     };
     let decoupling = crate::quality::decoupling_pairs(&board.parts, &board.nets);
-    let decouples = |l: &Ratline| {
-        decoupling.iter().any(|pair| {
-            let cap = &board.parts[pair.cap].refdes;
-            pair.nets.iter().any(|n| {
-                let ends = |a: &netsmith_pcb::board::PadRef, b: &netsmith_pcb::board::PadRef| {
-                    &a.refdes == cap
-                        && a.number == n.cap_pad
-                        && n.pins.iter().any(|(part, pad)| {
-                            board.parts[*part].refdes == b.refdes && *pad == b.number
-                        })
-                };
-                ends(&l.from, &l.to) || ends(&l.to, &l.from)
-            })
-        })
-    };
+    let decouples = |l: &Ratline| crate::decouple::decouples(board, &decoupling, l);
     lines
         .iter()
         .zip(depth)
@@ -2344,6 +2330,11 @@ enum Memo {
     Search(Option<Result<(Routed, Vec<Spot>), Unsettled>>),
 }
 
+/// The longest track from a decoupling capacitor's pad to its own via to the return net's
+/// pour, and the nearest another via of the net may be for the pad to need none, in mm
+/// ([`Router::to_the_pours`]).
+const RETURN_TRACK: f64 = 1.5;
+
 /// How many steps of searches the memo holds before it is emptied.
 const MEMO_MOST: usize = 200_000;
 
@@ -2363,6 +2354,9 @@ struct Router<'a> {
     /// What the fixed obstacles keep cells from, for each room and track width asked for.
     bases: RefCell<HashMap<(u64, u64), std::rc::Rc<Base>>>,
     lines: Vec<Ratline>,
+    /// How many of `lines` are the ratsnest's, which the tries route; the rest are the
+    /// decoupling capacitors' vias to the pours ([`Router::to_the_pours`]).
+    routed_lines: usize,
     /// The net of each line, as an index into the board's nets.
     nets: Vec<usize>,
     /// The cells each line starts and ends on.
@@ -2440,7 +2434,11 @@ impl<'a> Router<'a> {
             .enumerate()
             .map(|(i, n)| (n.name.as_str(), i))
             .collect();
-        let lines = crate::decouple::lines(board, Ratsnest::of(board).lines);
+        let mut lines = crate::decouple::lines(board, Ratsnest::of(board).lines);
+        // The lines of the ratsnest, then the decoupling capacitors' vias to the pours, which
+        // are routed after a complete try only ([`Router::to_the_pours`]).
+        let routed_lines = lines.len();
+        lines.extend(crate::decouple::return_lines(board));
         let nets = lines.iter().map(|l| net_index[l.net.as_str()]).collect();
         let ends = lines
             .iter()
@@ -2516,6 +2514,7 @@ impl<'a> Router<'a> {
             bases: RefCell::new(HashMap::new()),
             grid,
             lines,
+            routed_lines,
             nets,
             ends,
             in_pads,
@@ -3696,6 +3695,7 @@ impl<'a> Router<'a> {
             // their coupling.
             self.side_by_side(&mut state);
             self.off_the_pours(&mut state, attempt, attempts);
+            self.to_the_pours(&mut state);
         }
         self.snapshot(SnapshotStage::Final, &state);
         state
@@ -3887,6 +3887,44 @@ impl<'a> Router<'a> {
         }
         self.fine.set(false);
         self.pouring.set(false);
+        *self.failed_in.borrow_mut() = failed_in;
+        self.stage.set(stage);
+    }
+
+    /// Give each decoupling capacitor's pad on a poured return net its own via to the pour, on
+    /// a try that routed every line (issue #431, S7): each line past [`Self::routed_lines`] is
+    /// searched for against all the other copper, as a pad's line to a plane is, and kept only
+    /// if its track is at most [`RETURN_TRACK`] long and the net has no via within
+    /// [`RETURN_TRACK`] of the pad already. Nothing else moves and no line is left.
+    fn to_the_pours(&self, state: &mut State) {
+        if self.routed_lines == self.lines.len() {
+            return;
+        }
+        let stage = self.stage.get();
+        let failed_in = self.failed_in.borrow().clone();
+        self.fine.set(true);
+        for line in self.routed_lines..self.lines.len() {
+            if self.out_of_time() {
+                break;
+            }
+            let at = self.lines[line].from_at;
+            let net = &self.lines[line].net;
+            let near = state
+                .routed
+                .iter()
+                .flat_map(|r| r.vias.iter())
+                .any(|v| &v.net == net && v.at.distance(at) <= RETURN_TRACK);
+            if near {
+                continue;
+            }
+            if let Some((r, _)) = self.try_line(line, state, &[], ROOM_LOOSE, false) {
+                let length: f64 = r.tracks.iter().map(|t| t.from.distance(t.to)).sum();
+                if !r.tracks.is_empty() && length <= RETURN_TRACK {
+                    state.routed.push(r);
+                }
+            }
+        }
+        self.fine.set(false);
         *self.failed_in.borrow_mut() = failed_in;
         self.stage.set(stage);
     }
@@ -4533,7 +4571,7 @@ impl<'a> Router<'a> {
 
     /// The orders to try the lines in.
     fn orders(&self, retry: bool) -> Vec<Vec<usize>> {
-        let mut shortest: Vec<usize> = (0..self.lines.len()).collect();
+        let mut shortest: Vec<usize> = (0..self.routed_lines).collect();
         shortest.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
         // Lines that end deep in a fine-pitch grid of pads first, the deepest first, and the
         // others shortest first. It differs from `shortest` only on a board that has such a
@@ -4880,7 +4918,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         router.report(true, || {
             format!(
                 "routing {} connections on a {} by {} mm board",
-                router.lines.len(),
+                router.routed_lines,
                 board.outline.width(),
                 board.outline.height()
             )

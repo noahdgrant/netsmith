@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use netsmith_pcb::board::{Board, PadRef};
 use netsmith_pcb::ratsnest::{Node, Ratline, nodes_of};
 
-use crate::quality::decoupling_pairs;
+use crate::quality::{DecouplingPair, decoupling_pairs};
 
 /// The farthest a capacitor's pad is from the power pin it decouples for the line between them
 /// to be made first, in mm: a capacitor farther off is a bulk capacitor of the rail, and its
@@ -76,6 +76,24 @@ fn net_of_pads(board: &Board) -> HashMap<(&str, &str), usize> {
     net_of
 }
 
+/// Whether a line joins a decoupling capacitor's pad to a power pin it decouples, on either of
+/// the pair's nets: a line of the router's decoupling class ([`crate::route`]'s `Class`).
+pub(crate) fn decouples(board: &Board, pairs: &[DecouplingPair], l: &Ratline) -> bool {
+    pairs.iter().any(|pair| {
+        let cap = &board.parts[pair.cap].refdes;
+        pair.nets.iter().any(|n| {
+            let ends = |a: &PadRef, b: &PadRef| {
+                &a.refdes == cap
+                    && a.number == n.cap_pad
+                    && n.pins.iter().any(|(part, pad)| {
+                        board.parts[*part].refdes == b.refdes && *pad == b.number
+                    })
+            };
+            ends(&l.from, &l.to) || ends(&l.to, &l.from)
+        })
+    })
+}
+
 /// The capacitor's pad on the return net of each decoupling pair, with that net's name.
 pub(crate) fn return_pads(board: &Board) -> Vec<(PadRef, String)> {
     let net_of = net_of_pads(board);
@@ -102,6 +120,45 @@ pub(crate) fn return_pads(board: &Board) -> Vec<(PadRef, String)> {
         .collect()
 }
 
+/// A line to the pour from each decoupling capacitor's pad on its return net, where that net
+/// is poured on an outer layer the pad is not on and has no plane: on a two-layer board with
+/// ground poured on the back, a front capacitor's ground pad reaches the pour through a via of
+/// its own beside it. The router routes these after a complete try only, and keeps one only if
+/// it is short ([`crate::route`]'s `to_the_pours`); they are never in its orders.
+pub(crate) fn return_lines(board: &Board) -> Vec<Ratline> {
+    let mut out = Vec::new();
+    for (pad, net) in return_pads(board) {
+        if board.planes.iter().any(|p| p.net == net) {
+            continue;
+        }
+        let pours: Vec<_> = board.pours.iter().filter(|p| p.net == net).collect();
+        if pours.is_empty() {
+            continue;
+        }
+        let Some(n) = board.nets.iter().find(|n| n.name == net) else {
+            continue;
+        };
+        for node in nodes_of(&board.parts, n).iter().filter(|n| n.pad == pad) {
+            let on_pour = pours.iter().any(|p| match p.layer {
+                netsmith_pcb::board::CopperLayer::Front => node.front,
+                netsmith_pcb::board::CopperLayer::Back => node.back,
+            });
+            if on_pour {
+                continue;
+            }
+            out.push(Ratline {
+                net: net.clone(),
+                from: node.pad.clone(),
+                to: node.pad.clone(),
+                from_at: node.centre,
+                to_at: node.centre,
+                to_plane: true,
+            });
+        }
+    }
+    out
+}
+
 /// The lines the router routes: `lines` (the board's ratsnest, net by net in board order) with
 /// the lines of each net that has a decoupled power pin made again so that the pin runs to its
 /// capacitor first (see the module header).
@@ -111,10 +168,11 @@ pub(crate) fn lines(board: &Board, lines: Vec<Ratline>) -> Vec<Ratline> {
     let mut wanted: HashMap<usize, Vec<(PadRef, Vec<PadRef>)>> = HashMap::new();
     for pair in decoupling_pairs(&board.parts, &board.nets) {
         let refdes = &board.parts[pair.cap].refdes;
-        let nets = pair
-            .nets
-            .clone()
-            .map(|side| net_of.get(&(refdes.as_str(), side.cap_pad.as_str())).copied());
+        let nets = pair.nets.clone().map(|side| {
+            net_of
+                .get(&(refdes.as_str(), side.cap_pad.as_str()))
+                .copied()
+        });
         let [Some(a), Some(b)] = nets else {
             continue;
         };
@@ -341,6 +399,7 @@ mod tests {
             p.rotation = rotation;
         };
         let o = board.outline.min;
+        board.outline = netsmith_pcb::geometry::Rect::new(o, Pt::new(o.x + 24.0, o.y + 20.0));
         place(&mut board, "U1", Pt::new(o.x + 10.0, o.y + 10.0), 0.0);
         place(&mut board, "R1", Pt::new(o.x + 10.0, o.y + 7.0), 0.0);
         place(&mut board, "C1", Pt::new(o.x + 14.0, o.y + 10.0), 90.0);
@@ -375,7 +434,10 @@ mod tests {
         let lines = lines(&board, plain.clone());
         let mine = of_in(&lines);
         assert_eq!(mine.len(), 2, "{mine:?}");
-        assert!(mine.contains(&["U1.3".to_string(), "C1.1".to_string()]), "{mine:?}");
+        assert!(
+            mine.contains(&["U1.3".to_string(), "C1.1".to_string()]),
+            "{mine:?}"
+        );
         // The return net, which is poured, keeps the ratsnest's lines.
         let gnd = |l: &[Ratline]| -> Vec<[String; 2]> {
             l.iter().filter(|l| l.net == "GND").map(ends).collect()
@@ -392,4 +454,36 @@ mod tests {
             )]
         );
     }
+
+    #[test]
+    fn the_capacitor_is_routed_from_its_pin_and_its_ground_pad_gets_a_short_via_to_the_pour() {
+        let mut board = decoupled_board();
+        let routing = crate::route::route_with(&mut board, crate::route::RouteOptions::default());
+        let left = routing.left;
+        assert!(left.is_empty(), "{:?}", left.lines);
+        let centre = |refdes: &str, pad: &str| {
+            let part = board.part(refdes).unwrap();
+            part.pad_centre(part.footprint.pads_numbered(pad).next().unwrap())
+        };
+        let touches = |net: &str, p: Pt| {
+            board.tracks.iter().any(|t| {
+                t.net == net
+                    && t.layer == CopperLayer::Front
+                    && (t.from.distance(p) < 1e-6 || t.to.distance(p) < 1e-6)
+            })
+        };
+        // The pin's track starts at the pin and the capacitor's pad.
+        assert!(touches("IN", centre("U1", "3")) && touches("IN", centre("C1", "1")));
+        // The capacitor's ground pad has a via of its own beside it, joined by a short track.
+        let pad = centre("C1", "2");
+        let via = board
+            .vias
+            .iter()
+            .find(|v| v.net == "GND" && v.at.distance(pad) <= RETURN_NEAR)
+            .unwrap_or_else(|| panic!("no GND via beside C1.2: {:?}", board.vias));
+        assert!(touches("GND", via.at), "{via:?}");
+    }
+
+    /// How near the test wants the capacitor's via: the router's bound with a cell over.
+    const RETURN_NEAR: f64 = 1.6;
 }
