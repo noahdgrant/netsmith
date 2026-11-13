@@ -25,17 +25,26 @@
 #            folder, the catalog refresh, or prose.
 #   crates   the crates whose tests, and their dependents' tests, are all that `test` and `kicad`
 #            run (issue #511): the folder names under crates/ the change touches, space-separated,
-#            for a nextest filter of `rdeps(<crate>) | ...`. Empty means every test: a change with
-#            no Rust in it, or one with a path outside the crates that turns `rust` on (std/,
-#            data/, examples/, docs/LANGUAGE.md, a skill, the workspace manifest, Cargo.lock, the
-#            toolchain, scripts/, the workflows, a path nothing here knows). A push to main runs
-#            every test.
+#            for a nextest filter of `rdeps(<crate>) | ...`. A path outside crates/ that turns
+#            `rust` on names the crates whose tests read it, when only some do: docs/LANGUAGE.md,
+#            docs/symbol-gallery.html and the skills in .agents/skills are read by the netsmith
+#            crate's tests and by init.rs (`include_str!`), so they name `netsmith` (its
+#            dependents, netsmith-cli, run too); an example names the crates whose tests read it
+#            (`example_readers`, below: `netsmith` for each, and the stage crates that include it).
+#            Empty means every test: a change with no Rust in it, or one with a path outside the
+#            crates that turns `rust` on and names no crate (std/, data/, the workspace manifest,
+#            Cargo.lock, the toolchain, scripts/, the workflows, .claude/, a path nothing here
+#            knows). A push to main runs every test.
 #   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith lock --check` over every
 #            example (ADR 0100). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
 #            are linked into the binary (the solver is netsmith-solve, and the checker and the
 #            design stage change what it is asked), std/, examples/, data/ (the catalogs), and the
 #            script itself; not a test file, the catalog refresh (it never runs in a build), or prose.
+#            Not the crates after the solver either: `lock` reads no KiCad library, no footprint and
+#            no board, so a change to netsmith-pcb, -place-route, -fab, -netlist, -3d, -view or
+#            -editor cannot move a pick (the netsmith-kicad crate keeps `locks`: the umbrella's
+#            design stage still reads its mapping).
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -55,7 +64,8 @@
 # A change to the workflows, the actions (.github/actions) or to scripts/ runs everything, and so does a path nothing here knows:
 # when in doubt, the job runs. Only files that nothing builds or tests read (prose, the licence,
 # the issue templates) leave clippy and the tests out. A test does read docs/LANGUAGE.md and
-# the skills in .agents/skills (crates/netsmith/tests/guide.rs, src/init.rs), so those count as code;
+# the skills in .agents/skills (crates/netsmith/tests/guide.rs, src/init.rs), so those count as code
+# (of the netsmith crate, whose dependents run too: no other crate reads them);
 # so does docs/symbol-gallery.html (crates/netsmith/tests/symbol_gallery.rs compares it with the rendered page).
 # A push to main skips this script: the job runs everything there.
 # The rules are pinned by scripts/ci-changes-test (the `changes` job runs it).
@@ -78,8 +88,9 @@ root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith::build\b|netsmith::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
 rust=false kicad=false recipes=false no_kicad=false locks=false
-# The crates the change touches, for `crates=`; `wide` once a path outside the crates turns `rust` on.
-crates="" wide=false
+# The crates the change touches, for `crates=`; `wide` once a path outside the crates turns `rust` on
+# and names no crate. `mapped` is the crates a path outside crates/ names (worked out for each path).
+crates="" wide=false mapped=""
 all() { rust=true kicad=true recipes=true no_kicad=true locks=true; }
 
 # Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
@@ -104,35 +115,66 @@ kicad_crate() {
     esac
 }
 
+# A crate after the solver (netsmith-pcb, -place-route, -fab, -netlist): as `kicad_crate`, but
+# `netsmith lock` runs none of it, so the change does not start `locks`.
+after_solver() {
+    kicad_crate "$@"
+    locks=false
+}
+
+# The crates whose tests read an example (`$1`: a path under examples/): the file of a board or a
+# folder of a project, with its lock, physical file and layout (`led.nsm`, `led.lock.toml`,
+# `led_panel.physical.nsm`, `orbit/...`) all go by the name before the first dot. Every example is read
+# by crates/netsmith (many tests pick any example) and so by netsmith-cli, its dependent; some are
+# also included by the tests of a stage crate. A stage crate that reads one more has to be added here:
+# scripts/ci-changes-test finds the ones that are missing in the repository's own tests.
+example_readers() {
+    name="${1#examples/}"
+    name="${name%%/*}"
+    name="${name%%.*}"
+    case "$name" in
+        led | status_indicator) echo "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design" ;;
+        linear_regulator | two_boards) echo "netsmith netsmith-check netsmith-solve netsmith-design" ;;
+        carrier_and_cards) echo "netsmith netsmith-check netsmith-solve" ;;
+        four_layer | six_layer | ten_layer) echo "netsmith netsmith-design" ;;
+        *) echo "netsmith" ;;
+    esac
+}
+
 while IFS= read -r path; do
     [ -n "$path" ] || continue
     # A Markdown file in the root (README.md, AGENTS.md, ...) is prose.
     case "$path" in */*) ;; *.md) continue ;; esac
-    # `rust` is worked out for this path alone, then added to what the others gave.
-    rust_before="$rust" rust=false
+    # `rust` and `locks` are worked out for this path alone, then added to what the others gave.
+    rust_before="$rust" rust=false locks_before="$locks" locks=false mapped=""
     case "$path" in
         .github/workflows/* | .github/actions/* | scripts/*) all ;;
 
         # Prose that nothing reads.
         .github/ISSUE_TEMPLATE/* | .github/*.md | .github/CODEOWNERS | .github/dependabot.yml | .github/PULL_REQUEST_TEMPLATE*) ;;
         .gitignore | .gitattributes | .editorconfig | LICENSE* | GLOSSARY.md) ;;
-        docs/LANGUAGE.md | docs/symbol-gallery.html) rust=true ;;
+        # Read by the netsmith crate's tests and by its init.rs, and by no other crate.
+        docs/LANGUAGE.md | docs/symbol-gallery.html) rust=true mapped=netsmith ;;
         docs/*) ;;
-        .agents/skills/netsmith-dev-verify-editor/*) rust=true recipes=true ;;
-        .agents/skills/* | .claude/*) rust=true ;;
+        .agents/skills/netsmith-dev-verify-editor/*) rust=true recipes=true mapped=netsmith ;;
+        .agents/skills/*) rust=true mapped=netsmith ;;
+        .claude/*) rust=true ;;
         .agents/*) ;;
 
         crates/netsmith/src/refresh/*) rust=true recipes=true ;;
-        crates/netsmith-kicad/* | crates/netsmith-core/* | crates/netsmith-fab/* | crates/netsmith-pcb/* | crates/netsmith-place-route/*) kicad_crate "${path#crates/*/}" "$path" ;;
-        crates/netsmith-design/* | crates/netsmith-netlist/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        crates/netsmith-kicad/* | crates/netsmith-core/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        crates/netsmith-design/* | crates/netsmith/* | crates/netsmith-cli/*) kicad_crate "${path#crates/*/}" "$path" ;;
+        # After the solver: no pick of `netsmith lock` depends on them.
+        crates/netsmith-fab/* | crates/netsmith-pcb/* | crates/netsmith-place-route/* | crates/netsmith-netlist/*) after_solver "${path#crates/*/}" "$path" ;;
         # The 3D scene and its writers (netsmith-3d, issue #518): the editor's 3D view draws them,
         # and no test of the crate asks for KiCad, so a change to it does not need `kicad`.
         crates/netsmith-editor/tests/* | crates/netsmith-view/tests/* | crates/netsmith-3d/tests/*) rust=true ;;
-        crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/*) rust=true recipes=true no_kicad=true locks=true ;;
+        crates/netsmith-editor/* | crates/netsmith-view/* | crates/netsmith-3d/*) rust=true recipes=true no_kicad=true ;;
         crates/*/tests/*) rust=true ;;
         crates/*) rust=true no_kicad=true locks=true ;;
         Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/*) all ;;
-        std/* | examples/*) all ;;
+        std/*) all ;;
+        examples/*) all; mapped="$(example_readers "$path")" ;;
         data/*) all ;;
         rustfmt.toml | .rustfmt.toml | clippy.toml) rust=true ;;
 
@@ -142,10 +184,17 @@ while IFS= read -r path; do
         case "$path" in
             crates/*/*) crate="${path#crates/}"; crate="${crate%%/*}"
                 case " $crates " in *" $crate "*) ;; *) crates="${crates:+$crates }$crate" ;; esac ;;
-            *) wide=true ;;
+            *) if [ -z "$mapped" ]; then
+                   wide=true
+               else
+                   for crate in $mapped; do
+                       case " $crates " in *" $crate "*) ;; *) crates="${crates:+$crates }$crate" ;; esac
+                   done
+               fi ;;
         esac
     fi
     [ "$rust_before" = true ] && rust=true
+    [ "$locks_before" = true ] && locks=true
 done
 [ "$wide" = false ] || crates=""
 

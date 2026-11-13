@@ -99,6 +99,7 @@ row "1 0 0 0 0" docs/LANGUAGE.md
 row "1 0 0 0 0" docs/symbol-gallery.html
 row "1 0 0 0 0" .agents/skills/netsmith-dev-verify/SKILL.md .agents/skills/netsmith-write-nsm/SKILL.md
 row "1 0 0 0 0" .claude/settings.json
+row "1 0 0 0 0" .agents/skills/netsmith-write-nsm/references/units.md
 row "1 0 1 0 0" .agents/skills/netsmith-dev-verify-editor/SKILL.md
 row "1 0 0 0 0" rustfmt.toml clippy.toml
 
@@ -133,13 +134,19 @@ row "1 0 0 1 1" crates/netsmith-dxf/src/lib.rs
 row "1 0 0 0 0" crates/netsmith-solve/tests/main.rs
 
 # --- the editor and its views: the recipes, not KiCad ----------------------------------------
-row "1 0 1 1 1" crates/netsmith-editor/src/api.rs
-row "1 0 1 1 1" crates/netsmith-editor/web/src/app.ts crates/netsmith-editor/web-dist/index.html
-row "1 0 1 1 1" crates/netsmith-view/src/layout.rs
+# After the solver, so no `locks`: a pick lock is solver output.
+row "1 0 1 1 0" crates/netsmith-editor/src/api.rs
+row "1 0 1 1 0" crates/netsmith-editor/web/src/app.ts crates/netsmith-editor/web-dist/index.html
+row "1 0 1 1 0" crates/netsmith-view/src/layout.rs
 row "1 0 0 0 0" crates/netsmith-view/tests/layout.rs
 row "1 0 0 0 0" crates/netsmith-view/tests/asks.rs
 row "1 0 0 0 0" crates/netsmith-editor/tests/bundle.rs
-row "1 0 1 1 1" crates/netsmith-editor/Cargo.toml
+row "1 0 1 1 0" crates/netsmith-editor/Cargo.toml
+
+# --- examples: every flag stays on (the boards are built, fabbed and locked), only `crates=` narrows
+row "1 1 1 1 1" examples/orbit/src/main.nsm examples/two_buck/netsmith.toml examples/led_panel.physical.nsm
+row "1 1 1 1 1" examples/outline_and_pours.pcb.toml examples/four_layer.nsm examples/four_layer.lock.toml
+row "1 1 1 1 1" examples/notes.txt
 
 # --- the crates that reach KiCad: their source is what the tests, and the binary, run ---------
 row "1 1 1 1 1" crates/netsmith/src/lib.rs
@@ -151,18 +158,26 @@ row "1 1 1 1 1" crates/netsmith-cli/src/commands/fab.rs crates/netsmith-cli/src/
 row "1 1 1 1 1" crates/netsmith-cli/Cargo.toml
 row "1 1 1 1 1" crates/netsmith/Cargo.toml
 row "1 1 1 1 1" crates/netsmith-kicad/src/symbols.rs
-row "1 1 1 1 1" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
-row "1 1 1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-design/src/lib.rs crates/netsmith-netlist/src/lib.rs
-row "1 1 1 1 1" crates/netsmith-fab/Cargo.toml
+row "1 1 1 1 1" crates/netsmith-core/src/lib.rs crates/netsmith-design/src/lib.rs
+row "1 1 1 1 1" crates/netsmith-core/src/lib.rs
+row "1 1 1 1 1" crates/netsmith-design/src/lib.rs
+# After the solver: `netsmith lock` runs none of it, so `locks` stays off (a pick lock is solver output).
+row "1 1 1 1 0" crates/netsmith-fab/src/lib.rs crates/netsmith-pcb/src/footprint.rs
+row "1 1 1 1 0" crates/netsmith-netlist/src/lib.rs
+row "1 1 1 1 0" crates/netsmith-fab/Cargo.toml crates/netsmith-pcb/Cargo.toml crates/netsmith-netlist/Cargo.toml
 # The router (issue #518): linked into the binary, and its tests check its boards with kicad-cli.
-row "1 1 1 1 1" crates/netsmith-place-route/src/route.rs
-row "1 1 1 1 1" crates/netsmith-place-route/Cargo.toml
+row "1 1 1 1 0" crates/netsmith-place-route/src/route.rs
+row "1 1 1 1 0" crates/netsmith-place-route/Cargo.toml
+# ... until the change reaches something the solver reads.
+row "1 1 1 1 1" crates/netsmith-place-route/src/route.rs crates/netsmith-solve/src/solve.rs
+row "1 1 1 1 1" crates/netsmith-place-route/src/route.rs crates/netsmith-kicad/src/symbols.rs
+row "1 1 1 1 1" crates/netsmith-place-route/src/route.rs std/kicad.toml
 row "1 0 0 0 0" crates/netsmith-place-route/tests/pure.rs
 row "1 1 0 0 0" crates/netsmith-place-route/tests/asks.rs
 row "1 1 0 0 0" crates/netsmith-place-route/tests/main.rs
 # The 3D scene (issue #518): in the binary and the editor's 3D view, and no test of it asks for KiCad.
-row "1 0 1 1 1" crates/netsmith-3d/src/gltf.rs
-row "1 0 1 1 1" crates/netsmith-3d/Cargo.toml
+row "1 0 1 1 0" crates/netsmith-3d/src/gltf.rs
+row "1 0 1 1 0" crates/netsmith-3d/Cargo.toml
 row "1 0 0 0 0" crates/netsmith-3d/tests/scene3d.rs
 row "1 0 0 0 0" crates/netsmith-3d/tests/main.rs
 row "1 1 0 0 0" crates/netsmith-kicad/examples/locate.rs crates/netsmith-fab/examples/drc.rs
@@ -189,7 +204,7 @@ row "1 1 0 0 0" crates/netsmith-fab/tests/unknown/data.json
 row "1 1 0 0 0" crates/netsmith/tests/pure.rs crates/netsmith/tests/asks1.rs
 # A KiCad-backed test next to a change that has nothing to do with it: the flags add up.
 row "1 1 1 1 1" crates/netsmith/tests/pure.rs crates/netsmith/src/lib.rs
-row "1 0 1 1 1" crates/netsmith/tests/pure.rs crates/netsmith-editor/src/api.rs
+row "1 0 1 1 0" crates/netsmith/tests/pure.rs crates/netsmith-editor/src/api.rs
 row "1 0 0 0 0" crates/netsmith/tests/pure.rs docs/adr/0081-a-pin-states-its-own-swing.md README.md
 row "1 0 0 0 0" docs/LANGUAGE.md crates/netsmith/tests/pure.rs
 row "1 1 0 0 0" docs/LANGUAGE.md crates/netsmith/tests/asks1.rs
@@ -222,17 +237,39 @@ crates_row "netsmith-place-route" crates/netsmith-place-route/src/route.rs
 crates_row "netsmith-place-route" crates/netsmith-place-route/tests/common/mod.rs
 crates_row "netsmith-editor" crates/netsmith-editor/Cargo.toml
 crates_row "netsmith-view" crates/netsmith-view/src/layout.rs README.md docs/DESIGN-RULES.md
-# A path outside the crates that turns the tests on: every test.
-crates_row "" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
+# The guide, the gallery and the skills are read by the netsmith crate alone (and its dependent, the
+# command line, runs with it by `rdeps`).
+crates_row "netsmith" docs/LANGUAGE.md
+crates_row "netsmith" docs/symbol-gallery.html
+crates_row "netsmith" .agents/skills/netsmith-write-nsm/SKILL.md
+crates_row "netsmith" .agents/skills/netsmith-dev-verify-editor/SKILL.md
+crates_row "netsmith" docs/LANGUAGE.md docs/symbol-gallery.html .agents/skills/netsmith-read-errors/SKILL.md crates/netsmith/tests/pure.rs
+crates_row "netsmith-view netsmith" crates/netsmith-view/src/layout.rs docs/LANGUAGE.md
+crates_row "netsmith-view netsmith" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
+# An example is read by the crates whose tests include it, and by the netsmith crate for all of them.
+crates_row "netsmith" examples/orbit/src/main.nsm
+crates_row "netsmith" examples/orbit/netsmith.toml examples/orbit/reference/orbit.kicad_pcb
+crates_row "netsmith" examples/two_buck/src/main.nsm examples/led_panel.physical.nsm examples/led_panel.lock.toml
+crates_row "netsmith" examples/outline_and_pours.pcb.toml examples/outline_and_pours.physical.nsm
+crates_row "netsmith netsmith-design" examples/four_layer.nsm
+crates_row "netsmith netsmith-design" examples/six_layer.lock.toml examples/ten_layer.nsm
+crates_row "netsmith netsmith-check netsmith-solve" examples/carrier_and_cards.nsm
+crates_row "netsmith netsmith-check netsmith-solve netsmith-design" examples/two_boards.nsm examples/linear_regulator.lock.toml
+crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design" examples/led.nsm
+crates_row "netsmith netsmith-lang netsmith-check netsmith-solve netsmith-design" examples/status_indicator.nsm examples/led.lock.toml
+crates_row "netsmith netsmith-design" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
+crates_row "netsmith netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs
+# A path outside the crates that names no crate keeps the whole run wide, whatever else is there.
+crates_row "" examples/orbit/src/main.nsm std/kicad.toml
+crates_row "" docs/LANGUAGE.md std/kicad.toml
+crates_row "" docs/LANGUAGE.md .claude/settings.json
 crates_row "" crates/netsmith-view/src/layout.rs std/kicad.toml
-crates_row "" crates/netsmith-view/src/layout.rs examples/led.nsm
 crates_row "" crates/netsmith-view/src/layout.rs data/jlcpcb/resistor.csv
 crates_row "" crates/netsmith-view/src/layout.rs Cargo.toml
 crates_row "" crates/netsmith-view/src/layout.rs Cargo.lock
 crates_row "" crates/netsmith-view/src/layout.rs rust-toolchain.toml
 crates_row "" crates/netsmith-view/src/layout.rs scripts/ci-changes
 crates_row "" crates/netsmith-view/src/layout.rs .github/workflows/ci.yml
-crates_row "" crates/netsmith-view/src/layout.rs .agents/skills/netsmith-write-nsm/SKILL.md
 crates_row "" crates/netsmith-view/src/layout.rs something/nothing/knows.txt
 # No Rust at all: empty (and `rust` is off, so no test runs).
 crates_row "" README.md
@@ -259,6 +296,46 @@ for f in crates/*/tests/*.rs crates/*/src/tests.rs crates/*/src/*/tests.rs; do
 done
 if [ "$checked" -lt 5 ]; then
     echo "FAIL: found only $checked KiCad-backed test files in the repository (looking in the wrong place?)"
+    failed=1
+fi
+
+# --- the real repository: every crate that reads an example is named for it ---------------------
+# A change to `examples/<name>` runs the tests of the crates that `example_readers` names, and their
+# dependents', so a crate that reads the example and is not named would miss the change. The netsmith
+# crate (and with it netsmith-cli) reads any example and is always named; for each other crate, every
+# example its tests or source name (not in a comment) must give that crate. A reference with no name
+# (`join("examples")`, a path built at run time) cannot be told apart from a read of every example:
+# such a crate has to be named for every example in `example_readers`, or this check says so.
+readers=0
+for dir in crates/*; do
+    crate="$(basename "$dir")"
+    case "$crate" in netsmith | netsmith-cli) continue ;; esac
+    refs="$(grep -rnE '\.\./examples|"examples"|join\("examples|[^a-z_/]examples/[a-z_]' "$dir/tests" "$dir/src" \
+        --include='*.rs' 2> /dev/null | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)"
+    [ -n "$refs" ] || continue
+    readers=$((readers + 1))
+    names="$(printf '%s\n' "$refs" | grep -oE 'examples/[a-z0-9_]+' | sed 's|examples/||' | sort -u || true)"
+    found=0
+    for name in $names; do
+        # Only the names of examples of the repository (not the crate's own `examples/` programs).
+        [ -e examples/"$name" ] || compgen -G "examples/$name.*" > /dev/null || continue
+        found=1
+        got="$(printf 'examples/%s.nsm\n' "$name" | "$script" | sed -n 's/^crates=//p')"
+        case " $got " in
+            *" $crate "*) ;;
+            *)
+                echo "FAIL: $crate reads examples/$name, but crates=$got for it: add $crate to example_readers in scripts/ci-changes"
+                failed=1
+                ;;
+        esac
+    done
+    if [ "$found" -eq 0 ]; then
+        echo "FAIL: $crate reads the examples folder in a way that names no example ($(printf '%s' "$refs" | head -n 1)): name it for every example in example_readers, or read a named one"
+        failed=1
+    fi
+done
+if [ "$readers" -lt 3 ]; then
+    echo "FAIL: found only $readers crates besides netsmith that read the examples (looking in the wrong place?)"
     failed=1
 fi
 
