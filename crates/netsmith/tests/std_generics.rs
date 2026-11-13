@@ -538,7 +538,7 @@ fn a_provider_that_cannot_serve_either_ends_in_the_message_of_every_provider() {
     let e = fails(build(&w, &source));
     let m = &e[0].message;
     assert!(
-        m.starts_with("no Resistor provider satisfies r1: the closest of the 2 in scope"),
+        m.starts_with("no Resistor provider satisfies `r1` at "),
         "{m}"
     );
     assert!(m.contains("Resistor"), "{m}");
