@@ -668,6 +668,7 @@ mod tests {
             from,
             to,
             width: 0.25,
+            mid: None,
         });
         let c = copper(&board).unwrap();
         let top = layer(&c, "F.Cu");

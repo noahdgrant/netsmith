@@ -543,6 +543,23 @@ fn draw(board: &Board, with_key: bool) -> String {
         };
         let _ = writeln!(out, r#"<g class="{class}">"#);
         for t in board.tracks.iter().filter(|t| t.layer == layer) {
+            if let Some(arc) = t.arc() {
+                // SVG's arc: the radius, then whether it sweeps the short way (an arc at a
+                // bend always does) and its sense, clockwise on the screen being 1.
+                let _ = writeln!(
+                    out,
+                    r#"<path data-net="{}" d="M {} {} A {r} {r} 0 0 {} {} {}" fill="none" stroke="{colour}" stroke-width="{}" stroke-linecap="round" stroke-opacity="0.85"/>"#,
+                    escape(&t.net),
+                    n(t.from.x),
+                    n(t.from.y),
+                    u8::from(!arc.ccw),
+                    n(t.to.x),
+                    n(t.to.y),
+                    n(t.width),
+                    r = n(arc.radius),
+                );
+                continue;
+            }
             let _ = writeln!(
                 out,
                 r#"<line data-net="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke="{colour}" stroke-width="{}" stroke-linecap="round" stroke-opacity="0.85"/>"#,
@@ -884,6 +901,7 @@ mod tests {
             from: Pt::new(0.0, 0.0),
             to: Pt::new(1.0, 0.0),
             width: 0.25,
+            mid: None,
         });
         board.vias.push(crate::board::Via {
             net: net.clone(),

@@ -232,7 +232,7 @@ impl Painter {
                         &mut by_width.last_mut().expect("just pushed").1
                     }
                 };
-                polys.push(vec![pt(t.from), pt(t.to)]);
+                polys.push(t.centre_line().into_iter().map(pt).collect());
             }
             for (width, paths) in &by_width {
                 c.strokes(paths, *width, colour, 220);

@@ -3553,6 +3553,7 @@ impl<'a> Router<'a> {
                     from: p,
                     to: q,
                     width,
+                    mid: None,
                 });
                 cut = true;
                 break;
@@ -3639,6 +3640,7 @@ impl<'a> Router<'a> {
                     from: a,
                     to: b,
                     width: width_of(narrow),
+                    mid: None,
                 });
             }
             if k < path.len() {
@@ -3694,6 +3696,7 @@ impl<'a> Router<'a> {
                     from: pad_at,
                     to: cell,
                     width: width_of(necked(&spot)),
+                    mid: None,
                 });
             }
         }
@@ -5665,6 +5668,7 @@ mod tests {
             from: Pt::new(mid.x - nx * 50.0, mid.y - ny * 50.0),
             to: Pt::new(mid.x + nx * 50.0, mid.y + ny * 50.0),
             width: 0.2,
+            mid: None,
         };
         State {
             routed: vec![Routed {
@@ -5881,6 +5885,7 @@ mod tests {
                 from: line.from_at,
                 to: line.to_at,
                 width,
+                mid: None,
             }];
             r.vias = [line.from_at, line.to_at]
                 .map(|at| Via {
@@ -5987,6 +5992,7 @@ mod tests {
             from: Pt::new(bounds.min.x, y),
             to: Pt::new(bounds.max.x, y),
             width,
+            mid: None,
         };
         let routed = Routed {
             line: 0,
@@ -6007,6 +6013,7 @@ mod tests {
             from,
             to,
             width: 0.2,
+            mid: None,
         }
     }
 
@@ -6119,6 +6126,7 @@ mod tests {
                     from,
                     to,
                     width: 0.1,
+                    mid: None,
                 })
                 .collect(),
             vias: Vec::new(),

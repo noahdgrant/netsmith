@@ -827,16 +827,26 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
     };
     for (i, track) in board.tracks.iter().enumerate() {
         let at = |p: crate::geometry::Pt| vec![Sexp::num(p.x), Sexp::num(p.y)];
+        // An arc is KiCad's `(arc (start) (mid) (end))`, a straight track its `segment`.
+        let (kind, mid) = match track.mid {
+            Some(mid) => ("arc", vec![Sexp::node("mid", at(mid))]),
+            None => ("segment", Vec::new()),
+        };
+        let mut ends = vec![Sexp::node("start", at(track.from))];
+        ends.extend(mid);
+        ends.push(Sexp::node("end", at(track.to)));
         items.push(Sexp::node(
-            "segment",
+            kind,
             vec![
-                Sexp::node("start", at(track.from)),
-                Sexp::node("end", at(track.to)),
-                Sexp::node("width", vec![Sexp::num(track.width)]),
-                Sexp::node("layer", vec![Sexp::string(track.layer.name())]),
-                net_number(&track.net),
-                uuid_for(&format!("{}/track/{i}", board.name)),
-            ],
+                ends,
+                vec![
+                    Sexp::node("width", vec![Sexp::num(track.width)]),
+                    Sexp::node("layer", vec![Sexp::string(track.layer.name())]),
+                    net_number(&track.net),
+                    uuid_for(&format!("{}/track/{i}", board.name)),
+                ],
+            ]
+            .concat(),
         ));
     }
     for (i, via) in board.vias.iter().enumerate() {
@@ -889,6 +899,7 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::board::tests::{four_layer_design, led_design};
+    use crate::board::{CopperLayer, Track};
     use crate::geometry::Pt;
 
     use super::*;
@@ -1065,6 +1076,46 @@ mod tests {
 
     fn fmt(v: f64) -> String {
         netsmith_kicad::sexp::fmt_num(v)
+    }
+
+    #[test]
+    fn a_straight_track_is_a_segment_and_an_arc_is_an_arc_through_its_mid_point() {
+        let mut board = led();
+        let mid = Pt::new(11.0, 10.4);
+        board.tracks.push(Track::straight(
+            "GND",
+            CopperLayer::Front,
+            Pt::new(10.0, 10.0),
+            Pt::new(10.5, 10.0),
+            0.2,
+        ));
+        board.tracks.push(Track {
+            mid: Some(mid),
+            ..Track::straight(
+                "GND",
+                CopperLayer::Front,
+                Pt::new(10.5, 10.0),
+                Pt::new(11.3, 10.8),
+                0.2,
+            )
+        });
+        let pcb = parsed(&board);
+        let segment = pcb.find("segment").expect("a segment");
+        assert_eq!(segment.find("start").unwrap().args()[0].text(), Some("10"));
+        let arc = pcb.find("arc").expect("an arc");
+        let numbers = |key: &str| -> Vec<&str> {
+            arc.find(key)
+                .unwrap()
+                .args()
+                .iter()
+                .filter_map(Sexp::text)
+                .collect()
+        };
+        assert_eq!(numbers("start"), ["10.5", "10"]);
+        assert_eq!(numbers("mid"), ["11", "10.4"]);
+        assert_eq!(numbers("end"), ["11.3", "10.8"]);
+        assert_eq!(numbers("layer"), ["F.Cu"]);
+        assert_eq!(numbers("width"), ["0.2"]);
     }
 
     #[test]

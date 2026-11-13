@@ -1313,7 +1313,7 @@ pub struct BoardCutout {
     pub radius: f64,
 }
 
-/// A straight run of copper.
+/// A run of copper: straight from `from` to `to`, or an arc of a circle through `mid`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Track {
     pub net: String,
@@ -1321,6 +1321,66 @@ pub struct Track {
     pub from: Pt,
     pub to: Pt,
     pub width: f64,
+    /// For an arc, a point on it halfway from `from` to `to`, as KiCad's `(arc (start) (mid)
+    /// (end))` stores one. The router draws arcs only where a track bends (the header of
+    /// netsmith-place-route's `arcs.rs`); `None` is a straight track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mid: Option<Pt>,
+}
+
+impl Track {
+    /// A straight track.
+    pub fn straight(net: &str, layer: CopperLayer, from: Pt, to: Pt, width: f64) -> Track {
+        Track {
+            net: net.to_string(),
+            layer,
+            from,
+            to,
+            width,
+            mid: None,
+        }
+    }
+
+    /// The track's arc, if it is one whose three points are not on a line.
+    pub fn arc(&self) -> Option<netsmith_fab::geom::Arc> {
+        let g = |p: Pt| netsmith_fab::geom::Pt::new(p.x, p.y);
+        netsmith_fab::geom::Arc::through(g(self.from), g(self.mid?), g(self.to))
+    }
+
+    /// The track's centre line from `from` to `to`: its two ends, or for an arc points no
+    /// further than 2 µm from it (`netsmith_fab::geom::ARC_ERROR`).
+    pub fn centre_line(&self) -> Vec<Pt> {
+        match self.arc() {
+            Some(arc) => arc.points().into_iter().map(|p| Pt::new(p.x, p.y)).collect(),
+            None => vec![self.from, self.to],
+        }
+    }
+
+    /// How far `p` is from the track's centre line, in mm.
+    pub fn distance_to(&self, p: Pt) -> f64 {
+        let to_piece = |a: Pt, b: Pt| {
+            let ab = b - a;
+            let len2 = ab.x * ab.x + ab.y * ab.y;
+            let t = if len2 == 0.0 {
+                0.0
+            } else {
+                (((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / len2).clamp(0.0, 1.0)
+            };
+            p.distance(Pt::new(a.x + ab.x * t, a.y + ab.y * t))
+        };
+        self.centre_line()
+            .windows(2)
+            .map(|w| to_piece(w[0], w[1]))
+            .fold(f64::MAX, f64::min)
+    }
+
+    /// How long the track is along its centre line, in mm.
+    pub fn length(&self) -> f64 {
+        match self.arc() {
+            Some(arc) => arc.radius * arc.sweep().abs(),
+            None => self.from.distance(self.to),
+        }
+    }
 }
 
 /// Copper that widens a track where it meets a pad or a via (issue #431, S11): a polygon on

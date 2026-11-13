@@ -91,7 +91,7 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
         }
     }
     if board.tracks.iter().any(|t| {
-        t.net != net && to_segment(p, t.from, t.to) - t.width / 2.0 < r.clearance + radius + MARGIN
+        t.net != net && t.distance_to(p) - t.width / 2.0 < r.clearance + radius + MARGIN
     }) {
         return false;
     }
