@@ -148,13 +148,13 @@ impl Track {
     }
 
     /// The track's arc, if it is one whose three points are not on a line.
-    pub fn arc(&self) -> Option<netsmith_geom::geom::Arc> {
-        let g = |p: Pt| netsmith_geom::geom::Pt::new(p.x, p.y);
-        netsmith_geom::geom::Arc::through(g(self.from), g(self.mid?), g(self.to))
+    pub fn arc(&self) -> Option<netsmith_geom::Arc> {
+        let g = |p: Pt| netsmith_geom::Pt::new(p.x, p.y);
+        netsmith_geom::Arc::through(g(self.from), g(self.mid?), g(self.to))
     }
 
     /// The track's centre line from `from` to `to`: its two ends, or for an arc points no
-    /// further than 2 µm from it (`netsmith_geom::geom::ARC_ERROR`).
+    /// further than 2 µm from it (`netsmith_geom::ARC_ERROR`).
     pub fn centre_line(&self) -> Vec<Pt> {
         match self.arc() {
             Some(arc) => arc

@@ -7,7 +7,7 @@
 //!
 //! This module reads the text and spells it as an id; it does not know the generators. What a
 //! generator calls its parameters, which it needs and which ranges it takes is the generators'
-//! (`netsmith_pcb::generate`), which check a [`FootprintSpec`] when the mapping is used
+//! (`netsmith_pcb::generated_footprint`), which check a [`FootprintSpec`] when the mapping is used
 //! (`Libraries::for_project`).
 //!
 //! The id is what the rest of netsmith passes round where it passes `Library:Name`: the
@@ -33,12 +33,13 @@ pub struct FootprintSpec {
 }
 
 /// Whether `text` is written as a generated footprint: it starts with `gen:`.
-pub fn is_spelling(text: &str) -> bool {
+pub(crate) fn is_spelling(text: &str) -> bool {
     text.starts_with("gen:")
 }
 
 /// Whether `id` is the id of a generated footprint, `gen:Name_...`.
-pub fn is_id(id: &str) -> bool {
+#[cfg(test)]
+pub(crate) fn is_id(id: &str) -> bool {
     id.split_once(':').is_some_and(|(l, _)| l == LIBRARY)
 }
 

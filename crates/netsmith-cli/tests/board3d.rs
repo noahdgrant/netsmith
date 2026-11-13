@@ -245,7 +245,7 @@ fn a_two_layer_board_has_two_copper_layers_and_the_same_bytes_every_run() {
 /// The scene of the board in `source` (a path from the repository), built and placed as
 /// `board3d` does (the same target, loader and catalogs, its pick lock held, its physical and
 /// layout files read), with no KiCad.
-fn scene_of(source: &str) -> netsmith_3d::scene3d::Scene {
+fn scene_of(source: &str) -> netsmith_3d::Scene {
     let path = repo().join(source);
     let target =
         netsmith::project::Target::resolve_from(&repo(), Some(path.to_str().unwrap())).unwrap();
@@ -254,7 +254,7 @@ fn scene_of(source: &str) -> netsmith_3d::scene3d::Scene {
     let catalogs = target.catalogs().unwrap();
     let (held, _) = netsmith::pick_lock::open(&file.path, &catalogs, false).unwrap();
     let nowhere = netsmith_testkit::TempDir::new("render-no-kicad");
-    let search = netsmith_kicad::install::Search::under(nowhere.path()).with_no_kicad();
+    let search = netsmith_kicad::Search::under(nowhere.path()).with_no_kicad();
     let root = target.project.as_ref().map(|p| p.root.as_path());
     let libraries = netsmith::Libraries::for_project_by(root, &search).unwrap();
     netsmith::board3d::scene_of(
@@ -271,9 +271,9 @@ fn scene_of(source: &str) -> netsmith_3d::scene3d::Scene {
 
 /// Draws the scene's meshes from the iso and top views into `dir`, and into
 /// `NETSMITH_RENDER3D_OUT` when it is set, to look at; returns the iso picture's bytes.
-fn render(scene: &netsmith_3d::scene3d::Scene, name: &str, dir: &Path) -> Vec<u8> {
-    use netsmith_3d::raster3d::{RenderOptions, View, render_view};
-    let meshes = netsmith_3d::mesh::of_scene(scene);
+fn render(scene: &netsmith_3d::Scene, name: &str, dir: &Path) -> Vec<u8> {
+    use netsmith_3d::{RenderOptions, View, render_view};
+    let meshes = netsmith_3d::meshes_of_scene(scene);
     let options = RenderOptions {
         width: 800,
         height: 500,
@@ -297,9 +297,9 @@ fn render(scene: &netsmith_3d::scene3d::Scene, name: &str, dir: &Path) -> Vec<u8
 
 #[test]
 fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
-    use netsmith_3d::mesh::{Material, of_scene};
+    use netsmith_3d::{Material, meshes_of_scene};
     let scene = scene_of("examples/led.nsm");
-    let meshes = of_scene(&scene);
+    let meshes = meshes_of_scene(&scene);
     // The board, then one mesh per part with its path for an id.
     assert_eq!(meshes[0].id, "board");
     assert_eq!(meshes[0].material, Material::Substrate);
@@ -321,7 +321,7 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
     let a = render(&scene, "led", dir.path());
     let b = render(&scene_of("examples/led.nsm"), "led", dir.path());
     assert_eq!(a, b);
-    assert_eq!(of_scene(&scene), of_scene(&scene_of("examples/led.nsm")));
+    assert_eq!(meshes_of_scene(&scene), meshes_of_scene(&scene_of("examples/led.nsm")));
 }
 
 /// A fiducial, a mounting hole and a pad-only test point state `.height &= 0mm` in std: a body
@@ -329,8 +329,7 @@ fn the_led_example_is_drawn_from_its_scene_the_same_bytes_each_time() {
 /// height, and is not drawn as the flat outline of an unknown body.
 #[test]
 fn a_fiducial_a_mounting_hole_and_a_test_point_are_stated_flat_and_not_unknown() {
-    use netsmith_3d::mesh::{Material, of_scene};
-    use netsmith_3d::scene3d::HeightProvenance;
+    use netsmith_3d::{Material, meshes_of_scene, HeightProvenance};
     for (source, kinds) in [
         (
             "examples/outline_and_pours.nsm",
@@ -339,7 +338,7 @@ fn a_fiducial_a_mounting_hole_and_a_test_point_are_stated_flat_and_not_unknown()
         ("examples/two_buck/two_buck.nsm", ["TestPoint", "TestPoint"]),
     ] {
         let scene = scene_of(source);
-        let meshes = of_scene(&scene);
+        let meshes = meshes_of_scene(&scene);
         let flat: Vec<_> = scene
             .bodies
             .iter()
@@ -367,9 +366,9 @@ fn a_fiducial_a_mounting_hole_and_a_test_point_are_stated_flat_and_not_unknown()
 
 #[test]
 fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
-    use netsmith_3d::mesh::{Material, Mesh, of_scene};
+    use netsmith_3d::{Material, Mesh, meshes_of_scene};
     let scene = scene_of("examples/four_layer.nsm");
-    let meshes = of_scene(&scene);
+    let meshes = meshes_of_scene(&scene);
     let has = |m: Material| meshes.iter().any(|x| x.material == m);
     for m in [
         Material::Copper,
@@ -386,7 +385,7 @@ fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
         .layers
         .iter()
         .flat_map(|l| l.nets())
-        .map(|n| n.unwrap_or(netsmith_3d::mesh::NO_NET).to_string())
+        .map(|n| n.unwrap_or(netsmith_3d::NO_NET).to_string())
         .collect();
     for m in meshes
         .iter()
@@ -402,9 +401,9 @@ fn the_four_layer_example_draws_its_copper_mask_and_silk_per_net() {
 
 #[test]
 fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
-    use netsmith_3d::mesh::{Material, of_scene};
+    use netsmith_3d::{Material, meshes_of_scene};
     let scene = scene_of("examples/four_layer.nsm");
-    let meshes = of_scene(&scene);
+    let meshes = meshes_of_scene(&scene);
     let shaped: Vec<_> = scene.bodies.iter().filter(|b| b.shape.is_some()).collect();
     assert!(!shaped.is_empty(), "no part of four_layer is shaped");
     for b in &shaped {
@@ -421,7 +420,7 @@ fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
             "{}",
             b.path
         );
-        let bb = netsmith_3d::mesh::bounds_of(&mine).unwrap();
+        let bb = netsmith_3d::mesh_bounds(&mine).unwrap();
         let (lo, hi) = b.z_range();
         assert!(
             (bb.min[2] - lo.unwrap()).abs() < 1e-9 && (bb.max[2] - hi.unwrap()).abs() < 1e-9,
@@ -443,7 +442,7 @@ fn the_four_layer_example_draws_its_generated_parts_as_their_package_shapes() {
 
 #[test]
 fn a_pin_header_is_as_tall_as_its_catalog_row_and_its_plastic_is_the_sourced_height() {
-    use netsmith_3d::mesh::{Material, of_scene};
+    use netsmith_3d::{Material, meshes_of_scene};
     // The four-layer example's headers are picked as JXTCONN PH2.54-1X2P-H25 (C42431798): the
     // row's height is the pin's tip, 2.50 mm of plastic plus 6.00 +/-0.2 mm of pin.
     let (r, _) = json(&repo().join("examples"), &["four_layer.nsm", "--json"]);
@@ -458,7 +457,7 @@ fn a_pin_header_is_as_tall_as_its_catalog_row_and_its_plastic_is_the_sourced_hei
         assert_eq!(p["z_top"], 8.9, "{p}");
     }
     let scene = scene_of("examples/four_layer.nsm");
-    let meshes = of_scene(&scene);
+    let meshes = meshes_of_scene(&scene);
     for b in scene.bodies.iter().filter(|b| b.kind == "Header1x2") {
         assert_eq!(b.height, Some(8.9), "{}", b.path);
         let top = |m: Material| {
@@ -467,7 +466,7 @@ fn a_pin_header_is_as_tall_as_its_catalog_row_and_its_plastic_is_the_sourced_hei
                 .filter(|x| x.id == b.path && x.material == m)
                 .cloned()
                 .collect();
-            netsmith_3d::mesh::bounds_of(&mine).unwrap().max[2] - b.z_face
+            netsmith_3d::mesh_bounds(&mine).unwrap().max[2] - b.z_face
         };
         // The plastic is the 2.54 mm family's 2.50 mm and the pins go on to the row's height.
         assert!((top(Material::Body) - 2.5).abs() < 1e-6, "{}", b.path);
@@ -477,9 +476,9 @@ fn a_pin_header_is_as_tall_as_its_catalog_row_and_its_plastic_is_the_sourced_hei
 
 #[test]
 fn a_limit_a_part_breaks_is_drawn_as_broken() {
-    use netsmith_3d::mesh::{Material, of_scene};
+    use netsmith_3d::{Material, meshes_of_scene};
     let scene = scene_of("scripts/editor-verify-js/fixtures/height_limits.nsm");
-    let meshes = of_scene(&scene);
+    let meshes = meshes_of_scene(&scene);
     let limits: Vec<_> = meshes
         .iter()
         .filter(|m| m.id.starts_with("limit:"))
@@ -497,7 +496,7 @@ fn a_limit_a_part_breaks_is_drawn_as_broken() {
 
 /// The JSON chunk of a `.glb` file.
 fn glb_json(glb: &[u8]) -> serde_json::Value {
-    netsmith_3d::gltf::json_chunk(glb).expect("a GLB file")
+    netsmith_3d::json_chunk(glb).expect("a GLB file")
 }
 
 fn glb_node<'a>(doc: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
@@ -627,7 +626,7 @@ fn step_writes_the_board_and_its_parts_as_an_assembly_and_prints_nothing_else() 
     // netsmith's own reader (ADR 0108) reads it back: the board's solid is its outline through
     // its thickness, and every solid faces out.
     let scene = scene_of("examples/four_layer.nsm");
-    let model = netsmith_3d::step::read::read(step.as_bytes()).unwrap();
+    let model = netsmith_3d::read_step(step.as_bytes()).unwrap();
     let board = model.pieces.iter().find(|p| p.mesh.id == "board").unwrap();
     let b = board.mesh.bounds().unwrap();
     let nm = |x: f64| (x * 1e6).round() / 1e6;
@@ -881,14 +880,14 @@ fn render_gives_the_same_bytes_twice_and_names_its_file_after_board_and_view() {
     );
     // It draws the board as the scene says: the same bytes as the rasterizer gives the scene.
     let scene = scene_of("examples/led.nsm");
-    let options = netsmith_3d::raster3d::RenderOptions {
+    let options = netsmith_3d::RenderOptions {
         width: 320,
         height: 200,
         ..Default::default()
     };
-    let direct = netsmith_3d::raster3d::render_view(
-        &netsmith_3d::mesh::of_scene(&scene),
-        netsmith_3d::raster3d::View::Iso,
+    let direct = netsmith_3d::render_view(
+        &netsmith_3d::meshes_of_scene(&scene),
+        netsmith_3d::View::Iso,
         &options,
     )
     .to_png();
@@ -901,7 +900,7 @@ fn render_gives_the_same_bytes_twice_and_names_its_file_after_board_and_view() {
 fn every_view_writes_a_png_of_the_size_asked_for_and_they_differ() {
     let dir = netsmith_testkit::TempDir::new("render-views");
     let mut seen: Vec<Vec<u8>> = Vec::new();
-    for view in netsmith_3d::raster3d::View::ALL {
+    for view in netsmith_3d::View::ALL {
         let out = dir.path().join(format!("{}.png", view.name()));
         let png = picture(&led(), &out, &["--view", view.name(), "--size", "256x160"]);
         assert_eq!(png_size(&png), (256, 160), "{}", view.name());
@@ -1024,13 +1023,13 @@ fn a_section_cuts_the_picture_and_is_checked() {
 /// tall, centred on (`x`, `z`) in 800x500 pixels, caps on; written into
 /// `NETSMITH_RENDER3D_OUT` when it is set, to look at.
 fn section_picture(
-    scene: &netsmith_3d::scene3d::Scene,
+    scene: &netsmith_3d::Scene,
     name: &str,
     y: f64,
     (x, z, half_height): (f64, f64, f64),
-) -> netsmith_3d::raster3d::Image {
-    use netsmith_3d::raster3d::{Axis, Camera, Lens, RenderOptions, Section, render};
-    let meshes = netsmith_3d::mesh::of_scene_section(scene, Axis::Y, y);
+) -> netsmith_3d::Image {
+    use netsmith_3d::{Axis, Camera, Lens, RenderOptions, Section, render_meshes};
+    let meshes = netsmith_3d::meshes_of_scene_section(scene, Axis::Y, y);
     let options = RenderOptions {
         width: 800,
         height: 500,
@@ -1047,7 +1046,7 @@ fn section_picture(
         up: [0.0, 0.0, 1.0],
         lens: Lens::Orthographic { half_height },
     };
-    let image = render(&meshes, &camera, &options);
+    let image = render_meshes(&meshes, &camera, &options);
     if let Some(out) = std::env::var_os("NETSMITH_RENDER3D_OUT") {
         std::fs::create_dir_all(&out).unwrap();
         std::fs::write(Path::new(&out).join(format!("{name}.png")), image.to_png()).unwrap();
@@ -1057,9 +1056,8 @@ fn section_picture(
 
 #[test]
 fn a_section_of_the_four_layer_board_shows_its_stackup_in_bands_in_order_top_to_bottom() {
-    use netsmith_3d::mesh::Material;
-    use netsmith_3d::raster3d::{Rgba, Theme};
-    use netsmith_pcb::stackup::LayerKind;
+    use netsmith_3d::{Material, Rgba, Theme};
+    use netsmith_pcb::{LayerKind};
     let scene = scene_of("examples/four_layer.nsm");
     // Across J1 (a header 8.9 mm tall; the layout file has it 3.25 mm from the top edge of the
     // 7 mm board, so at y = 3.75 mm from the bottom edge): a section through a part.
@@ -1589,7 +1587,7 @@ fn the_stackup_adds_up_to_the_nominal_thickness_within_the_fabricators_tolerance
             (board["stack_thickness"].as_f64().unwrap() - sum).abs() < 1e-9,
             "{file}: stack_thickness is the sum of the layers"
         );
-        let tolerance = netsmith_pcb::stackup::thickness_tolerance(nominal);
+        let tolerance = netsmith_pcb::thickness_tolerance(nominal);
         assert!(
             (sum - nominal).abs() <= tolerance,
             "{file}: the layers add up to {sum} mm, more than {tolerance} mm from {nominal} mm"

@@ -8,16 +8,15 @@
 
 use std::sync::Arc;
 
-use netsmith_3d::scene3d::{ModelUse, Scene};
-use netsmith_3d::step::read::{ReadModel, load};
+use netsmith_3d::{ModelUse, Scene, StepModel, load_step};
 use netsmith_pcb::{Board, Pt, Side};
 
 use crate::scene3d::{board, scene};
 
 const BLOCKS: &[u8] = include_bytes!("models/blocks.step");
 
-fn blocks() -> Arc<ReadModel> {
-    Arc::new(load(BLOCKS).unwrap_or_else(|e| panic!("{e}")))
+fn blocks() -> Arc<StepModel> {
+    Arc::new(load_step(BLOCKS).unwrap_or_else(|e| panic!("{e}")))
 }
 
 fn model_use(path: &str, offset: [f64; 3], rotation: [f64; 3]) -> ModelUse {
@@ -194,7 +193,7 @@ fn the_y_of_a_model_runs_up_the_footprint() {
         0.0,
     ];
     let model = s.body("a").unwrap().model.as_ref().unwrap();
-    let bounds = netsmith_3d::mesh::bounds_of(&model.meshes).unwrap();
+    let bounds = netsmith_3d::mesh_bounds(&model.meshes).unwrap();
     assert!(close(bounds.min, [origin[0], origin[1] + 0.5, 0.0]));
     assert!(close(bounds.max, [origin[0] + 3.0, origin[1] + 1.5, 0.6]));
 }
@@ -238,7 +237,7 @@ fn the_same_model_is_drawn_to_the_same_bits() {
 #[test]
 fn the_meshes_of_a_part_drawn_from_its_model_are_the_models() {
     let (_, s) = drawn("a", 30.0, [1.0, 2.0, 0.3], [0.0, 0.0, 45.0]);
-    let pieces = netsmith_3d::mesh::pieces(&s);
+    let pieces = netsmith_3d::mesh_pieces(&s);
     let i = s.bodies.iter().position(|b| b.path == "a").unwrap();
     let model = s.body("a").unwrap().model.as_ref().unwrap();
     assert_eq!(pieces.bodies[i].body, model.meshes);
@@ -247,9 +246,9 @@ fn the_meshes_of_a_part_drawn_from_its_model_are_the_models() {
 #[test]
 fn the_glb_draws_a_model_in_its_own_colours() {
     let (_, s) = drawn("a", 0.0, [0.0; 3], [0.0; 3]);
-    let glb = netsmith_3d::gltf::glb(&s, "Scene");
-    assert_eq!(glb, netsmith_3d::gltf::glb(&s, "Scene"));
-    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let glb = netsmith_3d::glb(&s, "Scene");
+    assert_eq!(glb, netsmith_3d::glb(&s, "Scene"));
+    let doc = netsmith_3d::json_chunk(&glb).unwrap();
     let materials: Vec<&str> = doc["materials"]
         .as_array()
         .unwrap()
@@ -257,7 +256,7 @@ fn the_glb_draws_a_model_in_its_own_colours() {
         .map(|m| m["name"].as_str().unwrap())
         .collect();
     // After the fixed materials (`case` the last of them, ADR 0109), in the order first used.
-    let fixed = netsmith_3d::mesh::Material::ALL.len();
+    let fixed = netsmith_3d::Material::ALL.len();
     assert_eq!(materials[fixed - 1], "case");
     assert_eq!(materials[fixed..], ["model:#333338", "model:#d91a1a"]);
     let node = doc["nodes"]
@@ -279,8 +278,8 @@ fn the_glb_draws_a_model_in_its_own_colours() {
 #[test]
 fn the_step_export_copies_the_models_solids_exactly_where_the_scene_draws_them() {
     let (_, s) = drawn("under", 30.0, [1.0, 2.0, 0.3], [10.0, 20.0, 90.0]);
-    let text = netsmith_3d::step::step(&s, "Scene");
-    assert_eq!(text, netsmith_3d::step::step(&s, "Scene"));
+    let text = netsmith_3d::scene_step(&s, "Scene");
+    assert_eq!(text, netsmith_3d::scene_step(&s, "Scene"));
     assert!(
         text.contains("drawn from models/blocks.step (sha256 0000"),
         "the part's description names the file and its SHA-256"
@@ -288,7 +287,7 @@ fn the_step_export_copies_the_models_solids_exactly_where_the_scene_draws_them()
     assert!(text.contains("PRODUCT('under:body','body','a solid of models/blocks.step'"));
     // Read back, the copied solids are where the scene draws the model, to the reader's
     // tolerance (the copy is exact; the placement is written to ten places).
-    let back = netsmith_3d::step::read::read(text.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
+    let back = netsmith_3d::read_step(text.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
     let model = s.body("under").unwrap().model.as_ref().unwrap();
     for (name, drawn) in ["body", "mark"].iter().zip(&model.meshes) {
         let b = drawn.bounds().unwrap();
@@ -312,7 +311,7 @@ fn a_model_in_inches_is_copied_with_its_own_unit() {
         "ENDSEC;\nEND-ISO",
         "#9000=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));\n#9001=LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),#9000);\nENDSEC;\nEND-ISO",
     );
-    let read = Arc::new(load(text.as_bytes()).unwrap_or_else(|e| panic!("{e}")));
+    let read = Arc::new(load_step(text.as_bytes()).unwrap_or_else(|e| panic!("{e}")));
     let mut s = scene(&board());
     s.draw_models(&[ModelUse {
         read,
@@ -320,9 +319,9 @@ fn a_model_in_inches_is_copied_with_its_own_unit() {
     }]);
     let model = s.body("a").unwrap().model.as_ref().unwrap();
     assert!((model.top - 0.6 * 25.4).abs() < 1e-6, "{}", model.top);
-    let out = netsmith_3d::step::step(&s, "Scene");
+    let out = netsmith_3d::scene_step(&s, "Scene");
     assert!(out.contains("LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),"));
-    let back = netsmith_3d::step::read::read(out.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
+    let back = netsmith_3d::read_step(out.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
     let body = back.pieces.iter().find(|p| p.mesh.id == "body").unwrap();
     let b = body.mesh.bounds().unwrap();
     assert!((b.max[2] - 0.5 * 25.4).abs() < 1e-6, "{b:?}");

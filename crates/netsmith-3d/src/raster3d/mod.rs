@@ -66,13 +66,13 @@ mod tests;
 
 use crate::mesh::{Aabb, Material, Mesh, bounds_of, trig};
 
-pub use crate::mesh::Axis;
+pub(crate) use crate::mesh::Axis;
 
 /// Two faces of one mesh that meet at more than this many degrees get an outline between them.
-pub const CREASE_DEG: f64 = 40.0;
+pub(crate) const CREASE_DEG: f64 = 40.0;
 
 /// The opacity of every mesh in x-ray.
-pub const XRAY_ALPHA: f64 = 0.3;
+pub(crate) const XRAY_ALPHA: f64 = 0.3;
 
 /// How a camera projects.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -476,7 +476,7 @@ pub fn render_view(meshes: &[Mesh], view: View, options: &RenderOptions) -> Imag
 }
 
 /// The camera [`render_view`] uses, with any lens.
-pub fn fit_view(meshes: &[Mesh], view: View, options: &RenderOptions, lens: Lens) -> Camera {
+pub(crate) fn fit_view(meshes: &[Mesh], view: View, options: &RenderOptions, lens: Lens) -> Camera {
     let bounds = bounds_of(meshes).unwrap_or(Aabb {
         min: [-1.0; 3],
         max: [1.0; 3],

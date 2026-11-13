@@ -57,7 +57,7 @@ impl<'a> Engine<'a> {
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector
-                    } else if netsmith_pcb::placement::is_mechanical(kind) {
+                    } else if netsmith_pcb::is_mechanical(kind) {
                         Role::Mechanical
                     } else {
                         Role::Plain
@@ -167,7 +167,7 @@ impl<'a> Engine<'a> {
         let decs: Vec<Dec> = decoupling_pairs(parts, p.nets)
             .iter()
             .map(|pair: &DecouplingPair| {
-                let side = |s: &crate::quality::PairNet| {
+                let side = |s: &netsmith_pcb::PairNet| {
                     (
                         pad_ids(pair.cap, &s.cap_pad),
                         s.pins
@@ -250,7 +250,9 @@ impl<'a> Engine<'a> {
             let (Some(&a), Some(&b)) = (index.get(o.a.as_str()), index.get(o.b.as_str())) else {
                 continue;
             };
-            let Some(axis) = axis_of(o.fa) else { continue };
+            let Some(axis) = constraint_axis_of(o.fa) else {
+                continue;
+            };
             links.push(Link {
                 a,
                 b,

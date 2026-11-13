@@ -192,7 +192,7 @@ mod diode;
 mod draw;
 mod gullwing;
 pub(crate) mod header;
-pub mod ipc;
+pub(crate) mod ipc;
 mod mechanical;
 mod outline;
 mod params;
@@ -204,7 +204,7 @@ mod tab;
 
 use std::sync::OnceLock;
 
-use netsmith_kicad::footprint_spec::{self, FootprintSpec};
+use netsmith_kicad::{FootprintSpec, GENERATED_FOOTPRINT_LIBRARY};
 
 use crate::body3d::{Lead, Package};
 use crate::footprint::Footprint;
@@ -225,7 +225,7 @@ fn leads_of(pads: &[draw::PadSpec], body: (f64, f64)) -> Vec<Lead> {
 }
 
 /// The generators a project can ask for by name and parameters (`gen:QFN(...)`, ADR 0104).
-pub const GENERATORS: [&str; 8] = [
+pub(crate) const GENERATORS: [&str; 8] = [
     "QFN",
     "DFN",
     "QFP",
@@ -242,9 +242,9 @@ pub const GENERATORS: [&str; 8] = [
 pub fn generate_spec(spec: &FootprintSpec) -> Result<Footprint, String> {
     let id = spec.id();
     let name = id
-        .strip_prefix(&format!("{}:", footprint_spec::LIBRARY))
+        .strip_prefix(&format!("{}:", GENERATED_FOOTPRINT_LIBRARY))
         .expect("an id starts with its library");
-    let library = footprint_spec::LIBRARY;
+    let library = GENERATED_FOOTPRINT_LIBRARY;
     let param_names = |known: &[&str]| params::Params::new(spec, known);
     let made = match spec.generator.as_str() {
         "QFN" | "DFN" => {
@@ -331,7 +331,7 @@ pub fn names() -> &'static [String] {
 }
 
 /// Whether some generated name belongs to the library `library`.
-pub fn covers_library(library: &str) -> bool {
+pub(crate) fn covers_library(library: &str) -> bool {
     names()
         .iter()
         .any(|n| n.split_once(':').is_some_and(|(l, _)| l == library))

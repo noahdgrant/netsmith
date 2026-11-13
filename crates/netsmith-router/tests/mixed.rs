@@ -437,7 +437,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
 
 /// The design rules check's errors on a routed board.
 pub fn drc_errors(board: &Board) -> Vec<String> {
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(board),
         Some(&netsmith_pcb::kicad_pro(board)),
         &Default::default(),

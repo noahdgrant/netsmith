@@ -30,43 +30,35 @@
 //! `Smax = Snom + CS / 2`. Each of `Z`, `G`, `X` is then rounded to a grid.
 
 /// The fabrication tolerance `F` of the board the land is for, in mm.
-pub const FABRICATION_TOLERANCE: f64 = 0.1;
+pub(crate) const FABRICATION_TOLERANCE: f64 = 0.1;
 /// The placement tolerance `P` of the pick-and-place machine, in mm.
-pub const PLACEMENT_TOLERANCE: f64 = 0.05;
+pub(crate) const PLACEMENT_TOLERANCE: f64 = 0.05;
 
 /// A size with its limits, in mm.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Size {
+pub(crate) struct Size {
     pub min: f64,
     pub max: f64,
 }
 
 impl Size {
-    pub const fn range(min: f64, max: f64) -> Size {
+    pub(crate) const fn range(min: f64, max: f64) -> Size {
         Size { min, max }
     }
 
-    /// `nominal` plus or minus `tolerance`.
-    pub fn plus_minus(nominal: f64, tolerance: f64) -> Size {
-        Size {
-            min: nominal - tolerance,
-            max: nominal + tolerance,
-        }
-    }
-
-    pub fn nominal(self) -> f64 {
+    pub(crate) fn nominal(self) -> f64 {
         (self.min + self.max) / 2.0
     }
 
     /// The tolerance range `C`.
-    pub fn spread(self) -> f64 {
+    pub(crate) fn spread(self) -> f64 {
         self.max - self.min
     }
 }
 
 /// Fillet goals and roundings of one class of lead (a row of an IPC-7351B table).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Class {
+pub(crate) struct Class {
     pub toe: f64,
     pub heel: f64,
     pub side: f64,
@@ -77,7 +69,7 @@ pub struct Class {
 }
 
 /// Rectangular chips below 0603 (1608 metric): table 3-2.
-pub const CHIP_SMALL: Class = Class {
+pub(crate) const CHIP_SMALL: Class = Class {
     toe: 0.2,
     heel: 0.0,
     side: 0.0,
@@ -86,7 +78,7 @@ pub const CHIP_SMALL: Class = Class {
 };
 
 /// Rectangular chips from 0603 up: table 3-2.
-pub const CHIP: Class = Class {
+pub(crate) const CHIP: Class = Class {
     toe: 0.35,
     heel: 0.0,
     side: 0.0,
@@ -95,7 +87,7 @@ pub const CHIP: Class = Class {
 };
 
 /// Gull-wing leads at a pitch above 0.625 mm: table 3-3.
-pub const GULL_WING: Class = Class {
+pub(crate) const GULL_WING: Class = Class {
     toe: 0.35,
     heel: 0.35,
     side: 0.03,
@@ -104,7 +96,7 @@ pub const GULL_WING: Class = Class {
 };
 
 /// Gull-wing leads at a pitch of 0.625 mm or less: table 3-3.
-pub const GULL_WING_FINE: Class = Class {
+pub(crate) const GULL_WING_FINE: Class = Class {
     toe: 0.35,
     heel: 0.35,
     side: -0.02,
@@ -113,7 +105,7 @@ pub const GULL_WING_FINE: Class = Class {
 };
 
 /// Flat leads that end at the package edge (QFN, DFN, SON): table 3-15.
-pub const FLAT_NO_LEAD: Class = Class {
+pub(crate) const FLAT_NO_LEAD: Class = Class {
     toe: 0.3,
     heel: 0.0,
     side: -0.04,
@@ -123,7 +115,7 @@ pub const FLAT_NO_LEAD: Class = Class {
 
 /// How a lead is described besides its outside span and width.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Inside {
+pub(crate) enum Inside {
     /// The length of one lead.
     Length(Size),
     /// The span between the inner edges of the leads.
@@ -132,7 +124,7 @@ pub enum Inside {
 
 /// The pad that one pair of opposite leads asks for, in mm.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Land {
+pub(crate) struct Land {
     /// Edge to edge across the pair, outer edges (`Z`).
     pub outer: f64,
     /// Between the inner edges (`G`).
@@ -143,30 +135,30 @@ pub struct Land {
 
 impl Land {
     /// The length of one pad, in the direction of the lead.
-    pub fn length(&self) -> f64 {
+    pub(crate) fn length(&self) -> f64 {
         (self.outer - self.inner) / 2.0
     }
 
     /// Distance of the pad's centre from the middle of the pair.
-    pub fn centre(&self) -> f64 {
+    pub(crate) fn centre(&self) -> f64 {
         (self.outer + self.inner) / 4.0
     }
 }
 
 /// Round to a multiple of `base`, halves to even (as the scripts that make KiCad's own
 /// footprints do, so equal inputs give equal pads).
-pub fn round_to(value: f64, base: f64) -> f64 {
+pub(crate) fn round_to(value: f64, base: f64) -> f64 {
     (value / base).round_ties_even() * base
 }
 
 /// The land of a pair of leads.
-pub fn land(class: &Class, outside: Size, inside: Inside, width: Size) -> Land {
+pub(crate) fn land(class: &Class, outside: Size, inside: Inside, width: Size) -> Land {
     land_with_heel_reduction(class, outside, inside, width, 0.0)
 }
 
 /// The land of a pair of leads, with the heel fillet goal cut by `reduction` on each lead
 /// (a part whose exposed pad needs more room).
-pub fn land_with_heel_reduction(
+pub(crate) fn land_with_heel_reduction(
     class: &Class,
     outside: Size,
     inside: Inside,

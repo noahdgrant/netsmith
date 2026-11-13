@@ -18,10 +18,10 @@ use crate::symbols::Symbol;
 pub const NAME: &str = "netsmith";
 
 /// The symbol library, where it is in the repository (for messages).
-pub const SYMBOL_FILE: &str = "std/libs/netsmith.kicad_sym";
+pub(crate) const SYMBOL_FILE: &str = "std/libs/netsmith.kicad_sym";
 
 /// The `.kicad_sym` of the library.
-pub const SYMBOLS: &str = include_str!("../../../std/libs/netsmith.kicad_sym");
+pub(crate) const SYMBOLS: &str = include_str!("../../../std/libs/netsmith.kicad_sym");
 
 /// The folder that holds the footprints, in the output of a board and in the repository.
 pub const FOOTPRINT_FOLDER: &str = "netsmith.pretty";
@@ -75,7 +75,7 @@ const FOOTPRINTS: &[(&str, &str)] = &[
 
 /// The names of the symbols of the library's own file (`std/libs/netsmith.kicad_sym`), which a
 /// board's library holds whatever its parts are.
-pub fn file_symbol_names() -> &'static [String] {
+pub(crate) fn file_symbol_names() -> &'static [String] {
     static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     NAMES.get_or_init(|| {
         Sexp::parse(SYMBOLS)
@@ -110,7 +110,7 @@ pub fn is_library_id(id: &str) -> bool {
 /// symbols and the `generated` ones, the symbols drawn from the pin tables of the board's
 /// parts ([`crate::generate`], ADR 0097), in the order of their names. A symbol of the board
 /// is the same in the schematic and here, so KiCad finds it in the library its table lists.
-pub fn symbol_library(generated: &[Arc<Symbol>]) -> String {
+pub(crate) fn symbol_library(generated: &[Arc<Symbol>]) -> String {
     let mut own =
         Sexp::parse(SYMBOLS).expect("std/libs/netsmith.kicad_sym is valid (a test reads it)");
     if let Sexp::List(items) = &mut own {

@@ -1,10 +1,10 @@
-//! `netsmith board3d --board System`: the _System scene_ (ADR 0110, `netsmith_3d::system`) of a
+//! `netsmith board3d --board System`: the _System scene_ (ADR 0110, `netsmith_3d::SystemScene`) of a
 //! system's boards placed against each other by their mates, as numbers. Each member is placed as
 //! `board3d --board System/member` places it, and its report is that command's; the members'
 //! motions, the mates with their mated heights and the findings across boards are added. The
 //! fields are described in `docs/BOARD3D.md`; [`SCHEMA`] counts the versions of the shape.
 
-use netsmith_3d::system::{Finding, MateInput, MemberInput, Place, SystemScene};
+use netsmith_3d::{MateInput, MemberInput, SystemFinding, SystemPlace, SystemScene};
 use netsmith_pcb::Board;
 use serde::Serialize;
 
@@ -169,7 +169,7 @@ pub struct FindingReport {
 }
 
 impl FindingReport {
-    pub fn of(f: &Finding) -> FindingReport {
+    pub fn of(f: &SystemFinding) -> FindingReport {
         FindingReport {
             code: f.code.word(),
             severity: f.code.severity(),
@@ -207,18 +207,18 @@ pub fn report(scene: &SystemScene, reports: Vec<Report>) -> SystemReport {
                     offset: m.motion.offset,
                 },
                 placed: match &m.place {
-                    Place::Base => Some(PlacedReport {
+                    SystemPlace::Base => Some(PlacedReport {
                         base: true,
                         mate: None,
                     }),
-                    Place::Mated { mate } => Some(PlacedReport {
+                    SystemPlace::Mated { mate } => Some(PlacedReport {
                         base: false,
                         mate: Some(*mate),
                     }),
-                    Place::Apart { .. } => None,
+                    SystemPlace::Apart { .. } => None,
                 },
                 apart: match &m.place {
-                    Place::Apart { reason } => Some(ApartReport {
+                    SystemPlace::Apart { reason } => Some(ApartReport {
                         reason: reason.clone(),
                     }),
                     _ => None,

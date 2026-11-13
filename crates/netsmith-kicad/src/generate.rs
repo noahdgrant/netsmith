@@ -66,7 +66,7 @@ pub enum Side {
 }
 
 /// Whether a power pin is a ground, which goes below the box.
-pub fn is_ground(pin: &PartPin) -> bool {
+pub(crate) fn is_ground(pin: &PartPin) -> bool {
     let name = pin.datasheet.to_ascii_uppercase();
     pin.name.ends_with(".neg")
         || ["GND", "VSS", "GROUND", "AGND", "DGND", "PGND"]
@@ -107,7 +107,7 @@ pub fn side_of(pin: &PartPin, part_gives: bool) -> Side {
 /// which is known after the solve): a power pin that the solved design says gives power is a
 /// power output, and any other is a power input, so that a pin whose direction is not known
 /// asks its net for a source and never claims one that may not be there.
-pub fn pin_type(pin: &PartPin) -> PinType {
+pub(crate) fn pin_type(pin: &PartPin) -> PinType {
     match pin.kind {
         PinKind::Power if pin.gives_power() => PinType::PowerOut,
         PinKind::Power => PinType::PowerIn,
@@ -196,7 +196,7 @@ pub fn symbol(part: &Part, footprint: &str) -> Option<Symbol> {
 /// drawing (`netsmith:Lt8641_UDC20_18_1a2b3c4d`), for a design in which the plain name is taken
 /// by another drawing ([`crate::resolve`]): the name then says which of the drawings it is, and
 /// is the same on every machine and in every order of the parts.
-pub fn symbol_hashed(part: &Part, footprint: &str) -> Option<Symbol> {
+pub(crate) fn symbol_hashed(part: &Part, footprint: &str) -> Option<Symbol> {
     make(part, footprint, true)
 }
 
@@ -566,7 +566,7 @@ fn unit_node(
 /// KiCad footprint id, for the fields; `value` is the `Value` field, what the library shows for
 /// the part (the kind, not the name, which is the library's key). The name is bare, as a
 /// library file holds it.
-pub fn draw(
+pub(crate) fn draw(
     name: &str,
     value: &str,
     reference: &str,

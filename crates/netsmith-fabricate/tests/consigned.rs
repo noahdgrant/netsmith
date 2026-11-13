@@ -95,7 +95,7 @@ fn a_part_the_board_marks_consigned_is_assembled_by_the_board_house_with_no_numb
 #[test]
 fn the_report_prints_a_consigned_part_as_consigned() {
     // The report names each part's footprint, which needs KiCad's libraries (the `kicad` job).
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let src = board("        .assembly_mode &= AssemblyMode::Consigned").replace(
@@ -217,7 +217,7 @@ fn run(source: &str, dir: &std::path::Path) -> Result<Vec<netsmith_fabricate::fa
 
 #[test]
 fn fab_places_a_consigned_part_lists_it_in_bom_and_cpl_and_asks_for_no_number() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = TempDir::unused("fab-consigned");

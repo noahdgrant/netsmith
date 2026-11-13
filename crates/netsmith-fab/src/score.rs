@@ -44,18 +44,18 @@
 use std::collections::{BTreeMap, BinaryHeap, HashMap};
 use std::fmt::Write as _;
 
-use crate::artwork::{Artwork, PadKind, TrackShape};
-use crate::drc::{self, Extras, Rule, Rules, shape};
-use crate::geom::{self, Pt};
-use crate::pads;
+use netsmith_geom::{
+    Artwork, ArtworkPadKind, Bounds, DrcExtras, DrcRule, DrcRules, DrcShape, Pt, TrackShape,
+    drc_check, drc_matches_pattern, drc_outline_shapes, pad_outline, polygon_contains, shape_gap,
+};
 
 /// The side of a cell of the pour raster, in mm.
 const CELL: f64 = 0.1;
 /// The least area of a pour's piece that is counted, in mm². Smaller ones are slivers.
-pub const PIECE_LEAST: f64 = 1.0;
+pub(crate) const PIECE_LEAST: f64 = 1.0;
 /// The fewest pads of a part that a decoupling capacitor is counted as decoupling.
-pub const IC_PADS: usize = 8;
-pub use netsmith_geom::pairs::{COUPLED, PAIR_SUFFIXES};
+pub(crate) const IC_PADS: usize = 8;
+pub(crate) use netsmith_geom::{COUPLED, PAIR_SUFFIXES};
 /// Points closer than this are one point, in mm.
 const SAME: f64 = 1e-3;
 
@@ -155,14 +155,14 @@ impl Scorecard {
     pub fn of(pcb: &str, project: Option<&str>) -> Result<Scorecard, String> {
         let art = Artwork::parse(pcb).map_err(|e| e.to_string())?;
         let rules = match project {
-            Some(p) => Rules::from_project(p)?,
-            None => Rules::default(),
+            Some(p) => DrcRules::from_project(p)?,
+            None => DrcRules::default(),
         };
-        let report = drc::check(pcb, project, &Extras::default()).map_err(|e| e.to_string())?;
+        let report = drc_check(pcb, project, &DrcExtras::default()).map_err(|e| e.to_string())?;
         let unconnected = report
             .findings
             .iter()
-            .filter(|f| f.rule == Rule::UnconnectedItems)
+            .filter(|f| f.rule == DrcRule::UnconnectedItems)
             .count();
         let drc_errors = report.errors().count();
         let classes = class_widths(project);
@@ -311,7 +311,7 @@ fn class_widths(project: Option<&str>) -> Vec<(Vec<String>, f64)> {
 fn class_width(classes: &[(Vec<String>, f64)], net: &str) -> Option<f64> {
     classes
         .iter()
-        .find(|(patterns, _)| patterns.iter().any(|p| drc::matches_pattern(p, net)))
+        .find(|(patterns, _)| patterns.iter().any(|p| drc_matches_pattern(p, net)))
         .map(|(_, w)| *w)
 }
 
@@ -339,7 +339,7 @@ fn lines(art: &Artwork) -> Vec<Seg> {
 
 fn score(
     art: &Artwork,
-    rules: &Rules,
+    rules: &DrcRules,
     classes: &[(Vec<String>, f64)],
     unconnected: usize,
     drc_errors: usize,
@@ -406,21 +406,21 @@ fn score(
     widths.sort_by(f64::total_cmp);
 
     // The pad shapes of each net, for "inside a pad".
-    let pad_shapes: Vec<(Option<&str>, &crate::artwork::Pad, Vec<shape::Shape>)> = art
+    let pad_shapes: Vec<(Option<&str>, &netsmith_geom::ArtworkPad, Vec<DrcShape>)> = art
         .pads
         .iter()
-        .map(|p| (p.net.as_deref(), p, drc::outline_shapes(&pads::outline(p))))
+        .map(|p| (p.net.as_deref(), p, drc_outline_shapes(&pad_outline(p))))
         .collect();
     // Inside the copper of a pad or a via of the net: a joint there is no corner.
     let in_pad = |p: Pt, net: &str, layer: &str| {
-        let dot = shape::Shape::disc(p, 0.0);
+        let dot = DrcShape::disc(p, 0.0);
         art.vias
             .iter()
             .any(|v| v.net.as_deref() == Some(net) && v.at.dist(p) <= v.diameter / 2.0)
             || pad_shapes.iter().any(|(n, pad, shapes)| {
                 *n == Some(net)
                     && pad.layers.iter().any(|l| l == layer || l == "*.Cu")
-                    && shapes.iter().any(|s| shape::gap(&dot, s).d == 0.0)
+                    && shapes.iter().any(|s| shape_gap(&dot, s).d == 0.0)
             })
     };
 
@@ -577,13 +577,13 @@ fn prim(pts: &[Pt]) -> f64 {
     total
 }
 
-fn pours(art: &Artwork, rules: &Rules, tracks: &[Seg]) -> Vec<PourScore> {
+fn pours(art: &Artwork, rules: &DrcRules, tracks: &[Seg]) -> Vec<PourScore> {
     let outer: Vec<&str> = [art.copper.first(), art.copper.last()]
         .into_iter()
         .flatten()
         .map(String::as_str)
         .collect();
-    let board = crate::edge::outline(art).ok();
+    let board = netsmith_geom::edge_outline(art).ok();
     let mut out = Vec::new();
     for zone in art
         .zones
@@ -594,7 +594,7 @@ fn pours(art: &Artwork, rules: &Rules, tracks: &[Seg]) -> Vec<PourScore> {
             continue;
         };
         for layer in zone.layers.iter().filter(|l| outer.contains(&l.as_str())) {
-            let inside = |p: Pt| zone.outlines.iter().any(|o| geom::contains(o, p));
+            let inside = |p: Pt| zone.outlines.iter().any(|o| polygon_contains(o, p));
             let foreign_track: f64 = tracks
                 .iter()
                 .filter(|t| t.1 == *layer && t.0 != net)
@@ -623,13 +623,13 @@ fn pours(art: &Artwork, rules: &Rules, tracks: &[Seg]) -> Vec<PourScore> {
 /// The pieces a pour's copper falls into, and the largest one's share.
 fn pour_pieces(
     art: &Artwork,
-    rules: &Rules,
-    zone: &crate::artwork::Zone,
+    rules: &DrcRules,
+    zone: &netsmith_geom::ArtworkZone,
     net: &str,
     layer: &str,
-    board: Option<&crate::edge::Outline>,
+    board: Option<&netsmith_geom::EdgeOutline>,
 ) -> (usize, f64) {
-    let Some(bounds) = geom::Bounds::of(zone.outlines.iter().flatten().copied()) else {
+    let Some(bounds) = Bounds::of(zone.outlines.iter().flatten().copied()) else {
         return (0, 0.0);
     };
     let nx = ((bounds.max.x - bounds.min.x) / CELL).ceil() as usize + 1;
@@ -641,11 +641,11 @@ fn pour_pieces(
         )
     };
     let edge = rules.copper_edge.max(zone.clearance);
-    let edge_shapes: Vec<shape::Shape> = board
+    let edge_shapes: Vec<DrcShape> = board
         .map(|b| {
             std::iter::once(&b.outer)
                 .chain(&b.cutouts)
-                .map(|p| shape::Shape::ring(p.clone(), 0.0))
+                .map(|p| DrcShape::ring(p.clone(), 0.0))
                 .collect()
         })
         .unwrap_or_default();
@@ -654,39 +654,39 @@ fn pour_pieces(
         for i in 0..nx {
             let p = centre(i, j);
             let in_board = board.is_none_or(|b| {
-                geom::contains(&b.outer, p) && !b.cutouts.iter().any(|c| geom::contains(c, p))
+                polygon_contains(&b.outer, p) && !b.cutouts.iter().any(|c| polygon_contains(c, p))
             });
             open[j * nx + i] = in_board
-                && zone.outlines.iter().any(|o| geom::contains(o, p))
+                && zone.outlines.iter().any(|o| polygon_contains(o, p))
                 && edge_shapes
                     .iter()
-                    .all(|s| shape::gap(&shape::Shape::disc(p, 0.0), s).d >= edge);
+                    .all(|s| shape_gap(&DrcShape::disc(p, 0.0), s).d >= edge);
         }
     }
     // The copper of other nets on the layer, and holes, each with the zone's clearance.
     let clearance = zone.clearance.max(rules.clearance);
-    let mut blocks: Vec<shape::Shape> = Vec::new();
+    let mut blocks: Vec<DrcShape> = Vec::new();
     for pad in &art.pads {
         let on = art.pad_copper_on(pad, layer);
         if on && pad.net.as_deref() != Some(net) {
-            blocks.extend(drc::outline_shapes(&pads::outline(pad)));
+            blocks.extend(drc_outline_shapes(&pad_outline(pad)));
         }
         if let Some(d) = &pad.drill
-            && (pad.kind == PadKind::Npth || pad.net.as_deref() != Some(net))
+            && (pad.kind == ArtworkPadKind::Npth || pad.net.as_deref() != Some(net))
         {
-            blocks.push(shape::Shape::disc(pad.at, d.width.max(d.length) / 2.0));
+            blocks.push(DrcShape::disc(pad.at, d.width.max(d.length) / 2.0));
         }
     }
     for v in art.vias.iter().filter(|v| v.net.as_deref() != Some(net)) {
-        blocks.push(shape::Shape::disc(v.at, v.diameter / 2.0));
+        blocks.push(DrcShape::disc(v.at, v.diameter / 2.0));
     }
     for t in &art.tracks {
         if t.layer != layer || t.net.as_deref() == Some(net) {
             continue;
         }
         match &t.shape {
-            TrackShape::Line(a, b) => blocks.push(shape::Shape::capsule(*a, *b, t.width / 2.0)),
-            TrackShape::Arc(arc) => blocks.push(shape::Shape::stroke(arc.points(), t.width / 2.0)),
+            TrackShape::Line(a, b) => blocks.push(DrcShape::capsule(*a, *b, t.width / 2.0)),
+            TrackShape::Arc(arc) => blocks.push(DrcShape::stroke(arc.points(), t.width / 2.0)),
         }
     }
     // A teardrop of another net, which the pour keeps its clearance from as from a track.
@@ -697,7 +697,7 @@ fn pour_pieces(
     {
         for (l, p) in &z.filled {
             if l == layer && p.len() >= 3 {
-                blocks.push(shape::Shape::polygon(p.clone(), 0.0));
+                blocks.push(DrcShape::polygon(p.clone(), 0.0));
             }
         }
     }
@@ -710,7 +710,7 @@ fn pour_pieces(
         for j in j0..=j1 {
             for i in i0..=i1 {
                 let k = j * nx + i;
-                if open[k] && shape::gap(&shape::Shape::disc(centre(i, j), 0.0), s).d < clearance {
+                if open[k] && shape_gap(&DrcShape::disc(centre(i, j), 0.0), s).d < clearance {
                     open[k] = false;
                 }
             }
@@ -778,7 +778,7 @@ fn decoupling(
     art: &Artwork,
     tracks: &[Seg],
     poured: &[&str],
-    pad_shapes: &[(Option<&str>, &crate::artwork::Pad, Vec<shape::Shape>)],
+    pad_shapes: &[(Option<&str>, &netsmith_geom::ArtworkPad, Vec<DrcShape>)],
 ) -> Vec<Decoupling> {
     let counts = part_pads(art);
     let is_cap = |part: &str| {
@@ -790,7 +790,8 @@ fn decoupling(
         if n != 2 || !is_cap(part) {
             continue;
         }
-        let pads: Vec<&crate::artwork::Pad> = art.pads.iter().filter(|p| p.part == part).collect();
+        let pads: Vec<&netsmith_geom::ArtworkPad> =
+            art.pads.iter().filter(|p| p.part == part).collect();
         let nets: Vec<Option<&str>> = pads.iter().map(|p| p.net.as_deref()).collect();
         let (Some(a), Some(b)) = (nets[0], nets[1]) else {
             continue;
@@ -817,7 +818,7 @@ fn decoupling(
             .filter(|(_, (n, p, _))| *n == Some(net) && p.part == ic)
             .map(|(k, _)| k)
             .collect();
-        let index = |pad: &crate::artwork::Pad| {
+        let index = |pad: &netsmith_geom::ArtworkPad| {
             pad_shapes
                 .iter()
                 .position(|(_, p, _)| std::ptr::eq(*p, pad))
@@ -847,7 +848,7 @@ fn decoupling(
 fn copper_path(
     art: &Artwork,
     tracks: &[Seg],
-    pad_shapes: &[(Option<&str>, &crate::artwork::Pad, Vec<shape::Shape>)],
+    pad_shapes: &[(Option<&str>, &netsmith_geom::ArtworkPad, Vec<DrcShape>)],
     net: &str,
     from: usize,
     to: &[usize],
@@ -887,12 +888,12 @@ fn copper_path(
         join(a, b, w);
     }
     for (k, p) in points.iter().enumerate() {
-        let dot = shape::Shape::disc(*p, 0.0);
+        let dot = DrcShape::disc(*p, 0.0);
         for (i, &pad) in pads.iter().enumerate() {
             if pad_shapes[pad]
                 .2
                 .iter()
-                .any(|s| shape::gap(&dot, s).d == 0.0)
+                .any(|s| shape_gap(&dot, s).d == 0.0)
             {
                 join(base + k, i, 0.0);
             }
@@ -968,11 +969,11 @@ fn pairs(tracks: &[Seg]) -> Vec<PairScore> {
                 for k in 0..steps {
                     let at = *a + (*b - *a) * ((k as f64 + 0.5) / steps as f64);
                     all += 1;
-                    let dot = shape::Shape::disc(at, 0.0);
+                    let dot = DrcShape::disc(at, 0.0);
                     if tracks.iter().any(|t| {
                         t.0 == n
                             && t.1 == *layer
-                            && shape::gap(&dot, &shape::Shape::capsule(t.2, t.3, 0.0)).d <= COUPLED
+                            && shape_gap(&dot, &DrcShape::capsule(t.2, t.3, 0.0)).d <= COUPLED
                     }) {
                         near += 1;
                     }

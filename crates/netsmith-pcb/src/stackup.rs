@@ -17,7 +17,7 @@ use netsmith_core::OUNCE_OF_COPPER;
 use crate::board::Board;
 
 /// The thickness of a solder mask layer, in mm, which JLCPCB's page gives as at least this.
-pub const MASK: f64 = 0.01;
+pub(crate) const MASK: f64 = 0.01;
 
 /// How far a finished board may be from its nominal thickness, in mm: JLCPCB's capabilities page
 /// (jlcpcb.com/capabilities/pcb-capabilities, "Board Thickness Tolerance") gives ±10% for a

@@ -7,12 +7,10 @@
 use netsmith_core::Outline;
 
 use crate::place::{self, Context};
-use netsmith_pcb::board::{BoardNet, Placed};
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::placement::{DoesNotFit, Fixed, ORIGIN, PlaceOptions, is_mechanical};
-use netsmith_pcb::polygon::{BoardEdge, Polygon};
-use netsmith_pcb::rules::Rules;
-use netsmith_pcb::shape::RoundRect;
+use netsmith_pcb::{
+    BoardEdge, BoardNet, DoesNotFit, Fixed, ORIGIN, PlaceOptions, Placed, Polygon, Pt, Rect,
+    RoundRect, Rules, is_mechanical,
+};
 
 /// The space between mechanical parts side by side in a corner.
 const GAP: f64 = 1.0;

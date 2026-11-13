@@ -29,7 +29,7 @@ fn kernel(x: f64) -> (f64, f64) {
 }
 
 /// The sine and cosine of `x` (radians), the same bits on every machine.
-pub fn sin_cos(x: f64) -> (f64, f64) {
+pub(crate) fn sin_cos(x: f64) -> (f64, f64) {
     if !x.is_finite() {
         return (f64::NAN, f64::NAN);
     }
@@ -48,7 +48,7 @@ pub fn sin_cos(x: f64) -> (f64, f64) {
 
 /// The sine and cosine of `turns` whole turns: exact at the quarter turns, where `sin_cos` of
 /// the radians would leave a 1e-16 instead of a 0.
-pub fn sin_cos_turns(turns: f64) -> (f64, f64) {
+pub(crate) fn sin_cos_turns(turns: f64) -> (f64, f64) {
     let q = (turns * 4.0).round();
     let r = (turns * 4.0 - q) * FRAC_PI_2;
     let (s, c) = if r == 0.0 { (0.0, 1.0) } else { kernel(r) };
@@ -61,7 +61,7 @@ pub fn sin_cos_turns(turns: f64) -> (f64, f64) {
 }
 
 /// The tangent of `x` (radians).
-pub fn tan(x: f64) -> f64 {
+pub(crate) fn tan(x: f64) -> f64 {
     let (s, c) = sin_cos(x);
     s / c
 }
@@ -80,7 +80,7 @@ fn atan_kernel(x: f64) -> f64 {
 }
 
 /// The arc tangent of `x` (radians), the same bits on every machine.
-pub fn atan(x: f64) -> f64 {
+pub(crate) fn atan(x: f64) -> f64 {
     if x.is_nan() {
         return f64::NAN;
     }
@@ -105,7 +105,7 @@ pub fn atan(x: f64) -> f64 {
 
 /// The angle of the point `(x, y)` from the x axis, in `(-pi, pi]`, as `f64::atan2` gives it,
 /// the same bits on every machine. `(0, 0)` gives 0.
-pub fn atan2(y: f64, x: f64) -> f64 {
+pub(crate) fn atan2(y: f64, x: f64) -> f64 {
     if x == 0.0 && y == 0.0 {
         return 0.0;
     }
@@ -129,7 +129,7 @@ pub fn atan2(y: f64, x: f64) -> f64 {
 }
 
 /// Degrees to radians.
-pub fn radians(degrees: f64) -> f64 {
+pub(crate) fn radians(degrees: f64) -> f64 {
     degrees * (PI / 180.0)
 }
 

@@ -4,7 +4,7 @@
 //! cargo run -p netsmith-fab --example plot -- board.kicad_pcb --out dir
 //! ```
 
-use netsmith_fab::{artwork::Artwork, drill, plot};
+use netsmith_geom::{Artwork, PlotRules, drill_files, plot_layer};
 use std::path::PathBuf;
 
 fn main() -> Result<(), String> {
@@ -23,13 +23,13 @@ fn main() -> Result<(), String> {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let plotted = plot::plot(&art, &name, &plot::Rules::default()).map_err(|e| e.to_string())?;
+    let plotted = plot_layer(&art, &name, &PlotRules::default()).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     for f in plotted
         .files
         .iter()
         .cloned()
-        .chain(drill::files(&art, &name))
+        .chain(drill_files(&art, &name))
     {
         std::fs::write(out.join(&f.name), &f.bytes).map_err(|e| e.to_string())?;
     }

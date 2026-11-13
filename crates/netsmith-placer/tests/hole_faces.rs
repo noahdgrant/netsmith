@@ -10,8 +10,7 @@ use netsmith_testkit::TempDir;
 use std::collections::BTreeMap;
 
 use netsmith_core::{Design, Features, Net, Outline, Part, PinRef};
-use netsmith_pcb::board::PlacementProblem;
-use netsmith_pcb::{Board, FootprintLibrary, PlaceOptions, Pt, Side};
+use netsmith_pcb::{PlacementProblem, Board, FootprintLibrary, PlaceOptions, Pt, Side};
 
 use common::process;
 
@@ -133,7 +132,7 @@ fn a_big_part_on_the_other_face_may_stand_over_the_body_of_a_header_that_draws_o
     let b = stacked(&angle(&["F.CrtYd"]), 15.0);
     assert_eq!(overlaps(&b), Vec::<String>::new());
     // Netsmith's design rules check agrees: the courtyards are on different layers.
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(&b),
         Some(&netsmith_pcb::kicad_pro(&b)),
         &Default::default(),
@@ -196,7 +195,7 @@ fn the_placer_puts_the_big_part_under_the_body_where_the_old_rule_had_no_room() 
         j.courtyard(),
         u.courtyard()
     );
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(&b),
         Some(&netsmith_pcb::kicad_pro(&b)),
         &Default::default(),
@@ -235,7 +234,7 @@ fn a_footprint_that_draws_both_courtyards_does_not_fit_there() {
 /// default, so the project file is given an error severity for it. `None` where KiCad is not
 /// installed (the test then skips).
 fn kicad_courtyard_findings(b: &Board) -> Option<(bool, bool)> {
-    use netsmith_fab::{KicadCli, KicadCliExe, drc::kicad};
+    use netsmith_fab::{parse_kicad_drc, KicadCli, KicadCliExe};
     let cli = KicadCliExe::locate_runnable()?;
     let dir = TempDir::new("hole-faces-kicad");
     let path = dir.join("faces.kicad_pcb");
@@ -251,7 +250,7 @@ fn kicad_courtyard_findings(b: &Board) -> Option<(bool, bool)> {
         "the project file has no rule_severities to change:\n{pro}"
     );
     std::fs::write(path.with_extension("kicad_pro"), on).unwrap();
-    let found = kicad::parse(&cli.drc_json(&path).unwrap()).unwrap();
+    let found = parse_kicad_drc(&cli.drc_json(&path).unwrap()).unwrap();
     let has = |kind: &str| found.iter().any(|f| f.kind == kind);
     Some((has("courtyards_overlap"), has("pth_inside_courtyard")))
 }

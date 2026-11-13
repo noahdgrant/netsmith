@@ -93,7 +93,7 @@ impl<'a> Engine<'a> {
                     let at = rect.centre();
                     let why = format!(
                         "{} mm into the keepout `{zone}` that {} carries, at ({:.1}, {:.1})",
-                        short(depth),
+                        short_mm(depth),
                         shown[c],
                         at.x - region.min.x,
                         at.y - region.min.y
@@ -137,12 +137,12 @@ impl<'a> Engine<'a> {
                 continue;
             }
             if past > 1e-6 {
-                why.push(format!("{} mm outside the {side} edge", short(past)));
+                why.push(format!("{} mm outside the {side} edge", short_mm(past)));
                 worst = worst.max(past + wall);
             } else if past + wall > 1e-6 {
                 why.push(format!(
                     "{} mm inside the {} mm margin at the {side} edge",
-                    short(past + wall),
+                    short_mm(past + wall),
                     (wall * 100.0).round() / 100.0
                 ));
                 worst = worst.max(past + wall);
@@ -161,7 +161,7 @@ impl<'a> Engine<'a> {
                 let at = k.centre();
                 why.push(format!(
                     "{} mm into a keepout, cutout or height limit at ({:.1}, {:.1})",
-                    short(depth),
+                    short_mm(depth),
                     at.x - r.min.x,
                     at.y - r.min.y
                 ));
@@ -184,11 +184,14 @@ impl<'a> Engine<'a> {
             if nearest.0 < wanted - 1e-6 {
                 let (side, _) = nearest_edge(r, nearest.1);
                 why.push(if nearest.0 < 0.0 {
-                    format!("a pad is {} mm outside the {side} edge", short(-nearest.0))
+                    format!(
+                        "a pad is {} mm outside the {side} edge",
+                        short_mm(-nearest.0)
+                    )
                 } else {
                     format!(
                         "a pad is {} mm from the {side} edge and the process asks {wanted:.2} mm",
-                        short(nearest.0)
+                        short_mm(nearest.0)
                     )
                 });
                 worst = worst.max(wanted - nearest.0);

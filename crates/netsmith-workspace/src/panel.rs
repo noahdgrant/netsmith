@@ -5,13 +5,16 @@ use netsmith_editor::{
     ApiError,
     api::{PanelFinding, PanelView},
 };
-use netsmith_fab::panel::{self, CellFacts, Rules, Spec};
+use netsmith_fab::{
+    PanelBuildRules, PanelBuildSpec, PanelCellFacts, check_panel, panel_geometry, panel_mm,
+    panel_svg,
+};
 
 use super::{Workspace, pcb};
 
 /// The rules of the board house for the checks, from the language's.
-pub fn rules(r: &netsmith_core::PanelRules) -> Rules {
-    Rules {
+pub fn rules(r: &netsmith_core::PanelRules) -> PanelBuildRules {
+    PanelBuildRules {
         fabricator: r.fabricator.clone(),
         source: r.source.clone(),
         min_rail: r.min_rail,
@@ -56,22 +59,22 @@ impl Workspace {
             .iter()
             .filter(|s| s.assembled())
             .collect();
-        let panel_spec = Spec {
+        let panel_spec = PanelBuildSpec {
             name: spec.name.clone(),
             columns: spec.columns,
             rows: spec.rows,
             rail: spec.rail,
             rules: rules(&spec.rules),
         };
-        let g = panel::geometry(&panel_spec, (0.0, 0.0, width, height));
-        let facts = CellFacts {
+        let g = panel_geometry(&panel_spec, (0.0, 0.0, width, height));
+        let facts = PanelCellFacts {
             board: spec.cell.clone(),
             thickness: board.process.stackup.chosen_thickness(),
             edge_clearance: board.process.min_edge_clearance,
             assembled: !assembled.is_empty(),
             bottom_assembled: false,
         };
-        let mut findings: Vec<PanelFinding> = panel::check(&panel_spec, &g, &facts)
+        let mut findings: Vec<PanelFinding> = check_panel(&panel_spec, &g, &facts)
             .into_iter()
             .map(|f| PanelFinding {
                 error: f.error,
@@ -85,7 +88,7 @@ impl Workspace {
                     "panel {}: {} has corners rounded by {} mm and a V-cut runs straight across the whole panel, so every board in it is a rectangle with square corners",
                     spec.name,
                     spec.cell,
-                    panel::mm(board.corner_radius)
+                    panel_mm(board.corner_radius)
                 ),
             });
         }
@@ -99,7 +102,7 @@ impl Workspace {
             width: g.width,
             height: g.height,
             rail: spec.rail,
-            svg: panel::svg(&panel_spec, &g, &spec.cell),
+            svg: panel_svg(&panel_spec, &g, &spec.cell),
             findings,
         })
     }

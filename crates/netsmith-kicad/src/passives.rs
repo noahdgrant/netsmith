@@ -5,7 +5,7 @@
 //! parts (a test point, a mounting hole, a plated hole and a fiducial) and the power flag.
 //! A mapping row that names one of these ids (`Device:R`, `Connector_Generic:Conn_01x02`,
 //! `Transistor_FET:Q_NMOS_GSD`) is answered here, from the binary, on every machine and whatever
-//! KiCad has installed, as the footprints of `netsmith_pcb::generate` are (ADR 0043). No
+//! KiCad has installed, as the footprints of `netsmith_pcb::generated_footprint` are (ADR 0043). No
 //! mapping file changes. The symbol that answers has the id `netsmith:<Name>` ([`answer_id`])
 //! and goes into the board's own `netsmith.kicad_sym` like the symbol of an IC drawn from its
 //! pin table. The module keeps the name of the symbols it drew first.
@@ -1302,7 +1302,8 @@ pub fn ids() -> impl Iterator<Item = &'static str> {
 }
 
 /// Whether some id of `library` is made here.
-pub fn covers_library(library: &str) -> bool {
+#[cfg(test)]
+pub(crate) fn covers_library(library: &str) -> bool {
     specs()
         .iter()
         .any(|s| s.id.split_once(':').is_some_and(|(l, _)| l == library))

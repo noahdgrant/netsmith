@@ -173,7 +173,7 @@ fn placement_findings(design: &netsmith_core::Design, libraries: &Libraries) -> 
                 .collect();
             // The requirements on where parts go, measured on the board as `fab` does.
             if let Some(constraints) = netsmith::constraints::of_design(design, false) {
-                match netsmith_fab::artwork::Artwork::parse(&netsmith_pcb::kicad_pcb(&board)) {
+                match netsmith_geom::Artwork::parse(&netsmith_pcb::kicad_pcb(&board)) {
                     Ok(art) => found.extend(
                         constraints
                             .findings(&art)

@@ -914,7 +914,7 @@ export type PcbCutout = { name: string, area: PcbBox | null, };
 
 export type PcbScene = { board: string, 
 /**
- * The drawing (`netsmith_pcb::svg::render_view`): its groups, `data-ref`, `data-path`,
+ * The drawing (`netsmith_pcb::render_svg_view`): its groups, `data-ref`, `data-path`,
  * `data-pad`, `data-net`, `data-keepout` and `data-cutout` tie it to the rest.
  */
 svg: string, 

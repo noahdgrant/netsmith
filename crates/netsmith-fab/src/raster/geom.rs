@@ -54,13 +54,13 @@ impl Tess {
 
     /// Number of vertices of a full circle: a multiple of 4, so the extreme points on the
     /// axes are vertices and a bounding box is exact.
-    pub fn circle_n(self, r_mm: f64) -> usize {
+    pub(super) fn circle_n(self, r_mm: f64) -> usize {
         let n = (TAU / self.step(r_mm)).ceil() as usize;
         (n.div_ceil(4) * 4).clamp(8, 4096)
     }
 
     /// Number of chords for an arc of `sweep` radians and radius `r_mm`.
-    pub fn arc_n(self, r_mm: f64, sweep: f64) -> usize {
+    pub(super) fn arc_n(self, r_mm: f64, sweep: f64) -> usize {
         let a = sweep.abs();
         let by_error = (a / self.step(r_mm)).ceil();
         let by_quadrant = (a / (PI / 2.0)).ceil();
@@ -148,7 +148,7 @@ pub(crate) struct Map {
 }
 
 impl Map {
-    pub fn apply(self, p: Pt) -> Pt {
+    pub(super) fn apply(self, p: Pt) -> Pt {
         (p.0 * self.scale + self.ox, -p.1 * self.scale + self.oy)
     }
 }

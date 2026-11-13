@@ -586,7 +586,9 @@ impl Polygon {
 
 /// The polygon a design's outline states, in the board's frame (its origin the top left of
 /// the polygon's box), or `None` for a rounded rectangle.
-pub fn of_outline(outline: &netsmith_core::Outline) -> Result<Option<Polygon>, PolygonError> {
+pub(crate) fn of_outline(
+    outline: &netsmith_core::Outline,
+) -> Result<Option<Polygon>, PolygonError> {
     let Some(vertices) = &outline.polygon else {
         return Ok(None);
     };

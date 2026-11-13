@@ -9,7 +9,7 @@ use crate::board::Board;
 use crate::csv::{self, CsvError};
 use std::cmp::Ordering;
 
-pub const HEADER: [&str; 4] = ["Comment", "Designator", "Footprint", "LCSC Part #"];
+pub(crate) const HEADER: [&str; 4] = ["Comment", "Designator", "Footprint", "LCSC Part #"];
 
 /// One kind of part and where it goes. Identical parts may arrive as one entry per
 /// designator or already grouped; [`group`] puts them on one row either way.
@@ -68,7 +68,7 @@ impl From<CsvError> for BomError {
 }
 
 /// Orders designators the way people read them: `C2` before `C10`, `C` before `R`.
-pub fn designator_cmp(a: &str, b: &str) -> Ordering {
+pub(crate) fn designator_cmp(a: &str, b: &str) -> Ordering {
     fn split(s: &str) -> (&str, u64, &str) {
         let letters = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
         let digits = s[letters..]
@@ -100,7 +100,7 @@ fn valid_lcsc(s: &str) -> bool {
 
 /// Puts identical parts (same value, footprint and part number) on one entry, sorts the
 /// designators within it, and sorts the entries by their first designator.
-pub fn group(entries: &[BomEntry]) -> Result<Vec<BomEntry>, BomError> {
+pub(crate) fn group(entries: &[BomEntry]) -> Result<Vec<BomEntry>, BomError> {
     let mut seen = std::collections::BTreeSet::new();
     let mut grouped: Vec<BomEntry> = Vec::new();
     for e in entries {
@@ -145,7 +145,7 @@ pub fn group(entries: &[BomEntry]) -> Result<Vec<BomEntry>, BomError> {
 }
 
 /// The text of `bom.csv` for entries that are already grouped.
-pub fn render(entries: &[BomEntry]) -> String {
+pub(crate) fn render(entries: &[BomEntry]) -> String {
     let rows: Vec<Vec<String>> = entries
         .iter()
         .map(|e| {

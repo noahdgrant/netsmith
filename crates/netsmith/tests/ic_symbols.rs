@@ -3,7 +3,7 @@
 //! `lt8641.rs`, whose row in `std/kicad.toml` names no symbol.
 
 use netsmith_core::PowerFlow;
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::{Sexp};
 use netsmith_testkit::TempDir;
 
 use crate::lt8641::{all_sheets, built, ic_sheet, libraries};
@@ -218,7 +218,7 @@ fn two_parts_of_one_kind_with_different_pin_tables_are_two_symbols_in_the_schema
         .collect();
     ids.sort();
     assert_eq!(ids, embedded);
-    let file = netsmith_kicad::stdlib::files(&generated).remove(0).1;
+    let file = netsmith_kicad::stdlib_files(&generated).remove(0).1;
     for id in &embedded {
         let bare = id.strip_prefix("netsmith:").unwrap();
         assert_eq!(

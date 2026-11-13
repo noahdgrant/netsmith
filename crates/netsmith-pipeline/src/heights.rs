@@ -3,7 +3,7 @@
 //! Four sources, the strongest first: the design states `.height` (the source or the physical
 //! file), else the `height` cell of the catalog row the part was picked as (a datasheet figure
 //! with its source), else the _Standard height_ of its footprint (the package standard's
-//! maximum, `netsmith_pcb::standard_height`), else the part has no height and a limit reports it
+//! maximum, `netsmith_pcb::StandardHeight`), else the part has no height and a limit reports it
 //! unchecked. The design stage lists only the first; this module adds the second, once the
 //! generic parts have their rows, and keeps what it added so that a report can say where each
 //! number came from. The third is never written into the design: the board reads it from the
@@ -80,11 +80,10 @@
 
 use std::collections::BTreeMap;
 
-use netsmith_3d::scene3d::HeightProvenance;
+use netsmith_3d::HeightProvenance;
 use netsmith_core::{Design, PartHeight};
 use netsmith_design::Sourced;
-use netsmith_pcb::Board;
-use netsmith_pcb::standard_height::StandardHeight;
+use netsmith_pcb::{Board, StandardHeight};
 use netsmith_solve::Catalogs;
 
 use crate::resolve::resolve_generics;
@@ -152,7 +151,7 @@ pub(crate) fn from_catalog_rows(
 /// Where each part's height came from in the design (the glossary's _Height provenance_), by
 /// path: `catalog` for a part of `catalog`, else `stated` for a part the design states a height
 /// for, else `unknown`. The design does not know footprints, so a part this calls `unknown` may
-/// have a standard height on the board: [`Coverage`] and the 3D scene (`netsmith_3d::scene3d`)
+/// have a standard height on the board: [`Coverage`] and the 3D scene (`netsmith_3d::Scene`)
 /// read that from the board, after this.
 pub fn provenance(
     design: &Design,

@@ -106,7 +106,7 @@ fn board3d_lists_the_model_a_part_is_drawn_from_and_the_glb_records_its_sha256()
         assert_eq!(j1[key], part(&plain, "power_in")[key], "{key}");
     }
     let glb = fs::read(root.join("out.glb")).unwrap();
-    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let doc = netsmith_3d::json_chunk(&glb).unwrap();
     let node = doc["nodes"]
         .as_array()
         .unwrap()
@@ -205,7 +205,7 @@ fn a_member_of_a_system_is_drawn_from_its_model_in_the_system_scene() {
         "{}",
         String::from_utf8_lossy(&run.stderr)
     );
-    let doc = netsmith_3d::gltf::json_chunk(&fs::read(root.join("s.glb")).unwrap()).unwrap();
+    let doc = netsmith_3d::json_chunk(&fs::read(root.join("s.glb")).unwrap()).unwrap();
     assert!(
         doc["materials"]
             .as_array()
@@ -247,7 +247,7 @@ fn fab_draws_the_model_in_the_glb_and_the_step_and_names_it_in_the_notes() {
     assert!(step.contains(&format!("drawn from ../models/blocks.step (sha256 {sha})")));
     assert!(step.contains("PRODUCT('power_in:body','body'"));
     let glb = fs::read(package.join("LedExample.glb")).unwrap();
-    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let doc = netsmith_3d::json_chunk(&glb).unwrap();
     let names: Vec<&str> = doc["materials"]
         .as_array()
         .unwrap()

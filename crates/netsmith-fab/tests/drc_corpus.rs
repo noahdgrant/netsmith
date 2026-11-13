@@ -5,16 +5,17 @@
 use crate::common;
 
 use common::*;
-use netsmith_fab::drc::{self, Extras, Rule, kicad};
+use netsmith_fab::{compare_kicad_drc};
+use netsmith_geom::{drc_check, DrcExtras, DrcRule};
 
 struct Case {
     name: &'static str,
     board: Pcb,
     /// How many findings of each rule netsmith must report; other rules are free.
-    expect: Vec<(Rule, usize)>,
+    expect: Vec<(DrcRule, usize)>,
 }
 
-fn case(name: &'static str, board: Pcb, expect: &[(Rule, usize)]) -> Case {
+fn case(name: &'static str, board: Pcb, expect: &[(DrcRule, usize)]) -> Case {
     Case {
         name,
         board,
@@ -44,12 +45,12 @@ fn corpus() -> Vec<Case> {
     let mut b = two_layer();
     b.track("A", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
     b.track("B", "F.Cu", (10.0, 10.3), (20.0, 10.3), 0.2);
-    cases.push(case("track_track", b, &[(Rule::Clearance, 1)]));
+    cases.push(case("track_track", b, &[(DrcRule::Clearance, 1)]));
 
     let mut b = two_layer();
     b.stub("A", 15.0, 10.0);
     b.track("B", "F.Cu", (10.0, 10.5), (20.0, 10.5), 0.2);
-    cases.push(case("track_pad", b, &[(Rule::Clearance, 1)]));
+    cases.push(case("track_pad", b, &[(DrcRule::Clearance, 1)]));
 
     let mut b = two_layer();
     b.part(
@@ -75,7 +76,7 @@ fn corpus() -> Vec<Case> {
     cases.push(case(
         "pad_pad",
         b,
-        &[(Rule::Clearance, 1), (Rule::ShortingItems, 1)],
+        &[(DrcRule::Clearance, 1), (DrcRule::ShortingItems, 1)],
     ));
 
     let mut b = two_layer();
@@ -85,7 +86,7 @@ fn corpus() -> Vec<Case> {
     b.via("C", (20.0, 10.65), 0.6, 0.3);
     b.stub("D", 30.0, 10.0);
     b.via("E", (30.0, 10.7), 0.6, 0.3);
-    cases.push(case("via_to_others", b, &[(Rule::Clearance, 4)]));
+    cases.push(case("via_to_others", b, &[(DrcRule::Clearance, 4)]));
 
     let mut b = two_layer();
     b.part(
@@ -98,18 +99,18 @@ fn corpus() -> Vec<Case> {
         ],
         NONE,
     );
-    cases.push(case("thru_pads_close", b, &[(Rule::Clearance, 1)]));
+    cases.push(case("thru_pads_close", b, &[(DrcRule::Clearance, 1)]));
 
     // Shorts.
     let mut b = two_layer();
     b.stub("C", 30.0, 10.0);
     b.stub("D", 30.2, 10.0);
-    cases.push(case("shorts", b, &[(Rule::ShortingItems, 1)]));
+    cases.push(case("shorts", b, &[(DrcRule::ShortingItems, 1)]));
 
     let mut b = two_layer();
     b.wire("A", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
     b.wire("B", "F.Cu", (15.0, 5.0), (15.0, 15.0), 0.2);
-    cases.push(case("crossing", b, &[(Rule::TracksCrossing, 1)]));
+    cases.push(case("crossing", b, &[(DrcRule::TracksCrossing, 1)]));
 
     // Sizes.
     let mut b = two_layer();
@@ -122,10 +123,10 @@ fn corpus() -> Vec<Case> {
         "sizes",
         b,
         &[
-            (Rule::TrackWidth, 1),
-            (Rule::ViaDiameter, 1),
-            (Rule::AnnularWidth, 2),
-            (Rule::DrillOutOfRange, 2),
+            (DrcRule::TrackWidth, 1),
+            (DrcRule::ViaDiameter, 1),
+            (DrcRule::AnnularWidth, 2),
+            (DrcRule::DrillOutOfRange, 2),
         ],
     ));
 
@@ -147,7 +148,7 @@ fn corpus() -> Vec<Case> {
     cases.push(case(
         "pth_ring_and_small_holes",
         b,
-        &[(Rule::AnnularWidth, 1), (Rule::DrillOutOfRange, 1)],
+        &[(DrcRule::AnnularWidth, 1), (DrcRule::DrillOutOfRange, 1)],
     ));
 
     // Holes.
@@ -156,14 +157,14 @@ fn corpus() -> Vec<Case> {
     b.part("H2", (10.7, 10.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
     b.part("H3", (20.0, 10.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
     b.part("H4", (21.3, 10.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
-    cases.push(case("hole_to_hole", b, &[(Rule::HoleToHole, 2)]));
+    cases.push(case("hole_to_hole", b, &[(DrcRule::HoleToHole, 2)]));
 
     let mut b = two_layer();
     b.part("H1", (10.0, 10.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
     b.track("A", "F.Cu", (7.0, 10.6), (13.0, 10.6), 0.2);
     b.part("H2", (20.0, 10.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
     b.track("B", "B.Cu", (17.0, 10.65), (23.0, 10.65), 0.2);
-    cases.push(case("hole_clearance", b, &[(Rule::HoleClearance, 2)]));
+    cases.push(case("hole_clearance", b, &[(DrcRule::HoleClearance, 2)]));
 
     // Edge.
     let mut b = two_layer();
@@ -178,13 +179,13 @@ fn corpus() -> Vec<Case> {
         &[thru("1", 0.0, 0.0, 1.6, 0.9, "E")],
         NONE,
     );
-    cases.push(case("copper_edge", b, &[(Rule::CopperEdgeClearance, 4)]));
+    cases.push(case("copper_edge", b, &[(DrcRule::CopperEdgeClearance, 4)]));
 
     let mut b = two_layer();
     b.part("H1", (10.0, 10.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
     b.part("H2", (0.4, 15.0), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
     b.part("H3", (20.0, 29.4), 0.0, &[hole(0.0, 0.0, 1.0)], NONE);
-    cases.push(case("hole_to_edge", b, &[(Rule::HoleToEdge, 2)]));
+    cases.push(case("hole_to_edge", b, &[(DrcRule::HoleToEdge, 2)]));
 
     // Courtyards.
     let c = |w: f64, h: f64| Draw {
@@ -252,7 +253,7 @@ fn corpus() -> Vec<Case> {
             ..c(1.0, 1.0)
         },
     );
-    cases.push(case("courtyards", b, &[(Rule::CourtyardsOverlap, 2)]));
+    cases.push(case("courtyards", b, &[(DrcRule::CourtyardsOverlap, 2)]));
 
     let mut b = two_layer();
     b.part(
@@ -263,7 +264,7 @@ fn corpus() -> Vec<Case> {
         c(1.0, 1.0),
     );
     b.raw("(footprint \"Test:OPEN\" (layer \"F.Cu\") (at 20 10 0) (property \"Reference\" \"OPEN\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (fp_line (start -1 -1) (end 1 -1) (stroke (width 0.05) (type solid)) (layer \"F.CrtYd\")) (fp_line (start 1 -1) (end 1 1) (stroke (width 0.05) (type solid)) (layer \"F.CrtYd\")) (pad \"1\" smd rect (at 0 0) (size 0.6 0.6) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")))");
-    cases.push(case("open_courtyard", b, &[(Rule::MalformedCourtyard, 1)]));
+    cases.push(case("open_courtyard", b, &[(DrcRule::MalformedCourtyard, 1)]));
 
     // Silkscreen.
     let mut b = two_layer();
@@ -300,7 +301,7 @@ fn corpus() -> Vec<Case> {
             ..NONE
         },
     );
-    cases.push(case("silk_over_pads", b, &[(Rule::SilkOverCopper, 2)]));
+    cases.push(case("silk_over_pads", b, &[(DrcRule::SilkOverCopper, 2)]));
 
     let mut b = two_layer();
     b.silk_line((10.0, 10.0), (14.0, 10.0));
@@ -389,9 +390,9 @@ fn corpus() -> Vec<Case> {
         "silk_edge_and_text",
         b,
         &[
-            (Rule::SilkEdgeClearance, 1),
-            (Rule::TextHeight, 1),
-            (Rule::TextThickness, 1),
+            (DrcRule::SilkEdgeClearance, 1),
+            (DrcRule::TextHeight, 1),
+            (DrcRule::TextThickness, 1),
         ],
     ));
 
@@ -428,7 +429,7 @@ fn corpus() -> Vec<Case> {
         ],
         NONE,
     );
-    cases.push(case("mask_bridge", b, &[(Rule::SolderMaskBridge, 2)]));
+    cases.push(case("mask_bridge", b, &[(DrcRule::SolderMaskBridge, 2)]));
 
     // Rule areas.
     let mut b = two_layer();
@@ -453,7 +454,7 @@ fn corpus() -> Vec<Case> {
         &[smd("1", 0.0, 0.0, 0.6, 0.6, "B")],
         NONE,
     );
-    cases.push(case("keepout", b, &[(Rule::ItemsNotAllowed, 4)]));
+    cases.push(case("keepout", b, &[(DrcRule::ItemsNotAllowed, 4)]));
 
     // A rule area a part carries.
     let mut b = two_layer();
@@ -483,7 +484,7 @@ fn corpus() -> Vec<Case> {
     b.via("B", (15.0, 20.0), 0.6, 0.3);
     b.track("B", "F.Cu", (10.0, 20.0), (15.0, 20.0), 0.2);
     b.track("B", "B.Cu", (15.0, 20.0), (20.0, 21.0), 0.2);
-    cases.push(case("unconnected", b, &[(Rule::UnconnectedItems, 2)]));
+    cases.push(case("unconnected", b, &[(DrcRule::UnconnectedItems, 2)]));
 
     let mut b = two_layer();
     b.stub("A", 10.0, 10.0);
@@ -495,13 +496,13 @@ fn corpus() -> Vec<Case> {
     cases.push(case(
         "dangling",
         b,
-        &[(Rule::TrackDangling, 1), (Rule::ViaDangling, 2)],
+        &[(DrcRule::TrackDangling, 1), (DrcRule::ViaDangling, 2)],
     ));
 
     // Outline.
     let mut b = two_layer();
     b.raw("(gr_line (start 50 0) (end 60 0) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))");
-    cases.push(case("open_outline", b, &[(Rule::InvalidOutline, 1)]));
+    cases.push(case("open_outline", b, &[(DrcRule::InvalidOutline, 1)]));
 
     // How many times a pair on several layers is reported.
     let mut b = Pcb::new(4);
@@ -584,7 +585,7 @@ fn every_violation_of_the_corpus_is_found_and_kicad_reports_the_same() {
                     let _ = &mut board;
                     let mut b = c.board.clone_for_run();
                     let (pcb, pro) = (b.pcb(), b.pro());
-                    let mine = drc::check(&pcb, Some(&pro), &Extras::default())
+                    let mine = drc_check(&pcb, Some(&pro), &DrcExtras::default())
                         .unwrap_or_else(|e| panic!("{}: {e}", c.name));
                     let theirs = if have_kicad {
                         let k = kicad_findings(c.name, &pcb, &pro);
@@ -622,7 +623,7 @@ fn every_violation_of_the_corpus_is_found_and_kicad_reports_the_same() {
             }
         }
         if let Some(theirs) = theirs {
-            let cmp = kicad::compare(&mine, &theirs, 0.1);
+            let cmp = compare_kicad_drc(&mine, &theirs, 0.1);
             agreed += cmp.agreed;
             if !cmp.agrees() {
                 failures.push(format!("{}: {cmp}\nnetsmith:\n{mine}", c.name));

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use netsmith::project::Target;
 use netsmith::{Libraries, build_with};
 use netsmith_check::{Domain, check};
-use netsmith_kicad::install::Search;
+use netsmith_kicad::{Search};
 use netsmith_quantity::Quantity;
 use netsmith_solve::solve;
 use netsmith_testkit::TempDir;

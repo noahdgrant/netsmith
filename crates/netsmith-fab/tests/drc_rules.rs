@@ -5,7 +5,7 @@
 use crate::common;
 
 use common::*;
-use netsmith_fab::drc::{self, Extras, Report, Rule, Severity};
+use netsmith_geom::{DrcFinding, drc_check, DrcExtras, DrcReport, DrcRule, DrcSeverity};
 
 const NONE: Draw = Draw {
     courtyard: None,
@@ -13,12 +13,12 @@ const NONE: Draw = Draw {
     back: false,
 };
 
-fn check(b: &mut Pcb) -> Report {
+fn check(b: &mut Pcb) -> DrcReport {
     let (pcb, pro) = (b.pcb(), b.pro());
-    drc::check(&pcb, Some(&pro), &Extras::default()).unwrap_or_else(|e| panic!("{e}"))
+    drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap_or_else(|e| panic!("{e}"))
 }
 
-fn only(report: &Report, rule: Rule) -> &drc::Finding {
+fn only(report: &DrcReport, rule: DrcRule) -> &DrcFinding {
     let found: Vec<_> = report.findings.iter().filter(|f| f.rule == rule).collect();
     assert_eq!(found.len(), 1, "{rule:?} in\n{report}");
     found[0]
@@ -32,7 +32,7 @@ fn a_track_exactly_at_the_clearance_passes_and_one_a_hair_under_does_not() {
         b.wire("A", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
         b.track("B", "F.Cu", (10.0, 10.0 + pitch), (20.0, 10.0 + pitch), 0.2);
         let r = check(&mut b);
-        assert_eq!(r.count(Rule::Clearance), count, "pitch {pitch}\n{r}");
+        assert_eq!(r.count(DrcRule::Clearance), count, "pitch {pitch}\n{r}");
     }
 }
 
@@ -42,8 +42,8 @@ fn a_clearance_finding_has_the_numbers_the_place_the_layer_and_both_items() {
     b.track("A", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
     b.track("B", "F.Cu", (10.0, 10.3), (20.0, 10.3), 0.2);
     let r = check(&mut b);
-    let f = only(&r, Rule::Clearance);
-    assert_eq!(f.severity, Severity::Error);
+    let f = only(&r, DrcRule::Clearance);
+    assert_eq!(f.severity, DrcSeverity::Error);
     assert!(
         f.message.contains("0.1000 mm") && f.message.contains("0.1270 mm"),
         "{}",
@@ -67,8 +67,8 @@ fn a_net_class_asks_for_more_clearance_than_the_default() {
         r#""classes": [ "#,
         r#""netclass_patterns": [{"netclass": "Power", "pattern": "PWR"}], "classes": [ {"name": "Power", "clearance": 0.5, "priority": 0, "track_width": 0.2}, "#,
     );
-    let r = drc::check(&pcb, Some(&pro), &Extras::default()).unwrap();
-    let f = only(&r, Rule::Clearance);
+    let r = drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap();
+    let f = only(&r, DrcRule::Clearance);
     assert!(
         f.message.contains("0.4000 mm") && f.message.contains("0.5000 mm"),
         "{}",
@@ -82,19 +82,19 @@ fn a_rule_the_project_ignores_is_not_reported_and_a_warning_is_not_an_error() {
     b.track("A", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.05);
     let pcb = b.pcb();
     let pro = b.pro();
-    let r = drc::check(&pcb, Some(&pro), &Extras::default()).unwrap();
-    assert_eq!(only(&r, Rule::TrackWidth).severity, Severity::Error);
+    let r = drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap();
+    assert_eq!(only(&r, DrcRule::TrackWidth).severity, DrcSeverity::Error);
     let ignored = pro.replace(r#""track_width": "error""#, r#""track_width": "ignore""#);
     assert_eq!(
-        drc::check(&pcb, Some(&ignored), &Extras::default())
+        drc_check(&pcb, Some(&ignored), &DrcExtras::default())
             .unwrap()
-            .count(Rule::TrackWidth),
+            .count(DrcRule::TrackWidth),
         0
     );
     let warned = pro.replace(r#""track_width": "error""#, r#""track_width": "warning""#);
-    let r = drc::check(&pcb, Some(&warned), &Extras::default()).unwrap();
-    assert_eq!(only(&r, Rule::TrackWidth).severity, Severity::Warning);
-    assert!(r.errors().all(|f| f.rule != Rule::TrackWidth));
+    let r = drc_check(&pcb, Some(&warned), &DrcExtras::default()).unwrap();
+    assert_eq!(only(&r, DrcRule::TrackWidth).severity, DrcSeverity::Warning);
+    assert!(r.errors().all(|f| f.rule != DrcRule::TrackWidth));
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn a_hole_that_is_a_slot_is_measured_by_its_width_and_its_ends() {
     }
     b.nets = vec!["NJ1", "NJ2"];
     let r = check(&mut b);
-    let f = only(&r, Rule::HoleToHole);
+    let f = only(&r, DrcRule::HoleToHole);
     assert!(f.message.contains("0.3000 mm"), "{}", f.message);
 }
 
@@ -134,29 +134,29 @@ fn a_via_in_a_pad_is_a_warning_only_where_the_process_cannot_fill_it() {
     b.stub("A", 10.0, 10.0);
     b.via("A", (10.0, 10.0), 0.6, 0.3);
     let (pcb, pro) = (b.pcb(), b.pro());
-    let none = drc::check(&pcb, Some(&pro), &Extras::default()).unwrap();
+    let none = drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap();
     assert_eq!(
-        none.count(Rule::ViaInPad),
+        none.count(DrcRule::ViaInPad),
         0,
         "unchecked without the process"
     );
-    let fills = Extras {
+    let fills = DrcExtras {
         via_in_pad: Some(0.65),
-        ..Extras::default()
+        ..DrcExtras::default()
     };
     assert_eq!(
-        drc::check(&pcb, Some(&pro), &fills)
+        drc_check(&pcb, Some(&pro), &fills)
             .unwrap()
-            .count(Rule::ViaInPad),
+            .count(DrcRule::ViaInPad),
         0
     );
-    let narrow = Extras {
+    let narrow = DrcExtras {
         via_in_pad: Some(0.55),
-        ..Extras::default()
+        ..DrcExtras::default()
     };
-    let r = drc::check(&pcb, Some(&pro), &narrow).unwrap();
-    let f = only(&r, Rule::ViaInPad);
-    assert_eq!(f.severity, Severity::Warning);
+    let r = drc_check(&pcb, Some(&pro), &narrow).unwrap();
+    let f = only(&r, DrcRule::ViaInPad);
+    assert_eq!(f.severity, DrcSeverity::Warning);
     assert!(
         f.message.contains("0.6000 mm") && f.message.contains("0.5500 mm"),
         "{}",
@@ -181,17 +181,17 @@ fn the_mask_web_comes_from_the_board_setup_or_else_from_the_caller() {
     let (pcb, pro) = (b.pcb(), b.pro());
     // 0.2 mm between the pads: fine without a web, a bridge for a process that needs 0.3 mm.
     assert_eq!(
-        drc::check(&pcb, Some(&pro), &Extras::default())
+        drc_check(&pcb, Some(&pro), &DrcExtras::default())
             .unwrap()
-            .count(Rule::SolderMaskBridge),
+            .count(DrcRule::SolderMaskBridge),
         0
     );
-    let web = Extras {
+    let web = DrcExtras {
         mask_web: Some(0.3),
-        ..Extras::default()
+        ..DrcExtras::default()
     };
-    let r = drc::check(&pcb, Some(&pro), &web).unwrap();
-    let f = only(&r, Rule::SolderMaskBridge);
+    let r = drc_check(&pcb, Some(&pro), &web).unwrap();
+    let f = only(&r, DrcRule::SolderMaskBridge);
     assert!(
         f.message.contains("0.2000 mm") && f.message.contains("0.3000 mm"),
         "{}",
@@ -202,9 +202,9 @@ fn the_mask_web_comes_from_the_board_setup_or_else_from_the_caller() {
     b.setup("(solder_mask_min_width 0.1)");
     let (pcb, pro) = (b.pcb(), b.pro());
     assert_eq!(
-        drc::check(&pcb, Some(&pro), &web)
+        drc_check(&pcb, Some(&pro), &web)
             .unwrap()
-            .count(Rule::SolderMaskBridge),
+            .count(DrcRule::SolderMaskBridge),
         0
     );
 }
@@ -220,7 +220,7 @@ fn a_pour_joins_the_pads_and_vias_of_its_net_under_it_and_a_pad_set_to_no_connec
     b.via("GND", (20.0, 11.0), 0.6, 0.3);
     b.track("GND", "F.Cu", (20.0, 10.0), (20.0, 11.0), 0.2);
     let r = check(&mut b);
-    assert_eq!(r.count(Rule::UnconnectedItems), 0, "{r}");
+    assert_eq!(r.count(DrcRule::UnconnectedItems), 0, "{r}");
     assert!(r.is_clean(), "{r}");
 
     // The same pads with no via: nothing joins them to each other or to the plane.
@@ -229,7 +229,7 @@ fn a_pour_joins_the_pads_and_vias_of_its_net_under_it_and_a_pad_set_to_no_connec
     b.stub("GND", 10.0, 10.0);
     b.stub("GND", 20.0, 10.0);
     let r = check(&mut b);
-    assert_eq!(r.count(Rule::UnconnectedItems), 1, "{r}");
+    assert_eq!(r.count(DrcRule::UnconnectedItems), 1, "{r}");
 
     // A zone that connects no pads does not join a through-hole pad of its net either.
     let mut b = Pcb::new(4);
@@ -245,7 +245,7 @@ fn a_pour_joins_the_pads_and_vias_of_its_net_under_it_and_a_pad_set_to_no_connec
         NONE,
     );
     let r = check(&mut b);
-    assert_eq!(r.count(Rule::UnconnectedItems), 1, "{r}");
+    assert_eq!(r.count(DrcRule::UnconnectedItems), 1, "{r}");
 }
 
 #[test]
@@ -274,7 +274,7 @@ fn a_rule_area_the_board_draws_forbids_tracks_vias_pads_and_parts_but_one_a_foot
     let found: Vec<_> = r
         .findings
         .iter()
-        .filter(|f| f.rule == Rule::ItemsNotAllowed)
+        .filter(|f| f.rule == DrcRule::ItemsNotAllowed)
         .collect();
     // R1's pad and R1 itself.
     assert_eq!(found.len(), 2, "{r}");
@@ -303,7 +303,7 @@ fn a_rule_area_the_board_draws_forbids_tracks_vias_pads_and_parts_but_one_a_foot
         },
     );
     let r = check(&mut b);
-    assert_eq!(r.count(Rule::ItemsNotAllowed), 0, "{r}");
+    assert_eq!(r.count(DrcRule::ItemsNotAllowed), 0, "{r}");
 }
 
 #[test]
@@ -311,7 +311,7 @@ fn the_outline_must_be_one_closed_path_and_a_cutout_must_lie_inside_it() {
     let mut b = Pcb::new(2);
     b.raw("(gr_rect (start 30 10) (end 45 20) (stroke (width 0.05) (type default)) (fill no) (layer \"Edge.Cuts\"))");
     let r = check(&mut b);
-    let f = only(&r, Rule::InvalidOutline);
+    let f = only(&r, DrcRule::InvalidOutline);
     assert!(
         f.message.contains("cutout") && f.message.contains("outside the board"),
         "{}",
@@ -321,9 +321,9 @@ fn the_outline_must_be_one_closed_path_and_a_cutout_must_lie_inside_it() {
 
     // No outline at all.
     let pcb = "(kicad_pcb (layers (0 \"F.Cu\" signal) (2 \"B.Cu\" signal)))";
-    let r = drc::check(pcb, None, &Extras::default()).unwrap();
+    let r = drc_check(pcb, None, &DrcExtras::default()).unwrap();
     assert!(
-        only(&r, Rule::InvalidOutline)
+        only(&r, DrcRule::InvalidOutline)
             .message
             .contains("no outline")
     );
@@ -359,7 +359,7 @@ fn a_part_on_the_back_has_its_courtyard_on_the_back() {
         c(true),
     );
     let r = check(&mut b);
-    let f = only(&r, Rule::CourtyardsOverlap);
+    let f = only(&r, DrcRule::CourtyardsOverlap);
     assert_eq!(f.layer.as_deref(), Some("B.CrtYd"));
     assert_eq!(f.parts(), ["A2", "A3"]);
 }
@@ -369,17 +369,17 @@ fn a_board_with_no_project_file_is_checked_to_kicads_defaults() {
     let mut b = Pcb::new(2);
     b.track("A", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.1);
     b.track("B", "F.Cu", (10.0, 10.25), (20.0, 10.25), 0.1);
-    let r = drc::check(&b.pcb(), None, &Extras::default()).unwrap();
+    let r = drc_check(&b.pcb(), None, &DrcExtras::default()).unwrap();
     // KiCad's default clearance is 0.2 mm; these tracks are 0.15 mm apart.
-    assert!(only(&r, Rule::Clearance).message.contains("0.2000 mm"));
+    assert!(only(&r, DrcRule::Clearance).message.contains("0.2000 mm"));
 }
 
 #[test]
 fn a_project_file_that_is_not_json_and_a_file_that_is_not_a_board_are_refused() {
     let mut b = Pcb::new(2);
     let pcb = b.pcb();
-    let e = drc::check(&pcb, Some("not json"), &Extras::default()).unwrap_err();
+    let e = drc_check(&pcb, Some("not json"), &DrcExtras::default()).unwrap_err();
     assert!(e.to_string().contains("not JSON"), "{e}");
-    let e = drc::check("(not_a_board)", None, &Extras::default()).unwrap_err();
+    let e = drc_check("(not_a_board)", None, &DrcExtras::default()).unwrap_err();
     assert!(e.to_string().contains("not a KiCad board"), "{e}");
 }

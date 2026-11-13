@@ -46,13 +46,13 @@ use crate::artwork::{Artwork, PadKind, TrackShape};
 use crate::geom::{Bounds, Pt};
 
 /// The length of a teardrop beyond the pad, as a share of the pad's copper across the track.
-pub const LENGTH_RATIO: f64 = 0.5;
+pub(crate) const LENGTH_RATIO: f64 = 0.5;
 /// The longest teardrop, in mm.
-pub const MAX_LENGTH: f64 = 1.0;
+pub(crate) const MAX_LENGTH: f64 = 1.0;
 /// The width of a teardrop at the pad, as a share of the pad's copper across the track.
-pub const WIDTH_RATIO: f64 = 0.9;
+pub(crate) const WIDTH_RATIO: f64 = 0.9;
 /// The widest teardrop, in mm.
-pub const MAX_WIDTH: f64 = 2.0;
+pub(crate) const MAX_WIDTH: f64 = 2.0;
 /// How far inside the pad's copper a teardrop's corners are, in mm.
 const INSIDE: f64 = 0.005;
 

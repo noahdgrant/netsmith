@@ -1,7 +1,7 @@
 //! Diff pairs: which two nets make one, and how near their tracks run to count as coupled. The
 //! router runs the pairs side by side (`netsmith_router`'s route module, issue #431), the
 //! meanders match their lengths (`netsmith_pcb::meander`), and the route scorecard
-//! (`netsmith_fab::score`) measures them.
+//! (`netsmith_fab::Scorecard`) measures them.
 
 /// How near, centre line to centre line, the other net of a diff pair runs for a stretch of
 /// track to count as coupled, in mm.

@@ -12,7 +12,7 @@ use std::fs;
 use netsmith_pipeline::Libraries;
 use netsmith_fabricate::fab::{FabOptions, Fabricated, fab_with_options};
 use netsmith_check::Loader;
-use netsmith_kicad::install::skip_without_kicad_libraries;
+use netsmith_kicad::{skip_without_kicad_libraries};
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;
 

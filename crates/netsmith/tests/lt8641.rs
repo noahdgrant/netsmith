@@ -682,7 +682,7 @@ fn kicads_erc_accepts_two_pins_that_give_power_to_one_net() {
         .unwrap()
         .root;
     // Without KiCad: the pin types written are one output and one input on that net.
-    let root = netsmith_kicad::sexp::Sexp::parse(&schematic).unwrap();
+    let root = netsmith_kicad::Sexp::parse(&schematic).unwrap();
     let outputs = root
         .find("lib_symbols")
         .unwrap()

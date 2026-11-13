@@ -9,15 +9,14 @@
 //! one of the documented ones: a rule only netsmith has ([`Rule::HoleToEdge`],
 //! [`Rule::ViaInPad`]), or a kind of finding netsmith does not check ([`OUT_OF_SCOPE`]).
 
-use super::{Report, Rule, Severity};
-use crate::geom::Pt;
+use netsmith_geom::{DrcReport, DrcRule, DrcSeverity, Pt};
 
 /// A finding in KiCad's report.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reported {
     /// KiCad's `type`, such as `clearance`.
     pub kind: String,
-    pub severity: Severity,
+    pub severity: DrcSeverity,
     pub description: String,
     /// The items it names: their descriptions and where they are.
     pub items: Vec<(String, Pt)>,
@@ -76,8 +75,8 @@ pub fn parse(json: &str) -> Result<Vec<Reported>, String> {
         };
         for e in entries {
             let severity = match e["severity"].as_str() {
-                Some("error") => Severity::Error,
-                Some("warning") => Severity::Warning,
+                Some("error") => DrcSeverity::Error,
+                Some("warning") => DrcSeverity::Warning,
                 _ => continue,
             };
             let items = e["items"]
@@ -186,11 +185,11 @@ fn same_places(a: &[Pt], b: &[Pt], tolerance: f64) -> bool {
 
 /// Compares the two reports. `tolerance` is how far apart (mm) two items of the same
 /// finding may be reported.
-pub fn compare(ours: &Report, kicad: &[Reported], tolerance: f64) -> Comparison {
+pub fn compare(ours: &DrcReport, kicad: &[Reported], tolerance: f64) -> Comparison {
     let mut c = Comparison::default();
     let mut taken = vec![false; kicad.len()];
     for f in &ours.findings {
-        if Rule::is_netsmiths(f.rule) {
+        if DrcRule::is_netsmiths(f.rule) {
             c.netsmith_only_rules += 1;
             continue;
         }
@@ -284,7 +283,7 @@ pub fn compare(ours: &Report, kicad: &[Reported], tolerance: f64) -> Comparison 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drc::{Finding, Item};
+    use netsmith_geom::{DrcFinding, DrcItem as Item};
 
     const JSON: &str = r#"{"violations": [
       {"type": "clearance", "severity": "error", "description": "Clearance violation",
@@ -295,10 +294,10 @@ mod tests {
       {"type": "hole_clearance", "severity": "ignore", "description": "ignored", "items": []}],
      "unconnected_items": []}"#;
 
-    fn finding(rule: Rule, places: &[(f64, f64)]) -> Finding {
-        Finding {
+    fn finding(rule: DrcRule, places: &[(f64, f64)]) -> DrcFinding {
+        DrcFinding {
             rule,
-            severity: Severity::Error,
+            severity: DrcSeverity::Error,
             message: "m".into(),
             at: Pt::default(),
             layer: None,
@@ -327,8 +326,8 @@ mod tests {
     #[test]
     fn findings_of_one_rule_at_the_same_places_agree_in_either_order() {
         let k = parse(JSON).unwrap();
-        let ours = Report {
-            findings: vec![finding(Rule::Clearance, &[(5.05, 2.0), (1.0, 2.04)])],
+        let ours = DrcReport {
+            findings: vec![finding(DrcRule::Clearance, &[(5.05, 2.0), (1.0, 2.04)])],
         };
         let c = compare(&ours, &k, 0.1);
         assert_eq!((c.agreed, c.out_of_scope), (1, 1));
@@ -339,11 +338,11 @@ mod tests {
     fn a_finding_one_side_lacks_is_named_and_a_place_off_by_more_than_the_tolerance_does_not_match()
     {
         let k = parse(JSON).unwrap();
-        let ours = Report {
+        let ours = DrcReport {
             findings: vec![
-                finding(Rule::Clearance, &[(1.5, 2.0), (5.0, 2.0)]),
-                finding(Rule::ShortingItems, &[(9.0, 9.0)]),
-                finding(Rule::HoleToEdge, &[(0.0, 0.0)]),
+                finding(DrcRule::Clearance, &[(1.5, 2.0), (5.0, 2.0)]),
+                finding(DrcRule::ShortingItems, &[(9.0, 9.0)]),
+                finding(DrcRule::HoleToEdge, &[(0.0, 0.0)]),
             ],
         };
         let c = compare(&ours, &k, 0.1);

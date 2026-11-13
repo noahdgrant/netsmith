@@ -14,8 +14,7 @@
 //! The count is for the net's whole current, which a via on a branch of the net carries only part
 //! of: the pessimism of ADR 0036's sum, kept rather than guessing the net's topology.
 
-use netsmith_pcb::board::{Board, Via};
-use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::{Board, Pt, Rect, Via};
 
 /// Space kept beyond the rules, for rounding.
 pub(crate) const MARGIN: f64 = 0.02;

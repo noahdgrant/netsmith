@@ -11,7 +11,7 @@
 //! pour with the clearances cut out, which is the fill.
 //!
 //! It draws with a [`Pen`]: the Gerber file, or [`crate::polygons::Polygons`], which works the
-//! same objects out as polygons with holes. `netsmith_pcb::copper` fills a board's pours that
+//! same objects out as polygons with holes. `netsmith_pcb::copper_of` fills a board's pours that
 //! way for the 3D view (ADR 0105), so its pours are this fill and there is one filler.
 //!
 //! This is the same picture KiCad's fill makes, with these differences (also issue #61):

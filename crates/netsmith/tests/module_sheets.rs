@@ -10,7 +10,7 @@ use std::path::Path;
 use netsmith::{Built, Libraries, build_with};
 use netsmith_check::Loader;
 use netsmith_fab::{KicadCli, KicadCliExe};
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::{Sexp};
 use netsmith_netlist::{Identity, Netlist, Options, Outcome, compare};
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;

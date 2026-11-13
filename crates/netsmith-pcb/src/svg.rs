@@ -16,7 +16,7 @@
 
 use std::fmt::Write as _;
 
-use netsmith_kicad::sexp::fmt_num;
+use netsmith_kicad::fmt_num;
 
 use crate::board::{Board, CopperLayer, Placed};
 use crate::footprint::{Graphic, Layer, Pad, PadShape, Shape};

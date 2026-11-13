@@ -5,25 +5,25 @@
 
 use crate::mesh::trig::{atan2, sin_cos};
 
-pub type P3 = [f64; 3];
+pub(crate) type P3 = [f64; 3];
 
-pub fn add(a: P3, b: P3) -> P3 {
+pub(crate) fn add(a: P3, b: P3) -> P3 {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
-pub fn sub(a: P3, b: P3) -> P3 {
+pub(crate) fn sub(a: P3, b: P3) -> P3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-pub fn scale(a: P3, s: f64) -> P3 {
+pub(crate) fn scale(a: P3, s: f64) -> P3 {
     [a[0] * s, a[1] * s, a[2] * s]
 }
 
-pub fn dot(a: P3, b: P3) -> f64 {
+pub(crate) fn dot(a: P3, b: P3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-pub fn cross(a: P3, b: P3) -> P3 {
+pub(crate) fn cross(a: P3, b: P3) -> P3 {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -31,16 +31,16 @@ pub fn cross(a: P3, b: P3) -> P3 {
     ]
 }
 
-pub fn norm(a: P3) -> f64 {
+pub(crate) fn norm(a: P3) -> f64 {
     dot(a, a).sqrt()
 }
 
-pub fn dist(a: P3, b: P3) -> f64 {
+pub(crate) fn dist(a: P3, b: P3) -> f64 {
     norm(sub(a, b))
 }
 
 /// `a` scaled to length 1, `None` when it has no length.
-pub fn unit(a: P3) -> Option<P3> {
+pub(crate) fn unit(a: P3) -> Option<P3> {
     let l = norm(a);
     (l > 1e-300 && l.is_finite()).then(|| scale(a, 1.0 / l))
 }
@@ -206,7 +206,7 @@ impl Knots {
 
 /// The most control points a B-spline's piece depends on: a degree up to 25, as the reader
 /// takes them.
-pub const MAX_ORDER: usize = 26;
+pub(crate) const MAX_ORDER: usize = 26;
 
 /// The basis functions of a B-spline at a parameter: `value[j]` and `deriv[j]` for the control
 /// point `span - degree + j`.
@@ -477,7 +477,7 @@ pub enum Surface {
 }
 
 /// A surface's point and its derivatives along u and v.
-pub type Eval = (P3, P3, P3);
+pub(crate) type Eval = (P3, P3, P3);
 
 impl Surface {
     pub fn eval(&self, u: f64, v: f64) -> Eval {
@@ -589,14 +589,14 @@ fn bspline_surface_param(
 
 /// The search for the parameters of points on one B-spline surface: its size, and its grid of
 /// samples, made the first time a point needs it and kept for the face's other points.
-pub struct Inverse<'a> {
+pub(crate) struct Inverse<'a> {
     b: &'a BSplineSurface,
     size: f64,
     seeds: std::cell::OnceCell<Vec<([f64; 2], P3)>>,
 }
 
 impl<'a> Inverse<'a> {
-    pub fn new(b: &'a BSplineSurface) -> Inverse<'a> {
+    pub(crate) fn new(b: &'a BSplineSurface) -> Inverse<'a> {
         let mut lo = [f64::INFINITY; 3];
         let mut hi = [f64::NEG_INFINITY; 3];
         for row in &b.points {
@@ -686,7 +686,7 @@ impl<'a> Inverse<'a> {
     }
 
     /// The parameters of `p` and the one undefined there, as [`Surface::param`] gives them.
-    pub fn param(&self, p: P3, hint: Option<[f64; 2]>) -> ([f64; 2], Option<usize>) {
+    pub(crate) fn param(&self, p: P3, hint: Option<[f64; 2]>) -> ([f64; 2], Option<usize>) {
         let b = self.b;
         let (u0, u1) = b.u.domain();
         let (v0, v1) = b.v.domain();

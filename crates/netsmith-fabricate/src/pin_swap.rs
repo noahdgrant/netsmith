@@ -27,8 +27,7 @@ use std::time::{Duration, Instant};
 
 use netsmith_check::{EntrySource, PartSpace, PinFile};
 use netsmith_core::Design;
-use netsmith_pcb::board::{BoardNet, PadRef};
-use netsmith_pcb::{Board, Ratsnest};
+use netsmith_pcb::{Board, BoardNet, PadRef, Ratsnest};
 use netsmith_placer::crossings;
 
 /// How many times `fab` goes round (search, place, route) before it stops (owner decision of

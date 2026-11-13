@@ -14,7 +14,7 @@ use super::geometry::{BSplineCurve, BSplineSurface, Curve, Frame, Knots, P3, Sur
 use super::part21::{Entity, Exchange, Instance, Param};
 
 /// A colour, 0 to 255 a channel.
-pub type Rgb = [u8; 3];
+pub(crate) type Rgb = [u8; 3];
 
 /// An edge: from `start` to `end` along `curve`, with the curve's direction when `same_sense`.
 #[derive(Debug, Clone, PartialEq)]
@@ -157,7 +157,7 @@ const MM: Units = Units {
 const MAX_DEPTH: usize = 64;
 
 /// Reads the model of `ex`.
-pub fn model(ex: &Exchange) -> Result<Model, StepError> {
+pub(crate) fn model(ex: &Exchange) -> Result<Model, StepError> {
     let mut r = Reader {
         ex,
         model: Model::default(),

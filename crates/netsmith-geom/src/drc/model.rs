@@ -20,7 +20,7 @@ pub(crate) enum Kind {
 impl Kind {
     /// A track or a teardrop, the copper the router draws between pads and vias: the rules of
     /// the process that are "to a track" hold for both.
-    pub fn is_track_like(self) -> bool {
+    pub(crate) fn is_track_like(self) -> bool {
         matches!(self, Kind::Track(_) | Kind::Teardrop(_))
     }
 }
@@ -182,7 +182,7 @@ pub(crate) fn drawn_at(shape: &Drawn) -> Pt {
 }
 
 impl<'a> Model<'a> {
-    pub fn new(
+    pub(crate) fn new(
         art: &'a Artwork,
         rules: &'a Rules,
         extras: &'a Extras,
@@ -445,13 +445,13 @@ impl<'a> Model<'a> {
         }
     }
 
-    pub fn layer_name(&self, i: usize) -> &str {
+    pub(crate) fn layer_name(&self, i: usize) -> &str {
         &self.layers[i]
     }
 
     /// The shape of the opening in the solder mask over a pad on the front (`front`) or the
     /// back, or `None` if the mask covers it.
-    pub fn mask_opening(&self, pad: &Pad, front: bool) -> Vec<Shape> {
+    pub(crate) fn mask_opening(&self, pad: &Pad, front: bool) -> Vec<Shape> {
         let layer = if front { "F.Mask" } else { "B.Mask" };
         if !pad.layers.iter().any(|l| l == layer) {
             return Vec::new();
@@ -471,7 +471,7 @@ impl<'a> Model<'a> {
     }
 
     /// The box round every shape of a copper item.
-    pub fn bounds_of(shapes: &[Shape]) -> Bounds {
+    pub(crate) fn bounds_of(shapes: &[Shape]) -> Bounds {
         bounds_of(shapes)
     }
 }

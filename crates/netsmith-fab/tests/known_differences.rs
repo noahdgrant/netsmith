@@ -2,8 +2,7 @@
 //! on an invented board (`tests/data/known_differences.kicad_pcb`): round pads with thermal
 //! spokes in a plane, and pads that state their own solder mask margin, on both faces.
 
-use netsmith_fab::crosscheck::{Limits, check};
-use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_fab::{CrossCheckLimits, cross_check, KicadCli, KicadCliExe};
 
 const BOARD: &str = include_str!("data/known_differences.kicad_pcb");
 const PROJECT: &str = include_str!("data/known_differences.kicad_pro");
@@ -26,12 +25,12 @@ fn the_plane_agrees_with_kicads_to_a_tenth_of_what_the_default_limit_allows() {
     // Spokes along the axes of a round pad, which is what netsmith drew before, make this
     // plane differ by 0.6% of its pixels (0.5% beyond the tolerance); with KiCad's 45
     // degrees the difference is the islands KiCad removes and nothing else.
-    let limits = Limits {
+    let limits = CrossCheckLimits {
         pixels: 0.002,
         pour_beyond_tolerance: 0.001,
-        ..Limits::default()
+        ..CrossCheckLimits::default()
     };
-    let report = check(&pcb, &kicad, &limits).unwrap_or_else(|e| panic!("{e}"));
+    let report = cross_check(&pcb, &kicad, &limits).unwrap_or_else(|e| panic!("{e}"));
     let plane = report
         .layers
         .iter()
@@ -47,7 +46,7 @@ fn a_pad_margin_that_kicad_9_0_0_drops_on_the_back_is_named_and_does_not_fail() 
         return;
     };
     let (_dir, pcb) = board_in("fab-known-mask");
-    let report = check(&pcb, &kicad, &Limits::default()).unwrap_or_else(|e| panic!("{e}"));
+    let report = cross_check(&pcb, &kicad, &CrossCheckLimits::default()).unwrap_or_else(|e| panic!("{e}"));
     assert!(report.ok(), "{report}");
     let back = report
         .layers

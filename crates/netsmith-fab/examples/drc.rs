@@ -3,8 +3,9 @@
 //!
 //! `cargo run -p netsmith-fab --example drc -- board.kicad_pcb [--kicad]`
 
-use netsmith_fab::drc::{self, Extras, kicad};
 use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_fab::{compare_kicad_drc, parse_kicad_drc};
+use netsmith_geom::{DrcExtras, drc_check, drc_project_of};
 use std::path::Path;
 
 fn main() {
@@ -16,7 +17,7 @@ fn main() {
     let path = Path::new(path);
     let src = std::fs::read_to_string(path).expect("cannot read the board");
     let started = std::time::Instant::now();
-    let report = drc::check(&src, drc::project_of(path).as_deref(), &Extras::default())
+    let report = drc_check(&src, drc_project_of(path).as_deref(), &DrcExtras::default())
         .unwrap_or_else(|e| panic!("{e}"));
     eprintln!(
         "netsmith: {} finding(s) in {:?}",
@@ -27,7 +28,7 @@ fn main() {
     if args.iter().any(|a| a == "--kicad") {
         let cli = KicadCliExe::locate().expect("no kicad-cli");
         let json = cli.drc_json(path).unwrap_or_else(|e| panic!("{e}"));
-        let theirs = kicad::parse(&json).unwrap();
-        print!("{}", kicad::compare(&report, &theirs, 0.1));
+        let theirs = parse_kicad_drc(&json).unwrap();
+        print!("{}", compare_kicad_drc(&report, &theirs, 0.1));
     }
 }

@@ -74,7 +74,7 @@ const PITCHES: [Pitch; 2] = [
 /// The square pin and the plastic of a header (`(pin, plastic)`, in mm) of the family at
 /// `pitch` mm, the figures the generated footprints carry, for a footprint read from a file
 /// that [`crate::body3d`] draws as a header. `None` at a pitch with no family here.
-pub fn family(pitch: f64) -> Option<(f64, f64)> {
+pub(crate) fn family(pitch: f64) -> Option<(f64, f64)> {
     PITCHES
         .iter()
         .find(|k| (k.mm - pitch).abs() < 1e-9)
@@ -82,7 +82,7 @@ pub fn family(pitch: f64) -> Option<(f64, f64)> {
 }
 
 /// The pitch, in mm, a footprint name spells as `text` (`2.54`, `2.00`), if a family has it.
-pub fn pitch_of(text: &str) -> Option<f64> {
+pub(crate) fn pitch_of(text: &str) -> Option<f64> {
     PITCHES.iter().find(|k| k.text == text).map(|k| k.mm)
 }
 
@@ -99,7 +99,7 @@ fn name(part: Part, rows: usize, per_row: usize, pitch: &Pitch) -> String {
 }
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(crate) fn names() -> Vec<String> {
     let mut out = Vec::new();
     for part in [Part::Header, Part::Socket] {
         for pitch in &PITCHES {
@@ -118,7 +118,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is a header or a socket of this module.
-pub fn generate(library_name: &str, footprint: &str) -> Option<Footprint> {
+pub(crate) fn generate(library_name: &str, footprint: &str) -> Option<Footprint> {
     for part in [Part::Header, Part::Socket] {
         for pitch in &PITCHES {
             if library(part, pitch) != library_name {

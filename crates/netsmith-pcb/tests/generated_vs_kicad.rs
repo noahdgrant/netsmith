@@ -9,8 +9,7 @@
 //!
 //! `cargo test -p netsmith-pcb --test main generated_vs_kicad:: -- --nocapture` prints the table.
 
-use netsmith_pcb::generate::{generate, names};
-use netsmith_pcb::{Footprint, FootprintLibrary, Pad, PadShape};
+use netsmith_pcb::{generated_footprint, generated_footprint_names, Footprint, FootprintLibrary, Pad, PadShape};
 
 /// The agreement asked for, in mm. A tolerance of a hair over 0.01 absorbs the float noise of
 /// a value written as 0.01 apart.
@@ -175,8 +174,8 @@ fn every_generated_footprint_agrees_with_kicads_own_to_ten_microns() {
     let kicad = FootprintLibrary::at(installed.root());
     let mut reports = Vec::new();
     let mut without_counterpart = Vec::new();
-    for id in names() {
-        let ours = generate(id).expect("a listed name is generated");
+    for id in generated_footprint_names() {
+        let ours = generated_footprint(id).expect("a listed name is generated");
         match kicad.load(id) {
             Ok(theirs) => reports.push(compare(id, &ours, &theirs)),
             Err(_) => without_counterpart.push(id.clone()),
@@ -273,7 +272,7 @@ const CIRCULAR: &[&str] = &[
 
 /// The radii of the circles a footprint draws on `layer`, sorted.
 fn radii(fp: &Footprint, layer: &str) -> Vec<f64> {
-    use netsmith_pcb::footprint::{Layer, Shape};
+    use netsmith_pcb::{Layer, Shape};
     let layer = match layer {
         "silk" => Layer::Silk,
         "fab" => Layer::Fab,
@@ -295,7 +294,7 @@ fn radii(fp: &Footprint, layer: &str) -> Vec<f64> {
 /// What a pad's comparison does not see: the mask margin, the clearance and whether the
 /// plating stays on the inner layers, as the file says them (`None`: it says nothing).
 fn pad_extras(fp: &Footprint) -> Vec<(String, Option<String>, Option<String>, bool)> {
-    let value = |pad: &netsmith_kicad::sexp::Sexp, key: &str| {
+    let value = |pad: &netsmith_kicad::Sexp, key: &str| {
         pad.find(key)
             .and_then(|n| n.args().first())
             .and_then(|a| a.text())
@@ -337,7 +336,7 @@ fn attr_words(fp: &Footprint) -> Vec<String> {
 #[test]
 fn the_holes_test_points_and_fiducial_are_generated_and_agree_with_kicads_in_every_circle() {
     for id in CIRCULAR {
-        assert!(names().contains(&id.to_string()), "{id} is not generated");
+        assert!(generated_footprint_names().contains(&id.to_string()), "{id} is not generated");
     }
     let installed = FootprintLibrary::installed();
     if !installed.root().is_dir() {
@@ -350,7 +349,7 @@ fn the_holes_test_points_and_fiducial_are_generated_and_agree_with_kicads_in_eve
     let kicad = FootprintLibrary::at(installed.root());
     let mut problems = Vec::new();
     for id in CIRCULAR {
-        let ours = generate(id).unwrap();
+        let ours = generated_footprint(id).unwrap();
         let theirs = kicad
             .load(id)
             .unwrap_or_else(|e| panic!("KiCad has no {id}: {e}"));

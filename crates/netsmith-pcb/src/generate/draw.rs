@@ -10,13 +10,13 @@ use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
 /// Line widths of the layers, in mm (KiCad's library conventions).
-pub const SILK_WIDTH: f64 = 0.12;
-pub const FAB_WIDTH: f64 = 0.1;
-pub const COURTYARD_WIDTH: f64 = 0.05;
-pub const COMMENT_WIDTH: f64 = 0.15;
+pub(super) const SILK_WIDTH: f64 = 0.12;
+pub(super) const FAB_WIDTH: f64 = 0.1;
+pub(super) const COURTYARD_WIDTH: f64 = 0.05;
+pub(super) const COMMENT_WIDTH: f64 = 0.15;
 
 /// A number as KiCad writes it: at most six decimals, no trailing zeros, no "-0".
-pub fn num(v: f64) -> String {
+pub(super) fn num(v: f64) -> String {
     let mut s = format!("{:.6}", v);
     while s.ends_with('0') {
         s.pop();
@@ -29,7 +29,7 @@ pub fn num(v: f64) -> String {
 
 /// The silkscreen, fabrication, courtyard and comment layers, by their KiCad names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Draw {
+pub(super) enum Draw {
     Silk,
     Fab,
     Courtyard,
@@ -59,7 +59,7 @@ impl Draw {
 
 /// The shape of a pad.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Shape {
+pub(super) enum Shape {
     /// A rectangle with rounded corners, as KiCad's generated surface-mount pads have: the
     /// corner radius is 0.25 mm but at most a quarter of the shorter side.
     RoundRect,
@@ -70,7 +70,7 @@ pub enum Shape {
 
 /// What a pad is made of.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Kind {
+pub(super) enum Kind {
     /// Copper, solder mask and paste on the front.
     Smd,
     /// Paste only (a stencil opening that is not a pad).
@@ -89,7 +89,7 @@ pub enum Kind {
 
 /// A pad, as the generators describe it.
 #[derive(Debug, Clone)]
-pub struct PadSpec {
+pub(super) struct PadSpec {
     pub number: String,
     pub kind: Kind,
     pub shape: Shape,
@@ -105,7 +105,13 @@ pub struct PadSpec {
 }
 
 impl PadSpec {
-    pub fn new(number: impl ToString, kind: Kind, shape: Shape, at: Pt, size: (f64, f64)) -> Self {
+    pub(super) fn new(
+        number: impl ToString,
+        kind: Kind,
+        shape: Shape,
+        at: Pt,
+        size: (f64, f64),
+    ) -> Self {
         Self {
             number: number.to_string(),
             kind,
@@ -119,31 +125,31 @@ impl PadSpec {
     }
 
     /// The mask opening is this much larger than the pad on every side.
-    pub fn with_mask_margin(mut self, margin: f64) -> Self {
+    pub(super) fn with_mask_margin(mut self, margin: f64) -> Self {
         self.mask_margin = Some(margin);
         self
     }
 
     /// Copper of other nets keeps this far from the pad.
-    pub fn with_clearance(mut self, clearance: f64) -> Self {
+    pub(super) fn with_clearance(mut self, clearance: f64) -> Self {
         self.clearance = Some(clearance);
         self
     }
 
     /// Keep the plating on the inner layers that nothing connects to.
-    pub fn keeping_all_layers(mut self) -> Self {
+    pub(super) fn keeping_all_layers(mut self) -> Self {
         self.keep_all_layers = true;
         self
     }
 
     /// A rounded surface-mount pad with paste.
-    pub fn smd(number: impl ToString, at: Pt, size: (f64, f64)) -> Self {
+    pub(super) fn smd(number: impl ToString, at: Pt, size: (f64, f64)) -> Self {
         Self::new(number, Kind::Smd, Shape::RoundRect, at, size)
     }
 }
 
 /// A footprint being written.
-pub struct Drawing {
+pub(super) struct Drawing {
     name: String,
     library: String,
     description: String,
@@ -157,7 +163,7 @@ pub struct Drawing {
 }
 
 impl Drawing {
-    pub fn new(library: &str, name: &str, mount: Mount) -> Self {
+    pub(super) fn new(library: &str, name: &str, mount: Mount) -> Self {
         Self {
             name: name.to_string(),
             library: library.to_string(),
@@ -173,21 +179,21 @@ impl Drawing {
     /// The whole `(attr ...)` of the file, instead of the mounting alone: a part that is on
     /// no bill of materials and no placement file says `exclude_from_pos_files
     /// exclude_from_bom`.
-    pub fn attr(&mut self, attr: &str) {
+    pub(super) fn attr(&mut self, attr: &str) {
         self.attr = Some(attr.to_string());
     }
 
     /// Name no 3D model: a hole, a fiducial and a test point have no body to show.
-    pub fn without_model(&mut self) {
+    pub(super) fn without_model(&mut self) {
         self.model = false;
     }
 
-    pub fn describe(&mut self, description: &str, tags: &str) {
+    pub(super) fn describe(&mut self, description: &str, tags: &str) {
         self.description = description.to_string();
         self.tags = tags.to_string();
     }
 
-    pub fn line(&mut self, on: Draw, a: Pt, b: Pt) {
+    pub(super) fn line(&mut self, on: Draw, a: Pt, b: Pt) {
         let _ = writeln!(
             self.body,
             "(fp_line (start {} {}) (end {} {}) (stroke (width {}) (type solid)) (layer \"{}\"))",
@@ -201,7 +207,7 @@ impl Drawing {
     }
 
     /// The outline of a circle round the origin.
-    pub fn circle(&mut self, on: Draw, radius: f64) {
+    pub(super) fn circle(&mut self, on: Draw, radius: f64) {
         let _ = writeln!(
             self.body,
             "(fp_circle (center 0 0) (end {} 0) (stroke (width {}) (type solid)) (fill no) (layer \"{}\"))",
@@ -212,7 +218,7 @@ impl Drawing {
     }
 
     /// The outline of a rectangle with corners `a` and `b`.
-    pub fn rect(&mut self, on: Draw, a: Pt, b: Pt) {
+    pub(super) fn rect(&mut self, on: Draw, a: Pt, b: Pt) {
         let _ = writeln!(
             self.body,
             "(fp_rect (start {} {}) (end {} {}) (stroke (width {}) (type solid)) (fill no) (layer \"{}\"))",
@@ -226,7 +232,7 @@ impl Drawing {
     }
 
     /// A closed polygon, filled or only its outline.
-    pub fn polygon(&mut self, on: Draw, points: &[Pt], filled: bool) {
+    pub(super) fn polygon(&mut self, on: Draw, points: &[Pt], filled: bool) {
         let pts: String = points
             .iter()
             .map(|p| format!("(xy {} {}) ", num(p.x), num(p.y)))
@@ -243,7 +249,7 @@ impl Drawing {
 
     /// The courtyard: a rectangle centred on the origin's frame from `min` to `max`, on
     /// KiCad's 0.01 mm grid.
-    pub fn courtyard(&mut self, min: Pt, max: Pt) {
+    pub(super) fn courtyard(&mut self, min: Pt, max: Pt) {
         let snap = |v: f64| super::ipc::round_to(v, 0.01);
         self.rect(
             Draw::Courtyard,
@@ -253,17 +259,17 @@ impl Drawing {
     }
 
     /// A circular courtyard round the origin.
-    pub fn courtyard_circle(&mut self, radius: f64) {
+    pub(super) fn courtyard_circle(&mut self, radius: f64) {
         self.circle(Draw::Courtyard, radius);
     }
 
     /// The reference designator printed on the fabrication layer, on the origin.
-    pub fn fab_reference(&mut self, height: f64) {
+    pub(super) fn fab_reference(&mut self, height: f64) {
         self.fab_reference_at(Pt::new(0.0, 0.0), height);
     }
 
     /// The reference designator printed on the fabrication layer at `at`.
-    pub fn fab_reference_at(&mut self, at: Pt, height: f64) {
+    pub(super) fn fab_reference_at(&mut self, at: Pt, height: f64) {
         let _ = writeln!(
             self.body,
             "(fp_text user \"${{REFERENCE}}\" (at {} {} 0) (layer \"F.Fab\") (effects (font (size {h} {h}) (thickness {t}))))",
@@ -274,7 +280,7 @@ impl Drawing {
         );
     }
 
-    pub fn pad(&mut self, pad: &PadSpec) {
+    pub(super) fn pad(&mut self, pad: &PadSpec) {
         let (kind, layers) = match pad.kind {
             Kind::Smd => ("smd", "\"F.Cu\" \"F.Mask\" \"F.Paste\""),
             Kind::PasteOnly => ("smd", "\"F.Paste\""),
@@ -325,7 +331,7 @@ impl Drawing {
     /// A surface-mount pad that is a rectangle `anchor` mm in size at `at` plus a filled
     /// polygon, the corners of which are given relative to `at`: a tab that is not a
     /// rectangle (KiCad's `custom` pad).
-    pub fn custom_pad(
+    pub(super) fn custom_pad(
         &mut self,
         number: impl ToString,
         at: Pt,
@@ -351,7 +357,7 @@ impl Drawing {
     }
 
     /// The text of the file. The reference is put `above` the origin and the value `below`.
-    pub fn text(&self, reference_y: f64, value_y: f64) -> String {
+    pub(super) fn text(&self, reference_y: f64, value_y: f64) -> String {
         let attr = self.attr.as_deref().unwrap_or(match self.mount {
             Mount::Smd => "smd",
             Mount::ThroughHole => "through_hole",
@@ -388,7 +394,7 @@ impl Drawing {
 
     /// Read the file back as a [`Footprint`]. The generators write well-formed text, so a
     /// failure is a bug in a generator and is reported as one.
-    pub fn finish(self, reference_y: f64, value_y: f64) -> Footprint {
+    pub(super) fn finish(self, reference_y: f64, value_y: f64) -> Footprint {
         let text = self.text(reference_y, value_y);
         match Footprint::parse(&format!("{}:{}", self.library, self.name), &text) {
             Ok(footprint) => footprint,

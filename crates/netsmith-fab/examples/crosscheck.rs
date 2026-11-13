@@ -6,8 +6,7 @@
 //!
 //! With `--out`, writes netsmith's files and a picture of every layer that differs.
 
-use netsmith_fab::crosscheck::{Limits, check};
-use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_fab::{CrossCheckLimits, KicadCli, KicadCliExe, cross_check};
 use std::path::PathBuf;
 
 fn main() -> std::process::ExitCode {
@@ -27,12 +26,12 @@ fn main() -> std::process::ExitCode {
         eprintln!("error: the cross-check needs KiCad: set KICAD_CLI to its command-line tool");
         return std::process::ExitCode::from(2);
     };
-    match check(
+    match cross_check(
         &pcb,
         &kicad as &dyn KicadCli,
-        &Limits {
+        &CrossCheckLimits {
             pictures: out.is_some(),
-            ..Limits::default()
+            ..CrossCheckLimits::default()
         },
     ) {
         Ok(report) => {

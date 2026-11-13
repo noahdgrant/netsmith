@@ -43,7 +43,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::Sexp;
 use netsmith_netlist::Netlist;
 
 /// The tolerances the skeleton gives a standard part's value, since a KiCad value states none.

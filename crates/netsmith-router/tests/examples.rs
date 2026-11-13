@@ -2,7 +2,7 @@
 //! edge, the rules reach the router and the project file, and the planes of the layered examples
 //! are written. (The placer's `examples` hold the boards before they are routed.)
 
-use netsmith_pcb::{Board, CopperLayer, Pt, Ratsnest, Rect, Track, kicad_pcb, svg};
+use netsmith_pcb::{render_svg, Board, CopperLayer, Pt, Ratsnest, Rect, Track, kicad_pcb};
 use netsmith_router::route;
 
 use crate::common;
@@ -142,7 +142,7 @@ fn routing_is_the_same_every_time_and_reaches_the_file() {
         );
         assert_eq!(text.matches("(arc").count(), arcs, "{example}");
         assert_eq!(text.matches("(via").count(), a.vias.len(), "{example}");
-        assert_eq!(svg::render(&a), svg::render(&b), "{example}");
+        assert_eq!(render_svg(&a), render_svg(&b), "{example}");
     }
 }
 
@@ -249,7 +249,7 @@ fn the_four_layer_example_has_planes_and_routes_completely_on_the_outer_layers()
     );
     assert!(text.contains("\"In1.Cu\"") && text.contains("\"In2.Cu\""));
     // The planes are drawn in the picture and listed in its key.
-    let picture = svg::render(&board);
+    let picture = render_svg(&board);
     assert!(picture.contains("In1.Cu: plane GND") && picture.contains("In2.Cu: plane 3V3"));
 }
 
@@ -304,7 +304,7 @@ fn the_six_layer_example_has_two_planes_two_empty_signal_layers_and_routes_on_th
 /// What netsmith's own design rules check (ADR 0037) finds on a routed board the placer made:
 /// nothing, with no KiCad needed. `kicad_drc.rs` compares the two checks where KiCad is here.
 fn own_findings(board: &Board) -> Vec<String> {
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &kicad_pcb(board),
         Some(&netsmith_pcb::kicad_pro(board)),
         &Default::default(),

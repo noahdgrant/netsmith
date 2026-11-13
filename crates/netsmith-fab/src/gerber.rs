@@ -1,18 +1,17 @@
 //! The Gerber package: the zip JLCPCB takes. Which layers a board gets and what the files are
-//! called is `netsmith_geom::gerber`, re-exported here; the files themselves are made by
-//! [`crate::plot`] and [`crate::drill`].
+//! called is `netsmith-geom`'s ([`netsmith_geom::gerber_plot_layers`]); the files themselves are
+//! made by [`netsmith_geom::plot_layer`] and [`netsmith_geom::drill_files`].
 //!
 //! The layout follows a package JLCPCB accepted (verified against that package, not in this repository): a top folder `gerber/` holding
 //! `<board>-F_Cu.gbr`, `-B_Cu.gbr`, `-In1_Cu.gbr`..., `-F_Mask.gbr`, `-B_Mask.gbr`,
 //! `-F_Paste.gbr`, `-F_Silkscreen.gbr`, `-Edge_Cuts.gbr`, `-PTH.drl` and `-NPTH.drl`.
 
-pub use netsmith_geom::gerber::*;
-
 use crate::kicad::Output;
+use netsmith_geom::GerberError;
 use std::io::Write as _;
 
 /// The folder inside the zip.
-pub const FOLDER: &str = "gerber";
+pub(crate) const FOLDER: &str = "gerber";
 
 /// A zip with the folder entry `gerber/` and then each file inside it. Every entry has the
 /// same fixed timestamp (1980-01-01) and permissions, so equal input gives equal bytes.

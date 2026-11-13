@@ -17,7 +17,7 @@ const AREA_TIGHT: (f64, f64) = (27.0, 25.0);
 
 /// The design rules check's errors on a routed board.
 fn drc_errors(board: &netsmith_pcb::Board) -> Vec<String> {
-    let report = netsmith_fab::drc::check(
+    let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(board),
         Some(&netsmith_pcb::kicad_pro(board)),
         &Default::default(),

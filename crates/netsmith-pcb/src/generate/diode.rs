@@ -175,7 +175,7 @@ const LIBRARY: &str = "Diode_SMD";
 const COURTYARD: f64 = 0.25;
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     PACKAGES
         .iter()
         .map(|p| format!("{LIBRARY}:{}", p.name))
@@ -183,7 +183,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// The footprint named `library:name`, if it is a package of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     if library != LIBRARY {
         return None;
     }

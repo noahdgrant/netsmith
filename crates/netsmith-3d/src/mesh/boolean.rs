@@ -18,7 +18,7 @@ type Ring = Vec<[f64; 2]>;
 
 /// A piece of a result smaller than this, in mm² (a micrometre square), is left out: the sliver
 /// where two outlines that meet were cut into straight pieces a little differently.
-pub const MIN_AREA: f64 = 1e-6;
+pub(crate) const MIN_AREA: f64 = 1e-6;
 
 /// The rings of `polygons`, each outer ring counterclockwise and each hole clockwise.
 fn contours(polygons: &[Polygon]) -> Vec<Ring> {
@@ -66,12 +66,12 @@ fn run(a: &[Polygon], b: &[Polygon], rule: OverlayRule) -> Vec<Polygon> {
 }
 
 /// Everything that is in one of `polygons`.
-pub fn union(polygons: &[Polygon]) -> Vec<Polygon> {
+pub(crate) fn union(polygons: &[Polygon]) -> Vec<Polygon> {
     run(polygons, &[], OverlayRule::Union)
 }
 
 /// What is in `a` and not in `b`.
-pub fn difference(a: &[Polygon], b: &[Polygon]) -> Vec<Polygon> {
+pub(crate) fn difference(a: &[Polygon], b: &[Polygon]) -> Vec<Polygon> {
     if b.is_empty() {
         return union(a);
     }
@@ -79,7 +79,7 @@ pub fn difference(a: &[Polygon], b: &[Polygon]) -> Vec<Polygon> {
 }
 
 /// What is in both `a` and `b`.
-pub fn intersection(a: &[Polygon], b: &[Polygon]) -> Vec<Polygon> {
+pub(crate) fn intersection(a: &[Polygon], b: &[Polygon]) -> Vec<Polygon> {
     if b.is_empty() {
         return Vec::new();
     }
@@ -88,7 +88,8 @@ pub fn intersection(a: &[Polygon], b: &[Polygon]) -> Vec<Polygon> {
 
 /// The area of `polygons`, each counted once (they must not overlap, as a boolean's result does
 /// not).
-pub fn area(polygons: &[Polygon]) -> f64 {
+#[cfg(test)]
+pub(crate) fn area(polygons: &[Polygon]) -> f64 {
     polygons.iter().map(Polygon::area).sum()
 }
 

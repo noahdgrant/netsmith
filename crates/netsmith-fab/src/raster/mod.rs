@@ -265,7 +265,7 @@ fn count_outside(a: &Image, mask: &Image) -> usize {
 }
 
 /// Compares two images pixel by pixel. They must have the same size, origin and scale.
-pub fn compare(a: &Image, b: &Image) -> Result<Diff, RasterError> {
+pub(crate) fn compare(a: &Image, b: &Image) -> Result<Diff, RasterError> {
     compare_tolerant(a, b, 0)
 }
 
@@ -292,17 +292,17 @@ pub fn compare_tolerant(a: &Image, b: &Image, tolerance_px: usize) -> Result<Dif
 }
 
 /// Gray level of a pixel lit in both images in [`diff_image`].
-pub const DIFF_BOTH: u8 = 128;
+pub(crate) const DIFF_BOTH: u8 = 128;
 /// Gray level of a pixel lit in the first image only in [`diff_image`].
-pub const DIFF_ONLY_A: u8 = 255;
+pub(crate) const DIFF_ONLY_A: u8 = 255;
 /// Gray level of a pixel lit in the second image only in [`diff_image`].
-pub const DIFF_ONLY_B: u8 = 64;
+pub(crate) const DIFF_ONLY_B: u8 = 64;
 
 /// A PNG showing where two images differ: mid gray ([`DIFF_BOTH`], 128) where both are
 /// lit, white ([`DIFF_ONLY_A`], 255) where only `a` is, dark gray ([`DIFF_ONLY_B`], 64)
 /// where only `b` is, and black where neither is. The PNG has the size of `a`; where `b`
 /// does not cover a pixel of `a` (the sizes differ) `b` counts as unlit there.
-pub fn diff_image(a: &Image, b: &Image) -> Vec<u8> {
+pub(crate) fn diff_image(a: &Image, b: &Image) -> Vec<u8> {
     let mut pixels = vec![0u8; a.width * a.height];
     for y in 0..a.height {
         for x in 0..a.width {

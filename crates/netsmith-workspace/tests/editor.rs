@@ -595,7 +595,7 @@ fn a_route_can_be_cancelled_and_keeps_what_it_has() {
 
 #[test]
 fn build_writes_a_schematic_for_each_board_of_the_system() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let (root, editor) = project("build");
@@ -2602,7 +2602,7 @@ fn the_scene_and_the_findings_carry_the_heights_and_the_limit_for_the_page() {
     // ADR 0045 section 11, the editor (issue 28): the page needs a part's body and stated
     // height and a keepout's limit for the hover and the drag limit, and the keepout a finding
     // is about to light it when the finding is picked.
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let (_root, editor) = under_a_lid_project("under-a-lid");
@@ -2658,7 +2658,7 @@ fn the_scene_and_the_findings_carry_the_heights_and_the_limit_for_the_page() {
 fn lines_that_cannot_hold_are_a_constraint_finding_before_any_placing() {
     // The editor shows the proof of ADR 0045 section 14 while editing: no board is placed,
     // and the finding names the lines.
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let (_root, editor) = pinned_in_keepout_project("precheck-findings");
@@ -2723,7 +2723,7 @@ fn the_tree_lists_a_physical_file_and_a_mistake_in_it_is_a_problem_at_its_line()
 
 #[test]
 fn the_pcb_view_draws_the_outline_and_the_keepout_the_physical_file_states() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let (root, _) = pours_project("physical-scene");

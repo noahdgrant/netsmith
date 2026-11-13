@@ -41,7 +41,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
                 let mask = mask_sides(part, pad);
                 if mask != [false, false] && pad.width > 0.0 && pad.height > 0.0 {
                     let form = match pad.shape {
-                        netsmith_pcb::footprint::PadShape::Circle => {
+                        netsmith_pcb::PadShape::Circle => {
                             Form::Circle(part.pad_centre(pad), pad.width.min(pad.height) / 2.0)
                         }
                         _ => Form::Rect(part.pad_bounds(pad)),
@@ -63,7 +63,7 @@ pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
             // track" from a hole with copper round it that is not plated (issue #431); the pad's
             // copper and its clearance usually keep more.
             if let Some((a, b, radius)) = part.hole(pad) {
-                let keep = if pad.kind == netsmith_pcb::footprint::PadKind::NpThruHole {
+                let keep = if pad.kind == netsmith_pcb::PadKind::NpThruHole {
                     rules.hole_clearance
                 } else {
                     rules.plated_hole_clearance

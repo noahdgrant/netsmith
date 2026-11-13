@@ -402,14 +402,14 @@ fn packages() -> impl Iterator<Item = Package> {
 }
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     packages()
         .map(|p| format!("Package_SO:{}", p.name))
         .collect()
 }
 
 /// The footprint named `library:name`, if it is a package of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     if library != "Package_SO" {
         return None;
     }

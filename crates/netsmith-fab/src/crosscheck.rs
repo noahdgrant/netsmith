@@ -24,7 +24,7 @@
 //! - **Drill files** are parsed and compared hole by hole.
 //! - **The placement file** is compared row by row with KiCad's position file.
 //! - **The design rules check** is compared finding by finding with KiCad's (rule and place
-//!   of every item; [`crate::drc::kicad`]).
+//!   of every item; [`crate::kicad_drc`]).
 //!
 //! # Why bitmaps, what they measured, and the differences of a KiCad release (ADR 0034)
 //!
@@ -194,7 +194,7 @@ pub struct Report {
     /// A file one side has and the other does not.
     pub missing: Vec<String>,
     /// netsmith's design rules check against KiCad's.
-    pub drc: crate::drc::kicad::Comparison,
+    pub drc: crate::kicad_drc::Comparison,
     /// Known differences of the KiCad release that was used, which the comparison allowed
     /// for and which are not failures (see [`ignores_pad_mask_margin_on_back`]).
     pub notes: Vec<String>,
@@ -271,12 +271,12 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
     let src = std::fs::read_to_string(pcb)
         .map_err(|e| io(&format!("cannot read {}", pcb.display()), &e))?;
     let board = crate::board::Board::parse(&src).map_err(|e| io("the board", &e))?;
-    let mut art = crate::artwork::Artwork::parse(&src).map_err(|e| io("the board", &e))?;
+    let mut art = netsmith_geom::Artwork::parse(&src).map_err(|e| io("the board", &e))?;
     // A panel marks its V-cut lines with text on the outline layer, in the font of each
     // writer. The text is left out of the comparison on both sides, as the silkscreen's
     // font is not compared, so that the lines themselves are compared exactly.
     let marked = art.texts.iter().any(|t| t.layer == "Edge.Cuts");
-    let cut_lines = crate::edge::cut_lines(&art);
+    let cut_lines = netsmith_geom::edge_cut_lines(&art);
     let unmarked = if marked {
         art.texts.retain(|t| t.layer != "Edge.Cuts");
         Some(Unmarked::make(pcb, &src).map_err(|e| io("a copy of the board", &e))?)
@@ -288,10 +288,10 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let plotted =
-        crate::plot::plot(&art, &name, &crate::plot_rules(pcb)).map_err(|e| io("plotting", &e))?;
+    let plotted = netsmith_geom::plot_layer(&art, &name, &crate::plot_rules(pcb))
+        .map_err(|e| io("plotting", &e))?;
     let mut ours = plotted.files;
-    ours.extend(crate::drill::files(&art, &name));
+    ours.extend(netsmith_geom::drill_files(&art, &name));
     // What a release of KiCad is known to draw differently is allowed for here, in the
     // copy that is compared and never in the files netsmith writes.
     let version = kicad.version()?;
@@ -316,8 +316,8 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
                 pads.join(", ")
             ));
     }
-    let layers =
-        crate::gerber::plot_layers(&board.copper_layers).map_err(|e| io("the layers", &e))?;
+    let layers = netsmith_geom::gerber_plot_layers(&board.copper_layers)
+        .map_err(|e| io("the layers", &e))?;
     let parts: Vec<&crate::board::BoardPart> = board.parts.iter().collect();
     let rows = cpl::build(board.origin, &parts).rows;
     let pours: Vec<String> = art
@@ -331,7 +331,7 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
     )?;
     report.notes = notes;
     // The design rules, with the project file beside the board as `package` has it.
-    let mut theirs = crate::drc::kicad::parse(&kicad.drc_json(kicad_pcb)?)
+    let mut theirs = crate::kicad_drc::parse(&kicad.drc_json(kicad_pcb)?)
         .map_err(|e| io("KiCad's check", &e))?;
     // KiCad calls a V-cut line on `Edge.Cuts` a malformed outline. JLCPCB wants it there, so
     // that finding is expected of a panel and is not compared.
@@ -343,13 +343,13 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
                     .any(|(a, b)| at.dist(*a) <= DRC_TOLERANCE || at.dist(*b) <= DRC_TOLERANCE)
             }))
     });
-    let ours = crate::drc::check(
+    let ours = netsmith_geom::drc_check(
         &src,
-        crate::drc::project_of(pcb).as_deref(),
+        netsmith_geom::drc_project_of(pcb).as_deref(),
         &Default::default(),
     )
     .map_err(|e| io("the design rules check", &e))?;
-    report.drc = crate::drc::kicad::compare(&ours, &theirs, DRC_TOLERANCE);
+    report.drc = crate::kicad_drc::compare(&ours, &theirs, DRC_TOLERANCE);
     Ok(report)
 }
 
@@ -369,10 +369,10 @@ fn ignores_pad_mask_margin_on_back(version: &str) -> bool {
 /// which no pad's own margin counts on the back face. `None` when no pad is affected (the
 /// two masks are then the same). Also the pads that are affected, with their margins.
 fn back_mask_as_kicad_9_0_0(
-    art: &crate::artwork::Artwork,
+    art: &netsmith_geom::Artwork,
     name: &str,
-    rules: &crate::plot::Rules,
-) -> Result<Option<(Output, Vec<String>)>, crate::gerber::GerberError> {
+    rules: &netsmith_geom::PlotRules,
+) -> Result<Option<(Output, Vec<String>)>, netsmith_geom::GerberError> {
     let mut copy = art.clone();
     let mut pads = Vec::new();
     for pad in copy
@@ -390,7 +390,7 @@ fn back_mask_as_kicad_9_0_0(
     if pads.is_empty() {
         return Ok(None);
     }
-    let plotted = crate::plot::plot(&copy, name, rules)?;
+    let plotted = netsmith_geom::plot_layer(&copy, name, rules)?;
     Ok(plotted
         .files
         .into_iter()
@@ -439,7 +439,7 @@ impl Drop for Unmarked {
 }
 
 /// How far apart (mm) the places of one finding may be in the two reports.
-pub const DRC_TOLERANCE: f64 = 0.1;
+pub(crate) const DRC_TOLERANCE: f64 = 0.1;
 
 /// [`check`], on files already made.
 #[allow(clippy::too_many_arguments)]
@@ -492,7 +492,7 @@ fn compare(
             .map_err(raster_err(&o.name))
     };
     for layer in layers {
-        let suffix = crate::gerber::file_suffix(layer);
+        let suffix = netsmith_geom::gerber_file_suffix(layer);
         let ours_file = ours
             .iter()
             .find(|o| o.name.ends_with(&format!("-{suffix}.gbr")));
@@ -887,9 +887,9 @@ mod tests {
     const MARGINS: &str = include_str!("../tests/data/known_differences.kicad_pcb");
 
     fn back_masks() -> (Image, Image, Vec<String>) {
-        let art = crate::artwork::Artwork::parse(MARGINS).unwrap();
-        let rules = crate::plot::Rules::default();
-        let real = crate::plot::plot(&art, "b", &rules).unwrap().files;
+        let art = netsmith_geom::Artwork::parse(MARGINS).unwrap();
+        let rules = netsmith_geom::PlotRules::default();
+        let real = netsmith_geom::plot_layer(&art, "b", &rules).unwrap().files;
         let find = |files: &[Output]| {
             files
                 .iter()
@@ -946,9 +946,9 @@ mod tests {
 
     #[test]
     fn a_board_whose_pads_state_no_margin_of_their_own_needs_no_allowance() {
-        let art = crate::artwork::Artwork::parse(crate::board::tests::SAMPLE).unwrap();
+        let art = netsmith_geom::Artwork::parse(crate::board::tests::SAMPLE).unwrap();
         assert!(
-            back_mask_as_kicad_9_0_0(&art, "b", &crate::plot::Rules::default())
+            back_mask_as_kicad_9_0_0(&art, "b", &netsmith_geom::PlotRules::default())
                 .unwrap()
                 .is_none()
         );

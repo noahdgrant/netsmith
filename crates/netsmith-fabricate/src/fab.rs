@@ -18,10 +18,12 @@ use std::time::Duration;
 use netsmith_check::{Loader, PartSpace, PinFile};
 use netsmith_core::{PanelSpec, timings};
 use netsmith_design::{Assembly, Sourced};
-use netsmith_fab::panel::{CellFacts, CellInput, Spec};
-use netsmith_fab::{BomEntry, Fit, KicadCli, Options, Package, Side, package};
+use netsmith_fab::{
+    BomEntry, Fit, KicadCli, Options, Package, PanelBuildSpec, PanelCellFacts, PanelCellInput,
+    Side, package,
+};
 use netsmith_kicad::Mapping;
-use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, svg};
+use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, render_svg};
 use netsmith_router::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
@@ -57,11 +59,11 @@ pub struct Fabricated {
 /// `--cross-check`, which plots the boards and runs KiCad's design rules check to compare with
 /// netsmith's own (ADR 0034, ADR 0037). `scripts/check-no-kicad.sh` greps for either lead
 /// ("KiCad is switched off", "KiCad is not installed") as the proof that KiCad was hidden.
-pub fn no_kicad_note(search: &netsmith_kicad::install::Search) -> String {
+pub fn no_kicad_note(search: &netsmith_kicad::Search) -> String {
     let why = if search.is_off() {
         format!(
             "KiCad is switched off ({} is set)",
-            netsmith_kicad::install::NO_KICAD_VARIABLE
+            netsmith_kicad::NO_KICAD_VARIABLE
         )
     } else {
         "KiCad is not installed".to_string()
@@ -75,12 +77,12 @@ pub fn no_kicad_note(search: &netsmith_kicad::install::Search) -> String {
 /// a command that needs one: the search then finds none whatever `KICAD_CLI` says, so a message
 /// that says "set KICAD_CLI" would send a person to a setting that changes nothing. `None` when
 /// KiCad is not switched off.
-pub fn kicad_switched_off(search: &netsmith_kicad::install::Search) -> Option<String> {
+pub fn kicad_switched_off(search: &netsmith_kicad::Search) -> Option<String> {
     search.is_off().then(|| {
         format!(
             "{} is set, which hides every KiCad program and install (kicad-cli too, whatever {} says): unset it to use KiCad",
-            netsmith_kicad::install::NO_KICAD_VARIABLE,
-            netsmith_kicad::install::CLI_VARIABLE
+            netsmith_kicad::NO_KICAD_VARIABLE,
+            netsmith_kicad::CLI_VARIABLE
         )
     })
 }
@@ -618,7 +620,7 @@ fn requirement_failure(
     for p in &board.parts {
         text.push_str(&format!(
             "{} ({}) {} at ({:.2}, {:.2}) turned {}\n",
-            netsmith_pcb::board::member(&p.path, &p.refdes),
+            netsmith_pcb::board_member(&p.path, &p.refdes),
             p.kind,
             p.side.word(),
             p.at.x - board.outline.min.x,
@@ -884,7 +886,7 @@ fn fab_board(
         // constraints are strict, the rest are warnings. A file that is not there was said by
         // `models::locate` above; it is in the notes too.
         let fit = if built.design.features.case_models.is_empty() {
-            netsmith_3d::case::CaseScene::default()
+            netsmith_3d::CaseScene::default()
         } else {
             timings::stage("fab.case", &label, || {
                 crate::board3d::scene(built, &board).case
@@ -902,7 +904,7 @@ fn fab_board(
         for f in fit
             .findings
             .iter()
-            .filter(|f| !matches!(f.why, netsmith_3d::case::Why::Missing { .. }))
+            .filter(|f| !matches!(f.why, netsmith_3d::CaseWhy::Missing { .. }))
         {
             say(format!(
                 "{}: warning: {}: {f}",
@@ -1033,7 +1035,7 @@ fn fab_board(
         for (file, contents) in [
             (pcb_path.clone(), kicad_pcb(&board)),
             (dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)),
-            (dir.join(format!("{name}.svg")), svg::render(&board)),
+            (dir.join(format!("{name}.svg")), render_svg(&board)),
         ] {
             fs::write(&file, contents).map_err(|e| fail(format!("{}: {e}", file.display())))?;
         }
@@ -1169,10 +1171,10 @@ fn fab_board(
                 )
             })?;
             say(format!("{}: cross-checking against KiCad", built.label()));
-            let report = netsmith_fab::crosscheck::check(
+            let report = netsmith_fab::cross_check(
                 &pcb_path,
                 kicad,
-                &netsmith_fab::crosscheck::Limits {
+                &netsmith_fab::CrossCheckLimits {
                     pictures: true,
                     ..Default::default()
                 },
@@ -1270,9 +1272,9 @@ fn fab_system(
             continue;
         }
         let bytes = if extension == "glb" {
-            netsmith_3d::gltf::system_glb(&scene)
+            netsmith_3d::system_glb(&scene)
         } else {
-            netsmith_3d::step::system_step(&scene).into_bytes()
+            netsmith_3d::system_step(&scene).into_bytes()
         };
         match fs::write(&file, bytes) {
             Ok(()) => say(format!(
@@ -1296,7 +1298,7 @@ fn write_glb(
     dir: &Path,
     name: &str,
     built: &Built,
-    scene: Option<&netsmith_3d::scene3d::Scene>,
+    scene: Option<&netsmith_3d::Scene>,
     write: bool,
 ) -> (Option<PathBuf>, Option<String>) {
     let file = dir.join(format!("{name}.glb"));
@@ -1315,7 +1317,7 @@ fn write_glb(
     let Some(scene) = scene.filter(|_| write) else {
         return (None, None);
     };
-    match fs::write(&file, netsmith_3d::gltf::glb(scene, &built.label())) {
+    match fs::write(&file, netsmith_3d::glb(scene, &built.label())) {
         Ok(()) => (Some(file), None),
         Err(e) => (
             None,
@@ -1335,7 +1337,7 @@ fn write_step(
     dir: &Path,
     name: &str,
     built: &Built,
-    scene: Option<&netsmith_3d::scene3d::Scene>,
+    scene: Option<&netsmith_3d::Scene>,
     write: bool,
 ) -> (Option<PathBuf>, Option<String>) {
     let file = dir.join(format!("{name}.step"));
@@ -1356,7 +1358,7 @@ fn write_step(
     };
     match fs::write(
         &file,
-        netsmith_3d::step::step(scene, &built.label()).into_bytes(),
+        netsmith_3d::scene_step(scene, &built.label()).into_bytes(),
     ) {
         Ok(()) => (Some(file), None),
         Err(e) => (
@@ -1372,7 +1374,7 @@ fn write_step(
 /// The lines of `fab-notes.txt` that name the parts drawn from a STEP model (ADR 0108 "Cost"):
 /// the `.glb` and the `.step` hold the model, which its maker's license may keep from being
 /// shared.
-fn model_notes(scene: &netsmith_3d::scene3d::Scene) -> Vec<String> {
+fn model_notes(scene: &netsmith_3d::Scene) -> Vec<String> {
     let drawn: Vec<String> = scene
         .bodies
         .iter()
@@ -1394,14 +1396,14 @@ fn model_notes(scene: &netsmith_3d::scene3d::Scene) -> Vec<String> {
 }
 
 /// Why a finding of the case fit check stops `fab` (ADR 0109), and what to do.
-fn case_refusal(f: &netsmith_3d::case::FitFinding) -> String {
-    use netsmith_3d::case::{Weight, Why};
+fn case_refusal(f: &netsmith_3d::FitFinding) -> String {
+    use netsmith_3d::{CaseWeight, CaseWhy};
     let kind = f.kind.word();
     match (f.weight(), &f.why) {
-        (Weight::Error, Why::Unreadable { .. }) => format!(
+        (CaseWeight::Error, CaseWhy::Unreadable { .. }) => format!(
             "{kind}: {f}; a case model netsmith cannot read stops `fab`, and `--allow-drc-violations` does not waive it"
         ),
-        (Weight::Error, _) => format!(
+        (CaseWeight::Error, _) => format!(
             "{kind}: {f}; a collision with the case stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it: move or lower the part, or correct the case model's placement (`.x`, `.y`, `.z`, `.rx`, `.ry`, `.rz`)"
         ),
         _ => format!(
@@ -2045,18 +2047,18 @@ fn fab_panel(
         fs::read_to_string(&run.pcb).map_err(|e| fail(format!("{}: {e}", run.pcb.display())))?;
     let pro = fs::read_to_string(run.pcb.with_extension("kicad_pro")).ok();
     let assembled = &run.package.plan.assembled;
-    let panel = Spec {
+    let panel = PanelBuildSpec {
         name: spec.name.clone(),
         columns: spec.columns,
         rows: spec.rows,
         rail: spec.rail,
         rules: panel_rules(&spec.rules),
     };
-    let input = CellInput {
+    let input = PanelCellInput {
         pcb: &pcb,
         pro: pro.as_deref(),
         entries: &run.entries,
-        facts: CellFacts {
+        facts: PanelCellFacts {
             board: spec.cell.clone(),
             thickness: run.board.process.stackup.chosen_thickness(),
             edge_clearance: run.board.process.min_edge_clearance,
@@ -2068,7 +2070,7 @@ fn fab_panel(
         fit: run.fit.clone(),
         ..run.options.clone()
     };
-    let pkg = netsmith_fab::panel::build(&panel, &input, &package_options)
+    let pkg = netsmith_fab::build_panel(&panel, &input, &package_options)
         .map_err(|e| fail(e.to_string()))?;
     let mut files = pkg.write(dir).map_err(|e| fail(e.to_string()))?;
     let mut notes = pkg.notes.clone();
@@ -2080,10 +2082,10 @@ fn fab_panel(
             )
         })?;
         say(format!("{}: cross-checking against KiCad", spec.name));
-        let report = netsmith_fab::crosscheck::check(
+        let report = netsmith_fab::cross_check(
             &dir.join(format!("{}.kicad_pcb", spec.name)),
             kicad,
-            &netsmith_fab::crosscheck::Limits {
+            &netsmith_fab::CrossCheckLimits {
                 pictures: true,
                 ..Default::default()
             },
@@ -2136,8 +2138,8 @@ fn fab_panel(
 }
 
 /// The rules of the board house for the writer, from the language's.
-fn panel_rules(r: &netsmith_core::PanelRules) -> netsmith_fab::panel::Rules {
-    netsmith_fab::panel::Rules {
+fn panel_rules(r: &netsmith_core::PanelRules) -> netsmith_fab::PanelBuildRules {
+    netsmith_fab::PanelBuildRules {
         fabricator: r.fabricator.clone(),
         source: r.source.clone(),
         min_rail: r.min_rail,
@@ -2315,8 +2317,8 @@ pub fn route_with_margin(
 /// web and widest filled via, the rules a project file cannot say and the least width of the
 /// nets that carry current (issue #431), and the
 /// courtyards a protruding pin excuses (ADR 0045 section 15).
-pub fn drc_extras(board: &Board) -> netsmith_fab::drc::Extras {
-    netsmith_fab::drc::Extras {
+pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
+    netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
@@ -2554,7 +2556,7 @@ mod tests {
     }
     #[test]
     fn the_note_without_kicad_says_netsmiths_own_check_still_runs() {
-        let note = super::no_kicad_note(&netsmith_kicad::install::Search::under("/nowhere"));
+        let note = super::no_kicad_note(&netsmith_kicad::Search::under("/nowhere"));
         assert!(note.contains("KiCad is not installed"), "{note}");
         assert!(note.contains("--cross-check"), "{note}");
         assert!(
@@ -2566,9 +2568,7 @@ mod tests {
 
     #[test]
     fn the_note_says_when_kicad_is_switched_off_and_not_that_it_is_not_installed() {
-        let note = super::no_kicad_note(
-            &netsmith_kicad::install::Search::under("/nowhere").with_no_kicad(),
-        );
+        let note = super::no_kicad_note(&netsmith_kicad::Search::under("/nowhere").with_no_kicad());
         assert!(
             note.contains("KiCad is switched off (NETSMITH_NO_KICAD is set)"),
             "{note}"
@@ -2977,7 +2977,7 @@ mod tests {
     /// router's rules, and the project file with the extras `fab` passes.
     fn what_is_kept(p: &netsmith_core::Process) -> Result<(String, String), String> {
         let rules = netsmith_pcb::Rules::for_process(p)?;
-        let board_extras = netsmith_fab::drc::Extras {
+        let board_extras = netsmith_geom::DrcExtras {
             mask_web: Some(rules.mask_bridge),
             via_in_pad: Some(p.via_in_pad),
             hole_to_track: Some(rules.hole_clearance),

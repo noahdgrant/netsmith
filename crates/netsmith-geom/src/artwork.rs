@@ -340,7 +340,7 @@ impl Artwork {
     }
 
     /// [`Artwork::parse`] of a board file already read into its tree, or built as one in
-    /// memory (`netsmith_pcb::copper` does, with no file and no text in between).
+    /// memory (`netsmith_pcb::copper_of` does, with no file and no text in between).
     pub fn from_sexp(root: &Sexp) -> Result<Artwork, ArtworkError> {
         if root.head() != Some("kicad_pcb") {
             return Err(ArtworkError::NotABoard);

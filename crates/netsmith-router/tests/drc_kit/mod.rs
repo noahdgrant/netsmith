@@ -28,7 +28,7 @@ impl Report {
 /// netsmith's own on the same files, and require the two to agree on everything they both
 /// check (ADR 0037). `None` if KiCad is not here.
 pub fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
-    use netsmith_fab::{KicadCli, drc::kicad};
+    use netsmith_fab::{KICAD_DRC_OUT_OF_SCOPE, KicadCli, compare_kicad_drc, parse_kicad_drc};
     let cli = KicadCliExe::locate_runnable()?;
     // Tests run side by side, so each run gets a folder of its own.
     static RUNS: AtomicUsize = AtomicUsize::new(0);
@@ -40,15 +40,15 @@ pub fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let theirs = kicad::parse(&json).unwrap();
+    let theirs = parse_kicad_drc(&json).unwrap();
 
-    let ours = netsmith_fab::drc::check(pcb, Some(pro), &Default::default())
+    let ours = netsmith_geom::drc_check(pcb, Some(pro), &Default::default())
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let comparison = kicad::compare(&ours, &theirs, 0.1);
+    let comparison = compare_kicad_drc(&ours, &theirs, 0.1);
     let mut skipped: Vec<&str> = theirs
         .iter()
         .map(|f| f.kind.as_str())
-        .filter(|k| kicad::OUT_OF_SCOPE.contains(k))
+        .filter(|k| KICAD_DRC_OUT_OF_SCOPE.contains(k))
         .collect();
     skipped.sort_unstable();
     skipped.dedup();
@@ -71,7 +71,7 @@ pub fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
             // These tests lay boards out with our own small footprints, which are not the
             // ones in KiCad's library, so KiCad says they differ from it. That comparison is
             // `fab`'s, which uses the installed footprints.
-            k if kicad::OUT_OF_SCOPE.contains(&k) => {}
+            k if KICAD_DRC_OUT_OF_SCOPE.contains(&k) => {}
             k => report.violations.push(k.to_string()),
         }
     }
@@ -97,10 +97,10 @@ pub fn check(name: &str, b: &Board) -> Option<Report> {
 /// KiCad's check of a four-layer board, with its planes filled by KiCad (a board netsmith
 /// writes holds no fill, and KiCad's check needs one), and netsmith's own compared with it.
 /// `None` if KiCad is not here.
-pub fn plane_drc(name: &str, b: &Board) -> Option<netsmith_fab::drc::Counts> {
+pub fn plane_drc(name: &str, b: &Board) -> Option<netsmith_geom::DrcCounts> {
     keep(name, b);
     let r = drc(name, &kicad_pcb(b), &kicad_pro(b))?;
-    Some(netsmith_fab::drc::Counts {
+    Some(netsmith_geom::DrcCounts {
         violations: r.violations.len() as u32,
         unconnected: r.unconnected as u32,
         footprint_errors: 0,

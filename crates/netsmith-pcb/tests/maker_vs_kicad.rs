@@ -212,7 +212,7 @@ fn every_footprint_drawn_from_a_makers_drawing_is_compared_with_kicads_and_each_
         .iter()
         .map(|p| p.ours.strip_prefix("netsmith:").unwrap())
         .collect();
-    for name in netsmith_kicad::stdlib::footprint_names() {
+    for name in netsmith_kicad::stdlib_footprint_names() {
         // The LT8641's has no KiCad footprint to compare with (ADR 0087).
         if name.starts_with("UDC-QFN-18") {
             continue;

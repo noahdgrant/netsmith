@@ -10,9 +10,8 @@ use std::path::Path;
 
 use netsmith_pipeline::Libraries;
 use netsmith_fabricate::fab::fab;
-use netsmith_kicad::install::Search;
-use netsmith_kicad::sexp::Sexp;
-use netsmith_pcb::generate::generate;
+use netsmith_kicad::{Search, Sexp};
+use netsmith_pcb::{generated_footprint};
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;
 
@@ -166,7 +165,7 @@ fn a_project_with_a_gen_footprint_and_no_library_builds_and_fabs_with_no_kicad()
     assert!(!pcb.contains("own:"), "{pcb}");
     let written = pads_of(&pcb, "gen:SOT23_pins3");
     // The pads are those of `Package_TO_SOT_SMD:SOT-23-3`: the same numbers, kind and sizes.
-    let by_id = generate("Package_TO_SOT_SMD:SOT-23-3").unwrap();
+    let by_id = generated_footprint("Package_TO_SOT_SMD:SOT-23-3").unwrap();
     let mut expected: Vec<_> = by_id
         .pads
         .iter()

@@ -5,7 +5,7 @@
 use netsmith::{Built, Libraries, Outcome, build_with, outcome_with};
 use netsmith_check::{Loader, check};
 use netsmith_core::{Net, PinKind};
-use netsmith_kicad::install::Search;
+use netsmith_kicad::{Search};
 use netsmith_solve::{Catalogs, solve};
 use netsmith_testkit::TempDir;
 

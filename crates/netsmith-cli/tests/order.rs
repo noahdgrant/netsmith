@@ -48,7 +48,7 @@ fn netsmith(cwd: &Path, args: &[&str]) -> std::process::Output {
 
 #[test]
 fn an_order_without_kicad_is_made_and_its_boards_pass_the_check() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let root = project("nokicad", ORDERS);

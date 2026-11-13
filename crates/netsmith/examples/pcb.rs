@@ -4,7 +4,7 @@
 
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
-use netsmith_pcb::{FootprintLibrary, Ratsnest, kicad_pcb, kicad_pro, svg};
+use netsmith_pcb::{FootprintLibrary, Ratsnest, kicad_pcb, kicad_pro, render_svg};
 use netsmith_router::route;
 use netsmith_solve::Catalogs;
 
@@ -83,7 +83,7 @@ fn main() -> ExitCode {
         let result = fs::create_dir_all(&dir)
             .and_then(|()| fs::write(dir.join(format!("{name}.kicad_pcb")), kicad_pcb(&board)))
             .and_then(|()| fs::write(dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)))
-            .and_then(|()| fs::write(dir.join(format!("{name}.svg")), svg::render(&board)));
+            .and_then(|()| fs::write(dir.join(format!("{name}.svg")), render_svg(&board)));
         if let Err(e) = result {
             eprintln!("{}: {e}", dir.display());
             return ExitCode::from(2);

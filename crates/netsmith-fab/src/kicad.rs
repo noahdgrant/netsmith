@@ -52,7 +52,7 @@ pub trait KicadCli {
     fn version(&self) -> Result<String, CliError>;
     /// KiCad's design rules check as its JSON report, with every severity and every
     /// violation of tracks, so that it can be compared with netsmith's own
-    /// ([`crate::drc::kicad`]). The text has `violations` and `unconnected_items`, each with
+    /// ([`crate::kicad_drc`]). The text has `violations` and `unconnected_items`, each with
     /// `type`, `description`, `severity` and `items` that carry a `pos` in mm.
     fn drc_json(&self, pcb: &Path) -> Result<String, CliError>;
     /// Gerber files for the given layers (`F.Cu`, `Edge.Cuts`, ...), named
@@ -78,14 +78,12 @@ impl KicadCliExe {
         Self { exe: exe.into() }
     }
 
-    /// Finds `kicad-cli` as [`netsmith_kicad::install::Search::kicad_cli`] does: `$KICAD_CLI`
+    /// Finds `kicad-cli` as [`netsmith_kicad::Search::kicad_cli`] does: `$KICAD_CLI`
     /// (and nothing else if it is set), then `kicad-cli` on `PATH`, then, under WSL, the
     /// newest Windows KiCad (`/mnt/c/Program Files/KiCad/<version>/bin/kicad-cli.exe`).
     /// `None` if there is none.
     pub fn locate() -> Option<Self> {
-        netsmith_kicad::install::Search::machine()
-            .kicad_cli()
-            .map(Self::new)
+        netsmith_kicad::Search::machine().kicad_cli().map(Self::new)
     }
 
     /// [`KicadCliExe::locate`], for a test: `None` (the test skips, and says why on stderr, once

@@ -549,7 +549,7 @@ pub fn inside(fit: (f64, f64), options: &PlaceOptions) -> (f64, f64) {
 /// requirements leave all four turns (a requirement on a position or a face does not limit
 /// them; one on the rotation does, and the annealer keeps to it) and it may not hang over an
 /// edge (its courtyard is allowed past it, so it is not turned to fit).
-pub fn turn_is_free(part: &Placed, fixed: bool, options: &PlaceOptions) -> bool {
+pub(crate) fn turn_is_free(part: &Placed, fixed: bool, options: &PlaceOptions) -> bool {
     !fixed
         && !options.overhang.contains_key(&part.refdes)
         && options
@@ -619,7 +619,7 @@ pub fn oversize(
 /// the parts that are too big for an outline of `fit` in every turn their requirements and the
 /// layout file leave them. `options` must already hold the plan of the requirements (the pins,
 /// the wants and the overhangs). The mechanical parts are left out: they go to the corners.
-pub fn oversize_before_placing(
+pub(crate) fn oversize_before_placing(
     parts: &[Placed],
     options: &PlaceOptions,
     fit: (f64, f64),

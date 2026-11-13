@@ -4,9 +4,10 @@
 //! a part it cannot draw.
 
 use netsmith_core::{Design, Part};
-use netsmith_kicad::generate::{Side, part_gives_power, side_of};
-use netsmith_kicad::sexp::Sexp;
-use netsmith_kicad::{Mapping, PartPin, PinKind, PinType, Pinout, Symbol, SymbolLib};
+use netsmith_kicad::{
+    Mapping, PartPin, PinKind, PinType, Pinout, Sexp, Side, Symbol, SymbolLib, part_gives_power,
+    side_of,
+};
 
 use crate::geom::{Dir, Orient, Pt, Rect, snap_up};
 use crate::layout::{Anchor, Text, is_ground_name};

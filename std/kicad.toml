@@ -17,7 +17,7 @@
 # A `symbol` that names a symbol that netsmith draws itself (`Device:R`, `Device:D_Schottky`,
 # `Transistor_FET:Q_NMOS_GSD`, `Connector_Generic:Conn_01x02`, `Connector:USB_C_Receptacle_*`,
 # `Connector:TestPoint`, `Mechanical:MountingHole`, ... the list is
-# `netsmith_kicad::passives::ids`, and the power flag `power:PWR_FLAG` that the exporter places
+# `netsmith_kicad::passive_symbol_ids`, and the power flag `power:PWR_FLAG` that the exporter places
 # is among them) is answered with netsmith's own symbol of that id, before any KiCad library is
 # read (ADR 0097, step 2): the row stays as it is, and the part needs no installed KiCad symbol
 # library. The glyph is drawn in `crates/netsmith-kicad/src/passives.rs`; the pins are where

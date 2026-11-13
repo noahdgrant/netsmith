@@ -29,19 +29,18 @@
 //! same bits on every machine ([`trig`] computes the circles' points without the platform's
 //! maths library).
 
-pub mod boolean;
+pub(crate) mod boolean;
 pub(crate) mod package;
 mod scene;
 mod section;
 mod triangulate;
-pub mod trig;
+pub(crate) mod trig;
 
-pub use scene::{
-    BodyPieces, LayerPieces, MaskPieces, NO_NET, NetPieces, Pieces, SILK_LIFT, SilkPieces,
-    UNKNOWN_LIFT, hole_segments, of_scene, pieces, slot,
-};
-pub use section::{PLATING, of_scene_section};
-pub use triangulate::{triangulate, triangulate_keeping};
+#[cfg(test)]
+pub(crate) use scene::UNKNOWN_LIFT;
+pub use scene::{BodyPieces, NO_NET, Pieces, SILK_LIFT, of_scene, pieces};
+pub use section::of_scene_section;
+pub(crate) use triangulate::{triangulate, triangulate_keeping};
 
 use std::fmt;
 
@@ -729,7 +728,7 @@ impl Mesh {
 
 /// Two faces of a wall that meet at less than this many degrees are shaded as one round
 /// surface; at more, as a crease.
-pub const SMOOTH_ANGLE_DEG: f64 = 35.0;
+pub(crate) const SMOOTH_ANGLE_DEG: f64 = 35.0;
 
 fn normalise(v: [f64; 3]) -> [f64; 3] {
     let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();

@@ -493,14 +493,14 @@ fn all() -> impl Iterator<Item = &'static Package> {
 }
 
 /// Every `Library:Name` this module generates.
-pub fn names() -> Vec<String> {
+pub(super) fn names() -> Vec<String> {
     all()
         .map(|p| format!("{}:{}", library_of(p), p.name))
         .collect()
 }
 
 /// The footprint named `library:name`, if it is a package of this module.
-pub fn generate(library: &str, name: &str) -> Option<Footprint> {
+pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
     all()
         .find(|p| p.name == name && library_of(p) == library)
         .map(|p| no_lead(p, library_of(p), p.name))

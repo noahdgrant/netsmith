@@ -9,8 +9,7 @@
 //! everywhere.
 
 use netsmith_core::{Design, Net, PinRef};
-use netsmith_kicad::sexp::Sexp;
-use netsmith_kicad::{Mapping, PinType, Symbol, SymbolLib, emit_schematic, passives, stdlib};
+use netsmith_kicad::{is_library_id, passive_answer_id, passive_symbol, passive_symbol_ids, Sexp, Mapping, PinType, Symbol, SymbolLib, emit_schematic};
 use netsmith_pcb::{FootprintLibrary, Subject, validate_pinout};
 use netsmith_testkit::TempDir;
 
@@ -28,7 +27,7 @@ fn bare() -> Libraries {
 
 /// The rows of the standard mapping that name a symbol netsmith draws: (kind, package, id).
 fn generated_rows() -> Vec<(String, String, String)> {
-    let ids: Vec<&str> = passives::ids().collect();
+    let ids: Vec<&str> = passive_symbol_ids().collect();
     Mapping::standard()
         .rows()
         .iter()
@@ -369,8 +368,8 @@ fn measured(symbol: &Symbol) -> Vec<(String, String, &'static str, f64, f64, f64
 #[test]
 fn every_generated_symbol_has_the_pin_geometry_written_down() {
     let lib = SymbolLib::at("/nonexistent/symbols").with_generators();
-    assert_eq!(KICAD_PINS.len(), passives::ids().count());
-    for id in passives::ids() {
+    assert_eq!(KICAD_PINS.len(), passive_symbol_ids().count());
+    for id in passive_symbol_ids() {
         let (_, expected) = KICAD_PINS
             .iter()
             .find(|(i, _)| *i == id)
@@ -485,13 +484,13 @@ fn body_tolerance(id: &str) -> f64 {
 
 #[test]
 fn generated_symbols_agree_with_the_installed_kicad_symbols() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let root = Libraries::standard().symbols.root().to_path_buf();
     let kicad = SymbolLib::at(&root);
     let ours = SymbolLib::at("/nonexistent/symbols").with_generators();
-    for id in passives::ids() {
+    for id in passive_symbol_ids() {
         let theirs = kicad.symbol(id).unwrap_or_else(|e| panic!("{id}: {e}"));
         let mine = ours.symbol(id).unwrap();
         // The pins: number, name, type, position, direction, length, in KiCad's order.
@@ -568,12 +567,12 @@ fn generated_symbols_agree_with_the_installed_kicad_symbols() {
 
 #[test]
 fn a_symbol_is_the_same_bytes_every_time() {
-    for id in passives::ids() {
+    for id in passive_symbol_ids() {
         let first = SymbolLib::at("/nonexistent")
             .with_generators()
             .symbol(id)
             .unwrap();
-        let second = passives::symbol(id).unwrap();
+        let second = passive_symbol(id).unwrap();
         assert_eq!(
             first.definition().to_kicad_string(),
             second.definition().to_kicad_string(),
@@ -598,7 +597,7 @@ fn every_row_with_a_generated_symbol_agrees_with_its_pin_table_with_no_kicad() {
             .symbol_of(&part_of(kind, package), &mapped)
             .unwrap_or_else(|e| panic!("{kind}/{package}: {e}"));
         assert!(
-            stdlib::is_library_id(symbol.lib_id()),
+            is_library_id(symbol.lib_id()),
             "{}",
             symbol.lib_id()
         );
@@ -712,8 +711,8 @@ fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
         embedded.iter().all(|n| n.starts_with("netsmith:")),
         "{embedded:?}"
     );
-    for id in passives::ids() {
-        let own = passives::answer_id(id).unwrap();
+    for id in passive_symbol_ids() {
+        let own = passive_answer_id(id).unwrap();
         assert!(embedded.contains(&own.as_str()), "{own} is not embedded");
         assert!(text.contains(&format!("(lib_id \"{own}\")")), "{own}");
     }
@@ -747,7 +746,7 @@ fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
     let dir = TempDir::new("passives-tables");
     libraries.write_tables(dir.path(), &design).unwrap();
     let library = std::fs::read_to_string(dir.join("netsmith.kicad_sym")).unwrap();
-    for id in passives::ids() {
+    for id in passive_symbol_ids() {
         let name = id.split_once(':').unwrap().1;
         assert!(library.contains(&format!("(symbol \"{name}\"")), "{name}");
     }

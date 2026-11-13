@@ -1,8 +1,8 @@
-//! The system scene (ADR 0110, `netsmith_3d::system`): two copies of the invented board of
+//! The system scene (ADR 0110, `netsmith_3d::SystemScene`): two copies of the invented board of
 //! `scene3d.rs`, mated by their two-pin rows, with mated heights given by hand. A copy is the
 //! carrier, the base; the other, the card, stands on it face down.
 
-use netsmith_3d::system::{Code, MateInput, MemberInput, Place, SystemScene};
+use netsmith_3d::{SystemCode, MateInput, MemberInput, SystemPlace, SystemScene};
 use netsmith_pcb::Board;
 
 use crate::scene3d::{board, scene};
@@ -35,7 +35,7 @@ fn system(boards: &[(&str, &Board)], mates: Vec<MateInput>) -> SystemScene {
     SystemScene::of("Kit", members, mates)
 }
 
-fn codes(s: &SystemScene) -> Vec<(Code, Vec<String>)> {
+fn codes(s: &SystemScene) -> Vec<(SystemCode, Vec<String>)> {
     s.findings
         .iter()
         .map(|f| (f.code, f.parts.clone()))
@@ -50,9 +50,9 @@ fn the_card_is_flipped_turned_and_lifted_so_that_its_pads_land_on_the_carriers()
         vec![mate("carrier.row", "card.row", Some((5.0, 5.4)))],
     );
     let base = s.member("carrier").unwrap();
-    assert_eq!(base.place, Place::Base);
+    assert_eq!(base.place, SystemPlace::Base);
     let m = s.member("card").unwrap();
-    assert_eq!(m.place, Place::Mated { mate: 0 });
+    assert_eq!(m.place, SystemPlace::Mated { mate: 0 });
     // Both rows stand on the top face, so the card is turned over; its row runs the other way
     // once flipped, so it is turned half round, and its top face is the least mated height up.
     assert!(m.motion.flip);
@@ -63,7 +63,7 @@ fn the_card_is_flipped_turned_and_lifted_so_that_its_pads_land_on_the_carriers()
     assert_eq!(s.mates[0].contacts, 2);
     // Nothing collides at 5 mm; the rows have no height, and each faces the other board.
     assert!(
-        s.findings.iter().all(|f| f.code == Code::SystemUnchecked),
+        s.findings.iter().all(|f| f.code == SystemCode::SystemUnchecked),
         "{:?}",
         codes(&s)
     );
@@ -83,7 +83,7 @@ fn a_body_that_reaches_the_other_board_collides_with_it() {
     let collisions: Vec<&Vec<String>> = s
         .findings
         .iter()
-        .filter(|f| f.code == Code::SystemCollision)
+        .filter(|f| f.code == SystemCode::SystemCollision)
         .map(|f| &f.parts)
         .collect();
     assert!(
@@ -121,7 +121,7 @@ fn a_second_mate_whose_pads_do_not_meet_is_misaligned() {
     let bad: Vec<_> = s
         .findings
         .iter()
-        .filter(|f| f.code == Code::MateMisaligned)
+        .filter(|f| f.code == SystemCode::MateMisaligned)
         .collect();
     assert_eq!(bad.len(), 1, "{:?}", codes(&s));
     assert_eq!(
@@ -141,7 +141,7 @@ fn a_member_no_mate_places_is_drawn_apart_with_its_reason() {
         vec![mate("carrier.row", "card.row", None)],
     );
     let card = s.member("card").unwrap();
-    let Place::Apart { reason } = &card.place else {
+    let SystemPlace::Apart { reason } = &card.place else {
         panic!("{:?}", card.place)
     };
     assert!(reason.contains("no mated height"), "{reason}");
@@ -150,15 +150,15 @@ fn a_member_no_mate_places_is_drawn_apart_with_its_reason() {
     assert!(!card.motion.flip && card.motion.turn == 0.0);
     let spare = s.member("spare").unwrap();
     assert_eq!(spare.motion.offset, [80.0, 0.0, 0.0]);
-    assert!(matches!(&spare.place, Place::Apart { reason } if reason.contains("no mate joins it")));
+    assert!(matches!(&spare.place, SystemPlace::Apart { reason } if reason.contains("no mate joins it")));
     let apart: Vec<&str> = s
         .findings
         .iter()
-        .filter(|f| f.code == Code::SystemApart)
+        .filter(|f| f.code == SystemCode::SystemApart)
         .map(|f| f.members[0].as_str())
         .collect();
     assert_eq!(apart, ["card", "spare"]);
     // Nothing across boards is checked for a member apart: no other finding.
-    assert!(s.findings.iter().all(|f| f.code == Code::SystemApart));
-    assert!(!Code::SystemApart.error() && Code::SystemApart.is_error(true));
+    assert!(s.findings.iter().all(|f| f.code == SystemCode::SystemApart));
+    assert!(!SystemCode::SystemApart.error() && SystemCode::SystemApart.is_error(true));
 }

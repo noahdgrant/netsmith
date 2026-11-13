@@ -325,7 +325,7 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
     let part = &mut b.parts[0];
     let c = part.footprint.courtyard;
     part.at = Pt::new(hole.min.x - c.min.x, hole.min.y - c.min.y);
-    let r = netsmith_pcb::board::member(&part.path, &part.refdes);
+    let r = netsmith_pcb::board_member(&part.path, &part.refdes);
     let found = problems(&b);
     assert!(
         found.contains(&format!("{r} overlaps the cutout `slot`")),
@@ -350,7 +350,7 @@ fn a_part_over_a_cutout_and_a_cutout_off_the_board_are_found_and_named() {
 #[test]
 fn holes_and_fiducials_go_in_the_corners_of_a_fixed_outline() {
     // The sample libraries have no fiducial footprint; the stock one comes with KiCad.
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let mut b = regulator_with(&format!(
@@ -552,7 +552,7 @@ fn a_part_or_a_pad_in_a_keepout_is_found_and_named() {
     let p = &mut b.parts[0];
     let cy = p.footprint.courtyard.centre();
     p.at = Pt::new(c.x - cy.x, c.y - cy.y);
-    let r = netsmith_pcb::board::member(&p.path, &p.refdes);
+    let r = netsmith_pcb::board_member(&p.path, &p.refdes);
     let found = problems(&b);
     assert!(
         found.contains(&format!(
@@ -603,7 +603,7 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
             eprintln!("skipped: no KiCad Python at {}", python.display());
             return None;
         }
-    } else if !netsmith_fab::exclusive::run(|| {
+    } else if !netsmith_fab::run_exclusive(|| {
         let mut command = Command::new(&python);
         command.args(["-c", "import pcbnew"]);
         command
@@ -634,7 +634,7 @@ fn pour_covers(name: &str, b: &Board, net: &str, points: &[Pt]) -> Option<Vec<bo
     std::fs::write(dir.join("hit.py"), script).ok()?;
     let script = cli.arg(&dir.join("hit.py")).ok()?;
     let board = cli.arg(&dir.join("b.kicad_pcb")).ok()?;
-    let ran = netsmith_fab::exclusive::run(|| {
+    let ran = netsmith_fab::run_exclusive(|| {
         let mut command = Command::new(&python);
         command.arg(&script).arg(&board);
         command
@@ -832,7 +832,7 @@ fn a_part_the_layout_puts_on_the_bottom_is_on_the_back_and_nothing_else_moves_th
     assert_eq!(problems(&b), Vec::<String>::new());
     // Captured again, the layout says bottom.
     let kept = netsmith_pcb::Layout::capture(&b, None);
-    assert_eq!(kept.parts[&path].side, netsmith_pcb::layout::Face::Bottom);
+    assert_eq!(kept.parts[&path].side, netsmith_pcb::LayoutFace::Bottom);
 }
 
 #[test]

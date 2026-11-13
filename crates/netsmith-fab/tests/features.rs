@@ -3,20 +3,20 @@
 //! pads, slots, holes with and without copper, a part on the back, arcs and vias, planes and
 //! a pour with a rule area and a cutout, text and drawings.
 
-use netsmith_fab::artwork::Artwork;
-use netsmith_fab::crosscheck::{Limits, check};
-use netsmith_fab::raster::{self, View};
-use netsmith_fab::{KicadCliExe, drill, plot};
+use netsmith_fab::{gerber_extent, parse_excellon, render_gerber};
+use netsmith_geom::{Plot, PlotRules, drill_files, plot_layer, Artwork};
+use netsmith_fab::{CrossCheckLimits, cross_check, RasterView, KicadCliExe};
+
 
 const BOARD: &str = include_str!("data/features.kicad_pcb");
 
-fn plotted() -> (Artwork, plot::Plot) {
+fn plotted() -> (Artwork, Plot) {
     let art = Artwork::parse(BOARD).unwrap();
-    let rules = plot::Rules {
+    let rules = PlotRules {
         edge_clearance: 0.2,
         hole_clearance: Some(0.1),
     };
-    let p = plot::plot(&art, "features", &rules).unwrap();
+    let p = plot_layer(&art, "features", &rules).unwrap();
     (art, p)
 }
 
@@ -34,12 +34,12 @@ fn file<'a>(files: &'a [netsmith_fab::Output], suffix: &str) -> &'a str {
 #[test]
 fn every_gerber_of_the_board_loads_in_the_rasteriser_and_has_something_on_it() {
     let (_, p) = plotted();
-    let outline = raster::gerber_extent(file(&p.files, "-Edge_Cuts.gbr")).unwrap();
-    let view: View = outline.grow(1.0);
+    let outline = gerber_extent(file(&p.files, "-Edge_Cuts.gbr")).unwrap();
+    let view: RasterView = outline.grow(1.0);
     for f in &p.files {
         let text = std::str::from_utf8(&f.bytes).unwrap();
         let image =
-            raster::render_gerber(text, &view, 20.0).unwrap_or_else(|e| panic!("{}: {e}", f.name));
+            render_gerber(text, &view, 20.0).unwrap_or_else(|e| panic!("{}: {e}", f.name));
         assert!(image.lit() > 0, "{} is empty", f.name);
         assert!(
             text.starts_with("%TF.GenerationSoftware,netsmith"),
@@ -78,9 +78,9 @@ fn every_gerber_of_the_board_loads_in_the_rasteriser_and_has_something_on_it() {
 #[test]
 fn the_holes_of_the_board_are_all_in_the_drill_files() {
     let (art, _) = plotted();
-    let files = drill::files(&art, "features");
+    let files = drill_files(&art, "features");
     let holes =
-        |i: usize| raster::parse_excellon(std::str::from_utf8(&files[i].bytes).unwrap()).unwrap();
+        |i: usize| parse_excellon(std::str::from_utf8(&files[i].bytes).unwrap()).unwrap();
     let pth = holes(0);
     let npth = holes(1);
     // Three header pins (one a slot) and five vias; two holes without plating.
@@ -109,7 +109,7 @@ fn the_board_agrees_with_kicads_own_plot() {
         include_str!("data/features.kicad_pro"),
     )
     .unwrap();
-    let report = check(&dir.join("features.kicad_pcb"), &kicad, &Limits::default())
+    let report = cross_check(&dir.join("features.kicad_pcb"), &kicad, &CrossCheckLimits::default())
         .unwrap_or_else(|e| panic!("{e}"));
     assert!(report.ok(), "{report}");
     // Every layer was compared: four copper, mask, paste and silkscreen of both faces

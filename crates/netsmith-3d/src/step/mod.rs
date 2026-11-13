@@ -18,7 +18,7 @@
 //!   board is its outline (its rounded rectangle, or a polygon's own lines and arcs), its
 //!   cutouts and every drilled hole (round,
 //!   or a slot) through the board's chosen thickness. A part's _Package shape_ is its solids
-//!   ([`netsmith_pcb::body3d`]: boxes, prisms, cylinders), named `body`, `metal` or `mark`, each with
+//!   ([`netsmith_pcb::package_shape`]: boxes, prisms, cylinders), named `body`, `metal` or `mark`, each with
 //!   the 3D view's colour; a part with no package record is its body box from its face to its
 //!   far end, named `body`. A BGA's balls are the only solids made of flat facets, the polygons
 //!   of the 3D view's balls. Pins that stand out of the far face by a stated length are named
@@ -38,13 +38,13 @@
 //!   a direction is written once, and a real is written to ten places.
 
 mod copy;
-pub mod read;
+pub(crate) mod read;
 mod writer;
 
 #[cfg(test)]
 mod tests;
 
-pub use writer::{Extrusion, Loop, Polyhedron, Segment};
+pub(crate) use writer::{Extrusion, Loop, Polyhedron, Segment};
 use writer::{Id, Writer, cross, dot, list, polygon, real, string};
 
 use crate::mesh::package::{BALL_RINGS, ROUND_SEGMENTS, settled};
@@ -52,8 +52,7 @@ use crate::mesh::trig::sin_cos_turns;
 use crate::raster3d::Theme;
 use crate::scene3d::{BoardSolid, Body, DrawnModel, OutlineEdge, Pins, PlacedShape, Plan, Scene};
 use crate::system::SystemScene;
-use netsmith_pcb::body3d::{Axis, Material as Made, Primitive};
-use netsmith_pcb::stackup::LayerKind;
+use netsmith_pcb::{BodyAxis, BodyMaterial as Made, BodyPrimitive, LayerKind};
 
 /// What a solid of the file is coloured as: the 3D view's light palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -795,7 +794,7 @@ fn turn(shape: &PlacedShape, d: [f64; 3]) -> [f64; 3] {
 }
 
 /// A primitive of a package shape, in the footprint's frame, where the part is.
-fn placed(shape: &PlacedShape, p: &Primitive) -> Option<Solid> {
+fn placed(shape: &PlacedShape, p: &BodyPrimitive) -> Option<Solid> {
     let place = &shape.place;
     let origin = [place.origin.x, place.origin.y, place.z_face];
     let extrusion = |u, v, n, loops, from, to| {
@@ -812,14 +811,14 @@ fn placed(shape: &PlacedShape, p: &Primitive) -> Option<Solid> {
         .map(Solid::Extrusion)
     };
     match p {
-        Primitive::Box { min, max } => {
+        BodyPrimitive::Box { min, max } => {
             if !(0..3).all(|k| min[k] < max[k]) {
                 return None;
             }
             let ring = rounded([min[0], min[1]], [max[0], max[1]], 0.0);
             extrusion(X, Y, Z, vec![ring], min[2], max[2])
         }
-        Primitive::Prism {
+        BodyPrimitive::Prism {
             axis,
             profile,
             from,
@@ -827,13 +826,13 @@ fn placed(shape: &PlacedShape, p: &Primitive) -> Option<Solid> {
         } => {
             // The profile's (a, b) and the length along the axis, as `body3d` states them.
             let (u, v, n) = match axis {
-                Axis::Z => (X, Y, Z),
-                Axis::Y => (X, Z, Y),
-                Axis::X => (Y, Z, X),
+                BodyAxis::Z => (X, Y, Z),
+                BodyAxis::Y => (X, Z, Y),
+                BodyAxis::X => (Y, Z, X),
             };
             extrusion(u, v, n, vec![polygon(profile)], *from, *to)
         }
-        Primitive::Cylinder {
+        BodyPrimitive::Cylinder {
             centre,
             radius,
             z0,
@@ -849,7 +848,7 @@ fn placed(shape: &PlacedShape, p: &Primitive) -> Option<Solid> {
             }];
             extrusion(X, Y, Z, vec![ring], *z0, *z1)
         }
-        Primitive::Spheroid {
+        BodyPrimitive::Spheroid {
             centre,
             radius,
             z0,

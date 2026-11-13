@@ -77,7 +77,7 @@ impl<'a> Engine<'a> {
 
     /// The pairs of boxes in which parts `i` and `j` must not overlap, one for each face
     /// they both take room on, and whether either box is a part's pads. Where one stands
-    /// excused over the other's protruding pins (`netsmith_pcb::protrusion`), the pair on that face is the
+    /// excused over the other's protruding pins (`netsmith_pcb::judge_protrusion`), the pair on that face is the
     /// pads of both.
     pub(super) fn room_pairs(&self, i: usize, j: usize) -> Vec<(Rect, Rect, bool)> {
         let mut pairs: Vec<(Rect, Rect, bool)> = Vec::new();
@@ -129,22 +129,22 @@ impl<'a> Engine<'a> {
     }
 
     /// Whether part `c` stands excused over the protruding pins of part `t` where they are now
-    /// (`netsmith_pcb::protrusion::judge`): `Some(true)` for `t` first. Asked as `excused(t, c)`.
+    /// (`netsmith_pcb::judge_protrusion`): `Some(true)` for `t` first. Asked as `excused(t, c)`.
     pub(super) fn excused(&self, t: usize, c: usize) -> Option<bool> {
         let (mt, mc) = (&self.models[t], &self.models[c]);
         let length = mt.protrusion?;
         if !mt.hole || mc.hole || mt.side == mc.side {
             return None;
         }
-        let cover = netsmith_pcb::protrusion::Cover {
+        let cover = netsmith_pcb::Cover {
             height: mc.height,
             hand_fitted: mc.hand_fitted,
             body: self.zone_box(c),
             side: mc.side,
         };
         matches!(
-            netsmith_pcb::protrusion::judge(length, &cover, self.p.zones),
-            netsmith_pcb::protrusion::Verdict::Excused { .. }
+            netsmith_pcb::judge_protrusion(length, &cover, self.p.zones),
+            netsmith_pcb::Verdict::Excused { .. }
         )
         .then_some(true)
     }
@@ -173,7 +173,7 @@ impl<'a> Engine<'a> {
     pub(super) fn room(&self, i: usize) -> Rect {
         let court = self.court(i);
         if self.models[i].may.any() {
-            netsmith_pcb::overhang::clip(&court, &self.p.outline)
+            netsmith_pcb::clip_to_outline(&court, &self.p.outline)
         } else {
             court
         }

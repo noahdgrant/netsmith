@@ -51,7 +51,7 @@ impl std::ops::Mul<f64> for Pt {
 }
 
 /// Sine and cosine of an angle in degrees, exact at multiples of 90.
-pub fn sin_cos(degrees: f64) -> (f64, f64) {
+pub(crate) fn sin_cos(degrees: f64) -> (f64, f64) {
     let d = degrees.rem_euclid(360.0);
     if d == 0.0 {
         (0.0, 1.0)
@@ -67,7 +67,7 @@ pub fn sin_cos(degrees: f64) -> (f64, f64) {
 }
 
 /// True if `degrees` is a multiple of 90 (within a millionth of a degree).
-pub fn is_right_angle(degrees: f64) -> bool {
+pub(crate) fn is_right_angle(degrees: f64) -> bool {
     let r = degrees.rem_euclid(90.0);
     r < 1e-6 || 90.0 - r < 1e-6
 }
@@ -111,7 +111,7 @@ impl Bounds {
 }
 
 /// The circle through three points: its centre and radius, or `None` if they are on a line.
-pub fn circle_through(a: Pt, b: Pt, c: Pt) -> Option<(Pt, f64)> {
+pub(crate) fn circle_through(a: Pt, b: Pt, c: Pt) -> Option<(Pt, f64)> {
     let d = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
     if d.abs() < 1e-12 {
         return None;
@@ -243,7 +243,7 @@ pub fn steps_for(radius: f64, sweep: f64) -> usize {
 }
 
 /// A circle as a closed polygon, counter-clockwise on screen, starting at angle 0.
-pub fn circle_polygon(centre: Pt, radius: f64) -> Vec<Pt> {
+pub(crate) fn circle_polygon(centre: Pt, radius: f64) -> Vec<Pt> {
     let n = steps_for(radius, std::f64::consts::TAU).max(8);
     (0..n)
         .map(|i| {
@@ -255,7 +255,7 @@ pub fn circle_polygon(centre: Pt, radius: f64) -> Vec<Pt> {
 
 /// Twice the signed area of a polygon. Positive when the points run clockwise on screen
 /// (y down), which is the shoelace sum in these coordinates.
-pub fn area2(poly: &[Pt]) -> f64 {
+pub(crate) fn area2(poly: &[Pt]) -> f64 {
     let mut s = 0.0;
     for i in 0..poly.len() {
         let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
@@ -265,7 +265,7 @@ pub fn area2(poly: &[Pt]) -> f64 {
 }
 
 /// The polygon with its points in the opposite order.
-pub fn reversed(poly: &[Pt]) -> Vec<Pt> {
+pub(crate) fn reversed(poly: &[Pt]) -> Vec<Pt> {
     poly.iter().rev().copied().collect()
 }
 
@@ -287,7 +287,7 @@ pub fn contains(poly: &[Pt], p: Pt) -> bool {
 /// that `dir` turns left from... precisely: points `p` with `cross(dir, p - a) >= 0`.
 /// Sutherland-Hodgman against one half-plane; the polygon must be convex for the result to
 /// be one polygon.
-pub fn clip_half_plane(poly: &[Pt], a: Pt, dir: Pt) -> Vec<Pt> {
+pub(crate) fn clip_half_plane(poly: &[Pt], a: Pt, dir: Pt) -> Vec<Pt> {
     let side = |p: Pt| dir.x * (p.y - a.y) - dir.y * (p.x - a.x);
     let mut out = Vec::with_capacity(poly.len() + 2);
     for i in 0..poly.len() {

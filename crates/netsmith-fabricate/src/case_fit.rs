@@ -1,7 +1,7 @@
 //! A board's fit in its case models (ADR 0109): each `CaseModel` file the design names and
 //! [`crate::models::locate`] found is read by netsmith's STEP reader, placed in the scene's
 //! frame and measured against the board, its parts' bodies and their stated pins
-//! (`netsmith_3d::case`).
+//! (`netsmith_3d::check_case`).
 //!
 //! **Reading.** A file is read as a part's model is ([`crate::models::read`]): once per path
 //! and SHA-256 of its bytes, so the editor and a `fab` of several boards read a case once, and
@@ -21,8 +21,9 @@
 //! The check needs a placement, so `fab`, `board3d` and the editor run it; `build` and `check`
 //! place nothing and only say that a file is not there.
 
-use netsmith_3d::case::{self, CaseScene, FitFinding, FitKind, PlacedCase, Subject, Why};
-use netsmith_3d::scene3d::Scene;
+use netsmith_3d::{
+    CaseScene, CaseSubject, CaseWhy, FitFinding, FitKind, PlacedCase, Scene, place_case,
+};
 use netsmith_core::{CaseModel, Design};
 
 /// The lines of `fab-notes.txt` of a scene's case (`Scene::case`): one note per model read,
@@ -58,12 +59,12 @@ pub fn note(c: &PlacedCase) -> String {
 }
 
 /// A finding about a case model as a whole.
-fn about_model(c: &CaseModel, why: Why) -> FitFinding {
+fn about_model(c: &CaseModel, why: CaseWhy) -> FitFinding {
     FitFinding {
         kind: FitKind::Unchecked,
         case: c.name.clone(),
         solid: String::new(),
-        subject: Subject::Model,
+        subject: CaseSubject::Model,
         why,
         at: [0.0; 3],
     }
@@ -78,7 +79,7 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
         let Some(path) = &c.resolved else {
             findings.push(about_model(
                 c,
-                Why::Missing {
+                CaseWhy::Missing {
                     message: format!(
                         "`{}.file` names `{}` ({}), and there is no such file, so the board's fit in its case model `{}` is not checked; add the file, or leave it out on a machine that may not have it",
                         c.name, c.file, c.source, c.name
@@ -90,7 +91,7 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
         let unreadable = |why: String| {
             about_model(
                 c,
-                Why::Unreadable {
+                CaseWhy::Unreadable {
                     message: format!(
                         "`{}.file` names `{}` ({}), and netsmith's STEP reader cannot read it ({why}), so the board's fit in its case model `{}` is not checked: export the case again as AP214 or AP242, or leave the case model out",
                         c.name, c.file, c.source, c.name
@@ -100,7 +101,7 @@ pub fn read(design: &Design) -> (Vec<PlacedCase>, Vec<FitFinding>) {
         };
         // Read as a part's model is, from the same cache (by path and SHA-256 of the bytes).
         match crate::models::read(path) {
-            Ok((sha, read)) => cases.push(case::place(
+            Ok((sha, read)) => cases.push(place_case(
                 &c.name, &c.file, &sha, c.figures, &read.mesh, c.rotation, c.offset,
             )),
             Err(e) => findings.push(unreadable(e)),

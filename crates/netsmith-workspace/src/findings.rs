@@ -11,10 +11,9 @@ use netsmith_editor::{
     Say,
     api::{FindingSource, KicadState, Location, PcbBox, PcbFinding, Severity},
 };
-use netsmith_fab::{
-    KicadCli, KicadCliExe,
-    artwork::Artwork,
-    drc::{self, Rule, constraints::Constraints},
+use netsmith_fab::{KicadCli, KicadCliExe};
+use netsmith_geom::{
+    Artwork, Constraints, DrcFinding, DrcRule, DrcSeverity, constraint_outcome_findings, drc_check,
 };
 use netsmith_pcb::{Board, PlacementProblem, Pt, Ratsnest, Rect, kicad_pcb, kicad_pro};
 
@@ -104,15 +103,17 @@ impl Ids {
 /// The fit of the board in its case models (ADR 0109, the scene's `case`), each finding with the
 /// part's courtyard (or the point) on the sheet, the solid the 3D view lights and the point it
 /// flies to. A collision is an error; the rest are warnings, as the 3D view has them.
-pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<PcbFinding> {
-    use netsmith_3d::case::{Subject, Weight};
+pub fn case_findings(board: &Board, case: &netsmith_3d::CaseScene) -> Vec<PcbFinding> {
+    use netsmith_3d::{CaseSubject, CaseWeight};
     let mut ids = Ids(Vec::new());
     let height = board.outline.height();
     case.findings
         .iter()
         .map(|f| {
             let refdes = match &f.subject {
-                Subject::Part { refdes, .. } | Subject::Pins { refdes, .. } => Some(refdes.clone()),
+                CaseSubject::Part { refdes, .. } | CaseSubject::Pins { refdes, .. } => {
+                    Some(refdes.clone())
+                }
                 _ => None,
             };
             // The scene's frame is y up from the outline's bottom-left corner; the sheet's is
@@ -129,7 +130,7 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
             let subject = refdes
                 .clone()
                 .map(|r| match f.subject {
-                    Subject::Pins { .. } => format!("{r}:pins"),
+                    CaseSubject::Pins { .. } => format!("{r}:pins"),
                     _ => r,
                 })
                 .or_else(|| (!f.solid.is_empty()).then(|| f.solid.clone()))
@@ -138,7 +139,7 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
             let mut finding = make(
                 id,
                 FindingSource::Placement,
-                if f.weight() == Weight::Error {
+                if f.weight() == CaseWeight::Error {
                     Severity::Error
                 } else {
                     Severity::Warning
@@ -150,12 +151,12 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<
             );
             finding.case_solid = if !f.solid.is_empty() {
                 Some(format!("case:{}:{}", f.case, f.solid))
-            } else if f.subject == Subject::Model {
+            } else if f.subject == CaseSubject::Model {
                 Some(format!("case:{}", f.case))
             } else {
                 None
             };
-            if f.subject != Subject::Model {
+            if f.subject != CaseSubject::Model {
                 finding.point3d = Some(f.at);
                 finding.x = at.x;
                 finding.y = at.y;
@@ -362,7 +363,7 @@ pub fn unrouted_findings(board: &Board) -> Vec<PcbFinding> {
 /// courtyards that overlap, which are the placement check's. KiCad is not involved.
 pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
     let extras = netsmith_fabricate::fab::drc_extras(board);
-    let report = match drc::check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
+    let report = match drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras) {
         Ok(report) => report,
         // The board file is netsmith's own, so this is a mistake in netsmith; say so.
         Err(e) => {
@@ -381,15 +382,20 @@ pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
     report
         .findings
         .iter()
-        .filter(|f| !matches!(f.rule, Rule::UnconnectedItems | Rule::CourtyardsOverlap))
+        .filter(|f| {
+            !matches!(
+                f.rule,
+                DrcRule::UnconnectedItems | DrcRule::CourtyardsOverlap
+            )
+        })
         .map(|f| from_drc(f, board, &mut ids))
         .collect()
 }
 
 /// A finding of netsmith's design rules check as the page shows it.
-fn from_drc(f: &drc::Finding, board: &Board, ids: &mut Ids) -> PcbFinding {
+fn from_drc(f: &DrcFinding, board: &Board, ids: &mut Ids) -> PcbFinding {
     let severity = match f.severity {
-        drc::Severity::Error => Severity::Error,
+        DrcSeverity::Error => Severity::Error,
         _ => Severity::Warning,
     };
     let points: Vec<Pt> = std::iter::once(Pt::new(f.at.x, f.at.y))
@@ -490,10 +496,7 @@ pub fn constraint_findings(board: &Board, constraints: &Constraints) -> Vec<PcbF
     let violated = outcomes.iter().filter(|o| !o.satisfied);
     let mut ids = Ids(Vec::new());
     violated
-        .zip(drc::constraints::outcome_findings(
-            &outcomes,
-            constraints.severity,
-        ))
+        .zip(constraint_outcome_findings(&outcomes, constraints.severity))
         .map(|(outcome, f)| {
             let mut finding = from_drc(&f, board, &mut ids);
             // The message already names the part and the numbers; the generic listing of
@@ -598,7 +601,7 @@ pub fn run_kicad(board: &Board, routed: bool, say: &Say) -> KicadResult {
     };
     let Some(cli) = KicadCliExe::locate() else {
         let note = match netsmith_fabricate::fab::kicad_switched_off(
-            &netsmith_kicad::install::Search::machine(),
+            &netsmith_kicad::Search::machine(),
         ) {
             Some(off) => format!("KiCad is switched off: {off} (only netsmith's own checks ran)"),
             None => {
@@ -677,7 +680,7 @@ mod tests {
     #[test]
     fn a_requirement_on_where_a_part_goes_is_a_finding_with_its_numbers_and_the_requirements_name()
     {
-        use drc::constraints::{Constraint, Measure};
+        use netsmith_geom::{Constraint, ConstraintMeasure as Measure};
         let board = placed("led");
         let part = board.parts[0].refdes.clone();
         let constraints = |severity| Constraints {
@@ -693,7 +696,7 @@ mod tests {
             relations: Vec::new(),
             severity,
         };
-        let found = constraint_findings(&board, &constraints(drc::Severity::Error));
+        let found = constraint_findings(&board, &constraints(DrcSeverity::Error));
         assert_eq!(found.len(), 1, "{found:#?}");
         let f = &found[0];
         assert_eq!(f.id, "constraint:supply.place.left");
@@ -722,9 +725,9 @@ mod tests {
             f.message
         );
         // The project can make it a warning, and a met requirement is no finding.
-        let warned = constraint_findings(&board, &constraints(drc::Severity::Warning));
+        let warned = constraint_findings(&board, &constraints(DrcSeverity::Warning));
         assert_eq!(warned[0].severity, Severity::Warning);
-        let mut met = constraints(drc::Severity::Error);
+        let mut met = constraints(DrcSeverity::Error);
         met.list[0].lo = f64::NEG_INFINITY;
         met.list[0].hi = f64::INFINITY;
         assert_eq!(constraint_findings(&board, &met), []);
@@ -732,7 +735,10 @@ mod tests {
 
     #[test]
     fn an_unmet_relation_between_two_parts_is_a_finding_that_names_both() {
-        use drc::constraints::{Measure, Relation, RelationEnd};
+        use netsmith_geom::{
+            ConstraintMeasure as Measure, ConstraintRelation as Relation,
+            ConstraintRelationEnd as RelationEnd,
+        };
         let board = placed("led");
         let end = |i: usize| RelationEnd {
             part: board.parts[i].refdes.clone(),
@@ -750,7 +756,7 @@ mod tests {
                 lo: 500.0,
                 hi: 501.0,
             }],
-            severity: drc::Severity::Error,
+            severity: DrcSeverity::Error,
         };
         let found = constraint_findings(&board, &constraints);
         assert_eq!(found.len(), 1, "{found:#?}");
@@ -817,7 +823,7 @@ mod tests {
         assert_eq!(placement_findings(&board), []);
         let (a, b) = (board.parts[0].refdes.clone(), board.parts[1].refdes.clone());
         let named =
-            |i: usize| netsmith_pcb::board::member(&board.parts[i].path, &board.parts[i].refdes);
+            |i: usize| netsmith_pcb::board_member(&board.parts[i].path, &board.parts[i].refdes);
         let (name_a, name_b) = (named(0), named(1));
         board.parts[1].at = board.parts[0].at;
         let found = placement_findings(&board);

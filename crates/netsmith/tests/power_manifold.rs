@@ -218,7 +218,7 @@ mod board {
 
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     use netsmith_netlist::normalize_value;
 
     use crate::common::port::{Pad, Port};

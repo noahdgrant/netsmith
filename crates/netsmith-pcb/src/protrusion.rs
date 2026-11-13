@@ -79,7 +79,7 @@ use crate::placement::HeightZone;
 
 /// How much over a limit a stack may be before it is refused: half a micrometre, as the
 /// other height checks measure.
-pub const TOLERANCE: f64 = 0.0005;
+pub(crate) const TOLERANCE: f64 = 0.0005;
 
 /// How far the pins of a through-hole part protrude out of the far side of the board, as
 /// the design states it.
@@ -172,7 +172,7 @@ pub fn judge(protrusion: f64, cover: &Cover, zones: &[HeightZone]) -> Verdict {
 /// Whether `cover` can stand over the pins of `pin_part`: the part with the pins has stated
 /// how far they protrude and has holes, the other is on the face the pins come out of and has no
 /// holes of its own (a through-hole cover is judged by the rule without a protrusion). Returns how far they protrude.
-pub fn pins_under(pin_part: &Placed, cover: &Placed) -> Option<f64> {
+pub(crate) fn pins_under(pin_part: &Placed, cover: &Placed) -> Option<f64> {
     let t = pin_part.protrusion.as_ref()?.length;
     (pin_part.has_hole() && !cover.has_hole() && cover.side != pin_part.side).then_some(t)
 }
@@ -180,7 +180,7 @@ pub fn pins_under(pin_part: &Placed, cover: &Placed) -> Option<f64> {
 /// The part whose pins stand under the other, when how far they protrude is not stated (so that a
 /// message can say how to state them): it has holes, the other has none and is on the face
 /// the pins come out of.
-pub fn unstated_under<'a>(a: &'a Placed, b: &'a Placed) -> Option<&'a Placed> {
+pub(crate) fn unstated_under<'a>(a: &'a Placed, b: &'a Placed) -> Option<&'a Placed> {
     let under = |t: &'a Placed, c: &Placed| {
         let plated = t
             .footprint
@@ -193,7 +193,7 @@ pub fn unstated_under<'a>(a: &'a Placed, b: &'a Placed) -> Option<&'a Placed> {
 }
 
 /// The facts of `p` as a covering part, at the place it has.
-pub fn cover_of(p: &Placed) -> Cover {
+pub(crate) fn cover_of(p: &Placed) -> Cover {
     Cover {
         height: p.height,
         hand_fitted: p.hand_fitted,
@@ -205,7 +205,7 @@ pub fn cover_of(p: &Placed) -> Cover {
 /// The relation between two parts that the rule is about: whether the first has the pins
 /// and the other covers them (`true`), or the other way round (`false`), and the verdict.
 /// `None` if neither stands over the other's pins.
-pub fn relation(a: &Placed, b: &Placed, zones: &[HeightZone]) -> Option<(bool, Verdict)> {
+pub(crate) fn relation(a: &Placed, b: &Placed, zones: &[HeightZone]) -> Option<(bool, Verdict)> {
     if let Some(t) = pins_under(a, b) {
         return Some((true, judge(t, &cover_of(b), zones)));
     }
@@ -213,7 +213,7 @@ pub fn relation(a: &Placed, b: &Placed, zones: &[HeightZone]) -> Option<(bool, V
 }
 
 /// The pair `(pins first?)` when one stands excused over the other's pins.
-pub fn excused(a: &Placed, b: &Placed, zones: &[HeightZone]) -> Option<bool> {
+pub(crate) fn excused(a: &Placed, b: &Placed, zones: &[HeightZone]) -> Option<bool> {
     match relation(a, b, zones)? {
         (first, Verdict::Excused { .. }) => Some(first),
         _ => None,
@@ -222,7 +222,11 @@ pub fn excused(a: &Placed, b: &Placed, zones: &[HeightZone]) -> Option<bool> {
 
 /// The rooms two parts take on the face the pins come out of when the cover is excused: the
 /// pads of the through-hole part, each grown by `clearance`, against the pads of the cover.
-pub fn excused_rooms(pin_part: &Placed, cover: &Placed, clearance: f64) -> (Vec<Rect>, Vec<Rect>) {
+pub(crate) fn excused_rooms(
+    pin_part: &Placed,
+    cover: &Placed,
+    clearance: f64,
+) -> (Vec<Rect>, Vec<Rect>) {
     let protrusions = pin_part
         .footprint
         .pads
@@ -284,6 +288,6 @@ impl Refusal {
 }
 
 /// A length in mm to two decimals, as the other height messages print it.
-pub fn mm(v: f64) -> String {
+pub(crate) fn mm(v: f64) -> String {
     format!("{v:.2}")
 }

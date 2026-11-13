@@ -218,7 +218,7 @@ fn offered_assembly_board(choice: &str) -> String {
 
 #[test]
 fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     // Unset: the module's parts are the board house's, as parts are.
@@ -597,8 +597,7 @@ fn making_a_package_twice_gives_identical_files() {
 /// geometry (ADR 0097, step 3).
 #[test]
 fn holes_test_points_and_a_fiducial_are_fabricated_with_no_kicad_footprint_library() {
-    use netsmith_kicad::install::Search;
-    use netsmith_kicad::sexp::Sexp;
+    use netsmith_kicad::{Search, Sexp};
     use netsmith_pcb::{Footprint, FootprintLibrary};
 
     let nowhere = TempDir::new("no-footprint-library");
@@ -671,7 +670,7 @@ fn holes_test_points_and_a_fiducial_are_fabricated_with_no_kicad_footprint_libra
             .find(|f| f.args().first().and_then(|a| a.text()) == Some(id))
             .unwrap_or_else(|| panic!("the board has no {id}"));
         let written = Footprint::parse(id, &node.to_kicad_string()).unwrap();
-        let made = netsmith_pcb::generate::generate(id).unwrap();
+        let made = netsmith_pcb::generated_footprint(id).unwrap();
         assert_eq!(written.pads.len(), made.pads.len(), "{id}");
         for (w, m) in written.pads.iter().zip(&made.pads) {
             assert_eq!(
@@ -694,8 +693,7 @@ fn holes_test_points_and_a_fiducial_are_fabricated_with_no_kicad_footprint_libra
 /// board file carries their pads.
 #[test]
 fn a_coax_and_programming_pads_are_fabricated_with_no_kicad_footprint_library() {
-    use netsmith_kicad::install::Search;
-    use netsmith_kicad::sexp::Sexp;
+    use netsmith_kicad::{Search, Sexp};
     use netsmith_pcb::{Footprint, FootprintLibrary};
 
     let nowhere = TempDir::new("no-footprint-library-connectors");
@@ -813,7 +811,7 @@ fn a_requirement_nothing_can_meet_stops_before_any_file_is_written() {
 
 #[test]
 fn a_board_with_no_process_is_refused_and_told_what_to_add() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("no-process");
@@ -841,7 +839,7 @@ fn a_board_with_no_process_is_refused_and_told_what_to_add() {
 
 #[test]
 fn a_board_that_has_not_chosen_a_thickness_is_refused() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("no-thickness");
@@ -897,7 +895,7 @@ fn each_board_of_a_system_gets_a_package_of_its_own_and_passes_the_design_rules(
 
 #[test]
 fn a_route_timeout_stops_fab_but_writes_the_incomplete_board_and_lists_the_connections_left() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("route-timeout");
@@ -976,7 +974,7 @@ static PROGRESS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[test]
 fn fab_says_which_stage_it_is_in_so_that_a_long_run_is_not_silent() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     let dir = out("progress");
@@ -1071,7 +1069,7 @@ fn the_outline_and_pours_example_passes_kicads_check_with_its_layout_file() {
     assert!(made[0].gerber_files.iter().any(|f| f.contains("F_Cu")));
     // KiCad plots the same board, with its outline, slot, keepout, pours and fiducials, and
     // agrees with netsmith's files.
-    let report = netsmith_fab::crosscheck::check(
+    let report = netsmith_fab::cross_check(
         &dir.join("fab/OutlineAndPours/OutlineAndPours.kicad_pcb"),
         &KicadCliExe::locate_runnable().expect("checked above"),
         &Default::default(),
@@ -1151,7 +1149,7 @@ fn a_part_the_layout_file_puts_on_the_bottom_is_on_the_back_in_the_package() {
 
 #[test]
 fn without_kicad_the_check_runs_and_the_files_are_the_same_bytes() {
-    if netsmith_kicad::install::skip_without_kicad_libraries() {
+    if netsmith_kicad::skip_without_kicad_libraries() {
         return;
     }
     // The same board with and without KiCad: the design rules check passes, and the

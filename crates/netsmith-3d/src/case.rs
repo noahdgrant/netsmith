@@ -56,7 +56,7 @@
 use std::fmt;
 
 use netsmith_core::CaseFigures;
-use netsmith_pcb::board::Side;
+use netsmith_pcb::Side;
 
 use crate::mesh::{Aabb, Material, Mesh, rounded_rect, trig};
 use crate::scene3d::{BoardSolid, Body, HeightProvenance, HoleOwner, PartCategory, Pins, Plan};
@@ -64,19 +64,19 @@ use crate::step::read::StepMesh;
 
 /// How far a case solid may reach into a body or the board and still be contact, in mm: the
 /// reader's chord tolerance (ADR 0109).
-pub const CONTACT: f64 = 0.01;
+pub(crate) const CONTACT: f64 = 0.01;
 
 /// How near the outline's edge a connector's body box must come to be "at the edge", in mm.
-pub const AT_EDGE: f64 = 1.0;
+pub(crate) const AT_EDGE: f64 = 1.0;
 
 /// How far around a connector's face the wall's outer face is looked for, in mm.
-pub const REACH_LOOK: f64 = 3.0;
+pub(crate) const REACH_LOOK: f64 = 3.0;
 
 /// How far out from a connector's face a wall is looked for, in mm.
-pub const REACH_RAY: f64 = 25.0;
+pub(crate) const REACH_RAY: f64 = 25.0;
 
 /// A triangle's three corners, in mm.
-pub type Triangle = [[f64; 3]; 3];
+pub(crate) type Triangle = [[f64; 3]; 3];
 
 /// One solid of a case model, placed in the scene's frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -200,7 +200,7 @@ pub struct CaseScene {
 
 /// The map of a case model's `.rx`, `.ry`, `.rz` (degrees, about x, then y, then z) and
 /// offset: the rows of the linear part and the offset.
-pub fn placement(rotation: [f64; 3], offset: [f64; 3]) -> ([[f64; 3]; 3], [f64; 3]) {
+pub(crate) fn placement(rotation: [f64; 3], offset: [f64; 3]) -> ([[f64; 3]; 3], [f64; 3]) {
     let turn = |deg: f64| trig::sin_cos(trig::radians(deg));
     let (sx, cx) = turn(rotation[0]);
     let (sy, cy) = turn(rotation[1]);

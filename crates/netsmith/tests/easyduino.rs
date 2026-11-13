@@ -422,7 +422,7 @@ mod must_match_parts {
 
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     use netsmith_pcb::{Footprint, PadKind, PadShape};
 
     use super::{number, parsed, project, read, tables};
@@ -1044,8 +1044,7 @@ mod ics {
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
     use netsmith_core::PinKind;
-    use netsmith_kicad::Mapping;
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Mapping, Search};
     use netsmith_pcb::Footprint;
 
     /// A small board of our own, never built by the project: every part of this module with the
@@ -1334,7 +1333,7 @@ board IcsFixture {
             assert_eq!(mapped.lib_id, None, "{kind}: no KiCad symbol is named");
             let name = format!(
                 "netsmith:{}",
-                netsmith_kicad::generate::symbol_name(kind, Some(package))
+                netsmith_kicad::symbol_name(kind, Some(package))
             );
             assert!(
                 built.schematic.contains(&format!("(lib_id \"{name}")),
@@ -1900,7 +1899,7 @@ mod board {
 
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     use netsmith_netlist::{Outcome, normalize_value, report};
 
     use crate::common::port::{Pad, Port, Reading};

@@ -6,11 +6,9 @@
 
 use netsmith_core::Design;
 use netsmith_kicad::Mapping;
-use netsmith_pcb::board::Loaded;
-use netsmith_pcb::geometry::{Pt, Rect};
-use netsmith_pcb::placement::ORIGIN;
 use netsmith_pcb::{
-    Board, BoardError, DoesNotFit, FootprintLibrary, PlaceOptions, Placed, Precheck, Rules,
+    Board, BoardError, DoesNotFit, FootprintLibrary, LoadedBoard, ORIGIN, PlaceOptions, Placed,
+    Precheck, Pt, Rect, Rules,
 };
 
 use crate::{fit, place};
@@ -37,21 +35,21 @@ pub fn precheck(
     library: &FootprintLibrary,
     placement: &PlaceOptions,
 ) -> Result<Precheck, BoardError> {
-    let Loaded {
+    let LoadedBoard {
         rules,
         placement,
         parts,
         ..
     } = Board::load(design, mapping, library, placement)?;
-    let plan = netsmith_pcb::constraints::plan(design, &parts, &placement, rules.clearance)
+    let plan = netsmith_pcb::constraint_plan(design, &parts, &placement, rules.clearance)
         .map_err(BoardError::Constraints)?;
-    let found = netsmith_pcb::explain::before_placing(
+    let found = netsmith_pcb::before_placing(
         design,
         &parts,
         &placement,
         &plan,
         &rules,
-        netsmith_pcb::board::outline_box(design),
+        netsmith_pcb::outline_box(design),
     );
     Ok(if placement.lines_warn {
         found.lines_as_warnings()
@@ -140,7 +138,7 @@ fn explained(
         Pt::new(ORIGIN.x + error.outline.0, ORIGIN.y + error.outline.1),
     );
     error.requirements =
-        netsmith_pcb::explain::explain(design, &ended, outline, base, rules).map(Box::new);
+        netsmith_pcb::explain_requirements(design, &ended, outline, base, rules).map(Box::new);
     error
 }
 

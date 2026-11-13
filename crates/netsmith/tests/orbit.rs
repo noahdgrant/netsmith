@@ -422,7 +422,7 @@ mod small_parts {
 
     use netsmith::project::Target;
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     use netsmith_pcb::{Footprint, PadKind, PadShape};
 
     use super::{number, parsed, project, read, tables};
@@ -1258,7 +1258,7 @@ board Ics {
         for (kind, package, _) in PARTS {
             let name = format!(
                 "netsmith:{}",
-                netsmith_kicad::generate::symbol_name(kind, Some(package))
+                netsmith_kicad::symbol_name(kind, Some(package))
             );
             assert!(
                 built.schematic.contains(&format!("(lib_id \"{name}")),
@@ -1926,7 +1926,7 @@ mod board {
     use std::collections::{BTreeMap, BTreeSet};
 
     use netsmith::{Libraries, build_with};
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     use netsmith_netlist::{Options, Outcome, compare, normalize_value, report};
 
     use crate::common::port::{Pad, Port, Reading};

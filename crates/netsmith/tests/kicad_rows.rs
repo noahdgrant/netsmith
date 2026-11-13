@@ -157,10 +157,10 @@ fn own_rows(libraries: &Libraries) -> Vec<&netsmith_kicad::Row> {
         .rows()
         .iter()
         .filter(|r| {
-            netsmith_kicad::stdlib::is_library_id(&r.footprint)
+            netsmith_kicad::is_library_id(&r.footprint)
                 || r.symbol
                     .as_deref()
-                    .is_some_and(netsmith_kicad::stdlib::is_library_id)
+                    .is_some_and(netsmith_kicad::is_library_id)
         })
         .collect()
 }
@@ -192,7 +192,7 @@ fn symbol_without_kicad(
     let own = row
         .symbol
         .as_deref()
-        .is_none_or(netsmith_kicad::stdlib::is_library_id);
+        .is_none_or(netsmith_kicad::is_library_id);
     if own {
         let symbol = libraries
             .symbols
@@ -200,7 +200,7 @@ fn symbol_without_kicad(
             .unwrap_or_else(|e| panic!("{}/{}: {e}", row.kind, row.package));
         (symbol, mapped.clone())
     } else {
-        let symbol = netsmith_kicad::generate::symbol(&part, &mapped.footprint)
+        let symbol = netsmith_kicad::generated_symbol(&part, &mapped.footprint)
             .unwrap_or_else(|| panic!("{}/{} has no pin table", row.kind, row.package));
         let plain = netsmith_kicad::Mapped {
             pin_names: Default::default(),
@@ -271,7 +271,7 @@ fn every_file_of_the_footprint_library_is_named_by_a_row_so_that_it_is_checked()
         .iter()
         .filter_map(|r| r.footprint.strip_prefix("netsmith:"))
         .collect();
-    for name in netsmith_kicad::stdlib::footprint_names() {
+    for name in netsmith_kicad::stdlib_footprint_names() {
         assert!(
             named.contains(&name),
             "std/libs/netsmith.pretty/{name}.kicad_mod is in no row of std/kicad.toml, so no \

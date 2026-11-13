@@ -105,10 +105,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::artwork::Artwork;
 use crate::board::{Board, BoardPart, Fit};
 use crate::bom::{self, BomEntry};
-use crate::{DrcOutcome, Error, Options, Plan, cpl, drc, drill, edge, gerber, plot};
+use crate::{DrcOutcome, Error, Options, Plan, cpl, gerber};
+use netsmith_geom::{Artwork, DrcReport, drc_check, drill_files, edge_outline, plot_layer};
+
 use netsmith_sexp::Sexp;
 
 /// The mask opening round a fiducial, as a multiple of its copper, as the project's
@@ -239,10 +240,11 @@ fn number(v: f64) -> String {
 
 /// The board's outline: its top left corner and size. A V-cut runs straight across the whole
 /// panel, so the outline must be one rectangle with square corners.
-pub fn cell_outline(pcb: &str) -> Result<(f64, f64, f64, f64), Error> {
+pub(crate) fn cell_outline(pcb: &str) -> Result<(f64, f64, f64, f64), Error> {
     let art = Artwork::parse(pcb)?;
-    let outline = edge::outline(&art).map_err(|e| Error::Panel(vec![e]))?;
-    let b = crate::geom::Bounds::of(outline.outer.iter().copied()).expect("an outline has points");
+    let outline = edge_outline(&art).map_err(|e| Error::Panel(vec![e]))?;
+    let b =
+        netsmith_geom::Bounds::of(outline.outer.iter().copied()).expect("an outline has points");
     let corners = outline.outer.len() == 4
         && outline.outer.iter().all(|p| {
             ((p.x - b.min.x).abs() < 1e-6 || (p.x - b.max.x).abs() < 1e-6)
@@ -627,12 +629,12 @@ impl Carry {
 }
 
 /// `R1` of cell 3 is `R1_3`.
-pub fn suffixed(designator: &str, cell: usize) -> String {
+pub(crate) fn suffixed(designator: &str, cell: usize) -> String {
     format!("{designator}_{cell}")
 }
 
 /// The designator of the board a panel designator is of: `R1_3` is `R1`.
-pub fn unsuffixed(designator: &str) -> &str {
+pub(crate) fn unsuffixed(designator: &str) -> &str {
     designator.rsplit_once('_').map_or(designator, |(d, _)| d)
 }
 
@@ -689,12 +691,12 @@ fn tooling_hole(n: usize, x: f64, y: f64, diameter: f64) -> Sexp {
 /// The marks the rails carry: four tooling holes in the corners, centred in the rails, and
 /// three fiducials a fixed distance from the panel's left and right edges, placed so that
 /// the panel looks different turned round. `(x, y, diameter)` of each.
-pub struct Marks {
+pub(crate) struct Marks {
     pub tooling_holes: Vec<(f64, f64, f64)>,
     pub fiducials: Vec<(f64, f64, f64)>,
 }
 
-pub fn marks(spec: &Spec, g: &Geometry) -> Marks {
+pub(crate) fn marks(spec: &Spec, g: &Geometry) -> Marks {
     if spec.rail <= 0.0 {
         return Marks {
             tooling_holes: Vec::new(),
@@ -730,7 +732,7 @@ pub fn marks(spec: &Spec, g: &Geometry) -> Marks {
 }
 
 /// The panel as the text of a `.kicad_pcb`.
-pub fn board_file(
+pub(crate) fn board_file(
     spec: &Spec,
     g: &Geometry,
     pcb: &str,
@@ -1063,7 +1065,7 @@ pub struct PanelPackage {
     pub plan: Plan,
     pub findings: Vec<Finding>,
     pub drc: DrcOutcome,
-    pub drc_report: drc::Report,
+    pub drc_report: DrcReport,
     /// The designators of the board (not of the panel) whose rotation or side could not be
     /// verified.
     pub unverified: Vec<String>,
@@ -1141,7 +1143,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     let pcb = board_file(spec, &g, cell.pcb, cell.facts.bottom_assembled)?;
     let name = spec.name.clone();
 
-    let drc_report = drc::check(&pcb, cell.pro, &options.drc)?;
+    let drc_report = drc_check(&pcb, cell.pro, &options.drc)?;
     let drc = if drc_report.is_clean() {
         DrcOutcome::Passed
     } else if options.allow_drc_violations {
@@ -1159,9 +1161,9 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
 
     let art = Artwork::parse(&pcb)?;
     let rules = crate::plot_rules_of(cell.pro);
-    let plotted = plot::plot(&art, &name, &rules)?;
+    let plotted = plot_layer(&art, &name, &rules)?;
     let mut files = plotted.files;
-    files.extend(drill::files(&art, &name));
+    files.extend(drill_files(&art, &name));
     files.sort_by(|a, b| a.name.cmp(&b.name));
     let gerber_zip = gerber::zip(&files)?;
 

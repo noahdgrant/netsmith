@@ -13,7 +13,7 @@
 
 use std::fmt::Write as _;
 
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::Sexp;
 
 /// The parts a person decided must match the reference exactly (a checker fails on them): the
 /// RP2350A Minimal board's, which a table has when no [`MustMatch`] list is given.

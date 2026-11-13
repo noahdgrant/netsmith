@@ -9,14 +9,12 @@
 //! router's searches across other nets' copper passed through tinted from yellow (a few) to red
 //! (the most). The long side of a picture is [`LONG_SIDE`] pixels; a board and its snapshots
 //! give the same bytes every time. The fill is that of the Gerber rasteriser
-//! ([`netsmith_fab::raster::Canvas`]) and the caption's letters are fab's stroke font.
+//! ([`netsmith_fab::Canvas`]) and the caption's letters are fab's stroke font.
 
-use netsmith_fab::artwork::{HAlign, Text, VAlign};
-use netsmith_fab::raster::{Canvas, Point, disc};
+use netsmith_fab::{Canvas, RasterPoint, raster_disc};
+use netsmith_geom::{ArtworkText, HAlign, VAlign};
 
-use netsmith_pcb::board::{Board, CopperLayer};
-use netsmith_pcb::copper::{self, CopperError};
-use netsmith_pcb::geometry::{Pt, Rect};
+use netsmith_pcb::{Board, CopperError, CopperLayer, Pt, Rect, copper_of};
 use netsmith_router::{Crowding, Snapshot, SnapshotStage};
 
 /// The pixels along the long side of a picture.
@@ -70,17 +68,17 @@ pub struct Painter {
     outline: Rect,
     cutouts: Vec<Rect>,
     /// The pads' copper on the two outer layers, as polygons.
-    pads: Vec<Vec<Point>>,
+    pads: Vec<Vec<RasterPoint>>,
     /// The drilled holes of the pads.
-    holes: Vec<Vec<Point>>,
-    origin: Point,
+    holes: Vec<Vec<RasterPoint>>,
+    origin: RasterPoint,
     px_per_mm: f64,
     size: (usize, usize),
     /// The caption's height and where its middle is, in mm.
-    caption: (f64, Point),
+    caption: (f64, RasterPoint),
 }
 
-fn pt(p: Pt) -> Point {
+fn pt(p: Pt) -> RasterPoint {
     (p.x, p.y)
 }
 
@@ -93,7 +91,7 @@ impl Painter {
         pads_only.vias.clear();
         pads_only.pours.clear();
         pads_only.planes.clear();
-        let copper = copper::copper(&pads_only)?;
+        let copper = copper_of(&pads_only)?;
         let mut pads = Vec::new();
         let outer = [copper.layers.first(), copper.layers.last()];
         for layer in outer.into_iter().flatten() {
@@ -112,8 +110,8 @@ impl Painter {
             .holes
             .iter()
             .map(|h| match h.slot_to {
-                Some(to) => netsmith_fab::raster::capsule(pt(h.at), pt(to), h.diameter / 2.0),
-                None => disc(pt(h.at), h.diameter / 2.0),
+                Some(to) => netsmith_fab::raster_capsule(pt(h.at), pt(to), h.diameter / 2.0),
+                None => raster_disc(pt(h.at), h.diameter / 2.0),
             })
             .collect();
         let outline = board.outline;
@@ -194,10 +192,10 @@ impl Painter {
         // that it fits the picture's width.
         let room = self.size.0 as f64 / self.px_per_mm - 2.0 * (at.0 - self.origin.0);
         let size = most.min(room / (0.95 * words.chars().count().max(1) as f64));
-        let text = Text {
+        let text = ArtworkText {
             layer: String::new(),
             text: words.to_string(),
-            at: netsmith_fab::geom::Pt::new(at.0, at.1),
+            at: netsmith_geom::Pt::new(at.0, at.1),
             angle: 0.0,
             size: (size, size),
             thickness: size * 0.12,
@@ -207,8 +205,8 @@ impl Painter {
             v: VAlign::Centre,
             owner: String::new(),
         };
-        let (paths, _) = netsmith_fab::font::strokes(&text);
-        let paths: Vec<Vec<Point>> = paths
+        let (paths, _) = netsmith_geom::font_strokes(&text);
+        let paths: Vec<Vec<RasterPoint>> = paths
             .iter()
             .map(|p| p.iter().map(|q| (q.x, q.y)).collect())
             .collect();
@@ -223,7 +221,7 @@ impl Painter {
             (CopperLayer::Front, FRONT_COPPER),
         ] {
             // One fill for each width, so that a layer's copper blends once where it overlaps.
-            let mut by_width: Vec<(f64, Vec<Vec<Point>>)> = Vec::new();
+            let mut by_width: Vec<(f64, Vec<Vec<RasterPoint>>)> = Vec::new();
             for t in stage.tracks.iter().filter(|t| t.layer == layer) {
                 let polys = match by_width.iter_mut().find(|(w, _)| *w == t.width) {
                     Some((_, polys)) => polys,
@@ -239,33 +237,33 @@ impl Painter {
             }
         }
         self.pads(&mut c, 255);
-        let rings: Vec<Vec<Point>> = stage
+        let rings: Vec<Vec<RasterPoint>> = stage
             .vias
             .iter()
-            .map(|v| disc(pt(v.at), v.diameter / 2.0))
+            .map(|v| raster_disc(pt(v.at), v.diameter / 2.0))
             .collect();
         c.fill(&rings, VIA, 255);
-        let drills: Vec<Vec<Point>> = stage
+        let drills: Vec<Vec<RasterPoint>> = stage
             .vias
             .iter()
-            .map(|v| disc(pt(v.at), v.drill / 2.0))
+            .map(|v| raster_disc(pt(v.at), v.drill / 2.0))
             .collect();
         c.fill(&drills, BACKGROUND, 255);
         let lines: Vec<&netsmith_pcb::Ratline> =
             stage.left.iter().filter(|l| !l.to_plane).collect();
-        let paths: Vec<Vec<Point>> = lines
+        let paths: Vec<Vec<RasterPoint>> = lines
             .iter()
             .map(|l| vec![pt(l.from_at), pt(l.to_at)])
             .collect();
         let width = self.line(4.0, 0.25);
         c.strokes(&paths, width, LEFT, 255);
-        let ends: Vec<Vec<Point>> = stage
+        let ends: Vec<Vec<RasterPoint>> = stage
             .left
             .iter()
             .flat_map(|l| {
                 [
-                    disc(pt(l.from_at), width * 1.6),
-                    disc(pt(l.to_at), width * 1.6),
+                    raster_disc(pt(l.from_at), width * 1.6),
+                    raster_disc(pt(l.to_at), width * 1.6),
                 ]
             })
             .collect();

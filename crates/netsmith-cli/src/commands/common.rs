@@ -230,8 +230,8 @@ pub enum ViewName {
 }
 
 impl ViewName {
-    pub(super) fn raster(self) -> netsmith_3d::raster3d::View {
-        use netsmith_3d::raster3d::View;
+    pub(super) fn raster(self) -> netsmith_3d::View {
+        use netsmith_3d::View;
         match self {
             ViewName::Top => View::Top,
             ViewName::Bottom => View::Bottom,

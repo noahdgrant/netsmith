@@ -2,7 +2,7 @@
 
 use netsmith::{Libraries, build_with};
 use netsmith_check::Loader;
-use netsmith_kicad::sexp::Sexp;
+use netsmith_kicad::{Sexp};
 use netsmith_solve::{Catalogs, Library};
 
 const LED: &str = include_str!("../../../examples/led.nsm");
@@ -713,7 +713,7 @@ fn a_project_library_that_is_missing_names_the_file_kicad_toml_lists() {
 
 #[test]
 fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     let nowhere = TempDir::new("no-install");
     let machine = Search::under(nowhere.path());
     // No footprint or symbol of the standard mapping is read from KiCad's libraries any more
@@ -721,8 +721,8 @@ fn a_build_with_no_kicad_install_stops_once_and_lists_where_it_looked() {
     // a project: its `kicad.toml` maps a coaxial jack to a KiCad stock footprint that netsmith
     // neither generates nor has in `std/libs`.
     let id = "Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal";
-    assert!(netsmith_pcb::generate::generate(id).is_none());
-    assert!(!netsmith_kicad::stdlib::is_library_id(id));
+    assert!(netsmith_pcb::generated_footprint(id).is_none());
+    assert!(!netsmith_kicad::is_library_id(id));
     let project = TempDir::new("no-install-project");
     std::fs::write(
         project.path().join("kicad.toml"),
@@ -810,12 +810,12 @@ board B {
 
 #[test]
 fn a_symbol_of_kicad_that_netsmith_does_not_make_names_the_part_the_id_and_the_row() {
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     let nowhere = TempDir::new("no-install-symbol");
     let machine = Search::under(nowhere.path());
     // The footprint is generated, so only the symbol is KiCad's.
     let id = "Connector_Audio:AudioJack2";
-    assert!(!netsmith_kicad::stdlib::is_library_id(id));
+    assert!(!netsmith_kicad::is_library_id(id));
     let project = coax_project(id, "gen:PinHeader(rows=1, pins=2, pitch=2.54mm)");
     let libraries = Libraries::for_project_by(Some(project.path()), &machine).unwrap();
     let e = build_with(
@@ -837,7 +837,7 @@ fn a_symbol_of_kicad_that_netsmith_does_not_make_names_the_part_the_id_and_the_r
 
 #[test]
 fn a_search_switched_off_says_so_and_lists_no_places() {
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     let nowhere = TempDir::new("no-install-off");
     let machine = Search::under(nowhere.path()).with_no_kicad();
     let id = "Connector_Audio:Jack_3.5mm_CUI_SJ1-3513N_Horizontal";
@@ -863,7 +863,7 @@ fn a_search_switched_off_says_so_and_lists_no_places() {
 
 #[test]
 fn a_board_of_standard_parts_builds_with_the_search_for_kicad_finding_nothing() {
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     let nowhere = TempDir::new("std-no-kicad");
     let machine = Search::under(nowhere.path()).with_no_kicad();
     // No project: the standard mapping alone, and no KiCad library anywhere.
@@ -888,7 +888,7 @@ fn a_board_of_standard_parts_builds_with_the_search_for_kicad_finding_nothing() 
 
 #[test]
 fn a_board_of_generated_parts_builds_with_no_kicad_install() {
-    use netsmith_kicad::install::Search;
+    use netsmith_kicad::{Search};
     let dir = TempDir::new("project-no-install");
     common::project_libraries(dir.path());
     let nowhere = TempDir::new("no-install");
@@ -1016,8 +1016,8 @@ fn two_stages_that_wrap_a_regulator_each_add_up_on_the_input_rail() {
 
 /// The machine of a KiCad install (the sample libraries) that has the ids a test asks for only
 /// where it says: found through the two variables.
-fn sample_install() -> (TempDir, netsmith_kicad::install::Search) {
-    use netsmith_kicad::install::{FOOTPRINTS_VARIABLE, SYMBOLS_VARIABLE, Search};
+fn sample_install() -> (TempDir, netsmith_kicad::Search) {
+    use netsmith_kicad::{FOOTPRINTS_VARIABLE, SYMBOLS_VARIABLE, Search};
     let nowhere = TempDir::new("installed-sample");
     let machine = Search::under(nowhere.path())
         .with_var(SYMBOLS_VARIABLE, netsmith_testkit::sample_symbols())

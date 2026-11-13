@@ -2,7 +2,7 @@
 //! quoted when it holds a comma, a quote or a line break, and a quote inside is doubled.
 
 /// One row, quoted where needed, without a line ending.
-pub fn row<S: AsRef<str>>(fields: &[S]) -> String {
+pub(crate) fn row<S: AsRef<str>>(fields: &[S]) -> String {
     let mut out = String::new();
     for (i, f) in fields.iter().enumerate() {
         if i > 0 {
@@ -21,7 +21,7 @@ pub fn row<S: AsRef<str>>(fields: &[S]) -> String {
 }
 
 /// A whole file: the header, then the rows, each ended by `\n`.
-pub fn file(header: &[&str], rows: &[Vec<String>]) -> String {
+pub(crate) fn file(header: &[&str], rows: &[Vec<String>]) -> String {
     let mut out = row(header);
     out.push('\n');
     for r in rows {
@@ -52,7 +52,7 @@ impl std::error::Error for CsvError {}
 
 /// A parsed file: rows of fields, header first. A leading byte-order mark and blank lines
 /// are ignored.
-pub fn parse(src: &str) -> Result<Vec<Vec<String>>, CsvError> {
+pub(crate) fn parse(src: &str) -> Result<Vec<Vec<String>>, CsvError> {
     let src = src.strip_prefix('\u{feff}').unwrap_or(src);
     let mut rows = Vec::new();
     let mut fields: Vec<String> = Vec::new();
@@ -104,7 +104,7 @@ pub fn parse(src: &str) -> Result<Vec<Vec<String>>, CsvError> {
 }
 
 /// The index of each wanted column in the header row.
-pub fn columns(header: &[String], wanted: &[&str]) -> Result<Vec<usize>, CsvError> {
+pub(crate) fn columns(header: &[String], wanted: &[&str]) -> Result<Vec<usize>, CsvError> {
     wanted
         .iter()
         .map(|w| {
