@@ -32,7 +32,7 @@ pub(crate) fn wiring(support: &Support) -> Vec<Item> {
         .filter(|i| {
             matches!(
                 i,
-                Item::Decl(_) | Item::Constraint(_) | Item::Connect(_) | Item::ByName(_)
+                Item::Decl(_) | Item::Constraint(_) | Item::Connect(_) | Item::JoinMap(_)
             )
         })
         .cloned()
@@ -78,7 +78,7 @@ impl Checker<'_> {
         }
         for item in &support.items {
             let span = match item {
-                Item::Decl(_) | Item::Constraint(_) | Item::Connect(_) | Item::ByName(_) => {
+                Item::Decl(_) | Item::Constraint(_) | Item::Connect(_) | Item::JoinMap(_) => {
                     continue;
                 }
                 Item::Pins(t) => t.span,

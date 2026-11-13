@@ -1,6 +1,7 @@
-//! `.left ~ .right by name { a = b } except { c }`: the members of two ports joined name by
-//! name (ADR 0117). The statement pairs the pins and interfaces of the two sides, refuses a pair
-//! of different kinds and a member left with no partner, and then joins each pair as `~` does.
+//! `.left ~ .right { a = b } except { c }`: the members of two ports joined name by name (ADR
+//! 0117). `~` between two parts, modules or interfaces of different kinds pairs the pins and
+//! interfaces of the two sides, refuses a pin against an interface and a member left with no
+//! partner, and then joins each pair as `~` does.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -13,7 +14,6 @@ use crate::model::{InstId, InstKind, Member};
 /// One side of the statement: the port and its joinable members in declaration order.
 struct Side {
     path: ast::Path,
-    inst: InstId,
     /// `(name, instance)`: each pin and interface a path through the port reaches.
     members: Vec<(String, InstId)>,
     /// The other members (values, parts inside), named so a rename to one is explained.
@@ -38,42 +38,84 @@ impl Side {
 }
 
 impl Checker<'_> {
-    pub(crate) fn join_by_name(&mut self, b: &ast::ByName) {
-        let (Some(left), Some(right)) = (self.by_name_side(&b.left), self.by_name_side(&b.right))
-        else {
-            return;
-        };
-        let (l, r) = (left.src(), right.src());
-        let (li, ri) = (left.inst, right.inst);
-        if li == ri {
+    /// `.a ~ .b { x = y } except { z }`: a join of two ports with renames or members left out.
+    pub(crate) fn join_map(&mut self, b: &ast::JoinMap) {
+        if self.in_system() || self.in_panel() {
             self.error(
                 b.span,
-                format!("`{l}` is joined to itself; `by name` joins the members of two ports"),
+                "a rename map or `except` joins the members of two ports on a board, a module or a part; a system joins ports with plain `~`",
             );
             return;
         }
-        let (lk, rk) = (self.model.instance(li).kind, self.model.instance(ri).kind);
-        let (lt, rt) = (
-            self.model.instance(li).type_name.clone(),
-            self.model.instance(ri).type_name.clone(),
-        );
-        if lk == InstKind::Interface && rk == InstKind::Interface && lt == rt {
+        if !self.join_ports_by_name(&b.left, &b.right, &b.renames, &b.except, b.span) {
+            // `join_ports_by_name` declines only two sides that resolved: say why.
             self.error(
                 b.span,
                 format!(
-                    "`{l}` and `{r}` are both `{lt}`, and `~` already joins two interfaces of the same kind member by member; write `{l} ~ {r}`"
+                    "a rename map or `except` is for two ports whose members are joined by name; `{}` and `{}` are not two parts, modules or interfaces of different kinds, so join them with plain `~`",
+                    b.left.to_source(),
+                    b.right.to_source()
                 ),
             );
-            return;
         }
+    }
 
+    /// Joins the members of two ports by name (ADR 0117), when both sides are parts, modules
+    /// or interfaces and not two interfaces of one kind (which `~` joins whole). Returns false,
+    /// with nothing reported, when a side is something else, so that `~` joins it as before;
+    /// true when it joined them or reported why not, a side that does not resolve included.
+    pub(crate) fn join_ports_by_name(
+        &mut self,
+        left: &ast::Path,
+        right: &ast::Path,
+        renames: &[(Ident, Ident)],
+        except_list: &[Ident],
+        span: Span,
+    ) -> bool {
+        let (li, ri) = match (self.resolve_path(left), self.resolve_path(right)) {
+            (Res::Inst(a), Res::Inst(c)) => (a, c),
+            (Res::Poison | Res::Bad, _) | (_, Res::Poison | Res::Bad) => return true,
+            _ => return false,
+        };
+        let port =
+            |k: InstKind| matches!(k, InstKind::Part | InstKind::Module | InstKind::Interface);
+        let (ia, ic) = (self.model.instance(li), self.model.instance(ri));
+        if !port(ia.kind) || !port(ic.kind) {
+            return false;
+        }
+        if ia.kind == InstKind::Interface && ic.kind == InstKind::Interface && ia.def == ic.def {
+            return false;
+        }
+        let l = left.to_source();
+        if li == ri {
+            self.error(
+                span,
+                format!("`{l}` is joined to itself; `~` joins the members of two ports"),
+            );
+            return true;
+        }
+        let left = self.port_side(left, li);
+        let right = self.port_side(right, ri);
+        self.pair_and_join(left, right, renames, except_list, span);
+        true
+    }
+
+    fn pair_and_join(
+        &mut self,
+        left: Side,
+        right: Side,
+        renames: &[(Ident, Ident)],
+        except_list: &[Ident],
+        span: Span,
+    ) {
+        let (l, r) = (left.src(), right.src());
         let mut ok = true;
         // The pairs, keyed by the left name, and what each right name is taken by.
         let mut pairs: BTreeMap<String, (String, Span)> = BTreeMap::new();
         let mut taken: BTreeSet<String> = BTreeSet::new();
         let mut except: BTreeSet<String> = BTreeSet::new();
 
-        for name in &b.except {
+        for name in except_list {
             if !except.insert(name.name.clone()) {
                 self.error(
                     name.span,
@@ -99,7 +141,7 @@ impl Checker<'_> {
             }
         }
 
-        for (from, to) in &b.renames {
+        for (from, to) in renames {
             let mut good = true;
             if from.name == to.name {
                 self.error(
@@ -165,7 +207,7 @@ impl Checker<'_> {
             }
             if right.get(name).is_some() && !taken.contains(name) {
                 taken.insert(name.clone());
-                pairs.insert(name.clone(), (name.clone(), b.span));
+                pairs.insert(name.clone(), (name.clone(), span));
             }
         }
         let lone_left: Vec<&String> = left
@@ -198,9 +240,9 @@ impl Checker<'_> {
                 parts.push(format!("`{r}.{n}`{near}"));
             }
             self.error(
-                b.span,
+                span,
                 format!(
-                    "{} {} no member of the same name on the other side: {}; give each a partner with a rename, `by name {{ a = b }}`, or leave it out with `except {{ a }}`",
+                    "{} {} no member of the same name on the other side: {}; give each a partner with a rename, `{{ a = b }}`, or leave it out with `except {{ a }}`",
                     if parts.len() == 1 { "this member" } else { "these members" },
                     if parts.len() == 1 { "has" } else { "have" },
                     parts.join(", ")
@@ -208,22 +250,27 @@ impl Checker<'_> {
             );
         }
 
-        // The kinds of each pair agree: a pin with a pin, an interface with one of its kind.
+        // A pin pairs with a pin; an interface with an interface, joined whole when the two are
+        // of one kind and by name again when not.
         let mut joins = Vec::new();
-        for (name, (partner, span)) in &pairs {
+        for (name, (partner, at)) in &pairs {
             let a = left.get(name).expect("a paired left member exists");
             let c = right.get(partner).expect("a paired right member exists");
-            let (ka, kc) = (self.kind_word(a), self.kind_word(c));
-            if ka != kc {
+            let (pa, pc) = (
+                self.model.instance(a).kind == InstKind::Pin,
+                self.model.instance(c).kind == InstKind::Pin,
+            );
+            if pa != pc {
+                let (ka, kc) = (self.kind_word(a), self.kind_word(c));
                 self.error(
-                    *span,
+                    *at,
                     format!(
-                        "`{l}.{name}` is {ka} and `{r}.{partner}` is {kc}; `by name` joins a pin to a pin and an interface to an interface of the same kind, so rename one or leave it out with `except`"
+                        "`{l}.{name}` is {ka} and `{r}.{partner}` is {kc}; `~` joins a pin to a pin and an interface to an interface, so rename one or leave it out with `except`"
                     ),
                 );
                 continue;
             }
-            joins.push((name.clone(), partner.clone(), *span));
+            joins.push((name.clone(), partner.clone(), *at));
         }
         for (name, partner, span) in joins {
             let c = ast::Connect {
@@ -259,7 +306,7 @@ impl Checker<'_> {
 
     fn no_such_member(&mut self, name: &Ident, side: &Side, which: &str) {
         let what = if side.others.contains(&name.name) {
-            "is not a pin or an interface, and `by name` joins only those".to_string()
+            "is not a pin or an interface, and `~` joins only those by name".to_string()
         } else {
             let near = crate::lower::closest(&name.name, &side.names())
                 .map(|n| format!("; did you mean `{n}`?"))
@@ -277,36 +324,7 @@ impl Checker<'_> {
     }
 
     /// A side of the statement: a part, a module or an interface, and its members.
-    fn by_name_side(&mut self, p: &ast::Path) -> Option<Side> {
-        let inst = match self.resolve_path(p) {
-            Res::Inst(i) => i,
-            Res::Field(_) => {
-                self.error(
-                    p.span,
-                    format!(
-                        "`{}` is a value; `by name` joins the members of two parts, modules or interfaces",
-                        p.to_source()
-                    ),
-                );
-                return None;
-            }
-            Res::Poison | Res::Bad => return None,
-        };
-        let kind = self.model.instance(inst).kind;
-        if !matches!(
-            kind,
-            InstKind::Part | InstKind::Module | InstKind::Interface
-        ) {
-            self.error(
-                p.span,
-                format!(
-                    "`{}` is a {}; `by name` joins the members of two parts, modules or interfaces",
-                    p.to_source(),
-                    kind.word()
-                ),
-            );
-            return None;
-        }
+    fn port_side(&mut self, p: &ast::Path, inst: InstId) -> Side {
         let mut members = Vec::new();
         let mut others = BTreeSet::new();
         let children = self.model.instance(inst).children.clone();
@@ -325,12 +343,11 @@ impl Checker<'_> {
                 others.insert(name);
             }
         }
-        Some(Side {
+        Side {
             path: p.clone(),
-            inst,
             members,
             others,
-        })
+        }
     }
 }
 

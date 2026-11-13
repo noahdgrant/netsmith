@@ -456,7 +456,7 @@ impl Parser {
                     | Item::Polygon(_)
                     | Item::Constraint(_)
                     | Item::Connect(_)
-                    | Item::ByName(_),
+                    | Item::JoinMap(_),
                 ) => Err(ParseError::new(
                     at,
                     "doc comments can only be attached to declarations",
@@ -593,15 +593,17 @@ impl Parser {
                     self.bump();
                     self.skip_newlines();
                     rest.push((op, self.path()?));
-                    if matches!(&self.peek().tok, Tok::Ident(w) if w == "by") {
+                    let map_follows = self.at(&Tok::LBrace)
+                        || matches!(&self.peek().tok, Tok::Ident(w) if w == "except");
+                    if map_follows {
                         if rest.len() != 1 || op != ConnectOp::Same {
                             return Err(ParseError::new(
                                 self.peek().span,
-                                "`by name` joins two ports with one `~`: write `.a ~ .b by name`",
+                                "a rename map or `except` follows a join of two ports with one `~`: write `.a ~ .b { x = y }`",
                             ));
                         }
                         let right = rest.pop().expect("one operand").1;
-                        return only_decls(self.by_name(first, right, start)?);
+                        return only_decls(self.member_map(first, right, start)?);
                     }
                 }
                 only_decls(Item::Connect(Connect {
@@ -617,14 +619,8 @@ impl Parser {
         }
     }
 
-    /// `by name { a = b } except { c }` after `.left ~ .right` (ADR 0117).
-    fn by_name(&mut self, left: Path, right: Path, start: usize) -> Res<Item> {
-        self.bump();
-        let t = self.peek().clone();
-        if !matches!(&t.tok, Tok::Ident(w) if w == "name") {
-            return Err(unexpected(&t, "`name` after `by`"));
-        }
-        self.bump();
+    /// `{ a = b } except { c }` after `.left ~ .right` (ADR 0117).
+    fn member_map(&mut self, left: Path, right: Path, start: usize) -> Res<Item> {
         let mut renames = Vec::new();
         if self.at(&Tok::LBrace) {
             let open = self.bump();
@@ -659,7 +655,7 @@ impl Parser {
             if renames.is_empty() {
                 return Err(ParseError::new(
                     open.span,
-                    "an empty rename map; write `by name` alone when every name matches",
+                    "an empty rename map; leave it out when every name matches",
                 ));
             }
         }
@@ -694,7 +690,7 @@ impl Parser {
                 ));
             }
         }
-        Ok(Item::ByName(ByName {
+        Ok(Item::JoinMap(JoinMap {
             left,
             right,
             renames,

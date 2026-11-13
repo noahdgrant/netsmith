@@ -202,6 +202,13 @@ impl Checker<'_> {
             );
             return;
         }
+        // Two ports (parts, modules, interfaces of different kinds) are joined member by
+        // member, by name (ADR 0117).
+        if let [(ConnectOp::Same, right)] = c.rest.as_slice()
+            && self.join_ports_by_name(&c.first, right, &[], &[], c.span)
+        {
+            return;
+        }
         let Some(first) = self.endpoint(&c.first) else {
             return;
         };

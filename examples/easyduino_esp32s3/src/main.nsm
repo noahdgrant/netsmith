@@ -223,7 +223,7 @@ board EasyduinoEsp32s3 {
     .headers.gnd ~ .vbus.neg
     // Each header pin is named as the development board's silkscreen (GPIO4) and joined to the
     // module's pin of that GPIO (IO4); `.en` has one name on both.
-    .headers ~ .module by name {
+    .headers ~ .module {
         gpio4 = io4; gpio5 = io5; gpio6 = io6; gpio7 = io7; gpio15 = io15; gpio16 = io16
         gpio17 = io17; gpio18 = io18; gpio8 = io8; gpio3 = io3; gpio46 = io46; gpio9 = io9
         gpio10 = io10; gpio11 = io11; gpio12 = io12; gpio13 = io13; gpio14 = io14; gpio19 = io19

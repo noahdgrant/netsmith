@@ -1,4 +1,4 @@
-//! `.left ~ .right by name`: the members of two ports joined name by name (ADR 0117). The parts
+//! `.left ~ .right`: the members of two ports joined name by name (ADR 0117). The parts
 //! are invented for these tests.
 
 use std::collections::BTreeSet;
@@ -128,8 +128,8 @@ fn errors(body: &str) -> Vec<String> {
 }
 
 /// Both boards check, and they have the same nets.
-fn same_nets(by_name: &str, by_hand: &str) {
-    let a = run(by_name);
+fn same_nets(by_port: &str, by_hand: &str) {
+    let a = run(by_port);
     assert!(a.is_ok(), "{}", a.render());
     let b = run(by_hand);
     assert!(b.is_ok(), "{}", b.render());
@@ -141,7 +141,7 @@ const PLACED: &str = "    .h: Header\n    .u: Chip\n    .supply ~ .u.vdd\n    .h
 #[test]
 fn members_with_the_same_name_are_joined() {
     same_nets(
-        &format!("{PLACED}    .h ~ .u by name except {{ gnd vdd }}\n"),
+        &format!("{PLACED}    .h ~ .u except {{ gnd vdd }}\n"),
         &format!("{PLACED}    .h.io4 ~ .u.io4\n    .h.io5 ~ .u.io5\n    .h.en ~ .u.en\n"),
     );
 }
@@ -150,7 +150,7 @@ fn members_with_the_same_name_are_joined() {
 fn a_rename_joins_members_whose_names_differ() {
     let placed = "    .h: Silkscreen\n    .u: Chip\n    .supply ~ .u.vdd\n";
     same_nets(
-        &format!("{placed}    .h ~ .u by name {{ gpio4 = io4; gpio5 = io5 }} except {{ vdd }}\n"),
+        &format!("{placed}    .h ~ .u {{ gpio4 = io4; gpio5 = io5 }} except {{ vdd }}\n"),
         &format!("{placed}    .h.gpio4 ~ .u.io4\n    .h.gpio5 ~ .u.io5\n    .h.en ~ .u.en\n"),
     );
 }
@@ -159,7 +159,7 @@ fn a_rename_joins_members_whose_names_differ() {
 fn a_rename_map_may_span_lines() {
     let placed = "    .h: Silkscreen\n    .u: Chip\n    .supply ~ .u.vdd\n";
     same_nets(
-        &format!("{placed}    .h ~ .u by name {{\n        gpio4 = io4\n        gpio5 = io5\n    }} except {{ vdd }}\n"),
+        &format!("{placed}    .h ~ .u {{\n        gpio4 = io4\n        gpio5 = io5\n    }} except {{ vdd }}\n"),
         &format!("{placed}    .h.gpio4 ~ .u.io4\n    .h.gpio5 ~ .u.io5\n    .h.en ~ .u.en\n"),
     );
 }
@@ -169,13 +169,13 @@ fn nested_ports_and_interface_members_are_joined() {
     // The ports are interfaces inside parts, of two kinds with the same member names.
     let placed = "    .s: Sensor\n    .p: Probe\n";
     same_nets(
-        &format!("{placed}    .s.bus ~ .p.bus by name\n"),
+        &format!("{placed}    .s.bus ~ .p.bus\n"),
         &format!("{placed}    .s.bus.sda ~ .p.bus.sda\n    .s.bus.scl ~ .p.bus.scl\n"),
     );
     // A rail on each side is joined whole, as `~` joins two rails.
     let placed = "    .l: Left\n    .r: Right\n    .supply ~ .r.vdd\n";
     same_nets(
-        &format!("{placed}    .l ~ .r by name\n"),
+        &format!("{placed}    .l ~ .r\n"),
         &format!("{placed}    .l.vdd ~ .r.vdd\n    .l.io4 ~ .r.io4\n"),
     );
 }
@@ -183,9 +183,9 @@ fn nested_ports_and_interface_members_are_joined() {
 #[test]
 fn a_member_with_no_partner_is_named() {
     assert_eq!(
-        errors(&format!("{PLACED}    .h ~ .u by name\n")),
+        errors(&format!("{PLACED}    .h ~ .u\n")),
         [
-            "these members have no member of the same name on the other side: `.h.gnd`, `.u.vdd`; give each a partner with a rename, `by name { a = b }`, or leave it out with `except { a }`"
+            "these members have no member of the same name on the other side: `.h.gnd`, `.u.vdd`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`"
         ]
     );
 }
@@ -194,9 +194,9 @@ fn a_member_with_no_partner_is_named() {
 fn a_member_with_no_partner_gets_a_near_name() {
     let placed = "    .h: Silkscreen\n    .u: Chip\n    .supply ~ .u.vdd\n";
     assert_eq!(
-        errors(&format!("{placed}    .h ~ .u by name {{ gpio4 = io4 }} except {{ vdd }}\n")),
+        errors(&format!("{placed}    .h ~ .u {{ gpio4 = io4 }} except {{ vdd }}\n")),
         [
-            "these members have no member of the same name on the other side: `.h.gpio5` (did you mean `gpio5 = io5`?), `.u.io5`; give each a partner with a rename, `by name { a = b }`, or leave it out with `except { a }`"
+            "these members have no member of the same name on the other side: `.h.gpio5` (did you mean `gpio5 = io5`?), `.u.io5`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`"
         ]
     );
 }
@@ -205,9 +205,9 @@ fn a_member_with_no_partner_gets_a_near_name() {
 fn a_rail_against_a_pin_is_refused() {
     let placed = "    .r: Right\n    .p: PinSupply\n    .supply ~ .r.vdd\n";
     assert_eq!(
-        errors(&format!("{placed}    .p ~ .r by name\n")),
+        errors(&format!("{placed}    .p ~ .r\n")),
         [
-            "`.p.vdd` is a pin and `.r.vdd` is a `Rail`; `by name` joins a pin to a pin and an interface to an interface of the same kind, so rename one or leave it out with `except`"
+            "`.p.vdd` is a pin and `.r.vdd` is a `Rail`; `~` joins a pin to a pin and an interface to an interface, so rename one or leave it out with `except`"
         ]
     );
 }
@@ -217,7 +217,7 @@ fn a_rename_to_a_member_that_does_not_exist_is_refused() {
     let placed = "    .h: Silkscreen\n    .u: Chip\n    .supply ~ .u.vdd\n";
     assert_eq!(
         errors(&format!(
-            "{placed}    .h ~ .u by name {{ gpio4 = io44; gpio5 = io5 }} except {{ vdd }}\n"
+            "{placed}    .h ~ .u {{ gpio4 = io44; gpio5 = io5 }} except {{ vdd }}\n"
         )),
         [
             "the rename's right side is a member of `.u`, and `io44` is not a pin or an interface of it; did you mean `io4`?"
@@ -225,10 +225,10 @@ fn a_rename_to_a_member_that_does_not_exist_is_refused() {
     );
     assert_eq!(
         errors(&format!(
-            "{placed}    .h ~ .u by name {{ gpio4 = io4; gpio5 = designator }} except {{ vdd }}\n"
+            "{placed}    .h ~ .u {{ gpio4 = io4; gpio5 = designator }} except {{ vdd }}\n"
         )),
         [
-            "the rename's right side is a member of `.u`, and `designator` is not a pin or an interface, and `by name` joins only those"
+            "the rename's right side is a member of `.u`, and `designator` is not a pin or an interface, and `~` joins only those by name"
         ]
     );
 }
@@ -236,7 +236,7 @@ fn a_rename_to_a_member_that_does_not_exist_is_refused() {
 #[test]
 fn an_except_of_a_member_that_does_not_exist_is_refused() {
     assert_eq!(
-        errors(&format!("{PLACED}    .h ~ .u by name except {{ gnd vd }}\n")),
+        errors(&format!("{PLACED}    .h ~ .u except {{ gnd vd }}\n")),
         [
             "`except` leaves out `vd`, but neither `.h` nor `.u` has a pin or an interface of that name; did you mean `vdd`?"
         ]
@@ -248,13 +248,13 @@ fn a_member_has_one_partner() {
     let placed = "    .h: Silkscreen\n    .u: Chip\n    .supply ~ .u.vdd\n";
     assert_eq!(
         errors(&format!(
-            "{placed}    .h ~ .u by name {{ gpio4 = io4; gpio5 = io4 }} except {{ vdd io5 }}\n"
+            "{placed}    .h ~ .u {{ gpio4 = io4; gpio5 = io4 }} except {{ vdd io5 }}\n"
         )),
         ["`io4` of `.u` is the partner of two members; a member has one partner"]
     );
     assert_eq!(
         errors(&format!(
-            "{placed}    .h ~ .u by name {{ gpio4 = io4; en = en; gpio5 = io5 }} except {{ vdd }}\n"
+            "{placed}    .h ~ .u {{ gpio4 = io4; en = en; gpio5 = io5 }} except {{ vdd }}\n"
         )),
         [
             "`en = en` renames nothing: members with the same name are joined without it; leave it out"
@@ -262,40 +262,69 @@ fn a_member_has_one_partner() {
     );
     assert_eq!(
         errors(&format!(
-            "{placed}    .h ~ .u by name {{ gpio4 = io4; gpio5 = io5 }} except {{ vdd io5 }}\n"
+            "{placed}    .h ~ .u {{ gpio4 = io4; gpio5 = io5 }} except {{ vdd io5 }}\n"
         )),
         ["`io5` is both renamed and left out with `except`; keep one"]
     );
 }
 
 #[test]
-fn two_interfaces_of_one_kind_are_joined_with_plain_tilde() {
+fn a_map_is_for_two_ports_joined_by_name() {
+    // Two interfaces of one kind are joined whole by plain `~`, as before.
     let placed = "    .l: Left\n    .r: Right\n    .supply ~ .r.vdd\n";
     assert_eq!(
-        errors(&format!("{placed}    .l.vdd ~ .r.vdd by name\n")),
+        errors(&format!("{placed}    .l.vdd ~ .r.vdd except {{ pos }}\n    .l.io4 ~ .r.io4\n")),
         [
-            "`.l.vdd` and `.r.vdd` are both `Rail`, and `~` already joins two interfaces of the same kind member by member; write `.l.vdd ~ .r.vdd`"
+            "a rename map or `except` is for two ports whose members are joined by name; `.l.vdd` and `.r.vdd` are not two parts, modules or interfaces of different kinds, so join them with plain `~`"
+        ]
+    );
+    assert_eq!(
+        errors(&format!("{PLACED}    .h.io4 ~ .u.io4 {{ a = b }}\n")),
+        [
+            "a rename map or `except` is for two ports whose members are joined by name; `.h.io4` and `.u.io4` are not two parts, modules or interfaces of different kinds, so join them with plain `~`"
         ]
     );
 }
 
 #[test]
-fn a_port_is_a_part_a_module_or_an_interface() {
+fn a_pin_against_a_port_keeps_its_old_meaning() {
+    // A pin and a part are not two ports: `~` refuses them as it always did.
     assert_eq!(
-        errors(&format!("{PLACED}    .h.io4 ~ .u by name\n")),
+        errors(&format!("{PLACED}    .h.io4 ~ .u\n")),
+        ["`~` joins two pins or two interfaces of the same kind"]
+    );
+}
+
+#[test]
+fn interfaces_of_two_kinds_pair_their_members_strictly() {
+    // A `Rail` (`pos`, `neg`) and a `TwoWire` (`sda`, `scl`) share no name.
+    let placed = "    .s: Sensor\n";
+    assert_eq!(
+        errors(&format!("{placed}    .s.bus ~ .supply\n")),
         [
-            "`.h.io4` is a pin; `by name` joins the members of two parts, modules or interfaces"
+            "these members have no member of the same name on the other side: `.s.bus.sda`, `.s.bus.scl`, `.supply.pos`, `.supply.neg`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`"
         ]
+    );
+}
+
+#[test]
+fn members_of_two_kinds_are_joined_by_name_in_turn() {
+    // `.bus` is a `TwoWire` on one side and `Pads` on the other: joined by name, as a pair of
+    // ports of two kinds is.
+    let placed = "    .s: Sensor\n    .p: Probe\n";
+    same_nets(
+        &format!("{placed}    .s ~ .p\n"),
+        &format!("{placed}    .s.bus.sda ~ .p.bus.sda\n    .s.bus.scl ~ .p.bus.scl\n"),
     );
 }
 
 #[test]
 fn a_module_shows_only_its_interface() {
-    // `.u` inside `Right` is a part, not a member `by name` joins, so nothing asks for a
+    // `.u` inside `Right` is a part, not a member `~` joins by name, so nothing asks for a
     // partner for it.
     let placed = "    .r: Right\n    .p: PinSupply\n    .supply ~ .r.vdd\n    .p.vdd ~ .supply.pos\n";
     same_nets(
-        &format!("{placed}    .p ~ .r by name except {{ vdd }}\n"),
+        &format!("{placed}    .p ~ .r except {{ vdd }}\n"),
         &format!("{placed}    .p.io4 ~ .r.io4\n"),
     );
 }

@@ -1727,7 +1727,7 @@ error: b.voltage must always be at most a.voltage, but 5V is not always below 3V
 
 ## Connections: `~` and `~>`
 
-`~` puts two pins on one net, or joins two interfaces of the same kind: their pins pair by name and their values become equal. `~>` runs a series chain from a pin through parts to another pin. Each part in a chain needs a `bridge`.
+`~` puts two pins on one net, or joins two interfaces of the same kind: their pins pair by name and their values become equal. Between two other ports (parts, modules, interfaces of different kinds) it joins their members by name (below). `~>` runs a series chain from a pin through parts to another pin. Each part in a chain needs a `bridge`.
 
 ```nsm
 import std::parts::passive::{Resistor, Led}
@@ -1756,15 +1756,15 @@ A part declares its bridge: `bridge .a ~> .b` in `Resistor` says that a chain en
 
 Rules.
 
-- `~` joins pin to pin, or interface to interface when both are the same definition. It does not join a pin and an interface.
+- `~` joins pin to pin, interface to interface when both are the same definition, and the members of two other ports by name. It does not join a pin and an interface.
 - `~>` starts at a pin. A part in the chain is entered at the first pin of its bridge and left at the second. Chains may continue from a part, `.a ~> .b`, and may end at a pin.
 - `a ~> pin ~> b` puts `a`, the pin and `b` on one net.
 - A chain across a rail sets its own current (below). Any other chain is a statement about nets and about which currents are equal.
 - A system joins ports with `~` only (see Systems).
 
-### The members of two ports, by name
+### Two ports, member by member
 
-`.a ~ .b by name` joins each pin or interface of `a` to the member of `b` with the same name, as one `~` line each would. `a` and `b` are parts, modules or interfaces, at any path (`.sensor.bus ~ .probe.bus by name`). A rename map pairs members whose names differ, the member of `a` first: `by name { gpio4 = io4; gpio5 = io5 }`, one rename per line or several separated by `;`. `except { gnd vdd }` leaves out members of either side. A member with no partner on the other side is an error at the line, unless it is renamed or left out: nothing is joined by accident, and nothing is left unjoined by accident.
+`.a ~ .b`, where `a` and `b` are parts, modules or interfaces of different kinds, joins each pin or interface of `a` to the member of `b` with the same name, as one `~` line each would. The ports may be at any path (`.sensor.bus ~ .probe.bus`). A rename map pairs members whose names differ, the member of `a` first: `.a ~ .b { gpio4 = io4; gpio5 = io5 }`, one rename per line or several separated by `;`. `except { gnd vdd }` leaves out members on both sides. The join is strict: a member with no partner on the other side is an error at the line, unless it is renamed or left out, so nothing is left unjoined by accident.
 
 ```nsm
 import std::sources::Rail
@@ -1801,7 +1801,7 @@ board Pinout {
     .chip: Chip
     .supply ~ .chip.vdd
     .header.gnd ~ .supply.neg
-    .header ~ .chip by name { gpio4 = io4; gpio5 = io5 } except { gnd vdd }
+    .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vdd }
 }
 ```
 
@@ -1810,10 +1810,10 @@ This joins `.header.gpio4 ~ .chip.io4`, `.header.gpio5 ~ .chip.io5` and `.header
 Rules.
 
 - The members are the pins and the interfaces that hold a pin. Values, the parts inside a module and the built-in `.place` and `.model` take no part.
-- Two members of the same name join as `~` joins them: a pin to a pin, and an interface to an interface of the same kind (a rail joins whole). A pin against an interface, or two interfaces of different kinds, is an error; rename one or leave it out.
-- Two interfaces of the same kind are joined with plain `~`, which already pairs their members by name: `.a ~ .b by name` is refused for them.
-- A rename or an `except` names a member that exists, and a member has one partner.
-- `by name` joins two ports with one `~`: it is not part of a chain.
+- Two members of the same name join as `~` joins them: a pin to a pin, an interface to an interface of the same kind whole (a rail with a rail), and two interfaces of different kinds by name in turn. A pin against an interface is an error; rename one or leave it out.
+- Two interfaces of the same kind join whole, as they always have; a rename map or `except` is refused for them, and for two pins.
+- A rename or an `except` names a member that exists, one level deep (`vdd`, not `vdd.pos`), and a member has one partner.
+- A rename map or `except` follows a join of two ports with one `~`: it is not part of a chain.
 
 Misuse: a member with no partner. The message names each one, with a near name on the other side where there is one.
 
@@ -1852,16 +1852,16 @@ board Pinout {
     .chip: Chip
     .supply ~ .chip.vdd
     .header.gnd ~ .supply.neg
-    .header ~ .chip by name { gpio4 = io4 } except { gnd vdd }
+    .header ~ .chip { gpio4 = io4 } except { gnd vdd }
 }
 ```
 
 ```text
-error: these members have no member of the same name on the other side: `.header.gpio5` (did you mean `gpio5 = io5`?), `.chip.io5`; give each a partner with a rename, `by name { a = b }`, or leave it out with `except { a }`
+error: these members have no member of the same name on the other side: `.header.gpio5` (did you mean `gpio5 = io5`?), `.chip.io5`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`
    --> main.nsm:35:5
    |
-35 |     .header ~ .chip by name { gpio4 = io4 } except { gnd vdd }
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+35 |     .header ~ .chip { gpio4 = io4 } except { gnd vdd }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 Misuse: a rail against a pin of the same name.
@@ -1896,16 +1896,16 @@ board Supplies {
     .chip: Chip
     .other: PinSupply
     .supply ~ .chip.vdd
-    .other ~ .chip by name
+    .other ~ .chip
 }
 ```
 
 ```text
-error: `.other.vdd` is a pin and `.chip.vdd` is a `Rail`; `by name` joins a pin to a pin and an interface to an interface of the same kind, so rename one or leave it out with `except`
+error: `.other.vdd` is a pin and `.chip.vdd` is a `Rail`; `~` joins a pin to a pin and an interface to an interface, so rename one or leave it out with `except`
    --> main.nsm:30:5
    |
-30 |     .other ~ .chip by name
-   |     ^^^^^^^^^^^^^^^^^^^^^^
+30 |     .other ~ .chip
+   |     ^^^^^^^^^^^^^^
 ```
 
 Misuse: a rename to a member that does not exist.
@@ -1945,16 +1945,16 @@ board Pinout {
     .chip: Chip
     .supply ~ .chip.vdd
     .header.gnd ~ .supply.neg
-    .header ~ .chip by name { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
+    .header ~ .chip { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
 }
 ```
 
 ```text
 error: the rename's right side is a member of `.chip`, and `io44` is not a pin or an interface of it; did you mean `io4`?
-   --> main.nsm:35:39
+   --> main.nsm:35:31
    |
-35 |     .header ~ .chip by name { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
-   |                                       ^^^^
+35 |     .header ~ .chip { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
+   |                               ^^^^
 ```
 
 Misuse: leaving out a member that does not exist.
@@ -1994,16 +1994,16 @@ board Pinout {
     .chip: Chip
     .supply ~ .chip.vdd
     .header.gnd ~ .supply.neg
-    .header ~ .chip by name { gpio4 = io4; gpio5 = io5 } except { gnd vd }
+    .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vd }
 }
 ```
 
 ```text
 error: `except` leaves out `vd`, but neither `.header` nor `.chip` has a pin or an interface of that name; did you mean `vdd`?
-   --> main.nsm:35:71
+   --> main.nsm:35:63
    |
-35 |     .header ~ .chip by name { gpio4 = io4; gpio5 = io5 } except { gnd vd }
-   |                                                                       ^^
+35 |     .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vd }
+   |                                                               ^^
 ```
 
 ### The current of a chain
@@ -2098,11 +2098,11 @@ board Mismatch {
 ```
 
 ```text
-error: cannot connect a `Rail` to a `Logic`
-  --> main.nsm:7:15
+error: these members have no member of the same name on the other side: `.supply.pos`, `.supply.neg`, `.signal.line`, `.signal.reference`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`
+  --> main.nsm:7:5
   |
 7 |     .supply ~ .signal
-  |               ^^^^^^^
+  |     ^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails

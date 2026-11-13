@@ -25,7 +25,7 @@ Two connectors that a system joins with `~` between their `.mating`: contact N o
 _Avoid_: Connection, link, plug
 
 **Join by name**:
-One statement that joins the members of two ports pairwise by name, `.headers ~ .module by name { gpio4 = io4 } except { gnd }` (ADR 0117): a rename map pairs members whose names differ, `except` leaves members out, and a member with no partner is an error. It makes the nets the `~` lines would.
+What `~` does between two ports that are parts, modules or interfaces of different kinds, `.headers ~ .module { gpio4 = io4 } except { gnd }` (ADR 0117): it joins their pins and pin-holding interfaces pairwise by name, a rename map pairs members whose names differ, `except` leaves members out on both sides, and a member with no partner is an error. It makes the nets the `~` lines would.
 _Avoid_: bulk join, auto-connect, wildcard join
 
 **Seat**:

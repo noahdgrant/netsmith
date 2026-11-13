@@ -156,9 +156,10 @@ pub enum Item {
     Decl(Decl),
     Constraint(Constraint),
     Connect(Connect),
-    /// `.headers ~ .module by name { gpio4 = io4 } except { gnd }`: the members of two ports
-    /// joined name by name (ADR 0117).
-    ByName(ByName),
+    /// `.headers ~ .module { gpio4 = io4 } except { gnd }`: the members of two ports joined
+    /// name by name, with renames or members left out (ADR 0117). Without a map or `except` the
+    /// statement is a [`Connect`], and the checker joins two ports by name the same way.
+    JoinMap(JoinMap),
     Bridge(Bridge),
     /// `dc resistor .a .b .resistance`: what a part is at DC (ADR 0076, amendment 1).
     Dc(Dc),
@@ -580,11 +581,11 @@ pub struct Connect {
     pub span: Span,
 }
 
-/// `.left ~ .right by name { a = b } except { c }`: joins each pin or interface of `left` to
+/// `.left ~ .right { a = b } except { c }`: joins each pin or interface of `left` to
 /// the member of `right` with the same name, or with the name `renames` gives it, and leaves out
 /// the names `except` lists (ADR 0117).
 #[derive(Debug, Clone, PartialEq)]
-pub struct ByName {
+pub struct JoinMap {
     pub left: Path,
     pub right: Path,
     /// `gpio4 = io4`: a member of `left` (the first name) and the member of `right` it is joined

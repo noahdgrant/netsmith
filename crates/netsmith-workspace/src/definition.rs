@@ -215,7 +215,7 @@ fn visit<'a>(
                 inside.pop();
             }
         }
-        Item::ByName(b) => {
+        Item::JoinMap(b) => {
             path(&b.left, inside);
             path(&b.right, inside);
         }

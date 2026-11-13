@@ -443,13 +443,8 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     r.pitch.to_source()
                 );
             }
-            Item::ByName(b) => {
-                let _ = write!(
-                    out,
-                    "{} ~ {} by name",
-                    b.left.to_source(),
-                    b.right.to_source()
-                );
+            Item::JoinMap(b) => {
+                let _ = write!(out, "{} ~ {}", b.left.to_source(), b.right.to_source());
                 if !b.renames.is_empty() {
                     let renames: Vec<String> = b
                         .renames

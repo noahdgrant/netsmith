@@ -260,10 +260,12 @@ fn imports_name_what_is_missing() {
 }
 
 #[test]
-fn connecting_unlike_interfaces_is_refused() {
+fn connecting_unlike_interfaces_with_no_common_member_is_refused() {
+    // Two interfaces of different kinds are joined by name (ADR 0117), and a `Rail` and a
+    // `Logic` share no member name.
     one_error(
         "board B {\n    .s: Rail\n    .l: Logic\n    .s ~ .l\n}\n",
-        "cannot connect a `Rail` to a `Logic`",
+        "no member of the same name on the other side: `.s.pos`, `.s.neg`, `.l.line`, `.l.reference`",
     );
 }
 
