@@ -6,12 +6,21 @@
 # The `kicad` job runs only the tests scripts/ci-kicad-tests selects: with `kicad` as the second
 # argument the proof is over that filter (each selected test in exactly one slice); otherwise it is
 # over every test, and also against the count of `cargo test`.
+# A pull request that changes some crates archives the tests of the packages they reach only
+# (scripts/ci-rdeps, issue #618), so the proof is over those: CI_PACKAGE_ARGS holds the packages
+# as the arguments of cargo (`-p a -p b`; unset or `--workspace` is the whole workspace, which a
+# plain `cargo nextest list` would otherwise build in full). A narrowed run may leave a slice with
+# no test, as the `test` and `kicad` jobs allow, so an empty slice is no failure there.
 #   scripts/ci-test-slices N [job]
 set -euo pipefail
 slices="${1:?usage: scripts/ci-test-slices N [job]}"
 job="${2:-test}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+read -r -a select <<< "${CI_PACKAGE_ARGS:---workspace}"
+[ "${#select[@]}" -gt 0 ] || select=(--workspace)
+scoped=false
+[ "${select[*]}" = "--workspace" ] || scoped=true
 filter=()
 if [ "$job" = kicad ]; then
     expr="$(scripts/ci-kicad-tests)"
@@ -20,7 +29,7 @@ fi
 
 # One line per test nextest would run (not the ignored ones), "binary test", sorted.
 tests() {
-    cargo nextest list --workspace --message-format json "${filter[@]}" "$@" |
+    cargo nextest list "${select[@]}" --message-format json "${filter[@]}" "$@" |
         jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
                | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' |
         sort
@@ -33,7 +42,7 @@ for k in $(seq 1 "$slices"); do
     tests --partition "slice:$k/$slices" > "$work/slice-$k"
     n="$(wc -l < "$work/slice-$k")"
     echo "$job slice $k/$slices: $n tests"
-    [ "$n" -gt 0 ] || { echo "::error::$job slice $k is empty"; exit 1; }
+    if [ "$n" -eq 0 ] && [ "$scoped" = false ]; then echo "::error::$job slice $k is empty"; exit 1; fi
     sum=$((sum + n))
 done
 echo "$job, all: $total tests, the slices add up to $sum"
@@ -53,8 +62,8 @@ fi
 
 # The same count from libtest itself: what `cargo test --workspace` would run, less the ignored.
 # (Doc tests are run apart, by `cargo test --doc`.)
-listed="$(cargo test --workspace --lib --bins --tests -- --list 2> /dev/null | grep -c ': test$' || true)"
-ignored="$(cargo test --workspace --lib --bins --tests -- --list --ignored 2> /dev/null | grep -c ': test$' || true)"
+listed="$(cargo test "${select[@]}" --lib --bins --tests -- --list 2> /dev/null | grep -c ': test$' || true)"
+ignored="$(cargo test "${select[@]}" --lib --bins --tests -- --list --ignored 2> /dev/null | grep -c ': test$' || true)"
 echo "cargo test --list: $listed tests, $ignored ignored"
 if [ $((listed - ignored)) -ne "$total" ]; then
     echo "::error::nextest lists $total tests, cargo test lists $((listed - ignored))"; exit 1

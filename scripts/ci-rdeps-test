@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Tests scripts/ci-rdeps: the closure of a change over a small fixture workspace (a chain, a
+# dev-dependency, a cycle, a crate whose folder is not its package name, an outside dependency),
+# and over the real workspace (every crates/ folder is a member, the roots reach the binary's
+# crate). The fixture part needs nothing but bash and jq; the real part runs `cargo metadata
+# --no-deps` (no build), and is skipped when there is no cargo. The `build` job of
+# .github/workflows/ci.yml runs it after the toolchain is installed.
+#   scripts/ci-rdeps-test
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/ci-rdeps"
+repo="$(cd "$here/.." && pwd)"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+failed=0
+
+# --- the fixture workspace ---------------------------------------------------------------------
+# base <- mid <- top (normal deps), kit is a dev-dependency of mid, ring-a and ring-b depend on
+# each other (a normal edge and a dev edge: a cycle), the binary's crate `cli` (folder `app`)
+# depends on top, and `lone` depends on nothing but serde, which is no member.
+# dep NAME KIND: a dependency on a path package (the workspace's own) of that kind (null: normal).
+dep() { printf '{"name":"%s","kind":%s,"path":"/w/crates/%s"}' "$1" "$2" "$1"; }
+pkg() { # name folder deps...
+    local name="$1" folder="$2" deps="" d
+    shift 2
+    for d in "$@"; do deps="${deps:+$deps,}$d"; done
+    printf '{"id":"%s 0.1.0 (path+file:///w/crates/%s)","name":"%s","manifest_path":"/w/crates/%s/Cargo.toml","dependencies":[%s]}' \
+        "$name" "$folder" "$name" "$folder" "$deps"
+}
+serde='{"name":"serde","kind":null,"path":null}'
+{
+    echo '{"packages":['
+    pkg base base "$serde"; echo ,
+    pkg mid mid "$(dep base null)" "$(dep kit '"dev"')"; echo ,
+    pkg top top "$(dep mid null)"; echo ,
+    pkg kit kit; echo ,
+    pkg ring-a ring-a "$(dep ring-b null)"; echo ,
+    pkg ring-b ring-b "$(dep ring-a '"dev"')"; echo ,
+    pkg cli app "$(dep top null)" "$(dep cli null)"; echo ,
+    pkg lone lone "$serde"; echo ,
+    # Not a member: a package of the registry that happens to depend on a member's name.
+    pkg outsider outsider "$(dep base null)"
+    echo '],"workspace_members":['
+    echo '"base 0.1.0 (path+file:///w/crates/base)","mid 0.1.0 (path+file:///w/crates/mid)","top 0.1.0 (path+file:///w/crates/top)",'
+    echo '"kit 0.1.0 (path+file:///w/crates/kit)","ring-a 0.1.0 (path+file:///w/crates/ring-a)","ring-b 0.1.0 (path+file:///w/crates/ring-b)",'
+    echo '"cli 0.1.0 (path+file:///w/crates/app)","lone 0.1.0 (path+file:///w/crates/lone)"'
+    echo ']}'
+} > "$tmp/metadata.json"
+jq -e . "$tmp/metadata.json" > /dev/null || { echo "FAIL: the fixture is no JSON"; exit 1; }
+
+# row "<want>" args...: ci-rdeps over the fixture must print `want` (packages on one line, space
+# separated; `--workspace` or `-p ...` for --args).
+row() {
+    local want="$1" got
+    shift
+    got="$(CI_RDEPS_METADATA="$tmp/metadata.json" "$script" "$@" 2> /dev/null | tr '\n' ' ' | sed 's/ $//')"
+    if [ "$got" != "$want" ]; then
+        echo "FAIL: ci-rdeps $* -> '$got', wanted '$want'"
+        failed=1
+    fi
+}
+
+row "base cli mid top"      base                 # up the whole chain
+row "cli top"               top
+row "cli"                   app                  # a folder name, not the package name
+row "cli kit mid top"       kit                  # a dev-dependency counts
+row "ring-a ring-b"         ring-a               # a cycle
+row "ring-a ring-b"         ring-b
+row "lone"                  lone                 # an outside dependency makes no edge
+row "base cli kit mid top"  base kit             # several crates: the union
+row "cli top"               top top              # the same crate twice
+row ""                                           # no crate: the whole workspace, no package
+row "--workspace"           --args
+row "-p cli -p top"         --args top
+row "-p cli -p lone"        --args --also cli lone
+row "cli lone"              --also cli lone      # the one the run needs anyway
+row "cli lone"              --also cli lone app  # already in it: once
+row "--workspace"           --args nowhere       # not a crate: everything
+row "--workspace"           --args top nowhere   # one unknown widens all
+row ""                      --also cli nowhere
+
+# An unknown crate says so on stderr; an unknown --also is an error.
+if ! CI_RDEPS_METADATA="$tmp/metadata.json" "$script" nowhere 2>&1 > /dev/null | grep -q 'no crate of the workspace'; then
+    echo "FAIL: an unknown crate gave no notice"
+    failed=1
+fi
+if CI_RDEPS_METADATA="$tmp/metadata.json" "$script" --also nowhere top > /dev/null 2>&1; then
+    echo "FAIL: an unknown --also did not fail"
+    failed=1
+fi
+
+# --- the real workspace ----------------------------------------------------------------------
+if command -v cargo > /dev/null 2>&1; then
+    cd "$repo"
+    cargo metadata --no-deps --format-version 1 > "$tmp/real.json"
+    export CI_RDEPS_METADATA="$tmp/real.json"
+    members="$(jq -r '.workspace_members as $w | .packages[] | select(.id as $i | $w | index($i)) | .name' "$tmp/real.json")"
+    # Every folder of crates/ is a workspace member (no notice), and is in its own answer.
+    for dir in crates/*/; do
+        dir="$(basename "$dir")"
+        out="$("$script" "$dir" 2>&1)" || { echo "FAIL: ci-rdeps $dir failed: $out"; failed=1; continue; }
+        case "$out" in
+            *"no crate of the workspace"*) echo "FAIL: crates/$dir is no member of the workspace"; failed=1 ;;
+        esac
+        [ -n "$out" ] || { echo "FAIL: ci-rdeps $dir printed nothing"; failed=1; continue; }
+        printf '%s\n' "$out" | grep -qx "$dir" || {
+            # The folder of a package that is not named like it: the package must be in it.
+            n="$(jq -r --arg d "$dir" '.packages[] | select(.manifest_path | endswith("/crates/" + $d + "/Cargo.toml")) | .name' "$tmp/real.json")"
+            printf '%s\n' "$out" | grep -qx "$n" || { echo "FAIL: ci-rdeps $dir does not name its own package"; failed=1; }
+        }
+    done
+    # The binary's crate depends on the whole pipeline, so every crate that a netsmith binary
+    # links reaches it; nothing depends on it.
+    cli="$("$script" netsmith-cli)"
+    if [ "$cli" != netsmith-cli ]; then
+        echo "FAIL: nothing should depend on netsmith-cli, ci-rdeps gave: $cli"
+        failed=1
+    fi
+    for crate in netsmith-quantity netsmith-core netsmith-lang netsmith-check; do
+        "$script" "$crate" | grep -qx netsmith-cli || { echo "FAIL: a change to $crate does not reach netsmith-cli"; failed=1; }
+    done
+    # A dev-dependency is an edge: netsmith-testkit reaches every crate that lists it.
+    for user in $(jq -r '.workspace_members as $w | .packages[] | select(.id as $i | $w | index($i))
+            | select(any(.dependencies[]; .name == "netsmith-testkit" and .kind == "dev")) | .name' "$tmp/real.json"); do
+        "$script" netsmith-testkit | grep -qx "$user" || { echo "FAIL: netsmith-testkit does not reach $user"; failed=1; }
+    done
+    # The whole workspace is what no crate gives, and the arguments of cargo name only members.
+    [ "$("$script" --args)" = "--workspace" ] || { echo "FAIL: no crate should give --workspace"; failed=1; }
+    for p in $("$script" netsmith-core); do
+        printf '%s\n' "$members" | grep -qx "$p" || { echo "FAIL: $p is no member"; failed=1; }
+    done
+else
+    echo "no cargo: the real workspace is not checked"
+fi
+
+if [ "$failed" -ne 0 ]; then
+    exit 1
+fi
+echo "ci-rdeps: every row holds"

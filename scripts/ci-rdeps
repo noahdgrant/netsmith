@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# The packages a change to some crates can affect: the crates themselves and everything that
+# depends on them, through a normal, build or dev dependency edge (issue #618). CI's `build` job
+# archives the tests of these packages only, `clippy` lints only these, and `test` and `kicad`
+# run only their tests; the whole workspace is compiled on a push to main and when no crate is
+# named. The crates come from scripts/ci-changes (`crates=`: folder names under crates/).
+#
+# The graph is the workspace's own: `cargo metadata --no-deps` lists each member's declared
+# dependencies (no network, no build), and the edges between members are all that count. A
+# dev-dependency counts, since a test of the dependent is built with it (netsmith-testkit is one
+# for most crates). Cycles (a crate that depends on another, which dev-depends on it) are fine.
+#
+# When in doubt, everything: a crate that is not a workspace member (a folder the change deleted
+# or renamed, a name that is no crate) widens the answer to the whole workspace, with a notice on
+# stderr.
+#
+#   scripts/ci-rdeps [--also PACKAGE]... [--args] [--] [CRATE...]
+#     no flag   one package name a line, sorted; nothing at all means the whole workspace
+#     --args    the arguments to cargo (and nextest) that select them: `-p a -p b`, or
+#               `--workspace` for the whole workspace
+#     --also    add PACKAGE (and its dependents are not added): a package the run needs although
+#               the change does not reach it. Ignored for the whole workspace.
+# CI_RDEPS_METADATA names a file of `cargo metadata --no-deps --format-version 1` output to read
+# instead of running cargo (scripts/ci-rdeps-test).
+set -euo pipefail
+
+args=false also=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --args) args=true ;;
+        --also) [ "$#" -ge 2 ] || { echo "ci-rdeps: --also needs a package" >&2; exit 2; }; also+=("$2"); shift ;;
+        --) shift; break ;;
+        --*) echo "usage: scripts/ci-rdeps [--also PACKAGE]... [--args] [CRATE...]" >&2; exit 2 ;;
+        *) break ;;
+    esac
+    shift
+done
+
+emit() { # the packages on stdin (empty: the whole workspace)
+    local pkgs
+    pkgs="$(cat)"
+    if [ "$args" = true ]; then
+        if [ -z "$pkgs" ]; then echo "--workspace"; else echo "$pkgs" | sed 's/^/-p /' | tr '\n' ' ' | sed 's/ $//'; echo; fi
+    else
+        [ -z "$pkgs" ] || echo "$pkgs"
+    fi
+}
+
+if [ "$#" -eq 0 ]; then
+    emit < /dev/null
+    exit 0
+fi
+
+if [ -n "${CI_RDEPS_METADATA:-}" ]; then
+    metadata="$(cat "$CI_RDEPS_METADATA")"
+else
+    metadata="$(cargo metadata --no-deps --format-version 1)"
+fi
+
+# "package<TAB>folder" for each member, and "dependency<TAB>dependent" for each edge between
+# members (any kind of dependency; a dependency on a package of the workspace has a path).
+members="$(jq -r '.workspace_members as $w | .packages[] | select(.id as $i | $w | index($i))
+    | "\(.name)\t\(.manifest_path | split("/") | .[-2])"' <<< "$metadata")"
+edges="$(jq -r '.workspace_members as $w
+    | [.packages[] | select(.id as $i | $w | index($i)) | .name] as $names
+    | .packages[] | select(.id as $i | $w | index($i)) | .name as $from
+    | .dependencies[] | select(.path != null and (.name as $n | $names | index($n)))
+    | "\(.name)\t\($from)"' <<< "$metadata")"
+
+seeds=()
+for crate in "$@"; do
+    name="$(awk -F'\t' -v c="$crate" '$2 == c { print $1 }' <<< "$members")"
+    if [ -z "$name" ]; then
+        echo "ci-rdeps: $crate is no crate of the workspace: the whole workspace" >&2
+        emit < /dev/null
+        exit 0
+    fi
+    seeds+=("$name")
+done
+for name in "${also[@]}"; do
+    awk -F'\t' -v n="$name" '$1 == n { found = 1 } END { exit !found }' <<< "$members" ||
+        { echo "ci-rdeps: --also $name is no package of the workspace" >&2; exit 2; }
+done
+
+# The closure: a package joins the set once a package it depends on is in it.
+closure="$(
+    {
+        printf '%s\n' "${seeds[@]}" | sed 's/^/seed\t/'
+        echo "$edges" | sed 's/^/edge\t/'
+    } | awk -F'\t' '
+        $1 == "seed" { in_set[$2] = 1 }
+        $1 == "edge" { n++; dep[n] = $2; user[n] = $3 }
+        END {
+            do {
+                changed = 0
+                for (i = 1; i <= n; i++)
+                    if ((dep[i] in in_set) && !(user[i] in in_set)) { in_set[user[i]] = 1; changed = 1 }
+            } while (changed)
+            for (p in in_set) print p
+        }'
+)"
+{
+    echo "$closure"
+    [ "${#also[@]}" -eq 0 ] || printf '%s\n' "${also[@]}"
+} | sort -u | emit
