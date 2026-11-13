@@ -37,7 +37,6 @@ board LedExample {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
 
     .led: Led {
@@ -200,7 +199,6 @@ board Members {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .bypass: Capacitor {
         .effective_capacitance >= 1uF
@@ -435,7 +433,6 @@ board Units {
     .rail: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 4.7kohm +/- 1% }
     .r2: Resistor { .resistance &= 100ohm +/- 5ohm }
@@ -573,7 +570,6 @@ board Counted {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= -1uA..0A
     }
     .gate: Gate { .max_supply_current &= 750nA }
@@ -602,7 +598,6 @@ board Counted {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= -500nA..0A
     }
     .gate: Gate { .max_supply_current &= 750nA }
@@ -612,9 +607,9 @@ board Counted {
 
 ```text
 error: the currents on net `3V3` do not add up: `supply.current` must stay within -500nA..0A, but the others on it work out to -750nA..0A (all of them: `gate.vcc.current` is 0A..750nA, `supply.current` is -500nA..0A)
-   --> main.nsm:20:9
+   --> main.nsm:19:9
    |
-20 |         .current &= -500nA..0A
+19 |         .current &= -500nA..0A
    |         ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -645,7 +640,6 @@ board Lamps {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Lamp {
         .drive &= Drive::Dimmed
@@ -722,7 +716,6 @@ board Divider {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .top: Resistor {}
     .bottom: Resistor { .resistance &= 10kohm +/- 1% }
@@ -756,12 +749,10 @@ board Ends {
     .a: Rail {
         .voltage &= 4V..6V
         .pos.net &= "A"
-        .neg.net &= "GND"
     }
     .b: Rail {
         .voltage &= 4.7V..5.5V
         .pos.net &= "B"
-        .neg.net &= "GND"
     }
     min(.a.voltage) <= max(.b.voltage)
 }
@@ -785,12 +776,10 @@ board Ends {
     .a: Rail {
         .voltage &= 12V
         .pos.net &= "A"
-        .neg.net &= "GND"
     }
     .b: Rail {
         .voltage &= 4.7V..5.5V
         .pos.net &= "B"
-        .neg.net &= "GND"
     }
     min(.a.voltage) <= max(.b.voltage)
 }
@@ -798,9 +787,9 @@ board Ends {
 
 ```text
 error: min(a.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them
-   --> main.nsm:14:5
+   --> main.nsm:12:5
    |
-14 |     min(.a.voltage) <= max(.b.voltage)
+12 |     min(.a.voltage) <= max(.b.voltage)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -852,7 +841,6 @@ board Nominal {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "A"
-        .neg.net &= "GND"
     }
     nominal(.supply.voltage) >= 3.3V
     nominal(.supply.voltage) <= 3.4V
@@ -873,7 +861,6 @@ board Nominal {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "A"
-        .neg.net &= "GND"
     }
     nominal(.supply.voltage) >= 3.4V
     .supply.voltage >= 3.3V
@@ -882,15 +869,15 @@ board Nominal {
 
 ```text
 error: nominal(supply.voltage) must be at least 3.4V, but 3.3V is below 3.4V: it compares the value a field is stated at, without its tolerance, so change the value or the bound
-  --> main.nsm:9:5
+  --> main.nsm:8:5
   |
-9 |     nominal(.supply.voltage) >= 3.4V
+8 |     nominal(.supply.voltage) >= 3.4V
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: supply.voltage must always be at least 3.3V, but 3.135V..3.465V is not always above 3.3V
-   --> main.nsm:10:5
-   |
-10 |     .supply.voltage >= 3.3V
-   |     ^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .supply.voltage >= 3.3V
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Defaults a board can replace
@@ -917,7 +904,6 @@ board Dim {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Lamp
     .input ~ .lamp.supply
@@ -927,7 +913,6 @@ board Bright {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Lamp { .current &= 6mA..9mA }
     .input ~ .lamp.supply
@@ -999,7 +984,6 @@ board Joined {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .sensor: Sensor
     .input ~ .sensor.supply
@@ -1040,7 +1024,6 @@ board Plain {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Lamp
     .supply ~ .lamp.supply
@@ -1074,7 +1057,6 @@ board Stated {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Lamp
     .supply ~ .lamp.supply
@@ -1115,7 +1097,6 @@ board RatioOnly {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .divider: Divider
     .divider.supply ~ .supply
@@ -1333,7 +1314,6 @@ board Sensor {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .processor: Processor
     .supply ~ .processor.vdd
@@ -1360,7 +1340,6 @@ board Contradiction {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .processor: Processor
     .jack: Receptacle
@@ -1372,10 +1351,10 @@ board Contradiction {
 ```
 
 ```text
-error: `processor.usb.dm` is connected here to `jack.usb.dm` (net `net-jack.usb.dm`), but `processor.usb` is stated `unused` at main.nsm:15: the interface is either used or not; remove the connection, or remove `unused`
-   --> main.nsm:14:5
+error: `processor.usb.dm` is connected here to `jack.usb.dm` (net `net-jack.usb.dm`), but `processor.usb` is stated `unused` at main.nsm:14: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:13:5
    |
-14 |     .processor.usb ~ .jack.usb
+13 |     .processor.usb ~ .jack.usb
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -1389,7 +1368,6 @@ board Modem {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .processor: Processor
     .supply ~ .processor.vdd
@@ -1414,7 +1392,6 @@ board Behind {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .processor: Processor
     .jack: Receptacle
@@ -1427,10 +1404,10 @@ board Behind {
 ```
 
 ```text
-error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `jack.usb.vbus.pos` (net `net-fuse.b`), but `processor.usb` is stated `unused` at main.nsm:17: the interface is either used or not; remove the connection, or remove `unused`
-   --> main.nsm:16:5
+error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `jack.usb.vbus.pos` (net `net-fuse.b`), but `processor.usb` is stated `unused` at main.nsm:16: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:15:5
    |
-16 |     .processor.usb.vbus.pos ~> .fuse ~> .jack.usb.vbus.pos
+15 |     .processor.usb.vbus.pos ~> .fuse ~> .jack.usb.vbus.pos
    |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1445,7 +1422,6 @@ board Pulled {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .processor: Processor
     .jack: Receptacle
@@ -1467,12 +1443,10 @@ board Fed {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .vbus: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .regulator: Regulator
     .processor: Processor
@@ -1488,10 +1462,10 @@ board Fed {
 ```
 
 ```text
-error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to `regulator.vout.pos` (net `3V3`), but `processor.usb` is stated `unused` at main.nsm:25: the interface is either used or not; remove the connection, or remove `unused`
-   --> main.nsm:24:5
+error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to `regulator.vout.pos` (net `3V3`), but `processor.usb` is stated `unused` at main.nsm:23: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:22:5
    |
-24 |     .processor.usb.dp ~> .pull_up ~> .vbus.pos
+22 |     .processor.usb.dp ~> .pull_up ~> .vbus.pos
    |     ^^^^^^^^^^^^^^^^^
 ```
 
@@ -1516,7 +1490,6 @@ board Odd {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .c: Capacitor {
         .capacitance &= 130nF +/- 10%
@@ -1551,12 +1524,10 @@ board Circle {
     .supply: Rail {
         .voltage &= 9V..16V
         .pos.net &= "VBATT"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 10ohm +/- 1% }
     .load: Rail {
         .pos.net &= "VLOAD"
-        .neg.net &= "GND"
     }
     .supply.neg ~ .load.neg
     .supply.pos ~> .r1 ~> .load.pos
@@ -1610,12 +1581,10 @@ board Behind {
     .supply: Rail {
         .voltage &= 14V..22V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .series: Resistor { .resistance &= 68ohm +/- 1% }
     .after: Rail {
         .pos.net &= "AFTER"
-        .neg.net &= "GND"
     }
     .supply.neg ~ .after.neg
     .supply.pos ~> .series ~> .after.pos
@@ -1665,12 +1634,10 @@ board Behind {
     .supply: Rail {
         .voltage &= 14V..22V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .series: Resistor { .resistance &= 68ohm +/- 1% }
     .after: Rail {
         .pos.net &= "AFTER"
-        .neg.net &= "GND"
     }
     .supply.neg ~ .after.neg
     .supply.pos ~> .series ~> .after.pos
@@ -1681,7 +1648,6 @@ board Behind {
     .after ~ .divider.vin
     .lamp: Rail {
         .pos.net &= "AFTER"
-        .neg.net &= "GND"
         .current &= 0A..4mA
     }
     .after ~ .lamp
@@ -1717,12 +1683,10 @@ board Behind {
     .supply: Rail {
         .voltage &= 14V..22V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .series: Resistor { .resistance &= 68ohm +/- 1% }
     .after: Rail {
         .pos.net &= "AFTER"
-        .neg.net &= "GND"
     }
     .supply.neg ~ .after.neg
     .supply.pos ~> .series ~> .after.pos
@@ -1733,7 +1697,6 @@ board Behind {
     .after ~ .divider.vin
     .lamp: Rail {
         .pos.net &= "AFTER"
-        .neg.net &= "GND"
         .current &= 0A..4mA
     }
     .after ~ .lamp
@@ -1758,12 +1721,10 @@ board Started {
     .supply: Rail {
         .voltage &= 9V..16V
         .pos.net &= "VBATT"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 10ohm +/- 1% }
     .load: Rail {
         .pos.net &= "VLOAD"
-        .neg.net &= "GND"
     }
     .supply.neg ~ .load.neg
     .supply.pos ~> .r1 ~> .load.pos
@@ -1856,7 +1817,6 @@ board Chains {
     .supply: Rail {
         .voltage &= 5V
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .a: Resistor
     .b: Resistor
@@ -2145,7 +2105,7 @@ import std::mfg::jlcpcb::TwoLayer
 
 board Indicator {
     .process: TwoLayer
-    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
     .led: Led { .current &= 5mA..15mA }
     .r1: Resistor {}
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
@@ -2171,7 +2131,7 @@ import std::parts::diode::Zener
 import std::sources::Rail
 
 board Reference {
-    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .r1: Resistor
     /// A shunt reference: the resistor sets the current the Zener breaks down at.
     .zener: Zener { .current &= 1mA..5mA }
@@ -2255,7 +2215,6 @@ import std::sources::Rail
 board Named {
     .supply: Rail {
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .r1: Resistor
     .supply.pos ~> .r1 ~> .supply.neg
@@ -2264,7 +2223,7 @@ board Named {
 
 Rules.
 
-- A module, part or interface that wrote `.net &=` would give every instance of itself the same net name, so the checker refuses it outside a board. A board names a module's nets through the module's rails and pins: `.stage.vout.pos.net &= "3V3"`.
+- A module, part or interface that wrote `.net &=` would give every instance of itself the same net name, so the checker refuses it outside a board. A board names a module's nets through the module's rails and pins: `.stage.vout.pos.net &= "3V3"`. The one name a library offers is a default (`?=`) in an interface, such as the ground of a `Rail` (see Ground below).
 - The rule covers any field called `net`, such as the net of a plane in a manufacturing process.
 - Pins that are joined and name their net differently are an error.
 - Two boards of a system may both have `GND`. They are different nets.
@@ -2315,6 +2274,127 @@ error: these pins are connected but name their net differently: `A` on `supply.p
   |
 8 |     .r.a.net &= "B"
   |     ^^^^^^^^^^^^^^^
+```
+
+### Ground
+
+Ground is stated once, by not stating it. `std::sources::Rail` offers `.neg.net ?= "GND"` (a default, ADR 0051), so a rail whose ground no statement names is on `GND`, and every such rail on a board shares that one net. A rail that has its own ground, an analog one or an isolated one, states it with `&=`, which replaces the default on that rail (ADR 0121).
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board TwoGrounds {
+    .digital: Rail { .pos.net &= "3V3" }
+    .analog: Rail {
+        .pos.net &= "3V3A"
+        .neg.net &= "AGND"
+    }
+    .r1: Resistor
+    .r2: Resistor
+    .digital.pos ~> .r1 ~> .digital.neg
+    .analog.pos ~> .r2 ~> .analog.neg
+}
+```
+
+The board has two ground nets, `GND` (the first rail's) and `AGND`. A board with one ground says nothing about it. A module's rail takes part in the same way: the module says nothing, and the board's statement for the rail it joins it to names the ground.
+
+```nsm
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Stage {
+    .out: Rail
+    .r: Resistor
+    .out.pos ~> .r ~> .out.neg
+}
+
+board Analog {
+    .stage: Stage
+    .rail: Rail { .neg.net &= "AGND" }
+    .stage.out ~ .rail
+}
+```
+
+Here the module's ground is `AGND`, and no net is called `GND`.
+
+Rules.
+
+- The default names a net only where a part is on the ground and a second pin is joined to it. A rail whose ground nothing is joined to (`.slot: Rail` that only its `pos` is used) names no net; join its `neg` to another rail's `neg`, or to a pin, to put it on that ground.
+- A name that a statement gives a pin beats the default of every pin joined to it: the joined pins are one net, and the statement names it. A module's rail joined to a board's rail that states `AGND` is on `AGND`, with no error from the module's default.
+- A default is for a board. A module checked on its own, with no board above its rails, names no net, and two boards of a system each have their own `GND` (they are different nets).
+- Only an interface may offer a net name (`.line.net ?= "CLK"` in an `interface`): every instance of an interface such as a rail is meant to share the name. A module, a part, a generic and a system may not.
+- A board may not offer a different ground with `?=`, since the rail already has one default and a field has one (ADR 0051). State it with `&=`.
+- Two rails joined with `~` that state different grounds are still an error: only a statement can name a net.
+
+Misuse: a module offers a net name.
+
+```nsm fails
+import std::sources::Rail
+
+module Stage {
+    .out: Rail
+    .out.pos.net ?= "VCC"
+}
+
+board Uses {
+    .stage: Stage
+}
+```
+
+```text
+error: `out.pos.net` names a net by default, and only a board names nets: an interface such as a rail may offer a net name, since every instance of it is meant to share one; set it where the board uses this
+  --> main.nsm:5:5
+  |
+5 |     .out.pos.net ?= "VCC"
+  |     ^^^^^^^^^^^^^^^^^^^^^
+error: `stage.out.pos.net` names a net by default, and only a board names nets: an interface such as a rail may offer a net name, since every instance of it is meant to share one; set it where the board uses this
+  --> main.nsm:5:5
+  |
+5 |     .out.pos.net ?= "VCC"
+  |     ^^^^^^^^^^^^^^^^^^^^^
+```
+
+Misuse: a board offers a ground where the rail already has a default.
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Offers {
+    .supply: Rail
+    .r: Resistor
+    .supply.pos ~> .r ~> .supply.neg
+    .supply.neg.net ?= "RET"
+}
+```
+
+```text
+error: `supply.neg.net` has 2 defaults, at main.nsm:8 and std/sources.nsm:67: a field has one default; keep one `?=`
+   --> std/sources.nsm:67:5
+   |
+67 |     .neg.net ?= "GND"
+   |     ^^^^^^^^^^^^^^^^^
+```
+
+Misuse: joined rails that state different grounds.
+
+```nsm fails
+import std::sources::Rail
+
+board Split {
+    .a: Rail { .neg.net &= "GND" }
+    .b: Rail { .neg.net &= "AGND" }
+    .a.neg ~ .b.neg
+}
+```
+
+```text
+error: these pins are connected but name their net differently: `GND` on `a.neg`, `AGND` on `b.neg`
+  --> main.nsm:5:16
+  |
+5 |     .b: Rail { .neg.net &= "AGND" }
+  |                ^^^^^^^^^^^^^^^^^^
 ```
 
 ## Parts
@@ -2457,7 +2537,6 @@ board Lamps {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .header: Header1x2
     .input.pos ~ .header.p1
@@ -2655,7 +2734,6 @@ board LdoBoard {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .u: Ldo9 {
         .package &= "DFN-8-EP"
@@ -2663,7 +2741,6 @@ board LdoBoard {
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
     .input ~ .u.vin
@@ -2700,12 +2777,10 @@ board EnLeftOpen {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .u: Ldo9 { .package &= "DFN-8-EP" }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .input ~ .u.vin
     .u.vout ~ .output
@@ -2715,10 +2790,10 @@ board EnLeftOpen {
 
 ```text
 error: `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net
-   --> main.nsm:10:5
-   |
-10 |     .u: Ldo9 { .package &= "DFN-8-EP" }
-   |     ^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+  |     ^^^^^^^^
 ```
 
 The message points at the line that declares the part, and names the pad and the datasheet name so you can find the pin on the datasheet.
@@ -2733,12 +2808,10 @@ board SenseOnTheInput {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .u: Ldo9 { .package &= "DFN-8-EP" }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .input ~ .u.vin
     .u.vout ~ .output
@@ -2765,12 +2838,10 @@ board NoConnectUsed {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .u: Ldo9 { .package &= "DFN-8-EP" }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .input ~ .u.vin
     .u.vout ~ .output
@@ -2782,10 +2853,10 @@ board NoConnectUsed {
 
 ```text
 error: `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with `output.pos`, `u.sense`, `u.vout.pos`
-   --> main.nsm:10:5
-   |
-10 |     .u: Ldo9 { .package &= "DFN-8-EP" }
-   |     ^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+  |     ^^^^^^^^
 ```
 
 A pin that the package does not have, connected:
@@ -2798,12 +2869,10 @@ board SenseInTheSmallPackage {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .u: Ldo9 { .package &= "SOT-23-5" }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .input ~ .u.vin
     .u.vout ~ .output
@@ -2814,10 +2883,10 @@ board SenseInTheSmallPackage {
 
 ```text
 error: `u.sense` (`SENSE`) does not exist in package `SOT-23-5` of `Ldo9`, but the board connects it; the packages that have it: `DFN-8-EP`
-   --> main.nsm:10:5
-   |
-10 |     .u: Ldo9 { .package &= "SOT-23-5" }
-   |     ^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .u: Ldo9 { .package &= "SOT-23-5" }
+  |     ^^^^^^^^
 ```
 
 Leave the sense pin out and the same board is fine in the SOT-23-5: the tie is skipped there. In a package the part has no table for, the message lists the tables it has:
@@ -2879,7 +2948,6 @@ board Uart {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
@@ -2899,7 +2967,6 @@ board NoFunction {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
@@ -2911,9 +2978,9 @@ board NoFunction {
 
 ```text
 error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= "GPIO"`
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .u: Mcu32 { .package &= "QFN-32" }
+10 |     .u: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^
 ```
 
@@ -2928,7 +2995,6 @@ board WrongFunction {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
@@ -2941,9 +3007,9 @@ board WrongFunction {
 
 ```text
 error: `u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK
-   --> main.nsm:16:5
+   --> main.nsm:15:5
    |
-16 |     .u.pa2.function &= "I2C1_SDA"
+15 |     .u.pa2.function &= "I2C1_SDA"
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -2956,7 +3022,6 @@ board OneFunctionTwice {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
@@ -2972,9 +3037,9 @@ board OneFunctionTwice {
 
 ```text
 error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
-   --> main.nsm:19:5
+   --> main.nsm:18:5
    |
-19 |     .u.pb6.function &= "UART1_TX"
+18 |     .u.pb6.function &= "UART1_TX"
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -3062,7 +3127,6 @@ board Forwarded {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .hub: Hub
     .load: Resistor
@@ -3083,7 +3147,6 @@ board Ignored {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .hub: HubWithoutEquation
     .load: Resistor
@@ -3100,9 +3163,9 @@ error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is con
 19 |     .mcu: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^^^
 error: `hub.scl.function` is stated, but `hub.scl` is a pin of module `HubWithoutEquation` and nothing passes it to a pin of a part, so it has no effect; inside `HubWithoutEquation`, write `.mcu.pa2.function == .scl.function`
-   --> main.nsm:15:5
+   --> main.nsm:14:5
    |
-15 |     .hub.scl.function &= "UART1_TX"
+14 |     .hub.scl.function &= "UART1_TX"
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -3756,7 +3819,6 @@ board AnyPin {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Zmcubus
     .flash: Zflash
@@ -3785,7 +3847,6 @@ board Crossed {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Zmcubus
     .flash: Zflash
@@ -3805,14 +3866,14 @@ board Crossed {
 
 ```text
 error: net `net-flash.spi.miso` joins two different lines of a `Spi`: `miso` (`flash.spi.miso`) and `mosi` (`u.p01`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `u.p01` is on the net of `miso`
-   --> main.nsm:12:5
+   --> main.nsm:11:5
    |
-12 |     .flash: Zflash
+11 |     .flash: Zflash
    |     ^^^^^^^^^^^^^^
 error: net `net-flash.spi.mosi` joins two different lines of a `Spi`: `miso` (`u.p02`) and `mosi` (`flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `flash.spi.mosi` is on the net of `miso`
-   --> main.nsm:12:5
+   --> main.nsm:11:5
    |
-12 |     .flash: Zflash
+11 |     .flash: Zflash
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -4148,7 +4209,7 @@ part Zdrv {
 }
 
 board Tied {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .d: Zdrv
     .d.out ~ .gnd.neg
 }
@@ -4344,7 +4405,6 @@ board Bounded {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Lamp
     .supply ~ .lamp.supply
@@ -4418,7 +4478,6 @@ board Probe {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .timer: Timer
     .timer.supply ~ .supply
@@ -4447,11 +4506,9 @@ board Behind {
     .supply: Rail {
         .voltage &= 5V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .pos.net &= "VLOAD"
-        .neg.net &= "GND"
         .current &= 0mA..100mA
     }
     .supply.neg ~ .load.neg
@@ -4603,7 +4660,6 @@ board WhichMcu {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32" }
     .supply ~ .u.vdd
@@ -4613,10 +4669,10 @@ board WhichMcu {
 
 ```text
 error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
-   --> main.nsm:10:5
-   |
-10 |     .u: Mcu32 { .package &= "QFN-32" }
-   |     ^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .u: Mcu32 { .package &= "QFN-32" }
+  |     ^^^^^^^^^
 ```
 
 A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row:
@@ -4629,7 +4685,6 @@ board NamedMcu {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32"; .mpn &= "MCU32-B" }
     .supply ~ .u.vdd
@@ -4652,7 +4707,6 @@ board OnlyMcu {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32
     .supply ~ .u.vdd
@@ -4676,7 +4730,6 @@ board NarrowedMcu {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Mcu32 { .package &= "QFN-32" }
     .supply ~ .u.vdd
@@ -4860,7 +4913,6 @@ board TooTight {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .top: Resistor {}
     .bottom: Resistor { .resistance &= 10kohm +/- 1% }
@@ -4874,9 +4926,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `bottom` and `top` together: the closest, bottom = 10kΩ 1% 0603 C25804 and top = 5.1kΩ 1% 0603 C23186, fails because `out.voltage` must stay within 3.135V..3.465V, but ((supply.voltage * bottom.resistance) / (top.resistance + bottom.resistance)) works out to 3.124V..3.501V
-   --> main.nsm:16:5
+   --> main.nsm:15:5
    |
-16 |     .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
+15 |     .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -5335,11 +5387,9 @@ board PowerBoard {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
 
@@ -5595,7 +5645,6 @@ board Lamp {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .lamp: Indicator
     .input ~ .lamp.supply
@@ -5728,14 +5777,12 @@ board Source {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .stage: Stage {
         .vout.voltage &= 3.3V +/- 5%
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
     .input ~ .stage.vin
@@ -5751,7 +5798,6 @@ board Source {
 board Lamp {
     .input: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .led: Led { .current &= 5mA..20mA }
     .r1: Resistor
@@ -5913,19 +5959,16 @@ board Carrier {
         .voltage &= 3.3V +/- 5%
         .peak &= 3.6V
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     /// What the carrier gives to its cards, through a fuse: up to 500 mA.
     .cards: Rail {
         .pos.net &= "3V3_CARDS"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
         .current &= 0mA..500mA
     }
     .fuse: Fuse
     .supply.pos ~> .fuse ~> .cards.pos
-    .supply.neg ~ .cards.neg
     // The fuse drops a little of the supply; the cards get what is left.
     .cards.voltage == .supply.voltage - .fuse.drop
 
@@ -5962,7 +6005,6 @@ board SensorCard {
 
     .supply: Rail {
         .pos.net &= "3V3_CARD"
-        .neg.net &= "GND"
         .current &= -30mA..-5mA
     }
     .sensor: SpiSensor
@@ -5988,7 +6030,6 @@ board SerialCard {
 
     .supply: Rail {
         .pos.net &= "3V3_CARD"
-        .neg.net &= "GND"
         .current &= -60mA..-10mA
     }
     .chip: SerialChip
@@ -6060,13 +6101,13 @@ import std::parts::connector::Header1x4
 import std::sources::Rail
 
 board Carrier {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .slot: Header1x4
     .gnd.neg ~ .slot.p1
 }
 
 board Card {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .j1: Header1x4
     .gnd.neg ~ .j1.p1
 }
@@ -6094,7 +6135,7 @@ import src::kit::Header1x4Fine
 import std::sources::Rail
 
 board Carrier {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .slot_a: Socket1x4
     .slot_b: Socket1x4
     .gnd.neg ~ .slot_a.p1
@@ -6102,13 +6143,13 @@ board Carrier {
 }
 
 board Short {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .j1: Header1x2
     .gnd.neg ~ .j1.p1
 }
 
 board Fine {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .j1: Header1x4Fine
     .gnd.neg ~ .j1.p1
 }
@@ -6143,7 +6184,7 @@ import std::parts::connector::{Header1x4, Socket1x4}
 import std::sources::Rail
 
 board Carrier {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .tx: Out
     .rx: In
     .slot: Socket1x4
@@ -6153,7 +6194,7 @@ board Carrier {
 }
 
 board Card {
-    .gnd: Rail { .neg.net &= "GND" }
+    .gnd: Rail
     .tx: Out
     .rx: In
     .j1: Header1x4
@@ -6225,7 +6266,6 @@ board Carrier {
     .out: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..100mA
     }
     .slot: Socket1x2
@@ -6236,7 +6276,6 @@ board Carrier {
 board Card {
     .supply: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= -50mA..-10mA
     }
     .j1: Header1x2
@@ -6254,9 +6293,9 @@ system Kit {
 
 ```text
 error: `.carrier.out` and `.card.supply` are already joined by the mate of `.carrier.slot` and `.card.j1` at contacts 1, 2; the mate derives this join, so remove this one (a port join is for ports that no connector carries)
-   --> main.nsm:31:5
+   --> main.nsm:29:5
    |
-31 |     .carrier.out ~ .card.supply
+29 |     .carrier.out ~ .card.supply
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -6300,13 +6339,11 @@ board Carrier {
     .a: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "RAIL_A"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     .b: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "RAIL_B"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     .slot: Socket1x4
@@ -6319,12 +6356,10 @@ board Carrier {
 board Card {
     .a: Rail {
         .pos.net &= "RAIL_A"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     .b: Rail {
         .pos.net &= "RAIL_B"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     .j1: Header1x4
@@ -6444,7 +6479,6 @@ board Tile {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .led: Led {
         .current &= 5mA..15mA
@@ -6583,14 +6617,12 @@ board Supply {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .stage: Stage {
         .vout.voltage &= 3.3V +/- 5%
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
     .input ~ .stage.vin
@@ -6633,7 +6665,6 @@ board Sensor {
     .supply: Rail {
         .voltage &= 3.3V +/- 3%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .monitor: Monitor { .vin.current &= 0A..20uA }
     .supply ~ .monitor.vin
@@ -6658,7 +6689,6 @@ board Sensor {
     .supply: Rail {
         .voltage &= 3.3V +/- 3%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .monitor: Monitor { .vin.current &= 0A..10uA }
     .supply ~ .monitor.vin
@@ -6667,9 +6697,9 @@ board Sensor {
 
 ```text
 error: the currents on net `3V3` do not add up: `-monitor.vin.current` must stay within -10uA..0A, but the others on it work out to -17.17uA..-15.84uA (all of them: `monitor.r_top.current` is 15.84uA..17.17uA, `-monitor.vin.current` is -10uA..0A)
-   --> main.nsm:18:25
+   --> main.nsm:17:25
    |
-18 |     .monitor: Monitor { .vin.current &= 0A..10uA }
+17 |     .monitor: Monitor { .vin.current &= 0A..10uA }
    |                         ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -6692,14 +6722,12 @@ board Overload {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .stage: Stage {
         .vout.voltage &= 3.3V +/- 5%
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50A
     }
     .input ~ .stage.vin
@@ -6826,7 +6854,6 @@ board Wrapped {
     .supply: Rail {
         .voltage &= 3.3V +/- 3%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .sheet: Sheet
     .supply ~ .sheet.vdd
@@ -6861,7 +6888,6 @@ board Caps {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .bypass: Capacitor { .capacitance &= 100nF +/- 20% }
     .bulk: Capacitor { .effective_capacitance >= 1uF }
@@ -6896,7 +6922,6 @@ board NoBias {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .filter: Capacitor { .effective_capacitance >= 1uF }
@@ -6906,9 +6931,9 @@ board NoBias {
 
 ```text
 error: the `capacitor` catalog has nothing for `filter`, which needs nothing in particular (`filter.bias` is not known, so `filter.effective_capacitance` cannot be worked out: place `filter` between a rail's pos and neg, whose voltage is known, or state `filter.bias`)
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .filter: Capacitor { .effective_capacitance >= 1uF }
+10 |     .filter: Capacitor { .effective_capacitance >= 1uF }
    |     ^^^^^^^^^^^^^^^^^^
 ```
 
@@ -6920,7 +6945,6 @@ board TooBig {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .bypass: Capacitor { .effective_capacitance >= 10mF }
     .supply.pos ~> .bypass ~> .supply.neg
@@ -6929,10 +6953,10 @@ board TooBig {
 
 ```text
 error: no `capacitor` candidate satisfies `bypass`: the closest of the 34 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-   --> main.nsm:10:26
-   |
-10 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
-   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:9:26
+  |
+9 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
+  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Dielectric and package size
@@ -6951,7 +6975,6 @@ board Classes {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .bypass: Capacitor {
         .capacitance &= 100nF +/- 20%
@@ -6979,7 +7002,6 @@ board NoSuchClass {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .bypass: Capacitor {
         .capacitance &= 100nF +/- 20%
@@ -6991,10 +7013,10 @@ board NoSuchClass {
 
 ```text
 error: the `capacitor` catalog has nothing for `bypass`, which needs capacitance within 80nF..120nF and dielectric within Dielectric::C0G
-   --> main.nsm:10:5
-   |
-10 |     .bypass: Capacitor {
-   |     ^^^^^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .bypass: Capacitor {
+  |     ^^^^^^^^^^^^^^^^^^
 ```
 
 An `Inductor` has an optional `.rms_current`, the heating (RMS) current, as a catalog column. The standard rows leave it empty (see `data/jlcpcb/README.md`), and nothing in the library checks it, so `Buck` does not either: a design that needs a heating rating states `.inductor.rms_current >= 2A` itself and gets a row from a project's catalog file that records one.
@@ -7011,7 +7033,6 @@ board Bank {
     .supply: Rail {
         .voltage &= 5V
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .bulk: Capacitor { .count &= 1..8 }
     .bulk.count * .bulk.effective_capacitance >= 60uF
@@ -7044,7 +7065,6 @@ board Short {
     .supply: Rail {
         .voltage &= 5V
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .bulk: Capacitor { .count &= 1..2 }
     .bulk.count * .bulk.effective_capacitance >= 10mF
@@ -7054,9 +7074,9 @@ board Short {
 
 ```text
 error: no `capacitor` candidate satisfies `bulk`: the closest of the 34 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because (bulk.count * bulk.effective_capacitance) must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 27)
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .bulk.count * .bulk.effective_capacitance >= 10mF
+10 |     .bulk.count * .bulk.effective_capacitance >= 10mF
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -7107,7 +7127,6 @@ board Six {
     }
     .supply: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -7132,7 +7151,6 @@ board Eight {
     }
     .supply: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -7178,7 +7196,6 @@ board Planes {
     }
     .supply: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -7204,7 +7221,6 @@ board Signal {
     }
     .supply: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -7233,7 +7249,6 @@ board Clock {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
     .xtal.a ~ .supply.pos
@@ -7253,7 +7268,6 @@ board Hot {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
     .xtal.a ~ .supply.pos
@@ -7263,9 +7277,9 @@ board Hot {
 
 ```text
 error: the `crystal` catalog has nothing for `xtal`, which needs frequency within 15.9995MHz..16.0005MHz (4 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC): a row's `temp_min` and `temp_max` are its datasheet's)
-   --> main.nsm:12:5
+   --> main.nsm:11:5
    |
-12 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
+11 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -7294,7 +7308,6 @@ board Dash {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -7318,7 +7331,6 @@ board Probe {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .led: Led { .current &= 5mA..15mA }
     .r1: Resistor {}
@@ -7343,7 +7355,6 @@ board Warm {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .led: Led { .current &= 5mA..15mA }
     .led.temp_min &= -40degC
@@ -7374,7 +7385,6 @@ board Hot {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
     .supply.pos ~> .c ~> .supply.neg
@@ -7383,9 +7393,9 @@ board Hot {
 
 ```text
 error: the `capacitor` catalog has nothing for `c`, which needs capacitance within 29.97nF..36.63nF (15 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC): a row's `temp_min` and `temp_max` are its datasheet's; a row that states no temperature of its own is judged by the range of its dielectric class (X5R), which is the class's and not its datasheet's: add `temp_min` and `temp_max` to the row to say its own)
-   --> main.nsm:12:5
+   --> main.nsm:11:5
    |
-12 |     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
+11 |     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
    |     ^^^^^^^^^^^^^
 ```
 
@@ -7426,7 +7436,6 @@ board Dash {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -7452,7 +7461,6 @@ board Rectifier {
     .supply: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .d: Schottky {
         .max_reverse_voltage &= 100V
@@ -7464,9 +7472,9 @@ board Rectifier {
 
 ```text
 error: the `schottky` catalog has nothing for `d`, which needs max_reverse_voltage within 100V and max_forward_current within 3A (1 row was left out because it says it is not qualified (`None`) and the board's `.environment.qualification` requires `Aec`: a row's `qualification` is its datasheet's)
-   --> main.nsm:15:5
+   --> main.nsm:14:5
    |
-15 |     .d: Schottky {
+14 |     .d: Schottky {
    |     ^^^^^^^^^^^^
 ```
 
@@ -7740,12 +7748,10 @@ board Widths {
     }
     .input: Rail {
         .pos.net &= "VIN"
-        .neg.net &= "GND"
         .min_track &= 0.8mm..1m
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .min_track &= 0.5mm..1m
     }
     .in: Header1x2
@@ -7782,11 +7788,9 @@ board Unsized {
     .supply: Rail {
         .voltage &= 12V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
     }
     .r: Resistor { .resistance &= 10kohm +/- 1% }
     .inlet: Header1x2
@@ -7821,15 +7825,12 @@ board Partial {
     .supply: Rail {
         .voltage &= 12V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
     }
     .fan: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
         .current &= 0A..1.2A
     }
     .r: Resistor { .resistance &= 10kohm +/- 1% }
@@ -7845,7 +7846,7 @@ board Partial {
 ```
 
 ```text
-the current of rail `supply`, rail `load` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `GND` are 0.49 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current; state that current, or give a rail on the net a `.min_track`
+the current of rail `supply`, rail `load` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `GND` are the process's least, 0.1 mm, a lower bound: no current on the net is known; state that current, or give a rail on the net a `.min_track`
 the current of rail `supply`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VIN` are the process's least, 0.1 mm, a lower bound: no current on the net is known; state that current, or give a rail on the net a `.min_track`
 the current of rail `load`, part `r` is not known (it is not stated and the solver could not work it out; with two or more unknown currents on a net it works none of them out), so the tracks of net `VOUT` are 0.49 mm, a lower bound: sized for the 1.2 A that is known, not for the whole current; state that current, or give a rail on the net a `.min_track`
 ```
@@ -7867,13 +7868,11 @@ board Heater {
     }
     .load: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 0A..2A
         .min_track &= 0.2mm..1m
     }
     .source: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= -2A..0A
     }
     .supply: Header1x2
@@ -7903,23 +7902,19 @@ board Shared {
     }
     .source_a: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= -2A..0A
     }
     .source_b: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= -1A..0A
     }
     .load_a: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 0A..2A
         .min_track &= 1mm..1m
     }
     .load_b: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0A..1A
     }
     .in_a: Header1x2
@@ -8273,7 +8268,6 @@ board Ribbed {
     .rail: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .tall: Resistor { .resistance &= 15kohm +/- 1% }
     .flat: Resistor { .resistance &= 15kohm +/- 1% }
@@ -8380,12 +8374,10 @@ board Stacked {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
     .reg: LinearRegulator
@@ -8451,12 +8443,10 @@ board Stacked {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
     .reg: LinearRegulator
@@ -9247,7 +9237,6 @@ board Filtered {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .filter: Bypassed
     .supply ~ .filter.rail
@@ -9600,7 +9589,6 @@ board Conducts {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .z: Zener { .zener_voltage &= 3.1V..3.5V }
     .input.pos ~> .z ~> .input.neg
@@ -9645,7 +9633,6 @@ board PinClamp {
     .input: Rail {
         .voltage &= 24V +/- 10%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .r: Resistor { .resistance &= 2.2kohm +/- 1% }
     .z: Zener { .zener_voltage &= 13V..16V }
@@ -9667,7 +9654,6 @@ board PinClamp {
     .input: Rail {
         .voltage &= 24V +/- 10%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .r: Resistor { .resistance &= 2.2kohm +/- 1% }
     .z: Zener {
@@ -9692,7 +9678,6 @@ board PinClamp {
     .input: Rail {
         .voltage &= 24V +/- 10%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .r: Resistor { .resistance &= 2.2kohm +/- 1% }
     .z: Zener {
@@ -9708,9 +9693,9 @@ board PinClamp {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C15 15V 500mW Zener SOD-123 C2104, fails because z.voltage_over_temperature must always be at most 10V, but 12.95V..16.9V is not always below 10V
-   --> main.nsm:18:5
+   --> main.nsm:17:5
    |
-18 |     .z.voltage_over_temperature <= 10V
+17 |     .z.voltage_over_temperature <= 10V
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9725,12 +9710,10 @@ board Protected {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .current &= 100mA..400mA
         .pos.net &= "VFUSED"
-        .neg.net &= "GND"
     }
     .fuse: Fuse { .rated_current &= 1A }
     .tvs: Tvs { .protected_limit &= 36V }
@@ -9750,7 +9733,6 @@ board Standoff {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .tvs: Tvs { .protected_limit &= 14V }
     .input.pos ~> .tvs ~> .input.neg
@@ -9776,7 +9758,6 @@ board Margin {
         .voltage &= 12V +/- 5%
         .peak &= 16V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .tvs: Tvs {}
     .tvs.breakdown_voltage >= .input.peak * 3
@@ -9786,9 +9767,9 @@ board Margin {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 1 that fit, SMDJ36A 36V TVS SMC C108363, fails because tvs.breakdown_voltage must always be at least (input.peak * 3), but 40V is not always above 48V (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 9 for `breakdown_voltage`)
-   --> main.nsm:12:5
+   --> main.nsm:11:5
    |
-12 |     .tvs.breakdown_voltage >= .input.peak * 3
+11 |     .tvs.breakdown_voltage >= .input.peak * 3
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9802,7 +9783,6 @@ board Input {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .tvs: TvsBidirectional { .protected_limit &= 60V }
     .input.neg ~> .tvs ~> .input.pos
@@ -9819,7 +9799,6 @@ board Clamp {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .z: Zener { .zener_voltage &= 11V..13V }
     .z.bias <= .z.zener_voltage
@@ -9831,9 +9810,9 @@ board Clamp {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C12 12V 500mW Zener SOD-123 C43491, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11.4V..12.7V
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .z.bias <= .z.zener_voltage
+10 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
    --> std/parts/diode.nsm:91:5
@@ -9841,9 +9820,9 @@ error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is 
 91 |     .bias <= .max_reverse_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .z.bias <= .z.zener_voltage
+10 |     .z.bias <= .z.zener_voltage
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -9857,7 +9836,6 @@ board Reversed {
     .input: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .d: Diode {
         .max_reverse_voltage &= 40V
@@ -9959,7 +9937,6 @@ board Adjustable {
     }
     .out: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
     }
     .divider.top ~ .out.pos
     .divider.bottom ~ .out.neg
@@ -9980,7 +9957,6 @@ board TooTight {
     }
     .out: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
     }
     .divider.top ~ .out.pos
     .divider.bottom ~ .out.neg
@@ -10013,7 +9989,6 @@ board SizedDivider {
     }
     .out: Rail {
         .pos.net &= "VOUT"
-        .neg.net &= "GND"
     }
     .divider.top ~ .out.pos
     .divider.bottom ~ .out.neg
@@ -10072,11 +10047,9 @@ board Converter {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
@@ -10117,11 +10090,9 @@ board TooMuchMargin {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk2> {
@@ -10153,11 +10124,9 @@ board Overload {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..3A
     }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
@@ -10224,11 +10193,9 @@ board HighInput {
     .input: Rail {
         .voltage &= 12V..35V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk7> { .vout.voltage &= 5V +/- 6% }
@@ -10259,11 +10226,9 @@ board Quiet {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk2> {
@@ -10288,11 +10253,9 @@ board TooQuiet {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk2> {
@@ -10326,11 +10289,9 @@ board NoEsr {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk2> {
@@ -10391,11 +10352,9 @@ board Quick {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk4> {
@@ -10419,11 +10378,9 @@ board TooSlow {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk4> {
@@ -10438,9 +10395,9 @@ board TooSlow {
 
 ```text
 error: reg.soft_start_time must always be at most 3ms, but 2ms..4ms is not always below 3ms
-   --> main.nsm:18:9
+   --> main.nsm:16:9
    |
-18 |         .soft_start_time <= 3ms
+16 |         .soft_start_time <= 3ms
    |         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10455,11 +10412,9 @@ board NoTime {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "1V8"
-        .neg.net &= "GND"
         .current &= 0mA..1A
     }
     .reg: Buck<Zbk2> {
@@ -10545,11 +10500,9 @@ board Converter {
         .voltage &= 9V..16V
         .peak &= 36V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0A..2A
     }
     .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4% }
@@ -10570,11 +10523,9 @@ board Converter {
         .voltage &= 9V..16V
         .peak &= 36V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0A..2A
     }
     .reg: Buck<Lt8641> {
@@ -10598,11 +10549,9 @@ board Converter {
         .voltage &= 9V..16V
         .peak &= 36V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .output: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0A..2A
     }
     .reg: Buck<Lt8641> {
@@ -10617,9 +10566,9 @@ board Converter {
 
 ```text
 error: reg.soft_start_time must always be at most 5ms, but 2.769ms..7.334ms is not always below 5ms
-   --> main.nsm:18:9
+   --> main.nsm:16:9
    |
-18 |         .soft_start_time <= 5ms
+16 |         .soft_start_time <= 5ms
    |         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10645,12 +10594,10 @@ board Budget {
     .input: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .current &= 100mA..1kA
         .pos.net &= "VFUSED"
-        .neg.net &= "GND"
     }
     .fuse: Fuse {}
     .input.pos ~> .fuse ~> .load.pos
@@ -10674,7 +10621,6 @@ board Saturates {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .l: Inductor {
         .inductance &= 2.2uH +/- 30%
@@ -10718,12 +10664,10 @@ board Interrupts {
         .voltage &= 5V +/- 5%
         .peak &= 5.5V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .current &= 10mA..100mA
         .pos.net &= "VFUSED"
-        .neg.net &= "GND"
     }
     .fuse: Fuse {}
     .input.pos ~> .fuse ~> .load.pos
@@ -10742,12 +10686,10 @@ board Arcs {
         .voltage &= 5V +/- 5%
         .peak &= 5kV
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .current &= 10mA..100mA
         .pos.net &= "VFUSED"
-        .neg.net &= "GND"
     }
     .fuse: Fuse {}
     .input.pos ~> .fuse ~> .load.pos
@@ -10776,12 +10718,10 @@ board Protected {
         .peak &= 5.5V
         .reverse_peak &= 60V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .current &= 10mA..100mA
         .pos.net &= "VPROTECTED"
-        .neg.net &= "GND"
     }
     .fuse: Fuse { .rated_current &= 1A }
     .d: Schottky { .max_reverse_voltage &= 100V }
@@ -10803,12 +10743,10 @@ board Overloaded {
         .peak &= 5.5V
         .reverse_peak &= 60V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .load: Rail {
         .current &= 10mA..100mA
         .pos.net &= "VPROTECTED"
-        .neg.net &= "GND"
     }
     .fuse: Fuse { .rated_current &= 3A }
     .d: Schottky { .max_forward_current &= 1A }
@@ -10846,12 +10784,10 @@ board Switch {
     .supply: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .logic: Rail {
         .voltage &= 0.3V +/- 5%
         .pos.net &= "V0V3"
-        .neg.net &= "GND"
     }
     .q: NMosfet {
         .drain_source_voltage &= supply.voltage
@@ -10881,12 +10817,10 @@ board Switch {
     .supply: Rail {
         .voltage &= 12V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .logic: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "V3V3"
-        .neg.net &= "GND"
     }
     .q: NMosfet {
         .drain_source_voltage &= supply.voltage
@@ -10928,7 +10862,6 @@ board HighSide {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "V5"
-        .neg.net &= "GND"
     }
     .q: PMosfet {
         .drain_source_voltage &= supply.voltage
@@ -10955,7 +10888,6 @@ board HighSide {
     .supply: Rail {
         .voltage &= 100V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .q: PMosfet {
         .drain_source_voltage &= supply.voltage
@@ -11057,7 +10989,6 @@ board Island {
     .supply: Rail {
         .voltage &= 4.5V..5.5V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .reg: SmallLdo
     .supply.pos ~ .reg.vin.pos
@@ -11065,7 +10996,6 @@ board Island {
     .load: Rail {
         .current &= 20mA..50mA
         .pos.net &= "V33"
-        .neg.net &= "GND"
     }
     .reg.vout ~ .load
 }
@@ -11235,7 +11165,6 @@ board Derate {
     .input: Rail {
         .voltage &= 400V +/- 5%
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .bulk: Capacitor {
         .capacitance &= 47uF +/- 20%
@@ -11247,9 +11176,9 @@ board Derate {
 
 ```text
 error: no `capacitor` candidate satisfies `bulk`: the closest of the 1 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.max_voltage must always be at least (bulk.bias * 1.5), but 6.3V is not always above 570V..630V
-   --> main.nsm:12:9
+   --> main.nsm:11:9
    |
-12 |         .max_voltage >= .bias * 1.5
+11 |         .max_voltage >= .bias * 1.5
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11270,7 +11199,6 @@ board UsbPowered {
     .usb: UsbCPower {
         .vbus.voltage &= 5V +/- 5%
         .vbus.pos.net &= "VBUS"
-        .vbus.neg.net &= "GND"
     }
     .system: Rail { .current &= 0mA..400mA }
     .usb.vbus ~ .system
@@ -11294,7 +11222,6 @@ board UsbDevice {
     }
     .usb.vbus.voltage &= 5V +/- 5%
     .usb.vbus.pos.net &= "VBUS"
-    .usb.vbus.neg.net &= "GND"
     .system: Rail { .current &= 0mA..400mA }
     .usb.vbus ~ .system
 }
@@ -11311,7 +11238,6 @@ board Mechanical {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
@@ -11458,12 +11384,10 @@ board Powered {
     .plug: Plug {
         .supply.voltage &= 4.75V..5.25V
         .supply.pos.net &= "VIN"
-        .supply.neg.net &= "GND"
     }
     .protection: Protection
     .load: Rail {
         .pos.net &= "OUT"
-        .neg.net &= "GND"
         .current &= 100mA..300mA
     }
     .plug.supply ~ .protection.vin
@@ -11474,9 +11398,9 @@ board Powered {
 
 ```text
 error: protection.vout.voltage must always be at least 4.5V, but 4.22V..4.94V is not always above 4.5V (the DC analysis puts `protection.vout.voltage` at 4.22V..4.94V, its high end with plug.supply at 5.25V, protection.diode conducting at 300mV, load at 100mA, its low end with plug.supply at 4.75V, protection.diode conducting at 500mV, load at 300mA)
-   --> main.nsm:67:5
+   --> main.nsm:65:5
    |
-67 |     .protection.vout.voltage >= 4.5V
+65 |     .protection.vout.voltage >= 4.5V
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11538,13 +11462,11 @@ board Started {
     .plug: Plug {
         .supply.voltage &= 4V..5.5V
         .supply.pos.net &= "VIN"
-        .supply.neg.net &= "GND"
     }
     .link: Link { .resistance &= 0.2ohm }
     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 3.3V }
     .load: Rail {
         .pos.net &= "V33"
-        .neg.net &= "GND"
         .current &= 1A
     }
     .input_cap: Capacitor { .effective_capacitance >= 4uF }
@@ -11578,11 +11500,9 @@ board Clamped {
         .supply.voltage &= 9V..16V
         .supply.peak &= 58V
         .supply.pos.net &= "VIN"
-        .supply.neg.net &= "GND"
     }
     .out: Rail {
         .pos.net &= "OUT"
-        .neg.net &= "GND"
         .current &= 0A..200uA
     }
     .plug.supply.neg ~ .out.neg
@@ -11610,7 +11530,6 @@ board Lit {
     .supply: Rail {
         .voltage &= 5V
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .top: Resistor { .resistance &= 1kohm +/- 1% }
     .bottom: Resistor { .resistance &= 2kohm +/- 1% }
@@ -11662,12 +11581,10 @@ board Switched {
     .main: Rail {
         .voltage &= 12V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .logic: Rail {
         .voltage &= 3.3V +/- 3%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .mcu: Mcu
     .pd: Resistor { .resistance &= 10kohm +/- 1% }
@@ -11697,7 +11614,6 @@ board Fused {
     .supply: Rail {
         .voltage &= 9V..16V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
     .mcu: Mcu { .vdd.current &= 50mA..300mA }
@@ -11708,9 +11624,9 @@ board Fused {
 
 ```text
 error: `fuse.current` is stated 0A..100mA, but the DC analysis of the circuit around it finds 50mA..300mA: at most 300mA at the high end with mcu.vdd at 300mA
-   --> main.nsm:14:41
+   --> main.nsm:13:41
    |
-14 |     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
+13 |     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
    |                                         ^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -11731,7 +11647,6 @@ board Claim {
     .supply: Rail {
         .voltage &= 12V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .r: Resistor { .resistance &= 100ohm +/- 1% }
     .load: Load { .vin.voltage &= 1.7V..3.6V }
@@ -11750,9 +11665,9 @@ error: `load.led.current` is stated 10mA..20mA, but the DC analysis of the circu
 7 |     .led: Led { .current &= 10mA..20mA }
   |                 ^^^^^^^^^^^^^^^^^^^^^^
 error: `r.current` is inconsistent: the solver worked it out as 10mA..20mA, but the DC analysis of the circuit around it finds 95.04mA..103.1mA, and the two share no value (the least the circuit gives, with r at 101Ω, load.led conducting at 2.4V)
-   --> main.nsm:17:5
+   --> main.nsm:16:5
    |
-17 |     .r: Resistor { .resistance &= 100ohm +/- 1% }
+16 |     .r: Resistor { .resistance &= 100ohm +/- 1% }
    |     ^^^^^^^^^^^^
 ```
 
@@ -11786,13 +11701,11 @@ board Starved {
     .supply: Rail {
         .voltage &= 12V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .link: Link { .resistance &= 10ohm }
     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
     .out: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 1A
     }
     .supply.pos ~> .link ~> .reg.vin.pos
@@ -11803,9 +11716,9 @@ board Starved {
 
 ```text
 error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %): its input falls to 0V and no operating point exists
-   --> main.nsm:31:5
+   --> main.nsm:30:5
    |
-31 |     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
+30 |     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
    |     ^^^^^^^^^^^^^^^
 ```
 
@@ -11840,13 +11753,11 @@ board Small {
         .voltage &= 9V..16V
         .current &= -500mA..0A
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     .link: Link { .resistance &= 0.1ohm }
     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
     .out: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 2A
     }
     .supply.pos ~> .link ~> .reg.vin.pos
@@ -11899,12 +11810,10 @@ board Divided {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC5"
-        .neg.net &= "GND"
     }
     .core: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .pad: Pad
     .top: Resistor { .resistance &= 10kohm +/- 1% }
@@ -11955,7 +11864,6 @@ board Agree {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Driver
     .b: Receiver
@@ -12003,12 +11911,10 @@ board Mismatch {
     .low: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .high: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC5"
-        .neg.net &= "GND"
     }
     .a: Driver
     .b: Receiver
@@ -12020,9 +11926,9 @@ board Mismatch {
 
 ```text
 error: net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 3.325V..3.675V: a high of 3.035V is not always read as a high, which takes 3.675V
-   --> main.nsm:43:5
+   --> main.nsm:41:5
    |
-43 |     .a: Driver
+41 |     .a: Driver
    |     ^^^^^^^^^^
 ```
 
@@ -12041,7 +11947,6 @@ board Inverters {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u1: Sn74lvc1g04 { .package &= "SOT-23-5" }
     .u2: Sn74lvc1g04 { .package &= "SOT-23-5" }
@@ -12100,7 +12005,6 @@ board OneSupply {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Mic
     .b: Receiver
@@ -12148,7 +12052,6 @@ board OneSupply {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Weak
     .b: Receiver
@@ -12160,9 +12063,9 @@ board OneSupply {
 
 ```text
 error: net `net-a.out.line`: `a.out.voh` is 0.65 x `a.vdd.voltage` but `b.in.vih` needs 0.7 x `b.vdd.voltage`, the same supply voltage: a high of 0.65 x the supply is not always read as a high, which takes 0.7 x the supply
-   --> main.nsm:38:5
+   --> main.nsm:37:5
    |
-38 |     .a: Weak
+37 |     .a: Weak
    |     ^^^^^^^^
 ```
 
@@ -12215,12 +12118,10 @@ board Telemetry {
     .battery: Rail {
         .voltage &= 3.8V +/- 5%
         .pos.net &= "VBAT"
-        .neg.net &= "GND"
     }
     .io: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .m: Modem
     .s: Sensor
@@ -12267,12 +12168,10 @@ board Telemetry {
     .battery: Rail {
         .voltage &= 3.8V +/- 5%
         .pos.net &= "VBAT"
-        .neg.net &= "GND"
     }
     .io: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .m: Modem
     .s: Sensor
@@ -12284,9 +12183,9 @@ board Telemetry {
 
 ```text
 error: net `net-m.status.line` reaches 1.8V above its ground `GND` (`m.status.line`, a line that states a swing of 0V..1.8V) but `s.in.line.abs_max` is 1V: it must not exceed 1V
-   --> main.nsm:43:5
+   --> main.nsm:41:5
    |
-43 |     .s: Sensor
+41 |     .s: Sensor
    |     ^^^^^^^^^^
 ```
 
@@ -12328,12 +12227,10 @@ board Telemetry {
     .battery: Rail {
         .voltage &= 3.8V +/- 5%
         .pos.net &= "VBAT"
-        .neg.net &= "GND"
     }
     .io: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .m: Modem
     .s: Sensor
@@ -12345,9 +12242,9 @@ board Telemetry {
 
 ```text
 error: net `net-m.status.line`: `m.status.voh` (not stated: the top of its swing, `m.status.swing`) is 1.8V but `s.in.vih` needs 1.9V: a high of 1.8V is not always read as a high, which takes 1.9V
-   --> main.nsm:43:5
+   --> main.nsm:41:5
    |
-43 |     .m: Modem
+41 |     .m: Modem
    |     ^^^^^^^^^
 ```
 
@@ -12384,7 +12281,6 @@ board Stated {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Driver
     .supply ~ .u.vdd
@@ -12413,7 +12309,6 @@ board B {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Driver
     .supply ~ .u.vdd
@@ -12448,7 +12343,6 @@ board B {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Driver
     .supply ~ .u.vdd
@@ -12486,7 +12380,6 @@ board B {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .u: Driver
     .supply ~ .u.vdd
@@ -12549,12 +12442,10 @@ board Sensing {
     .low: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .high: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .sensor: Sensor
     .u: LevelTranslator {
@@ -12579,12 +12470,10 @@ board Sensing {
     .low: Rail {
         .voltage &= 0.5V +/- 5%
         .pos.net &= "0V5"
-        .neg.net &= "GND"
     }
     .high: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .sensor: Sensor
     .u: LevelTranslator {
@@ -12600,9 +12489,9 @@ board Sensing {
 
 ```text
 error: net `net-sensor.out.line`: `sensor.out.voh` is 275mV..325mV but `u.a.vih` needs 1.1V: a high of 275mV is not always read as a high, which takes 1.1V
-   --> main.nsm:16:5
+   --> main.nsm:14:5
    |
-16 |     .sensor: Sensor
+14 |     .sensor: Sensor
    |     ^^^^^^^^^^^^^^^
 ```
 
@@ -12723,12 +12612,10 @@ board Mismatch {
     .s3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .s18: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .proc: Zproc
     .sense: Zsense
@@ -12741,24 +12628,24 @@ board Mismatch {
 
 ```text
 error: net `net-proc.spi.miso`: `sense.spi.levels.voh` is 1.51V..1.69V but `proc.spi.levels.vih` needs 2.194V..2.426V: a high of 1.51V is not always read as a high, which takes 2.426V
-   --> main.nsm:16:5
+   --> main.nsm:14:5
    |
-16 |     .sense: Zsense
+14 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.sclk` reaches 3.465V above its ground `GND` (`proc.spi.sclk`, a line of `proc.spi.levels.reference`) but `sense.spi.sclk.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:16:5
+   --> main.nsm:14:5
    |
-16 |     .sense: Zsense
+14 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.mosi` reaches 3.465V above its ground `GND` (`proc.spi.mosi`, a line of `proc.spi.levels.reference`) but `sense.spi.mosi.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:16:5
+   --> main.nsm:14:5
    |
-16 |     .sense: Zsense
+14 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.cs` reaches 3.465V above its ground `GND` (`proc.spi.cs`, a line of `proc.spi.levels.reference`) but `sense.spi.cs.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:16:5
+   --> main.nsm:14:5
    |
-16 |     .sense: Zsense
+14 |     .sense: Zsense
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -12772,12 +12659,10 @@ board Translated {
     .s3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .s18: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .proc: Zproc
     .shift: Zshift
@@ -12859,7 +12744,6 @@ board Pulled {
     .s3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .m: Zihost
     .t: Zitarget
@@ -12883,12 +12767,10 @@ board PulledLow {
     .s3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .s18: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "1V8"
-        .neg.net &= "GND"
     }
     .m: Zihost
     .t: Zitarget
@@ -12902,21 +12784,7 @@ board PulledLow {
 ```
 
 ```text
-error: net `net-m.i2c.scl`: the pull-up `pullups.scl_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
-   --> main.nsm:17:5
-   |
-17 |     .t: Zitarget
-   |     ^^^^^^^^^^^^
-error: net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `t.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
-   --> main.nsm:17:5
-   |
-17 |     .t: Zitarget
-   |     ^^^^^^^^^^^^
-error: net `net-m.i2c.sda`: the pull-up `pullups.sda_pullup` to rail `s18` holds the line at 1.71V..1.89V (a driver that states `vol` and no `voh` leaves the high to the pull-up) but `m.i2c.levels.vih` needs 2.194V..2.426V: a high of 1.71V is not always read as a high, which takes 2.426V
-   --> main.nsm:16:5
-   |
-16 |     .m: Zihost
-   |     ^^^^^^^^^^
+error: PulledLow: U1: there is no KiCad symbol for a `Zihost` yet
 ```
 
 ### Buses
@@ -13028,7 +12896,6 @@ board Buses {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .ctl: Controller
     .sensor: Sensor
@@ -13080,7 +12947,6 @@ board Straight {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Uart32
     .b: Uart32
@@ -13100,7 +12966,6 @@ board SameLine {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Uart32
     .b: Uart32
@@ -13113,15 +12978,15 @@ board SameLine {
 
 ```text
 error: net `net-a.uart.rx` joins `rx` to `rx` (`a.uart.rx`, `b.uart.rx`): `rx` crosses `tx` in a `Uart`, so it is joined to the other end's `tx`; write `.a.uart.rx ~ .b.uart.tx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
-   --> main.nsm:10:5
-   |
-10 |     .a: Uart32
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: Uart32
+  |     ^^^^^^^^^^
 error: net `net-a.uart.tx` joins `tx` to `tx` (`a.uart.tx`, `b.uart.tx`): `tx` crosses `rx` in a `Uart`, so it is joined to the other end's `rx`; write `.a.uart.tx ~ .b.uart.rx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
-   --> main.nsm:10:5
-   |
-10 |     .a: Uart32
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: Uart32
+  |     ^^^^^^^^^^
 ```
 
 A receive line left open:
@@ -13134,7 +12999,6 @@ board OneWay {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Uart32
     .b: Uart32
@@ -13146,10 +13010,10 @@ board OneWay {
 
 ```text
 error: `a.uart.rx` is an input that must be connected (pad 4, `RX`), but nothing else is on its net
-   --> main.nsm:10:5
-   |
-10 |     .a: Uart32
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: Uart32
+  |     ^^^^^^^^^^
 ```
 
 Two masters on one SPI bus:
@@ -13162,7 +13026,6 @@ board TwoMasters {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: SpiMaster
     .b: SpiMaster
@@ -13174,25 +13037,25 @@ board TwoMasters {
 
 ```text
 error: net `net-a.spi.cs` has two outputs: `a.spi.cs`, `b.spi.cs`
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 error: net `net-a.spi.miso` has only inputs (`a.spi.miso`, `b.spi.miso`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 error: net `net-a.spi.mosi` has two outputs: `a.spi.mosi`, `b.spi.mosi`
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 error: net `net-a.spi.sclk` has two outputs: `a.spi.sclk`, `b.spi.sclk`
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 ```
 
 A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
@@ -13207,7 +13070,6 @@ board NoPullups {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Sensor
     .b: Sensor
@@ -13219,15 +13081,15 @@ board NoPullups {
 
 ```text
 error: net `net-a.i2c.scl` carries the scl line of an I2C bus (`a.i2c.scl`, `b.i2c.scl`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
-   --> main.nsm:10:5
-   |
-10 |     .a: Sensor
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: Sensor
+  |     ^^^^^^^^^^
 error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i2c.sda`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
-   --> main.nsm:10:5
-   |
-10 |     .a: Sensor
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .a: Sensor
+  |     ^^^^^^^^^^
 ```
 
 In a `system`, a line that goes out through a connector is followed through the mates (ADR 0040) to the board behind it, contact N to contact N, and on through any connector there. The bus is judged as one: it needs a pull-up on the board that has it or on any board it reaches, and a pull-up on either side of a mate satisfies it. If none has one, the error names the connectors the line passed (`carrier.j`, `card.h`) and is reported once for the line. A line that reaches a connector the system does not mate, or a port of a board, goes somewhere this check cannot see and is not judged, as is a board checked alone behind its own connector (ADR 0090).
@@ -13310,7 +13172,6 @@ board FastBus {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .ctl: Zcc
     .sensor: Zct
@@ -13336,7 +13197,6 @@ board TooSlow {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .ctl: Zcc
     .sensor: Zct
@@ -13353,9 +13213,9 @@ board TooSlow {
 
 ```text
 error: pullups.rise_time must always be at most 200ns, but 124.8ns..221.7ns is not always below 200ns
-   --> main.nsm:20:5
+   --> main.nsm:19:5
    |
-20 |     .pullups.rise_time <= 200ns
+19 |     .pullups.rise_time <= 200ns
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -13370,7 +13230,6 @@ board NoPinFigure {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .ctl: Zcc
     .sensor: Zcn
@@ -13451,7 +13310,6 @@ board WeakestDriver {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .ctl: Zlc
     .sensor: Zlt
@@ -13475,7 +13333,6 @@ board TooStrong {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .ctl: Zlc
     .sensor: Zlt
@@ -13490,9 +13347,9 @@ board TooStrong {
 
 ```text
 error: pullups.resistance must always be at least ((pullups.supply.voltage - sensor.i2c.levels.vol) / sensor.i2c.sink_current), but 760Ω..840Ω is not always above 911.6Ω..1.022kΩ
-   --> main.nsm:13:5
+   --> main.nsm:12:5
    |
-13 |     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
+12 |     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
    |     ^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -13615,7 +13472,6 @@ board Sensors {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .cpu: Zcpu
     .flash: Zflash
@@ -13642,7 +13498,6 @@ board Swapped {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .cpu: Zcpu
     .flash: Zflash
@@ -13661,15 +13516,15 @@ board Swapped {
 
 ```text
 error: net `net-cpu.spi.miso` joins two different lines of a `Spi`: `miso` (`cpu.spi.miso`, `flash.spi.miso`) and `mosi` (`imu.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.mosi` is on the net of `miso`
-   --> main.nsm:10:5
-   |
-10 |     .cpu: Zcpu
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .cpu: Zcpu
+  |     ^^^^^^^^^^
 error: net `net-cpu.spi.mosi` joins two different lines of a `Spi`: `miso` (`imu.spi.miso`) and `mosi` (`cpu.spi.mosi`, `flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.miso` is on the net of `mosi`
-   --> main.nsm:10:5
-   |
-10 |     .cpu: Zcpu
-   |     ^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .cpu: Zcpu
+  |     ^^^^^^^^^^
 ```
 
 Two masters on one bus are one message for the pair of interfaces, and the rules of a net say nothing more about the nets it names:
@@ -13682,7 +13537,6 @@ board TwoMasters {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .cpu: Zcpu
     .host: Zcpu
@@ -13697,9 +13551,9 @@ board TwoMasters {
 
 ```text
 error: `cpu.spi` and `host.spi` are both `SpiRole::Master` on one `Spi` bus, and `Spi` allows 1 `Master` on a bus: they are on one bus through `net-cpu.spi.cs` (`cpu.spi.cs`, `flash.spi.cs` and `host.spi.cs`); the slave on it is `flash.spi`; give `host.spi` a bus of its own
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .host: Zcpu
+10 |     .host: Zcpu
    |     ^^^^^^^^^^^
 ```
 
@@ -13713,7 +13567,6 @@ board SharedSelect {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .cpu: Zcpu
     .flash: Zflash
@@ -13732,9 +13585,9 @@ board SharedSelect {
 
 ```text
 error: net `net-cpu.spi.cs` carries the `cs` of two slaves, `flash.spi.cs` and `imu.spi.cs`: `Spi` gives each slave a `cs` of its own (`cs` is `single` for `SpiRole::Slave`); join `.imu.spi.cs` to a pin of its own
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .flash: Zflash
+10 |     .flash: Zflash
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -13764,7 +13617,6 @@ board Wrong {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .imu: Zimu
     .supply ~ .imu.vdd
@@ -13773,9 +13625,9 @@ board Wrong {
 
 ```text
 error: `imu.spi.mosi` is an output in the table of `Zimu`, but `SpiRole::Slave` makes `mosi` an input of `Spi`; either the datasheet's `SDI` pin is not an output, or the role is the other one
-   --> main.nsm:26:5
+   --> main.nsm:25:5
    |
-26 |     .imu: Zimu
+25 |     .imu: Zimu
    |     ^^^^^^^^^^
 ```
 
@@ -13789,7 +13641,6 @@ board OpenMiso {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .cpu: Zcpu
     .flash: Zflash
@@ -13803,9 +13654,9 @@ board OpenMiso {
 
 ```text
 error: `flash.spi.miso` is a tri_state output that must be connected (pad 2, `DO`): `SpiRole::Slave` of `Spi` requires it, and nothing else is on its net
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .flash: Zflash
+10 |     .flash: Zflash
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -13845,7 +13696,6 @@ board WithCard {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .cpu: Zcpu
     .card: FlashCard
@@ -13891,7 +13741,6 @@ board Dongle {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .dongle: Zdongle
     .supply ~ .dongle.vdd
@@ -13957,7 +13806,6 @@ board TooFast {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .flash: Zflash
     .imu: Zimu
@@ -13970,9 +13818,9 @@ board TooFast {
 
 ```text
 error: bus `flash.spi` is joined at 20MHz, which `imu` (`Zimu`) does not allow: its limit `imu.spi.frequency` is at most 10MHz; `flash` (`Zflash`) allows 33MHz, so the bus runs at 10MHz at most
-   --> main.nsm:11:5
+   --> main.nsm:10:5
    |
-11 |     .imu: Zimu
+10 |     .imu: Zimu
    |     ^^^^^^^^^^
 ```
 
@@ -14022,7 +13870,6 @@ board Modes {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .a: Zone
     .b: Zthree
@@ -14070,7 +13917,6 @@ board Reset {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .gate: ResetGate
     .supply ~ .gate.vcc
@@ -14095,7 +13941,6 @@ board Forgetful {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .pull: PullUp
     .supply ~ .pull.supply
@@ -14131,7 +13976,6 @@ board Sized {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .gate: SizedGate
     .supply ~ .gate.vcc
@@ -14175,7 +14019,6 @@ board Enable {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .gate: EnableGate
     .supply ~ .gate.vcc
@@ -14200,7 +14043,6 @@ board Forgetful {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
     }
     .pull: PullDown
     .supply ~ .pull.reference

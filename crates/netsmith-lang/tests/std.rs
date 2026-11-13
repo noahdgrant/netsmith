@@ -125,8 +125,8 @@ fn sources_parse() {
     assert_eq!(rail.kind, DefKind::Interface);
     assert_eq!(
         rail.items.len(),
-        7,
-        "pos, neg, the voltage between them, the current drawn through pos, the peak voltage, the reverse peak, and the narrowest track"
+        8,
+        "pos, neg, the voltage between them, the current drawn through pos, the peak voltage, the reverse peak, the narrowest track, and the default ground"
     );
 }
 

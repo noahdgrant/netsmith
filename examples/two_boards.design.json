@@ -450,7 +450,7 @@
         "text": "What the rest of the system draws from the output: up to 50 mA, the most this board is built to give.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 58
+          "line": 57
         },
         "anchors": [],
         "result": null
@@ -724,7 +724,7 @@
         "text": "A status LED that runs from 3.3 V.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 76
+          "line": 74
         },
         "anchors": [],
         "result": null
@@ -735,7 +735,7 @@
         "text": "Supplied by the other board, through this socket.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 83
+          "line": 81
         },
         "anchors": [
           "led",
@@ -750,7 +750,7 @@
         "text": ".led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance",
         "at": {
           "file": "two_boards.nsm",
-          "line": 97
+          "line": 94
         },
         "anchors": [
           "led",

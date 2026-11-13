@@ -87,24 +87,18 @@ board EasyduinoEsp32s3 {
     // notes name "5V (USB UART OR USB ESP32)" and say to use one voltage input at a time.
     .usb_uart.vbus.voltage &= 5V +/- 5%
     .usb_uart.vbus.pos.net &= "VBUS1"
-    .usb_uart.vbus.neg.net &= "GND"
     .usb_native.vbus.voltage &= 5V +/- 5%
     .usb_native.vbus.pos.net &= "VBUS2"
-    .usb_native.vbus.neg.net &= "GND"
     /// VBUS behind the two diodes: the bridge's supply, the regulator's input and the header's
     /// 5 V pin.
     .vbus: Rail {
         .pos.net &= "VBUS"
-        .neg.net &= "GND"
     }
     /// The 3.3 V of the regulator: the module's supply and the header's 3.3 V pins.
     .v3v3: Rail {
         .pos.net &= "+3.3V"
-        .neg.net &= "GND"
     }
 
-    .usb_uart.vbus.neg ~ .vbus.neg
-    .usb_native.vbus.neg ~ .vbus.neg
 
     /// D2 and D3: each receptacle's VBUS reaches VBUS through a Schottky diode (anode on the
     /// receptacle), so the two supplies cannot feed each other. ROHM RB161QS-40.
@@ -115,7 +109,6 @@ board EasyduinoEsp32s3 {
 
     .vbus ~ .regulator.vin
     .regulator.vout ~ .v3v3
-    .v3v3.neg ~ .vbus.neg
 
     // ---- The module (U1) ----
 

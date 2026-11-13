@@ -1876,7 +1876,7 @@ fn a_chain_across_a_rail_gives_a_relation_note() {
     );
     assert_eq!(note.anchors, ["led", "r1"]);
     let at = note.at.as_ref().unwrap();
-    assert_eq!(at.line, 29, "the line of `.supply.pos ~> .r1 ~> .led ~> .supply.neg`");
+    assert_eq!(at.line, 28, "the line of `.supply.pos ~> .r1 ~> .led ~> .supply.neg`");
     let result = note.result.as_deref().unwrap();
     assert!(result.starts_with("led.current = "), "{result}");
     assert!(result.contains("mA"), "{result}");

@@ -10,7 +10,7 @@
 //! for the rest (ADR 0051).
 
 use netsmith_lang::Span;
-use netsmith_lang::ast::{self, BinOp, CmpOp, Expr};
+use netsmith_lang::ast::{self, BinOp, CmpOp, DefKind, Expr};
 use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
 
 use crate::checker::{Checker, Res, Ty};
@@ -38,6 +38,14 @@ pub(crate) struct PendingDefault {
     value: Typed,
     source: SourceId,
     span: Span,
+}
+
+/// What decides whether a net default applies, by class of pins joined with `~`.
+#[derive(Default)]
+pub(crate) struct NetClasses {
+    stated: std::collections::HashSet<usize>,
+    terminal: std::collections::HashSet<usize>,
+    joined: std::collections::HashSet<usize>,
 }
 
 impl Checker<'_> {
@@ -602,7 +610,7 @@ impl Checker<'_> {
                 }
                 if c.op == CmpOp::Narrow {
                     self.apply(f, t, CmpOp::Narrow, c.span);
-                } else if self.check_value(f, &t, c.span) {
+                } else if self.check_value(f, &t, c.span, true) {
                     let source = self.cur_source();
                     self.defaults.push(PendingDefault {
                         field: f,
@@ -666,8 +674,12 @@ impl Checker<'_> {
         for d in &pending {
             *count.entry(d.field).or_insert(0) += 1;
         }
+        let classes = self.net_classes();
         for d in pending {
-            if count[&d.field] == 1 && !self.stated.contains(&d.field) {
+            if count[&d.field] == 1
+                && !self.stated.contains(&d.field)
+                && self.net_default_holds(&d, &classes)
+            {
                 apply.push(d);
             }
         }
@@ -676,6 +688,63 @@ impl Checker<'_> {
             self.apply_checked(d.field, d.value, CmpOp::Narrow, d.span);
         }
         self.source_override = None;
+    }
+
+    /// The classes of pins (joined with `~`) that decide a net default: those with a net named
+    /// by a `&=`, those with a pin of a part on them, and those with more than one pin.
+    fn net_classes(&mut self) -> NetClasses {
+        let pins: Vec<InstId> = self
+            .model
+            .instances()
+            .filter(|(_, i)| i.kind == InstKind::Pin)
+            .map(|(id, _)| id)
+            .collect();
+        let mut classes = NetClasses::default();
+        let mut size = std::collections::HashMap::new();
+        for pin in pins {
+            let class = self.find(pin.0);
+            if let Some(Member::Field(f)) = self.model.member(pin, "net")
+                && self.stated.contains(&f)
+            {
+                classes.stated.insert(class);
+            }
+            if self.model.is_terminal(pin) {
+                classes.terminal.insert(class);
+            }
+            *size.entry(class).or_insert(0usize) += 1;
+        }
+        classes.joined = size
+            .into_iter()
+            .filter(|&(_, n)| n > 1)
+            .map(|(c, _)| c)
+            .collect();
+        classes
+    }
+
+    /// Whether a default applies. A net name is board-wide, and a default for one (a rail's
+    /// ground, ADR 0121) is an offer with three more limits than any other default: it needs a
+    /// board to name the net on; it needs a pin of a part on the net and a second pin joined to
+    /// it, since a name for a pin nothing is joined to would only make a port that holds it look
+    /// connected, or ask a pad of a part that has none (a bus port's reference rail is on no net
+    /// until a part joins it); and it gives way to a name
+    /// that reaches the pin by a join, since a pin joined to one named `AGND` is on `AGND`,
+    /// and a default of `GND` on the other would contradict the join.
+    fn net_default_holds(&mut self, d: &PendingDefault, classes: &NetClasses) -> bool {
+        let field = self.model.field(d.field);
+        if field.name != "net" {
+            return true;
+        }
+        let owner = field.owner;
+        if self.model.board_of(owner).is_none() {
+            return false;
+        }
+        if self.model.instance(owner).kind != InstKind::Pin {
+            return true;
+        }
+        let class = self.find(owner.0);
+        classes.terminal.contains(&class)
+            && classes.joined.contains(&class)
+            && !classes.stated.contains(&class)
     }
 
     /// `file:line` of a span.
@@ -787,22 +856,30 @@ impl Checker<'_> {
 
     /// Narrow `field` by a constant now, or queue the constraint for the solver.
     fn apply(&mut self, field: FieldId, value: Typed, op: CmpOp, span: Span) {
-        if self.check_value(field, &value, span) {
+        if self.check_value(field, &value, span, false) {
             self.apply_checked(field, value, op, span);
         }
     }
 
     /// Whether `value` may be stated for `field`, reporting it when not: only a board names
-    /// nets, and the value must be the kind the field holds.
-    fn check_value(&mut self, field: FieldId, value: &Typed, span: Span) -> bool {
+    /// nets, and the value must be the kind the field holds. `default` is a `?=`.
+    fn check_value(&mut self, field: FieldId, value: &Typed, span: Span, default: bool) -> bool {
         // Net names are board-wide, so a module or part that named one would give every
         // instance of itself the same net. Only the board names nets: that holds for a
-        // pin's `net` and for the `net` of a plane in a manufacturing process alike.
-        if self.model.field(field).name == "net" && !self.in_board() {
+        // pin's `net` and for the `net` of a plane in a manufacturing process alike. The one
+        // exception is a default in an interface (`Rail`'s ground): the name is an offer that
+        // takes effect only where the interface is on a board, and a rail is the one thing
+        // whose instances are meant to share a name (ADR 0116).
+        let net_default = default && self.in_kind(DefKind::Interface);
+        if self.model.field(field).name == "net" && !self.in_board() && !net_default {
             let path = self.model.path_of_field(field);
             let message = if self.in_system() {
                 format!(
                     "`{path}` names a net, and a system does not: each board names its own nets, and a system only says which ports meet"
+                )
+            } else if default {
+                format!(
+                    "`{path}` names a net by default, and only a board names nets: an interface such as a rail may offer a net name, since every instance of it is meant to share one; set it where the board uses this"
                 )
             } else {
                 format!(

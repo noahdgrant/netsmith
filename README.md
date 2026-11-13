@@ -31,7 +31,6 @@ board LedExample {
     .supply: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "VCC"
-        .neg.net &= "GND"
     }
     .led: Led {
         .current &= 5mA..15mA

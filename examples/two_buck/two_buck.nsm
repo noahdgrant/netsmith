@@ -102,30 +102,25 @@ board TwoBuck {
     .input: Rail {
         .voltage &= 9V..16V
         .pos.net &= "VIN_RAW"
-        .neg.net &= "GND"
     }
     /// The input after the reverse-polarity diode.
     .vin: Rail {
         .voltage &= 8.3V..15.8V
         .pos.net &= "VIN"
-        .neg.net &= "GND"
     }
     /// The 5 V rail, made by the first buck stage and the load it carries.
     .out_5v: Rail {
         .pos.net &= "5V"
-        .neg.net &= "GND"
         .current &= 0mA..1500mA
     }
     /// The 3.3 V rail, made by the second buck stage.
     .out_3v3: Rail {
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..1500mA
     }
     /// The quiet 3.3 V rail, made from the 5 V rail by the linear regulator.
     .out_3v3a: Rail {
         .pos.net &= "3V3A"
-        .neg.net &= "GND"
         .current &= 0mA..50mA
     }
 
@@ -167,7 +162,6 @@ board TwoBuck {
 
     .input.pos ~> .reverse_diode ~> .vin.pos
     .input.pos ~> .surge ~> .input.neg
-    .input.neg ~ .vin.neg
     .vin.pos ~> .bulk_a ~> .vin.neg
     .vin.pos ~> .bulk_b ~> .vin.neg
     .vin.pos ~> .bulk_c ~> .vin.neg

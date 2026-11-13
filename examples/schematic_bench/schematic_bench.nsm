@@ -434,24 +434,20 @@ board SchematicBench {
     .battery: Rail {
         .voltage &= 3.7V +/- 10%
         .pos.net &= "+VBATT_SAFE"
-        .neg.net &= "GND"
     }
     .rail_5v: Rail {
         .voltage &= 5V +/- 5%
         .pos.net &= "+5V_in"
-        .neg.net &= "GND"
     }
     .rail_3v3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "+3V3"
-        .neg.net &= "GND"
         .current &= 0mA..100mA
         .min_track &= 0.25mm..1m
     }
     .rail_1v8: Rail {
         .voltage &= 1.8V +/- 5%
         .pos.net &= "+1V8"
-        .neg.net &= "GND"
         .current &= 0mA..500mA
         .min_track &= 0.4mm..1m
     }
@@ -487,12 +483,10 @@ board SchematicBench {
     .rail_3v8: Rail {
         .voltage &= 3.8V +/- 5%
         .pos.net &= "+3V8"
-        .neg.net &= "GND"
     }
     .rail_2v8: Rail {
         .voltage &= 2.8V +/- 5%
         .pos.net &= "+2V8"
-        .neg.net &= "GND"
         .current &= 0mA..100mA
     }
     .ldo: LdoModule

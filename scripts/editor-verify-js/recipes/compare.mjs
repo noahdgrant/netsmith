@@ -294,7 +294,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('the unchanged lines are hidden behind slim bars, in both views alike, with 3 lines of context round each change (a file over 60 lines does it by itself)');
   const col = (n) => page.locator('.diff-col').nth(n);
   const barsOf = (n) => col(n).locator('.cm-diff-bar');
-  expect((await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'true', 'the switch "Hide unchanged lines" is on without being asked, for a file of 110 lines');
+  expect((await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'true', 'the switch "Hide unchanged lines" is on without being asked, for a file of 107 lines');
   const counts = async (n) => (await barsOf(n).evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-count')))));
   const c0 = await counts(0);
   const c1 = await counts(1);
@@ -305,7 +305,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(!shownText.includes('import std::sources::Rail') && shownText.includes('150ohm'), 'a far line is not drawn, the changed one is');
   const hiddenTotal = c0.reduce((a, b) => a + b, 0);
   const rowsDrawn = await col(0).locator('.cm-line').count();
-  expect(rowsDrawn + hiddenTotal >= 108 && rowsDrawn < 70, `${rowsDrawn} lines drawn and ${hiddenTotal} hidden`);
+  expect(rowsDrawn + hiddenTotal >= 105 && rowsDrawn < 70, `${rowsDrawn} lines drawn and ${hiddenTotal} hidden`);
   await shot('diff-collapsed');
 
   step('a click on a bar shows its lines in both views; Enter on another does the same from the keyboard; the choice is kept');

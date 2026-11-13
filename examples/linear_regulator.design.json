@@ -439,7 +439,7 @@
         "text": "What the outside world draws from the output.",
         "at": {
           "file": "linear_regulator.nsm",
-          "line": 49
+          "line": 48
         },
         "anchors": [],
         "result": null

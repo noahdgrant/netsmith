@@ -197,7 +197,6 @@ board EnclosureSensor {
         .assembly &= AssemblyMode::Hand
         .vbus.voltage &= 5V +/- 5%
         .vbus.pos.net &= "VBUS"
-        .vbus.neg.net &= "GND"
     }
     .rd1: Resistor { .resistance &= 5.1kohm +/- 1% }
     .rd2: Resistor { .resistance &= 5.1kohm +/- 1% }
@@ -212,7 +211,6 @@ board EnclosureSensor {
     .supply: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "3V3"
-        .neg.net &= "GND"
         .current &= 0mA..100mA
     }
     .ldo.vout ~ .supply

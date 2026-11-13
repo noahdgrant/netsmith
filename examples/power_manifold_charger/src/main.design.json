@@ -7511,7 +7511,7 @@
         "text": "The slot's 5 V logic supply (A12, B12), from the backplane's buck.",
         "at": {
           "file": "src/main.nsm",
-          "line": 254
+          "line": 253
         },
         "anchors": [],
         "result": null
@@ -7522,7 +7522,7 @@
         "text": "The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.",
         "at": {
           "file": "src/main.nsm",
-          "line": 260
+          "line": 258
         },
         "anchors": [],
         "result": null
@@ -7533,7 +7533,7 @@
         "text": "Behind the fuse.",
         "at": {
           "file": "src/main.nsm",
-          "line": 265
+          "line": 262
         },
         "anchors": [],
         "result": null
@@ -7544,7 +7544,7 @@
         "text": "Behind the input inductor: the converter's input.",
         "at": {
           "file": "src/main.nsm",
-          "line": 270
+          "line": 266
         },
         "anchors": [],
         "result": null
@@ -7555,7 +7555,7 @@
         "text": "The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V; the blade is offered 5 V to 21 V by its firmware).",
         "at": {
           "file": "src/main.nsm",
-          "line": 276
+          "line": 271
         },
         "anchors": [],
         "result": null
@@ -7566,7 +7566,7 @@
         "text": "Behind the output shunt R28.",
         "at": {
           "file": "src/main.nsm",
-          "line": 282
+          "line": 276
         },
         "anchors": [],
         "result": null
@@ -7577,7 +7577,7 @@
         "text": "The two back-to-back MOSFETs' common source.",
         "at": {
           "file": "src/main.nsm",
-          "line": 287
+          "line": 280
         },
         "anchors": [],
         "result": null
@@ -7588,7 +7588,7 @@
         "text": "Behind the shunt R27, ahead of the MOSFET Q4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 292
+          "line": 284
         },
         "anchors": [],
         "result": null
@@ -7599,7 +7599,7 @@
         "text": "The port's VBUS, on the receptacle.",
         "at": {
           "file": "src/main.nsm",
-          "line": 297
+          "line": 288
         },
         "anchors": [],
         "result": null
@@ -7610,7 +7610,7 @@
         "text": ".q_port_a.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 321
+          "line": 309
         },
         "anchors": [
           "q_port_a",
@@ -7624,7 +7624,7 @@
         "text": ".q_port_b.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 322
+          "line": 310
         },
         "anchors": [
           "q_port_b",
@@ -7638,7 +7638,7 @@
         "text": ".port_trip_current == .protector.ocp_threshold / .port_shunt.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 327
+          "line": 315
         },
         "anchors": [
           "protector",
