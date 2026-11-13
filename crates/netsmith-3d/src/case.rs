@@ -11,8 +11,12 @@
 //! What the height checks measure (ADR 0106): each part's _Body_ box (its four turned corners in
 //! plan, from its face out to its height, stated, catalog or standard) and the board's own
 //! solid (its outline with its rounded corners, through its thickness, less its cutouts and
-//! holes). A part's drawn `.model` is not read, and neither are its pins below the far face. A
-//! body of height zero (a mounting hole, a fiducial: "flat") has no volume and is not measured.
+//! holes), and the pins of a through-hole part that the design states stand out of the far face
+//! (`.pin_protrusion`): the box of its plated pads in plan, from that face out by the stated
+//! length, as the scene's `protrusions` draw them. Pins of no stated protrusion are not
+//! measured (how far they stand out is unknown, not zero), and a part's drawn `.model` is not
+//! read. A body of height zero (a mounting hole, a fiducial: "flat") has no volume and is not
+//! measured.
 //!
 //! # The findings, each with its numbers, the part and the solid
 //!
@@ -21,7 +25,8 @@
 //!   boss is fine. The depth is how far the case's surface goes in past the body's nearest
 //!   face (the least move, along a face's normal, that would part them); a body wholly inside a
 //!   solid has no surface in it and is found by ray parity.
-//!   An error that stops `fab` for a stated or a catalog height and for the board.
+//!   An error that stops `fab` for a stated or a catalog height, for stated pins and for the
+//!   board.
 //! - `case_clearance`: a body nearer a case surface than the case model's `.clearance`. The gap
 //!   is measured to the body box's faces grown outward, so near an edge or a corner of the box
 //!   it is at most the true distance (a warning a little early, never late).
@@ -54,7 +59,7 @@ use netsmith_core::CaseFigures;
 use netsmith_pcb::board::Side;
 
 use crate::mesh::{Aabb, Material, Mesh, rounded_rect, trig};
-use crate::scene3d::{BoardSolid, Body, HeightProvenance, HoleOwner, PartCategory, Plan};
+use crate::scene3d::{BoardSolid, Body, HeightProvenance, HoleOwner, PartCategory, Pins, Plan};
 use crate::step::read::StepMesh;
 
 /// How far a case solid may reach into a body or the board and still be contact, in mm: the
@@ -289,6 +294,12 @@ impl FitKind {
 pub enum Subject {
     /// A part's body, by path and designator.
     Part { path: String, refdes: String },
+    /// A part's pins below the far face, which the design states stand out by `length` mm.
+    Pins {
+        path: String,
+        refdes: String,
+        length: f64,
+    },
     /// The board's own solid.
     Board,
     /// A solid of the case model (`case_unchecked` of a shell that is not closed).
@@ -386,7 +397,7 @@ impl FitFinding {
     /// The part's path, if it is about a part.
     pub fn path(&self) -> Option<&str> {
         match &self.subject {
-            Subject::Part { path, .. } => Some(path),
+            Subject::Part { path, .. } | Subject::Pins { path, .. } => Some(path),
             _ => None,
         }
     }
@@ -404,6 +415,14 @@ impl fmt::Display for FitFinding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let who = match &self.subject {
             Subject::Part { path, refdes } => format!("{refdes} (`{path}`)"),
+            Subject::Pins {
+                path,
+                refdes,
+                length,
+            } => format!(
+                "the pins of {refdes} (`{path}`), stated to stand {} out of the far face,",
+                mm(*length)
+            ),
             Subject::Board => "the board".to_string(),
             Subject::Solid | Subject::Model => String::new(),
         };
@@ -411,6 +430,11 @@ impl fmt::Display for FitFinding {
             "the solid `{}` of the case model `{}`",
             self.solid, self.case
         );
+        // Pins are many.
+        let (is, lies) = match self.subject {
+            Subject::Pins { .. } => ("are", "lie"),
+            _ => ("is", "lies"),
+        };
         match &self.why {
             Why::Collision {
                 depth,
@@ -424,20 +448,20 @@ impl fmt::Display for FitFinding {
                 match depth {
                     Some(d) => write!(
                         f,
-                        "{who}{body} is inside {solid} by {} at {}: the case and the board collide",
+                        "{who}{body} {is} inside {solid} by {} at {}: the case and the board collide",
                         mm(*d),
                         point(self.at)
                     ),
                     None => write!(
                         f,
-                        "{who}{body} lies wholly inside {solid}, at {}: the case and the board collide",
+                        "{who}{body} {lies} wholly inside {solid}, at {}: the case and the board collide",
                         point(self.at)
                     ),
                 }
             }
             Why::Clearance { gap, least } => write!(
                 f,
-                "{who} is {} from {solid} at {}, less than `{}.clearance`, {}",
+                "{who} {is} {} from {solid} at {}, less than `{}.clearance`, {}",
                 mm(*gap),
                 point(self.at),
                 self.case,
@@ -797,7 +821,7 @@ fn body_volume(b: &Body, z0: f64, z1: f64) -> Convex {
 /// The fit of the board (`board`, its parts' `bodies` and its holes) in its case models.
 /// Findings are in the order: per case model, its open shells; the board; per body by path,
 /// per case model, a collision (or an unknown height, a standard height in a solid), else a
-/// clearance; the connectors' reach; the mounting holes.
+/// clearance, and then its stated pins the same way; the connectors' reach; the mounting holes.
 pub fn check(board: &BoardSolid, bodies: &[Body], cases: &[PlacedCase]) -> Vec<FitFinding> {
     let mut out = Vec::new();
     if cases.is_empty() {
@@ -822,6 +846,7 @@ pub fn check(board: &BoardSolid, bodies: &[Body], cases: &[PlacedCase]) -> Vec<F
         .reduce(Aabb::union);
     for b in bodies {
         out.extend(body_fit(b, cases, extent));
+        out.extend(pins_fit(b, cases));
     }
     for b in bodies
         .iter()
@@ -981,6 +1006,75 @@ fn body_fit(b: &Body, cases: &[PlacedCase], extent: Option<Aabb>) -> Vec<FitFind
         return out;
     }
     let volume = body_volume(b, z0, z1);
+    volume_fit(
+        &volume,
+        &subject,
+        cases,
+        &|depth| match (b.provenance, b.standard, b.height) {
+            (HeightProvenance::Standard, Some(st), Some(h)) => (
+                FitKind::Unchecked,
+                Why::Standard {
+                    depth,
+                    height: h,
+                    standard: st.cited(),
+                },
+            ),
+            _ => (
+                FitKind::Collision,
+                Why::Collision {
+                    depth,
+                    height: b.height,
+                    provenance: Some(b.provenance),
+                },
+            ),
+        },
+    )
+}
+
+/// A part's pins below the far face against every case model, where the design states how far
+/// they stand out: a collision of stated pins is an error, as a stated height's is.
+fn pins_fit(b: &Body, cases: &[PlacedCase]) -> Vec<FitFinding> {
+    let Pins::Known {
+        at,
+        length,
+        z_top,
+        z_bottom,
+        ..
+    } = &b.pins
+    else {
+        return Vec::new();
+    };
+    if z_top - z_bottom <= 1e-6 {
+        return Vec::new();
+    }
+    let volume = Convex::plan_box(at.min, at.max, *z_bottom, *z_top);
+    let subject = Subject::Pins {
+        path: b.path.clone(),
+        refdes: b.refdes.clone(),
+        length: *length,
+    };
+    volume_fit(&volume, &subject, cases, &|depth| {
+        (
+            FitKind::Collision,
+            Why::Collision {
+                depth,
+                height: None,
+                provenance: None,
+            },
+        )
+    })
+}
+
+/// A volume (a body's box, a part's pins) against every case model: per case model, each solid
+/// it is in (by how far, or wholly, `None`), as `collision` names it; else the nearest surface
+/// nearer than the clearance.
+fn volume_fit(
+    volume: &Convex,
+    subject: &Subject,
+    cases: &[PlacedCase],
+    collision: &dyn Fn(Option<f64>) -> (FitKind, Why),
+) -> Vec<FitFinding> {
+    let mut out = Vec::new();
     let none = |_: &[[f64; 3]]| false;
     for case in cases {
         let mut collided = false;
@@ -988,7 +1082,7 @@ fn body_fit(b: &Body, cases: &[PlacedCase], extent: Option<Aabb>) -> Vec<FitFind
             if !meets(&s.bounds, &volume.bounds) {
                 continue;
             }
-            let found = match deepest(&volume, s, &none) {
+            let found = match deepest(volume, s, &none) {
                 Some((q, d)) => Some((q, Some(d))),
                 None => {
                     let c = volume.centre();
@@ -997,24 +1091,9 @@ fn body_fit(b: &Body, cases: &[PlacedCase], extent: Option<Aabb>) -> Vec<FitFind
             };
             let Some((q, depth)) = found else { continue };
             collided = true;
-            let why = match (b.provenance, b.standard, b.height) {
-                (HeightProvenance::Standard, Some(st), Some(h)) => Why::Standard {
-                    depth: depth.map(nm),
-                    height: h,
-                    standard: st.cited(),
-                },
-                _ => Why::Collision {
-                    depth: depth.map(nm),
-                    height: b.height,
-                    provenance: Some(b.provenance),
-                },
-            };
+            let (kind, why) = collision(depth.map(nm));
             out.push(FitFinding {
-                kind: if matches!(why, Why::Standard { .. }) {
-                    FitKind::Unchecked
-                } else {
-                    FitKind::Collision
-                },
+                kind,
                 case: case.name.clone(),
                 solid: s.name.clone(),
                 subject: subject.clone(),
@@ -1025,7 +1104,7 @@ fn body_fit(b: &Body, cases: &[PlacedCase], extent: Option<Aabb>) -> Vec<FitFind
         if collided {
             continue;
         }
-        if let Some((s, q, gap)) = nearest(&volume, case) {
+        if let Some((s, q, gap)) = nearest(volume, case) {
             out.push(FitFinding {
                 kind: FitKind::Clearance,
                 case: case.name.clone(),

@@ -117,10 +117,11 @@ interface Keepout {
 /// where they disagree with the model. A file that is not there is a warning (the fit is not
 /// checked), an error with strict constraints. netsmith bundles and downloads none.
 ///
-/// The fit check measures each part's body box to its height (stated, catalog or standard)
-/// and the board's own solid against the model's triangles: a body or the board inside a case
-/// solid by more than 0.01 mm is `case_collision`, an error that stops `fab` for a stated or a
-/// catalog height and for the board; the rest are warnings. The three figures below are
+/// The fit check measures each part's body box to its height (stated, catalog or standard),
+/// the pins of a part that states its `.pin_protrusion` (a box under its plated pads) and the
+/// board's own solid against the model's triangles: any of them inside a case solid by more
+/// than 0.01 mm is `case_collision`, an error that stops `fab` for a stated or a catalog
+/// height, for stated pins and for the board; the rest are warnings. The three figures below are
 /// offered with `?=`, so a board narrows them for its case (`.shell.clearance &= 0.3mm`).
 /// They are PROVISIONAL (ADR 0109 left them open): no maker's drawing gives them.
 interface CaseModel {
@@ -135,7 +136,7 @@ interface CaseModel {
     .rx: Number
     .ry: Number
     .rz: Number
-    /// The least gap from a part's body to a case surface (`case_clearance`, a warning): room
+    /// The least gap from a part's body or stated pins to a case surface (`case_clearance`, a warning): room
     /// for the tolerance of a printed or moulded case and of a part's own figure.
     .clearance: Length
     .clearance ?= 0.5mm

@@ -792,6 +792,7 @@ fn case_finding_report(f: &netsmith_3d::case::FitFinding) -> CaseFindingReport {
     use netsmith_3d::case::{Subject, Weight, Why};
     let (path, refdes, subject) = match &f.subject {
         Subject::Part { path, refdes } => (Some(path.clone()), Some(refdes.clone()), "part"),
+        Subject::Pins { path, refdes, .. } => (Some(path.clone()), Some(refdes.clone()), "pins"),
         Subject::Board => (None, None, "board"),
         Subject::Solid => (None, None, "solid"),
         Subject::Model => (None, None, "model"),

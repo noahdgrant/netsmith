@@ -401,3 +401,71 @@ fn a_members_case_model_is_its_own_boards_and_not_the_systems() {
         "a case round one board of a system is not the system's"
     );
 }
+
+#[test]
+fn stated_pins_below_the_far_face_are_measured_against_the_case() {
+    // `edge`'s pins stand 5 mm out of the bottom face: 0.6 mm into the floor, 4.4 mm below.
+    let dir = project("case-fit-pins", |p| {
+        p.replace(
+            ".edge.height &= 2.5mm",
+            ".edge.height &= 2.5mm\n    .edge.pin_protrusion &= 5mm",
+        )
+    });
+    let r = report(&dir);
+    let all = r["case_findings"].as_array().unwrap();
+    let pins: Vec<&serde_json::Value> = all.iter().filter(|f| f["subject"] == "pins").collect();
+    assert_eq!(pins.len(), 1, "{all:?}");
+    let f = pins[0];
+    assert_eq!(f["kind"], "case_collision");
+    assert_eq!(f["severity"], "error");
+    assert_eq!(f["path"], "edge");
+    assert_eq!(f["solid"], "floor");
+    assert_eq!(f["depth"], 0.6);
+    assert_eq!(f["at"][2], -6.0);
+    assert!(
+        f["message"].as_str().unwrap().starts_with(
+            "the pins of J2 (`edge`), stated to stand 5.00 mm out of the far face, are inside the solid `floor` of the case model `base` by 0.60 mm"
+        ),
+        "{f}"
+    );
+
+    // fab refuses it with the body's collision, whatever the flags say.
+    let run = netsmith(
+        &dir,
+        &[
+            "fab",
+            "case_fit.nsm",
+            "--out",
+            "fab",
+            "--constraints",
+            "warn",
+            "--allow-drc-violations",
+        ],
+    );
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("case_collision: the pins of J2 (`edge`)"),
+        "{err}"
+    );
+
+    // Pins cut to 4 mm stand 0.4 mm off the floor, nearer than the case's 1 mm: a warning.
+    let dir = project("case-fit-pins-near", |p| {
+        p.replace(
+            ".edge.height &= 2.5mm",
+            ".edge.height &= 2.5mm\n    .edge.pin_protrusion &= 4mm",
+        )
+    });
+    let r = report(&dir);
+    let pins: Vec<serde_json::Value> = r["case_findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["subject"] == "pins")
+        .cloned()
+        .collect();
+    assert_eq!(pins.len(), 1, "{pins:?}");
+    assert_eq!(pins[0]["kind"], "case_clearance");
+    assert_eq!(pins[0]["severity"], "warning");
+    assert_eq!(pins[0]["gap"], 0.4);
+}
