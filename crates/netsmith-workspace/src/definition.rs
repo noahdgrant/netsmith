@@ -215,6 +215,10 @@ fn visit<'a>(
                 inside.pop();
             }
         }
+        Item::ByName(b) => {
+            path(&b.left, inside);
+            path(&b.right, inside);
+        }
         Item::Connect(c) => {
             path(&c.first, inside);
             for (_, p) in &c.rest {

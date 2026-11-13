@@ -1762,6 +1762,250 @@ Rules.
 - A chain across a rail sets its own current (below). Any other chain is a statement about nets and about which currents are equal.
 - A system joins ports with `~` only (see Systems).
 
+### The members of two ports, by name
+
+`.a ~ .b by name` joins each pin or interface of `a` to the member of `b` with the same name, as one `~` line each would. `a` and `b` are parts, modules or interfaces, at any path (`.sensor.bus ~ .probe.bus by name`). A rename map pairs members whose names differ, the member of `a` first: `by name { gpio4 = io4; gpio5 = io5 }`, one rename per line or several separated by `;`. `except { gnd vdd }` leaves out members of either side. A member with no partner on the other side is an error at the line, unless it is renamed or left out: nothing is joined by accident, and nothing is left unjoined by accident.
+
+```nsm
+import std::sources::Rail
+
+part Header {
+    .designator &= "J"
+    pins {
+        .gpio4 passive "GPIO4" "1"
+        .gpio5 passive "GPIO5" "2"
+        .en    passive "EN"    "3"
+        .gnd   passive "GND"   "4"
+    }
+}
+
+part Chip {
+    .designator &= "U"
+    .vdd: Rail
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .io4     bidirectional "IO4" "3"
+        .io5     bidirectional "IO5" "4"
+        .en      bidirectional "EN"  "5"
+    }
+}
+
+board Pinout {
+    .supply: Rail {
+        .voltage &= 3.3V
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .header: Header
+    .chip: Chip
+    .supply ~ .chip.vdd
+    .header.gnd ~ .supply.neg
+    .header ~ .chip by name { gpio4 = io4; gpio5 = io5 } except { gnd vdd }
+}
+```
+
+This joins `.header.gpio4 ~ .chip.io4`, `.header.gpio5 ~ .chip.io5` and `.header.en ~ .chip.en`. The nets are those of the three lines, and so are their names.
+
+Rules.
+
+- The members are the pins and the interfaces that hold a pin. Values, the parts inside a module and the built-in `.place` and `.model` take no part.
+- Two members of the same name join as `~` joins them: a pin to a pin, and an interface to an interface of the same kind (a rail joins whole). A pin against an interface, or two interfaces of different kinds, is an error; rename one or leave it out.
+- Two interfaces of the same kind are joined with plain `~`, which already pairs their members by name: `.a ~ .b by name` is refused for them.
+- A rename or an `except` names a member that exists, and a member has one partner.
+- `by name` joins two ports with one `~`: it is not part of a chain.
+
+Misuse: a member with no partner. The message names each one, with a near name on the other side where there is one.
+
+```nsm fails
+import std::sources::Rail
+
+part Header {
+    .designator &= "J"
+    pins {
+        .gpio4 passive "GPIO4" "1"
+        .gpio5 passive "GPIO5" "2"
+        .en    passive "EN"    "3"
+        .gnd   passive "GND"   "4"
+    }
+}
+
+part Chip {
+    .designator &= "U"
+    .vdd: Rail
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .io4     bidirectional "IO4" "3"
+        .io5     bidirectional "IO5" "4"
+        .en      bidirectional "EN"  "5"
+    }
+}
+
+board Pinout {
+    .supply: Rail {
+        .voltage &= 3.3V
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .header: Header
+    .chip: Chip
+    .supply ~ .chip.vdd
+    .header.gnd ~ .supply.neg
+    .header ~ .chip by name { gpio4 = io4 } except { gnd vdd }
+}
+```
+
+```text
+error: these members have no member of the same name on the other side: `.header.gpio5` (did you mean `gpio5 = io5`?), `.chip.io5`; give each a partner with a rename, `by name { a = b }`, or leave it out with `except { a }`
+   --> main.nsm:35:5
+   |
+35 |     .header ~ .chip by name { gpio4 = io4 } except { gnd vdd }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Misuse: a rail against a pin of the same name.
+
+```nsm fails
+import std::sources::Rail
+
+part PinSupply {
+    .designator &= "U"
+    pins {
+        .vdd passive "VDD" "1"
+        .io4 passive "IO4" "2"
+    }
+}
+
+part Chip {
+    .designator &= "U"
+    .vdd: Rail
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .io4     bidirectional "IO4" "3"
+    }
+}
+
+board Supplies {
+    .supply: Rail {
+        .voltage &= 3.3V
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .chip: Chip
+    .other: PinSupply
+    .supply ~ .chip.vdd
+    .other ~ .chip by name
+}
+```
+
+```text
+error: `.other.vdd` is a pin and `.chip.vdd` is a `Rail`; `by name` joins a pin to a pin and an interface to an interface of the same kind, so rename one or leave it out with `except`
+   --> main.nsm:30:5
+   |
+30 |     .other ~ .chip by name
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Misuse: a rename to a member that does not exist.
+
+```nsm fails
+import std::sources::Rail
+
+part Header {
+    .designator &= "J"
+    pins {
+        .gpio4 passive "GPIO4" "1"
+        .gpio5 passive "GPIO5" "2"
+        .en    passive "EN"    "3"
+        .gnd   passive "GND"   "4"
+    }
+}
+
+part Chip {
+    .designator &= "U"
+    .vdd: Rail
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .io4     bidirectional "IO4" "3"
+        .io5     bidirectional "IO5" "4"
+        .en      bidirectional "EN"  "5"
+    }
+}
+
+board Pinout {
+    .supply: Rail {
+        .voltage &= 3.3V
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .header: Header
+    .chip: Chip
+    .supply ~ .chip.vdd
+    .header.gnd ~ .supply.neg
+    .header ~ .chip by name { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
+}
+```
+
+```text
+error: the rename's right side is a member of `.chip`, and `io44` is not a pin or an interface of it; did you mean `io4`?
+   --> main.nsm:35:39
+   |
+35 |     .header ~ .chip by name { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
+   |                                       ^^^^
+```
+
+Misuse: leaving out a member that does not exist.
+
+```nsm fails
+import std::sources::Rail
+
+part Header {
+    .designator &= "J"
+    pins {
+        .gpio4 passive "GPIO4" "1"
+        .gpio5 passive "GPIO5" "2"
+        .en    passive "EN"    "3"
+        .gnd   passive "GND"   "4"
+    }
+}
+
+part Chip {
+    .designator &= "U"
+    .vdd: Rail
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "VSS" "2"
+        .io4     bidirectional "IO4" "3"
+        .io5     bidirectional "IO5" "4"
+        .en      bidirectional "EN"  "5"
+    }
+}
+
+board Pinout {
+    .supply: Rail {
+        .voltage &= 3.3V
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .header: Header
+    .chip: Chip
+    .supply ~ .chip.vdd
+    .header.gnd ~ .supply.neg
+    .header ~ .chip by name { gpio4 = io4; gpio5 = io5 } except { gnd vd }
+}
+```
+
+```text
+error: `except` leaves out `vd`, but neither `.header` nor `.chip` has a pin or an interface of that name; did you mean `vdd`?
+   --> main.nsm:35:71
+   |
+35 |     .header ~ .chip by name { gpio4 = io4; gpio5 = io5 } except { gnd vd }
+   |                                                                       ^^
+```
+
 ### The current of a chain
 
 A chain that starts on a rail's `pos`, ends on the same rail's `neg` and has nothing else on the nets between its parts passes one current, and the rail's voltage is shared between its parts (Kirchhoff's voltage law). When every part in it states a `dc resistor` or a `dc diode` (a DC element, see "What a part is at DC"), the checker writes that law as a relation on the chain's current, before anything is picked:

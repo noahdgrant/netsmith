@@ -455,7 +455,8 @@ impl Parser {
                     | Item::Row(_)
                     | Item::Polygon(_)
                     | Item::Constraint(_)
-                    | Item::Connect(_),
+                    | Item::Connect(_)
+                    | Item::ByName(_),
                 ) => Err(ParseError::new(
                     at,
                     "doc comments can only be attached to declarations",
@@ -592,6 +593,16 @@ impl Parser {
                     self.bump();
                     self.skip_newlines();
                     rest.push((op, self.path()?));
+                    if matches!(&self.peek().tok, Tok::Ident(w) if w == "by") {
+                        if rest.len() != 1 || op != ConnectOp::Same {
+                            return Err(ParseError::new(
+                                self.peek().span,
+                                "`by name` joins two ports with one `~`: write `.a ~ .b by name`",
+                            ));
+                        }
+                        let right = rest.pop().expect("one operand").1;
+                        return only_decls(self.by_name(first, right, start)?);
+                    }
                 }
                 only_decls(Item::Connect(Connect {
                     first,
@@ -604,6 +615,92 @@ impl Parser {
                 "`:`, `&=`, `?=`, `==`, `>=`, `<=`, `~` or `~>`",
             )),
         }
+    }
+
+    /// `by name { a = b } except { c }` after `.left ~ .right` (ADR 0117).
+    fn by_name(&mut self, left: Path, right: Path, start: usize) -> Res<Item> {
+        self.bump();
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "name") {
+            return Err(unexpected(&t, "`name` after `by`"));
+        }
+        self.bump();
+        let mut renames = Vec::new();
+        if self.at(&Tok::LBrace) {
+            let open = self.bump();
+            loop {
+                self.skip_separators();
+                let t = self.peek().clone();
+                match &t.tok {
+                    Tok::RBrace => {
+                        self.bump();
+                        break;
+                    }
+                    Tok::Eof => {
+                        return Err(ParseError::new(open.span, "this `{` is never closed"));
+                    }
+                    Tok::Ident(_) => {
+                        let from = self.ident("a member of the left side")?;
+                        self.expect(
+                            &Tok::Eq,
+                            "`=` and the member of the right side it is joined to",
+                        )?;
+                        let to = self.ident("a member of the right side after `=`")?;
+                        renames.push((from, to));
+                    }
+                    _ => {
+                        return Err(unexpected(
+                            &t,
+                            "a rename such as `gpio4 = io4` (a member of the left side, `=`, a member of the right side) or `}`",
+                        ));
+                    }
+                }
+            }
+            if renames.is_empty() {
+                return Err(ParseError::new(
+                    open.span,
+                    "an empty rename map; write `by name` alone when every name matches",
+                ));
+            }
+        }
+        let mut except = Vec::new();
+        if matches!(&self.peek().tok, Tok::Ident(w) if w == "except") {
+            self.bump();
+            let open = self.expect(&Tok::LBrace, "`{` and the members left out")?;
+            loop {
+                self.skip_separators();
+                let t = self.peek().clone();
+                match &t.tok {
+                    Tok::RBrace => {
+                        self.bump();
+                        break;
+                    }
+                    Tok::Eof => {
+                        return Err(ParseError::new(open.span, "this `{` is never closed"));
+                    }
+                    Tok::Ident(_) => except.push(self.ident("a member left out")?),
+                    _ => {
+                        return Err(unexpected(
+                            &t,
+                            "the name of a member left out, such as `gnd`, or `}`",
+                        ));
+                    }
+                }
+            }
+            if except.is_empty() {
+                return Err(ParseError::new(
+                    open.span,
+                    "an empty `except`; leave it out when no member is left out",
+                ));
+            }
+        }
+        Ok(Item::ByName(ByName {
+            left,
+            right,
+            renames,
+            except,
+            span: self.span_from(start),
+        }))
     }
 
     /// `row .a1 .. .a12 along x pitch 2.54mm +/- 0.05mm`.

@@ -4,6 +4,7 @@
 mod assign;
 mod buses;
 mod busnets;
+mod by_name;
 mod checker;
 mod connect;
 mod dc;
