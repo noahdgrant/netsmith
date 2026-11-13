@@ -100,14 +100,21 @@ fn a_hand_pick_comes_before_the_lock_and_lock_update_records_it() {
 #[test]
 fn a_hand_picked_row_that_fails_stops_the_build_at_the_narrowing() {
     // 2.2 kohm in 0402 overheats at the LED's current.
-    let root = project("hand-pick-fails", &hand_picked("C25879"));
+    let source = hand_picked("C25879");
+    let root = project("hand-pick-fails", &source);
     let run = netsmith(&root, &["build"]);
     assert!(!run.status.success());
     let said = stderr(&run);
     assert!(said.contains("max_power"), "{said}");
+    // The second message points at the narrowing, wherever the board puts it.
+    let (line, text) = source
+        .lines()
+        .enumerate()
+        .find(|(_, l)| l.contains(".lcsc &="))
+        .unwrap();
+    let at = format!("main.nsm:{}:{}", line + 1, text.find(".lcsc").unwrap() + 1);
     assert!(
-        said.contains("`r1` is held by `.lcsc &= \"C25879\"` to one row of the `resistor` catalog, and no other row was tried for it")
-            && said.contains("main.nsm:22:21"),
+        said.contains(&format!("`r1` is held by `.lcsc &= \"C25879\"` to one row of the `resistor` catalog, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the narrowing\n   --> src/{at}")),
         "{said}"
     );
     // `lock --check` cannot tell, and says why in the solver's words.
