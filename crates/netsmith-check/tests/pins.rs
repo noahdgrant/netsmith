@@ -557,7 +557,7 @@ fn a_catalog_may_name_the_column_that_picks_a_row() {
     );
 }
 
-// ---- several packages share a table, and the absolute maximum in the row (ADR 0123) ----
+// ---- several packages share a table, and the absolute maximum in the row (ADR 0124) ----
 
 /// A regulator with one table for two packages and the absolute maximum of its enable pin in
 /// the row, measured from the table's one rail ground, `.vin.neg`.

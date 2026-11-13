@@ -354,7 +354,7 @@ pub struct PinRow {
     pub pads: Vec<String>,
     pub functions: Vec<PinFunction>,
     pub requirement: Option<Requirement>,
-    /// `abs_max 65V from .gnd` at the end of the row (ADR 0123).
+    /// `abs_max 65V from .gnd` at the end of the row (ADR 0124).
     pub abs_max: Option<RowLimit>,
     pub span: Span,
 }

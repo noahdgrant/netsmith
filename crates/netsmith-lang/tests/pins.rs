@@ -538,7 +538,7 @@ fn a_class_after_a_function_name_is_its_marker_so_a_function_called_class_comes_
     );
 }
 
-// ---- several packages share a table, and the absolute maximum in the row (ADR 0123) ----
+// ---- several packages share a table, and the absolute maximum in the row (ADR 0124) ----
 
 #[test]
 fn a_table_header_lists_several_packages_that_share_it() {

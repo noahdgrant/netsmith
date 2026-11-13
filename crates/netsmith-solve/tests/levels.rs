@@ -98,7 +98,7 @@ part Pad {
 }
 
 /// Like `Pad`, but its input is a plain pin that may float, with its limit in its row, as the
-/// `Lt8641` states its pins' limits (ADR 0123): measured from the table's rail ground.
+/// `Lt8641` states its pins' limits (ADR 0124): measured from the table's rail ground.
 part FloatPad {
     .vdd: Rail
     pins {
@@ -493,7 +493,7 @@ fn a_plain_pin_of_a_modem_stays_a_note_that_says_how_far_it_swings_is_not_known(
     );
 }
 
-// ---- the absolute maximum in the pin row (ADR 0123) ----
+// ---- the absolute maximum in the pin row (ADR 0124) ----
 
 #[test]
 fn a_rows_abs_max_is_held_against_the_net_from_the_tables_ground() {

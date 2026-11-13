@@ -67,7 +67,7 @@ impl Model {
         self.instance(part).tables.iter().find_map(|t| t.row(pin))
     }
 
-    /// The pin an absolute maximum of the pin's row is measured from (ADR 0123), if its row
+    /// The pin an absolute maximum of the pin's row is measured from (ADR 0124), if its row
     /// states one with a reference of its own.
     pub fn limit_reference(&self, pin: InstId) -> Option<InstId> {
         self.pin_facts(pin)?.abs_max.as_ref()?.reference

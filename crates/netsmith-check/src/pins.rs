@@ -155,7 +155,7 @@ impl Checker<'_> {
             return;
         }
 
-        // The packages of the header, each once (ADR 0123): several share the table.
+        // The packages of the header, each once (ADR 0124): several share the table.
         let mut packages: Vec<(String, Span)> = Vec::new();
         for (name, span) in &table.packages {
             if packages.iter().any(|(p, _)| p == name) {
@@ -321,7 +321,7 @@ impl Checker<'_> {
         }
     }
 
-    /// The `abs_max` at the end of a row (ADR 0123): the limit as the model keeps it, and
+    /// The `abs_max` at the end of a row (ADR 0124): the limit as the model keeps it, and
     /// whether it is measured from the table's rail ground, which the caller finds once every
     /// row is read. The value narrows the pin's `.abs_max`, once for the part, however many
     /// tables state it.

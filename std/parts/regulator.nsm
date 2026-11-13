@@ -623,7 +623,7 @@ module Buck<Ic: BuckIc> {
 ///   Functions, p.10). The part cannot reach the output, which `Buck` makes, so its `support`
 ///   section ties BIAS to ground and `.bias_voltage` is 0 V.
 /// - The other pins that the Absolute Maximum Ratings (p.2) give a limit for state it at the
-///   end of their pin row, `abs_max 65V` (ADR 0123). The solver compares it with the
+///   end of their pin row, `abs_max 65V` (ADR 0124). The solver compares it with the
 ///   worst-case voltage of the pin's net above the part's ground, `GND` (`.vin.neg`, the one
 ///   rail ground of the table), so a board that ties the pin to the input rail is refused:
 ///   `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V. The datasheet does not say what the

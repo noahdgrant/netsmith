@@ -370,7 +370,7 @@ pub struct PinRow {
 }
 
 /// `abs_max 4V from .gnd` at the end of a pin row: the pin's absolute maximum, the voltage its
-/// net must not exceed above the reference pin (ADR 0123). With no `from` the reference is the
+/// net must not exceed above the reference pin (ADR 0124). With no `from` the reference is the
 /// ground of the pin's `Logic`, else the one rail ground of the table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbsMax {
