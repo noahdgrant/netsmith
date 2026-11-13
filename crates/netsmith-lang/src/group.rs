@@ -1,4 +1,4 @@
-//! Groups of identical members (ADR 0118). `.decoupling: 4 x Capacitor { ... }` is four
+//! Groups of identical members (ADR 0119). `.decoupling: 4 x Capacitor { ... }` is four
 //! members, `.decoupling[0]` to `.decoupling[3]`, each declared with the group's body, in
 //! index order where the group is declared. The group's doc comment goes with the first. A chain with a group alone between its two ends
 //! (`.v.pos ~> .decoupling ~> .v.neg`) is one chain for each member, so each stands in

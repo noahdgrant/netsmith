@@ -14,7 +14,7 @@ pub enum Tok {
     RBrace,
     LParen,
     RParen,
-    /// `[` and `]` around the index of one part of a group (`.decoupling[2]`, ADR 0118).
+    /// `[` and `]` around the index of one part of a group (`.decoupling[2]`, ADR 0119).
     LBracket,
     RBracket,
     Comma,

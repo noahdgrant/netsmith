@@ -1574,7 +1574,7 @@ impl Parser {
         Ok(params)
     }
 
-    /// `4 x` before a type: the count of a group (ADR 0118), or `None` when the next token is
+    /// `4 x` before a type: the count of a group (ADR 0119), or `None` when the next token is
     /// not a number followed by `x`.
     fn group_count(&mut self) -> Res<Option<Count>> {
         let t = self.peek().clone();
@@ -1630,7 +1630,7 @@ impl Parser {
         }))
     }
 
-    /// `[2]` touching the name before it: the index of one member of a group (ADR 0118),
+    /// `[2]` touching the name before it: the index of one member of a group (ADR 0119),
     /// which becomes part of the name (`decoupling[2]`).
     fn index_suffix(&mut self, ident: &mut Ident) -> Res<()> {
         let open = self.peek().clone();
@@ -1833,12 +1833,12 @@ fn binary(op: BinOp, lhs: Expr, rhs: Expr) -> Expr {
     }
 }
 
-/// The most members a group may have (ADR 0118): more is a mistake in the count.
+/// The most members a group may have (ADR 0119): more is a mistake in the count.
 pub const MAX_GROUP: u32 = 1000;
 
 /// Give a group written in a chain its name, from its kind and the chain's two ends, and check
 /// that it stands between two ends: `.v.pos ~> 2 x Capacitor ~> .v.neg` is the group
-/// `capacitor_v_pos_v_neg` (ADR 0118).
+/// `capacitor_v_pos_v_neg` (ADR 0119).
 fn name_inline_group(first: &Path, rest: &mut [(ConnectOp, Path)], group: &InlineGroup) -> Res<()> {
     let shape = "a group written in a chain stands alone between the chain's two ends, each member in parallel: `.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`";
     if rest.len() != 2 || group.at != 0 || rest.iter().any(|(op, _)| *op != ConnectOp::Series) {

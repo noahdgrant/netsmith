@@ -1670,7 +1670,7 @@ impl<'a> Checker<'a> {
         true
     }
 
-    /// What to say when `name` is not a member of `inst` but names a group of it (ADR 0118):
+    /// What to say when `name` is not a member of `inst` but names a group of it (ADR 0119):
     /// the group as a whole (`decoupling`), or an index past its last member (`decoupling[7]`).
     fn group_hint(&self, inst: InstId, name: &str) -> Option<String> {
         let (base, index) = match name.strip_suffix(']').and_then(|n| n.rsplit_once('[')) {

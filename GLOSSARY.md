@@ -283,7 +283,7 @@ Identical capacitors in parallel that stand in one place of the design, a `Capac
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
 **Group**:
-Several identical members declared in one statement, `.decoupling: 4 x Capacitor { ... }` (ADR 0118): the members `.decoupling[0]` to `.decoupling[3]`, each with the group's block, a path of its own and a designator of its own, numbered in index order. A chain with the group alone between its ends puts each member in parallel between them; a group written in a chain (`.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`) is named from its kind and the ends. Not a **Bank**, whose count the solver may choose and whose capacitors have no paths a board narrows.
+Several identical members declared in one statement, `.decoupling: 4 x Capacitor { ... }` (ADR 0119): the members `.decoupling[0]` to `.decoupling[3]`, each with the group's block, a path of its own and a designator of its own, numbered in index order. A chain with the group alone between its ends puts each member in parallel between them; a group written in a chain (`.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`) is named from its kind and the ends. Not a **Bank**, whose count the solver may choose and whose capacitors have no paths a board narrows.
 _Avoid_: Array, vector, list, repeat, instances (for the members, which are members)
 
 **Dielectric**:

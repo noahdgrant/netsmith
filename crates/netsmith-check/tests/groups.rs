@@ -1,4 +1,4 @@
-//! Groups of identical members, `N x Kind` (ADR 0118): what the checker says about a path that
+//! Groups of identical members, `N x Kind` (ADR 0119): what the checker says about a path that
 //! names a whole group or an index past its end, and a group's members in a physical file.
 
 use netsmith_check::*;

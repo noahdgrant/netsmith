@@ -292,7 +292,7 @@ error: `r` is already declared in this block
 
 ### A group of identical members
 
-Several members that are the same, such as the decoupling capacitors of a rail, are one statement (ADR 0118): a count and `x` before the type, `.decoupling: 4 x Capacitor { ... }`. The group is that many members, `.decoupling[0]` to `.decoupling[3]`, each a member of its own as if declared one by one, with the group's block. A chain with the group alone between its two ends, `.supply.pos ~> .decoupling ~> .supply.neg`, puts every member in parallel between them. A group may also be written in the chain itself, where it has no name to give: `.supply.pos ~> 2 x Capacitor { ... } ~> .supply.neg`.
+Several members that are the same, such as the decoupling capacitors of a rail, are one statement (ADR 0119): a count and `x` before the type, `.decoupling: 4 x Capacitor { ... }`. The group is that many members, `.decoupling[0]` to `.decoupling[3]`, each a member of its own as if declared one by one, with the group's block. A chain with the group alone between its two ends, `.supply.pos ~> .decoupling ~> .supply.neg`, puts every member in parallel between them. A group may also be written in the chain itself, where it has no name to give: `.supply.pos ~> 2 x Capacitor { ... } ~> .supply.neg`.
 
 ```nsm solve report
 import std::parts::passive::Capacitor

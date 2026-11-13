@@ -1,4 +1,4 @@
-//! Groups of identical members, `N x Kind` (ADR 0118), in the design: one part for each
+//! Groups of identical members, `N x Kind` (ADR 0119), in the design: one part for each
 //! member, numbered in index order, each in parallel between the ends of its chain.
 
 use netsmith_check::{Loader, check};

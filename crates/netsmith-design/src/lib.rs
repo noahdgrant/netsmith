@@ -60,7 +60,7 @@ pub fn natural_path_order(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 /// `tp` and `10` of `tp10`, and `decoupling[` and `10` of `decoupling[10]` (a member of a
-/// group, ADR 0118); a segment that does not end in digits, or in an index, has none.
+/// group, ADR 0119); a segment that does not end in digits, or in an index, has none.
 fn split_trailing_number(segment: &str) -> (&str, Option<&str>) {
     if let Some(inner) = segment.strip_suffix(']') {
         let stem = inner.trim_end_matches(|c: char| c.is_ascii_digit());

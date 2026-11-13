@@ -1,4 +1,4 @@
-//! Groups of identical members, `N x Kind` (ADR 0118): the syntax, the printer, and the
+//! Groups of identical members, `N x Kind` (ADR 0119): the syntax, the printer, and the
 //! expansion into indexed members that the checker reads.
 
 use netsmith_lang::ast::*;
