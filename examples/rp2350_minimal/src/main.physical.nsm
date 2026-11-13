@@ -15,7 +15,7 @@
 //! inductor, the resistors and the capacitors) have no line here: the placer puts them.
 
 import std::parts::mechanical::MountingHole
-import std::pcb::Outline
+import std::pcb::{CaseModel, Outline}
 
 physical for Rp2350Minimal {
     case {
@@ -32,6 +32,24 @@ physical for Rp2350Minimal {
         .hole2: MountingHole { .package &= "M2.5" }
         .hole3: MountingHole { .package &= "M2.5" }
         .hole4: MountingHole { .package &= "M2.5" }
+
+        // The example's own case (MIT, `case/`, written by `case/make_case.py`), drawn from the
+        // base's outer bottom-left corner with the floor's underside at z = 0. The base is a
+        // tray with 2 mm walls 0.5 mm off the outline and four 4 mm bosses that the board's
+        // bottom face rests on: the floor (2 mm) and the bosses put the board's top face 7.6 mm
+        // up. The lid's underside is 6.5 mm above the board's top face.
+        .base: CaseModel {
+            .file &= "../case/base.step"
+            .x &= -2.5mm
+            .y &= -2.5mm
+            .z &= -7.6mm
+        }
+        .lid: CaseModel {
+            .file &= "../case/lid.step"
+            .x &= -2.5mm
+            .y &= -2.5mm
+            .z &= 6.5mm
+        }
     }
 
     // Their MH1 to MH4: (86.03, 74), (113.97, 74), (113.97, 117.18), (86.03, 117.18).
