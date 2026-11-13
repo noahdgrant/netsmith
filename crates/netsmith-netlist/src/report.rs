@@ -8,7 +8,7 @@ pub fn report(outcome: &Outcome) -> String {
     match outcome {
         Outcome::Match(c) => matched(c),
         Outcome::Different(d) => different(d),
-        Outcome::Undecided(why) => format!("undecided: {why}\n"),
+        Outcome::Undecided(stop) => format!("undecided: {stop}\n"),
     }
 }
 
@@ -34,6 +34,17 @@ fn matched(c: &Correspondence) -> String {
         out.push_str("  nets (A -> B):\n");
         for (a, b) in renamed {
             out.push_str(&format!("    `{a}` -> `{b}`\n"));
+        }
+    }
+    if !c.swapped.is_empty() {
+        out.push_str(&format!(
+            "  note: {} two-pad part{} without polarity {} its pads swapped against the other side, which is the same circuit (A -> B):\n",
+            c.swapped.len(),
+            if c.swapped.len() == 1 { "" } else { "s" },
+            if c.swapped.len() == 1 { "has" } else { "have" },
+        ));
+        for (a, b) in &c.swapped {
+            out.push_str(&format!("    {a} -> {b}\n"));
         }
     }
     if c.interchangeable > 0 {

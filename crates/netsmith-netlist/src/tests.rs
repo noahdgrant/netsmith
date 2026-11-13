@@ -331,23 +331,259 @@ fn a_ring_of_six_is_not_two_rings_of_three() {
 }
 
 #[test]
-fn a_search_past_its_bound_says_it_could_not_decide() {
+fn a_search_past_its_bound_says_where_it_stopped() {
     let options = Options {
-        max_refinements: 0,
+        min_refinements: 0,
+        refinements_per_component: 0,
         ..Options::default()
     };
     let o = compare(&parallel(3, true), &parallel(3, false), &options).unwrap();
-    let Outcome::Undecided(why) = &o else {
+    let Outcome::Undecided(stop) = &o else {
         panic!("expected undecided, got {o:?}");
     };
+    assert_eq!(stop.refinements, 1);
+    assert_eq!(stop.limit, 0);
+    assert_eq!(stop.ambiguous.len(), 1, "{stop:?}");
+    assert_eq!(stop.ambiguous[0].a, ["R1", "R2", "R3"]);
+    let why = report(&o);
     assert!(
         why.contains("could not decide")
-            && why.contains("3 components")
-            && why.contains("10k")
+            && why.contains("3 components of 10k")
             && why.contains("R1, R2, R3")
+            && why.contains("after 1 refinement")
             && why.contains("limit of 0 refinements"),
         "{why}"
     );
+}
+
+#[test]
+fn the_bound_grows_with_the_board() {
+    let options = Options::default();
+    assert_eq!(options.refinement_bound(100), 20_000);
+    assert_eq!(options.refinement_bound(1_000), 20_000);
+    assert_eq!(options.refinement_bound(5_000), 100_000);
+}
+
+/// `n` groups of two equal resistors in parallel, each group between nets of its own: each
+/// group is one choice, so the search runs about one refinement per group.
+fn parallel_groups(n: usize, offset: usize) -> Netlist {
+    let mut comps = Vec::new();
+    let mut nets = Vec::new();
+    for g in 0..n {
+        let (x, y) = (
+            format!("R{}", offset + 2 * g),
+            format!("R{}", offset + 2 * g + 1),
+        );
+        comps.push((x.clone(), "10k".to_string(), R.to_string()));
+        comps.push((y.clone(), "10k".to_string(), R.to_string()));
+        nets.push((
+            format!("hi{g}"),
+            vec![(x.clone(), "1".to_string()), (y.clone(), "1".to_string())],
+        ));
+        nets.push((
+            format!("lo{g}"),
+            vec![(x, "2".to_string()), (y, "2".to_string())],
+        ));
+    }
+    Netlist::from_parts(comps, nets).unwrap()
+}
+
+#[test]
+fn a_board_past_a_fixed_bound_decides_with_the_bound_scaled_by_its_components() {
+    let (a, b) = (parallel_groups(40, 1), parallel_groups(40, 500));
+    let Outcome::Match(c) = compare_default(&a, &b) else {
+        panic!("the groups are the same circuit");
+    };
+    let needed = c.refinements;
+    assert!(needed > 40, "{needed}");
+    assert!(needed < 20 * 160, "{needed}");
+    // A fixed bound just short of what the board needs cannot decide it (the last
+    // refinement makes no choice, so it is not held to the bound)...
+    let fixed = Options {
+        min_refinements: needed - 2,
+        refinements_per_component: 0,
+        ..Options::default()
+    };
+    assert!(matches!(
+        compare(&a, &b, &fixed).unwrap(),
+        Outcome::Undecided(_)
+    ));
+    // ...and the same floor grown by the board's 160 components does.
+    let scaled = Options {
+        min_refinements: needed - 2,
+        ..Options::default()
+    };
+    assert!(matches!(
+        compare(&a, &b, &scaled).unwrap(),
+        Outcome::Match(_)
+    ));
+    // Past the scaled bound, the answer says how far it got and what is still alike.
+    let short = Options {
+        min_refinements: needed / 4,
+        refinements_per_component: 0,
+        ..Options::default()
+    };
+    let Outcome::Undecided(stop) = compare(&a, &b, &short).unwrap() else {
+        panic!("past its bound");
+    };
+    assert_eq!(stop.refinements, needed / 4 + 1);
+    assert!(!stop.ambiguous.is_empty());
+    assert!(
+        stop.ambiguous
+            .iter()
+            .all(|g| g.value == "10k" && g.a.len() == g.b.len()),
+        "{stop:?}"
+    );
+    let text = report(&Outcome::Undecided(stop));
+    assert!(text.contains("still alike"), "{text}");
+}
+
+/// The LED board of `led()` with R1's two pads the other way round.
+fn led_with_r1_turned(footprint: &str) -> Netlist {
+    nl(
+        &[
+            ("J1", "Conn", HDR),
+            ("R1", "330", footprint),
+            ("D1", "LED", LED),
+        ],
+        &[
+            ("VCC", &["J1.1", "R1.2"]),
+            ("Net-(D1-A)", &["R1.1", "D1.1"]),
+            ("GND", &["D1.2", "J1.2"]),
+        ],
+    )
+}
+
+#[test]
+fn a_resistor_with_its_pads_swapped_matches_and_the_swap_is_a_note() {
+    let Outcome::Match(c) = compare_default(&led(), &led_renumbered_with_r_turned()) else {
+        panic!("a resistor has no polarity");
+    };
+    assert_eq!(c.swapped, [("R1".to_string(), "R4".to_string())]);
+    let text = report(&Outcome::Match(c));
+    assert!(
+        text.contains("pads swapped") && text.contains("R1 -> R4"),
+        "{text}"
+    );
+    // Two-pad parts of every family without polarity: capacitors, inductors and ferrite beads,
+    // fuses, whatever the value.
+    for footprint in [
+        "Capacitor_SMD:C_0402_1005Metric",
+        "Inductor_SMD:L_0603_1608Metric",
+        "Fuse:Fuse_1206_3216Metric",
+        "R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+    ] {
+        let straight = nl(
+            &[
+                ("J1", "Conn", HDR),
+                ("R1", "330", footprint),
+                ("D1", "LED", LED),
+            ],
+            &[
+                ("VCC", &["J1.1", "R1.1"]),
+                ("Net-(D1-A)", &["R1.2", "D1.1"]),
+                ("GND", &["D1.2", "J1.2"]),
+            ],
+        );
+        let Outcome::Match(c) = compare_default(&straight, &led_with_r1_turned(footprint)) else {
+            panic!("{footprint} has no polarity");
+        };
+        assert_eq!(
+            c.swapped,
+            [("R1".to_string(), "R1".to_string())],
+            "{footprint}"
+        );
+    }
+}
+
+/// `led_renumbered()` with R4's pads the other way round.
+fn led_renumbered_with_r_turned() -> Netlist {
+    nl(
+        &[("D7", "LED", LED), ("J9", "Conn", HDR), ("R4", "330", R)],
+        &[
+            ("N$2", &["D7.2", "J9.2"]),
+            ("+5V", &["R4.2", "J9.1"]),
+            ("N$1", &["D7.1", "R4.1"]),
+        ],
+    )
+}
+
+#[test]
+fn a_diode_with_its_pads_swapped_is_still_a_difference() {
+    // D1's anode and cathode exchanged: the LED is in backwards.
+    let b = nl(
+        &[("J1", "Conn", HDR), ("R1", "330", R), ("D1", "LED", LED)],
+        &[
+            ("VCC", &["J1.1", "R1.1"]),
+            ("Net-(D1-A)", &["R1.2", "D1.2"]),
+            ("GND", &["D1.1", "J1.2"]),
+        ],
+    );
+    let text = report(&compare_default(&led(), &b));
+    assert!(text.starts_with("different"), "{text}");
+    assert!(text.contains("D1.1") && text.contains("D1.2"), "{text}");
+    // So is every other part whose footprint has a polarity, or that has none to read: an
+    // electrolytic or tantalum capacitor, a diode, and a footprint the netlist does not name.
+    for footprint in [
+        "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm",
+        "Capacitor_Tantalum_SMD:CP_EIA-3216-18_Kemet-A",
+        "Diode_SMD:D_SOD-123",
+        "",
+    ] {
+        let straight = nl(
+            &[
+                ("J1", "Conn", HDR),
+                ("R1", "330", footprint),
+                ("D1", "LED", LED),
+            ],
+            &[
+                ("VCC", &["J1.1", "R1.1"]),
+                ("Net-(D1-A)", &["R1.2", "D1.1"]),
+                ("GND", &["D1.2", "J1.2"]),
+            ],
+        );
+        let o = compare_default(&straight, &led_with_r1_turned(footprint));
+        assert!(matches!(o, Outcome::Different(_)), "{footprint}: {o:?}");
+    }
+    // And a resistor too, when the option is off.
+    let strict = Options {
+        two_pad_swaps: false,
+        ..Options::default()
+    };
+    assert!(matches!(
+        compare(&led(), &led_renumbered_with_r_turned(), &strict).unwrap(),
+        Outcome::Different(_)
+    ));
+}
+
+#[test]
+fn a_swapped_resistor_beside_a_real_difference_is_not_listed_as_one() {
+    // R4 is turned, and the LED is wired to the supply instead of to R4.
+    let b = nl(
+        &[("D7", "LED", LED), ("J9", "Conn", HDR), ("R4", "330", R)],
+        &[
+            ("N$2", &["D7.2", "J9.2"]),
+            ("+5V", &["R4.2", "J9.1", "D7.1"]),
+            ("N$1", &["R4.1"]),
+        ],
+    );
+    let text = report(&compare_default(&led(), &b));
+    assert!(text.starts_with("different"), "{text}");
+    assert!(text.contains("D7.1"), "{text}");
+    assert!(!text.contains("R4.2") && !text.contains("R1.1"), "{text}");
+}
+
+#[test]
+fn a_mapped_resistor_may_be_swapped_too() {
+    let options = Options {
+        identity: Identity::Map(vec![("R1".into(), "R4".into())]),
+        ..Options::default()
+    };
+    let Outcome::Match(c) = compare(&led(), &led_renumbered_with_r_turned(), &options).unwrap()
+    else {
+        panic!("a mapped resistor has no polarity either");
+    };
+    assert_eq!(c.swapped, [("R1".to_string(), "R4".to_string())]);
 }
 
 #[test]

@@ -6,7 +6,8 @@
 //! two of them are the same circuit: components are matched by their value and footprint
 //! and by how their pins are wired, not by net name or designator, and the answer is
 //! either a [`Correspondence`] or a list of [`Difference`]s. [`report`] renders either as
-//! text.
+//! text. A pin number is identity except on a two-pad part without polarity, whose pads may
+//! be swapped (#67, a change to ADR 0017's rule; the `graph` module says which parts).
 
 mod graph;
 mod model;
@@ -14,7 +15,9 @@ mod parse;
 mod report;
 mod value;
 
-pub use graph::{Correspondence, Difference, Identity, Options, Outcome, Pin, compare};
+pub use graph::{
+    Ambiguous, Correspondence, Difference, Identity, Options, Outcome, Pin, Undecided, compare,
+};
 pub use model::{Component, Net, Netlist, NetlistError};
 pub use report::report;
 pub use value::normalize_value;
