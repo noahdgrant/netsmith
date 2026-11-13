@@ -237,7 +237,7 @@ interface Usb2 {
 
 /// A pull-up resistor: one resistor from the positive pin of `supply` to `line`, which holds
 /// the line high while nothing drives it. The board states the resistance, as a value with its
-/// tolerance (`.pullup.resistance &= 10kohm +/- 5%`), and the solver picks a resistor that stays
+/// tolerance (`.pullup.resistor.resistance &= 10kohm +/- 5%`), and the solver picks a resistor that stays
 /// inside it; a board that does not gets an unconstrained pick finding for the resistor, with
 /// the member named (ADR 0065). Use it on a reset, an enable, an open-drain output or any one
 /// line; `I2cPullups` is the same circuit twice, for the two lines of an I2C bus.
@@ -331,11 +331,9 @@ interface Usb2 {
 module PullUp {
     .supply: Rail
     .line: Pin
-    .resistance: Resistance
-    /// The resistor. A board that wants a size narrows its package, `.resistor.package &=
-    /// "0402"` (ADR 0116); left out, the solver picks it.
+    /// The resistor. A board narrows its resistance, `.resistor.resistance &= 4.7kohm +/- 5%`,
+    /// and a size, `.resistor.package &= "0402"` (ADR 0116); left out, the solver picks it.
     .resistor: Resistor
-    .resistance == .resistor.resistance
     .supply.pos ~> .resistor ~> .line
 
     .line_low: Number
@@ -426,13 +424,17 @@ module PullUp {
 module I2cPullups {
     .bus: I2c
     .supply: Rail
+    /// The resistance of both pull-ups: one value that holds the pair to the same resistor, and
+    /// that the rise time and the sink current bound read. More than a pass-in, so a board
+    /// states it here and not on one pull-up (ADR 0116).
     .resistance: Resistance
     .sda_pullup: Resistor
     .scl_pullup: Resistor
     .resistance == .sda_pullup.resistance
     .resistance == .scl_pullup.resistance
     /// The package of both resistors, a text such as `"0402"`; a board that does not state it
-    /// leaves the pick to the solver.
+    /// leaves the pick to the solver. It ties the two resistors to one package, which a
+    /// narrowing of each cannot say (ADR 0116).
     .package: Package optional
     .sda_pullup.package == .package
     .scl_pullup.package == .package
@@ -460,7 +462,7 @@ module I2cPullups {
 
 /// A pull-down resistor: one resistor from `line` to the negative pin of `reference`, which
 /// holds the line low while nothing drives it. The board states the resistance, as a value with
-/// its tolerance (`.pulldown.resistance &= 100kohm +/- 5%`), and the solver picks a resistor
+/// its tolerance (`.pulldown.resistor.resistance &= 100kohm +/- 5%`), and the solver picks a resistor
 /// that stays inside it; a board that does not gets an unconstrained pick finding for the
 /// resistor, with the member named (ADR 0065). Use it on a boot-mode pin, an enable, a gate or
 /// any one line that must read low when its driver lets go; `PullUp` is the same circuit to the
@@ -534,11 +536,9 @@ module PullDown {
     .reference: Rail
     .reference.current &= 0A
     .line: Pin
-    .resistance: Resistance
-    /// The resistor. A board that wants a size narrows its package, `.resistor.package &=
-    /// "0402"` (ADR 0116); left out, the solver picks it.
+    /// The resistor. A board narrows its resistance, `.resistor.resistance &= 100kohm +/- 5%`,
+    /// and a size, `.resistor.package &= "0402"` (ADR 0116); left out, the solver picks it.
     .resistor: Resistor
-    .resistance == .resistor.resistance
     .line ~> .resistor ~> .reference.neg
 
     .line_high: Number

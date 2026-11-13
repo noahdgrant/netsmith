@@ -85,7 +85,7 @@ fn board(circuit: &str) -> String {
 
 fn pulldown(extra: &str) -> String {
     board(&format!(
-        "    .pull: PullDown {{ .resistance &= 100kohm +/- 5%\n {extra} }}\n    \
+        "    .pull: PullDown {{ .resistor.resistance &= 100kohm +/- 5%\n {extra} }}\n    \
          .pull.reference ~ .load\n    .pull.line ~ .gate.a\n    .gate.b ~ .load.pos\n"
     ))
 }
@@ -167,17 +167,15 @@ fn a_line_held_above_the_reference_carries_what_the_board_states() {
 fn a_statement_on_the_resistance_picks_the_resistor() {
     let s = run(&pulldown(""));
     assert_eq!(picked(&s, "pull.resistor"), "100k");
-    let r = range(&s, "pull.resistance");
-    let inside = range(&s, "pull.resistor.resistance");
+    let r = range(&s, "pull.resistor.resistance");
     assert!(r.lo() >= 95e3 - 1e-6 && r.hi() <= 105e3 + 1e-6, "{r}");
-    assert!(inside.lo() >= r.lo() && inside.hi() <= r.hi(), "{inside}");
 }
 
 #[test]
 fn two_pulldowns_on_one_rail_are_each_their_own() {
     let s = run(&board(
-        "    .one: PullDown { .resistance &= 100kohm +/- 5% }\n    \
-         .two: PullDown { .resistance &= 10kohm +/- 5% }\n    \
+        "    .one: PullDown { .resistor.resistance &= 100kohm +/- 5% }\n    \
+         .two: PullDown { .resistor.resistance &= 10kohm +/- 5% }\n    \
          .one.reference ~ .load\n    .two.reference ~ .load\n    \
          .one.line ~ .gate.a\n    .two.line ~ .gate.b\n",
     ));
@@ -192,37 +190,31 @@ fn two_pulldowns_on_one_rail_are_each_their_own() {
 }
 
 #[test]
-fn a_pulldown_whose_resistance_nobody_states_is_a_finding_that_names_the_member() {
+fn a_pulldown_whose_resistance_nobody_states_is_a_finding_that_names_the_resistor() {
     let s = run(&board(
         "    .pull: PullDown\n    .pull.reference ~ .load\n    .pull.line ~ .gate.a\n    \
          .gate.b ~ .load.pos\n",
     ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    let found: Vec<(String, String)> = s
+    // The resistor is a part inside the module and nothing holds its resistance to a member of
+    // the module, so the finding names the resistor and the board states
+    // `.pull.resistor.resistance` (ADR 0116).
+    let found: Vec<(String, bool)> = s
         .unconstrained
         .iter()
-        .map(|u| {
-            (
-                s.model.path_of(u.part),
-                s.model
-                    .path_of_field(u.held_by.as_ref().expect("held to the member").member),
-            )
-        })
+        .map(|u| (s.model.path_of(u.part), u.held_by.is_none()))
         .collect();
-    assert_eq!(
-        found,
-        [("pull.resistor".to_string(), "pull.resistance".to_string())]
-    );
+    assert_eq!(found, [("pull.resistor".to_string(), true)]);
     let s = run(&pulldown(""));
     assert!(s.unconstrained.is_empty(), "{:?}", s.unconstrained);
 }
 
 #[test]
 fn a_resistor_over_its_rating_is_refused() {
-    // 50 ohm across 5.25 V is 0.55 W, far over what any row of the catalog rates: the power
+    // 47 ohm at most across 5.25 V is 0.59 W, far over what any row of the catalog rates: the power
     // of the resistor is judged against the current the pull-down states, and no row passes.
     let s = run(&board(
-        "    .pull: PullDown { .resistance &= 50ohm +/- 1%\n .line_top &= 0V..5.25V }\n    \
+        "    .pull: PullDown { .resistor.resistance &= 10ohm..47ohm\n .line_top &= 0V..5.25V }\n    \
          .pull.reference ~ .load\n    .pull.line ~ .gate.a\n    .gate.b ~ .load.pos\n",
     ));
     let m = messages(&s);

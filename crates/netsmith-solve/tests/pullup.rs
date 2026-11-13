@@ -89,7 +89,7 @@ const PLAIN: &str = "    .pull: Resistor { .resistance &= 10kohm +/- 5% }\n    \
 
 fn pullup(extra: &str) -> String {
     board(&format!(
-        "    .pull: PullUp {{ .resistance &= 10kohm +/- 5%\n {extra} }}\n    \
+        "    .pull: PullUp {{ .resistor.resistance &= 10kohm +/- 5%\n {extra} }}\n    \
          .pull.supply ~ .load\n    .pull.line ~ .gate.a\n    .gate.b ~ .load.pos\n"
     ))
 }
@@ -162,13 +162,11 @@ fn a_board_that_knows_how_long_its_line_is_low_narrows_the_draw() {
 fn a_statement_on_the_resistance_picks_the_resistor() {
     let s = run(&pullup(""));
     assert_eq!(picked(&s, "pull.resistor"), "10k");
-    let r = range(&s, "pull.resistance");
-    let inside = range(&s, "pull.resistor.resistance");
+    let r = range(&s, "pull.resistor.resistance");
     assert!(r.lo() >= 9.5e3 - 1e-6 && r.hi() <= 10.5e3 + 1e-6, "{r}");
-    assert!(inside.lo() >= r.lo() && inside.hi() <= r.hi(), "{inside}");
     // A different statement picks a different resistor.
     let s = run(&board(
-        "    .pull: PullUp { .resistance &= 2.2kohm +/- 1% }\n    \
+        "    .pull: PullUp { .resistor.resistance &= 2.2kohm +/- 1% }\n    \
          .pull.supply ~ .load\n    .pull.line ~ .gate.a\n    .gate.b ~ .load.pos\n",
     ));
     assert_eq!(picked(&s, "pull.resistor"), "2.2k");
@@ -192,8 +190,8 @@ fn a_budget_on_the_supply_current_is_kept() {
 #[test]
 fn two_pullups_on_one_rail_add() {
     let s = run(&board(
-        "    .one: PullUp { .resistance &= 10kohm +/- 5% }\n    \
-         .two: PullUp { .resistance &= 4.7kohm +/- 5% }\n    \
+        "    .one: PullUp { .resistor.resistance &= 10kohm +/- 5% }\n    \
+         .two: PullUp { .resistor.resistance &= 4.7kohm +/- 5% }\n    \
          .one.supply ~ .load\n    .two.supply ~ .load\n    \
          .one.line ~ .gate.a\n    .two.line ~ .gate.b\n",
     ));
@@ -245,8 +243,8 @@ board Bus {
     .supply ~ .a.vdd
     .supply ~ .b.vdd
     .a.i2c ~ .b.i2c
-    .sda: PullUp { .resistance &= 4.7kohm +/- 5% }
-    .scl: PullUp { .resistance &= 4.7kohm +/- 5% }
+    .sda: PullUp { .resistor.resistance &= 4.7kohm +/- 5% }
+    .scl: PullUp { .resistor.resistance &= 4.7kohm +/- 5% }
     .sda.supply ~ .supply
     .scl.supply ~ .supply
     .sda.line ~ .a.i2c.sda
@@ -258,31 +256,24 @@ board Bus {
 }
 
 #[test]
-fn a_pullup_whose_resistance_nobody_states_is_a_finding_that_names_the_member() {
+fn a_pullup_whose_resistance_nobody_states_is_a_finding_that_names_the_resistor() {
     // A board that forgets the value builds, and the solver takes the first row of the
-    // resistor catalog. The unconstrained pick finding says so, and names the member the board
-    // can state (ADR 0065).
+    // resistor catalog. The unconstrained pick finding says so, and names the resistor (ADR 0065).
     let s = run(&board(
         "    .pull: PullUp\n    .pull.supply ~ .load\n    .pull.line ~ .gate.a\n    \
          .gate.b ~ .load.pos\n",
     ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(picked(&s, "pull.resistor"), "330");
-    let found: Vec<(String, String)> = s
+    // The resistor is a part inside the module and nothing holds its resistance to a member of
+    // the module, so the finding names the resistor and the board states
+    // `.pull.resistor.resistance` (ADR 0116).
+    let found: Vec<(String, bool)> = s
         .unconstrained
         .iter()
-        .map(|u| {
-            (
-                s.model.path_of(u.part),
-                s.model
-                    .path_of_field(u.held_by.as_ref().expect("held to the member").member),
-            )
-        })
+        .map(|u| (s.model.path_of(u.part), u.held_by.is_none()))
         .collect();
-    assert_eq!(
-        found,
-        [("pull.resistor".to_string(), "pull.resistance".to_string())]
-    );
+    assert_eq!(found, [("pull.resistor".to_string(), true)]);
     // Stated, the finding is gone.
     let s = run(&pullup(""));
     assert!(s.unconstrained.is_empty(), "{:?}", s.unconstrained);
@@ -298,7 +289,7 @@ module Reset {{
     .line: Pin
     .resistance: Resistance
     .pull: PullUp
-    .pull.resistance &= .resistance
+    .pull.resistor.resistance &= .resistance
     .supply ~ .pull.supply
     .line ~ .pull.line
 }}
@@ -385,7 +376,7 @@ fn a_line_a_driver_holds_above_the_supply_gives_a_negative_draw() {
 fn a_board_that_states_its_rails_peak_can_have_the_draw_worked_out_at_it() {
     let extra = "        .supply_top &= .supply.peak\n";
     let board = board(&format!(
-        "    .pull: PullUp {{ .resistance &= 10kohm +/- 5%\n{extra} }}\n    \
+        "    .pull: PullUp {{ .resistor.resistance &= 10kohm +/- 5%\n{extra} }}\n    \
          .pull.supply ~ .load\n    .pull.line ~ .gate.a\n    .gate.b ~ .load.pos\n    \
          .load.peak &= 3.465V..6V\n"
     ));

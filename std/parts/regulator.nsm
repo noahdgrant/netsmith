@@ -90,12 +90,15 @@ module FeedbackDivider {
     .vref: Voltage
     /// The output voltage the divider sets.
     .vout: Voltage
-    /// The current that runs through both resistors, from the output to ground.
+    /// The current that runs through both resistors, from the output to ground. It is a value
+    /// read out of the module, not one passed in: a bound (`<=`) or a read reaches inside no
+    /// module (ADR 0116), so `Buck` and a board take the current from here.
     .current: Current
     .rtop: Resistor
     .rbottom: Resistor
     /// The package of both resistors, a text such as `"0402"`; a board that does not state it
-    /// leaves the pick to the solver. One package for the pair, as `I2cPullups` has.
+    /// leaves the pick to the solver. One package for the pair, as `I2cPullups` has: it ties the two
+    /// resistors to one package, which a narrowing of each cannot say (ADR 0116).
     .package: Package optional
     .rtop.package == .package
     .rbottom.package == .package
@@ -309,16 +312,15 @@ generic BuckIc {
 /// cannot say that itself (ADR 0027).
 ///
 /// Each side is a bank of identical capacitors in parallel (ADR 0052): `.input_cap` and
-/// `.output_cap` stand for one capacitor of the bank, and `.input_count` and `.output_count`
-/// say how many. The solver chooses the row and the count together, the fewest from 1 up to
+/// `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The
+/// solver chooses the row and the count together, the fewest from 1 up to
 /// 8 for which every check holds with `count * effective_capacitance` against what the IC
 /// asks for and the rating, the voltage and the rest per capacitor. A datasheet that asks for
 /// more than any one capacitor keeps at its voltage is met by several. The board may state the
-/// count (`.reg.output_count &= 2`, which the checks then hold to) or a range
-/// (`.reg.output_count &= 1..3`, which is what the solver may choose from); it reads
-/// the chosen number from the same member. A bank of one is the single capacitor this module
-/// had before. The ripple current a capacitor takes is not modelled, so it is not divided
-/// between the capacitors of a bank.
+/// count (`.reg.output_cap.count &= 2`, which the checks then hold to) or a range
+/// (`.reg.output_cap.count &= 1..3`, which is what the solver may choose from, ADR 0116). A
+/// bank of one is the single capacitor this module had before. The ripple current a capacitor
+/// takes is not modelled, so it is not divided between the capacitors of a bank.
 ///
 /// The IC's recommended inductance is its `min_inductance`; the converter's stability and
 /// its loop are not modelled.
@@ -339,10 +341,6 @@ module Buck<Ic: BuckIc> {
     .inductor: Inductor
     .input_cap: Capacitor
     .output_cap: Capacitor
-    /// How many capacitors of `.input_cap` stand in parallel at the input.
-    .input_count: Number
-    /// How many capacitors of `.output_cap` stand in parallel at the output.
-    .output_count: Number
     /// The peak-to-peak ripple current of the inductor.
     .ripple: Current
     /// The peak-to-peak ripple of the output voltage, a closed-form estimate (not a
@@ -406,7 +404,8 @@ module Buck<Ic: BuckIc> {
     /// a rise that a current limit stretches (a large output capacitor, a load that draws at
     /// start-up) is longer than this and is not in the figure.
     .soft_start_time: Time
-    /// The current the feedback divider draws from the output.
+    /// The current the feedback divider draws from the output, the divider's `.current` read
+    /// out of the module (a bound or a read reaches inside no module, ADR 0116).
     .divider_current: Current
     /// The factor each capacitor's rating has over the highest voltage of its rail (ADR 0085):
     /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
@@ -448,8 +447,6 @@ module Buck<Ic: BuckIc> {
     // A bank is from one to eight capacitors unless the board says otherwise.
     .input_cap.count ?= 1..8
     .output_cap.count ?= 1..8
-    .input_count == .input_cap.count
-    .output_count == .output_cap.count
 
     .vin.neg ~ .vout.neg
     .ic.sw.voltage == .vout.voltage
@@ -477,7 +474,7 @@ module Buck<Ic: BuckIc> {
     .on_time == .vout.voltage / (.vin.voltage * .ic.fsw)
     .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .ic.fsw)
     .soft_start_time == .ic.soft_start_time
-    .output_ripple == .ripple / (8 * .ic.fsw * .output_count * .output_cap.effective_capacitance) + .ripple * .output_esr / .output_count
+    .output_ripple == .ripple / (8 * .ic.fsw * .output_cap.count * .output_cap.effective_capacitance) + .ripple * .output_esr / .output_cap.count
     .on_time >= .ic.min_on_time
     .off_time >= .ic.min_off_time
     .inductor.current + .ripple / 2 <= .inductor.saturation_current

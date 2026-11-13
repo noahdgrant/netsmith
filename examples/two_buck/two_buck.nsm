@@ -78,7 +78,7 @@ module BuckSupply {
     .decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
     .bulk: Capacitor { .capacitance &= 22uF +/- 20% }
     .input_decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
-    .pg_pullup: PullUp { .resistance &= 100kohm +/- 5% }
+    .pg_pullup: PullUp { .resistor.resistance &= 100kohm +/- 5% }
     .pg_test: TestPoint
 
     .vin ~ .stage.vin

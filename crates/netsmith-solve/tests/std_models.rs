@@ -245,14 +245,12 @@ fn a_datasheet_that_asks_for_more_than_one_capacitor_keeps_is_met_by_a_bank() {
     );
     let s = run(&converter(&hungry, "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    let n_out = range(&s, "stage.output_count");
-    let n_in = range(&s, "stage.input_count");
+    let n_out = range(&s, "stage.output_cap.count");
+    let n_in = range(&s, "stage.input_cap.count");
     assert_eq!(n_out.lo(), n_out.hi(), "{n_out}");
     assert_eq!(n_in.lo(), n_in.hi(), "{n_in}");
     assert!(n_out.lo() >= 2.0 && n_in.lo() >= 2.0, "{n_out} {n_in}");
-    // The count of the member and of the capacitor are one number, and it is the fewest.
-    assert_eq!(range(&s, "stage.output_cap.count"), n_out);
-    assert_eq!(range(&s, "stage.input_cap.count"), n_in);
+    // The count is one number, and it is the fewest.
     let cout = range(&s, "stage.output_cap.effective_capacitance");
     let cin = range(&s, "stage.input_cap.effective_capacitance");
     assert!(n_out.lo() * cout.lo() >= 47e-6, "{n_out} x {cout}");
@@ -277,7 +275,7 @@ fn a_bank_of_one_is_the_single_capacitor_the_stage_picked_before() {
     let s = run(&converter(&guide_ic(), "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     for side in ["input", "output"] {
-        let n = range(&s, &format!("stage.{side}_count"));
+        let n = range(&s, &format!("stage.{side}_cap.count"));
         assert_eq!((n.lo(), n.hi()), (1.0, 1.0), "{side}: {n}");
     }
 }
@@ -289,28 +287,26 @@ fn the_board_may_state_the_count_and_the_checks_hold_it() {
     let s = run(&converter(
         &hungry,
         "0mA..1A",
-        "    .stage.output_count &= 3\n",
+        "    .stage.output_cap.count &= 3\n",
     ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    assert_eq!(range(&s, "stage.output_count").lo(), 3.0);
     assert_eq!(range(&s, "stage.output_cap.count").lo(), 3.0);
     // A range is what the solver may choose from.
     let s = run(&converter(
         &hungry,
         "0mA..1A",
-        "    .stage.output_count &= 3..5\n",
+        "    .stage.output_cap.count &= 3..5\n",
     ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    assert_eq!(range(&s, "stage.output_count").lo(), 3.0);
+    assert_eq!(range(&s, "stage.output_cap.count").lo(), 3.0);
     // One is too few, and the message says what the board stated and what was needed.
     let s = run(&converter(
         &hungry,
         "0mA..1A",
-        "    .stage.output_count &= 1\n",
+        "    .stage.output_cap.count &= 1\n",
     ));
     let m = messages(&s);
-    // One error, the pick's: the `==` that ties the stated count to the capacitor's does not
-    // report again for a capacitor that the pick has already refused.
+    // One error, the pick's.
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
         m[0].contains("no `capacitor` candidate satisfies `stage.output_cap`")
@@ -414,7 +410,7 @@ fn the_buck_stage_rates_its_capacitors_for_the_peak_of_their_rail() {
     ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert!(range(&s, "stage.input_cap.max_voltage").lo() >= 8.0);
-    assert!(range(&s, "stage.input_count").lo() >= 2.0);
+    assert!(range(&s, "stage.input_cap.count").lo() >= 2.0);
     // No capacitor of the catalog is rated for 500 V, however many are put together.
     let s = run(&converter(
         &guide_ic(),

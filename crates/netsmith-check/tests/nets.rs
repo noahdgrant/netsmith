@@ -221,7 +221,7 @@ fn a_pullup_module_a_parallel_pair_and_a_divider_are_pullups_too() {
     // path through a network, found hop by hop.
     let c = i2c_board_importing(
         "import std::bus::PullUp",
-        "    .pu: PullUp { .resistance &= 4.7kohm +/- 5% }\n    .supply ~ .pu.supply\n    .a.i2c.sda ~ .pu.line\n    \
+        "    .pu: PullUp { .resistor.resistance &= 4.7kohm +/- 5% }\n    .supply ~ .pu.supply\n    .a.i2c.sda ~ .pu.line\n    \
          .r1: Resistor { .resistance &= 10kohm +/- 5% }\n    .r2: Resistor { .resistance &= 10kohm +/- 5% }\n    \
          .supply.pos ~> .r1 ~> .a.i2c.scl\n    .supply.pos ~> .r2 ~> .a.i2c.scl\n",
     );
@@ -252,7 +252,7 @@ fn an_input_with_a_pull_resistor_a_pullup_module_or_a_connector_pin_is_not_undri
     // resistor, of `PullUp`, or a connector pin that leaves the board are all accepted.
     for extra in [
         "    .r: Resistor { .resistance &= 10kohm +/- 5% }\n    .supply.pos ~> .r ~> .c.en\n    .c.en ~ .d.en\n",
-        "    .pu: PullUp { .resistance &= 10kohm +/- 5% }\n    .supply ~ .pu.supply\n    .pu.line ~ .c.en\n    .c.en ~ .d.en\n",
+        "    .pu: PullUp { .resistor.resistance &= 10kohm +/- 5% }\n    .supply ~ .pu.supply\n    .pu.line ~ .c.en\n    .c.en ~ .d.en\n",
         "    .j: Header1x2\n    .j.p1 ~ .c.en\n    .c.en ~ .d.en\n",
     ] {
         let c = run(&format!(

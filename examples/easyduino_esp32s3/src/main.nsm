@@ -134,11 +134,11 @@ board EasyduinoEsp32s3 {
     .bridge.vdd ~ .bridge_vdd_cap.a
     .bridge_vdd_cap.b ~ .vbus.neg
     /// R11: pulls the bridge's reset line up to VBUS.
-    .bridge_reset_pullup: PullUp { .resistance &= 5.1kohm +/- 1%; .resistor.package &= "0402" }
+    .bridge_reset_pullup: PullUp { .resistor.resistance &= 5.1kohm +/- 1%; .resistor.package &= "0402" }
     .bridge_reset_pullup.supply ~ .vbus
     .bridge_reset_pullup.line ~ .bridge.rstb
     /// R10: holds the bridge's SUSPENDb output low.
-    .suspend_pulldown: PullDown { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
+    .suspend_pulldown: PullDown { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .suspend_pulldown.reference ~ .vbus
     .suspend_pulldown.line ~ .bridge.suspendb
 
@@ -157,7 +157,7 @@ board EasyduinoEsp32s3 {
     .boot.a ~ .vbus.neg
     .boot.b ~ .module.gpio0
     /// R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).
-    .en_pullup: PullUp { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
+    .en_pullup: PullUp { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .en_pullup.supply ~ .v3v3
     .en_pullup.line ~ .module.en
 
