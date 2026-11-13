@@ -7897,7 +7897,21 @@ physical for Boxed {
 }
 ```
 
-A case model is a drawing and a check, never a height, an outline or a hole: the outline, the cutouts, the mounting holes and the height limits stay statements of the `case { }` section (by hand or with `netsmith dxf import`), and the check is to say where they disagree with the model. Today the file is found and carried with the design; the fit check, which measures the parts' bodies and the board against the case's solids, and the drawing in the 3D view, `render` and the `.glb`, come later. The STEP export leaves the case out. netsmith never bundles a case model and never downloads one.
+A case model is a drawing and a check, never a height, an outline or a hole: the outline, the cutouts, the mounting holes and the height limits stay statements of the `case { }` section (by hand or with `netsmith dxf import`), and the check says where they disagree with the model. The STEP export leaves the case out. netsmith never bundles a case model and never downloads one.
+
+**The fit check.** `fab`, `board3d` and the editor read each file with netsmith's own STEP reader, place it and measure the board against its solids: each part's body box to its height (stated, catalog or the package standard's), and the board's own solid. The findings, each with its numbers, the part and the solid (`docs/BOARD3D.md`, _The case model's fit_, has the table):
+
+- `case_collision`: a body or the board inside a case solid by more than 0.01 mm. Touching is contact, so a board resting on a boss is fine. For a part of a stated or catalog height, and for the board, it is an error that stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it, as a part too tall for a height limit is.
+- `case_clearance`: a body nearer a case surface than `.clearance`, a warning.
+- `case_reach`: a connector at the board's edge with the case between its face and the outside, or its face more than `.reach` inside the wall's outer face, a warning.
+- `case_boss`: a mounting hole with no case solid within `.boss_gap` above or below its ring, a warning.
+- `case_unchecked`: a part of unknown height under the case, a part of standard height that collides (a part in that package may be lower), or a solid whose shell is not closed, which gets no test for a body wholly inside it. A warning, and an error with strict constraints.
+
+The three figures are fields of `CaseModel` that std offers with `?=` (`.clearance` 0.5 mm, `.reach` 1.5 mm, `.boss_gap` 0.5 mm, PROVISIONAL): a board narrows one for its case, `.shell.clearance &= 1mm`, and a negative one is refused. A file netsmith's reader cannot read stops `fab`, as a path outside the project does. `build` and `check` place nothing, so they do not measure the fit.
+
+```text
+error: Boxed: case_collision: J1 (`power`), 9.00 mm tall (stated), is inside the solid `lid` of the case model `lid` by 1.00 mm at (16.74, 9.91, 8.00): the case and the board collide; a collision with the case stops `fab`, and neither `--allow-drc-violations` nor `--constraints warn` waives it: move or lower the part, or correct the case model's placement (`.x`, `.y`, `.z`, `.rx`, `.ry`, `.rz`)
+```
 
 The file is found as a part's model is: a path outside the project, an absolute path, or one stated in two folders that names two files is an error. A maker's license often keeps a case's file out of a public repository, so a file that is not there leaves the fit unchecked: a warning from `build`, `check` and `fab`, and an error that stops `fab` when constraints are strict (`constraints = "error"` in `netsmith.toml`, or `fab --constraints error`; `--allow-drc-violations` does not waive it), as a part of unknown height under a limit is:
 
@@ -13594,7 +13608,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::mfg::stackup::Pour` | Copper poured on an outer layer, `.top` or `.bottom` of a process: a `.net` and the most space between stitching vias, `.stitch_pitch`. |
 | `std::pcb::Outline` | The board edge, the board's member `.outline`: `.width`, `.height` (ranges allowed) and `.corner_radius`. |
 | `std::pcb::Cutout` | A rectangular hole inside the outline: `.x`, `.y`, `.width`, `.height`, `.corner_radius`. |
-| `std::pcb::CaseModel` | A STEP file of the board's case, in the `case { }` section of its physical file (ADR 0109): `.file`, relative to the physical file and inside the project, the offset `.x`, `.y`, `.z` and the rotation `.rx`, `.ry`, `.rz` in degrees, applied before the offset, in the 3D scene's frame. A drawing and a check, never a height, an outline or a hole. See A case model. |
+| `std::pcb::CaseModel` | A STEP file of the board's case, in the `case { }` section of its physical file (ADR 0109): `.file`, relative to the physical file and inside the project, the offset `.x`, `.y`, `.z` and the rotation `.rx`, `.ry`, `.rz` in degrees, applied before the offset, in the 3D scene's frame, and the fit check's figures `.clearance` (0.5 mm), `.reach` (1.5 mm) and `.boss_gap` (0.5 mm), offered with `?=`. A drawing and a check, never a height, an outline or a hole. See A case model. |
 | `std::pcb::Keepout` | An area of a board, or of a part in the part's own frame, where tracks, vias, copper or parts are not allowed: `.x`, `.y`, `.width`, `.height`, `.layers` and `.tracks`, `.vias`, `.copper`, `.parts` (each `"forbid"`, the default, or `"allow"`); and, provisionally, `.max_height`, the tallest a part may stand there (see _Height limits_), with which the four default to `"allow"`. |
 | `std::env::Environment` | What a board is exposed to, the member `.environment` of a board: `.temperature`, the range of temperatures its surroundings reach (`-40degC..125degC`), and `.qualification`, the qualification it requires of every fitted part (`Qualification::Aec`). Every fitted part is checked against it (ADR 0099). |
 | `std::prelude::Qualification` (in scope everywhere, no import) | The family of qualification a part claims: `None` (its datasheet says the ordering code is not qualified) and `Aec` (AEC-Q100, Q101 or Q200). The type of the built-in `.qualification` of every part, of the catalog column `qualification` and of `.environment.qualification` (ADR 0099). See Qualification, under The environment of a board. |

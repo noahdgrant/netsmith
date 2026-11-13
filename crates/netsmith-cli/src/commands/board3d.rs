@@ -28,7 +28,9 @@ pub struct Args {
     /// Each part's body box, its Z range and where its height came from (`stated`, `catalog` or
     /// `unknown`, never a guessed height), each height limit with the tallest part under it and the
     /// margin, the parts too tall, bodies that overlap in 3D, the parts of unknown height with the
-    /// reason, and the height coverage. With `--glb` as well it does both.
+    /// reason, and the height coverage; and the board's case models with what their fit check
+    /// found (`case_collision`, `case_clearance`, `case_reach`, `case_boss`, `case_unchecked`,
+    /// ADR 0109). With `--glb` as well it does both.
     #[arg(long)]
     pub json: bool,
     /// Write the scene as glTF 2.0 binary, in place of the summary.

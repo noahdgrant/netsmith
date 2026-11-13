@@ -115,8 +115,14 @@ interface Keepout {
 /// A case model is a drawing and a check, never a height, an outline or a hole: those stay
 /// statements of the `case { }` section (by hand or `netsmith dxf import`), and the check says
 /// where they disagree with the model. A file that is not there is a warning (the fit is not
-/// checked), an error with strict constraints. netsmith bundles and downloads none. Only the
-/// file and its placement are read today; the fit check and the drawing come later.
+/// checked), an error with strict constraints. netsmith bundles and downloads none.
+///
+/// The fit check measures each part's body box to its height (stated, catalog or standard)
+/// and the board's own solid against the model's triangles: a body or the board inside a case
+/// solid by more than 0.01 mm is `case_collision`, an error that stops `fab` for a stated or a
+/// catalog height and for the board; the rest are warnings. The three figures below are
+/// offered with `?=`, so a board narrows them for its case (`.shell.clearance &= 0.3mm`).
+/// They are PROVISIONAL (ADR 0109 left them open): no maker's drawing gives them.
 interface CaseModel {
     /// The STEP file, relative to the physical file that states it. It must be inside the
     /// project.
@@ -129,4 +135,17 @@ interface CaseModel {
     .rx: Number
     .ry: Number
     .rz: Number
+    /// The least gap from a part's body to a case surface (`case_clearance`, a warning): room
+    /// for the tolerance of a printed or moulded case and of a part's own figure.
+    .clearance: Length
+    .clearance ?= 0.5mm
+    /// How far inside the wall's outer face a connector at the board's edge may stand
+    /// (`case_reach`, a warning): a plug's moulding stops at the outer face, so a face deeper
+    /// than this may not let it seat.
+    .reach: Length
+    .reach ?= 1.5mm
+    /// How far from a mounting hole's ring a case solid may be, above or below the board, and
+    /// still hold it (`case_boss`, a warning when none is that near).
+    .boss_gap: Length
+    .boss_gap ?= 0.5mm
 }

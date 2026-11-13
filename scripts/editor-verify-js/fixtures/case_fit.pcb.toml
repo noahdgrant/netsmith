@@ -1,0 +1,38 @@
+version = 1
+
+# The tall header and the one of unknown height under the lid, one header at the right edge,
+# and the two holes in the top corners (the first over the box's boss).
+[Cased.parts."tall"]
+at = [18.0, 12.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"
+
+[Cased.parts."bare"]
+at = [26.0, 12.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"
+
+[Cased.parts."edge"]
+at = [38.2, 12.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"
+
+[Cased.parts."hole1"]
+at = [4.0, 4.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"
+
+[Cased.parts."hole2"]
+at = [36.0, 4.0]
+rotation = 0.0
+side = "top"
+lock = false
+source = "hand"

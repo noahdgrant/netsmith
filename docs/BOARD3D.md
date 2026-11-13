@@ -123,8 +123,26 @@ from `z = -thickness` down to `z = -thickness - height`.
 | `tallest` | The tallest part of known height on each face. |
 | `parts[].model` | For a part drawn from its STEP model ([below](#a-parts-step-model)): `file` (as the design states it), `sha256` (of the file's bytes) and `top` (how far the model reaches out of the part's face, mm). A drawing only: `height`, `provenance` and every check are the part's own. Left out for a part with no model, or whose file is not there or cannot be read. |
 | `warnings` | What finding and drawing the models found: a file that is not there or cannot be read (the part keeps its generated shape), a model whose top is above its part's height. Each is printed as a `warning:` line on stderr too. Added without a new schema. |
+| `case_models` | Each case model of the board (ADR 0109), by name: `file` as stated, `status` (`read`, `missing` when the file is not there, `unreadable` when netsmith's reader cannot read it), `sha256` of its bytes, its `rotation` and `offset` in this frame, the check's figures `clearance`, `reach` and `boss_gap` (std's, unless the physical file states them), its `triangles`, and its `solids` (each with its `name`, `triangles`, whether it is `closed`, and its box `min` to `max`). See _The case model's fit_ below. |
+| `case_findings` | What the fit check found, each with `kind`, `severity` (`error` stops `fab`; `warning` otherwise), `strict_error` (an error when constraints are strict), `case`, `solid`, `subject` (`part`, `board`, `solid` or `model`), the part's `path` and `refdes`, `at` (where to look, in this frame), its numbers (`depth`, `gap`, `limit`, `distance`, `edge`) and the `message` `fab` prints. |
 
 Schema 2 added `copper`: raised, though a field added does not require it, so that a reader can tell a report that has the copper summary from one that has not. The `.glb` file draws the copper, the mask and the silkscreen (below).
+
+## The case model's fit
+
+A board's physical file may name the STEP files of its case (`CaseModel`, the guide's _A case model_, ADR 0109). `board3d`, `fab` and the editor read each one with netsmith's own reader (ADR 0108) at 0.01 mm of chord, cached by its path and the SHA-256 of its bytes, turn it by `.rx`, then `.ry`, then `.rz` (degrees about x, y, z of this frame) and move it by `.x`, `.y`, `.z`, and measure the board against its solids (`crates/netsmith-3d/src/case.rs`). A file that is not there leaves the fit unchecked; `build` and `check` place nothing, so they only say that.
+
+What is measured is what the height checks measure: each part's body box to its height (stated, catalog or standard), and the board's solid (its outline through its thickness, less its holes and cutouts). A part's drawn `.model`, and its pins below the far face, are not read. A body of height zero (a hole, a fiducial) has no volume.
+
+| Finding | When | Stops `fab` |
+|---|---|---|
+| `case_collision` | A body of a stated or catalog height, or the board, inside a case solid by more than 0.01 mm (touching is contact: a board on its bosses is fine). `depth` is the least move along a face of the body that parts them; a body wholly inside a solid has `depth: null`. | Always: neither `--allow-drc-violations` nor `--constraints warn` waives it. |
+| `case_clearance` | A body nearer a case surface than the case model's `.clearance` (0.5 mm in std): `gap`, measured to the body box's faces grown outward (near a corner of the box, at most the true distance). | No: a warning. |
+| `case_reach` | A connector whose body box comes within 1 mm of the outline's edge (or past it): case material out from the side toward that edge (`distance`), or that side more than `.reach` (1.5 mm in std) inside the wall's outer face, measured on rays round it. A connector that mates from above is measured the same way. | No: a warning. |
+| `case_boss` | A mounting hole whose ring (its body's box) has no case solid within `.boss_gap` (0.5 mm in std) above the top face or below the bottom face, in any case model. | No: a warning. |
+| `case_unchecked` | A part of unknown height with case material over its face; a part of standard height that collides (a part in that package may be lower); a solid whose shell is not closed (no body or board is tested for lying wholly inside it; its surface is still measured); a file that is not there. | With strict constraints (`--constraints error`, `constraints = "error"`). A file there that the reader cannot read stops `fab` always. |
+
+`fab` runs the check on the placement, before routing, and writes a note per case model read (its file, SHA-256, solids and triangles) and each warning to `fab-notes.txt`. The STEP export leaves the case out (the owner's choice, ADR 0109): the engineer who reads it has the case, and a copy would spread the maker's file.
 
 ## A system's boards together: the system scene
 

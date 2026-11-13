@@ -1,0 +1,20 @@
+//! A small board in a case for the case model's fit check (ADR 0109) and the editor's recipes.
+//! Its physical file, `case_fit.physical.nsm`, names the case's two STEP files in `case_fit/`
+//! (a box with a boss under one mounting hole, and a lid), written by hand for these tests.
+//! The layout file beside it puts a header too tall for the lid (`case_collision`), one of
+//! unknown height under the lid (`case_unchecked`), one at the right edge, near the wall and
+//! behind it (`case_clearance`, `case_reach`), and two mounting holes, one with no boss
+//! (`case_boss`).
+
+import std::parts::connector::{Header1x2, Header2x3}
+import std::mfg::jlcpcb::TwoLayer
+
+board Cased {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .tall: Header1x2
+    .edge: Header1x2
+    // A 2x3 header has no catalog row, so it has no height from one (ADR 0094).
+    .bare: Header2x3
+}
