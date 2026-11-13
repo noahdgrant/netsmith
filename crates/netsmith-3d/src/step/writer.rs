@@ -84,6 +84,11 @@ impl Writer {
         Id(self.lines.len())
     }
 
+    /// The id the next instance added will have.
+    pub fn next_id(&self) -> Id {
+        Id(self.lines.len() + 1)
+    }
+
     fn shared(&mut self, body: String) -> Id {
         if let Some(&id) = self.shared.get(&body) {
             return id;

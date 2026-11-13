@@ -234,3 +234,93 @@ fn the_same_model_is_drawn_to_the_same_bits() {
     let (_, b) = drawn("under", 30.0, [1.0, 2.0, 0.3], [10.0, 20.0, 90.0]);
     assert_eq!(a, b);
 }
+
+#[test]
+fn the_meshes_of_a_part_drawn_from_its_model_are_the_models() {
+    let (_, s) = drawn("a", 30.0, [1.0, 2.0, 0.3], [0.0, 0.0, 45.0]);
+    let pieces = netsmith_3d::mesh::pieces(&s);
+    let i = s.bodies.iter().position(|b| b.path == "a").unwrap();
+    let model = s.body("a").unwrap().model.as_ref().unwrap();
+    assert_eq!(pieces.bodies[i].body, model.meshes);
+}
+
+#[test]
+fn the_glb_draws_a_model_in_its_own_colours() {
+    let (_, s) = drawn("a", 0.0, [0.0; 3], [0.0; 3]);
+    let glb = netsmith_3d::gltf::glb(&s, "Scene");
+    assert_eq!(glb, netsmith_3d::gltf::glb(&s, "Scene"));
+    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let materials: Vec<&str> = doc["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(materials[13..], ["model:#333338", "model:#d91a1a"]);
+    let node = doc["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["name"] == "U1")
+        .unwrap();
+    let mesh = &doc["meshes"][node["mesh"].as_u64().unwrap() as usize];
+    let used: Vec<u64> = mesh["primitives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["material"].as_u64().unwrap())
+        .collect();
+    assert_eq!(used, [13, 14]);
+}
+
+#[test]
+fn the_step_export_copies_the_models_solids_exactly_where_the_scene_draws_them() {
+    let (_, s) = drawn("under", 30.0, [1.0, 2.0, 0.3], [10.0, 20.0, 90.0]);
+    let text = netsmith_3d::step::step(&s, "Scene");
+    assert_eq!(text, netsmith_3d::step::step(&s, "Scene"));
+    assert!(
+        text.contains("drawn from models/blocks.step (sha256 0000"),
+        "the part's description names the file and its SHA-256"
+    );
+    assert!(text.contains("PRODUCT('under:body','body','a solid of models/blocks.step'"));
+    // Read back, the copied solids are where the scene draws the model, to the reader's
+    // tolerance (the copy is exact; the placement is written to ten places).
+    let back = netsmith_3d::step::read::read(text.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
+    let model = s.body("under").unwrap().model.as_ref().unwrap();
+    for (name, drawn) in ["body", "mark"].iter().zip(&model.meshes) {
+        let b = drawn.bounds().unwrap();
+        let found = back.pieces.iter().filter(|p| p.mesh.id == *name).any(|p| {
+            let a = p.mesh.bounds().unwrap();
+            close(a.min, b.min) && close(a.max, b.max)
+        });
+        assert!(found, "no solid `{name}` read back at {b:?}");
+    }
+    // The model's colours come with it.
+    assert!(text.contains("COLOUR_RGB('',0.85,0.1,0.1)"));
+}
+
+#[test]
+fn a_model_in_inches_is_copied_with_its_own_unit() {
+    let text = String::from_utf8(BLOCKS.to_vec()).unwrap().replace(
+        "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))",
+        "(CONVERSION_BASED_UNIT('INCH',#9001)LENGTH_UNIT()NAMED_UNIT(*))",
+    );
+    let text = text.replace(
+        "ENDSEC;\nEND-ISO",
+        "#9000=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));\n#9001=LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),#9000);\nENDSEC;\nEND-ISO",
+    );
+    let read = Arc::new(load(text.as_bytes()).unwrap_or_else(|e| panic!("{e}")));
+    let mut s = scene(&board());
+    s.draw_models(&[ModelUse {
+        read,
+        ..model_use("a", [0.0; 3], [0.0; 3])
+    }]);
+    let model = s.body("a").unwrap().model.as_ref().unwrap();
+    assert!((model.top - 0.6 * 25.4).abs() < 1e-6, "{}", model.top);
+    let out = netsmith_3d::step::step(&s, "Scene");
+    assert!(out.contains("LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),"));
+    let back = netsmith_3d::step::read::read(out.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
+    let body = back.pieces.iter().find(|p| p.mesh.id == "body").unwrap();
+    let b = body.mesh.bounds().unwrap();
+    assert!((b.max[2] - 0.5 * 25.4).abs() < 1e-6, "{b:?}");
+}

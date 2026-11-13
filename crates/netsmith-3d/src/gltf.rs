@@ -78,6 +78,9 @@
 //!   rasterizer's light palette ([`Theme::Light`]), turned into linear light as glTF wants
 //!   them. The materials of open surfaces (a barrel, a flat outline, a limit) are
 //!   double-sided.
+//!   A part drawn from its STEP model (ADR 0108) has the model's triangles as its mesh: a
+//!   piece the file colours has a material of its own after these, `model:#rrggbb`, in the
+//!   order the colours are first used; a piece it does not colour is `body`.
 //! - No extension is used or required.
 
 use serde_json::{Map, Value, json};
@@ -121,6 +124,9 @@ struct Builder {
     accessors: Vec<Value>,
     meshes: Vec<Value>,
     nodes: Vec<Value>,
+    /// The colours of the STEP models' pieces (ADR 0108), in the order they are first used:
+    /// each a material after [`Material::ALL`]'s.
+    colours: Vec<[u8; 3]>,
 }
 
 /// A node before it is numbered.
@@ -216,10 +222,23 @@ impl Builder {
                 attributes.insert("NORMAL".into(), json!(self.vec3(&normals, false)));
             }
             let indices = self.indices(&m.indices);
+            let material = match m.colour {
+                Some(c) => {
+                    let k = match self.colours.iter().position(|&x| x == c) {
+                        Some(k) => k,
+                        None => {
+                            self.colours.push(c);
+                            self.colours.len() - 1
+                        }
+                    };
+                    Material::ALL.len() + k
+                }
+                None => material_index(m.material),
+            };
             primitives.push(json!({
                 "attributes": attributes,
                 "indices": indices,
-                "material": material_index(m.material),
+                "material": material,
                 "mode": TRIANGLES,
             }));
         }
@@ -270,8 +289,20 @@ fn linear(c: u8) -> f64 {
     (l * 10_000.0).round() / 10_000.0
 }
 
-fn materials() -> Vec<Value> {
+/// The thirteen materials of [`Material::ALL`], then one per colour of a STEP model, named
+/// `model:#rrggbb`, opaque, as the `body` material is but for its colour.
+fn materials(colours: &[[u8; 3]]) -> Vec<Value> {
     let palette = Theme::Light.palette();
+    let model = colours.iter().map(|&[r, g, b]| {
+        json!({
+            "name": format!("model:#{r:02x}{g:02x}{b:02x}"),
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [linear(r), linear(g), linear(b), 1.0],
+                "metallicFactor": 0.0,
+                "roughnessFactor": 0.8,
+            },
+        })
+    });
     Material::ALL
         .iter()
         .map(|&m| {
@@ -307,6 +338,7 @@ fn materials() -> Vec<Value> {
             }
             out
         })
+        .chain(model)
         .collect()
 }
 
@@ -685,7 +717,7 @@ fn finish(mut b: Builder, root: Node, name: &str) -> Vec<u8> {
         "scene": 0,
         "scenes": [{ "name": name, "nodes": [root] }],
         "nodes": b.nodes,
-        "materials": materials(),
+        "materials": materials(&b.colours),
     });
     if !b.meshes.is_empty() {
         doc["meshes"] = json!(b.meshes);

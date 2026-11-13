@@ -189,5 +189,73 @@ fn a_member_of_a_system_is_drawn_from_its_model_in_the_system_scene() {
     assert_eq!(
         part(&led["report"], "power_in")["model"]["sha256"],
         sha.as_str()
+    ); // The system's .glb and STEP draw it too.
+    let run = netsmith(
+        &root,
+        &[
+            "board3d",
+            "two_boards.nsm",
+            "--board",
+            "TwoBoards",
+            "--glb",
+            "s.glb",
+            "--step",
+            "s.step",
+        ],
     );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let doc = netsmith_3d::gltf::json_chunk(&fs::read(root.join("s.glb")).unwrap()).unwrap();
+    assert!(
+        doc["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["name"] == "model:#d91a1a")
+    );
+    let step = fs::read_to_string(root.join("s.step")).unwrap();
+    assert!(step.contains(&format!("drawn from blocks.step (sha256 {sha})")));
+}
+
+#[test]
+fn fab_draws_the_model_in_the_glb_and_the_step_and_names_it_in_the_notes() {
+    let root = project(
+        "model-fab",
+        "    .power_in.model.file &= \"../models/blocks.step\"",
+    );
+    fs::create_dir_all(root.join("models")).unwrap();
+    fs::write(root.join("models/blocks.step"), BLOCKS).unwrap();
+    let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(["fab", "src/main.nsm", "--out", "out"])
+        .current_dir(&root)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("KICAD_CLI")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(run.status.success(), "{err}");
+    let package = root.join("out/LedExample");
+    let notes = fs::read_to_string(package.join("fab-notes.txt")).unwrap();
+    let sha = netsmith::models::sha256(BLOCKS);
+    assert!(
+        notes.contains(&format!(
+            "note: drawn from a STEP model in the .glb and the .step (never measured: heights are the parts' own): J1 (`power_in`) from `../models/blocks.step` (sha256 {sha})"
+        )),
+        "{notes}"
+    );
+    let step = fs::read_to_string(package.join("LedExample.step")).unwrap();
+    assert!(step.contains(&format!("drawn from ../models/blocks.step (sha256 {sha})")));
+    assert!(step.contains("PRODUCT('power_in:body','body'"));
+    let glb = fs::read(package.join("LedExample.glb")).unwrap();
+    let doc = netsmith_3d::gltf::json_chunk(&glb).unwrap();
+    let names: Vec<&str> = doc["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"model:#d91a1a"), "{names:?}");
 }
