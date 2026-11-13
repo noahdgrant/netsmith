@@ -18,9 +18,10 @@ Everything else stays outside: `~`, `~>`, `==`, `<=`, `>=` and `?=` on a path in
 
 **Cost.** A board that narrows inside a module names the module's members, so a rename inside the module breaks the board at the line that names it (the checker names the path). A value can now be stated two ways where a module also offers it as a member (`.a.assembly_mode` and `.a.j.assembly`); std removes the members that only forwarded, and a module keeps one only when it does more. Boards that stated a forwarded member change their text once (`examples/easyduino_esp32s3`, `examples/orbit`, `examples/rp2350_minimal`).
 
-**Proposed, for the owner.** Two readings the decision did not settle, built provisionally:
+**Owner decisions (2026-11-13).**
 
-- The right side of a `&=` reads nothing inside a module: `.x.resistance &= .s.r.resistance` is refused, because a read is not a narrowing and a module's inner values may change with its build. The alternative is a read-only reach for every right side.
-- A narrowing from outside counts as a statement of the field, so it replaces a `?=` default the module wrote on it (ADR 0051), as `.receptacle.package` does for `UsbCSink`'s default package. The alternative is that a default inside a module can only be narrowed alongside, never replaced.
+- The right side of a `&=` reads nothing inside a module: `.x.resistance &= .s.r.resistance` is refused. A read is not a narrowing, and a module's inner values may change with its build; a value a board needs belongs on the module's interface.
+- A narrowing from outside counts as a statement of the field, so it replaces a `?=` default that the module wrote on it (ADR 0051), as `.receptacle.package` does for `UsbCSink`'s default package.
+- A member that only forwards a value inward goes (issue #670); a module keeps a member only when it does more.
 
 **Left open.** A board cannot join a pin of a named IC that the bound does not declare (issue #666). The `lt8641` catalog is still not keyed by `.mpn`, though a board may now narrow `.reg.ic.mpn`.
