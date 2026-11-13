@@ -24,6 +24,7 @@ mod board;
 mod fit;
 pub mod parallel;
 mod place;
+mod plan;
 pub mod quality;
 pub mod route;
 mod stitch;
@@ -39,7 +40,7 @@ pub use netsmith_pcb;
 pub use place::{PlaceError, place_subset};
 pub use quality::{DecouplingDistance, Quality, crossings};
 pub use route::{
-    Costs, Crowding, LineReport, RouteOptions, Routing, Snapshot, SnapshotStage, Stage, route,
-    route_with,
+    CoarsePlan, Costs, Crowding, LineReport, RouteOptions, Routing, Snapshot, SnapshotStage, Stage,
+    route, route_with,
 };
 pub use stitch::stitch;

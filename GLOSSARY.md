@@ -602,6 +602,18 @@ The connections a board still needs, drawn as straight lines between pads, befor
 The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, negotiation and the chain of rip-ups) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left, and drawn as `crowding.png` by `netsmith route --stages`). A high count is where lines fought over the room.
 _Avoid_: congestion map, heat map
 
+**Coarse plan**:
+A global route of every line of a board over its tiles, made before the router's detailed search: each line is routed from tile to tile, and the lines negotiate for the tiles' edges until as few edges as possible carry more tracks than they hold (the header of the router's `plan.rs`). Off by default; `netsmith route --plan` turns it on for experiments.
+_Avoid_: global route (the general term, for any router), floor plan (where parts go)
+
+**Tile**:
+A square of the board, 1 mm a side (ten cells of the router's grid), that the coarse plan routes over. Each edge between two tiles holds as many tracks on each layer as the pads, keepouts and the board edge leave room for, and each tile as many vias. Not a cell of a panel.
+_Avoid_: region, bin, gcell
+
+**Corridor**:
+The tiles of a line's coarse plan, on either layer, grown by one tile each way. A detailed search that follows the plan pays for each step outside its line's corridor; it is a cost, not a wall.
+_Avoid_: channel (the room between two rows of pads)
+
 **Fabrication package**:
 The files a board house needs: Gerbers and drill files, a bill of materials, and a placement file. netsmith writes them itself from the board file (ADR 0034).
 

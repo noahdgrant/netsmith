@@ -172,6 +172,14 @@
 //! `fab`'s 300 s the second try runs only on a smaller or faster board: the lanes make the
 //! board's later tries finish, not its first.
 //!
+//! # A coarse plan (issue #431, S10)
+//!
+//! [`RouteOptions::plan`] can have the router make a global route of every line over tiles of
+//! 1 mm first, negotiated for the tiles' capacities, and the detailed search then pays
+//! [`OFF_PLAN`] for each step outside its line's corridor. It is off by default: on the three
+//! ported boards it made RP2350 route at every turn cost but cost a third more vias and time.
+//! The design, the numbers and what would make it pass are in the header of `plan.rs`.
+//!
 //! # What a try costs (issue #431)
 //!
 //! A try of RP2350 (`examples/rp2350_minimal`) took 150 to 250 s on a dense two-layer board
@@ -390,6 +398,8 @@ const LANE_VIA: i64 = 300;
 /// How far a pad's escape lane runs out from the pad's edge, in mm: past the ring of
 /// decoupling capacitors round a fine-pitch part.
 const LANE_LENGTH: f64 = 1.5;
+/// What a track pays a step, beyond the step, outside its corridor of the coarse plan.
+const OFF_PLAN: i64 = 10;
 /// A step through a cell where the track has to be narrower costs this much more: a necked
 /// down track carries less and is harder to make, so it is kept short.
 const NECK: i64 = 30;
@@ -678,6 +688,9 @@ struct Masks {
     /// The cells of other nets' escape lanes, which a track or a via of this line pays
     /// [`LANE_TRACK`] or [`LANE_VIA`] to use. `None` when there are none.
     lane: Option<LaneCost>,
+    /// The cells outside the line's corridor of the coarse plan ([`crate::plan`]), which a
+    /// track pays the corridor cost to use; and that cost. `None` when the try follows no plan.
+    off_plan: Option<(Vec<bool>, i64)>,
 }
 
 struct Soft {
@@ -700,6 +713,7 @@ impl Masks {
             soft: None,
             turn: TURN,
             lane: None,
+            off_plan: None,
         }
     }
 
@@ -760,6 +774,14 @@ impl Masks {
     fn lane_via_cost(&self, i: usize, j: usize) -> i64 {
         match &self.lane {
             Some(lane) if lane.via[self.at(i, j)] => LANE_VIA,
+            _ => 0,
+        }
+    }
+
+    /// What it costs, beyond a step, to put a track on a cell outside the line's corridor.
+    fn off_plan_cost(&self, i: usize, j: usize) -> i64 {
+        match &self.off_plan {
+            Some((off, cost)) if off[self.at(i, j)] => *cost,
             _ => 0,
         }
     }
@@ -1292,7 +1314,8 @@ fn moves(
                 + neck
                 + masks.history_cost(layer, next.0, next.1)
                 + masks.soft_cost(layer, next.0, next.1)
-                + masks.lane_cost(layer, next.0, next.1),
+                + masks.lane_cost(layer, next.0, next.1)
+                + masks.off_plan_cost(next.0, next.1),
         );
     }
     let other = 1 - layer;
@@ -1934,6 +1957,13 @@ fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint:
     }
 }
 
+/// The coarse plan of a board and the corridor of each line ([`crate::plan`]).
+struct Planned {
+    tiles: crate::plan::Tiles,
+    /// For each line, the tiles of its corridor, row by row; `None` for a line to a plane.
+    corridors: Vec<Option<Vec<bool>>>,
+}
+
 /// What one ratsnest line became.
 #[derive(Clone)]
 struct Routed {
@@ -1952,6 +1982,8 @@ struct MemoKey {
     fine: bool,
     /// Whether the search pays for the escape lanes ([`Lanes`]), which never move.
     escaping: bool,
+    /// Whether the search pays for leaving its corridor of the coarse plan, which never moves.
+    planned: bool,
     window: Window,
     print: u128,
     /// 0 for the flood ([`link`]), and 1 on for the searches in turn.
@@ -2026,6 +2058,13 @@ struct Router<'a> {
     lanes: Option<Lanes>,
     /// Whether this try's searches pay for the lanes: from the second try on.
     escaping: Cell<bool>,
+    /// The coarse plan ([`crate::plan`]) and each line's corridor, if one is made.
+    plan: Option<Planned>,
+    /// Whether this try's searches pay for leaving their corridors.
+    planned: Cell<bool>,
+    /// Which tries follow the plan, and what a step outside a corridor costs.
+    plan_use: CoarsePlan,
+    plan_cost: i64,
     /// What searches found, by line, window and the print of the copper near the window
     /// ([`Router::print`]): a search whose print is unchanged finds what it found before.
     memo: RefCell<HashMap<MemoKey, Memo>>,
@@ -2139,6 +2178,10 @@ impl<'a> Router<'a> {
             snapshots: options.snapshots.then(|| RefCell::new(Vec::new())),
             lanes,
             escaping: Cell::new(false),
+            plan: None,
+            planned: Cell::new(false),
+            plan_use: options.plan,
+            plan_cost: options.plan_cost.unwrap_or(OFF_PLAN),
             memo: RefCell::new(HashMap::new()),
             print_reach,
         }
@@ -2494,6 +2537,7 @@ impl<'a> Router<'a> {
                 soft,
                 fine: self.fine.get(),
                 escaping: self.escaping.get(),
+                planned: self.planned.get(),
                 window,
                 print,
                 step,
@@ -2710,6 +2754,21 @@ impl<'a> Router<'a> {
         self.mark_own_pads(net, &mut masks);
         if self.escaping.get() {
             masks.lane = self.lanes.as_ref().and_then(|l| l.charged(window, net));
+        }
+        if self.planned.get()
+            && let Some(plan) = &self.plan
+            && let Some(inside) = &plan.corridors[line]
+        {
+            let tiles = &plan.tiles;
+            let off: Vec<bool> = (0..window.cells())
+                .map(|c| {
+                    let (a, b) = tiles.of(window.i0 + c % window.nx, window.j0 + c / window.nx);
+                    !inside[b * tiles.nx + a]
+                })
+                .collect();
+            if off.iter().any(|&o| o) {
+                masks.off_plan = Some((off, self.plan_cost));
+            }
         }
         self.add_history(&mut masks);
         masks
@@ -3189,6 +3248,14 @@ impl<'a> Router<'a> {
     /// runs out, the lines not yet tried count as failed.
     fn run(&self, order: &[usize], rip_up: bool, attempt: usize, attempts: usize) -> State {
         self.escaping.set(attempt > 1);
+        self.planned.set(
+            self.plan.is_some()
+                && match self.plan_use {
+                    CoarsePlan::Off => false,
+                    CoarsePlan::EveryTry => true,
+                    CoarsePlan::FromSecondTry => attempt > 1,
+                },
+        );
         *self.failed_in.borrow_mut() = vec![Stage::FirstPass; self.lines.len()];
         if let Some(snapshots) = &self.snapshots {
             snapshots.borrow_mut().clear();
@@ -3687,6 +3754,117 @@ impl<'a> Router<'a> {
         }
     }
 
+    /// The coarse plan of the board ([`crate::plan`]), with the lines in `order`: the tiles'
+    /// capacities from what the fixed copper leaves open to the narrowest line's track at the
+    /// room the first pass keeps, and each line's corridor.
+    fn make_plan(&self, order: &[usize]) -> Planned {
+        let tile_cells = crate::plan::TILE_CELLS;
+        let rules = &self.board.rules;
+        let width = (0..self.lines.len())
+            .filter(|&l| !self.lines[l].to_plane)
+            .map(|l| self.width_of(l))
+            .fold(f64::INFINITY, f64::min);
+        let width = if width.is_finite() {
+            width
+        } else {
+            rules.min_track_width
+        };
+        let reach = Reach {
+            room: ROOM_LOOSE,
+            width,
+        };
+        let key = (reach.room.to_bits(), reach.width.to_bits());
+        let base = self
+            .bases
+            .borrow_mut()
+            .entry(key)
+            .or_insert_with(|| {
+                std::rc::Rc::new(Base::new(self.board, &self.grid, &self.fixed, reach))
+            })
+            .clone();
+        let counts = &base.counts;
+        let open = |c: &Vec<u16>| c.iter().map(|&n| n == 0).collect::<Vec<bool>>();
+        let (mut front, mut back, via) = (
+            open(&counts.track[FRONT]),
+            open(&counts.track[BACK]),
+            open(&counts.via),
+        );
+        // A pad is a way across a tile's edge for the line of its net that ends in it: the
+        // cells of a pad's copper count as open for tracks.
+        for o in self.fixed.list.iter().filter(|o| o.net.is_some()) {
+            let whole = Window::full(&self.grid);
+            for (i, j) in self.grid.cells_near(&whole, &o.form.bounds(), 0.0) {
+                if o.form.distance(self.grid.centre(i, j)) <= 1e-9 {
+                    let at = j * self.grid.nx + i;
+                    if o.layers[FRONT] {
+                        front[at] = true;
+                    }
+                    if o.layers[BACK] {
+                        back[at] = true;
+                    }
+                }
+            }
+        }
+        let via_pitch = (rules.via_diameter + rules.clearance)
+            .max(rules.via_drill + rules.via_hole_to_hole)
+            / PITCH;
+        let tiles = crate::plan::Tiles::measure(
+            tile_cells,
+            (self.grid.nx, self.grid.ny),
+            [&front, &back],
+            &via,
+            (width + rules.clearance) / PITCH,
+            via_pitch,
+        );
+        let at = |spots: &[Spot]| {
+            let mut nodes: Vec<crate::plan::Node> = spots
+                .iter()
+                .map(|&(i, j, layer)| {
+                    let (a, b) = tiles.of(i, j);
+                    (a, b, layer)
+                })
+                .collect();
+            nodes.sort_unstable();
+            nodes.dedup();
+            nodes
+        };
+        let ends: Vec<Option<crate::plan::Ends>> = (0..self.lines.len())
+            .map(|l| {
+                let (from, to) = &self.ends[l];
+                (!self.lines[l].to_plane && !from.is_empty() && !to.is_empty()).then(|| {
+                    crate::plan::Ends {
+                        from: at(from),
+                        to: at(to),
+                    }
+                })
+            })
+            .collect();
+        let plan = crate::plan::negotiate(&tiles, &ends, order);
+        self.report(true, || {
+            format!(
+                "coarse plan: {} by {} tiles of {} mm, {} rounds, {} tracks over capacity",
+                tiles.nx,
+                tiles.ny,
+                tile_cells as f64 * PITCH,
+                plan.rounds,
+                plan.overuse
+            )
+        });
+        // A line wider than the narrowest (a net its current widens) has no corridor: the
+        // capacities are counted in the narrowest track.
+        let corridors = plan
+            .paths
+            .iter()
+            .enumerate()
+            .map(|(l, p)| {
+                p.as_ref()
+                    .filter(|_| self.width_of(l) <= width + 1e-9)
+                    .map(|p| crate::plan::corridor(&tiles, p, 1))
+            })
+            .collect();
+        Planned { tiles, corridors }
+    }
+
     /// The orders to try the lines in.
     fn orders(&self, retry: bool) -> Vec<Vec<usize>> {
         let mut shortest: Vec<usize> = (0..self.lines.len()).collect();
@@ -3747,6 +3925,24 @@ pub struct RouteOptions {
     /// Try at most this many orders of the lines (at least one); `None` is the router's own
     /// number. For measuring how a result depends on one try.
     pub most_tries: Option<usize>,
+    /// Which tries follow a coarse plan of the board ([`CoarsePlan`]).
+    pub plan: CoarsePlan,
+    /// What a step outside a line's corridor costs, beyond the step, in tenths of a millimetre
+    /// of track; `None` is the router's own.
+    pub plan_cost: Option<i64>,
+}
+
+/// Which tries of the router follow the coarse plan (the header of `plan.rs`): the detailed
+/// search pays for each step outside a line's corridor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoarsePlan {
+    /// No plan is made.
+    Off,
+    /// Every try.
+    EveryTry,
+    /// From the second try on, which routes the first order again: a board that routes on its
+    /// first try is unchanged.
+    FromSecondTry,
 }
 
 impl Default for RouteOptions {
@@ -3761,6 +3957,8 @@ impl Default for RouteOptions {
             costs: Costs::DEFAULT,
             snapshots: false,
             most_tries: None,
+            plan: CoarsePlan::Off,
+            plan_cost: None,
         }
     }
 }
@@ -3926,12 +4124,17 @@ pub fn route(board: &mut Board) -> Ratsnest {
 /// [`route`], with a choice of how hard to try.
 pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     let (best, stopped, tries, why, crowding, stages) = {
-        let router = Router::new(board, &options);
+        let mut router = Router::new(board, &options);
         let mut orders = router.orders(options.retry_orders);
         // On a board with escape lanes, the second try is the first order again with the lanes
-        // (see the module's header), and every try after it has them too.
-        if router.lanes.is_some() && options.retry_orders {
+        // (see the module's header), and every try after it has them too. A plan used from the
+        // second try on is used there too.
+        let second_again = router.lanes.is_some() || options.plan == CoarsePlan::FromSecondTry;
+        if second_again && options.retry_orders {
             orders.insert(1, orders[0].clone());
+        }
+        if options.plan != CoarsePlan::Off {
+            router.plan = Some(router.make_plan(&orders[0]));
         }
         if let Some(most) = options.most_tries {
             orders.truncate(most.max(1));
@@ -4484,6 +4687,59 @@ mod tests {
             ),
             Err(Miss::Blocked)
         );
+    }
+
+    #[test]
+    fn the_coarse_plan_gives_each_line_a_corridor_round_its_ends_and_is_the_same_every_time() {
+        let board = crate::board_from_design(
+            &crate::testlib::led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let options = RouteOptions {
+            plan: CoarsePlan::EveryTry,
+            ..RouteOptions::default()
+        };
+        let router = Router::new(&board, &options);
+        let order = router.orders(false).remove(0);
+        let plan = router.make_plan(&order);
+        let tiles = &plan.tiles;
+        // Every edge holds a track somewhere: the board is not walled.
+        assert!(tiles.across_x[FRONT].iter().any(|&c| c > 0));
+        assert!(plan.corridors.iter().any(Option::is_some));
+        for (line, corridor) in plan.corridors.iter().enumerate() {
+            // A line to a plane, or one wider than the narrowest, has none.
+            let Some(inside) = corridor else { continue };
+            for &(i, j, _) in router.ends[line].0.iter().chain(&router.ends[line].1) {
+                let (a, b) = tiles.of(i, j);
+                assert!(inside[b * tiles.nx + a], "line {line}");
+            }
+        }
+        let again = Router::new(&board, &options).make_plan(&order);
+        assert_eq!(plan.corridors, again.corridors);
+    }
+
+    #[test]
+    fn a_board_routed_with_the_coarse_plan_is_complete_and_the_same_every_time() {
+        let route_once = || {
+            let mut board = crate::board_from_design(
+                &crate::testlib::led_design(),
+                &netsmith_kicad::Mapping::standard(),
+                &fixtures(),
+            )
+            .unwrap();
+            let routing = route_with(
+                &mut board,
+                RouteOptions {
+                    plan: CoarsePlan::EveryTry,
+                    ..RouteOptions::default()
+                },
+            );
+            assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+            (board.tracks, board.vias)
+        };
+        assert_eq!(route_once(), route_once());
     }
 
     #[test]
