@@ -4747,7 +4747,7 @@ error: `pins` of `ShortPad` has no row for `.b`, which `Pad` declares as a passi
   |     ^^^^^^
 ```
 
-Only a part or a module provides a generic:
+Only a part, a module or an interface provides a generic:
 
 ```nsm fails
 generic Pad {
@@ -4759,7 +4759,7 @@ board Plate provides Pad {
 ```
 
 ```text
-error: only a part or a module provides a generic; a board does not (`part X provides G`, `module X provides G`)
+error: only a part, a module or an interface provides a generic; a board does not (`part X provides G`, `module X provides G`, `interface X provides G`)
   --> main.nsm:5:13
   |
 5 | board Plate provides Pad {
@@ -4888,6 +4888,55 @@ reg is a BuckConverter: picked Zbk9Buck; passed over Zbk2Buck (reg.stage.vin.vol
 ```
 
 Forcing the choice, with no pick: `.reg: Zbk9Buck { .vout.voltage &= 3.3V +/- 4% }`. The inside of a module provider stays private: a board reaches `.reg.vin`, `.reg.vout` and `.reg.vin_abs_max`, never `.reg.stage`.
+
+### An interface that provides a generic: a process
+
+A generic with no `pins` table and no catalog may be provided by interfaces too: `interface X provides G`. All the providers of one generic are parts, or all are modules, or all are interfaces, and a use is made as the kind they are. An interface provider holds values and interfaces, as any interface does, and states its own numbers with `&=`.
+
+The standard library's use of it is the manufacturing process (ADR 0113). `std::mfg::jlcpcb::TwoLayer` is a generic, and each copper weight JLCPCB gives every rule for is a provider, `JlcTwoLayer1oz` and `JlcTwoLayer2oz`, which state the rules that depend on the weight (track, space, annular ring, mask bridge) and the weight itself. A board narrows the weight and the pick follows:
+
+```nsm evaluate picks
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Heavy {
+    /// 2 oz copper, for a board that carries a few amperes.
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+        .stackup.copper_weight &= 2
+    }
+    .header: Header1x2
+}
+```
+
+```text
+process is a TwoLayer: picked JlcTwoLayer2oz; passed over JlcTwoLayer1oz (contradiction on `process.stackup.copper_weight`: it is already 1, which does not overlap 2)
+```
+
+A narrowing of a use that its provider's own statement contradicts is a mistake of the check, which used to stop the build before any pick. Inside a use with more than one provider it is not the end: the build tries the other providers, as it does for a relation the solver finds false, and stops only when none has what the board asks for, naming each:
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Heavier {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+        .stackup.copper_weight &= 3.5
+    }
+    .header: Header1x2
+}
+```
+
+```text
+error: no TwoLayer provider satisfies process: the closest of the 2 in scope, JlcTwoLayer1oz, fails because contradiction on `process.stackup.copper_weight`: it is already 1, which does not overlap 3.5; the others: JlcTwoLayer2oz (contradiction on `process.stackup.copper_weight`: it is already 2, which does not overlap 3.5)
+  --> main.nsm:5:5
+  |
+5 |     .process: TwoLayer {
+  |     ^^^^^^^^^^^^^^^^^^
+```
+
+A board that says nothing about the weight is made by the first provider, 1 oz, as before the process was a generic, and its rules and output are the same. The process is still called by the type the board wrote, `TwoLayer`, in `fab-notes.txt`, and the weight is in the same line.
 
 ### The standard passives are generics
 
@@ -6396,6 +6445,7 @@ Rules.
 - A process states every rule its fabricator's page gives, or says in its doc comment why it does not (issue #431). The router keeps each rule and netsmith's design rules check checks it: the copper rules a KiCad project file can hold go there (`min_clearance`, `min_track_width`, `min_hole_to_hole`...), and the others are netsmith's own rules in the check: `hole_to_track` (a via's or a non-plated hole to a track, 0.2 mm, and a plated pad's hole, `.min_plated_hole_clearance`, 0.28 mm), `pad_to_pad` (surface-mount pads of different nets, 0.15 mm), `pad_hole_to_hole` (two holes when one is a pad's, 0.45 mm; two vias' holes are 0.2 mm, `.min_via_hole_to_hole`), `mask_to_track` (a solder mask opening to a track of another net, 0.09 mm), `slot_width`, `npth_drill` and `plated_ring` (the copper round a plated pad's hole, `.min_annular_ring`; a via's is `.min_via_ring`).
 - The via the router draws is `.via_drill` and `.via_diameter`, 0.2 mm in 0.45 mm: an offer of the process (`?=`), the smallest via JLCPCB makes at its standard price. A board replaces it with `.process.via_drill &= 0.3mm` and `.process.via_diameter &= 0.6mm`; a via the process cannot make is refused when the board is placed.
 - A board must choose `.stackup.thickness`. The process offers 0.4 mm to 2 mm, and netsmith will not pick.
+- A two-layer board may choose its copper weight: `.stackup.copper_weight &= 2` is 2 oz, and the rules that depend on the weight follow (track and space 0.16 mm, annular ring 0.254 mm, mask bridge 0.2 mm), with the current a track and a via carry (see Track width against current). `TwoLayer` is a generic and each weight a provider (see _An interface that provides a generic: a process_); a board that says nothing is made with 1 oz. JLCPCB's page offers 2.5, 3.5 and 4.5 oz too but gives no annular ring or mask bridge for them, so std has no provider for them and a board that asks for one is refused. `FourLayer` and `SixLayer` are 1 oz only: JLCPCB lists no build-up with 2 oz outer copper.
 - A board with no `process` builds and views as a schematic. `fab` stops and says to add `import std::mfg::jlcpcb::TwoLayer` and `.process: TwoLayer`. There is no default.
 - `.max_temperature_rise` is the rise in kelvin that the track width check designs to (see Track width against current). The process leaves it unstated and it is 10 K when the board does too: `.process.max_temperature_rise &= 20K`.
 - `std::mfg::jlcpcb::FourLayer` has two inner layers and `std::mfg::jlcpcb::SixLayer` four (`.inner1` to `.inner4`, counted from the top). The board says what each is (ADR 0111). A plane is one sheet of copper on a net, and the board names the net: `.process.inner1.net &= "GND"`. A signal layer names no net: `.process.inner2.use &= "signal"`. The router draws on the outer layers only, so a signal layer stays empty for now; it is written to the board file as a signal layer, plotted as an inner copper Gerber and checked like the outer layers. An inner layer that is neither is an error, and so is a plane on a net the board does not have. See `examples/four_layer.nsm` and `examples/six_layer.nsm`. Each offers 1.6 mm only, the one thickness whose build-up JLCPCB's impedance page gives (`JLC04161H-7628`, `JLC06161H-3313`); `fab-notes.txt` names the build-up and says what each inner layer is. JLCPCB's pages give no build-up of 8 or 10 layers, so std has no JLCPCB process for them; see the fictional fabricator below.
@@ -8466,6 +8516,8 @@ row = "330Ω 1% 0402 C25104"
 lcsc = "C25104"
 mpn = "0402WGF3300TCE"
 ```
+
+A use of a generic with more than one provider in scope is locked too, at the provider it was picked as (ADR 0113): `[LedExample.providers."process"]` with `generic = "TwoLayer"` and `provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"`, written before the board's parts, because the provider decides which parts there are. The use is made with that provider and no other is tried: a board that now asks for what another provider has (another copper weight) stops on the contradiction with a note that names the lock, and `lock --update` picks again and prints the change (`` LedExample: `process`: provider `...JlcTwoLayer1oz` -> `...JlcTwoLayer2oz` ``). A locked provider that is no longer in scope is an error, as a row that is gone is.
 
 There is one table for each board (or system) of the file, keyed by its name, and one for each part, keyed by its path (`r1`, `stage.output_cap`; a bank of capacitors is one entry, its path without the `#2`). `catalog` and `row` say which row. `lcsc` and `mpn` are there to find a row that was renamed or changed in place, and may be left out. The file holds no stock, no price and no solved value; a generic part is locked at the row the solver gave it (`generic 22uF 10% 0603 ...`), and `fab` still resolves it to an orderable row against the stock of the day (ADR 0047).
 
@@ -13699,7 +13751,9 @@ Parts are numbered by their letters in the order the design declares them (a mod
 
 | Definition | What it is |
 |---|---|
-| `std::mfg::jlcpcb::TwoLayer` | JLCPCB's two-layer board, 1 oz copper. Rules from `.min_track` to `.min_mask_bridge`, `.max_temperature_rise` (the rise the track width check designs to, unstated by the process), `.via_in_pad` (the largest via the fabricator fills and caps so that it may stand in a pad: an upper bound, `0mm` refuses vias in pads), `.stackup`, and the outer pours `.top` and `.bottom`. Thickness 0.4 mm to 2 mm, chosen by the board. |
+| `std::mfg::jlcpcb::TwoLayer` | JLCPCB's two-layer board, a generic whose providers are the copper weights, `JlcTwoLayer1oz` (the first, so the default) and `JlcTwoLayer2oz`; the board narrows `.stackup.copper_weight` to pick one (ADR 0113). Rules from `.min_track` to `.min_mask_bridge`, `.max_temperature_rise` (the rise the track width check designs to, unstated by the process), `.via_in_pad` (the largest via the fabricator fills and caps so that it may stand in a pad: an upper bound, `0mm` refuses vias in pads), `.stackup`, and the outer pours `.top` and `.bottom`. Thickness 0.4 mm to 2 mm, chosen by the board. |
+| `std::mfg::jlcpcb::JlcTwoLayer1oz` | The provider of `TwoLayer` with 1 oz copper: track and space 0.1 mm, annular ring 0.18 mm, mask bridge 0.13 mm. |
+| `std::mfg::jlcpcb::JlcTwoLayer2oz` | The provider of `TwoLayer` with 2 oz copper: track and space 0.16 mm, annular ring 0.254 mm, mask bridge 0.2 mm. |
 | `std::mfg::jlcpcb::FourLayer` | JLCPCB's four-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `JLC04161H-7628`. Inner layers `.inner1` and `.inner2`, each a plane on a net the board names or a signal layer. |
 | `std::mfg::jlcpcb::SixLayer` | JLCPCB's six-layer board, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `JLC06161H-3313`. Inner layers `.inner1` to `.inner4`, each a plane on a net the board names or a signal layer. |
 | `std::mfg::acme::EightLayer` | ACME's eight-layer board. ACME is a fictional fabricator: the numbers were chosen, not sourced, and the board cannot be ordered (ADR 0112). JLCPCB's multilayer rules, 1 oz outer and 0.5 oz inner copper, 1.6 mm, build-up `ACME-8L-1.6`. Inner layers `.inner1` to `.inner6`, each a plane or a signal layer. |
