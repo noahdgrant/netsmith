@@ -1,6 +1,7 @@
 //! A board whose outline is a polygon (issue #57): the placer keeps the parts inside it, the
-//! placement check measures its edge, and `Edge.Cuts` and the editor's sheet draw it. The
-//! router is not tested here: it routes inside the polygon's bounding box (issue #495).
+//! placement check measures its edge, `Edge.Cuts` and the editor's sheet draw it, and the
+//! router routes inside it, its copper the process's copper to edge space from its edge
+//! (issue #495).
 
 use crate::common;
 
@@ -218,5 +219,104 @@ fn an_outline_that_crosses_itself_is_refused_with_where() {
         e.to_string()
             .starts_with("Shaped: the outline crosses or touches itself near"),
         "{e}"
+    );
+}
+
+/// Moves the two parts of a two-part board to `left` and `right` (from the outline's corner),
+/// unturned, so their one line runs from R1's pad 2 to R2's pad 1 across the board.
+fn place_two(b: &mut Board, left: (f64, f64), right: (f64, f64)) {
+    let o = b.outline.min;
+    for (part, at) in b.parts.iter_mut().zip([left, right]) {
+        part.at = Pt::new(o.x + at.0, o.y + at.1);
+        part.rotation = 0.0;
+    }
+    assert_eq!(b.check_placement(), vec![]);
+    b.tracks.clear();
+    b.vias.clear();
+}
+
+/// The least depth inside the board edge of any track's copper, its half width taken off,
+/// over points every 0.01 mm along it (an arc through its middle point as two chords).
+fn least_track_depth(b: &Board) -> f64 {
+    let edge = b.edge();
+    let mut least = f64::MAX;
+    for t in &b.tracks {
+        let legs = match t.mid {
+            Some(m) => vec![(t.from, m), (m, t.to)],
+            None => vec![(t.from, t.to)],
+        };
+        for (a, z) in legs {
+            let n = (a.distance(z) / 0.01).ceil().max(1.0) as usize;
+            for k in 0..=n {
+                let f = k as f64 / n as f64;
+                let p = Pt::new(a.x + (z.x - a.x) * f, a.y + (z.y - a.y) * f);
+                least = least.min(edge.depth(p) - t.width / 2.0);
+            }
+        }
+    }
+    for v in &b.vias {
+        least = least.min(edge.depth(v.at) - v.diameter / 2.0);
+    }
+    least
+}
+
+#[test]
+fn a_line_across_a_notch_routes_round_it_and_keeps_the_edge_space() {
+    // A U, 30 x 20 mm, with a notch 10 mm wide and 14 mm deep down from the top: the two pads
+    // face each other across the notch, so the line must go round its floor.
+    let u = vec![
+        corner(0.0, 0.0),
+        corner(10.0, 0.0),
+        corner(10.0, 14.0),
+        corner(20.0, 14.0),
+        corner(20.0, 0.0),
+        corner(30.0, 0.0),
+        corner(30.0, 20.0),
+        corner(0.0, 20.0),
+    ];
+    let mut b = board(2, u, (30.0, 20.0)).unwrap_or_else(|e| panic!("{e}"));
+    place_two(&mut b, (5.0, 4.0), (25.0, 4.0));
+    let unrouted = netsmith_place_route::route(&mut b);
+    assert!(unrouted.is_empty(), "{unrouted:?}");
+    assert!(!b.tracks.is_empty());
+    let o = b.outline.min;
+    let floor = o.y + 14.0;
+    assert!(
+        b.tracks.iter().any(|t| t.from.y.min(t.to.y) > floor),
+        "no track goes under the notch's floor: {:?}",
+        b.tracks
+    );
+    let depth = least_track_depth(&b);
+    assert!(
+        depth >= b.rules.copper_to_edge - 1e-6,
+        "copper {depth} mm inside the edge, the space is {}",
+        b.rules.copper_to_edge
+    );
+}
+
+#[test]
+fn a_line_under_a_curved_edge_keeps_the_edge_space_along_the_arc() {
+    // A 30 x 20 mm board whose top edge is an arc that dips 12 mm into it: the straight way
+    // between the pads, 10 mm down, crosses the arc, so the line goes under it, and keeps
+    // the space from the arc's every point.
+    let dip = vec![
+        OutlineVertex {
+            at: (0.0, 0.0),
+            through: Some((15.0, 12.0)),
+        },
+        corner(30.0, 0.0),
+        corner(30.0, 20.0),
+        corner(0.0, 20.0),
+    ];
+    let mut b = board(2, dip, (30.0, 20.0)).unwrap_or_else(|e| panic!("{e}"));
+    place_two(&mut b, (3.0, 10.0), (27.0, 10.0));
+    let unrouted = netsmith_place_route::route(&mut b);
+    assert!(unrouted.is_empty(), "{unrouted:?}");
+    assert!(!b.tracks.is_empty());
+    let depth = least_track_depth(&b);
+    assert!(
+        depth >= b.rules.copper_to_edge - 1e-6,
+        "copper {depth} mm inside the edge, the space is {}",
+        b.rules.copper_to_edge
     );
 }

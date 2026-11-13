@@ -1964,8 +1964,8 @@ impl Board {
     }
 
     /// The outline's box with its rounded corners: the board edge, unless the board has a
-    /// polygon outline, whose bounding box it then is. The router keeps to this (issue #495
-    /// is routing to a polygon's own edge); everything else measures [`Board::edge`].
+    /// polygon outline, whose bounding box it then is. What measures the edge uses
+    /// [`Board::edge`].
     pub fn outline_shape(&self) -> RoundRect {
         RoundRect::new(self.outline, self.corner_radius)
     }
