@@ -88,10 +88,12 @@
 //!
 //! No provider in scope: ``` `reg` is a `BuckConverter`, and no part or module in the files this
 //! file imports provides it; import the file of a provider, or name one as the type of `reg` ```.
-//! Every provider fails: ``` no BuckConverter provider satisfies reg: the closest of the 2 in
-//! scope, Zbk9Buck, fails because ... ```, the closest being the trial with the fewest
-//! diagnostics, ties in candidate order, the others listed after it. With one provider in scope
-//! the message is the part's own.
+//! Every provider fails: a headline, ``` no BuckConverter provider satisfies `reg` at main.nsm:9:
+//! none of the 2 in scope works ```, and an indented list with one entry for each provider in
+//! the order tried, each with the reason it failed (a failed pick from its own catalog is a
+//! sub-list: the closest candidate, then the requirement and its numbers). The closest, the
+//! trial with the fewest diagnostics, ties in candidate order, is marked `(the closest)`. With
+//! one provider in scope the message is the part's own.
 
 use std::collections::HashSet;
 use std::rc::Rc;

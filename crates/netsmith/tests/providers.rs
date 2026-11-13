@@ -163,18 +163,27 @@ fn when_no_provider_works_the_closest_is_named_with_why_the_others_fail() {
     .expect("nothing reaches 10 GHz");
     assert_eq!(e.len(), 1, "{:?}", messages(&e));
     let m = &e[0].message;
-    assert!(
-        m.starts_with("no CoaxReceptacle provider satisfies rf: the closest of the 2 in scope, AlphaCoax, fails because"),
+    let lines: Vec<&str> = m.lines().collect();
+    assert_eq!(
+        lines[0],
+        "no CoaxReceptacle provider satisfies `rf` at main.nsm:6: none of the 2 in scope works",
         "{m}"
     );
+    // One entry for each provider in the order tried, the closest marked, each with the
+    // reason one level in and a failed pick from its own catalog one level further.
+    assert_eq!(lines[1], "  AlphaCoax (the closest):", "{m}");
+    assert!(lines[2].starts_with("    no `alphacoax` candidate satisfies `rf`:"), "{m}");
+    assert!(lines[3].starts_with("      closest of the 1 that fit: "), "{m}");
     assert!(
-        m.contains(
-            "rf.max_frequency must always be at least 10GHz, but 1GHz is not always above 10GHz"
-        ),
+        lines[4].starts_with("      fails because: rf.max_frequency must always be at least 10GHz, but 1GHz is not always above 10GHz"),
         "{m}"
     );
-    assert!(m.contains("; the others: BetaCoax ("), "{m}");
-    assert!(m.contains("but 3GHz is not always above 10GHz"), "{m}");
+    assert_eq!(lines[5], "  BetaCoax:", "{m}");
+    assert!(
+        lines[8].contains("but 3GHz is not always above 10GHz"),
+        "{m}"
+    );
+    assert_eq!(lines.len(), 9, "{m}");
     // At the line of the use.
     assert_eq!(e[0].at.as_ref().unwrap().line, 6, "{:?}", e[0].at);
 }
@@ -241,7 +250,7 @@ fn a_part_number_that_no_provider_has_is_one_error_naming_each() {
     assert_eq!(e.len(), 1, "{:?}", messages(&e));
     let m = &e[0].message;
     assert!(
-        m.starts_with("no CoaxReceptacle provider satisfies rf: the closest of the 2 in scope"),
+        m.starts_with("no CoaxReceptacle provider satisfies `rf` at "),
         "{m}"
     );
     assert!(m.contains("AlphaCoax") && m.contains("BetaCoax"), "{m}");
@@ -779,10 +788,16 @@ fn a_buck_converter_no_ic_can_take_names_the_closest() {
     assert_eq!(e.len(), 1, "{:?}", messages(&e));
     let m = &e[0].message;
     assert!(
-        m.starts_with("no BuckConverter provider satisfies reg: the closest of the 2 in scope, Zbk9Buck, fails because reg.vin_abs_max must always be at least 70V, but 65V is not always above 70V"),
+        m.starts_with("no BuckConverter provider satisfies `reg` at "),
         "{m}"
     );
-    assert!(m.contains("; the others: Zbk2Buck ("), "{m}");
+    assert!(m.contains("none of the 2 in scope works"), "{m}");
+    assert!(m.contains("\n  Zbk9Buck (the closest):\n"), "{m}");
+    assert!(
+        m.contains("\n    reg.vin_abs_max must always be at least 70V, but 65V is not always above 70V"),
+        "{m}"
+    );
+    assert!(m.contains("\n  Zbk2Buck:\n"), "{m}");
 }
 
 // ---- a module that takes a part: one candidate for each IC (ADR 0115) ----------------------

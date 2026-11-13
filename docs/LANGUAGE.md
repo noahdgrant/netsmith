@@ -4735,7 +4735,7 @@ board Radio {
 rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (the `acme_basic_coax` catalog has nothing for `rf`, which needs mpn within "ACME-MC-1")
 ```
 
-When no provider works, one error at the line of the use names the closest provider (the trial with the fewest failures; ties in candidate order) and why each of the others fails:
+When no provider works, one error at the line of the use says so in a headline (the generic, the use and its line) and lists the providers in scope, in the order they were tried, each with the first requirement it failed and the numbers. A provider whose own pick from its catalog failed has the closest candidate and the requirement as a sub-list under it. The closest provider (the trial with the fewest failures; ties in candidate order) is marked. `--json` carries the same text in the finding's `message`, with the lines separated by newlines:
 
 ```nsm fails catalogs=coax
 import src::rf::CoaxReceptacle
@@ -4752,7 +4752,15 @@ board Radio {
 ```
 
 ```text
-error: no CoaxReceptacle provider satisfies rf: the closest of the 2 in scope, AcmeBasicCoax, fails because no `acme_basic_coax` candidate satisfies `rf`: the closest of the 1 that fit, ACME-BC-1, fails because rf.max_frequency must always be at least 10GHz, but 1GHz is not always above 10GHz; the others: AcmeMicroCoax (no `acme_micro_coax` candidate satisfies `rf`: the closest of the 1 that fit, ACME-MC-1, fails because rf.max_frequency must always be at least 10GHz, but 6GHz is not always above 10GHz)
+error: no CoaxReceptacle provider satisfies `rf` at main.nsm:8: none of the 2 in scope works
+  AcmeBasicCoax (the closest):
+    no `acme_basic_coax` candidate satisfies `rf`:
+      closest of the 1 that fit: ACME-BC-1
+      fails because: rf.max_frequency must always be at least 10GHz, but 1GHz is not always above 10GHz
+  AcmeMicroCoax:
+    no `acme_micro_coax` candidate satisfies `rf`:
+      closest of the 1 that fit: ACME-MC-1
+      fails because: rf.max_frequency must always be at least 10GHz, but 6GHz is not always above 10GHz
   --> main.nsm:8:5
   |
 8 |     .rf: CoaxReceptacle { .max_frequency >= 10GHz }
@@ -5091,7 +5099,11 @@ board Heavier {
 ```
 
 ```text
-error: no TwoLayer provider satisfies process: the closest of the 2 in scope, JlcTwoLayer1oz, fails because contradiction on `process.stackup.copper_weight`: it is already 1, which does not overlap 3.5; the others: JlcTwoLayer2oz (contradiction on `process.stackup.copper_weight`: it is already 2, which does not overlap 3.5)
+error: no TwoLayer provider satisfies `process` at main.nsm:5: none of the 2 in scope works
+  JlcTwoLayer1oz (the closest):
+    contradiction on `process.stackup.copper_weight`: it is already 1, which does not overlap 3.5
+  JlcTwoLayer2oz:
+    contradiction on `process.stackup.copper_weight`: it is already 2, which does not overlap 3.5
   --> main.nsm:5:5
   |
 5 |     .process: TwoLayer {

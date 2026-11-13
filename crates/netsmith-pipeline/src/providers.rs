@@ -576,7 +576,8 @@ fn passed_over(s: &Search<'_>, picked: &Checked) -> BTreeMap<String, Vec<(String
 }
 
 /// No assignment works. When the search ran to its end, one error at the first use that
-/// matters, naming the closest provider and what each of the others fails on. When it stopped
+/// matters: a headline and a list of the providers in scope, each with the reason it fails and
+/// the closest marked (`provider_failure_text`). When it stopped
 /// at the bound, the combinations it did not reach are not an answer, so the build says what
 /// is wrong with the design as it stands, the diagnostics of the first solve, and then that
 /// the search gave up (the design's own mistake is what a person has to fix first, and it was
@@ -631,31 +632,22 @@ fn failure(
             .iter()
             .min_by_key(|(i, _, n)| (*n, *i))
             .expect("at least the first provider was tried");
-        let (closest_index, closest_name, _) = closest;
+        let (closest_index, _, _) = closest;
         closest_provider = Some(*closest_index);
-        let because = describe(*closest_index).map(|(_, m)| m).unwrap_or_default();
-        let mut text = format!(
-            "no {} provider satisfies {}: the closest of the {} in scope, {}, fails because {}",
-            u.generic,
-            u.path,
-            u.candidates.len(),
-            closest_name,
-            because
-        );
-        let others: Vec<String> = u
+        let place = crate::locate(sources, at.0, at.1);
+        let entries: Vec<(String, Option<String>)> = u
             .candidates
             .iter()
             .enumerate()
-            .filter(|(i, _)| i != closest_index)
-            .map(|(i, c)| match describe(i) {
-                Some((_, why)) => format!("{} ({why})", c.name),
-                None => format!("{} (not tried)", c.name),
-            })
+            .map(|(i, c)| (c.name.clone(), describe(i).map(|(_, why)| why)))
             .collect();
-        if !others.is_empty() {
-            text.push_str(&format!("; the others: {}", others.join(", ")));
-        }
-        text
+        provider_failure_text(
+            &u.generic,
+            &u.path,
+            &format!("{}:{}", place.file, place.line),
+            &entries,
+            *closest_index,
+        )
     };
     let diagnostic = Diagnostic {
         source: at.0,
@@ -722,6 +714,72 @@ fn failure(
         problems.extend(crate::diagnostic_problems(&others, sources, &board_of));
     }
     problems
+}
+
+/// The message when no provider of a generic works: a headline (which generic, which use, at
+/// which line, that none works) and an indented list with one entry for each provider in
+/// scope, in the order they were tried, the closest marked. An entry gives the reason the
+/// provider failed, or says it was not tried; a reason that is itself a failed pick from a
+/// catalog (`no `x` candidate satisfies `p`: the closest of the 3 that fit, N, fails because
+/// R`) is an indented sub-list of its own, so no sentence nests in another. `entries` holds the
+/// provider's name and its reason, `None` when it was not tried.
+fn provider_failure_text(
+    generic: &str,
+    path: &str,
+    place: &str,
+    entries: &[(String, Option<String>)],
+    closest: usize,
+) -> String {
+    let mut text = format!(
+        "no {generic} provider satisfies `{path}` at {place}: none of the {} in scope works",
+        entries.len()
+    );
+    for (i, (name, why)) in entries.iter().enumerate() {
+        let mark = if i == closest { " (the closest)" } else { "" };
+        text.push_str(&format!("\n  {name}{mark}:"));
+        match why {
+            None => text.push_str("\n    not tried"),
+            Some(why) => {
+                for line in reason_lines(why) {
+                    text.push_str("\n    ");
+                    text.push_str(&line);
+                }
+            }
+        }
+    }
+    text
+}
+
+/// The lines of one provider's reason, each without its indent. A failed pick from a catalog
+/// says what no candidate satisfies, then the closest candidate and the requirement it fails
+/// with its numbers: those become `closest ...` and `fails because ...` lines, one level in.
+/// Any other reason is one line.
+fn reason_lines(why: &str) -> Vec<String> {
+    const CLOSEST: &str = ": the closest";
+    const BECAUSE: &str = ", fails because ";
+    let split = why.find(CLOSEST).and_then(|at| {
+        let head = &why[..at];
+        let rest = &why[at + CLOSEST.len()..];
+        let (who, because) = rest.split_once(BECAUSE)?;
+        // ` of the N that fit, NAME` or `, NAME` (a group, whatever the others are).
+        let (count, name) = match who.strip_prefix(" of the ") {
+            Some(tail) => {
+                let (count, name) = tail.split_once(" that fit, ")?;
+                (format!("closest of the {count} that fit"), name)
+            }
+            None => ("closest".to_string(), who.strip_prefix(", ")?),
+        };
+        head.starts_with("no ")
+            .then_some((head, count, name, because))
+    });
+    match split {
+        Some((head, count, name, because)) => vec![
+            format!("{head}:"),
+            format!("  {count}: {name}"),
+            format!("  fails because: {because}"),
+        ],
+        None => why.lines().map(str::to_string).collect(),
+    }
 }
 
 /// What was picked for each use of a built board, with what the search passed over. For one
