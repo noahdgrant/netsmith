@@ -1,5 +1,5 @@
 //! A rail is on `GND` unless a statement says otherwise: `Rail.neg.net ?= "GND"` in std, which
-//! takes effect where a rail is on a board (ADR 0118).
+//! takes effect where a rail is on a board (ADR 0121).
 
 use netsmith_check::*;
 

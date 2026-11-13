@@ -4565,7 +4565,7 @@
         "text": "The IO supply, from the regulator.",
         "at": {
           "file": "src/main.nsm",
-          "line": 71
+          "line": 70
         },
         "anchors": [],
         "result": null
@@ -4576,7 +4576,7 @@
         "text": "The core supply, made by the MCU's own switching regulator with the inductor and a capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 78
+          "line": 76
         },
         "anchors": [],
         "result": null
@@ -4587,7 +4587,7 @@
         "text": "The inductor of the core regulator, from the chip's switch node to the core rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 104
+          "line": 99
         },
         "anchors": [
           "core_inductor"
@@ -4600,7 +4600,7 @@
         "text": "The filter of the core regulator's analog supply: 33 ohm and 4.7 uF.",
         "at": {
           "file": "src/main.nsm",
-          "line": 112
+          "line": 107
         },
         "anchors": [
           "avdd_filter"
@@ -4663,7 +4663,7 @@
         "text": "BOOTSEL: held at power-up it pulls QSPI_SS to ground through 1 kohm, so the chip boots from USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 177
+          "line": 172
         },
         "anchors": [
           "bootsel"
@@ -4676,7 +4676,7 @@
         "text": "RESET: pulls RUN to ground through 1 kohm.",
         "at": {
           "file": "src/main.nsm",
-          "line": 183
+          "line": 178
         },
         "anchors": [
           "reset"

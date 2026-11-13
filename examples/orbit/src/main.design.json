@@ -4122,7 +4122,7 @@
         "text": "The battery's rail behind the power switch, `+BATT`. The schematic names no cell, so no voltage is stated.",
         "at": {
           "file": "src/main.nsm",
-          "line": 64
+          "line": 63
         },
         "anchors": [],
         "result": null
@@ -4133,7 +4133,7 @@
         "text": "The 3.3 V rail of the buck-boost regulator. ORBIT's schematic names it `+3.3V`; the window is a stated requirement (as for the RP2350A Minimal), and the regulator's divider derives the output, which the check compares with it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 71
+          "line": 69
         },
         "anchors": [],
         "result": null
@@ -4233,7 +4233,7 @@
         "text": "PWR1: the slide switch between the battery connector and the `+BATT` rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 89
+          "line": 84
         },
         "anchors": [
           "power_switch"
@@ -4331,7 +4331,7 @@
         "text": "U16, the STM32F030C8. Every pin that a header or a part uses is named here, so none moves.",
         "at": {
           "file": "src/main.nsm",
-          "line": 101
+          "line": 96
         },
         "anchors": [
           "mcu"
@@ -4344,7 +4344,7 @@
         "text": "C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 108
+          "line": 103
         },
         "anchors": [
           "v3v3_bulk"
@@ -4407,7 +4407,7 @@
         "text": "SW1, RESET: pulls NRST to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 125
+          "line": 120
         },
         "anchors": [
           "reset_button"
@@ -4420,7 +4420,7 @@
         "text": "C9, on NRST.",
         "at": {
           "file": "src/main.nsm",
-          "line": 127
+          "line": 122
         },
         "anchors": [
           "reset_cap"
@@ -4433,7 +4433,7 @@
         "text": "BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1 on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 137
+          "line": 132
         },
         "anchors": [
           "boot_switch"
@@ -4446,7 +4446,7 @@
         "text": "R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of R2's pad 2 in ORBIT's board, and the parity checker compares the pad.",
         "at": {
           "file": "src/main.nsm",
-          "line": 142
+          "line": 137
         },
         "anchors": [
           "boot_pulldown"
@@ -4459,7 +4459,7 @@
         "text": "SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor and a 100 nF capacitor take it to the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 152
+          "line": 147
         },
         "anchors": [
           "user_button"
@@ -4472,7 +4472,7 @@
         "text": "R12.",
         "at": {
           "file": "src/main.nsm",
-          "line": 154
+          "line": 149
         },
         "anchors": [],
         "result": null
@@ -4483,7 +4483,7 @@
         "text": "C18.",
         "at": {
           "file": "src/main.nsm",
-          "line": 156
+          "line": 151
         },
         "anchors": [
           "user_node_cap"
@@ -4496,7 +4496,7 @@
         "text": "R11.",
         "at": {
           "file": "src/main.nsm",
-          "line": 158
+          "line": 153
         },
         "anchors": [
           "user_series"
@@ -4509,7 +4509,7 @@
         "text": "C19, on the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 160
+          "line": 155
         },
         "anchors": [
           "user_pin_cap"
@@ -4522,7 +4522,7 @@
         "text": "D2 and R4, on PA5.",
         "at": {
           "file": "src/main.nsm",
-          "line": 176
+          "line": 171
         },
         "anchors": [
           "led1"
@@ -4535,7 +4535,7 @@
         "text": "D3 and R5, on PA4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 180
+          "line": 175
         },
         "anchors": [
           "led2"
@@ -4624,7 +4624,7 @@
         "text": "U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 198
+          "line": 193
         },
         "anchors": [
           "eeprom"
@@ -4637,7 +4637,7 @@
         "text": "R9 and R10: 2.2 kohm on each line to 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 210
+          "line": 205
         },
         "anchors": [],
         "result": null

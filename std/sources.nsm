@@ -8,7 +8,7 @@
 /// (`.output.current &= 0mA..50mA`); the checker adds up the rails on each net so that
 /// what is drawn equals what is supplied (ADR 0007).
 ///
-/// `neg` is on `GND` unless the board says otherwise (`.neg.net &= "AGND"`, ADR 0118).
+/// `neg` is on `GND` unless the board says otherwise (`.neg.net &= "AGND"`, ADR 0121).
 interface Rail {
     .pos: Pin
     .neg: Pin
@@ -62,7 +62,7 @@ interface Rail {
     // nothing: a rail with no statement for `.neg.net` is on `GND`, and a rail with its own
     // ground (isolated, analog) states it, `.agnd_rail: Rail { .neg.net &= "AGND" }`. The
     // name is a default (ADR 0051) and takes effect only where the rail is on a board, since
-    // only a board names nets (ADR 0118); a rail joined (`~`) to a pin or rail whose net a
+    // only a board names nets (ADR 0121); a rail joined (`~`) to a pin or rail whose net a
     // `&=` names keeps that name.
     .neg.net ?= "GND"
 }

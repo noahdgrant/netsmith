@@ -722,7 +722,7 @@ impl Checker<'_> {
     }
 
     /// Whether a default applies. A net name is board-wide, and a default for one (a rail's
-    /// ground, ADR 0118) is an offer with three more limits than any other default: it needs a
+    /// ground, ADR 0121) is an offer with three more limits than any other default: it needs a
     /// board to name the net on; it needs a pin of a part on the net and a second pin joined to
     /// it, since a name for a pin nothing is joined to would only make a port that holds it look
     /// connected, or ask a pad of a part that has none (a bus port's reference rail is on no net
