@@ -14,7 +14,7 @@ module Oscillator {
     .xout: Pin
     .gnd: Pin
 
-    .crystal: Abm8272T3 { .mpn &= "ABM8-272-T3" }
+    .crystal: Abm8272T3
     /// On the input side, 15 pF C0G (Raspberry Pi's value).
     .load_in: Capacitor { .capacitance &= 15pF +/- 5%; .package &= "0402" }
     /// On the output side, behind the damping resistor.

@@ -44,7 +44,7 @@ board EasyduinoEsp32s3 {
     // ---- The chips: U1, U3, U5 ----
 
     /// The module (U1): 4 MB of flash, PCB antenna.
-    .module: Esp32S3Wroom1 { .mpn &= "ESP32-S3-WROOM-1-N4" }
+    .module: Esp32S3Wroom1
     /// The USB-UART bridge (U3), on the first receptacle.
     .bridge: Cp2102n { .mpn &= "CP2102N-A02-GQFN28" }
     /// The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).
@@ -67,9 +67,9 @@ board EasyduinoEsp32s3 {
     /// The development board's two 22-pin headers (U2), hand-soldered.
     .headers: Esp32S3DevKitCHeaders
     /// SW1, RESET: pulls EN to ground.
-    .reset: XunpuTs1088 { .mpn &= "TS-1088-AR02016" }
+    .reset: XunpuTs1088
     /// SW2, BOOT: pulls GPIO0 to ground.
-    .boot: XunpuTs1088 { .mpn &= "TS-1088-AR02016" }
+    .boot: XunpuTs1088
 
     // ---- The rails ----
 

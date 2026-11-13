@@ -2097,8 +2097,8 @@ mod board {
                 "    .pin_for_header: .mcu.GPIO\n    .header_low.p12 ~ .pin_for_header",
             )
             .replace(
-                ".mcu: Rp2350A { .mpn &= \"RP2350A\" }",
-                ".mcu: Rp2350A { .mpn &= \"RP2350A\"; .package &= \"QFN-60-EP(7x7)\" }",
+                ".mcu: Rp2350A\n",
+                ".mcu: Rp2350A { .package &= \"QFN-60-EP(7x7)\" }\n",
             );
         assert_ne!(asked, text);
         let moved =

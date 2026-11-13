@@ -22,7 +22,7 @@ module BuckBoost {
     .vout: Rail
 
     /// U15: the TPS63802DLAR (LCSC C2845237).
-    .ic: Tps63802 { .mpn &= "TPS63802DLAR" }
+    .ic: Tps63802
     /// L1: 0.47 uH.
     .inductor: Inductor { .inductance &= 0.47uH +/- 20%; .package &= "0806" }
     /// R7, from the output to `FB`.

@@ -3957,7 +3957,7 @@ Rules.
 - A part is picked after the parts whose picks decide what it needs, never by the order of names (below).
 - Narrow only what the design needs. A tighter range removes candidates.
 - A part number is in a catalog only with a recorded source: a row that names a part has a `source` cell, or the file does not load (next section).
-- A catalog may be keyed by one of its columns: `catalog mcu by .mpn { .mpn, .package }`. The solver does not choose a row of a keyed catalog for you, because the first fitting row is right for a regulator and wrong for a microcontroller. Name the part with `.u.mpn &= "..."`, which leaves one row. If you do not, the message lists the candidates: `` `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B ``.
+- A catalog may be keyed by one of its columns: `catalog mcu by .mpn { .mpn, .package }`. The solver does not choose among the rows of a keyed catalog for you, because the first fitting row is right for a regulator and wrong for a microcontroller. When exactly one row fits, there is nothing to choose, and the solver takes it: a catalog with one row needs no `.mpn` at the place the part is used, and neither does a part whose narrowings (`.package &= "QFN-32"`) leave one row. When several rows fit, name the part with `.u.mpn &= "..."`, which leaves one row. If you do not, the message lists the candidates, at the line of the use: `` `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B ``.
 - A catalog's `package` column picks the part's pin table. The pads are in the table (previous section), not in the catalog. A row whose package lacks a pin that the board connects is skipped, and the message says so when nothing else is left.
 
 A bound on a member that a part is held to reaches the part (ADR 0065). A module that writes `.r.resistance &= .balance` holds the resistor to the member `.balance`, and a board that writes `.lamp.balance >= 20kohm` has bounded the member, which is not a value: nothing flows from it into the resistor. The solver reads the bound as a bound on the resistor too, since `&=` puts the resistor's value inside the member's, and a bound on all of the member is a bound on every part of it. It does so for a member that has no value yet, along a chain of such links, and for `==` only when the left side has no range of its own (an equation puts its right side inside the left side's allowance, so a range on the left says nothing about the right). The pick then takes the first row that meets the bound, tolerance included (`20kohm +/- 1%` is not always at least 20 kohm), and a part that is not a pick is checked after the picks, with the numbers. The solver adds nothing but this refusal: no range and no value changes, so a design that meets what it states is never refused.
@@ -4253,6 +4253,71 @@ error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
    |
 10 |     .u: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^
+```
+
+A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row:
+
+```nsm evaluate catalogs=ic
+import src::mcu::Mcu32
+import std::sources::Rail
+
+board NamedMcu {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32"; .mpn &= "MCU32-B" }
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+}
+```
+
+A catalog with one row has nothing to choose, so the board does not name it. The same board, with `catalogs/mcu.csv` holding only `MCU32-A`, builds with no `.mpn`:
+
+```csv file=catalogs/mcu.csv set=ic_one
+mpn,package,library,price,stock,date,source
+MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
+```
+
+```nsm evaluate catalogs=ic_one
+import src::mcu::Mcu32
+import std::sources::Rail
+
+board OnlyMcu {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+}
+```
+
+Two rows that differ in a column the board narrows leave one row for that board, and it is taken as well. A file with `MCU32-A` in `QFN-32` and `MCU32-B` in `QFN-48` (a package the part has no pin table for, so no board that connects its pins can use it):
+
+```csv file=catalogs/mcu.csv set=ic_pair
+mpn,package,library,price,stock,date,source
+MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
+MCU32-B,QFN-48,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
+```
+
+```nsm evaluate catalogs=ic_pair
+import src::mcu::Mcu32
+import std::sources::Rail
+
+board NarrowedMcu {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .u: Mcu32 { .package &= "QFN-32" }
+    .supply ~ .u.vdd
+    .u.nrst ~ .supply.pos
+}
 ```
 
 #### An optional column
