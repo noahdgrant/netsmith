@@ -46,6 +46,9 @@ const SHRINK: f64 = 0.75;
 const LEAST_TURN: f64 = 1.0;
 const MOST_TURN: f64 = 45.5;
 
+/// A place where tracks end: the net, whether on the back, and the place to 0.1 µm.
+type Joint<'a> = (&'a str, bool, (i64, i64));
+
 /// Round the bends of `board`'s tracks with arcs of radius at most `widths` track widths (the
 /// module's header). Returns how many arcs were drawn.
 pub fn round_bends(board: &mut Board, widths: f64) -> usize {
@@ -92,7 +95,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
 
     // The ends of the straight tracks, by net, layer and place.
     let key = |p: Pt| ((p.x * 1e4).round() as i64, (p.y * 1e4).round() as i64);
-    let mut ends: HashMap<(&str, bool, (i64, i64)), Vec<(usize, bool)>> = HashMap::new();
+    let mut ends: HashMap<Joint, Vec<(usize, bool)>> = HashMap::new();
     for (i, t) in board.tracks.iter().enumerate() {
         for (at, is_to) in [(t.from, false), (t.to, true)] {
             ends.entry((t.net.as_str(), t.layer == CopperLayer::Back, key(at)))
@@ -270,7 +273,9 @@ impl Bend {
         let extra = width / 2.0 + ARC_ERROR;
         fixed.chain(copper).all(|o| {
             let apart = o.clearance - MARGIN - EXACT_SLACK;
-            !reach.expanded(extra + o.clearance).overlaps(&o.form.bounds())
+            !reach
+                .expanded(extra + o.clearance)
+                .overlaps(&o.form.bounds())
                 || chords
                     .windows(2)
                     .all(|w| o.form.distance_to_line(w[0], w[1]) - extra >= apart)
@@ -320,7 +325,11 @@ mod tests {
         assert_eq!(round_bends(&mut board, ARC_WIDTHS), 1);
         assert_eq!(board.tracks.len(), 3);
         let arc = board.tracks.iter().find_map(Track::arc).expect("an arc");
-        assert!((arc.radius - ARC_WIDTHS * width).abs() < 1e-6, "{}", arc.radius);
+        assert!(
+            (arc.radius - ARC_WIDTHS * width).abs() < 1e-6,
+            "{}",
+            arc.radius
+        );
         // It replaces as much of each straight track as the radius needs, and joins their new
         // ends.
         let cut = ARC_WIDTHS * width * std::f64::consts::FRAC_PI_8.tan();

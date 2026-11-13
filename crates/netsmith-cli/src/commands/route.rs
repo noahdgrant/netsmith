@@ -230,6 +230,7 @@ mod tests {
                 stages: false,
                 plan: None,
                 classes: None,
+                arcs: None,
             }))
         );
         assert_eq!(kind(&["route"]), ErrorKind::MissingRequiredArgument);
@@ -239,6 +240,18 @@ mod tests {
                 e.contains("1 (the process's least track) to 4"),
                 "{bad}: {e}"
             );
+        }
+    }
+
+    #[test]
+    fn route_takes_the_largest_arc_radius_in_track_widths() {
+        let Ok(Command::Route(args)) = parse(&["route", "b.placed.json", "--arcs", "0"]) else {
+            panic!("--arcs 0 parses");
+        };
+        assert_eq!(args.arcs, Some(0.0));
+        for bad in ["-1", "21", "round"] {
+            let e = parse(&["route", "b.placed.json", "--arcs", bad]).unwrap_err();
+            assert!(e.contains("track widths from 0 to 20"), "{bad}: {e}");
         }
     }
 
@@ -266,6 +279,7 @@ mod tests {
                 stages: true,
                 plan: None,
                 classes: None,
+                arcs: None,
             }))
         );
         for bad in ["2.5", "steep", "10001"] {

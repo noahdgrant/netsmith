@@ -90,9 +90,11 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
             }
         }
     }
-    if board.tracks.iter().any(|t| {
-        t.net != net && t.distance_to(p) - t.width / 2.0 < r.clearance + radius + MARGIN
-    }) {
+    if board
+        .tracks
+        .iter()
+        .any(|t| t.net != net && t.distance_to(p) - t.width / 2.0 < r.clearance + radius + MARGIN)
+    {
         return false;
     }
     board.vias.iter().all(|v| {

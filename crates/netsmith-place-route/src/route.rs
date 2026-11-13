@@ -27,7 +27,10 @@
 //! its cell. A via is a state of its own, from which the path may not take a via back at once,
 //! so two vias at one place cannot hide a corner. The search queue breaks ties of cost toward
 //! the state that has come farthest. The design rules check's `track_angle` (netsmith's own)
-//! refuses a corner of more than 45 degrees outside a pad or a via of the net.
+//! refuses a corner of more than 45 degrees outside a pad or a via of the net. Once the board is
+//! routed, each bend of 45 degrees becomes a tangent arc where one keeps the rules' space
+//! ([`crate::arcs`], [`RouteOptions::arcs`]); the search and the copper it settles know nothing
+//! of arcs.
 //!
 //! Measured (2026-11-11): eight directions in every search left RP2350's 61 thousand searches
 //! popping 3 billion states, against 853 million in four, and hit the route timeout; with eight

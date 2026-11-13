@@ -1351,7 +1351,11 @@ impl Track {
     /// further than 2 µm from it (`netsmith_fab::geom::ARC_ERROR`).
     pub fn centre_line(&self) -> Vec<Pt> {
         match self.arc() {
-            Some(arc) => arc.points().into_iter().map(|p| Pt::new(p.x, p.y)).collect(),
+            Some(arc) => arc
+                .points()
+                .into_iter()
+                .map(|p| Pt::new(p.x, p.y))
+                .collect(),
             None => vec![self.from, self.to],
         }
     }

@@ -271,13 +271,7 @@ impl Pcb {
     }
 
     /// A track that is an arc from `a` through `m` to `b`.
-    pub fn arc(
-        &mut self,
-        net: &'static str,
-        layer: &str,
-        [a, m, b]: [(f64, f64); 3],
-        w: f64,
-    ) {
+    pub fn arc(&mut self, net: &'static str, layer: &str, [a, m, b]: [(f64, f64); 3], w: f64) {
         let n = format!("(net {})", self.net(net));
         self.raw(&format!(
             "(arc (start {} {}) (mid {} {}) (end {} {}) (width {w}) (layer \"{layer}\") {n})",

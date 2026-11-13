@@ -832,22 +832,16 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
             Some(mid) => ("arc", vec![Sexp::node("mid", at(mid))]),
             None => ("segment", Vec::new()),
         };
-        let mut ends = vec![Sexp::node("start", at(track.from))];
-        ends.extend(mid);
-        ends.push(Sexp::node("end", at(track.to)));
-        items.push(Sexp::node(
-            kind,
-            vec![
-                ends,
-                vec![
-                    Sexp::node("width", vec![Sexp::num(track.width)]),
-                    Sexp::node("layer", vec![Sexp::string(track.layer.name())]),
-                    net_number(&track.net),
-                    uuid_for(&format!("{}/track/{i}", board.name)),
-                ],
-            ]
-            .concat(),
-        ));
+        let mut fields = vec![Sexp::node("start", at(track.from))];
+        fields.extend(mid);
+        fields.extend([
+            Sexp::node("end", at(track.to)),
+            Sexp::node("width", vec![Sexp::num(track.width)]),
+            Sexp::node("layer", vec![Sexp::string(track.layer.name())]),
+            net_number(&track.net),
+            uuid_for(&format!("{}/track/{i}", board.name)),
+        ]);
+        items.push(Sexp::node(kind, fields));
     }
     for (i, via) in board.vias.iter().enumerate() {
         items.push(Sexp::node(
