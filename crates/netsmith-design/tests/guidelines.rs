@@ -1,6 +1,6 @@
 //! Track width against current, by IPC-2221 (ADR 0036).
 
-use netsmith_check::{Loader, check};
+use netsmith_check::{Assignment, Loader, check, check_with};
 use netsmith_design::design_board;
 use netsmith_design::guidelines::{Guideline, Layer, ipc2221_current, ipc2221_width, via_current};
 use netsmith_solve::{Catalogs, solve};
@@ -241,6 +241,48 @@ fn copper_weight_comes_from_the_process() {
     let thin = board(1.0, "        .min_track &= 0.19mm..1m\n", "");
     assert!(findings_in(&loader_with_copper("2"), &thin).is_empty());
     assert!(!findings_in(&loader_with_copper("1"), &thin).is_empty());
+}
+
+#[test]
+fn the_2_oz_provider_of_two_layer_rates_a_track_by_its_copper() {
+    // The real provider (ADR 0113), as the build's pick of providers takes it for a board that
+    // narrows the weight: 2 oz needs 0.1502 mm for 1 A, 0.1877 mm drawn over the tolerance,
+    // so 0.19 mm is enough, as it is not in 1 oz.
+    let thin = board(
+        1.0,
+        "",
+        "        .stackup.copper_weight &= 2\n        .min_track &= 0.19mm..1m\n",
+    );
+    let mut assign = Assignment::new();
+    assign.insert(
+        "B".to_string(),
+        [(
+            "process".to_string(),
+            "std::mfg::jlcpcb::JlcTwoLayer2oz".to_string(),
+        )]
+        .into_iter()
+        .collect(),
+    );
+    let c = check_with("t.nsm", &thin, &Loader::std(), &assign);
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    let designed = design_board(&c.boards[0], &s).unwrap();
+    assert!(designed.guidelines.is_empty(), "{:?}", designed.guidelines);
+    let p = designed.design.process.expect("a process");
+    assert_eq!(p.name, "TwoLayer");
+    assert_eq!(p.stackup.copper_weight, 2.0);
+    assert_eq!(
+        (
+            p.min_track,
+            p.min_clearance,
+            p.min_annular_ring,
+            p.min_mask_bridge
+        ),
+        (0.19, 0.16, 0.254, 0.2)
+    );
+    let one_oz = board(1.0, "", "        .min_track &= 0.19mm..1m\n");
+    assert!(!findings(&one_oz).is_empty());
 }
 
 #[test]

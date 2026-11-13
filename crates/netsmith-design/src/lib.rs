@@ -726,7 +726,13 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         errors.push("`process` must be a manufacturing process such as `TwoLayer`".to_string());
         return None;
     };
-    let kind = model.instance(process).type_name.clone();
+    // The type the board wrote: a generic process (ADR 0113) is named as the board names it,
+    // `TwoLayer`, whichever weight's provider was picked; the weight is in the stackup.
+    let instance = model.instance(process);
+    let kind = instance
+        .placed_as
+        .clone()
+        .unwrap_or_else(|| instance.type_name.clone());
     let problems = RefCell::new(Vec::<String>::new());
     let find = |path: &str| -> Option<Domain> {
         let full = format!("process.{path}");
