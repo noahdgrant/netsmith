@@ -20,7 +20,7 @@ use crate::geometry::Pt;
 
 /// The process's spaces from a track that the check holds a teardrop to, which no project file
 /// says: from holes, between surface-mount pads, from solder mask openings.
-fn extras(board: &Board) -> drc::Extras {
+pub(crate) fn extras(board: &Board) -> drc::Extras {
     let r = &board.rules;
     drc::Extras {
         hole_to_track: Some(r.hole_clearance),

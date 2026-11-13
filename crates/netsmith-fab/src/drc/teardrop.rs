@@ -19,7 +19,7 @@
 //! mask opening of another net, and no rule area that forbids tracks. A teardrop on a
 //! surface-mount pad also keeps the process's space between surface-mount pads from the pads of
 //! other nets, so that it does not close the gap of a fine-pitch part. Each rule is met with
-//! [`MARGIN`] to spare, and the teardrops already kept count as copper. A track whose exit lies
+//! [`super::room::MARGIN`] (1 µm) to spare, and the teardrops already kept count as copper. A track whose exit lies
 //! inside another pad or via of its net (a via in a pad) gets none there.
 //!
 //! **Why netsmith draws them, and how they are written.** KiCad 9 keeps teardrop settings on pads
@@ -39,7 +39,8 @@
 use std::collections::HashMap;
 
 use super::model::{Copper, Kind, Model};
-use super::shape::{Shape, gap, touches_area};
+use super::room::Room;
+use super::shape::{Shape, gap};
 use super::{Extras, Rules};
 use crate::artwork::{Artwork, PadKind, TrackShape};
 use crate::geom::{Bounds, Pt};
@@ -52,8 +53,6 @@ pub const MAX_LENGTH: f64 = 1.0;
 pub const WIDTH_RATIO: f64 = 0.9;
 /// The widest teardrop, in mm.
 pub const MAX_WIDTH: f64 = 2.0;
-/// How much more than each rule's space a teardrop keeps, in mm.
-pub const MARGIN: f64 = 0.001;
 /// How far inside the pad's copper a teardrop's corners are, in mm.
 const INSIDE: f64 = 0.005;
 
@@ -118,133 +117,12 @@ fn across(shapes: &[Shape], c: Pt, v: Pt) -> f64 {
     reach(v) + reach(v * -1.0)
 }
 
-/// A pad's solder mask opening on a face: the pad's net, the opening's shapes and their box.
-type Opening = (Option<String>, Vec<Shape>, Bounds);
-
 /// The straight tracks that end at a place, by net, layer and the place to 0.1 µm.
 type Ends<'a> = HashMap<(&'a str, &'a str, (i64, i64)), Vec<usize>>;
 
-/// What the planner checks a teardrop against.
-struct Fit<'m, 'a> {
-    m: &'m Model<'a>,
-    /// The solder mask openings of the pads of each face, with the pad's net.
-    openings: [Vec<Opening>; 2],
-    /// The teardrops kept so far, with their net, layer and shape.
-    kept: Vec<(String, usize, Shape)>,
-}
-
-impl Fit<'_, '_> {
-    /// Whether a teardrop of `net` on `layer` for `owner` keeps every space.
-    fn fits(&self, poly: &Shape, net: &str, layer: usize, owner: &Copper) -> bool {
-        let m = self.m;
-        let r = m.rules;
-        let x = m.extras;
-        let mine = Some(net.to_string());
-        let near = |b: &Bounds, d: f64| poly.bounds.expanded(d + MARGIN).overlaps(b);
-        let smd_owner = matches!(owner.kind, Kind::Pad(p)
-            if matches!(m.art.pads[p].kind, PadKind::Smd | PadKind::Connect));
-        let own_class = r.net_clearance(Some(net));
-        let reach = m.max_gap() + x.pad_to_pad.unwrap_or(0.0) + x.mask_to_track.unwrap_or(0.0);
-        for c in &m.items {
-            if c.net == mine || !c.layers.contains(&layer) || !near(&c.bounds, reach) {
-                continue;
-            }
-            let mut need = own_class
-                .max(r.net_clearance(c.net.as_deref()))
-                .max(c.own_clearance);
-            if smd_owner
-                && let Kind::Pad(p) = c.kind
-                && matches!(m.art.pads[p].kind, PadKind::Smd | PadKind::Connect)
-            {
-                need = need.max(x.pad_to_pad.unwrap_or(0.0));
-            }
-            if c.shapes.iter().any(|s| gap(poly, s).d < need + MARGIN) {
-                return false;
-            }
-        }
-        for (n, l, s) in &self.kept {
-            if n != net && *l == layer {
-                let need = own_class.max(r.net_clearance(Some(n)));
-                if near(&s.bounds, need) && gap(poly, s).d < need + MARGIN {
-                    return false;
-                }
-            }
-        }
-        for h in &m.holes {
-            if h.item.net == mine || !near(&h.shape.bounds, reach) {
-                continue;
-            }
-            let plated_pad = h.plated
-                && h.owner
-                    .is_some_and(|o| matches!(m.items[o].kind, Kind::Pad(_)));
-            let to_track = if plated_pad {
-                x.plated_hole_clearance
-            } else {
-                x.hole_to_track
-            };
-            let need = r.hole_clearance.max(to_track.unwrap_or(0.0));
-            if gap(poly, &h.shape).d < need + MARGIN {
-                return false;
-            }
-        }
-        for (s, _) in &m.edge {
-            if near(&s.bounds, r.copper_edge) && gap(poly, s).d < r.copper_edge + MARGIN {
-                return false;
-            }
-        }
-        let last = m.layers.len().saturating_sub(1);
-        let face = if layer == 0 {
-            Some(0)
-        } else if layer == last {
-            Some(1)
-        } else {
-            None
-        };
-        if let Some(face) = face {
-            let need = x.mask_to_track.unwrap_or(0.0);
-            for (n, shapes, b) in &self.openings[face] {
-                if n.as_deref() == Some(net) || !near(b, need) {
-                    continue;
-                }
-                if shapes.iter().any(|s| gap(poly, s).d < need + MARGIN) {
-                    return false;
-                }
-            }
-        }
-        let layer_name = &m.layers[layer];
-        for z in m.art.zones.iter().filter(|z| {
-            z.owner.is_empty()
-                && z.keepout.as_ref().is_some_and(|k| k.tracks)
-                && z.layers.iter().any(|l| l == layer_name)
-        }) {
-            if z.outlines
-                .iter()
-                .any(|o| o.len() >= 3 && touches_area(poly, o))
-            {
-                return false;
-            }
-        }
-        true
-    }
-}
-
 /// The teardrops a board can have, for the board as the check reads it, to its rules.
 pub fn teardrops(art: &Artwork, rules: &Rules, extras: &Extras) -> Vec<Teardrop> {
-    let m = Model::new(art, rules, extras, false);
-    let opening = |front: bool| {
-        art.pads
-            .iter()
-            .filter_map(|p| {
-                let s = m.mask_opening(p, front);
-                (!s.is_empty()).then(|| (p.net.clone(), s.clone(), Model::bounds_of(&s)))
-            })
-            .collect::<Vec<_>>()
-    };
-    let mut fit = Fit {
-        m: &m,
-        openings: [opening(true), opening(false)],
-        kept: Vec::new(),
-    };
+    let fit = Room::new(art, rules, extras);
     // The straight tracks that end at each place, by net and layer.
     let mut ends: Ends<'_> = HashMap::new();
     for (i, t) in art.tracks.iter().enumerate() {
@@ -262,6 +140,7 @@ pub fn teardrops(art: &Artwork, rules: &Rules, extras: &Extras) -> Vec<Teardrop>
     }
     let mut out = Vec::new();
     let mut seen: std::collections::HashSet<(usize, usize, (i64, i64))> = Default::default();
+    let m = &fit.m;
     for (k, c) in m.items.iter().enumerate() {
         if !matches!(c.kind, Kind::Pad(_) | Kind::Via(_)) {
             continue;
@@ -289,15 +168,17 @@ pub fn teardrops(art: &Artwork, rules: &Rules, extras: &Extras) -> Vec<Teardrop>
                     if depth(&c.shapes, start) < 0.0 || depth(&c.shapes, other) >= 0.0 {
                         continue;
                     }
-                    let Some(d) = plan_one(&m, &ends, c, k, net, layer, i, start) else {
+                    let Some(d) = plan_one(m, &ends, c, k, net, layer, i, start) else {
                         continue;
                     };
                     if !seen.insert((k, layer, key(d.exit))) {
                         continue;
                     }
                     let poly = Shape::polygon(d.polygon.clone(), 0.0);
-                    if fit.fits(&poly, net, layer, c) {
-                        fit.kept.push((net.to_string(), layer, poly));
+                    let smd = matches!(c.kind, Kind::Pad(p)
+                        if matches!(art.pads[p].kind, PadKind::Smd | PadKind::Connect));
+                    if fit.fits(&poly, net, layer, smd) {
+                        fit.keep(net, layer, poly);
                         out.push(Teardrop {
                             net: net.to_string(),
                             layer: layer_name.to_string(),
