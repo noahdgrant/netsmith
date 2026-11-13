@@ -165,6 +165,9 @@ struct Record {
     /// of this trial, in path order.
     choices: Choices,
     diagnostics: Vec<Diagnostic>,
+    /// Whether the trial was solved: a trial whose check found only contradictions inside
+    /// uses (ADR 0113) has those and nothing of the solve, so it says nothing of the rest.
+    solved: bool,
 }
 
 struct Search<'a> {
@@ -384,7 +387,8 @@ impl Search<'_> {
         }
         self.trials += 1;
         count_trial();
-        let diagnostics = if checked.is_ok() {
+        let solved = checked.is_ok();
+        let diagnostics = if solved {
             let solution = self.solve(&checked)?;
             if solution.diagnostics.is_empty() {
                 let weak = unjudged(&solution);
@@ -405,6 +409,7 @@ impl Search<'_> {
         self.records.push(Record {
             choices: choices.clone(),
             diagnostics,
+            solved,
         });
         let at = self.records.len() - 1;
         self.seen.insert(choices, at);
@@ -478,6 +483,7 @@ pub(crate) fn search(
     s.records.push(Record {
         choices: default_choices.clone(),
         diagnostics: first_diagnostics.clone(),
+        solved: matches!(first, First::Solved(_)),
     });
     s.seen.insert(default_choices, 0);
     s.trials = 1;
@@ -593,15 +599,18 @@ fn failure(
         return Vec::new();
     };
     let at = model.instance(u.inst).at();
-    let describe = |index: usize| -> Option<(usize, String)> {
+    // A provider's trial with the fewest failures, preferring one that was solved: how many it
+    // had (with an unsolved trial counted after every solved one) and the first.
+    let describe = |index: usize| -> Option<((bool, usize), String)> {
         s.records
             .iter()
             .filter(|r| r.choices.iter().any(|(p, c)| *p == u.path && *c == index))
-            .min_by_key(|r| r.diagnostics.len())
+            // A solved trial says more of the provider than one that stopped at the check.
+            .min_by_key(|r| (!r.solved, r.diagnostics.len()))
             .and_then(|r| {
                 r.diagnostics
                     .first()
-                    .map(|d| (r.diagnostics.len(), d.message.clone()))
+                    .map(|d| ((!r.solved, r.diagnostics.len()), d.message.clone()))
             })
     };
     let mut closest_provider = None;
@@ -621,7 +630,7 @@ fn failure(
             paths.join(" and ")
         )
     } else {
-        let tried: Vec<(usize, String, usize)> = u
+        let tried: Vec<(usize, String, (bool, usize))> = u
             .candidates
             .iter()
             .enumerate()
@@ -701,7 +710,7 @@ fn failure(
                     .iter()
                     .any(|(p, c)| *p == u.path && *c == closest_index)
             })
-            .min_by_key(|r| r.diagnostics.len());
+            .min_by_key(|r| (!r.solved, r.diagnostics.len()));
         let named = closest
             .and_then(|r| r.diagnostics.first())
             .map(|d| &d.message);
@@ -710,10 +719,12 @@ fn failure(
                 r.diagnostics
                     .iter()
                     .filter(|d| Some(&d.message) != named)
+                    // Only the solved trials: one that stopped at a contradiction inside a use
+                    // (ADR 0113) never reached the rest of the design.
                     .filter(|d| {
-                        s.records
-                            .iter()
-                            .all(|r| r.diagnostics.iter().any(|e| e.message == d.message))
+                        let mut solved = s.records.iter().filter(|r| r.solved).peekable();
+                        solved.peek().is_some()
+                            && solved.all(|r| r.diagnostics.iter().any(|e| e.message == d.message))
                     })
                     .cloned()
                     .collect()

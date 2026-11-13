@@ -550,9 +550,12 @@ part UsbCReceptacle16P provides UsbCSinkReceptacle, Connector {
 /// gives (`pos` on VBUS, `neg` on GND, the receptacle's source for the DC analysis: the board
 /// states `.voltage`), and `.dp` and `.dm` are the data pair. The shell is joined to ground.
 /// The sideband contacts are not brought out. The two resistors are parts of the bill of
-/// materials (`R`), 5.1 kohm with a tolerance of 1 %, inside the specification's 20 %. A board
-/// that wants a footprint other than the default states `.package` (the receptacle's, as for
-/// `UsbC2`), and the Rd's package with `.rd_package` (`"0402"`); left out, the solver picks it.
+/// materials (`R`), 5.1 kohm with a tolerance of 1 %, inside the specification's 20 %. The
+/// receptacle's package is `"GCT_USB4105_16P"` unless the board narrows another
+/// (`.receptacle.package &= "HRO_TYPE-C-31-M-12"`), and a board takes a project's receptacle by
+/// its package and number (`.receptacle.mpn`). The Rd's package is the board's to narrow
+/// (`.cc1_rd.package &= "0402"`, and the same for `.cc2_rd`); left out, the solver picks it
+/// (ADR 0116).
 ///
 /// It is a module, and a module cannot provide `Connector` (the generic has a `pins` table, which
 /// only a part provides); the connector of the board is its receptacle, which does, so the placer
@@ -561,24 +564,13 @@ module UsbCSink {
     .vbus: Rail
     .dp: Pin
     .dm: Pin
-    /// The receptacle's package: the name of a footprint row, such as `"GCT_USB4105_16P"`, which
-    /// is the default. A package the standard receptacle has no pin table for takes a provider
-    /// of the project's.
-    .package: Package
-    .package ?= "GCT_USB4105_16P"
-    /// The package of the two Rd resistors, a text such as `"0402"`.
-    .rd_package: Package optional
 
-    /// The maker's number of the receptacle, to take a provider other than the standard one.
-    .receptacle_mpn: String optional
-
+    // The receptacle. Its package is the name of a footprint row; a package the standard
+    // receptacle has no pin table for takes a provider of the project's.
     .receptacle: UsbCSinkReceptacle
-    .receptacle.package == .package
-    .receptacle.mpn == .receptacle_mpn
+    .receptacle.package ?= "GCT_USB4105_16P"
     .cc1_rd: Resistor { .resistance &= 5.1kohm +/- 1% }
     .cc2_rd: Resistor { .resistance &= 5.1kohm +/- 1% }
-    .cc1_rd.package == .rd_package
-    .cc2_rd.package == .rd_package
 
     .receptacle.vbus ~ .vbus
     .receptacle.dp ~ .dp

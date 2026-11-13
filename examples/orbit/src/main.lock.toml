@@ -26,13 +26,13 @@ row = "K3-1270S-F2"
 lcsc = "C145857"
 mpn = "K3-1270S-F2"
 
-[Orbit.parts."buck_boost.divider_bottom"]
+[Orbit.parts."buck_boost.divider.rbottom"]
 catalog = "resistor"
 row = "100kΩ 1% 0603 C25803"
 lcsc = "C25803"
 mpn = "0603WAF1003T5E"
 
-[Orbit.parts."buck_boost.divider_top"]
+[Orbit.parts."buck_boost.divider.rtop"]
 catalog = "resistor"
 row = "560kΩ 1% 0603 C101109"
 lcsc = "C101109"

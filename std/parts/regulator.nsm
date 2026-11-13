@@ -416,10 +416,10 @@ module Buck<Ic: BuckIc> {
     /// (`.reg.voltage_margin &= .margin`). The board's `&=` replaces the default (`?=`,
     /// ADR 0051).
     ///
-    /// Why it is one member of the module. The capacitors are inside the module, so a board
-    /// cannot reach them, and a board that wanted its own rule (every ceramic capacitor on a
-    /// power rail rated at least 1.25 times the rail's peak) had to keep a copy of the module
-    /// with two lines changed, which had to follow every change to the std module by hand. The
+    /// Why it is one member of the module. A board may narrow the capacitors inside the module
+    /// (ADR 0116), but only to a constant, and a rule that follows the rail (every ceramic
+    /// capacitor on a power rail rated at least 1.25 times its peak) is a relation, which reaches
+    /// inside no module; before the member, a board kept a copy of the module for it. The
     /// margin applies to the steady voltage as well as to the peak: a rail that states no peak
     /// leaves the peak lines not evaluated, and a margin only on them would silently do
     /// nothing there. A peak is never below the steady voltage, so a board that states its
@@ -494,8 +494,8 @@ module Buck<Ic: BuckIc> {
 /// same tables: the datasheet gives one set of numbers for every grade, so one part serves
 /// the `E`, `I`, `J`, `H` and `#W` codes. A project adds the ordering code it buys as a row of
 /// the `lt8641` catalog, and the solver takes the first row that fits: the catalog is not keyed
-/// by `.mpn`, because a board that places the IC through `Buck<Lt8641>` cannot reach it (ADR
-/// 0115). The standard `lt8641` catalog has no row, because no row of it has a recorded stock
+/// by `.mpn`, and a board that wants one ordering code narrows `.reg.ic.mpn` (ADR 0115, ADR
+/// 0116). The standard `lt8641` catalog has no row, because no row of it has a recorded stock
 /// above zero (`data/jlcpcb/README.md`).
 ///
 /// Datasheet: Analog Devices LT8641, Rev. C (PDF dated 2020-12-10, 26 pages), the file that

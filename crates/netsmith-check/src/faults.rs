@@ -42,13 +42,19 @@ use crate::pins::article;
 /// The faults that the board alone settles: every part whose package is known, and every
 /// net whose parts all are.
 pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
+    pin_faults_and_conflicts(model).0
+}
+
+/// [`pin_faults`], and those of them that are inside a use with several providers, which
+/// another provider may not have (`Model::provider_conflicts`, ADR 0113).
+pub(crate) fn pin_faults_and_conflicts(model: &Model) -> (Vec<Diagnostic>, Vec<Diagnostic>) {
     let deferred = unknown_package(model);
     let bus = crate::busnets::check(model);
     let mut run = Run::new(model, &deferred, Pass::Board, bus.nets);
     run.go();
     run.out.extend(crate::buses::i2c_pullups(model));
     run.out.extend(bus.out);
-    run.out
+    (run.out, run.conflicts)
 }
 
 /// The faults that wait for the solver: the parts whose package `before` did not know, and
@@ -88,6 +94,8 @@ struct Run<'a> {
     /// The nets a bus rule has reported (ADR 0064): the rules of a net skip them.
     bus_nets: std::collections::HashSet<String>,
     out: Vec<Diagnostic>,
+    /// The faults among `out` that another provider of a use may not have (ADR 0113).
+    conflicts: Vec<Diagnostic>,
 }
 
 /// Items that are already written for a message, joined.
@@ -116,6 +124,7 @@ impl<'a> Run<'a> {
             pass,
             bus_nets,
             out: Vec::new(),
+            conflicts: Vec::new(),
         }
     }
 
@@ -255,14 +264,21 @@ impl<'a> Run<'a> {
             Pinout::NoSuchPackage { package, packages } => {
                 let ty = &model.instance(part).type_name;
                 let packages: Vec<String> = packages.iter().map(|p| p.to_string()).collect();
-                self.report(
-                    model.instance(part).at(),
-                    format!(
-                        "`{}` is a `{ty}` in package `{package}`, which has no pin table; its tables are for {}",
-                        model.path_of(part),
-                        list(&packages)
-                    ),
+                let at = model.instance(part).at();
+                let message = format!(
+                    "`{}` is a `{ty}` in package `{package}`, which has no pin table; its tables are for {}",
+                    model.path_of(part),
+                    list(&packages)
                 );
+                // Another provider of the use may have a table for it (ADR 0113).
+                if model.in_varied_use(part) {
+                    self.conflicts.push(Diagnostic {
+                        source: at.0,
+                        span: at.1,
+                        message: message.clone(),
+                    });
+                }
+                self.report(at, message);
             }
             Pinout::Table(table) => {
                 self.pins(part, table);

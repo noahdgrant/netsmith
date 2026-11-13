@@ -64,8 +64,8 @@
 //! members only. A path through a use to a member the generic does not declare is an error (the
 //! module rule of ADR 0004), which is what makes the board independent of the pick; the
 //! built-in members (`assembly`, `designator`, `height`, `pin_protrusion`, `model`, `place`) are exempt.
-//! A module that wants its user to choose a provider declares a value and ties it to its use
-//! (`.connector_mpn: String`, `.connector.mpn == .connector_mpn`), as ADR 0042 does.
+//! A module's user chooses a provider of a use inside it by narrowing the use from outside
+//! (`.jack.receptacle.mpn &= "ACME-USBC-16"`, ADR 0116).
 //!
 //! # The candidates
 //!

@@ -157,7 +157,7 @@ board Orbit {
     /// and a 100 nF capacitor take it to the MCU's pin.
     .user_button: XkbTs1187a
     /// R12.
-    .user_pulldown: PullDown { .resistance &= 100kohm +/- 1%; .package &= "0603" }
+    .user_pulldown: PullDown { .resistance &= 100kohm +/- 1%; .resistor.package &= "0603" }
     /// C18.
     .user_node_cap: Capacitor { .capacitance &= 10pF +/- 5%; .package &= "0603" }
     /// R11.

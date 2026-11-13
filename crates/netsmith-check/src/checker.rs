@@ -187,6 +187,9 @@ pub(crate) struct Checker<'a> {
     /// The members made from a type parameter, with the parameter's name: a path through one
     /// reaches only the members of the parameter's bound.
     pub(crate) param_insts: HashMap<InstId, String>,
+    /// Set while the left side of a `&=` is resolved: the one place a path may reach the
+    /// parts and modules inside a module (ADR 0116).
+    pub(crate) narrowing: bool,
     /// Set while the `support` section of a part is read (ADR 0115).
     pub(crate) in_support: bool,
 }
@@ -245,6 +248,7 @@ impl<'a> Checker<'a> {
             table_pins: HashSet::new(),
             attached: HashMap::new(),
             phys: None,
+            narrowing: false,
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
             touches: Vec::new(),
@@ -1544,18 +1548,31 @@ impl<'a> Checker<'a> {
 
     /// Whether `member` of `owner` may be named from the definition being written.
     ///
-    /// A module is configured only through its interface: its rails, pins and values.
-    /// The parts and modules inside it are its own business, so they can be named only
-    /// from the module's own definition.
+    /// A module is configured through its interface: its rails, pins and values. The parts
+    /// and modules inside it may be named from outside only on the left of a `&=`, which
+    /// narrows a value inside it (ADR 0116).
     fn visible(&mut self, owner: InstId, member: Member, name: &netsmith_lang::ast::Ident) -> bool {
         // A board's physical file names a part inside a module by its path (ADR 0048). It
         // may only state physical intent about it: `physical_gate` refuses the rest.
         if self.phys.is_some() {
             return true;
         }
+        // A narrowing from outside a parametric module reaches its IC as the part it is: the
+        // board named it (`Buck<Lt8641>`), so its `support` parts are there (ADR 0116). The
+        // module's own text still reaches only the bound's members.
+        let named_ic = self.narrowing
+            && self.param_insts.contains_key(&owner)
+            && self
+                .model
+                .instance(owner)
+                .parent
+                .is_some_and(|p| self.model.instance(p).def != self.cur_def);
         // A use of a generic reaches the members the generic declares, so that the board works
         // with whichever provider is picked (ADR 0068).
-        if let Some(generic) = self.outside_contract(owner, &name.name) {
+        if let Some(generic) = self
+            .outside_contract(owner, &name.name)
+            .filter(|_| !named_ic)
+        {
             if self.report_outside_bound(owner, name) {
                 return false;
             }
@@ -1627,12 +1644,14 @@ impl<'a> Checker<'a> {
             );
             return false;
         }
-        if outside && internal {
+        // A module's user may narrow any member inside it by its path, and do nothing else
+        // there (ADR 0116): `.stage.divider.rtop.resistance &= 100kohm +/- 1%`.
+        if outside && internal && !self.narrowing {
             let ty = inst.type_name.clone();
             self.error(
                 name.span,
                 format!(
-                    "`{}` is inside `{ty}` and is not part of its interface; set it through a rail, a pin, or a value that `{ty}` declares",
+                    "`{}` is inside `{ty}` and is not part of its interface: only narrowing (`&=`) reaches inside a module; narrow a value inside it with `&=`, or use a rail, a pin, or a value that `{ty}` declares",
                     name.name
                 ),
             );

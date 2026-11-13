@@ -579,7 +579,10 @@ impl Checker<'_> {
             );
             return None;
         };
+        // Only a narrowing reaches inside a module (ADR 0116); a default does not.
+        self.narrowing = c.op == CmpOp::Narrow;
         let target = self.resolve_path(p);
+        self.narrowing = false;
         let rhs = self.lower(&c.rhs);
         let stated = match target {
             Res::Field(f) => Some(f),

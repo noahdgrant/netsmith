@@ -688,7 +688,8 @@ fn a_limit_the_ic_states_reaches_the_stage_and_the_other_is_still_skipped() {
 fn a_bound_on_a_limit_states_it_and_the_check_is_named_not_evaluated() {
     // `>= 3A` states what the design needs of the IC's limit and gives the member no value:
     // the stage's relation is kept, and is listed as not evaluated, not skipped in silence.
-    // The bound is written in the IC: a board cannot reach `.stage.ic` (ADR 0004, ADR 0115).
+    // The bound is written in the IC: a bound from a board does not reach inside `.stage`
+    // (ADR 0115, ADR 0116).
     let s = run(&converter(
         &ic_with(".min_inductor_saturation >= 3A"),
         "0mA..1A",
@@ -1264,4 +1265,47 @@ fn a_feedback_dividers_package_that_no_row_has_is_refused_with_its_name() {
         all.contains("has nothing for `divider.rbottom`") && all.contains("\"0201\""),
         "the usual message names the part and the package: {all}"
     );
+}
+
+#[test]
+fn a_board_that_narrows_the_divider_s_resistors_keeps_them_and_the_output_follows() {
+    // ADR 0116: the board fixes the two resistors inside the divider, as ORBIT's buck-boost
+    // does (560 kohm over 100 kohm on a 0.5 V reference, 3.3 V). The output is what they make.
+    let s = run(&divider_with(
+        "0.5V +/- 1%",
+        "3.0V..3.6V",
+        ".rtop.resistance &= 560kohm +/- 1%\n        .rbottom.resistance &= 100kohm +/- 1%",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    assert_eq!(picked(&s, "divider.rtop"), "560k");
+    assert_eq!(picked(&s, "divider.rbottom"), "100k");
+    let out = range(&s, "divider.vout");
+    assert!(out.lo() > 3.2 && out.hi() < 3.4, "{out}");
+}
+
+#[test]
+fn a_narrowing_inside_the_divider_that_no_output_in_range_allows_is_refused() {
+    // 560 kohm over 100 kohm makes 3.3 V; a board that asks for 5 V cannot have both.
+    let s = run(&divider_with(
+        "0.5V +/- 1%",
+        "5V +/- 3%",
+        ".rtop.resistance &= 560kohm +/- 1%\n        .rbottom.resistance &= 100kohm +/- 1%",
+    ));
+    assert!(!messages(&s).is_empty());
+}
+
+#[test]
+fn a_board_narrows_a_capacitor_inside_the_converter_and_the_pick_follows() {
+    // With no rule the input takes a 6.3 V row; a board that wants 10 V or more narrows the
+    // rating of the capacitor inside the converter (ADR 0116).
+    let plain = run(&converter(&guide_ic(), "0mA..1A", ""));
+    assert!(range(&plain, "stage.input_cap.max_voltage").lo() < 10.0);
+    let s = run(&converter(
+        &guide_ic(),
+        "0mA..1A",
+        "    .stage.input_cap.max_voltage &= 10V..100V\n",
+    ));
+    assert!(messages(&s).is_empty(), "{:?}", messages(&s));
+    let v = range(&s, "stage.input_cap.max_voltage");
+    assert!(v.lo() >= 10.0 - 1e-9, "{v}");
 }

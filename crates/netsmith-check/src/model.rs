@@ -1027,7 +1027,9 @@ pub struct Model {
     pub uses: Vec<GenericUse>,
     /// The contradictions on a field inside a use that has more than one provider (also among
     /// the check's diagnostics): another provider may not have them, so the build tries the
-    /// others before it stops on them (ADR 0113).
+    /// others before it stops on them (ADR 0113). A package the provider has no pin table for
+    /// is one too: a narrowing from outside the module (ADR 0116) may ask for another
+    /// provider's package.
     pub provider_conflicts: Vec<crate::diag::Diagnostic>,
     /// The `lines` of the bus interfaces in use, by the module and index of their definition
     /// (ADR 0064).
@@ -1081,6 +1083,23 @@ impl std::fmt::Debug for ForwardCache {
 }
 
 impl Model {
+    /// Whether `inst` is, or is inside, a use of a generic with more than one provider in
+    /// scope (ADR 0113).
+    pub fn in_varied_use(&self, inst: InstId) -> bool {
+        let mut cur = Some(inst);
+        while let Some(at) = cur {
+            if self
+                .uses
+                .iter()
+                .any(|u| u.inst == at && u.candidates.len() > 1)
+            {
+                return true;
+            }
+            cur = self.instance(at).parent;
+        }
+        false
+    }
+
     /// The forwarding equations of the relations as they are now.
     pub(crate) fn forwards(&self) -> std::sync::Arc<Forwards> {
         let mut held = self.forwards.0.lock().unwrap_or_else(|e| e.into_inner());

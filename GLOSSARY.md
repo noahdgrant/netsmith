@@ -303,7 +303,7 @@ A project's `netsmith.toml`: its name, the top-level files that hold boards, the
 _Avoid_: Config, settings
 
 **Assembly**:
-Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand), `AssemblyMode::None` (not fitted at all: a hole, a fiducial) or `AssemblyMode::Consigned` (the board house places it, and the owner ships the part to it). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board cannot reach the parts of a module, so a module that wants the choice offers a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
+Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand), `AssemblyMode::None` (not fitted at all: a hole, a fiducial) or `AssemblyMode::Consigned` (the board house places it, and the owner ships the part to it). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board may narrow a part inside a module (`.a.j.assembly &= AssemblyMode::Hand`, ADR 0116); a module that offers one choice for all its parts declares a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
 _Avoid_: Population, fitting, DNP
 
 **Consigned part**:
@@ -331,7 +331,7 @@ A typed bundle of pins and quantities that is connected as one. A bundle of quan
 _Avoid_: Bus (for an interface in general: a **Bus** is the interfaces of one definition that share a net, and the _Bus drawing_ is how the schematic draws the members of one), bundle, group
 
 **Module**:
-A reusable sub-circuit that is placed on a board or inside another module. Only its interfaces, pins, and declared values can be used from outside; the parts and modules inside are internal.
+A reusable sub-circuit that is placed on a board or inside another module. Its interfaces, pins, and declared values are joined and set from outside; a value of a part or module inside it can only be narrowed (`&=`, ADR 0116).
 _Avoid_: Circuit, block, sheet, subcircuit
 
 **Generic**:

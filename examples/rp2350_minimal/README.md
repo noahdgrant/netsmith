@@ -489,7 +489,7 @@ put them. Open it in a browser.
   with Raspberry Pi's value and tolerance and the package of their footprint (`1005` metric is
   `0402`, `2012` is `0805`; the tolerances are the 1 % of the resistors, 10 % of the 100 nF and
   10 uF, 20 % of the 4.7 uF and 5 % of the 15 pF, from the Description property of each part).
-  R1 is a `PullUp` that states its resistor's package (`.package &= "0402"`). The 1 kohm in
+  R1 is a `PullUp` whose resistor's package the board narrows (`.resistor.package &= "0402"`). The 1 kohm in
   front of each button is a plain `Resistor`.
 - **The headers' pin map is fixed.** `.header_low` (J2) and `.header_high` (J3) are joined
   pin by pin to **named** pins of the chip (`.header_low.p12 ~ .mcu.gpio4`), exactly as their

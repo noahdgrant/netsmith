@@ -332,12 +332,10 @@ module PullUp {
     .supply: Rail
     .line: Pin
     .resistance: Resistance
+    /// The resistor. A board that wants a size narrows its package, `.resistor.package &=
+    /// "0402"` (ADR 0116); left out, the solver picks it.
     .resistor: Resistor
     .resistance == .resistor.resistance
-    /// The resistor's package, a text such as `"0402"`; a board that does not state it leaves the
-    /// pick to the solver.
-    .package: Package optional
-    .resistor.package == .package
     .supply.pos ~> .resistor ~> .line
 
     .line_low: Number
@@ -537,12 +535,10 @@ module PullDown {
     .reference.current &= 0A
     .line: Pin
     .resistance: Resistance
+    /// The resistor. A board that wants a size narrows its package, `.resistor.package &=
+    /// "0402"` (ADR 0116); left out, the solver picks it.
     .resistor: Resistor
     .resistance == .resistor.resistance
-    /// The resistor's package, a text such as `"0402"`; a board that does not state it leaves the
-    /// pick to the solver.
-    .package: Package optional
-    .resistor.package == .package
     .line ~> .resistor ~> .reference.neg
 
     .line_high: Number

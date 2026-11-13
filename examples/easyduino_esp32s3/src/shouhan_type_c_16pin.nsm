@@ -14,8 +14,8 @@
 //! DC analysis can start from it (the host is the receptacle's source).
 //!
 //! It is a provider of the standard generic `UsbCSinkReceptacle` (ADR 0068), so the board uses the
-//! standard `UsbCSink` module and takes this receptacle for it by stating the package `"SMD"` and
-//! the number: the standard receptacle has no pin table for that package.
+//! standard `UsbCSink` module and takes this receptacle for it by narrowing the receptacle's package
+//! to `"SMD"` and its number: the standard receptacle has no pin table for that package.
 
 import std::parts::connector::{Connector, UsbCSinkReceptacle}
 

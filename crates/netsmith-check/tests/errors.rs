@@ -470,19 +470,75 @@ fn with_stage(body: &str) -> String {
     format!("{STAGE}{body}")
 }
 
+const ONLY_NARROWING: &str = "only narrowing (`&=`) reaches inside a module";
+
+/// The narrowed range of `path` in board `B`.
+fn narrowed(src: &str, path: &str) -> netsmith_quantity::Quantity {
+    let c = run(src);
+    assert!(c.is_ok(), "{}", c.render());
+    match c.board("B").unwrap().model.domain_at(path) {
+        Some(Domain::Quantity(q)) => *q,
+        other => panic!("`{path}` is {other:?}"),
+    }
+}
+
 #[test]
-fn a_board_cannot_set_a_value_inside_a_module_by_path() {
+fn a_board_narrows_a_value_inside_a_module_by_path() {
+    let q = narrowed(
+        &with_stage("board B {\n    .s: Stage\n    .s.r.resistance &= 0.5kohm..2kohm\n}\n"),
+        "s.r.resistance",
+    );
+    // The module's `1kohm` and the board's range, intersected.
+    assert_eq!((q.lo(), q.hi()), (1000.0, 1000.0));
+}
+
+#[test]
+fn a_board_narrows_a_value_inside_a_module_from_its_block() {
+    let q = narrowed(
+        &with_stage("board B {\n    .s: Stage { .inner.c.capacitance &= 1uF }\n}\n"),
+        "s.inner.c.capacitance",
+    );
+    assert!((q.lo() - 1e-6).abs() < 1e-12, "{q}");
+}
+
+#[test]
+fn a_narrowing_inside_a_module_that_contradicts_it_is_a_contradiction() {
     one_error(
         &with_stage("board B {\n    .s: Stage\n    .s.r.resistance &= 2kohm\n}\n"),
-        "`r` is inside `Stage` and is not part of its interface",
+        "s.r.resistance",
     );
 }
 
 #[test]
-fn a_board_cannot_set_a_value_inside_a_module_from_its_block() {
+fn a_module_narrows_a_value_inside_a_module_it_contains() {
+    let c = run(
+        "module Inner {\n    .c: Capacitor\n}\nmodule Outer {\n    .inner: Inner\n    .inner.c.capacitance &= 1uF\n}\nboard B {\n    .o: Outer\n}\n",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_relation_cannot_reach_inside_a_module() {
+    let c = one_error(
+        &with_stage("board B {\n    .s: Stage\n    .s.r.resistance == 1kohm\n}\n"),
+        ONLY_NARROWING,
+    );
+    assert!(messages(&c)[0].starts_with("`r` is inside `Stage`"));
+}
+
+#[test]
+fn a_bound_cannot_reach_inside_a_module() {
     one_error(
-        &with_stage("board B {\n    .s: Stage { .r.resistance &= 2kohm }\n}\n"),
-        "`r` is inside `Stage`",
+        &with_stage("board B {\n    .s: Stage\n    .s.r.resistance <= 2kohm\n}\n"),
+        ONLY_NARROWING,
+    );
+}
+
+#[test]
+fn a_default_cannot_reach_inside_a_module() {
+    one_error(
+        &with_stage("board B {\n    .s: Stage\n    .s.r.resistance ?= 1kohm\n}\n"),
+        ONLY_NARROWING,
     );
 }
 
@@ -490,25 +546,18 @@ fn a_board_cannot_set_a_value_inside_a_module_from_its_block() {
 fn a_board_cannot_connect_to_a_pin_inside_a_module() {
     one_error(
         &with_stage("board B {\n    .s: Stage\n    .s.r.a ~ .s.vout.pos\n}\n"),
-        "`r` is inside `Stage`",
+        ONLY_NARROWING,
     );
 }
 
 #[test]
 fn reading_a_value_inside_a_module_is_reaching_in_too() {
+    // The right side of a `&=` reads; only its left side narrows.
     one_error(
         &with_stage(
             "board B {\n    .s: Stage\n    .x: Resistor\n    .x.resistance &= .s.r.resistance\n}\n",
         ),
-        "`r` is inside `Stage`",
-    );
-}
-
-#[test]
-fn a_module_cannot_reach_into_a_module_it_contains() {
-    one_error(
-        "module Inner {\n    .c: Capacitor\n}\nmodule Outer {\n    .inner: Inner\n    .inner.c.capacitance &= 1uF\n}\n",
-        "`c` is inside `Inner`",
+        ONLY_NARROWING,
     );
 }
 
