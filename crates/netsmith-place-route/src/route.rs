@@ -516,10 +516,10 @@ use netsmith_pcb::ratsnest::{Ratline, Ratsnest};
 const PITCH: f64 = 0.1;
 /// How much nearer than the rules an exact measurement of finished copper may come, which is
 /// only the rounding of the numbers.
-const EXACT_SLACK: f64 = 1e-6;
+pub(crate) const EXACT_SLACK: f64 = 1e-6;
 /// Space kept over the rules, which covers the short stub from a pad's centre to the
 /// nearest cell.
-const MARGIN: f64 = 0.05;
+pub(crate) const MARGIN: f64 = 0.05;
 /// How many times the nets in the way of a line are ripped up for it.
 const RIP_UP_PASSES: usize = 3;
 /// How much room a track keeps beyond the rules, as a mask is made: half a cell, which covers
@@ -664,7 +664,7 @@ fn layer_of(index: usize) -> CopperLayer {
 
 /// Something that copper must keep clear of.
 #[derive(Clone, Copy)]
-enum Form {
+pub(crate) enum Form {
     Rect(Rect),
     /// A track: its two ends, and half its width.
     Segment(Pt, Pt, f64),
@@ -673,7 +673,7 @@ enum Form {
 
 impl Form {
     /// How far a point is from the form's edge, zero inside it.
-    fn distance(&self, p: Pt) -> f64 {
+    pub(crate) fn distance(&self, p: Pt) -> f64 {
         match self {
             Form::Rect(r) => {
                 let dx = (r.min.x - p.x).max(p.x - r.max.x).max(0.0);
@@ -697,7 +697,7 @@ impl Form {
 
     /// How far a track's centre line from `a` to `b` is from the form's edge, zero if it
     /// touches or crosses the form. Exact, not on the grid.
-    fn distance_to_line(&self, a: Pt, b: Pt) -> f64 {
+    pub(crate) fn distance_to_line(&self, a: Pt, b: Pt) -> f64 {
         match self {
             Form::Rect(r) => {
                 let inside =
@@ -720,7 +720,7 @@ impl Form {
         }
     }
 
-    fn bounds(&self) -> Rect {
+    pub(crate) fn bounds(&self) -> Rect {
         match self {
             Form::Rect(r) => *r,
             Form::Segment(a, b, half) => Rect::new(
@@ -763,12 +763,12 @@ fn line_gap(a: Pt, b: Pt, c: Pt, d: Pt) -> f64 {
     .fold(f64::MAX, f64::min)
 }
 
-struct Obstacle {
+pub(crate) struct Obstacle {
     /// The net it carries, as an index into the board's nets.
-    net: Option<usize>,
-    layers: [bool; 2],
-    form: Form,
-    clearance: f64,
+    pub(crate) net: Option<usize>,
+    pub(crate) layers: [bool; 2],
+    pub(crate) form: Form,
+    pub(crate) clearance: f64,
 }
 
 struct Grid {
@@ -1046,8 +1046,8 @@ struct Reach {
 }
 
 /// Everything copper must keep clear of, apart from what has been routed.
-struct Obstacles {
-    list: Vec<Obstacle>,
+pub(crate) struct Obstacles {
+    pub(crate) list: Vec<Obstacle>,
     /// Where no via may go whatever its net, and how far from the box: a via does not sit
     /// on a pad, and keeps further from the holes of through-hole pads.
     via_keepouts: Vec<(Form, f64)>,
@@ -2142,7 +2142,7 @@ fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Class> {
         .collect()
 }
 
-fn initial_obstacles(board: &Board) -> Obstacles {
+pub(crate) fn initial_obstacles(board: &Board) -> Obstacles {
     let rules = &board.rules;
     let net_of: HashMap<(&str, &str), usize> = board
         .nets
@@ -4733,6 +4733,9 @@ pub struct RouteOptions {
     /// Whether the routed board gets teardrops where its tracks meet pads and vias
     /// (`netsmith_pcb::teardrop`); on by default.
     pub teardrops: bool,
+    /// The largest radius of the arc drawn at each bend once the board is routed, in widths of
+    /// its track ([`crate::arcs`]); 0 draws none, and the bends keep their corners.
+    pub arcs: f64,
 }
 
 /// Which tries of the router route the lines by class, the most important first, and keep the
@@ -4778,6 +4781,7 @@ impl Default for RouteOptions {
             plan_cost: None,
             classes: LineClasses::FromSecondTry,
             teardrops: true,
+            arcs: crate::arcs::ARC_WIDTHS,
         }
     }
 }
@@ -4900,7 +4904,8 @@ pub enum SnapshotStage {
     /// The tries with less room and the rip-ups.
     RipUp,
     Negotiation,
-    /// The end of the try, after the chain of rip-ups.
+    /// The end of the try, after the chain of rip-ups; its tracks are the board's, with the arcs
+    /// at its bends.
     Final,
 }
 
@@ -4998,6 +5003,15 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     crate::stitch::stitch(board);
+    // The bends become arcs where they keep the rules' space.
+    crate::arcs::round_bends(board, options.arcs);
+    let mut stages = stages;
+    if let Some(last) = stages.last_mut()
+        && last.after == SnapshotStage::Final
+    {
+        // The end is the board's own copper, with its arcs.
+        last.tracks.clone_from(&board.tracks);
+    }
     // Teardrops last, round the copper that is now final (issue #431, S11).
     if options.teardrops {
         netsmith_pcb::teardrop::add(board);

@@ -228,3 +228,39 @@ fn routed_boards_get_teardrops_that_change_no_track_and_pass_the_check() {
     }
     assert!(drops > 0, "no routed board got a teardrop");
 }
+
+#[test]
+fn routed_boards_bend_by_arcs_that_the_check_passes_and_the_same_lines_route() {
+    let mut arcs = 0;
+    for (n, board) in hard_boards(6).into_iter().enumerate() {
+        let (mut round, mut square) = (board.clone(), board);
+        let left = route(&mut round);
+        let left_square = route_with(
+            &mut square,
+            RouteOptions {
+                arcs: 0.0,
+                ..RouteOptions::default()
+            },
+        )
+        .left;
+        // The arcs come after the search: the same lines route, with the same vias.
+        assert_eq!(left, left_square, "board {n}");
+        assert_eq!(round.vias, square.vias, "board {n}");
+        let drawn = round.tracks.iter().filter(|t| t.mid.is_some()).count();
+        assert_eq!(round.tracks.len(), square.tracks.len() + drawn, "board {n}");
+        assert!(square.tracks.iter().all(|t| t.mid.is_none()));
+        arcs += drawn;
+        let length = |b: &Board| b.tracks.iter().map(|t| t.length()).sum::<f64>();
+        assert!(length(&round) <= length(&square) + 1e-9, "board {n}");
+        let file = kicad_pcb(&round);
+        assert_eq!(file.matches("(arc").count(), drawn, "board {n}");
+        let mine = ours(&round);
+        assert_eq!(mine.count(drc::Rule::TrackAngle), 0, "board {n}: {mine}");
+        if left.is_empty() {
+            let errors: Vec<_> = mine.errors().map(ToString::to_string).collect();
+            assert_eq!(errors, Vec::<String>::new(), "board {n}");
+        }
+    }
+    eprintln!("{arcs} arcs on six boards");
+    assert!(arcs > 50, "{arcs} arcs on six boards");
+}

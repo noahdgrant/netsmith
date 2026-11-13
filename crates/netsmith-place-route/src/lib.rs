@@ -20,6 +20,7 @@
 //! code runs none of them.
 
 mod anneal;
+pub mod arcs;
 mod board;
 mod decouple;
 mod fit;

@@ -65,6 +65,13 @@ pub struct Args {
     /// nets".
     #[arg(long, value_name = "WHEN", value_parser = parse_classes)]
     pub classes: Option<netsmith::placed::LineClasses>,
+    /// The largest radius of the arc drawn at each bend, in widths of its track (the router's own
+    /// is 4); 0 draws none, and every bend keeps its 45 degree corner.
+    ///
+    /// For experiments on the router. The arcs are drawn after the routing, where they keep the
+    /// rules' space, and change nothing the search does.
+    #[arg(long, value_name = "WIDTHS", value_parser = parse_arcs)]
+    pub arcs: Option<f64>,
 }
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
@@ -82,6 +89,7 @@ pub fn run(args: Args) -> ExitCode {
         stages: args.stages,
         plan: args.plan,
         classes: args.classes,
+        arcs: args.arcs,
     };
     run_route(&args.file, args.out.as_deref(), request)
 }
@@ -163,6 +171,14 @@ fn parse_tries(given: &str) -> Result<usize, String> {
         .ok()
         .filter(|&n| n >= 1)
         .ok_or_else(|| format!("takes a whole number of at least 1, not `{given}`"))
+}
+
+fn parse_arcs(given: &str) -> Result<f64, String> {
+    given
+        .parse::<f64>()
+        .ok()
+        .filter(|w| (0.0..=20.0).contains(w))
+        .ok_or_else(|| format!("takes a number of track widths from 0 to 20, not `{given}`"))
 }
 
 fn parse_margin(given: &str) -> Result<f64, String> {
