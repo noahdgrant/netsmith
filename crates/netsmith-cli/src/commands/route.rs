@@ -250,7 +250,8 @@ mod tests {
         };
         assert_eq!(args.arcs, Some(0.0));
         for bad in ["-1", "21", "round"] {
-            let e = parse(&["route", "b.placed.json", "--arcs", bad]).unwrap_err();
+            let given = format!("--arcs={bad}");
+            let e = parse(&["route", "b.placed.json", &given]).unwrap_err();
             assert!(e.contains("track widths from 0 to 20"), "{bad}: {e}");
         }
     }
