@@ -61,7 +61,7 @@ import type { ColourBy } from './inspectMode';
 import { type BoardInfo, type CopperInfo, type Info, type LimitInfo, type MemberInfo, type PartInfo3d, type StackLayer, type SystemInfo, readInfo } from './model';
 import { LOOKS, type Role, lit, modelColour, roleOf } from './palette';
 import { type Preset, type Vec3, distanceFor, easeOut, fitPoints, fitHalfHeight, flipped, halfHeightAt, orbit, presetDirection, presetOf, slerpDir } from './presets';
-import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole } from './tools';
+import { type Axis, type LimitPlan, type P3, type Slot, type Snap, bestSnap, easeInOut, explodeGap, explodeSlots, faceSlot, keepBelow, slabRole, spreadMembers } from './tools';
 
 const FOV = 30;
 /** How long a camera move takes (the page's motion is 120 to 180 ms). */
@@ -186,6 +186,29 @@ interface Mover {
   obj: Mesh;
   base: number;
   slot: string;
+  /** The board (its member in a system's file, '' for a board's own) whose stackup it moves with. */
+  stack: string;
+}
+
+/** A board's stackup as the tools need it: a board's file has one, a system's one per member
+ * (ADR 0110), each in its member's own frame, under the member's node that turns and moves it. */
+interface Stack {
+  board: BoardInfo;
+  silk: { top: boolean; bottom: boolean };
+  slots: Slot[] | null;
+  /** The member's node (a system's file), whose height in the view the exploded stackup moves; null for a board's own. */
+  node: Object3D | null;
+  /** The node's height in the view (m, as the file has it), before the stackups come apart. */
+  baseY: number;
+}
+
+/** The member a node of a system's file is under (its name), or '' in a board's file. */
+function memberOf(o: Object3D): string {
+  for (let n: Object3D | null = o; n; n = n.parent) {
+    const info = readInfo(n.userData);
+    if (info?.kind === 'member') return (info as MemberInfo).member;
+  }
+  return '';
 }
 
 /** A canvas-made stripe, white on nothing: the material's colour tints it. */
@@ -277,7 +300,10 @@ export class Viewer {
   private solids: Mesh[] = [];
   private pads: PadPoint[] = [];
   private holeKeys = new Set<string>();
-  private silk = { top: false, bottom: false };
+  /** Each board's stackup, by member ('' for a board's own file). */
+  private stacks = new Map<string, Stack>();
+  /** The members of a system's file that are hidden, by name: kept when the file is loaded again. */
+  private hiddenMembers = new Set<string>();
   private cut: { axis: Axis; at: number } | null = null;
   private plane = new Plane(new Vector3(1, 0, 0), 0);
   private caps = new Group();
@@ -287,7 +313,6 @@ export class Viewer {
   private explodeT = 0;
   private explodeTo = 0;
   private explodeAnim = 0;
-  private slotList: Slot[] = [];
   private baseBox = this.box.clone();
   private drawHooks = new Set<() => void>();
   board: BoardInfo | null = null;
@@ -433,8 +458,8 @@ export class Viewer {
       this.baseBox = box.clone();
       box.getBoundingSphere(this.bounds);
     }
-    // A scene loaded again keeps the tools as they were: the cut, the layers apart.
-    this.slotList = [];
+    // A scene loaded again keeps the tools as they were: the cut, the layers apart, the members hidden.
+    this.applyHidden();
     this.applyStack();
     if (this.explodeT > 0) this.setExplodeT(this.explodeT);
     this.rebuildCaps();
@@ -465,7 +490,7 @@ export class Viewer {
     this.lineSrc.clear();
     this.solids = [];
     this.holeKeys.clear();
-    this.silk = { top: false, bottom: false };
+    this.stacks.clear();
     this.clearCaps();
     this.parts.clear();
     this.limits = [];
@@ -493,6 +518,11 @@ export class Viewer {
       const info = readInfo(o.userData);
       // A system's file has a board per member: the base's, the first, is the frame's.
       if (info?.kind === 'board' && !this.board) this.board = info as BoardInfo;
+      if (info?.kind === 'board') {
+        const m = memberOf(o);
+        const node = m ? (o.parent ?? null) : null;
+        if (!this.stacks.has(m)) this.stacks.set(m, { board: info as BoardInfo, silk: { top: false, bottom: false }, slots: null, node, baseY: node?.position.y ?? 0 });
+      }
       if (info?.kind === 'system') this.system = info as SystemInfo;
       if (info?.kind === 'member') this.members.push(info as MemberInfo);
       if (info?.kind === 'substrate') laminates.push(o);
@@ -504,7 +534,13 @@ export class Viewer {
     root.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       const owner = kindOf(o);
-      const info = owner?.info;
+      const stack = memberOf(o);
+      let info = owner?.info;
+      // A system's copper is its member's: its net and its pad's part are named `member/...`, as its parts are.
+      if (stack && (info?.kind === 'copper' || info?.kind === 'hole')) {
+        const c = info as CopperInfo;
+        info = { ...c, member: stack, net: c.net === null ? null : `${stack}/${c.net}`, ...(c.path ? { path: `${stack}/${c.path}` } : {}) };
+      }
       const name = (Array.isArray(o.material) ? o.material[0] : o.material)?.name ?? '';
       const part = info?.kind === 'part' ? (info as PartInfo3d) : null;
       // The silkscreen is drawn in a colour of its own: the `mark` of a body's pin-1 dot does not read on the mask in every theme.
@@ -539,10 +575,11 @@ export class Viewer {
                 : info?.kind === 'copper' && typeof raw.layer === 'string'
                   ? raw.layer
                   : info?.kind === 'protrusion' && typeof raw.path === 'string'
-                    ? `face:${this.parts.get(raw.path)?.info.side === 'bottom' ? 'top' : 'bottom'}`
+                    ? `face:${this.parts.get(stack ? `${stack}/${raw.path}` : raw.path)?.info.side === 'bottom' ? 'top' : 'bottom'}`
                     : null;
-      if (info?.kind === 'silk') this.silk[face] = true;
-      if (slot) this.movers.push({ obj: o, base: o.position.y, slot });
+      const st = this.stacks.get(stack);
+      if (info?.kind === 'silk' && st) st.silk[face] = true;
+      if (slot) this.movers.push({ obj: o, base: o.position.y, slot, stack });
       if (role !== 'limit' && role !== 'limit-violated') this.solids.push(o);
       if (part) {
         let entry = this.parts.get(part.path);
@@ -579,6 +616,11 @@ export class Viewer {
     return [...new Set(this.copper.map((c) => this.netOf(c.info)).filter((n): n is string => n !== null))].sort();
   }
 
+  /** The nets lit, by name (`member/net` in a system's file). */
+  litNetList(): string[] {
+    return [...this.look.nets.keys()].sort();
+  }
+
   /** What a lit net lights now (for a recipe): the layers with its copper lit, its barrels lit (vias and pads), and how many other pieces of copper are dimmed. */
   litReport() {
     return litReport(this.copper.map((c) => c.info), this.look.nets, this.padNets);
@@ -602,9 +644,11 @@ export class Viewer {
    * the file in a section (each layer in its colour, as `netsmith render --section` draws it) and
    * when the stackup comes apart; a copper layer comes apart as a see-through sheet. */
   private buildSlabs() {
-    const layers = this.board?.layers ?? [];
-    if (!layers.length || !this.substrate.length) return;
     for (const sub of this.substrate) {
+      // Each laminate is cut into its own board's layers (a system's members each have theirs).
+      const stack = memberOf(sub);
+      const layers = this.stacks.get(stack)?.board.layers ?? [];
+      if (!layers.length) continue;
       sub.geometry.computeBoundingBox();
       const bb = sub.geometry.boundingBox!;
       const [y0, y1] = [bb.min.y, bb.max.y];
@@ -625,7 +669,7 @@ export class Viewer {
           parent.add(mesh);
           mesh.updateMatrixWorld(true);
           this.slabs.push({ mesh, layer, ghost });
-          this.movers.push({ obj: mesh, base: mesh.position.y, slot: layer.name });
+          this.movers.push({ obj: mesh, base: mesh.position.y, slot: layer.name, stack });
           if (!ghost) this.solids.push(mesh);
           const line = this.edgeLines(mesh, 'edge');
           line.visible = false;
@@ -777,20 +821,73 @@ export class Viewer {
 
   /** The layers, each with where it is now (its middle, mm in z) and how far it has moved; empty when the file has no stackup. */
   slots(): (Slot & { now: number })[] {
-    return this.stackSlots().map((s) => ({ ...s, now: (s.zTop + s.zBottom) / 2 + s.offset * easeInOut(this.explodeT) }));
+    // The frame's board: a board's own, or a system's base (which the members' spread does not move).
+    return this.stackSlots(this.baseStack()).map((s) => ({ ...s, now: (s.zTop + s.zBottom) / 2 + s.offset * easeInOut(this.explodeT) }));
   }
 
-  private stackSlots(): Slot[] {
-    const b = this.board;
-    if (!this.slotList.length && b?.layers.length) this.slotList = explodeSlots(b.layers, this.silk, explodeGap(b.widthMm, b.heightMm));
-    return this.slotList;
+  /** The key of the frame's board in `stacks`: '' for a board's file, the base member's in a system's. */
+  private baseStack(): string {
+    return this.system ? this.system.base : '';
   }
 
-  /** Whether the file has the stackup the exploded view needs. */
+  private stackSlots(key: string): Slot[] {
+    const st = this.stacks.get(key);
+    if (!st) return [];
+    const b = st.board;
+    if (!st.slots) st.slots = b.layers.length ? explodeSlots(b.layers, st.silk, explodeGap(b.widthMm, b.heightMm)) : [];
+    return st.slots;
+  }
+
+  /** Whether the file has the stackup the exploded view needs (in a system's, a member's). */
   canExplode(): boolean {
-    // A system's boards are turned and flipped: one stackup does not pull them apart.
-    if (this.system) return false;
-    return this.stackSlots().length > 0;
+    return [...this.stacks.keys()].some((k) => this.stackSlots(k).length > 0);
+  }
+
+  /** How far each member of a system's file moves up while the stackups are apart (`spreadMembers`). */
+  private memberSpread(): Map<string, number> {
+    const rows = [...this.stacks.entries()]
+      .filter(([, st]) => st.node)
+      .map(([key, st]) => {
+        const slots = this.stackSlots(key);
+        return { key, z: st.baseY * 1000, half: slots.length ? Math.max(...slots.map((s) => Math.abs(s.offset))) : 0 };
+      });
+    return spreadMembers(rows, this.baseStack());
+  }
+
+  // ---- a system's members shown or hidden ----
+
+  /** Hide these members of a system's file (by name) and show the others; kept when the file is loaded again. */
+  setHiddenMembers(names: Iterable<string>) {
+    this.hiddenMembers = new Set(names);
+    this.applyHidden();
+    this.applyStack();
+    if (this.cut) this.rebuildCaps();
+    this.request();
+  }
+
+  /** How far each member of a system's file is moved up now by the layers apart, in mm, by name. */
+  memberLifts(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [k, st] of this.stacks) if (st.node) out[k] = Number(((st.node.position.y - st.baseY) * 1000).toFixed(3));
+    return out;
+  }
+
+  /** The members hidden, by name. */
+  hiddenList(): string[] {
+    return [...this.hiddenMembers].filter((m) => this.stacks.has(m)).sort();
+  }
+
+  private applyHidden() {
+    for (const [k, st] of this.stacks) if (st.node) st.node.visible = !this.hiddenMembers.has(k);
+    for (const l of this.previewEdges) l.visible = shown(l.userData.src as Object3D);
+  }
+
+  /** What is drawn, for framing it: the members shown, in a system's file. */
+  private visibleBox(): Box3 {
+    if (!this.model || ![...this.stacks.keys()].some((k) => this.hiddenMembers.has(k))) return this.box;
+    const box = new Box3();
+    for (const st of this.stacks.values()) if (st.node?.visible) box.expandByObject(st.node);
+    return box.isEmpty() ? this.box : box;
   }
 
   /** Pull the stackup apart (true) or put it back, eased; at once with reduced motion. */
@@ -823,13 +920,26 @@ export class Viewer {
   private setExplodeT(t: number) {
     this.explodeT = t;
     const e = easeInOut(t);
-    const slots = this.stackSlots();
-    const byKey = new Map(slots.map((s) => [s.key, s]));
-    const layers = this.board?.layers ?? [];
-    const maskName = (face: 'top' | 'bottom') => (face === 'top' ? layers.find((l) => l.kind === 'mask') : [...layers].reverse().find((l) => l.kind === 'mask'))?.name;
-    const slotOf = (key: string): Slot | null | undefined =>
-      key === 'face:top' ? faceSlot(slots, 'top') : key === 'face:bottom' ? faceSlot(slots, 'bottom') : key.startsWith('mask:') ? byKey.get(maskName(key === 'mask:top' ? 'top' : 'bottom') ?? '') : byKey.get(key);
-    for (const m of this.movers) m.obj.position.y = m.base + (slotOf(m.slot)?.offset ?? 0) * e * 0.001;
+    // Each board's layers move by its own stackup's slots.
+    const finders = new Map<string, (key: string) => Slot | null | undefined>();
+    const finder = (stack: string) => {
+      let f = finders.get(stack);
+      if (f) return f;
+      const slots = this.stackSlots(stack);
+      const byKey = new Map(slots.map((s) => [s.key, s]));
+      const layers = this.stacks.get(stack)?.board.layers ?? [];
+      const maskName = (face: 'top' | 'bottom') => (face === 'top' ? layers.find((l) => l.kind === 'mask') : [...layers].reverse().find((l) => l.kind === 'mask'))?.name;
+      f = (key: string) =>
+        key === 'face:top' ? faceSlot(slots, 'top') : key === 'face:bottom' ? faceSlot(slots, 'bottom') : key.startsWith('mask:') ? byKey.get(maskName(key === 'mask:top' ? 'top' : 'bottom') ?? '') : byKey.get(key);
+      finders.set(stack, f);
+      return f;
+    };
+    for (const m of this.movers) m.obj.position.y = m.base + (finder(m.stack)(m.slot)?.offset ?? 0) * e * 0.001;
+    // A system's members move apart as their stackups do (the member's node is in the file's metres).
+    if (this.system) {
+      const spread = this.memberSpread();
+      for (const [k, st] of this.stacks) if (st.node) st.node.position.y = st.baseY + (spread.get(k) ?? 0) * e * 0.001;
+    }
     this.model?.updateMatrixWorld(true);
     for (const [line, src] of this.lineSrc) line.matrix.copy(src.matrixWorld);
     if (t === 0 && this.explodeTo === 0) {
@@ -1186,6 +1296,8 @@ export class Viewer {
         line.matrixAutoUpdate = false;
         line.matrix.copy(mesh.matrixWorld);
         line.userData.edgeRole = 'edge-preview';
+        line.userData.src = mesh;
+        line.visible = shown(mesh);
         line.computeLineDistances();
         line.renderOrder = 4;
         this.edges.add(line);
@@ -1431,7 +1543,7 @@ export class Viewer {
   /** Look at the whole board from a preset. */
   preset(p: Preset, animate = true) {
     const dir = presetDirection(p);
-    const f = this.framing(this.box, dir);
+    const f = this.framing(this.visibleBox(), dir);
     this.moveTo(f.target, dir, f.dist, f.zoom, animate);
   }
 
@@ -1443,7 +1555,7 @@ export class Viewer {
   /** The whole board, from where the camera looks now. */
   fit(animate = true) {
     const dir = this.direction();
-    const f = this.framing(this.box, dir);
+    const f = this.framing(this.visibleBox(), dir);
     this.moveTo(f.target, dir, f.dist, f.zoom, animate);
   }
 
@@ -1517,7 +1629,7 @@ export class Viewer {
     const l = Math.hypot(...dir) || 1;
     dir = [dir[0] / l, dir[1] / l, dir[2] / l];
     if (Math.abs(dir[1]) > 0.9999) dir = presetDirection(dir[1] > 0 ? 'top' : 'bottom');
-    const f = this.framing(this.box, dir);
+    const f = this.framing(this.visibleBox(), dir);
     this.moveTo(f.target, dir, f.dist, f.zoom, animate);
   }
 

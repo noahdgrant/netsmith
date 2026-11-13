@@ -179,6 +179,27 @@ export function explodeSlots(layers: StackLayer[], silk: { top: boolean; bottom:
   return out.map((s, i) => ({ ...s, offset: (mid - i) * gap }));
 }
 
+/** How far each board of a system moves up (mm in z) while the stackups are apart, so that one
+ * board's layers do not pass into another's: each board spreads about its own middle by `half`
+ * each way, and a board above another moves up by half of each one's spread. Boards side by side
+ * (at one height `z`, within a millimetre) move together, by the larger spread; the board `base`
+ * stays where it is. */
+export function spreadMembers(rows: { key: string; z: number; half: number }[], base: string): Map<string, number> {
+  const out = new Map<string, number>();
+  let shift = 0;
+  let prev: { z: number; half: number } | null = null;
+  for (const r of [...rows].sort((a, b) => a.z - b.z)) {
+    const row = { z: r.z, half: r.half };
+    if (prev && row.z - prev.z > 1) shift += prev.half + row.half;
+    else if (prev) row.half = Math.max(row.half, prev.half);
+    out.set(r.key, shift);
+    prev = row;
+  }
+  const at = out.get(base) ?? 0;
+  for (const [k, v] of out) out.set(k, v - at);
+  return out;
+}
+
 /** The slot a face's parts lift with: the outermost on that face (its silkscreen, else its mask). */
 export function faceSlot(slots: Slot[], face: Face): Slot | null {
   return (face === 'top' ? slots[0] : slots[slots.length - 1]) ?? null;

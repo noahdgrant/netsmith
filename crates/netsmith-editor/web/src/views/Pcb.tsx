@@ -39,7 +39,7 @@ import {
 import { analysis, board, detail, fabReports, job, panelShown, pcbReports, pcbStamp, pickNet, routeBoard } from '../store';
 import { partPathsOf, revealRequest, sameSelection, selection } from '../selection';
 import { Board3d } from '../pcb3d/Lazy';
-import { pcbMode } from '../pcb3d/mode';
+import { pcbMode, systemShown } from '../pcb3d/mode';
 import { seconds } from '../util';
 
 const LAYERS: { id: string; label: string }[] = [
@@ -139,6 +139,9 @@ export function Pcb() {
   const h = history.value;
   const activeTool = tool.value;
   const in3d = pcbMode.value === '3d';
+  // The 3D view on a system's scene stays while the page's board changes to another member (a part
+  // of it picked there): it draws the system, not this board's placement, so the camera stays.
+  const sysIn3d = in3d && (analysis.value?.systems ?? []).some((x) => x.name === systemShown.value && x.boards.includes(name));
   const defaults = keepoutDefaults.value;
   // The panels that repeat this board (ADR 0040), and the one being shown.
   const definition = analysis.value?.boards.find((b) => b.name === name)?.definition;
@@ -319,7 +322,7 @@ export function Pcb() {
           {report.unrouted.length > 8 && <div>and {report.unrouted.length - 8} more</div>}
         </div>
       )}
-      {sceneError.value && !sc ? (
+      {sceneError.value && !sc && !sysIn3d ? (
         <EmptyState
           icon="error"
           tone="bad"
@@ -340,32 +343,35 @@ export function Pcb() {
             <span class="text">{sceneError.value}</span>
           </div>
         </EmptyState>
-      ) : !sc || !drawing ? (
+      ) : (!sc || !drawing) && !sysIn3d ? (
         <ViewLoading what="Placing the board" />
       ) : (
         <div class="pcb-main">
           {in3d ? (
             <Board3d board={name} />
           ) : (
-            <Canvas
-              drawing={drawing}
-              scene={sc}
-              css={css}
-              litNet={hover ?? picked}
-              onHoverNet={setHover}
-              onPickNet={pick}
-              onTip={setTip}
-              onCursor={setCursor}
-              focus={focus}
-              onZoomPlane={(box) => setFocus({ box, seq: (focus?.seq ?? 0) + 1 })}
-              cmp={cmpMarks.value?.parts ?? null}
-              marks={(found?.findings ?? []).map((f) => ({
-                id: f.id,
-                box: f.area,
-                level: f.severity,
-                on: pickedFinding.value === f.id,
-              }))}
-            />
+            sc &&
+            drawing && (
+              <Canvas
+                drawing={drawing}
+                scene={sc}
+                css={css}
+                litNet={hover ?? picked}
+                onHoverNet={setHover}
+                onPickNet={pick}
+                onTip={setTip}
+                onCursor={setCursor}
+                focus={focus}
+                onZoomPlane={(box) => setFocus({ box, seq: (focus?.seq ?? 0) + 1 })}
+                cmp={cmpMarks.value?.parts ?? null}
+                marks={(found?.findings ?? []).map((f) => ({
+                  id: f.id,
+                  box: f.area,
+                  level: f.severity,
+                  on: pickedFinding.value === f.id,
+                }))}
+              />
+            )
           )}
           {tip && !in3d && (
             <div class="pcb-tip" style={{ left: tip.x, top: tip.y }} data-testid="tip">
@@ -375,7 +381,7 @@ export function Pcb() {
               ))}
             </div>
           )}
-          {panelOpen && (
+          {panelOpen && sc && drawing && (
             <Panel
               scene={sc}
               drawing={drawing}
