@@ -189,7 +189,7 @@
 //!
 //! # Teardrops (issue #431, S11)
 //!
-//! When a board is routed, after the vias beside vias and the stitching of pours, each track
+//! When a board is routed, after the meanders (below), the vias beside vias and the stitching of pours, each track
 //! that ends in a pad or a via gets a teardrop where it leaves the copper
 //! (`netsmith_pcb::teardrop::add`, unless [`RouteOptions::teardrops`] is off), where it keeps every
 //! space the design rules check asks of a track. They are drawn round the copper the search
@@ -198,6 +198,41 @@
 //! netsmith draws them itself, with the check's geometry, and writes them as KiCad 9's teardrop
 //! zones (decided by the implementing agent under the owner's delegation, 2026-11-13); the sizes,
 //! the rules and why are in the header of `netsmith_fab::drc::teardrop`.
+//!
+//! # Length-matching meanders (issue #431, S11)
+//!
+//! **What is built** (`netsmith_pcb::meander::add`). When the best try routed every line, its
+//! copper is on the board and before the vias beside vias, the stitching of pours and the
+//! teardrops, the shorter net of each diff pair whose two nets' track lengths differ by more than
+//! 0.1 mm gets a meander sized to add the difference: bumps with 45 degree corners on one side of
+//! one of its straight tracks, the longest first, legs three widths apart edge to edge (or the
+//! clearance, if larger), at most 2 mm high, the fewest bumps first; on an interval of the track
+//! more than the scorecard's coupled 0.5 mm from the partner, away from the partner's side first,
+//! a pitch from the track's ends, and only where it keeps every space the design rules check asks
+//! of a track (`netsmith_fab::drc::Room`, the teardrops' check) and the pitch from its own net's
+//! other copper. A run short of room takes what it can and the next the rest. No other copper
+//! moves and no line is left; [`Routing::pairs`] has each pair's skew before and after, and
+//! `fab` says which pair keeps a skew over the target. The target, 0.1 mm (the grid), and the
+//! shape are decided by the agent under the owner's delegation (2026-11-13): USB 2.0 high speed
+//! allows a few mm, so the target is no constraint on where a meander fits, only on how long it
+//! is; the sizes and why are in that module's header.
+//!
+//! **Measured** (2026-11-13, main at 88a62705, `scripts/route-scorecard` without and with the
+//! pass, the same binary and placements; skew, coupled share):
+//!
+//! | | RP2350 `mcu.usb` / `usb` | Orbit `usb` | EasyDuino `bridge` |
+//! |---|---|---|---|
+//! | without | 12.37 mm, 85 % / 0.86 mm, 0 % | 0.19 mm, 72 % | 0.85 mm, 54 % |
+//! | **with (built)** | 12.37 mm, 85 % / **0.00 mm**, 0 % | **0.00 mm**, 71 % | **0.00 mm**, 52 % |
+//!
+//! Track grows by the meanders' own length only (1, 0.2 and 0.8 mm), vias, other nets' track on
+//! the pours, and the check (0 errors) are unchanged, every bend is still 45 degrees, and the
+//! coupled share falls only by the meander's own track. The pass takes 8 to 23 ms; `fab` took
+//! 97 / 117 s on RP2350 against 119 / 115 s without, 18 / 18 s on Orbit against 14 / 17 s, 8 s on
+//! 8 / 8 s on EasyDuino against 10 / 11 s (a loaded machine). Each board wrote the same copper on both runs.
+//! RP2350's `mcu.usb` keeps its skew: its `dp` is 5.8 mm long, its one run of more than 2 mm
+//! runs 0.4 mm from `dm` the whole way, and `dm` reaches a pad 10 mm further off, so the skew is
+//! the pair's pads', for the placement to close.
 //!
 //! # What a try costs (issue #431)
 //!
@@ -4741,6 +4776,9 @@ pub struct RouteOptions {
     /// The largest radius of the arc drawn at each bend once the board is routed, in widths of
     /// its track ([`crate::arcs`]); 0 draws none, and the bends keep their corners.
     pub arcs: f64,
+    /// Whether the shorter net of each diff pair gets a meander that matches the pair's lengths
+    /// (`netsmith_pcb::meander`), on a board routed completely; on by default.
+    pub meanders: bool,
 }
 
 /// Which tries of the router route the lines by class, the most important first, and keep the
@@ -4787,6 +4825,7 @@ impl Default for RouteOptions {
             classes: LineClasses::FromSecondTry,
             teardrops: true,
             arcs: crate::arcs::ARC_WIDTHS,
+            meanders: true,
         }
     }
 }
@@ -4942,6 +4981,9 @@ pub struct Routing {
     /// With [`RouteOptions::snapshots`], what the try that gave the result had routed after
     /// each stage it ran, in order, the last [`SnapshotStage::Final`]; empty otherwise.
     pub stages: Vec<Snapshot>,
+    /// Each diff pair's skew before and after its meanders (`netsmith_pcb::meander`); empty
+    /// when the board was left with lines or [`RouteOptions::meanders`] is off.
+    pub pairs: Vec<netsmith_pcb::meander::Matched>,
 }
 
 /// Route as much of the ratsnest as the router can, adding tracks and vias to the board.
@@ -4998,12 +5040,19 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         let crowding = router.crowding.into_inner();
         (best, stopped, tries, why, crowding, stages)
     };
+    let complete = best.failed.is_empty();
     let mut routed = best.routed;
     routed.sort_by_key(|r| r.line);
     for r in routed {
         board.tracks.extend(r.tracks);
         board.vias.extend(r.vias);
     }
+    // Diff pairs matched in length, on a board routed completely (issue #431, S11).
+    let pairs = if options.meanders && complete {
+        netsmith_pcb::meander::add(board)
+    } else {
+        Vec::new()
+    };
     // A via that does not carry its net's current gets others beside it (issue #431).
     crate::parallel::parallel_vias(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
@@ -5028,6 +5077,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         why,
         crowding,
         stages,
+        pairs,
     }
 }
 

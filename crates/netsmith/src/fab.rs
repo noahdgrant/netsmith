@@ -958,6 +958,19 @@ fn fab_board(
                 say,
             )
         });
+        // A diff pair whose meanders could not match it says the skew it keeps (issue #431, S11).
+        for p in &routing.pairs {
+            if p.after > netsmith_place_route::netsmith_pcb::meander::SKEW_TARGET {
+                say(format!(
+                    "{}: diff pair {}/{} keeps a skew of {:.2} mm (from {:.2} mm): no straight run of its shorter net has room for more meander",
+                    built.label(),
+                    p.p,
+                    p.n,
+                    p.after,
+                    p.before
+                ));
+            }
+        }
         let unrouted = routing.left;
         if let (false, Some(placed)) = (unrouted.is_empty(), placed) {
             *stuck = Some(Stuck {
