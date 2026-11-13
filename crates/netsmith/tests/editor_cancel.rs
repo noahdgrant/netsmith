@@ -11,7 +11,7 @@ use std::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use netsmith::editor::Workspace;
@@ -38,8 +38,13 @@ struct Probe {
     events: Mutex<Vec<String>>,
     /// The counts of work the solver reported: `unit done/total`.
     work: Mutex<Vec<String>>,
-    /// The solver has chosen at least three parts: the search is under way.
-    searching: AtomicBool,
+    /// Cancel the analysis at the first count of `parts chosen` that reaches this many: the
+    /// search is under way.
+    cancel_at_chosen: Mutex<Option<u64>>,
+    /// The counts of `parts chosen` the solver reported after that cancel, and the one it was
+    /// asked at.
+    chosen_after_cancel: Mutex<Vec<u64>>,
+    chosen_at_cancel: Mutex<Option<u64>>,
 }
 
 impl Probe {
@@ -56,8 +61,8 @@ impl Probe {
             probe.events.lock().unwrap().push(name);
             if let AnalysisEvent::Progress { stage, work, .. } = &event {
                 if let Some(w) = work {
-                    if w.unit == "parts chosen" && w.done >= 3 {
-                        probe.searching.store(true, Ordering::SeqCst);
+                    if w.unit == "parts chosen" {
+                        probe.hear_chosen(u64::from(w.done));
                     }
                     probe.work.lock().unwrap().push(format!(
                         "{} {}/{}",
@@ -76,6 +81,23 @@ impl Probe {
                 }
             }
         })
+    }
+
+    /// A count of parts chosen: the cancel is asked at the first that reaches the count the test
+    /// set, and every count after it is kept.
+    fn hear_chosen(&self, done: u64) {
+        let mut at = self.cancel_at_chosen.lock().unwrap();
+        if let Some(wanted) = *at
+            && done >= wanted
+        {
+            *at = None;
+            *self.chosen_at_cancel.lock().unwrap() = Some(done);
+            let workspace = self.workspace.lock().unwrap().upgrade();
+            let said = workspace.expect("the workspace is there").cancel_analysis();
+            assert!(said, "an analysis is running, and says so");
+        } else if self.chosen_at_cancel.lock().unwrap().is_some() {
+            self.chosen_after_cancel.lock().unwrap().push(done);
+        }
     }
 
     fn cancel_at(&self, stage: &str) {
@@ -264,13 +286,27 @@ fn an_analysis_in_a_state_nobody_asked_to_cancel_is_not_stopped_by_another_cance
     assert!(!probe.heard().contains(&"cancelled".to_string()));
 }
 
-/// The size the latency test uses: a dev build solves it in a few seconds, so the cancel is
-/// certain to arrive in the middle of the search. (With the solver crates optimised in the dev
+/// The size the cancel test uses: a dev build solves it in a few seconds, so there are many
+/// parts left to choose when the cancel is asked. (With the solver crates optimised in the dev
 /// profile, 16 stages solve in well under half a second, too fast to be cancelled.)
 const STAGES: usize = 64;
 
+/// A cancel in the middle of the search is heard at the next trial: the solver goes on to no
+/// part that it would not have chosen anyway, and ends cancelled.
+///
+/// This counts work and times nothing, so that a busy runner cannot fail it: the cancel is asked
+/// from inside the search, at a count of parts chosen (the same place whatever the load), and
+/// what is checked is how many parts the solver reports having chosen after it. Every report is
+/// made by a trial that has passed a checkpoint, so a solver that hears the cancel at its next
+/// checkpoint reports none (the one allowed is the end of the group it was in, which is reported
+/// without a trial); one that does not hear it goes on to the end and reports the rest, up to
+/// the total. A slow runner only spaces the reports out, and the progress lines are throttled (one
+/// in a tenth of a second), so they can only be fewer, never more, than the work done after the
+/// cancel. For the same reason this sees a cancel that goes on for more than a tenth of a second
+/// or so, not one that is a few trials late: the exact count, which no line is dropped from, is
+/// `a_solve_is_stopped_while_it_searches_before_it_chooses_another_part` in `netsmith-solve`.
 #[test]
-fn a_cancel_during_a_long_solve_is_heard_within_a_fraction_of_a_second() {
+fn a_cancel_during_a_long_solve_is_heard_before_the_solver_chooses_another_part() {
     let root = TempDir::new("editor-cancel-latency");
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
@@ -281,40 +317,36 @@ fn a_cancel_during_a_long_solve_is_heard_within_a_fraction_of_a_second() {
     fs::write(root.join("src/main.nsm"), stages::source(STAGES)).unwrap();
     let probe = Arc::new(Probe::default());
     let editor = open(&root, &probe);
-    // Asked from a thread of its own a little after the solve begins, as a person would.
-    let asked = Arc::new(Mutex::new(None));
-    let timer = {
-        let (editor, asked, probe) = (Arc::clone(&editor), Arc::clone(&asked), Arc::clone(&probe));
-        std::thread::spawn(move || {
-            // Once the search has begun and a moment into it, asked as a person would.
-            let deadline = Instant::now() + Duration::from_secs(60);
-            while !probe.searching.load(Ordering::SeqCst) && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            std::thread::sleep(Duration::from_millis(400));
-            while Instant::now() < deadline {
-                *asked.lock().unwrap() = Some(Instant::now());
-                if editor.cancel_analysis() {
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        })
-    };
+    // The tenth part chosen: well into the search, with most of the parts still to choose.
+    *probe.cancel_at_chosen.lock().unwrap() = Some(10);
     let analysis = editor.analysis();
-    let returned = Instant::now();
-    timer.join().unwrap();
-    let asked = asked.lock().unwrap().expect("asked");
-    let latency = returned.duration_since(asked);
-    eprintln!("a cancel was heard {latency:?} after it was asked");
+    let asked_at = probe
+        .chosen_at_cancel
+        .lock()
+        .unwrap()
+        .expect("the search got to its tenth part");
+    let after = probe.chosen_after_cancel.lock().unwrap().clone();
+    let total: u64 = probe
+        .work
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|w| w.starts_with("parts chosen 0/"))
+        .and_then(|w| w.split('/').nth(1)?.parse().ok())
+        .expect("the solver said how many parts it chooses");
+    eprintln!("cancelled at {asked_at} of {total} parts chosen; reported after it: {after:?}");
     assert_eq!(
         analysis.cancelled,
         Some(true),
         "the solve ended before it was asked to"
     );
     assert!(
-        latency < Duration::from_millis(750),
-        "stopped {latency:?} after it was asked (a whole analysis takes many seconds)"
+        asked_at * 4 < total,
+        "asked at {asked_at} of {total}: the search was to be far from its end"
+    );
+    assert!(
+        after.len() <= 1 && after.iter().all(|&done| done <= asked_at + 1),
+        "the solver went on to choose parts after it was asked to stop: {after:?} (asked at {asked_at} of {total})"
     );
 }
 

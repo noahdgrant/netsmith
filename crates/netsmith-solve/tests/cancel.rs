@@ -41,18 +41,34 @@ fn a_solve_with_a_cancelled_token_stops_at_once() {
     );
 }
 
+/// A cancel in the middle of the search is heard at the next trial: the solver goes on to no
+/// part it would not have chosen anyway.
+///
+/// This counts work and times nothing, so that a busy runner cannot fail it: the cancel is asked
+/// from inside the search (the sink is told at the fifth part chosen, the same place whatever the
+/// load) and what is counted is the parts the solver reports having chosen after it. Every report
+/// of the search is made by a trial that has passed a checkpoint, so a solver that hears the
+/// cancel at its next checkpoint reports none more (one is allowed: the end of the group it was
+/// in is reported without a trial). A solver that goes on for a while reports more parts, and
+/// one that does not hear it reports the rest, up to the total; a slow runner makes the same
+/// number of reports, only later.
 #[test]
-fn a_solve_is_stopped_while_it_searches_within_a_fraction_of_a_second() {
+fn a_solve_is_stopped_while_it_searches_before_it_chooses_another_part() {
     let c = checked(8);
     let catalogs = Catalogs::jlcpcb();
     let token = Cancel::new();
-    // Asked from inside, at the fifth part chosen, so that it is certain to be in the search.
-    let asked: Rc<Cell<Option<Instant>>> = Rc::default();
+    let asked_at: Rc<Cell<Option<u64>>> = Rc::default();
+    let after: Rc<RefCell<Vec<u64>>> = Rc::default();
     let sink: Rc<dyn Fn(&Work)> = {
-        let (token, asked) = (token.clone(), Rc::clone(&asked));
+        let (token, asked_at, after) = (token.clone(), Rc::clone(&asked_at), Rc::clone(&after));
         Rc::new(move |w: &Work| {
-            if w.done >= 5 && asked.get().is_none() {
-                asked.set(Some(Instant::now()));
+            if w.unit != "parts chosen" {
+                return;
+            }
+            if asked_at.get().is_some() {
+                after.borrow_mut().push(w.done);
+            } else if w.done >= 5 {
+                asked_at.set(Some(w.done));
                 token.cancel();
             }
         })
@@ -62,14 +78,12 @@ fn a_solve_is_stopped_while_it_searches_within_a_fraction_of_a_second() {
             job::scope(&token, || solve(&c.boards[0], &catalogs))
         })
     });
-    let latency = asked
-        .get()
-        .expect("the search got to its fifth part")
-        .elapsed();
+    let asked_at = asked_at.get().expect("the search got to its fifth part");
+    let after = after.borrow().clone();
     assert!(matches!(result, Err(Cancelled)));
     assert!(
-        latency < Duration::from_millis(500),
-        "stopped {latency:?} after it was asked"
+        after.len() <= 1 && after.iter().all(|&done| done <= asked_at + 1),
+        "the solver went on to choose parts after it was asked to stop: {after:?} (asked at {asked_at})"
     );
 }
 
