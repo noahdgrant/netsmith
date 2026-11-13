@@ -78,12 +78,14 @@ pub enum Material {
     /// a section ([`of_scene_section`]), where it is the second laminate tone next to the
     /// core's ([`Material::Substrate`]).
     Prepreg,
+    /// A case model's solids (ADR 0109), see-through, so the board shows inside its case.
+    Case,
 }
 
 impl Material {
     /// Every material, in order. A new one goes at the end, so a file's material index of the
     /// older ones does not move.
-    pub const ALL: [Material; 13] = [
+    pub const ALL: [Material; 14] = [
         Material::Substrate,
         Material::MaskTop,
         Material::MaskBottom,
@@ -97,6 +99,7 @@ impl Material {
         Material::Finish,
         Material::MaskOverCopper,
         Material::Prepreg,
+        Material::Case,
     ];
 
     /// The material's name, as a file (a glTF material, a command's option) writes it.
@@ -115,6 +118,7 @@ impl Material {
             Material::Finish => "finish",
             Material::MaskOverCopper => "mask-over-copper",
             Material::Prepreg => "prepreg",
+            Material::Case => "case",
         }
     }
 
@@ -123,9 +127,12 @@ impl Material {
         Material::ALL.into_iter().find(|m| m.name() == name)
     }
 
-    /// Whether the material is see-through (the limits), drawn after everything else.
+    /// Whether the material is see-through (the limits, a case), drawn after everything else.
     pub fn is_translucent(self) -> bool {
-        matches!(self, Material::Limit | Material::LimitViolated)
+        matches!(
+            self,
+            Material::Limit | Material::LimitViolated | Material::Case
+        )
     }
 }
 

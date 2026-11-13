@@ -30,7 +30,10 @@
 //!     the layers pulled apart); added in schema 1. A finding's `code` is `too_tall` (a part
 //!     over a height limit; `limit` names it), `height_unchecked` (a part of unknown height
 //!     under one) or `body_overlap` (two bodies that fill the same space); `face` says on which
-//!     face.
+//!     face. A case model's fit (ADR 0109) adds `case_collision`, `case_clearance`,
+//!     `case_reach`, `case_boss` and `case_unchecked`, each with `severity` (`error` or
+//!     `warning`), `case` (the model), `solid` (the node `case:<name>:<solid>` it is about, or
+//!     `null`) and `at_mm` (where to look, in the scene's frame); added without a new schema.
 //!   - `substrate`: `{kind: "substrate"}`, the laminate as its mesh, with children `mask:top`
 //!     and `mask:bottom` (`{kind: "mask", face}`, where the stackup has them: the mask with its
 //!     openings cut out, material `mask-top` or `mask-bottom` over laminate and
@@ -70,17 +73,23 @@
 //!     net: name | null}`, the net's copper as the mesh (material `copper` under the mask,
 //!     `finish` where it is open). None when the copper cannot be drawn.
 //!
+//!   - One group per case model (ADR 0109), `case:<name>`: `{kind: "case", name, file,
+//!     sha256, triangles}`, with a child per solid of the file, `case:<name>:<solid>`
+//!     (`{kind: "case_solid", case, solid, closed, triangles}`), its triangles as the mesh,
+//!     material `case` (see-through). Added without a new schema.
+//!
 //!   A node whose shape has no area has no mesh, and is still there.
 //! - **Materials**, by name, PBR metallic-roughness, in the order of [`Material::ALL`]:
 //!   `substrate`, `mask-top`, `mask-bottom`, `copper`, `body`, `body-unknown`, `metal`, `mark`,
 //!   `limit`, `limit-violated` (these two `alphaMode: BLEND`), `finish` and `mask-over-copper`
-//!   (added at the end in schema 1, so no index moved). Their colours are the
+//!   (added at the end in schema 1, so no index moved), then `prepreg` and `case` (a case
+//!   model's solids, ADR 0109, `BLEND`), added at the end the same way. Their colours are the
 //!   rasterizer's light palette ([`Theme::Light`]), turned into linear light as glTF wants
 //!   them. The materials of open surfaces (a barrel, a flat outline, a limit) are
 //!   double-sided.
 //!   A part drawn from its STEP model (ADR 0108) has the model's triangles as its mesh: a
-//!   piece the file colours has a material of its own after these, `model:#rrggbb`, in the
-//!   order the colours are first used; a piece it does not colour is `body`.
+//!   piece the file colours has a material of its own after these (after `case`), `model:#rrggbb`,
+//!   in the order the colours are first used; a piece it does not colour is `body`.
 //! - No extension is used or required.
 
 use serde_json::{Map, Value, json};
@@ -333,6 +342,7 @@ fn materials(colours: &[[u8; 3]]) -> Vec<Value> {
                     | Material::Mark
                     | Material::Limit
                     | Material::LimitViolated
+                    | Material::Case
             ) {
                 out["doubleSided"] = json!(true);
             }
@@ -383,6 +393,19 @@ fn findings(scene: &Scene) -> Vec<Value> {
             ),
             "parts": [o.a, o.b],
             "face": face(o.side),
+        }));
+    }
+    // The fit in the case models (ADR 0109).
+    for c in &scene.case.findings {
+        let solid = (!c.solid.is_empty()).then(|| format!("case:{}:{}", c.case, c.solid));
+        out.push(json!({
+            "code": c.kind.word(),
+            "message": c.to_string(),
+            "parts": c.path().into_iter().collect::<Vec<_>>(),
+            "severity": c.severity(false),
+            "case": c.case,
+            "solid": solid,
+            "at_mm": c.at,
         }));
     }
     out
@@ -600,6 +623,40 @@ fn board_node(b: &mut Builder, scene: &Scene, board: &str, member: Option<&str>)
             }
             root.children.push(group);
         }
+    }
+
+    // The case models (ADR 0109): a group per model, a node per solid.
+    for (model, meshes) in scene.case.models.iter().zip(&pieces.cases) {
+        let group_name = named(&format!("case:{}", model.name));
+        let mut group = Node::new(
+            &group_name,
+            json!({
+                "kind": "case",
+                "name": model.name,
+                "file": model.file,
+                "sha256": model.sha256,
+                "triangles": model.triangle_count(),
+            }),
+        );
+        let mut drawn = meshes.iter();
+        for solid in &model.solids {
+            let name = named(&format!("case:{}:{}", model.name, solid.name));
+            let mut node = Node::new(
+                &name,
+                json!({
+                    "kind": "case_solid",
+                    "case": model.name,
+                    "solid": solid.name,
+                    "closed": solid.closed,
+                    "triangles": solid.triangles.len(),
+                }),
+            );
+            if !solid.triangles.is_empty() {
+                node.mesh = drawn.next().and_then(|m| b.mesh(&name, &[m]));
+            }
+            group.children.push(node);
+        }
+        root.children.push(group);
     }
 
     if let Some(member) = member {

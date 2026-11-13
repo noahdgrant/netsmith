@@ -22,7 +22,7 @@ export function FindingsList(props: { scene: PcbScene; onFocus: (box: PcbBox) =>
     if (pickedFinding.value === null) return;
     select(sc.parts.filter((p) => item.parts.includes(p.refdes)).map((p) => p.path));
     props.onFocus(item.area);
-    askFocus3d(item.parts, item.keepout);
+    askFocus3d(item.parts, item.keepout, item.caseSolid, item.point3d);
   };
   return (
     <div class="findings" data-testid="findings">

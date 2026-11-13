@@ -178,3 +178,25 @@ describe('readInfo: a system scene (ADR 0110)', () => {
     expect(systemLine({ ...system, mates: [{ ...system.mates[0], minMm: null, maxMm: null }] }, [members[0], apart])).toBe('2 boards, 1 apart');
   });
 });
+
+describe('a case model in the scene file (ADR 0109)', () => {
+  it('reads a case, its solids and the fit findings of the root', () => {
+    expect(readInfo({ netsmith: { kind: 'case', name: 'lid', file: 'case_fit/lid.step', sha256: 'ab', triangles: 12 } })).toEqual({ kind: 'case', name: 'lid', file: 'case_fit/lid.step', sha256: 'ab' });
+    expect(readInfo({ netsmith: { kind: 'case_solid', case: 'base', solid: 'wall_right', closed: false, triangles: 12 } })).toEqual({ kind: 'case_solid', case: 'base', solid: 'wall_right', closed: false });
+    const board = readInfo({
+      netsmith: {
+        kind: 'board',
+        findings: [{ code: 'case_collision', message: 'm', parts: ['tall'], severity: 'error', case: 'lid', solid: 'case:lid:lid', at_mm: [16.74, 9.91, 8] }],
+      },
+    });
+    expect(board && 'findings' in board && board.findings[0]).toEqual({ code: 'case_collision', message: 'm', parts: ['tall'], severity: 'error', case: 'lid', solid: 'case:lid:lid', atMm: [16.74, 9.91, 8] });
+  });
+  it('the tooltip of a part says what the case found of it', () => {
+    const findings = [
+      { code: 'case_collision', message: '', parts: ['tall'], case: 'lid' },
+      { code: 'case_unchecked', message: '', parts: ['bare'], case: 'lid' },
+    ];
+    expect(partTip(part('tall', 'J1', 'stated', 9), findings).lines).toContain('In the case lid: they collide');
+    expect(partTip(part('bare', 'J3', 'unknown', null), findings).lines).toContain('Under the case, not checked');
+  });
+});

@@ -298,7 +298,7 @@ pub struct Palette {
     pub background: Rgba,
     /// One per material, in the order of [`Material::ALL`]; the alpha of a see-through one is
     /// its opacity.
-    pub materials: [Rgba; 13],
+    pub materials: [Rgba; 14],
     pub highlight: Rgba,
     pub outline: Rgba,
 }
@@ -337,6 +337,7 @@ impl Theme {
                     [222, 184, 96, 255],  // finish (ENIG gold, where the mask is open)
                     [74, 158, 98, 255],   // mask-over-copper
                     [226, 208, 150, 255], // prepreg
+                    [120, 132, 150, 52],  // case (see-through)
                 ],
                 highlight: [255, 190, 0, 255],
                 outline: [24, 26, 30, 255],
@@ -357,6 +358,7 @@ impl Theme {
                     [206, 170, 88, 255],
                     [58, 138, 84, 255],
                     [196, 178, 128, 255],
+                    [176, 188, 206, 44],
                 ],
                 highlight: [255, 200, 40, 255],
                 outline: [8, 9, 11, 255],

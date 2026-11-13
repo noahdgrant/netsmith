@@ -275,3 +275,129 @@ fn a_case_file_the_reader_cannot_read_stops_fab() {
         "{err}"
     );
 }
+
+#[test]
+fn the_glb_holds_the_case_and_render_lights_it() {
+    let dir = project("case-fit-glb", |p| p);
+    let glb = dir.join("cased.glb");
+    let run = netsmith(
+        &dir,
+        &["board3d", "case_fit.nsm", "--glb", glb.to_str().unwrap()],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let doc = netsmith_3d::gltf::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
+    let nodes = doc["nodes"].as_array().unwrap();
+    let node = |name: &str| {
+        nodes
+            .iter()
+            .find(|n| n["name"] == name)
+            .unwrap_or_else(|| panic!("no node `{name}`"))
+    };
+    let lid = &node("case:lid")["extras"]["netsmith"];
+    assert_eq!(lid["kind"], "case");
+    assert_eq!(lid["file"], "case_fit/lid.step");
+    assert_eq!(lid["sha256"].as_str().unwrap().len(), 64);
+    let boss = &node("case:base:boss");
+    assert_eq!(boss["extras"]["netsmith"]["kind"], "case_solid");
+    assert_eq!(boss["extras"]["netsmith"]["closed"], true);
+    let mesh = &doc["meshes"][boss["mesh"].as_u64().unwrap() as usize];
+    let material = mesh["primitives"][0]["material"].as_u64().unwrap() as usize;
+    assert_eq!(doc["materials"][material]["name"], "case");
+    assert_eq!(doc["materials"][material]["alphaMode"], "BLEND");
+    // The root lists the fit's findings, with the solid's node.
+    let findings = node("board")["extras"]["netsmith"]["findings"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let collision = findings
+        .iter()
+        .find(|f| f["code"] == "case_collision")
+        .unwrap();
+    assert_eq!(collision["solid"], "case:lid:lid");
+    assert_eq!(collision["parts"], serde_json::json!(["tall"]));
+    assert_eq!(collision["severity"], "error");
+
+    // `render` draws it, and lights it by `case:<name>`; a name the board has not is refused
+    // with the list.
+    let png = dir.join("lid.png");
+    let run = netsmith(
+        &dir,
+        &[
+            "render",
+            "case_fit.nsm",
+            "--size",
+            "200x120",
+            "--highlight",
+            "case:lid",
+            "--out",
+            png.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(std::fs::read(&png).unwrap().starts_with(b"\x89PNG"));
+    let run = netsmith(
+        &dir,
+        &["render", "case_fit.nsm", "--highlight", "case:nope"],
+    );
+    assert_eq!(run.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        err.contains("the case models: case:base, case:lid"),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_members_case_model_is_its_own_boards_and_not_the_systems() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = TempDir::new("case-fit-system");
+    for name in ["two_boards.nsm", "two_boards.lock.toml"] {
+        std::fs::copy(repo.join("examples").join(name), dir.join(name)).unwrap();
+    }
+    std::fs::copy(fixtures().join("case_fit/lid.step"), dir.join("lid.step")).unwrap();
+    std::fs::write(
+        dir.join("two_boards.physical.nsm"),
+        "import std::pcb::CaseModel\n\nphysical for LedBoard {\n    case {\n        .lid: CaseModel {\n            .file &= \"lid.step\"\n            .z &= 8mm\n        }\n    }\n}\n",
+    )
+    .unwrap();
+    let names = |board: &str| -> Vec<String> {
+        let glb = dir.join("out.glb");
+        let run = netsmith(
+            &dir,
+            &[
+                "board3d",
+                "two_boards.nsm",
+                "--board",
+                board,
+                "--glb",
+                glb.to_str().unwrap(),
+            ],
+        );
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let doc = netsmith_3d::gltf::json_chunk(&std::fs::read(&glb).unwrap()).unwrap();
+        doc["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|n| n["name"].as_str().map(str::to_string))
+            .collect()
+    };
+    // The board alone has its case; the system scene (ADR 0110) draws and checks none.
+    assert!(names("TwoBoards/led").iter().any(|n| n == "case:lid"));
+    assert!(
+        !names("TwoBoards").iter().any(|n| n.contains("case:")),
+        "a case round one board of a system is not the system's"
+    );
+}

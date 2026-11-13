@@ -38,6 +38,9 @@
 //!    overlaps and every report measure the body box.
 //! 7. Per height limit, by name, id `limit:<name>`: a volume over each face it limits, `limit`,
 //!    or `limit-violated` where a part on that face is too tall for it.
+//! 8. Per case model of the scene (ADR 0109), id `case:<name>`: one mesh per solid, its
+//!    triangles as netsmith's STEP reader made them, placed in this frame, material `case`
+//!    (see-through).
 //!
 //! **No two surfaces share a plane where both show.** From the top face down: the silkscreen at
 //! `+SILK_LIFT`, the mask's outer side at 0, the copper's top at the mask's inner side, the
@@ -134,6 +137,9 @@ pub struct Pieces {
     pub copper: Vec<LayerPieces>,
     /// The front's silkscreen, then the back's (none when the copper cannot be drawn).
     pub silk: Vec<SilkPieces>,
+    /// One per case model of the scene's `case.models`, and in each one mesh per solid
+    /// (`case:<name>`, see-through, ADR 0109).
+    pub cases: Vec<Vec<Mesh>>,
 }
 
 /// The solder mask of one face: the mask over laminate (`mask-top` or `mask-bottom`) and over
@@ -205,6 +211,7 @@ impl Pieces {
             out.extend(b.pins);
         }
         out.extend(self.limits.into_iter().flatten().flatten());
+        out.extend(self.cases.into_iter().flatten());
         out
     }
 }
@@ -408,6 +415,12 @@ pub fn pieces(scene: &Scene) -> Pieces {
             .collect();
         out.limits.push(faces);
     }
+    out.cases = scene
+        .case
+        .models
+        .iter()
+        .map(crate::case::PlacedCase::meshes)
+        .collect();
     out
 }
 

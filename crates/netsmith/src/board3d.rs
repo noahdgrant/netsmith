@@ -29,8 +29,16 @@ pub const FRAME: &str = "millimetres, right-handed, z up; the origin is the outl
 /// The scene of a placed board, with where each height came from as `heights.rs` says, and
 /// each part whose STEP model was found on disk ([`crate::models::locate`]) drawn from it (ADR
 /// 0108). A model that cannot be read is a warning in `scene.warnings`, and its part keeps its
-/// generated shape.
+/// generated shape. The board's case models are read, drawn and checked (ADR 0109).
 pub fn scene(built: &Built, board: &Board) -> Scene {
+    // The case models, read and checked where the design has them: drawn see-through, and
+    // their findings are the scene's.
+    crate::case_fit::with_case(&built.design, scene_without_case(built, board))
+}
+
+/// [`scene`] with no case model: a board as a member of a system's scene (ADR 0110), where a
+/// case round one board is neither drawn nor checked (a case round a system is not modelled).
+pub fn scene_without_case(built: &Built, board: &Board) -> Scene {
     let mut scene = Scene::of(
         board,
         &crate::heights::provenance(&built.design, &built.catalog_heights),
@@ -676,7 +684,7 @@ pub fn report(
         }
     }
     let coverage = scene.coverage();
-    let fit = crate::case_fit::check(&built.design, scene);
+    let fit = &scene.case;
     Ok(Report {
         schema: SCHEMA,
         units: "mm",
@@ -724,13 +732,13 @@ pub fn report(
             bottom: tallest(scene.tallest(Side::Back), None),
         },
         warnings: scene.warnings.clone(),
-        case_models: case_models_report(built, &fit),
+        case_models: case_models_report(built, fit),
         case_findings: fit.findings.iter().map(case_finding_report).collect(),
     })
 }
 
 /// Each case model of the design, read or not.
-fn case_models_report(built: &Built, fit: &crate::case_fit::CaseFit) -> Vec<CaseModelReport> {
+fn case_models_report(built: &Built, fit: &netsmith_3d::case::CaseScene) -> Vec<CaseModelReport> {
     use netsmith_3d::case::Why;
     built
         .design
@@ -738,7 +746,7 @@ fn case_models_report(built: &Built, fit: &crate::case_fit::CaseFit) -> Vec<Case
         .case_models
         .iter()
         .map(|c| {
-            let read = fit.cases.iter().find(|p| p.name == c.name);
+            let read = fit.models.iter().find(|p| p.name == c.name);
             let status = match read {
                 Some(_) => "read",
                 None if fit

@@ -138,7 +138,7 @@ function selectFor(row: Row) {
     // `select` told the page of a single part; of several it names none, so the first stands for them.
     if (paths.length > 1) pickShared(partSel(paths[0]), true);
     pcbFocus.value = { box: row.pcb.area, nonce: ++nonce };
-    askFocus3d(row.pcb.parts, row.pcb.keepout);
+    askFocus3d(row.pcb.parts, row.pcb.keepout, row.pcb.caseSolid, row.pcb.point3d);
     return;
   }
   // A power issue is about a rail or a stage: only a rail is a net.

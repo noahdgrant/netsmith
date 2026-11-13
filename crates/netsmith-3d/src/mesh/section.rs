@@ -48,6 +48,8 @@ pub fn of_scene_section(scene: &Scene, axis: Axis, at: f64) -> Vec<Mesh> {
         out.extend(b.pins);
     }
     out.extend(p.limits.into_iter().flatten().flatten());
+    // The case is cut with the rest: the rasterizer keeps the far side of the plane.
+    out.extend(p.cases.into_iter().flatten());
     out
 }
 

@@ -39,14 +39,14 @@ export const colourBy = signal<ColourBy>('provenance');
 /** The height preview: off at every start (it is never stored), at `mm` when on. */
 export const heightPreview = signal<{ on: boolean; mm: number }>({ on: false, mm: PREVIEW_DEFAULT_MM });
 
-/** A finding the problems dock picked, for the 3D view to fly to and light: its parts by designator and the limit it is about. */
-export const focus3d = signal<{ refs: string[]; keepout: string | null; nonce: number } | null>(null);
+/** A finding the problems dock picked, for the 3D view to fly to and light: its parts by designator, the limit it is about, and for a finding of the case fit (ADR 0109) the case solid (`case:<model>:<solid>`) and the point in the scene's frame. */
+export const focus3d = signal<{ refs: string[]; keepout: string | null; caseSolid: string | null; point: [number, number, number] | null; nonce: number } | null>(null);
 
 let asked = 0;
 
 /** Ask the 3D view, when it is open, to fly to a finding and light it (the 2D board is asked its own way). */
-export function askFocus3d(refs: string[], keepout: string | null | undefined) {
-  focus3d.value = { refs, keepout: keepout ?? null, nonce: ++asked };
+export function askFocus3d(refs: string[], keepout: string | null | undefined, caseSolid?: string | null, point?: [number, number, number] | null) {
+  focus3d.value = { refs, keepout: keepout ?? null, caseSolid: caseSolid ?? null, point: point ?? null, nonce: ++asked };
 }
 
 export function toggleXray() {

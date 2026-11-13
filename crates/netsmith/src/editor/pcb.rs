@@ -93,6 +93,9 @@ pub struct Entry {
     /// Those requirements measured on the placed board: made when first asked for. Routing
     /// does not move a part, so it stays.
     constraint_findings: OnceLock<Vec<PcbFinding>>,
+    /// The board's fit in its case models (ADR 0109), measured when it is placed: routing does
+    /// not move a part, so it stays.
+    case_findings: Vec<PcbFinding>,
 }
 
 /// Why a board could not be placed.
@@ -229,7 +232,13 @@ pub fn place_with(
         }
     })?
     .board;
+    let case_findings = if data.built.design.features.case_models.is_empty() {
+        Vec::new()
+    } else {
+        findings::case_findings(&board, &crate::board3d::scene(&data.built, &board).case)
+    };
     Ok(Entry {
+        case_findings,
         board,
         routed: false,
         stopped: false,
@@ -357,6 +366,7 @@ impl Entry {
     /// if it was asked for.
     pub fn findings(&self, name: &str) -> PcbFindings {
         let mut all = findings::placement_findings(&self.board);
+        all.extend(self.case_findings.iter().cloned());
         if let Some(constraints) = &self.constraints {
             all.extend(
                 self.constraint_findings

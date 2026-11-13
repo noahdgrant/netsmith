@@ -180,6 +180,7 @@ pub(crate) fn scene() -> Scene {
         limits: Vec::new(),
         findings: Findings::default(),
         warnings: Vec::new(),
+        case: crate::case::CaseScene::default(),
     }
 }
 

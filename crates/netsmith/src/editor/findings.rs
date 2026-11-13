@@ -81,6 +81,8 @@ fn make(
         parts,
         keepout: None,
         at: None,
+        case_solid: None,
+        point3d: None,
     }
 }
 
@@ -97,6 +99,66 @@ impl Ids {
             format!("{base}#{}", n + 1)
         }
     }
+}
+
+/// The fit of the board in its case models (ADR 0109, the scene's `case`), each finding with the
+/// part's courtyard (or the point) on the sheet, the solid the 3D view lights and the point it
+/// flies to. A collision is an error; the rest are warnings, as the 3D view has them.
+pub fn case_findings(board: &Board, case: &netsmith_3d::case::CaseScene) -> Vec<PcbFinding> {
+    use netsmith_3d::case::{Subject, Weight};
+    let mut ids = Ids(Vec::new());
+    let height = board.outline.height();
+    case.findings
+        .iter()
+        .map(|f| {
+            let refdes = match &f.subject {
+                Subject::Part { refdes, .. } => Some(refdes.clone()),
+                _ => None,
+            };
+            // The scene's frame is y up from the outline's bottom-left corner; the sheet's is
+            // y down from its top-left.
+            let at = Pt::new(
+                board.outline.min.x + f.at[0],
+                board.outline.min.y + height - f.at[1],
+            );
+            let area = refdes
+                .as_deref()
+                .and_then(|r| board.part(r))
+                .map(|p| p.courtyard())
+                .unwrap_or_else(|| Rect::new(at, at));
+            let subject = refdes
+                .clone()
+                .or_else(|| (!f.solid.is_empty()).then(|| f.solid.clone()))
+                .unwrap_or_else(|| f.case.clone());
+            let id = ids.id(format!("case:{}:{subject}", f.kind.word()));
+            let mut finding = make(
+                id,
+                FindingSource::Placement,
+                if f.weight() == Weight::Error {
+                    Severity::Error
+                } else {
+                    Severity::Warning
+                },
+                f.kind.word(),
+                f.to_string(),
+                area,
+                refdes.into_iter().collect(),
+            );
+            finding.case_solid = if !f.solid.is_empty() {
+                Some(format!("case:{}:{}", f.case, f.solid))
+            } else if f.subject == Subject::Model {
+                Some(format!("case:{}", f.case))
+            } else {
+                None
+            };
+            if f.subject != Subject::Model {
+                finding.point3d = Some(f.at);
+                finding.x = at.x;
+                finding.y = at.y;
+            }
+            finding
+        })
+        .collect()
 }
 
 /// The problems with where the parts are, each with the box it is about.

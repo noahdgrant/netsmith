@@ -26,7 +26,8 @@ pub fn scene(system: &SolvedSystem, members: &[(&Built, &Board)]) -> SystemScene
         .map(|(built, board)| MemberInput {
             name: built.board.clone(),
             board,
-            scene: crate::board3d::scene(built, board),
+            // A member's case model belongs to its own board's scene, not the system's.
+            scene: crate::board3d::scene_without_case(built, board),
         })
         .collect();
     let mates = system

@@ -14,6 +14,11 @@ export interface Finding3d {
   parts: string[];
   limit?: string;
   face?: Face;
+  /** A case model's fit (ADR 0109): `error` or `warning`, the model, the solid's node (`case:<model>:<solid>`) and where to look, in mm in the scene's frame. */
+  severity?: string;
+  case?: string;
+  solid?: string;
+  atMm?: [number, number, number];
 }
 
 /** A layer of the board's stackup, from the root's `layers` (top face down; added to schema 1, so
@@ -123,7 +128,23 @@ export interface MemberInfo {
   apart: string | null;
 }
 
-export type Info = BoardInfo | PartInfo3d | LimitInfo | CopperInfo | SystemInfo | MemberInfo | { kind: string };
+/** A case model (`case:<name>`, ADR 0109): its file and the SHA-256 of its bytes. */
+export interface CaseInfo {
+  kind: 'case';
+  name: string;
+  file: string;
+  sha256: string;
+}
+
+/** A solid of a case model (`case:<name>:<solid>`): see-through; one whose shell is not closed got no test of a part wholly inside it. */
+export interface CaseSolidInfo {
+  kind: 'case_solid';
+  case: string;
+  solid: string;
+  closed: boolean;
+}
+
+export type Info = BoardInfo | PartInfo3d | LimitInfo | CopperInfo | SystemInfo | MemberInfo | CaseInfo | CaseSolidInfo | { kind: string };
 
 const num = (v: unknown, or = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : or);
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -157,6 +178,10 @@ export function readInfo(userData: unknown): Info | null {
           parts: strings(f.parts),
           ...(typeof f.limit === 'string' ? { limit: f.limit } : {}),
           ...(f.face === 'top' || f.face === 'bottom' ? { face: f.face } : {}),
+          ...(typeof f.severity === 'string' ? { severity: f.severity } : {}),
+          ...(typeof f.case === 'string' ? { case: f.case } : {}),
+          ...(typeof f.solid === 'string' ? { solid: f.solid } : {}),
+          ...(Array.isArray(f.at_mm) && f.at_mm.length === 3 ? { atMm: f.at_mm.map((v) => num(v)) as [number, number, number] } : {}),
         })),
       };
     }
@@ -224,6 +249,10 @@ export function readInfo(userData: unknown): Info | null {
         placed: n.placed === true,
         apart: typeof n.apart === 'string' ? n.apart : null,
       };
+    case 'case':
+      return { kind: 'case', name: str(n.name), file: str(n.file), sha256: str(n.sha256) };
+    case 'case_solid':
+      return { kind: 'case_solid', case: str(n.case), solid: str(n.solid), closed: n.closed !== false };
     default:
       return { kind: n.kind };
   }
@@ -282,6 +311,10 @@ export function partTip(p: PartInfo3d, findings: Finding3d[], value = ''): { tit
     if (f.code === 'too_tall') lines.push(`Too tall for ${limit}`);
     else if (f.code === 'height_unchecked') lines.push(`Under ${limit}, which is not checked over it`);
     else if (f.code === 'body_overlap') lines.push('Its body overlaps another');
+    else if (f.code === 'case_collision') lines.push(`In the case${f.case ? ` ${f.case}` : ''}: they collide`);
+    else if (f.code === 'case_clearance') lines.push('Nearer the case than its clearance');
+    else if (f.code === 'case_reach') lines.push('A plug may not reach it through the case');
+    else if (f.code === 'case_unchecked') lines.push('Under the case, not checked');
   }
   return { title: `${p.refdes}${value ? ` ${value}` : ''}`, lines };
 }

@@ -41,7 +41,7 @@ pub struct Args {
     /// its true thickness in its own colour, unless `--no-caps` leaves them open.
     #[arg(long, value_name = "AXIS=MM", value_parser = netsmith::render::parse_section)]
     pub section: Option<(netsmith_3d::mesh::Axis, f64)>,
-    /// Light a part, `net:<name>` or `limit:<name>` and dim the rest (comma-separated or repeated).
+    /// Light a part, `net:<name>`, `limit:<name>` or `case:<name>` and dim the rest (comma-separated or repeated).
     ///
     /// A part is named by its designator or its path. An id the board does not have is an error
     /// that lists the ones it has.

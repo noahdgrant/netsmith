@@ -138,6 +138,7 @@ fn scene() -> Scene {
             ..Findings::default()
         },
         warnings: Vec::new(),
+        case: crate::case::CaseScene::default(),
     }
 }
 

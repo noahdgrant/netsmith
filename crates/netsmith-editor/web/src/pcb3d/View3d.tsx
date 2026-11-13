@@ -87,6 +87,9 @@ export function View3d({ board }: { board: string }) {
   const [status, setStatus] = useState<Status>({ state: 'loading' });
   const [parts, setParts] = useState<PartInfo3d[]>([]);
   const [limits, setLimits] = useState<LimitInfo[]>([]);
+  // The case models' solids (ADR 0109): whether the scene has any, and whether they are drawn.
+  const [caseSolids, setCaseSolids] = useState(0);
+  const [caseOn, setCaseOn] = useState(true);
   const [coverage, setCoverage] = useState<{ known: number; total: number } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [preset, setPreset] = useState<Preset | null>('iso');
@@ -191,6 +194,9 @@ export function View3d({ board }: { board: string }) {
       nets: () => v.netList(),
       previewCount: () => v.previewCount(),
       focused: () => v.focusedList(),
+      cases: () => v.caseList(),
+      caseShown: () => v.caseShownState(),
+      focusedSolids: () => v.focusedSolidList(),
       litReport: () => v.litReport(),
       caps: () => v.capList(),
       hidden: () => v.hiddenList(),
@@ -267,6 +273,8 @@ export function View3d({ board }: { board: string }) {
         await v.load(bytes);
         setParts(v.partList());
         setLimits(v.limitList());
+        setCaseSolids(v.caseList().length);
+        setCaseOn(v.caseShownState());
         setCoverage(v.board?.coverage ?? null);
         setCanExplode(v.canExplode());
         setSysInfo(v.system ? { system: v.system, members: v.members } : null);
@@ -369,7 +377,9 @@ export function View3d({ board }: { board: string }) {
     if (!asked || !v || !parts.length || asked.nonce <= focusSeen.current) return;
     focusSeen.current = asked.nonce;
     const t = findingTargets(asked.refs, asked.keepout, v.partList(), v.limitList());
-    v.focusFinding(t.paths, t.limits);
+    v.focusFinding(t.paths, t.limits, asked.caseSolid ? [asked.caseSolid] : [], asked.point);
+    // A finding about the case shows the case.
+    setCaseOn(v.caseShownState());
   }, [asked?.nonce, parts]);
 
   // Asked to show the selection (go to anything, a click on the status chip): frame its parts.
@@ -855,6 +865,23 @@ export function View3d({ board }: { board: string }) {
               <Icon name="layers" size={14} />
               Layers apart
             </button>
+            {caseSolids > 0 && (
+              <button
+                class={`tool ${caseOn ? 'on' : ''}`}
+                aria-pressed={caseOn}
+                data-tip={caseOn ? 'Hide the case model: the board alone' : 'Show the case model round the board, see-through'}
+                data-testid="tool-case"
+                onClick={() => {
+                  const v = viewer.current;
+                  if (!v) return;
+                  v.setCaseShown(!v.caseShownState());
+                  setCaseOn(v.caseShownState());
+                }}
+              >
+                <Icon name="cube" size={14} />
+                Case
+              </button>
+            )}
             <span class="tb-sep" aria-hidden="true" />
             <Popover icon="more" tip="More: draw this view with netsmith render" class="v3-more">
               {() => {
@@ -1015,6 +1042,12 @@ export function View3d({ board }: { board: string }) {
                   <span>
                     <i class="v3-sw v3-sw-over" aria-hidden="true" />
                     Limit exceeded
+                  </span>
+                )}
+                {caseSolids > 0 && caseOn && (
+                  <span data-testid="case-legend">
+                    <i class="v3-sw v3-sw-case" aria-hidden="true" />
+                    Case
                   </span>
                 )}
               </div>

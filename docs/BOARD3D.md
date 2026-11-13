@@ -142,6 +142,8 @@ What is measured is what the height checks measure: each part's body box to its 
 | `case_boss` | A mounting hole whose ring (its body's box) has no case solid within `.boss_gap` (0.5 mm in std) above the top face or below the bottom face, in any case model. | No: a warning. |
 | `case_unchecked` | A part of unknown height with case material over its face; a part of standard height that collides (a part in that package may be lower); a solid whose shell is not closed (no body or board is tested for lying wholly inside it; its surface is still measured); a file that is not there. | With strict constraints (`--constraints error`, `constraints = "error"`). A file there that the reader cannot read stops `fab` always. |
 
+**Drawn.** The `.glb` holds each case model as a group `case:<name>` (`{kind: "case", name, file, sha256, triangles}`) with a node per solid `case:<name>:<solid>` (`{kind: "case_solid", case, solid, closed, triangles}`), material `case` (see-through); the root's `findings` list the fit's findings with `severity`, `case`, `solid` (the node) and `at_mm`. `render` draws the case see-through, `--highlight case:<name>` lights it, and `--section` cuts it with the rest. A case is one board's: a system's scene (`--board System`, the System view) draws and checks no member's case, as a case round a system is not modelled yet. The editor's 3D view draws it see-through with a `Case` toggle; the fit's findings are in the problems dock and the PCB findings, and picking one flies the camera to its part (or its point) and lights the solid.
+
 `fab` runs the check on the placement, before routing, and writes a note per case model read (its file, SHA-256, solids and triangles) and each warning to `fab-notes.txt`. The STEP export leaves the case out (the owner's choice, ADR 0109): the engineer who reads it has the case, and a copy would spread the maker's file.
 
 ## A system's boards together: the system scene
@@ -288,11 +290,13 @@ A node whose shape has no area has no mesh, and is still there.
   `body`, `body-unknown`, `metal`, `mark`, `limit`, `limit-violated` (these two see-through,
   `alphaMode: BLEND`), `finish` (the gold of copper the mask leaves bare), `mask-over-copper`
   (the lighter green of the mask over copper) and `prepreg` (the second laminate tone of a
-  section picture: no mesh of the file uses it). All thirteen are always written, in this order,
-  so a material's index does not move when one is added at the end. Their colours are the
-  rasterizer's light palette in linear light. After them comes one material per colour of a
-  part's STEP model, `model:#rrggbb`, in the order the colours are first used (none when no part
-  is drawn from a model). No glTF extension is used.
+  section picture: no mesh of the file uses it), then `case` (a case model's solids, ADR 0109,
+  see-through, `BLEND`). All fourteen are always written, in this order, so a fixed material's
+  index does not move when one is added at the end. Their colours are the rasterizer's light
+  palette in linear light. After them comes one material per colour of a part's STEP model,
+  `model:#rrggbb`, in the order the colours are first used (none when no part is drawn from a
+  model); a reader finds those by name, as their place follows the fixed ones. No glTF extension
+  is used.
 - **Still schema 1.** The copper groups, the silk nodes, the mask's openings and the two
   materials `finish` and `mask-over-copper` were added; nothing was removed or changed in meaning.
 - **Layers in Z.** From the top: the silkscreen 0.015 mm above the mask, the mask's outside at
@@ -422,7 +426,7 @@ its bytes change, and draws its triangles at 0.01 mm.
 - **Where it shows.** `render`, the `.glb` (and so the editor's 3D view) and the STEP export
   draw it, whatever the part's height. In the `.glb` and `render` it is the model's triangles,
   one mesh per colour, each in the colour the file gives its faces (a material
-  `model:#rrggbb` after the thirteen) or `body` where it gives none; the STEP export copies its
+  `model:#rrggbb` after the fixed materials) or `body` where it gives none; the STEP export copies its
   solids exactly ([below](#the-step-file)). `board3d --json` lists it per part
   (`parts[].model`), and the `.glb` records its SHA-256 in the part's node, so a changed model
   shows in a diff. `fab-notes.txt` names the parts drawn from a model: the `.glb` and `.step` hold
@@ -718,6 +722,7 @@ netsmith render examples/led.nsm                              # LedExample-iso.p
 netsmith render examples/led.nsm --view top --out top.png     # straight down at the top face
 netsmith render examples/led.nsm --highlight J1               # the part lit up, the rest dimmed
 netsmith render lidded.nsm --highlight limit:lid --xray       # a height limit's volume, in x-ray
+netsmith render cased.nsm --highlight case:lid                # a case model, see-through, lit
 netsmith render examples/led.nsm --view front --section x=7   # cut at x = 7 mm
 netsmith render examples/four_layer.nsm --view right --section x=13   # the stackup in the cut
 netsmith render examples/four_layer.nsm --view right --section x=13 --no-caps   # the cut left open
@@ -734,7 +739,7 @@ open it): a picture to look at, with the numbers from `board3d --json` to quote.
 | `--size <w>x<h>` | The picture in pixels; default `1600x1000`. 64 to 8192 a side and at most 16 million pixels, else exit 2. |
 | `--section x=<mm>` (or `y=`, `z=`) | One cut at right angles to an axis, at that position in the scene's frame (below). The side nearer the camera is not drawn, so the cut is seen; for a view along the axis the lower side is kept. The cut faces are filled (caps, below). |
 | `--no-caps` | With `--section`: leave the cut faces open, as the cut of a hollow shell, and draw the board as one block, as without a section. |
-| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>` and `limit:<name>` (a height limit, as `board3d` names it). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets and limits the board has; nothing is written. |
+| `--highlight <id>[,<id>...]` | May be repeated. A part by **designator** (`J1`) or **path** (`power_in`), `net:<name>`, `limit:<name>` (a height limit, as `board3d` names it) and `case:<name>` (a case model, ADR 0109). What is named is drawn in the highlight colour and the rest is dimmed. An id the board does not have is an error (exit 2) that names it and lists the parts, nets and limits the board has; nothing is written. |
 | `--xray` | Every mesh see-through, to look through the board and the bodies. |
 | `--theme light\|dark` | The palette; default `light`. |
 | `--ortho` \| `--perspective` | Parallel projection (the default, so lengths are comparable) or a pinhole with a 30° field of view. |

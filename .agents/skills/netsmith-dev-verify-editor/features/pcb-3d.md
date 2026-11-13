@@ -66,6 +66,15 @@ For a recipe the host carries a handle: `document.querySelector('[data-testid=pc
 3. `Top` (`T`): the plastic fills the header's silkscreen outline and the pins stand on its pads. They do only when the model's y runs up the footprint, as KiCad's does: a wrong sign would put the plastic 2.54 mm off the outline.
 4. The problems dock (`Ctrl+J`) has the warning for the resistor's missing file (`... and there is no such file, so `r1` is drawn with its generated shape ...`); the resistor keeps its shape. A file the reader refuses is a warning too.
 
+## A case model (recipe `pcb-3d-case`, fixture `case_fit`)
+
+`scripts/editor-verify launch --fixture case_fit`, then `drive pcb-3d-case`. The fixture's physical file names two STEP files written by hand (ADR 0109), copied with the folder `case_fit/` beside it into `src/`: a box (a floor, four walls 0.3 mm off the board's edges, a boss under `hole1`) and a lid 8 mm over the board. A 9 mm header (`tall`) goes 1 mm into the lid, a 2x3 header (`bare`) has no height, a header at the right edge (`edge`) stands 0.83 mm from the wall (the box's `.clearance` is 1 mm) with the wall in front of it, and `hole2` has no boss.
+
+1. The case's solids (`case:<model>:<solid>` nodes, material `case`) are drawn see-through in `--pcb3d-case` with their edges; a click or a hover goes through them to the board. The tool `Case` (`[data-testid=tool-case]`, `aria-pressed`, shown only when the scene has a case) hides and shows them, and the legend has `Case` (`case-legend`) while they show.
+2. The problems dock lists the fit (`Placement` stage): the collision is the one error, the clearance, the reach, the unknown height under the lid and the hole with no boss are warnings. A click on the collision flies to the header, selects it and lights the lid in the danger colour (the selection's ink is the part's), and shows the case if it was hidden; a click on the boss flies to the hole (its point, `point3d`), with no solid lit.
+
+The handle has `cases()` (the solids, `{case, solid, closed}`), `caseShown()` and `focusedSolids()` (`case:<model>:<solid>`).
+
 ## Driven by an agent (recipe `pcb-3d-control`, fixture `height_limits`)
 
 `GET /api/view`, `POST /api/view` and `GET /api/view/picture` (docs/BOARD3D.md, "Driving the editor's 3D view") reach the page that had the focus last over its socket: the page must be open. `scripts/editor-verify launch --fixture height_limits`, then `drive pcb-3d-control`; it asks the routes over HTTP from the recipe (as an agent does, `X-Netsmith: 1` on the `POST`), not from the page.
