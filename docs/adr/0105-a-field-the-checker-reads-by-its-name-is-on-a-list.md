@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0123
 ---
 
 # A field the checker reads by its name is on a list

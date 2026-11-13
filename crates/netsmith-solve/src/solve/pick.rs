@@ -24,8 +24,9 @@ impl Solver<'_> {
         // takes longer than the search of a part with a few rows).
         type Kinds = Vec<(String, FieldKind)>;
         type Resolved = Option<Result<crate::catalog::Catalog, String>>;
-        let mut resolved_before: Vec<(String, Kinds, Vec<String>, Vec<Series>, Resolved)> =
-            Vec::new();
+        /// The catalog's name, its columns, the optional ones and the series offered.
+        type Key = (String, Kinds, Vec<String>, Vec<Series>);
+        let mut resolved_before: Vec<(Key, Resolved)> = Vec::new();
         let to_prepare = parts.len() as u64;
         for (n, (path, part)) in parts.into_iter().enumerate() {
             job::checkpoint();
@@ -68,21 +69,19 @@ impl Solver<'_> {
                 .iter()
                 .filter_map(|s| Series::parse(s))
                 .collect();
-            let found = match resolved_before.iter().find(|(name, k, o, s, _)| {
-                *name == catalog.name && *k == kinds && *o == optional && *s == offered
-            }) {
-                Some((_, _, _, _, found)) => found.clone(),
+            let key: Key = (
+                catalog.name.clone(),
+                kinds.clone(),
+                optional.clone(),
+                offered.clone(),
+            );
+            let found = match resolved_before.iter().find(|(k, _)| *k == key) {
+                Some((_, found)) => found.clone(),
                 None => {
                     let found = self
                         .catalogs
                         .resolve(&catalog.name, &kinds, &optional, &offered);
-                    resolved_before.push((
-                        catalog.name.clone(),
-                        kinds.clone(),
-                        optional.clone(),
-                        offered.clone(),
-                        found.clone(),
-                    ));
+                    resolved_before.push((key, found.clone()));
                     found
                 }
             };

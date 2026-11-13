@@ -1739,7 +1739,11 @@ mod tests {
     fn part(refdes: &str, kind: &str, package: Option<&str>) -> Part {
         Part {
             // What the design stage records for a standard connector (ADR 0068).
-            provides: Vec::new(),
+            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                vec!["Connector".to_string()]
+            } else {
+                Vec::new()
+            },
             class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
@@ -1799,7 +1803,7 @@ mod tests {
     /// of a project that does is one whatever its name, and a name that starts like a header's
     /// does not make one.
     #[test]
-    fn a_connector_is_found_by_the_generic_it_provides_not_by_its_name() {
+    fn a_connector_is_found_by_its_class_not_by_its_name() {
         let mut board = board_of(vec![
             part("J1", "Header1x2", None),
             part("R1", "Resistor", Some("0402")),
@@ -1807,7 +1811,7 @@ mod tests {
         assert!(is_connector(&board.parts[0]));
         board.parts[0].kind = "MolexPicoBlade".into();
         assert!(is_connector(&board.parts[0]));
-        board.parts[0].provides.clear();
+        board.parts[0].class = None;
         assert!(!is_connector(&board.parts[0]));
         board.parts[0].kind = "HeaderBuffer".into();
         assert!(!is_connector(&board.parts[0]));

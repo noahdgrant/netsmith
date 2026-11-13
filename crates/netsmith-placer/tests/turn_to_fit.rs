@@ -79,7 +79,11 @@ fn board_of_kind(
     std::fs::write(folder.join("SMALL.kicad_mod"), footprint("SMALL", 4.0, 2.5)).unwrap();
     let part = |refdes: &str, kind: &str, package: &str| Part {
         // What the design stage records for a standard connector (ADR 0068).
-        provides: Vec::new(),
+        provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            vec!["Connector".to_string()]
+        } else {
+            Vec::new()
+        },
         class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
         refdes: refdes.into(),
         kind: kind.into(),

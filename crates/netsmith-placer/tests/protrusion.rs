@@ -89,7 +89,11 @@ fn bound(field: PlaceField, lo: f64, hi: f64) -> PlaceBound {
 fn design(case: &Case) -> Design {
     let part = |refdes: &str, kind: &str, package: &str, path: &str| Part {
         // What the design stage records for a standard connector (ADR 0068).
-        provides: Vec::new(),
+        provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            vec!["Connector".to_string()]
+        } else {
+            Vec::new()
+        },
         class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
         refdes: refdes.into(),
         kind: kind.into(),

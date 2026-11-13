@@ -107,15 +107,17 @@ mod tests {
     }
 
     #[test]
-    fn a_connector_is_a_part_that_provides_the_connector_generic() {
+    fn a_connector_is_a_part_of_the_connector_class() {
         let mut p = part("J1");
         p.kind = "MolexPicoBlade".into();
+        p.class = None;
         assert!(!p.is_connector());
-        p.provides = vec!["Connector".into()];
+        p.class = Some(crate::PartClass::Connector);
         assert!(p.is_connector());
         // A name that starts like a connector's, or letters `J`, do not make one.
         let mut p = part("J2");
         p.kind = "HeaderBuffer".into();
+        p.class = None;
         assert!(!p.is_connector());
     }
 

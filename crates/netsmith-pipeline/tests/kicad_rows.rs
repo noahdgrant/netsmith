@@ -77,7 +77,12 @@ pub(crate) fn part_of(kind: &str, package: &str) -> netsmith_core::Part {
     netsmith_core::Part {
         refdes: "U1".into(),
         kind: kind.into(),
-        provides: Vec::new(),
+        // What the design stage records for a standard connector (ADR 0068).
+        provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+            vec!["Connector".to_string()]
+        } else {
+            Vec::new()
+        },
         class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
         value: String::new(),
         package: Some(package.into()),

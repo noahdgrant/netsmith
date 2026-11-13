@@ -33,7 +33,12 @@ pub fn design(
         parts: parts
             .iter()
             .map(|&(refdes, kind, value, package)| Part {
-                provides: Vec::new(),
+                // What the design stage records for a standard connector (ADR 0068).
+                provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                    vec!["Connector".to_string()]
+                } else {
+                    Vec::new()
+                },
                 class: class_of(kind),
                 refdes: refdes.into(),
                 kind: kind.into(),
@@ -169,7 +174,12 @@ pub fn supplies(modules: usize) -> (Design, Vec<netsmith_view::Group>) {
             (name("D"), "Led", "LED", None),
         ] {
             parts.push(Part {
-                provides: Vec::new(),
+                // What the design stage records for a standard connector (ADR 0068).
+                provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                    vec!["Connector".to_string()]
+                } else {
+                    Vec::new()
+                },
                 class: class_of(kind),
                 refdes,
                 kind: kind.into(),

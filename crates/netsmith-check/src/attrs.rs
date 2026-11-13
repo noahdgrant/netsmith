@@ -134,7 +134,7 @@ fn names(list: &[&str]) -> Vec<String> {
 
 fn did_you_mean(word: &str, options: &[String]) -> String {
     crate::lower::closest(word, options)
-        .map(|n| format!("; did you mean `{n}`?"))
+        .map(|n| format!(" (did you mean `{n}`?)"))
         .unwrap_or_default()
 }
 

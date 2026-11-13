@@ -472,7 +472,7 @@ impl Generic {
                 let unit = dim.unit_symbol().unwrap_or("");
                 let mut parts = vec![format!(
                     "{} {}% ({})",
-                    si(*nominal, unit).trim_end(),
+                    si(*nominal, unit),
                     number(*tolerance_percent),
                     series.name()
                 )];
@@ -567,6 +567,10 @@ fn number(x: f64) -> String {
 
 /// A quantity with an SI prefix: `100 nF`, `2.2 uH`, `7.875 V`.
 fn si(x: f64, unit: &str) -> String {
+    // A plain number (a thermistor's beta) is written as it is, with no prefix.
+    if unit.is_empty() {
+        return number(x);
+    }
     let (scaled, prefix) = scaled(x);
     format!("{} {prefix}{unit}", number(scaled))
 }

@@ -1616,7 +1616,12 @@ mod tests {
     /// A 300 ohm resistor feeding an LED, with nets named the way the design stage names them.
     fn led_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                vec!["Connector".to_string()]
+            } else {
+                Vec::new()
+            },
             class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
@@ -1812,7 +1817,12 @@ mod tests {
     /// regulator's output.
     fn regulator_design() -> Design {
         let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                vec!["Connector".to_string()]
+            } else {
+                Vec::new()
+            },
             class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
@@ -2318,7 +2328,12 @@ mod tests {
     #[test]
     fn a_placed_part_is_on_the_bill_of_materials_as_its_symbol_says_and_a_flag_is_on_neither() {
         let part = |refdes: &str, kind: &str, package: Option<&str>| Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                vec!["Connector".to_string()]
+            } else {
+                Vec::new()
+            },
             class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
@@ -2458,7 +2473,12 @@ mod tests {
 
     fn gadget(refdes: &str, kind: &str) -> Part {
         Part {
-            provides: Vec::new(),
+            // What the design stage records for a standard connector (ADR 0068).
+            provides: if netsmith_testkit::std_class(kind) == Some("connector") {
+                vec!["Connector".to_string()]
+            } else {
+                Vec::new()
+            },
             class: netsmith_testkit::std_class(kind).and_then(netsmith_core::PartClass::from_word),
             refdes: refdes.into(),
             kind: kind.into(),
