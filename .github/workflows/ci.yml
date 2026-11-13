@@ -3,9 +3,10 @@
 #
 # A pull request runs only the jobs its change needs, and `test` and `kicad` run only the tests of
 # the crates it changes and of their dependents (`crates`, below). The `changes` job lists the paths the pull
-# request changes and scripts/ci-changes turns them into five flags, `rust`, `kicad`, `recipes`,
-# `no_kicad` and `locks` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
-# need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`: a
+# request changes and scripts/ci-changes turns them into six flags, `rust`, `kicad`, `recipes`,
+# `no_kicad`, `locks` and `designs` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
+# need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`,
+# `designs` needs `designs`: a
 # change to prose only runs `fmt`. A
 # push to main, a change to the workflows or to scripts/, and a path the script does not know run
 # everything. A change to a test file of a crate turns `kicad` on only if the file can ask for
@@ -26,7 +27,7 @@
 # the other), and `kicad` is three slices of the same kind (a slice installs KiCad 9, about
 # twenty seconds); scripts/ci-test-slices proves that the slices of each run every test once.
 # The workspace is compiled once, by the `build` job (issue #510): the slices run its archive of
-# the tests, and `no-kicad`, `locks` and `recipes` its `netsmith` binary, so a pull request
+# the tests, and `no-kicad`, `locks`, `designs` and `recipes` its `netsmith` binary, so a pull request
 # compiles once and not once a job, and its jobs take fewer of the account's runners.
 #
 # KiCad 9 and Chromium's system libraries come from a cache of the .deb files, not from Ubuntu's
@@ -56,6 +57,11 @@
 # which fails when an example's committed pick lock (`<stem>.lock.toml`, ADR 0100) is stale or
 # missing, that is, when a change to a catalog, `std/` or the solver would move a pick. The fix is
 # `netsmith lock --update` in the example and a review of the diff of the lock.
+#
+# The `designs` job runs scripts/check-example-designs.sh: it builds every example with
+# `--emit-design` and fails when an example's committed design file (`<stem>.design.json`, issue
+# #609, what the design stage hands the placer) is stale or missing. The fix is
+# `scripts/check-example-designs.sh --update` and a review of the diff of the design files.
 #
 # The Rust cache (Swatinem/rust-cache, in `build` and `clippy`) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
@@ -96,6 +102,7 @@ jobs:
       recipes: ${{ steps.flags.outputs.recipes }}
       no_kicad: ${{ steps.flags.outputs.no_kicad }}
       locks: ${{ steps.flags.outputs.locks }}
+      designs: ${{ steps.flags.outputs.designs }}
       crates: ${{ steps.flags.outputs.crates }}
     steps:
       - uses: actions/checkout@v4
@@ -115,7 +122,7 @@ jobs:
         # being hidden by `tee` (no outputs would skip every job, and ci-ok accepts a skip).
         shell: bash
         run: |
-          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\ncrates=\n'; }
+          everything() { printf 'rust=true\nkicad=true\nrecipes=true\nno_kicad=true\nlocks=true\ndesigns=true\ncrates=\n'; }
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
             echo "not a pull request: everything runs"
             everything >> "$GITHUB_OUTPUT"
@@ -161,7 +168,7 @@ jobs:
   # The one compile of the tests (issue #510): `cargo nextest archive` builds every test binary
   # of the workspace into tests.tar.zst, and the `netsmith` binary (with KiCad's lookup example,
   # for the `kicad` job's log) goes into bin.tar. The `test` and `kicad` slices run the archive and
-  # `no-kicad`, `locks` and `recipes` run the binary; none of them compiles. The proofs that need
+  # `no-kicad`, `locks`, `designs` and `recipes` run the binary; none of them compiles. The proofs that need
   # the build run here: the doc tests (nextest runs none; the workspace has none today), that the
   # slices of `test` and of `kicad` each run their tests exactly once (scripts/ci-test-slices, with
   # the slice counts of those two jobs' matrices: change both together), and the list of the tests
@@ -171,7 +178,7 @@ jobs:
     if: >-
       needs.changes.outputs.rust == 'true' || needs.changes.outputs.kicad == 'true' ||
       needs.changes.outputs.no_kicad == 'true' || needs.changes.outputs.locks == 'true' ||
-      needs.changes.outputs.recipes == 'true'
+      needs.changes.outputs.designs == 'true' || needs.changes.outputs.recipes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -473,6 +480,30 @@ jobs:
       - name: Every example's pick lock is current
         run: scripts/check-example-locks.sh target/debug/netsmith
 
+  # The examples' design files (issue #609): scripts/check-example-designs.sh builds every example
+  # with `--emit-design`, with no KiCad, and fails when a committed `<stem>.design.json` is stale or
+  # missing. It runs the binary of the `build` job, as `locks` does.
+  designs:
+    needs: [changes, build]
+    if: needs.changes.outputs.designs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The script's own checks, over a fake examples folder with a stub binary (bash only, quick).
+      - name: Test the script
+        run: scripts/check-example-designs-test
+
+      # The netsmith binary the `build` job built, at target/debug/netsmith.
+      - uses: actions/download-artifact@v4
+        with:
+          name: bin
+      - run: tar -xf bin.tar
+
+      - name: Every example's design file is current
+        run: scripts/check-example-designs.sh target/debug/netsmith
+
   # The editor's browser recipes (.agents/skills/netsmith-dev-verify-editor/SKILL.md). The page is
   # the committed bundle, so the binary is a plain debug build and Node is only for the driver.
   # A slice runs its share of the recipes, session by session, and lists each one that failed;
@@ -593,7 +624,7 @@ jobs:
   # that does not run it.
   ci-ok:
     if: always() && github.head_ref != 'release-please--branches--main'
-    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, recipes]
+    needs: [changes, fmt, clippy, build, test, kicad, no-kicad, locks, designs, recipes]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

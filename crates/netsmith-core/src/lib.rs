@@ -3,13 +3,14 @@
 //! This is the seam between a future language front-end and the exporters.
 //! It deliberately knows nothing about KiCad.
 
+pub mod design_file;
 pub mod job;
 pub mod png;
 pub mod timings;
 
 use std::collections::HashSet;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Part {
     pub refdes: String,
     /// The library definition it was made from: `Resistor`, `Led`. An exporter decides
@@ -49,7 +50,8 @@ impl Part {
 }
 
 /// What a pin is electrically. It is the datasheet's word for the pin, not a CAD tool's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PinKind {
     Power,
     Input,
@@ -81,7 +83,8 @@ impl PinKind {
 /// Which way a power pin passes power, as the solved design says (ADR 0016: the sign of the
 /// current of the rail on the pin, which a pin table cannot state because it is the board's
 /// loads that decide it).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PowerFlow {
     /// The pin takes power from the net: the current of its rail is drawn, at least 0 A and
     /// above 0 A at most.
@@ -103,7 +106,7 @@ impl PowerFlow {
 
 /// One pin of a part, as its pin table gives it. Which nets the pads are on is in
 /// [`Design::nets`]; a pad that is on no net is a pad of a pin the board leaves open.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PartPin {
     /// Where the part declares it: `sense`, or `vout.pos` for a pin of an interface.
     pub name: String,
@@ -132,14 +135,14 @@ impl PartPin {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PinRef {
     pub refdes: String,
     /// Pin number as the symbol names it (`"1"`, `"A5"`).
     pub pin: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Net {
     pub name: String,
     pub pins: Vec<PinRef>,
@@ -279,6 +282,7 @@ pub struct Stackup {
     pub layers: u32,
     /// The finished board's thickness in mm: the range the board still allows. It is one
     /// value once the board has chosen.
+    #[serde(with = "design_file::range")]
     pub thickness: (f64, f64),
     /// Finished outer copper, in ounces per square foot.
     pub copper_weight: f64,
@@ -344,9 +348,11 @@ impl Stackup {
 /// The board edge a design asks for: a rounded rectangle whose origin is its top left
 /// corner. A size is the range the board allows, in mm: `(60.0, 60.0)` is exactly 60 mm,
 /// `(0.0, 60.0)` at most 60 mm, and no member at all is `(0.0, f64::INFINITY)`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Outline {
+    #[serde(with = "design_file::range")]
     pub width: (f64, f64),
+    #[serde(with = "design_file::range")]
     pub height: (f64, f64),
     /// The radius of the four corners, 0 for square ones.
     pub corner_radius: f64,
@@ -359,7 +365,7 @@ pub struct Outline {
 
 /// A corner of a polygon outline and the edge from it to the next corner (the last's edge
 /// runs to the first).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OutlineVertex {
     pub at: (f64, f64),
     /// A point the edge to the next corner passes through when that edge is an arc (the
@@ -368,7 +374,7 @@ pub struct OutlineVertex {
 }
 
 /// A rectangular hole cut through the board.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Cutout {
     /// The member's path in the board.
     pub name: String,
@@ -380,7 +386,7 @@ pub struct Cutout {
 }
 
 /// An outer copper layer poured on a net.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Pour {
     /// `top` or `bottom`.
     pub layer: String,
@@ -390,7 +396,7 @@ pub struct Pour {
 }
 
 /// An area where tracks, vias, copper or parts are not allowed.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Keepout {
     /// The member's path: `antenna_clear`, or `radio.keepout` for one carried by a part.
     pub name: String,
@@ -416,7 +422,7 @@ pub struct Keepout {
 /// limits"). A part the design does not state a height for is not here: its
 /// height is unknown, and it is reported as such where a limit applies to it, never taken
 /// as zero.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PartHeight {
     /// The part's path in the design.
     pub path: String,
@@ -429,7 +435,7 @@ pub struct PartHeight {
 /// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no
 /// protrusion for is not here: its protrusion is unknown, which is not zero, and its pads
 /// stay an obstacle for a part on that face.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PinProtrusion {
     /// The part's path in the design.
     pub path: String,
@@ -443,7 +449,7 @@ pub struct PinProtrusion {
 /// The STEP model a part is drawn from in place of its generated shape (`.model`, ADR 0108).
 /// It is drawn, never measured: the part's height does not come from it. A part the design
 /// names no model for is not here.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StepModel {
     /// The part's path in the design.
     pub path: String,
@@ -462,14 +468,16 @@ pub struct StepModel {
     pub stated_in: Vec<String>,
     /// The file on disk, inside the project. Filled by the caller that knows where the files
     /// that state it are; `None` otherwise, and when the file is not there, so that the part
-    /// is drawn with its generated shape.
+    /// is drawn with its generated shape. A design file leaves it out: it is a path on this
+    /// machine, and a reader finds the file again (`netsmith::models::locate`).
+    #[serde(skip)]
     pub resolved: Option<std::path::PathBuf>,
 }
 
 /// A STEP file of the board's case that the board is drawn in and checked against (a
 /// `CaseModel` of the physical file's `case { }` section, ADR 0109). It is a drawing and a
 /// check, never a height, an outline or a hole.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CaseModel {
     /// The member's name in the board (`shell`).
     pub name: String,
@@ -492,12 +500,14 @@ pub struct CaseModel {
     /// empty otherwise.
     pub stated_in: Vec<String>,
     /// The file on disk, inside the project. Filled by the caller that knows where the files
-    /// are; `None` otherwise, and when the file is not there, so that the fit is not checked.
+    /// are; `None` otherwise, and when the file is not there, so that the fit is not checked. A
+    /// design file leaves it out, as it does [`StepModel::resolved`].
+    #[serde(skip)]
     pub resolved: Option<std::path::PathBuf>,
 }
 
 /// The figures of a case model's fit check (ADR 0109), in mm.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CaseFigures {
     pub clearance: f64,
     pub reach: f64,
@@ -516,7 +526,7 @@ impl Default for CaseFigures {
 }
 
 /// A line of silkscreen text: a `Label` part. The part's value is the text.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Label {
     /// The part's path in the design.
     pub path: String,
@@ -531,7 +541,10 @@ pub struct Label {
 /// and y downward, in millimetres; `x` and `y` are the centre of the part's body box and
 /// `left`, `right`, `top` and `bottom` its edges, after the part's turn. `Rotation` is in
 /// degrees, counterclockwise on screen, as the layout file has it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum PlaceField {
     X,
     Y,
@@ -582,10 +595,12 @@ impl PlaceField {
 
 /// One requirement on a part's or module's place: the range its field may take. A bound
 /// with one side open has an infinite `lo` or `hi`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PlaceBound {
     pub field: PlaceField,
+    #[serde(with = "design_file::end")]
     pub lo: f64,
+    #[serde(with = "design_file::end")]
     pub hi: f64,
     /// Where the design states it: `widget.nsm:14`, or several places, separated by commas.
     /// Empty until the caller that knows the source files fills it.
@@ -594,7 +609,7 @@ pub struct PlaceBound {
 
 /// What the design requires of where a part or a module goes on the board (ADR 0045): the
 /// narrowed fields of its `.place`. A field the design leaves alone is not here.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Placement {
     /// The path of the part or module in the design: `usb`, `sensor.header`.
     pub path: String,
@@ -615,7 +630,7 @@ impl Placement {
 }
 
 /// One end of an [`Offset`]: a field of the `.place` of a part, by the part's path.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OffsetEnd {
     /// The path of the part in the design: `radio.row_a`.
     pub path: String,
@@ -628,11 +643,13 @@ pub struct OffsetEnd {
 /// 17.5mm +/- 0.05mm` is `b` = `radio.row_b`, `a` = `radio.row_a`, a window of 17.45 to 17.55
 /// mm. Both ends are measured along the same axis, in millimetres, in the frame of the
 /// layout file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Offset {
     pub a: OffsetEnd,
     pub b: OffsetEnd,
+    #[serde(with = "design_file::end")]
     pub lo: f64,
+    #[serde(with = "design_file::end")]
     pub hi: f64,
     /// Where the design states it: `widget.physical.nsm:14`. Empty until the caller that
     /// knows the source files fills it.
@@ -664,7 +681,7 @@ pub struct NetCurrent {
 
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Features {
     /// The narrowest track of the nets that have a rail with a `min_track`, in mm, by net
     /// name. A net takes the largest bottom of the ranges of the rails with a pin on it, so a
@@ -707,7 +724,7 @@ pub struct Features {
 }
 
 /// One member of an interface instance and the net it is on: `tx` on `UART0_TX`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceMember {
     /// The member's name in its interface: `tx`.
     pub name: String,
@@ -721,7 +738,7 @@ pub struct InterfaceMember {
 /// Only the pins that are directly in the interface are members (a rail inside a `Usb2` is
 /// an interface instance of its own), only members that are on a net of the design are
 /// listed, and an instance with none is left out.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceInstance {
     /// Where the instance is in the design, the path of its instance from the board:
     /// `mcu.uart0`. It does not change when reference designators are renumbered.
@@ -733,7 +750,10 @@ pub struct InterfaceInstance {
 }
 
 /// What a [`Note`] is made of.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum NoteKind {
     /// The text of the `///` (or `//!`) doc comments of a declaration or a definition.
     Doc,
@@ -742,7 +762,7 @@ pub enum NoteKind {
 }
 
 /// Where in the source a [`Note`] is: a file as it was loaded and a 1-based line.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoteAt {
     pub file: String,
     pub line: usize,
@@ -752,7 +772,7 @@ pub struct NoteAt {
 /// of a board, a module, a part or an interface, and the `==` relations of the design. Existing
 /// source information only: nothing here is a new construct of the language, and an ordinary
 /// `//` comment is never a note. A schematic draws a note as a framed text box.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Note {
     /// The path of the instance the note belongs to, from the board like the paths of
     /// [`InterfaceInstance`]: the part, module or interface a doc comment is on, or the board
@@ -774,7 +794,7 @@ pub struct Note {
     pub result: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Design {
     pub name: String,
     pub parts: Vec<Part>,
@@ -800,7 +820,7 @@ pub struct Design {
 /// A module instance of the design and the nets its own members are on: the pins and the
 /// pins of the interfaces it declares itself (`.vin: Rail` gives `vin.pos` and `vin.neg`), not
 /// those of its parts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleInstance {
     /// Where the instance is in the design, the path of its instance from the board:
     /// `stage`, or `power.ldo` for a module inside a module.

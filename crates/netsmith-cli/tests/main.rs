@@ -14,6 +14,7 @@ mod constraints;
 mod dxf;
 mod easyduino_parity;
 mod editor_verify;
+mod emit_design;
 mod guidelines;
 mod lock_refresh;
 mod orbit_parity;

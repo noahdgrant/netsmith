@@ -32,6 +32,7 @@ pub fn run(args: Args) -> ExitCode {
         format: args.output.format.into(),
         notes: args.output.notes.into(),
         write: false,
+        emit_design: None,
     })
 }
 

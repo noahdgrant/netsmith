@@ -1,0 +1,269 @@
+[
+  {
+    "name": "LedExample",
+    "parts": [
+      {
+        "refdes": "D1",
+        "kind": "Led",
+        "provides": [],
+        "value": "KT-0603R",
+        "package": "0603",
+        "path": "led",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J1",
+        "kind": "Header1x2",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x02",
+        "package": null,
+        "path": "power_in",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R1",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "330",
+        "package": "0402",
+        "path": "r1",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "name": "GND",
+        "pins": [
+          {
+            "refdes": "D1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "VCC",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "1"
+          },
+          {
+            "refdes": "R1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-led.anode",
+        "pins": [
+          {
+            "refdes": "D1",
+            "pin": "2"
+          },
+          {
+            "refdes": "R1",
+            "pin": "2"
+          }
+        ]
+      }
+    ],
+    "process": {
+      "name": "TwoLayer",
+      "fabricator": "JLCPCB",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "min_track": 0.1,
+      "min_clearance": 0.1,
+      "min_drill": 0.15,
+      "min_via_diameter": 0.25,
+      "min_annular_ring": 0.18,
+      "min_via_ring": 0.05,
+      "min_hole_clearance": 0.2,
+      "min_plated_hole_clearance": 0.28,
+      "min_pad_to_pad": 0.15,
+      "min_mask_to_track": 0.09,
+      "min_npth_drill": 0.5,
+      "min_plated_slot": 0.5,
+      "min_npth_slot": 1.0,
+      "via_drill": 0.2,
+      "via_diameter": 0.45,
+      "min_hole_to_hole": 0.45,
+      "min_via_hole_to_hole": 0.2,
+      "min_edge_clearance": 0.2,
+      "min_silk_width": 0.15,
+      "min_text_height": 1.0,
+      "min_silk_to_pad": 0.15,
+      "min_mask_bridge": 0.13,
+      "via_in_pad": 0.55,
+      "max_temperature_rise": null,
+      "track_width_tolerance": 0.2,
+      "hole_plating": 0.018,
+      "stackup": {
+        "layers": 2,
+        "thickness": [
+          1.6,
+          1.6
+        ],
+        "copper_weight": 1.0,
+        "inner": null
+      }
+    },
+    "features": {
+      "net_widths": [],
+      "net_currents": [
+        {
+          "net": "GND",
+          "current": 0.010560146923783289,
+          "least_width": 0.000705696536003378,
+          "vias": 1
+        },
+        {
+          "net": "VCC",
+          "current": 0.010560146923783289,
+          "least_width": 0.000705696536003378,
+          "vias": 1
+        },
+        {
+          "net": "net-led.anode",
+          "current": 0.010560146935343436,
+          "least_width": 0.0007056965370689266,
+          "vias": 1
+        }
+      ],
+      "outline": null,
+      "cutouts": [],
+      "pours": [],
+      "keepouts": [],
+      "heights": [
+        {
+          "path": "power_in",
+          "height": 8.9
+        }
+      ],
+      "protrusions": [],
+      "models": [],
+      "case_models": [],
+      "hand_fitted": [
+        "power_in"
+      ],
+      "labels": [],
+      "constraints": [],
+      "offsets": [],
+      "line_texts": {}
+    },
+    "interfaces": [
+      {
+        "path": "supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VCC"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "path": "power_in",
+        "kind": "doc",
+        "text": "The supply comes in through this header.",
+        "at": {
+          "file": "led.nsm",
+          "line": 25
+        },
+        "anchors": [
+          "power_in"
+        ],
+        "result": null
+      },
+      {
+        "path": "",
+        "kind": "relation",
+        "text": ".led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance",
+        "at": {
+          "file": "led.nsm",
+          "line": 29
+        },
+        "anchors": [
+          "led",
+          "r1"
+        ],
+        "result": "led.current = 7.05mA..10.57mA"
+      }
+    ],
+    "modules": []
+  }
+]

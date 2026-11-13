@@ -1,0 +1,3345 @@
+[
+  {
+    "name": "EnclosureSensor",
+    "parts": [
+      {
+        "refdes": "AE1",
+        "kind": "ChipAntenna",
+        "provides": [],
+        "value": "ChipAntenna",
+        "package": "2450AT43F0100",
+        "path": "antenna",
+        "pins": [
+          {
+            "name": "feed",
+            "datasheet": "FEED",
+            "kind": "input",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "trace",
+            "datasheet": "TRACE",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "BT1",
+        "kind": "FlatCell",
+        "provides": [],
+        "value": "FlatCell",
+        "package": null,
+        "path": "cell",
+        "pins": [
+          {
+            "name": "pos",
+            "datasheet": "POS",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "neg",
+            "datasheet": "NEG",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J5",
+        "kind": "Coax",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Coax",
+        "package": null,
+        "path": "coax",
+        "pins": [
+          {
+            "name": "signal",
+            "datasheet": "SIGNAL",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "shield",
+            "datasheet": "SHIELD",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "FID1",
+        "kind": "Fiducial",
+        "provides": [],
+        "value": "Fiducial",
+        "package": null,
+        "path": "fiducial1",
+        "pins": []
+      },
+      {
+        "refdes": "FID2",
+        "kind": "Fiducial",
+        "provides": [],
+        "value": "Fiducial",
+        "package": null,
+        "path": "fiducial2",
+        "pins": []
+      },
+      {
+        "refdes": "H1",
+        "kind": "MountingHole",
+        "provides": [],
+        "value": "MountingHole",
+        "package": null,
+        "path": "hole1",
+        "pins": []
+      },
+      {
+        "refdes": "H2",
+        "kind": "MountingHole",
+        "provides": [],
+        "value": "MountingHole",
+        "package": null,
+        "path": "hole2",
+        "pins": []
+      },
+      {
+        "refdes": "H3",
+        "kind": "MountingHole",
+        "provides": [],
+        "value": "MountingHole",
+        "package": null,
+        "path": "hole3",
+        "pins": []
+      },
+      {
+        "refdes": "H4",
+        "kind": "MountingHole",
+        "provides": [],
+        "value": "MountingHole",
+        "package": null,
+        "path": "hole4",
+        "pins": []
+      },
+      {
+        "refdes": "C1",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "10u",
+        "package": "0402",
+        "path": "ldo.input_cap",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C2",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "22u",
+        "package": "0603",
+        "path": "ldo.output_cap",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U1",
+        "kind": "LinearRegulator",
+        "provides": [],
+        "value": "XC6206P332MR-G",
+        "package": "SOT-23",
+        "path": "ldo.regulator",
+        "pins": [
+          {
+            "name": "vin.pos",
+            "datasheet": "IN",
+            "kind": "power",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vin.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vout.pos",
+            "datasheet": "OUT",
+            "kind": "power",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D1",
+        "kind": "Led",
+        "provides": [],
+        "value": "XL-1608UGC-04",
+        "package": "0603",
+        "path": "lights.led_a",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D2",
+        "kind": "Led",
+        "provides": [],
+        "value": "XL-1608UGC-04",
+        "package": "0603",
+        "path": "lights.led_b",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "D3",
+        "kind": "Led",
+        "provides": [],
+        "value": "XL-1608UGC-04",
+        "package": "0603",
+        "path": "lights.led_c",
+        "pins": [
+          {
+            "name": "anode",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cathode",
+            "datasheet": "K",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R6",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "330",
+        "package": "0402",
+        "path": "lights.r_a",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R7",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "330",
+        "package": "0402",
+        "path": "lights.r_b",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R8",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "330",
+        "package": "0402",
+        "path": "lights.r_c",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "U2",
+        "kind": "Memory",
+        "provides": [],
+        "value": "Memory",
+        "package": "SOIC-8",
+        "path": "mcu",
+        "pins": [
+          {
+            "name": "a0",
+            "datasheet": "A0",
+            "kind": "input",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "a1",
+            "datasheet": "A1",
+            "kind": "input",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "a2",
+            "datasheet": "A2",
+            "kind": "input",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vcc.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "i2c.sda",
+            "datasheet": "SDA",
+            "kind": "bidirectional",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "i2c.scl",
+            "datasheet": "SCL",
+            "kind": "input",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "wp",
+            "datasheet": "WP",
+            "kind": "input",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vcc.pos",
+            "datasheet": "VCC",
+            "kind": "power",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C3",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "mcu_bypass",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP1",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp1",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP2",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp2",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP3",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp3",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP4",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp4",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP5",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp5",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP6",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp6",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP7",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp7",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP8",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp8",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP9",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp9",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP10",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp10",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP11",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp11",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP12",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "pads.tp12",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J2",
+        "kind": "SensorPlug16",
+        "provides": [],
+        "value": "SensorPlug16",
+        "package": "2.54mm-horizontal",
+        "path": "plug",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p3",
+            "datasheet": "P3",
+            "kind": "passive",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p4",
+            "datasheet": "P4",
+            "kind": "passive",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p5",
+            "datasheet": "P5",
+            "kind": "passive",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p6",
+            "datasheet": "P6",
+            "kind": "passive",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p7",
+            "datasheet": "P7",
+            "kind": "passive",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p8",
+            "datasheet": "P8",
+            "kind": "passive",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p9",
+            "datasheet": "P9",
+            "kind": "passive",
+            "pads": [
+              "9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p10",
+            "datasheet": "P10",
+            "kind": "passive",
+            "pads": [
+              "10"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p11",
+            "datasheet": "P11",
+            "kind": "passive",
+            "pads": [
+              "11"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p12",
+            "datasheet": "P12",
+            "kind": "passive",
+            "pads": [
+              "12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p13",
+            "datasheet": "P13",
+            "kind": "passive",
+            "pads": [
+              "13"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p14",
+            "datasheet": "P14",
+            "kind": "passive",
+            "pads": [
+              "14"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p15",
+            "datasheet": "P15",
+            "kind": "passive",
+            "pads": [
+              "15"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p16",
+            "datasheet": "P16",
+            "kind": "passive",
+            "pads": [
+              "16"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R4",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "4.7k",
+        "package": "0402",
+        "path": "pullups.scl_pullup",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R3",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "4.7k",
+        "package": "0402",
+        "path": "pullups.sda_pullup",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "C4",
+        "kind": "Capacitor",
+        "provides": [],
+        "value": "100n",
+        "package": "0402",
+        "path": "radio.bypass",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J3",
+        "kind": "Socket1x10",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x10_Socket",
+        "package": null,
+        "path": "radio.row_a",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p3",
+            "datasheet": "P3",
+            "kind": "passive",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p4",
+            "datasheet": "P4",
+            "kind": "passive",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p5",
+            "datasheet": "P5",
+            "kind": "passive",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p6",
+            "datasheet": "P6",
+            "kind": "passive",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p7",
+            "datasheet": "P7",
+            "kind": "passive",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p8",
+            "datasheet": "P8",
+            "kind": "passive",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p9",
+            "datasheet": "P9",
+            "kind": "passive",
+            "pads": [
+              "9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p10",
+            "datasheet": "P10",
+            "kind": "passive",
+            "pads": [
+              "10"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J4",
+        "kind": "Socket1x10",
+        "provides": [
+          "Connector"
+        ],
+        "value": "Conn_01x10_Socket",
+        "package": null,
+        "path": "radio.row_b",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "P1",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p2",
+            "datasheet": "P2",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p3",
+            "datasheet": "P3",
+            "kind": "passive",
+            "pads": [
+              "3"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p4",
+            "datasheet": "P4",
+            "kind": "passive",
+            "pads": [
+              "4"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p5",
+            "datasheet": "P5",
+            "kind": "passive",
+            "pads": [
+              "5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p6",
+            "datasheet": "P6",
+            "kind": "passive",
+            "pads": [
+              "6"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p7",
+            "datasheet": "P7",
+            "kind": "passive",
+            "pads": [
+              "7"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p8",
+            "datasheet": "P8",
+            "kind": "passive",
+            "pads": [
+              "8"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p9",
+            "datasheet": "P9",
+            "kind": "passive",
+            "pads": [
+              "9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "p10",
+            "datasheet": "P10",
+            "kind": "passive",
+            "pads": [
+              "10"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R1",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0603",
+        "path": "rd1",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R2",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "5.1k",
+        "package": "0603",
+        "path": "rd2",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "J1",
+        "kind": "UsbCPower",
+        "provides": [
+          "Connector"
+        ],
+        "value": "UsbCPower",
+        "package": null,
+        "path": "usb",
+        "pins": [
+          {
+            "name": "vbus.pos",
+            "datasheet": "VBUS",
+            "kind": "power",
+            "pads": [
+              "A9",
+              "B9"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "vbus.neg",
+            "datasheet": "GND",
+            "kind": "power",
+            "pads": [
+              "A12",
+              "B12"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cc1",
+            "datasheet": "CC1",
+            "kind": "passive",
+            "pads": [
+              "A5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "cc2",
+            "datasheet": "CC2",
+            "kind": "passive",
+            "pads": [
+              "B5"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "shell",
+            "datasheet": "SHELL",
+            "kind": "passive",
+            "pads": [
+              "S1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R5",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "10k",
+        "package": "0603",
+        "path": "wp_pullup",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "SW1",
+        "kind": "Switch",
+        "provides": [],
+        "value": "Switch",
+        "package": null,
+        "path": "wp_switch",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "name": "3V3",
+        "pins": [
+          {
+            "refdes": "BT1",
+            "pin": "1"
+          },
+          {
+            "refdes": "C2",
+            "pin": "1"
+          },
+          {
+            "refdes": "C3",
+            "pin": "1"
+          },
+          {
+            "refdes": "C4",
+            "pin": "1"
+          },
+          {
+            "refdes": "J2",
+            "pin": "2"
+          },
+          {
+            "refdes": "J3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J4",
+            "pin": "1"
+          },
+          {
+            "refdes": "R3",
+            "pin": "1"
+          },
+          {
+            "refdes": "R4",
+            "pin": "1"
+          },
+          {
+            "refdes": "R5",
+            "pin": "1"
+          },
+          {
+            "refdes": "R6",
+            "pin": "1"
+          },
+          {
+            "refdes": "R7",
+            "pin": "1"
+          },
+          {
+            "refdes": "R8",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "8"
+          }
+        ]
+      },
+      {
+        "name": "GND",
+        "pins": [
+          {
+            "refdes": "BT1",
+            "pin": "2"
+          },
+          {
+            "refdes": "C1",
+            "pin": "2"
+          },
+          {
+            "refdes": "C2",
+            "pin": "2"
+          },
+          {
+            "refdes": "C3",
+            "pin": "2"
+          },
+          {
+            "refdes": "C4",
+            "pin": "2"
+          },
+          {
+            "refdes": "D1",
+            "pin": "1"
+          },
+          {
+            "refdes": "D2",
+            "pin": "1"
+          },
+          {
+            "refdes": "D3",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "A12"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B12"
+          },
+          {
+            "refdes": "J2",
+            "pin": "1"
+          },
+          {
+            "refdes": "J3",
+            "pin": "2"
+          },
+          {
+            "refdes": "J4",
+            "pin": "2"
+          },
+          {
+            "refdes": "J5",
+            "pin": "2"
+          },
+          {
+            "refdes": "R1",
+            "pin": "2"
+          },
+          {
+            "refdes": "R2",
+            "pin": "2"
+          },
+          {
+            "refdes": "SW1",
+            "pin": "2"
+          },
+          {
+            "refdes": "U1",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "3"
+          },
+          {
+            "refdes": "U2",
+            "pin": "4"
+          }
+        ]
+      },
+      {
+        "name": "VBUS",
+        "pins": [
+          {
+            "refdes": "C1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J1",
+            "pin": "A9"
+          },
+          {
+            "refdes": "J1",
+            "pin": "B9"
+          },
+          {
+            "refdes": "U1",
+            "pin": "3"
+          }
+        ]
+      },
+      {
+        "name": "net-antenna.feed",
+        "pins": [
+          {
+            "refdes": "AE1",
+            "pin": "1"
+          },
+          {
+            "refdes": "J5",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-lights.led_a.anode",
+        "pins": [
+          {
+            "refdes": "D1",
+            "pin": "2"
+          },
+          {
+            "refdes": "R6",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-lights.led_b.anode",
+        "pins": [
+          {
+            "refdes": "D2",
+            "pin": "2"
+          },
+          {
+            "refdes": "R7",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-lights.led_c.anode",
+        "pins": [
+          {
+            "refdes": "D3",
+            "pin": "2"
+          },
+          {
+            "refdes": "R8",
+            "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-mcu.i2c.scl",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "4"
+          },
+          {
+            "refdes": "R4",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "6"
+          }
+        ]
+      },
+      {
+        "name": "net-mcu.i2c.sda",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "3"
+          },
+          {
+            "refdes": "R3",
+            "pin": "2"
+          },
+          {
+            "refdes": "U2",
+            "pin": "5"
+          }
+        ]
+      },
+      {
+        "name": "net-mcu.wp",
+        "pins": [
+          {
+            "refdes": "R5",
+            "pin": "2"
+          },
+          {
+            "refdes": "SW1",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "7"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp1.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "5"
+          },
+          {
+            "refdes": "TP1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp10.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "14"
+          },
+          {
+            "refdes": "TP10",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp11.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "15"
+          },
+          {
+            "refdes": "TP11",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp12.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "16"
+          },
+          {
+            "refdes": "TP12",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp2.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "6"
+          },
+          {
+            "refdes": "TP2",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp3.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "7"
+          },
+          {
+            "refdes": "TP3",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp4.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "8"
+          },
+          {
+            "refdes": "TP4",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp5.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "9"
+          },
+          {
+            "refdes": "TP5",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp6.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "10"
+          },
+          {
+            "refdes": "TP6",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp7.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "11"
+          },
+          {
+            "refdes": "TP7",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp8.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "12"
+          },
+          {
+            "refdes": "TP8",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-pads.tp9.p1",
+        "pins": [
+          {
+            "refdes": "J2",
+            "pin": "13"
+          },
+          {
+            "refdes": "TP9",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-rd1.a",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "A5"
+          },
+          {
+            "refdes": "R1",
+            "pin": "1"
+          }
+        ]
+      },
+      {
+        "name": "net-rd2.a",
+        "pins": [
+          {
+            "refdes": "J1",
+            "pin": "B5"
+          },
+          {
+            "refdes": "R2",
+            "pin": "1"
+          }
+        ]
+      }
+    ],
+    "process": {
+      "name": "TwoLayer",
+      "fabricator": "JLCPCB",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "min_track": 0.1,
+      "min_clearance": 0.1,
+      "min_drill": 0.15,
+      "min_via_diameter": 0.25,
+      "min_annular_ring": 0.18,
+      "min_via_ring": 0.05,
+      "min_hole_clearance": 0.2,
+      "min_plated_hole_clearance": 0.28,
+      "min_pad_to_pad": 0.15,
+      "min_mask_to_track": 0.09,
+      "min_npth_drill": 0.5,
+      "min_plated_slot": 0.5,
+      "min_npth_slot": 1.0,
+      "via_drill": 0.2,
+      "via_diameter": 0.45,
+      "min_hole_to_hole": 0.45,
+      "min_via_hole_to_hole": 0.2,
+      "min_edge_clearance": 0.2,
+      "min_silk_width": 0.15,
+      "min_text_height": 1.0,
+      "min_silk_to_pad": 0.15,
+      "min_mask_bridge": 0.13,
+      "via_in_pad": 0.55,
+      "max_temperature_rise": null,
+      "track_width_tolerance": 0.2,
+      "hole_plating": 0.018,
+      "stackup": {
+        "layers": 2,
+        "thickness": [
+          1.6,
+          1.6
+        ],
+        "copper_weight": 1.0,
+        "inner": null
+      }
+    },
+    "features": {
+      "net_widths": [],
+      "net_currents": [
+        {
+          "net": "3V3",
+          "current": 0.10148936170212766,
+          "least_width": 0.016000590116961172,
+          "vias": 1
+        },
+        {
+          "net": "GND",
+          "current": 0.10148936170212766,
+          "least_width": 0.016000590116961172,
+          "vias": 1
+        },
+        {
+          "net": "net-mcu.i2c.scl",
+          "current": 0.0007446808510638298,
+          "least_width": 0.00001819979821871338,
+          "vias": 1
+        },
+        {
+          "net": "net-mcu.i2c.sda",
+          "current": 0.0007446808510638298,
+          "least_width": 0.00001819979821871338,
+          "vias": 1
+        }
+      ],
+      "outline": {
+        "width": [
+          90.0,
+          90.0
+        ],
+        "height": [
+          62.0,
+          62.0
+        ],
+        "corner_radius": 3.0,
+        "polygon": null
+      },
+      "cutouts": [
+        {
+          "name": "strap",
+          "at": [
+            30.0,
+            44.0
+          ],
+          "size": [
+            8.0,
+            4.0
+          ],
+          "corner_radius": 1.0
+        }
+      ],
+      "pours": [],
+      "keepouts": [
+        {
+          "name": "back_room",
+          "part": null,
+          "at": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            90.0,
+            62.0
+          ],
+          "layers": [
+            "bottom"
+          ],
+          "tracks": false,
+          "vias": false,
+          "copper": false,
+          "parts": false,
+          "max_height": 3.6
+        },
+        {
+          "name": "rib",
+          "part": null,
+          "at": [
+            22.0,
+            0.0
+          ],
+          "size": [
+            30.0,
+            16.0
+          ],
+          "layers": [
+            "top"
+          ],
+          "tracks": false,
+          "vias": false,
+          "copper": false,
+          "parts": false,
+          "max_height": 3.0
+        }
+      ],
+      "heights": [
+        {
+          "path": "cell",
+          "height": 3.4
+        },
+        {
+          "path": "fiducial1",
+          "height": 0.0
+        },
+        {
+          "path": "fiducial2",
+          "height": 0.0
+        },
+        {
+          "path": "hole1",
+          "height": 0.0
+        },
+        {
+          "path": "hole2",
+          "height": 0.0
+        },
+        {
+          "path": "hole3",
+          "height": 0.0
+        },
+        {
+          "path": "hole4",
+          "height": 0.0
+        },
+        {
+          "path": "ldo.input_cap",
+          "height": 0.7
+        },
+        {
+          "path": "ldo.output_cap",
+          "height": 1.0
+        },
+        {
+          "path": "lights.led_a",
+          "height": 0.8
+        },
+        {
+          "path": "lights.led_b",
+          "height": 0.8
+        },
+        {
+          "path": "lights.r_a",
+          "height": 0.5
+        },
+        {
+          "path": "lights.r_b",
+          "height": 0.5
+        },
+        {
+          "path": "lights.r_c",
+          "height": 0.5
+        },
+        {
+          "path": "mcu_bypass",
+          "height": 0.55
+        },
+        {
+          "path": "pads.tp1",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp10",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp11",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp12",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp2",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp3",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp4",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp5",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp6",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp7",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp8",
+          "height": 0.0
+        },
+        {
+          "path": "pads.tp9",
+          "height": 0.0
+        },
+        {
+          "path": "plug",
+          "height": 9.2
+        },
+        {
+          "path": "radio.bypass",
+          "height": 0.55
+        },
+        {
+          "path": "radio.row_a",
+          "height": 8.5
+        },
+        {
+          "path": "radio.row_b",
+          "height": 8.5
+        },
+        {
+          "path": "usb",
+          "height": 3.2
+        },
+        {
+          "path": "wp_switch",
+          "height": 4.3
+        }
+      ],
+      "protrusions": [
+        {
+          "path": "radio.row_a",
+          "length": 0.2,
+          "source": "enclosure_sensor.physical.nsm:133"
+        },
+        {
+          "path": "radio.row_b",
+          "length": 0.2,
+          "source": "enclosure_sensor.physical.nsm:134"
+        }
+      ],
+      "models": [],
+      "case_models": [],
+      "hand_fitted": [
+        "antenna",
+        "cell",
+        "coax",
+        "fiducial1",
+        "fiducial2",
+        "hole1",
+        "hole2",
+        "hole3",
+        "hole4",
+        "mcu",
+        "pads.tp1",
+        "pads.tp2",
+        "pads.tp3",
+        "pads.tp4",
+        "pads.tp5",
+        "pads.tp6",
+        "pads.tp7",
+        "pads.tp8",
+        "pads.tp9",
+        "pads.tp10",
+        "pads.tp11",
+        "pads.tp12",
+        "plug",
+        "radio.row_a",
+        "radio.row_b",
+        "usb",
+        "wp_switch"
+      ],
+      "labels": [],
+      "constraints": [
+        {
+          "path": "antenna",
+          "module": false,
+          "bounds": [
+            {
+              "field": "y",
+              "lo": 30.5,
+              "hi": 31.5,
+              "source": "enclosure_sensor.physical.nsm:67"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "cell",
+          "module": false,
+          "bounds": [],
+          "side": "bottom",
+          "side_source": "enclosure_sensor.physical.nsm:129"
+        },
+        {
+          "path": "coax",
+          "module": false,
+          "bounds": [
+            {
+              "field": "y",
+              "lo": 30.5,
+              "hi": 31.5,
+              "source": ""
+            },
+            {
+              "field": "right",
+              "lo": 86.0,
+              "hi": 89.0,
+              "source": "enclosure_sensor.physical.nsm:69, enclosure_sensor.physical.nsm:70"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "fiducial1",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 12.0,
+              "hi": 12.0,
+              "source": "enclosure_sensor.physical.nsm:47"
+            },
+            {
+              "field": "y",
+              "lo": 3.0,
+              "hi": 3.0,
+              "source": "enclosure_sensor.physical.nsm:48"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "fiducial2",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 78.0,
+              "hi": 78.0,
+              "source": "enclosure_sensor.physical.nsm:49"
+            },
+            {
+              "field": "y",
+              "lo": 59.0,
+              "hi": 59.0,
+              "source": "enclosure_sensor.physical.nsm:50"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "hole1",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 4.5,
+              "hi": 4.5,
+              "source": "enclosure_sensor.physical.nsm:39"
+            },
+            {
+              "field": "y",
+              "lo": 4.5,
+              "hi": 4.5,
+              "source": "enclosure_sensor.physical.nsm:40"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "hole2",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 85.5,
+              "hi": 85.5,
+              "source": "enclosure_sensor.physical.nsm:41"
+            },
+            {
+              "field": "y",
+              "lo": 4.5,
+              "hi": 4.5,
+              "source": "enclosure_sensor.physical.nsm:42"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "hole3",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 4.5,
+              "hi": 4.5,
+              "source": "enclosure_sensor.physical.nsm:43"
+            },
+            {
+              "field": "y",
+              "lo": 57.5,
+              "hi": 57.5,
+              "source": "enclosure_sensor.physical.nsm:44"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "hole4",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 85.5,
+              "hi": 85.5,
+              "source": "enclosure_sensor.physical.nsm:45"
+            },
+            {
+              "field": "y",
+              "lo": 57.5,
+              "hi": 57.5,
+              "source": "enclosure_sensor.physical.nsm:46"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "lights.led_a",
+          "module": false,
+          "bounds": [],
+          "side": "bottom",
+          "side_source": "enclosure_sensor.physical.nsm:82"
+        },
+        {
+          "path": "lights.led_b",
+          "module": false,
+          "bounds": [],
+          "side": "bottom",
+          "side_source": "enclosure_sensor.physical.nsm:83"
+        },
+        {
+          "path": "lights.led_c",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:84"
+        },
+        {
+          "path": "lights.r_a",
+          "module": false,
+          "bounds": [],
+          "side": "bottom",
+          "side_source": "enclosure_sensor.physical.nsm:85"
+        },
+        {
+          "path": "lights.r_b",
+          "module": false,
+          "bounds": [],
+          "side": "bottom",
+          "side_source": "enclosure_sensor.physical.nsm:86"
+        },
+        {
+          "path": "lights.r_c",
+          "module": false,
+          "bounds": [],
+          "side": "bottom",
+          "side_source": "enclosure_sensor.physical.nsm:87"
+        },
+        {
+          "path": "pads.tp1",
+          "module": false,
+          "bounds": [
+            {
+              "field": "y",
+              "lo": 54.0,
+              "hi": "inf",
+              "source": "enclosure_sensor.physical.nsm:95"
+            }
+          ],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp10",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp11",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp12",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp2",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp3",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp4",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp5",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp6",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp7",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp8",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "pads.tp9",
+          "module": false,
+          "bounds": [],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:94"
+        },
+        {
+          "path": "plug",
+          "module": false,
+          "bounds": [
+            {
+              "field": "y",
+              "lo": 30.5,
+              "hi": 31.5,
+              "source": "enclosure_sensor.physical.nsm:60, enclosure_sensor.physical.nsm:61"
+            },
+            {
+              "field": "left",
+              "lo": -8.1,
+              "hi": -7.9,
+              "source": "enclosure_sensor.physical.nsm:59"
+            },
+            {
+              "field": "rotation",
+              "lo": 180.0,
+              "hi": 180.0,
+              "source": "enclosure_sensor.physical.nsm:58"
+            }
+          ],
+          "side": "top",
+          "side_source": "enclosure_sensor.physical.nsm:62"
+        },
+        {
+          "path": "radio.row_a",
+          "module": false,
+          "bounds": [
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "enclosure_sensor.physical.nsm:76"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        },
+        {
+          "path": "radio.row_b",
+          "module": false,
+          "bounds": [
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "enclosure_sensor.physical.nsm:77"
+            }
+          ],
+          "side": null,
+          "side_source": ""
+        }
+      ],
+      "offsets": [
+        {
+          "a": {
+            "path": "antenna",
+            "field": "y"
+          },
+          "b": {
+            "path": "coax",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:68"
+        },
+        {
+          "a": {
+            "path": "radio.row_a",
+            "field": "x"
+          },
+          "b": {
+            "path": "radio.row_b",
+            "field": "x"
+          },
+          "lo": 22.81,
+          "hi": 22.91,
+          "source": "enclosure_sensor.physical.nsm:74"
+        },
+        {
+          "a": {
+            "path": "radio.row_b",
+            "field": "y"
+          },
+          "b": {
+            "path": "radio.row_a",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:75"
+        },
+        {
+          "a": {
+            "path": "pads.tp1",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp2",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp1",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp2",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp2",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp3",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp2",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp3",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp3",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp4",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp3",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp4",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp4",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp5",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp4",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp5",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp5",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp6",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp5",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp6",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp6",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp7",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp6",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp7",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp7",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp8",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp7",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp8",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp8",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp9",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp8",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp9",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp9",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp10",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp9",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp10",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp10",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp11",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp10",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp11",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp11",
+            "field": "x"
+          },
+          "b": {
+            "path": "pads.tp12",
+            "field": "x"
+          },
+          "lo": 2.49,
+          "hi": 2.59,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "pads.tp11",
+            "field": "y"
+          },
+          "b": {
+            "path": "pads.tp12",
+            "field": "y"
+          },
+          "lo": 0.0,
+          "hi": 0.0,
+          "source": "enclosure_sensor.physical.nsm:96"
+        },
+        {
+          "a": {
+            "path": "radio.row_a",
+            "field": "x"
+          },
+          "b": {
+            "path": "cell",
+            "field": "x"
+          },
+          "lo": 10.93,
+          "hi": 11.93,
+          "source": "enclosure_sensor.physical.nsm:130"
+        },
+        {
+          "a": {
+            "path": "radio.row_a",
+            "field": "y"
+          },
+          "b": {
+            "path": "cell",
+            "field": "y"
+          },
+          "lo": -1.0,
+          "hi": 1.0,
+          "source": "enclosure_sensor.physical.nsm:131"
+        }
+      ],
+      "line_texts": {
+        "enclosure_sensor.physical.nsm:129": ".cell.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:130": ".cell.place.x - .radio.row_a.place.x == 11.43mm +/- 0.5mm",
+        "enclosure_sensor.physical.nsm:131": ".cell.place.y - .radio.row_a.place.y == 0mm +/- 1mm",
+        "enclosure_sensor.physical.nsm:133": ".radio.row_a.pin_protrusion &= 0.2mm",
+        "enclosure_sensor.physical.nsm:134": ".radio.row_b.pin_protrusion &= 0.2mm",
+        "enclosure_sensor.physical.nsm:39": ".hole1.place.x &= 4.5mm",
+        "enclosure_sensor.physical.nsm:40": ".hole1.place.y &= 4.5mm",
+        "enclosure_sensor.physical.nsm:41": ".hole2.place.x &= 85.5mm",
+        "enclosure_sensor.physical.nsm:42": ".hole2.place.y &= 4.5mm",
+        "enclosure_sensor.physical.nsm:43": ".hole3.place.x &= 4.5mm",
+        "enclosure_sensor.physical.nsm:44": ".hole3.place.y &= 57.5mm",
+        "enclosure_sensor.physical.nsm:45": ".hole4.place.x &= 85.5mm",
+        "enclosure_sensor.physical.nsm:46": ".hole4.place.y &= 57.5mm",
+        "enclosure_sensor.physical.nsm:47": ".fiducial1.place.x &= 12mm",
+        "enclosure_sensor.physical.nsm:48": ".fiducial1.place.y &= 3mm",
+        "enclosure_sensor.physical.nsm:49": ".fiducial2.place.x &= 78mm",
+        "enclosure_sensor.physical.nsm:50": ".fiducial2.place.y &= 59mm",
+        "enclosure_sensor.physical.nsm:58": ".plug.place.rotation &= 180",
+        "enclosure_sensor.physical.nsm:59": ".plug.place.left &= -8mm +/- 0.1mm",
+        "enclosure_sensor.physical.nsm:60": ".plug.place.y >= .outline.height / 2 - 0.5mm",
+        "enclosure_sensor.physical.nsm:61": ".plug.place.y <= .outline.height / 2 + 0.5mm",
+        "enclosure_sensor.physical.nsm:62": ".plug.place.side &= \"top\"",
+        "enclosure_sensor.physical.nsm:67": ".antenna.place.y &= 31mm +/- 0.5mm",
+        "enclosure_sensor.physical.nsm:68": ".coax.place.y == .antenna.place.y",
+        "enclosure_sensor.physical.nsm:69": ".coax.place.right >= .outline.width - 4mm",
+        "enclosure_sensor.physical.nsm:70": ".coax.place.right <= .outline.width - 1mm",
+        "enclosure_sensor.physical.nsm:74": ".radio.row_b.place.x - .radio.row_a.place.x == 22.86mm +/- 0.05mm",
+        "enclosure_sensor.physical.nsm:75": ".radio.row_a.place.y == .radio.row_b.place.y",
+        "enclosure_sensor.physical.nsm:76": ".radio.row_a.place.rotation &= 0",
+        "enclosure_sensor.physical.nsm:77": ".radio.row_b.place.rotation &= 0",
+        "enclosure_sensor.physical.nsm:82": ".lights.led_a.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:83": ".lights.led_b.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:84": ".lights.led_c.place.side &= \"top\"",
+        "enclosure_sensor.physical.nsm:85": ".lights.r_a.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:86": ".lights.r_b.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:87": ".lights.r_c.place.side &= \"bottom\"",
+        "enclosure_sensor.physical.nsm:94": ".pads.place.side &= \"top\"",
+        "enclosure_sensor.physical.nsm:95": ".pads.tp1.place.y >= .outline.height - 8mm",
+        "enclosure_sensor.physical.nsm:96": "row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm"
+      }
+    },
+    "interfaces": [
+      {
+        "path": "bus",
+        "type_name": "I2c",
+        "members": [
+          {
+            "name": "sda",
+            "net": "net-mcu.i2c.sda"
+          },
+          {
+            "name": "scl",
+            "net": "net-mcu.i2c.scl"
+          }
+        ]
+      },
+      {
+        "path": "ldo.regulator.vin",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "ldo.regulator.vout",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "ldo.vin",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "ldo.vout",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "lights.power",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "mcu.i2c",
+        "type_name": "I2c",
+        "members": [
+          {
+            "name": "sda",
+            "net": "net-mcu.i2c.sda"
+          },
+          {
+            "name": "scl",
+            "net": "net-mcu.i2c.scl"
+          }
+        ]
+      },
+      {
+        "path": "mcu.vcc",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "pullups.bus",
+        "type_name": "I2c",
+        "members": [
+          {
+            "name": "sda",
+            "net": "net-mcu.i2c.sda"
+          },
+          {
+            "name": "scl",
+            "net": "net-mcu.i2c.scl"
+          }
+        ]
+      },
+      {
+        "path": "pullups.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "radio.power",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "usb.vbus",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "path": "ldo",
+        "kind": "doc",
+        "text": "A linear regulator with a capacitor on its input and on its output.",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 98
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "pads",
+        "kind": "doc",
+        "text": "Twelve test pads, one for each free pin of the plug. They are in a module only so that the physical file can name them together (`.pads.place.side`).",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 149
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "radio",
+        "kind": "doc",
+        "text": "The plug-in radio carrier's two socket rows, 10 contacts each, and its supply capacitor.",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 117
+        },
+        "anchors": [],
+        "result": null
+      },
+      {
+        "path": "lights",
+        "kind": "doc",
+        "text": "Three indicator LEDs, each with its own series resistor.",
+        "at": {
+          "file": "enclosure_sensor.nsm",
+          "line": 131
+        },
+        "anchors": [],
+        "result": null
+      }
+    ],
+    "modules": [
+      {
+        "path": "ldo",
+        "type_name": "LdoStage",
+        "ports": [
+          {
+            "name": "vin.pos",
+            "net": "VBUS"
+          },
+          {
+            "name": "vin.neg",
+            "net": "GND"
+          },
+          {
+            "name": "vout.pos",
+            "net": "3V3"
+          },
+          {
+            "name": "vout.neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "pullups",
+        "type_name": "I2cPullups",
+        "ports": [
+          {
+            "name": "bus.sda",
+            "net": "net-mcu.i2c.sda"
+          },
+          {
+            "name": "bus.scl",
+            "net": "net-mcu.i2c.scl"
+          },
+          {
+            "name": "supply.pos",
+            "net": "3V3"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "pads",
+        "type_name": "TestRow",
+        "ports": [
+          {
+            "name": "s1",
+            "net": "net-pads.tp1.p1"
+          },
+          {
+            "name": "s2",
+            "net": "net-pads.tp2.p1"
+          },
+          {
+            "name": "s3",
+            "net": "net-pads.tp3.p1"
+          },
+          {
+            "name": "s4",
+            "net": "net-pads.tp4.p1"
+          },
+          {
+            "name": "s5",
+            "net": "net-pads.tp5.p1"
+          },
+          {
+            "name": "s6",
+            "net": "net-pads.tp6.p1"
+          },
+          {
+            "name": "s7",
+            "net": "net-pads.tp7.p1"
+          },
+          {
+            "name": "s8",
+            "net": "net-pads.tp8.p1"
+          },
+          {
+            "name": "s9",
+            "net": "net-pads.tp9.p1"
+          },
+          {
+            "name": "s10",
+            "net": "net-pads.tp10.p1"
+          },
+          {
+            "name": "s11",
+            "net": "net-pads.tp11.p1"
+          },
+          {
+            "name": "s12",
+            "net": "net-pads.tp12.p1"
+          }
+        ]
+      },
+      {
+        "path": "radio",
+        "type_name": "RadioSockets",
+        "ports": [
+          {
+            "name": "power.pos",
+            "net": "3V3"
+          },
+          {
+            "name": "power.neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "lights",
+        "type_name": "Indicators",
+        "ports": [
+          {
+            "name": "power.pos",
+            "net": "3V3"
+          },
+          {
+            "name": "power.neg",
+            "net": "GND"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -23,6 +23,7 @@ mod consigned;
 mod constraints;
 mod copper;
 mod defaults;
+mod design_files;
 mod dxf;
 mod easyduino;
 mod editor;
