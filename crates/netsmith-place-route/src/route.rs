@@ -674,6 +674,20 @@ const POUR: i64 = 10;
 const POUR_VIA: i64 = 450;
 /// How many times that pass goes over the lines with track on another net's pour.
 const POUR_SWEEPS: usize = 1;
+/// What a via costs beyond [`VIA`] in the pass that takes vias out ([`Router::fewer_vias`]):
+/// three times its usual price in all, 45 mm of track.
+const DEAR_VIA: i64 = 300;
+/// How much longer, in mm, lines may become in that pass for each via they give up, and at
+/// most as a share of their length (of 20 mm at least).
+const VIA_SLACK: (f64, f64) = (2.0, 0.1);
+/// How much more track, in mm, lines may lay on another net's pour in that pass for each via
+/// they give up.
+const VIA_POUR: f64 = 5.0;
+/// How many lines in a line's way that pass rips up with it, at most.
+const VIA_NEIGHBOURS: usize = 1;
+/// How many times at most that pass goes over the lines with vias; it stops after a sweep
+/// that takes none out.
+const VIA_SWEEPS: usize = 1;
 /// A step through a cell where the track has to be narrower costs this much more: a necked
 /// down track carries less and is harder to make, so it is kept short.
 const NECK: i64 = 30;
@@ -2367,6 +2381,19 @@ fn keeps_pair(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
     after.2 > before.2 + 0.01 && after.0 <= before.0 + PAIR_SLACK + 1e-6 && after.1 <= before.1
 }
 
+/// Whether [`Router::fewer_vias`] keeps new copper, from its length in mm, its vias and its
+/// track on another net's pour in mm, before and after: fewer vias, no longer than
+/// [`VIA_SLACK`] allows and with no more on the pour than [`VIA_POUR`] allows for each via
+/// given up.
+fn keeps_fewer_vias(before: (f64, usize, f64), after: (f64, usize, f64)) -> bool {
+    let fewer = before.1.saturating_sub(after.1) as f64;
+    let (per_via, share) = VIA_SLACK;
+    let longer = (per_via * fewer).min(share * before.0.max(per_via / share));
+    after.1 < before.1
+        && after.0 <= before.0 + longer + 1e-6
+        && after.2 <= before.2 + VIA_POUR * fewer + 1e-6
+}
+
 /// The faces whose solder mask a pad opens, on the board: front first.
 fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint::Pad) -> [bool; 2] {
     let has = |name: &str| pad.layers.iter().any(|l| l == name || l == "*.Mask");
@@ -2413,6 +2440,8 @@ struct MemoKey {
     pairing: bool,
     /// Whether the search pays for other nets' pours ([`Router::off_the_pours`]).
     pouring: bool,
+    /// What a via costs beyond the usual ([`Router::fewer_vias`]).
+    via_price: i64,
     window: Window,
     print: u128,
     /// 0 for the flood ([`link`]), and 1 on for the searches in turn.
@@ -2508,6 +2537,8 @@ struct Router<'a> {
     /// Whether the searches pay [`POUR`] for a step on another net's pour: in
     /// [`Router::off_the_pours`] only.
     pouring: Cell<bool>,
+    /// What a via costs beyond [`VIA`]: [`DEAR_VIA`] in [`Router::fewer_vias`], else nothing.
+    via_price: Cell<i64>,
     /// Which tries follow the plan, and what a step outside a corridor costs.
     plan_use: CoarsePlan,
     plan_cost: i64,
@@ -2640,6 +2671,7 @@ impl<'a> Router<'a> {
             plan: None,
             planned: Cell::new(false),
             pouring: Cell::new(false),
+            via_price: Cell::new(0),
             plan_use: options.plan,
             plan_cost: options.plan_cost.unwrap_or(OFF_PLAN),
             memo: RefCell::new(HashMap::new()),
@@ -3038,6 +3070,7 @@ impl<'a> Router<'a> {
                 planned: self.planned.get(),
                 pairing: self.pairing.get(),
                 pouring: self.pouring.get(),
+                via_price: self.via_price.get(),
                 window,
                 print,
                 step,
@@ -3292,6 +3325,7 @@ impl<'a> Router<'a> {
         if self.pouring.get() {
             masks.pour = (self.pour_costs(net), POUR_VIA);
         }
+        masks.pour.1 += self.via_price.get();
         self.add_history(&mut masks);
         masks
     }
@@ -3797,6 +3831,7 @@ impl<'a> Router<'a> {
             self.side_by_side(&mut state);
             self.off_the_pours(&mut state, attempt, attempts);
             self.to_the_pours(&mut state);
+            self.fewer_vias(&mut state, attempt, attempts);
         }
         self.snapshot(SnapshotStage::Final, &state);
         state
@@ -4028,6 +4063,149 @@ impl<'a> Router<'a> {
         self.fine.set(false);
         *self.failed_in.borrow_mut() = failed_in;
         self.stage.set(stage);
+    }
+
+    /// Whether [`Self::fewer_vias`] may take vias out of a line: not a decoupling capacitor's
+    /// via to the pour ([`Self::to_the_pours`]), not a line to a plane, not a line of a net that
+    /// is a plane or a pour (its vias join it), not a net whose current needs vias side by side,
+    /// and not a net of a diff pair, whose copper the pairs' pass shaped.
+    fn may_lose_vias(&self, line: usize) -> bool {
+        let net = &self.lines[line].net;
+        line < self.routed_lines
+            && !self.lines[line].to_plane
+            && self.vias_needed(line) <= 1
+            && self.partners[self.nets[line]].is_none()
+            && !self.board.pours.iter().any(|p| &p.net == net)
+            && !self.board.planes.iter().any(|p| &p.net == net)
+    }
+
+    /// Take vias out on a try that routed every line (issue #431, the "remove vias" of KiCad's
+    /// optimizer): each line that [`Self::may_lose_vias`], the most vias first, is searched for
+    /// again against all the other copper with a via costing [`DEAR_VIA`] more, at the usual
+    /// room and failing that at the least, and its new copper is kept only if it has fewer vias
+    /// and is not much longer nor more on another net's pour ([`keeps_fewer_vias`]); failing
+    /// that, with the line in its way ripped up too ([`Self::fewer_vias_with_others`]). At most
+    /// [`VIA_SWEEPS`] sweeps, each while the last took a via out. A line is never left unrouted,
+    /// and another line moves only in a change that takes vias out of the two together.
+    fn fewer_vias(&self, state: &mut State, attempt: usize, attempts: usize) {
+        let stage = self.stage.get();
+        let failed_in = self.failed_in.borrow().clone();
+        let counting = self.counting.replace(false);
+        self.via_price.set(DEAR_VIA);
+        self.fine.set(true);
+        for _ in 0..VIA_SWEEPS {
+            let mut todo: Vec<(usize, usize)> = state
+                .routed
+                .iter()
+                .filter(|r| !r.vias.is_empty() && self.may_lose_vias(r.line))
+                .map(|r| (r.line, r.vias.len()))
+                .collect();
+            todo.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            let total = todo.len();
+            let mut gained = false;
+            for (k, (line, _)) in todo.into_iter().enumerate() {
+                if self.out_of_time() {
+                    break;
+                }
+                self.report(false, || {
+                    format!(
+                        "routing, try {attempt} of {attempts}: fewer vias, {k} of {total} lines"
+                    )
+                });
+                let Some(at) = state.routed.iter().position(|r| r.line == line) else {
+                    continue;
+                };
+                // A neighbour ripped up for an earlier line may have taken this one's vias out.
+                if state.routed[at].vias.is_empty() {
+                    continue;
+                }
+                let old = state.routed.remove(at);
+                let before = self.via_measure(&old);
+                let keeps = |new: &Routed| keeps_fewer_vias(before, self.via_measure(new));
+                let kept = [ROOM_LOOSE, ROOM_TIGHT].into_iter().find_map(|room| {
+                    self.try_line(line, state, &[], room, false)
+                        .map(|(new, _)| new)
+                        .filter(keeps)
+                });
+                let alone = kept.is_some();
+                state.routed.insert(at, kept.unwrap_or(old));
+                gained |= alone || self.fewer_vias_with_others(line, state);
+            }
+            if !gained {
+                break;
+            }
+        }
+        self.fine.set(false);
+        self.via_price.set(0);
+        self.counting.set(counting);
+        *self.failed_in.borrow_mut() = failed_in;
+        self.stage.set(stage);
+    }
+
+    /// A line's track length in mm, its vias, and its track on another net's pour in mm, as
+    /// [`keeps_fewer_vias`] weighs them.
+    fn via_measure(&self, r: &Routed) -> (f64, usize, f64) {
+        let length = r.tracks.iter().map(|t| t.from.distance(t.to)).sum();
+        (length, r.vias.len(), self.on_pour(r))
+    }
+
+    /// The same for the lines of `group` in `state`, together.
+    fn group_measure(&self, state: &State, group: &[usize]) -> (f64, usize, f64) {
+        state
+            .routed
+            .iter()
+            .filter(|r| group.contains(&r.line))
+            .map(|r| self.via_measure(r))
+            .fold((0.0, 0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2))
+    }
+
+    /// For a line that cannot give up a via against the other copper as it is: the lines whose
+    /// copper its cheapest way with dear vias crosses ([`Self::contested_lines`]), at most
+    /// [`VIA_NEIGHBOURS`] and each one [`Self::may_lose_vias`] would take vias out of, are
+    /// ripped up with it, the line is routed first and they after it, all with dear vias, and
+    /// the change is kept only if every line is routed and together they have fewer vias, as
+    /// [`keeps_fewer_vias`] weighs them. Whether it was kept.
+    fn fewer_vias_with_others(&self, line: usize, state: &mut State) -> bool {
+        let Some(found) = self.contested_lines(line, state, ROOM_LOOSE, &[]) else {
+            return false;
+        };
+        let crossed: Vec<usize> = found
+            .iter()
+            .filter(|&&(_, d)| d < 0.0)
+            .map(|&(l, _)| l)
+            .collect();
+        if crossed.is_empty()
+            || crossed.len() > VIA_NEIGHBOURS
+            || crossed.iter().any(|&l| !self.may_lose_vias(l))
+        {
+            return false;
+        }
+        let mut group = vec![line];
+        group.extend(&crossed);
+        let mut trial = state.clone();
+        trial.routed.retain(|r| !group.contains(&r.line));
+        for &l in &group {
+            let Some((new, _)) = self
+                .try_line(l, &trial, &[], ROOM_LOOSE, false)
+                .or_else(|| self.try_line(l, &trial, &[], ROOM_TIGHT, false))
+            else {
+                return false;
+            };
+            trial.routed.push(new);
+        }
+        if !keeps_fewer_vias(
+            self.group_measure(state, &group),
+            self.group_measure(&trial, &group),
+        ) {
+            return false;
+        }
+        // Each line of the group takes its new copper in its old place in the list.
+        for r in state.routed.iter_mut().filter(|r| group.contains(&r.line)) {
+            if let Some(new) = trial.routed.iter().find(|n| n.line == r.line) {
+                *r = new.clone();
+            }
+        }
+        true
     }
 
     /// The stages of [`Self::run`].
@@ -6038,6 +6216,155 @@ mod tests {
                 r.tracks[0].net,
                 r.tracks
             );
+        }
+    }
+
+    /// The line of `net-led.anode` on the LED board, routed in `state`.
+    fn anode(router: &Router, state: &State) -> Routed {
+        state
+            .routed
+            .iter()
+            .find(|r| router.lines[r.line].net == "net-led.anode")
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn a_line_that_changed_layer_to_get_round_copper_no_longer_there_loses_its_vias() {
+        let board = led_board();
+        let router = Router::new(&board, &RouteOptions::default());
+        let order = router.orders(false).remove(0);
+        let mut state = router.run_stages(&order, true, 1, 1);
+        assert!(state.failed.is_empty());
+        // The anode's line dropped to the back and came up again, round copper since moved.
+        let line = anode(&router, &state).line;
+        let r = state.routed.iter_mut().find(|r| r.line == line).unwrap();
+        let (from, to) = (router.lines[line].from_at, router.lines[line].to_at);
+        let mid = Pt::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0 + 3.0);
+        let via = |at| Via {
+            net: "net-led.anode".into(),
+            at,
+            diameter: board.rules.via_diameter,
+            drill: board.rules.via_drill,
+        };
+        let track = |layer, a, b| Track {
+            net: "net-led.anode".into(),
+            layer,
+            from: a,
+            to: b,
+            width: r.tracks[0].width,
+            mid: None,
+        };
+        let (a, b) = (Pt::new(from.x, from.y + 3.0), Pt::new(to.x, to.y + 3.0));
+        r.tracks = vec![
+            track(CopperLayer::Front, from, a),
+            track(CopperLayer::Back, a, mid),
+            track(CopperLayer::Back, mid, b),
+            track(CopperLayer::Front, b, to),
+        ];
+        r.vias = vec![via(a), via(b)];
+        let others: Vec<Routed> = state
+            .routed
+            .iter()
+            .filter(|r| r.line != line)
+            .cloned()
+            .collect();
+        router.fewer_vias(&mut state, 1, 1);
+        let after = anode(&router, &state);
+        assert!(after.vias.is_empty(), "{:?}", after.vias);
+        assert!(
+            after.tracks.iter().all(|t| t.layer == CopperLayer::Front),
+            "{:?}",
+            after.tracks
+        );
+        // No other line moved.
+        for o in others {
+            let now = state.routed.iter().find(|r| r.line == o.line).unwrap();
+            assert_eq!((&now.tracks, &now.vias), (&o.tracks, &o.vias));
+        }
+    }
+
+    /// The LED board routed by hand: a wall of the net `wall` across the line of
+    /// `net-led.anode` on the front only, and the anode's line under it by a via; and that state
+    /// after the pass that takes vias out, with the anode's copper before the pass.
+    fn under_a_wall(wall: &str, poured: bool) -> (Board, State, Routed, Routed) {
+        let mut board = led_board();
+        if poured {
+            board.pours.push(netsmith_pcb::BoardPour {
+                layer: CopperLayer::Back,
+                net: wall.into(),
+                stitch_pitch: None,
+            });
+        }
+        let router = Router::new(&board, &RouteOptions::default());
+        let line = |net: &str| (0..router.lines.len()).find(|&l| router.lines[l].net == net);
+        let (a, b) = (line(wall).unwrap(), line("net-led.anode").unwrap());
+        let mut state = across(&router, a, b);
+        state.routed[0]
+            .tracks
+            .retain(|t| t.layer == CopperLayer::Front);
+        router.fine.set(true);
+        let (routed, _) = router.try_line(b, &state, &[], ROOM_LOOSE, false).unwrap();
+        router.fine.set(false);
+        assert!(!routed.vias.is_empty());
+        state.routed.push(routed.clone());
+        router.fewer_vias(&mut state, 1, 1);
+        let after = anode(&router, &state);
+        drop(router);
+        (board, state, routed, after)
+    }
+
+    #[test]
+    fn a_line_whose_via_is_needed_keeps_it() {
+        // The wall is ground, which the pass never moves (its vias join its pour).
+        let (_, _, before, after) = under_a_wall("GND", true);
+        assert_eq!((&after.tracks, &after.vias), (&before.tracks, &before.vias));
+    }
+
+    #[test]
+    fn a_line_in_the_way_is_moved_too_when_the_two_then_have_fewer_vias() {
+        let (board, state, _, after) = under_a_wall("VCC", false);
+        assert!(after.vias.is_empty(), "{:?}", after.vias);
+        // The wall is routed again, shorter and with no via.
+        let router = Router::new(&board, &RouteOptions::default());
+        let vcc = state
+            .routed
+            .iter()
+            .find(|r| router.lines[r.line].net == "VCC")
+            .unwrap();
+        let length: f64 = vcc.tracks.iter().map(|t| t.from.distance(t.to)).sum();
+        assert!(
+            vcc.vias.is_empty() && length < 50.0,
+            "{vcc:?}",
+            vcc = vcc.tracks
+        );
+        assert!(state.failed.is_empty() && state.routed.len() == 2);
+    }
+
+    #[test]
+    fn the_vias_of_planes_pours_and_decoupling_capacitors_are_never_taken_out() {
+        // A capacitor's ground via to the pour, and every line of the poured net.
+        let board = crate::decouple::tests::decoupled_board();
+        let router = Router::new(&board, &RouteOptions::default());
+        assert!(router.routed_lines < router.lines.len());
+        for l in 0..router.lines.len() {
+            let keep = l >= router.routed_lines || router.lines[l].net == "GND";
+            assert_eq!(router.may_lose_vias(l), !keep, "{}", router.lines[l]);
+        }
+        // A line to a plane, and every line of a plane's net.
+        let board = crate::board_from_design(
+            &four_layer_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+        )
+        .unwrap();
+        let router = Router::new(&board, &RouteOptions::default());
+        assert!(router.lines.iter().any(|l| l.to_plane));
+        for l in 0..router.lines.len() {
+            let line = &router.lines[l];
+            if line.to_plane || line.net == "GND" || line.net == "3V3" {
+                assert!(!router.may_lose_vias(l), "{line}");
+            }
         }
     }
 
