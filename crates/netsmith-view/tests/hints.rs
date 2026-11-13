@@ -36,6 +36,7 @@ fn note(path: &str, kind: NoteKind, anchors: &[&str]) -> Note {
 /// `filter` inside it) and `radio`.
 fn trellis() -> (Design, Vec<Group>) {
     let design = Design {
+        modules: Vec::new(),
         name: "Trellis".into(),
         parts: vec![
             part("J1", "j1"),
@@ -772,6 +773,7 @@ fn a_board_with_no_table_and_empty_hints_resolve_to_nothing() {
 #[test]
 fn a_design_without_paths_or_groups_has_nothing_to_match() {
     let mut design = Design {
+        modules: Vec::new(),
         name: "Bare".into(),
         parts: vec![part("R1", ""), part("R2", "")],
         nets: Vec::new(),

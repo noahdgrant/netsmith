@@ -672,6 +672,7 @@ fn every_kind() -> Design {
     }
     parts.push(ic);
     Design {
+        modules: Vec::new(),
         name: "every_kind".into(),
         process: None,
         features: Default::default(),
@@ -688,7 +689,8 @@ fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
     let design = every_kind();
     assert!(design.parts.len() >= 30, "{} parts", design.parts.len());
     let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols)
-        .unwrap_or_else(|e| panic!("{e}"));
+        .unwrap_or_else(|e| panic!("{e}"))
+        .root;
     // `NETSMITH_WRITE_BOARDS=<folder>` keeps the sheet, to look at it (`scripts/check-kicad.sh`).
     if let Some(folder) = std::env::var_os("NETSMITH_WRITE_BOARDS") {
         std::fs::create_dir_all(&folder).unwrap();
@@ -736,7 +738,9 @@ fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
     // The same bytes on a second run.
     assert_eq!(
         text,
-        emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap()
+        emit_schematic(&design, &libraries.mapping, &libraries.symbols)
+            .unwrap()
+            .root
     );
 
     // The board's own library holds the symbols, and its table lists it.
@@ -755,7 +759,9 @@ fn a_board_of_every_kind_is_written_with_no_kicad_symbol_library() {
 fn kicads_erc_accepts_a_board_of_every_kind() {
     let libraries = bare();
     let design = every_kind();
-    let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols)
+        .unwrap()
+        .root;
     let Some(found) = crate::erc::erc("every_kind", &text) else {
         return;
     };
@@ -795,6 +801,7 @@ fn the_power_flag_is_in_the_board_s_library_only_where_the_board_places_one() {
         })
         .collect();
     let design = Design {
+        modules: Vec::new(),
         name: "plain".into(),
         process: None,
         features: Default::default(),
@@ -808,7 +815,9 @@ fn the_power_flag_is_in_the_board_s_library_only_where_the_board_places_one() {
         &libraries.mapping,
         &libraries.symbols
     ));
-    let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    let text = emit_schematic(&design, &libraries.mapping, &libraries.symbols)
+        .unwrap()
+        .root;
     assert!(!text.contains("PWR_FLAG"));
     let dir = TempDir::new("passives-no-flag");
     libraries.write_tables(dir.path(), &design).unwrap();

@@ -166,6 +166,7 @@ pub fn board(
         }
     }
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Tight".into(),

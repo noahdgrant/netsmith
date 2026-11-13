@@ -50,6 +50,7 @@ fn tight_board(count: usize, size: (f64, f64), cutout: Cutout) -> Board {
         })
         .collect();
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Tight".into(),

@@ -17,6 +17,10 @@ out=$(realpath "$out")
 win_tmp=$(wslpath "$(cmd.exe /c 'echo %TEMP%' 2>/dev/null | tr -d '\r')")/netsmith-check-$name
 rm -rf "$win_tmp" && mkdir -p "$win_tmp"
 cp "$sch" "$win_tmp/$name.kicad_sch"
+# The sheets of a board's modules are files beside the root sheet.
+for sheet in "$(dirname "$sch")"/*.kicad_sch; do
+  [ "$sheet" = "$sch" ] || cp "$sheet" "$win_tmp/"
+done
 [ -f "${sch%.kicad_sch}.kicad_pro" ] && cp "${sch%.kicad_sch}.kicad_pro" "$win_tmp/"
 wdir=$(wslpath -w "$win_tmp")
 

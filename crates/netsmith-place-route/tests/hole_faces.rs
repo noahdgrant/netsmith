@@ -65,6 +65,7 @@ fn board(
         pin: pin.into(),
     };
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Faces".into(),

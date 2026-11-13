@@ -16,7 +16,7 @@ To run an example, save it and use `netsmith build`:
 netsmith build main.nsm --out out
 ```
 
-`build` checks the file, solves it, and writes a KiCad schematic. In the netsmith source repository, `cargo run -p netsmith-cli -- build main.nsm` does the same, and `cargo run -p netsmith-check --example check -- main.nsm` and `cargo run -p netsmith-solve --example solve -- main.nsm` print what the checker and the solver worked out.
+`build` checks the file, solves it, and writes a KiCad schematic: one sheet, and a sheet for each module of the board (see A module in the KiCad schematic). In the netsmith source repository, `cargo run -p netsmith-cli -- build main.nsm` does the same, and `cargo run -p netsmith-check --example check -- main.nsm` and `cargo run -p netsmith-solve --example solve -- main.nsm` print what the checker and the solver worked out.
 
 ## Quick start
 
@@ -4986,6 +4986,16 @@ error: `r1` is inside `Stage` and is not part of its interface; set it through a
 12 |     .stage.r1.resistance &= 1kohm +/- 1%
    |            ^^
 ```
+
+### A module in the KiCad schematic
+
+The schematic that `build` writes (issue #563) draws each module instance of the board as a KiCad hierarchical sheet, and the board's own parts, the sheet symbols and the power flags of the nets that reach them on the root sheet, `<board>.kicad_sch`. A board with no module is one sheet, as it always was.
+
+- One `.kicad_sch` is written for each module definition, beside the root sheet, and placed by every instance that is the same circuit: the same parts, values and pins, joined the same way inside, with the same nets through the same members. `.left: Indicator` and `.right: Indicator` share `Indicator.kicad_sch`, each part with its own reference designator in each instance. An instance that differs (another value of a resistor) has a file of its own, `Indicator_2.kicad_sch`.
+- A module inside a module is drawn flat in the sheet of the board's module it is in.
+- A net that leaves a sheet is a sheet pin, and a hierarchical label inside, named for the first member of the module it is on (`supply.pos`); a net on no member keeps the board's name. A net inside one sheet keeps its name, without the instance's path (`net-lamp.r1.p2` is `net-r1.p2` in the sheet). A name that would meet another, two nets of one name in a sheet or two names in the schematic that differ only in case (KiCad's electrical rules check reports `gnd` beside `GND`), is the board's name instead.
+- A net that takes power and has nothing to drive it gets its power flag on the one sheet it is on, or on the root when it leaves a sheet.
+- Each footprint of the board names its symbol and the sheet it is on (`(path ...)`, `(sheetname ...)`, `(sheetfile ...)`, as KiCad writes them), beside its `netsmith_path`, so KiCad's update of the board from the schematic matches every part.
 
 ## Systems and ports
 

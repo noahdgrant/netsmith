@@ -183,9 +183,12 @@ fn two_parts_of_one_kind_with_different_pin_tables_are_two_symbols_in_the_schema
     twin.refdes = "U99".into();
     twin.pins[0].datasheet = "RENAMED".into();
     design.parts.push(twin);
+    // One sheet, so that every symbol is in its `lib_symbols`.
+    design.modules.clear();
 
-    let schematic =
-        netsmith_kicad::emit_schematic(&design, &libraries.mapping, &libraries.symbols).unwrap();
+    let schematic = netsmith_kicad::emit_schematic(&design, &libraries.mapping, &libraries.symbols)
+        .unwrap()
+        .root;
     let root = Sexp::parse(&schematic).unwrap();
     let mut embedded: Vec<String> = root
         .find("lib_symbols")

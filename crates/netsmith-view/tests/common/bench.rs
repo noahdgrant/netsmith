@@ -351,6 +351,7 @@ pub fn bench() -> Bench {
     };
     // R5 has no ground of its own; D2's cathode goes to ground above.
     let design = Design {
+        modules: Vec::new(),
         name: "Bench".into(),
         process: None,
         features: Default::default(),

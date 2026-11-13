@@ -374,6 +374,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
         .with_library("t", folder.path());
 
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Mixed".into(),

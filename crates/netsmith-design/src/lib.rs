@@ -25,8 +25,9 @@ use netsmith_check::{
     Board, Domain, InstId, InstKind, Member, Model, Panel, PinKind, Pinout, System, SystemBoard,
 };
 use netsmith_core::{
-    Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember, Net, Note,
-    NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartPin, PinRef, PowerFlow, Process, Stackup,
+    Design, DielectricLayer, InnerLayers, InnerUse, InterfaceInstance, InterfaceMember,
+    ModuleInstance, Net, Note, NoteAt, NoteKind, PanelRules, PanelSpec, Part, PartPin, PinRef,
+    PowerFlow, Process, Stackup,
 };
 use netsmith_solve::{Library, Solution};
 
@@ -404,6 +405,62 @@ fn interfaces_of(model: &Model, nets: &[Net]) -> Vec<InterfaceInstance> {
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
+}
+
+/// The module instances of the design, in the model's order (the source's, a module inside a
+/// module after it), each with its own members that are on one of `nets`: its pins and the pins
+/// of the interfaces it declares, through interfaces inside interfaces, named by their path in
+/// the module (`vin.pos`), in the order the module declares them. A part's pins are not the
+/// module's.
+fn modules_of(model: &Model, nets: &[Net]) -> Vec<ModuleInstance> {
+    let kept: std::collections::HashSet<&str> = nets.iter().map(|n| n.name.as_str()).collect();
+    let mut net_of: HashMap<InstId, &str> = HashMap::new();
+    for net in model.nets() {
+        if kept.contains(net.name.as_str()) {
+            for &pin in &net.pins {
+                net_of.insert(pin, net.name.as_str());
+            }
+        }
+    }
+    fn walk(
+        model: &Model,
+        id: InstId,
+        prefix: &str,
+        net_of: &HashMap<InstId, &str>,
+        out: &mut Vec<InterfaceMember>,
+    ) {
+        for (name, member) in &model.instance(id).children {
+            let Member::Inst(child) = member else {
+                continue;
+            };
+            let name = format!("{prefix}{name}");
+            match model.instance(*child).kind {
+                InstKind::Pin => {
+                    if let Some(net) = net_of.get(child) {
+                        out.push(InterfaceMember {
+                            name,
+                            net: (*net).to_string(),
+                        });
+                    }
+                }
+                InstKind::Interface => walk(model, *child, &format!("{name}."), net_of, out),
+                _ => {}
+            }
+        }
+    }
+    model
+        .instances()
+        .filter(|(_, inst)| inst.kind == InstKind::Module)
+        .map(|(id, inst)| {
+            let mut ports = Vec::new();
+            walk(model, id, "", &net_of, &mut ports);
+            ModuleInstance {
+                path: model.path_of(id),
+                type_name: inst.type_name.clone(),
+                ports,
+            }
+        })
+        .collect()
 }
 
 /// The most parts an interface's doc comment may be anchored on: a rail that most of a sheet
@@ -1249,6 +1306,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
 
     let net_names: Vec<String> = nets.iter().map(|n| n.name.clone()).collect();
     let interfaces = interfaces_of(model, &nets);
+    let modules = modules_of(model, &nets);
     let notes = notes_of(model, &refdes_of);
     let process = process_of(model, &net_names, &mut errors);
     let layers = process.as_ref().map_or(2, |p| p.stackup.layers);
@@ -1305,6 +1363,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 features,
                 interfaces,
                 notes,
+                modules,
             },
             sourcing,
             origins,

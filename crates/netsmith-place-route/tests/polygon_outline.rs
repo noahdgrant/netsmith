@@ -53,6 +53,7 @@ fn board(count: usize, polygon: Vec<OutlineVertex>, size: (f64, f64)) -> Result<
         })
         .collect();
     let design = Design {
+        modules: Vec::new(),
         interfaces: Vec::new(),
         notes: Vec::new(),
         name: "Shaped".into(),

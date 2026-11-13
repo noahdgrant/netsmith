@@ -52,6 +52,7 @@ mod ic_symbols;
 mod kicad_drc;
 mod kicad_rows;
 mod lt8641;
+mod module_sheets;
 mod mosfet_drive;
 mod note_causes;
 mod open_circle;

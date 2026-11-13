@@ -159,6 +159,7 @@ fn from_json(v: &Value) -> Inputs {
     Inputs {
         root: v["root"].as_str().map(PathBuf::from),
         design: Design {
+            modules: Vec::new(),
             name: s(&v["name"]),
             parts,
             nets,

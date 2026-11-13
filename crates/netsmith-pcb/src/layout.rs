@@ -898,6 +898,7 @@ at = [5.0, 4.0]
                 max_height,
             };
         let mut design = Design {
+            modules: Vec::new(),
             name: "Demo".into(),
             process: None,
             features: Default::default(),

@@ -187,6 +187,7 @@ mod tests {
 
     fn design(parts: Vec<Part>, nets: Vec<(&str, Vec<(&str, &str)>)>) -> Design {
         Design {
+            modules: Vec::new(),
             name: "d".into(),
             process: None,
             features: Default::default(),

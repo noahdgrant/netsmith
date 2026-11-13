@@ -754,6 +754,26 @@ pub struct Design {
     /// source order. Empty for a design that does not know them (a netlist read from a file, a
     /// test's small design).
     pub notes: Vec<Note>,
+    /// The module instances of the design, by path, in the order the source declares them
+    /// (a module inside a module after it). The KiCad schematic draws each module instance of
+    /// the board as a sheet of its own (issue #563). Empty for a design that does not know them
+    /// (a netlist read from a file, a test's small design), which is drawn as one sheet.
+    pub modules: Vec<ModuleInstance>,
+}
+
+/// A module instance of the design and the nets its own members are on: the pins and the
+/// pins of the interfaces it declares itself (`.vin: Rail` gives `vin.pos` and `vin.neg`), not
+/// those of its parts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleInstance {
+    /// Where the instance is in the design, the path of its instance from the board:
+    /// `stage`, or `power.ldo` for a module inside a module.
+    pub path: String,
+    /// The module definition it was made from: `LdoStage`.
+    pub type_name: String,
+    /// Its members that are on nets of the design, each named by its path inside the module
+    /// (`vin.pos`), in the order the module declares them.
+    pub ports: Vec<InterfaceMember>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -835,6 +855,7 @@ mod tests {
     #[test]
     fn rejects_duplicate_refdes() {
         let d = Design {
+            modules: Vec::new(),
             name: "t".into(),
             parts: vec![part("R1"), part("R1")],
             nets: vec![],
@@ -849,6 +870,7 @@ mod tests {
     #[test]
     fn rejects_net_with_unknown_part() {
         let d = Design {
+            modules: Vec::new(),
             name: "t".into(),
             parts: vec![part("R1")],
             nets: vec![Net {

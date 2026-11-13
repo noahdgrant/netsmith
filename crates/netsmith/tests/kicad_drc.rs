@@ -451,6 +451,7 @@ fn net(name: &str, pads: &[(&str, &str)]) -> Net {
 fn board_of(parts: &[(&str, &str, f64, f64)], nets: Vec<Net>) -> Board {
     let (_dir, mapping, library) = tiny();
     let design = Design {
+        modules: Vec::new(),
         name: "Holes".into(),
         process: Some(common::process_with(&[])),
         features: Default::default(),

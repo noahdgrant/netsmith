@@ -14,9 +14,23 @@ use netsmith_solve::Catalogs;
 
 use crate::common;
 
-/// The violations ERC finds in a schematic, as `type: description`, or `None` if KiCad is
-/// not here.
+/// The violations ERC finds in a schematic of one sheet, as `type: description`, or `None` if
+/// KiCad is not here.
 pub(crate) fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
+    erc_sheets(name, schematic, &[])
+}
+
+/// [`erc`] of a built board's schematic: its root sheet and the sheet of each module file.
+pub(crate) fn erc_built(built: &netsmith::Built) -> Option<Vec<String>> {
+    erc_sheets(&built.design.name, &built.schematic, &built.sheets)
+}
+
+/// [`erc`] of a root sheet and the files of its other sheets, `(file name, text)`.
+pub(crate) fn erc_sheets(
+    name: &str,
+    schematic: &str,
+    sheets: &[(String, String)],
+) -> Option<Vec<String>> {
     let Some(cli) = KicadCliExe::locate_runnable() else {
         eprintln!("skipped: no kicad-cli (set KICAD_CLI, or install KiCad)");
         return None;
@@ -28,6 +42,9 @@ pub(crate) fn erc(name: &str, schematic: &str) -> Option<Vec<String>> {
     let serial = RUNS.fetch_add(1, Ordering::SeqCst);
     let dir = TempDir::new_in(&base, &format!("erc-test-{serial}"));
     std::fs::write(dir.join(format!("{name}.kicad_sch")), schematic).ok()?;
+    for (file, text) in sheets {
+        std::fs::write(dir.join(file), text).ok()?;
+    }
     // The project file `build` writes beside the schematic, with netsmith's ERC pin map (#461).
     std::fs::write(
         dir.join(format!("{name}.kicad_pro")),
@@ -111,7 +128,7 @@ fn every_example_passes_erc_with_kicads_own_symbols() {
         )
         .unwrap_or_else(|e| panic!("{e}"));
         for b in built {
-            let Some(found) = erc(&b.design.name, &b.schematic) else {
+            let Some(found) = erc_built(&b) else {
                 return;
             };
             assert_eq!(
@@ -144,7 +161,7 @@ fn the_two_buck_example_passes_erc() {
     )
     .unwrap_or_else(|e| panic!("{e}"));
     for b in built {
-        let Some(found) = erc(&b.design.name, &b.schematic) else {
+        let Some(found) = erc_built(&b) else {
             return;
         };
         assert_eq!(
@@ -188,7 +205,7 @@ fn passes_erc(name: &str, source: &str) {
         &libraries,
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    let Some(found) = erc(name, &built[0].schematic) else {
+    let Some(found) = erc_sheets(name, &built[0].schematic, &built[0].sheets) else {
         return;
     };
     // KiCad here has no library table for `acme`, so it says it cannot compare the embedded
@@ -221,7 +238,7 @@ fn chip_passes_erc(name: &str, source: &str) {
         &libraries,
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    let Some(found) = erc(name, &built[0].schematic) else {
+    let Some(found) = erc_sheets(name, &built[0].schematic, &built[0].sheets) else {
         return;
     };
     assert_eq!(electrical(found), Vec::<String>::new());
