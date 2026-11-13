@@ -546,10 +546,16 @@ part Wound provides Inductor {
 }
 
 #[test]
-fn a_provider_of_the_standard_capacitor_is_a_bank_like_it_and_a_projects_own_is_not() {
+fn a_provider_of_the_standard_capacitor_bank_is_a_bank_like_it_and_a_projects_own_is_not() {
     let acme = "\
-import std::parts::passive::Capacitor
-part Poly provides Capacitor {
+import std::parts::passive::{Capacitor, CapacitorBank}
+part Poly provides CapacitorBank {
+    pins {
+        .a passive \"1\" \"1\"
+        .b passive \"2\" \"2\"
+    }
+}
+part Single provides Capacitor {
     pins {
         .a passive \"1\" \"1\"
         .b passive \"2\" \"2\"
@@ -557,11 +563,12 @@ part Poly provides Capacitor {
 }
 ";
     let board = "\
-import std::parts::passive::Capacitor
-import src::acme::Poly
+import std::parts::passive::CapacitorBank
+import src::acme::{Poly, Single}
 board B {
     .x: Poly { .count &= 1..2 }
-    .y: Capacitor { .count &= 1..2 }
+    .y: CapacitorBank { .count &= 1..2 }
+    .z: Single
 }
 ";
     let c = run(board, &[("src::acme", acme)]);
@@ -569,12 +576,14 @@ board B {
     let model = &c.board("B").unwrap().model;
     let x = model.inst_at("x").unwrap();
     let y = model.inst_at("y").unwrap();
-    assert!(model.bank_count(x).is_some(), "the provider is a bank");
-    assert!(model.bank_count(y).is_some());
+    let z = model.inst_at("z").unwrap();
+    assert!(model.bank(x).is_some(), "the provider is a bank");
+    assert_eq!(model.bank(y).unwrap().member, "Capacitor");
+    assert_eq!(model.bank(z), None, "a provider of Capacitor is one part");
 
-    // A generic of the project that is merely called `Capacitor` is not the standard one.
+    // A generic of the project that is merely called `CapacitorBank` is not the standard one.
     let own = "\
-generic Capacitor {
+generic CapacitorBank {
     pins {
         .a passive
         .b passive
@@ -583,8 +592,8 @@ generic Capacitor {
 }
 ";
     let theirs = "\
-import src::own::Capacitor
-part Poly provides Capacitor {
+import src::own::CapacitorBank
+part Poly provides CapacitorBank {
     pins {
         .a passive \"1\" \"1\"
         .b passive \"2\" \"2\"

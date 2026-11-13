@@ -42,11 +42,11 @@
 //!   out and the series belong to the catalog (ADR 0052 rejected the catalog's name for a
 //!   bank, because a bank is a property of the part; these three are properties of the
 //!   catalog).
-//! - `netsmith-check/src/model.rs`, `BANKS`: the one list of generics that are banks
-//!   (`["Capacitor"]`), keyed by `Instance.standard`. Deriving it without syntax is possible
-//!   (a standard generic that declares a numeric `.count` is a bank) and is not taken, because
-//!   it is a choice about the language; the owner may want it, or the marker ADR 0052
-//!   rejected.
+//! - `netsmith-check/src/model.rs`, `BANKS` and `Model::bank`: the one list of generics that are
+//!   banks (`CapacitorBank`, whose parts are `Capacitor`s, ADR 0122) and the one place that
+//!   reads it, keyed by `Instance.standard`. The solver and the design stage ask `Model::bank`
+//!   and name no generic. `CapacitorBank` has the catalog `capacitor` of `Capacitor`, so the
+//!   `CAPACITOR` entry below serves both and a test compares the two `catalog` statements.
 //! - `netsmith-view/src/layout.rs` `is_series_kind` (`Inductor`, `FerriteBead`, `Fuse`) and
 //!   `netsmith-pcb/src/quality.rs` `is_capacitor_kind` read the kind and `Part.provides`: a
 //!   project's own part called `Inductor` has been drawn in series by its kind since before
@@ -368,6 +368,16 @@ mod tests {
             let ours: Vec<&str> = standard.columns.iter().map(|c| c.name).collect();
             assert_eq!(columns, ours, "{}", standard.generic);
         }
+    }
+
+    #[test]
+    fn a_capacitor_bank_reads_the_catalog_of_a_capacitor_column_for_column() {
+        // ADR 0122: the members of a bank are `Capacitor`s of one row, so the bank's `catalog`
+        // statement and `Capacitor`'s are one, and the `CAPACITOR` entry serves both.
+        assert_eq!(
+            declared_with_optional("CapacitorBank", "passive"),
+            declared_with_optional("Capacitor", "passive")
+        );
     }
 
     #[test]

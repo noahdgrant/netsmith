@@ -15,7 +15,7 @@ use netsmith_editor::Backend;
 use netsmith_fab::KicadCliExe;
 
 /// A 5 V rail with a bank across it: 60 uF effective, which no single capacitor keeps at 5 V.
-const BOARD: &str = r#"import std::parts::passive::Capacitor
+const BOARD: &str = r#"import std::parts::passive::CapacitorBank
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -28,7 +28,7 @@ board Banked {
         .pos.net &= "VCC"
         .neg.net &= "GND"
     }
-    .bulk: Capacitor { .count &= 1..8 }
+    .bulk: CapacitorBank { .count &= 1..8 }
     .bulk.count * .bulk.effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
     .supply.pos ~> .bulk ~> .supply.neg

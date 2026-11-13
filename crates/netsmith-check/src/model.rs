@@ -61,17 +61,32 @@ pub enum Member {
     Poison,
 }
 
-/// The standard generics whose parts are banks (ADR 0052): a number of identical parts that
+/// The standard generics that are banks (ADR 0052, ADR 0122): a number of identical parts that
 /// stand in parallel in one place, chosen by the design or by the solver through the part's
-/// `.count`. The bank is the generic's, so a provider of it is one too and nothing a design
-/// defines is (ADR 0068 open question 9: no syntax for it yet, and a list in one place).
-const BANKS: [&str; 1] = ["Capacitor"];
+/// `.count`, and the generic each of those parts is (`CapacitorBank` is `Capacitor`s). This is
+/// the one list; [`Model::bank`] is the one place that reads it, and the rest of the tools
+/// ask that. A provider of a bank generic is one too, and nothing a design defines is (a
+/// marker for that is not built).
+const BANKS: [(&str, &str); 1] = [("CapacitorBank", "Capacitor")];
 
 /// The standard generics that are a series passive for the rule of `unused` (ADR 0083): a
 /// two-ended part that carries what the board feeds through it, so an interface joined through
 /// one to the rest of the board is used. The narrowest reading; a capacitor, an inductor, a
 /// diode and a switch are not in it (a decision of the owner's).
 const SERIES: [&str; 3] = ["Resistor", "Fuse", "FerriteBead"];
+
+/// What makes a part a bank: where its count is and what each of its parts is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Bank {
+    /// The standard generic that makes it a bank (`CapacitorBank`), which a provider of it
+    /// stands for too.
+    pub generic: String,
+    /// The `.count` field: how many identical parts stand in this place.
+    pub count: FieldId,
+    /// The standard generic each of them is (`Capacitor`), the kind of the parts the design
+    /// makes.
+    pub member: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct Instance {
@@ -1588,19 +1603,32 @@ impl Model {
         inst.bridge
     }
 
-    /// The `.count` of a part that is a bank (ADR 0052): the number of identical parts that
-    /// stand in this place. Only a part that stands for a standard generic in [`BANKS`] is one,
-    /// whatever a design's own part names its members.
-    pub fn bank_count(&self, part: InstId) -> Option<FieldId> {
+    /// The bank a part is (ADR 0052, ADR 0122), or none for a part that is not one: the field that
+    /// holds how many identical parts stand in this place, and the kind each of them is. The
+    /// one place that decides which parts are banks.
+    pub fn bank(&self, part: InstId) -> Option<Bank> {
         let inst = self.instance(part);
-        let bank = inst.standard.iter().any(|g| BANKS.contains(&g.as_str()));
-        if inst.kind != InstKind::Part || !bank {
+        if inst.kind != InstKind::Part {
             return None;
         }
+        let (generic, member) = BANKS
+            .iter()
+            .find(|(bank, _)| inst.standard.iter().any(|g| g == bank))?;
         match self.member(part, "count")? {
-            Member::Field(f) if matches!(self.field(f).kind, FieldKind::Quantity(_)) => Some(f),
+            Member::Field(f) if matches!(self.field(f).kind, FieldKind::Quantity(_)) => {
+                Some(Bank {
+                    generic: generic.to_string(),
+                    count: f,
+                    member: member.to_string(),
+                })
+            }
             _ => None,
         }
+    }
+
+    /// The `.count` of a part that is a bank: [`Model::bank`]'s field.
+    pub fn bank_count(&self, part: InstId) -> Option<FieldId> {
+        self.bank(part).map(|b| b.count)
     }
 
     /// The connectors a system mates (ADR 0040).

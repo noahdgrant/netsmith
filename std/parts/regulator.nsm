@@ -1,7 +1,7 @@
 //! Voltage regulators.
 
 import std::logic::Logic
-import std::parts::passive::{Capacitor, Inductor, Resistor}
+import std::parts::passive::{Capacitor, CapacitorBank, Inductor, Resistor}
 import std::sources::Rail
 
 /// A linear regulator with a fixed output. Its input and output share a ground. Which
@@ -311,7 +311,7 @@ generic BuckIc {
 /// are on the output net and are not modelled, so the balance there is not complete and
 /// cannot say that itself (ADR 0027).
 ///
-/// Each side is a bank of identical capacitors in parallel (ADR 0052): `.input_cap` and
+/// Each side is a `CapacitorBank` of identical capacitors in parallel (ADR 0052): `.input_cap` and
 /// `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The
 /// solver chooses the row and the count together, the fewest from 1 up to
 /// 8 for which every check holds with `count * effective_capacitance` against what the IC
@@ -339,8 +339,8 @@ module Buck<Ic: BuckIc> {
     .vout: Rail
     .divider: FeedbackDivider
     .inductor: Inductor
-    .input_cap: Capacitor
-    .output_cap: Capacitor
+    .input_cap: CapacitorBank
+    .output_cap: CapacitorBank
     /// The peak-to-peak ripple current of the inductor.
     .ripple: Current
     /// The peak-to-peak ripple of the output voltage, a closed-form estimate (not a

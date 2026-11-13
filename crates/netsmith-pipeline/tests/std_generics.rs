@@ -187,7 +187,7 @@ board Saturates {
 ";
 
 const BANK: &str = "\
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
@@ -198,7 +198,7 @@ board Bank {
         .pos.net &= \"VIN\"
         .neg.net &= \"GND\"
     }
-    .bulk: Capacitor { .count &= 1..8 }
+    .bulk: CapacitorBank { .count &= 1..8 }
     .supply.pos ~> .bulk ~> .supply.neg
     .bulk.count * .bulk.effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
@@ -271,13 +271,15 @@ fn all_efforts() -> Vec<String> {
 /// The lines this printed when the twelve were `part`s (the keyword of `std/parts/*.nsm` was
 /// the only difference), recorded before the conversion. `two_boards` was 72 trials until the
 /// search left out candidates that a trial would refuse (issue #184): its picks are the same.
+/// A plain `Capacitor` is no longer searched as a bank (ADR 0122), so `ldo` (62), `two_boards`
+/// (67) and `behind` (28) try fewer candidates, and pick the same parts.
 const BEFORE: &str = "\
 led/LedExample: trials 3 picks [led=KT-0603R RED LED 0603 C2286x1, power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, r1=330Ω 1% 0402 C25104x1] findings 0\n\
 status/IndicatorExample: trials 5 picks [enable_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, status_indicator.bypass=100nF 10% 16V X7R 0402 C1525x1, status_indicator.current_limit=1kΩ 1% 0402 C11702x1, status_indicator.led=LTST-C190KGKT GREEN LED 0603 C125094x1] findings 0\n\
-ldo/RegulatorExample: trials 62 picks [power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power_out=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, stage.input_cap=10uF 20% 10V X5R 0402 C315248x1, stage.output_cap=22uF 20% 6.3V X5R 0603 C59461x1, stage.regulator=XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446x1] findings 0\n\
-two_boards/TwoBoards: trials 67 picks [led.led=KT-0603R RED LED 0603 C2286x1, led.power_in=PM2.54-1X2PM-H85 2-pin 2.54mm socket C42431841x1, led.r1=100Ω 1% 0402 C25076x1, power.power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power.power_out=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power.stage.input_cap=10uF 20% 10V X5R 0402 C315248x1, power.stage.output_cap=22uF 20% 6.3V X5R 0603 C59461x1, power.stage.regulator=XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446x1] findings 0\n\
+ldo/RegulatorExample: trials 13 picks [power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power_out=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, stage.input_cap=10uF 20% 10V X5R 0402 C315248x1, stage.output_cap=22uF 20% 6.3V X5R 0603 C59461x1, stage.regulator=XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446x1] findings 0\n\
+two_boards/TwoBoards: trials 18 picks [led.led=KT-0603R RED LED 0603 C2286x1, led.power_in=PM2.54-1X2PM-H85 2-pin 2.54mm socket C42431841x1, led.r1=100Ω 1% 0402 C25076x1, power.power_in=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power.power_out=PH2.54-1X2P-H25 2-pin 2.54mm header C42431798x1, power.stage.input_cap=10uF 20% 10V X5R 0402 C315248x1, power.stage.output_cap=22uF 20% 6.3V X5R 0603 C59461x1, power.stage.regulator=XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446x1] findings 0\n\
 protect/Protected: trials 5 picks [fuse=SMD1206P100TF 1A 6V resettable fuse 1206 C20800x1, tvs=SMAJ15A 15V TVS SMA C113958x1] findings 0\n\
-behind/Behind: trials 28 picks [a_cap=10uF 20% 6.3V X5R 0402 C15525x1, z_diode=1N5819WS 40V 1A Schottky SOD-323 C191023x1] findings 0\n\
+behind/Behind: trials 4 picks [a_cap=10uF 20% 6.3V X5R 0402 C15525x1, z_diode=1N5819WS 40V 1A Schottky SOD-323 C191023x1] findings 0\n\
 clamp/Clamp: trials 1 picks [] findings 3\n\
 switch/Switch: trials 3 picks [load=10kΩ 1% 0603 C25804x1, q=AO3400A 30V 5.7A N-MOSFET SOT-23 C20917x1] findings 0\n\
 switch_weak/Switch: trials 2 picks [] findings 1\n\
@@ -317,10 +319,10 @@ PTF-10K,PTF 10k 0.1% 0402,10kohm +/- 0.1%,125mW,0402,Extended,https://example.in
 ";
 
 const POLY_CAP: &str = "\
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 
-/// An invented polymer capacitor.
-part PolyCap provides Capacitor {
+/// An invented polymer capacitor bank.
+part PolyCap provides CapacitorBank {
     pins {
         .a passive \"1\" \"1\"
         .b passive \"2\" \"2\"
@@ -589,10 +591,10 @@ fn a_provider_of_the_linear_regulator_is_picked_for_the_load_the_standard_row_ca
 }
 
 #[test]
-fn a_provider_of_the_capacitor_is_a_bank_when_the_design_says_so() {
+fn a_provider_of_the_capacitor_bank_is_a_bank() {
     let w = world(&[("src::poly", POLY_CAP, "poly_cap", POLY_CAP_CSV)]);
     let source = "\
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 import src::poly::PolyCap
 import std::sources::Rail
 

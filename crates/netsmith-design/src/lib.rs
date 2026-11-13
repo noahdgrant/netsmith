@@ -1211,6 +1211,17 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         lettered.insert(id, (letters, first, bank));
     }
 
+    let kinds: HashMap<InstId, String> = declared
+        .iter()
+        .map(|&id| {
+            let inst = model.instance(id);
+            let kind = match model.bank(id) {
+                Some(b) if inst.type_name == b.generic => b.member,
+                _ => inst.type_name.clone(),
+            };
+            (id, kind)
+        })
+        .collect();
     let mut refdes_of: HashMap<InstId, Vec<String>> = HashMap::new();
     let mut parts = Vec::new();
     let mut fitted: Vec<environment::Fitted<'_>> = Vec::new();
@@ -1222,26 +1233,30 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         netsmith_core::job::checkpoint();
         let inst = model.instance(*id);
         let (letters, first, bank) = lettered[id].clone();
+        // What each part the design makes is: the part's own kind, or for a bank (ADR 0122) the
+        // generic its parts are, so a member of a `CapacitorBank` is drawn, mapped to a footprint
+        // and listed as the `Capacitor` it is.
+        let kind = &kinds[id];
         let pick = solution.picks.iter().find(|p| p.part == *id);
         // A label's value is the text it prints.
-        let value = match (inst.type_name.as_str(), text_of(model, *id, "text")) {
+        let value = match (kind.as_str(), text_of(model, *id, "text")) {
             ("Label", Some(text)) => text,
             _ => pick
                 .map(|p| p.label.clone())
-                .unwrap_or_else(|| default_value(&inst.type_name)),
+                .unwrap_or_else(|| default_value(kind)),
         };
         let package = text_of(model, *id, "package");
         let (assembly, assembly_stated) = match assembly_of(model, *id, pick, &mut errors) {
             Some(a) => (a, true),
             None => match project_default {
                 Some(a) => (a, true),
-                None if hand_soldered(&inst.type_name) => (Assembly::Hand, false),
+                None if hand_soldered(kind) => (Assembly::Hand, false),
                 None => (Assembly::Fab, false),
             },
         };
         fitted.push(environment::Fitted {
             part: *id,
-            kind: &inst.type_name,
+            kind,
             assembly,
             pick,
         });
@@ -1250,12 +1265,23 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         if bank > 1 {
             banks.insert(model.path_of(*id), bank);
         }
+        // What a part of the design provides, of the standard generics: a provider of a bank
+        // makes parts that provide what the bank's parts are (ADR 0122).
+        let provides: Vec<String> = match model.bank(*id) {
+            Some(b) if inst.type_name != b.generic => vec![b.member],
+            _ => inst
+                .provides
+                .iter()
+                .filter(|g| inst.standard.contains(g))
+                .cloned()
+                .collect(),
+        };
         for k in 0..bank {
             let refdes = format!("{letters}{}", first + k);
             let path = bank_member_path(&model.path_of(*id), k, bank);
             sourcing.push(Sourced {
                 refdes: refdes.clone(),
-                kind: inst.type_name.clone(),
+                kind: kind.clone(),
                 value: value.clone(),
                 package: package.clone(),
                 lcsc: pick.and_then(|p| p.lcsc.clone()),
@@ -1269,15 +1295,10 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             });
             parts.push(Part {
                 refdes: refdes.clone(),
-                kind: inst.type_name.clone(),
+                kind: kind.clone(),
                 // Only the generics of the standard library: a tool reads them by name, and a
                 // project's own generic of the same name is not that one.
-                provides: inst
-                    .provides
-                    .iter()
-                    .filter(|g| inst.standard.contains(g))
-                    .cloned()
-                    .collect(),
+                provides: provides.clone(),
                 value: value.clone(),
                 package: package.clone(),
                 path,

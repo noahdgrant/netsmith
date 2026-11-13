@@ -1966,6 +1966,26 @@ impl<'a> Checker<'a> {
         })
     }
 
+    /// What to add to "has no member `count`" for a `Capacitor` (ADR 0122): a capacitor is one
+    /// part, and several are a `CapacitorBank` or `N x Capacitor`. Empty for any other name or
+    /// part.
+    fn count_hint(&self, inst: InstId, name: &str) -> &'static str {
+        if name == "count"
+            && self
+                .model
+                .instance(inst)
+                .standard
+                .iter()
+                .any(|g| g == "Capacitor")
+        {
+            ": a `Capacitor` is one part; for a count the solver chooses write a `CapacitorBank` \
+             (`.bulk: CapacitorBank { .count &= 1..8 }`), and for a number you know write \
+             `3 x Capacitor` (a group of identical members)"
+        } else {
+            ""
+        }
+    }
+
     pub fn resolve_path(&mut self, p: &Path) -> Res {
         let cur = self.current();
         let first = &p.segments[0];
@@ -1993,9 +2013,13 @@ impl<'a> Checker<'a> {
                     let near = crate::lower::closest(&first.name, &names)
                         .map(|n| format!("; did you mean `.{n}`?"))
                         .unwrap_or_default();
+                    let hint = self.count_hint(cur, &first.name);
                     self.error(
                         first.span,
-                        format!("`{}` is not a member of this {owner}{near}", first.name),
+                        format!(
+                            "`{}` is not a member of this {owner}{near}{hint}",
+                            first.name
+                        ),
                     );
                     return Res::Bad;
                 }
@@ -2060,7 +2084,11 @@ impl<'a> Checker<'a> {
                             return Res::Bad;
                         }
                         let ty = self.model.instance(i).type_name.clone();
-                        self.error(seg.span, format!("`{ty}` has no member `{}`", seg.name));
+                        let hint = self.count_hint(i, &seg.name);
+                        self.error(
+                            seg.span,
+                            format!("`{ty}` has no member `{}`{hint}", seg.name),
+                        );
                         return Res::Bad;
                     }
                 },

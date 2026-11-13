@@ -1198,14 +1198,14 @@ fn joined_rails_share_their_peak_voltage() {
 }
 
 #[test]
-fn a_capacitor_with_a_count_is_still_a_two_pin_part_and_the_count_is_a_plain_number() {
+fn a_capacitor_bank_is_a_two_pin_part_and_the_count_is_a_plain_number() {
     // The count is a value of the part and not a pin: a bank has the pads of one capacitor.
-    assert_eq!(pins_of("std::parts::passive", "Capacitor").len(), 2);
+    assert_eq!(pins_of("std::parts::passive", "CapacitorBank").len(), 2);
     let board = |count: &str| {
         on_12v(
-            "import std::parts::passive::Capacitor",
+            "import std::parts::passive::CapacitorBank",
             &format!(
-                "    .c: Capacitor {{ .capacitance &= 100nF +/- 20%; .count &= {count} }}\n    \
+                "    .c: CapacitorBank {{ .capacitance &= 100nF +/- 20%; .count &= {count} }}\n    \
                  .supply.pos ~> .c ~> .supply.neg"
             ),
         )

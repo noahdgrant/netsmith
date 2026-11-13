@@ -95,15 +95,6 @@ enum Dielectric {
 /// `.bias` is the voltage across the capacitor. A capacitor placed between a rail's `pos`
 /// and `neg` takes it from that rail; a design states it only for one that is across no rail.
 ///
-/// `.count` is how many identical capacitors stand in parallel in this place (a bank, ADR
-/// 0052). Left unset it is one. A range
-/// (`.count &= 1..4`) lets the solver choose: it takes the fewest of the range for which every
-/// check that mentions the part holds, together with the catalog row, so that a requirement
-/// that no single capacitor meets (`.count * .effective_capacitance >= 47uF`) can be met by
-/// several. Every other field is the value of one capacitor of the bank. The netlist, the
-/// bill of materials and the schematic have one part for each, with consecutive reference
-/// designators (`bulk[0]`, `bulk[1]`). A board that knows its count writes `3 x Capacitor`.
-///
 /// `.dielectric` is the class of the ceramic (`Dielectric::X7R`), read from the catalog row
 /// and stated by a design only when it needs one. A generic capacitor (no catalog row) has
 /// none, so a design that states it is given a row. The package is `.package`, a text such as
@@ -124,9 +115,48 @@ generic Capacitor {
     /// The DC voltage across the capacitor, in either direction.
     .bias: Voltage
     .max_voltage: Voltage
-    /// How many of this capacitor stand in parallel; unset is one.
-    .count: Number
     /// The dielectric class, unset until a design states it or a catalog row does.
+    .dielectric: Dielectric
+    bridge .a ~> .b
+
+    .package: Package
+    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional }
+}
+
+/// Identical capacitors in parallel in one place, whose number the solver chooses or a module
+/// passes in through its interface (a bank, ADR 0052). `N x Capacitor` is for a number the
+/// board knows (ADR 0119); a `.count` stated as one whole number on a board's own bank is
+/// refused with that pointer.
+///
+/// The bank is one thing in the source and one `Capacitor` for each member in the design, at the
+/// paths `bulk[0]`, `bulk[1]`, ... (a bank of one is the one `Capacitor`, `bulk`), numbered one
+/// after the other, on the same nets, with the same catalog row. Every field but `.count` is
+/// the value of one capacitor, as on `Capacitor` (the members are the same catalog, the same
+/// derating and the same checks), so a rating (`.max_voltage`) holds for each and a requirement
+/// on the whole bank multiplies, `.count * .effective_capacitance >= 47uF`.
+///
+/// `.count` is a whole number from 1 to 64. Left unset it is one. A range (`.count &= 1..4`)
+/// lets the solver choose: it takes the fewest of the range for which every check that
+/// mentions the part holds, together with the catalog row, trying one capacitor of every row
+/// before two of any.
+generic CapacitorBank {
+    .designator &= "C"
+
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+
+    /// The marked value of one capacitor, with its tolerance.
+    .capacitance: Capacitance
+    /// The capacitance one capacitor keeps at `.bias`, as `Capacitor.effective_capacitance`.
+    .effective_capacitance: Capacitance
+    /// The DC voltage across the bank, in either direction.
+    .bias: Voltage
+    .max_voltage: Voltage
+    /// How many capacitors stand in parallel; unset is one.
+    .count: Number
+    /// The dielectric class of one capacitor, unset until a design states it or a row does.
     .dielectric: Dielectric
     bridge .a ~> .b
 

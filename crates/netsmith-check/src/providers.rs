@@ -51,7 +51,7 @@
 //! A provider of a standard generic reads the generic's pins as kinds only (`.a passive`) and
 //! writes the one catalog of its own; it does not declare `.package: Package`, because the
 //! generic does, and it cannot state other designator letters. A provider of the standard
-//! `Capacitor` is a bank. Two providers of one generic need different names, because a part is
+//! `CapacitorBank` is a bank (`Model::bank`), and a provider of `Capacitor` is one part. Two providers of one generic need different names, because a part is
 //! known by its name in the bill of materials, in `kicad.toml` and in the notes (qualifying the
 //! kind with the module path was rejected: it changes every kind name for a case the author
 //! controls). A provider is judged where it is written even when no board picks it. A provider

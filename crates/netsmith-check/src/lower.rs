@@ -745,12 +745,11 @@ impl Checker<'_> {
         stated
     }
 
-    /// A whole number written as the `.count` of a board's own capacitor is two spellings of
-    /// that many capacitors in parallel, and the board has one for it, `N x Capacitor` (ADR 0119,
-    /// owner decision of 2026-11-13, issue #685). A count the solver chooses (a range), one that
-    /// reads another field, and one a module passes through its interface (`.reg.output_count`,
-    /// or a capacitor inside a module) are a bank and stay. The statement is still applied, so
-    /// nothing else is reported about the board for it.
+    /// A whole number written as the `.count` of a board's own `CapacitorBank` is `N x Capacitor`
+    /// written another way (ADR 0119, ADR 0122): the board has a group for a number it knows. A
+    /// count the solver chooses (a range), one that reads another field, and one a module passes
+    /// through its interface (`.reg.output_count`, or a bank inside a module) stay. Proposed, for
+    /// the owner: ADR 0122.
     fn refuse_fixed_count(&mut self, field: FieldId, path: &ast::Path, e: &RExpr, span: Span) {
         let RExpr::Const(q) = e else { return };
         if !self.in_board() || self.is_library(self.cur_source()) || q.lo() != q.hi() {
@@ -774,12 +773,12 @@ impl Checker<'_> {
         let source = path.to_source();
         let message = if n == 1.0 {
             format!(
-                "`{source}` fixes a bank at one capacitor, which is a plain `Capacitor`: leave `.count` out. `.count` is for a number the solver chooses (`.count &= 1..8`) or a module passes through its interface"
+                "`{source}` fixes a bank at one capacitor, which is a plain `Capacitor`: write `.{name}: Capacitor`. `.count` is for a number the solver chooses (`.count &= 1..8`) or a module passes through its interface"
             )
         } else {
             let n = n as u32;
             format!(
-                "`{source}` fixes the count of a capacitor the board itself declares: write `{n} x Capacitor` instead, `.{name}: {n} x Capacitor {{ ... }}`, whose members are `.{name}[0]` to `.{name}[{}]`. `.count` is for a number the solver chooses (`.count &= 1..8`) or a module passes through its interface",
+                "`{source}` fixes the count of a bank the board itself declares: write `{n} x Capacitor` instead, `.{name}: {n} x Capacitor {{ ... }}`, whose members are `.{name}[0]` to `.{name}[{}]`. `.count` is for a number the solver chooses (`.count &= 1..8`) or a module passes through its interface",
                 n - 1
             )
         };

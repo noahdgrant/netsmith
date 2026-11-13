@@ -7130,10 +7130,10 @@ An `Inductor` has an optional `.rms_current`, the heating (RMS) current, as a ca
 
 ### A bank of capacitors in parallel
 
-A requirement that no single capacitor meets is met by several in parallel (ADR 0052). `.count` is how many identical capacitors stand in this place. Only the standard `Capacitor` has this meaning: a part of your own with a member named `count` (the segments of an LED bar, say) is one part, and its `.count` is a plain number. Left unset it is one, and nothing changes. A range (`.count &= 1..8`) lets the solver choose: it takes the fewest of the range for which every check that mentions the part holds, together with the catalog row, trying one capacitor of every row before two of any, so a part that one capacitor can serve is picked as before. Every other field of the part is the value of one capacitor, so a requirement on the whole bank multiplies by the count (`.count * .effective_capacitance`), and a rating (`.max_voltage`) holds for each.
+A `Capacitor` is one part. A requirement that no single capacitor meets is met by several in parallel (ADR 0052, ADR 0122), and `CapacitorBank` is the type for that: the same capacitor, with the number of them in `.count`, a whole number the solver chooses or a module passes in. A number the board knows is `3 x Capacitor` (A group of identical members), not a bank. A `.count` on a `Capacitor` is an error that says so. Only the standard `CapacitorBank` has this meaning: a part of your own with a member named `count` (the segments of an LED bar, say) is one part, and its `.count` is a plain number. Left unset it is one. A range (`.count &= 1..8`) lets the solver choose: it takes the fewest of the range for which every check that mentions the part holds, together with the catalog row, trying one capacitor of every row before two of any, so a part that one capacitor can serve is picked as before. Every other field of the part is the value of one capacitor, so a requirement on the whole bank multiplies by the count (`.count * .effective_capacitance`), and a rating (`.max_voltage`) holds for each.
 
 ```nsm solve report
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 import std::sources::Rail
 
 board Bank {
@@ -7141,7 +7141,7 @@ board Bank {
         .voltage &= 5V
         .pos.net &= "5V"
     }
-    .bulk: Capacitor { .count &= 1..8 }
+    .bulk: CapacitorBank { .count &= 1..8 }
     .bulk.count * .bulk.effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
     .supply.pos ~> .bulk ~> .supply.neg
@@ -7160,12 +7160,12 @@ board Bank
   net GND: C1.2, C2.2, C3.2, C4.2, C5.2, C6.2
 ```
 
-The design has one part for each capacitor of the bank, numbered one after the other, all on the same nets, and the bill of materials lists the row once with the quantity. The capacitors of a bank of two or more have the paths `bulk[0]`, `bulk[1]`, ..., counted from 0 as the members of a group are (the keys of a layout file; a bank of one is `bulk`). A count the board states itself is not a bank: a whole number written as the `.count` of the board's own capacitor (`.bulk: Capacitor { .count &= 3 }`) is refused with a pointer to `3 x Capacitor` (A group of identical members), whose members the board can narrow and place one by one. A bank is for a count the solver chooses (`.count &= 1..8`) or a module passes through its interface (`.reg.output_count &= 2`). The schematic, the KiCad files and the placer see real parts. The placer treats each as any other capacitor, so a bank is not kept in a row. A requirement in the physical file on the part's path (`.bulk.place.top &= 3mm..6mm`, `.bulk.place.side &= "bottom"`, a `.height`) holds for every capacitor of the bank: the design has one requirement for each, the check measures each, and a finding names the one it is about (`bulk[1].place.top`, with its designator). A relation between the place of the bank and that of another part (`.bulk.place.x - .r1.place.x == 5mm +/- 3mm`) holds for each pair, and the build lists a note that says so (`` `bulk` is a bank of 4 capacitors ``). A requirement on the module the bank is in reaches them all, as for any part.
+The design has one `Capacitor` for each capacitor of the bank, numbered one after the other, all on the same nets, and the bill of materials lists the row once with the quantity. The capacitors of a bank of two or more have the paths `bulk[0]`, `bulk[1]`, ..., counted from 0 as the members of a group are (the keys of a layout file; a bank of one is `bulk`). A whole number written as the `.count` of the board's own bank (`.bulk: CapacitorBank { .count &= 3 }`) is refused with a pointer to `3 x Capacitor`, whose members the board can narrow and place one by one. A bank is for a count the solver chooses (`.count &= 1..8`) or a module passes in (`.reg.output_cap.count &= 2`, by the path into the module, ADR 0116). A bank carries what one capacitor carries (`.capacitance`, `.package`, `.max_voltage`, `.dielectric`), each as the value of one capacitor, so a narrowing on the bank is one on every member; what is stated about one member of a group (`.decoupling[1].package`) cannot be stated about one capacitor of a bank. The schematic, the KiCad files and the placer see real parts. The placer treats each as any other capacitor, so a bank is not kept in a row. A requirement in the physical file on the part's path (`.bulk.place.top &= 3mm..6mm`, `.bulk.place.side &= "bottom"`, a `.height`) holds for every capacitor of the bank: the design has one requirement for each, the check measures each, and a finding names the one it is about (`bulk[1].place.top`, with its designator). A relation between the place of the bank and that of another part (`.bulk.place.x - .r1.place.x == 5mm +/- 3mm`) holds for each pair, and the build lists a note that says so (`` `bulk` is a bank of 4 capacitors ``). A requirement on the module the bank is in reaches them all, as for any part.
 
 When no count in the range is enough, the message names the count that came nearest:
 
 ```nsm fails
-import std::parts::passive::Capacitor
+import std::parts::passive::CapacitorBank
 import std::sources::Rail
 
 board Short {
@@ -7173,7 +7173,7 @@ board Short {
         .voltage &= 5V
         .pos.net &= "5V"
     }
-    .bulk: Capacitor { .count &= 1..2 }
+    .bulk: CapacitorBank { .count &= 1..2 }
     .bulk.count * .bulk.effective_capacitance >= 10mF
     .supply.pos ~> .bulk ~> .supply.neg
 }
@@ -10203,7 +10203,7 @@ board Converter {
 
 The solver picks the inductor (a 2.2 uH 1210 part saturating at 3.6 A, over the IC's 3 A, with 85 mohm, under its 0.1 ohm, and a tolerance that still leaves 1.76 uH, over the IC's 1.5 uH), a capacitor for each side that keeps the effective capacitance the IC asks for at the voltage across it, and the two divider resistors. The supply draws 0 to 459 mA for the 0 to 1 A load. The ripple current is `(vin - vout) * vout / (vin * L * fsw)`, 0.30 A to 0.67 A here, and the inductor must carry the load plus half of it: 1.33 A of 3.6 A.
 
-Each side of the converter is a bank of identical capacitors (the section on capacitors above): `.input_cap` and `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The solver chooses the row and the count together, from 1 to 8, so that `count * effective_capacitance` meets what the IC asks for (the capacitance the datasheet states is for the whole side) and each capacitor is rated for its rail. With the IC of this guide changed to ask for 47 uF at the output and 40 uF at the input, the converter takes two capacitors at the 1.8 V output (the 47 uF row keeps 26 uF of its value there) and four at the 5 V input (it keeps 10 uF). The board states the count when it wants one (`.reg.output_cap.count &= 3`, which the checks then hold to), or limits what the solver may choose (`.reg.output_cap.count &= 1..3`), by the path into the converter (ADR 0116). A bank of one is a single capacitor, as the converter had before.
+Each side of the converter is a `CapacitorBank` of identical capacitors (the section on capacitors above): `.input_cap` and `.output_cap` stand for one capacitor of the bank, and their `.count` says how many. The solver chooses the row and the count together, from 1 to 8, so that `count * effective_capacitance` meets what the IC asks for (the capacitance the datasheet states is for the whole side) and each capacitor is rated for its rail. With the IC of this guide changed to ask for 47 uF at the output and 40 uF at the input, the converter takes two capacitors at the 1.8 V output (the 47 uF row keeps 26 uF of its value there) and four at the 5 V input (it keeps 10 uF). The board states the count when it wants one (`.reg.output_cap.count &= 3`, which the checks then hold to), or limits what the solver may choose (`.reg.output_cap.count &= 1..3`), by the path into the converter (ADR 0116). A bank of one is a single capacitor, as the converter had before.
 
 ```nsm-fragment
 .reg: Buck<Zbk2> {
@@ -10749,9 +10749,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:329:5
+    --> std/parts/passive.nsm:359:5
     |
-329 |     .current <= .rated_current
+359 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10775,9 +10775,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:211:5
+    --> std/parts/passive.nsm:241:5
     |
-211 |     .current <= .saturation_current
+241 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -10841,9 +10841,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:330:5
+    --> std/parts/passive.nsm:360:5
     |
-330 |     .supply_peak <= .rated_voltage
+360 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -14208,7 +14208,8 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | Definition | What it is |
 |---|---|
 | `std::parts::passive::Resistor` | A resistor with `.resistance`, `.temperature_coefficient`, a through-current and a voltage drop tied by Ohm's law. Passive pins `a` and `b` (pads 1 and 2), bridge `a ~> b`. Requires `.drop * .current <= .max_power`. Catalog `resistor`: resistance, max_power, package, temperature_coefficient (a fraction per kelvin, empty in the standard rows). |
-| `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias`, `.max_voltage` `.count`, the number of identical capacitors in parallel (a bank; unset is one, a range is chosen by the solver) and `.dielectric` (a `Dielectric`, from the row, optional). Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
+| `std::parts::passive::Capacitor` | A ceramic capacitor with `.capacitance`, `.effective_capacitance`, `.bias`, `.max_voltage` and `.dielectric` (a `Dielectric`, from the row, optional). Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
+| `std::parts::passive::CapacitorBank` | Identical capacitors in parallel, whose number the solver chooses or a module passes in (ADR 0122): the fields of `Capacitor` for one capacitor, and `.count`, a whole number (unset is one, a range is chosen by the solver). Its members are `Capacitor`s, `bulk[0]` to `bulk[n-1]`. A number the board knows is `N x Capacitor`. Pins `a` and `b`, bridge `a ~> b`. Catalog `capacitor`. |
 | `std::parts::passive::Led` | A light-emitting diode with `.color` (a `Color`), `.forward_voltage`, `.current` and `.drop`. Pins `anode` and `cathode`, bridge `anode ~> cathode`. Catalog `led`. |
 | `std::parts::regulator::LinearRegulator` | A fixed-output linear regulator. Rails `vin` and `vout` that share a ground, a pin table for SOT-23 and one for SOT-223, `.dropout`, `.max_current`, `.max_power`. It requires `vin >= vout + dropout`, a supplied current within `.max_current` and a dissipation within `.max_power`; `.quiescent_current` is the current it keeps for itself (default none), added to the input current. Catalog `ldo`. |
 | `std::parts::connector::Connector` | What a connector is: a generic with the letters `"J"` and no pins, no pads and no catalog, that every standard connector provides and a project's own connector provides to be one (ADR 0068). |

@@ -66,7 +66,7 @@ A part with `catalog X { .a, .b }` gets its real part from the rows of `X.csv`, 
 
 Say what you need after derating: `.effective_capacitance >= 4.7uF`. Use `.capacitance &= 100nF +/- 20%` only where you mean the marked part. A capacitor between a rail's `pos` and `neg` gets its bias from the rail.
 
-When no single capacitor meets a requirement, a `Capacitor` takes `.count`, the number of identical capacitors in parallel (a bank): `.count &= 1..8` lets the solver choose the fewest, and a requirement on the whole bank multiplies, `.count * .effective_capacitance >= 47uF`, while a rating (`.max_voltage`) is per capacitor. `Buck` does this for each side: state `.reg.output_cap.count` and `.reg.input_cap.count` (`.reg.output_cap.count &= 2`). Never write capacitors side by side to get a larger value.
+A `Capacitor` is one part and has no `.count`. When no single capacitor meets a requirement, use a `CapacitorBank`, identical capacitors in parallel: `.bulk: CapacitorBank { .count &= 1..8 }` lets the solver choose the fewest, and a requirement on the whole bank multiplies, `.bulk.count * .bulk.effective_capacitance >= 47uF`, while a rating (`.max_voltage`) is per capacitor. `Buck` does this for each side: state `.reg.output_cap.count` and `.reg.input_cap.count` (`.reg.output_cap.count &= 2`). A number you know is `3 x Capacitor`, not a bank (a fixed `.count` on your own bank is refused); the bank's capacitors are `bulk[0]`, `bulk[1]` in a layout file. Never write capacitors side by side to get a larger value.
 
 ## Loop
 
