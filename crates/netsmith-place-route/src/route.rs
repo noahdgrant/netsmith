@@ -267,6 +267,51 @@
 //! estimate cut to match left RP2350 with 2 connections at 300 s; in the pass the same pull
 //! costs nothing it does not gain.
 //!
+//! # Track off other nets' pours (issue #431, S7)
+//!
+//! A pour on one outer layer of a two-layer board (GND on B.Cu on RP2350 and Orbit) is the
+//! return path of the signals over it, and every other net's track on it cuts it.
+//!
+//! **What is built** ([`Router::off_the_pours`]). When a try has routed every line, after the
+//! pairs' pass, each line with track on an outer layer another net pours, while the other outer
+//! layer is free of other nets' pours, is routed again, the most such track first, against all
+//! the other copper, at the usual room and failing that at the least. In that search a step on
+//! the pour costs [`POUR`] more (twice its length) and a via [`POUR_VIA`] more (60 mm of track
+//! with [`VIA`]), and the new copper is kept only if it costs less so counted. A line is never
+//! left, so a board routes exactly as completely as before; a board with both outer layers
+//! poured (EasyDuino) or neither is unchanged. The nets of a diff pair are left alone: moved
+//! by this pass, Orbit's `usb.dp` came out 7.7 mm shorter than `.dm` (skew 0.77 to 6.87 mm).
+//! It runs after the pairs' pass for the same reason: before it, the other nets it moved let
+//! the pairs' pass shorten `usb.dp` the same way. One sweep ([`POUR_SWEEPS`]).
+//!
+//! **Measured** (2026-11-12, main at d07d6e8f with S9, `netsmith fab`, the same machine back to
+//! back; other nets' track on the pour, length over the spanning length, vias, `fab` time):
+//!
+//! | | RP2350 | Orbit | EasyDuino |
+//! |---|---|---|---|
+//! | main | 646 mm, 1.40x, 137 vias, 122 s | 466 mm, 1.28x, 87 vias, 14.5 s | 504 + 352 mm, 1.22x, 105, 6.8 s |
+//! | **the pass (built)** | **423 mm**, 1.29x, 129 vias, 117 s | **304 mm**, 1.22x, 87 vias, 15.6 s | = main, 7.0 s |
+//! | the pass before the pairs' | 423 mm, 1.29x, 129 | 294 mm, 1.21x, 87, pair skew 6.87 mm | = main |
+//! | three sweeps | 407 mm, 1.26x, 123 vias | 286 mm, 1.21x, 86 vias | = main |
+//!
+//! The same board gives the same copper on every run. A second `fab` of each, at a load of 6 to
+//! 10 against 2 to 3, took 130 / 26 / 9 s on main and 154 / 32 / 12 s with the pass. The pass
+//! itself, from one try of each (`netsmith route --tries 1 --route-timeout 0`, six at once):
+//! 6 to 10 s of RP2350's 170 to 185 s, 4 to 12 s of Orbit's 17 to 48 s, nothing on EasyDuino.
+//! Three sweeps took 5 s more on RP2350 and 19 s more on Orbit (doubling its try) for a sixth of
+//! the first sweep's gain, so one sweep is kept. Robustness (one try at turn costs 24 / 25 / 26 /
+//! 27, at the placed margin and at `--margin 1`) is main's: RP2350 0 / 0 / 0 / 1 lines left at
+//! both, Orbit and EasyDuino 0 / 0 / 0 / 0. Every pair's coupling and skew are main's on every
+//! run.
+//!
+//! Earlier forms, on main before #548 and #550 (782 and 458 mm on main then): the pour's cost in
+//! every search of every try left RP2350 with 9 connections at 300 s (Orbit 152 mm, 131 vias);
+//! from the second try only it changed nothing, as every board routes on its first; vias at no
+//! extra cost in the pass moved more of Orbit (210 mm) for 28 vias more; and a line that cannot
+//! move ripping up the nets in its way moved no line. The pass does not reach the epic's target
+//! of 300 mm on RP2350: what is left is round U1, whose front is full, and the soft search
+//! for the nets in a line's way finds none whose rip-up would free it.
+//!
 //! # What the router says about a board it leaves (issue #431, S3b)
 //!
 //! An agent cannot fix what it cannot see, so [`Routing`] says why each line is left and where
@@ -454,6 +499,16 @@ const LANE_VIA: i64 = 300;
 const LANE_LENGTH: f64 = 1.5;
 /// What a track pays a step, beyond the step, outside its corridor of the coarse plan.
 const OFF_PLAN: i64 = 10;
+/// What a step costs beyond its length, in the pass that takes track off other nets' pours
+/// ([`Router::off_the_pours`]), on an outer layer another net is poured on while the other outer
+/// layer is not: the same again, so that a track cuts the pour (the return path) only where the
+/// way round is more than twice as long (issue #431, S7).
+const POUR: i64 = 10;
+/// What a via costs beyond [`VIA`] in that pass: a line moved off the pour by a via pair pays
+/// 60 mm of track for them, so the pass does not trade a short cut of the pour for vias.
+const POUR_VIA: i64 = 450;
+/// How many times that pass goes over the lines with track on another net's pour.
+const POUR_SWEEPS: usize = 1;
 /// A step through a cell where the track has to be narrower costs this much more: a necked
 /// down track carries less and is harder to make, so it is kept short.
 const NECK: i64 = 30;
@@ -752,6 +807,9 @@ struct Masks {
     /// The share of the octile distance the search's estimate is, as a fraction: whole, or
     /// [`FOLLOW`] where a step may cost that little.
     estimate: (i64, i64),
+    /// What a step costs beyond its length on each layer ([`POUR`] on another net's pour), and
+    /// a via beyond [`VIA`] ([`POUR_VIA`]), in the pass off the pours; zero elsewhere.
+    pour: ([i64; 2], i64),
 }
 
 struct Soft {
@@ -777,6 +835,7 @@ impl Masks {
             off_plan: None,
             follow: [Vec::new(), Vec::new()],
             estimate: (1, 1),
+            pour: ([0, 0], 0),
         }
     }
 
@@ -1392,7 +1451,8 @@ fn moves(
                 + masks.history_cost(layer, next.0, next.1)
                 + masks.soft_cost(layer, next.0, next.1)
                 + masks.lane_cost(layer, next.0, next.1)
-                + masks.off_plan_cost(next.0, next.1),
+                + masks.off_plan_cost(next.0, next.1)
+                + masks.pour.0[layer],
         );
     }
     let other = 1 - layer;
@@ -1401,7 +1461,7 @@ fn moves(
         relax(
             (i, j, other),
             AFTER_VIA,
-            VIA + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
+            VIA + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j),
         );
     }
 }
@@ -2075,6 +2135,8 @@ struct MemoKey {
     /// Whether the search runs a pair's net beside its partner ([`Router::side_by_side`]):
     /// the partner's tracks are in the print.
     pairing: bool,
+    /// Whether the search pays for other nets' pours ([`Router::off_the_pours`]).
+    pouring: bool,
     window: Window,
     print: u128,
     /// 0 for the flood ([`link`]), and 1 on for the searches in turn.
@@ -2153,6 +2215,9 @@ struct Router<'a> {
     plan: Option<Planned>,
     /// Whether this try's searches pay for leaving their corridors.
     planned: Cell<bool>,
+    /// Whether the searches pay [`POUR`] for a step on another net's pour: in
+    /// [`Router::off_the_pours`] only.
+    pouring: Cell<bool>,
     /// Which tries follow the plan, and what a step outside a corridor costs.
     plan_use: CoarsePlan,
     plan_cost: i64,
@@ -2275,6 +2340,7 @@ impl<'a> Router<'a> {
             escaping: Cell::new(false),
             plan: None,
             planned: Cell::new(false),
+            pouring: Cell::new(false),
             plan_use: options.plan,
             plan_cost: options.plan_cost.unwrap_or(OFF_PLAN),
             memo: RefCell::new(HashMap::new()),
@@ -2672,6 +2738,7 @@ impl<'a> Router<'a> {
                 escaping: self.escaping.get(),
                 planned: self.planned.get(),
                 pairing: self.pairing.get(),
+                pouring: self.pouring.get(),
                 window,
                 print,
                 step,
@@ -2914,6 +2981,9 @@ impl<'a> Router<'a> {
             if off.iter().any(|&o| o) {
                 masks.off_plan = Some((off, self.plan_cost));
             }
+        }
+        if self.pouring.get() {
+            masks.pour = (self.pour_costs(net), POUR_VIA);
         }
         self.add_history(&mut masks);
         masks
@@ -3407,7 +3477,10 @@ impl<'a> Router<'a> {
         }
         let mut state = self.run_stages(order, rip_up, attempt, attempts);
         if state.failed.is_empty() {
+            // The pairs first: the pass off the pours leaves their nets alone, so it cannot undo
+            // their coupling.
             self.side_by_side(&mut state);
+            self.off_the_pours(&mut state, attempt, attempts);
         }
         self.snapshot(SnapshotStage::Final, &state);
         state
@@ -3499,6 +3572,105 @@ impl<'a> Router<'a> {
         *self.failed_in.borrow_mut() = failed_in;
         self.fine.set(false);
         self.pairing.set(false);
+    }
+
+    /// What a step of a line of `net` costs beyond its length on each layer in
+    /// [`Self::off_the_pours`]: [`POUR`] on an outer layer another net is poured on, where the
+    /// other outer layer is free of other nets' pours (where both are poured, either way cuts
+    /// one).
+    fn pour_costs(&self, net: usize) -> [i64; 2] {
+        let name = &self.board.nets[net].name;
+        let poured = |layer: CopperLayer| {
+            self.board
+                .pours
+                .iter()
+                .any(|p| p.layer == layer && &p.net != name)
+        };
+        let (front, back) = (poured(CopperLayer::Front), poured(CopperLayer::Back));
+        [
+            if front && !back { POUR } else { 0 },
+            if back && !front { POUR } else { 0 },
+        ]
+    }
+
+    /// What a line's copper costs as the search counts it in [`Self::off_the_pours`]: its
+    /// length, [`POUR`] more a step on another net's pour, and its vias at [`VIA`] and
+    /// [`POUR_VIA`].
+    fn pour_cost(&self, r: &Routed) -> i64 {
+        let cost = self.pour_costs(self.nets[r.line]);
+        let steps: f64 = r
+            .tracks
+            .iter()
+            .map(|t| {
+                let layer = usize::from(t.layer == CopperLayer::Back);
+                t.from.distance(t.to) / PITCH * (STEP + cost[layer]) as f64
+            })
+            .sum();
+        steps.round() as i64 + (VIA + POUR_VIA) * r.vias.len() as i64
+    }
+
+    /// The length of `r`'s track on another net's pour, in mm.
+    fn on_pour(&self, r: &Routed) -> f64 {
+        let cost = self.pour_costs(self.nets[r.line]);
+        r.tracks
+            .iter()
+            .filter(|t| cost[usize::from(t.layer == CopperLayer::Back)] > 0)
+            .map(|t| t.from.distance(t.to))
+            .sum()
+    }
+
+    /// Take track off other nets' pours on a try that routed every line (issue #431, S7): each
+    /// line with track on one, the most first, is searched for again against the copper of all
+    /// the others with a step on the pour paying [`POUR`], at the usual room and failing that at
+    /// the least, and its new copper is kept only where it costs less so counted
+    /// ([`Self::pour_cost`]). A line is never left unrouted, and a board with no such pour is
+    /// unchanged. The nets of a diff pair ([`diff_pair_partners`]) are left as they are: moving
+    /// one alone pulls it off its partner.
+    fn off_the_pours(&self, state: &mut State, attempt: usize, attempts: usize) {
+        if (0..self.board.nets.len()).all(|n| self.pour_costs(n) == [0, 0]) {
+            return;
+        }
+        let stage = self.stage.get();
+        let failed_in = self.failed_in.borrow().clone();
+        self.pouring.set(true);
+        self.fine.set(true);
+        for _ in 0..POUR_SWEEPS {
+            let mut todo: Vec<(usize, f64)> = state
+                .routed
+                .iter()
+                .filter(|r| self.partners[self.nets[r.line]].is_none())
+                .map(|r| (r.line, self.on_pour(r)))
+                .filter(|&(_, mm)| mm > 0.0)
+                .collect();
+            todo.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+            let total = todo.len();
+            for (k, (line, _)) in todo.into_iter().enumerate() {
+                if self.out_of_time() {
+                    break;
+                }
+                self.report(false, || {
+                    format!(
+                        "routing, try {attempt} of {attempts}: off the pours, {k} of {total} lines"
+                    )
+                });
+                let Some(at) = state.routed.iter().position(|r| r.line == line) else {
+                    continue;
+                };
+                let old = state.routed.remove(at);
+                let kept = match self
+                    .try_line(line, state, &[], ROOM_LOOSE, false)
+                    .or_else(|| self.try_line(line, state, &[], ROOM_TIGHT, false))
+                {
+                    Some((new, _)) if self.pour_cost(&new) < self.pour_cost(&old) => new,
+                    _ => old,
+                };
+                state.routed.insert(at, kept);
+            }
+        }
+        self.fine.set(false);
+        self.pouring.set(false);
+        *self.failed_in.borrow_mut() = failed_in;
+        self.stage.set(stage);
     }
 
     /// The stages of [`Self::run`].
@@ -5008,6 +5180,81 @@ mod tests {
             (board.tracks, board.vias)
         };
         assert_eq!(route_once(), route_once());
+    }
+
+    /// The LED board with its two signal nets named `names` and `GND` poured on the back, routed
+    /// on the front, with each signal line's copper then moved to the back between two vias at
+    /// its pads, as a try might leave it; and what the pass off the pours makes of it.
+    fn off_the_pours_of_the_led_board(names: [&str; 2]) -> (Board, Vec<Routed>) {
+        let mut design = crate::testlib::led_design();
+        design.nets[1].name = names[0].into();
+        design.nets[2].name = names[1].into();
+        let mut board =
+            crate::board_from_design(&design, &netsmith_kicad::Mapping::standard(), &fixtures())
+                .unwrap();
+        board.pours.push(netsmith_pcb::BoardPour {
+            layer: CopperLayer::Back,
+            net: "GND".into(),
+            stitch_pitch: None,
+        });
+        let router = Router::new(&board, &RouteOptions::default());
+        let order = router.orders(false).remove(0);
+        let mut state = router.run_stages(&order, true, 1, 1);
+        assert!(state.failed.is_empty());
+        for r in &mut state.routed {
+            let line = &router.lines[r.line];
+            if !names.contains(&line.net.as_str()) {
+                continue;
+            }
+            let width = r.tracks[0].width;
+            let rules = &board.rules;
+            r.tracks = vec![Track {
+                net: line.net.clone(),
+                layer: CopperLayer::Back,
+                from: line.from_at,
+                to: line.to_at,
+                width,
+            }];
+            r.vias = [line.from_at, line.to_at]
+                .map(|at| Via {
+                    net: line.net.clone(),
+                    at,
+                    diameter: rules.via_diameter,
+                    drill: rules.via_drill,
+                })
+                .to_vec();
+        }
+        router.off_the_pours(&mut state, 1, 1);
+        let routed = state.routed.clone();
+        drop(router);
+        (board, routed)
+    }
+
+    #[test]
+    fn a_line_on_another_nets_pour_is_moved_off_it_after_a_complete_try() {
+        let (_, routed) = off_the_pours_of_the_led_board(["VCC", "net-led.anode"]);
+        for r in routed.iter().filter(|r| r.tracks[0].net != "GND") {
+            assert!(
+                r.tracks.iter().all(|t| t.layer == CopperLayer::Front) && r.vias.is_empty(),
+                "{} is still on the pour: {:?} {:?}",
+                r.tracks[0].net,
+                r.tracks,
+                r.vias
+            );
+        }
+    }
+
+    #[test]
+    fn the_nets_of_a_diff_pair_are_not_moved_off_the_pour() {
+        let (_, routed) = off_the_pours_of_the_led_board(["USB_P", "USB_N"]);
+        for r in routed.iter().filter(|r| r.tracks[0].net != "GND") {
+            assert!(
+                r.tracks.iter().all(|t| t.layer == CopperLayer::Back) && r.vias.len() == 2,
+                "{} moved: {:?}",
+                r.tracks[0].net,
+                r.tracks
+            );
+        }
     }
 
     #[test]
