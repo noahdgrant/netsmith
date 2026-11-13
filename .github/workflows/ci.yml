@@ -2,7 +2,8 @@
 # and the tests. The same three commands as AGENTS.md ("Build, test, lint").
 #
 # A pull request runs only the jobs its change needs, and `test` and `kicad` run only the tests of
-# the crates it changes and of their dependents (`crates`, below). The `changes` job lists the paths the pull
+# the crates it changes and of their dependents (`crates`, below), and `build` and `clippy` compile
+# and lint only those packages (scripts/ci-rdeps, issue #618). The `changes` job lists the paths the pull
 # request changes and scripts/ci-changes turns them into six flags, `rust`, `kicad`, `recipes`,
 # `no_kicad`, `locks` and `designs` (the rules, and why, are in that script). `fmt` always runs. `clippy` and `test`
 # need `rust`, `kicad` needs `kicad`, `recipes` needs `recipes`, `no-kicad` needs `no_kicad`, `locks` needs `locks`,
@@ -37,6 +38,10 @@
 # The workspace is compiled once, by the `build` job (issue #510): the slices run its archive of
 # the tests, and `no-kicad`, `locks`, `designs` and `recipes` its `netsmith` binary, so a pull request
 # compiles once and not once a job, and its jobs take fewer of the account's runners.
+# When `crates` names the crates of the change, `build` archives (and `clippy` lints) only the
+# packages scripts/ci-rdeps works out from them: the crates and everything that depends on them,
+# dev-dependencies included, plus netsmith-cli, whose binary the later jobs run. A push to main,
+# and a change that names no crate, build and lint the whole workspace.
 #
 # KiCad 9 and Chromium's system libraries come from a cache of the .deb files, not from Ubuntu's
 # mirrors (.github/actions/apt-cache, scripts/ci-apt-cache): when the mirrors are down (they were
@@ -73,7 +78,11 @@
 #
 # The Rust cache (Swatinem/rust-cache, in `build` and `clippy`) is saved by pushes to main only, and a pull request
 # restores the newest of main's: the pull requests do not fill the repository's cache quota with
-# a copy each.
+# a copy each. (Measured 2026-11-13: the repository's caches held 10.8 GB against GitHub's 10 GB
+# quota, 75 caches all of main's, a `build` cache about 160 MB and one for `clippy` about as much;
+# a pull request that saved would add a copy of both to each one, several at a time with agents
+# at work, and push the caches of main out. A narrowed pull request also compiles little that
+# main's cache lacks. Do not enable `save-if` for pull requests unless the quota is raised.)
 # The release pull request that release-please opens (`release-please--branches--main`: a version
 # bump, the changelog) runs nothing here: `changes`, `fmt` and `ci-ok` are skipped by that branch
 # name, and every other job needs `changes`, so it is skipped too. Only the title check
@@ -171,7 +180,18 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Only the packages the change can affect (scripts/ci-rdeps); `--workspace` when it names
+      # no crate. The command goes into a variable first: if it failed inside the next command's
+      # arguments, clippy would run with none.
+      - name: The packages to lint
+        env:
+          CRATES: ${{ needs.changes.outputs.crates }}
+        run: |
+          args="$(scripts/ci-rdeps --args -- $CRATES)"
+          echo "clippy over: $args"
+          echo "CI_PACKAGE_ARGS=$args" >> "$GITHUB_ENV"
+
+      - run: cargo clippy $CI_PACKAGE_ARGS --all-targets -- -D warnings
 
   # The one compile of the tests (issue #510): `cargo nextest archive` builds every test binary
   # of the workspace into tests.tar.zst, and the `netsmith` binary (with KiCad's lookup example,
@@ -183,8 +203,17 @@ jobs:
   # the `kicad` job selects, for the `test` slices' check. The Rust cache is this job's only.
   # Node 22 is for the editor's page: the build script builds it from the sources and the archive
   # and the binary embed it (ADR 0114), so the recipes drive the real page.
+  # A pull request that names the crates it changes (`crates`) builds only the packages those
+  # crates reach (scripts/ci-rdeps, issue #618), as the `packages` output: the `test` and `kicad`
+  # jobs run exactly the tests of those packages, and every step here that builds or lists tests
+  # takes the same ones (CI_PACKAGE_ARGS), so nothing outside the archive is compiled. netsmith-cli
+  # is always among them: its binary is what `no-kicad`, `locks`, `designs` and `recipes` run, and
+  # it depends on the whole pipeline, so every change reaches it anyway. Empty `packages` is the
+  # whole workspace (a push to main, a change that names no crate).
   build:
     needs: changes
+    outputs:
+      packages: ${{ steps.packages.outputs.packages }}
     if: >-
       needs.changes.outputs.rust == 'true' || needs.changes.outputs.kicad == 'true' ||
       needs.changes.outputs.no_kicad == 'true' || needs.changes.outputs.locks == 'true' ||
@@ -213,8 +242,26 @@ jobs:
           cache: npm
           cache-dependency-path: crates/netsmith-editor/web/package-lock.json
 
+      # The rules of scripts/ci-rdeps, over a fixture workspace and this one (`cargo metadata
+      # --no-deps`, no build); it needs the toolchain, so it runs here and not in `changes`.
+      - name: Test ci-rdeps
+        run: scripts/ci-rdeps-test
+
+      # `packages` for the later jobs' filters, CI_PACKAGE_ARGS (`-p a -p b`, or `--workspace`)
+      # for the steps below. Each goes into a variable first, so a failure fails the step.
+      - name: The packages to build
+        id: packages
+        env:
+          CRATES: ${{ needs.changes.outputs.crates }}
+        run: |
+          args="$(scripts/ci-rdeps --also netsmith-cli --args -- $CRATES)"
+          packages="$(scripts/ci-rdeps --also netsmith-cli -- $CRATES | tr '\n' ' ' | sed 's/ $//')"
+          echo "build over: $args"
+          echo "CI_PACKAGE_ARGS=$args" >> "$GITHUB_ENV"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+
       - name: Build the tests into an archive
-        run: cargo nextest archive --workspace --archive-file tests.tar.zst
+        run: cargo nextest archive $CI_PACKAGE_ARGS --archive-file tests.tar.zst
 
       # target/debug/netsmith is the binary the archive's integration tests were built with.
       - name: The netsmith binary and KiCad's lookup example
@@ -224,7 +271,7 @@ jobs:
           ls -l tests.tar.zst bin.tar
 
       - name: Doc tests
-        run: cargo test --workspace --doc --no-fail-fast
+        run: cargo test $CI_PACKAGE_ARGS --doc --no-fail-fast
 
       - name: Every test runs in exactly one slice of `test`
         run: scripts/ci-test-slices 4
@@ -287,20 +334,21 @@ jobs:
 
       # NETSMITH_KICAD_PROBE_LOG: each test that looks for KiCad (Search::machine) writes its name
       # there, and the step after this one checks that the `kicad` job runs it.
-      # CRATES (from `changes`, issue #511): when the change is inside some crates only, the run is
-      # their tests and their dependents' (`rdeps`); empty runs every test. A slice of a narrowed
-      # run may hold no test, which passes.
+      # PACKAGES (from `build`, issues #511 and #618): when the change is inside some crates only,
+      # the archive holds the tests of the crates and their dependents (scripts/ci-rdeps) and the
+      # run is exactly those; empty runs every test. A slice of a narrowed run may hold no test,
+      # which passes.
       # NETSMITH_REQUIRE_BUNDLE_CHECK: the editor's page in the archive must be the real one (the
       # `build` job had Node to build it), not a placeholder that the page tests skip.
       - name: Test, slice ${{ matrix.slice }} of ${{ strategy.job-total }}
         env:
           NETSMITH_KICAD_PROBE_LOG: ${{ runner.temp }}/kicad-probe.log
           NETSMITH_REQUIRE_BUNDLE_CHECK: "1"
-          CRATES: ${{ needs.changes.outputs.crates }}
+          PACKAGES: ${{ needs.build.outputs.packages }}
         run: |
           filter=()
-          if [ -n "$CRATES" ]; then
-            expr="$(printf 'rdeps(%s) | ' $CRATES)"; expr="${expr% | }"
+          if [ -n "$PACKAGES" ]; then
+            expr="$(printf 'package(=%s) | ' $PACKAGES)"; expr="${expr% | }"
             echo "only the tests of: $expr"
             filter=(-E "$expr" --no-tests=pass)
           fi
@@ -424,14 +472,14 @@ jobs:
         timeout-minutes: 30
         # The filter goes into a variable first: if it failed inside the argument list, the run
         # would get none and run every test.
-        # CRATES narrows it as in `test`.
+        # PACKAGES narrows it as in `test`.
         env:
-          CRATES: ${{ needs.changes.outputs.crates }}
+          PACKAGES: ${{ needs.build.outputs.packages }}
         run: |
           filter="$(scripts/ci-kicad-tests)"
           extra=()
-          if [ -n "$CRATES" ]; then
-            crates="$(printf 'rdeps(%s) | ' $CRATES)"; crates="${crates% | }"
+          if [ -n "$PACKAGES" ]; then
+            crates="$(printf 'package(=%s) | ' $PACKAGES)"; crates="${crates% | }"
             echo "only the tests of: $crates"
             filter="($filter) & ($crates)"
             extra=(--no-tests=pass)
