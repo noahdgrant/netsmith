@@ -30,10 +30,11 @@ fn message(src: &str) -> String {
 #[test]
 fn passive_parts_parse() {
     let file = parse(PASSIVE).unwrap();
-    // Nine parts and the enum `Dielectric` of the capacitor (ADR 0055). Eight of the parts
+    // Nine parts, the enum `Dielectric` of the capacitor (ADR 0055) and the enum `Color` of the
+    // LED (ADR 0118). Eight of the parts
     // are generics that are their own first provider (ADR 0068 stage 2), `NtcThermistor`
     // among them (#473); `Switch` has no catalog and stays a `part`.
-    assert_eq!(file.definitions.len(), 10);
+    assert_eq!(file.definitions.len(), 11);
     assert_eq!(
         file.definitions
             .iter()
@@ -56,6 +57,14 @@ fn passive_parts_parse() {
         .map(|v| v.name.name.as_str())
         .collect();
     assert_eq!(variants, ["C0G", "X5R", "X7R"]);
+    let color = def(&file, "Color");
+    assert_eq!(color.kind, DefKind::Enum);
+    let variants: Vec<&str> = color
+        .variants
+        .iter()
+        .map(|v| v.name.name.as_str())
+        .collect();
+    assert_eq!(variants, ["Red", "Green", "Blue", "White", "Yellow"]);
 
     let r = def(&file, "Resistor");
     let bridges: Vec<_> = r
