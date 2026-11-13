@@ -516,6 +516,21 @@ impl SystemScene {
     }
 }
 
+/// Every mesh of the system scene, in the system's frame: each member's meshes
+/// ([`crate::mesh::of_scene`]) moved by its motion, each id starting with `member/` (`led/r1`,
+/// `led/GND`), the members in order. What `render --board System` draws.
+pub fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
+    let mut out = Vec::new();
+    for m in &system.members {
+        for mut mesh in crate::mesh::of_scene(&m.scene) {
+            mesh.transform(m.motion.linear(), m.motion.offset);
+            mesh.id = format!("{}/{}", m.name, mesh.id);
+            out.push(mesh);
+        }
+    }
+    out
+}
+
 /// The pads of the two connectors that meet, by number: `(number, centre of a's, centre of b's)`
 /// in each board's own plan, in the order of a's footprint. Pads with no number are not
 /// contacts.

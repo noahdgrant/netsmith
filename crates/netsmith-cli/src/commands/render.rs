@@ -15,7 +15,11 @@ pub struct Args {
     /// The source file; with none, the project's boards.
     #[arg(value_name = "FILE.NSM")]
     pub file: Option<String>,
-    /// The board, when the file has several (`Name`, or `System/member`).
+    /// The board, when the file has several (`Name`, or `System/member`), or a system (`System`).
+    ///
+    /// A system's name draws its _System scene_ (ADR 0110): every member placed against the
+    /// others by its mates, framed as a whole, in the frame of its first member. `--highlight`
+    /// then names `member/<id>` (`led/J1`, `led/net:GND`), or a member alone.
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Where the camera looks from.
@@ -99,11 +103,20 @@ fn run_render(
     out: Option<&Path>,
     request: &netsmith::render::Request,
 ) -> ExitCode {
-    let (scene, label) = match with_placed_board(file, board, |placed| placed.scene_and_label()) {
+    let scene = match with_placed_board(file, board, |placed| placed.any_scene()) {
         Ok(made) => made,
         Err(code) => return code,
     };
-    let png = match netsmith::render::draw(&scene, request) {
+    let (drawn, label) = match scene {
+        netsmith::board3d::AnyScene::Board(scene, label) => {
+            (netsmith::render::draw(&scene, request), label)
+        }
+        netsmith::board3d::AnyScene::System(system) => (
+            netsmith::render::draw_system(&system, request),
+            system.name.clone(),
+        ),
+    };
+    let png = match drawn {
         Ok(png) => png,
         Err(e) => {
             eprintln!("{e}");
