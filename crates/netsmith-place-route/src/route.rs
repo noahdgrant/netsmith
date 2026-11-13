@@ -189,8 +189,8 @@
 //!
 //! # Teardrops (issue #431, S11)
 //!
-//! When a board is routed, after the meanders (below), the vias beside vias and the stitching of pours, each track
-//! that ends in a pad or a via gets a teardrop where it leaves the copper
+//! When a board is routed, after the meanders (below), the vias beside vias and the stitching
+//! of pours, each track that ends in a pad or a via gets a teardrop where it leaves the copper
 //! (`netsmith_pcb::teardrop::add`, unless [`RouteOptions::teardrops`] is off), where it keeps every
 //! space the design rules check asks of a track. They are drawn round the copper the search
 //! settled, before the arcs at the bends ([`crate::arcs`]), which keep clear of them, and the
@@ -202,9 +202,9 @@
 //! # Length-matching meanders (issue #431, S11)
 //!
 //! **What is built** (`netsmith_pcb::meander::add`). When the best try routed every line, its
-//! copper is on the board and before the vias beside vias, the stitching of pours and the
-//! teardrops, the shorter net of each diff pair whose two nets' track lengths differ by more than
-//! 0.1 mm gets a meander sized to add the difference: bumps with 45 degree corners on one side of
+//! copper is on the board and before the vias beside vias, the stitching of pours, the
+//! teardrops and the arcs, the shorter net of each diff pair whose two nets' track lengths
+//! differ by more than 0.1 mm gets a meander sized to add the difference: bumps with 45 degree corners on one side of
 //! one of its straight tracks, the longest first, legs three widths apart edge to edge (or the
 //! clearance, if larger), at most 2 mm high, the fewest bumps first; on an interval of the track
 //! more than the scorecard's coupled 0.5 mm from the partner, away from the partner's side first,
@@ -221,7 +221,7 @@
 //! pair the arcs move back over the target gets another meander and its bends are rounded in
 //! turn, at most [`MEANDER_TOP_UPS`] times.
 //!
-//! **Measured** (2026-11-13, main at fa8737dc with the arcs, `scripts/route-scorecard` without
+//! **Measured** (2026-11-13, main at 0f70950f with the arcs and #595's teardrops before them, `scripts/route-scorecard` without
 //! and with the pass, the same binary and placements; skew, coupled share):
 //!
 //! | | RP2350 `mcu.usb` / `usb` | Orbit `usb` | EasyDuino `bridge` |
@@ -232,10 +232,10 @@
 //! Before the arcs merged (main at 88a62705) the same three pairs ended at 0.00 mm. Track grows
 //! by the meanders' own length only (about 1, 0.2 and 0.8 mm); vias, other nets' track on the
 //! pours, `fab-notes.txt` and the check (0 errors) are unchanged; the arcs round the meanders'
-//! turns (arcs 284 to 302, 188 to 192, 154 to 162), and the coupled share falls only by the
-//! meander's own track. The pass takes 8 to 23 ms; `fab` took 112 / 107 s on RP2350 against
-//! 119 / 121 s without, 13 / 13 s on Orbit against 15 / 14 s, 7 / 7 s on EasyDuino against
-//! 8 / 9 s. Each board wrote the same copper on both runs. RP2350's `mcu.usb` keeps its skew:
+//! turns (arcs 270 to 288, 177 to 181, 145 to 153), and the coupled share falls only by the
+//! meander's own track. The pass takes 8 to 23 ms; `fab` took 106 / 106 s on RP2350 against
+//! 115 / 116 s without, 14 / 13 s on Orbit against 14 / 16 s, 7 / 8 s on EasyDuino against
+//! 7 / 7 s. Each board wrote the same copper on both runs. RP2350's `mcu.usb` keeps its skew:
 //! its `dp` is 5.8 mm long, its one run of more than 2 mm runs 0.4 mm from `dm` the whole way,
 //! and `dm` reaches a pad 10 mm further off, so the skew is the pair's pads', for the placement
 //! to close.
