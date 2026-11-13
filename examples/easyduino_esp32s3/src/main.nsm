@@ -61,9 +61,19 @@ board EasyduinoEsp32s3 {
     // ---- The interface parts: J1, J2, SW1, SW2, U2 ----
 
     /// J1: the receptacle of the bridge.
-    .usb_uart: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "TYPE-C 16PIN 2MD(073)"; .rd_package &= "0402" }
+    .usb_uart: UsbCSink {
+        .receptacle.package &= "SMD"
+        .receptacle.mpn &= "TYPE-C 16PIN 2MD(073)"
+        .cc1_rd.package &= "0402"
+        .cc2_rd.package &= "0402"
+    }
     /// J2: the receptacle of the module's own USB.
-    .usb_native: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "TYPE-C 16PIN 2MD(073)"; .rd_package &= "0402" }
+    .usb_native: UsbCSink {
+        .receptacle.package &= "SMD"
+        .receptacle.mpn &= "TYPE-C 16PIN 2MD(073)"
+        .cc1_rd.package &= "0402"
+        .cc2_rd.package &= "0402"
+    }
     /// The development board's two 22-pin headers (U2), hand-soldered.
     .headers: Esp32S3DevKitCHeaders
     /// SW1, RESET: pulls EN to ground.
@@ -131,11 +141,11 @@ board EasyduinoEsp32s3 {
     .bridge.vdd ~ .bridge_vdd_cap.a
     .bridge_vdd_cap.b ~ .vbus.neg
     /// R11: pulls the bridge's reset line up to VBUS.
-    .bridge_reset_pullup: PullUp { .resistance &= 5.1kohm +/- 1%; .package &= "0402" }
+    .bridge_reset_pullup: PullUp { .resistance &= 5.1kohm +/- 1%; .resistor.package &= "0402" }
     .bridge_reset_pullup.supply ~ .vbus
     .bridge_reset_pullup.line ~ .bridge.rstb
     /// R10: holds the bridge's SUSPENDb output low.
-    .suspend_pulldown: PullDown { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .suspend_pulldown: PullDown { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .suspend_pulldown.reference ~ .vbus
     .suspend_pulldown.line ~ .bridge.suspendb
 
@@ -154,7 +164,7 @@ board EasyduinoEsp32s3 {
     .boot.a ~ .vbus.neg
     .boot.b ~ .module.io0
     /// R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).
-    .en_pullup: PullUp { .resistance &= 10kohm +/- 1%; .package &= "0402" }
+    .en_pullup: PullUp { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .en_pullup.supply ~ .v3v3
     .en_pullup.line ~ .module.en
 

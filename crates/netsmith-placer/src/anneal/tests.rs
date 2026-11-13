@@ -75,6 +75,33 @@ fn resistors(paths: &[&str]) -> Board {
 }
 
 #[test]
+fn a_nested_module_is_in_its_outer_modules_group_and_has_none_of_its_own() {
+    // `a.inner` is a module inside `a`: its two parts pull with `a`'s, once.
+    let mut board = resistors(&["a.inner.x", "a.inner.y", "a.z", "b.x", "b.y"]);
+    let fixed = [false; 5];
+    let problem = Problem {
+        nets: &board.nets.clone(),
+        rules: &board.rules.clone(),
+        planes: &[],
+        region: board.outline,
+        corner_radius: 0.0,
+        fixed: &fixed,
+        keepouts: &[],
+        zones: &[],
+        carried: &[],
+        cutouts: &[],
+        pours: false,
+        seed: 0,
+        wants: &[],
+        offsets: &[],
+        overhangs: &[],
+        outline: board.outline,
+    };
+    let e = Engine::new(&mut board.parts, &problem);
+    assert_eq!(e.groups, vec![vec![0, 1, 2], vec![3, 4]]);
+}
+
+#[test]
 fn a_module_costs_more_the_further_apart_its_parts_are() {
     let mut board = resistors(&["a.x", "a.y", "b.x", "b.y"]);
     let fixed = [false; 4];

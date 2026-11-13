@@ -237,8 +237,8 @@ fn a_board_with_no_requirement_is_as_it_was() {
 // range, so the time is one, and the smallest current gives the longest time.
 //
 // The capacitor is the part's own, in its `support` section (ADR 0115): 10 nF +/- 10 % by
-// default, which states `.css`. A board that places the IC through `Buck<Lt8641>` cannot reach
-// it (ADR 0004), so these boards judge the default capacitor: 9 nF to 11 nF, 9 nF * 0.8 V /
+// default, which states `.css`. A board that places the IC through `Buck<Lt8641>` may narrow it
+// (ADR 0116); these boards do not, so they judge the default capacitor: 9 nF to 11 nF, 9 nF * 0.8 V /
 // 2.6 uA = 2.769 ms to 11 nF * 0.8 V / 1.2 uA = 7.333 ms. Before, the board placed the IC and
 // its capacitor itself and stated `.u.css &= 10nF` exactly.
 

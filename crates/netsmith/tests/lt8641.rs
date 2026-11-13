@@ -4,8 +4,9 @@
 //! catalog has no row (no stock above zero is recorded): the one here is a project's file, whose
 //! `source` is the datasheet's Order Information table.
 //!
-//! A board that places `Buck<Lt8641>` reaches only the converter's ports (ADR 0004): the RT
-//! resistor, the capacitors and the ties of the IC's pins are its `support` section. The tests of
+//! A board that places `Buck<Lt8641>` joins only the converter's ports, and may narrow what is
+//! inside (ADR 0116): the RT resistor, the capacitors and the ties of the IC's pins are its
+//! `support` section. The tests of
 //! the part's own limits place the part alone, whose members a board reaches, with its switch
 //! node joined to the output rail as an ideal converter.
 //!

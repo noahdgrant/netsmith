@@ -454,7 +454,7 @@ with no error and no warning; what the build prints are notes (below).
   `main.pins.toml`.
 - **Supplies and what the solver checks.** `VBUS` is declared 5 V +/- 5% (USB's) and `+3.3V`
   3.3 V +/- 5% (the schematic's net name; the window is a stated requirement). The regulator's
-  output is not stated but derived: `BuckBoost` holds `vout == vref * (1 + R7 / R8)` with the
+  output is not stated but derived: `BuckBoost`'s `FeedbackDivider` holds `vout == vref * (1 + R7 / R8)` with the
   part's `vref` (500 mV +/- 1%, TPS63802 datasheet page 6) and ORBIT's 560 kohm and 100 kohm at
   1%, which is 3.212 V to 3.391 V, inside the window; a wrong divider stops the build (test).
   The charger's `.rprog` is the 2 kohm +/- 1% resistor fitted and `.charge_current == 1000V / .rprog`

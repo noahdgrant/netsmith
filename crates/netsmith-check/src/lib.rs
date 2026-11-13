@@ -189,9 +189,11 @@ fn check_inner(
         if only.is_some_and(|only| def.name.name != only) {
             continue;
         }
-        let model = checker.elaborate(root, index, assignment.get(&def.name.name));
+        let mut model = checker.elaborate(root, index, assignment.get(&def.name.name));
         if matches!(def.kind, DefKind::Board | DefKind::System) {
-            checker.extend(pin_faults(&model));
+            let (faults, conflicts) = faults::pin_faults_and_conflicts(&model);
+            checker.extend(faults);
+            model.provider_conflicts.extend(conflicts);
         }
         match def.kind {
             DefKind::Board => boards.push(Board {

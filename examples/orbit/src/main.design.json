@@ -131,7 +131,7 @@
         "provides": [],
         "value": "100k",
         "package": "0603",
-        "path": "buck_boost.divider_bottom",
+        "path": "buck_boost.divider.rbottom",
         "pins": [
           {
             "name": "a",
@@ -161,7 +161,7 @@
         "provides": [],
         "value": "560k",
         "package": "0603",
-        "path": "buck_boost.divider_top",
+        "path": "buck_boost.divider.rtop",
         "pins": [
           {
             "name": "a",
@@ -2856,7 +2856,7 @@
         ]
       },
       {
-        "name": "net-buck_boost.divider_bottom.a",
+        "name": "net-buck_boost.divider.rbottom.a",
         "pins": [
           {
             "refdes": "R3",
@@ -3400,8 +3400,14 @@
       "net_currents": [
         {
           "net": "+3.3V",
-          "current": 0.0031473119904276937,
-          "least_width": 0.00013288407310307104,
+          "current": 0.0031525340887558527,
+          "least_width": 0.00013318828540283064,
+          "vias": 1
+        },
+        {
+          "net": "net-buck_boost.divider.rbottom.a",
+          "current": 5.222098328158936e-6,
+          "least_width": 1.944730750358556e-8,
           "vias": 1
         },
         {
@@ -4272,29 +4278,14 @@
         "result": null
       },
       {
-        "path": "buck_boost.divider_top",
+        "path": "buck_boost.divider",
         "kind": "doc",
-        "text": "R7, from the output to `FB`.",
+        "text": "R7 (`rtop`, from the output to `FB`) and R8 (`rbottom`, from `FB` to ground).",
         "at": {
           "file": "src/buck_boost.nsm",
           "line": 29
         },
-        "anchors": [
-          "buck_boost.divider_top"
-        ],
-        "result": null
-      },
-      {
-        "path": "buck_boost.divider_bottom",
-        "kind": "doc",
-        "text": "R8, from `FB` to ground.",
-        "at": {
-          "file": "src/buck_boost.nsm",
-          "line": 31
-        },
-        "anchors": [
-          "buck_boost.divider_bottom"
-        ],
+        "anchors": [],
         "result": null
       },
       {
@@ -4303,7 +4294,7 @@
         "text": "R6, the pull-up of the power-good output.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 33
+          "line": 35
         },
         "anchors": [],
         "result": null
@@ -4314,7 +4305,7 @@
         "text": "C14, the input capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 35
+          "line": 37
         },
         "anchors": [
           "buck_boost.input_cap"
@@ -4327,7 +4318,7 @@
         "text": "C13, the output capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 37
+          "line": 39
         },
         "anchors": [
           "buck_boost.output_cap"
@@ -4668,16 +4659,25 @@
       {
         "path": "buck_boost",
         "kind": "relation",
-        "text": ".vout.voltage == .ic.vref * (1 + .divider_top.resistance / .divider_bottom.resistance)",
+        "text": ".divider.vref == .ic.vref",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 55
+          "line": 56
         },
         "anchors": [
-          "buck_boost.ic",
-          "buck_boost.divider_top",
-          "buck_boost.divider_bottom"
+          "buck_boost.ic"
         ],
+        "result": "divider.vref = 495mV..505mV"
+      },
+      {
+        "path": "buck_boost",
+        "kind": "relation",
+        "text": ".vout.voltage == .divider.vout",
+        "at": {
+          "file": "src/buck_boost.nsm",
+          "line": 57
+        },
+        "anchors": [],
         "result": "vout.voltage = 3.212V..3.391V"
       }
     ],
@@ -4722,6 +4722,24 @@
           },
           {
             "name": "vout.neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "buck_boost.divider",
+        "type_name": "FeedbackDivider",
+        "ports": [
+          {
+            "name": "top",
+            "net": "+3.3V"
+          },
+          {
+            "name": "fb",
+            "net": "net-buck_boost.divider.rbottom.a"
+          },
+          {
+            "name": "bottom",
             "net": "GND"
           }
         ]

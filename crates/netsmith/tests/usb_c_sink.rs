@@ -72,7 +72,7 @@ fn on_net(net: &Net, refdes: &str) -> Vec<String> {
 
 #[test]
 fn the_receptacle_has_one_rd_resistor_on_each_cc_contact_to_ground() {
-    let built = built(".rd_package &= \"0402\"");
+    let built = built(".cc1_rd.package &= \"0402\"\n.cc2_rd.package &= \"0402\"");
     let jacks = kind(&built, "UsbCReceptacle16P");
     assert_eq!(jacks.len(), 1);
     let jack = &jacks[0].refdes;
@@ -118,7 +118,7 @@ fn the_receptacle_has_one_rd_resistor_on_each_cc_contact_to_ground() {
 
 #[test]
 fn the_rd_resistors_are_5_1_kohm() {
-    let built = built(".rd_package &= \"0402\"");
+    let built = built(".cc1_rd.package &= \"0402\"\n.cc2_rd.package &= \"0402\"");
     for r in kind(&built, "Resistor") {
         assert!(r.value.starts_with("5.1k"), "{}: `{}`", r.refdes, r.value);
     }
@@ -181,7 +181,7 @@ fn it_is_a_connector_for_the_placer_and_the_schematic() {
 #[test]
 fn a_board_that_uses_it_has_no_guideline_finding() {
     let strict = Catalogs::jlcpcb().with_strict_guidelines(true);
-    let built = build(&board(".rd_package &= \"0402\"", ""), &strict)
+    let built = build(&board(".cc1_rd.package &= \"0402\"\n.cc2_rd.package &= \"0402\"", ""), &strict)
         .unwrap_or_else(|e| panic!("a strict build must pass: {e}"));
     assert!(
         built.guidelines.is_empty(),
@@ -200,7 +200,7 @@ fn the_package_picks_the_footprint_and_the_default_is_the_gct_one() {
             "netsmith:USB_C_Receptacle_GCT_USB4105_16P_TopMnt_Horizontal",
         ),
         (
-            ".package &= \"HRO_TYPE-C-31-M-12\"",
+            ".receptacle.package &= \"HRO_TYPE-C-31-M-12\"",
             "HRO_TYPE-C-31-M-12",
             "netsmith:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
         ),
@@ -338,7 +338,7 @@ fn parts_of(outcome: &Outcome, kind: &str) -> usize {
 #[test]
 fn a_provider_the_project_adds_is_chosen_for_its_package_and_number() {
     let outcome = with_own_receptacle(
-        ".package &= \"SMD\"\n.receptacle_mpn &= \"ACME-USBC-16\"\n.rd_package &= \"0402\"",
+        ".receptacle.package &= \"SMD\"\n.receptacle.mpn &= \"ACME-USBC-16\"\n.cc1_rd.package &= \"0402\"\n.cc2_rd.package &= \"0402\"",
     )
     .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(parts_of(&outcome, "AcmeReceptacle"), 1);
@@ -384,13 +384,13 @@ fn the_standard_receptacle_stays_the_default_when_a_project_adds_a_provider() {
     assert_eq!(parts_of(&outcome, "AcmeReceptacle"), 0);
     // The standard package that the standard receptacle has a table for still picks it.
     let outcome =
-        with_own_receptacle(".package &= \"HRO_TYPE-C-31-M-12\"").unwrap_or_else(|e| panic!("{e}"));
+        with_own_receptacle(".receptacle.package &= \"HRO_TYPE-C-31-M-12\"").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(parts_of(&outcome, "UsbCReceptacle16P"), 1);
 }
 
 #[test]
 fn a_package_that_no_provider_has_is_refused_with_the_reason_for_each() {
-    let Err(err) = with_own_receptacle(".package &= \"QFN\"") else {
+    let Err(err) = with_own_receptacle(".receptacle.package &= \"QFN\"") else {
         panic!("a package that no provider has must not build");
     };
     assert!(
@@ -402,7 +402,7 @@ fn a_package_that_no_provider_has_is_refused_with_the_reason_for_each() {
 #[test]
 fn the_standard_receptacle_is_a_provider_of_the_generic_and_a_connector() {
     // Placed by its own name it is the same part, with the same pins as the generic's use.
-    let built = built(".package &= \"HRO_TYPE-C-31-M-12\"");
+    let built = built(".receptacle.package &= \"HRO_TYPE-C-31-M-12\"");
     let jack = &kind(&built, "UsbCReceptacle16P")[0];
     assert!(jack.provides.iter().any(|g| g == "UsbCSinkReceptacle"));
     assert!(jack.is_connector());

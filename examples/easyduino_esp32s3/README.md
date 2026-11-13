@@ -405,9 +405,10 @@ the part's pin table.
   maker's, G-Switch `GT-USB-7010ASV`: the LCSC number is the part, the footprint is a stand-in with
   the same land pattern). It `provides UsbCSinkReceptacle` (and `Connector`): J1 and J2 are the
   standard module `UsbCSink`, which takes a receptacle that provides the generic, and the board
-  states `.package &= "SMD"` and `.receptacle_mpn &= "TYPE-C 16PIN 2MD(073)"` for each, so that the
-  standard receptacle (it has pin tables for its own two footprints only) is passed over and this
-  one is picked; `.rd_package &= "0402"` is the resistors'. The generic gives it `.vbus`, `.mpn` and
+  narrows `.receptacle.package &= "SMD"` and `.receptacle.mpn &= "TYPE-C 16PIN 2MD(073)"` inside
+  each (ADR 0116), so that the standard receptacle (it has pin tables for its own two footprints
+  only) is passed over and this one is picked; `.cc1_rd.package` and `.cc2_rd.package` are
+  narrowed to `"0402"`. The generic gives it `.vbus`, `.mpn` and
   `.package`; the shell is the generic's `.shell`, tied to the pin `.shield` (the maker's name). Nine pins: `.vbus.pos` (A4, A9, B4, B9) and `.vbus.neg` (A1,
   A12, B1, B12), the two ends of one rail `.vbus` (it has `dc source .vbus`, as std's `UsbCPower`
   has, so the DC analysis starts from the host: the board states 4.75 V to 5.25 V; this was

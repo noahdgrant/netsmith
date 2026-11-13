@@ -1302,16 +1302,14 @@ fn a_module_passes_an_offered_assembly_on_through_another_module() {
 }
 
 #[test]
-fn a_board_cannot_reach_the_part_inside_a_module_to_set_who_assembles_it() {
-    let src = exposed_assembly("    .a.j.assembly &= AssemblyMode::Hand\n");
-    let c = check("t.nsm", &src, &Loader::std());
-    assert!(!c.is_ok());
-    let text = c.render();
-    assert!(
-        text.contains(
-            "`j` is inside `HeaderBlock` and is not part of its interface; set it through a rail, a pin, or a value that `HeaderBlock` declares"
-        ),
-        "{text}"
+fn a_board_narrows_who_assembles_a_part_inside_a_module() {
+    // A narrowing reaches inside a module (ADR 0116), so a board may state it on the part
+    // as well as through the value the module offers.
+    use Assembly::{Fab, Hand};
+    let row = |r: &str, a, stated| (r.to_string(), a, stated);
+    assert_eq!(
+        exposed_assembly_of("    .a.j.assembly &= AssemblyMode::Hand\n", Some("fab")),
+        [row("J1", Hand, true), row("J2", Fab, true)]
     );
 }
 

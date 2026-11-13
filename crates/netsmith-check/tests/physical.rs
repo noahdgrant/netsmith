@@ -54,12 +54,12 @@ fn a_physical_file_reaches_a_part_inside_a_module_by_its_path() {
 }
 
 #[test]
-fn the_circuit_source_still_cannot_reach_into_a_module() {
-    let c = run("board B {\n    .b: Block\n    .b.j.pin_count &= 2\n}\n", "");
+fn the_circuit_source_reaches_into_a_module_only_to_narrow() {
+    let c = run("board B {\n    .b: Block\n    .b.j.pin_count == 2\n}\n", "");
     assert_eq!(
         messages(&c),
         [
-            "`j` is inside `Block` and is not part of its interface; set it through a rail, a pin, or a value that `Block` declares"
+            "`j` is inside `Block` and is not part of its interface: only narrowing (`&=`) reaches inside a module; narrow a value inside it with `&=`, or use a rail, a pin, or a value that `Block` declares"
         ]
     );
 }

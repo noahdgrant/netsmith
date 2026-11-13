@@ -2444,15 +2444,15 @@ board BuckBoostFixture {
 "#;
 
     /// The divider's relation line of `src/buck_boost.nsm`.
-    const DIVIDER_RELATION: &str = "    .vout.voltage == .ic.vref * (1 + .divider_top.resistance / .divider_bottom.resistance)\n";
+    const DIVIDER_RELATION: &str = "    .vout.voltage == .divider.vout\n";
 
     /// The regulator's output is what the divider makes of the part's reference, and the board
     /// states the window the schematic's net name names (3.3 V, +/- 5%): 0.5 V +/- 1% times
     /// (1 + 560 kohm / 100 kohm), each resistor good to 1%, is 3.212 V to 3.391 V, inside
     /// 3.135 V to 3.465 V. The test builds the module's own file, `src/buck_boost.nsm`, and
     /// reads the output range off its error for a narrower window; the controls build a COPY of
-    /// the text: with the divider's relation line deleted nothing checks the window, with it
-    /// broken the board is refused, and with a 510 kohm top resistor the output is 2.969 V to
+    /// the text: with the divider's relation line deleted nothing checks the window, with its
+    /// resistors the wrong way up the board is refused, and with a 510 kohm top resistor the output is 2.969 V to
     /// 3.133 V and the build stops only while the line is there.
     #[test]
     fn the_dividers_output_is_inside_the_window_and_the_check_sees_a_wrong_divider() {
@@ -2487,11 +2487,13 @@ board BuckBoostFixture {
         // the narrow window is accepted: the line is what checked it.
         let without = module.replace(DIVIDER_RELATION, "");
         build("3.3V +/- 2%", Some(&without)).unwrap_or_else(|e| panic!("{e}"));
-        // Control: the line broken (the resistors the wrong way up) from a copy: refused.
-        let broken = module.replace(
-            DIVIDER_RELATION,
-            "    .vout.voltage == .ic.vref * (1 + .divider_bottom.resistance / .divider_top.resistance)\n",
-        );
+        // Control: the resistors the wrong way up in a copy, narrowed inside the standard
+        // divider (ADR 0116): refused.
+        let broken = module
+            .replace(".rtop.resistance &= 560kohm", ".rtop.resistance &= TOP")
+            .replace(".rbottom.resistance &= 100kohm", ".rbottom.resistance &= 560kohm")
+            .replace(".rtop.resistance &= TOP", ".rtop.resistance &= 100kohm");
+        assert_ne!(broken, module);
         let error = build("3.3V +/- 5%", Some(&broken))
             .err()
             .expect("the inverted divider gives 0.59 V");

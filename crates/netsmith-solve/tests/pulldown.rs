@@ -244,7 +244,7 @@ fn package_of(s: &Solution, path: &str) -> String {
 
 #[test]
 fn a_board_states_the_package_of_the_resistor_inside_a_pulldown() {
-    let s = run(&pulldown(".package &= \"0402\""));
+    let s = run(&pulldown(".resistor.package &= \"0402\""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(package_of(&s, "pull.resistor.package"), "0402");
 }
@@ -263,7 +263,7 @@ fn a_pulldown_whose_package_nobody_states_is_picked_as_before() {
 
 #[test]
 fn a_pulldown_package_that_no_row_has_is_refused_with_its_name() {
-    let s = run(&pulldown(".package &= \"0201\""));
+    let s = run(&pulldown(".resistor.package &= \"0201\""));
     let all = messages(&s).join("\n");
     assert!(
         all.contains("has nothing for `pull.resistor`") && all.contains("\"0201\""),

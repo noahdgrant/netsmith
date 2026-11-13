@@ -2071,7 +2071,7 @@ board Shipped {
 
 `build` prints it as `consigned` in the bill-of-materials column. `fab` puts it in `cpl.csv`, so the board house places it, and in `bom.csv`, with the manufacturer's number as the comment and the LCSC cell empty (or the row's number, if it has one). JLCPCB's BOM format has no column that marks a consigned part: you register the parts on its site, ship them, and pick them in the order page's component matching, so `fab-notes.txt` lists them under `consigned:` with their manufacturer's number and quantity, and says that you ship them with the order. Look at the matching step of the order preview before you pay.
 
-A part inside a module is not the board's to name (ADR 0004), so a module that wants the board to choose who assembles its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
+A board may narrow a part inside a module (ADR 0116), but a module that wants the board to make one choice of who assembles all its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -2113,7 +2113,7 @@ board Lamps {
 - A board that leaves `.assembly_mode` alone has said nothing: the tie narrows nothing, no note is printed for it, and the parts are assembled as if they stood on the board. Two instances of the module are separate, and each has its own value.
 - A variant that `AssemblyMode` does not have is refused where it is written, listing the variants (see Enums, below). A kind that states `AssemblyMode::None` (`Fiducial`, `MountingHole`) cannot be tied to a different variant: the usual empty-intersection error names the part, as ``contradiction on `mark.fiducial.assembly`: it is already AssemblyMode::None, which does not overlap AssemblyMode::Fab``.
 - A module may pass the value on to a module inside it, `.inner.assembly_mode &= .assembly_mode`. Call the value `.assembly_mode` in every module that offers it, so that boards read alike.
-- The board still cannot write `.spare.led.assembly`; it sees only what the module offers.
+- The board may also narrow one part inside the module itself, `.spare.led.assembly &= AssemblyMode::Hand` (ADR 0116), but only with `&=`: a default from outside (`?=`) does not reach inside a module.
 
 ```nsm fails
 import std::parts::connector::Header1x2
@@ -2124,15 +2124,15 @@ module Block {
 
 board Reach {
     .block: Block
-    .block.j.assembly &= AssemblyMode::Hand
+    .block.j.assembly ?= AssemblyMode::Hand
 }
 ```
 
 ```text
-error: `j` is inside `Block` and is not part of its interface; set it through a rail, a pin, or a value that `Block` declares
+error: `j` is inside `Block` and is not part of its interface: only narrowing (`&=`) reaches inside a module; narrow a value inside it with `&=`, or use a rail, a pin, or a value that `Block` declares
   --> main.nsm:9:12
   |
-9 |     .block.j.assembly &= AssemblyMode::Hand
+9 |     .block.j.assembly ?= AssemblyMode::Hand
   |            ^
 ```
 
@@ -2140,7 +2140,7 @@ error: `j` is inside `Block` and is not part of its interface; set it through a 
 
 Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
-Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every connector (a part that provides `Connector`, see _A connector of your own_: every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `UsbCReceptacle16P`, `Obd2M` and `ProgrammingPads6`) `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=` (a part inside a module is the module's, ADR 0004). A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
+Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every connector (a part that provides `Connector`, see _A connector of your own_: every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `UsbCReceptacle16P`, `Obd2M` and `ProgrammingPads6`) `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=`. A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
 ```nsm
 part Buzzer {
@@ -5162,7 +5162,7 @@ The series of values that have no row (ADR 0047) and the columns that a file of 
 
 ## Modules
 
-A module is a reusable sub-circuit. Its interfaces, pins and declared values are its interface to the outside. The parts and modules inside it are private (ADR 0004).
+A module is a reusable sub-circuit. Its interfaces, pins and declared values are its interface to the outside. The parts and modules inside it may only be narrowed from outside (ADR 0116).
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -5193,11 +5193,40 @@ board Lamp {
 
 Rules.
 
-- A board sets a module through the module's rails, pins and declared values: `.lamp.supply.voltage`. It cannot write `.lamp.led.current`.
-- A module author exposes anything a user may need to set, as a rail or a declared value.
+- A board joins and sets a module through the module's rails, pins and declared values: `.lamp.supply.voltage`.
+- A board, or a module that holds the module, may also narrow any value inside it by its path, with `&=` only: `.lamp.led.current &= 8mA..12mA`, `.lamp.r1.package &= "0603"`, at any depth (`.stage.divider.rtop.resistance &= 100kohm +/- 1%`). A narrowing only takes values away, so whatever the module states still holds, and a narrowing that misses it is the usual contradiction at the line that writes it. Nothing else reaches inside: a join (`~`, `~>`), a relation (`==`, `<=`, `>=`), a default (`?=`) and the right side of a `&=` are refused at the member that enters the module. A narrowing counts as a statement of the field, so it replaces a default the module wrote on it with `?=`.
+- A module author exposes as a rail or a declared value what a user joins, reads or relates, and a value that ties several parts together (one package for both resistors of a divider). A member that would only pass one value to one part inside is not written: the user narrows the part.
 - A declared value with a sensible value is a default (`?=`). One without is left for the board to state: a board that forgets it gets a finding when a pick or a check waits for it (see "A value that nobody stated"), and a bound the module writes on it (`.balance_resistance >= 1kohm`) reaches the parts it is held to.
 - Two instances of a module are separate. Their internal nets get names from their instance paths, so they never collide.
 - A module may hold modules and parts. It names no nets.
+
+A board that wants the module's LED brighter and its resistor larger narrows them inside the module, without a member of the module for either:
+
+```nsm solve
+import std::parts::passive::{Resistor, Led}
+import std::sources::Rail
+
+/// An LED with the resistor that sets its current.
+module Indicator {
+    .supply: Rail
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+
+board Brighter {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }
+    .lamp: Indicator {
+        .led.current &= 8mA..15mA
+        .r1.package &= "0603"
+    }
+    .input ~ .lamp.supply
+}
+```
 
 Misuse.
 
@@ -5213,15 +5242,42 @@ module Stage {
 
 board Reach {
     .stage: Stage
-    .stage.r1.resistance &= 1kohm +/- 1%
+    .stage.r1.resistance == 1kohm +/- 1%
 }
 ```
 
 ```text
-error: `r1` is inside `Stage` and is not part of its interface; set it through a rail, a pin, or a value that `Stage` declares
+error: `r1` is inside `Stage` and is not part of its interface: only narrowing (`&=`) reaches inside a module; narrow a value inside it with `&=`, or use a rail, a pin, or a value that `Stage` declares
    --> main.nsm:12:12
    |
-12 |     .stage.r1.resistance &= 1kohm +/- 1%
+12 |     .stage.r1.resistance == 1kohm +/- 1%
+   |            ^^
+```
+
+A join reaches inside no more than a relation does:
+
+```nsm fails
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Stage {
+    .supply: Rail
+    .r1: Resistor
+    .supply.pos ~> .r1 ~> .supply.neg
+}
+
+board Reach {
+    .stage: Stage
+    .probe: Resistor
+    .stage.r1.a ~ .probe.a
+}
+```
+
+```text
+error: `r1` is inside `Stage` and is not part of its interface: only narrowing (`&=`) reaches inside a module; narrow a value inside it with `&=`, or use a rail, a pin, or a value that `Stage` declares
+   --> main.nsm:13:12
+   |
+13 |     .stage.r1.a ~ .probe.a
    |            ^^
 ```
 
@@ -7113,7 +7169,7 @@ physical for Cased {
 ```
 
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged if a case is ever shared. These six belong in it; a keepout may be anywhere in the unit.
-- **A path may cross a module boundary here and nowhere else.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source still cannot reach into a module (ADR 0004); the physical file can, to state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
+- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
@@ -9627,7 +9683,7 @@ Each side of the converter is a bank of identical capacitors (the section on cap
 }
 ```
 
-A margin on the capacitors' ratings is the converter's `.voltage_margin` (ADR 0085): each capacitor is rated for at least the margin times the highest voltage of its rail, `.input_cap.max_voltage >= .vin.voltage * .voltage_margin` and `>= .vin.peak * .voltage_margin`, and the same on the output. It is 1 unless the board states it, which asks for no more than the rail's highest voltage and changes nothing for a board that never mentions it. A board that derates its ceramic capacitors states it from outside the converter, which cannot be reached any other way (`input_cap` is inside `Buck` and is not part of its interface). A module that wraps the converter forwards its own member to it (`.reg.voltage_margin &= .margin`). `Buck` has no bootstrap or bypass capacitor, since those are in the IC's own `support` section, which states their ratings itself.
+A margin on the capacitors' ratings is the converter's `.voltage_margin` (ADR 0085): each capacitor is rated for at least the margin times the highest voltage of its rail, `.input_cap.max_voltage >= .vin.voltage * .voltage_margin` and `>= .vin.peak * .voltage_margin`, and the same on the output. It is 1 unless the board states it, which asks for no more than the rail's highest voltage and changes nothing for a board that never mentions it. A board that derates its ceramic capacitors states it from outside the converter. A narrowing could reach the capacitors (ADR 0116), but only with a constant (`.reg.input_cap.max_voltage &= 16V..100V`), and the margin is a relation to the rail's voltage, so it stays a member. A module that wraps the converter states its own member for it (`.reg.voltage_margin &= .margin`). `Buck` has no bootstrap or bypass capacitor, since those are in the IC's own `support` section, which states their ratings itself.
 
 ```nsm-fragment
 .reg: Buck<Zbk2> {
@@ -10024,6 +10080,7 @@ part Zbk3 provides BuckIc {
 - `support { ... }` is written only inside a part's own definition, once or more. It holds parts (`.boost: Capacitor { ... }`) and the statements that wire and size them: connections to the part's pins (`.bst ~> .boost ~> .sw.pos`), narrowings, defaults and relations. Values, pins, tables and catalogs belong to the part itself.
 - A part declares no other part outside its `support` section.
 - A support part is at the path below its part (`reg.ic.boost`) and is a part like any other: picked from its catalog, checked, drawn on the schematic, placed and listed in the bill of materials.
+- A board that names the IC (`.reg: Buck<Lt8641>`) may narrow a support part from outside the module, as any member inside a module (ADR 0116): `.reg.ic.soft_start.capacitance &= 22nF +/- 10%`, which replaces the part's `?=` default. The module's own text still reaches only its bound's members.
 
 ```nsm fails
 import std::parts::passive::Capacitor
@@ -10048,7 +10105,7 @@ error: a part holds other parts only in its `support` section, the circuit its d
 
 What is not modelled: the divider's current is not added to the load, and the IC's quiescent current is not in the inductor's (it is in the IC's own input current, if the IC states it, as the `Lt8641` does), the loop and its stability are not checked (the IC's capacitor and inductor ranges stand for them), the inductor's saturation is its datasheet current at a fall of the inductance (30% for the catalog's parts) and not a curve, and the ripple current of the capacitors is not modelled, so it is not shared out between the capacitors of a bank.
 
-The library has one real buck IC, `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the converter computes its ripple at the programmed frequency. Its `support` section is the datasheet's application circuit: 0.1 uF from BST to SW, 1 uF on INTVCC, 1 uF at VIN1 and at VIN2, 10 nF on TR/SS, the resistor on RT (47 kohm, 0.89 MHz, by default), BIAS to ground and EN/UV to the input; SYNC/MODE and PG are left open. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read). The catalog is not keyed by `.mpn`: the solver takes the first row that fits, because a board that places the IC through `Buck<Lt8641>` cannot reach its members.
+The library has one real buck IC, `std::parts::regulator::Lt8641`, Analog Devices' 3 V to 65 V, 3.5 A LT8641 in its 18-lead 3 x 4 mm QFN (datasheet Rev. C). It is written as above, with each number's datasheet page and table in its doc comment and in `data/jlcpcb/README.md`: the reference 0.79 V to 0.822 V, the input range, 3.5 A, the efficiency, `min_inductance` from the datasheet's Equation 10, a DCR of at most 0.04 ohm, 2.2 uF at the input, and 47 uF at the output by default (every Typical Application of the datasheet uses it; the datasheet states no minimum). The switching frequency follows the resistor on RT, `.fsw == 46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)` with the oscillator's accuracy (Equation 3 and Table 1); the part refuses a resistor outside 18.2 kohm to 60.4 kohm (2 MHz to 700 kHz), the span the datasheet gives the accuracy for. It also refuses an input and output at which the datasheet's Equations 4 and 5 say the frequency is no longer held, because the converter computes its ripple at the programmed frequency. Its `support` section is the datasheet's application circuit: 0.1 uF from BST to SW, 1 uF on INTVCC, 1 uF at VIN1 and at VIN2, 10 nF on TR/SS, the resistor on RT (47 kohm, 0.89 MHz, by default), BIAS to ground and EN/UV to the input; SYNC/MODE and PG are left open. The automotive ordering code `LT8641IUDC#WPBF` is the same die and tables as the other grades. The standard `lt8641` catalog has a header and no row, like `p_mosfet` (a row needs a stock above zero on a record that was read), so the board's project has the row, in its own file of that name (the part number is the datasheet's Order Information; a project adds the LCSC number it has read). The catalog is not keyed by `.mpn`: the solver takes the first row that fits, and a board that wants one ordering code narrows `.reg.ic.mpn` (ADR 0116).
 
 ```csv file=catalogs/lt8641.csv set=lt8641
 mpn,package,library,source
@@ -10787,7 +10844,7 @@ A capacitor across no rail has no bias to rate: state `.bias`, or place it betwe
 
 The connectors are `Header1x2`, `Header1x4`, `Header1x8`, `Header1x10`, the sockets `Socket1x2`, `Socket1x4`, `Socket1x8`, `Socket1x10`, and the two-row headers `Header2x3`, `Header2x5` and `Header2x10`. A pin is `pN`, on pad N, and contact N of a connector is its pin `pN`: a header and its socket number so that contact N meets contact N. There is one definition for each size because the language has no parameter for a count: a part with `N` pins has `N` rows in its table. The pitch is the package (`.package &= "2.54mm"`), which the export mapping reads. Each states its `.mating` (kind, gender, pitch, rows, positions), which a system uses to mate boards (see Systems and ports). The single-row ones are rated at 3 A a contact, from the datasheets of the `header` catalog; the two-row headers have no row, are unrated, and the check of the current through a mate lists them as not evaluated.
 
-`Coax` has `signal` and `shield`. `ProgrammingPads6` is six pads, `p1` to `p6`, for a spring-pin programming cable; the board decides what each carries. `UsbCPower` is a six-contact USB Type-C receptacle with power only: a `.vbus` rail (the receptacle supplies, so its current is negative and follows from the loads on the net), the two configuration pins `cc1` and `cc2`, and the `shell`. A device that takes power from a source needs a 5.1 kohm pull-down from each configuration pin to ground, written as a resistor in a chain. `UsbC2` is the sixteen-contact USB 2.0 receptacle: the same pins, the `Usb2` port, and the open sideband pins `sbu1` and `sbu2`. `UsbCSink` is the receptacle of a device that takes its power from a host (a sink): a module of a sixteen-contact receptacle (a provider of the generic `UsbCSinkReceptacle`, `UsbCReceptacle16P` by default) and the two Rd resistors of the Type-C specification, 5.1 kohm at 1 % from each of CC1 and CC2 to ground, so a board writes none. It has the `.vbus` rail (the host supplies: a source for the DC analysis over the `.voltage` the board states, with a current that is negative and follows from the loads), the data pair `.dp` and `.dm`, and nothing else; the shell is joined to ground inside and the sideband contacts are left open. The module does not provide `Connector` (a module cannot, since the generic has a `pins` table); its receptacle does, so the placer and the schematic treat it as a connector. `.package` is the receptacle's footprint (`"GCT_USB4105_16P"`, the default, or `"HRO_TYPE-C-31-M-12"`) and `.rd_package` the resistors' (`"0402"`). The receptacle is a use of the generic `UsbCSinkReceptacle`, so a project adds the receptacle of another maker, with its own pads, footprint and LCSC number, as a part that says `provides UsbCSinkReceptacle, Connector` (the generic gives it `.vbus`, `.package` and `.mpn`, the shell is the generic's `.shell`, and it has its own pin table named for its package and its own catalog), in a file that the board's file imports. The standard receptacle comes first in the order and has pin tables for its two footprints only, so the board takes the project's by stating its package and number: `.jack: UsbCSink { .package &= "SMD"; .receptacle_mpn &= "ACME-USBC-16" }` (`.receptacle_mpn` is the generic's `.mpn`). A board that states neither keeps the standard receptacle, however many providers are in scope. A port that gives power, a charger's or a host's downstream port, uses the generic `UsbCSourceReceptacle` (#463): the same sixteen contacts and no `dc` statement, since the board's own converter or switch drives VBUS, and `.vbus.current >= 0A`, since the device on the cable draws from the board. The board states the most the port allows (`.vbus.current &= 0A..3A`); a current that would supply the board is refused. A dual-role port, which takes power or gives it, uses `UsbCDualRoleReceptacle`, whose `.vbus.current` the board states as a signed range (`-3A..1.5A`). No standard part provides either, since `UsbCReceptacle16P` provides the sink generic and a provider takes its `dc source`: a project's receptacle says `provides UsbCSourceReceptacle, Connector`. A receptacle that carries no power role is a `Connector` with a plain `Rail`. `Obd2M` is the male OBD-II (SAE J1962) vehicle connector: a `.vbatt` rail (the vehicle supplies, so its current is negative and follows from the loads on the net; `pos` is battery power on pin 16 and `neg` chassis ground on pin 4), the optional `signal_gnd` (pin 5), and the bus pins `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos` and `j1850_bus`; the pins J1962 leaves to the manufacturer are `p1`, `p3`, `p8`, `p9`, `p11`, `p12` and `p13`. Its catalog `obd2_m` has no standard row yet: a project's own `catalogs/obd2_m.csv` lists the connector it buys.
+`Coax` has `signal` and `shield`. `ProgrammingPads6` is six pads, `p1` to `p6`, for a spring-pin programming cable; the board decides what each carries. `UsbCPower` is a six-contact USB Type-C receptacle with power only: a `.vbus` rail (the receptacle supplies, so its current is negative and follows from the loads on the net), the two configuration pins `cc1` and `cc2`, and the `shell`. A device that takes power from a source needs a 5.1 kohm pull-down from each configuration pin to ground, written as a resistor in a chain. `UsbC2` is the sixteen-contact USB 2.0 receptacle: the same pins, the `Usb2` port, and the open sideband pins `sbu1` and `sbu2`. `UsbCSink` is the receptacle of a device that takes its power from a host (a sink): a module of a sixteen-contact receptacle (a provider of the generic `UsbCSinkReceptacle`, `UsbCReceptacle16P` by default) and the two Rd resistors of the Type-C specification, 5.1 kohm at 1 % from each of CC1 and CC2 to ground, so a board writes none. It has the `.vbus` rail (the host supplies: a source for the DC analysis over the `.voltage` the board states, with a current that is negative and follows from the loads), the data pair `.dp` and `.dm`, and nothing else; the shell is joined to ground inside and the sideband contacts are left open. The module does not provide `Connector` (a module cannot, since the generic has a `pins` table); its receptacle does, so the placer and the schematic treat it as a connector. A board narrows what it needs inside it (ADR 0116): `.receptacle.package` is the receptacle's footprint (`"GCT_USB4105_16P"`, the default, or `"HRO_TYPE-C-31-M-12"`), and `.cc1_rd.package` and `.cc2_rd.package` the resistors' (`"0402"`). The receptacle is a use of the generic `UsbCSinkReceptacle`, so a project adds the receptacle of another maker, with its own pads, footprint and LCSC number, as a part that says `provides UsbCSinkReceptacle, Connector` (the generic gives it `.vbus`, `.package` and `.mpn`, the shell is the generic's `.shell`, and it has its own pin table named for its package and its own catalog), in a file that the board's file imports. The standard receptacle comes first in the order and has pin tables for its two footprints only, so the board takes the project's by narrowing its package and number: `.jack: UsbCSink { .receptacle.package &= "SMD"; .receptacle.mpn &= "ACME-USBC-16" }`. A board that states neither keeps the standard receptacle, however many providers are in scope. A port that gives power, a charger's or a host's downstream port, uses the generic `UsbCSourceReceptacle` (#463): the same sixteen contacts and no `dc` statement, since the board's own converter or switch drives VBUS, and `.vbus.current >= 0A`, since the device on the cable draws from the board. The board states the most the port allows (`.vbus.current &= 0A..3A`); a current that would supply the board is refused. A dual-role port, which takes power or gives it, uses `UsbCDualRoleReceptacle`, whose `.vbus.current` the board states as a signed range (`-3A..1.5A`). No standard part provides either, since `UsbCReceptacle16P` provides the sink generic and a provider takes its `dc source`: a project's receptacle says `provides UsbCSourceReceptacle, Connector`. A receptacle that carries no power role is a `Connector` with a plain `Rail`. `Obd2M` is the male OBD-II (SAE J1962) vehicle connector: a `.vbatt` rail (the vehicle supplies, so its current is negative and follows from the loads on the net; `pos` is battery power on pin 16 and `neg` chassis ground on pin 4), the optional `signal_gnd` (pin 5), and the bus pins `can_high`, `can_low`, `iso_k`, `iso_l`, `j1850_bus_pos` and `j1850_bus`; the pins J1962 leaves to the manufacturer are `p1`, `p3`, `p8`, `p9`, `p11`, `p12` and `p13`. Its catalog `obd2_m` has no standard row yet: a project's own `catalogs/obd2_m.csv` lists the connector it buys.
 
 ```nsm evaluate
 import std::parts::connector::UsbCPower
@@ -10817,7 +10874,8 @@ import std::sources::Rail
 
 board UsbDevice {
     .usb: UsbCSink {
-        .rd_package &= "0402"
+        .cc1_rd.package &= "0402"
+        .cc2_rd.package &= "0402"
     }
     .usb.vbus.voltage &= 5V +/- 5%
     .usb.vbus.pos.net &= "VBUS"
@@ -13630,12 +13688,12 @@ board Forgetful {
 ```
 
 ```text
-Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:336), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
+Forgetful: unconstrained pick guideline: `pull.resistor` (Resistor) was chosen with nothing limiting its resistance, so the solver took the first row that fits, 330Ω 1% 0402 C25104; it is held to `pull.resistance` (`==` at std/bus.nsm:338), which nothing states: state it, `.pull.resistance &= 4.7kohm +/- 5%`, or say that any value will do, `.pull.resistance &= 10kohm..100kohm`
 ```
 
 A module that wraps a `PullUp` states the resistance itself or forwards it through a member of its own (`.pull.resistance &= .resistance`, with the wrapped member on the left: the solver works a value out from the right side towards the left). A board that forgets a forwarded member is told about the wrapper's member, which is the one it can state.
 
-A board that needs a size for the resistor states it on the module: `PullUp`, `PullDown`, `I2cPullups` and `FeedbackDivider` each have an `optional` `.package` (a text such as `"0402"`) that they forward to the resistor inside, so the board never reaches into the module (the design rule that a module is configured through its interface). `I2cPullups` and `FeedbackDivider` give the one package to both of their resistors. A board that states nothing leaves the pick to the solver, as before: the relation that forwards the member is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
+A board that needs a size for the resistor narrows it inside the module (ADR 0116): `.pull: PullUp { .resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }`, and the same for `PullDown`. `I2cPullups` and `FeedbackDivider` have an `optional` `.package` (a text such as `"0402"`) that gives one package to both of their resistors. A board that states nothing leaves the pick to the solver, as before: the relation that ties the member to the resistors is skipped while nothing states it (see _A value that may stay open_), so no pick, lock or message changes for such a board. A package that no catalog row has is refused with the usual "has nothing for" message, which names the resistor and the package.
 
 ```nsm evaluate
 import std::bus::PullUp
@@ -13666,7 +13724,7 @@ board Sized {
     // The same pull-up as above, in the 0402 package.
     .pull: PullUp {
         .resistance &= 10kohm +/- 1%
-        .package &= "0402"
+        .resistor.package &= "0402"
     }
     .supply ~ .pull.supply
     .pull.line ~ .gate.reset_n
@@ -13768,7 +13826,7 @@ Parts are numbered by their letters in the order the design declares them (a mod
 | `std::parts::connector::Header2x10` | A two-row header with 20 pins `p1` to `p20`, pin N on pad N. |
 | `std::parts::connector::Coax` | A coaxial (RF) connector: pins `signal` and `shield`, `.impedance`, `.max_frequency`. |
 | `std::parts::connector::UsbCPower` | A USB Type-C receptacle, power only: rail `vbus` (pos on VBUS, neg on GND), pins `cc1`, `cc2`, `shell`. |
-| `std::parts::connector::UsbCSink` | A module: a USB Type-C receptacle for a device (a sink) with a 5.1 kohm Rd from each of CC1 and CC2 to ground built in: rail `vbus` (pos on VBUS, neg on GND; a source for the DC analysis), pins `dp` and `dm`, `.package` (the receptacle's), `.receptacle_mpn` (its maker's number, to take a project's provider of `UsbCSinkReceptacle`) and `.rd_package`. Its receptacle provides `Connector`. |
+| `std::parts::connector::UsbCSink` | A module: a USB Type-C receptacle for a device (a sink) with a 5.1 kohm Rd from each of CC1 and CC2 to ground built in: rail `vbus` (pos on VBUS, neg on GND; a source for the DC analysis), pins `dp` and `dm`, the receptacle `.receptacle` (a use of `UsbCSinkReceptacle`, whose `.package` and `.mpn` a board narrows to take a project's provider) and the resistors `.cc1_rd` and `.cc2_rd`. Its receptacle provides `Connector`. |
 | `std::parts::connector::UsbCSinkReceptacle` | A generic: the receptacle that `UsbCSink` uses, with no resistors: rail `vbus` (a `dc source`), pins `cc1`, `cc2`, `dp`, `dm`, `sbu1`, `sbu2`, `shell`, `.package`, `.mpn`. A project adds a provider. |
 | `std::parts::connector::UsbCSourceReceptacle` | A generic: the receptacle of a port that gives power (a charger, a host's downstream port): rail `vbus` with no `dc` statement and `.vbus.current >= 0A`, pins `cc1`, `cc2`, `dp`, `dm`, `sbu1`, `sbu2`, `shell`, `.package`, `.mpn`. No standard provider. |
 | `std::parts::connector::UsbCDualRoleReceptacle` | A generic: the receptacle of a dual-role port: rail `vbus` with no `dc` statement and no sign on its current (the board states a signed range), and the pins of `UsbCSourceReceptacle`. No standard provider. |

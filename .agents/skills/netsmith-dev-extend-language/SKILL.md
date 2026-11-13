@@ -25,7 +25,7 @@ Tests live in each crate's `tests/`. Add a test for the behaviour and one for ea
 - One correct way to say a thing. Remove the redundant construct or add a better one, never a second spelling.
 - Statement order never matters.
 - Libraries (`std/`) state only what is always true and name no CAD tool.
-- A module is configured through its interface only.
+- A module is configured through its interface; from outside, a value inside it can only be narrowed with `&=` (ADR 0116).
 - Only a board names nets.
 - Do not change behaviour that contradicts an ADR. Report the contradiction.
 
