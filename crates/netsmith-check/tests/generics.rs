@@ -806,7 +806,9 @@ fn providers_of_one_generic_are_all_parts_or_all_modules() {
     assert!(
         m.iter().any(|m| m
             .contains("`BModule` is a module, but `APart`, which provides `Thing` too, is a part")
-            && m.contains("all providers of a generic are parts, all are modules, or all are interfaces")),
+            && m.contains(
+                "all providers of a generic are parts, all are modules, or all are interfaces"
+            )),
         "{m:?}"
     );
 }

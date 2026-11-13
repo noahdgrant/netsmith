@@ -320,3 +320,69 @@ fn fab_writes_and_reads_the_lock_too() {
         stderr(&run)
     );
 }
+
+/// The LED example made with 2 oz copper (ADR 0113).
+fn at_two_oz() -> String {
+    LED.replacen(
+        "        .stackup.thickness &= 1.6mm\n",
+        "        .stackup.thickness &= 1.6mm\n        .stackup.copper_weight &= 2\n",
+        1,
+    )
+}
+
+#[test]
+fn the_lock_holds_a_process_to_its_provider_and_lock_update_picks_again() {
+    let root = project("pick-lock-provider", LED);
+    let run = netsmith(&root, &["build"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let lock = fs::read_to_string(lock_file(&root)).unwrap();
+    assert!(
+        lock.contains(
+            "[LedExample.providers.\"process\"]\ngeneric = \"TwoLayer\"\nprovider = \"std::mfg::jlcpcb::JlcTwoLayer1oz\"\n"
+        ),
+        "{lock}"
+    );
+
+    // The board now asks for 2 oz: the lock holds the use to 1 oz, so the build stops on the
+    // contradiction and names the lock, and nothing else is tried.
+    fs::write(root.join("src/main.nsm"), at_two_oz()).unwrap();
+    let run = netsmith(&root, &["build"]);
+    assert!(!run.status.success());
+    let err = stderr(&run);
+    assert!(
+        err.contains("contradiction on `process.stackup.copper_weight`: it is already 1")
+            && err.contains(
+                "the pick lock holds `process` to the provider `std::mfg::jlcpcb::JlcTwoLayer1oz`"
+            )
+            && err.contains("netsmith lock --update"),
+        "{err}"
+    );
+
+    // A refresh picks again and says so; the build then takes 2 oz.
+    let run = netsmith(&root, &["lock", "--update"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert!(
+        stdout(&run).contains(
+            "LedExample: `process`: provider `std::mfg::jlcpcb::JlcTwoLayer1oz` -> `std::mfg::jlcpcb::JlcTwoLayer2oz`"
+        ),
+        "{}",
+        stdout(&run)
+    );
+    let run = netsmith(&root, &["build", "--locked"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+
+    // A provider that is gone from scope is an error, not a quiet pick of another.
+    let lock = fs::read_to_string(lock_file(&root)).unwrap();
+    fs::write(
+        lock_file(&root),
+        lock.replace("JlcTwoLayer2oz", "JlcTwoLayer9oz"),
+    )
+    .unwrap();
+    let run = netsmith(&root, &["build"]);
+    assert!(!run.status.success());
+    assert!(
+        stderr(&run).contains("the pick lock holds `process` to the provider `std::mfg::jlcpcb::JlcTwoLayer9oz`, which is not a provider of `TwoLayer` in scope"),
+        "{}",
+        stderr(&run)
+    );
+}

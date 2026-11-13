@@ -11,6 +11,12 @@
 //! checker lists them (`netsmith_check::Provider`). Nothing compares providers: the first
 //! assignment that works is the one.
 //!
+//! A check whose only mistakes are contradictions inside uses with several providers
+//! (`Model::provider_conflicts`: a board's `.process.stackup.copper_weight &= 2` against the
+//! first process's 1 oz) opens the search too, with those as the first failure and nothing
+//! solved (ADR 0113); any other mistake of the check stops the build first, as before. A use the
+//! pick lock holds to a provider is made with it and never varied.
+//!
 //! The search. `outcome_with` checks once with the default assignment (the first provider of
 //! every use), solves, and if the solution has no diagnostics that is the result, at the cost of
 //! one solve, as before. Only a failure with a use that has more than one provider starts the
@@ -119,6 +125,15 @@ pub(crate) struct Found {
     pub passed_over: BTreeMap<String, Vec<(String, String)>>,
 }
 
+/// What the build had before the search: the solve of the first provider of every use, or,
+/// when the check stopped only on contradictions inside uses with several providers
+/// (`Model::provider_conflicts`, ADR 0113), those contradictions, with nothing solved.
+#[derive(Clone, Copy)]
+pub(crate) enum First<'a> {
+    Solved(&'a Solution),
+    Conflicts(&'a [Diagnostic]),
+}
+
 pub(crate) enum Outcome {
     /// Nothing can be varied: no use has more than one provider in scope, or varying one at
     /// a time never changes what fails. The first solve's diagnostics stand.
@@ -153,6 +168,8 @@ struct Record {
 
 struct Search<'a> {
     source: Source<'a>,
+    /// The uses the pick lock holds to a provider, by path: never varied (ADR 0113).
+    held: BTreeMap<String, String>,
     root: &'a str,
     kind: Root,
     trials: usize,
@@ -298,7 +315,9 @@ pub(crate) fn unjudged(solution: &Solution) -> Vec<Diagnostic> {
 impl Search<'_> {
     fn elaborate(&self, assign: &BTreeMap<String, String>) -> Checked {
         let mut assignment = Assignment::new();
-        assignment.insert(self.root.to_string(), assign.clone());
+        let mut all = self.held.clone();
+        all.extend(assign.iter().map(|(k, v)| (k.clone(), v.clone())));
+        assignment.insert(self.root.to_string(), all);
         check_one(
             self.source.name,
             self.source.text,
@@ -333,7 +352,8 @@ impl Search<'_> {
             .map(|m| {
                 m.uses
                     .iter()
-                    .filter(|u| u.candidates.len() > 1)
+                    // A use the pick lock holds is not varied (ADR 0113).
+                    .filter(|u| u.candidates.len() > 1 && !self.held.contains_key(&u.path))
                     .cloned()
                     .collect()
             })
@@ -425,10 +445,13 @@ pub(crate) fn search(
     root: &str,
     kind: Root,
     checked: &Checked,
-    first: &Solution,
+    first: First<'_>,
 ) -> Outcome {
     let mut s = Search {
         source,
+        held: crate::pick_lock::held_providers(source.catalogs.pick_lock())
+            .remove(root)
+            .unwrap_or_default(),
         root,
         kind,
         trials: 0,
@@ -446,10 +469,10 @@ pub(crate) fn search(
     // The default's failure is the first record: every use at its first provider.
     let default_choices: Choices = uses.iter().map(|u| (u.path.clone(), 0)).collect();
     // The first solve may have passed without being able to judge a bound on a use.
-    let first_diagnostics = if first.diagnostics.is_empty() {
-        unjudged(first)
-    } else {
-        first.diagnostics.clone()
+    let (first_passed, first_diagnostics) = match first {
+        First::Solved(first) if first.diagnostics.is_empty() => (true, unjudged(first)),
+        First::Solved(first) => (false, first.diagnostics.clone()),
+        First::Conflicts(conflicts) => (false, conflicts.to_vec()),
     };
     s.records.push(Record {
         choices: default_choices.clone(),
@@ -507,7 +530,7 @@ pub(crate) fn search(
     }
     // Nothing was judged in full: the first solve stands if it did not fail, else the first
     // trial in the order that did not fail.
-    if found.is_none() && first.diagnostics.is_empty() {
+    if found.is_none() && first_passed {
         return Outcome::Unchanged;
     }
     if found.is_none()
@@ -718,11 +741,21 @@ pub(crate) fn notes_for(
             if chosen.own {
                 return None;
             }
+            // A process (an interface provider, ADR 0113) taken as the first in scope with
+            // nothing passed over says nothing either: every board would print its default
+            // copper weight, which `fab-notes.txt` and the lock already say.
+            let passed_over = passed.get(&u.path).cloned().unwrap_or_default();
+            if chosen.kind == netsmith_check::InstKind::Interface
+                && u.chosen == 0
+                && passed_over.is_empty()
+            {
+                return None;
+            }
             Some(ProviderNote {
                 path: board.map_or_else(|| u.path.clone(), |b| model.path_below(u.inst, b)),
                 generic: u.generic.clone(),
                 chosen: chosen.name.clone(),
-                passed_over: passed.get(&u.path).cloned().unwrap_or_default(),
+                passed_over,
                 candidates: u.candidates.len(),
             })
         })

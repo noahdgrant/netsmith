@@ -45,7 +45,8 @@ mod values;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{
-    Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources, check,
+    Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources,
+    check_with,
 };
 use netsmith_core::{Cause, Design, PanelSpec, timings};
 use netsmith_design::guidelines::Guideline;
@@ -446,8 +447,16 @@ pub fn outcome_observed(
     libraries: Option<&Libraries>,
     observe: &dyn Fn(Step<'_>),
 ) -> Result<Outcome, Vec<Problem>> {
-    let checked = timings::stage("check", name, || check(name, text, loader));
-    if !checked.is_ok() {
+    // A use whose provider the pick lock names is made with that provider (ADR 0113).
+    let held = pick_lock::held_providers(catalogs.pick_lock());
+    let checked = timings::stage("check", name, || check_with(name, text, loader, &held));
+    let gone = locked_providers_gone(&checked, &held);
+    if !gone.is_empty() {
+        return Err(gone);
+    }
+    // A check that stopped only on contradictions inside uses with several providers is
+    // tried with the other providers (ADR 0113); any other mistake stops here.
+    if !checked.is_ok() && !only_provider_conflicts(&checked) {
         return Err(problems_of(&checked));
     }
     if checked.boards.is_empty() && checked.systems.is_empty() && checked.panels.is_empty() {
@@ -471,11 +480,21 @@ pub fn outcome_observed(
             total,
         };
         observe(step(Stage::Solve));
-        let first = timings::stage("solve", &board.name, || solve(board, catalogs));
+        let conflicts = &board.model.provider_conflicts;
+        let first = conflicts
+            .is_empty()
+            .then(|| timings::stage("solve", &board.name, || solve(board, catalogs)));
         // A failure with a use that has several providers is tried with the others, and so is
-        // a bound on such a use that could not be judged (ADR 0068).
+        // a bound on such a use that could not be judged (ADR 0068), and a contradiction
+        // inside such a use (ADR 0113).
         let mut picked = None;
-        if !first.diagnostics.is_empty() || !providers::unjudged(&first).is_empty() {
+        let opened = match &first {
+            Some(first) => (!first.diagnostics.is_empty()
+                || !providers::unjudged(first).is_empty())
+            .then_some(providers::First::Solved(first)),
+            None => Some(providers::First::Conflicts(conflicts)),
+        };
+        if let Some(opened) = opened {
             match timings::stage("providers", &board.name, || {
                 providers::search(
                     providers::Source {
@@ -487,24 +506,28 @@ pub fn outcome_observed(
                     &board.name,
                     providers::Root::Board,
                     &checked,
-                    &first,
+                    opened,
                 )
             }) {
-                providers::Outcome::Unchanged if !first.diagnostics.is_empty() => {
-                    return Err(diagnostic_problems(
-                        &first.diagnostics,
-                        &checked.sources,
-                        &|_| board.name.clone(),
-                    ));
-                }
-                providers::Outcome::Unchanged => {}
+                providers::Outcome::Unchanged => match &first {
+                    None => return Err(held_conflicts(&checked, &held, &board.name)),
+                    Some(first) if !first.diagnostics.is_empty() => {
+                        return Err(diagnostic_problems(
+                            &first.diagnostics,
+                            &checked.sources,
+                            &|_| board.name.clone(),
+                        ));
+                    }
+                    Some(_) => {}
+                },
                 providers::Outcome::Failed(problems) => return Err(problems),
                 providers::Outcome::Found(found) => picked = Some(*found),
             }
         }
-        let (solution, passed) = match picked.as_ref() {
-            Some(p) => (&p.solution, p.passed_over.clone()),
-            None => (&first, Default::default()),
+        let (solution, passed) = match (picked.as_ref(), &first) {
+            (Some(p), _) => (&p.solution, p.passed_over.clone()),
+            (None, Some(first)) => (first, Default::default()),
+            (None, None) => return Err(problems_of(&checked)),
         };
         let board = picked
             .as_ref()
@@ -514,6 +537,7 @@ pub fn outcome_observed(
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
         lock.set(&board.name, pick_lock::rows_of(solution));
+        lock.set_providers(&board.name, pick_lock::providers_of(&solution.model));
         observe(step(Stage::Design));
         let mut designed = timings::stage("design", &board.name, || design_board(board, solution))
             .map_err(|errors| design_problems(Some(&board.name), &board.name, &errors))?;
@@ -582,9 +606,18 @@ pub fn outcome_observed(
             )]);
         }
         observe(step(Stage::Solve));
-        let first = timings::stage("solve", &system.name, || solve_system(system, catalogs));
+        let conflicts = &system.model.provider_conflicts;
+        let first = conflicts
+            .is_empty()
+            .then(|| timings::stage("solve", &system.name, || solve_system(system, catalogs)));
         let mut picked = None;
-        if !first.diagnostics.is_empty() || !providers::unjudged(&first).is_empty() {
+        let opened = match &first {
+            Some(first) => (!first.diagnostics.is_empty()
+                || !providers::unjudged(first).is_empty())
+            .then_some(providers::First::Solved(first)),
+            None => Some(providers::First::Conflicts(conflicts)),
+        };
+        if let Some(opened) = opened {
             match timings::stage("providers", &system.name, || {
                 providers::search(
                     providers::Source {
@@ -596,10 +629,16 @@ pub fn outcome_observed(
                     &system.name,
                     providers::Root::System,
                     &checked,
-                    &first,
+                    opened,
                 )
             }) {
-                providers::Outcome::Unchanged if !first.diagnostics.is_empty() => {
+                providers::Outcome::Unchanged if first.is_none() => {
+                    return Err(held_conflicts(&checked, &held, &system.name));
+                }
+                providers::Outcome::Unchanged
+                    if first.as_ref().is_some_and(|f| !f.diagnostics.is_empty()) =>
+                {
+                    let first = first.as_ref().expect("the guard says it is there");
                     // A message written inside the definition of a member's board is about that
                     // board; any other is about the system.
                     return Err(diagnostic_problems(
@@ -621,9 +660,10 @@ pub fn outcome_observed(
                 providers::Outcome::Found(found) => picked = Some(*found),
             }
         }
-        let (solution, passed) = match picked.as_ref() {
-            Some(p) => (&p.solution, p.passed_over.clone()),
-            None => (&first, Default::default()),
+        let (solution, passed) = match (picked.as_ref(), &first) {
+            (Some(p), _) => (&p.solution, p.passed_over.clone()),
+            (None, Some(first)) => (first, Default::default()),
+            (None, None) => return Err(problems_of(&checked)),
         };
         let system = picked
             .as_ref()
@@ -633,6 +673,7 @@ pub fn outcome_observed(
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
         lock.set(&system.name, pick_lock::rows_of(solution));
+        lock.set_providers(&system.name, pick_lock::providers_of(&solution.model));
         observe(step(Stage::Design));
         // The seats of the mates and the mated heights they give (ADR 0110), for the system
         // scene; a seat below its board is refused before any board is made.
@@ -1005,6 +1046,77 @@ fn notes(solution: &Solution, board: Option<InstId>) -> Vec<Noted> {
                 .map(|seed| (started_note(model, seed), Cause::Circular)),
         )
         .collect()
+}
+
+/// The check's mistakes when a contradiction inside a use stands whatever the search tried,
+/// and, for each use of `unit` the pick lock holds, a line that says so: a board that asks for
+/// another copper weight than its lock's provider has must refresh the lock (ADR 0113).
+fn held_conflicts(
+    checked: &Checked,
+    held: &netsmith_check::Assignment,
+    unit: &str,
+) -> Vec<Problem> {
+    let mut problems = problems_of(checked);
+    for (path, id) in held.get(unit).into_iter().flatten() {
+        let message = format!(
+            "the pick lock holds `{path}` to the provider `{id}`; if the board now asks for what another provider has, run `netsmith lock --update` to pick again, and review the change"
+        );
+        problems.push(
+            Problem::general(Stage::Solve, message.clone(), format!("note: {message}\n"))
+                .on_board(unit),
+        );
+    }
+    problems
+}
+
+/// A use that the pick lock holds to a provider that is no longer in scope: an error, as a
+/// locked row that is gone is (ADR 0100), because taking another provider would move the pick
+/// with no line in a pull request.
+fn locked_providers_gone(checked: &Checked, held: &netsmith_check::Assignment) -> Vec<Problem> {
+    let mut problems = Vec::new();
+    for (unit, uses) in held {
+        let model = checked
+            .board(unit)
+            .map(|b| &b.model)
+            .or_else(|| checked.system(unit).map(|s| &s.model));
+        let Some(model) = model else { continue };
+        for (path, id) in uses {
+            let Some(u) = model.uses.iter().find(|u| &u.path == path) else {
+                continue;
+            };
+            if u.candidates.iter().any(|c| &c.id == id) {
+                continue;
+            }
+            let in_scope: Vec<String> =
+                u.candidates.iter().map(|c| format!("`{}`", c.id)).collect();
+            let message = format!(
+                "the pick lock holds `{path}` to the provider `{id}`, which is not a provider of `{}` in scope (in scope: {}); run `netsmith lock --update` to pick again, and review the change",
+                u.generic,
+                in_scope.join(", ")
+            );
+            problems.push(
+                Problem::general(Stage::Solve, message.clone(), format!("error: {message}\n"))
+                    .on_board(unit),
+            );
+        }
+    }
+    problems
+}
+
+/// Whether every mistake the check found is a contradiction inside a use with several
+/// providers (`Model::provider_conflicts`), which another provider may not have (ADR 0113): a
+/// board that narrows `.process.stackup.copper_weight &= 2` against the first process's 1 oz.
+fn only_provider_conflicts(checked: &Checked) -> bool {
+    let conflicts: Vec<&netsmith_check::Diagnostic> = checked
+        .boards
+        .iter()
+        .map(|b| &b.model)
+        .chain(checked.systems.iter().map(|s| &s.model))
+        .flat_map(|m| &m.provider_conflicts)
+        .collect();
+    !conflicts.is_empty()
+        && checked.syntax.is_empty()
+        && checked.diagnostics.iter().all(|d| conflicts.contains(&d))
 }
 
 /// A note and why it is there.

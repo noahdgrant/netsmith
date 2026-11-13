@@ -41,6 +41,12 @@
 //!    contradicts one (`.impedance &= 75ohm` against 50 ohm) fails where it is written.
 //! 5. A part that provides a part, or a module that provides an interface, is an error.
 //!
+//! An interface may provide a generic that has no `pins` table and no catalog (ADR 0113): a
+//! manufacturing process, whose providers are its copper weights. The providers of one generic
+//! are all parts, all modules or all interfaces. A contradiction on a field inside a use with
+//! more than one provider is kept in `Model::provider_conflicts` as well as reported, so that
+//! the build can try the other providers before it stops on it.
+//!
 //! A provider of a standard generic reads the generic's pins as kinds only (`.a passive`) and
 //! writes the one catalog of its own; it does not declare `.package: Package`, because the
 //! generic does, and it cannot state other designator letters. A provider of the standard
