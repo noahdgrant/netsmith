@@ -1,16 +1,16 @@
 //! `netsmith render`: the board's _Scene_ (ADR 0105) drawn to a PNG by netsmith's own
-//! rasterizer ([`netsmith_3d::raster3d`]), for an agent that can read a picture, a golden test
-//! and a person with no 3D viewer. The board is placed as `board3d`, `fab` and the editor place
-//! it ([`crate::board3d::scene_and_label`]); nothing is routed, asked of KiCad or written but the
-//! PNG. The same source and options give the same bytes. `docs/BOARD3D.md`, "Pictures for
+//! rasterizer ([`crate::raster3d`]), for an agent that can read a picture, a golden test and a
+//! person with no 3D viewer. The caller hands over the scene (the fab driver's `board3d` places
+//! the board as `fab` and the editor place it); nothing is routed, asked of KiCad or written but
+//! the PNG. The same source and options give the same bytes. `docs/BOARD3D.md`, "Pictures for
 //! agents", says what is drawn and in which frame.
 
 use std::path::PathBuf;
 
-use netsmith_3d::mesh::{self, Mesh};
-use netsmith_3d::raster3d::{self, Axis, Lens, RenderOptions, Section, Theme, View};
-use netsmith_3d::scene3d::Scene;
-use netsmith_3d::system::SystemScene;
+use crate::mesh::{self, Mesh};
+use crate::raster3d::{self, Axis, Lens, RenderOptions, Section, Theme, View};
+use crate::scene3d::Scene;
+use crate::system::SystemScene;
 
 /// The picture's size unless `--size` says one.
 pub const DEFAULT_SIZE: (usize, usize) = (1600, 1000);
@@ -148,7 +148,7 @@ pub fn resolve_highlight(scene: &Scene, requested: &[String]) -> Result<Vec<Stri
         nets.extend(copper.layers.iter().flat_map(|l| l.nets()).flatten());
     }
     nets.extend(scene.board.holes.iter().filter_map(|h| match &h.owner {
-        netsmith_3d::scene3d::HoleOwner::Via { net } => Some(net.as_str()),
+        crate::scene3d::HoleOwner::Via { net } => Some(net.as_str()),
         _ => None,
     }));
     nets.sort();
@@ -268,9 +268,7 @@ fn options(request: &Request, highlight: Vec<String>) -> RenderOptions {
 /// on the board alone); one that `highlight` names is kept, to be lit.
 fn without_hidden_case(mut meshes: Vec<Mesh>, case: CaseMode, highlight: &[String]) -> Vec<Mesh> {
     if case == CaseMode::Hidden {
-        meshes.retain(|m| {
-            m.material != netsmith_3d::mesh::Material::Case || highlight.contains(&m.id)
-        });
+        meshes.retain(|m| m.material != crate::mesh::Material::Case || highlight.contains(&m.id));
     }
     meshes
 }
@@ -364,11 +362,11 @@ fn system_id(want: &str) -> (String, String) {
 }
 
 /// The system scene drawn as `request` says, as the bytes of a PNG: every member's meshes moved
-/// into the system's frame ([`netsmith_3d::system::meshes`]), framed as a whole. A section cuts in
+/// into the system's frame ([`crate::system::meshes`]), framed as a whole. A section cuts in
 /// the system's frame; its cut faces are filled, each board as one block (not its stackup).
 pub fn draw_system(system: &SystemScene, request: &Request) -> Result<Vec<u8>, String> {
     let highlight = resolve_system_highlight(system, &request.highlight)?;
-    let meshes = netsmith_3d::system::meshes(system);
+    let meshes = crate::system::meshes(system);
     let options = options(request, highlight);
     let lens = if request.perspective {
         Lens::Perspective { fov_y_deg: FOV_DEG }
