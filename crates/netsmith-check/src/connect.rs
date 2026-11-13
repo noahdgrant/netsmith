@@ -1141,16 +1141,72 @@ impl Checker<'_> {
             let across = drops.iter().fold(RExpr::Field(voltage), |acc, &vf| {
                 RExpr::Bin(BinOp::Sub, Box::new(acc), Box::new(RExpr::Field(vf)))
             });
+            let written = self.chain_written(&chain, current, voltage, &drops, &resistances);
             std::sync::Arc::make_mut(&mut self.model.relations).push(Relation {
                 lhs: RExpr::Field(current),
                 op: CmpOp::EqEq,
                 rhs: RExpr::Bin(BinOp::Div, Box::new(across), Box::new(resistance)),
                 source: chain.source,
                 span: chain.span,
-                written: None,
+                written,
                 own: false,
             });
         }
+    }
+
+    /// The chain's relation as the board or module that writes the chain would write it by hand
+    /// (`.led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance`), at the
+    /// chain's line, so that it reaches the design's notes as a hand-written one does. A chain
+    /// in a part's definition or in the standard library has none, as a statement there has none.
+    fn chain_written(
+        &self,
+        chain: &Chain,
+        current: FieldId,
+        voltage: FieldId,
+        drops: &[FieldId],
+        resistances: &[FieldId],
+    ) -> Option<crate::model::Written> {
+        let scope = self.model.instance(chain.parts[0]).parent?;
+        if self.is_library(chain.source)
+            || !matches!(
+                self.model.instance(scope).kind,
+                InstKind::Board | InstKind::Module
+            )
+        {
+            return None;
+        }
+        let path = |f: FieldId| {
+            let field = self.model.field(f);
+            let owner = self.model.path_below(field.owner, scope);
+            if owner.is_empty() {
+                format!(".{}", field.name)
+            } else {
+                format!(".{owner}.{}", field.name)
+            }
+        };
+        let mut across = path(voltage);
+        for &vf in drops {
+            across = format!("{across} - {}", path(vf));
+        }
+        if !drops.is_empty() {
+            across = format!("({across})");
+        }
+        let mut resistance = resistances
+            .iter()
+            .map(|&r| path(r))
+            .collect::<Vec<_>>()
+            .join(" + ");
+        if resistances.len() > 1 {
+            resistance = format!("({resistance})");
+        }
+        let (file, line) = self.line_in(chain.source, chain.span);
+        Some(crate::model::Written {
+            scope,
+            text: format!("{} == {across} / {resistance}", path(current)),
+            file,
+            line,
+            chain: chain.parts.clone(),
+        })
     }
 
     /// The relation `field = value` that a chain gives a part, pointed at the statement that

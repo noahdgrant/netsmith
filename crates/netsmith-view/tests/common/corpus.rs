@@ -217,6 +217,7 @@ fn notes(parts: &[&str], module: &str) -> Vec<netsmith_core::Note> {
         at: at(1),
         anchors: Vec::new(),
         result: None,
+        derived: false,
     }];
     if !module.is_empty() {
         out.push(Note {
@@ -226,6 +227,7 @@ fn notes(parts: &[&str], module: &str) -> Vec<netsmith_core::Note> {
             at: at(5),
             anchors: Vec::new(),
             result: None,
+            derived: false,
         });
     }
     for (i, p) in parts.iter().enumerate() {
@@ -236,6 +238,7 @@ fn notes(parts: &[&str], module: &str) -> Vec<netsmith_core::Note> {
             at: at(10 + i),
             anchors: vec![(*p).into()],
             result: None,
+            derived: false,
         });
     }
     out.push(Note {
@@ -245,6 +248,7 @@ fn notes(parts: &[&str], module: &str) -> Vec<netsmith_core::Note> {
         at: at(30),
         anchors: parts[..2].iter().map(|p| p.to_string()).collect(),
         result: Some("x = 330Ω..340Ω".into()),
+        derived: false,
     });
     out
 }

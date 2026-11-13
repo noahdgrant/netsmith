@@ -96,6 +96,7 @@ fn to_json(i: &Inputs) -> Value {
             "at": n.at.as_ref().map(|a| json!([a.file, a.line])),
             "anchors": n.anchors,
             "result": n.result,
+            "derived": n.derived,
         })).collect::<Vec<_>>(),
         "positive": i.rails.positive,
         "ground": i.rails.ground,
@@ -196,6 +197,7 @@ fn from_json(v: &Value) -> Inputs {
                     }),
                     anchors: strs(&n["anchors"]),
                     result: n["result"].as_str().map(String::from),
+                    derived: n["derived"].as_bool().unwrap_or(false),
                 })
                 .collect(),
         },

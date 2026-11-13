@@ -8774,7 +8774,7 @@ Rules.
 - Inside a part, `///` goes only on a declaration (`.resistance: Resistance`) or on a definition. A `pins` block, a row of a pin table, `catalog`, `tie`, `bridge`, a relation and a connection are statements: put a `//` comment on them. The message is the one below (`doc comments can only be attached to declarations`, and for a pin table row `a pin table takes `//` notes, not doc comments`).
 - `////` is a plain comment.
 - There are no block comments: only `//`, `///` and `//!` exist. `/*` is an error.
-- Doc comments are kept in the syntax tree and printed back. The editor's schematic draws the ones on a board, a module, a part or an interface, and every `==` relation, as notes beside what they are about (ADR 0060); a `//` comment is never drawn.
+- Doc comments are kept in the syntax tree and printed back. The editor's schematic draws the ones on a board, a module, a part or an interface, and every `==` relation, as notes beside what they are about (ADR 0060); a `//` comment is never drawn. The relation a `~>` chain across a rail implies (ADR 0113) is drawn too, at the chain's line and marked as the chain's, unless the source writes it by hand as well.
 
 Misuse.
 

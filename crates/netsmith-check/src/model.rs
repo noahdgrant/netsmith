@@ -684,7 +684,10 @@ pub struct Relation {
     pub source: SourceId,
     pub span: Span,
     /// For a relation the author wrote (a `==`, `>=` or `<=` statement): its text as written
-    /// and where. Relations the checker makes from other statements have none.
+    /// and where. The relation Kirchhoff's voltage law gives a `~>` chain across a rail
+    /// (ADR 0113) has one too, with the text the checker writes for it and the chain's line,
+    /// because it says what a hand-written one would. Other relations the checker makes from
+    /// statements have none.
     pub written: Option<Written>,
     /// Whether a part's own definition states it (a relation of a generic or a part, such as
     /// `.gate_source_voltage >= .on_resistance_vgs`), as the library or a project's part
@@ -694,16 +697,20 @@ pub struct Relation {
     pub own: bool,
 }
 
-/// A relation statement as the source has it.
+/// A relation statement as the source has it, or as a `~>` chain implies it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Written {
     /// The module or board instance whose body states it: what its `.x` paths are relative to.
     pub scope: InstId,
-    /// The statement's text with its white space collapsed to single spaces.
+    /// The statement's text with its white space collapsed to single spaces; for a chain's
+    /// relation, the relation written out as a statement of `scope` would write it.
     pub text: String,
-    /// The file as it was loaded, and the 1-based line the statement starts on.
+    /// The file as it was loaded, and the 1-based line the statement (or the chain) starts on.
     pub file: String,
     pub line: usize,
+    /// For the relation the checker derives from a `~>` chain across a rail (ADR 0113): the
+    /// chain's parts, in the order the chain runs. Empty for a statement the author wrote.
+    pub chain: Vec<InstId>,
 }
 
 /// A run of `~>` through bridge parts, from one pin to another.

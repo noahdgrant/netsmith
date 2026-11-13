@@ -29,6 +29,7 @@ fn note(path: &str, kind: NoteKind, anchors: &[&str]) -> Note {
         at: None,
         anchors: anchors.iter().map(|s| s.to_string()).collect(),
         result: None,
+        derived: false,
     }
 }
 

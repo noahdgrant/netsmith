@@ -1829,7 +1829,10 @@ fn doc_comments_and_relations_become_notes_in_source_order() {
         .iter()
         .filter(|n| n.kind == NoteKind::Relation)
         .collect();
+    // The module writes the relation of its chain by hand as well (ADR 0113): one note, the
+    // one it wrote.
     assert_eq!(relations.len(), 1, "{relations:?}");
+    assert!(!relations[0].derived);
     assert_eq!(relations[0].path, "light");
     assert_eq!(
         relations[0].text,
@@ -1846,8 +1849,51 @@ fn doc_comments_and_relations_become_notes_in_source_order() {
 }
 
 #[test]
-fn a_board_with_no_doc_comment_and_no_relation_has_no_note() {
+fn a_board_with_no_doc_comment_and_no_written_relation_has_only_its_chains_note() {
     let d = designed(REGULATOR_NO_DOCS).unwrap();
+    assert_eq!(d.notes.len(), 1, "{:?}", d.notes);
+    assert!(d.notes[0].derived, "{:?}", d.notes);
+    assert_eq!(d.notes[0].text, ".r1.current == .supply.voltage / .r1.resistance");
+}
+
+/// The relation Kirchhoff's voltage law gives a `~>` chain across a rail (ADR 0113) is drawn
+/// as a hand-written one is: about the chain's parts, the current's first, with what the
+/// solver settled on, at the chain's line, and marked as the chain's.
+#[test]
+fn a_chain_across_a_rail_gives_a_relation_note() {
+    use netsmith_core::NoteKind;
+    let d = designed(LED).unwrap();
+    let relations: Vec<_> = d
+        .notes
+        .iter()
+        .filter(|n| n.kind == NoteKind::Relation)
+        .collect();
+    assert_eq!(relations.len(), 1, "{relations:?}");
+    let note = relations[0];
+    assert!(note.derived);
+    assert_eq!(note.path, "");
+    assert_eq!(
+        note.text,
+        ".led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance"
+    );
+    assert_eq!(note.anchors, ["led", "r1"]);
+    let at = note.at.as_ref().unwrap();
+    assert_eq!(at.line, 29, "the line of `.supply.pos ~> .r1 ~> .led ~> .supply.neg`");
+    let result = note.result.as_deref().unwrap();
+    assert!(result.starts_with("led.current = "), "{result}");
+    assert!(result.contains("mA"), "{result}");
+}
+
+/// A part with no DC model in the chain leaves its current free, so there is no relation and
+/// no note.
+#[test]
+fn a_chain_through_a_part_with_no_dc_model_gives_no_note() {
+    let src = REGULATOR_NO_DOCS.replace(
+        "    .supply.pos ~> .r1 ~> .supply.neg\n",
+        "    .c1: Capacitor { .capacitance &= 100nF +/- 10% }\n    .supply.pos ~> .r1 ~> .c1 ~> .supply.neg\n",
+    ).replace("passive::Resistor", "passive::{Resistor, Capacitor}");
+    assert!(src.contains(".c1 ~>"));
+    let d = designed(&src).unwrap();
     assert!(d.notes.is_empty(), "{:?}", d.notes);
 }
 
@@ -1903,11 +1949,12 @@ board Divided {
     src
 }
 
+/// The anchors of the relations the source writes; a chain's derived ones are left out.
 fn relation_anchors(d: &Design) -> Vec<Vec<String>> {
     use netsmith_core::NoteKind;
     d.notes
         .iter()
-        .filter(|n| n.kind == NoteKind::Relation)
+        .filter(|n| n.kind == NoteKind::Relation && !n.derived)
         .map(|n| n.anchors.clone())
         .collect()
 }

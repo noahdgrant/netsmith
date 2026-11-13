@@ -38,6 +38,7 @@ fn doc(path: &str, anchors: &[&str], text: &str, line: usize) -> Note {
         }),
         anchors: anchors.iter().map(|s| s.to_string()).collect(),
         result: None,
+        derived: false,
     }
 }
 
