@@ -627,7 +627,7 @@ The router's count, for each 1 mm square of a board, of how often its searches f
 _Avoid_: congestion map, heat map
 
 **Coarse plan**:
-A global route of every line of a board over its tiles, made before the router's detailed search: each line is routed from tile to tile, and the lines negotiate for the tiles' edges until as few edges as possible carry more tracks than they hold (the header of the router's `plan.rs`). Off by default; `netsmith route --plan` turns it on for experiments.
+A global route of every line of a board over its tiles, made before the router's detailed search: each line is routed from tile to tile, and the lines negotiate for the tiles' edges and vias until as few as possible carry more than they hold and as few lines as possible cross (a planned crossing; the header of the router's `plan.rs`). Off by default; `netsmith route --plan` turns it on for experiments.
 _Avoid_: global route (the general term, for any router), floor plan (where parts go)
 
 **Tile**:
@@ -641,6 +641,10 @@ _Avoid_: channel (the room between two rows of pads)
 **Crowding**:
 How full the coarse plan leaves a tile on a layer: the most of its four edges' planned tracks over what the edge holds. A step outside a line's corridor costs nothing on a tile crowded less than 70 %, and the whole crowding cost at 100 %.
 _Avoid_: congestion (the router's negotiation over cells), demand
+
+**Planned crossing**:
+Two lines of different nets that the coarse plan takes through one tile on one layer with their places on the tile's edges alternating round it, so that one must change layer to pass the other. Each line takes a numbered place on every tile edge it crosses, in one order along the edge from both tiles. The plan pays for a crossing more than the two vias that avoid it, so a plan with none plans those vias instead.
+_Avoid_: intersection (of two tracks' copper, a short)
 
 **Fabrication package**:
 The files a board house needs: Gerbers and drill files, a bill of materials, and a placement file. netsmith writes them itself from the board file (ADR 0034).

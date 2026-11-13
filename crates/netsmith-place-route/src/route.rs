@@ -176,10 +176,10 @@
 //! # A coarse plan (issue #431, S10)
 //!
 //! [`RouteOptions::plan`] can have the router make a global route of every line over tiles of
-//! 1 mm first, negotiated for the tiles' capacities, and the detailed search then pays up to
-//! [`OFF_PLAN`] for each step outside its line's corridor on a tile the plan crowds. It is off
-//! by default: on the three ported boards it makes every board route at every turn cost, but
-//! costs Orbit 10 to 18 % more vias. The design, the numbers and what to try next are in the
+//! 1 mm first, negotiated for the tiles' capacities and for the lines that cross in a tile,
+//! and the detailed search then pays up to [`OFF_PLAN`] for each step outside its line's
+//! corridor on a tile the plan crowds. It is off by default: it makes RP2350 route at every
+//! turn cost, but costs it 18 to 21 % more vias and leaves a line on Orbit at the least track. The design, the numbers and what to try next are in the
 //! header of `plan.rs`.
 //!
 //! # What a try costs (issue #431)
@@ -2261,9 +2261,9 @@ fn mask_sides(part: &netsmith_pcb::board::Placed, pad: &netsmith_pcb::footprint:
 /// The coarse plan of a board and the corridor of each line ([`crate::plan`]).
 struct Planned {
     tiles: crate::plan::Tiles,
-    /// For each line, the tiles of its corridor, row by row; `None` for a line the plan does
-    /// not steer.
-    corridors: Vec<Option<Vec<bool>>>,
+    /// For each line, the tiles of its corridor on each layer, row by row; `None` for a line
+    /// the plan does not steer.
+    corridors: Vec<Option<[Vec<bool>; 2]>>,
     /// How full the plan leaves each tile on each layer ([`crate::plan::Plan::fill`]).
     fill: [Vec<f64>; 2],
 }
@@ -3143,7 +3143,7 @@ impl<'a> Router<'a> {
                     .map(|c| {
                         let (a, b) = tiles.of(window.i0 + c % window.nx, window.j0 + c / window.nx);
                         let t = b * tiles.nx + a;
-                        if inside[t] {
+                        if inside[layer][t] {
                             0
                         } else {
                             crate::plan::crowding_cost(plan.fill[layer][t], self.plan_cost)
@@ -4442,10 +4442,16 @@ impl<'a> Router<'a> {
             })
             .collect();
         let plan = crate::plan::negotiate(&tiles, &ends, order);
+        let planned_vias: usize = plan
+            .paths
+            .iter()
+            .flatten()
+            .map(|p| p.windows(2).filter(|w| w[0].2 != w[1].2).count())
+            .sum();
         self.report(true, || {
             format!(
                 "coarse plan: {} by {} tiles of {} mm, {} rounds, {} tracks over capacity, {} \
-                 crossings",
+                 crossings, {planned_vias} vias",
                 tiles.nx,
                 tiles.ny,
                 tile_cells as f64 * PITCH,
@@ -4459,7 +4465,7 @@ impl<'a> Router<'a> {
         // the pour joins anyway, or a net of a diff pair, which runs beside its partner (S9)
         // and which any cost moves off it.
         let poured = |l: usize| self.board.pours.iter().any(|p| p.net == self.lines[l].net);
-        let corridors = plan
+        let corridors: Vec<Option<[Vec<bool>; 2]>> = plan
             .paths
             .iter()
             .enumerate()
@@ -4467,7 +4473,14 @@ impl<'a> Router<'a> {
                 p.as_ref()
                     .filter(|_| self.width_of(l) <= width + 1e-9)
                     .filter(|_| !poured(l) && self.partners[self.nets[l]].is_none())
-                    .map(|p| crate::plan::corridor(&tiles, p, crate::plan::CORRIDOR_GROW))
+                    .map(|p| {
+                        crate::plan::corridor(
+                            &tiles,
+                            p,
+                            crate::plan::CORRIDOR_GROW,
+                            crate::plan::CORRIDOR_ON_PLAN_LAYER,
+                        )
+                    })
             })
             .collect();
         let fill = plan.fill(&tiles);
@@ -5597,7 +5610,10 @@ mod tests {
             let Some(inside) = corridor else { continue };
             for &(i, j, _) in router.ends[line].0.iter().chain(&router.ends[line].1) {
                 let (a, b) = tiles.of(i, j);
-                assert!(inside[b * tiles.nx + a], "line {line}");
+                assert!(
+                    inside[0][b * tiles.nx + a] || inside[1][b * tiles.nx + a],
+                    "line {line}"
+                );
             }
         }
         let again = Router::new(&board, &options).make_plan(&order);

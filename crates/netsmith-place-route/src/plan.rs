@@ -16,8 +16,21 @@
 //! line would take it past its capacity. After each round every edge still over its capacity
 //! adds its overuse to its history and `present` doubles, and every line is routed again, in
 //! the same order. Nothing is random: the order is fixed, the costs are integers, and the
-//! search queue breaks ties by when a state was queued. The round with the least overuse is
-//! kept (the first of equals).
+//! search queue breaks ties by when a state was queued. The round with the least overuse and
+//! crossings is kept (the first of equals).
+//!
+//! **Crossings** ([`Rim`], [`Chord`]). A line takes a numbered place on every tile edge it
+//! crosses (as many places as the edge holds tracks, at most [`MOST_SLOTS`]), and the places on
+//! an edge are in one order seen from the tiles on both sides. So a line's way through a tile
+//! on a layer is a chord between two places round its rim, and two lines of different nets
+//! cross in the tile when their places alternate round it (a way that ends in the tile, at a
+//! pad or a via, can always go round the other). The search's state is a tile, a layer and the
+//! place the line entered by; leaving by a place costs [`CROSS_COST`] (400, more than the two
+//! vias that take a line under another and back) for each line it crosses there and for each
+//! line of another net already on that place, negotiated like an edge (a history per tile and
+//! layer, times `1 + present`). Lines of one net may cross and share places. A plan with no
+//! crossings has planned the vias its layer changes need, and paid for them against the tiles'
+//! via capacities.
 //!
 //! **The corridor** ([`corridor`]) of a line is the tiles of its plan, on both layers. The
 //! detailed search pays for a step outside it by how crowded the plan leaves that tile on that
@@ -34,80 +47,83 @@
 //! second try, as the escape lanes do, so a board that routes on its first try is unchanged.
 //! `netsmith route --plan every|later` turns it on for experiments.
 //!
-//! # Measured (issue #431, S10, 2026-11-12)
+//! # Measured (issue #431, S10, 2026-11-13)
 //!
-//! Main at d07d6e8 (#557), placements saved by main's `fab`. The robustness runs are one try
-//! with no time limit: `netsmith route <placed> --tries 1 --route-timeout 0 --turn T`, at the
-//! least track (`--margin 1`) and at the board's own margin. Lines left and vias at
-//! T = 24 / 25 / 26 / 27:
-//!
-//! | | RP2350 | Orbit | EasyDuino |
-//! |---|---|---|---|
-//! | main, least track | 0/0/0/1, 137/137/151/162 | 0/0/0/0, 93/91/93/93 | 0/0/0/0, 106/105/105/105 |
-//! | plan, least track | **0/0/0/0**, 159/159/159/166 | 0/0/0/0, 100/100/106/106 | 0/0/0/0, 103/103/103/103 |
-//! | main, own margin | 0/0/0/1, 137/137/151/162 | 0/0/0/0, 87/87/90/96 | 0/0/0/0, 106/105/105/105 |
-//! | plan, own margin | **0/0/0/0**, 147/**130**/159/166 | 0/0/0/0, 100/100/106/106 | 0/0/0/0, 113/109/109/109 |
-//!
-//! At T = 25, routed length over the spanning tree, least track: RP2350 1.34x against 1.40x,
-//! Orbit 1.24x against 1.27x, EasyDuino 1.22x against 1.21x; own margin: 1.42x against 1.40x,
-//! 1.27x against 1.28x, 1.18x against 1.22x. At its own margin RP2350 routes completely in the
-//! margin pass at 24 and 25 (signals at 0.15 mm), which main never does. Other nets' track on
-//! the GND pour at the own margin: RP2350 731 mm against 646, Orbit 418 against 466,
-//! EasyDuino F 429 against 504, B 399 against 352. Pair coupling: RP2350's mcu.usb 75 %
-//! against 69 %, Orbit's usb 91 % against 0 %, EasyDuino's bridge 20 % against 54 %.
-//!
-//! As `fab` routes (`netsmith route <placed>`, fab's tries and time, one at a time on one
-//! machine, main and the plan in turn, twice):
+//! Main at 713126c (#566, with the pour pass of #565): this branch with the plan off, whose
+//! search is main's; placements saved by its `fab`. One try with no time limit: `netsmith
+//! route <placed> --tries 1 --route-timeout 0 --turn T`, at the least track (`--margin 1`)
+//! and the board's own margin. The plan counts crossings, its corridor is on both layers.
+//! Lines left and vias at T = 24 / 25 / 26 / 27 (RP2350 falls back to the least track at its
+//! own margin on main and with the plan, so its two rows are alike):
 //!
 //! | | RP2350 | Orbit | EasyDuino |
 //! |---|---|---|---|
-//! | main | 121 and 123 s, 137 vias, 1.40x, 0.1 mm | 11 and 13 s, 87, 1.28x | 2.4 and 2.3 s, 105, 1.22x |
-//! | plan | **73 s, 130 vias, 1.42x, 0.15 mm; then 152 s, 159, 1.34x, 0.1 mm** | 13 and 13 s, 100, 1.27x | 1.8 and 1.6 s, 109, 1.18x |
+//! | main, least track | 0/0/0/1, 129/129/141/162 | 0/0/0/0, 94/94/94/94 | 0/0/0/0, 106/105/105/105 |
+//! | plan, least track | **0/0/0/0**, 152/156/156/156 | **1/1**/0/0, 96/96/109/109 | 0/0/0/0, 103/103/103/103 |
+//! | main, own margin | 0/0/0/1, 129/129/141/162 | 0/0/0/0, 87/87/90/99 | 0/0/0/0, 106/105/105/105 |
+//! | plan, own margin | **0/0/0/0**, 152/156/153/153 | 0/0/0/0, 92/92/94/94 | 0/0/0/0, 105/105/105/105 |
 //!
-//! With the plan, one try of RP2350 at its margin takes 73 s of the margin pass's 75: the first
-//! run finished it, the second ran out and routed again at the least track. So `fab`'s result
-//! with the plan would hang on the machine's speed, which main's does not.
+//! At T = 25: routed length over the spanning tree, RP2350 1.34x against 1.29x, Orbit 1.21x and
+//! 1.22x against 1.23x and 1.22x, EasyDuino 1.21x and 1.23x against 1.21x and 1.22x. Other nets'
+//! track on the GND pour: RP2350 466 mm against 423, Orbit 383 (least track, the try that leaves
+//! a line) and 272 against 268 and 304, EasyDuino B.Cu 379 against 352 at its margin. Pair
+//! coupling: RP2350's mcu.usb 56 % against 69 %, Orbit's usb 79 % against 0 % at its margin,
+//! EasyDuino's bridge 23 % against 54 % at its margin.
 //!
-//! So the plan makes every board route at every turn cost and can take RP2350 through its
-//! margin pass, but not reliably within its time, and costs Orbit 10 to 18 % more vias in every form tried, RP2350 16 % at the least
-//! track and EasyDuino 4 to 8 % at its margin: it misses the bar (no more than main's vias and
-//! 5 %), and is off.
+//! The router's measured boards, seeds 0 to 5, `fab`'s 300 s (`tight::measured`,
+//! `mixed::measured`, with the plan on every try against off; – for a seed left incomplete):
+//! tight_board 5 of 6 complete both ways (seed 4 leaves 3 lines against 2), tries
+//! 1/1/1/2/3/2 against 1/1/1/4/4/1, vias 209/211/217/201/–/190 against 199/199/196/205/–/182;
+//! mixed_board 5 of 6 both ways (the plan leaves a line on seed 2, main on seed 5), tries
+//! 3/1/5/1/1/1 against 3/2/2/3/1/5, vias 271/266/–/260/234/277 against 267/256/262/248/230/–.
 //!
-//! **Why the vias.** On two layers the plan does not count crossings, and a cost that differs
-//! by layer makes a line change to the emptier one: Orbit's extra vias are about two on each of
-//! a dozen signal nets, one layer change each, and six on GND. A cost on both layers (the
-//! fuller or the mean of the two) does not help: the mean is almost never 70 % (main's copper),
-//! the fuller leaves a line on RP2350 and Orbit.
+//! So the plan with crossings makes RP2350 route at every turn cost, but it misses the bar
+//! (vias no more than main's and 5 %): RP2350 +18 to +21 % at T = 24 and 25, the tight board +4
+//! to +11 %, and Orbit leaves a line at the least track at 24 and 25. It stays off.
 //!
-//! **Tried and not kept** (RP2350 at T = 25 and the least track unless said; main 137 vias,
-//! 1.40x):
+//! **Why.** The plan's crossings are not the detailed search's. With no crossings left the
+//! plan of RP2350 has 78 vias, and it puts them on nets main routes with none (header_high.p25
+//! 1 against 0, flash.do_io1 2 against 0): the detailed search finds ways round a line's end or
+//! between a pad's neighbours that a tile cannot show, while the corridor and the crowding cost
+//! still pull it onto the plan's way, and where the plan's layer is crowded the cheapest way is a
+//! via to the other layer. Counting crossings fixed the plan's topology, not the detailed
+//! search's vias.
 //!
-//! - The plan of #556: a flat cost of 10 on every step outside a corridor grown by one tile:
-//!   209 vias (Orbit 109, EasyDuino 115). Costs of 2 or 4, corridors grown by two, tiles of
-//!   2 mm and the plan in the first pass only: 150 to 202. Pads counted as closed and no pull
-//!   toward the straight line: L-shaped corridors and worse on every board.
-//! - The corridor on the plan's layer only, grown by one there (both layers where it changes
-//!   layer): 163 to 165 vias, but 1.30x and only 291 to 323 mm of other nets' track on the
-//!   GND pour against 646, the best length and pour of anything tried; grown by two, 206 vias.
-//!   A lead for a plan that counts crossings.
-//! - The crowding cost at 10: 154 to 157 vias; at 30 or 50: 161; from 30 % or 50 % full:
-//!   160 to 170; charged once where a step enters a tile instead of on every cell (50 to
-//!   200, as `fab` routes): 147 to 177 vias, and 140 s against 66 at 50. The thresholds 60 % to 95 % give the same
-//!   copper at 20 (a tile's fullness takes few values).
-//! - Corridors grown by one, with the pour's net steered: 145 to 147 vias at every turn cost
-//!   at the least track (the best RP2350 there), but Orbit 108 to 110 and EasyDuino 121 at
-//!   its margin. With a diff pair steered too, Orbit leaves its USB pair unrouted at every
-//!   turn cost.
-//! - No corridor for a net whose current needs a cluster of vias: no change (at the least
-//!   track every net needs one). The plan's via cost at 300 or 600 against 150: no better.
-//! - From the second try: the margin pass has a quarter of the route time and one try of
-//!   RP2350 takes most of it, so the second try never finishes there and `fab` is main's.
+//! **Tried with crossings and not kept** (RP2350 at T = 25 and the least track, main 129
+//! vias; Orbit and EasyDuino at T = 25, least track / own margin, main 94 / 87 and 105 / 105):
 //!
-//! **What to try next.** A plan that counts crossings: the order of tracks across each tile
-//! edge, so that two lines that must cross are planned as a crossing with a via that the plan
-//! pays for and the tile's vias count, and then the corridor on the plan's layer (above, the
-//! best length and pour). And a measure of more than three boards before a choice: one
-//! placement and one variant moves a board's vias by 10 % either way.
+//! - The corridor on the plan's layer only (`CORRIDOR_ON_PLAN_LAYER`): Orbit 107 / 107 (its
+//!   margin pass fails), EasyDuino 103 / 116; grown by one tile, 109 / 93 and 105 / 119.
+//! - A via outside the tiles where the line's plan changes layer (grown by one) paying 150 or
+//!   300 more: Orbit 75 to 101 vias, the fewest of anything (300: 80 / 75), but RP2350 leaves a
+//!   line (125 vias at 150, 158 at 300, 171 with the via tiles grown by two), EasyDuino 106 to
+//!   114 at 1.23x to 1.29x, and every try twice as slow.
+//! - The crowding cost at 10: RP2350 150 vias and 1.27x, the best length, but Orbit leaves a line
+//!   at both margins; at 30: RP2350 162, Orbit 113. The corridor on the plan's layer with the
+//!   cost at 10: RP2350 150, Orbit 109 / 109.
+//! - The crossing cost at 200 or 800: as at 400 on Orbit and EasyDuino; RP2350 161 (200 leaves a
+//!   line).
+//!
+//! **Before crossings** (main at d07d6e8, #557, without the pour pass; main 137 vias on RP2350,
+//! 87 to 93 on Orbit, 105 to 106 on EasyDuino): the crowding cost of 20 from 70 % full, with
+//! corridors on both layers, routed every board at every turn cost with RP2350 147 to 166 vias,
+//! Orbit 100 to 106, EasyDuino 103 to 113, and took RP2350 through its margin pass in 73 s of
+//! its 75 only on a fast run. The plan of #556 (a flat cost of 10 outside corridors grown by
+//! one): 209 vias on RP2350. Not kept then either: costs of 2 to 50, thresholds of 30 % to
+//! 95 %, a cost charged once per tile, a cost that ignores the layer (the mean gives main's
+//! copper, the fuller leaves lines), corridors grown by one or two, tiles of 2 mm, the plan's
+//! own via cost at 300 or 600, the plan in the first pass only, steering pours' nets and diff
+//! pairs (Orbit leaves its USB pair), and the plan from the second try only (which never runs
+//! within RP2350's time).
+//!
+//! **What to try next.** Make the detailed search agree with the plan on where vias go, not
+//! only on tiles: tiles that see their pads (a pad's position in its tile as a place on the
+//! rim, so a line that ends in a tile can no longer go round anything for free), or a plan
+//! made from the first try's copper (the detailed search's own topology) and used from the
+//! second. The via cost outside planned via tiles is the lead on via counts (Orbit 75 against
+//! 87) if a plan that matches the detailed topology keeps RP2350 complete. And measure each
+//! variant on the tight and mixed boards too: one variant moves a board's vias by 10 % either
+//! way.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -117,6 +133,10 @@ pub(crate) const TILE_CELLS: usize = 10;
 
 /// How many tiles a line's corridor reaches past its plan: none, the plan's own tiles.
 pub(crate) const CORRIDOR_GROW: usize = 0;
+
+/// Whether a line's corridor is on the layer its plan takes only (both layers where it changes
+/// layer), rather than on both: measured, not kept (the header).
+pub(crate) const CORRIDOR_ON_PLAN_LAYER: bool = false;
 
 /// What a step to the next tile costs before congestion, and a via.
 const STEP_COST: u64 = 100;
@@ -777,14 +797,22 @@ fn search(tiles: &Tiles, ends: &Ends, congestion: &Congestion) -> Steps {
         .collect()
 }
 
-/// The tiles of a line's corridor: those of its plan, on either layer, grown by `grow` tiles
-/// each way (see the module's header), row by row.
-pub(crate) fn corridor(tiles: &Tiles, path: &[Node], grow: usize) -> Vec<bool> {
-    let mut inside = vec![false; tiles.nx * tiles.ny];
-    for &(a, b, _) in path {
+/// The tiles of a line's corridor on each layer, row by row: those of its plan grown by `grow`
+/// tiles each way, on the layer the plan takes there (both layers in a tile where it changes
+/// layer) if `layered`, else on both (see the module's header).
+pub(crate) fn corridor(tiles: &Tiles, path: &[Node], grow: usize, layered: bool) -> [Vec<bool>; 2] {
+    let mut inside = [
+        vec![false; tiles.nx * tiles.ny],
+        vec![false; tiles.nx * tiles.ny],
+    ];
+    for &(a, b, l) in path {
         for d in b.saturating_sub(grow)..=(b + grow).min(tiles.ny - 1) {
             for c in a.saturating_sub(grow)..=(a + grow).min(tiles.nx - 1) {
-                inside[d * tiles.nx + c] = true;
+                for (layer, inside) in inside.iter_mut().enumerate() {
+                    if !layered || layer == l {
+                        inside[d * tiles.nx + c] = true;
+                    }
+                }
             }
         }
     }
@@ -1003,10 +1031,17 @@ mod tests {
             across_y: [vec![1; 15], vec![1; 15]],
             vias: vec![1; 15],
         };
-        let inside = corridor(&tiles, &[(0, 0, 0), (1, 0, 1)], 1);
+        let [inside, back] = corridor(&tiles, &[(0, 0, 0), (1, 0, 1)], 1, false);
+        assert_eq!(inside, back);
         let row = |b: usize| inside[b * 5..b * 5 + 5].to_vec();
         assert_eq!(row(0), vec![true, true, true, false, false]);
         assert_eq!(row(1), vec![true, true, true, false, false]);
         assert_eq!(row(2), vec![false; 5]);
+        // On the plan's layer: the front where it runs on the front, the back where it runs on
+        // the back, and both in the tile where it changes layer.
+        let path = [(0, 0, 0), (1, 0, 0), (1, 0, 1), (2, 0, 1)];
+        let [front, back] = corridor(&tiles, &path, 0, true);
+        assert_eq!(front[..5], [true, true, false, false, false]);
+        assert_eq!(back[..5], [false, true, true, false, false]);
     }
 }
