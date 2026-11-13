@@ -898,6 +898,30 @@ impl Snapshot {
     }
 }
 
+/// A moment of a model to go back to ([`Model::bookmark`]) from any later moment, also after
+/// going back to an earlier one. It holds a place in the model's journal, not the domains: a
+/// solver that keeps one for each group of parts it searched keeps what the groups changed, not
+/// a copy of every field for each (#569).
+#[derive(Debug, Clone)]
+pub struct Bookmark {
+    at: usize,
+    relations: Arc<Vec<Relation>>,
+    /// While a bookmark is held, the model keeps its journal.
+    _held: Arc<()>,
+}
+
+/// What the [`Bookmark`]s of a model hold: more than one holder means one is held. A clone of
+/// the model starts with none, so that a clone kept for later does not keep the journal of the
+/// model it was cloned from.
+#[derive(Debug, Default)]
+struct Holders(Arc<()>);
+
+impl Clone for Holders {
+    fn clone(&self) -> Self {
+        Holders::default()
+    }
+}
+
 /// A moment of a model to go back to ([`Model::checkpoint`]).
 #[derive(Debug)]
 pub struct Checkpoint {
@@ -992,9 +1016,11 @@ pub struct Model {
     pub(crate) sources: SourceTexts,
     /// The `polygon` statements of `Outline`s (issue #57), in the order they were read.
     pub(crate) polygons: Vec<OutlinePolygon>,
-    /// The domains that [`Model::set_domain`] replaced while a checkpoint was open, oldest
-    /// first, with the field. Empty when none is open.
+    /// The domains that [`Model::set_domain`] replaced while a checkpoint was open or a
+    /// bookmark was held, oldest first, with the field. Empty when neither is.
     journal: Vec<(FieldId, Domain)>,
+    /// Held by every [`Bookmark`] of this model.
+    bookmarks: Holders,
     /// How many checkpoints are open.
     open_checkpoints: usize,
     /// The equations that pass a pin's function on (`pinout.rs`), found once for a list of
@@ -1126,6 +1152,7 @@ impl Model {
             sources: SourceTexts::default(),
             polygons: Vec::new(),
             journal: Vec::new(),
+            bookmarks: Holders::default(),
             open_checkpoints: 0,
             forwards: ForwardCache::default(),
         }
@@ -1266,9 +1293,52 @@ impl Model {
 
     pub fn set_domain(&mut self, field: FieldId, domain: Domain) {
         let old = std::mem::replace(&mut self.fields[field.0].domain, domain);
-        if self.open_checkpoints > 0 {
+        if self.keeps_journal() {
             self.journal.push((field, old));
         }
+    }
+
+    fn keeps_journal(&self) -> bool {
+        self.open_checkpoints > 0 || Arc::strong_count(&self.bookmarks.0) > 1
+    }
+
+    /// Start keeping what changes, to be put back by [`Model::go_back_to`] from any later
+    /// moment, as often as asked. What it costs is what changes while it is held, not a copy of
+    /// every domain as [`Model::snapshot`] takes. A checkpoint that is rolled back must not have
+    /// been opened before the bookmark was taken and rolled back while the bookmark is still used.
+    pub fn bookmark(&mut self) -> Bookmark {
+        if !self.keeps_journal() {
+            self.journal.clear();
+        }
+        Bookmark {
+            at: self.journal.len(),
+            relations: Arc::clone(&self.relations),
+            _held: Arc::clone(&self.bookmarks.0),
+        }
+    }
+
+    /// Put the model back as it was when `bookmark` was taken of it. What this changes goes in
+    /// the journal as any change does, so a later bookmark can still be gone back to.
+    pub fn go_back_to(&mut self, bookmark: &Bookmark) {
+        assert!(
+            bookmark.at <= self.journal.len(),
+            "a checkpoint was rolled back past a bookmark"
+        );
+        // The oldest entry of a field after the bookmark is the domain it had then.
+        let mut then: std::collections::BTreeMap<FieldId, &Domain> =
+            std::collections::BTreeMap::new();
+        for (field, old) in &self.journal[bookmark.at..] {
+            then.entry(*field).or_insert(old);
+        }
+        let back: Vec<(FieldId, Domain)> = then
+            .into_iter()
+            .filter(|(field, old)| self.fields[field.0].domain != **old)
+            .map(|(field, old)| (field, old.clone()))
+            .collect();
+        for (field, domain) in back {
+            self.set_domain(field, domain);
+        }
+        self.relations = Arc::clone(&bookmark.relations);
     }
 
     /// Start keeping what changes, to be put back by [`Model::rollback`] or kept by
@@ -1305,7 +1375,7 @@ impl Model {
 
     fn close_checkpoint(&mut self) {
         self.open_checkpoints -= 1;
-        if self.open_checkpoints == 0 {
+        if !self.keeps_journal() {
             self.journal.clear();
         }
     }
@@ -1982,5 +2052,53 @@ impl std::fmt::Display for Domain {
             Self::Quantity(q) => write!(f, "{q}"),
             Self::Text(t) => write!(f, "\"{t}\""),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(t: &str) -> Domain {
+        Domain::Text(t.to_string())
+    }
+
+    fn domains(m: &Model) -> Vec<Domain> {
+        m.fields().map(|(_, f)| f.domain.clone()).collect()
+    }
+
+    /// A bookmark is gone back to after changes, inside and outside checkpoints, and a later
+    /// bookmark is gone back to after going back to an earlier one, as the solver's retry does.
+    #[test]
+    fn a_bookmark_puts_the_domains_back_from_before_or_after_it() {
+        let mut m = Model::new();
+        let a = m.add_field(InstId(0), "a", FieldKind::Text);
+        let b = m.add_field(InstId(0), "b", FieldKind::Text);
+        let _c = m.add_field(InstId(0), "c", FieldKind::Text);
+        m.set_domain(a, text("a0"));
+        let first = m.bookmark();
+        let at_first = domains(&m);
+        m.set_domain(a, text("a1"));
+        m.set_domain(b, text("b1"));
+        let kept = m.checkpoint();
+        m.set_domain(b, text("b2"));
+        m.commit(kept);
+        let tried = m.checkpoint();
+        m.set_domain(a, text("a3"));
+        m.rollback(tried);
+        let second = m.bookmark();
+        let at_second = domains(&m);
+        m.set_domain(a, text("a4"));
+        m.go_back_to(&first);
+        assert_eq!(domains(&m), at_first);
+        m.go_back_to(&second);
+        assert_eq!(domains(&m), at_second);
+        m.go_back_to(&first);
+        assert_eq!(domains(&m), at_first);
+        drop((first, second));
+        // With no bookmark held and no checkpoint open, nothing is kept.
+        let closed = m.checkpoint();
+        m.commit(closed);
+        assert!(m.journal.is_empty());
     }
 }

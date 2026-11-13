@@ -415,3 +415,80 @@ fn half_a_showcase_board_goes_from_source_to_parity_in_time() {
         t.text()
     );
 }
+
+/// Counts the bytes that each thread holds, and the most it held, for
+/// [`memory_grows_about_linearly_with_the_board`]. The counts are a thread's own, so tests that
+/// run beside it do not change them; what one thread frees of another's goes against the thread
+/// that frees it, which the solver (on one thread) does not do.
+struct Counting;
+
+thread_local! {
+    static HELD: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
+    static MOST: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
+}
+
+fn count(delta: isize) {
+    let _ = HELD.try_with(|held| {
+        let now = held.get() + delta;
+        held.set(now);
+        let _ = MOST.try_with(|most| most.set(most.get().max(now)));
+    });
+}
+
+// SAFETY: every call is passed on to the system allocator unchanged; only counts are added.
+unsafe impl std::alloc::GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        count(layout.size() as isize);
+        // SAFETY: the caller's contract is passed on.
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        count(-(layout.size() as isize));
+        // SAFETY: the caller's contract is passed on.
+        unsafe { std::alloc::System.dealloc(ptr, layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        count(layout.size() as isize);
+        // SAFETY: the caller's contract is passed on.
+        unsafe { std::alloc::System.alloc_zeroed(layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new: usize) -> *mut u8 {
+        count(new as isize - layout.size() as isize);
+        // SAFETY: the caller's contract is passed on.
+        unsafe { std::alloc::System.realloc(ptr, layout, new) }
+    }
+}
+
+#[global_allocator]
+static COUNTING: Counting = Counting;
+
+/// The most this thread held, above what it held at the start, while checking, solving and
+/// designing a board of `channels` channels.
+fn peak_bytes(channels: usize) -> isize {
+    let text = source(channels);
+    let catalogs = Catalogs::jlcpcb();
+    let loader = Loader::std();
+    let start = HELD.with(|h| h.get());
+    MOST.with(|m| m.set(start));
+    let outcome = outcome_with("scale.nsm", &text, &loader, &catalogs, None)
+        .unwrap_or_else(|p| panic!("{}", netsmith::render_problems(&p)));
+    let most = MOST.with(|m| m.get());
+    drop(outcome);
+    most - start
+}
+
+/// The memory of a build grows about as the board does (#569): the picks kept a copy of every
+/// field's domain for each group of parts, so twice the board took four times the memory (0.56 GB
+/// at 36 channels, 2.2 GB at 76). In the test profile the old picks held 40 MB at 8 channels and
+/// 124 MB at 16 (3.1 times), and now 18 MB and 35 MB (2.0 times; 2026-11-13).
+#[test]
+fn memory_grows_about_linearly_with_the_board() {
+    let small = peak_bytes(8);
+    let large = peak_bytes(16);
+    let ratio = large as f64 / small as f64;
+    eprintln!("8 channels {small} B, 16 channels {large} B, ratio {ratio:.2}");
+    assert!(
+        ratio < 2.6,
+        "twice the board took {ratio:.2} times the memory ({small} B, then {large} B)"
+    );
+}

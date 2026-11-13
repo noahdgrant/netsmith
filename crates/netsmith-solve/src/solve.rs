@@ -180,8 +180,8 @@
 //! never searched again, so a board that built keeps its picks. Limits (not built; issue #65):
 //! only the order "failed group first" is tried, not every order and not a joint search (a joint search of four
 //! resistors from the 700 rows of the real catalog had not ended after two minutes in a debug
-//! build); the clones of `Mark` cost 1.5 ms of a 1.1 s build on the largest example, and would
-//! be kept only for groups that share a relation if a board ever shows the cost. A failed retry
+//! build). A `Mark` holds a `Bookmark` of the model, a place in its journal, not a copy of every
+//! domain: one copy for each group made the memory grow with the square of the board (#569). A failed retry
 //! puts back the diagnostics and the unresolved parts as well as the model and the picks (a
 //! correction of 2026-11-06).
 //!
@@ -213,8 +213,8 @@ pub use findings::{HeldBy, UnconstrainedPick, UnstatedValue};
 pub use seed::Seeded;
 
 use netsmith_check::{
-    Balance, Board, Checkpoint, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId, InstKind,
-    Member, Model, RExpr, Relation, Snapshot, SourceId, System,
+    Balance, Board, Bookmark, Checkpoint, Diagnostic, Domain, Draw, FieldId, FieldKind, InstId,
+    InstKind, Member, Model, RExpr, Relation, SourceId, System,
 };
 use netsmith_core::job;
 use netsmith_lang::Span;
@@ -421,7 +421,7 @@ fn give_up_message(tried: usize, names: &[String], out_of_work: bool) -> String 
 /// The solver's state before a group of parts was searched, to put it back.
 #[derive(Clone)]
 struct Mark {
-    model: Snapshot,
+    model: Bookmark,
     diagnostics: usize,
     seen: HashSet<Diagnostic>,
     picks: usize,
@@ -2883,9 +2883,9 @@ impl Solver<'_> {
     }
 
     /// What `search_again_together` needs to put the solver back as it was before a group.
-    fn mark(&self) -> Mark {
+    fn mark(&mut self) -> Mark {
         Mark {
-            model: self.model.snapshot(),
+            model: self.model.bookmark(),
             diagnostics: self.diagnostics.len(),
             seen: self.seen.clone(),
             picks: self.picks.len(),
@@ -2896,7 +2896,7 @@ impl Solver<'_> {
     }
 
     fn restore(&mut self, mark: &Mark) {
-        self.model.restore(&mark.model);
+        self.model.go_back_to(&mark.model);
         self.diagnostics.truncate(mark.diagnostics);
         self.seen = mark.seen.clone();
         self.picks.truncate(mark.picks);
