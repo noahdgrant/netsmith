@@ -1,9 +1,13 @@
 //! `std::parts::regulator::Lt8641`, the LT8641 buck converter IC (Analog Devices, datasheet
-//! Rev. C), built on `Buck` and `BuckStage` (ADR 0025). The numbers asserted here are the
-//! datasheet's, as the part's doc comment cites them. A board names its ordering code from
-//! its own catalog row, because the standard `lt8641` catalog has no row (no stock above
-//! zero is recorded): the one here is a project's file, whose `source` is the datasheet's
-//! Order Information table.
+//! Rev. C), a provider of `BuckIc` placed in `Buck<Lt8641>` (ADR 0025, ADR 0115). The numbers
+//! asserted here are the datasheet's, as the part's doc comment cites them. The standard `lt8641`
+//! catalog has no row (no stock above zero is recorded): the one here is a project's file, whose
+//! `source` is the datasheet's Order Information table.
+//!
+//! A board that places `Buck<Lt8641>` reaches only the converter's ports (ADR 0004): the RT
+//! resistor, the capacitors and the ties of the IC's pins are its `support` section. The tests of
+//! the part's own limits place the part alone, whose members a board reaches, with its switch
+//! node joined to the output rail as an ideal converter.
 //!
 //! The solver tests build nothing and need no KiCad. The last tests build a board around the
 //! IC and export it (schematic, library tables, `.kicad_pcb`) with the sample libraries of
@@ -28,8 +32,8 @@ LT8641IUDC#WPBF,UDC20(18),Extended,\"datasheet Rev. C, Order Information p.2 (au
 ";
 
 /// A project's own inductor, invented: the four of the standard catalog all have a DC
-/// resistance over the 0.04 ohm that the datasheet asks for (p.16), so no stage around the IC
-/// can be solved with them alone.
+/// resistance over the 0.04 ohm that the datasheet asks for (p.16), so no converter around the
+/// IC can be solved with them alone.
 const INDUCTORS: &str = "\
 mpn,name,inductance,saturation_current,dc_resistance,package,library,source
 ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,Extended,https://example.invalid/zl-3r3
@@ -62,28 +66,20 @@ fn range(s: &Solution, path: &str) -> Quantity {
     }
 }
 
-/// A 12 V automotive-style input (9 V to 16 V, a 36 V peak) to `vout`, with the IC around a
-/// `BuckStage`, a 47 kohm resistor on RT (0.89 MHz, Equation 3), and `extra` inside the board.
+/// A 12 V automotive-style input (9 V to 16 V, a 36 V peak) to `vout` through `Buck<Lt8641>`,
+/// whose support section has a 47 kohm resistor on RT (0.89 MHz, Equation 3), with `extra`
+/// inside the board.
 fn board(vout: &str, load: &str, extra: &str) -> String {
     format!(
-        "import std::parts::passive::{{Capacitor, Resistor}}\n\
-         import std::parts::regulator::{{BuckStage, Lt8641}}\n\
+        "import std::parts::regulator::{{Buck, Lt8641}}\n\
          import std::sources::Rail\n\n\
          board Converter {{\n\
          \x20   .input: Rail {{\n        .voltage &= 9V..16V\n        .peak &= 36V\n        \
          .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n\
          \x20   .output: Rail {{\n        .pos.net &= \"VOUT\"\n        .neg.net &= \"GND\"\n        \
          .current &= {load}\n    }}\n\
-         \x20   .u: Lt8641 {{ .mpn &= \"LT8641IUDC#WPBF\" }}\n\
-         \x20   .stage: BuckStage {{ .vout.voltage &= {vout} }}\n\
-         \x20   .rt: Resistor {{ .resistance &= 47kohm +/- 1% }}\n\
-         \x20   .boost: Capacitor {{ .capacitance &= 100nF +/- 20% }}\n\
-         \x20   .intvcc_cap: Capacitor {{ .capacitance &= 1uF +/- 20% }}\n\n\
-         \x20   .input ~ .stage.vin\n    .input ~ .u.vin\n    .stage.vout ~ .output\n    \
-         .stage.buck ~ .u.buck\n    .u.en_uv ~ .input.pos\n    .u.bias ~ .output.pos\n    \
-         .u.bias_voltage == .output.voltage\n    .u.sync_mode ~ .input.neg\n    \
-         .u.rt ~> .rt ~> .input.neg\n    .u.rt_resistance == .rt.resistance\n    \
-         .u.bst ~> .boost ~> .u.buck.sw.pos\n    .u.intvcc ~> .intvcc_cap ~> .input.neg\n\
+         \x20   .stage: Buck<Lt8641> {{ .vout.voltage &= {vout} }}\n\n\
+         \x20   .input ~ .stage.vin\n    .stage.vout ~ .output\n\
          {extra}}}\n"
     )
 }
@@ -92,9 +88,30 @@ fn converter() -> String {
     board("3.3V +/- 4%", "0A..2A", "")
 }
 
+/// The part alone, with its switch node joined to a 3.3 V output rail that draws `load`, its
+/// feedback pin to ground, and `extra` inside the board: what a test of the part's own limits
+/// needs, since a board reaches the members of a part it places (and not of one inside a module).
+fn bare(vin: &str, load: &str, extra: &str) -> String {
+    format!(
+        "import std::parts::regulator::Lt8641\n\
+         import std::sources::Rail\n\n\
+         board Bare {{\n\
+         \x20   .input: Rail {{\n        .voltage &= {vin}\n        \
+         .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n\
+         \x20   .output: Rail {{\n        .pos.net &= \"VOUT\"\n        .neg.net &= \"GND\"\n        \
+         .current &= {load}\n    }}\n\
+         \x20   .u: Lt8641\n\
+         \x20   .u.sw.voltage &= 3.3V +/- 4%\n\
+         \x20   .input ~ .u.vin\n    .u.sw ~ .output\n    .u.fb ~ .input.neg\n\
+         {extra}}}\n"
+    )
+}
+
 #[test]
 fn the_pin_table_is_the_datasheets_pin_function_table() {
-    let from = REGULATOR.find("part Lt8641 {").expect("the part");
+    let from = REGULATOR
+        .find("part Lt8641 provides BuckIc {")
+        .expect("the part");
     let table = &REGULATOR[from..];
     let table = &table[table.find("pins {").expect("a pin table")..];
     let table = &table[..table.find('}').unwrap()];
@@ -106,7 +123,7 @@ fn the_pin_table_is_the_datasheets_pin_function_table() {
         (".bst", "passive", "BST", "3"),
         (".vin.pos", "power", "VIN1", "4"),
         (".gnd1", "power", "GND1", "6 7"),
-        (".buck.sw.pos", "power", "SW", "8 9 21 22"),
+        (".sw.pos", "power", "SW", "8 9 21 22"),
         (".gnd2", "power", "GND2", "10 11"),
         (".vin2", "power", "VIN2", "13"),
         (".en_uv", "input", "EN/UV", "14"),
@@ -115,7 +132,7 @@ fn the_pin_table_is_the_datasheets_pin_function_table() {
         (".sync_mode", "input", "SYNC/MODE", "17"),
         (".vin.neg", "power", "GND", "18"),
         (".pg", "output", "PG", "19"),
-        (".buck.fb", "input", "FB", "20"),
+        (".fb", "input", "FB", "20"),
     ];
     let rows: Vec<(String, String, String, String)> = table
         .lines()
@@ -164,41 +181,72 @@ fn the_standard_catalog_has_a_header_and_no_row() {
 fn a_stage_around_it_solves_for_a_12_v_input_and_3_3_v_out() {
     let (s, text) = solved(&converter());
     assert!(text.is_empty(), "{text}");
-    // 0.79 V to 0.822 V (p.3) and the datasheet's frequency from RT = 41.2 kohm, 1 %:
-    // 46.5 / (41.2 + 5.2) = 1.002 MHz, over the accuracy of 0.93 to 1.09.
+    // 0.79 V to 0.822 V (p.3) and the datasheet's frequency from RT = 47 kohm, 1 %:
+    // 46.5 / (47 + 5.2) = 0.891 MHz, over the accuracy of 0.93 to 1.09.
     let vref = range(&s, "stage.divider.vref");
     assert!(
         (vref.lo() - 0.79).abs() < 1e-9 && (vref.hi() - 0.822).abs() < 1e-9,
         "{vref}"
     );
-    let fsw = range(&s, "u.fsw");
+    let fsw = range(&s, "stage.ic.fsw");
     assert!(
         fsw.lo() > 0.81e6 && fsw.lo() < 0.83e6 && fsw.hi() > 0.97e6 && fsw.hi() < 0.99e6,
         "{fsw}"
     );
-    // The input current: 2 A at 3.432 V (3.3 V + 4 %) from 9 V at the least efficiency, 70 %, is the most
-    // it draws. The least is the feedback divider's draw, which the DC analysis of the output side
-    // gives (the inductor is its winding there, ADR 0076, amendment 6): tens of microamperes.
-    let drawn = range(&s, "u.vin.current");
+    // The input current: 2 A at 3.432 V (3.3 V + 4 %) from 9 V at the least efficiency, 70 %,
+    // and the quiescent current of the pulse-skipping modes (0.5 mA, the default) is the most
+    // it draws. The least is the feedback divider's draw, which the DC analysis of the output
+    // side gives (the inductor is its winding there, ADR 0076, amendment 6): tens of microamperes.
+    let drawn = range(&s, "stage.ic.vin.current");
     assert!(
-        drawn.lo() <= 1e-3 && (drawn.hi() - 2.0 * 3.432 / (9.0 * 0.70)).abs() < 5e-3,
+        drawn.lo() <= 1e-3 && (drawn.hi() - (2.0 * 3.432 / (9.0 * 0.70) + 0.5e-3)).abs() < 5e-3,
         "{drawn}"
     );
-    // The stage's input capacitor is rated for the 36 V peak, and keeps 2.2 uF at 16 V.
+    // The converter's input is the IC's: one current (ADR 0115).
+    assert_eq!(range(&s, "stage.vin.current"), drawn);
+    // The input capacitor is rated for the 36 V peak, and keeps 2.2 uF at 16 V.
     assert!(range(&s, "stage.input_cap.max_voltage").lo() >= 36.0 - 1e-9);
     let cin = range(&s, "stage.input_cap.effective_capacitance");
     assert!(cin.lo() * range(&s, "stage.input_count").lo() >= 2.2e-6 - 1e-12);
     // The output asks for 47 uF, as every Typical Application of the datasheet has.
-    assert_eq!(range(&s, "u.buck.min_output_capacitance").lo(), 47e-6);
+    assert_eq!(range(&s, "stage.ic.min_output_capacitance").lo(), 47e-6);
+}
+
+#[test]
+fn the_support_section_is_the_datasheets_application_circuit() {
+    let (s, text) = solved(&converter());
+    assert!(text.is_empty(), "{text}");
+    // 0.1 uF on BST, 1 uF on INTVCC, VIN1 and VIN2, 10 nF on TR/SS and 47 kohm on RT (p.10, p.1).
+    for (path, nominal) in [
+        ("stage.ic.boost.capacitance", 100e-9),
+        ("stage.ic.intvcc_cap.capacitance", 1e-6),
+        ("stage.ic.vin1_cap.capacitance", 1e-6),
+        ("stage.ic.vin2_cap.capacitance", 1e-6),
+        ("stage.ic.soft_start.capacitance", 10e-9),
+        ("stage.ic.rt_resistor.resistance", 47e3),
+    ] {
+        let v = range(&s, path);
+        assert!(v.lo() <= nominal && v.hi() >= nominal, "{path} is {v}");
+    }
+    // The capacitors at VIN1 and VIN2 are rated for the input.
+    assert!(range(&s, "stage.ic.vin1_cap.max_voltage").lo() >= 16.0);
+    // BIAS is tied to ground, and the soft-start time follows the 10 nF of 10 %: 9 nF * 0.8 V /
+    // 2.6 uA to 11 nF * 0.8 V / 1.2 uA.
+    assert_eq!(range(&s, "stage.ic.bias_voltage").hi(), 0.0);
+    let t = range(&s, "stage.soft_start_time");
+    assert!(
+        (t.lo() - 9e-9 * 0.8 / 2.6e-6).abs() < 1e-6 && (t.hi() - 11e-9 * 0.8 / 1.2e-6).abs() < 1e-6,
+        "{t}"
+    );
 }
 
 #[test]
 fn the_stage_asks_for_the_inductance_the_datasheets_equation_10_gives() {
-    // 9 V in, 5 V out at about 1 MHz: DC = 0.556, so VIN * (2 DC - 1) / (2.5 fSW) is above
+    // 9 V in, 5 V out at about 0.9 MHz: DC = 0.556, so VIN * (2 DC - 1) / (2.5 fSW) is above
     // zero, and the inductor is at least that. Below DC = 0.5 the equation asks for nothing.
     let (s, text) = solved(&board("5V +/- 4%", "0A..1A", ""));
     assert!(text.is_empty(), "{text}");
-    let least = range(&s, "u.buck.min_inductance");
+    let least = range(&s, "stage.ic.min_inductance");
     assert!(least.hi() > 0.0, "{least}");
     let l = range(&s, "stage.inductor.inductance");
     assert!(l.lo() >= least.hi() - 1e-12, "{l} against {least}");
@@ -206,22 +254,27 @@ fn the_stage_asks_for_the_inductance_the_datasheets_equation_10_gives() {
 
 #[test]
 fn the_frequency_follows_the_resistor_on_rt_and_is_refused_outside_what_the_datasheet_gives() {
+    // The part alone, whose support resistor a board may state over its default.
+    let rt = |r: &str| {
+        bare(
+            "9V..16V",
+            "0A..1A",
+            &format!("    .u.rt_resistor.resistance &= {r} +/- 1%\n"),
+        )
+    };
     // 20 kohm is 1.85 MHz (Equation 3), inside the span that is allowed.
-    let faster = converter().replace("47kohm", "20kohm");
-    let (s, text) = solved(&faster);
-    // At that frequency the 3.3 V rail needs 4.8 V at least to hold it (Equation 5).
-    assert!(text.is_empty(), "{text}");
+    let (s, text) = solved(&rt("20kohm"));
+    assert!(!text.contains("rt_resistance"), "{text}");
     let fsw = range(&s, "u.fsw");
     assert!(fsw.lo() > 1.65e6 && fsw.hi() < 2.10e6, "{fsw}");
     // 200 kHz is 232 kohm in the table, but the datasheet gives no accuracy for it.
-    let slow = converter().replace("47kohm", "232kohm");
-    let (_, text) = solved(&slow);
+    let (_, text) = solved(&rt("232kohm"));
     assert!(
         text.contains("u.rt_resistance must always be at most 60.4kΩ"),
         "{text}"
     );
     // And below 18.2 kohm (3 MHz is 10.7 kohm in the table).
-    let (_, text) = solved(&converter().replace("47kohm", "10.7kohm"));
+    let (_, text) = solved(&rt("10.7kohm"));
     assert!(
         text.contains("u.rt_resistance must always be at least 18.2kΩ"),
         "{text}"
@@ -232,21 +285,20 @@ fn the_frequency_follows_the_resistor_on_rt_and_is_refused_outside_what_the_data
 fn a_transient_above_the_absolute_maximum_is_refused() {
     let (_, text) = solved(&converter().replace("36V", "70V"));
     assert!(
-        text.contains("u.vin.peak must always be at most u.vin_abs_max"),
+        text.contains("stage.ic.vin.peak must always be at most stage.ic.vin_abs_max"),
         "{text}"
     );
 }
 
 // ---- the absolute maximum of the other pins (Absolute Maximum Ratings, p.2) ----
 
-/// The converter with SYNC/MODE tied to `to` instead of to ground.
-fn sync_tied_to(to: &str) -> String {
-    converter().replace(".u.sync_mode ~ .input.neg", &format!(".u.sync_mode ~ {to}"))
-}
-
 #[test]
 fn sync_mode_tied_to_the_input_is_refused_at_6_v() {
-    let (_, text) = solved(&sync_tied_to(".input.pos"));
+    let (_, text) = solved(&bare(
+        "9V..16V",
+        "0A..1A",
+        "    .u.sync_mode ~ .input.pos\n",
+    ));
     assert!(
         text.contains("net `VIN` reaches 16V above its ground `GND`")
             && text.contains("`u.sync_mode_limit.line.abs_max` is 6V"),
@@ -256,11 +308,7 @@ fn sync_mode_tied_to_the_input_is_refused_at_6_v() {
 
 #[test]
 fn tr_ss_tied_to_the_input_is_refused_at_4_v() {
-    let src = converter().replace(
-        "    .u.rt ~> .rt",
-        "    .u.tr_ss ~ .input.pos\n    .u.rt ~> .rt",
-    );
-    let (_, text) = solved(&src);
+    let (_, text) = solved(&bare("9V..16V", "0A..1A", "    .u.tr_ss ~ .input.pos\n"));
     assert!(
         text.contains("`u.tr_ss_limit.line.abs_max` is 4V"),
         "{text}"
@@ -268,56 +316,33 @@ fn tr_ss_tied_to_the_input_is_refused_at_4_v() {
 }
 
 #[test]
-fn en_uv_on_a_rail_over_65_v_is_refused() {
-    // EN/UV is tied to its own 70 V rail (the same ground), as a board with a separate
-    // enable supply would: over the 65 V of the table. A 60 V rail is inside it.
-    let src = converter()
-        .replace(
-            "    .u.en_uv ~ .input.pos\n",
-            "    .u.en_uv ~ .enable.pos\n    .enable.neg ~ .input.neg\n",
-        )
-        .replace(
-            "    .output: Rail",
-            "    .enable: Rail {\n        .voltage &= 70V\n        .pos.net &= \"EN\"\n        \
-             .neg.net &= \"GND\"\n    }\n    .output: Rail",
-        );
-    let (_, text) = solved(&src);
+fn en_uv_on_an_input_over_65_v_is_refused() {
+    // The support section ties EN/UV to the input, so the input is held to the 65 V of the
+    // table there as well as at VIN.
+    let (_, text) = solved(&bare("70V", "0A..1A", ""));
     assert!(
-        text.contains("net `EN` reaches 70V above its ground `GND`")
+        text.contains("net `VIN` reaches 70V above its ground `GND`")
             && text.contains("`u.en_uv_limit.line.abs_max` is 65V"),
         "{text}"
     );
-    let (_, text) = solved(&src.replace("70V", "60V"));
+    let (_, text) = solved(&bare("60V", "0A..1A", ""));
     assert!(!text.contains("en_uv_limit"), "{text}");
 }
 
 #[test]
-fn the_usual_wiring_of_the_pins_is_inside_every_limit_and_leaves_nothing_unjudged() {
-    // SYNC/MODE and PG to the output (3.3 V), a soft-start capacitor on TR/SS and EN/UV to the
-    // input: all inside the limits. FB has no limit stated (see the part), so a 5 V stage's
+fn the_support_wiring_of_the_pins_is_inside_every_limit() {
+    // EN/UV on the input, BIAS on ground, the soft-start capacitor on TR/SS and SYNC/MODE and
+    // PG open: inside the limits. FB has no limit stated (see the part), so a 5 V converter's
     // divider is not refused for the 4 V of the datasheet.
-    let src = converter()
-        .replace(".u.sync_mode ~ .input.neg", ".u.sync_mode ~ .output.pos")
-        .replace(
-            "    .u.rt ~> .rt",
-            "    .u.pg ~> .pullup ~> .output.pos\n    .u.tr_ss ~> .soft_start ~> .input.neg\n    \
-             .u.rt ~> .rt",
-        )
-        .replace(
-            "    .boost: Capacitor",
-            "    .pullup: Resistor { .resistance &= 100kohm +/- 5% }\n    \
-             .soft_start: Capacitor { .capacitance &= 10nF +/- 20% }\n    \
-             .boost: Capacitor",
-        );
-    let (_, text) = solved(&src);
-    assert!(text.is_empty(), "{text}");
+    let (_, text) = solved(&board("5V +/- 4%", "0A..1A", ""));
+    assert!(!text.contains("abs_max"), "{text}");
 }
 
 // ---- the quiescent current (Electrical Characteristics, p.2; ADR 0096) ----
 
 /// What a board that grounds SYNC/MODE (Burst Mode) states: the datasheet's 10 uA, not the
 /// several hundred uA of the pulse-skipping modes.
-const BURST: &str = "    .u.quiescent_current &= 0A .. .u.iq_max\n";
+const BURST: &str = "    .u.sync_mode ~ .input.neg\n    .u.quiescent_current &= 0A .. .u.iq_max\n";
 
 #[test]
 fn the_quiescent_current_is_added_to_the_input_current_of_the_load() {
@@ -325,27 +350,22 @@ fn the_quiescent_current_is_added_to_the_input_current_of_the_load() {
     // quiescent current is on top of it: 10 uA in Burst Mode, 0.5 mA by default (p.2). The
     // input had no such term before ADR 0096.
     let at_most = 1e-3 * 3.432 / (9.0 * 0.70);
-    let (s, text) = solved(&board("3.3V +/- 4%", "0A..1mA", BURST));
-    assert!(text.is_empty(), "{text}");
+    let (s, _) = solved(&bare("9V..16V", "0A..1mA", BURST));
     let drawn = range(&s, "u.vin.current");
     assert!((drawn.hi() - (at_most + 10e-6)).abs() < 1e-8, "{drawn}");
     // Left to its default the converter is judged in the modes that the datasheet gives no
     // ultralow figure for: SYNC/MODE floating or high is "several hundred uA" (p.2 gives 0.5 mA
     // at most, at 25 C, with VSYNC = 2 V).
-    let (s, text) = solved(&board("3.3V +/- 4%", "0A..1mA", ""));
-    assert!(text.is_empty(), "{text}");
+    let (s, _) = solved(&bare("9V..16V", "0A..1mA", ""));
     let drawn = range(&s, "u.vin.current");
     assert!((drawn.hi() - (at_most + 0.5e-3)).abs() < 1e-8, "{drawn}");
 }
 
 #[test]
 fn a_sleep_current_budget_of_an_unloaded_converter_is_judged_against_the_quiescent_current() {
-    // Nothing loaded: the input drew exactly 0 A before ADR 0096, and any budget passed. (The
-    // stage's feedback divider is a load that the stage's relation leaves out and the DC
-    // analysis does not, so a stage with a 0 A output is also reported as inconsistent: that
-    // is another finding, and these assertions look for the budget's.)
+    // Nothing loaded: the input drew exactly 0 A before ADR 0096, and any budget passed.
     let budget = |limit: &str| format!("{BURST}    .u.vin.current <= {limit}\n");
-    let (_, text) = solved(&board("3.3V +/- 4%", "0A", &budget("5uA")));
+    let (_, text) = solved(&bare("9V..16V", "0A", &budget("5uA")));
     assert!(
         text.contains(
             "u.vin.current must always be at most 5uA, but 0A..10uA is not always below 5uA"
@@ -353,8 +373,7 @@ fn a_sleep_current_budget_of_an_unloaded_converter_is_judged_against_the_quiesce
         "{text}"
     );
     // A board that did not say it grounds SYNC/MODE does not get the 10 uA for free.
-    let src = board("3.3V +/- 4%", "0A", "    .u.vin.current <= 100uA\n");
-    let (_, text) = solved(&src);
+    let (_, text) = solved(&bare("9V..16V", "0A", "    .u.vin.current <= 100uA\n"));
     assert!(
         text.contains(
             "u.vin.current must always be at most 100uA, but 0A..500uA is not always below 100uA"
@@ -367,7 +386,7 @@ fn a_sleep_current_budget_of_an_unloaded_converter_is_judged_against_the_quiesce
 fn an_input_the_ic_cannot_take_is_refused_at_the_stage() {
     let (_, text) = solved(&converter().replace("9V..16V", "9V..70V"));
     assert!(
-        text.contains("stage.vin.voltage must always be at most stage.buck.max_input_voltage"),
+        text.contains("stage.vin.voltage must always be at most stage.ic.max_input_voltage"),
         "{text}"
     );
 }
@@ -376,54 +395,42 @@ fn an_input_the_ic_cannot_take_is_refused_at_the_stage() {
 fn a_high_input_to_a_low_output_at_a_high_frequency_is_refused_by_equation_4() {
     // The shortest on-time, 50 ns, allows fSW = (VOUT + 0.15 V) / (50 ns * (VIN - 0.15 V)):
     // 3.58 V from 60 V is 1.2 MHz, under the 1.85 MHz of 20 kohm.
-    let src = board("3.3V +/- 4%", "0A..1A", "")
-        .replace("47kohm", "20kohm")
-        .replace("9V..16V", "9V..60V")
-        .replace("36V", "60V");
+    let src = bare(
+        "9V..60V",
+        "0A..1A",
+        "    .u.rt_resistor.resistance &= 20kohm +/- 1%\n",
+    );
     let (_, text) = solved(&src);
     assert!(text.contains("u.fsw must always be at most"), "{text}");
 }
 
 #[test]
 fn a_low_input_to_a_high_output_is_refused_by_equation_5() {
-    // 5 V out (5.2 V at most) at about 1 MHz holds its frequency from 6 V (Equation 5): 5.5 V
+    // 5 V out (5.2 V at most) at about 0.9 MHz holds its frequency from 6 V (Equation 5): 5.5 V
     // is below it.
     let src = board("5V +/- 4%", "0A..1A", "").replace("9V..16V", "5.5V..16V");
     let (_, text) = solved(&src);
     assert!(
-        text.contains("u.vin.voltage must always be at least"),
+        text.contains("stage.ic.vin.voltage must always be at least"),
         "{text}"
     );
-}
-
-#[test]
-fn a_board_replaces_the_default_output_capacitance() {
-    let (s, text) = solved(&board(
-        "3.3V +/- 4%",
-        "0A..2A",
-        "    .u.buck.min_output_capacitance &= 22uF\n",
-    ));
-    assert!(text.is_empty(), "{text}");
-    assert_eq!(range(&s, "u.buck.min_output_capacitance").lo(), 22e-6);
 }
 
 #[test]
 fn a_load_over_3_5_a_is_refused() {
     let (_, text) = solved(&board("3.3V +/- 4%", "0A..4A", ""));
     assert!(
-        text.contains("must always be at most stage.buck.max_output_current"),
+        text.contains("must always be at most stage.ic.max_output_current"),
         "{text}"
     );
 }
 
 #[test]
-fn the_pins_the_datasheet_asks_for_must_be_connected() {
-    // RT sets the frequency and cannot float (required); EN/UV is tied to VIN when the
-    // shutdown is not used.
-    let src = converter().replace("    .u.en_uv ~ .input.pos\n", "");
-    let checked = check("test.nsm", &src, &Loader::std());
-    assert!(!checked.is_ok());
-    assert!(checked.render().contains("en_uv"), "{}", checked.render());
+fn the_pins_the_datasheet_asks_for_are_connected_by_the_support_section() {
+    // RT sets the frequency and cannot float (required), and BST and INTVCC need their
+    // capacitors: the part's support section has them, so the part alone has no open pin.
+    let checked = check("test.nsm", &bare("9V..16V", "0A..1A", ""), &Loader::std());
+    assert!(checked.is_ok(), "{}", checked.render());
 }
 
 // ---- the footprint and the export (ADR 0087) ----
@@ -489,6 +496,22 @@ fn board_with_process() -> String {
         )
 }
 
+/// The schematic file that draws the IC: the sheet of `Buck<Lt8641>`, since the IC is inside the
+/// module (ADR 0115), or the root sheet of a board that places it directly.
+pub(crate) fn ic_sheet(b: &netsmith::Built) -> &str {
+    std::iter::once(b.schematic.as_str())
+        .chain(b.sheets.iter().map(|(_, text)| text.as_str()))
+        .find(|text| text.contains("(lib_id \"netsmith:Lt8641_"))
+        .expect("a sheet draws the IC")
+}
+
+/// Every schematic file of the board: the root sheet and the sheets of its modules.
+pub(crate) fn all_sheets(b: &netsmith::Built) -> Vec<&str> {
+    std::iter::once(b.schematic.as_str())
+        .chain(b.sheets.iter().map(|(_, text)| text.as_str()))
+        .collect()
+}
+
 pub(crate) fn built(libraries: &Libraries) -> netsmith::Built {
     let mut catalogs = Catalogs::jlcpcb();
     catalogs
@@ -541,7 +564,7 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
     // The schematic draws the IC with a symbol netsmith drew from the pin table, all its pins
     // named as the datasheet does.
     assert!(
-        b.schematic.contains("\"netsmith:Lt8641_UDC20_18_out8\""),
+        ic_sheet(&b).contains("\"netsmith:Lt8641_UDC20_18_out8\""),
         "the schematic does not hold the symbol"
     );
     for pin in [
@@ -554,7 +577,7 @@ fn a_board_around_the_ic_builds_with_the_symbol_and_exports_the_footprint_and_th
         "VIN1",
         "VIN2",
     ] {
-        assert!(b.schematic.contains(&format!("\"{pin}\"")), "{pin}");
+        assert!(ic_sheet(&b).contains(&format!("\"{pin}\"")), "{pin}");
     }
     assert!(libraries.uses_std_library(&b.design));
 

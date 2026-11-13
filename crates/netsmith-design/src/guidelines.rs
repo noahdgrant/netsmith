@@ -109,7 +109,7 @@
 //! module port and an IC rail on the same node, was counted twice. **Regulators:** the input
 //! current comes from the power balance and never from the output current. A `LinearRegulator`
 //! states `.vin.current == -.vout.current`, and a switching regulator's IC states `.vin.current ==
-//! -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)` (ADR 0025), so a 1 A,
+//! -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)` (ADR 0025), so a 1 A,
 //! 1.8 V output from 4.75 V at 85 % efficiency draws 0.459 A at its input. The quiescent current is
 //! not added: the library's models have no figure for it (ADR 0025 ignores it) and one is not
 //! invented here. A switching regulator whose part states no efficiency leaves the input current

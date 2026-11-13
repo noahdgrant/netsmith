@@ -278,7 +278,7 @@ interface Usb2 {
 /// imports `Resistor` and `Rail`, and a pull-up is a circuit around a line.
 /// `std/parts/passive.nsm` holds parts and imports nothing: a module there would make it import the
 /// rails and would put a circuit with a rail among two-terminal parts. The module regulators,
-/// `BuckStage` and `FeedbackDivider`, sit beside the parts they are built from. The cost is that a
+/// `Buck` and `FeedbackDivider`, sit beside the parts they are built from. The cost is that a
 /// reader looking for a pull-up looks in `bus`, which this comment and the guide answer.
 ///
 /// Why `I2cPullups` is left alone. It was to be written with two `PullUp`s only if every existing

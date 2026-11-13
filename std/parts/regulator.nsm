@@ -111,34 +111,34 @@ module FeedbackDivider {
     .rbottom.b ~ .bottom
 }
 
-/// What a switching (buck) regulator IC says about itself, for `BuckStage` (ADR 0025). A
-/// concrete IC is a `part` with a `.buck: Buck` member and a `vin` rail, and it writes three
-/// things:
+/// What a switching (buck) regulator IC says about itself, for `Buck` (ADR 0025, ADR 0115). A
+/// concrete IC is a `part X provides BuckIc`, and it writes four things:
 ///
-/// - its pin table, against the pins of this interface (`.buck.sw.pos`, `.buck.fb`) and its
-///   supply pins (`.vin.pos`, `.vin.neg`), with `.buck.sw.neg ~ .vin.neg` joined inside the
-///   part, as `LinearRegulator` does for its output;
-/// - its datasheet numbers as narrowings (`.buck.fsw &= 1.2MHz +/- 15%`);
+/// - its pin table, against the pins of this generic (`.vin.pos`, `.vin.neg`, `.sw.pos`, `.fb`);
+/// - its datasheet numbers as narrowings (`.fsw &= 1.2MHz +/- 15%`);
 /// - the one relation that ties its input to its output, what it draws from what it
 ///   supplies over the whole efficiency range:
-///   `.vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)`,
+///   `.vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)`,
 ///   plus what the IC draws for itself with nothing loaded when its datasheet gives it, as a
 ///   member of the IC (`.quiescent_current`, a range of currents, as `LinearRegulator`'s is) that
-///   `dc switching_regulator` takes as its fourth operand (ADR 0096).
+///   `dc switching_regulator` takes as its fourth operand (ADR 0096);
+/// - in a `support` section, the parts its datasheet's application circuit puts around it that
+///   not every buck IC has: a bootstrap capacitor, the resistor on `RT`, the capacitor on an
+///   internal supply, an enable divider (ADR 0115). `Buck` wires only what this generic has.
 ///
 /// A switching frequency that a resistor sets is one more relation the IC writes, for example
-/// `.buck.fsw == 24GHz * 1ohm / .rt` with `.rt: Resistance` a field of the IC that the board
-/// states against its `RT` resistor. A number the IC leaves open makes the relations that use
+/// `.fsw == 24GHz * 1ohm / .rt` with `.rt: Resistance` a field of the IC that its support
+/// section ties to its `RT` resistor. A number the IC leaves open makes the relations that use
 /// it not evaluated, which is no error.
 ///
-/// Why the work is split between this and `BuckStage` (ADR 0025). The language has no
-/// inheritance, no generic module over a part and no relations in an interface that reach the part
-/// that holds it. So the IC is a `part` with a `.buck: Buck` member, written by whoever adds the
-/// IC (its pin table, its datasheet numbers as narrowings, and the one relation from its output to
-/// its input current), and the stage is a module of everything else, joined to the IC by
-/// `.stage.buck ~ .u.buck`. The recommended inductance of the IC is its `min_inductance`, one
-/// number. The worked example is an invented IC, `Zbk2`, in the guide ("Switching regulators") and
-/// in `crates/netsmith/tests/std_models.rs`; nothing about a real part is in the guide.
+/// Why the work is split between this and `Buck` (ADR 0025, ADR 0115). What every buck IC is,
+/// its pins and the numbers its datasheet gives, is this generic; everything around it that is
+/// the same for every IC (the inductor, the capacitor banks, the feedback divider and the checks
+/// that join them) is `Buck<Ic: BuckIc>`, written once; and what one IC alone needs is in that
+/// IC's own `support` section. The recommended inductance of the IC is its `min_inductance`,
+/// one number. The worked example is an invented IC, `Zbk2`, in the guide ("Switching
+/// regulators") and in `crates/netsmith-solve/tests/std_models.rs`; nothing about a real part
+/// is in the guide.
 ///
 /// Why the switching node is a rail. The checker's balance of currents needs a supplier inside the
 /// module's scope for a net that has a port, and a rail inside a part must have a pad (a part
@@ -146,31 +146,42 @@ module FeedbackDivider {
 /// IC usually has no pin on it, so the supplier is the IC's `sw` pin as a rail (`.sw: Rail`, the DC
 /// voltage the output's, the current the negative of the load), and the inductor is a `~>` chain
 /// from it to the output. In a chain the inductor's `.current` is the draw, the average (ADR
-/// 0014), so the stage states the peak itself. The input current,
+/// 0014), so `Buck` states the peak itself. The input current,
 /// `iout * vout / (vin * efficiency)` over the whole efficiency range, is the IC's relation and
-/// reaches the supply through the IC's `vin` rail; the stage's own `vin` and `vout` ports draw no
-/// DC current (`vin.current &= 0A`).
+/// reaches the supply through the IC's `vin` rail, which is `Buck`'s own `vin`.
 ///
 /// Not modelled when ADR 0025 was written: loop stability, dropout and minimum on-time (the output
 /// must be at most the input; the minimum on-time and off-time are modelled since ADR 0093),
-/// light-load modes, the divider's and the IC's quiescent current in the load (see `BuckStage`),
+/// light-load modes, the divider's and the IC's quiescent current in the load (see `Buck`),
 /// and the second capacitor an IC may ask for. Each was open in issue #63.
 ///
 /// Why there is no `BuckBoost` beside it (the owner, 2026-11-12, #473). `dc switching_regulator`
 /// is a power balance and assumes no topology, so a buck-boost IC states it on its own rails as a
 /// part (`.vout: Rail`, its efficiency and quiescent current from its datasheet), with no std
-/// interface: the TPS55288 of `examples/power_manifold_charger` does. A std interface and stage
+/// generic: the TPS55288 of `examples/power_manifold_charger` does. A std generic and module
 /// wait for a second buck-boost IC. The only one so far is a poor template: its buck leg is two
 /// external MOSFETs that most buck-boost ICs have inside, its inductor sits between two switch
-/// nodes and not in a `~>` chain to the output, and every check of a stage would have to hold in
-/// both the buck and the boost mode over ranges of input and output that overlap.
-interface Buck {
+/// nodes and not in a `~>` chain to the output, and every check of a module would have to hold
+/// in both the buck and the boost mode over ranges of input and output that overlap.
+generic BuckIc {
+    .designator &= "U"
+
+    /// The IC's supply.
+    .vin: Rail
     /// The switching node as a supply: its `pos` is the IC's switch pin and its `voltage` the
     /// output voltage it averages to, and the load current comes out of it (the `current` is
-    /// negative: the IC supplies). The inductor is between this and the output.
+    /// negative: the IC supplies). The inductor is between this and the output. Its `neg` is
+    /// the IC's ground.
     .sw: Rail
-    /// The feedback pin, to be joined to the tap of the divider.
-    .fb: Pin
+    .sw.neg ~ .vin.neg
+
+    pins {
+        .vin.pos  power
+        .vin.neg  power
+        .sw.pos   power
+        // The feedback pin, joined to the tap of the divider.
+        .fb       input
+    }
     /// The reference at the feedback pin, with its tolerance.
     .vref: Voltage
     /// The switching frequency, with its tolerance.
@@ -189,17 +200,17 @@ interface Buck {
     .min_inductance: Inductance
     /// The least saturation current an inductor may have, when the datasheet gives one (for
     /// example, a figure above the IC's high-side current limit). Optional (ADR 0074): an IC
-    /// that states nothing here has no such check, and `BuckStage` does not check the
+    /// that states nothing here has no such check, and `Buck` does not check the
     /// inductor's saturation against it, beyond the load and half the ripple.
     .min_inductor_saturation: Current optional
     /// The largest DC resistance an inductor may have, when the datasheet gives one.
-    /// Optional (ADR 0074): an IC that states nothing here sets no limit, and `BuckStage`
+    /// Optional (ADR 0074): an IC that states nothing here sets no limit, and `Buck`
     /// checks nothing against it.
     .max_inductor_dcr: Resistance optional
     /// The shortest time the high-side switch can stay on, the datasheet's minimum on-time,
     /// at its largest (the worst case for the design). It bounds the lowest duty cycle, so the
     /// highest input for an output and a frequency: `vout / (vin * fsw)` is never less than it.
-    /// Optional (ADR 0074): an IC that states nothing here has no such check from `BuckStage`
+    /// Optional (ADR 0074): an IC that states nothing here has no such check from `Buck`
     /// (an IC that gives its own equation, as the `Lt8641` does, writes that instead). ADR 0093.
     .min_on_time: Time optional
     /// The shortest time the high-side switch stays off (the low-side switch's minimum on-time
@@ -212,8 +223,8 @@ interface Buck {
     /// or the span between its minimum and maximum, with the page in the part's doc comment.
     /// Optional (ADR 0074): an IC whose datasheet gives no such time states nothing, and an IC
     /// whose ramp a board capacitor sets (a soft-start pin) states a time only if the datasheet
-    /// gives one for a stated capacitor. `BuckStage` forwards it as `.soft_start_time`, which a
-    /// board bounds (`.stage.soft_start_time <= 5ms`); while nothing bounds it the check is
+    /// gives one for a stated capacitor. `Buck` forwards it as `.soft_start_time`, which a
+    /// board bounds (`.reg.soft_start_time <= 5ms`); while nothing bounds it the check is
     /// not made, and a bound on an IC that states no time is listed as not evaluated.
     .soft_start_time: Time optional
     /// The capacitance the datasheet asks for on the input and the output, as effective
@@ -222,20 +233,22 @@ interface Buck {
     .min_output_capacitance: Capacitance
 }
 
-/// Everything around a buck converter IC except the IC (ADR 0025): the inductor, the input
-/// and output capacitors, and the feedback divider that sets the output. The board states the
-/// input rail, the output it wants (`.stage.vout.voltage &= 1.8V +/- 3%`) and its load
-/// (`.output.current &= 0mA..1A`), places the IC, and joins four pairs of interfaces:
-/// `.input ~ .stage.vin`, `.input ~ .u.vin`, `.stage.vout ~ .output` and
-/// `.stage.buck ~ .u.buck`. The stage's own input draws no DC current: the converter's is the
-/// IC's `vin`, which is on the same net.
+/// A buck converter: the IC, a part that provides `BuckIc` and stands for the parameter `Ic`,
+/// and everything around it that every buck IC needs (ADR 0025, ADR 0115): the inductor, the
+/// input and output capacitors, and the feedback divider that sets the output. What one IC
+/// alone needs (a bootstrap capacitor, the resistor on `RT`) is in that IC's own `support`
+/// section, which comes with it. The board names the IC and states the output it wants
+/// (`.reg: Buck<Lt8641> { .vout.voltage &= 1.8V +/- 3% }`), its input rail and its load
+/// (`.output.current &= 0mA..1A`), and joins two pairs of interfaces: `.input ~ .reg.vin` and
+/// `.reg.vout ~ .output`. The module's input is the IC's (`.ic.vin ~ .vin`), so what the
+/// converter draws is what the IC's relation says.
 ///
-/// From the IC's numbers the stage states what is always true of a buck converter and the
+/// From the IC's numbers the module states what is always true of a buck converter and the
 /// solver checks it in the worst case:
 ///
 /// - the input stays inside the IC's range and above the output, and the load is at most its
 ///   largest output current;
-/// - the stage's `.on_time`, `vout / (vin * fsw)`, is at least the IC's `.min_on_time`, and its
+/// - the module's `.on_time`, `vout / (vin * fsw)`, is at least the IC's `.min_on_time`, and its
 ///   `.off_time`, `(vin - vout) / (vin * fsw)`, at least the IC's `.min_off_time`: the highest
 ///   input and the lowest headroom at which the IC holds its switching frequency, so at which
 ///   the ripple below is the ripple of the board (ADR 0093; the minimum on-time bounds the
@@ -264,15 +277,15 @@ interface Buck {
 /// frequency, at the worst case the ranges give: the shortest on-time is the lowest output at
 /// the highest input and the highest frequency (its tolerance included), the shortest
 /// off-time the lowest headroom at the highest frequency. A violation names the numbers
-/// (`stage.on_time must always be at least stage.buck.min_on_time, but 122ns..490.8ns is not
-/// always above 150ns`). A part states a figure with `&=` on its own `buck`
-/// (`.buck.min_on_time &= 70ns`), at the largest the datasheet gives, with the revision, page
+/// (`reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not
+/// always above 150ns`). A part states a figure with `&=` in its own definition
+/// (`.min_on_time &= 70ns`), at the largest the datasheet gives, with the revision, page
 /// and table in its doc comment. Past either limit the part still regulates, at a lower
 /// frequency (LM61430-Q1 8.4.3 and 8.1, "frequency is reduced automatically"; LT8641, p.16),
 /// so the ripple above, computed at the programmed frequency, would not be the board's: that
 /// is why the check is an error and not a note. No std part states the two figures: the
 /// `Lt8641` keeps its own Equations 4 and 5, which include the switch drops (about 0.15 V and
-/// 0.3 V) the stage does not know, and a second, stricter relation beside them would refuse
+/// 0.3 V) the module does not know, and a second, stricter relation beside them would refuse
 /// boards the datasheet's own equation accepts. Not taken: a `.max_duty_cycle` or `.dropout`
 /// member (both datasheets give a time, and a maximum duty `1 - fsw * tOFF_MIN` is right at
 /// one frequency only); the equation with the switch drops (`Buck` has no such members and
@@ -282,7 +295,7 @@ interface Buck {
 /// transient where the datasheets say the part lowers its frequency and recovers (the peak
 /// stays a rating, `.vin.peak <= .vin_abs_max`); a required member (existing parts and boards
 /// would stop building, the reason ADR 0069's `required` was dropped); folding the check into
-/// each IC's own relations (each would write the same two lines, and the stage is where the
+/// each IC's own relations (each would write the same two lines, and the module is where the
 /// output, the input and the frequency meet). A linear regulator's dropout was already
 /// checked: `LinearRegulator` states `.vin.voltage >= .vout.voltage + .dropout`. The names
 /// `.min_on_time` and `.min_off_time` (the `Lt8641` spells its own `.t_on_min`), and the `Lt8641`
@@ -301,8 +314,8 @@ interface Buck {
 /// 8 for which every check holds with `count * effective_capacitance` against what the IC
 /// asks for and the rating, the voltage and the rest per capacitor. A datasheet that asks for
 /// more than any one capacitor keeps at its voltage is met by several. The board may state the
-/// count (`.stage.output_count &= 2`, which the checks then hold to) or a range
-/// (`.stage.output_count &= 1..3`, which is what the solver may choose from); it reads
+/// count (`.reg.output_count &= 2`, which the checks then hold to) or a range
+/// (`.reg.output_count &= 1..3`, which is what the solver may choose from); it reads
 /// the chosen number from the same member. A bank of one is the single capacitor this module
 /// had before. The ripple current a capacitor takes is not modelled, so it is not divided
 /// between the capacitors of a bank.
@@ -314,12 +327,12 @@ interface Buck {
 /// voltage across it (ADR 0013). The catalog's Basic capacitors lose most of their capacitance at
 /// a few volts, so an IC that asks for 10 uF or more at 12 V finds no capacitor; the guide's
 /// invented IC is 4.5 V to 6 V. A frequency that a resistor sets is one more relation the IC
-/// writes (`.buck.fsw == 24GHz * 1ohm / .rt_value`, tested). The naming (`Buck`, `BuckStage`,
-/// `FeedbackDivider`, the catalog names) and the board's four joins for a buck (ADR 0025) are
-/// accepted as built by the owner, 2026-11-11.
-module BuckStage {
-    /// Joined to the IC's `buck`.
-    .buck: Buck
+/// writes (`.fsw == 24GHz * 1ohm / .rt_value`, tested). The naming of
+/// `FeedbackDivider` and of the catalogs is accepted as built by the owner, 2026-11-11; the
+/// IC as a type parameter and the names `Buck` and `BuckIc` are ADR 0115's.
+module Buck<Ic: BuckIc> {
+    /// The IC, a part that provides `BuckIc`.
+    .ic: Ic
     .vin: Rail
     .vout: Rail
     .divider: FeedbackDivider
@@ -341,7 +354,7 @@ module BuckStage {
     /// Electronics*, chapter 2; the equation number was not looked up; TI SLVA477B gives the
     /// same two terms, read as a summary only). The two terms are 90 degrees apart in a
     /// ceramic capacitor, so adding them is the conservative sum. A board bounds it
-    /// (`.stage.output_ripple <= 20mV`) and the bound holds in the worst case the ranges
+    /// (`.reg.output_ripple <= 20mV`) and the bound holds in the worst case the ranges
     /// give: the highest input, the lowest inductance (its tolerance), the lowest switching
     /// frequency (its tolerance), the lowest effective capacitance (its tolerance and its DC
     /// bias) and the highest ESR. Each is monotone in it, so the range is exact.
@@ -381,12 +394,12 @@ module BuckStage {
     .output_esr: Resistance optional
     /// How long the high-side switch is on in a period, `vout / (vin * fsw)` (the ideal duty
     /// cycle over the frequency), and how long it is off, `(vin - vout) / (vin * fsw)`: the
-    /// stage's check of the IC's `min_on_time` and `min_off_time` (ADR 0093).
+    /// module's check of the IC's `min_on_time` and `min_off_time` (ADR 0093).
     .on_time: Time
     .off_time: Time
-    /// How long the output takes to rise at start-up: the IC's `.buck.soft_start_time`, as the
+    /// How long the output takes to rise at start-up: the IC's `.ic.soft_start_time`, as the
     /// datasheet gives it. A closed-form check against a requirement (not a simulation): a
-    /// board bounds it (`.stage.soft_start_time <= 5ms`, or `>=` to keep an inrush down), and the
+    /// board bounds it (`.reg.soft_start_time <= 5ms`, or `>=` to keep an inrush down), and the
     /// bound holds over the whole span the IC states. Not evaluated, and listed as such, when
     /// the IC states no time; while no board bounds it nothing is checked and nothing is said.
     /// It is the IC's own ramp: the output capacitance and the load do not change it here, and
@@ -399,37 +412,37 @@ module BuckStage {
     /// `.input_cap.max_voltage >= .vin.peak * .voltage_margin`, and the same for
     /// the steady `.voltage` and for the output. A default of 1, which asks for no more than
     /// the rail's peak; a board that derates its capacitors states it
-    /// (`.stage.voltage_margin &= 1.25`), and a module that wraps the stage forwards its own
-    /// (`.stage.voltage_margin &= .margin`). The board's `&=` replaces the default (`?=`,
+    /// (`.reg.voltage_margin &= 1.25`), and a module that wraps this one forwards its own
+    /// (`.reg.voltage_margin &= .margin`). The board's `&=` replaces the default (`?=`,
     /// ADR 0051).
     ///
-    /// Why it is one member of the stage. The capacitors are inside the stage, so a board
+    /// Why it is one member of the module. The capacitors are inside the module, so a board
     /// cannot reach them, and a board that wanted its own rule (every ceramic capacitor on a
-    /// power rail rated at least 1.25 times the rail's peak) had to keep a copy of the stage
-    /// with two lines changed, which had to follow every change to the std stage by hand. The
+    /// power rail rated at least 1.25 times the rail's peak) had to keep a copy of the module
+    /// with two lines changed, which had to follow every change to the std module by hand. The
     /// margin applies to the steady voltage as well as to the peak: a rail that states no peak
     /// leaves the peak lines not evaluated, and a margin only on them would silently do
     /// nothing there. A peak is never below the steady voltage, so a board that states its
     /// peak gets the same result as with the peak lines alone. With the default 1 each line is
     /// the one it replaced (`x * 1` is exact), so no existing board, pick or golden changes;
-    /// only the text of a failing message differs, which now quotes the product. The stage has
+    /// only the text of a failing message differs, which now quotes the product. The module has
     /// no bootstrap or bypass capacitor (they are inside the IC's own circuit, which a part or
-    /// module writes), so the member covers the two banks the stage has; a module that adds
+    /// module writes), so the member covers the two banks the module has; a module that adds
     /// such capacitors states its own bound.
     ///
     /// Not taken: a margin for each side (two members to state one rule); a margin on the peak
     /// only, as a project's copy had it; exposing `.input_cap` and `.output_cap` so a board
-    /// states `.stage.input_cap.max_voltage >= ...` itself (a larger change to what the stage
+    /// states `.reg.input_cap.max_voltage >= ...` itself (a larger change to what the module
     /// exposes, and each board repeats the rule); a margin on `Rail` (every part on the rail
     /// would read it, and a rail has no reason to know how parts are derated); a default of
     /// 1.25 (it changes every existing board and golden). The name, the steady voltage taking
     /// the margin too, and whether other std modules that hold capacitors across a rail take
-    /// the same member when they are added (none exists besides `BuckStage`) are accepted as
+    /// the same member when they are added (none exists besides `Buck`) are accepted as
     /// built (the owner, 2026-11-11).
     .voltage_margin: Number
     .voltage_margin ?= 1
 
-    .vin.current &= 0A
+    .ic.vin ~ .vin
     .inductor.current == -.vout.current
 
     // A bank is from one to eight capacitors unless the board says otherwise.
@@ -439,50 +452,51 @@ module BuckStage {
     .output_count == .output_cap.count
 
     .vin.neg ~ .vout.neg
-    .buck.sw.neg ~ .vin.neg
-    .buck.sw.voltage == .vout.voltage
+    .ic.sw.voltage == .vout.voltage
     .divider.top ~ .vout.pos
     .divider.bottom ~ .vout.neg
-    .divider.fb ~ .buck.fb
-    .divider.vref == .buck.vref
+    .divider.fb ~ .ic.fb
+    .divider.vref == .ic.vref
     .divider.vout == .vout.voltage
     .divider_current == .divider.current
 
-    .buck.sw.pos ~> .inductor ~> .vout.pos
+    .ic.sw.pos ~> .inductor ~> .vout.pos
     .vin.pos ~> .input_cap ~> .vin.neg
     .vout.pos ~> .output_cap ~> .vout.neg
 
-    .vin.voltage >= .buck.min_input_voltage
-    .vin.voltage <= .buck.max_input_voltage
+    .vin.voltage >= .ic.min_input_voltage
+    .vin.voltage <= .ic.max_input_voltage
     .vin.voltage >= .vout.voltage
-    -.vout.current <= .buck.max_output_current
+    -.vout.current <= .ic.max_output_current
     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
     .output_cap.max_voltage >= .vout.voltage * .voltage_margin
     .input_cap.max_voltage >= .vin.peak * .voltage_margin
     .output_cap.max_voltage >= .vout.peak * .voltage_margin
 
-    .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .buck.fsw)
-    .on_time == .vout.voltage / (.vin.voltage * .buck.fsw)
-    .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .buck.fsw)
-    .soft_start_time == .buck.soft_start_time
-    .output_ripple == .ripple / (8 * .buck.fsw * .output_count * .output_cap.effective_capacitance) + .ripple * .output_esr / .output_count
-    .on_time >= .buck.min_on_time
-    .off_time >= .buck.min_off_time
+    .ripple == (.vin.voltage - .vout.voltage) * .vout.voltage / (.vin.voltage * .inductor.inductance * .ic.fsw)
+    .on_time == .vout.voltage / (.vin.voltage * .ic.fsw)
+    .off_time == (.vin.voltage - .vout.voltage) / (.vin.voltage * .ic.fsw)
+    .soft_start_time == .ic.soft_start_time
+    .output_ripple == .ripple / (8 * .ic.fsw * .output_count * .output_cap.effective_capacitance) + .ripple * .output_esr / .output_count
+    .on_time >= .ic.min_on_time
+    .off_time >= .ic.min_off_time
     .inductor.current + .ripple / 2 <= .inductor.saturation_current
-    .inductor.inductance >= .buck.min_inductance
-    .inductor.saturation_current >= .buck.min_inductor_saturation
-    .inductor.dc_resistance <= .buck.max_inductor_dcr
-    .input_cap.count * .input_cap.effective_capacitance >= .buck.min_input_capacitance
-    .output_cap.count * .output_cap.effective_capacitance >= .buck.min_output_capacitance
+    .inductor.inductance >= .ic.min_inductance
+    .inductor.saturation_current >= .ic.min_inductor_saturation
+    .inductor.dc_resistance <= .ic.max_inductor_dcr
+    .input_cap.count * .input_cap.effective_capacitance >= .ic.min_input_capacitance
+    .output_cap.count * .output_cap.effective_capacitance >= .ic.min_output_capacitance
 }
 
 /// The LT8641, Analog Devices' 3 V to 65 V, 3.5 A synchronous step-down Silent Switcher, in
 /// its 18-lead (20 positions) 3 x 4 mm QFN (UDC20(18)). The automotive ordering code `#W`
 /// (`LT8641IUDC#WPBF`, and `#WTRPBF` on tape and reel, LCSC C3975089) is the same die and the
 /// same tables: the datasheet gives one set of numbers for every grade, so one part serves
-/// the `E`, `I`, `J`, `H` and `#W` codes, and the board names its ordering code with `.mpn`
-/// from its own catalog rows (a keyed catalog, as for any IC). The standard `lt8641` catalog
-/// has no row, because no row of it has a recorded stock above zero (`data/jlcpcb/README.md`).
+/// the `E`, `I`, `J`, `H` and `#W` codes. A project adds the ordering code it buys as a row of
+/// the `lt8641` catalog, and the solver takes the first row that fits: the catalog is not keyed
+/// by `.mpn`, because a board that places the IC through `Buck<Lt8641>` cannot reach it (ADR
+/// 0115). The standard `lt8641` catalog has no row, because no row of it has a recorded stock
+/// above zero (`data/jlcpcb/README.md`).
 ///
 /// Datasheet: Analog Devices LT8641, Rev. C (PDF dated 2020-12-10, 26 pages), the file that
 /// LCSC links for C3975089. Page numbers are the printed pages, which are the PDF's; "table"
@@ -497,16 +511,15 @@ module BuckStage {
 ///   bounded by 65 V and the steady `.vin.voltage` too. The datasheet has no separate
 ///   transient table for `#W`: the Order Information (p.2) says only that `#W` models have
 ///   controlled manufacturing for automotive use.
-/// - Reference: `.buck.vref` is 0.79 V to 0.822 V, the full temperature range at
+/// - Reference: `.vref` is 0.79 V to 0.822 V, the full temperature range at
 ///   VIN = 6 V, ILOAD = 0.5 A (Electrical Characteristics, p.3; 0.804 V to 0.816 V at 25 C).
 ///   The line regulation, 0.03 %/V at most over 4 V to 42 V (p.3), is not added to it.
-/// - Output current: `.buck.max_output_current` is 3.5 A, the "3.5A Maximum Continuous
+/// - Output current: `.max_output_current` is 3.5 A, the "3.5A Maximum Continuous
 ///   Output" of the front page (p.1), which also gives `.peak_output_current`, 5 A "Peak
 ///   Transient Output". The top switch current limit is 6.2 A at least (`.top_current_limit_min`;
 ///   8.2 A typical, 9.9 A maximum; p.3). The datasheet's `IOUT(MAX) = ILIM - dIL / 2`
-///   (Equation 8, p.17) needs the ripple of the inductor, which the stage has and the part
-///   does not: a board or module that wants it states
-///   `-.vout.current <= .u.top_current_limit_min - .stage.ripple / 2`.
+///   (Equation 8, p.17) needs the ripple of the inductor, which `Buck` has and the part
+///   does not, so it is not checked.
 /// - Switching frequency: a resistor from RT to ground sets it, RT = 46.5 / fSW - 5.2 (kohm,
 ///   MHz; Equation 3, p.15, and Table 1, p.15), so the nominal frequency is
 ///   `46.5MHz * 1kohm / (.rt_resistance + 5.2kohm)`. The datasheet states the accuracy at
@@ -517,26 +530,25 @@ module BuckStage {
 ///   resistor outside 18.2 kohm to 60.4 kohm (700 kHz to 2 MHz), where the datasheet gives no
 ///   figure for the accuracy. Two bounds and not a range: a range would be the interval that
 ///   `fsw` is computed from, and a window on `fsw` would be checked against all of it.
-/// - Inductor: `.buck.min_inductance` is Equation 10 (p.17), `VIN * (2 * DC - 1) / (2.5 * fSW)`
+/// - Inductor: `.min_inductance` is Equation 10 (p.17), `VIN * (2 * DC - 1) / (2.5 * fSW)`
 ///   with `DC = VOUT / VIN`, which is the minimum for duty cycles over 50 % (a negative
 ///   figure below that asks for nothing). The saturation current needs no figure above the
-///   load and half the ripple, which the stage checks: the datasheet says the part
+///   load and half the ripple, which `Buck` checks: the datasheet says the part
 ///   "safely tolerates operation with a saturated inductor" in overload (p.16), so
-///   `.buck.min_inductor_saturation` is left unstated. `.buck.max_inductor_dcr` is 0.04 ohm,
+///   `.min_inductor_saturation` is left unstated. `.max_inductor_dcr` is 0.04 ohm,
 ///   "to keep the efficiency high, the series resistance (DCR) should be less than 0.04 ohm"
 ///   (p.16).
 /// - Capacitors: a third input capacitor of 2.2 uF or more beside the two 1 uF at VIN1 and
 ///   VIN2 (Pin Functions, VIN1 and VIN2, p.10; Input Capacitors, p.17):
-///   `.buck.min_input_capacitance` is 2.2 uF, the stage's input capacitor. The two 1 uF
-///   (0402 or 0603), 1 uF or more on INTVCC (p.10) and 0.1 uF from BST to SW (p.10) are the
-///   board's. The datasheet states no minimum output capacitance ("A lower value of output
+///   `.min_input_capacitance` is 2.2 uF, `Buck`'s input capacitor. The two 1 uF
+///   (0402 or 0603), 1 uF or more on INTVCC (p.10) and 0.1 uF from BST to SW (p.10) are in
+///   the part's `support` section. The datasheet states no minimum output capacitance ("A lower value of output
 ///   capacitor can be used to save space and cost but transient performance will suffer and
 ///   may cause loop instability. See the Typical Applications", p.18). Every one of its
 ///   Typical Applications (p.1, p.22, p.23: 5 V, 3.3 V and 12 V, 1 MHz and 2 MHz) uses 47 uF
-///   (1210, X5R or X7R) at the output, so `.buck.min_output_capacitance` is 47 uF by default
-///   (`?=`): an application value, not a datasheet minimum, that a board replaces with
-///   `.u.buck.min_output_capacitance &= 22uF`.
-/// - Efficiency: `.buck.efficiency` is 0.70 to 0.95. The upper figure is the front page's "Up
+///   (1210, X5R or X7R) at the output, so `.min_output_capacitance` is 47 uF by default
+///   (`?=`): an application value, not a datasheet minimum.
+/// - Efficiency: `.efficiency` is 0.70 to 0.95. The upper figure is the front page's "Up
 ///   to 95% Efficiency at 1MHz, 12V to 5V" (p.1). The lower is read off the curves of the
 ///   Typical Performance Characteristics (p.4): the lowest point of G01 to G04 for a load of
 ///   0.5 A to 3.5 A (12 V to 48 V in, 5 V and 3.3 V out, 1 MHz to 3 MHz) is about 72 %, for
@@ -559,9 +571,8 @@ module BuckStage {
 ///   voltage", p.10); and "the TR/SS pin may be left floating if the function is not needed"
 ///   (p.19), with no ramp time for that case. Its Typical Applications (p.1, p.22 and p.23)
 ///   draw 10 nF on the pin and state no time for it. The datasheet writes no equation for
-///   the time either. The part therefore has `.css`, the capacitor on TR/SS, an `optional`
-///   member (ADR 0074) that the board states (`.u.css &= 10nF +/- 10%`, or `.u.css ==
-///   .soft_start.capacitance` for the capacitor it puts on the pin), and computes the time
+///   the time either. The part therefore has `.css`, the capacitor on TR/SS, which its `support`
+///   section states from the 10 nF of 10 % it puts on the pin, and computes the time
 ///   the output takes to reach the 0.8 V at which tracking ends: a capacitor charged by a
 ///   constant current rises at `I / C`, so `t = C * 0.8V / I` (the owner's relation, item
 ///   CF2b of epic #308: the only figures in it are the datasheet's, and the equation is
@@ -569,10 +580,9 @@ module BuckStage {
 ///   `.tr_ss_current`, 1.2 uA to 2.6 uA (p.3), so the time is a range and the longest time
 ///   is at the smallest current: with 10 nF, 8 nC / 2.6 uA = 3.077 ms to 8 nC / 1.2 uA =
 ///   6.667 ms (4.211 ms at the typical 1.9 uA), and a board's bound
-///   `.stage.soft_start_time <= 5ms` is held against the 6.667 ms. While `.css` is
-///   unstated the relation is skipped, `.buck.soft_start_time` is unstated, and a bound on
-///   `.stage.soft_start_time` is listed as not evaluated, as before. Not in the time: the
-///   capacitor's own tolerance and aging (the board's `.css` states the range it wants held),
+///   `.reg.soft_start_time <= 5ms` is held against the 6.667 ms (7.33 ms with the 10 % of
+///   the capacitor, which is in the range `.css` states). Not in the time: the capacitor's
+///   aging,
 ///   the leakage of the pin, the 0.79 V to 0.822 V of the reference (p.2, the figure that
 ///   the output settles at, not the one the datasheet gives for the end of the ramp), a
 ///   rise stretched by a current limit (large output capacitance or a load that draws while
@@ -609,7 +619,7 @@ module BuckStage {
 ///   would be silently not modelled, so the `dc` statement names it); one figure for each
 ///   mode, picked by a member or by the voltage of the SYNC/MODE net (the language has no way
 ///   for a relation to choose); adding the stage's feedback divider here (it is a load on the
-///   output, about 350 uA at 3.3 V in a test board, and `BuckStage` keeps it apart as
+///   output, about 350 uA at 3.3 V in a test board, and `Buck` keeps it apart as
 ///   `.divider_current`). The DC analysis solves the output side, so its input current for an
 ///   unloaded stage is larger than this relation's, and a current that the balance and the
 ///   analysis cannot share is an error naming both ranges (ADR 0076, amendment 15): a std
@@ -620,7 +630,8 @@ module BuckStage {
 ///   with no figure over temperature are accepted as built (the owner, 2026-11-11).
 /// - `BIAS` takes at most 25 V (Absolute Maximum Ratings, p.2); the datasheet ties it to the
 ///   output for outputs of 3.3 V to 25 V, and to ground when no supply is available (Pin
-///   Functions, p.10), so the board states `.bias_voltage` and joins the pin.
+///   Functions, p.10). The part cannot reach the output, which `Buck` makes, so its `support`
+///   section ties BIAS to ground and `.bias_voltage` is 0 V.
 /// - The other pins that the Absolute Maximum Ratings (p.2) give a limit for are each a `Logic`
 ///   named `<pin>_limit`, whose `.line` is joined to the pin inside the part (it has no pad of
 ///   its own) and has the limit as its `.abs_max`. The solver compares that with the
@@ -639,7 +650,7 @@ module BuckStage {
 ///   stage's divider, which the solver reads as the hull of the two resistors (from ground to
 ///   the output) when the DC analysis does not solve the output side, so a limit would refuse
 ///   every output above 4 V, a 5 V stage included. The divider holds the pin at
-///   `.buck.vref`, under 0.83 V, by its own relation. Not taken: a voltage the board states,
+///   `.vref`, under 0.83 V, by its own relation. Not taken: a voltage the board states,
 ///   like `.bias_voltage` (a board that forgets it is not judged, the false pass of issue
 ///   #290); changing the pins into `Logic` lines (`.u.sync_mode.line ~ ...`), which breaks
 ///   every board that wires the part, for a limit the join inside the part states with no
@@ -660,20 +671,27 @@ module BuckStage {
 /// 14 EN/UV, 15 RT, 16 TR/SS, 17 SYNC/MODE, 18 GND, 19 PG, 20 FB, 21 and 22 the exposed pads,
 /// which are SW. VIN1 and VIN2 are one input and the three grounds one ground, which the
 /// part joins; the datasheet says the GND1 pins, and the GND2 pins, "must be tied together".
-/// The board must connect `BIAS`, `EN/UV`, `INTVCC`, `BST` and `RT`; `SYNC/MODE` may float
-/// (pulse-skipping mode, p.11), as may `TR/SS` (p.10), and `PG` is open drain.
+/// `BIAS`, `EN/UV`, `INTVCC`, `BST` and `RT` must be connected; the `support` section does it
+/// (below). `SYNC/MODE` may float (pulse-skipping mode, p.11), as may `TR/SS` (p.10), and `PG`
+/// is open drain.
+///
+/// The `support` section is the datasheet's application circuit around the IC (Pin Functions,
+/// p.10; Typical Applications, p.1): 0.1 uF from BST to SW; 1 uF or more from INTVCC to
+/// ground; 1 uF at VIN1 and at VIN2; 10 nF of 10 % on TR/SS by default (the capacitor of every
+/// Typical Application, so `.css` is stated, see the soft-start item above); the resistor on RT,
+/// 47 kohm of 1 % by default (`?=`; 0.89 MHz by Equation 3, a value the standard resistor
+/// rows have); BIAS to ground; and EN/UV to the input,
+/// so the IC runs whenever the input is above its own undervoltage lockout. Each capacitor on
+/// the input is rated for the input's steady voltage. SYNC/MODE and PG are left open.
 ///
 /// The package has no footprint in KiCad's libraries (the 4-pad `UDC-QFN-20` of KiCad is
 /// the LT3033's, with another land pattern), so `std/kicad.toml` maps `Lt8641` in `UDC20(18)`
 /// to netsmith's own footprint and symbol (`std/libs/`, ADR 0087). The footprint's pads are
 /// the datasheet's recommended solder pad pitch and dimensions (p.24; pad 21 and 22 as the
 /// pin configuration, p.2, and the bottom view, p.24, have them).
-part Lt8641 {
-    .designator &= "U"
-
-    /// VIN1 (pad 4) and VIN2 (pad 13), which are one input, and the grounds GND1 (pads 6, 7),
-    /// GND2 (pads 10, 11) and GND (pad 18).
-    .vin: Rail
+part Lt8641 provides BuckIc {
+    // `.vin` is VIN1 (pad 4) and VIN2 (pad 13), which are one input, and the grounds GND1
+    // (pads 6, 7), GND2 (pads 10, 11) and GND (pad 18).
     .vin.voltage >= 3V
     .vin.voltage <= 65V
 
@@ -686,7 +704,7 @@ part Lt8641 {
     /// The absolute maximum BIAS (p.2): 25 V.
     .bias_abs_max: Voltage
     .bias_abs_max &= 25V
-    /// The voltage the board puts on BIAS: the output's, or ground's.
+    /// The voltage on BIAS: ground's, as the `support` section ties it.
     .bias_voltage: Voltage
     .bias_voltage <= .bias_abs_max
 
@@ -711,29 +729,23 @@ part Lt8641 {
     .sync_mode_limit.line ~ .sync_mode
     .sync_mode_limit.line.abs_max &= 6V
 
-    .buck: Buck {
-        .vref &= 0.79V..0.822V
-        .min_input_voltage &= 3V
-        .max_input_voltage &= 65V
-        .max_output_current &= 3.5A
-        .efficiency &= 0.70..0.95
-        .max_inductor_dcr &= 0.04ohm
-        .min_input_capacitance &= 2.2uF
-        .min_output_capacitance ?= 47uF
-    }
-    .buck.sw.neg ~ .vin.neg
-    .buck.fsw == .fsw
-    .buck.soft_start_time == .css * 0.8V / .tr_ss_current
-    .buck.min_inductance == (2 * .buck.sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency) + .quiescent_current
-    dc switching_regulator .vin .buck.sw .buck.efficiency .quiescent_current
+    .vref &= 0.79V..0.822V
+    .min_input_voltage &= 3V
+    .max_input_voltage &= 65V
+    .max_output_current &= 3.5A
+    .efficiency &= 0.70..0.95
+    .max_inductor_dcr &= 0.04ohm
+    .min_input_capacitance &= 2.2uF
+    .min_output_capacitance ?= 47uF
+    .soft_start_time == .css * 0.8V / .tr_ss_current
+    .min_inductance == (2 * .sw.voltage - .vin.voltage) / (2.5 * .fsw * 1A)
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency) + .quiescent_current
+    dc switching_regulator .vin .sw .efficiency .quiescent_current
 
-    /// The capacitor on TR/SS, which the board states (`.u.css &= 10nF +/- 10%`) when it
-    /// needs the start-up time: the output ramps as the pin does, so `.buck.soft_start_time ==
-    /// .css * 0.8V / .tr_ss_current` (Output Voltage Tracking and Soft-Start, p.19; see the
-    /// doc comment of the part for the figures). Optional (ADR 0074): a board that states no
-    /// capacitor has no time, as before, and the relation is skipped.
-    .css: Capacitance optional
+    /// The capacitor on TR/SS, the `support` section's `.soft_start`: the output ramps as the
+    /// pin does, so `.soft_start_time == .css * 0.8V / .tr_ss_current` (Output Voltage Tracking
+    /// and Soft-Start, p.19; see the doc comment of the part for the figures).
+    .css: Capacitance
     /// The current the TR/SS pin is pulled up with: 1.2 uA to 2.6 uA, 1.9 uA typical
     /// (Electrical Characteristics, p.3, TR/SS Source Current). A range, so the time of the
     /// ramp is one: the smallest current gives the longest time.
@@ -761,7 +773,6 @@ part Lt8641 {
     /// Frequency, p.3).
     .fsw_tolerance: Number
     .fsw_tolerance &= 0.93..1.09
-    .fsw: Frequency
     .fsw == .fsw_nominal * .fsw_tolerance
 
     /// The bottom and top switch drops at maximum load, "~0.15 V" and "~0.3 V" (p.16), and the
@@ -776,8 +787,8 @@ part Lt8641 {
     .t_off_min &= 110ns
     // Equation 4 (p.16): the highest frequency that holds at the highest input; Equation 5
     // (p.16): the lowest input that holds the frequency.
-    .fsw <= (.buck.sw.voltage + .vsw_bottom) / (.t_on_min * (.vin.voltage - .vsw_top + .vsw_bottom))
-    .vin.voltage >= (.buck.sw.voltage + .vsw_bottom) / (1 - .fsw * .t_off_min) - .vsw_bottom + .vsw_top
+    .fsw <= (.sw.voltage + .vsw_bottom) / (.t_on_min * (.vin.voltage - .vsw_top + .vsw_bottom))
+    .vin.voltage >= (.sw.voltage + .vsw_bottom) / (1 - .fsw * .t_off_min) - .vsw_bottom + .vsw_top
 
     /// The quiescent current over temperature, in Burst Mode: EN/UV = 2 V, not switching,
     /// VSYNC = 0 V (Electrical Characteristics, p.2).
@@ -806,7 +817,7 @@ part Lt8641 {
         .bst           passive  "BST"        "3"  required
         .vin.pos       power    "VIN1"       "4"
         .gnd1          power    "GND1"       "6" "7"
-        .buck.sw.pos   power    "SW"         "8" "9" "21" "22"
+        .sw.pos   power    "SW"         "8" "9" "21" "22"
         .gnd2          power    "GND2"       "10" "11"
         .vin2          power    "VIN2"       "13"
         .en_uv         input    "EN/UV"      "14"
@@ -815,10 +826,34 @@ part Lt8641 {
         .sync_mode     input    "SYNC/MODE"  "17" optional
         .vin.neg       power    "GND"        "18"
         .pg            output   "PG"         "19"
-        .buck.fb       input    "FB"         "20"
+        .fb       input    "FB"         "20"
     }
 
     .mpn: String
     .package: Package
-    catalog lt8641 by .mpn { .mpn, .package }
+    catalog lt8641 { .mpn, .package }
+
+    // The datasheet's application circuit (see the doc comment above).
+    support {
+        .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+        .bst ~> .boost ~> .sw.pos
+        .intvcc_cap: Capacitor { .capacitance &= 1uF +/- 20% }
+        .intvcc ~> .intvcc_cap ~> .vin.neg
+        .vin1_cap: Capacitor { .capacitance &= 1uF +/- 20% }
+        .vin.pos ~> .vin1_cap ~> .gnd1
+        .vin1_cap.max_voltage >= .vin.voltage
+        .vin2_cap: Capacitor { .capacitance &= 1uF +/- 20% }
+        .vin2 ~> .vin2_cap ~> .gnd2
+        .vin2_cap.max_voltage >= .vin.voltage
+        .soft_start: Capacitor { .capacitance ?= 10nF +/- 10% }
+        .tr_ss ~> .soft_start ~> .vin.neg
+        .css == .soft_start.capacitance
+        .rt_resistor: Resistor
+        .rt_resistor.resistance ?= 47kohm +/- 1%
+        .rt ~> .rt_resistor ~> .vin.neg
+        .rt_resistance == .rt_resistor.resistance
+        .bias ~ .vin.neg
+        .bias_voltage &= 0V
+        .en_uv ~ .vin.pos
+    }
 }

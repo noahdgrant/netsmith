@@ -6,7 +6,7 @@ use netsmith_core::PowerFlow;
 use netsmith_kicad::sexp::Sexp;
 use netsmith_testkit::TempDir;
 
-use crate::lt8641::{built, libraries};
+use crate::lt8641::{all_sheets, built, ic_sheet, libraries};
 
 #[test]
 fn a_board_with_an_ic_writes_its_schematic_with_no_symbol_library_of_the_ic() {
@@ -23,32 +23,32 @@ fn a_board_with_an_ic_writes_its_schematic_with_no_symbol_library_of_the_ic() {
         .iter()
         .find(|p| p.kind == "Lt8641")
         .expect("the stage has the IC");
-    // The converter's output (`buck.sw.pos`, whose first pad is 8) gives power: the name says so.
+    // The converter's output (`sw.pos`, whose first pad is 8) gives power: the name says so.
     let name = "netsmith:Lt8641_UDC20_18_out8";
+    let sheet = ic_sheet(&first);
     assert!(
-        first.schematic.contains(&format!("(lib_id \"{name}\")")),
+        sheet.contains(&format!("(lib_id \"{name}\")")),
         "no instance of {name}"
     );
-    assert!(first.schematic.contains(&format!("(symbol \"{name}\"")));
+    assert!(sheet.contains(&format!("(symbol \"{name}\"")));
     // A pin for each pad of the pin table, named as the datasheet does, drawn once.
     for pin in &ic.pins {
         assert!(
-            first
-                .schematic
-                .contains(&format!("(name \"{}\"", pin.datasheet)),
+            sheet.contains(&format!("(name \"{}\"", pin.datasheet)),
             "no pin {}",
             pin.datasheet
         );
         for pad in &pin.pads {
             assert!(
-                first.schematic.contains(&format!("(number \"{pad}\"")),
+                sheet.contains(&format!("(number \"{pad}\"")),
                 "no pad {pad}"
             );
         }
     }
 
     // The same bytes on a second run.
-    assert_eq!(first.schematic, built(&libraries).schematic);
+    let second = built(&libraries);
+    assert_eq!(all_sheets(&first), all_sheets(&second));
 
     // The library the schematic's symbol comes from is written beside it, and listed.
     let out = TempDir::new("ic-symbols-export");
@@ -68,7 +68,11 @@ fn a_part_that_names_a_kicad_symbol_is_still_drawn_with_it() {
     let dir = TempDir::new("ic-symbols-named");
     let libraries = libraries(&dir);
     let built = built(&libraries);
-    assert!(built.schematic.contains("(lib_id \"Device:C\")"));
+    assert!(
+        all_sheets(&built)
+            .iter()
+            .any(|s| s.contains("(lib_id \"Device:C\")"))
+    );
 }
 
 /// The electrical type each pad of the embedded symbol `lib_id` has, by pad number.
@@ -108,7 +112,7 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
         .unwrap();
     let flow = |name: &str| ic.pins.iter().find(|p| p.name == name).unwrap().power_flow;
     // The load draws from the output, so the rail of the switch node has a negative current.
-    assert_eq!(flow("buck.sw.pos"), Some(PowerFlow::Gives));
+    assert_eq!(flow("sw.pos"), Some(PowerFlow::Gives));
     assert_eq!(flow("vin.pos"), Some(PowerFlow::Takes));
     // `vin2` is joined to `vin.pos` inside the part, and the grounds are no rail's `pos`.
     assert_eq!(flow("vin2"), Some(PowerFlow::Takes));
@@ -116,7 +120,7 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
 
     // The schematic types the switch pins `power_out` (pad 8 and the three stacked on its
     // point, which are `passive` as for any pin) and the rest of the power pins `power_in`.
-    let types = pin_types(&built.schematic, "netsmith:Lt8641_UDC20_18_out8");
+    let types = pin_types(ic_sheet(&built), "netsmith:Lt8641_UDC20_18_out8");
     assert_eq!(types["8"], "power_out");
     for pad in ["9", "21", "22"] {
         assert_eq!(types[pad], "passive", "pad {pad}");
@@ -128,8 +132,9 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
 
     // The net of the switch has a source on the board, so it needs no `PWR_FLAG`: the flags
     // are on the nets that take power and have no output (the input and the ground).
-    let flagged: std::collections::BTreeSet<String> = {
-        let root = Sexp::parse(&built.schematic).unwrap();
+    let mut flagged: std::collections::BTreeSet<String> = Default::default();
+    for sheet in all_sheets(&built) {
+        let root = Sexp::parse(sheet).unwrap();
         let at = |n: &Sexp| {
             let a = n.find("at").unwrap().args();
             (
@@ -137,7 +142,8 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
                 a[1].text().unwrap().to_string(),
             )
         };
-        root.find_all("symbol")
+        let names: Vec<String> = root
+            .find_all("symbol")
             .filter(|s| {
                 s.find("lib_id").is_some_and(|l| {
                     l.args()[0]
@@ -149,8 +155,9 @@ fn the_converters_switch_pin_gives_power_and_the_other_power_pins_take_it() {
                 let label = root.find_all("label").find(|l| at(l) == at(s)).unwrap();
                 label.args()[0].text().unwrap().to_string()
             })
-            .collect()
-    };
+            .collect();
+        flagged.extend(names);
+    }
     let sw_net = built
         .design
         .nets

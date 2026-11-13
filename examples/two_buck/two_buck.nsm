@@ -5,86 +5,79 @@
 //! sixty parts that `docs/solver-timings.md` times (stage by stage, with `NETSMITH_TIMINGS=1`).
 //!
 //! The buck IC, `BenchBuck`, is invented: the standard library's one buck IC (`Lt8641`) has no
-//! catalog row and no standard inductor has the DC resistance it asks for, so no stage around it
+//! catalog row and no standard inductor has the DC resistance it asks for, so no `Buck` around it
 //! can be solved with the standard catalogs alone. The invented IC states the same kind of
-//! numbers (`Buck`, one relation from its output to its input current, and its element at DC) and
-//! asks for nothing the standard rows cannot give. Every other part is a standard generic and is
-//! picked from the standard catalogs. Nothing here is a design to build.
+//! numbers (it provides `BuckIc`, writes one relation from its output to its input current and
+//! its element at DC, and carries its bootstrap capacitor and enable divider in its `support`
+//! section) and asks for nothing the standard rows cannot give. Every other part is a standard
+//! generic and is picked from the standard catalogs. Nothing here is a design to build.
 
-import std::bus::PullUp
 import std::parts::connector::Header1x2
 import std::parts::diode::{Schottky, Tvs}
 import std::parts::mechanical::TestPoint
 import std::parts::passive::{Capacitor, Led, Resistor}
-import std::parts::regulator::{BuckStage, Buck, LinearRegulator}
+import std::parts::regulator::{Buck, BuckIc, LinearRegulator}
 import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
 
 /// An invented 3 A buck converter IC for 4.5 V to 60 V in an SOIC-8: boot, input, enable,
-/// power-good, feedback, two grounds and the switching node. Not a real part.
-part BenchBuck {
-    .vin: Rail
-    .buck: Buck {
-        .vref &= 0.8V +/- 1%
-        .fsw &= 1.2MHz +/- 15%
-        .min_input_voltage &= 4.5V
-        .max_input_voltage &= 60V
-        .max_output_current &= 3A
-        .efficiency &= 0.85..0.95
-        .min_inductance &= 1.5uH
-        .min_inductor_saturation &= 3A
-        .max_inductor_dcr &= 0.1ohm
-        .min_input_capacitance &= 2uF
-        .min_output_capacitance &= 10uF
-    }
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
-    dc switching_regulator .vin .buck.sw .buck.efficiency
+/// power-good, feedback, two grounds and the switching node. Not a real part. Its support
+/// section is its own application circuit: the bootstrap capacitor, and the enable divider
+/// that starts it above about 7 V.
+part BenchBuck provides BuckIc {
+    .vref &= 0.8V +/- 1%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 60V
+    .max_output_current &= 3A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_inductor_saturation &= 3A
+    .max_inductor_dcr &= 0.1ohm
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
 
     pins {
-        //  pin          kind     name   pads
-        .bst           passive  "BST"  "1" required
-        .vin.pos       power    "VIN"  "2"
-        .en            input    "EN"   "3"
-        .pg            output   "PG"   "4"
-        .buck.fb       input    "FB"   "5"
-        .vin.neg       power    "GND"  "6" "7"
-        .buck.sw.pos   power    "SW"   "8"
+        //  pin     kind     name   pads
+        .bst      passive  "BST"  "1" required
+        .vin.pos  power    "VIN"  "2"
+        .en       input    "EN"   "3"
+        .pg       output   "PG"   "4"
+        .fb       input    "FB"   "5"
+        .vin.neg  power    "GND"  "6" "7"
+        .sw.pos   power    "SW"   "8"
     }
 
     .package: Package
+    .package &= "SOIC-8"
+
+    support {
+        .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+        .bst ~> .boost ~> .sw.pos
+        .enable_top: Resistor { .resistance &= 100kohm +/- 1% }
+        .enable_bottom: Resistor { .resistance &= 33kohm +/- 1% }
+        .vin.pos ~> .enable_top ~> .en
+        .en ~> .enable_bottom ~> .vin.neg
+    }
 }
 
-/// One buck stage: the IC, its stage (inductor, input and output capacitor banks and the
-/// feedback divider), the bootstrap capacitor, a power-good pull-up and the power light.
+/// One buck stage: the IC with its own circuit (inductor, input and output capacitor banks,
+/// the feedback divider, the bootstrap capacitor and the enable divider) and the power light.
 module BuckSupply {
     .vin: Rail
     .vout: Rail
 
-    .ic: BenchBuck { .package &= "SOIC-8" }
-    .stage: BuckStage
-    .boost: Capacitor { .capacitance &= 100nF +/- 20% }
-    .pg_pullup: PullUp { .resistance &= 100kohm +/- 5% }
+    .stage: Buck<BenchBuck>
     .light_resistor: Resistor { .resistance &= 1kohm +/- 5% }
     .light: Led { .color &= "RED"; .forward_voltage &= 1.8V..2.5V }
     .decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
     .bulk: Capacitor { .capacitance &= 22uF +/- 20% }
     .input_decoupling: Capacitor { .capacitance &= 100nF +/- 20% }
-    /// The enable divider: the stage starts above about 7 V.
-    .enable_top: Resistor { .resistance &= 100kohm +/- 1% }
-    .enable_bottom: Resistor { .resistance &= 33kohm +/- 1% }
-    .pg_test: TestPoint
 
     .vin ~ .stage.vin
-    .vin ~ .ic.vin
     .stage.vout ~ .vout
-    .stage.buck ~ .ic.buck
-    .vin.pos ~> .enable_top ~> .ic.en
-    .ic.en ~> .enable_bottom ~> .vin.neg
-    .pg_test.p1 ~ .ic.pg
-    .ic.bst ~> .boost ~> .ic.buck.sw.pos
-    .pg_pullup.supply ~ .vout
-    .pg_pullup.line ~ .ic.pg
     .light.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance
     .vout.pos ~> .light_resistor ~> .light ~> .vout.neg
     .vout.pos ~> .decoupling ~> .vout.neg

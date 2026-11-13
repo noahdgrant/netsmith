@@ -23,7 +23,16 @@ impl File {
                 out.push('\n');
             }
             write_docs(&mut out, &def.docs, "///", 0);
-            let _ = write!(out, "{} {} ", def.kind.keyword(), def.name.to_source());
+            let _ = write!(out, "{} {}", def.kind.keyword(), def.name.to_source());
+            if !def.params.is_empty() {
+                let params: Vec<String> = def
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name.to_source(), p.bound.to_source()))
+                    .collect();
+                let _ = write!(out, "<{}>", params.join(", "));
+            }
+            out.push(' ');
             if !def.provides.is_empty() {
                 let _ = write!(out, "provides {} ", join(&def.provides, ", "));
             }
@@ -64,6 +73,18 @@ impl Ident {
         } else {
             self.name.clone()
         }
+    }
+}
+
+impl TypePath {
+    /// A type as written: `Rail`, `Buck<Lt8641>`. Not for a pin request (`.u.GPIO`).
+    pub fn to_source(&self) -> String {
+        let mut out = join(&self.segments, "::");
+        if !self.args.is_empty() {
+            let args: Vec<String> = self.args.iter().map(TypePath::to_source).collect();
+            let _ = write!(out, "<{}>", args.join(", "));
+        }
+        out
     }
 }
 
@@ -247,7 +268,7 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 let ty = if d.ty.of_member {
                     format!(".{}", join(&d.ty.segments, "."))
                 } else {
-                    join(&d.ty.segments, "::")
+                    d.ty.to_source()
                 };
                 let _ = write!(out, "{}: {ty}", d.name.to_source());
                 if d.optional.is_some() {
@@ -387,6 +408,10 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             }
             Item::Case(c) => {
                 out.push_str("case ");
+                write_block(out, &[], &c.items, depth + 1);
+            }
+            Item::Support(c) => {
+                out.push_str("support ");
                 write_block(out, &[], &c.items, depth + 1);
             }
             Item::Polygon(p) => {

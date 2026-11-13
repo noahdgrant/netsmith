@@ -16,6 +16,7 @@ mod lower;
 mod mate;
 mod model;
 mod optional;
+mod params;
 mod pinedit;
 mod pinfile;
 mod pinout;
@@ -24,6 +25,7 @@ mod polygon;
 mod providers;
 mod row;
 mod shared;
+mod support;
 mod unused;
 
 pub use assign::{PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};

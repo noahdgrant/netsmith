@@ -8,32 +8,28 @@ use netsmith_check::{Domain, Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
 const BOARD: &str = r#"import std::parts::passive::{Capacitor, Resistor, FerriteBead}
-import std::parts::regulator::{Buck, BuckStage}
+import std::parts::regulator::{Buck, BuckIc}
 import std::sources::Rail
 
-part Zbk2 {
-    .vin: Rail
+part Zbk2 provides BuckIc {
     .vin.voltage >= 3V
     .vin.voltage <= 65V
-    .buck: Buck {
-        .vref &= 0.8V +/- 1.5%
-        .min_input_voltage &= 3V
-        .max_input_voltage &= 65V
-        .max_output_current &= 3A
-        .efficiency &= 0.85..0.95
-        .min_input_capacitance &= 2.2uF
-        .min_output_capacitance &= 10uF
-        .fsw &= 1MHz +/- 10%
-        .min_inductance &= 2uH
-    }
-    .buck.sw.neg ~ .vin.neg
-    .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)
-    dc switching_regulator .vin .buck.sw .buck.efficiency
+    .vref &= 0.8V +/- 1.5%
+    .min_input_voltage &= 3V
+    .max_input_voltage &= 65V
+    .max_output_current &= 3A
+    .efficiency &= 0.85..0.95
+    .min_input_capacitance &= 2.2uF
+    .min_output_capacitance &= 10uF
+    .fsw &= 1MHz +/- 10%
+    .min_inductance &= 2uH
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
     pins {
         .vin.pos       power   "VIN"  "1"
         .vin.neg       power   "GND"  "2"
-        .buck.sw.pos   power   "SW"   "3"
-        .buck.fb       input   "FB"   "4"
+        .sw.pos        power   "SW"   "3"
+        .fb            input   "FB"   "4"
     }
     .mpn: String
     .package: Package
@@ -43,12 +39,9 @@ part Zbk2 {
 module Zbk2Buck {
     .vin: Rail
     .vout: Rail
-    .controller: Zbk2
-    .stage: BuckStage
-    .controller.vin ~ .vin
+    .stage: Buck<Zbk2>
     .stage.vin ~ .vin
     .stage.vout ~ .vout
-    .stage.buck ~ .controller.buck
 }
 
 board Converter {

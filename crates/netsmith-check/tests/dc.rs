@@ -311,7 +311,9 @@ part P {
         .b passive \"B\" \"2\"
     }
     .resistance: Resistance
-    .q: Q
+    support {
+        .q: Q
+    }
     dc resistor .a .q.x .resistance
 }
 board B {
@@ -456,7 +458,7 @@ fn a_switching_regulator_may_name_its_quiescent_current_after_the_efficiency() {
         "dc switching_regulator .vin .vout .eff .iq .iq",
     )));
     assert!(
-        m.contains("takes 2 pins and then 1 value and, if the part has one, the quiescent current, as in `dc switching_regulator .vin .buck.sw .buck.efficiency .quiescent_current`"),
+        m.contains("takes 2 pins and then 1 value and, if the part has one, the quiescent current, as in `dc switching_regulator .vin .sw .efficiency .quiescent_current`"),
         "{m}"
     );
 }
@@ -597,15 +599,15 @@ fn a_source_operand_must_be_a_rail_of_the_part() {
 
 #[test]
 fn a_rail_inside_an_interface_of_the_part_is_a_rail_of_the_part() {
-    // The buck ICs state the output as the `sw` rail of their `Buck` interface.
-    let src = "import std::parts::regulator::Buck\nimport std::sources::Rail\npart C {\n    .vin: Rail\n    .buck: Buck\n    dc switching_regulator .vin .buck.sw .buck.efficiency\n}\nboard B {\n    .c: C\n}\n";
+    // A part may name the rail of one of its interfaces, through it.
+    let src = "import std::sources::Rail\ninterface Out {\n    .sw: Rail\n    .efficiency: Number\n}\npart C {\n    .vin: Rail\n    .out: Out\n    dc switching_regulator .vin .out.sw .out.efficiency\n}\nboard B {\n    .c: C\n}\n";
     let c = run(src);
     assert!(c.is_ok(), "{}", c.render());
     assert_eq!(
         element(&c, "c"),
         Some((
             DcKind::SwitchingRegulator,
-            names(&["vin", "buck.sw"]),
+            names(&["vin", "out.sw"]),
             names(&["efficiency"])
         ))
     );

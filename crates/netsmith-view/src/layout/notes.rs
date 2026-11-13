@@ -89,7 +89,7 @@
 //! **Choices, accepted as built by the owner, 2026-11-11.** The status of ADR 0060 was proposed:
 //! the owner decided on 2026-11-05 that `///` doc comments and `==` relations may be drawn as
 //! notes, and the rules for what is drawn, where and how many were left to review. A relation of
-//! a library module (a `BuckStage` feedback relation) is not drawn, and neither is a `>=` or `<=`
+//! a library module (a `Buck` feedback relation) is not drawn, and neither is a `>=` or `<=`
 //! relation, which states a claim to verify and not what the circuit is. A note lights no net
 //! (above). A module's doc comment does not say which module it is when a small board draws
 //! modules as one sheet: a heading with the module's path on the note of a module that is not on a

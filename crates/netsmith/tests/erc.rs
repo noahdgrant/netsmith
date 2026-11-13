@@ -141,7 +141,7 @@ fn every_example_passes_erc_with_kicads_own_symbols() {
     }
 }
 
-/// `examples/two_buck`, a project of 59 parts with an invented IC drawn from its pin table:
+/// `examples/two_buck`, a project of 55 parts with an invented IC drawn from its pin table:
 /// KiCad's ERC on its schematic (skipped where `kicad-cli` is not installed). It is the
 /// regulator-heavy board that `docs/solver-timings.md` times.
 #[test]

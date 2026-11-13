@@ -39,6 +39,14 @@ pub struct Case {
     pub span: Span,
 }
 
+/// `support { .boost: Capacitor { ... }  .bst ~> .boost ~> .sw.pos }`: the circuit that a
+/// part's datasheet asks for around it, which is placed wherever the part is (ADR 0115).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Support {
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ident {
     pub name: String,
@@ -68,10 +76,21 @@ pub struct Definition {
     /// The generics a `part` or a `module` provides (`part X provides A, B`, ADR 0068), in the
     /// order written. Empty for every other kind.
     pub provides: Vec<Ident>,
+    /// The type parameters of a `module` (`module Buck<Ic: BuckIc>`, ADR 0115), in the order
+    /// written. Empty for every other kind, and for a module that takes none.
+    pub params: Vec<TypeParam>,
     pub items: Vec<Item>,
     /// The variants of an `enum` (ADR 0054), in the order written. Empty for every other kind.
     pub variants: Vec<Variant>,
     pub span: Span,
+}
+
+/// `Ic: BuckIc` in `module Buck<Ic: BuckIc>`: a type parameter of a module, a part that
+/// provides the generic after the colon, its bound (ADR 0115).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam {
+    pub name: Ident,
+    pub bound: Ident,
 }
 
 /// One variant of an `enum`: `Hand`, with the `///` lines above it.
@@ -154,6 +173,9 @@ pub enum Item {
     Lines(Lines),
     /// A `case { ... }` section; only a physical file may hold one.
     Case(Case),
+    /// A `support { ... }` section: the parts a part's datasheet application circuit puts
+    /// around it and their connections to its pins; only a part may hold one (ADR 0115).
+    Support(Support),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
     /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical
@@ -504,6 +526,9 @@ pub struct Decl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypePath {
     pub segments: Vec<Ident>,
+    /// `<Lt8641>` after a module's name: the parts that stand for its type parameters (ADR
+    /// 0115), in the order of the parameters. Empty for a type written without them.
+    pub args: Vec<TypePath>,
     /// Written with a leading dot and joined by dots: a request for a pin of the part that
     /// the path names, not the name of a type.
     pub of_member: bool,

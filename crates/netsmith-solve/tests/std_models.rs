@@ -116,24 +116,34 @@ fn an_output_below_the_reference_is_refused_with_the_numbers() {
 
 // ---- the buck converter building blocks ---------------------------------------------
 
-/// The invented IC of the guide. `fsw` is `FSW`, `IMAX` its largest output current and
-/// `CIN`/`COUT` the capacitance it asks for.
+/// The invented IC of the guide, a part that provides `BuckIc` (ADR 0115). `fsw` is `FSW`,
+/// `IMAX` its largest output current and `CIN`/`COUT` the capacitance it asks for. Its enable
+/// is tied to its input in its own `support` section, which the board cannot reach.
 fn ic(fsw: &str, imax: &str, cout: &str) -> String {
     format!(
-        "import std::parts::regulator::Buck\nimport std::sources::Rail\n\n\
-         part Zbk2 {{\n    .vin: Rail\n    .buck: Buck {{\n        .vref &= 0.8V +/- 1.5%\n        \
-         {fsw}\n        .min_input_voltage &= 4.5V\n        .max_input_voltage &= 6V\n        \
-         .max_output_current &= {imax}\n        .efficiency &= 0.85..0.95\n        \
-         .min_inductance &= 1.5uH\n        .min_input_capacitance &= 2uF\n        \
-         .min_output_capacitance &= {cout}\n    }}\n    .buck.sw.neg ~ .vin.neg\n    \
-         .vin.current == -.buck.sw.current * .buck.sw.voltage / (.vin.voltage * .buck.efficiency)\n    \
+        "import std::parts::regulator::BuckIc\nimport std::sources::Rail\n\n\
+         part Zbk2 provides BuckIc {{\n    .vref &= 0.8V +/- 1.5%\n    \
+         {fsw}\n    .min_input_voltage &= 4.5V\n    .max_input_voltage &= 6V\n    \
+         .max_output_current &= {imax}\n    .efficiency &= 0.85..0.95\n    \
+         .min_inductance &= 1.5uH\n    .min_input_capacitance &= 2uF\n    \
+         .min_output_capacitance &= {cout}\n    \
+         .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)\n    \
          pins {{\n        .vin.pos power \"VIN\" \"1\"\n        .vin.neg power \"GND\" \"2\"\n        \
-         .buck.sw.pos power \"SW\" \"3\"\n        .buck.fb input \"FB\" \"4\"\n        \
-         .en input \"EN\" \"5\"\n    }}\n}}\n"
+         .sw.pos power \"SW\" \"3\"\n        .fb input \"FB\" \"4\"\n        \
+         .en input \"EN\" \"5\"\n    }}\n    support {{\n        .en ~ .vin.pos\n    }}\n}}\n"
     )
 }
 
-const STAGE_IMPORTS: &str = "import std::parts::regulator::BuckStage\n";
+/// `ic` with `import std::parts::passive::Resistor`, for an IC whose `support` section holds a
+/// resistor.
+fn with_resistor(ic: &str) -> String {
+    ic.replace(
+        "import std::parts::regulator::BuckIc\n",
+        "import std::parts::regulator::BuckIc\nimport std::parts::passive::Resistor\n",
+    )
+}
+
+const STAGE_IMPORTS: &str = "import std::parts::regulator::Buck\n";
 
 /// The board of the guide: 5 V in, 1.8 V +/- 3% out, a load of `load`, and `extra`.
 fn converter(ic: &str, load: &str, extra: &str) -> String {
@@ -141,9 +151,8 @@ fn converter(ic: &str, load: &str, extra: &str) -> String {
         "{ic}\n{STAGE_IMPORTS}\nboard Converter {{\n    .input: Rail {{\n        .voltage &= 5V +/- 5%\n        \
          .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n    .output: Rail {{\n        \
          .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n        .current &= {load}\n    }}\n    \
-         .u: Zbk2\n    .stage: BuckStage {{ .vout.voltage &= 1.8V +/- 3% }}\n    .input ~ .stage.vin\n    \
-         .input ~ .u.vin\n    .stage.vout ~ .output\n    .stage.buck ~ .u.buck\n    \
-         .u.en ~ .input.pos\n{extra}}}\n"
+         .stage: Buck<Zbk2> {{ .vout.voltage &= 1.8V +/- 3% }}\n    .input ~ .stage.vin\n    \
+         .stage.vout ~ .output\n{extra}}}\n"
     )
 }
 
@@ -182,20 +191,24 @@ fn the_buck_stage_picks_an_inductor_that_carries_the_load_and_half_the_ripple() 
 fn the_input_current_follows_from_the_efficiency_and_reaches_the_supply() {
     let s = run(&converter(&guide_ic(), "0mA..1A", ""));
     // 1 A at 1.746 V.. 1.854 V from 4.75 V..5.25 V at 85%..95% efficiency.
-    let drawn = range(&s, "u.vin.current");
+    let drawn = range(&s, "stage.ic.vin.current");
     assert!(
         drawn.lo() <= 1e-9 && (drawn.hi() - 1.854 / (4.75 * 0.85)).abs() < 1e-3,
         "{drawn}"
     );
-    // The supply gives what the IC draws: the stage's own input draws nothing.
+    // The supply gives what the IC draws.
     let given = range(&s, "input.current");
     assert!(
         (given.lo() + drawn.hi()).abs() < 1e-9 && given.hi() <= 1e-9,
         "{given}"
     );
+    // The stage's input is the IC's (`.ic.vin ~ .vin`, ADR 0115), so it draws what the IC
+    // draws. Before, the IC was a part beside the stage on the input net and the stage's own
+    // input drew nothing.
+    let stage = range(&s, "stage.vin.current");
     assert!(
-        range(&s, "stage.vin.current").hi().abs() < 1e-9,
-        "the stage draws no DC current"
+        (stage.lo() - drawn.lo()).abs() < 1e-9 && (stage.hi() - drawn.hi()).abs() < 1e-9,
+        "the stage's input draws {stage}, the IC's {drawn}"
     );
 }
 
@@ -215,7 +228,7 @@ fn the_capacitors_have_the_effective_capacitance_the_ic_asks_for() {
     let m = messages(&s);
     assert!(
         m.iter().any(|m| m.contains("no `capacitor` candidate satisfies `stage.output_cap`")
-            && m.contains("(stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.buck.min_output_capacitance")
+            && m.contains("(stage.output_cap.count * stage.output_cap.effective_capacitance) must always be at least stage.ic.min_output_capacitance")
             && m.contains("is not always above 1mF")),
         "{m:#?}"
     );
@@ -316,13 +329,13 @@ fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_nu
     assert_eq!(m.len(), 2, "{m:#?}");
     assert!(
         m.iter().any(|m| m
-            .contains("-stage.vout.current must always be at most stage.buck.max_output_current")
+            .contains("-stage.vout.current must always be at most stage.ic.max_output_current")
             && m.contains("0A..3A is not always below 2A")),
         "{m:#?}"
     );
     assert!(
         m.iter().any(|m| m
-            .contains("-u.buck.sw.current must always be at most u.buck.max_output_current")
+            .contains("-stage.ic.sw.current must always be at most stage.ic.max_output_current")
             && m.contains("0A..3A is not always below 2A")),
         "{m:#?}"
     );
@@ -330,7 +343,7 @@ fn a_load_over_the_ics_current_or_an_input_over_its_range_is_refused_with_the_nu
     let m = messages(&run(&hot));
     assert!(
         m.iter().any(|m| m
-            .contains("stage.vin.voltage must always be at most stage.buck.max_input_voltage")
+            .contains("stage.vin.voltage must always be at most stage.ic.max_input_voltage")
             && m.contains("11.4V..12.6V is not always below 6V")),
         "{m:#?}"
     );
@@ -354,26 +367,26 @@ fn an_inductor_that_would_saturate_under_load_plus_half_the_ripple_is_not_picked
 
 #[test]
 fn a_frequency_that_a_resistor_sets_is_one_relation_the_ic_writes() {
-    // The IC has no fixed frequency: `rt_value` sets it, and the board states the resistor.
-    let rt_ic = ic("", "2A", "10uF")
+    // The IC has no fixed frequency: `rt_value` sets it, and the resistor on RT is in the IC's
+    // own `support` section (ADR 0115).
+    let rt_ic = with_resistor(&ic("", "2A", "10uF"))
         .replace(
-            "    .buck.sw.neg ~ .vin.neg\n",
-            "    .rt_value: Resistance\n    .buck.fsw == 24GHz * 1ohm / .rt_value\n    .buck.sw.neg ~ .vin.neg\n",
+            "    .vin.current ==",
+            "    .rt_value: Resistance\n    .fsw == 24GHz * 1ohm / .rt_value\n    .vin.current ==",
         )
         .replace(
             "        .en input \"EN\" \"5\"\n",
             "        .en input \"EN\" \"5\"\n        .rt passive \"RT\" \"6\"\n",
+        )
+        .replace(
+            "        .en ~ .vin.pos\n",
+            "        .en ~ .vin.pos\n        .rt_resistor: Resistor { .resistance &= 20kohm +/- 1% }\n        \
+             .rt ~> .rt_resistor ~> .vin.neg\n        .rt_value == .rt_resistor.resistance\n",
         );
-    let extra = "    .rt: Resistor { .resistance &= 20kohm +/- 1% }\n    .u.rt ~ .rt.a\n    \
-                 .rt.b ~ .input.neg\n    .u.rt_value == .rt.resistance\n";
-    let src = converter(&rt_ic, "0mA..1A", extra).replace(
-        "import std::parts::regulator::BuckStage\n",
-        "import std::parts::regulator::BuckStage\nimport std::parts::passive::Resistor\n",
-    );
-    let s = run(&src);
+    let s = run(&converter(&rt_ic, "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     // 24 GHz ohm / 20 kohm = 1.2 MHz, and the stage works its ripple out with that.
-    let f = range(&s, "u.buck.fsw");
+    let f = range(&s, "stage.ic.fsw");
     assert!(
         (f.lo() - 24e9 / 20.2e3).abs() < 1e3 && (f.hi() - 24e9 / 19.8e3).abs() < 1e3,
         "{f}"
@@ -546,16 +559,15 @@ fn a_module_that_wraps_the_stage_forwards_a_voltage_margin_to_it() {
     // A board cannot reach the stage's capacitors, so a wrapping module offers the margin and
     // states it for the stage: `.stage.voltage_margin &= .margin`.
     let src = format!(
-        "{}\nimport std::parts::regulator::BuckStage\n\nmodule Reg {{\n    .vin: Rail\n    \
-         .vout: Rail\n    .buck: Buck\n    .margin: Number\n    .stage: BuckStage\n    \
-         .vin ~ .stage.vin\n    .vout ~ .stage.vout\n    .buck ~ .stage.buck\n    \
+        "{}\nimport std::parts::regulator::Buck\n\nmodule Reg {{\n    .vin: Rail\n    \
+         .vout: Rail\n    .margin: Number\n    .stage: Buck<Zbk2>\n    \
+         .vin ~ .stage.vin\n    .vout ~ .stage.vout\n    \
          .stage.vout.voltage &= 1.8V +/- 3%\n    .stage.voltage_margin &= .margin\n}}\n\n\
          board Converter {{\n    .input: Rail {{\n        .voltage &= 5V +/- 5%\n        \
          .pos.net &= \"VIN\"\n        .neg.net &= \"GND\"\n    }}\n    .output: Rail {{\n        \
          .pos.net &= \"1V8\"\n        .neg.net &= \"GND\"\n        .current &= 0mA..1A\n    }}\n    \
-         .u: Zbk2\n    .reg: Reg {{ .margin &= 1.25 }}\n    .input ~ .reg.vin\n    \
-         .input ~ .u.vin\n    .reg.vout ~ .output\n    .reg.buck ~ .u.buck\n    \
-         .u.en ~ .input.pos\n}}\n",
+         .reg: Reg {{ .margin &= 1.25 }}\n    .input ~ .reg.vin\n    \
+         .reg.vout ~ .output\n}}\n",
         guide_ic()
     );
     let s = run(&src);
@@ -574,11 +586,11 @@ fn the_buck_stage_states_the_current_its_divider_draws() {
     assert!(i.lo() > 0.0 && i.hi() < 1e-3, "{i}");
 }
 
-/// The invented IC with `limits` added to its `buck` member.
+/// The invented IC with `limits` added to its statements.
 fn ic_with(limits: &str) -> String {
     guide_ic().replace(
-        "        .min_input_capacitance",
-        &format!("        {limits}\n        .min_input_capacitance"),
+        "    .min_input_capacitance",
+        &format!("    {limits}\n    .min_input_capacitance"),
     )
 }
 
@@ -589,7 +601,7 @@ fn an_ic_that_states_no_inductor_limits_checks_none() {
     let s = run(&converter(&guide_ic(), "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(label(&s, "stage.inductor"), "MHCD322512A-2R2M-A8S");
-    // The two limits are `optional` members of `Buck` (ADR 0074): the stage's relations over
+    // The two limits are `optional` members of `BuckIc` (ADR 0074): the stage's relations over
     // them are skipped, and the build does not list them as not evaluated.
     for limit in ["min_inductor_saturation", "max_inductor_dcr"] {
         let open: Vec<String> = not_evaluated(&s)
@@ -635,9 +647,9 @@ fn relations_over(s: &Solution, needle: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_limit_the_ic_states_reaches_the_stage_across_the_join_and_the_other_is_still_skipped() {
-    // The board joins `.stage.buck ~ .u.buck`, and the IC states one limit on its side: the
-    // stage's member is stated, its relation is kept and judged, and the other stays skipped.
+fn a_limit_the_ic_states_reaches_the_stage_and_the_other_is_still_skipped() {
+    // The IC is the stage's `.ic` and states one limit: the stage's relation over it is kept
+    // and judged, and the other stays skipped.
     let s = run(&converter(
         &ic_with(".min_inductor_saturation &= 3A"),
         "0mA..1A",
@@ -646,7 +658,7 @@ fn a_limit_the_ic_states_reaches_the_stage_across_the_join_and_the_other_is_stil
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(
         relations_over(&s, "min_inductor_saturation"),
-        ["stage.inductor.saturation_current >= stage.buck.min_inductor_saturation"]
+        ["stage.inductor.saturation_current >= stage.ic.min_inductor_saturation"]
     );
     assert!(
         !not_evaluated(&s)
@@ -664,7 +676,7 @@ fn a_limit_the_ic_states_reaches_the_stage_across_the_join_and_the_other_is_stil
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(
         relations_over(&s, "max_inductor_dcr"),
-        ["stage.inductor.dc_resistance <= stage.buck.max_inductor_dcr"]
+        ["stage.inductor.dc_resistance <= stage.ic.max_inductor_dcr"]
     );
     assert_eq!(
         relations_over(&s, "min_inductor_saturation"),
@@ -676,31 +688,32 @@ fn a_limit_the_ic_states_reaches_the_stage_across_the_join_and_the_other_is_stil
 fn a_bound_on_a_limit_states_it_and_the_check_is_named_not_evaluated() {
     // `>= 3A` states what the design needs of the IC's limit and gives the member no value:
     // the stage's relation is kept, and is listed as not evaluated, not skipped in silence.
+    // The bound is written in the IC: a board cannot reach `.stage.ic` (ADR 0004, ADR 0115).
     let s = run(&converter(
-        &guide_ic(),
+        &ic_with(".min_inductor_saturation >= 3A"),
         "0mA..1A",
-        "    .u.buck.min_inductor_saturation >= 3A\n",
+        "",
     ));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert!(
-        !relations_over(&s, "stage.buck.min_inductor_saturation").is_empty(),
+        !relations_over(&s, "stage.ic.min_inductor_saturation").is_empty(),
         "{:?}",
         relations_over(&s, "min_inductor_saturation")
     );
     assert!(
         not_evaluated(&s)
             .iter()
-            .any(|r| r.contains("stage.buck.min_inductor_saturation")),
+            .any(|r| r.contains("stage.ic.min_inductor_saturation")),
         "{:?}",
         not_evaluated(&s)
     );
-    assert!(relations_over(&s, "stage.buck.max_inductor_dcr").is_empty());
+    assert!(relations_over(&s, "stage.ic.max_inductor_dcr").is_empty());
 }
 
 #[test]
 fn limits_the_inductor_meets_are_accepted() {
     // The picked inductor saturates at 3.6 A and has 85 mohm.
-    let ic = ic_with(".min_inductor_saturation &= 3A\n        .max_inductor_dcr &= 0.1ohm");
+    let ic = ic_with(".min_inductor_saturation &= 3A\n    .max_inductor_dcr &= 0.1ohm");
     let s = run(&converter(&ic, "0mA..1A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(label(&s, "stage.inductor"), "MHCD322512A-2R2M-A8S");
@@ -714,7 +727,7 @@ fn an_inductor_too_weak_for_the_ic_is_refused_with_the_numbers() {
     assert!(
         m.iter().any(
             |m| m.contains("no `inductor` candidate satisfies `stage.inductor`")
-                && m.contains("stage.inductor.saturation_current must always be at least stage.buck.min_inductor_saturation")
+                && m.contains("stage.inductor.saturation_current must always be at least stage.ic.min_inductor_saturation")
                 && m.contains("is not always above 4A")
         ),
         "{m:#?}"
@@ -729,7 +742,9 @@ fn an_inductor_too_resistive_for_the_ic_is_refused_with_the_numbers() {
     assert!(
         m.iter().any(
             |m| m.contains("no `inductor` candidate satisfies `stage.inductor`")
-                && m.contains("stage.inductor.dc_resistance must always be at most stage.buck.max_inductor_dcr")
+                && m.contains(
+                    "stage.inductor.dc_resistance must always be at most stage.ic.max_inductor_dcr"
+                )
         ),
         "{m:#?}"
     );
@@ -738,7 +753,7 @@ fn an_inductor_too_resistive_for_the_ic_is_refused_with_the_numbers() {
 // ---- the IC's minimum on-time and off-time (ADR 0093) --------------------------------
 
 /// The invented IC, but for a 12 V to 35 V input and 1 MHz (+/- 10%), with `times` added to its
-/// `buck`, on a board that makes 5 V (+/- 6%) from `vin`.
+/// statements, on a board that makes 5 V (+/- 6%) from `vin`.
 fn high_input(times: &str, vin: &str) -> String {
     let ic = guide_ic()
         .replace(".max_input_voltage &= 6V", ".max_input_voltage &= 60V")
@@ -750,8 +765,8 @@ fn high_input(times: &str, vin: &str) -> String {
 
 fn ic_with_in(ic: &str, limits: &str) -> String {
     ic.replace(
-        "        .min_input_capacitance",
-        &format!("        {limits}\n        .min_input_capacitance"),
+        "    .min_input_capacitance",
+        &format!("    {limits}\n    .min_input_capacitance"),
     )
 }
 
@@ -791,7 +806,7 @@ fn a_minimum_on_time_the_highest_input_violates_is_refused_with_the_numbers() {
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
-        m[0].contains("stage.on_time must always be at least stage.buck.min_on_time")
+        m[0].contains("stage.on_time must always be at least stage.ic.min_on_time")
             && m[0].contains("is not always above 150ns"),
         "{m:#?}"
     );
@@ -814,18 +829,18 @@ fn a_minimum_off_time_the_lowest_headroom_violates_is_refused_with_the_numbers()
     let m = messages(&s);
     assert_eq!(m.len(), 1, "{m:#?}");
     assert!(
-        m[0].contains("stage.off_time must always be at least stage.buck.min_off_time")
+        m[0].contains("stage.off_time must always be at least stage.ic.min_off_time")
             && m[0].contains("is not always above 350ns"),
         "{m:#?}"
     );
 }
 
 #[test]
-fn a_minimum_time_reaches_the_stage_across_the_join_and_the_other_is_skipped() {
+fn a_minimum_time_reaches_the_stage_and_the_other_is_skipped() {
     let s = run(&high_input(".min_on_time &= 100ns", "12V..35V"));
     assert_eq!(
         relations_over(&s, "min_on_time"),
-        ["stage.on_time >= stage.buck.min_on_time"]
+        ["stage.on_time >= stage.ic.min_on_time"]
     );
     assert!(relations_over(&s, "min_off_time").is_empty());
 }
@@ -879,8 +894,8 @@ fn the_half_ripple_reaches_the_row_a_generic_inductor_has_to_become() {
     // A load of 3.9 A with 5 V in and 1.8 V out: the load alone is under the IC's 4 A, and the
     // ripple takes the demand over it.
     let ic = ic("", "6A", "10uF").replace(
-        "        .max_output_current",
-        "        .fsw &= 1.2MHz +/- 15%\n        .max_output_current",
+        "    .max_output_current",
+        "    .fsw &= 1.2MHz +/- 15%\n    .max_output_current",
     );
     let s = run_generic(&converter(&ic, "0A..3.9A", ""));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
@@ -914,8 +929,8 @@ fn a_generic_inductor_still_has_to_meet_what_it_can_not_be_given() {
     // the check refuses, as it does for the rows.
     let ic = ic("", "6A", "10uF")
         .replace(
-            "        .max_output_current",
-            "        .fsw &= 1.2MHz +/- 15%\n        .max_output_current",
+            "    .max_output_current",
+            "    .fsw &= 1.2MHz +/- 15%\n    .max_output_current",
         )
         .replace(".min_inductance &= 1.5uH", ".min_inductance &= 2mH");
     let m = messages(&run_generic(&converter(&ic, "0A..1A", "")));
@@ -928,34 +943,35 @@ fn a_generic_inductor_still_has_to_meet_what_it_can_not_be_given() {
 
 /// An IC whose frequency a resistor on RT sets inside a window it offers as a default, and
 /// whose least inductance follows the frequency (invented numbers, shaped like a datasheet's).
+/// The resistor on RT is the IC's own, in its `support` section (ADR 0115), for the solver to pick.
 fn rt_ic() -> String {
-    ic("", "2A", "10uF")
+    with_resistor(&ic("", "2A", "10uF"))
         .replace(
-            "    .buck.sw.neg ~ .vin.neg\n",
+            "    .vin.current ==",
             "    .rt_value: Resistance\n    .rt_value &= 10.7kohm..232kohm\n    \
              .fsw_nominal: Frequency\n    .fsw_nominal == 46.5MHz * 1kohm / (.rt_value + 5.2kohm)\n    \
-             .fsw_tolerance: Number\n    .fsw_tolerance &= 0.925..1.075\n    .fsw: Frequency\n    \
+             .fsw_tolerance: Number\n    .fsw_tolerance &= 0.925..1.075\n    \
              .fsw ?= 0.85MHz..1.25MHz\n    .fsw == .fsw_nominal * .fsw_tolerance\n    \
-             .buck.fsw == .fsw\n    \
-             .buck.min_inductance == (2 * .buck.sw.voltage - .vin.voltage + 4V) / (2.5 * .fsw * 1A)\n    \
-             .buck.sw.neg ~ .vin.neg\n",
+             .min_inductance == (2 * .sw.voltage - .vin.voltage + 4V) / (2.5 * .fsw * 1A)\n    \
+             .vin.current ==",
         )
-        .replace("        .min_inductance &= 1.5uH\n", "")
+        .replace("    .min_inductance &= 1.5uH\n", "")
         .replace(
             "        .en input \"EN\" \"5\"\n",
             "        .en input \"EN\" \"5\"\n        .rt passive \"RT\" \"6\"\n",
         )
+        .replace(
+            "        .en ~ .vin.pos\n",
+            "        .en ~ .vin.pos\n        .rt_resistor: Resistor\n        \
+             .rt ~> .rt_resistor ~> .vin.neg\n        .rt_value == .rt_resistor.resistance\n",
+        )
 }
 
 fn rt_board(rt_window: &str) -> String {
-    let src = converter(
+    converter(
         &rt_ic().replace(".fsw ?= 0.85MHz..1.25MHz", rt_window),
         "0mA..1A",
-        "    .rt: Resistor\n    .u.rt ~ .rt.a\n    .rt.b ~ .input.neg\n    .u.rt_value == .rt.resistance\n",
-    );
-    src.replace(
-        "import std::parts::regulator::BuckStage\n",
-        "import std::parts::regulator::BuckStage\nimport std::parts::passive::Resistor\n",
+        "",
     )
 }
 
@@ -966,14 +982,14 @@ fn the_frequency_resistor_the_solver_picks_reaches_the_inductor_s_check() {
     // that resistor, not from the whole window of RT or the default window.
     let s = run(&rt_board(".fsw ?= 0.85MHz..1.25MHz"));
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
-    let rt = range(&s, "u.rt_value");
+    let rt = range(&s, "stage.ic.rt_value");
     assert!(rt.hi() - rt.lo() < 1e3, "the resistor's own range: {rt}");
-    let f = range(&s, "u.fsw");
+    let f = range(&s, "stage.ic.fsw");
     assert!(
         f.lo() > 0.85e6 && f.hi() < 1.25e6 && f.hi() / f.lo() < 1.2,
         "{f}"
     );
-    let least = range(&s, "u.buck.min_inductance");
+    let least = range(&s, "stage.ic.min_inductance");
     let (vin, vout) = (range(&s, "input.voltage"), range(&s, "stage.vout.voltage"));
     let expect = |f: f64, vin: f64, vout: f64| (2.0 * vout - vin + 4.0) / (2.5 * f);
     let (lo, hi) = (
@@ -995,10 +1011,14 @@ fn a_window_no_resistor_can_meet_is_refused_and_names_the_resistor() {
     let m = messages(&s);
     assert!(
         m.iter()
-            .any(|m| m.contains("`rt`") && m.contains("resistor")),
+            .any(|m| m.contains("`stage.ic.rt_resistor`") && m.contains("resistor")),
         "{m:#?}"
     );
-    assert!(s.unresolved.iter().any(|u| s.model.path_of(u.part) == "rt"));
+    assert!(
+        s.unresolved
+            .iter()
+            .any(|u| s.model.path_of(u.part) == "stage.ic.rt_resistor")
+    );
 }
 
 // ---- I2cPullups states what it draws (ADR 0026, "A part states its own requirements") ----

@@ -458,7 +458,7 @@ impl Checker<'_> {
         };
         let def_ref = match self.resolve_type(&clause.interface) {
             Ty::Def(m, i) if self.modules[m].defs[i].kind == DefKind::Interface => (m, i),
-            Ty::Def(..) | Ty::Enum(..) | Ty::Builtin(_) => {
+            Ty::Def(..) | Ty::Enum(..) | Ty::Builtin(_) | Ty::Param { .. } => {
                 let name = clause
                     .interface
                     .segments
