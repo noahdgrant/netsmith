@@ -205,7 +205,7 @@ fn routed_boards_get_teardrops_that_change_no_track_and_pass_the_check() {
         }
         let text = kicad_pcb(&with);
         assert_eq!(
-            text.matches("(teardrop (type padvia))").count(),
+            text.matches("$teardrop_padvia$").count(),
             with.teardrops.len()
         );
         // The same board gives the same teardrops.
