@@ -328,7 +328,7 @@ fn tree(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use netsmith_core::{Design, Net, Part, PartPin, PinKind, PinRef};
     use netsmith_pcb::board::{Board, BoardPour, CopperLayer};
     use netsmith_pcb::geometry::Pt;
