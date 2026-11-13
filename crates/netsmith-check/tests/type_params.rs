@@ -27,6 +27,7 @@ part Zbk2 provides BuckIc {
         .fb       input    \"FB\"   \"4\"
         .en       input    \"EN\"   \"5\"
         .bst      passive  \"BST\"  \"6\"
+        .pg       output   \"PG\"   \"7\"
     }
 
     support {
@@ -78,6 +79,19 @@ module Converter<Ic: BuckIc> provides BuckConverter {
 }
 ";
 
+/// A module that provides a generic and holds its IC directly, for a pick through the generic.
+const BARE: &str = "\
+import std::parts::regulator::BuckIc
+import std::sources::Rail
+import src::converter::BuckConverter
+
+module Bare<Ic: BuckIc> provides BuckConverter {
+    .ic: Ic
+    .ic.vin ~ .vin
+    .ic.sw ~ .vout
+}
+";
+
 fn loader(files: &[(&str, &str)]) -> Loader {
     let mut loader = Loader::std();
     for (module, text) in files {
@@ -91,6 +105,7 @@ fn run(root: &str) -> Checked {
         ("src::zbk2", ZBK2),
         ("src::zbk9", ZBK9),
         ("src::converter", CONVERTER),
+        ("src::bare", BARE),
     ];
     check("test.nsm", root, &loader(&files))
 }
@@ -265,5 +280,77 @@ fn a_support_part_is_placed_with_its_part_wherever_it_is() {
             .nets()
             .iter()
             .any(|n| n.pins.contains(&bst) && n.pins.contains(&boost_a))
+    );
+}
+
+// ---- a join to the pins of a named IC (ADR 0119) ----
+
+/// A board around `Buck<Zbk2>` with `lines` added.
+fn named(lines: &str) -> String {
+    format!(
+        "import src::zbk2::Zbk2\nimport std::parts::mechanical::TestPoint\nimport std::parts::passive::Resistor\nimport std::parts::regulator::Buck\nimport std::sources::Rail\n\nboard B {{\n{RAILS}    .reg: Buck<Zbk2> {{ .vout.voltage &= 1.8V +/- 3% }}\n    .tp: TestPoint\n    .input ~ .reg.vin\n    .reg.vout ~ .output\n{lines}}}\n"
+    )
+}
+
+#[test]
+fn a_board_that_names_the_ic_joins_a_pin_the_bound_does_not_declare() {
+    // `BuckIc` has no `.pg`; `Zbk2` has. A `~` and a `~>` chain both reach it.
+    let c = run(&named(
+        "    .pullup: Resistor { .resistance &= 100kohm +/- 5% }\n    .reg.ic.pg ~ .tp.p1\n    .output.pos ~> .pullup ~> .reg.ic.pg\n",
+    ));
+    ok(&c);
+    let model = &c.board("B").unwrap().model;
+    let pg = model.inst_at("reg.ic.pg").unwrap();
+    let tp = model.inst_at("tp.p1").unwrap();
+    assert!(
+        model
+            .nets()
+            .iter()
+            .any(|n| n.pins.contains(&pg) && n.pins.contains(&tp))
+    );
+}
+
+#[test]
+fn a_pin_the_named_ic_lacks_is_an_error_at_its_line() {
+    let board = named("    .reg.ic.pgood ~ .tp.p1\n");
+    let c = run(&board);
+    // The test point stays unjoined, which is said too.
+    let d: Vec<_> = c.diagnostics.iter().filter(|d| !d.message.starts_with("`tp.p1`")).collect();
+    assert_eq!(d.len(), 1, "{}", c.render());
+    assert_eq!(d[0].message, "`Zbk2` has no member `pgood`");
+    assert_eq!(&board[d[0].span.start..d[0].span.end], "pgood");
+}
+
+#[test]
+fn a_join_through_the_generic_is_refused() {
+    let board = format!(
+        "import src::bare::Bare\nimport src::converter::BuckConverter\nimport src::zbk2::Zbk2\nimport std::parts::mechanical::TestPoint\nimport std::sources::Rail\n\nboard B {{\n{RAILS}    .reg: BuckConverter\n    .tp: TestPoint\n    .input ~ .reg.vin\n    .reg.vout ~ .output\n    .reg.ic.pg ~ .tp.p1\n}}\n"
+    );
+    let c = run(&board);
+    let m = messages(&c);
+    assert!(
+        m.iter().any(|m| m.starts_with("`ic` is not declared by `BuckConverter`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `Bare<")),
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_join_reaches_the_ic_and_not_its_support_parts() {
+    let c = run(&named("    .reg.ic.boost.a ~ .tp.p1\n"));
+    let m = messages(&c);
+    assert_eq!(
+        m[..1],
+        ["`boost` is a part of the `support` section of `Zbk2`, inside `Buck<Zbk2>`: a join reaches only the named IC's own pins and interfaces; narrow a value of `boost` with `&=`"],
+        "{m:#?}"
+    );
+}
+
+#[test]
+fn a_relation_does_not_reach_the_named_ic() {
+    // Only a join (and a narrowing, ADR 0116) reaches the IC from outside.
+    let m = messages(&run(&named("    .reg.ic.vref <= 1V\n")));
+    assert!(
+        m.iter().any(|m| m.contains("only narrowing (`&=`) reaches inside a module")),
+        "{m:#?}"
     );
 }

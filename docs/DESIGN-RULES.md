@@ -11,7 +11,9 @@ against them first (`GLOSSARY.md` has the vocabulary, `docs/adr/` the decisions 
   never pre-names a net or fixes a value a design might need to change.
 - **A module is configured through its interface.** Its rails, pins and declared values
   can be joined and set from outside; a value inside it can only be narrowed, with `&=`
-  (`.stage.divider.rtop.resistance &= 100kohm +/- 1%`, ADR 0116).
+  (`.stage.divider.rtop.resistance &= 100kohm +/- 1%`, ADR 0116). The one join inside is to
+  the pins of the IC that the user named for a type parameter (`.reg.ic.pg` of
+  `Buck<Lt8641>`, ADR 0119).
 - **A system joins ports and mates connectors, and nothing else.** A `system` holds boards and
   says which of their ports meet (`.main.output ~ .io.input`), or which connectors are mated
   (`.carrier.slot.mating ~ .card.j1.mating`, contact N to contact N), which derives the ports

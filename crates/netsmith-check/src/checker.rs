@@ -190,6 +190,9 @@ pub(crate) struct Checker<'a> {
     /// Set while the left side of a `&=` is resolved: the one place a path may reach the
     /// parts and modules inside a module (ADR 0116).
     pub(crate) narrowing: bool,
+    /// Set while an end of a `~` or `~>` is resolved: a join reaches the pins of the IC that a
+    /// module's user named for its type parameter (ADR 0119).
+    pub(crate) joining: bool,
     /// Set while the `support` section of a part is read (ADR 0115).
     pub(crate) in_support: bool,
 }
@@ -249,6 +252,7 @@ impl<'a> Checker<'a> {
             attached: HashMap::new(),
             phys: None,
             narrowing: false,
+            joining: false,
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
             touches: Vec::new(),
@@ -1558,11 +1562,25 @@ impl<'a> Checker<'a> {
 
     // ---- names ---------------------------------------------------------------
 
+    /// Whether `owner` is the IC that a parametric module's user named (`.ic` of
+    /// `Buck<Lt8641>`), reached from outside the module by a narrowing (ADR 0116) or a join
+    /// (ADR 0119): then it is the part it is, not its parameter's bound.
+    fn named_ic(&self, owner: InstId) -> bool {
+        (self.narrowing || self.joining)
+            && self.param_insts.contains_key(&owner)
+            && self
+                .model
+                .instance(owner)
+                .parent
+                .is_some_and(|p| self.model.instance(p).def != self.cur_def)
+    }
+
     /// Whether `member` of `owner` may be named from the definition being written.
     ///
     /// A module is configured through its interface: its rails, pins and values. The parts
     /// and modules inside it may be named from outside only on the left of a `&=`, which
-    /// narrows a value inside it (ADR 0116).
+    /// narrows a value inside it (ADR 0116), and in a join to a pin of the IC that the user
+    /// named for a type parameter (ADR 0119).
     fn visible(&mut self, owner: InstId, member: Member, name: &netsmith_lang::ast::Ident) -> bool {
         // A board's physical file names a part inside a module by its path (ADR 0048). It
         // may only state physical intent about it: `physical_gate` refuses the rest.
@@ -1570,15 +1588,10 @@ impl<'a> Checker<'a> {
             return true;
         }
         // A narrowing from outside a parametric module reaches its IC as the part it is: the
-        // board named it (`Buck<Lt8641>`), so its `support` parts are there (ADR 0116). The
-        // module's own text still reaches only the bound's members.
-        let named_ic = self.narrowing
-            && self.param_insts.contains_key(&owner)
-            && self
-                .model
-                .instance(owner)
-                .parent
-                .is_some_and(|p| self.model.instance(p).def != self.cur_def);
+        // board named it (`Buck<Lt8641>`), so its `support` parts are there (ADR 0116). A join
+        // from outside reaches the named IC's own pins and interfaces (ADR 0119). The module's
+        // own text still reaches only the bound's members.
+        let named_ic = self.named_ic(owner);
         // A use of a generic reaches the members the generic declares, so that the board works
         // with whichever provider is picked (ADR 0068).
         if let Some(generic) = self
@@ -1589,6 +1602,16 @@ impl<'a> Checker<'a> {
                 return false;
             }
             let ty = self.model.instance(owner).type_name.clone();
+            if self.joining && self.holds_type_param(owner) {
+                self.error(
+                    name.span,
+                    format!(
+                        "`{}` is not declared by `{generic}`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `{ty}`; name it as the type, or join what `{generic}` declares",
+                        name.name
+                    ),
+                );
+                return false;
+            }
             self.error(
                 name.span,
                 format!(
@@ -1656,9 +1679,29 @@ impl<'a> Checker<'a> {
             );
             return false;
         }
+        // A join reaches the named IC's own pins and interfaces, not the parts of its `support`
+        // section (ADR 0119).
+        if named_ic && !self.narrowing && internal {
+            let ic = inst.type_name.clone();
+            let module = inst
+                .parent
+                .map(|p| self.model.instance(p).type_name.clone())
+                .unwrap_or_default();
+            self.error(
+                name.span,
+                format!(
+                    "`{}` is a part of the `support` section of `{ic}`, inside `{module}`: a join reaches only the named IC's own pins and interfaces; narrow a value of `{}` with `&=`",
+                    name.name, name.name
+                ),
+            );
+            return false;
+        }
+        // The member a module's user named a part for (`.ic: Ic` of `Buck<Lt8641>`) is open to
+        // a join, so its pins can be wired (ADR 0119).
+        let named_param = matches!(member, Member::Inst(child) if self.joining && self.param_insts.contains_key(&child));
         // A module's user may narrow any member inside it by its path, and do nothing else
         // there (ADR 0116): `.stage.divider.rtop.resistance &= 100kohm +/- 1%`.
-        if outside && internal && !self.narrowing {
+        if outside && internal && !self.narrowing && !named_param {
             let ty = inst.type_name.clone();
             self.error(
                 name.span,
@@ -1777,7 +1820,7 @@ impl<'a> Checker<'a> {
                         member = m;
                     }
                     None => {
-                        if self.report_outside_bound(i, seg) {
+                        if !self.named_ic(i) && self.report_outside_bound(i, seg) {
                             return Res::Bad;
                         }
                         if let Some(hint) = self.group_hint(i, &seg.name) {

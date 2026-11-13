@@ -38,6 +38,12 @@ row = "1kΩ 1% 0402 C11702"
 lcsc = "C11702"
 mpn = "0402WGF1001TCE"
 
+[TwoBuck.parts."buck_3v3.pg_pullup.resistor"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
+
 [TwoBuck.parts."buck_3v3.stage.divider.rbottom"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
@@ -115,6 +121,12 @@ catalog = "resistor"
 row = "1kΩ 1% 0402 C11702"
 lcsc = "C11702"
 mpn = "0402WGF1001TCE"
+
+[TwoBuck.parts."buck_5v.pg_pullup.resistor"]
+catalog = "resistor"
+row = "100kΩ 1% 0402 C25741"
+lcsc = "C25741"
+mpn = "0402WGF1003TCE"
 
 [TwoBuck.parts."buck_5v.stage.divider.rbottom"]
 catalog = "resistor"

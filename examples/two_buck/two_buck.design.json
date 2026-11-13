@@ -123,7 +123,7 @@
         ]
       },
       {
-        "refdes": "R10",
+        "refdes": "R11",
         "kind": "Resistor",
         "provides": [],
         "value": "1k",
@@ -153,7 +153,57 @@
         ]
       },
       {
-        "refdes": "R9",
+        "refdes": "R12",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "100k",
+        "package": "0402",
+        "path": "buck_3v3.pg_pullup.resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP2",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "buck_3v3.pg_test",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R10",
         "kind": "Resistor",
         "provides": [],
         "value": "330",
@@ -183,7 +233,7 @@
         ]
       },
       {
-        "refdes": "R8",
+        "refdes": "R9",
         "kind": "Resistor",
         "provides": [],
         "value": "1k",
@@ -326,7 +376,7 @@
         ]
       },
       {
-        "refdes": "R7",
+        "refdes": "R8",
         "kind": "Resistor",
         "provides": [],
         "value": "33k",
@@ -356,7 +406,7 @@
         ]
       },
       {
-        "refdes": "R6",
+        "refdes": "R7",
         "kind": "Resistor",
         "provides": [],
         "value": "100k",
@@ -649,6 +699,56 @@
             "kind": "passive",
             "pads": [
               "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "R6",
+        "kind": "Resistor",
+        "provides": [],
+        "value": "100k",
+        "package": "0402",
+        "path": "buck_5v.pg_pullup.resistor",
+        "pins": [
+          {
+            "name": "a",
+            "datasheet": "A",
+            "kind": "passive",
+            "pads": [
+              "1"
+            ],
+            "function": null,
+            "power_flow": null
+          },
+          {
+            "name": "b",
+            "datasheet": "B",
+            "kind": "passive",
+            "pads": [
+              "2"
+            ],
+            "function": null,
+            "power_flow": null
+          }
+        ]
+      },
+      {
+        "refdes": "TP1",
+        "kind": "TestPoint",
+        "provides": [],
+        "value": "TestPoint",
+        "package": null,
+        "path": "buck_5v.pg_test",
+        "pins": [
+          {
+            "name": "p1",
+            "datasheet": "TP",
+            "kind": "passive",
+            "pads": [
+              "1"
             ],
             "function": null,
             "power_flow": null
@@ -1159,7 +1259,7 @@
         ]
       },
       {
-        "refdes": "R12",
+        "refdes": "R14",
         "kind": "Resistor",
         "provides": [],
         "value": "4.7k",
@@ -1319,7 +1419,7 @@
         ]
       },
       {
-        "refdes": "R11",
+        "refdes": "R13",
         "kind": "Resistor",
         "provides": [],
         "value": "1k",
@@ -1567,7 +1667,7 @@
         ]
       },
       {
-        "refdes": "TP3",
+        "refdes": "TP5",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1587,7 +1687,7 @@
         ]
       },
       {
-        "refdes": "TP4",
+        "refdes": "TP6",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1607,7 +1707,7 @@
         ]
       },
       {
-        "refdes": "TP2",
+        "refdes": "TP4",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1627,7 +1727,7 @@
         ]
       },
       {
-        "refdes": "TP5",
+        "refdes": "TP7",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1647,7 +1747,7 @@
         ]
       },
       {
-        "refdes": "TP7",
+        "refdes": "TP9",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1667,7 +1767,7 @@
         ]
       },
       {
-        "refdes": "TP6",
+        "refdes": "TP8",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1687,7 +1787,7 @@
         ]
       },
       {
-        "refdes": "TP1",
+        "refdes": "TP3",
         "kind": "TestPoint",
         "provides": [],
         "value": "TestPoint",
@@ -1732,15 +1832,19 @@
             "pin": "2"
           },
           {
-            "refdes": "R10",
+            "refdes": "R11",
             "pin": "1"
           },
           {
-            "refdes": "R8",
+            "refdes": "R12",
             "pin": "1"
           },
           {
-            "refdes": "TP3",
+            "refdes": "R9",
+            "pin": "1"
+          },
+          {
+            "refdes": "TP5",
             "pin": "1"
           }
         ]
@@ -1761,11 +1865,11 @@
             "pin": "1"
           },
           {
-            "refdes": "R11",
+            "refdes": "R13",
             "pin": "1"
           },
           {
-            "refdes": "TP4",
+            "refdes": "TP6",
             "pin": "1"
           },
           {
@@ -1814,7 +1918,11 @@
             "pin": "1"
           },
           {
-            "refdes": "TP2",
+            "refdes": "R6",
+            "pin": "1"
+          },
+          {
+            "refdes": "TP4",
             "pin": "1"
           },
           {
@@ -1939,6 +2047,10 @@
             "pin": "2"
           },
           {
+            "refdes": "R10",
+            "pin": "2"
+          },
+          {
             "refdes": "R2",
             "pin": "2"
           },
@@ -1947,19 +2059,15 @@
             "pin": "2"
           },
           {
-            "refdes": "R7",
+            "refdes": "R8",
             "pin": "2"
-          },
-          {
-            "refdes": "R9",
-            "pin": "2"
-          },
-          {
-            "refdes": "TP5",
-            "pin": "1"
           },
           {
             "refdes": "TP7",
+            "pin": "1"
+          },
+          {
+            "refdes": "TP9",
             "pin": "1"
           },
           {
@@ -2032,15 +2140,15 @@
             "pin": "1"
           },
           {
-            "refdes": "R12",
+            "refdes": "R14",
             "pin": "1"
           },
           {
-            "refdes": "R6",
+            "refdes": "R7",
             "pin": "1"
           },
           {
-            "refdes": "TP1",
+            "refdes": "TP3",
             "pin": "1"
           },
           {
@@ -2069,7 +2177,7 @@
             "pin": "1"
           },
           {
-            "refdes": "TP6",
+            "refdes": "TP8",
             "pin": "1"
           }
         ]
@@ -2082,8 +2190,25 @@
             "pin": "2"
           },
           {
-            "refdes": "R10",
+            "refdes": "R11",
             "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_3v3.pg_pullup.resistor.b",
+        "pins": [
+          {
+            "refdes": "R12",
+            "pin": "2"
+          },
+          {
+            "refdes": "TP2",
+            "pin": "1"
+          },
+          {
+            "refdes": "U2",
+            "pin": "4"
           }
         ]
       },
@@ -2091,12 +2216,12 @@
         "name": "net-buck_3v3.stage.divider.rbottom.a",
         "pins": [
           {
-            "refdes": "R8",
-            "pin": "2"
+            "refdes": "R10",
+            "pin": "1"
           },
           {
             "refdes": "R9",
-            "pin": "1"
+            "pin": "2"
           },
           {
             "refdes": "U2",
@@ -2138,11 +2263,11 @@
         "name": "net-buck_3v3.stage.ic.en",
         "pins": [
           {
-            "refdes": "R6",
+            "refdes": "R7",
             "pin": "2"
           },
           {
-            "refdes": "R7",
+            "refdes": "R8",
             "pin": "1"
           },
           {
@@ -2161,6 +2286,23 @@
           {
             "refdes": "R5",
             "pin": "2"
+          }
+        ]
+      },
+      {
+        "name": "net-buck_5v.pg_pullup.resistor.b",
+        "pins": [
+          {
+            "refdes": "R6",
+            "pin": "2"
+          },
+          {
+            "refdes": "TP1",
+            "pin": "1"
+          },
+          {
+            "refdes": "U1",
+            "pin": "4"
           }
         ]
       },
@@ -2236,7 +2378,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R12",
+            "refdes": "R14",
             "pin": "2"
           }
         ]
@@ -2249,7 +2391,7 @@
             "pin": "2"
           },
           {
-            "refdes": "R11",
+            "refdes": "R13",
             "pin": "2"
           }
         ]
@@ -2307,7 +2449,7 @@
         ],
         [
           "GND",
-          6.62
+          6.63
         ],
         [
           "VIN",
@@ -2329,8 +2471,8 @@
       "net_currents": [
         {
           "net": "3V3",
-          "current": 1.5042211607968266,
-          "least_width": 0.6594142186566219,
+          "current": 1.5042561607968266,
+          "least_width": 0.6594353817217172,
           "vias": 3
         },
         {
@@ -2341,20 +2483,20 @@
         },
         {
           "net": "5V",
-          "current": 1.5568052989790957,
-          "least_width": 0.6914188477200537,
+          "current": 1.556858329282126,
+          "least_width": 0.6914513336886948,
           "vias": 3
         },
         {
           "net": "GND",
-          "current": 8.00831079105442,
-          "least_width": 6.619935996066617,
+          "current": 8.008455473957154,
+          "least_width": 6.620100961733186,
           "vias": 15
         },
         {
           "net": "VIN",
-          "current": 4.897828442986496,
-          "least_width": 3.3598471035793076,
+          "current": 4.897885095586199,
+          "least_width": 3.3599007077690004,
           "vias": 9
         },
         {
@@ -2370,6 +2512,12 @@
           "vias": 1
         },
         {
+          "net": "net-buck_3v3.pg_pullup.resistor.b",
+          "current": 0.000035000000000000004,
+          "least_width": 2.6821151020723907e-7,
+          "vias": 1
+        },
+        {
           "net": "net-buck_3v3.stage.divider.rbottom.a",
           "current": 0.002539342615008365,
           "least_width": 0.00009883157048356366,
@@ -2377,8 +2525,8 @@
         },
         {
           "net": "net-buck_3v3.stage.ic.boost.b",
-          "current": 1.5016818181818183,
-          "least_width": 0.6578792808222048,
+          "current": 1.5017168181818183,
+          "least_width": 0.6579004303289926,
           "vias": 3
         },
         {
@@ -2394,6 +2542,12 @@
           "vias": 1
         },
         {
+          "net": "net-buck_5v.pg_pullup.resistor.b",
+          "current": 0.00005303030303030303,
+          "least_width": 4.7575386812470433e-7,
+          "vias": 1
+        },
+        {
           "net": "net-buck_5v.stage.divider.rbottom.a",
           "current": 0.0016386323124291044,
           "least_width": 0.000054012712887801536,
@@ -2401,8 +2555,8 @@
         },
         {
           "net": "net-buck_5v.stage.ic.boost.b",
-          "current": 1.555166666666667,
-          "least_width": 0.6904152406829887,
+          "current": 1.5552196969696972,
+          "least_width": 0.690447713677679,
           "vias": 3
         },
         {
@@ -2446,6 +2600,10 @@
           "height": 0.4
         },
         {
+          "path": "buck_3v3.pg_test",
+          "height": 0.0
+        },
+        {
           "path": "buck_3v3.stage.divider.rtop",
           "height": 0.4
         },
@@ -2484,6 +2642,10 @@
         {
           "path": "buck_5v.light_resistor",
           "height": 0.4
+        },
+        {
+          "path": "buck_5v.pg_test",
+          "height": 0.0
         },
         {
           "path": "buck_5v.stage.ic.boost",
@@ -2594,6 +2756,8 @@
       "models": [],
       "case_models": [],
       "hand_fitted": [
+        "buck_3v3.pg_test",
+        "buck_5v.pg_test",
         "power_3v3",
         "power_3v3a",
         "power_5v",
@@ -2612,6 +2776,20 @@
       "line_texts": {}
     },
     "interfaces": [
+      {
+        "path": "buck_3v3.pg_pullup.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
       {
         "path": "buck_3v3.stage.ic.sw",
         "type_name": "Rail",
@@ -2689,6 +2867,20 @@
           {
             "name": "pos",
             "net": "3V3"
+          },
+          {
+            "name": "neg",
+            "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "buck_5v.pg_pullup.supply",
+        "type_name": "Rail",
+        "members": [
+          {
+            "name": "pos",
+            "net": "5V"
           },
           {
             "name": "neg",
@@ -2886,7 +3078,7 @@
         "text": "The 12 V supply, from outside the board: 9 V to 16 V.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 94
+          "line": 102
         },
         "anchors": [],
         "result": null
@@ -2897,7 +3089,7 @@
         "text": "The input after the reverse-polarity diode.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 100
+          "line": 108
         },
         "anchors": [],
         "result": null
@@ -2908,7 +3100,7 @@
         "text": "The 5 V rail, made by the first buck stage and the load it carries.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 106
+          "line": 114
         },
         "anchors": [],
         "result": null
@@ -2919,7 +3111,7 @@
         "text": "The 3.3 V rail, made by the second buck stage.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 112
+          "line": 120
         },
         "anchors": [],
         "result": null
@@ -2930,7 +3122,7 @@
         "text": "The quiet 3.3 V rail, made from the 5 V rail by the linear regulator.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 118
+          "line": 126
         },
         "anchors": [],
         "result": null
@@ -2941,7 +3133,7 @@
         "text": "A Schottky diode in series: a supply connected the wrong way round is blocked.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 125
+          "line": 133
         },
         "anchors": [
           "reverse_diode"
@@ -2954,7 +3146,7 @@
         "text": "A TVS diode across the input: a surge is clamped under what the ICs survive.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 127
+          "line": 135
         },
         "anchors": [
           "surge"
@@ -2964,10 +3156,10 @@
       {
         "path": "buck_5v",
         "kind": "doc",
-        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider) and the power light.",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0119).",
         "at": {
           "file": "two_buck.nsm",
-          "line": 68
+          "line": 71
         },
         "anchors": [],
         "result": null
@@ -2978,7 +3170,7 @@
         "text": "The IC, a part that provides `BuckIc`.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 27
+          "line": 28
         },
         "anchors": [
           "buck_5v.stage.ic"
@@ -2988,10 +3180,10 @@
       {
         "path": "buck_3v3",
         "kind": "doc",
-        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider) and the power light.",
+        "text": "One buck stage: the IC with its own circuit (inductor, input and output capacitor banks, the feedback divider, the bootstrap capacitor and the enable divider), a power-good pull-up with its test point, and the power light. `BuckIc` has no power-good pin, but this module names the IC (`Buck<BenchBuck>`), so it joins `BenchBuck`'s `.pg` (ADR 0119).",
         "at": {
           "file": "two_buck.nsm",
-          "line": 68
+          "line": 71
         },
         "anchors": [],
         "result": null
@@ -3002,7 +3194,7 @@
         "text": "The IC, a part that provides `BuckIc`.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 27
+          "line": 28
         },
         "anchors": [
           "buck_3v3.stage.ic"
@@ -3015,7 +3207,7 @@
         "text": "The input and each output leave through a header of their own.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 146
+          "line": 154
         },
         "anchors": [
           "power_in"
@@ -3028,7 +3220,7 @@
         "text": ".light_resistor.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 81
+          "line": 89
         },
         "anchors": [
           "buck_5v.light_resistor",
@@ -3043,7 +3235,7 @@
         "text": ".light_resistor.current == (.vout.voltage - .light.forward_voltage) / .light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 81
+          "line": 89
         },
         "anchors": [
           "buck_3v3.light_resistor",
@@ -3058,7 +3250,7 @@
         "text": ".input_light_resistor.current == (.vin.voltage - .input_light.forward_voltage) / .input_light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 173
+          "line": 181
         },
         "anchors": [
           "input_light_resistor",
@@ -3073,7 +3265,7 @@
         "text": ".ldo_light_resistor.current == (.out_3v3a.voltage - .ldo_light.forward_voltage) / .ldo_light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 178
+          "line": 186
         },
         "anchors": [
           "ldo_light_resistor",
@@ -3147,6 +3339,24 @@
         ]
       },
       {
+        "path": "buck_5v.pg_pullup",
+        "type_name": "PullUp",
+        "ports": [
+          {
+            "name": "supply.pos",
+            "net": "5V"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "line",
+            "net": "net-buck_5v.pg_pullup.resistor.b"
+          }
+        ]
+      },
+      {
         "path": "buck_3v3",
         "type_name": "BuckSupply",
         "ports": [
@@ -3205,6 +3415,24 @@
           {
             "name": "bottom",
             "net": "GND"
+          }
+        ]
+      },
+      {
+        "path": "buck_3v3.pg_pullup",
+        "type_name": "PullUp",
+        "ports": [
+          {
+            "name": "supply.pos",
+            "net": "3V3"
+          },
+          {
+            "name": "supply.neg",
+            "net": "GND"
+          },
+          {
+            "name": "line",
+            "net": "net-buck_3v3.pg_pullup.resistor.b"
           }
         ]
       }

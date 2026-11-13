@@ -5353,7 +5353,7 @@ board PowerBoard {
 reg is a BuckConverter: picked Converter<Zbk9>; passed over Converter<Lt8641> (the `lt8641` catalog has nothing for `reg.buck.ic`, which needs nothing in particular), Converter<Zbk2> (reg.buck.vin.voltage must always be at most reg.buck.ic.max_input_voltage, but 11.4V..12.6V is not always below 6V)
 ```
 
-Naming the part, with no pick: `.reg: Converter<Zbk9> { .vout.voltage &= 3.3V +/- 4% }`. The inside of a module provider stays private: a board reaches `.reg.vin` and `.reg.vout`, never `.reg.buck`.
+Naming the part, with no pick: `.reg: Converter<Zbk9> { .vout.voltage &= 3.3V +/- 4% }`. A board joins a module provider through its interface, `.reg.vin` and `.reg.vout`, never `.reg.buck`.
 
 Rules.
 
@@ -5362,6 +5362,7 @@ Rules.
 - The module is checked where it is written, with the bound standing for the parameter: a mistake is said at the module's line, never at a board that names a part.
 - What only some parts need (a bootstrap capacitor, a resistor on `RT`, an enable divider) is in each part's own `support` section (_Switching regulators_), which comes with the part wherever it is placed. The module wires only what the bound has.
 - A board names the part, `.reg: Converter<Zbk9>`: the argument is a part that provides the bound, or the bound itself when it is its own provider (`Resistor`). A module with parameters is never placed without its arguments; to let the solver pick, a board uses a generic the module provides.
+- A board, or a module, that names the part (`.reg: Buck<Zbk2>`) may join any pin or interface of that part through the member made from the parameter, `.reg.ic.en ~ .tp.p1`, even one the bound does not declare (ADR 0119). Only a join (`~`, `~>`) reaches it there, besides a narrowing (ADR 0116); the parts of the IC's `support` section are not joined from outside. A board that picks through a generic the module provides (`.reg: BuckConverter`) does not know the IC, so it reaches only what the generic declares. The member must have the parameter as its type (`.ic: Ic`): a module that passes its parameter on (`.buck: Buck<Ic>`) keeps that module inside, as any module does.
 - A module with parameters that provides a generic stands for one candidate for each provider of its bound (with several parameters, for each combination, the last varying fastest), in the order of the bound's providers, at the module's own place in the order of the generic's. `Converter<Zbk2>` is the provider's name in the notes and its type in the design. Each candidate is one trial of the search, counted against its bound of 64.
 
 A module reaches only what the bound declares. `en` is a pin of `Zbk2` and `Zbk9`, but not of `BuckIc`, so a part that provides `BuckIc` with no `en` would leave the line with nothing to join:
@@ -5384,6 +5385,55 @@ error: `en` is not declared by `BuckIc`, the bound of the type parameter `Ic`; a
   |
 8 |     .ic.en ~ .vin.pos
   |         ^^
+```
+
+The board that names the IC knows its pins. Here a test point probes the enable pin of `Zbk2`, which `Buck` does not wire and `BuckIc` does not declare:
+
+```nsm
+import src::zbk2::Zbk2
+import std::parts::mechanical::TestPoint
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+board Probed {
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    .output: Rail {
+        .pos.net &= "1V8"
+        .neg.net &= "GND"
+        .current &= 0mA..1A
+    }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
+    .tp_en: TestPoint
+
+    .input ~ .reg.vin
+    .reg.vout ~ .output
+    .reg.ic.en ~ .tp_en.p1
+}
+```
+
+A board that lets the solver pick the IC cannot join its pins, since which pins there are is decided later:
+
+```nsm fails
+import src::buck::BuckConverter
+import src::converter::Converter
+import src::zbk2::Zbk2
+
+board Unknown {
+    .reg: BuckConverter
+    .reg.buck.ic.en ~ .reg.vin.pos
+}
+```
+
+```text
+error: `buck` is not declared by `BuckConverter`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `Converter<Lt8641>`; name it as the type, or join what `BuckConverter` declares
+  --> main.nsm:7:10
+  |
+7 |     .reg.buck.ic.en ~ .reg.vin.pos
+  |          ^^^^
 ```
 
 The argument provides the bound:
@@ -5558,7 +5608,7 @@ board Lamp {
 Rules.
 
 - A board joins and sets a module through the module's rails, pins and declared values: `.lamp.supply.voltage`.
-- A board, or a module that holds the module, may also narrow any value inside it by its path, with `&=` only: `.lamp.led.current &= 8mA..12mA`, `.lamp.r1.package &= "0603"`, at any depth (`.stage.divider.rtop.resistance &= 100kohm +/- 1%`). A narrowing only takes values away, so whatever the module states still holds, and a narrowing that misses it is the usual contradiction at the line that writes it. Nothing else reaches inside: a join (`~`, `~>`), a relation (`==`, `<=`, `>=`), a default (`?=`) and the right side of a `&=` are refused at the member that enters the module. A narrowing counts as a statement of the field, so it replaces a default the module wrote on it with `?=`.
+- A board, or a module that holds the module, may also narrow any value inside it by its path, with `&=` only: `.lamp.led.current &= 8mA..12mA`, `.lamp.r1.package &= "0603"`, at any depth (`.stage.divider.rtop.resistance &= 100kohm +/- 1%`). A narrowing only takes values away, so whatever the module states still holds, and a narrowing that misses it is the usual contradiction at the line that writes it. Nothing else reaches inside: a join (`~`, `~>`), a relation (`==`, `<=`, `>=`), a default (`?=`) and the right side of a `&=` are refused at the member that enters the module. The one exception is a join to the IC that the user named for a module's type parameter (`.reg.ic.pg` of `Buck<Lt8641>`, ADR 0119; see _A module that takes a part_). A narrowing counts as a statement of the field, so it replaces a default the module wrote on it with `?=`.
 - A module author exposes as a rail or a declared value what a user joins, reads or relates, and a value that ties several parts together (one package for both resistors of a divider). A member that would only pass one value to one part inside is not written: the user narrows the part.
 - A declared value with a sensible value is a default (`?=`). One without is left for the board to state: a board that forgets it gets a finding when a pick or a check waits for it (see "A value that nobody stated"), and a bound the module writes on it (`.balance_resistance >= 1kohm`) reaches the parts it is held to.
 - Two instances of a module are separate. Their internal nets get names from their instance paths, so they never collide.
@@ -10445,6 +10495,7 @@ part Zbk3 provides BuckIc {
 - A part declares no other part outside its `support` section.
 - A support part is at the path below its part (`reg.ic.boost`) and is a part like any other: picked from its catalog, checked, drawn on the schematic, placed and listed in the bill of materials.
 - A board that names the IC (`.reg: Buck<Lt8641>`) may narrow a support part from outside the module, as any member inside a module (ADR 0116): `.reg.ic.soft_start.capacitance &= 22nF +/- 10%`, which replaces the part's `?=` default. The module's own text still reaches only its bound's members.
+- The same board may join the IC's own pins that `Buck` leaves open (ADR 0119): `.reg.ic.pg ~ .pg_pullup.line` gives the `Lt8641`'s power-good output a pull-up. `examples/two_buck` joins its invented IC's `PG` this way, with a pull-up and a test point in each stage.
 
 ```nsm fails
 import std::parts::passive::Capacitor
