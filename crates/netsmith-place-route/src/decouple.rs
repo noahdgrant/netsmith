@@ -286,11 +286,17 @@ fn tree(
     let mut sets = Sets((0..nodes.len()).collect());
     if plane {
         // Each pin's line to the plane becomes its line to the capacitor; the capacitor's own
-        // line to the plane (or its through-hole pad) joins them both.
+        // line to the plane (or its through-hole pad) joins them both. A line is the pin's by its
+        // pad and its place: another pad of the same number (a SOT-223's tab) keeps its own.
         let pins: HashSet<usize> = forced.iter().map(|&(p, _)| p).collect();
         let mut out: Vec<Ratline> = own
             .into_iter()
-            .filter(|l| !(l.to_plane && pins.iter().any(|&p| l.from == nodes[p].pad)))
+            .filter(|l| {
+                !(l.to_plane
+                    && pins
+                        .iter()
+                        .any(|&p| l.from == nodes[p].pad && l.from_at == nodes[p].centre))
+            })
             .collect();
         for &(p, c) in &forced {
             if sets.join(p, c) {
@@ -489,6 +495,47 @@ mod tests {
             .find(|v| v.net == "GND" && v.at.distance(pad) <= RETURN_NEAR)
             .unwrap_or_else(|| panic!("no GND via beside C1.2: {:?}", board.vias));
         assert!(touches("GND", via.at), "{via:?}");
+    }
+
+    #[test]
+    fn on_a_plane_net_only_the_pad_joined_to_the_capacitor_gives_up_its_via() {
+        // A pin of two pads with one number (a SOT-223's pin 2 and its tab), on a plane net.
+        let pad = |refdes: &str, number: &str| PadRef {
+            refdes: refdes.into(),
+            number: number.into(),
+        };
+        let node = |p: PadRef, x: f64| Node {
+            pad: p,
+            centre: Pt::new(x, 0.0),
+            bounds: netsmith_pcb::geometry::Rect::new(Pt::new(x, 0.0), Pt::new(x, 0.0)),
+            front: true,
+            back: false,
+        };
+        let nodes = [
+            node(pad("U1", "2"), 0.0),
+            node(pad("U1", "2"), -3.0),
+            node(pad("C1", "1"), 1.5),
+        ];
+        let to_plane = |n: &Node| Ratline {
+            net: "3V3".into(),
+            from: n.pad.clone(),
+            to: n.pad.clone(),
+            from_at: n.centre,
+            to_at: n.centre,
+            to_plane: true,
+        };
+        let own: Vec<Ratline> = nodes.iter().map(to_plane).collect();
+        let caps = [(pad("C1", "1"), vec![pad("U1", "2")])];
+        let out = tree("3V3", &nodes, &caps, true, own);
+        let ends: Vec<(f64, f64, bool)> = out
+            .iter()
+            .map(|l| (l.from_at.x, l.to_at.x, l.to_plane))
+            .collect();
+        // The tab keeps its via, the capacitor keeps its, and the near pad runs to the capacitor.
+        assert_eq!(
+            ends,
+            [(-3.0, -3.0, true), (1.5, 1.5, true), (0.0, 1.5, false)]
+        );
     }
 
     /// How near the test wants the capacitor's via: the router's bound with a cell over.
