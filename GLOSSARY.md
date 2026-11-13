@@ -785,7 +785,7 @@ A STEP file of the board's case, kept in the project, that a `CaseModel` member 
 _Avoid_: Enclosure (a solver range, above), case STEP, housing model
 
 **Package shape**:
-The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). Another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.
+The solids a part's body is drawn as in the _Scene_ where a footprint generator made its footprint: leads, terminals, balls, pins and marks made from the generator's own numbers (the body, the span, the lead width and length, the exposed pad), built to the part's known height and never giving one (`crates/netsmith-pcb/src/body3d.rs`, ADR 0105). A footprint read from a file whose name and pads are those of a vertical pin header or socket (`PinHeader_2x18_P2.54mm...`, a full grid of round plated holes at that pitch) is drawn as the generated header is; another footprint, or a generated one not shaped, is the box of its _Body_; a part of unknown height is its flat outline.
 _Avoid_: 3D model (KiCad's or a maker's file), parametric model, mesh
 
 **Height preview**:

@@ -67,6 +67,7 @@ fn scene() -> Scene {
         source: "a line".into(),
         z_top: -1.6,
         z_bottom: -3.1,
+        tails: Vec::new(),
     };
     Scene {
         board: BoardSolid {

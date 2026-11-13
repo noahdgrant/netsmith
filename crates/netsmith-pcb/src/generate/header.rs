@@ -71,6 +71,21 @@ const PITCHES: [Pitch; 2] = [
     },
 ];
 
+/// The square pin and the plastic of a header (`(pin, plastic)`, in mm) of the family at
+/// `pitch` mm, the figures the generated footprints carry, for a footprint read from a file
+/// that [`crate::body3d`] draws as a header. `None` at a pitch with no family here.
+pub fn family(pitch: f64) -> Option<(f64, f64)> {
+    PITCHES
+        .iter()
+        .find(|k| (k.mm - pitch).abs() < 1e-9)
+        .map(|k| (k.pin, k.plastic))
+}
+
+/// The pitch, in mm, a footprint name spells as `text` (`2.54`, `2.00`), if a family has it.
+pub fn pitch_of(text: &str) -> Option<f64> {
+    PITCHES.iter().find(|k| k.text == text).map(|k| k.mm)
+}
+
 fn library(part: Part, pitch: &Pitch) -> String {
     format!("Connector_{}_{}mm", part.word(), pitch.text)
 }

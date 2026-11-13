@@ -154,6 +154,7 @@ example_readers() {
         linear_regulator | two_boards) echo "netsmith netsmith-check netsmith-solve netsmith-design" ;;
         carrier_and_cards) echo "netsmith netsmith-check netsmith-solve" ;;
         four_layer | six_layer | ten_layer) echo "netsmith netsmith-design" ;;
+        rp2350_minimal) echo "netsmith netsmith-pcb" ;;
         *) echo "netsmith" ;;
     esac
 }

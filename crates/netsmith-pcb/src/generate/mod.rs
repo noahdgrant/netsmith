@@ -191,7 +191,7 @@ mod crystal;
 mod diode;
 mod draw;
 mod gullwing;
-mod header;
+pub(crate) mod header;
 pub mod ipc;
 mod mechanical;
 mod outline;

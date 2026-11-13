@@ -81,6 +81,12 @@ physical for Rp2350Minimal {
     .header_high.place.y &= 25.59mm
     .header_high.place.rotation &= 270
     .header_high.place.side &= "top"
+    // Their tails, bought this length and not cut: Samtec's catalog page F-226 (`tsw_th.pdf`,
+    // lead style -07) gives B, the tail under the 2.54 mm (.100 in) body, as 2.54 mm (.100 in),
+    // so through the 1.6 mm board they stand 0.94 mm out of the bottom face. The page prints
+    // no tolerance. The 3D view draws each pin through the board and out to it.
+    .header_low.pin_protrusion &= 0.94mm
+    .header_high.pin_protrusion &= 0.94mm
 
     // J4, the JST-SH debug port: their J4 is at (107.6, 115.375), not turned. The body is the
     // courtyard, x -2.8 to 2.8 and y -5.85 to 0.45 of the footprint: its centre is 2.7 mm above

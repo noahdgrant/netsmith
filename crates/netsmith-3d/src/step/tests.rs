@@ -100,6 +100,7 @@ pub(crate) fn scene() -> Scene {
         source: "a line".into(),
         z_top: -1.6,
         z_bottom: -3.1,
+        tails: Vec::new(),
     };
     let mut q1 = body("q1", "Q1", plan(29.0, 4.0), plan(31.0, 6.0), Some(0.8));
     q1.side = Side::Back;
@@ -352,6 +353,37 @@ fn every_shell_is_closed_and_each_part_is_a_named_product() {
         "NEXT_ASSEMBLY_USAGE_OCCURRENCE('j1','J1',",
     ] {
         assert!(file.contains(p), "no {p}");
+    }
+}
+
+#[test]
+fn a_headers_stated_pins_are_one_closed_solid_each_where_the_tails_are() {
+    // U1's pins as two tails of a header, 0.64 mm square, from 3.1 mm under its face to it, at
+    // (1, 0) and (3, 0) of its footprint (y down): the scene's y is minus the footprint's.
+    let mut s = scene();
+    let u1 = s.bodies.iter_mut().find(|b| b.path == "u1").unwrap();
+    u1.place.origin = plan(10.0, 6.0);
+    let Pins::Known { tails, .. } = &mut u1.pins else {
+        unreachable!()
+    };
+    *tails = [1.0, 3.0]
+        .map(|x| Made3d {
+            material: Made::Metal,
+            primitive: Primitive::Box {
+                min: [x - 0.32, -0.32, -3.1],
+                max: [x + 0.32, 0.32, 0.0],
+            },
+        })
+        .to_vec();
+    let file = step(&s, "Demo");
+    assert_eq!(check_solids(&file)["pins"], 2);
+    for p in [
+        "(10.68,5.68,-3.1)",
+        "(11.32,6.32,0.)",
+        "(12.68,5.68,-3.1)",
+        "(13.32,6.32,0.)",
+    ] {
+        assert!(file.contains(&format!("CARTESIAN_POINT('',{p})")), "no {p}");
     }
 }
 

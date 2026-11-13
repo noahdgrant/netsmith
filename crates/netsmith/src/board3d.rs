@@ -553,6 +553,7 @@ pub fn report(
                     source,
                     z_top,
                     z_bottom,
+                    ..
                 } => Some(pins_report(
                     at,
                     Some(*length),

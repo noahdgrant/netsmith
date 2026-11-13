@@ -249,6 +249,19 @@ and says so.
     pin 1 square; the numbering (pin 1 and the odd pins in the row at y = +1.27, the even pins at
     -1.27, pin 1 at the left end, as Raspberry Pi's); the origin at the middle of the 36 holes; a
     body outline of 2 x 18 pitches on `F.Fab`, the courtyard the pads and 0.25; no model.
+  - **In 3D** (`docs/BOARD3D.md`): the footprint's name (`PinHeader_2x18_P2.54mm_...`) and its 36
+    round plated holes on a full 2.54 mm grid make the 3D view draw it as a pin header: the
+    `F.Fab` body as the plastic, to the generated family's 2.50 mm (F-226's body is .100 in,
+    2.54 mm: the family's figure is used, 0.04 mm lower), and a 0.64 mm (.025 in, F-226's title)
+    square post on each pad up to the catalog height, 8.38 mm. **The tails**: Samtec's catalog
+    page F-226 (`suddendocs.samtec.com/catalog_english/tsw_th.pdf`, SHA-256 `3a5770b11668`, read
+    2026-11-13), page 1, STRAIGHT PIN VERSIONS, lead style -07: B (2.54) .100, the tail under the
+    body. Through the 1.6 mm board they stand 2.54 - 1.6 = 0.94 mm out of the bottom face, which
+    `src/main.physical.nsm` states as `.pin_protrusion` for both headers (bought that length, not
+    cut; the page prints no tolerance), so the 3D view, the `.glb` and the STEP file draw each pin
+    through its hole and out, and the case fit measures them. `fab` then writes the `trim:` line
+    every stated protrusion gets (`after soldering, cut the pins to protrude 0.94 mm from the
+    bottom face, nothing lies over them`): they already do, so measuring one is the whole step.
 
 ## Parity
 
@@ -403,8 +416,9 @@ and `.lid`, placed at x and y -2.5 mm, and z -7.6 mm and 6.5 mm.
 
 - **The base**: a tray with a 2 mm floor and 2 mm walls 0.5 mm off the outline, and four 6 mm
   square bosses, 4 mm tall with a 2.2 mm bore for an M2.5 thread-forming screw, under the
-  mounting holes. The board's bottom face rests on them: 4 mm leaves the headers' tails (about
-  1.6 mm out of the bottom face) 2 mm over the floor. The top wall has a notch at J1, 15 mm wide
+  mounting holes. The board's bottom face rests on them: 4 mm leaves the headers' tails (0.94 mm
+  out of the bottom face, F-226's -07 tail of 2.54 mm through the 1.6 mm board, stated as their
+  `.pin_protrusion`) 3.06 mm over the floor, and the case fit finds nothing on them. The top wall has a notch at J1, 15 mm wide
   and from 3.4 mm under the board's top face up, for a micro-B plug's overmould; the bottom wall
   has one at J4 for its cable.
 - **The lid**: a 2 mm plate whose underside is 6.5 mm above the board's top face, which keeps it
