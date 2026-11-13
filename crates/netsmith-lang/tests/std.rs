@@ -9,6 +9,7 @@ const LOGIC: &str = include_str!("../../../std/logic.nsm");
 const REGULATOR: &str = include_str!("../../../std/parts/regulator.nsm");
 const STACKUP: &str = include_str!("../../../std/mfg/stackup.nsm");
 const JLCPCB: &str = include_str!("../../../std/mfg/jlcpcb.nsm");
+const ACME: &str = include_str!("../../../std/mfg/acme.nsm");
 const DIODE: &str = include_str!("../../../std/parts/diode.nsm");
 const TRANSISTOR: &str = include_str!("../../../std/parts/transistor.nsm");
 const MECHANICAL: &str = include_str!("../../../std/parts/mechanical.nsm");
@@ -161,9 +162,25 @@ fn logic_is_an_interface_that_carries_its_reference_rail() {
 }
 
 #[test]
+fn the_fictional_fabricator_has_an_eight_and_a_ten_layer_process() {
+    let file = parse(ACME).unwrap();
+    let names: Vec<&str> = file
+        .definitions
+        .iter()
+        .map(|d| d.name.name.as_str())
+        .collect();
+    assert_eq!(names, ["EightLayer", "TenLayer"]);
+    assert!(
+        file.definitions
+            .iter()
+            .all(|d| d.kind == DefKind::Interface)
+    );
+}
+
+#[test]
 fn library_files_round_trip_through_the_printer() {
     for src in [
-        PASSIVE, SOURCES, LOGIC, REGULATOR, STACKUP, JLCPCB, DIODE, TRANSISTOR, MECHANICAL,
+        PASSIVE, SOURCES, LOGIC, REGULATOR, STACKUP, JLCPCB, ACME, DIODE, TRANSISTOR, MECHANICAL,
         CONNECTOR, BUS,
     ] {
         let once = parse(src).unwrap().to_source();

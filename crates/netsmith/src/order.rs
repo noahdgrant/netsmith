@@ -659,26 +659,65 @@ pub fn project_boards(
     loader: &Loader,
     catalogs: &Catalogs,
 ) -> Result<Vec<(String, usize)>, String> {
-    let mut found: Vec<(String, usize)> = Vec::new();
+    Ok(boards_and_processes(target, loader, catalogs)?
+        .into_iter()
+        .map(|b| (b.label, b.file))
+        .collect())
+}
+
+/// A board or panel of the project, as [`project_boards`] finds it.
+struct ProjectBoard {
+    label: String,
+    /// The index of the source file that builds it.
+    file: usize,
+    /// The process it is made by, `Process::name` and `Process::fabricator`, when the
+    /// fabricator is fictional (ADR 0112): such a board cannot be ordered.
+    fictional: Option<(String, String)>,
+}
+
+fn boards_and_processes(
+    target: &Target,
+    loader: &Loader,
+    catalogs: &Catalogs,
+) -> Result<Vec<ProjectBoard>, String> {
+    let mut found: Vec<ProjectBoard> = Vec::new();
     for (i, source) in target.files.iter().enumerate() {
         let text =
             fs::read_to_string(&source.path).map_err(|e| format!("{}: {e}\n", source.name))?;
         let outcome = outcome_with(&source.name, &text, loader, catalogs, None)
             .map_err(|problems| render_problems(&problems))?;
-        // The boards, then the panels (ADR 0040): an order names either.
+        let fictional = |b: &Built| {
+            b.design
+                .process
+                .as_ref()
+                .filter(|p| p.is_fictional())
+                .map(|p| (p.name.clone(), p.fabricator.clone()))
+        };
+        // The boards, then the panels (ADR 0040): an order names either. A panel is made by
+        // the process of the board it repeats.
         let labels = outcome
             .boards
             .iter()
-            .map(Built::label)
-            .chain(outcome.panels.iter().map(|p| p.name.clone()));
-        for label in labels {
-            if let Some((_, first)) = found.iter().find(|(l, _)| *l == label) {
+            .map(|b| (b.label(), fictional(b)))
+            .chain(outcome.panels.iter().map(|p| {
+                let cell = outcome
+                    .boards
+                    .iter()
+                    .find(|b| b.system.is_none() && b.board == p.cell);
+                (p.name.clone(), cell.and_then(fictional))
+            }));
+        for (label, fictional) in labels {
+            if let Some(first) = found.iter().find(|b| b.label == label) {
                 return Err(format!(
                     "error: the board or panel {label} is built by both {} and {}; their names are the folders they are written to and must differ\n",
-                    target.files[*first].name, source.name
+                    target.files[first.file].name, source.name
                 ));
             }
-            found.push((label, i));
+            found.push(ProjectBoard {
+                label,
+                file: i,
+                fictional,
+            });
         }
     }
     Ok(found)
@@ -750,7 +789,8 @@ pub fn fab_order(
     locks: OrderLocks,
     out: &Path,
 ) -> Result<Made, String> {
-    let found = project_boards(target, loader, catalogs)?;
+    let boards = boards_and_processes(target, loader, catalogs)?;
+    let found: Vec<(String, usize)> = boards.iter().map(|b| (b.label.clone(), b.file)).collect();
     if let Some((label, _)) = found
         .iter()
         .find(|(l, _)| l.split('/').next() == Some(ORDERS_DIR))
@@ -762,6 +802,21 @@ pub fn fab_order(
     }
     let labels: Vec<String> = found.iter().map(|(l, _)| l.clone()).collect();
     let selected = resolve(order, &labels)?;
+    // A board of a fictional fabricator (ADR 0112) has a package, but no one makes it.
+    let fictional: Vec<String> = selected
+        .iter()
+        .filter_map(|s| {
+            let board = boards.iter().find(|b| b.label == s.label)?;
+            let (process, fabricator) = board.fictional.as_ref()?;
+            Some(format!(
+                "error: order `{}`: {} is made by {fabricator}'s `{process}`, and {fabricator} is a fictional fabricator: its numbers were chosen, not sourced, so the board cannot be ordered; `fab` still writes its package. Take it out of the order, or move it to a real fabricator's process (`std::mfg::jlcpcb`)\n",
+                order.name, s.label
+            ))
+        })
+        .collect();
+    if !fictional.is_empty() {
+        return Err(fictional.concat());
+    }
     // The boards of the order that each source file builds, and the lock of each of those files.
     let mut files: Vec<(usize, Vec<String>, Opened)> = Vec::new();
     for (i, source) in target.files.iter().enumerate() {

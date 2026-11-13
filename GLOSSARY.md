@@ -101,6 +101,10 @@ _Avoid_: Layer stack
 How a board of more than two layers is pressed together, the fabricator's named build (`JLC06161H-3313`): the inner copper and each _Dielectric layer_ from the top, `.stackup.dielectric1` to `.dielectricN` (ADR 0111).
 _Avoid_: Lamination, stack-up (for this; the _Stackup_ is the whole)
 
+**Fictional fabricator**:
+A fabricator std names that does not exist, ACME (`std::mfg::acme`), whose 8- and 10-layer processes have numbers chosen, not sourced (ADR 0112). `fab` makes a board on one into a package that says it is not for ordering, and `fab --order` refuses it.
+_Avoid_: Mock fab, dummy process, generic fabricator
+
 **Dielectric layer**:
 One prepreg or core of a _Build-up_, a `DielectricLayer` with its kind, glass style, thickness and relative permittivity. Not a capacitor's _Dielectric_.
 _Avoid_: Dielectric (that is a capacitor's class), substrate

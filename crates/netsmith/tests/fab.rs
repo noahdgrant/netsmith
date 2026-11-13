@@ -17,6 +17,7 @@ const LED: &str = include_str!("../../../examples/led.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
 const SIX_LAYER: &str = include_str!("../../../examples/six_layer.nsm");
+const TEN_LAYER: &str = include_str!("../../../examples/ten_layer.nsm");
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const OUTLINE_AND_POURS: &str = include_str!("../../../examples/outline_and_pours.nsm");
 const OUTLINE_AND_POURS_PHYSICAL: &str =
@@ -386,6 +387,96 @@ fn the_six_layer_board_becomes_a_package_with_no_kicad_and_the_notes_say_what_ea
     );
     let pcb = read(&dir, "SixLayerExample", "SixLayerExample.kicad_pcb");
     assert!(pcb.contains("(10 \"In4.Cu\" power)") && pcb.contains("(6 \"In2.Cu\" signal)"));
+}
+
+/// The package of a board on a fictional fabricator's process (ADR 0112) is written as for any
+/// other: `layers` copper Gerbers, the stackup of the build-up, the scene; its notes say it is
+/// not for ordering.
+fn fictional_package(name: &str, source: &str, board: &str, layers: u32, build: &str) {
+    let dir = out(name);
+    let made = fab(
+        &format!("{name}.nsm"),
+        source,
+        &dir,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(made[0].board, board);
+    let notes = read(&dir, board, "fab-notes.txt");
+    assert!(notes.contains("design rules check: passed"), "{notes}");
+    assert!(
+        notes.contains("fictional fabricator: ACME does not exist")
+            && notes.contains("so this package cannot be ordered")
+            && notes.contains("a fictional process: this package is not for ordering")
+            && !notes.contains("order it with these"),
+        "{notes}"
+    );
+    assert!(
+        notes.contains(&format!("{layers} layers (In1.Cu is a plane on GND"))
+            && notes.contains(&format!("build-up {build}")),
+        "{notes}"
+    );
+    let copper: Vec<String> = std::iter::once("F_Cu".to_string())
+        .chain((1..=layers - 2).map(|n| format!("In{n}_Cu")))
+        .chain(std::iter::once("B_Cu".to_string()))
+        .collect();
+    for layer in &copper {
+        assert!(
+            made[0]
+                .gerber_files
+                .iter()
+                .any(|f| f.ends_with(&format!("-{layer}.gbr"))),
+            "no {layer} in {:?}",
+            made[0].gerber_files
+        );
+    }
+    assert!(
+        !made[0]
+            .gerber_files
+            .iter()
+            .any(|f| f.ends_with(&format!("-In{}_Cu.gbr", layers - 1))),
+        "{:?}",
+        made[0].gerber_files
+    );
+    let pcb = read(&dir, board, &format!("{board}.kicad_pcb"));
+    let last = format!("In{}.Cu", layers - 2);
+    assert!(
+        pcb.contains(&format!("(layer \"dielectric {}\"", layers - 1))
+            && pcb.contains(&format!("\"{last}\" power)")),
+        "the stackup of {layers} layers"
+    );
+    assert!(dir.join(board).join(format!("{board}.glb")).is_file());
+}
+
+#[test]
+fn a_ten_layer_board_of_the_fictional_fabricator_becomes_a_package_not_for_ordering() {
+    fictional_package(
+        "ten-layer",
+        TEN_LAYER,
+        "TenLayerExample",
+        10,
+        "ACME-10L-1.6",
+    );
+}
+
+#[test]
+fn an_eight_layer_board_of_the_fictional_fabricator_becomes_a_package_not_for_ordering() {
+    let eight = TEN_LAYER
+        .replace("TenLayer", "EightLayer")
+        .replace("        .inner7.use &= \"signal\"\n", "")
+        .replace(
+            "        .inner8.net &= \"GND\"\n",
+            "        .inner6.net &= \"GND\"\n",
+        )
+        .replace("        .inner6.use &= \"signal\"\n", "");
+    fictional_package("eight-layer", &eight, "EightLayerExample", 8, "ACME-8L-1.6");
+}
+
+#[test]
+fn the_ten_layer_example_agrees_with_kicads_own_plot() {
+    cross_checked("ten_layer", TEN_LAYER);
 }
 
 #[test]

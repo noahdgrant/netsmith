@@ -1,0 +1,56 @@
+//! A regulator on a ten-layer board of ACME, a fictional fabricator: its numbers were chosen,
+//! not sourced, and the board cannot be ordered (`std::mfg::acme`, ADR 0112). `fab` writes the
+//! package all the same, with ten copper Gerbers and the stackup of the build-up ACME-10L-1.6.
+//! Three inner layers are ground planes and one a 3.3 V plane; the other four are signal
+//! layers, which stay empty because the router draws on the outer layers only.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+import std::mfg::acme::TenLayer
+
+board TenLayerExample {
+    /// Made by ACME's ten-layer process (1.6 mm, build-up ACME-10L-1.6), which is fictional.
+    .process: TenLayer {
+        .inner1.net &= "GND"
+        .inner2.use &= "signal"
+        .inner3.use &= "signal"
+        .inner4.net &= "3V3"
+        .inner5.net &= "GND"
+        .inner6.use &= "signal"
+        .inner7.use &= "signal"
+        .inner8.net &= "GND"
+    }
+
+    /// The input rail is supplied from outside the board.
+    .input: Rail {
+        .voltage &= 5V +/- 5%
+        .pos.net &= "VIN"
+        .neg.net &= "GND"
+    }
+    /// What the outside world draws from the output.
+    .output: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+
+    .regulator: LinearRegulator
+    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
+    .input ~ .regulator.vin
+    .regulator.vout ~ .output
+    .input_cap.max_voltage  >= .input.voltage * 1.5
+    .output_cap.max_voltage >= .output.voltage * 1.5
+    .input.pos ~> .input_cap ~> .input.neg
+    .output.pos ~> .output_cap ~> .output.neg
+
+    .power_in: Header1x2
+    .power_out: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .output.pos ~ .power_out.p1
+    .output.neg ~ .power_out.p2
+}

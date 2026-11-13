@@ -11,6 +11,16 @@ const STATUS: &str = include_str!("../../../examples/status_indicator.nsm");
 const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
 const SIX_LAYER: &str = include_str!("../../../examples/six_layer.nsm");
+const TEN_LAYER: &str = include_str!("../../../examples/ten_layer.nsm");
+
+/// The ten-layer example on ACME's eight-layer process: the same board with two inner layers
+/// fewer.
+fn eight_layer() -> String {
+    TEN_LAYER
+        .replace("TenLayer", "EightLayer")
+        .replace("        .inner7.use &= \"signal\"\n", "")
+        .replace("        .inner8.net &= \"GND\"\n", "")
+}
 
 fn designed_with_sourcing(src: &str) -> Result<Designed, Vec<String>> {
     let c = check("t.nsm", src, &Loader::std());
@@ -769,6 +779,95 @@ fn an_inner_layer_that_is_neither_plane_nor_signal_is_refused() {
         text.contains(
             "`process.inner3.use` is `mixed`, but an inner layer is `\"plane\"` or `\"signal\"`"
         ),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_fictional_ten_layer_process_arrives_with_eight_inner_layers_and_its_build_up() {
+    let p = designed(TEN_LAYER).unwrap().process.unwrap();
+    assert_eq!(
+        (p.name.as_str(), p.fabricator.as_str()),
+        ("TenLayer", "ACME")
+    );
+    assert!(p.is_fictional());
+    // The rules are JLCPCB's multilayer rows, chosen so a board keeps them between the two.
+    assert_eq!((p.min_track, p.min_clearance), (0.09, 0.1));
+    assert_eq!((p.min_drill, p.min_via_diameter), (0.15, 0.25));
+    assert_eq!(p.stackup.layers, 10);
+    assert_eq!(p.stackup.chosen_thickness(), Some(1.6));
+    let inner = p.stackup.inner.expect("a ten-layer board has inner layers");
+    assert_eq!(inner.layers.len(), 8);
+    assert_eq!(
+        inner.planes().collect::<Vec<_>>(),
+        [(1, "GND"), (4, "3V3"), (5, "GND"), (8, "GND")]
+    );
+    assert_eq!(inner.build, "ACME-10L-1.6");
+    assert_eq!(
+        inner.dielectrics,
+        [
+            prepreg("3313", 0.0994, 4.1),
+            core(0.2, 4.6),
+            prepreg("2116", 0.1088, 4.16),
+            core(0.25, 4.6),
+            prepreg("2116", 0.1088, 4.16),
+            core(0.25, 4.6),
+            prepreg("2116", 0.1088, 4.16),
+            core(0.2, 4.6),
+            prepreg("3313", 0.0994, 4.1)
+        ]
+    );
+    // Symmetric, and 1.6 mm within a hundredth or two.
+    let d = &inner.dielectrics;
+    assert!((0..d.len()).all(|k| d[k] == d[d.len() - 1 - k]));
+    let total = 2.0 * 0.035 + 8.0 * inner.copper + d.iter().map(|l| l.thickness).sum::<f64>();
+    assert!((total - 1.6168).abs() < 1e-9, "{total}");
+}
+
+#[test]
+fn the_fictional_eight_layer_process_arrives_with_six_inner_layers_and_its_build_up() {
+    let p = designed(&eight_layer()).unwrap().process.unwrap();
+    assert_eq!(
+        (p.name.as_str(), p.fabricator.as_str()),
+        ("EightLayer", "ACME")
+    );
+    assert!(p.is_fictional());
+    assert_eq!(p.stackup.layers, 8);
+    let inner = p
+        .stackup
+        .inner
+        .expect("an eight-layer board has inner layers");
+    assert_eq!(inner.layers.len(), 6);
+    assert_eq!(inner.build, "ACME-8L-1.6");
+    assert_eq!(
+        inner.dielectrics,
+        [
+            prepreg("2116", 0.1088, 4.16),
+            core(0.3, 4.6),
+            prepreg("2116", 0.1088, 4.16),
+            core(0.41, 4.6),
+            prepreg("2116", 0.1088, 4.16),
+            core(0.3, 4.6),
+            prepreg("2116", 0.1088, 4.16)
+        ]
+    );
+    let total = 2.0 * 0.035
+        + 6.0 * inner.copper
+        + inner.dielectrics.iter().map(|l| l.thickness).sum::<f64>();
+    assert!((total - 1.6064).abs() < 1e-9, "{total}");
+}
+
+#[test]
+fn a_jlcpcb_process_is_not_fictional() {
+    assert!(!designed(SIX_LAYER).unwrap().process.unwrap().is_fictional());
+}
+
+#[test]
+fn a_ten_layer_board_that_leaves_an_inner_layer_unsaid_is_refused() {
+    let source = TEN_LAYER.replace("        .inner6.use &= \"signal\"\n", "");
+    let text = designed(&source).unwrap_err().join("\n");
+    assert!(
+        text.contains("`process.inner6` is an inner layer of a 10-layer board and has no net"),
         "{text}"
     );
 }

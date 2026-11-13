@@ -678,6 +678,49 @@ fn a_four_layer_board_has_copper_on_four_layers_with_the_planes_inside() {
     assert!(z.windows(2).all(|w| w[0] > w[1]), "{z:?}");
 }
 
+#[test]
+fn a_ten_layer_board_has_copper_on_ten_layers_stacked_through_its_thickness() {
+    let board = board_with(common::ten_layer_process());
+    let s = scene(&board);
+    let c = copper(&s);
+    let names: Vec<&str> = c.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "F.Cu", "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu", "In5.Cu", "In6.Cu", "In7.Cu", "In8.Cu",
+            "B.Cu"
+        ]
+    );
+    // The planes hold their net's copper; the signal layers between them none.
+    assert!(
+        c.layers[1]
+            .pours
+            .iter()
+            .all(|p| p.net.as_deref() == Some("GND"))
+    );
+    assert!(
+        c.layers[8]
+            .pours
+            .iter()
+            .all(|p| p.net.as_deref() == Some("3V3"))
+    );
+    assert!(!c.layers[1].pours.is_empty() && !c.layers[8].pours.is_empty());
+    assert!(
+        c.layers[2..8]
+            .iter()
+            .all(|l| l.pours.is_empty() && l.tracks.is_empty())
+    );
+    let z: Vec<f64> = c.layers.iter().map(|l| l.z_top).collect();
+    assert!(z.windows(2).all(|w| w[0] > w[1]), "{z:?}");
+    assert!(c.layers[9].z_bottom > -s.board.stack_thickness - 1e-9);
+    // The stack is the build-up ACME-10L-1.6 with the mask: 1.6168 mm and two masks.
+    assert!(
+        (s.board.stack_thickness - 1.6368).abs() < 1e-6,
+        "{}",
+        s.board.stack_thickness
+    );
+}
+
 /// The volume a closed mesh holds: positive when its triangles face out.
 fn volume(m: &netsmith_3d::mesh::Mesh) -> f64 {
     m.indices

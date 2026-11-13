@@ -216,6 +216,18 @@ pub struct Process {
     pub stackup: Stackup,
 }
 
+/// The fabricators std names that do not exist: `std::mfg::acme`'s ACME (ADR 0112). A board on
+/// one of their processes is made into a package but cannot be ordered.
+pub const FICTIONAL_FABRICATORS: &[&str] = &["ACME"];
+
+impl Process {
+    /// Whether no real fabricator makes it: its numbers were chosen, not sourced, and a board on
+    /// it is not for ordering (ADR 0112).
+    pub fn is_fictional(&self) -> bool {
+        FICTIONAL_FABRICATORS.contains(&self.fabricator.as_str())
+    }
+}
+
 /// A panel (ADR 0040): one board repeated in a grid, cut apart by V-cuts, as a `panel`
 /// definition states it. Lengths are in millimetres.
 #[derive(Debug, Clone, PartialEq)]

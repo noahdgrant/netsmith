@@ -91,6 +91,11 @@ impl Loader {
             include_str!("../../../std/mfg/jlcpcb.nsm"),
         );
         loader.insert(
+            "std::mfg::acme",
+            "std/mfg/acme.nsm",
+            include_str!("../../../std/mfg/acme.nsm"),
+        );
+        loader.insert(
             "std::env",
             "std/env.nsm",
             include_str!("../../../std/env.nsm"),

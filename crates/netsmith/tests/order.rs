@@ -81,6 +81,31 @@ fn make_with(
 }
 
 #[test]
+fn a_board_of_a_fictional_fabricator_is_refused_by_an_order_and_nothing_is_made() {
+    let root = project(
+        "fictional",
+        "\n[order.big.boards]\nLedExample = 1\nTenLayerExample = 2\n",
+    );
+    fs::write(
+        root.join("src/ten.nsm"),
+        include_str!("../../../examples/ten_layer.nsm"),
+    )
+    .unwrap();
+    let manifest = fs::read_to_string(root.join("netsmith.toml"))
+        .unwrap()
+        .replace("\"src/two.nsm\"]", "\"src/two.nsm\", \"src/ten.nsm\"]");
+    fs::write(root.join("netsmith.toml"), manifest).unwrap();
+    let err = make(&root, "big", None).expect_err("ACME makes no boards");
+    assert!(
+        err.contains(
+            "error: order `big`: TenLayerExample is made by ACME's `TenLayer`, and ACME is a fictional fabricator: its numbers were chosen, not sourced, so the board cannot be ordered"
+        ) && !err.contains("LedExample"),
+        "{err}"
+    );
+    assert!(!root.join("fab").exists(), "nothing is written");
+}
+
+#[test]
 fn an_unknown_board_stops_the_order_and_lists_the_boards_that_exist() {
     let root = project(
         "unknown",

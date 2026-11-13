@@ -1870,7 +1870,7 @@ impl Board {
             format!(" ({})", list.join(", "))
         };
         format!(
-            "{} {} (numbers from {}); track {} mm, space {} mm, drill {} mm, via {} mm, annular ring {} mm, hole to hole {} mm, copper to edge {} mm, silkscreen {} mm line and {} mm text, mask bridge {} mm; {} layers{}, {} mm thick, {} oz copper{}; order it with these",
+            "{} {} (numbers from {}); track {} mm, space {} mm, drill {} mm, via {} mm, annular ring {} mm, hole to hole {} mm, copper to edge {} mm, silkscreen {} mm line and {} mm text, mask bridge {} mm; {} layers{}, {} mm thick, {} oz copper{}; {}",
             p.fabricator,
             p.name,
             p.source,
@@ -1892,6 +1892,11 @@ impl Board {
                 .inner
                 .as_ref()
                 .map_or_else(String::new, |i| format!(", build-up {}", i.build)),
+            if p.is_fictional() {
+                "a fictional process: this package is not for ordering"
+            } else {
+                "order it with these"
+            },
         )
     }
 
@@ -1929,9 +1934,16 @@ impl Board {
     }
 
     /// What the board needs of the fabricator beyond its standard process, one line each for
-    /// the fabrication notes; empty when the standard process makes it.
+    /// the fabrication notes; empty when the standard process makes it. A board of a fictional
+    /// fabricator (ADR 0112) says first that it cannot be ordered.
     pub fn process_extras(&self) -> Vec<String> {
         let mut extras = Vec::new();
+        if self.process.is_fictional() {
+            extras.push(format!(
+                "fictional fabricator: {} does not exist; its numbers were chosen, not sourced, and stand for no real fabricator's capability, so this package cannot be ordered (`fab --order` refuses it, ADR 0112)",
+                self.process.fabricator
+            ));
+        }
         let in_pad = self.vias_in_pads();
         if !in_pad.is_empty() {
             let mut pads: Vec<String> = in_pad.iter().map(|(_, p)| p.to_string()).collect();
@@ -2815,6 +2827,40 @@ pub(crate) mod tests {
         design.process = Some(crate::rules::six_layer_process());
         design.nets[1].name = "3V3".into();
         design
+    }
+
+    /// The LED board on ACME's ten layers: ground on the first inner layer, 3.3 V on the last.
+    pub fn ten_layer_design() -> Design {
+        let mut design = led_design();
+        design.process = Some(crate::rules::acme_process(10));
+        design.nets[1].name = "3V3".into();
+        design
+    }
+
+    #[test]
+    fn a_board_of_a_fictional_fabricator_says_it_is_not_for_ordering() {
+        let board = placed(&ten_layer_design());
+        assert_eq!(board.inner_layers().len(), 8);
+        let note = board.process_note();
+        assert!(
+            note.starts_with("ACME TenLayer (numbers from std/mfg/acme.nsm: chosen, not sourced; ACME is a fictional fabricator)")
+                && note.contains("10 layers (In1.Cu is a plane on GND, In2.Cu is a signal layer")
+                && note.contains("In8.Cu is a plane on 3V3), 1.6 mm thick, 1 oz copper, build-up ACME-10L-1.6")
+                && note.ends_with("; a fictional process: this package is not for ordering")
+                && !note.contains("order it with these"),
+            "{note}"
+        );
+        let extras = board.process_extras();
+        assert!(
+            extras.iter().any(|e| e.starts_with(
+                "fictional fabricator: ACME does not exist; its numbers were chosen, not sourced, and stand for no real fabricator's capability, so this package cannot be ordered"
+            )),
+            "{extras:?}"
+        );
+        // A real fabricator's board says neither.
+        let six = placed(&six_layer_design());
+        assert!(six.process_note().ends_with("order it with these"));
+        assert!(!six.process_extras().iter().any(|e| e.contains("fictional")));
     }
 
     #[test]

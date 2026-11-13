@@ -53,7 +53,7 @@ board Name {
 
 ## Standard library
 
-`std::parts::passive` (Resistor, Capacitor, Led, Inductor, FerriteBead, Crystal, Fuse, Switch), `std::parts::diode` (Diode, Schottky, Zener, Tvs, TvsBidirectional), `std::parts::transistor` (NMosfet, PMosfet), `std::parts::logic` (LevelTranslator, Sn74lvc1g04), `std::parts::regulator` (LinearRegulator, BuckStage, Lt8641), `std::parts::connector` (headers, sockets, Coax, UsbCPower, UsbC2, UsbCSink, Obd2M, ProgrammingPads6), `std::parts::mechanical` (MountingHole, PlatedHole, Fiducial, TestPoint, Label), `std::pcb` (Outline, Cutout, Keepout), `std::bus` (Uart, Spi, I2c, Swd, Usb2, PullUp, PullDown, I2cPullups), `std::sources::Rail`, `std::logic::Logic`, `std::mfg::jlcpcb::{TwoLayer, FourLayer, SixLayer}`. Fields and pins of each are in the guide's catalogue.
+`std::parts::passive` (Resistor, Capacitor, Led, Inductor, FerriteBead, Crystal, Fuse, Switch), `std::parts::diode` (Diode, Schottky, Zener, Tvs, TvsBidirectional), `std::parts::transistor` (NMosfet, PMosfet), `std::parts::logic` (LevelTranslator, Sn74lvc1g04), `std::parts::regulator` (LinearRegulator, BuckStage, Lt8641), `std::parts::connector` (headers, sockets, Coax, UsbCPower, UsbC2, UsbCSink, Obd2M, ProgrammingPads6), `std::parts::mechanical` (MountingHole, PlatedHole, Fiducial, TestPoint, Label), `std::pcb` (Outline, Cutout, Keepout), `std::bus` (Uart, Spi, I2c, Swd, Usb2, PullUp, PullDown, I2cPullups), `std::sources::Rail`, `std::logic::Logic`, `std::mfg::jlcpcb::{TwoLayer, FourLayer, SixLayer}`, `std::mfg::acme::{EightLayer, TenLayer}` (a fictional fabricator: not for ordering). Fields and pins of each are in the guide's catalogue.
 
 ## Catalogs
 
