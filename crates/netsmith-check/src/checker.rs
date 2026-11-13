@@ -1551,9 +1551,19 @@ impl<'a> Checker<'a> {
                 }
                 None => {
                     let owner = self.model.instance(cur).type_name.clone();
+                    let names: Vec<String> = self
+                        .model
+                        .instance(cur)
+                        .children
+                        .iter()
+                        .map(|(n, _)| n.clone())
+                        .collect();
+                    let near = crate::lower::closest(&first.name, &names)
+                        .map(|n| format!("; did you mean `.{n}`?"))
+                        .unwrap_or_default();
                     self.error(
                         first.span,
-                        format!("`{}` is not a member of this {owner}", first.name),
+                        format!("`{}` is not a member of this {owner}{near}", first.name),
                     );
                     return Res::Bad;
                 }

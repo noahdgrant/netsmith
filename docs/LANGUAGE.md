@@ -225,7 +225,7 @@ Rules.
 
 Types you can declare: `Pin`; the quantities `Number`, `Voltage`, `Current`, `Resistance`, `Capacitance`, `Inductance`, `Frequency`, `Time`, `Length`, `Power`, `Charge`, `Temperature` (kelvin, `10K`, or Celsius, `25degC`: see Temperatures below; a rise is a difference, so it is kelvin too); the text types `String`, `Package`, `Color`; an `enum` that is in scope (Enums, below); and any definition you can name.
 
-Misuse: a typo, a bare name where the dot belongs, and a name declared twice.
+Misuse: a typo, a bare name where the dot belongs, and a name declared twice. A member name that is close to one the block has (the same letters in another case, or one or two edits away) gets the nearest as `did you mean`.
 
 ```nsm fails
 import std::parts::passive::Resistor
@@ -236,11 +236,27 @@ board Typo {
 ```
 
 ```text
-error: `resitance` is not a member of this Resistor
+error: `resitance` is not a member of this Resistor; did you mean `.resistance`?
   --> main.nsm:4:22
   |
 4 |     .r1: Resistor { .resitance &= 1kohm +/- 1% }
   |                      ^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Led
+
+board Spelling {
+    .led: Led { .colour &= "RED" }
+}
+```
+
+```text
+error: `colour` is not a member of this Led; did you mean `.color`?
+  --> main.nsm:4:18
+  |
+4 |     .led: Led { .colour &= "RED" }
+  |                  ^^^^^^
 ```
 
 ```nsm fails
