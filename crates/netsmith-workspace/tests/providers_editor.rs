@@ -174,8 +174,8 @@ fn project_of(
 
 #[test]
 fn every_capacitor_of_a_picked_bank_carries_the_via_and_the_bank_is_one_line() {
-    // A provider of `Capacitor` is a bank when the design says how many. The first capacitor is
-    // at the use's path and the others at `bulk#2` and `bulk#3`; all three are one line.
+    // A provider of `Capacitor` is a bank when the design says how many. The capacitors are
+    // `bulk[0]`, `bulk[1]` and `bulk[2]`; all three are one line.
     let poly = "\
 import std::parts::passive::Capacitor
 
@@ -201,7 +201,7 @@ board Bulk {
     }
     .bulk: Capacitor {
         .package &= \"CASE_B\"
-        .count &= 3
+        .count &= 3..8
     }
     .supply.pos ~> .bulk ~> .supply.neg
 }

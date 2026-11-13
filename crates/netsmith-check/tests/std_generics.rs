@@ -560,8 +560,8 @@ part Poly provides Capacitor {
 import std::parts::passive::Capacitor
 import src::acme::Poly
 board B {
-    .x: Poly { .count &= 2 }
-    .y: Capacitor { .count &= 2 }
+    .x: Poly { .count &= 1..2 }
+    .y: Capacitor { .count &= 1..2 }
 }
 ";
     let c = run(board, &[("src::acme", acme)]);

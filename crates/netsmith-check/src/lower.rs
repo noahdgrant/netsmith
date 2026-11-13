@@ -706,6 +706,9 @@ impl Checker<'_> {
         match (target, rhs) {
             (Res::Field(f), rhs) => {
                 self.refuse_own_statement(f, symbol, c.span);
+                if let Some(t) = &rhs {
+                    self.refuse_fixed_count(f, p, &t.e, c.span);
+                }
                 if c.op == CmpOp::Narrow {
                     self.stated.insert(f);
                 }
@@ -740,6 +743,47 @@ impl Checker<'_> {
             _ => {}
         }
         stated
+    }
+
+    /// A whole number written as the `.count` of a board's own capacitor is two spellings of
+    /// that many capacitors in parallel, and the board has one for it, `N x Capacitor` (ADR 0119,
+    /// owner decision of 2026-11-13, issue #685). A count the solver chooses (a range), one that
+    /// reads another field, and one a module passes through its interface (`.reg.output_count`,
+    /// or a capacitor inside a module) are a bank and stay. The statement is still applied, so
+    /// nothing else is reported about the board for it.
+    fn refuse_fixed_count(&mut self, field: FieldId, path: &ast::Path, e: &RExpr, span: Span) {
+        let RExpr::Const(q) = e else { return };
+        if !self.in_board() || self.is_library(self.cur_source()) || q.lo() != q.hi() {
+            return;
+        }
+        let n = q.lo();
+        if n.fract() != 0.0 || n < 1.0 {
+            return;
+        }
+        let owner = self.model.field(field).owner;
+        let own = self.model.bank_count(owner) == Some(field)
+            && self
+                .model
+                .instance(owner)
+                .parent
+                .is_some_and(|p| self.model.instance(p).kind == InstKind::Board);
+        if !own {
+            return;
+        }
+        let name = self.model.instance(owner).name.clone();
+        let source = path.to_source();
+        let message = if n == 1.0 {
+            format!(
+                "`{source}` fixes a bank at one capacitor, which is a plain `Capacitor`: leave `.count` out. `.count` is for a number the solver chooses (`.count &= 1..8`) or a module passes through its interface"
+            )
+        } else {
+            let n = n as u32;
+            format!(
+                "`{source}` fixes the count of a capacitor the board itself declares: write `{n} x Capacitor` instead, `.{name}: {n} x Capacitor {{ ... }}`, whose members are `.{name}[0]` to `.{name}[{}]`. `.count` is for a number the solver chooses (`.count &= 1..8`) or a module passes through its interface",
+                n - 1
+            )
+        };
+        self.error(span, message);
     }
 
     /// Give each field its default unless a `&=` states it (ADR 0051). The rule looks at

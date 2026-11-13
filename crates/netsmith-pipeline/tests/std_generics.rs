@@ -602,7 +602,7 @@ board Bulk {
         .pos.net &= \"VIN\"
         .neg.net &= \"GND\"
     }
-    .bulk: PolyCap { .count &= 3 }
+    .bulk: PolyCap { .count &= 3..8 }
     .supply.pos ~> .bulk ~> .supply.neg
 }
 ";
@@ -612,7 +612,7 @@ board Bulk {
         .iter()
         .map(|p| (p.refdes.as_str(), p.path.as_str()))
         .collect();
-    assert_eq!(caps, [("C1", "bulk"), ("C2", "bulk#2"), ("C3", "bulk#3")]);
+    assert_eq!(caps, [("C1", "bulk[0]"), ("C2", "bulk[1]"), ("C3", "bulk[2]")]);
     assert!(parts.iter().all(|p| p.kind == "PolyCap"));
     assert!(parts.iter().all(|p| p.provides == ["Capacitor"]));
 }

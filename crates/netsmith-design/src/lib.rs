@@ -258,6 +258,16 @@ fn assembly_of(
     found
 }
 
+/// The path of the `k`th (from 0) of the `n` parts a bank stands for (ADR 0052): `bulk[1]`, the
+/// index syntax of `N x Kind` (ADR 0119). A bank of one is the part itself, `bulk`.
+pub(crate) fn bank_member_path(path: &str, k: usize, n: usize) -> String {
+    if n > 1 {
+        format!("{path}[{k}]")
+    } else {
+        path.to_string()
+    }
+}
+
 /// The most parts a bank may stand for. The solver offers far fewer; this stops a stated
 /// number that is a mistake.
 const MAX_BANK: f64 = 64.0;
@@ -1235,17 +1245,14 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             assembly,
             pick,
         });
-        // The first part of a bank has the path of the instance and the others add `#2`,
-        // `#3`, so that each is a part a layout file keys by its own path.
+        // The parts of a bank of two or more are `path[0]`, `path[1]`, ..., so that each is a
+        // part a layout file keys by its own path, as the members of `N x Kind` are.
         if bank > 1 {
             banks.insert(model.path_of(*id), bank);
         }
-        for k in 1..=bank {
-            let refdes = format!("{letters}{}", first + k - 1);
-            let path = match k {
-                1 => model.path_of(*id),
-                k => format!("{}#{k}", model.path_of(*id)),
-            };
+        for k in 0..bank {
+            let refdes = format!("{letters}{}", first + k);
+            let path = bank_member_path(&model.path_of(*id), k, bank);
             sourcing.push(Sourced {
                 refdes: refdes.clone(),
                 kind: inst.type_name.clone(),

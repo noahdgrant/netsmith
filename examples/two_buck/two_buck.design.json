@@ -471,7 +471,7 @@
         "provides": [],
         "value": "2.2u",
         "package": "1210",
-        "path": "buck_3v3.stage.input_cap",
+        "path": "buck_3v3.stage.input_cap[0]",
         "pins": [
           {
             "name": "a",
@@ -501,7 +501,7 @@
         "provides": [],
         "value": "2.2u",
         "package": "1210",
-        "path": "buck_3v3.stage.input_cap#2",
+        "path": "buck_3v3.stage.input_cap[1]",
         "pins": [
           {
             "name": "a",
@@ -1024,7 +1024,7 @@
         "provides": [],
         "value": "2.2u",
         "package": "1210",
-        "path": "buck_5v.stage.input_cap",
+        "path": "buck_5v.stage.input_cap[0]",
         "pins": [
           {
             "name": "a",
@@ -1054,7 +1054,7 @@
         "provides": [],
         "value": "2.2u",
         "package": "1210",
-        "path": "buck_5v.stage.input_cap#2",
+        "path": "buck_5v.stage.input_cap[1]",
         "pins": [
           {
             "name": "a",
@@ -2616,11 +2616,11 @@
           "height": 1.2
         },
         {
-          "path": "buck_3v3.stage.input_cap",
+          "path": "buck_3v3.stage.input_cap[0]",
           "height": 2.7
         },
         {
-          "path": "buck_3v3.stage.input_cap#2",
+          "path": "buck_3v3.stage.input_cap[1]",
           "height": 2.7
         },
         {
@@ -2656,11 +2656,11 @@
           "height": 1.2
         },
         {
-          "path": "buck_5v.stage.input_cap",
+          "path": "buck_5v.stage.input_cap[0]",
           "height": 2.7
         },
         {
-          "path": "buck_5v.stage.input_cap#2",
+          "path": "buck_5v.stage.input_cap[1]",
           "height": 2.7
         },
         {

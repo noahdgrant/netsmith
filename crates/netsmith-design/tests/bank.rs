@@ -35,18 +35,11 @@ fn a_bank_is_one_part_for_each_capacitor_on_the_same_nets() {
     let l = designed(".count &= 1..8", "40uF").unwrap();
     let parts = &l.design.parts;
     assert!(parts.len() > 1, "{} parts", parts.len());
-    // Numbered one after the other; the first has the path of the instance, the others add
-    // `#2`, `#3`, so that a layout file keys each by its own path.
+    // Numbered one after the other; the paths are `bulk[0]`, `bulk[1]`, ... as the members of
+    // `N x Kind` are, so that a layout file keys each by its own path.
     for (i, p) in parts.iter().enumerate() {
         assert_eq!(p.refdes, format!("C{}", i + 1));
-        assert_eq!(
-            p.path,
-            if i == 0 {
-                "bulk".to_string()
-            } else {
-                format!("bulk#{}", i + 1)
-            }
-        );
+        assert_eq!(p.path, format!("bulk[{i}]"));
         assert_eq!(p.kind, "Capacitor");
         assert_eq!(p.value, parts[0].value);
         assert_eq!(p.pins.len(), 2);
@@ -150,7 +143,7 @@ fn paths_of_bank(l: &Designed) -> Vec<String> {
     l.design
         .parts
         .iter()
-        .filter(|p| p.path == "bulk" || p.path.starts_with("bulk#"))
+        .filter(|p| p.path.starts_with("bulk["))
         .map(|p| p.path.clone())
         .collect()
 }

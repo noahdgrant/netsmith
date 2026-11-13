@@ -47,11 +47,17 @@ pub fn bom(
                     .to_string()
             });
         // The generic a picked provider stands for (ADR 0068), for a part that is a use itself.
-        // Every capacitor of a bank stands for it: the later ones are `x#2`, `x#3` of the use.
+        // Every capacitor of a bank stands for it: the capacitors of a bank of two or more are `x[0]`, `x[1]` of the use.
         let via = built
             .providers
             .iter()
-            .find(|p| p.path == use_path(&part.path))
+            .find(|p| p.path == part.path)
+            .or_else(|| {
+                built
+                    .providers
+                    .iter()
+                    .find(|p| p.path == use_path(&part.path))
+            })
             .map(|p| p.generic.clone())
             .filter(|generic| *generic != source.kind);
         let existing = lines.iter_mut().find(|l| {
@@ -204,10 +210,12 @@ fn age(line: &mut BomLine, today: &str, date: Option<&str>) {
     line.stale = age.is_some_and(|a| a > i64::from(refresh::STALE_DAYS));
 }
 
-/// The path of the use a part belongs to: a bank's second and later capacitors are the use's
-/// path and `#2`, `#3` (ADR 0052), and the first has the path itself.
+/// The path of the use a part belongs to: the capacitors of a bank of two or more are the use's
+/// path and `[0]`, `[1]`, ... (ADR 0052), as the members of `N x Kind` are (ADR 0119). Whether a
+/// path ending in an index is a bank's capacitor or a member of its own is for the caller to
+/// say, by looking for the whole path first.
 fn use_path(part_path: &str) -> &str {
-    match part_path.rsplit_once('#') {
+    match part_path.strip_suffix(']').and_then(|p| p.rsplit_once('[')) {
         Some((use_path, k)) if !k.is_empty() && k.bytes().all(|b| b.is_ascii_digit()) => use_path,
         _ => part_path,
     }

@@ -96,13 +96,15 @@ enum Dielectric {
 /// and `neg` takes it from that rail; a design states it only for one that is across no rail.
 ///
 /// `.count` is how many identical capacitors stand in parallel in this place (a bank, ADR
-/// 0052). Left unset it is one. A whole number (`.count &= 2`) is that many. A range
+/// 0052). Left unset it is one. A range
 /// (`.count &= 1..4`) lets the solver choose: it takes the fewest of the range for which every
 /// check that mentions the part holds, together with the catalog row, so that a requirement
 /// that no single capacitor meets (`.count * .effective_capacitance >= 47uF`) can be met by
 /// several. Every other field is the value of one capacitor of the bank. The netlist, the
 /// bill of materials and the schematic have one part for each, with consecutive reference
-/// designators.
+/// designators, at the paths `bulk[0]`, `bulk[1]`. A board that knows its count writes
+/// `3 x Capacitor` instead, and a whole number as the `.count` of a board's own capacitor is
+/// refused; a module may pass a whole number through its interface.
 ///
 /// `.dielectric` is the class of the ceramic (`Dielectric::X7R`), read from the catalog row
 /// and stated by a design only when it needs one. A generic capacitor (no catalog row) has
