@@ -45,11 +45,11 @@
 //!    its way ([`policy`]). Satellites on one rail that are not in one row (two pull-ups of a bus,
 //!    one a few steps above the other) share one wire and one symbol too, where the stubs end
 //!    within 20 cells of each other and a path of free nodes joins them: the lower one is wired
-//!    up to the row of the other's stub, across, and has no symbol of its own (`engine::bridge`).
+//!    up to the row of the other's stub, across, and has no symbol of its own (`engine/scene.rs`, `bridge`).
 //!    A supply whose pins are on two or more parts that stand close (stub ends within 16 steps, four pins
 //!    or fewer) and none of them a small part to ground is not drawn with a symbol: it is wired, with its
 //!    name on a short stem from the wire, as the symbol would only join what the wire joins already
-//!    (`engine::route_close_rails`).
+//!    (`engine/scene.rs`, `route_close_rails`).
 //!    The wire of a main part's rail is beyond the parts that have a pin on it (and what is written
 //!    at their pins), not beyond every part drawn in the same row: the supply of a power unit
 //!    that stands beside a taller signal unit is just above it.
@@ -124,7 +124,7 @@
 //!      edge of its block): what a block grows to the left of its part moves nothing, and a block
 //!      that grows moves only the pieces beyond it. The pieces are cut into rows by their width in
 //!      steps of 12.7 mm, to a row width that depends on their area in steps of 50.8 mm, among a few
-//!      widths round it (`engine::pack`), so that one more part does not re-flow the sheet.
+//!      widths round it (`engine/pack.rs`), so that one more part does not re-flow the sheet.
 //!    - **A small part that serves a pin does not vote** on how a main part is turned or which way
 //!      the signal runs (`Ctx::leaf`): a capacitor across two rails, a pull-up to a rail.
 //!    - The board's own writing goes on the sheet of its first part by name, and a connector that

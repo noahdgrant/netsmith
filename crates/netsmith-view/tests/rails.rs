@@ -1,4 +1,4 @@
-//! Satellites on one rail share a wire and a symbol (`engine::bridge`): two pull-ups of a bus,
+//! Satellites on one rail share a wire and a symbol (`bridge` in `engine/scene.rs`): two pull-ups of a bus,
 //! one a few steps above the other, are joined to one `+3V3` symbol and not drawn with one
 //! each, as in a hand drawing. Nothing is crossed or run along to do it.
 

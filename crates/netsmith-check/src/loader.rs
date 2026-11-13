@@ -2,6 +2,10 @@
 
 use std::collections::HashMap;
 
+/// The standard library's files: module path, display name and text (made by build.rs from the
+/// `std/` folder).
+const STD_FILES: &[(&str, &str, &str)] = include!(concat!(env!("OUT_DIR"), "/std_files.rs"));
+
 #[derive(Debug, Clone, Default)]
 pub struct Loader {
     /// `std::parts::passive` to (display name, source text).
@@ -28,88 +32,12 @@ impl Loader {
     /// A loader holding the standard library.
     pub fn std() -> Self {
         let mut loader = Self::empty();
-        // The prelude is in scope in every file with no import; it is listed here so that
-        // tools that show the standard library show it too.
-        loader.insert(
-            "std::prelude",
-            "std/prelude.nsm",
-            include_str!("../../../std/prelude.nsm"),
-        );
-        loader.insert(
-            "std::parts::passive",
-            "std/parts/passive.nsm",
-            include_str!("../../../std/parts/passive.nsm"),
-        );
-        loader.insert(
-            "std::parts::connector",
-            "std/parts/connector.nsm",
-            include_str!("../../../std/parts/connector.nsm"),
-        );
-        loader.insert(
-            "std::parts::regulator",
-            "std/parts/regulator.nsm",
-            include_str!("../../../std/parts/regulator.nsm"),
-        );
-        loader.insert(
-            "std::parts::logic",
-            "std/parts/logic.nsm",
-            include_str!("../../../std/parts/logic.nsm"),
-        );
-        loader.insert(
-            "std::parts::diode",
-            "std/parts/diode.nsm",
-            include_str!("../../../std/parts/diode.nsm"),
-        );
-        loader.insert(
-            "std::parts::transistor",
-            "std/parts/transistor.nsm",
-            include_str!("../../../std/parts/transistor.nsm"),
-        );
-        loader.insert(
-            "std::parts::mechanical",
-            "std/parts/mechanical.nsm",
-            include_str!("../../../std/parts/mechanical.nsm"),
-        );
-        loader.insert(
-            "std::pcb",
-            "std/pcb.nsm",
-            include_str!("../../../std/pcb.nsm"),
-        );
-        loader.insert(
-            "std::bus",
-            "std/bus.nsm",
-            include_str!("../../../std/bus.nsm"),
-        );
-        loader.insert(
-            "std::mfg::stackup",
-            "std/mfg/stackup.nsm",
-            include_str!("../../../std/mfg/stackup.nsm"),
-        );
-        loader.insert(
-            "std::mfg::jlcpcb",
-            "std/mfg/jlcpcb.nsm",
-            include_str!("../../../std/mfg/jlcpcb.nsm"),
-        );
-        loader.insert(
-            "std::mfg::acme",
-            "std/mfg/acme.nsm",
-            include_str!("../../../std/mfg/acme.nsm"),
-        );
-        loader.insert(
-            "std::env",
-            "std/env.nsm",
-            include_str!("../../../std/env.nsm"),
-        );
-        loader.insert(
-            "std::sources",
-            "std/sources.nsm",
-            include_str!("../../../std/sources.nsm"),
-        );
-        loader.insert(
-            "std::logic",
-            "std/logic.nsm",
-            include_str!("../../../std/logic.nsm"),
-        );
+        // Every `.nsm` file of `std/`, listed by build.rs. The prelude is in scope in every
+        // file with no import; it is listed with the rest so that tools that show the
+        // standard library show it too.
+        for (module, file_name, text) in STD_FILES {
+            loader.insert(module, file_name, text);
+        }
         loader
     }
 
