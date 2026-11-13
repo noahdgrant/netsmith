@@ -7132,7 +7132,7 @@ Rules.
 
 ### The outline and cutouts
 
-The member `.outline` of a board's physical file (in its `case` section) is the board edge: a rectangle with rounded corners. A range is a limit, and the placer takes the smallest board that holds the parts inside it: `.width &= 0mm..60mm` is at most 60 mm. A single value is exactly that size. Without an `.outline` the board is as big as its parts need. A `Cutout` is a rectangular hole inside the outline, with an optional corner radius. Its corner nearest the origin is `.x`, `.y`, or the layout file's entry for its name; stating both is an error.
+The member `.outline` of a board's physical file (in its `case` section) is the board edge: a rectangle with rounded corners, or a polygon (_A polygon outline_, below). A range is a limit, and the placer takes the smallest board that holds the parts inside it: `.width &= 0mm..60mm` is at most 60 mm. A single value is exactly that size. Without an `.outline` the board is as big as its parts need. A `Cutout` is a rectangular hole inside the outline, with an optional corner radius. Its corner nearest the origin is `.x`, `.y`, or the layout file's entry for its name; stating both is an error.
 
 ```nsm solve
 import std::parts::connector::Header1x2
@@ -7207,6 +7207,127 @@ physical for Tiny {
 
 ```text
 error: Tiny: `outline.corner_radius` is 2 mm, more than half of the shape's shorter side (3 mm)
+```
+
+#### A polygon outline
+
+An edge that is not a rectangle with four equal corners (an L, a slanted side, corners of different radii) is a `polygon` statement in the outline's block: the corners in order, each `(x, y)` in the board's frame, the edge running from each to the next and from the last back to the first. `round R` after a corner is a tangent fillet of radius R there. `arc through (x, y)` after a corner makes the edge to the next corner an arc through that point, as KiCad's `gr_arc` gives one by its start, middle and end. A long run goes on over lines that begin with `(`, `round` or `arc`. This is the form KiCad's `Edge.Cuts`, IPC-2581's `Polygon` and the ODB++ profile give an outline (owner decision 2026-11-12, issue #57).
+
+```nsm solve
+import std::parts::connector::Header1x2
+import std::mfg::jlcpcb::TwoLayer
+
+board Ell {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .header: Header1x2
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Ell {
+    case {
+        // Case drawing: an L, 40 x 30 mm, the top right 15 x 15 mm cut away, a 2 mm
+        // radius at the top right and a 3 mm one at the bottom left, and a bulge on the
+        // bottom edge.
+        .outline: Outline {
+            polygon (0mm, 0mm) (25mm, 0mm) round 2mm (25mm, 15mm)
+                    (40mm, 15mm) (40mm, 30mm) arc through (20mm, 34mm) (0mm, 30mm) round 3mm
+        }
+    }
+}
+```
+
+The box round the edge has its top left at the board's origin, so the smallest x and y of the corners (and of an arc's bulge) are 0mm. The polygon is the whole edge: its box is the board's width and height, so `.width`, `.height` and `.corner_radius` are not stated beside it. Every value is a fixed length, the number the case drawing gives: a range, a tolerance or a value read from another field is refused. The placer keeps the parts inside the polygon and `fab` checks them against it; `Edge.Cuts` and the Gerbers carry its lines and arcs, and the editor draws it. The router routes inside the polygon's box (routing to the polygon's own edge is issue #495), and the design rules check holds the copper to the edge. `netsmith dxf import` writes a `polygon` for an outline that is not a rounded rectangle.
+
+Misuse: a size beside the polygon, and a corner that is a range.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+
+board Sized {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Sized {
+    case {
+        .outline: Outline {
+            .width &= 40mm
+            polygon (0mm, 0mm) (40mm, 0mm) (40mm, 30mm) (0mm, 30mm)
+        }
+    }
+}
+```
+
+```text
+error: Sized: `outline.width` is stated beside the `polygon` of `outline`: the polygon is the whole edge, its corners give the size and the roundings, so leave `.width` out
+```
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+
+board Loose {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Loose {
+    case {
+        .outline: Outline {
+            polygon (0mm, 0mm) (40mm +/- 0.1mm, 0mm) (40mm, 30mm) (0mm, 30mm)
+        }
+    }
+}
+```
+
+```text
+error: a corner of a `polygon` is one value, and `40mm +/- 0.1mm` is a range (39.9mm..40.1mm): the outline is what the case drawing says, so write the one number
+  --> main.physical.nsm:6:33
+  |
+6 |             polygon (0mm, 0mm) (40mm +/- 0.1mm, 0mm) (40mm, 30mm) (0mm, 30mm)
+  |                                 ^^^^^^^^^^^^^^
+```
+
+Misuse: a fillet with no room on its edge.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+
+board Tight {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Tight {
+    case {
+        .outline: Outline {
+            polygon (0mm, 0mm) (10mm, 0mm) round 6mm (10mm, 10mm) round 6mm (0mm, 10mm)
+        }
+    }
+}
+```
+
+```text
+error: Tight: `outline`: the edge from (10mm, 0mm) to (10mm, 10mm) is 10 mm long, too short for its fillets: `round 6mm` at (10mm, 0mm) takes 6 mm of it and `round 6mm` at (10mm, 10mm) takes 6 mm of it
 ```
 
 ### Pours

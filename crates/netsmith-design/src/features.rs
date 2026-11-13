@@ -498,6 +498,9 @@ fn corner_radius(
 
 fn outline_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Outline {
     let unbounded = (0.0, f64::INFINITY);
+    if let Some(polygon) = model.polygon_of(inst) {
+        return polygon_outline(model, inst, polygon, errors);
+    }
     let width = range(model, inst, "width").unwrap_or(unbounded);
     let height = range(model, inst, "height").unwrap_or(unbounded);
     let tight = (width.0.is_finite() && width.1.is_finite())
@@ -518,6 +521,44 @@ fn outline_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Outline 
         width,
         height,
         corner_radius,
+        polygon: None,
+    }
+}
+
+/// An outline stated as a `polygon` (issue #57): its corners with the fillets made arcs, and
+/// its box as the width and height. The polygon says the size and the corners, so `.width`,
+/// `.height` and `.corner_radius` stated beside it are refused, each naming the polygon.
+fn polygon_outline(
+    model: &Model,
+    inst: InstId,
+    polygon: &netsmith_check::OutlinePolygon,
+    errors: &mut Vec<String>,
+) -> Outline {
+    let path = model.path_of(inst);
+    for name in ["width", "height", "corner_radius"] {
+        if matches!(domain(model, inst, name), Some(Domain::Quantity(_))) {
+            errors.push(format!(
+                "`{path}.{name}` is stated beside the `polygon` of `{path}`: the polygon is the whole edge, its corners give the size and the roundings, so leave `.{name}` out"
+            ));
+        }
+    }
+    let vertices = match crate::polygon::vertices(&path, &polygon.corners) {
+        Ok(v) => v,
+        Err(found) => {
+            errors.extend(found);
+            Vec::new()
+        }
+    };
+    let (w, h) = if vertices.is_empty() {
+        (0.0, 0.0)
+    } else {
+        crate::polygon::size(&vertices)
+    };
+    Outline {
+        width: (w, w),
+        height: (h, h),
+        corner_radius: 0.0,
+        polygon: (!vertices.is_empty()).then_some(vertices),
     }
 }
 

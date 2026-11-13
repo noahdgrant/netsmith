@@ -276,6 +276,8 @@ fn visit<'a>(
         }
         // A peripheral names functions, which are words and not paths.
         Item::Peripheral(_) => {}
+        // A polygon's corners are numbers; a path in one is refused by the checker.
+        Item::Polygon(_) => {}
         Item::Shared(shared) => {
             for member in &shared.members {
                 if let netsmith_lang::ast::SharedMember::Pin(p) = member {

@@ -87,7 +87,7 @@ impl<'a> Free<'a> {
         let rules = &self.board.rules;
         let radius = rules.via_diameter / 2.0;
         let edge = rules.copper_to_edge + radius + MARGIN;
-        if self.board.outline_shape().depth(p) < edge {
+        if self.board.edge().depth(p) < edge {
             return false;
         }
         if self

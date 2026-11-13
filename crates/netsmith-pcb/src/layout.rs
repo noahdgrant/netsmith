@@ -537,9 +537,17 @@ pub fn carried_zones(design: &Design) -> Vec<CarriedZone> {
 
 /// The boxes of the cutouts that have a place, wherever the source or the layout file puts
 /// them: the part of [`clear_of`] to which a pad keeps the process's distance from copper to
-/// an edge as well as the courtyards keeping out.
+/// an edge as well as the courtyards keeping out. The part of a polygon outline's box that
+/// is outside the polygon (issue #57) is among them: board edge, as a cutout's is.
 pub fn cutouts_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
     let entries = layout.and_then(|l| l.boards.get(&design.name));
+    let outside = design
+        .features
+        .outline
+        .as_ref()
+        .and_then(|o| crate::polygon::of_outline(o).ok().flatten())
+        .map(|p| p.translated(ORIGIN).outside_boxes())
+        .unwrap_or_default();
     design
         .features
         .cutouts
@@ -552,6 +560,7 @@ pub fn cutouts_of(design: &Design, layout: Option<&Layout>) -> Vec<Rect> {
             let min = ORIGIN + Pt::new(at.0, at.1);
             Some(Rect::new(min, Pt::new(min.x + c.size.0, min.y + c.size.1)))
         })
+        .chain(outside)
         .collect()
 }
 

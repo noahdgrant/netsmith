@@ -13,8 +13,9 @@ use uuid::Uuid;
 use crate::board::{Board, KeepoutArea, Placed, Plane};
 use crate::geometry::{Pt, Rect};
 use crate::placement::ORIGIN;
+use crate::polygon::BoardEdge;
 use crate::rules::Rules;
-use crate::shape::{Edge, RoundRect};
+use crate::shape::Edge;
 use crate::stackup::LayerKind;
 
 /// The file format KiCad 9.0 writes.
@@ -531,9 +532,10 @@ fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
     )
 }
 
-/// A shape drawn on the board edge layer: one `gr_rect` if its corners are square, else the
-/// lines and quarter circles round it. `key` makes the uuids.
-fn edge_cuts(shape: &RoundRect, key: &str) -> Vec<Sexp> {
+/// A shape drawn on the board edge layer: one `gr_rect` if it is a rectangle with square
+/// corners, else the lines and arcs round it (a polygon outline's pieces as they are, issue
+/// #57). `key` makes the uuids.
+fn edge_cuts(shape: &BoardEdge, key: &str) -> Vec<Sexp> {
     let at = |p: Pt| vec![Sexp::num(p.x), Sexp::num(p.y)];
     let stroke = || {
         Sexp::node(
@@ -545,7 +547,9 @@ fn edge_cuts(shape: &RoundRect, key: &str) -> Vec<Sexp> {
         )
     };
     let layer = || Sexp::node("layer", vec![Sexp::string("Edge.Cuts")]);
-    if shape.radius == 0.0 {
+    if let BoardEdge::Round(shape) = shape
+        && shape.radius == 0.0
+    {
         return vec![Sexp::node(
             "gr_rect",
             vec![
@@ -768,13 +772,10 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
     {
         items.push(rule_area(board, area));
     }
-    items.extend(edge_cuts(
-        &board.outline_shape(),
-        &format!("{}/outline", board.name),
-    ));
+    items.extend(edge_cuts(&board.edge(), &format!("{}/outline", board.name)));
     for (cutout, shape) in board.cutout_shapes() {
         items.extend(edge_cuts(
-            &shape,
+            &BoardEdge::Round(shape),
             &format!("{}/cutout/{}", board.name, cutout.name),
         ));
     }

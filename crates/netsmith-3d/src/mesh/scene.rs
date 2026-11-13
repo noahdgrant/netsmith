@@ -411,12 +411,16 @@ pub fn pieces(scene: &Scene) -> Pieces {
 
 /// The board's outline with its cutouts and every drilled hole (round, or a slot) as holes.
 pub(super) fn board_outline(solid: &BoardSolid) -> Polygon {
-    let mut outline = Polygon::new(rounded_rect(
-        [0.0, 0.0],
-        [solid.width, solid.height],
-        solid.corner_radius,
-        8,
-    ));
+    let mut outline = Polygon::new(if solid.outline.is_empty() {
+        rounded_rect(
+            [0.0, 0.0],
+            [solid.width, solid.height],
+            solid.corner_radius,
+            8,
+        )
+    } else {
+        solid.outline.iter().map(|&p| xy(p)).collect()
+    });
     for c in &solid.cutouts {
         outline
             .holes

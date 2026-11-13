@@ -383,6 +383,7 @@ pub fn mixed_board(seed: u64, area: (f64, f64), mix: Mix) -> Result<Board, Board
                 width: (area.0, area.0),
                 height: (area.1, area.1),
                 corner_radius: 0.0,
+                polygon: None,
             }),
             keepouts: vec![Keepout {
                 name: "lid".into(),

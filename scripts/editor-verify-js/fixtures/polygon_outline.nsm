@@ -1,0 +1,18 @@
+//! An invented board on an L-shaped polygon outline (issue #57): the PCB view draws the edge
+//! of the polygon, not its bounding box, and the parts stay out of the cut-away corner.
+
+import std::parts::connector::Header1x2
+import std::parts::passive::Resistor
+import std::mfg::jlcpcb::TwoLayer
+
+board Ell {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .a: Header1x2
+    .b: Header1x2
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .a.p1 ~> .r ~> .b.p1
+    .a.p2 ~ .b.p2
+    .a.p2.net &= "GND"
+}

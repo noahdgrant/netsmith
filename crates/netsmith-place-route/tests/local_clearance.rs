@@ -87,6 +87,7 @@ fn board(pad: &str, whole: &str) -> (Board, f64) {
                 width: (20.0, 20.0),
                 height: (12.0, 12.0),
                 corner_radius: 0.0,
+                polygon: None,
             }),
             ..Features::default()
         },

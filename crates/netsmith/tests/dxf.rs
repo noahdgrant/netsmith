@@ -145,35 +145,127 @@ fn the_import_prints_source_for_the_outline_cutout_and_holes() {
     );
 }
 
-#[test]
-fn an_l_shaped_outline_is_refused_with_its_size_and_the_issue() {
+/// An L, 40 x 30 mm with the bottom right 25 x 20 mm cut away, drawn with y up.
+fn ell() -> String {
     let pts = [
         (0.0, 0.0),
-        (40.0, 0.0),
-        (40.0, 10.0),
-        (15.0, 10.0),
-        (15.0, 30.0),
+        (15.0, 0.0),
+        (15.0, 20.0),
+        (40.0, 20.0),
+        (40.0, 30.0),
         (0.0, 30.0),
     ];
-    let e = file(
+    file(
         Some(4),
         &(0..6)
             .map(|i| line("EDGE", pts[i], pts[(i + 1) % 6]))
             .collect::<String>(),
+    )
+}
+
+#[test]
+fn an_l_shaped_outline_is_a_polygon_of_its_corners() {
+    let imported = import(&ell(), "l.dxf", &Request::default()).unwrap();
+    // y is flipped: the drawing's top edge (y = 30) is the board's y = 0, and the corners run
+    // clockwise on the board from its top left.
+    assert_eq!(
+        imported.members,
+        ".outline: Outline {\n    polygon (0mm, 0mm) (40mm, 0mm) (40mm, 10mm)\n            (15mm, 10mm) (15mm, 30mm) (0mm, 30mm)\n}\n"
     );
-    let err = import(&e, "l.dxf", &Request::default()).unwrap_err();
+    assert_eq!(imported.imports, "import std::pcb::Outline\n");
     assert!(
-        err.contains("the outline is not a rectangle with equal rounded corners"),
+        imported
+            .report
+            .iter()
+            .any(|l| l == "outline 40 x 30 mm, a polygon of 6 corners (6 straight edges, 0 arcs); 0 cutouts; 0 holes"),
+        "{:?}",
+        imported.report
+    );
+}
+
+#[test]
+fn unequal_corners_are_a_polygon_with_each_arc_through_its_middle() {
+    // A 30 x 20 mm rectangle with a 5 mm radius at the drawing's top right only.
+    let e = line("EDGE", (0.0, 0.0), (30.0, 0.0))
+        + &line("EDGE", (30.0, 0.0), (30.0, 15.0))
+        + &arc("EDGE", (25.0, 15.0), 5.0, 0.0, 90.0)
+        + &line("EDGE", (25.0, 20.0), (0.0, 20.0))
+        + &line("EDGE", (0.0, 20.0), (0.0, 0.0));
+    let imported = import(&file(Some(4), &e), "corner.dxf", &Request::default()).unwrap();
+    // On the board the rounded corner is the top right: from (25, 0) to (30, 5), through the
+    // point 45 degrees round, (25 + 5 cos 45, 5 - 5 sin 45).
+    assert_eq!(
+        imported.members,
+        ".outline: Outline {\n    polygon (0mm, 0mm) (25mm, 0mm) arc through (28.5355mm, 1.4645mm) (30mm, 5mm)\n            (30mm, 20mm) (0mm, 20mm)\n}\n"
+    );
+}
+
+#[test]
+fn a_cutout_that_is_not_a_rounded_rectangle_is_still_refused_with_its_size_and_the_issue() {
+    let tri = [(10.0, 10.0), (20.0, 10.0), (15.0, 18.0)];
+    let e = rounded("EDGE", 0.0, 0.0, 40.0, 30.0, 0.0)
+        + &(0..3)
+            .map(|i| line("EDGE", tri[i], tri[(i + 1) % 3]))
+            .collect::<String>();
+    let err = import(&file(Some(4), &e), "tri.dxf", &Request::default()).unwrap_err();
+    assert!(
+        err.contains("cutout 1 is not a rectangle with equal rounded corners, a slot or a circle")
+            && err.contains("3 edges")
+            && err.contains("issue #57"),
         "{err}"
     );
+}
+
+#[test]
+fn an_imported_l_goes_through_fab_with_its_edge_on_edge_cuts() {
+    let dir = temp("ell-fab");
+    let imported = import(&ell(), "l.dxf", &Request::default()).unwrap();
+    let source = "import std::parts::connector::Header1x2\nimport std::mfg::jlcpcb::TwoLayer\n\n\
+        board Ell {\n    .process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }\n    .a: Header1x2\n    .b: Header1x2\n    .a.p1 ~ .b.p1\n    .a.p1.net &= \"N1\"\n}\n";
+    let nsm = dir.join("ell.nsm");
+    fs::write(&nsm, source).unwrap();
+    write_physical(&nsm, None, &imported).unwrap();
+    let physical = fs::read_to_string(dir.join("ell.physical.nsm")).unwrap();
+    assert!(physical.contains("polygon (0mm, 0mm)"), "{physical}");
+    let made = fab_with_options(
+        "ell.nsm",
+        source,
+        &netsmith_check::Loader::std().with_physical("ell.nsm", "ell.physical.nsm", &physical),
+        &dir.join("fab"),
+        &Catalogs::jlcpcb(),
+        &Libraries::sample(),
+        None,
+        &FabOptions::default(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(made.len(), 1);
     assert!(
-        err.contains("40.000 x 30.000 mm") && err.contains("6 edges"),
-        "{err}"
+        made[0].notes.contains("design rules check: passed"),
+        "{}",
+        made[0].notes
     );
-    assert!(
-        err.contains("polygon outline") && err.contains("C8"),
-        "{err}"
-    );
+    let pcb = fs::read_to_string(dir.join("fab/Ell/Ell.kicad_pcb")).unwrap();
+    assert_eq!(pcb.matches("(gr_line").count(), 6, "six edges of the L");
+    assert!(!pcb.contains("(gr_rect"));
+    // The Gerbers are plotted from the board file's edge: the zip holds the outline's file.
+    let mut zip =
+        zip::ZipArchive::new(fs::File::open(dir.join("fab/Ell/Ell-gerbers.zip")).unwrap()).unwrap();
+    let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+    let mut edge = String::new();
+    std::io::Read::read_to_string(
+        &mut zip
+            .by_name(
+                &names
+                    .iter()
+                    .find(|n| n.ends_with("Edge_Cuts.gbr"))
+                    .unwrap_or_else(|| panic!("{names:?}"))
+                    .clone(),
+            )
+            .unwrap(),
+        &mut edge,
+    )
+    .unwrap();
+    assert_eq!(edge.matches("D01*").count(), 6, "six strokes:\n{edge}");
 }
 
 #[test]

@@ -1,0 +1,12 @@
+import std::pcb::Outline
+
+physical for Ell {
+    case {
+        // An L, 40 x 30 mm, the top right 15 x 15 mm cut away, rounded at the top right and
+        // the bottom left, with a bulge on the bottom edge.
+        .outline: Outline {
+            polygon (0mm, 0mm) (25mm, 0mm) round 2mm (25mm, 15mm)
+                    (40mm, 15mm) (40mm, 30mm) arc through (20mm, 34mm) (0mm, 30mm) round 3mm
+        }
+    }
+}

@@ -192,7 +192,9 @@ pub fn board_error(name: &str, error: &netsmith_pcb::BoardError) -> ApiError {
         E::Constraints(_) | E::Unplaceable(_) => {
             ApiError::unprocessable(message, "requirements_unmet", &[board])
         }
-        E::Design(_) => ApiError::unprocessable(message, "invalid_design", &[board]),
+        E::Design(_) | E::Outline(_) => {
+            ApiError::unprocessable(message, "invalid_design", &[board])
+        }
     }
 }
 

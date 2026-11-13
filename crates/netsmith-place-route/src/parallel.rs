@@ -44,7 +44,7 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
     let r = &board.rules;
     let radius = r.via_diameter / 2.0;
     let edge = r.copper_to_edge + radius + MARGIN;
-    if board.outline_shape().depth(p) < edge
+    if board.edge().depth(p) < edge
         || board
             .cutout_shapes()
             .iter()

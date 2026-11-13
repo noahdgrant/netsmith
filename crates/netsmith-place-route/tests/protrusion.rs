@@ -122,6 +122,7 @@ fn design(case: &Case) -> Design {
                 width: (60.0, 60.0),
                 height: (40.0, 40.0),
                 corner_radius: 0.0,
+                polygon: None,
             }),
             keepouts: case
                 .zone
@@ -428,6 +429,7 @@ fn small(case: &Case) -> Result<Board, BoardError> {
         width: (34.0, 34.0),
         height: (30.0, 30.0),
         corner_radius: 0.0,
+        polygon: None,
     });
     d.features.keepouts[0].size = (34.0, 30.0);
     for c in &mut d.features.constraints {

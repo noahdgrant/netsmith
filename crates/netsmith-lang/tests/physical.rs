@@ -151,3 +151,103 @@ fn row_is_still_an_ordinary_name() {
     let file = parse("board B {\n    .row: Length\n    .row &= 2mm\n}\n").unwrap();
     assert_eq!(file.definitions.len(), 1);
 }
+
+const POLYGON: &str = "\
+physical for Ell {
+    case {
+        .outline: Outline {
+            polygon (0mm, 0mm) (40mm, 0mm) round 2mm
+                    (40mm, 15mm) (25mm, 15mm)
+                    (25mm, 30mm) arc through (12mm, 34mm) (0mm, 30mm) round 3mm
+        }
+    }
+}
+";
+
+fn polygon_of(file: &File) -> &Polygon {
+    let Item::Case(case) = &file.physicals[0].items[0] else {
+        panic!("a case section")
+    };
+    let Item::Decl(d) = &case.items[0] else {
+        panic!("the outline")
+    };
+    let Some([Item::Polygon(p)]) = d.body.as_deref() else {
+        panic!("a polygon in the outline: {:?}", d.body)
+    };
+    p
+}
+
+#[test]
+fn a_polygon_is_a_run_of_corners_over_several_lines() {
+    let file = parse(POLYGON).unwrap();
+    let p = polygon_of(&file);
+    assert_eq!(p.corners.len(), 6);
+    let src: Vec<String> = p
+        .corners
+        .iter()
+        .map(|c| format!("{} {}", c.at.x.to_source(), c.at.y.to_source()))
+        .collect();
+    assert_eq!(
+        src,
+        [
+            "0mm 0mm",
+            "40mm 0mm",
+            "40mm 15mm",
+            "25mm 15mm",
+            "25mm 30mm",
+            "0mm 30mm"
+        ]
+    );
+    assert_eq!(p.corners[1].round.as_ref().unwrap().to_source(), "2mm");
+    assert_eq!(p.corners[5].round.as_ref().unwrap().to_source(), "3mm");
+    let through = p.corners[4].through.as_ref().unwrap();
+    assert_eq!(
+        (through.x.to_source(), through.y.to_source()),
+        ("12mm".to_string(), "34mm".to_string())
+    );
+    assert!(p.corners[0].round.is_none() && p.corners[0].through.is_none());
+}
+
+#[test]
+fn a_polygon_prints_back_to_source_that_parses_to_the_same_tree() {
+    let file = parse(POLYGON).unwrap();
+    let printed = file.to_source();
+    assert!(
+        printed.contains("polygon (0mm, 0mm) (40mm, 0mm) round 2mm (40mm, 15mm)\n"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("arc through (12mm, 34mm) (0mm, 30mm) round 3mm"),
+        "{printed}"
+    );
+    let again = parse(&printed).unwrap();
+    assert_eq!(again.to_source(), printed);
+    let p = polygon_of(&again);
+    assert_eq!(p.corners.len(), 6);
+    assert!(p.corners[4].through.is_some() && p.corners[5].round.is_some());
+}
+
+#[test]
+fn a_polygon_needs_its_points_whole() {
+    let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
+    let e = at("polygon (0mm 0mm) (1mm, 0mm)");
+    assert!(e.message.contains("`,` between x and y"), "{}", e.message);
+    let e = at("polygon (0mm, 0mm) (1mm, 0mm) arc (1mm, 1mm) (0mm, 1mm)");
+    assert!(
+        e.message.contains("`through (x, y)` after `arc`"),
+        "{}",
+        e.message
+    );
+    let e = at("polygon (0mm, 0mm (1mm, 0mm)");
+    assert!(
+        e.message.contains("`)` after the point's y"),
+        "{}",
+        e.message
+    );
+}
+
+#[test]
+fn polygon_is_still_an_ordinary_name_elsewhere() {
+    let file = parse("board B {\n    .polygon: Length\n    .polygon &= 1mm\n}\n").unwrap();
+    assert_eq!(file.definitions.len(), 1);
+}

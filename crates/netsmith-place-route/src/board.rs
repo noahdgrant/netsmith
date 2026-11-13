@@ -96,6 +96,7 @@ pub fn board_from_design_placed(
                 &mut u.parts,
                 &u.nets,
                 wanted,
+                u.polygon.as_ref(),
                 &u.rules,
                 &u.placement,
                 &plane_nets,

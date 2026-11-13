@@ -74,6 +74,7 @@ fn board(
                 width: (size.0, size.0),
                 height: (size.1, size.1),
                 corner_radius: 0.0,
+                polygon: None,
             }),
             ..Features::default()
         },

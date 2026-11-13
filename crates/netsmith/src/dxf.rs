@@ -10,9 +10,12 @@
 //! circuit source is never written. Without `--write` the text is printed, for a person (or
 //! an agent) to paste.
 //!
-//! An outline or cutout that is not a rounded rectangle needs a polygon outline, which the
-//! board model does not have (ADR 0045 step C8, issue #57): it is refused with its
-//! size and edge count, and nothing is printed.
+//! An outline that is not a rounded rectangle (an L, a polygon, corners of different radii) is
+//! written as a `polygon` statement in the `Outline` (issue #57): each vertex of the loop a
+//! corner, and each arc of the drawing `arc through` its middle point, so the source states the
+//! drawing's edge exactly (splines and ellipses are already chords). A cutout that is not a
+//! rounded rectangle, a slot or a circle is still refused with its size and edge count, and
+//! nothing is printed (issue #57).
 //!
 //! **The frame.** The board's origin is the outline's top left corner, y down; the output prints
 //! the drawing point that is the origin and the formula, so a hole's coordinates in the case's
@@ -31,7 +34,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::physical::{Edit, Section};
-use netsmith_dxf::{Options, Outline, Polygon, RoundedRect, Units, read_outline};
+use netsmith_dxf::{ArcGeom, Options, Outline, Polygon, RoundedRect, Units, read_outline};
 
 /// What `dxf import` is asked for.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -98,6 +101,34 @@ fn rounded_member(name: &str, kind: &str, rr: &RoundedRect, with_place: bool) ->
     s
 }
 
+/// An outline that is not a rounded rectangle, as a `polygon` statement in the `Outline`: the
+/// loop's vertices in order, three to a line, each arc `arc through` its middle point.
+fn polygon_member(p: &Polygon) -> String {
+    let point = |(x, y): (f64, f64)| format!("({}, {})", mm(round4(x)), mm(round4(y)));
+    let mut s = String::from(
+        ".outline: Outline {
+    polygon",
+    );
+    for (k, (a, b, bulge)) in p.edges().enumerate() {
+        if k > 0 && k % 3 == 0 {
+            s.push_str(
+                "
+           ",
+            );
+        }
+        let _ = write!(s, " {}", point(a));
+        if let Some(arc) = ArcGeom::of(a, b, bulge) {
+            let _ = write!(s, " arc through {}", point(arc.point_at(0.5)));
+        }
+    }
+    s.push_str(
+        "
+}
+",
+    );
+    s
+}
+
 /// Read the file's text and translate it. `name` is the file's name for messages.
 pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, String> {
     let outline: Outline = read_outline(
@@ -113,22 +144,17 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
 
     // Everything that cannot be said in the language is collected, so that one run lists it.
     let mut refused: Vec<String> = Vec::new();
-    let not_representable = |what: &str, p: &Polygon| {
-        format!(
-            "{what} is not a rectangle with equal rounded corners ({}): it needs a polygon outline, \
-             which the board model does not have yet (ADR 0045 step C8, issue #57)",
-            p.describe()
-        )
-    };
     let outer = outline.outer.as_rounded_rect();
-    if outer.is_none() {
-        refused.push(not_representable("the outline", &outline.outer));
-    }
     let mut cutouts: Vec<RoundedRect> = Vec::new();
     for (i, c) in outline.cutouts.iter().enumerate() {
         match c.as_rounded_rect() {
             Some(rr) => cutouts.push(rr),
-            None => refused.push(not_representable(&format!("cutout {}", i + 1), c)),
+            None => refused.push(format!(
+                "cutout {} is not a rectangle with equal rounded corners, a slot or a circle ({}): \
+                 a cutout of another shape is not in the language yet (issue #57)",
+                i + 1,
+                c.describe()
+            )),
         }
     }
     let mut holes: Vec<(f64, f64, &'static str)> = Vec::new();
@@ -177,7 +203,6 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
             refused.join("\n  - ")
         ));
     }
-    let outer = outer.expect("checked above");
 
     // A loop that crosses the board edge is not in the language yet (issue #90): it is
     // reported with its place and left out, and the rest is imported.
@@ -203,7 +228,10 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
 
     let mut members = String::new();
     let mut names = vec!["outline".to_string()];
-    members.push_str(&rounded_member(".outline", "Outline", &outer, false));
+    match &outer {
+        Some(rr) => members.push_str(&rounded_member(".outline", "Outline", rr, false)),
+        None => members.push_str(&polygon_member(&outline.outer)),
+    }
     for (i, rr) in cutouts.iter().enumerate() {
         let id = format!("cutout{}", i + 1);
         members.push('\n');
@@ -263,15 +291,27 @@ pub fn import(text: &str, name: &str, request: &Request) -> Result<Imported, Str
         number(outline.origin.0),
         number(outline.origin.1),
     ));
+    let shape = match &outer {
+        Some(rr) if rr.radius > 5e-5 => format!(
+            "outline {} x {} mm with corner radius {} mm",
+            number(rr.width),
+            number(rr.height),
+            number(rr.radius)
+        ),
+        Some(rr) => format!("outline {} x {} mm", number(rr.width), number(rr.height)),
+        None => {
+            let (lo, hi) = outline.outer.bounds();
+            let (arcs, lines) = outline.outer.edge_counts();
+            format!(
+                "outline {} x {} mm, a polygon of {} corners ({lines} straight edges, {arcs} arcs)",
+                number(hi.0 - lo.0),
+                number(hi.1 - lo.1),
+                outline.outer.vertices.len()
+            )
+        }
+    };
     report.push(format!(
-        "outline {} x {} mm{}; {} cutout{}; {} hole{}",
-        number(outer.width),
-        number(outer.height),
-        if outer.radius > 5e-5 {
-            format!(" with corner radius {} mm", number(outer.radius))
-        } else {
-            String::new()
-        },
+        "{shape}; {} cutout{}; {} hole{}",
         cutouts.len(),
         if cutouts.len() == 1 { "" } else { "s" },
         holes.len(),

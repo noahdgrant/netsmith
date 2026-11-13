@@ -990,6 +990,8 @@ pub struct Model {
     /// (ADR 0064).
     pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
     pub(crate) sources: SourceTexts,
+    /// The `polygon` statements of `Outline`s (issue #57), in the order they were read.
+    pub(crate) polygons: Vec<OutlinePolygon>,
     /// The domains that [`Model::set_domain`] replaced while a checkpoint was open, oldest
     /// first, with the field. Empty when none is open.
     journal: Vec<(FieldId, Domain)>,
@@ -997,7 +999,32 @@ pub struct Model {
     open_checkpoints: usize,
 }
 
+/// A `polygon` statement of an `Outline` (issue #57): its corners in mm, in the order written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutlinePolygon {
+    /// The `Outline` it is in.
+    pub outline: InstId,
+    pub corners: Vec<PolygonCorner>,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// A corner of an [`OutlinePolygon`], in mm in the board's frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PolygonCorner {
+    pub at: (f64, f64),
+    /// `round R`: the radius of a tangent fillet at the corner.
+    pub round: Option<f64>,
+    /// `arc through (x, y)`: the edge to the next corner is an arc through this point.
+    pub through: Option<(f64, f64)>,
+}
+
 impl Model {
+    /// The `polygon` statement of an `Outline`, if it has one.
+    pub fn polygon_of(&self, outline: InstId) -> Option<&OutlinePolygon> {
+        self.polygons.iter().find(|p| p.outline == outline)
+    }
+
     pub(crate) fn new() -> Self {
         Self {
             root: InstId(0),
@@ -1023,6 +1050,7 @@ impl Model {
             uses: Vec::new(),
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
+            polygons: Vec::new(),
             journal: Vec::new(),
             open_checkpoints: 0,
         }

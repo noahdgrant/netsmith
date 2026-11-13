@@ -195,6 +195,9 @@ pub struct BoardSolid {
     pub width: f64,
     pub height: f64,
     pub corner_radius: f64,
+    /// A polygon outline's edge as a ring counterclockwise seen from above (issue #57); empty
+    /// for the rectangle of `width`, `height` and `corner_radius`.
+    pub outline: Vec<Plan>,
     /// The thickness the board chose, which the board house is asked for: the bottom face is at
     /// `-thickness`.
     pub thickness: f64,
@@ -829,6 +832,12 @@ fn solid(board: &Board, frame: &Frame, thickness: f64) -> BoardSolid {
         width: clean(board.outline.width()),
         height: clean(board.outline.height()),
         corner_radius: board.corner_radius,
+        // Clockwise on screen with y down is counterclockwise from above with y up.
+        outline: board
+            .polygon
+            .as_ref()
+            .map(|p| p.segments().iter().map(|s| frame.point(s.0)).collect())
+            .unwrap_or_default(),
         thickness,
         stack_thickness: clean(-z),
         layers,

@@ -20,6 +20,7 @@ mod pinedit;
 mod pinfile;
 mod pinout;
 mod pins;
+mod polygon;
 mod providers;
 mod row;
 mod shared;
@@ -37,10 +38,10 @@ pub use loader::Loader;
 pub use model::{
     Balance, Catalog, Chain, Checkpoint, Contact, ContactSide, DcElement, DcKind, Domain, Draw,
     EnumId, EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, InstId,
-    InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, PartRules, Peripheral,
-    PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
-    Pinout, Provider, RExpr, RangeEnd, Relation, Requirement, Role, SharedMember, SharedRes,
-    Snapshot, Tie, Unused, Written,
+    InstKind, Instance, LevelTest, Mate, Member, Model, Net, OptionalMark, OutlinePolygon,
+    PartRules, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest,
+    PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement,
+    Role, SharedMember, SharedRes, Snapshot, Tie, Unused, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{EntrySource, PinEntry, PinFile, PinFileError};

@@ -413,15 +413,37 @@ fn draw(board: &Board, with_key: bool) -> String {
             String::new()
         }
     };
-    let _ = write!(
-        out,
-        r#"<g class="l-outline"><rect x="{}" y="{}" width="{}" height="{}"{} fill="none" stroke="{OUTLINE}" stroke-width="0.1"/>"#,
-        n(o.min.x),
-        n(o.min.y),
-        n(o.width()),
-        n(o.height()),
-        corners(board.corner_radius)
-    );
+    match &board.polygon {
+        // A polygon outline (issue #57) is drawn as the run of short pieces that follows it.
+        Some(polygon) => {
+            let mut d = String::new();
+            for (k, (a, _)) in polygon.segments().iter().enumerate() {
+                let _ = write!(
+                    d,
+                    "{}{} {}",
+                    if k == 0 { "M" } else { " L" },
+                    n(a.x),
+                    n(a.y)
+                );
+            }
+            d.push_str(" Z");
+            let _ = write!(
+                out,
+                r#"<g class="l-outline"><path data-outline="polygon" d="{d}" fill="none" stroke="{OUTLINE}" stroke-width="0.1"/>"#
+            );
+        }
+        None => {
+            let _ = write!(
+                out,
+                r#"<g class="l-outline"><rect x="{}" y="{}" width="{}" height="{}"{} fill="none" stroke="{OUTLINE}" stroke-width="0.1"/>"#,
+                n(o.min.x),
+                n(o.min.y),
+                n(o.width()),
+                n(o.height()),
+                corners(board.corner_radius)
+            );
+        }
+    }
     for k in board.keepout_areas() {
         let what: Vec<&str> = [
             ("tracks", k.tracks),

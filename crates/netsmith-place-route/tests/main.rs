@@ -13,6 +13,7 @@ mod edge_wall;
 mod hole_faces;
 mod local_clearance;
 mod mixed;
+mod polygon_outline;
 mod protrusion;
 mod routing;
 mod synthetic;
