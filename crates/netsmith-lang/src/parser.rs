@@ -288,11 +288,11 @@ impl Parser {
         let mut provides = Vec::new();
         if matches!(&self.peek().tok, Tok::Ident(w) if w == "provides") {
             let at = self.bump();
-            if !matches!(kind, DefKind::Part | DefKind::Module) {
+            if !matches!(kind, DefKind::Part | DefKind::Module | DefKind::Interface) {
                 return Err(ParseError::new(
                     at.span,
                     format!(
-                        "only a part or a module provides a generic; a {word} does not (`part X provides G`, `module X provides G`)"
+                        "only a part, a module or an interface provides a generic; a {word} does not (`part X provides G`, `module X provides G`, `interface X provides G`)"
                     ),
                 ));
             }

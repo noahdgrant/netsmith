@@ -41,6 +41,12 @@
 //!    contradicts one (`.impedance &= 75ohm` against 50 ohm) fails where it is written.
 //! 5. A part that provides a part, or a module that provides an interface, is an error.
 //!
+//! An interface may provide a generic that has no `pins` table and no catalog (ADR 0113): a
+//! manufacturing process, whose providers are its copper weights. The providers of one generic
+//! are all parts, all modules or all interfaces. A contradiction on a field inside a use with
+//! more than one provider is kept in `Model::provider_conflicts` as well as reported, so that
+//! the build can try the other providers before it stops on it.
+//!
 //! A provider of a standard generic reads the generic's pins as kinds only (`.a passive`) and
 //! writes the one catalog of its own; it does not declare `.package: Package`, because the
 //! generic does, and it cannot state other designator letters. A provider of the standard
@@ -185,7 +191,7 @@ impl Checker<'_> {
                     module: module.key.clone(),
                     std: module.std,
                     own: true,
-                    module_shaped: false,
+                    kind: InstKind::Part,
                 },
                 def: generic,
             });
@@ -210,7 +216,11 @@ impl Checker<'_> {
                         module: module.key.clone(),
                         std: module.std,
                         own: false,
-                        module_shaped: def.kind == DefKind::Module,
+                        kind: match def.kind {
+                            DefKind::Module => InstKind::Module,
+                            DefKind::Interface => InstKind::Interface,
+                            _ => InstKind::Part,
+                        },
                     },
                     def: (m, i),
                 });
@@ -298,7 +308,8 @@ impl Checker<'_> {
         let mut contract: Option<usize> = None;
         for item in &generic.items {
             match item {
-                Item::Pins(_) if provider_kind == InstKind::Module => {}
+                Item::Pins(_) if provider_kind != InstKind::Part => {}
+                Item::Catalog(_) if provider_kind == InstKind::Interface => {}
                 Item::Catalog(_) if own => {}
                 // A generic that holds one is refused where it is checked on its own; a
                 // provider does not take it in (ADR 0071 section 6).
@@ -499,7 +510,7 @@ impl Checker<'_> {
     /// What a provider owes the generics it provides, after both have been read into the
     /// instance (ADR 0068 section 3): a pin row of the generic has a row of the same kind in
     /// every table of the part (or is an alias of a pin that has one), and the providers of
-    /// one generic are all parts or all modules.
+    /// one generic are all parts, all modules or all interfaces.
     pub(crate) fn conform(
         &mut self,
         inst: InstId,
@@ -514,6 +525,15 @@ impl Checker<'_> {
                     def.name.span,
                     format!(
                         "`{}` is a module, and `{}` has a `pins` table, which only a part provides: a module's pins have no kinds to compare",
+                        def.name.name, g.name.name
+                    ),
+                );
+            }
+            if kind == InstKind::Interface && generic_is_part_shaped(g) {
+                self.error(
+                    def.name.span,
+                    format!(
+                        "`{}` is an interface, and `{}` has a `pins` table or a catalog, which only a part provides: an interface provides a generic of values and interfaces only, such as a manufacturing process",
                         def.name.name, g.name.name
                     ),
                 );
@@ -638,9 +658,14 @@ impl Checker<'_> {
         let Some(first) = providers.iter().find(|p| !p.info.own) else {
             return;
         };
-        let (first_name, first_is_module) = (first.info.name.clone(), first.info.module_shaped);
+        let (first_name, first_kind) = (first.info.name.clone(), first.info.kind);
+        let word = |kind: InstKind| match kind {
+            InstKind::Module => "a module",
+            InstKind::Interface => "an interface",
+            _ => "a part",
+        };
         for p in providers.iter().filter(|p| !p.info.own) {
-            if p.info.module_shaped == first_is_module {
+            if p.info.kind == first_kind {
                 continue;
             }
             let (source, span) = {
@@ -651,10 +676,10 @@ impl Checker<'_> {
                 source,
                 span,
                 format!(
-                    "`{}` is a {}, but `{first_name}`, which provides `{generic_name}` too, is a {}; all providers of a generic are parts, or all are modules, because a generic is placed as the kind its providers have",
+                    "`{}` is {}, but `{first_name}`, which provides `{generic_name}` too, is {}; all providers of a generic are parts, all are modules, or all are interfaces, because a generic is placed as the kind its providers have",
                     p.info.name,
-                    if p.info.module_shaped { "module" } else { "part" },
-                    if first_is_module { "module" } else { "part" },
+                    word(p.info.kind),
+                    word(first_kind),
                 ),
             );
         }

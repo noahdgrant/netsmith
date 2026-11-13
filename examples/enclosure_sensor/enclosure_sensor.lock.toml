@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[EnclosureSensor.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [EnclosureSensor.parts."ldo.input_cap"]
 catalog = "capacitor"
 row = "10uF 20% 10V X5R 0402 C315248"

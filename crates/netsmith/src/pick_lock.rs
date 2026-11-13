@@ -12,8 +12,8 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use netsmith_check::Loader;
-use netsmith_solve::{Catalogs, LockedRow, PickLock, Picks, Solution};
+use netsmith_check::{Assignment, Loader, Model};
+use netsmith_solve::{Catalogs, LockedProvider, LockedRow, PickLock, Picks, Solution};
 
 use crate::{outcome_with, render_problems};
 
@@ -46,6 +46,43 @@ pub fn rows_of(solution: &Solution) -> Vec<LockedRow> {
         .iter()
         .map(|p| LockedRow::of_pick(solution.model.path_of(p.part), p))
         .collect()
+}
+
+/// The provider each use of a generic with more than one provider in scope was picked as, by
+/// the use's path (ADR 0113). A use with one provider, or whose pick is the generic itself,
+/// has no choice to hold.
+pub fn providers_of(model: &Model) -> Vec<LockedProvider> {
+    model
+        .uses
+        .iter()
+        .filter(|u| u.candidates.len() > 1)
+        .filter_map(|u| {
+            let chosen = u.candidates.get(u.chosen)?;
+            (!chosen.own).then(|| LockedProvider {
+                path: u.path.clone(),
+                generic: u.generic.clone(),
+                provider: chosen.id.clone(),
+            })
+        })
+        .collect()
+}
+
+/// The providers a lock holds the uses of each board and system to, as the checker's
+/// assignment (ADR 0113).
+pub fn held_providers(lock: Option<&PickLock>) -> Assignment {
+    let mut held = Assignment::new();
+    if let Some(lock) = lock {
+        for (unit, providers) in lock.provider_units() {
+            held.insert(
+                unit.to_string(),
+                providers
+                    .iter()
+                    .map(|p| (p.path.clone(), p.provider.clone()))
+                    .collect(),
+            );
+        }
+    }
+    held
 }
 
 /// The lock in the file at `file`, or `None` if there is no such file. A file that cannot be
@@ -118,15 +155,31 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 "`{unit}` must be a table of a board's or system's parts, not {value}"
             ))
         })?;
-        if let Some(extra) = unit_table.keys().find(|k| *k != "parts") {
+        if let Some(extra) = unit_table
+            .keys()
+            .find(|k| *k != "parts" && *k != "providers")
+        {
             return Err(wrong(format!(
-                "`[{unit}]` has `{extra}`; it holds only `parts`"
+                "`[{unit}]` has `{extra}`; it holds only `parts` and `providers`"
             )));
         }
-        let parts = unit_table
-            .get("parts")
-            .and_then(toml::Value::as_table)
-            .ok_or_else(|| wrong(format!("`[{unit}]` has no table `parts`")))?;
+        let providers = match unit_table.get("providers") {
+            None => Vec::new(),
+            Some(value) => {
+                let table = value.as_table().ok_or_else(|| {
+                    wrong(format!("`[{unit}.providers]` must be a table of uses"))
+                })?;
+                parse_providers(unit, table, &wrong)?
+            }
+        };
+        lock.set_providers(unit, providers);
+        let parts = match unit_table.get("parts") {
+            Some(parts) => parts
+                .as_table()
+                .ok_or_else(|| wrong(format!("`[{unit}.parts]` must be a table of parts")))?,
+            None if unit_table.contains_key("providers") => continue,
+            None => return Err(wrong(format!("`[{unit}]` has no table `parts`"))),
+        };
         let mut rows = Vec::new();
         for (path, entry) in parts {
             let at = format!("[{unit}.parts.\"{path}\"]");
@@ -162,6 +215,43 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
     Ok(lock)
 }
 
+/// The `[<unit>.providers."<path>"]` entries of one board or system: each its `generic` and
+/// its `provider`.
+fn parse_providers(
+    unit: &str,
+    table: &toml::Table,
+    wrong: &dyn Fn(String) -> String,
+) -> Result<Vec<LockedProvider>, String> {
+    let mut providers = Vec::new();
+    for (path, entry) in table {
+        let at = format!("[{unit}.providers.\"{path}\"]");
+        let entry = entry
+            .as_table()
+            .ok_or_else(|| wrong(format!("{at} must be a table")))?;
+        if let Some(extra) = entry
+            .keys()
+            .find(|k| !["generic", "provider"].contains(&k.as_str()))
+        {
+            return Err(wrong(format!(
+                "{at} has `{extra}`; it holds `generic` and `provider`"
+            )));
+        }
+        let text = |key: &str| -> Result<String, String> {
+            match entry.get(key) {
+                Some(toml::Value::String(s)) => Ok(s.clone()),
+                Some(other) => Err(wrong(format!("{at} `{key}` must be text, not {other}"))),
+                None => Err(wrong(format!("{at} has no `{key}`"))),
+            }
+        };
+        providers.push(LockedProvider {
+            path: path.clone(),
+            generic: text("generic")?,
+            provider: text("provider")?,
+        });
+    }
+    Ok(providers)
+}
+
 /// A TOML key: bare when it can be, else quoted.
 fn key(text: &str) -> String {
     if !text.is_empty()
@@ -185,8 +275,21 @@ fn string(text: &str) -> String {
 pub fn render(lock: &PickLock) -> String {
     let mut out = String::from(HEADER);
     let _ = writeln!(out, "version = {VERSION}");
-    for (unit, rows) in lock.units() {
-        for row in rows {
+    let mut units: Vec<&str> = lock
+        .units()
+        .map(|(u, _)| u)
+        .chain(lock.provider_units().map(|(u, _)| u))
+        .collect();
+    units.sort_unstable();
+    units.dedup();
+    for unit in units {
+        // The providers first: a provider decides which parts there are.
+        for p in lock.providers(unit) {
+            let _ = writeln!(out, "\n[{}.providers.{}]", key(unit), string(&p.path));
+            let _ = writeln!(out, "generic = {}", string(&p.generic));
+            let _ = writeln!(out, "provider = {}", string(&p.provider));
+        }
+        for row in lock.rows(unit) {
             let _ = writeln!(out, "\n[{}.parts.{}]", key(unit), string(&row.path));
             let _ = writeln!(out, "catalog = {}", string(&row.catalog));
             let _ = writeln!(out, "row = {}", string(&row.row));
@@ -258,8 +361,58 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
             }
         }
     }
+    found.extend(provider_lines(old, new, |unit, path, was, now| match (was, now) {
+        (None, Some(now)) => format!(
+            "{unit}: `{path}`: added as provider `{}` of `{}`",
+            now.provider, now.generic
+        ),
+        (Some(was), Some(now)) => format!(
+            "{unit}: `{path}`: provider `{}` -> `{}`",
+            was.provider, now.provider
+        ),
+        (Some(was), None) => format!(
+            "{unit}: `{path}`: dropped (it was provider `{}` of `{}`, and is no longer a use with a choice of provider)",
+            was.provider, was.generic
+        ),
+        (None, None) => unreachable!("a line is about a provider in one lock or the other"),
+    }));
     found.sort();
     found.into_iter().map(|(_, _, line)| line).collect()
+}
+
+/// A line for each use whose provider differs between `old` and `new` (added, changed or
+/// dropped), with its board and path, in no order.
+fn provider_lines(
+    old: &PickLock,
+    new: &PickLock,
+    line: impl Fn(&str, &str, Option<&LockedProvider>, Option<&LockedProvider>) -> String,
+) -> Vec<(String, String, String)> {
+    let mut found = Vec::new();
+    for (unit, providers) in new.provider_units() {
+        for p in providers {
+            let was = old.providers(unit).iter().find(|b| b.path == p.path);
+            if was.is_some_and(|b| b.provider == p.provider) {
+                continue;
+            }
+            found.push((
+                unit.to_string(),
+                p.path.clone(),
+                line(unit, &p.path, was, Some(p)),
+            ));
+        }
+    }
+    for (unit, providers) in old.provider_units() {
+        for p in providers {
+            if !new.providers(unit).iter().any(|a| a.path == p.path) {
+                found.push((
+                    unit.to_string(),
+                    p.path.clone(),
+                    line(unit, &p.path, Some(p), None),
+                ));
+            }
+        }
+    }
+    found
 }
 
 /// What `lock --update` and `lock --check` found for the lock of one source file.
@@ -355,11 +508,17 @@ pub struct Changes {
     pub gone: Vec<(String, String, String)>,
     /// Parts whose pick is not the locked row: `(board, path, locked row, row picked)`.
     pub changed: Vec<(String, String, String, String)>,
+    /// A line for each use of a generic whose provider is not the locked one, or that the lock
+    /// has no entry for, or that is gone (ADR 0113), in the order board, use.
+    pub providers: Vec<String>,
 }
 
 impl Changes {
     pub fn is_empty(&self) -> bool {
-        self.added.is_empty() && self.gone.is_empty() && self.changed.is_empty()
+        self.added.is_empty()
+            && self.gone.is_empty()
+            && self.changed.is_empty()
+            && self.providers.is_empty()
     }
 
     /// One line for each difference, in the order board, part.
@@ -380,6 +539,7 @@ impl Changes {
                 "{unit}: `{path}` is locked to `{was}` and was picked as `{now}`"
             ));
         }
+        lines.extend(self.providers.iter().cloned());
         lines
     }
 }
@@ -417,6 +577,23 @@ pub fn compare(old: &PickLock, new: &PickLock) -> Changes {
             }
         }
     }
+    let mut providers = provider_lines(old, new, |unit, path, was, now| match (was, now) {
+        (None, Some(now)) => format!(
+            "{unit}: `{path}` is not in the lock (its provider was picked as `{}`)",
+            now.provider
+        ),
+        (Some(was), Some(now)) => format!(
+            "{unit}: `{path}` is locked to the provider `{}` and was picked as `{}`",
+            was.provider, now.provider
+        ),
+        (Some(was), None) => format!(
+            "{unit}: `{path}` is in the lock as the provider `{}` and is no longer a use with a choice of provider",
+            was.provider
+        ),
+        (None, None) => unreachable!("a line is about a provider in one lock or the other"),
+    });
+    providers.sort();
+    changes.providers = providers.into_iter().map(|(_, _, l)| l).collect();
     changes
 }
 
@@ -537,6 +714,74 @@ mod tests {
         assert_eq!(render(&made), text);
     }
 
+    fn provider(path: &str, id: &str) -> LockedProvider {
+        LockedProvider {
+            path: path.into(),
+            generic: "TwoLayer".into(),
+            provider: id.into(),
+        }
+    }
+
+    #[test]
+    fn a_lock_with_providers_is_read_back_as_it_was_written() {
+        let mut made = lock(&[("Board", row("r1", "resistor", "330Ω", Some("C25104")))]);
+        made.set_providers(
+            "Board",
+            vec![provider("process", "std::mfg::jlcpcb::JlcTwoLayer2oz")],
+        );
+        // A board with a provider and no part.
+        made.set_providers(
+            "Bare",
+            vec![provider("process", "std::mfg::jlcpcb::JlcTwoLayer1oz")],
+        );
+        let text = render(&made);
+        assert!(
+            text.contains("\n[Board.providers.\"process\"]\ngeneric = \"TwoLayer\"\nprovider = \"std::mfg::jlcpcb::JlcTwoLayer2oz\"\n"),
+            "{text}"
+        );
+        assert!(
+            text.find("[Board.providers").unwrap() < text.find("[Board.parts").unwrap(),
+            "{text}"
+        );
+        assert_eq!(parse(&text, "a.lock.toml").unwrap(), made);
+        assert!(!made.is_empty());
+        let held = held_providers(Some(&made));
+        assert_eq!(held["Board"]["process"], "std::mfg::jlcpcb::JlcTwoLayer2oz");
+    }
+
+    #[test]
+    fn a_changed_provider_is_a_change_and_a_line_of_the_diff() {
+        let mut old = lock(&[]);
+        old.set_providers("Board", vec![provider("process", "a::One")]);
+        let mut new = lock(&[]);
+        new.set_providers("Board", vec![provider("process", "a::Two")]);
+        assert_eq!(
+            compare(&old, &new).lines(),
+            vec!["Board: `process` is locked to the provider `a::One` and was picked as `a::Two`"]
+        );
+        assert_eq!(
+            diff(&old, &new),
+            vec!["Board: `process`: provider `a::One` -> `a::Two`"]
+        );
+        assert_eq!(
+            diff(&lock(&[]), &new),
+            vec!["Board: `process`: added as provider `a::Two` of `TwoLayer`"]
+        );
+        assert_eq!(
+            compare(&new, &lock(&[])).lines(),
+            vec![
+                "Board: `process` is in the lock as the provider `a::Two` and is no longer a use with a choice of provider"
+            ]
+        );
+        assert!(compare(&new, &new).is_empty());
+        let wrong = parse(
+            "version = 1\n[B.providers.\"process\"]\ngeneric = \"TwoLayer\"\n",
+            "x.lock.toml",
+        )
+        .unwrap_err();
+        assert!(wrong.contains("has no `provider`"), "{wrong}");
+    }
+
     #[test]
     fn the_file_lists_boards_in_name_order_and_parts_in_path_order() {
         let made = lock(&[
@@ -561,7 +806,10 @@ mod tests {
         assert!(wrong("").contains("no `version`"));
         assert!(wrong("version = 2").contains("version 2 is not a version"));
         assert!(wrong("version = 1\nB = 3").contains("`B` must be a table"));
-        assert!(wrong("version = 1\n[B]\nx = 1").contains("`[B]` has `x`"));
+        assert!(
+            wrong("version = 1\n[B]\nx = 1")
+                .contains("`[B]` has `x`; it holds only `parts` and `providers`")
+        );
         let no_row = wrong("version = 1\n[B.parts.\"r1\"]\ncatalog = \"resistor\"");
         assert!(no_row.contains("[B.parts.\"r1\"] has no `row`"), "{no_row}");
         let extra = wrong("version = 1\n[B.parts.\"r1\"]\ncatalog = \"a\"\nrow = \"b\"\nprice = 1");

@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[SchematicBench.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [SchematicBench.parts."adc.c_filter"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"

@@ -17,8 +17,9 @@
 //! - solder mask bridge, 1 oz: 0.10 mm for green, red, yellow, blue and purple, 0.13 mm for
 //!   black and white
 //! - FR-4 thickness: 0.4, 0.6, 0.8, 1.0, 1.2, 1.6 and 2.0 mm
-//! - outer copper on 2 layers: 1, 2, 2.5, 3.5 or 4.5 oz. Track and space limits are given
-//!   per weight, so `TwoLayer` is the 1 oz process.
+//! - outer copper on 2 layers: 1, 2, 2.5, 3.5 or 4.5 oz. The track, space, annular ring and
+//!   mask bridge limits are given per weight, so `TwoLayer` is a generic with a provider for
+//!   each weight the page gives every one of them for (`JlcTwoLayer1oz`, `JlcTwoLayer2oz`).
 //!
 //! - the rules added on 2026-11-11 from the same page, re-read that day (issue #431): a via 0.1 mm
 //!   (0.15 mm preferred) wider than its hole; via hole to track 0.2 mm, NPTH to track 0.2 mm, PTH
@@ -35,7 +36,7 @@
 //! page does not say what it measures); coils, hatched grids, castellated holes, plugged vias
 //! and blind slots (netsmith draws none of them); the hole size, hole position and track width
 //! tolerances (not a distance on the board: the width tolerance is a margin for the current,
-//! issue #431); and the rules of copper heavier than 1 oz (issue #431, step S1b).
+//! issue #431).
 //!
 //! - vias in pads: the page lists "epoxy filled and capped" vias of 0.15 mm to 0.55 mm, which
 //!   is what lets a via sit in a pad ("vias can be placed within BGA pads using filled and
@@ -51,34 +52,42 @@
 
 import std::mfg::stackup::{InnerLayer, Pour, Stackup}
 
-/// JLCPCB's standard two-layer rigid board, 1 oz copper. Each `min_` field is the least the
-/// process can make; a board narrows it up to be made with more margin
-/// (`.process.min_track &= 0.15mm..1m`), never below, and the rules the board is routed
-/// and checked to are the bottom of what is left. The thickness is any the process offers,
-/// so a board that is to be made says which.
-interface TwoLayer {
+/// JLCPCB's standard two-layer rigid board. Each `min_` field is the least the process can
+/// make; a board narrows it up to be made with more margin (`.process.min_track &= 0.15mm..1m`),
+/// never below, and the rules the board is routed and checked to are the bottom of what is
+/// left. The thickness is any the process offers, so a board that is to be made says which.
+///
+/// The copper weight is the board's choice too: `TwoLayer` is a generic (ADR 0113), and each
+/// weight is a provider that states the rules the page gives for it, the track, the space, the
+/// annular ring of a plated hole and the mask bridge. A board that says nothing is made with
+/// 1 oz copper, the first provider; one that narrows the weight
+/// (`.process.stackup.copper_weight &= 2`) is made by the provider that has it, and its rules
+/// follow, with the current a track and a via carry (IPC-2221 with the copper's thickness).
+///
+/// The page offers 2.5, 3.5 and 4.5 oz on two layers too, and gives their track and space
+/// (0.2 / 0.2 mm, 0.25 / 0.25 mm and 0.3 / 0.3 mm) but no annular ring or mask bridge, so they
+/// have no provider: a process states every rule (issue #431), and a board that asks for one is
+/// told that no provider has it. A figure of a lighter weight would be a guess, and too small.
+generic TwoLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
     .source:     String
     .fabricator &= "JLCPCB"
     .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
 
-    /// The narrowest track.
+    /// The narrowest track, by weight.
     .min_track: Length
-    .min_track &= 0.1mm..1m
-    /// The least space between copper of different nets.
+    /// The least space between copper of different nets, by weight.
     .min_clearance: Length
-    .min_clearance &= 0.1mm..1m
     /// The smallest drilled hole, which is a via's drill.
     .min_drill: Length
     .min_drill &= 0.15mm..1m
     /// The smallest copper disc of a via.
     .min_via_diameter: Length
     .min_via_diameter &= 0.25mm..1m
-    /// The least copper left round a plated pad's hole ("PTH annular ring"). A via's is
-    /// `.min_via_ring`.
+    /// The least copper left round a plated pad's hole ("PTH annular ring"), by weight. A via's
+    /// is `.min_via_ring`.
     .min_annular_ring: Length
-    .min_annular_ring &= 0.18mm..1m
     /// The least space between the edges of two holes when one is a pad's ("pad hole-to-hole
     /// spacing"), and between two vias' holes ("via hole-to-hole spacing").
     .min_hole_to_hole: Length
@@ -97,9 +106,8 @@ interface TwoLayer {
     /// The least space between silkscreen and a pad.
     .min_silk_to_pad: Length
     .min_silk_to_pad &= 0.15mm..1m
-    /// The least solder mask left between two pads.
+    /// The least solder mask left between two pads, by weight.
     .min_mask_bridge: Length
-    .min_mask_bridge &= 0.13mm..1m
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -178,12 +186,35 @@ interface TwoLayer {
     .stackup: Stackup
     .stackup.layers       &= 2
     .stackup.thickness    &= 0.4mm..2mm
-    .stackup.copper_weight &= 1
 
     /// The pours on the outer layers, which the board names the nets of
     /// (`.process.top.net &= "GND"`).
     .top: Pour
     .bottom: Pour
+}
+
+/// JLCPCB's two-layer board with 1 oz outer copper, the page's "1 oz" rows: track and space
+/// 0.10 / 0.10 mm; plated annular ring 0.18 mm, its absolute minimum (0.25 mm recommended);
+/// mask bridge 0.10 mm for green, red, yellow, blue and purple and 0.13 mm for black and white,
+/// so 0.13 mm, which holds for any colour.
+interface JlcTwoLayer1oz provides TwoLayer {
+    .min_track &= 0.1mm..1m
+    .min_clearance &= 0.1mm..1m
+    .min_annular_ring &= 0.18mm..1m
+    .min_mask_bridge &= 0.13mm..1m
+    .stackup.copper_weight &= 1
+}
+
+/// JLCPCB's two-layer board with 2 oz outer copper, the page's "2 oz" rows, read 2026-11-13:
+/// "min. track width and spacing (2 oz) 2-layer: 0.16 / 0.16 mm (6.5 / 6.5 mil)"; "PTH annular
+/// ring 2-layer, 2 oz: 0.254 mm or above"; "soldermask bridge 2oz: min. pad spacing 0.20 mm
+/// (any color)".
+interface JlcTwoLayer2oz provides TwoLayer {
+    .min_track &= 0.16mm..1m
+    .min_clearance &= 0.16mm..1m
+    .min_annular_ring &= 0.254mm..1m
+    .min_mask_bridge &= 0.2mm..1m
+    .stackup.copper_weight &= 2
 }
 
 /// JLCPCB's standard four-layer rigid board: 1 oz outer copper, 0.5 oz inner copper, 1.6 mm
@@ -212,7 +243,11 @@ interface TwoLayer {
 /// - solder mask bridge, 1 oz: 0.10 mm for green, red, yellow, blue and purple, 0.13 mm for
 ///   black and white
 /// - finished outer copper on multilayer boards: 1 oz or 2 oz; inner copper 0.5 oz (the
-///   default), 1 oz or 2 oz. `FourLayer` is the 1 oz outer, 0.5 oz inner process.
+///   default), 1 oz or 2 oz. `FourLayer` is the 1 oz outer, 0.5 oz inner process. The page
+///   gives the 2 oz multilayer rules (track and space 0.15 / 0.15 mm, annular ring 0.254 mm,
+///   mask bridge 0.20 mm), but https://jlcpcb.com/impedance (read 2026-11-13) lists no
+///   build-up with 2 oz outer copper, so a 2 oz four-layer board has no stackup to state and
+///   no process here.
 ///
 /// The stackup is the page's four-layer `JLC04161H-7628` build, which is also its "no
 /// requirement" default: outer copper 0.035 mm, prepreg 7628 x 1 0.2104 mm, inner copper
@@ -387,7 +422,8 @@ interface FourLayer {
 /// HASL is not offered ("FR-4/HDI boards with 6 or more layers ... do not support HASL"), so
 /// the board file says ENIG; and epoxy filled and capped vias are the default process. Finished
 /// multilayer copper is 1 oz or 2 oz outside and 0.5 oz (the default), 1 oz or 2 oz inside;
-/// `SixLayer` is the 1 oz outer, 0.5 oz inner process.
+/// `SixLayer` is the 1 oz outer, 0.5 oz inner process; it has no 2 oz sibling, as `FourLayer`
+/// has none, because the impedance page lists no build-up with 2 oz outer copper.
 ///
 /// The stackup is the page's six-layer `JLC06161H-3313` build, from https://jlcpcb.com/impedance
 /// (fetched 2026-11-12): outer copper 0.035 mm, prepreg 3313 x 1 0.0994 mm, inner copper

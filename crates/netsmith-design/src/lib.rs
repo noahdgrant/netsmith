@@ -726,7 +726,13 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         errors.push("`process` must be a manufacturing process such as `TwoLayer`".to_string());
         return None;
     };
-    let kind = model.instance(process).type_name.clone();
+    // The type the board wrote: a generic process (ADR 0113) is named as the board names it,
+    // `TwoLayer`, whichever weight's provider was picked; the weight is in the stackup.
+    let instance = model.instance(process);
+    let kind = instance
+        .placed_as
+        .clone()
+        .unwrap_or_else(|| instance.type_name.clone());
     let problems = RefCell::new(Vec::<String>::new());
     let find = |path: &str| -> Option<Domain> {
         let full = format!("process.{path}");
@@ -1401,6 +1407,8 @@ mod tests {
     fn std_definitions() -> Vec<(String, Option<String>, Vec<String>)> {
         let std = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std");
         let mut parts = Vec::new();
+        // The generics interfaces provide: processes (ADR 0113), not parts.
+        let mut of_interfaces: Vec<String> = Vec::new();
         let mut dirs = vec![std];
         while let Some(dir) = dirs.pop() {
             for entry in std::fs::read_dir(&dir).unwrap() {
@@ -1411,6 +1419,12 @@ mod tests {
                     let text = std::fs::read_to_string(&path).unwrap();
                     let mut current: Option<usize> = None;
                     for line in text.lines() {
+                        if let Some((_, g)) = line
+                            .strip_prefix("interface ")
+                            .and_then(|r| r.split_once(" provides "))
+                        {
+                            of_interfaces.push(g.trim_end_matches(" {").trim().to_string());
+                        }
                         if let Some(rest) = line
                             .strip_prefix("part ")
                             .or_else(|| line.strip_prefix("generic "))
@@ -1438,6 +1452,7 @@ mod tests {
                 }
             }
         }
+        parts.retain(|(name, _, _)| !of_interfaces.contains(name));
         let own: Vec<(String, Option<String>)> = parts
             .iter()
             .map(|(n, l, _)| (n.clone(), l.clone()))

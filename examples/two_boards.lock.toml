@@ -4,6 +4,14 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[TwoBoards.providers."led.process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
+[TwoBoards.providers."power.process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [TwoBoards.parts."led.led"]
 catalog = "led"
 row = "KT-0603R RED LED 0603 C2286"

@@ -41,19 +41,36 @@ impl LockedRow {
     }
 }
 
+/// The provider one use of a generic was picked as (ADR 0068, ADR 0113): a use with more than
+/// one provider in scope, such as a board's `.process: TwoLayer`, whose copper weight picks
+/// one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LockedProvider {
+    /// The use's path in the board (`process`, `stage.reg`).
+    pub path: String,
+    /// The generic (`TwoLayer`).
+    pub generic: String,
+    /// The provider's id, its module and name (`std::mfg::jlcpcb::JlcTwoLayer1oz`): what an
+    /// assignment of the checker names.
+    pub provider: String,
+}
+
 /// The locked rows of every board and system of one source file, by the name of the board or
-/// system (the name the solver solves it under), each with its parts in path order.
+/// system (the name the solver solves it under), each with its parts in path order, and the
+/// locked providers of its uses of generics, in path order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PickLock {
     /// What a message calls the file the lock is kept in.
     pub file: String,
     units: BTreeMap<String, Vec<LockedRow>>,
+    providers: BTreeMap<String, Vec<LockedProvider>>,
 }
 
 impl PickLock {
     pub fn new(file: &str) -> PickLock {
         PickLock {
             file: file.to_string(),
+            providers: BTreeMap::new(),
             units: BTreeMap::new(),
         }
     }
@@ -74,9 +91,32 @@ impl PickLock {
         self.units.iter().map(|(n, r)| (n.as_str(), r.as_slice()))
     }
 
-    /// Whether no part is locked.
+    /// Sets the providers of one board's or system's uses. They are kept in path order; a
+    /// board with none has no entry.
+    pub fn set_providers(&mut self, unit: &str, mut providers: Vec<LockedProvider>) {
+        providers.sort_by(|a, b| a.path.cmp(&b.path));
+        if providers.is_empty() {
+            self.providers.remove(unit);
+        } else {
+            self.providers.insert(unit.to_string(), providers);
+        }
+    }
+
+    /// The providers of one board or system: none if the lock has no table for it.
+    pub fn providers(&self, unit: &str) -> &[LockedProvider] {
+        self.providers.get(unit).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every board or system the lock has providers for, in name order, with them.
+    pub fn provider_units(&self) -> impl Iterator<Item = (&str, &[LockedProvider])> {
+        self.providers
+            .iter()
+            .map(|(n, p)| (n.as_str(), p.as_slice()))
+    }
+
+    /// Whether no part and no provider is locked.
     pub fn is_empty(&self) -> bool {
-        self.units.values().all(Vec::is_empty)
+        self.units.values().all(Vec::is_empty) && self.providers.values().all(Vec::is_empty)
     }
 }
 

@@ -256,6 +256,64 @@ fn a_module_that_offers_assembly_lets_the_board_move_its_parts_out_of_the_bom() 
     assert!(notes.contains("hand-solder: D1, J1, R1\n"), "{notes}");
 }
 
+/// A board made with 2 oz copper (ADR 0113): the regulator example with
+/// `.stackup.copper_weight &= 2`, and every rule at the 2 oz provider's limit. It is routed and
+/// passes the design rules check, which `fab` gates on, with no KiCad; no track is narrower than
+/// 2 oz's least track. `no-kicad` in CI fabs every example at 1 oz.
+#[test]
+fn a_board_at_2_oz_is_routed_to_the_2_oz_rules_and_passes_the_check() {
+    let heavy = REGULATOR.replacen(
+        "        .stackup.thickness &= 1.6mm\n",
+        "        .stackup.thickness &= 1.6mm\n        .stackup.copper_weight &= 2\n",
+        1,
+    );
+    assert_ne!(heavy, REGULATOR, "the example states its thickness");
+    let dir = out("two-oz");
+    let made = fab(
+        "heavy.nsm",
+        &heavy,
+        &dir,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let board = &made[0].board;
+    let notes = read(&dir, board, "fab-notes.txt");
+    assert!(notes.contains("design rules check: passed"), "{notes}");
+    assert!(
+        notes.contains("process: JLCPCB TwoLayer (numbers from")
+            && notes.contains("track 0.16 mm, space 0.16 mm")
+            && notes.contains("annular ring 0.254 mm")
+            && notes.contains("mask bridge 0.2 mm")
+            && notes.contains("2 layers, 1.6 mm thick, 2 oz copper"),
+        "{notes}"
+    );
+    // Every track is at least 2 oz's least track, and the project file holds 2 oz's rules.
+    let pcb = read(&dir, board, &format!("{board}.kicad_pcb"));
+    let mut widths = 0;
+    for segment in pcb.split("(segment").skip(1) {
+        let width: f64 = segment
+            .split("(width ")
+            .nth(1)
+            .and_then(|w| w.split(')').next())
+            .and_then(|w| w.trim().parse().ok())
+            .expect("a segment has a width");
+        assert!(width >= 0.16 - 1e-9, "a track {width} mm wide at 2 oz");
+        widths += 1;
+    }
+    assert!(widths > 0, "the board has tracks");
+    assert!(
+        pcb.contains("(thickness 0.07)"),
+        "2 oz copper is 0.07 mm thick"
+    );
+    let pro = read(&dir, board, &format!("{board}.kicad_pro"));
+    assert!(
+        pro.contains("\"min_clearance\": 0.16") && pro.contains("\"min_track_width\": 0.16"),
+        "{pro}"
+    );
+}
+
 #[test]
 fn the_regulator_board_becomes_a_complete_package() {
     let Some(cli) = kicad() else { return };

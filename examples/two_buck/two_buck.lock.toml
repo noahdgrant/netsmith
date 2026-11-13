@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[TwoBuck.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [TwoBuck.parts."buck_3v3.boost"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"

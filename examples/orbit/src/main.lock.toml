@@ -4,6 +4,10 @@
 # with `netsmith lock --update`. Nothing in it is edited by hand.
 version = 1
 
+[Orbit.providers."process"]
+generic = "TwoLayer"
+provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
+
 [Orbit.parts."battery"]
 catalog = "jst_ph_smt"
 row = "B2B-PH-SM4-TB(LF)(SN)"

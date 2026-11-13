@@ -2869,17 +2869,24 @@ mod tests {
         ),
     ];
 
-    /// The fields declared at the top level of `interface <name>` in `std/mfg/jlcpcb.nsm` or
-    /// `std/mfg/acme.nsm`, with the value its `&=` or `?=` line gives, if any.
-    fn process_fields(name: &str) -> Vec<(String, Option<String>)> {
+    /// The fields declared at the top level of `interface <name>` (or `generic <name>`) in
+    /// `std/mfg/jlcpcb.nsm` or `std/mfg/acme.nsm`, with the value its `&=` or `?=` line gives,
+    /// if any, or the line of `interface <provider> provides <name>` (ADR 0113).
+    fn process_fields(name: &str, provider: Option<&str>) -> Vec<(String, Option<String>)> {
         let (_, text) = std_module(name);
-        let start = text
-            .find(&format!("interface {name} {{"))
-            .expect("the process is in the file");
-        let body = &text[start..];
-        let body = &body[..body.find("\n}").expect("the interface ends")];
+        let block = |header: &str| -> &str {
+            let start = text.find(header).expect("the process is in the file");
+            let body = &text[start..];
+            &body[..body.find("\n}").expect("the definition ends")]
+        };
+        let body = if text.contains(&format!("generic {name} {{")) {
+            block(&format!("generic {name} {{"))
+        } else {
+            block(&format!("interface {name} {{"))
+        };
+        let own = provider.map(|p| block(&format!("interface {p} provides {name} {{")));
         let mut fields: Vec<(String, Option<String>)> = Vec::new();
-        for line in body.lines() {
+        for line in body.lines().chain(own.into_iter().flat_map(str::lines)) {
             let Some(rest) = line.strip_prefix("    .") else {
                 continue;
             };
@@ -2910,9 +2917,17 @@ mod tests {
         }
     }
 
-    /// The process of a board that states each of `narrowings` inside `.process { }`.
+    /// The process of a board that states each of `narrowings` inside `.process { }`. A name
+    /// with a weight, `TwoLayer@2`, is `TwoLayer` at that copper weight (ADR 0113).
     fn process(name: &str, narrowings: &[String]) -> netsmith_core::Process {
         let mut lines: Vec<String> = narrowings.to_vec();
+        let name = match name.split_once('@') {
+            Some((name, weight)) => {
+                lines.push(format!(".stackup.copper_weight &= {weight}"));
+                name
+            }
+            None => name,
+        };
         let inner = match name {
             "FourLayer" => 2,
             "SixLayer" => 4,
@@ -2978,15 +2993,18 @@ mod tests {
     /// a rule is listed with its reason (issue #431).
     #[test]
     fn every_rule_a_process_states_reaches_the_router_and_the_check() {
-        for name in [
-            "TwoLayer",
-            "FourLayer",
-            "SixLayer",
-            "EightLayer",
-            "TenLayer",
+        // Each provider of a generic process, by the weight that picks it (ADR 0113).
+        for (name, provider) in [
+            ("TwoLayer", Some("JlcTwoLayer1oz")),
+            ("TwoLayer@2", Some("JlcTwoLayer2oz")),
+            ("FourLayer", None),
+            ("SixLayer", None),
+            ("EightLayer", None),
+            ("TenLayer", None),
         ] {
             let base = what_is_kept(&process(name, &[])).unwrap();
-            for (field, value) in process_fields(name) {
+            let generic = name.split('@').next().expect("a name");
+            for (field, value) in process_fields(generic, provider) {
                 if NOT_A_COPPER_RULE.iter().any(|(f, _)| *f == field) {
                     continue;
                 }
