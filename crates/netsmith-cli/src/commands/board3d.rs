@@ -15,7 +15,11 @@ pub struct Args {
     /// The source file; with none, the project's boards.
     #[arg(value_name = "FILE.NSM")]
     pub file: Option<String>,
-    /// The board, when the file has several (`Name`, or `System/member`).
+    /// The board, when the file has several (`Name`, or `System/member`), or a system (`System`).
+    ///
+    /// A system's name gives its _System scene_ (ADR 0110): each member placed against the others
+    /// by its mates, in the frame of the first member; the report has each member's motion and
+    /// report, the mates with their mated heights, and the findings across boards.
     #[arg(long, value_name = "NAME")]
     pub board: Option<String>,
     /// Print the report an agent reads: bodies, heights and where they came from, limits, overlaps.
@@ -63,10 +67,28 @@ fn run_board3d(
     glb: Option<&Path>,
     step: Option<&Path>,
 ) -> ExitCode {
-    let made = with_placed_board(file, board, |placed| placed.run());
-    let (report, scene) = match made {
+    let made = match with_placed_board(file, board, |placed| placed.run_any()) {
         Ok(made) => made,
         Err(code) => return code,
+    };
+    let (report, scene) = match made {
+        netsmith::board3d::Made::Board(made) => *made,
+        netsmith::board3d::Made::System(made) => {
+            let (report, _) = *made;
+            if glb.is_some() || step.is_some() {
+                eprintln!(
+                    "error: {}: a system scene is reported as numbers only; write a member's file with `--board {}/<member>`",
+                    report.system, report.system
+                );
+                return ExitCode::from(2);
+            }
+            if json {
+                print!("{}", report.json());
+            } else {
+                print!("{}", report.summary());
+            }
+            return ExitCode::SUCCESS;
+        }
     };
     let label = &report.board.name;
     let files = [

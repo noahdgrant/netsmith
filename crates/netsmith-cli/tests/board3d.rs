@@ -1543,3 +1543,75 @@ fn the_stackup_adds_up_to_the_nominal_thickness_within_the_fabricators_tolerance
         );
     }
 }
+
+/// The system scene of the two-board example (ADR 0110): the LED board is placed on the power
+/// board by the mate of its socket with the power board's header, at the mated height the two
+/// seats give, and each member's report is the one `--board TwoBoards/member` prints.
+#[test]
+fn the_two_boards_are_mated_at_the_height_their_seats_give() {
+    let examples = repo().join("examples");
+    let (r, text) = json(
+        &examples,
+        &["two_boards.nsm", "--board", "TwoBoards", "--json"],
+    );
+    assert_eq!(r["schema"], 1);
+    assert_eq!(r["system"], "TwoBoards");
+    assert_eq!(r["base"], "power");
+    let mate = &r["mates"][0];
+    assert_eq!(mate["a"], "power.power_out");
+    assert_eq!(mate["b"], "led.power_in");
+    assert_eq!(mate["contacts"], 2);
+    assert_eq!(mate["mated_height"]["min"], 10.65);
+    assert_eq!(mate["mated_height"]["max"], 11.35);
+    assert_eq!(mate["seats"]["a"]["min"], 2.3);
+    assert_eq!(mate["seats"]["b"]["max"], 8.65);
+    assert_eq!(mate["residual"], 0.0);
+    assert_eq!(mate["gap"], 10.65);
+    let members = r["members"].as_array().unwrap();
+    assert_eq!(members.len(), 2);
+    assert_eq!(members[0]["member"], "power");
+    assert_eq!(members[0]["placed"]["base"], true);
+    assert_eq!(
+        members[0]["motion"]["offset"],
+        serde_json::json!([0.0, 0.0, 0.0])
+    );
+    let led = &members[1];
+    assert_eq!(led["member"], "led");
+    assert_eq!(led["board"], "TwoBoards/led");
+    assert_eq!(led["placed"]["mate"], 0);
+    // Both connectors stand on their boards' top faces, so the LED board hangs face down, its
+    // top face at the least mated height.
+    assert_eq!(led["motion"]["flip"], true);
+    assert_eq!(led["motion"]["matrix"][2][3], 10.65);
+    assert_eq!(led["motion"]["matrix"][2][2], -1.0);
+    // The member's report is its own command's.
+    let (alone, _) = json(
+        &examples,
+        &["two_boards.nsm", "--board", "TwoBoards/led", "--json"],
+    );
+    assert_eq!(led["report"], alone);
+    // Nothing collides, and nothing of unknown height faces the other board.
+    let findings = r["findings"].as_array().unwrap();
+    assert!(
+        findings.iter().all(|f| f["severity"] != "error"),
+        "{findings:?}"
+    );
+    // The same bytes each run.
+    let (_, again) = json(
+        &examples,
+        &["two_boards.nsm", "--board", "TwoBoards", "--json"],
+    );
+    assert_eq!(text, again);
+    // The summary says how each member is placed.
+    let out = board3d(&examples, &["two_boards.nsm", "--board", "TwoBoards"]);
+    let summary = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        summary
+            .contains("member `led`: placed by the mate of `power.power_out` and `led.power_in`"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("mated height 10.65 to 11.35 mm"),
+        "{summary}"
+    );
+}
