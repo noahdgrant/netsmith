@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A process is a generic, and each copper weight is a provider
 
-The mechanism is the owner's decision of 2026-11-13 (issue #431, S1b, option 1 of the comment of 2026-11-11). The two rules it needed that the decision did not state, the search opening on a contradiction and the lock holding a provider, are the agent's under the owner's delegation of 2026-11-11, and the owner has not seen this text. It meets two of the three tests: it is hard to reverse (std's process becomes a generic, and lock files gain a table) and it rejects obvious alternatives (a table of process rows; one interface per weight).
+The mechanism is the owner's decision of 2026-11-13 (issue #431, S1b, option 1 of the comment of 2026-11-11). The two rules it needed that the decision did not state, the search opening on a contradiction and the lock holding a provider, were drafted by the agent and accepted by the owner on 2026-11-13. It meets two of the three tests: it is hard to reverse (std's process becomes a generic, and lock files gain a table) and it rejects obvious alternatives (a table of process rows; one interface per weight).
 
 **Decision.** A board writes the copper weight as a field, `.process: TwoLayer { .stackup.copper_weight &= 2 }`, and the rules that depend on it follow. JLCPCB's figures by weight follow no formula, so each weight is its own definition: `TwoLayer` is a `generic` that declares every field and states what holds at every weight, and `interface JlcTwoLayer1oz provides TwoLayer` and `JlcTwoLayer2oz` state the track, space, annular ring, mask bridge and weight, each with its source. ADR 0068's machinery picks one, so the pick needs nothing new in the router, the check or the current rating: each reads the `Process` the design stage builds from whichever provider stands.
 
