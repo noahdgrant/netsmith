@@ -21,7 +21,9 @@
 //! - **Bends**: where exactly two straight tracks of one net and layer meet, outside every pad,
 //!   the angle between them: straight (no bend), 135 degrees (a 45 degree bend), 90 degrees, acute,
 //!   or another angle. Where three or more meet (a tee), an acute angle between any two is
-//!   counted as acute. **Off-angle** tracks run at an angle that is not a multiple of 45 degrees.
+//!   counted as acute. An arc is counted as one, and meets the tracks at its ends along its
+//!   tangents, so a tangent arc's ends are straight joins. **Off-angle** straight tracks run at an
+//!   angle that is not a multiple of 45 degrees.
 //! - **Narrow copper**: track of a net drawn narrower than the width the project file's net
 //!   class gives the net (the width its current needs, ADR 0036), by net, in mm of track.
 //! - **Pours**: for each zone on an outer layer, the length of other nets' track inside it, and
@@ -84,6 +86,8 @@ pub struct Bends {
     pub deg90: usize,
     pub acute: usize,
     pub other: usize,
+    /// Arcs: a bend with no corner, read at its ends along its tangents.
+    pub arcs: usize,
 }
 
 /// A bend that is not 45 degrees, for a person to look at: the net, the layer, where, and the
@@ -208,8 +212,8 @@ impl Scorecard {
         let b = self.bends;
         let _ = writeln!(
             s,
-            "bends               45: {}, 90: {}, acute: {}, other: {} (straight joins {})",
-            b.deg45, b.deg90, b.acute, b.other, b.straight
+            "bends               45: {}, 90: {}, acute: {}, other: {} (straight joins {}), arcs: {}",
+            b.deg45, b.deg90, b.acute, b.other, b.straight, b.arcs
         );
         for c in &self.corners {
             let _ = writeln!(
@@ -366,7 +370,6 @@ fn score(
     let mut routed_length = 0.0;
     let mut narrow: BTreeMap<String, f64> = BTreeMap::new();
     let mut widths: Vec<f64> = Vec::new();
-    let mut off_angle = 0;
     for (net, layer, a, b, width) in &tracks {
         let len = a.dist(*b);
         track_length += len;
@@ -383,13 +386,37 @@ fn score(
         if !widths.contains(&w) {
             widths.push(w);
         }
-        if len > SAME {
-            let deg = (b.y - a.y).atan2(b.x - a.x).to_degrees().rem_euclid(45.0);
-            if deg.min(45.0 - deg) > 0.5 {
-                off_angle += 1;
+    }
+    // The straight tracks, and each arc as two short pieces along its tangents at its ends.
+    let mut straight: Vec<Seg> = Vec::new();
+    let mut arcs = 0;
+    for t in &art.tracks {
+        let net = t.net.clone().unwrap_or_default();
+        match &t.shape {
+            TrackShape::Line(a, b) => straight.push((net, t.layer.clone(), *a, *b, t.width)),
+            TrackShape::Arc(arc) => {
+                arcs += 1;
+                let (s, e) = arc.tangents();
+                let piece = |at: Pt, way: Pt| (at, Pt::new(at.x + way.x, at.y + way.y));
+                for (at, way) in [(arc.start, s), (arc.end, e)] {
+                    let (a, b) = piece(at, way);
+                    straight.push((net.clone(), t.layer.clone(), a, b, t.width));
+                }
             }
         }
     }
+    let off_angle = art
+        .tracks
+        .iter()
+        .filter_map(|t| match t.shape {
+            TrackShape::Line(a, b) if a.dist(b) > SAME => Some((a, b)),
+            _ => None,
+        })
+        .filter(|(a, b)| {
+            let deg = (b.y - a.y).atan2(b.x - a.x).to_degrees().rem_euclid(45.0);
+            deg.min(45.0 - deg) > 0.5
+        })
+        .count();
     widths.sort_by(f64::total_cmp);
 
     // The pad shapes of each net, for "inside a pad".
@@ -411,7 +438,8 @@ fn score(
             })
     };
 
-    let (bends, corners) = bends(&tracks, &in_pad);
+    let (mut bends, corners) = bends(&straight, &in_pad);
+    bends.arcs = arcs;
     let spanning_length = spanning(art, &poured);
     let pours = pours(art, rules, &tracks);
     let decoupling = decoupling(art, &tracks, &poured, &pad_shapes);
@@ -1045,6 +1073,40 @@ mod tests {
         // The straight line between the pads is the spanning length.
         assert!((s.spanning_length - 116f64.sqrt()).abs() < 1e-9);
         assert!(s.detour() > 1.0);
+    }
+
+    #[test]
+    fn a_tangent_arc_at_a_bend_is_an_arc_and_its_ends_are_straight_joins() {
+        // Right from (2,2) to the bend at (6,2), then diagonal to (10,6); the bend cut by an arc
+        // of radius 1 tangent to both.
+        let (cut, d) = (
+            std::f64::consts::FRAC_PI_8.tan(),
+            std::f64::consts::FRAC_1_SQRT_2,
+        );
+        let (p, q) = ((6.0 - cut, 2.0), (6.0 + cut * d, 2.0 + cut * d));
+        let centre = (p.0, 3.0);
+        let out = (6.0 - centre.0, 2.0 - centre.1);
+        let n = out.0.hypot(out.1);
+        let mid = (centre.0 + out.0 / n, centre.1 + out.1 / n);
+        let arc = format!(
+            "(arc (start {} {}) (mid {} {}) (end {} {}) (width 0.2) (layer \"F.Cu\") (net 1))\n",
+            p.0, p.1, mid.0, mid.1, q.0, q.1
+        );
+        let s = card(&board(
+            &(seg((2.0, 2.0), p, 0.2) + &arc + &seg(q, (10.0, 6.0), 0.2)),
+        ));
+        assert_eq!(
+            s.bends,
+            Bends {
+                straight: 2,
+                arcs: 1,
+                ..Bends::default()
+            }
+        );
+        assert_eq!(s.off_angle, 0);
+        // The length runs along the arc: a quarter of pi in all, less than the corner's.
+        let along = (6.0 - cut - 2.0) + std::f64::consts::FRAC_PI_4 + (32f64.sqrt() - cut);
+        assert!((s.track_length - along).abs() < 5e-3, "{}", s.track_length);
     }
 
     #[test]

@@ -66,25 +66,8 @@ fn track_angle(out: &mut Out<'_>) {
                 vec![(a, b - a), (b, a - b)]
             }
             TrackShape::Arc(arc) => {
-                let points = arc.points();
-                let [first, .., last] = points.as_slice() else {
-                    continue;
-                };
-                let (next, before) = (points[1], points[points.len() - 2]);
-                let tangent = |at: crate::geom::Pt, toward: crate::geom::Pt| {
-                    let r = at - arc.centre;
-                    let along = crate::geom::Pt::new(-r.y, r.x);
-                    let d = toward - at;
-                    if along.x * d.x + along.y * d.y < 0.0 {
-                        crate::geom::Pt::new(r.y, -r.x)
-                    } else {
-                        along
-                    }
-                };
-                vec![
-                    (*first, tangent(*first, next)),
-                    (*last, tangent(*last, before)),
-                ]
+                let (first, last) = arc.tangents();
+                vec![(arc.start, first), (arc.end, last)]
             }
         };
         let net = t.net.clone().unwrap_or_default();
