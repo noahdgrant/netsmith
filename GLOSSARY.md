@@ -282,6 +282,10 @@ _Avoid_: Buck module, power stage
 Identical capacitors in parallel that stand in one place of the design, a `Capacitor` with a `.count` (ADR 0052). The count is one number the board may state (`.count &= 3`, `.stage.output_count &= 3`), a range the solver chooses from (`1..8`, the fewest that holds every check), or unset, which is one. Every other field is the value of one capacitor of the bank. The design stage makes one part for each, on the same nets, and the bill of materials lists the row once with the quantity; the second and later parts have the path of the first with `#2`, `#3`. Only the standard `Capacitor`, and a part that provides it, is a bank (a user part with a member named `count` is one part; which generics are banks is one list in the checker, ADR 0068 stage 3), and a requirement on a bank's part path in the physical file holds for each of its capacitors. A bank is not a repetition construct: the language has none.
 _Avoid_: Array, capacitor slots (`cap_a`, `cap_b`), parallel group, multiplier, multiplicity
 
+**Group**:
+Several identical members declared in one statement, `.decoupling: 4 x Capacitor { ... }` (ADR 0118): the members `.decoupling[0]` to `.decoupling[3]`, each with the group's block, a path of its own and a designator of its own, numbered in index order. A chain with the group alone between its ends puts each member in parallel between them; a group written in a chain (`.v.pos ~> 2 x Capacitor { ... } ~> .v.neg`) is named from its kind and the ends. Not a **Bank**, whose count the solver may choose and whose capacitors have no paths a board narrows.
+_Avoid_: Array, vector, list, repeat, instances (for the members, which are members)
+
 **Dielectric**:
 The class of a ceramic capacitor, `C0G`, `X5R` or `X7R`: the enum `Dielectric` of `std::parts::passive`, the type of a `Capacitor`'s `.dielectric` and of the optional `dielectric` column of the capacitor catalog (ADR 0055, proposed). A design states it with `.dielectric &= Dielectric::X7R`. Read from the class that JLCPCB's record prints for the row; a generic capacitor has none.
 _Avoid_: Temperature code, temperature characteristic, material

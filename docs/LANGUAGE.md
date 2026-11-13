@@ -290,6 +290,125 @@ error: `r` is already declared in this block
   |     ^^
 ```
 
+### A group of identical members
+
+Several members that are the same, such as the decoupling capacitors of a rail, are one statement (ADR 0118): a count and `x` before the type, `.decoupling: 4 x Capacitor { ... }`. The group is that many members, `.decoupling[0]` to `.decoupling[3]`, each a member of its own as if declared one by one, with the group's block. A chain with the group alone between its two ends, `.supply.pos ~> .decoupling ~> .supply.neg`, puts every member in parallel between them. A group may also be written in the chain itself, where it has no name to give: `.supply.pos ~> 2 x Capacitor { ... } ~> .supply.neg`.
+
+```nsm solve report
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Groups {
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    /// The decoupling of the supply, one by each supply pin.
+    .decoupling: 4 x Capacitor { .capacitance &= 100nF +/- 10% }
+    .decoupling[3].package &= "0603"
+    .supply.pos ~> .decoupling ~> .supply.neg
+    .supply.pos ~> 2 x Capacitor { .capacitance &= 10uF +/- 20% } ~> .supply.neg
+}
+```
+
+```text
+board Groups
+  C5   Capacitor       10u             Capacitor_SMD:C_0603_1608Metric                            C19702 Basic
+  C6   Capacitor       10u             Capacitor_SMD:C_0603_1608Metric                            C19702 Basic
+  C1   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C2   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C3   Capacitor       100n            Capacitor_SMD:C_0402_1005Metric                            C1525 Basic
+  C4   Capacitor       100n            Capacitor_SMD:C_0603_1608Metric                            C14663 Basic
+  net 3V3: C1.1, C2.1, C3.1, C4.1, C5.1, C6.1
+  net GND: C1.2, C2.2, C3.2, C4.2, C5.2, C6.2
+```
+
+Rules.
+
+- The count is a whole number of at least two, written with a space each side of the `x` (`4 x`). A group is declared by one name of its own, not by a path into a member.
+- The block holds for every member. One member is narrowed further by its index, `.decoupling[3].package &= "0603"`, as any member is; the index counts from 0. A path to the whole group outside its block (`.decoupling.package`) is an error that names the members.
+- A chain passes through a group only with the group alone between its two ends, every operator `~>`. To join one member to something else, name it: `.decoupling[0].a ~ .u.vdd`.
+- A group written in a chain is named from its kind and the chain's two ends: `2 x Capacitor` between `.supply.pos` and `.supply.neg` is `capacitor_supply_pos_supply_neg[0]` and `[1]`. Two such groups of one kind between the same ends would have one name, which is an error: name each group yourself.
+- Each member is a part of the design with a designator of its own. The members are declared where the group is, one after another in index order, so they are numbered in index order (Designators, below); the group's doc comment is one note, on the first.
+- A physical file and a layout file name a member by its path with the index: `.decoupling[2].place.side &= "bottom"`, `[Groups.parts."decoupling[2]"]`. A pick lock has an entry for each member.
+
+A group is not a bank (A bank of capacitors in parallel, below). A bank is one member whose count the solver may choose, and its capacitors are identical and have no paths a board can narrow. A group's count is the board's, and its members are members.
+
+```nsm fails
+import std::parts::passive::Capacitor
+
+board Whole {
+    .decoupling: 4 x Capacitor { .capacitance &= 100nF +/- 10% }
+    .decoupling.package &= "0603"
+}
+```
+
+```text
+error: `.decoupling` is a group of 4, not one member: name one, `.decoupling[0]` to `.decoupling[3]`; a statement in the group's block holds for every member
+  --> main.nsm:5:6
+  |
+5 |     .decoupling.package &= "0603"
+  |      ^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Capacitor
+
+board Past {
+    .decoupling: 4 x Capacitor { .capacitance &= 100nF +/- 10% }
+    .decoupling[4].package &= "0603"
+}
+```
+
+```text
+error: `.decoupling` is a group of 4, `.decoupling[0]` to `.decoupling[3]`, and has no member `[4]`
+  --> main.nsm:5:6
+  |
+5 |     .decoupling[4].package &= "0603"
+  |      ^^^^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
+board Shape {
+    .supply: Rail {
+        .voltage &= 3.3V
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }
+    .r: Resistor
+    .decoupling: 2 x Capacitor { .capacitance &= 100nF +/- 10% }
+    .supply.pos ~> .r ~> .decoupling ~> .supply.neg
+}
+```
+
+```text
+error: `.decoupling` is a group of 2, and a group in a chain stands alone between the chain's two ends, each member in parallel (`.v.pos ~> .decoupling ~> .v.neg`); join one member by its index, `.decoupling[0]` to `.decoupling[1]`
+   --> main.nsm:12:26
+   |
+12 |     .supply.pos ~> .r ~> .decoupling ~> .supply.neg
+   |                          ^^^^^^^^^^^
+```
+
+```nsm fails
+import std::parts::passive::Capacitor
+
+board One {
+    .c: 1 x Capacitor
+}
+```
+
+```text
+error: a group has at least two members; `1 x` is not one, so declare the member alone (`.c: Capacitor`)
+  --> main.nsm:4:9
+  |
+4 |     .c: 1 x Capacitor
+  |         ^^^
+```
+
 ## Values: units, ranges and tolerances
 
 Every value is a quantity with a dimension, and it is always a range in the worst case. A single number is a range with equal ends.
@@ -1761,6 +1880,7 @@ Rules.
 - `a ~> pin ~> b` puts `a`, the pin and `b` on one net.
 - A chain across a rail sets its own current (below). Any other chain is a statement about nets and about which currents are equal.
 - A system joins ports with `~` only (see Systems).
+- A group of identical members alone between a chain's two ends puts each member in parallel between them, and a group may be written in the chain (`.supply.pos ~> 2 x Capacitor { ... } ~> .supply.neg`, A group of identical members, above).
 
 ### The current of a chain
 
@@ -2138,7 +2258,7 @@ error: `j` is inside `Block` and is not part of its interface: only narrowing (`
 
 ### Designators
 
-Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
+Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order the design declares the parts (owner decision, 2026-11-09, issue #166): the parts of a board in the order of its statements, and a module's parts, and those of a module inside it, where the module is declared, one module after another and each module's parts in its own order, depth first. So a board that declares `.power_in` and then `.enable_in`, two headers, has `J1` and `J2`, and a resistor in a module declared between two resistors of the board is the second. It is the order of the source text and nothing else: not the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout. It is also the one place where the order of statements shows: moving a part's declaration above another part of the same letters swaps their numbers (a layout file is keyed by path, so no placement moves). A number at the end of a name (`.tp2`) is part of the name and counts for nothing. The members of a group (`.decoupling: 4 x Capacitor`) are declared where the group is, in index order, so `decoupling[0]` to `decoupling[3]` have numbers one after the other, and where parts are listed by path an index sorts as a number (`decoupling[2]` before `decoupling[10]`). The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.
 
 Each standard kind states its own letters, because they are always true of it, and nothing can change them: `Resistor` is `"R"`, `Capacitor` `"C"`, `Inductor` `"L"`, `FerriteBead` `"FB"`, `Led`, `Diode`, `Schottky`, `Zener` and `Tvs` `"D"`, `NMosfet` and `PMosfet` `"Q"`, `Crystal` `"Y"`, `Fuse` `"F"`, `Switch` `"SW"`, every connector (a part that provides `Connector`, see _A connector of your own_: every header, socket, `Coax`, `UsbCPower`, `UsbC2`, `UsbCReceptacle16P`, `Obd2M` and `ProgrammingPads6`) `"J"`, `TestPoint` `"TP"`, `MountingHole` and `PlatedHole` `"H"`, `Fiducial` `"FID"`, `Label` `"LBL"` and `LinearRegulator` `"U"`. A part you define states its own letters in its body, `.designator &= "BZ"`, or leaves them out; a part with none is `"U"`. A board may give the letters to a part of its own that states none, with the same `&=`. A test fails when a part of the standard library has no letters, so a new kind gets them on purpose.
 
@@ -6618,7 +6738,7 @@ board Bank
   net GND: C1.2, C2.2, C3.2, C4.2, C5.2, C6.2
 ```
 
-The design has one part for each capacitor of the bank, numbered one after the other, all on the same nets, and the bill of materials lists the row once with the quantity. The first capacitor has the path of the instance (`bulk`, the key of a layout file); the others add `#2`, `#3` (`bulk#2`). The schematic, the KiCad files and the placer see real parts. The placer treats each as any other capacitor, so a bank is not kept in a row. A requirement in the physical file on the part's path (`.bulk.place.top &= 3mm..6mm`, `.bulk.place.side &= "bottom"`, a `.height`) holds for every capacitor of the bank: the design has one requirement for each, the check measures each, and a finding names the one it is about (`bulk#2.place.top`, with its designator). A relation between the place of the bank and that of another part (`.bulk.place.x - .r1.place.x == 5mm +/- 3mm`) holds for each pair, and the build lists a note that says so (`` `bulk` is a bank of 4 capacitors ``). A requirement on the module the bank is in reaches them all, as for any part.
+The design has one part for each capacitor of the bank, numbered one after the other, all on the same nets, and the bill of materials lists the row once with the quantity. The first capacitor has the path of the instance (`bulk`, the key of a layout file); the others add `#2`, `#3` (`bulk#2`). Capacitors the board counts itself, each with a path it can narrow and place, are a group, `.bulk: 3 x Capacitor` (A group of identical members); a bank is for a count the solver chooses. The schematic, the KiCad files and the placer see real parts. The placer treats each as any other capacitor, so a bank is not kept in a row. A requirement in the physical file on the part's path (`.bulk.place.top &= 3mm..6mm`, `.bulk.place.side &= "bottom"`, a `.height`) holds for every capacitor of the bank: the design has one requirement for each, the check measures each, and a finding names the one it is about (`bulk#2.place.top`, with its designator). A relation between the place of the bank and that of another part (`.bulk.place.x - .r1.place.x == 5mm +/- 3mm`) holds for each pair, and the build lists a note that says so (`` `bulk` is a bank of 4 capacitors ``). A requirement on the module the bank is in reaches them all, as for any part.
 
 When no count in the range is enough, the message names the count that came nearest:
 
@@ -8726,7 +8846,7 @@ source = "hand"       # "hand", "auto" or "regen": who wrote it
 at = [18.0, 2.0]
 ```
 
-Parts are keyed by their path in the design, which a renumbered reference designator does not change. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. When the file's seed (0 if it states none) does not place the board, the placer tries the seeds after it (the file's seed plus 1, plus 2 and so on), up to `place_seeds` in `netsmith.toml` in all (8 by default): a seed places the board when the parts fit the outline, the placement check finds no fault that another seed could move (one that names no part the file places, and names a part no requirement pins) and, with no layout file, every requirement of the physical file is met. `fab` says which seed placed the board (`placed on a 101.2 by 24 mm board with seed 15`); when it is not the file's, it says what blocked each seed tried, calls the file's seed stale if the file states one, and writes the new seed to the file. With `--locked` it writes nothing and stops with an error, as for a pick lock; an order (`fab --order`) and the editor's release are releases, which never change a choice by themselves, so a seed that would change stops them with the seed to write by running `fab`. `board3d` and the editor's PCB view use the seed they find and write nothing. When no seed places the board, `fab` stops with the closest try (the fewest faults, then the least area and distance; the earlier seed on a tie) and what blocks it, each member by its path with the designator beside it, and by how much: `no seed places the board: the placer tried 8 seeds, 3 to 10 (...), and the closest is seed 7, where this blocks it:` then `` the courtyards of `usb` (J2) and `vbus_2u2` (C37) overlap by 0.04 mm2 ``. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the physical file and has an entry as well is an error: a thing has one place. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm`, its physical file `examples/outline_and_pours.physical.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
+Parts are keyed by their path in the design, which a renumbered reference designator does not change. A member of a group is keyed by its path with the index, quoted as TOML needs: `[Board.parts."decoupling[2]"]`. A part with no entry is placed by the placer (ADR 0033): it derives a placement from the circuit alone, keeping the parts of a module together, a decoupling capacitor next to the power pins it bridges, connectors at the edges and wire short, and places them round the parts the file places. The same circuit, file and `seed` always give the same board; another `seed` gives another arrangement. When the file's seed (0 if it states none) does not place the board, the placer tries the seeds after it (the file's seed plus 1, plus 2 and so on), up to `place_seeds` in `netsmith.toml` in all (8 by default): a seed places the board when the parts fit the outline, the placement check finds no fault that another seed could move (one that names no part the file places, and names a part no requirement pins) and, with no layout file, every requirement of the physical file is met. `fab` says which seed placed the board (`placed on a 101.2 by 24 mm board with seed 15`); when it is not the file's, it says what blocked each seed tried, calls the file's seed stale if the file states one, and writes the new seed to the file. With `--locked` it writes nothing and stops with an error, as for a pick lock; an order (`fab --order`) and the editor's release are releases, which never change a choice by themselves, so a seed that would change stops them with the seed to write by running `fab`. `board3d` and the editor's PCB view use the seed they find and write nothing. When no seed places the board, `fab` stops with the closest try (the fewest faults, then the least area and distance; the earlier seed on a tie) and what blocks it, each member by its path with the designator beside it, and by how much: `no seed places the board: the placer tried 8 seeds, 3 to 10 (...), and the closest is seed 7, where this blocks it:` then `` the courtyards of `usb` (J2) and `vbus_2u2` (C37) overlap by 0.04 mm2 ``. A build puts every part that has an entry where the file says; the placer places the others round the parts that are locked (`lock = true`) and does not react to the others, so moving a part by hand moves nothing else. `place_subset` places some parts and leaves the rest, but no command asks for it yet. An entry for a part, keepout or cutout that the board does not have, or a table for a board the file does not have, is an error that names it and lists what exists. A keepout or cutout that states `.x` and `.y` in the physical file and has an entry as well is an error: a thing has one place. `side = "bottom"` puts a part on the back. `examples/outline_and_pours.nsm`, its physical file `examples/outline_and_pours.physical.nsm` and `examples/outline_and_pours.pcb.toml` use all of this.
 
 ### The pick lock
 

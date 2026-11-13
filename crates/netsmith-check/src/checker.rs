@@ -1686,7 +1686,7 @@ impl<'a> Checker<'a> {
         let last = count - 1;
         Some(match index {
             None => format!(
-                "`.{base}` is a group of {count}, not one member: name one, `.{base}[0]` to `.{base}[{last}]`; a statement in the group's body holds for every member"
+                "`.{base}` is a group of {count}, not one member: name one, `.{base}[0]` to `.{base}[{last}]`; a statement in the group's block holds for every member"
             ),
             Some(index) => format!(
                 "`.{base}` is a group of {count}, `.{base}[0]` to `.{base}[{last}]`, and has no member `[{index}]`"

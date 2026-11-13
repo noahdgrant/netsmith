@@ -47,7 +47,7 @@ fn a_path_to_the_whole_group_names_its_members() {
     let c = run("    .decoupling.package &= \"0603\"\n", "");
     assert_eq!(
         messages(&c),
-        ["`.decoupling` is a group of 4, not one member: name one, `.decoupling[0]` to `.decoupling[3]`; a statement in the group's body holds for every member"]
+        ["`.decoupling` is a group of 4, not one member: name one, `.decoupling[0]` to `.decoupling[3]`; a statement in the group's block holds for every member"]
     );
 }
 
@@ -74,7 +74,7 @@ fn a_physical_file_places_one_member_by_its_index() {
     let c = run("", "physical for B {\n    .decoupling.place.side &= \"bottom\"\n}\n");
     assert_eq!(
         messages(&c),
-        ["`.decoupling` is a group of 4, not one member: name one, `.decoupling[0]` to `.decoupling[3]`; a statement in the group's body holds for every member"]
+        ["`.decoupling` is a group of 4, not one member: name one, `.decoupling[0]` to `.decoupling[3]`; a statement in the group's block holds for every member"]
     );
 }
 
